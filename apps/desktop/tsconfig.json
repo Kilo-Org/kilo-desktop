@@ -1,0 +1,19 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["node", "vitest/globals"],
+		"paths": {
+			"$config/*": ["./config/*"]
+		}
+	},
+	"include": [
+		"config/**/*.ts",
+		"src/**/*.ts",
+		"drizzle.config.ts",
+		"forge.config.ts",
+		"vite.main.config.ts",
+		"vite.preload.config.ts",
+		"vitest.config.ts"
+	]
+}

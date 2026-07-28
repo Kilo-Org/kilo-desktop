@@ -46,5 +46,5 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @anaconda-desktop/app exec playwright install chromium --with-deps
+      - run: pnpm --filter @anaconda-agentic-desktop/web exec playwright install chromium --with-deps
       - run: pnpm test

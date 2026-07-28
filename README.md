@@ -9,17 +9,17 @@ This repository implements the architecture described in
 
 ## Tech stack
 
-| Layer           | Choice                                  | Notes                                                                                |
-| --------------- | --------------------------------------- | ------------------------------------------------------------------------------------ |
-| Shell           | Electron 43 + Electron Forge 8 alpha    | Forge owns development, Vite builds, packaging, makers, and S3 publishing            |
-| Renderer        | React 19 + TanStack Router              | File-based routes with hash history under the custom application protocol            |
-| Styling         | Tailwind CSS 4 + shadcn Nova/Base UI    | Uses the Anaconda theme and Inter                                                    |
-| State           | TanStack React Query                    | Typed IPC calls are query and mutation functions; push events invalidate cached data |
-| Persistence     | better-sqlite3 13 + Drizzle ORM         | SQL migrations are packaged with the application                                     |
-| Validation      | Zod 4                                   | Shared schemas in `app/src/shared/` define the main/preload/renderer boundary        |
-| Package manager | pnpm 11, hoisted linker                 | Forge receives a frozen production dependency deployment during packaging            |
-| Testing         | Vitest 5 + Testing Library + Playwright | Unit tests, real-browser React tests, and packaged Electron smoke tests              |
-| Git hooks       | Husky + lint-staged                     | Linting and formatting run before commit                                             |
+| Layer           | Choice                                  | Notes                                                                                     |
+| --------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Shell           | Electron 43 + Electron Forge 8 alpha    | Forge owns main/preload builds, packaging, makers, and S3 publishing                      |
+| Renderer        | React 19 + TanStack Router              | Standalone Vite app under `apps/web`, loaded through the custom application protocol      |
+| Styling         | Tailwind CSS 4 + shadcn Nova/Base UI    | Uses the Anaconda theme and Inter                                                         |
+| State           | TanStack React Query                    | Query factories call a web-owned `LocalApi`; Electron or in-browser adapters implement it |
+| Persistence     | better-sqlite3 13 + Drizzle ORM         | SQL migrations live in the desktop package                                                |
+| Validation      | Zod 4                                   | Shared schemas in `packages/contracts` define the IPC boundary                            |
+| Package manager | pnpm 11, hoisted linker                 | Forge receives a frozen production dependency deployment during packaging                 |
+| Testing         | Vitest 5 + Testing Library + Playwright | Unit tests, real-browser React tests, and packaged Electron smoke tests                   |
+| Git hooks       | Husky + lint-staged                     | Linting and formatting run before commit                                                  |
 
 ## Getting started
 
@@ -31,69 +31,70 @@ pnpm install --frozen-lockfile
 pnpm start
 ```
 
-`pnpm start` delegates to `electron-forge start`. Forge and its Vite plugin watch the
-main process, preload, and React renderer and provide renderer HMR.
+`pnpm start` / `pnpm dev` run the web Vite server and Electron together. Electron proxies
+the renderer through `anaconda-agentic-desktop-dev://app/#/` using
+`ANACONDA_WEB_DEV_SERVER_URL`. Use `pnpm dev:web` for the React app alone (in-memory
+`LocalApi`, no Electron).
 
 The pinned Forge alpha publishes its POSIX CLI file without an executable mode, so the
 root postinstall script normalizes that mode after pnpm links the hoisted dependency.
 
 ## Commands
 
-| Command             | Purpose                                                                |
-| ------------------- | ---------------------------------------------------------------------- |
-| `pnpm start`        | Start the application through Electron Forge                           |
-| `pnpm run package`  | Build and package the current platform into `app/out/`                 |
-| `pnpm run make`     | Package the app and create the current platform’s distributables       |
-| `pnpm run publish`  | Run release preflight, then make and upload with Forge’s S3 publisher  |
-| `pnpm check`        | Type-check the main process, preload, renderer, config, and E2E tests  |
-| `pnpm lint`         | Run oxlint                                                             |
-| `pnpm format:check` | Verify formatting                                                      |
-| `pnpm test`         | Run unit tests and React browser tests                                 |
-| `pnpm test:e2e`     | Package the app and exercise the hardened executable through typed IPC |
-
-The application package also exposes the same Forge commands as `start`, `package`,
-`make`, and `publish`.
+| Command               | Purpose                                                                |
+| --------------------- | ---------------------------------------------------------------------- |
+| `pnpm start`          | Start web + Electron (`dev:desktop`)                                   |
+| `pnpm dev:web`        | Start the standalone React/Vite app                                    |
+| `pnpm dev:desktop`    | Start web and Electron with the custom development protocol            |
+| `pnpm run package`    | Build web, then package Electron into `apps/desktop/out/`              |
+| `pnpm run make`       | Package the app and create the current platform’s distributables       |
+| `pnpm run publish`    | Run release preflight, then make and upload with Forge’s S3 publisher  |
+| `pnpm check`          | Type-check contracts, web, desktop, and E2E projects                   |
+| `pnpm lint`           | Run oxlint                                                             |
+| `pnpm format:check`   | Verify formatting                                                      |
+| `pnpm test`           | Run package tests recursively                                          |
+| `pnpm test:web`       | Web unit + browser tests                                               |
+| `pnpm test:desktop`   | Desktop unit tests                                                     |
+| `pnpm test:contracts` | Contracts registry tests                                               |
+| `pnpm test:e2e`       | Package the app and exercise the hardened executable through typed IPC |
 
 ## Structure
 
 ```text
 /
-├── app/
-│   ├── config/
-│   │   └── release.ts          # Shared channel, artifact-key, and update-feed paths
-│   ├── drizzle/                # SQLite migrations
-│   ├── e2e/                    # Packaged Electron smoke test
-│   ├── src/
-│   │   ├── main/               # Application lifecycle, services, IPC, protocol, updater
-│   │   ├── preload/            # Context-isolated typed desktopApi bridge
-│   │   ├── renderer/
-│   │   │   ├── components/ui/  # shadcn Nova/Base UI components
-│   │   │   ├── features/       # Theme and Todo features
-│   │   │   ├── routes/         # TanStack Router file routes
-│   │   │   ├── main.tsx        # React root and providers
-│   │   │   └── routeTree.gen.ts
-│   │   └── shared/             # IPC channels, Zod schemas, and shared types
-│   ├── components.json         # shadcn CLI configuration
-│   ├── forge.config.ts         # Packager, makers, fuses, signing, and S3 publisher
-│   ├── vite.main.config.ts
-│   ├── vite.preload.config.ts
-│   ├── vite.renderer.config.ts
-│   └── vitest.config.ts
-├── packages/                   # Reusable libraries
-├── .github/workflows/build.yml # Platform make/publish jobs
+├── apps/
+│   ├── desktop/                # Electron main, preload, Forge, SQLite, E2E
+│   │   ├── config/
+│   │   ├── drizzle/
+│   │   ├── e2e/
+│   │   ├── resources/
+│   │   └── src/{main,preload}/
+│   └── web/                    # Standalone React/Vite application
+│       └── src/
+│           ├── components/
+│           ├── features/
+│           ├── platform/       # LocalApi + Electron/browser adapters
+│           └── routes/
+├── packages/
+│   └── contracts/              # Shared Zod schemas and typed IPC contracts
+├── .github/workflows/build.yml
 ├── pnpm-workspace.yaml
 └── tsconfig.base.json
 ```
 
+Package names: `@anaconda-agentic-desktop/desktop`, `@anaconda-agentic-desktop/web`,
+`@anaconda-agentic-desktop/contracts`.
+
 ## Electron architecture and security
 
 The renderer is sandboxed and has no Node.js access. The preload exposes only the
-schema-validated `window.desktopApi` surface. Main-process services remain independent
-of Electron and are wired to thin IPC handlers.
+schema-validated `window.desktopApi` surface. React code depends on `LocalApi` and never
+imports Electron or IPC channel names (except the Electron adapter).
 
 Production navigation uses `anaconda-agentic-desktop://app/#/`; development uses
-`anaconda-agentic-desktop-dev://app/#/`. The custom protocol serves the renderer with
-a strict Content Security Policy.
+`anaconda-agentic-desktop-dev://app/#/`. The custom protocol serves the independently
+built web `dist` (or proxies the web Vite server in development) with a strict Content
+Security Policy.
 
 Forge creates an ASAR, includes `.vite`, migrations, package metadata, and required
 production dependencies, and unpacks `better-sqlite3`. The fuses plugin disables
@@ -152,7 +153,7 @@ settings.
 
 The Linux CI job installs `fakeroot` and RPM tooling. Manual workflow runs call
 `pnpm run make`; `v*` tags call `pnpm run publish`. Each platform uploads its official maker
-artifacts from `app/out/make/`.
+artifacts from `apps/desktop/out/make/`.
 
 ## Not yet implemented
 

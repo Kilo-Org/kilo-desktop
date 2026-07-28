@@ -46,4 +46,5 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium --with-deps
       - run: pnpm test

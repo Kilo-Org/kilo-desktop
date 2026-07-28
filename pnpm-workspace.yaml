@@ -23,3 +23,7 @@ allowBuilds:
   "@scarf/scarf": true
 
 minimumReleaseAge: 0
+
+registries:
+  default: https://registry.npmjs.org/
+  "@anaconda": https://npm.pkg.github.com/

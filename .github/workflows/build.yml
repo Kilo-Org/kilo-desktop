@@ -61,6 +61,7 @@ jobs:
       contents: read
       id-token: write
     env:
+      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       RELEASE_CHANNEL: canary
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}

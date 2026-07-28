@@ -1,5 +1,8 @@
 name: Setup Node and pnpm
-description: Install pnpm and Node using the repository .nvmrc and pnpm cache
+description: >
+  Install pnpm and Node using the repository .nvmrc and pnpm cache, with
+  GitHub Packages auth for the @anaconda scope. Callers must set
+  NODE_AUTH_TOKEN (typically secrets.GH_DESIGN_SYSTEM_TOKEN).
 
 runs:
   using: composite
@@ -11,3 +14,5 @@ runs:
       with:
         node-version-file: .nvmrc
         cache: pnpm
+        registry-url: https://npm.pkg.github.com
+        scope: "@anaconda"

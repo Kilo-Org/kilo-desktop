@@ -39,6 +39,7 @@ jobs:
             runner: ubuntu-latest
             timeout_minutes: 60
     env:
+      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       RELEASE_CHANNEL: ${{ inputs.release_channel }}
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       UPDATE_S3_BUCKET: ${{ vars.UPDATE_S3_BUCKET }}

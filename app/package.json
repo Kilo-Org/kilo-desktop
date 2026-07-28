@@ -17,7 +17,7 @@
 		"check": "svelte-kit sync && tsc --noEmit -p tsconfig.main.json && tsc --noEmit --project e2e/tsconfig.json && svelte-check --tsconfig ./src/renderer/tsconfig.json",
 		"db:generate": "drizzle-kit generate",
 		"package": "pnpm build && electron-builder --config ../electron-builder.config.js",
-		"start": "electron-forge start",
+		"start": "electron-forge start -- --remote-debugging-port=9222",
 		"test": "vitest run",
 		"pretest:e2e": "pnpm build",
 		"test:e2e": "playwright test --config e2e/playwright.config.ts"

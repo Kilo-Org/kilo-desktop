@@ -1,0 +1,16 @@
+{
+	"extends": ["./.svelte-kit/tsconfig.json", "./tsconfig.main.json"],
+	"include": [
+		"src/main/**/*.ts",
+		"src/preload/**/*.ts",
+		"src/shared/**/*.ts",
+		"src/forge-env.d.ts",
+		"drizzle.config.ts",
+		"forge.config.ts",
+		"vite.main.config.ts",
+		"vite.preload.config.ts",
+		"vite.renderer.config.ts",
+		"vitest.config.ts"
+	],
+	"exclude": ["src/renderer/**"]
+}

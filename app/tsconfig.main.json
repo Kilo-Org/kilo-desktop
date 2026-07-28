@@ -1,0 +1,23 @@
+{
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["node", "vitest/globals"],
+		"paths": {
+			"$shared": ["./src/shared/index.ts"],
+			"$shared/*": ["./src/shared/*"]
+		}
+	},
+	"include": [
+		"src/main/**/*.ts",
+		"src/preload/**/*.ts",
+		"src/shared/**/*.ts",
+		"src/forge-env.d.ts",
+		"drizzle.config.ts",
+		"forge.config.ts",
+		"vite.main.config.ts",
+		"vite.preload.config.ts",
+		"vite.renderer.config.ts",
+		"vitest.config.ts"
+	]
+}

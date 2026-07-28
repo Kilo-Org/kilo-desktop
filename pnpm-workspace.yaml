@@ -1,0 +1,25 @@
+packages:
+  - app
+  - packages/*
+
+catalog:
+  typescript: ^6.0.3
+  vite: ^8.1.5
+  vitest: 5.0.0-beta.7
+  zod: ^4.4.3
+
+savePrefix: ^
+
+nodeLinker: isolated
+hoistPattern:
+  - electron
+  - vite
+
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  better-sqlite3: true
+  "@scarf/scarf": true
+
+minimumReleaseAge: 0

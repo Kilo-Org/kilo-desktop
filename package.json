@@ -1,0 +1,49 @@
+{
+	"name": "anaconda-agentic-desktop",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Anaconda Agentic Desktop",
+	"packageManager": "pnpm@11.17.0",
+	"engines": {
+		"node": ">=22.12"
+	},
+	"scripts": {
+		"build": "pnpm --filter @anaconda-desktop/app build",
+		"check": "pnpm -r --if-present check",
+		"dev": "pnpm --filter @anaconda-desktop/app start",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"lint": "eslint . --max-warnings=0",
+		"package": "pnpm --filter @anaconda-desktop/app package",
+		"prepare": "husky",
+		"test": "pnpm -r --if-present test",
+		"test:e2e": "pnpm --filter @anaconda-desktop/app test:e2e"
+	},
+	"lint-staged": {
+		"*.{js,mjs,cjs,ts,svelte}": [
+			"eslint --fix",
+			"prettier --write"
+		],
+		"*.{json,md,yaml,yml,css}": [
+			"prettier --write"
+		]
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@types/node": "^24.13.3",
+		"eslint": "^10.8.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-svelte": "^3.22.0",
+		"globals": "^17.7.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^17.2.0",
+		"prettier": "^3.9.6",
+		"prettier-plugin-svelte": "^4.1.1",
+		"prettier-plugin-tailwindcss": "^0.8.1",
+		"svelte-eslint-parser": "^1.8.0",
+		"typescript": "catalog:",
+		"typescript-eslint": "^8.65.0",
+		"vitest": "catalog:"
+	}
+}

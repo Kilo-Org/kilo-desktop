@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+.svelte-kit/
+.vite/
+app/.data/
+build/
+coverage/
+dist/
+out/
+release/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example

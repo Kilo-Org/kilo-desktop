@@ -8,7 +8,6 @@ import { defineConfig } from "vitest/config";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
-const contractsEntry = path.resolve(root, "../../packages/contracts/src/index.ts");
 
 export default defineConfig({
 	test: {
@@ -17,7 +16,6 @@ export default defineConfig({
 				resolve: {
 					alias: {
 						"@": srcRoot,
-						"@anaconda-agentic-desktop/contracts": contractsEntry,
 					},
 				},
 				test: {
@@ -31,7 +29,6 @@ export default defineConfig({
 				resolve: {
 					alias: {
 						"@": srcRoot,
-						"@anaconda-agentic-desktop/contracts": contractsEntry,
 					},
 					dedupe: ["react", "react-dom"],
 				},

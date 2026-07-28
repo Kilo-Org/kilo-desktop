@@ -9,10 +9,6 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			$config: path.resolve(root, "config"),
-			"@anaconda-agentic-desktop/contracts": path.resolve(
-				root,
-				"../../packages/contracts/src/index.ts",
-			),
 		},
 	},
 	test: {

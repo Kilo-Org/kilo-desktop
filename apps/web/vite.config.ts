@@ -23,12 +23,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@": srcRoot,
-			"@anaconda-agentic-desktop/contracts": path.resolve(
-				root,
-				"../../packages/contracts/src/index.ts",
-			),
 		},
-		preserveSymlinks: true,
 	},
 	server: {
 		host: "127.0.0.1",

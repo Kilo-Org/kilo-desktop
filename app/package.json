@@ -20,7 +20,7 @@
 		"package": "electron-forge package",
 		"prepublish": "tsx config/preflight-publish.ts",
 		"publish": "electron-forge publish",
-		"start": "electron-forge start",
+		"start": "electron-forge start -- --remote-debugging-port=9222",
 		"test": "vitest run",
 		"pretest:e2e": "pnpm run package",
 		"test:e2e": "playwright test --config e2e/playwright.config.ts"

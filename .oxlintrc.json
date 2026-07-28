@@ -15,6 +15,7 @@
 		"**/node_modules/**",
 		"**/out/**",
 		"**/release/**",
+		"**/.agents/**",
 		"app/src/renderer/routeTree.gen.ts"
 	],
 	"rules": {

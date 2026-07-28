@@ -1,0 +1,12 @@
+name: Prod Publish
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    uses: ./.github/workflows/publish_helper.yml
+    secrets: inherit
+    with:
+      release_channel: prod
+      fail_fast: true

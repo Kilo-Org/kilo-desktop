@@ -1,0 +1,103 @@
+name: Setup macOS code signing
+description: Import a Developer ID certificate and configure App Store Connect notarization credentials
+
+inputs:
+  certificate_base64:
+    description: Base64-encoded Developer ID .p12 certificate
+    required: false
+    default: ""
+  certificate_password:
+    description: Password for the .p12 certificate
+    required: false
+    default: ""
+  notarization_key:
+    description: App Store Connect API .p8 key material
+    required: false
+    default: ""
+  notarization_key_id:
+    description: App Store Connect API key ID
+    required: false
+    default: ""
+  notarization_key_issuer:
+    description: App Store Connect API issuer ID
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Validate and import macOS signing certificate
+      env:
+        OSX_BUILD_CERTIFICATE_BASE64: ${{ inputs.certificate_base64 }}
+        OSX_P12_PASSWORD: ${{ inputs.certificate_password }}
+        KEYCHAIN_PASSWORD: ${{ github.run_id }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${OSX_BUILD_CERTIFICATE_BASE64}" && -z "${OSX_P12_PASSWORD}" ]]; then
+          echo "macOS signing certificate inputs unset; skipping certificate import."
+          exit 0
+        fi
+        if [[ -z "${OSX_BUILD_CERTIFICATE_BASE64}" || -z "${OSX_P12_PASSWORD}" ]]; then
+          echo "Partial macOS signing certificate configuration."
+          echo "Require both certificate_base64 and certificate_password, or neither."
+          exit 1
+        fi
+
+        CERTIFICATE_PATH="${RUNNER_TEMP}/build_certificate.p12"
+        KEYCHAIN_PATH="${RUNNER_TEMP}/app-signing.keychain-db"
+        echo -n "${OSX_BUILD_CERTIFICATE_BASE64}" | base64 --decode > "${CERTIFICATE_PATH}"
+
+        security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+        security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+        security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+        security import "${CERTIFICATE_PATH}" -P "${OSX_P12_PASSWORD}" -A -t cert -f pkcs12 -k "${KEYCHAIN_PATH}"
+        security set-key-partition-list -S apple-tool:,apple: -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+        security list-keychain -d user -s "${KEYCHAIN_PATH}"
+
+        IDENTITY="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+        if [[ -z "${IDENTITY}" ]]; then
+          echo "Unable to find a Developer ID Application identity in the imported keychain."
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}" || true
+          exit 1
+        fi
+        echo "APPLE_SIGNING_IDENTITY=${IDENTITY}" >> "${GITHUB_ENV}"
+        rm -f "${CERTIFICATE_PATH}"
+
+    - name: Validate and configure macOS notarization API key
+      env:
+        OSX_NOTARIZATION_KEY: ${{ inputs.notarization_key }}
+        OSX_NOTARIZATION_KEY_ID: ${{ inputs.notarization_key_id }}
+        OSX_NOTARIZATION_KEY_ISSUER: ${{ inputs.notarization_key_issuer }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        required=(OSX_NOTARIZATION_KEY OSX_NOTARIZATION_KEY_ID OSX_NOTARIZATION_KEY_ISSUER)
+        present=0
+        missing=()
+        for name in "${required[@]}"; do
+          if [[ -n "${!name}" ]]; then
+            present=1
+          else
+            missing+=("${name}")
+          fi
+        done
+
+        if [[ "${present}" -eq 0 ]]; then
+          echo "macOS notarization inputs unset; skipping notarization key setup."
+          exit 0
+        fi
+        if [[ "${#missing[@]}" -gt 0 ]]; then
+          echo "Partial macOS notarization configuration."
+          echo "Missing: ${missing[*]}"
+          echo "Require all of: notarization_key, notarization_key_id, notarization_key_issuer, or none."
+          exit 1
+        fi
+
+        API_KEY_PATH="${RUNNER_TEMP}/notarization.key"
+        echo -n "${OSX_NOTARIZATION_KEY}" > "${API_KEY_PATH}"
+        echo "APPLE_API_KEY=${API_KEY_PATH}" >> "${GITHUB_ENV}"
+        echo "APPLE_API_KEY_ID=${OSX_NOTARIZATION_KEY_ID}" >> "${GITHUB_ENV}"
+        echo "APPLE_API_ISSUER=${OSX_NOTARIZATION_KEY_ISSUER}" >> "${GITHUB_ENV}"

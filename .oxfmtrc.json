@@ -6,6 +6,5 @@
 	"useTabs": true,
 	"sortPackageJson": false,
 	"sortTailwindcss": {},
-	"svelte": {},
 	"ignorePatterns": ["**/.agents/**", "apps/web/src/routeTree.gen.ts"]
 }

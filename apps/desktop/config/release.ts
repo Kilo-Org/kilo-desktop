@@ -1,22 +1,38 @@
+import {
+	resolveOsxNotarize,
+	resolveOsxSign,
+	resolveWindowsSigning,
+	type SigningEnvironment,
+} from "./signing.js";
+
 export const DEFAULT_RELEASE_CHANNEL = "canary";
 export const RELEASE_PREFIX = "anaconda-agentic-desktop";
+export const PUBLISHABLE_RELEASE_CHANNELS = ["canary", "staging", "prod"] as const;
+
+/**
+ * Values accepted by `RELEASE_CHANNEL` for packaged builds and publish.
+ * Local `pnpm start` / `pnpm dev` is unpackaged development and is not a channel value.
+ */
+export type PublishableReleaseChannel = (typeof PUBLISHABLE_RELEASE_CHANNELS)[number];
 
 export interface ReleaseEnvironment {
-	readonly APPLE_APP_SPECIFIC_PASSWORD?: string;
-	readonly APPLE_ID?: string;
-	readonly APPLE_SIGNING_IDENTITY?: string;
-	readonly APPLE_TEAM_ID?: string;
 	readonly RELEASE_CHANNEL?: string;
 	readonly UPDATE_PUBLISH_URL?: string;
 	readonly UPDATE_S3_BUCKET?: string;
-	readonly WINDOWS_CERTIFICATE_FILE?: string;
-	readonly WINDOWS_CERTIFICATE_PASSWORD?: string;
 }
 
-export function getReleaseChannel(environment: ReleaseEnvironment = {}): string {
+export type PublishEnvironment = ReleaseEnvironment & SigningEnvironment;
+
+function isPublishableReleaseChannel(channel: string): channel is PublishableReleaseChannel {
+	return (PUBLISHABLE_RELEASE_CHANNELS as readonly string[]).includes(channel);
+}
+
+export function getReleaseChannel(environment: ReleaseEnvironment = {}): PublishableReleaseChannel {
 	const channel = environment.RELEASE_CHANNEL?.trim() || DEFAULT_RELEASE_CHANNEL;
-	if (!/^[a-z0-9][a-z0-9._-]*$/i.test(channel)) {
-		throw new Error(`Invalid release channel: ${channel}`);
+	if (!isPublishableReleaseChannel(channel)) {
+		throw new Error(
+			`Invalid release channel: ${channel}. Expected one of: ${PUBLISHABLE_RELEASE_CHANNELS.join(", ")}`,
+		);
 	}
 	return channel;
 }
@@ -52,28 +68,29 @@ export function getUpdateFeedUrl(input: {
 	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.channel)}/${input.platform}/${input.arch}`;
 }
 
+function requiresSignedPublish(channel: PublishableReleaseChannel): boolean {
+	return channel === "staging" || channel === "prod";
+}
+
 export function validatePublishEnvironment(
-	environment: ReleaseEnvironment,
+	environment: PublishEnvironment,
 	platform: NodeJS.Platform,
 ): void {
 	if (!environment.UPDATE_S3_BUCKET?.trim()) {
 		throw new Error("UPDATE_S3_BUCKET is required to publish releases.");
 	}
-	if (getReleaseChannel(environment) !== "prod") return;
 
-	if (
-		platform === "darwin" &&
-		(!environment.APPLE_SIGNING_IDENTITY?.trim() ||
-			!environment.APPLE_ID?.trim() ||
-			!environment.APPLE_APP_SPECIFIC_PASSWORD?.trim() ||
-			!environment.APPLE_TEAM_ID?.trim())
-	) {
-		throw new Error("Production macOS publishing requires signing and notarization credentials.");
+	const channel = getReleaseChannel(environment);
+	if (!requiresSignedPublish(channel)) return;
+
+	if (platform === "darwin" && !(resolveOsxSign(environment) && resolveOsxNotarize(environment))) {
+		throw new Error(
+			"Staging/production macOS publishing requires a signing identity and notarization credentials (App Store Connect API key or Apple ID).",
+		);
 	}
-	if (
-		platform === "win32" &&
-		(!environment.WINDOWS_CERTIFICATE_FILE?.trim() || !environment.WINDOWS_CERTIFICATE_PASSWORD)
-	) {
-		throw new Error("Production Windows publishing requires certificate credentials.");
+	if (platform === "win32" && resolveWindowsSigning(environment).mode === "none") {
+		throw new Error(
+			"Staging/production Windows publishing requires Azure Key Vault signing credentials or a certificate file.",
+		);
 	}
 }

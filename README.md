@@ -7,6 +7,13 @@ Next-generation Anaconda Desktop built with Electron, React, and Electron Forge.
 This repository implements the architecture described in
 [Anaconda Desktop — Next-Gen Architecture](https://docs.google.com/document/d/1vx3IZwUsHUfjDWnI7Fhh05gLiRLBIV4WM4PxznHWpTY).
 
+Docs:
+
+- [Add a feature across every layer](docs/add-a-feature.md) — walkthrough of one vertical
+  slice, from the shared contract to SQLite and back to the UI
+- [Releases, signing, and CI reference](docs/releases.md) — channels, artifacts,
+  environments, credentials
+
 ## Tech stack
 
 | Layer           | Choice                                  | Notes                                                                                     |
@@ -166,6 +173,9 @@ Belongs in contracts: anything both sides must agree on. Does not belong: React
 components, Electron or Node imports, and the Drizzle table schema — persistence details
 stay in `apps/desktop`.
 
+[docs/add-a-feature.md](docs/add-a-feature.md) walks through adding a channel and following
+it out to every layer.
+
 ## Web and Electron decoupling
 
 `apps/web` is a normal Vite SPA with no compile-time or runtime dependency on Electron.
@@ -226,26 +236,11 @@ production dependencies, and unpacks `better-sqlite3`. The fuses plugin disables
 RunAsNode, `NODE_OPTIONS`, and CLI inspector arguments while enabling cookie encryption,
 ASAR integrity validation, and loading only from ASAR.
 
-## Distribution matrix
+## Releases and distribution
 
-Forge uses only official makers:
-
-| Platform | Maker output                                   | Update behavior                                                       |
-| -------- | ---------------------------------------------- | --------------------------------------------------------------------- |
-| macOS    | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                       |
-| Windows  | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                          |
-| Linux    | DEB and RPM                                    | Updates are provided by the package repository or manual installation |
-
-Automatic Electron update checks run only in packaged Windows and macOS builds. They
-are disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never start on
-Linux. Squirrel install, update, and uninstall launches are handled before normal
-application startup.
-
-## Release channels
-
-`RELEASE_CHANNEL` accepts only publishable values: `canary`, `staging`, and `prod`.
-Local `pnpm start` / `pnpm dev` is unpackaged development — not a channel — and is not
-published. Packaged builds default to `canary` when `RELEASE_CHANNEL` is unset.
+`RELEASE_CHANNEL` accepts only publishable values. Local `pnpm start` / `pnpm dev` is
+unpackaged development — not a channel — and is never published. Packaged builds default
+to `canary`.
 
 | Channel   | What it is                                | Who uses it                | How it ships                      |
 | --------- | ----------------------------------------- | -------------------------- | --------------------------------- |
@@ -253,81 +248,13 @@ published. Packaged builds default to `canary` when `RELEASE_CHANNEL` is unset.
 | `staging` | Release candidate for internal validation | QA / internal stakeholders | Manual `Staging Publish` workflow |
 | `prod`    | Stable customer release                   | Customers                  | Manual `Prod Publish` workflow    |
 
-## Release configuration
+Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB/RPM on Linux)
+and publishes to `anaconda-agentic-desktop/<channel>/<platform>/<arch>/`. Automatic update
+checks run only in packaged macOS and Windows builds that were given `UPDATE_PUBLISH_URL`.
 
-Artifacts are published under:
-
-```text
-anaconda-agentic-desktop/<channel>/<platform>/<arch>/<artifact>
-```
-
-Publishable channels are `canary`, `staging`, and `prod`. The Forge compile-time contract
-uses:
-
-| Variable                 | Meaning                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------- |
-| `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                     |
-| `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                              |
-| `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                             |
-| `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                    |
-| `UPDATE_REMOTE_RELEASES` | Set to `true` on Windows when an existing Squirrel feed is available for delta creation |
-
-CI publish jobs assume GitHub Environments named `canary`, `staging`, and `prod`, each with
-repository/environment variables:
-
-| Environment variable | Meaning                                       |
-| -------------------- | --------------------------------------------- |
-| `UPDATE_PUBLISH_URL` | Public HTTPS update base URL for that channel |
-| `UPDATE_S3_BUCKET`   | S3 bucket for Forge publish                   |
-| `AWS_ROLE_ARN`       | IAM role assumed via GitHub OIDC              |
-| `AWS_REGION`         | Optional; defaults to `us-east-1`             |
-
-`electron-forge publish --dry-run` runs the complete package/make lifecycle and records
-publisher metadata without uploading. The shared release module and its tests ensure
-the S3 key and runtime feed URL use the same channel/platform/architecture path.
-
-## Signing and CI
-
-Workflows:
-
-| Workflow          | Trigger                      | Behavior                                                                   |
-| ----------------- | ---------------------------- | -------------------------------------------------------------------------- |
-| `CI`              | Push/PR on `main`            | Lint, format check, `pnpm check`, and package tests (no E2E)               |
-| `Build`           | Manual (`workflow_dispatch`) | `pnpm run make` only; uses `canary` env for optional signing; GH artifacts |
-| `Canary Publish`  | Push to `main`               | Publishes to the `canary` environment                                      |
-| `Staging Publish` | Manual                       | Publishes to the `staging` environment                                     |
-| `Prod Publish`    | Manual                       | Publishes to the `prod` environment                                        |
-
-Signing secrets and update vars live on the GitHub Environments above. `Build` attaches
-the `canary` environment so the same optional codesign material is available for manual
-makes; it does not publish to S3.
-
-CI reuses the same GitHub secret names as Anaconda Desktop (Agent Studio):
-
-| Secret                         | Usage                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `OSX_BUILD_CERTIFICATE_BASE64` | macOS Developer ID `.p12` (base64); imported into a temporary keychain |
-| `OSX_P12_PASSWORD`             | Password for the macOS signing certificate                             |
-| `OSX_NOTARIZATION_KEY`         | App Store Connect API `.p8` key material                               |
-| `OSX_NOTARIZATION_KEY_ID`      | App Store Connect API key ID                                           |
-| `OSX_NOTARIZATION_KEY_ISSUER`  | App Store Connect API issuer ID                                        |
-| `AZURE_CLIENT_ID`              | Azure OIDC app for Windows signing                                     |
-| `AZURE_TENANT_ID`              | Azure tenant                                                           |
-| `AZURE_SUBSCRIPTION_ID`        | Azure subscription                                                     |
-| `AZURE_KEY_VAULT_URI`          | Key Vault URI for `AzureSignTool`                                      |
-| `AZURE_CERT_NAME`              | Certificate name in Key Vault                                          |
-
-Forge still accepts local/optional fallbacks:
-
-- macOS: `APPLE_SIGNING_IDENTITY` plus either App Store Connect API key env
-  (`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`) or Apple ID
-  (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`)
-- Windows: `WINDOWS_CERTIFICATE_FILE` + `WINDOWS_CERTIFICATE_PASSWORD` when Azure
-  Key Vault signing is not configured
-
-Staging and prod publishes require signing credentials for macOS and Windows. Canary may
-publish unsigned. Unsigned local `make` runs remain supported. The Linux CI job installs
-`fakeroot` and RPM tooling and uploads maker artifacts from `apps/desktop/out/make/`.
+See [docs/releases.md](docs/releases.md) for the full reference: the distribution matrix,
+build-time variables, GitHub Environments, workflows, signing credentials, and publish
+validation rules.
 
 ## Not yet implemented
 

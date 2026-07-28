@@ -17,7 +17,8 @@ export const ipcErrorSchema = z.object({
 export type IpcError = z.infer<typeof ipcErrorSchema>;
 
 export type IpcResult<T> =
-	{ readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: IpcError };
+	| { readonly ok: true; readonly value: T }
+	| { readonly ok: false; readonly error: IpcError };
 
 export function ipcResultSchema<T extends z.ZodType>(value: T) {
 	return z.discriminatedUnion("ok", [

@@ -4,18 +4,21 @@ import { builtinModules } from "node:module";
 
 import { defineConfig } from "vite";
 
+import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
+
 const root = path.dirname(fileURLToPath(import.meta.url));
+const channel = getReleaseChannel(process.env);
+const updatePublishUrl = getUpdatePublishUrl(process.env);
 
 export default defineConfig(({ command }) => ({
-	...(command === "build"
-		? {
-				define: {
-					MAIN_WINDOW_VITE_DEV_SERVER_URL: "undefined",
-				},
-			}
-		: {}),
+	define: {
+		...(command === "build" ? { MAIN_WINDOW_VITE_DEV_SERVER_URL: "undefined" } : {}),
+		RELEASE_CHANNEL: JSON.stringify(channel),
+		UPDATE_PUBLISH_URL: JSON.stringify(updatePublishUrl),
+	},
 	resolve: {
 		alias: {
+			$config: path.resolve(root, "config"),
 			$shared: path.resolve(root, "src/shared"),
 		},
 	},
@@ -25,15 +28,14 @@ export default defineConfig(({ command }) => ({
 			formats: ["es"],
 			fileName: () => "main.js",
 		},
-		outDir: ".vite/build",
-		emptyOutDir: false,
 		rollupOptions: {
 			external: [
 				"electron",
 				"better-sqlite3",
 				"electron-store",
 				"electron-log",
-				"electron-updater",
+				"electron-squirrel-startup",
+				"update-electron-app",
 				"electron-debug",
 				"execa",
 				...builtinModules,

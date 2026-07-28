@@ -1,10 +1,4 @@
-# Build platform artifacts (DMG, NSIS, AppImage).
-#
-# Trigger manually via workflow_dispatch, or on tags for release builds.
-# Unsigned by default — code signing and notarization require secrets
-# (CSC_NAME, APPLE_API_KEY_ID, etc.) configured in the repo settings.
-#
-# Ported from labs-anaconda-agent-studio build patterns.
+# Build and optionally publish Electron Forge artifacts.
 
 name: Build
 
@@ -12,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: "Target platform"
+        description: Target platform
         required: true
-        default: "mac"
+        default: mac
         type: choice
         options:
           - mac
@@ -30,8 +24,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Skip code signing by default; CI sets these from repo secrets for release builds.
-  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  RELEASE_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'canary' }}
+  UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
+  UPDATE_S3_BUCKET: ${{ vars.UPDATE_S3_BUCKET }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
 
 jobs:
   build-mac:
@@ -40,6 +36,14 @@ jobs:
       inputs.platform == 'mac' ||
       inputs.platform == 'all'
     runs-on: macos-latest
+    env:
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -47,27 +51,20 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
-      - name: Build app
-        run: pnpm build
-
-      - name: Package DMG (unsigned)
-        working-directory: app
-        run: >-
-          npx electron-builder
-          --config ../electron-builder.config.js
-          --mac dmg zip
-          --publish=never
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Make DMG and ZIP
+        if: github.event_name != 'push'
+        run: pnpm run make
+      - name: Publish DMG and ZIP
+        if: github.event_name == 'push'
+        run: pnpm run publish
+      - uses: actions/upload-artifact@v4
         with:
           name: mac-arm64
           path: |
-            release/*.dmg
-            release/*.zip
+            app/out/make/**/*.dmg
+            app/out/make/**/*.zip
+            app/out/make/**/RELEASES.json
           if-no-files-found: error
 
   build-windows:
@@ -76,6 +73,11 @@ jobs:
       inputs.platform == 'windows' ||
       inputs.platform == 'all'
     runs-on: windows-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -83,25 +85,30 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-
+      - name: Prepare signing certificate
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $certificate = '${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}'
+          if ($certificate) {
+            $certificatePath = Join-Path $env:RUNNER_TEMP 'windows-signing.pfx'
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($certificate))
+            "WINDOWS_CERTIFICATE_FILE=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
       - run: pnpm install --frozen-lockfile
-
-      - name: Build app
-        run: pnpm build
-
-      - name: Package NSIS (unsigned)
-        working-directory: app
-        run: >-
-          npx electron-builder
-          --config ../electron-builder.config.js
-          --win
-          --publish=never
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Make Squirrel installer
+        if: github.event_name != 'push'
+        run: pnpm run make
+      - name: Publish Squirrel installer
+        if: github.event_name == 'push'
+        run: pnpm run publish
+      - uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: release/*.exe
+          path: |
+            app/out/make/**/*.exe
+            app/out/make/**/*.nupkg
+            app/out/make/**/RELEASES
           if-no-files-found: error
 
   build-linux:
@@ -110,6 +117,10 @@ jobs:
       inputs.platform == 'linux' ||
       inputs.platform == 'all'
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -117,25 +128,21 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-
+      - name: Install maker prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fakeroot rpm
       - run: pnpm install --frozen-lockfile
-
-      - name: Build app
-        run: pnpm build
-
-      - name: Package AppImage + pacman (unsigned)
-        working-directory: app
-        run: >-
-          npx electron-builder
-          --config ../electron-builder.config.js
-          --linux
-          --publish=never
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Make DEB and RPM
+        if: github.event_name != 'push'
+        run: pnpm run make
+      - name: Publish DEB and RPM
+        if: github.event_name == 'push'
+        run: pnpm run publish
+      - uses: actions/upload-artifact@v4
         with:
           name: linux-x64
           path: |
-            release/*.AppImage
-            release/*.pacman
+            app/out/make/**/*.deb
+            app/out/make/**/*.rpm
           if-no-files-found: error

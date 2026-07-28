@@ -1,10 +1,10 @@
-import type { QueryClient } from "@tanstack/svelte-query";
+import type { QueryClient } from "@tanstack/react-query";
 
 import type { IpcEventChannel } from "$shared";
 
 /**
  * Maps main-process push events to TanStack Query keys.
- * Theme stays on ThemeState (always-hydrated); register cache-backed domains here.
+ * Theme stays synchronized outside the query cache; register cache-backed domains here.
  */
 export const queryKeysByEvent = {} as const satisfies Partial<
 	Record<IpcEventChannel, readonly (readonly unknown[])[]>

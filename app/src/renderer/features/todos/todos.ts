@@ -1,6 +1,6 @@
-import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/svelte-query";
+import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 
-import { invokeDesktop } from "$lib/query/client.js";
+import { invokeDesktop } from "@/lib/query/client";
 
 export const todosQueryKey = ["todos"] as const;
 

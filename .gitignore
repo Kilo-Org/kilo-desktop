@@ -53,6 +53,9 @@ web_modules/
 # Optional oxlint cache
 .oxlintcache
 
+# Vitest reports and failure artifacts
+.vitest/
+
 # Optional stylelint cache
 .stylelintcache
 
@@ -94,9 +97,6 @@ dist
 
 # vuepress v2.x temp directory
 .temp
-
-# Sveltekit cache directory
-.svelte-kit/
 
 # vitepress build output
 **/.vitepress/dist

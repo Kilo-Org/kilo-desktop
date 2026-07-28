@@ -1,16 +1,26 @@
 {
-	"extends": ["./.svelte-kit/tsconfig.json", "./tsconfig.main.json"],
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"noEmit": true,
+		"paths": {
+			"@/*": ["./src/renderer/*"],
+			"$config/*": ["./config/*"],
+			"$shared": ["./src/shared/index.ts"],
+			"$shared/*": ["./src/shared/*"]
+		},
+		"types": ["node", "vitest/globals"]
+	},
 	"include": [
-		"src/main/**/*.ts",
-		"src/preload/**/*.ts",
-		"src/shared/**/*.ts",
-		"src/forge-env.d.ts",
+		"config/**/*.ts",
+		"src/**/*.ts",
+		"src/**/*.tsx",
+		"e2e/**/*.ts",
 		"drizzle.config.ts",
 		"forge.config.ts",
 		"vite.main.config.ts",
 		"vite.preload.config.ts",
 		"vite.renderer.config.ts",
 		"vitest.config.ts"
-	],
-	"exclude": ["src/renderer/**"]
+	]
 }

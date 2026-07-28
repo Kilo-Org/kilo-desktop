@@ -5,8 +5,8 @@ import path from "node:path";
 import { net, protocol } from "electron";
 
 export const DESKTOP_HOST = "app";
-export const DESKTOP_PRODUCTION_SCHEME = "anaconda-desktop";
-export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-desktop-dev";
+export const DESKTOP_PRODUCTION_SCHEME = "anaconda-agentic-desktop";
+export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
 	".css": "text/css; charset=utf-8",
@@ -30,7 +30,7 @@ export function getDesktopScheme(isDevelopment: boolean): string {
 }
 
 export function getDesktopUrl(isDevelopment: boolean): string {
-	return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}/`;
+	return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}/#/`;
 }
 
 export function registerDesktopSchemes(): void {
@@ -79,24 +79,19 @@ export async function resolveRendererPath(
 	}
 	if (decodedPath.includes("\0")) return undefined;
 
-	const relativePath = decodedPath.replace(/^\/+/, "");
-	const initialPath = path.resolve(rendererRoot, relativePath || "index.html");
-	const rendererPrefix = `${path.resolve(rendererRoot)}${path.sep}`;
-	if (initialPath !== path.resolve(rendererRoot) && !initialPath.startsWith(rendererPrefix)) {
+	// Hash SPA: the protocol only serves the shell (`/`) and built assets.
+	const relativePath = decodedPath.replace(/^\/+/, "") || "index.html";
+	const resolvedRoot = path.resolve(rendererRoot);
+	const filePath = path.resolve(resolvedRoot, relativePath);
+	const rendererPrefix = `${resolvedRoot}${path.sep}`;
+	if (filePath !== resolvedRoot && !filePath.startsWith(rendererPrefix)) {
 		return undefined;
 	}
 
-	const candidates = path.extname(initialPath)
-		? [initialPath]
-		: [path.join(initialPath, "index.html"), `${initialPath}.html`];
-
-	for (const candidate of candidates) {
-		if (!candidate.startsWith(rendererPrefix)) continue;
-		try {
-			if ((await stat(candidate)).isFile()) return candidate;
-		} catch {
-			// Try the next route representation.
-		}
+	try {
+		if ((await stat(filePath)).isFile()) return filePath;
+	} catch {
+		// Missing or unreadable.
 	}
 	return undefined;
 }

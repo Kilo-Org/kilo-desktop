@@ -9,20 +9,23 @@
 		"node": ">=22.12"
 	},
 	"scripts": {
-		"build": "pnpm --filter @anaconda-desktop/app build",
 		"check": "pnpm -r --if-present check",
-		"dev": "pnpm --filter @anaconda-desktop/app start",
+		"dev": "pnpm --filter @anaconda-desktop/app run start",
 		"format": "oxfmt",
 		"format:check": "oxfmt --check",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
-		"package": "pnpm --filter @anaconda-desktop/app package",
+		"make": "pnpm --filter @anaconda-desktop/app run make",
+		"package": "pnpm --filter @anaconda-desktop/app run package",
+		"postinstall": "node -e \"if (process.platform !== 'win32') require('node:fs').chmodSync('node_modules/@electron-forge/cli/dist/electron-forge.js', 0o755)\"",
+		"publish": "pnpm --filter @anaconda-desktop/app run publish",
+		"start": "pnpm --filter @anaconda-desktop/app run start",
 		"prepare": "husky",
 		"test": "pnpm -r --if-present test",
-		"test:e2e": "pnpm --filter @anaconda-desktop/app test:e2e"
+		"test:e2e": "pnpm --filter @anaconda-desktop/app run test:e2e"
 	},
 	"lint-staged": {
-		"*.{js,mjs,cjs,ts,svelte}": [
+		"*.{js,mjs,cjs,ts,tsx}": [
 			"npm run lint:fix",
 			"npm run format"
 		],
@@ -32,13 +35,11 @@
 	},
 	"devDependencies": {
 		"@types/node": "^24.13.3",
-		"eslint-plugin-svelte": "^3.22.0",
 		"globals": "^17.7.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.2.0",
 		"oxfmt": "^0.61.0",
 		"oxlint": "^1.76.0",
-		"prettier": "^3.9.6",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

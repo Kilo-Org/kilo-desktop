@@ -16,7 +16,7 @@
 		"**/out/**",
 		"**/release/**",
 		"**/.agents/**",
-		"app/src/renderer/routeTree.gen.ts"
+		"apps/web/src/routeTree.gen.ts"
 	],
 	"rules": {
 		"constructor-super": "error",
@@ -131,13 +131,13 @@
 			}
 		},
 		{
-			"files": ["app/src/renderer/**/*.ts", "app/src/renderer/**/*.tsx"],
+			"files": ["apps/web/src/**/*.ts", "apps/web/src/**/*.tsx"],
 			"env": {
 				"browser": true
 			}
 		},
 		{
-			"files": ["app/src/main/features/*/*Service.ts"],
+			"files": ["apps/desktop/src/main/features/*/*Service.ts"],
 			"rules": {
 				"no-restricted-imports": [
 					"error",

@@ -153,7 +153,7 @@ Thumbs.db
 .omo
 
 # App specific
-app/.data/
+apps/desktop/.data/
 build/
 release/
 playwright-report/

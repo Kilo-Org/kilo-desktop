@@ -5,8 +5,8 @@ import path from "node:path";
 import { net, protocol } from "electron";
 
 export const DESKTOP_HOST = "app";
-export const DESKTOP_PRODUCTION_SCHEME = "anaconda-desktop";
-export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-desktop-dev";
+export const DESKTOP_PRODUCTION_SCHEME = "anaconda-agentic-desktop";
+export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
 	".css": "text/css; charset=utf-8",
@@ -30,7 +30,7 @@ export function getDesktopScheme(isDevelopment: boolean): string {
 }
 
 export function getDesktopUrl(isDevelopment: boolean): string {
-	return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}/`;
+	return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}/#/`;
 }
 
 export function registerDesktopSchemes(): void {

@@ -13,13 +13,6 @@ export default defineConfig({
 		},
 	},
 	build: {
-		lib: {
-			entry: "src/preload/preload.ts",
-			formats: ["cjs"],
-			fileName: () => "preload.js",
-		},
-		outDir: ".vite/build",
-		emptyOutDir: false,
 		rollupOptions: {
 			external: [
 				"electron",

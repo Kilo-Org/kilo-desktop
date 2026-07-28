@@ -1,15 +1,18 @@
 @import "tailwindcss";
 @import "@anaconda/shadcn-theme/styles";
 @import "tw-animate-css";
-@import "shadcn-svelte/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "shadcn/tailwind.css";
 
-@theme inline {
+:root {
 	--font-sans: "Inter Variable", sans-serif;
 }
 
-body {
-	margin: 0;
-	min-width: 320px;
-	min-height: 100vh;
+@layer base {
+	body {
+		@apply m-0 min-h-screen min-w-80;
+	}
+	html {
+		@apply font-sans;
+	}
 }

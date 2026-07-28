@@ -10,10 +10,9 @@ catalog:
 
 savePrefix: ^
 
-nodeLinker: isolated
-hoistPattern:
-  - electron
-  - vite
+nodeLinker: hoisted
+injectWorkspacePackages: true
+autoInstallPeers: false
 
 allowBuilds:
   electron: true
@@ -21,6 +20,8 @@ allowBuilds:
   esbuild: true
   better-sqlite3: true
   "@scarf/scarf": true
+  fs-xattr: true
+  macos-alias: true
 
 minimumReleaseAge: 0
 

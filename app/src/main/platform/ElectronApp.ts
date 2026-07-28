@@ -35,7 +35,11 @@ export class ElectronApp {
 
 	setIdentity(): void {
 		this.electronApp.setName("Anaconda Agentic Desktop");
-		this.electronApp.setAppUserModelId("com.anaconda.agentic-desktop");
+		this.electronApp.setAppUserModelId(
+			process.platform === "win32"
+				? "com.squirrel.AnacondaAgenticDesktop.anaconda-agentic-desktop"
+				: "com.anaconda.agentic-desktop",
+		);
 	}
 
 	quit(): void {

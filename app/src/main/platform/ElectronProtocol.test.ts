@@ -38,8 +38,8 @@ afterEach(async () => {
 
 describe("ElectronProtocol", () => {
 	it("uses distinct Anaconda Desktop schemes", () => {
-		expect(getDesktopUrl(false)).toBe("anaconda-desktop://app/");
-		expect(getDesktopUrl(true)).toBe("anaconda-desktop-dev://app/");
+		expect(getDesktopUrl(false)).toBe("anaconda-agentic-desktop://app/#/");
+		expect(getDesktopUrl(true)).toBe("anaconda-agentic-desktop-dev://app/#/");
 	});
 
 	it("creates a restrictive production CSP", () => {
@@ -69,7 +69,7 @@ describe("ElectronProtocol", () => {
 		});
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
-		const response = await protocolHandler(new Request("anaconda-desktop-dev://app/"));
+		const response = await protocolHandler(new Request("anaconda-agentic-desktop-dev://app/"));
 
 		expect(response.headers.get("Content-Security-Policy")).toContain(`'sha256-${expectedHash}'`);
 		expect(
@@ -93,8 +93,8 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("anaconda-desktop-dev://app/@vite/client", {
-				headers: { origin: "anaconda-desktop-dev://app" },
+			new Request("anaconda-agentic-desktop-dev://app/@vite/client", {
+				headers: { origin: "anaconda-agentic-desktop-dev://app" },
 			}),
 		);
 
@@ -105,7 +105,7 @@ describe("ElectronProtocol", () => {
 	});
 
 	it("resolves assets and prerendered routes inside the renderer root", async () => {
-		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-desktop-renderer-"));
+		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
 		temporaryDirectories.push(root);
 		await writeFile(path.join(root, "index.html"), "home");
 		await mkdir(path.join(root, "settings"));

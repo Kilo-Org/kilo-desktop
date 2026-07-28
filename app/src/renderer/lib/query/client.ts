@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/svelte-query";
+import { QueryClient } from "@tanstack/react-query";
 
 import type { IpcMethodChannel, IpcMethodInput, IpcMethodOutput } from "$shared";
 
@@ -7,7 +7,12 @@ export class DesktopApiError extends Error {
 
 	constructor(
 		readonly code:
-			"VALIDATION" | "AUTHORIZATION" | "CANCELLED" | "BUSINESS" | "TRANSPORT" | "INTERNAL",
+			| "VALIDATION"
+			| "AUTHORIZATION"
+			| "CANCELLED"
+			| "BUSINESS"
+			| "TRANSPORT"
+			| "INTERNAL",
 		message: string,
 	) {
 		super(message);

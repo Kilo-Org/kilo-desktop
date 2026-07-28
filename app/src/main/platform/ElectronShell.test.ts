@@ -25,7 +25,7 @@ describe("ElectronShell", () => {
 		expect(parseSafeExternalUrl(input)).toBe(expected);
 	});
 
-	it.each(["javascript:alert(1)", "file:///tmp/secret", "anaconda-desktop://app/", "bad"])(
+	it.each(["javascript:alert(1)", "file:///tmp/secret", "anaconda-agentic-desktop://app/", "bad"])(
 		"rejects unsafe URL %s",
 		(input) => {
 			expect(parseSafeExternalUrl(input)).toBeUndefined();

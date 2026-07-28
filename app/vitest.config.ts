@@ -1,7 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { svelte } from "@sveltejs/vite-plugin-svelte";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
@@ -18,26 +19,29 @@ export default defineConfig({
 				},
 				test: {
 					name: "unit",
-					include: ["src/main/**/*.test.ts", "src/shared/**/*.test.ts"],
+					include: ["config/**/*.test.ts", "src/main/**/*.test.ts", "src/shared/**/*.test.ts"],
 					environment: "node",
 				},
 			},
 			{
-				plugins: [svelte()],
+				plugins: [react(), tailwindcss()],
 				resolve: {
 					alias: {
 						$shared: path.resolve(root, "src/shared"),
-						$lib: path.resolve(root, "src/renderer/lib"),
+						"@": path.resolve(root, "src/renderer"),
 					},
+					dedupe: ["react", "react-dom"],
 				},
 				test: {
 					name: "browser",
-					include: ["src/renderer/**/*.browser.test.ts"],
+					include: ["src/renderer/**/*.browser.test.tsx"],
+					setupFiles: ["src/renderer/test/setup.ts"],
 					fileParallelism: false,
 					browser: {
 						enabled: true,
 						headless: true,
 						provider: playwright(),
+						screenshotDirectory: ".vitest/screenshots",
 						instances: [{ browser: "chromium" }],
 					},
 				},

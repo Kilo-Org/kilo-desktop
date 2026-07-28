@@ -16,7 +16,9 @@ import {
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 } from "./config/release.js";
+import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
+import { signWindowsFile } from "./config/windows-sign.js";
 
 const execFile = promisify(execFileCallback);
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
@@ -25,17 +27,13 @@ const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
 const channel = getReleaseChannel(process.env);
 const publishUrl = getUpdatePublishUrl(process.env);
 const s3Bucket = process.env.UPDATE_S3_BUCKET?.trim();
+const osxSign = resolveOsxSign(process.env);
+const osxNotarize = resolveOsxNotarize(process.env);
+const windowsPlan = planWindowsSigning(process.env);
 
 function updateFeed(platform: string, arch: string): string | undefined {
 	return getUpdateFeedUrl({ publishUrl, channel, platform, arch });
 }
-
-const macIdentity = process.env.APPLE_SIGNING_IDENTITY?.trim();
-const appleId = process.env.APPLE_ID?.trim();
-const appleIdPassword = process.env.APPLE_APP_SPECIFIC_PASSWORD?.trim();
-const appleTeamId = process.env.APPLE_TEAM_ID?.trim();
-const windowsCertificateFile = process.env.WINDOWS_CERTIFICATE_FILE?.trim();
-const windowsCertificatePassword = process.env.WINDOWS_CERTIFICATE_PASSWORD;
 
 async function stageProductionDependencies(buildPath: string): Promise<void> {
 	const stagingDirectory = await mkdtemp(
@@ -100,16 +98,9 @@ const config: ForgeConfig = {
 			OriginalFilename: "anaconda-agentic-desktop.exe",
 			ProductName: "Anaconda Agentic Desktop",
 		},
-		...(macIdentity ? { osxSign: { identity: macIdentity } } : {}),
-		...(appleId && appleIdPassword && appleTeamId
-			? {
-					osxNotarize: {
-						appleId,
-						appleIdPassword,
-						teamId: appleTeamId,
-					},
-				}
-			: {}),
+		...(osxSign ? { osxSign } : {}),
+		...(osxNotarize ? { osxNotarize } : {}),
+		...(windowsPlan.packager ? { windowsSign: windowsPlan.packager } : {}),
 	},
 	rebuildConfig: {},
 	makers: [
@@ -136,12 +127,7 @@ const config: ForgeConfig = {
 					name: "AnacondaAgenticDesktop",
 					setupExe: "Anaconda-Agentic-Desktop-Setup.exe",
 					...(remoteReleases ? { remoteReleases } : {}),
-					...(windowsCertificateFile
-						? {
-								certificateFile: windowsCertificateFile,
-								certificatePassword: windowsCertificatePassword,
-							}
-						: {}),
+					...(windowsPlan.squirrelCertificate ?? {}),
 				};
 			},
 		},
@@ -217,6 +203,17 @@ const config: ForgeConfig = {
 		packageAfterCopy: async (_forgeConfig, buildPath) => {
 			await stageWebRenderer(buildPath, webDistDirectory);
 			await stageProductionDependencies(buildPath);
+		},
+		postMake: async (_forgeConfig, makeResults) => {
+			if (!windowsPlan.postMakeSign) return makeResults;
+			for (const result of makeResults) {
+				for (const artifact of result.artifacts) {
+					if (artifact.toLowerCase().endsWith(".exe")) {
+						await signWindowsFile(artifact);
+					}
+				}
+			}
+			return makeResults;
 		},
 	},
 };

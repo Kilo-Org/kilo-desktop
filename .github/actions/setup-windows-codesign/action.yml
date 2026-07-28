@@ -1,0 +1,77 @@
+name: Setup Windows code signing
+description: Authenticate to Azure via OIDC and install AzureSignTool when Key Vault signing is fully configured
+
+inputs:
+  client_id:
+    description: Azure application (client) ID for OIDC login
+    required: false
+    default: ""
+  tenant_id:
+    description: Azure tenant ID
+    required: false
+    default: ""
+  subscription_id:
+    description: Azure subscription ID
+    required: false
+    default: ""
+  key_vault_uri:
+    description: Azure Key Vault URI used by AzureSignTool
+    required: false
+    default: ""
+  cert_name:
+    description: Certificate name in Key Vault
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Validate Azure signing configuration
+      id: validate
+      shell: bash
+      env:
+        CLIENT_ID: ${{ inputs.client_id }}
+        TENANT_ID: ${{ inputs.tenant_id }}
+        SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
+        KEY_VAULT_URI: ${{ inputs.key_vault_uri }}
+        CERT_NAME: ${{ inputs.cert_name }}
+      run: |
+        set -euo pipefail
+        required=(CLIENT_ID TENANT_ID SUBSCRIPTION_ID KEY_VAULT_URI CERT_NAME)
+        present=0
+        missing=()
+        for name in "${required[@]}"; do
+          if [[ -n "${!name}" ]]; then
+            present=1
+          else
+            missing+=("${name}")
+          fi
+        done
+
+        if [[ "${present}" -eq 0 ]]; then
+          echo "Azure Windows signing inputs unset; skipping codesign setup."
+          echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        if [[ "${#missing[@]}" -gt 0 ]]; then
+          echo "Partial Azure Windows signing configuration."
+          echo "Missing: ${missing[*]}"
+          echo "Require all of: client_id, tenant_id, subscription_id, key_vault_uri, cert_name."
+          exit 1
+        fi
+
+        echo "enabled=true" >> "${GITHUB_OUTPUT}"
+
+    - name: Configure Azure credentials
+      if: steps.validate.outputs.enabled == 'true'
+      uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+      with:
+        client-id: ${{ inputs.client_id }}
+        tenant-id: ${{ inputs.tenant_id }}
+        subscription-id: ${{ inputs.subscription_id }}
+
+    - name: Install AzureSignTool
+      if: steps.validate.outputs.enabled == 'true'
+      shell: bash
+      run: dotnet tool install --global AzureSignTool

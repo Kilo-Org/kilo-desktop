@@ -1,0 +1,14 @@
+name: Canary Publish
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    uses: ./.github/workflows/publish_helper.yml
+    secrets: inherit
+    with:
+      release_channel: canary
+      fail_fast: false

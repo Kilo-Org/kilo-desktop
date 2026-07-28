@@ -35,10 +35,11 @@ describe("release configuration", () => {
 		expect(feedUrl).toBe("https://cdn.example.com/anaconda-agentic-desktop/staging/darwin/arm64");
 	});
 
-	it("rejects unsafe channels and non-HTTPS feeds", () => {
+	it("rejects unknown channels and non-HTTPS feeds", () => {
 		expect(() => getReleaseChannel({ RELEASE_CHANNEL: "../prod" })).toThrow(
 			"Invalid release channel",
 		);
+		expect(() => getReleaseChannel({ RELEASE_CHANNEL: "beta" })).toThrow("Invalid release channel");
 		expect(() =>
 			getUpdateFeedUrl({
 				publishUrl: "http://updates.example.com",
@@ -49,14 +50,33 @@ describe("release configuration", () => {
 		).toThrow("must use HTTPS");
 	});
 
-	it("requires storage and production signing credentials before publishing", () => {
+	it("requires storage and signed-channel credentials before publishing", () => {
 		expect(() => validatePublishEnvironment({}, "linux")).toThrow("UPDATE_S3_BUCKET");
 		expect(() =>
 			validatePublishEnvironment(
-				{ RELEASE_CHANNEL: "prod", UPDATE_S3_BUCKET: "releases" },
+				{ RELEASE_CHANNEL: "canary", UPDATE_S3_BUCKET: "releases" },
 				"darwin",
 			),
-		).toThrow("signing and notarization");
+		).not.toThrow();
+		expect(() =>
+			validatePublishEnvironment(
+				{ RELEASE_CHANNEL: "staging", UPDATE_S3_BUCKET: "releases" },
+				"darwin",
+			),
+		).toThrow("signing identity and notarization");
+		expect(() =>
+			validatePublishEnvironment(
+				{
+					RELEASE_CHANNEL: "prod",
+					UPDATE_S3_BUCKET: "releases",
+					APPLE_SIGNING_IDENTITY: "Developer ID Application: Example",
+					APPLE_API_KEY: "/tmp/key.p8",
+					APPLE_API_KEY_ID: "KEYID",
+					APPLE_API_ISSUER: "issuer-uuid",
+				},
+				"darwin",
+			),
+		).not.toThrow();
 		expect(() =>
 			validatePublishEnvironment(
 				{
@@ -64,6 +84,17 @@ describe("release configuration", () => {
 					UPDATE_S3_BUCKET: "releases",
 					WINDOWS_CERTIFICATE_FILE: "certificate.pfx",
 					WINDOWS_CERTIFICATE_PASSWORD: "secret",
+				},
+				"win32",
+			),
+		).not.toThrow();
+		expect(() =>
+			validatePublishEnvironment(
+				{
+					RELEASE_CHANNEL: "staging",
+					UPDATE_S3_BUCKET: "releases",
+					AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
+					AZURE_CERT_NAME: "codesign",
 				},
 				"win32",
 			),

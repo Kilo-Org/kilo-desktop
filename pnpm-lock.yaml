@@ -70,6 +70,9 @@ importers:
 
   app:
     dependencies:
+      "@anaconda/shadcn-theme":
+        specifier: 0.0.1-alpha.3
+        version: 0.0.1-alpha.3
       "@tanstack/svelte-query":
         specifier: ^6.1.38
         version: 6.1.38(svelte@5.56.8(@typescript-eslint/types@8.65.0))
@@ -196,6 +199,13 @@ importers:
         version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
 packages:
+  "@anaconda/shadcn-theme@0.0.1-alpha.3":
+    resolution:
+      {
+        integrity: sha512-utOu+VSdFrPha1ljkPEa4ZUA44unE2aNGITbbXQdZYhHYO+SAADrUDBjR/cxa+i/QEq/tAY0rTzEyATlfUAvig==,
+        tarball: https://npm.pkg.github.com/download/@anaconda/shadcn-theme/0.0.1-alpha.3/e17678eed93643e51ce8eb8e9f1904d3b74924a6,
+      }
+
   "@blazediff/core@1.9.1":
     resolution:
       {
@@ -5693,6 +5703,8 @@ packages:
       }
 
 snapshots:
+  "@anaconda/shadcn-theme@0.0.1-alpha.3": {}
+
   "@blazediff/core@1.9.1": {}
 
   "@drizzle-team/brocli@0.10.2": {}

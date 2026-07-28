@@ -104,17 +104,20 @@ describe("ElectronProtocol", () => {
 		expect(await response.text()).toBe("renderer");
 	});
 
-	it("resolves assets and prerendered routes inside the renderer root", async () => {
+	it("resolves the SPA shell and assets inside the renderer root", async () => {
 		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
 		temporaryDirectories.push(root);
 		await writeFile(path.join(root, "index.html"), "home");
+		await mkdir(path.join(root, "assets"));
+		await writeFile(path.join(root, "assets", "app.js"), "console.log(1)");
 		await mkdir(path.join(root, "settings"));
 		await writeFile(path.join(root, "settings", "index.html"), "settings");
 
 		await expect(resolveRendererPath(root, "/")).resolves.toBe(path.join(root, "index.html"));
-		await expect(resolveRendererPath(root, "/settings/")).resolves.toBe(
-			path.join(root, "settings", "index.html"),
+		await expect(resolveRendererPath(root, "/assets/app.js")).resolves.toBe(
+			path.join(root, "assets", "app.js"),
 		);
+		await expect(resolveRendererPath(root, "/settings/")).resolves.toBeUndefined();
 		await expect(resolveRendererPath(root, "/missing")).resolves.toBeUndefined();
 		await expect(resolveRendererPath(root, "/%2e%2e/secret")).resolves.toBeUndefined();
 	});

@@ -79,24 +79,19 @@ export async function resolveRendererPath(
 	}
 	if (decodedPath.includes("\0")) return undefined;
 
-	const relativePath = decodedPath.replace(/^\/+/, "");
-	const initialPath = path.resolve(rendererRoot, relativePath || "index.html");
-	const rendererPrefix = `${path.resolve(rendererRoot)}${path.sep}`;
-	if (initialPath !== path.resolve(rendererRoot) && !initialPath.startsWith(rendererPrefix)) {
+	// Hash SPA: the protocol only serves the shell (`/`) and built assets.
+	const relativePath = decodedPath.replace(/^\/+/, "") || "index.html";
+	const resolvedRoot = path.resolve(rendererRoot);
+	const filePath = path.resolve(resolvedRoot, relativePath);
+	const rendererPrefix = `${resolvedRoot}${path.sep}`;
+	if (filePath !== resolvedRoot && !filePath.startsWith(rendererPrefix)) {
 		return undefined;
 	}
 
-	const candidates = path.extname(initialPath)
-		? [initialPath]
-		: [path.join(initialPath, "index.html"), `${initialPath}.html`];
-
-	for (const candidate of candidates) {
-		if (!candidate.startsWith(rendererPrefix)) continue;
-		try {
-			if ((await stat(candidate)).isFile()) return candidate;
-		} catch {
-			// Try the next route representation.
-		}
+	try {
+		if ((await stat(filePath)).isFile()) return filePath;
+	} catch {
+		// Missing or unreadable.
 	}
 	return undefined;
 }

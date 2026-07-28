@@ -62,9 +62,9 @@ jobs:
         with:
           name: mac-arm64
           path: |
-            app/out/make/**/*.dmg
-            app/out/make/**/*.zip
-            app/out/make/**/RELEASES.json
+            apps/desktop/out/make/**/*.dmg
+            apps/desktop/out/make/**/*.zip
+            apps/desktop/out/make/**/RELEASES.json
           if-no-files-found: error
 
   build-windows:
@@ -106,9 +106,9 @@ jobs:
         with:
           name: windows-x64
           path: |
-            app/out/make/**/*.exe
-            app/out/make/**/*.nupkg
-            app/out/make/**/RELEASES
+            apps/desktop/out/make/**/*.exe
+            apps/desktop/out/make/**/*.nupkg
+            apps/desktop/out/make/**/RELEASES
           if-no-files-found: error
 
   build-linux:
@@ -143,6 +143,6 @@ jobs:
         with:
           name: linux-x64
           path: |
-            app/out/make/**/*.deb
-            app/out/make/**/*.rpm
+            apps/desktop/out/make/**/*.deb
+            apps/desktop/out/make/**/*.rpm
           if-no-files-found: error

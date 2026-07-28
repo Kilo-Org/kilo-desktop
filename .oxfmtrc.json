@@ -7,8 +7,5 @@
 	"sortPackageJson": false,
 	"sortTailwindcss": {},
 	"svelte": {},
-	"ignorePatterns": [
-    "**/.agents/**",
-    "app/src/renderer/routeTree.gen.ts"
-  ]
+	"ignorePatterns": ["**/.agents/**", "apps/web/src/routeTree.gen.ts"]
 }

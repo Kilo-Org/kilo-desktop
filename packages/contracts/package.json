@@ -1,0 +1,21 @@
+{
+	"name": "@anaconda-agentic-desktop/contracts",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Shared Zod schemas and typed IPC contracts",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

@@ -10,19 +10,24 @@
 	},
 	"scripts": {
 		"check": "pnpm -r --if-present check",
-		"dev": "pnpm --filter @anaconda-desktop/app run start",
+		"dev": "pnpm dev:desktop",
+		"dev:web": "pnpm --filter @anaconda-agentic-desktop/web dev",
+		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env ANACONDA_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @anaconda-agentic-desktop/desktop start\"",
 		"format": "oxfmt",
 		"format:check": "oxfmt --check",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
-		"make": "pnpm --filter @anaconda-desktop/app run make",
-		"package": "pnpm --filter @anaconda-desktop/app run package",
+		"make": "pnpm --filter @anaconda-agentic-desktop/desktop run make",
+		"package": "pnpm --filter @anaconda-agentic-desktop/desktop run package",
 		"postinstall": "node -e \"if (process.platform !== 'win32') require('node:fs').chmodSync('node_modules/@electron-forge/cli/dist/electron-forge.js', 0o755)\"",
-		"publish": "pnpm --filter @anaconda-desktop/app run publish",
-		"start": "pnpm --filter @anaconda-desktop/app run start",
+		"publish": "pnpm --filter @anaconda-agentic-desktop/desktop run publish",
+		"start": "pnpm dev:desktop",
 		"prepare": "husky",
 		"test": "pnpm -r --if-present test",
-		"test:e2e": "pnpm --filter @anaconda-desktop/app run test:e2e"
+		"test:web": "pnpm --filter @anaconda-agentic-desktop/web test",
+		"test:desktop": "pnpm --filter @anaconda-agentic-desktop/desktop test",
+		"test:contracts": "pnpm --filter @anaconda-agentic-desktop/contracts test",
+		"test:e2e": "pnpm --filter @anaconda-agentic-desktop/desktop run test:e2e"
 	},
 	"lint-staged": {
 		"*.{js,mjs,cjs,ts,tsx}": [
@@ -35,12 +40,15 @@
 	},
 	"devDependencies": {
 		"@types/node": "^24.13.3",
+		"concurrently": "^9.2.1",
+		"cross-env": "^10.1.0",
 		"globals": "^17.7.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.2.0",
 		"oxfmt": "^0.61.0",
 		"oxlint": "^1.76.0",
 		"typescript": "catalog:",
-		"vitest": "catalog:"
+		"vitest": "catalog:",
+		"wait-on": "^9.0.3"
 	}
 }

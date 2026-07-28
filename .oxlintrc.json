@@ -16,7 +16,8 @@
 		"**/dist/**",
 		"**/node_modules/**",
 		"**/out/**",
-		"**/release/**"
+		"**/release/**",
+		"**/.agents/**"
 	],
 	"rules": {
 		"constructor-super": "error",

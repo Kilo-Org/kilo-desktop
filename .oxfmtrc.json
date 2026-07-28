@@ -7,5 +7,5 @@
 	"sortPackageJson": false,
 	"sortTailwindcss": {},
 	"svelte": {},
-	"ignorePatterns": []
+	"ignorePatterns": ["**/.agents/**"]
 }

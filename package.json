@@ -12,9 +12,10 @@
 		"build": "pnpm --filter @anaconda-desktop/app build",
 		"check": "pnpm -r --if-present check",
 		"dev": "pnpm --filter @anaconda-desktop/app start",
-		"format": "prettier --write .",
-		"format:check": "prettier --check .",
-		"lint": "eslint . --max-warnings=0",
+		"format": "oxfmt",
+		"format:check": "oxfmt --check",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
 		"package": "pnpm --filter @anaconda-desktop/app package",
 		"prepare": "husky",
 		"test": "pnpm -r --if-present test",
@@ -22,28 +23,23 @@
 	},
 	"lint-staged": {
 		"*.{js,mjs,cjs,ts,svelte}": [
-			"eslint --fix",
-			"prettier --write"
+			"npm run lint:fix",
+			"npm run format"
 		],
 		"*.{json,md,yaml,yml,css}": [
-			"prettier --write"
+			"npm run format"
 		]
 	},
 	"devDependencies": {
-		"@eslint/js": "^10.0.1",
 		"@types/node": "^24.13.3",
-		"eslint": "^10.8.0",
-		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.22.0",
 		"globals": "^17.7.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.2.0",
+		"oxfmt": "^0.61.0",
+		"oxlint": "^1.76.0",
 		"prettier": "^3.9.6",
-		"prettier-plugin-svelte": "^4.1.1",
-		"prettier-plugin-tailwindcss": "^0.8.1",
-		"svelte-eslint-parser": "^1.8.0",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.65.0",
 		"vitest": "catalog:"
 	}
 }

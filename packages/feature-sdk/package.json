@@ -1,0 +1,31 @@
+{
+	"name": "@anaconda-agentic-desktop/feature-sdk",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Shim SDK for features that will become plugins. Same shape as the future real plugin SDK.",
+	"exports": {
+		".": "./src/index.ts",
+		"./main": "./src/main.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"peerDependencies": {
+		"react": ">=19",
+		"react-dom": ">=19",
+		"zod": ">=4"
+	},
+	"dependencies": {
+		"@anaconda-agentic-desktop/contracts": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.17",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"typescript": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

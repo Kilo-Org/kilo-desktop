@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
 import { themeEvents, themeMethods } from "./features/theme.js";
 import { todoMethods } from "./features/todos.js";
@@ -10,7 +11,8 @@ describe("IPC registry", () => {
 		expect(Object.keys(ipcMethods)).toHaveLength(
 			Object.keys(shellMethods).length +
 				Object.keys(themeMethods).length +
-				Object.keys(todoMethods).length,
+				Object.keys(todoMethods).length +
+				Object.keys(featureMethods).length,
 		);
 	});
 

@@ -1,8 +1,14 @@
 import type { Command, CommandDefinition } from "../types/sdk.js";
 
 /**
- * In-memory command registry.
- * Commands are auto-namespaced: "featureId.commandId".
+ * In-memory command registry backing `sdk.commands`.
+ *
+ * Shell infrastructure — features never construct this; they use
+ * `sdk.commands.register`, which delegates here. The shell's command
+ * palette UI consumes all()/execute().
+ *
+ * Command ids are auto-namespaced "featureId.commandId". Duplicate
+ * registration warns and replaces.
  */
 export class CommandRegistry {
 	private commands = new Map<string, Command>();

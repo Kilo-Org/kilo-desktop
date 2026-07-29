@@ -10,33 +10,63 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SdkConsumerRouteImport } from './routes/sdk-consumer'
+import { Route as SdkExplorerRouteImport } from './routes/sdk-explorer'
+import { Route as SplitRouteImport } from './routes/split'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SdkConsumerRoute = SdkConsumerRouteImport.update({
+  id: '/sdk-consumer',
+  path: '/sdk-consumer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SdkExplorerRoute = SdkExplorerRouteImport.update({
+  id: '/sdk-explorer',
+  path: '/sdk-explorer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SplitRoute = SplitRouteImport.update({
+  id: '/split',
+  path: '/split',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/sdk-consumer': typeof SdkConsumerRoute
+  '/sdk-explorer': typeof SdkExplorerRoute
+  '/split': typeof SplitRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/sdk-consumer': typeof SdkConsumerRoute
+  '/sdk-explorer': typeof SdkExplorerRoute
+  '/split': typeof SplitRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/sdk-consumer': typeof SdkConsumerRoute
+  '/sdk-explorer': typeof SdkExplorerRoute
+  '/split': typeof SplitRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/sdk-consumer' | '/sdk-explorer' | '/split'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/sdk-consumer' | '/sdk-explorer' | '/split'
+  id: '__root__' | '/' | '/sdk-consumer' | '/sdk-explorer' | '/split'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SdkConsumerRoute: typeof SdkConsumerRoute
+  SdkExplorerRoute: typeof SdkExplorerRoute
+  SplitRoute: typeof SplitRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +78,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sdk-consumer': {
+      id: '/sdk-consumer'
+      path: '/sdk-consumer'
+      fullPath: '/sdk-consumer'
+      preLoaderRoute: typeof SdkConsumerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sdk-explorer': {
+      id: '/sdk-explorer'
+      path: '/sdk-explorer'
+      fullPath: '/sdk-explorer'
+      preLoaderRoute: typeof SdkExplorerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/split': {
+      id: '/split'
+      path: '/split'
+      fullPath: '/split'
+      preLoaderRoute: typeof SplitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SdkConsumerRoute: SdkConsumerRoute,
+  SdkExplorerRoute: SdkExplorerRoute,
+  SplitRoute: SplitRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

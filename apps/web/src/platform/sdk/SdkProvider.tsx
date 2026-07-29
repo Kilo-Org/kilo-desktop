@@ -25,9 +25,23 @@ function getDesktopBridge(): DesktopApi | undefined {
 
 // ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
 
-function notYetWired(service: string): () => never {
-	return () => {
-		throw new Error(`${service} is not yet wired to a shell service.`);
+function undeliveredNotifications(): ShellDelegates["notifications"] {
+	// Not wired yet: expected capability absence, so report it in the result
+	// envelope instead of throwing (features detect the capability, not the
+	// platform). Warn once so the gap stays visible during development.
+	let warned = false;
+	const undelivered = (method: string) => {
+		if (!warned) {
+			warned = true;
+			console.warn(
+				`[FeatureSystem] ${method}: notifications are not wired yet — reporting delivered: false.`,
+			);
+		}
+		return { delivered: false, reason: "sdk.notifications is not yet wired to a shell service." };
+	};
+	return {
+		show: () => undelivered("sdk.notifications.show"),
+		setBadge: () => undelivered("sdk.notifications.setBadge"),
 	};
 }
 
@@ -37,12 +51,7 @@ function peekEffectiveTheme(): "dark" | "light" {
 
 function createShellDelegates(api: LocalApi): ShellDelegates {
 	return {
-		// Not yet wired: fail loud instead of silently swallowing calls,
-		// so features never believe a user saw a notification.
-		notifications: {
-			show: notYetWired("sdk.notifications.show"),
-			setBadge: notYetWired("sdk.notifications.setBadge"),
-		},
+		notifications: undeliveredNotifications(),
 		theme: {
 			subscribe(fn) {
 				// Observable contract: fire synchronously with the current value,
@@ -90,8 +99,8 @@ export interface FeatureSystem {
  *
  * In Electron mode: sdk.invoke falls back to the generic feature:invoke IPC
  * channel (handlers live in the main process; `features` is not booted here).
- * In browser mode: features are booted in-process via browserRegister()
- * (falling back to mainRegister() for Node-free features).
+ * In browser mode: features are booted in-process via browserRegister();
+ * features without one are skipped with a warning.
  */
 export function createFeatureSystem(
 	api: LocalApi,
@@ -124,12 +133,20 @@ export function createFeatureSystem(
 	};
 
 	// Browser mode: boot feature backends in-process (no main process available).
+	// Only browserRegister boots here — deliberately no fallback to mainRegister,
+	// which may use Node APIs. Node-free features opt in explicitly with
+	// `browserRegister: mainRegister`.
 	if (!bridge) {
 		for (const feature of features) {
-			const register = feature.browserRegister?.bind(feature) ?? feature.mainRegister.bind(feature);
+			if (!feature.browserRegister) {
+				console.warn(
+					`[FeatureSystem] Feature "${feature.id}" has no browserRegister — skipped in browser mode.`,
+				);
+				continue;
+			}
 			const mainSdk = featureRouter.createMainSdk(feature.id);
 			try {
-				register(mainSdk);
+				feature.browserRegister(mainSdk);
 			} catch (error) {
 				console.error(`[FeatureSystem] Boot failed for "${feature.id}":`, error);
 				featureRouter.destroyFeature(feature.id);

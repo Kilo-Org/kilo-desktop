@@ -77,7 +77,7 @@ export function mainRegister(mainSdk: MainSdk) {
 }
 ```
 
-If the feature must also run in standalone browser mode and `mainRegister` uses Node APIs (SQLite, fs), add a `browserRegister` with in-memory fakes and register it in `apps/web/src/features/features.ts`.
+If the feature must also run in standalone browser mode, add a `browserRegister` and register the feature in `apps/web/src/features/features.ts`. Browser mode boots ONLY `browserRegister` (features without one are skipped): Node-free features reuse the same function (`browserRegister: mainRegister`); features using Node APIs (SQLite, fs) provide in-memory fakes.
 
 **File:** `apps/desktop/src/main/features/<id>/MyService.ts` — business logic.
 

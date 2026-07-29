@@ -1,8 +1,13 @@
 import type { Contribution, ContributionOptions } from "../types/sdk.js";
 
 /**
- * In-memory contribution registry.
- * Features register UI contributions in named zones.
+ * In-memory contribution registry backing `sdk.contribute`.
+ *
+ * Shell infrastructure — features never construct this; they use
+ * `sdk.contribute(zone, options)`, which delegates here. The shell's zone
+ * components consume getForZone() and re-render via onChange().
+ *
+ * Contributions in a zone are ordered by priority (higher first).
  */
 export class ContributionRegistry {
 	private contributions: Contribution[] = [];

@@ -24,11 +24,23 @@ export interface FeatureRouterOptions {
 }
 
 /**
- * In-memory handler router.
- * Stores handlers registered by features via mainSdk.handle().
- * In Electron main: features populate this; the IPC bridge calls invoke().
- * In the renderer: local handlers win (browser mode); otherwise the fallback
- * transport is used (Electron mode → IPC).
+ * In-memory handler router backing `sdk.invoke` and `mainSdk.handle`.
+ *
+ * Shell infrastructure — features never construct this; they register
+ * handlers through the MainSdk given to mainRegister() and call them
+ * through sdk.invoke().
+ *
+ * Deployment shapes:
+ * - Electron main: features populate it at boot; the "feature:invoke" IPC
+ *   handler calls invoke().
+ * - Renderer (Electron mode): empty of local handlers; every invoke() goes
+ *   through the injected fallback (IPC bridge).
+ * - Renderer (browser mode): features boot in-process; invoke() hits local
+ *   handlers directly. Local handlers always win over the fallback.
+ *
+ * Input schemas registered with handlers are validated here, at the routing
+ * boundary — handlers receive already-parsed args and invalid input throws
+ * FeatureError("VALIDATION").
  */
 export class FeatureRouter {
 	private handlers = new Map<string, Map<string, HandlerEntry>>();

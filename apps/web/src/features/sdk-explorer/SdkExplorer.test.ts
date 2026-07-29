@@ -1,0 +1,214 @@
+import { describe, expect, it } from "vitest";
+import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import type { Note } from "@anaconda-agentic-desktop/contracts";
+
+/**
+ * Tests for the sdk-explorer renderer layer.
+ *
+ * The new createFakeSdk is built on REAL in-memory services (EventBus,
+ * StateBroker, registries, router). This means events, state, plugins,
+ * commands, and contributions all behave identically to production.
+ * Only shell delegates are fakes.
+ */
+describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => {
+	it("sdk.invoke routes to handlers registered via 'handlers' option", async () => {
+		const mockNotes: Note[] = [
+			{ id: "1", text: "hello", createdAt: 1000 },
+			{ id: "2", text: "world", createdAt: 2000 },
+		];
+
+		const sdk = createFakeSdk({
+			featureId: "sdk-explorer",
+			handlers: {
+				list: () => mockNotes,
+				echo: (args) => ({
+					echoed: `[echo] ${(args as { message: string }).message}`,
+					timestamp: Date.now(),
+				}),
+			},
+		});
+
+		const result = await sdk.invoke("list");
+		expect(result).toEqual(mockNotes);
+
+		const echoResult = (await sdk.invoke("echo", { message: "hi" })) as { echoed: string };
+		expect(echoResult.echoed).toBe("[echo] hi");
+	});
+
+	it("sdk.invoke throws FeatureError for unknown channel", async () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		await expect(sdk.invoke("nonexistent")).rejects.toThrow(/No handler/);
+	});
+
+	it("sdk.events.emit and on work (real EventBus)", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const received: unknown[] = [];
+
+		// Subscribe to the full namespaced event name
+		sdk.events.on("sdk-explorer.note-added", (payload) => {
+			received.push(payload);
+		});
+
+		// Emit without prefix — auto-prefixed by the SDK
+		sdk.events.emit("note-added", { id: "1", text: "hello" });
+
+		expect(received).toEqual([{ id: "1", text: "hello" }]);
+	});
+
+	it("sdk.events.on returns working unsubscribe function", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const received: unknown[] = [];
+
+		const unsub = sdk.events.on("sdk-explorer.ping", (p) => received.push(p));
+		sdk.events.emit("ping", "first");
+		expect(received).toEqual(["first"]);
+
+		unsub();
+		sdk.events.emit("ping", "second");
+		expect(received).toEqual(["first"]); // no second delivery
+	});
+
+	it("sdk.state.register and get work with real StateBroker", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const handle = sdk.state.register("click-count", 0);
+
+		// State is namespaced
+		const store = sdk.state.get<number>("sdk-explorer.click-count");
+		let current: number | null = null;
+		store.subscribe((v) => {
+			current = v;
+		});
+		expect(current).toBe(0);
+
+		handle.set(5);
+		expect(current).toBe(5);
+
+		// peek works too
+		expect(sdk.state.peek("sdk-explorer.click-count")).toBe(5);
+	});
+
+	it("sdk.state.get returns null for unregistered store (lazy resolution)", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const store = sdk.state.get<number>("sdk-explorer.nonexistent");
+		expect(store.peek()).toBeNull();
+	});
+
+	it("sdk.plugins.expose and get round-trip (real CapabilityRegistry)", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		sdk.plugins.expose("explorerService", {
+			getInfo: () => ({ name: "sdk-explorer", version: "2.0.0" }),
+		});
+
+		const cap = sdk.plugins.get("sdk-explorer");
+		expect(cap).not.toBeNull();
+		expect(cap!.explorerService).toBeDefined();
+		const info = (cap!.explorerService as { getInfo: () => { version: string } }).getInfo();
+		expect(info.version).toBe("2.0.0");
+	});
+
+	it("sdk.contribute registers in the real ContributionRegistry", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		sdk.contribute("status-bar", {
+			component: "StatusWidget",
+			label: "SDK Explorer Status",
+			priority: 5,
+		});
+
+		// Verify via services access
+		const contributions = sdk.services.contributionRegistry.getForZone("status-bar");
+		expect(contributions).toHaveLength(1);
+		expect(contributions[0]!.label).toBe("SDK Explorer Status");
+		expect(contributions[0]!.featureId).toBe("sdk-explorer");
+	});
+
+	it("sdk.commands.register works with real CommandRegistry", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		let executed = false;
+		sdk.commands.register({
+			id: "test-cmd",
+			label: "Test Command",
+			handler: () => {
+				executed = true;
+			},
+		});
+
+		const commands = sdk.services.commandRegistry.all();
+		expect(commands.some((c: { id: string }) => c.id === "sdk-explorer.test-cmd")).toBe(true);
+
+		// Execute the command
+		const cmd = commands.find((c: { id: string }) => c.id === "sdk-explorer.test-cmd");
+		cmd?.handler();
+		expect(executed).toBe(true);
+	});
+
+	it("sdk.notifications.show and setBadge are no-ops by default in fake", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		// Default fake notifications do not throw (unlike production which throws)
+		expect(() => sdk.notifications.show({ title: "T", message: "M", type: "info" })).not.toThrow();
+		expect(() => sdk.notifications.setBadge(3)).not.toThrow();
+	});
+
+	it("sdk.theme.peek returns 'light' by default in fake", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		expect(sdk.theme.peek()).toBe("light");
+	});
+
+	it("sdk.theme.subscribe fires synchronously with current value", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		let received: string | null = null;
+		sdk.theme.subscribe((t) => {
+			received = t;
+		});
+		expect(received).toBe("light");
+	});
+
+	it("sdk.shell.copyText and openExternal return promises", async () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		await expect(sdk.shell.copyText("test")).resolves.toBeUndefined();
+		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: true });
+	});
+
+	it("sdk.fs methods throw 'not implemented' by default in fake", async () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		await expect(async () => sdk.fs.exists("x")).rejects.toThrow(/not implemented/i);
+	});
+
+	it("deferred APIs (tools, intents, navigate, dispatch) throw", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		expect(() => sdk.tools.register({})).toThrow(/not available yet/);
+		expect(() => sdk.intents.list()).toThrow(/not available yet/);
+		expect(() => sdk.navigate({ plugin: "x", intent: "y" })).toThrow(/not available yet/);
+		expect(() => sdk.dispatch({ plugin: "x", action: "y" })).toThrow(/not available yet/);
+	});
+
+	it("sdk.destroy cleans up registrations", () => {
+		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		sdk.state.register("counter", 42);
+		sdk.plugins.expose("svc", { hello: () => "world" });
+		sdk.contribute("dashboard", { component: "Widget", label: "W" });
+
+		let disposed = false;
+		sdk.onDispose(() => {
+			disposed = true;
+		});
+
+		sdk.destroy();
+		expect(disposed).toBe(true);
+
+		// State is cleaned
+		expect(sdk.services.stateBroker.peek("sdk-explorer.counter")).toBeNull();
+		// Capabilities are cleaned
+		expect(sdk.services.capabilityRegistry.get("sdk-explorer")).toBeNull();
+		// Contributions are cleaned
+		expect(sdk.services.contributionRegistry.getForZone("dashboard")).toHaveLength(0);
+	});
+
+	it("sdk.destroy makes subsequent calls throw", async () => {
+		const sdk = createFakeSdk({
+			featureId: "sdk-explorer",
+			handlers: { ping: () => "pong" },
+		});
+		sdk.destroy();
+		await expect(sdk.invoke("ping")).rejects.toThrow(/destroyed/);
+	});
+});

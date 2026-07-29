@@ -54,7 +54,7 @@ jobs:
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes fakeroot rpm
+          sudo apt-get install --yes fakeroot
 
       - name: Setup macOS code signing
         if: matrix.target == 'mac'
@@ -93,6 +93,5 @@ jobs:
             apps/desktop/out/make/**/*.nupkg
             apps/desktop/out/make/**/RELEASES
             apps/desktop/out/make/**/*.deb
-            apps/desktop/out/make/**/*.rpm
           if-no-files-found: error
           retention-days: 7

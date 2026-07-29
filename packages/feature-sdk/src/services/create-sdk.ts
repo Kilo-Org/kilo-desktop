@@ -40,10 +40,15 @@ export interface SdkFactoryServices {
 
 /**
  * Create a scoped SDK instance for a feature.
- * All registrations are tracked for cleanup on destroy().
+ *
+ * Everything registered THROUGH the instance (event subscriptions, stores,
+ * capabilities, contributions, commands, onDispose callbacks) is tracked and
+ * cleaned up by destroy(). destroy() deliberately does NOT touch the feature's
+ * backend handlers or registrations made by other SDK instances of the same
+ * feature — full feature teardown is shell-owned (see teardownFeature).
  */
 export function createSdk(featureId: string, services: SdkFactoryServices): SDK {
-	const disposables: Array<() => void> = [];
+	const disposables = new Set<() => void>();
 	let destroyed = false;
 
 	function assertAlive(): void {
@@ -62,8 +67,14 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		on(event: string, handler: (payload: unknown) => void) {
 			assertAlive();
 			const unsub = services.eventBus.on(event, handler);
-			disposables.push(unsub);
-			return unsub;
+			// Wrap so manual unsubscription also drops the disposable
+			// (prevents unbounded growth on subscribe/unsubscribe churn).
+			const dispose = () => {
+				disposables.delete(dispose);
+				unsub();
+			};
+			disposables.add(dispose);
+			return dispose;
 		},
 		off(event: string, handler: (payload: unknown) => void) {
 			assertAlive();
@@ -76,7 +87,9 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 	const state: SdkState = {
 		register<T>(storeName: string, initialValue: T) {
 			assertAlive();
-			return services.stateBroker.register(featureId, storeName, initialValue);
+			const handle = services.stateBroker.register(featureId, storeName, initialValue);
+			disposables.add(() => services.stateBroker.removeStore(`${featureId}.${storeName}`));
+			return handle;
 		},
 		get<T = unknown>(namespacedKey: string) {
 			assertAlive();
@@ -90,14 +103,14 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 
 	// ─── Plugins (capabilities) ────────────────────────────────────────────────
 
-	let capabilityCleanupRegistered = false;
+	const exposedCapabilities = new Set<string>();
 	const plugins: SdkPlugins = {
 		expose(capabilityName: string, implementation: Record<string, unknown>) {
 			assertAlive();
 			services.capabilityRegistry.expose(featureId, capabilityName, implementation);
-			if (!capabilityCleanupRegistered) {
-				capabilityCleanupRegistered = true;
-				disposables.push(() => services.capabilityRegistry.removeFeature(featureId));
+			if (!exposedCapabilities.has(capabilityName)) {
+				exposedCapabilities.add(capabilityName);
+				disposables.add(() => services.capabilityRegistry.remove(featureId, capabilityName));
 			}
 		},
 		get(targetFeatureId: string) {
@@ -111,7 +124,8 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 	const commands: SdkCommands = {
 		register(definition) {
 			assertAlive();
-			services.commandRegistry.register(featureId, definition);
+			const unregister = services.commandRegistry.register(featureId, definition);
+			disposables.add(unregister);
 		},
 	};
 
@@ -152,7 +166,8 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 
 		contribute(zone: string, options: ContributionOptions) {
 			assertAlive();
-			services.contributionRegistry.register(featureId, zone, options);
+			const unregister = services.contributionRegistry.register(featureId, zone, options);
+			disposables.add(unregister);
 		},
 
 		notifications: services.shellDelegates.notifications,
@@ -173,28 +188,40 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 
 		onDispose(fn: () => void) {
 			assertAlive();
-			disposables.push(fn);
+			disposables.add(fn);
 		},
 
 		destroy() {
 			if (destroyed) return;
 			destroyed = true;
-			// Run disposables in reverse order
-			for (const fn of disposables.reverse()) {
+			// Run disposables in reverse insertion order
+			for (const fn of [...disposables].reverse()) {
 				try {
 					fn();
 				} catch (error) {
 					console.warn(`[SDK] Dispose callback for "${featureId}" threw:`, error);
 				}
 			}
-			services.eventBus.removeByPrefix(`${featureId}.`);
-			services.stateBroker.removeByFeature(featureId);
-			services.contributionRegistry.removeFeature(featureId);
-			services.commandRegistry.removeFeature(featureId);
-			services.capabilityRegistry.removeFeature(featureId);
-			services.featureRouter.destroyFeature(featureId);
+			disposables.clear();
 		},
 	};
 
 	return sdk;
+}
+
+/**
+ * Tear down EVERYTHING registered for a feature across all SDK instances,
+ * including its backend handlers in the FeatureRouter.
+ *
+ * Shell-owned: call this on feature/plugin unload — never from component
+ * lifecycle. Destroy individual SDK instances first (sdk.destroy()) if you
+ * hold references to them.
+ */
+export function teardownFeature(featureId: string, services: SdkFactoryServices): void {
+	services.eventBus.removeByPrefix(`${featureId}.`);
+	services.stateBroker.removeByFeature(featureId);
+	services.contributionRegistry.removeFeature(featureId);
+	services.commandRegistry.removeFeature(featureId);
+	services.capabilityRegistry.removeFeature(featureId);
+	services.featureRouter.destroyFeature(featureId);
 }

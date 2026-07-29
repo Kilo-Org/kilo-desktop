@@ -8,7 +8,8 @@ export class ContributionRegistry {
 	private contributions: Contribution[] = [];
 	private changeListeners = new Set<() => void>();
 
-	register(featureId: string, zone: string, options: ContributionOptions): void {
+	/** Register a contribution. Returns an unregister function. */
+	register(featureId: string, zone: string, options: ContributionOptions): () => void {
 		const contribution: Contribution = {
 			featureId,
 			zone,
@@ -21,6 +22,12 @@ export class ContributionRegistry {
 		}
 		this.contributions.push(contribution);
 		this.notifyChange();
+		return () => {
+			const index = this.contributions.indexOf(contribution);
+			if (index === -1) return;
+			this.contributions.splice(index, 1);
+			this.notifyChange();
+		};
 	}
 
 	getForZone(zone: string): Contribution[] {
@@ -40,7 +47,7 @@ export class ContributionRegistry {
 	}
 
 	private notifyChange(): void {
-		for (const fn of this.changeListeners) {
+		for (const fn of [...this.changeListeners]) {
 			try {
 				fn();
 			} catch (error) {

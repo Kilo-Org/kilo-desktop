@@ -1,7 +1,7 @@
 export {
+	createFeatureSystem,
 	SdkProvider,
+	useFeatureSystem,
 	useSdk,
-	initializeFeatureSystem,
-	contributionRegistry,
-	commandRegistry,
+	type FeatureSystem,
 } from "./SdkProvider.js";

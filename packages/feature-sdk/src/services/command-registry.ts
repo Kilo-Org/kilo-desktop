@@ -7,14 +7,21 @@ import type { Command, CommandDefinition } from "../types/sdk.js";
 export class CommandRegistry {
 	private commands = new Map<string, Command>();
 
-	register(featureId: string, definition: CommandDefinition): void {
+	/** Register a command. Returns an unregister function. */
+	register(featureId: string, definition: CommandDefinition): () => void {
 		const fullId = `${featureId}.${definition.id}`;
+		if (this.commands.has(fullId)) {
+			console.warn(`[CommandRegistry] Command "${fullId}" registered twice — replacing.`);
+		}
 		this.commands.set(fullId, {
 			id: fullId,
 			featureId,
 			label: definition.label,
 			handler: definition.handler,
 		});
+		return () => {
+			this.commands.delete(fullId);
+		};
 	}
 
 	all(): Command[] {

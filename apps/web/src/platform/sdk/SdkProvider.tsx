@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import {
 	CapabilityRegistry,
@@ -8,209 +8,184 @@ import {
 	EventBus,
 	FeatureRouter,
 	StateBroker,
+	teardownFeature,
 	type FeatureRegistration,
 	type SDK,
 	type SdkFactoryServices,
 	type ShellDelegates,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
-import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
-// ─── Shared service singletons ─────────────────────────────────────────────
+// ─── Bridge detection ──────────────────────────────────────────────────────
 
-const eventBus = new EventBus();
-const stateBroker = new StateBroker();
-const capabilityRegistry = new CapabilityRegistry();
-const contributionRegistry = new ContributionRegistry();
-const commandRegistry = new CommandRegistry();
-const featureRouter = new FeatureRouter();
-
-export { contributionRegistry, commandRegistry };
+function getDesktopBridge(): DesktopApi | undefined {
+	return (globalThis as { desktopApi?: DesktopApi }).desktopApi;
+}
 
 // ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
 
+function notYetWired(service: string): () => never {
+	return () => {
+		throw new Error(`${service} is not yet wired to a shell service.`);
+	};
+}
+
+function peekEffectiveTheme(): "dark" | "light" {
+	return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
 function createShellDelegates(api: LocalApi): ShellDelegates {
 	return {
+		// Not yet wired: fail loud instead of silently swallowing calls,
+		// so features never believe a user saw a notification.
 		notifications: {
-			show(opts) {
-				// TODO: wire to a notification service when one exists
-				console.info(`[Notification] ${opts.type}: ${opts.title} — ${opts.message}`);
-			},
-			setBadge(_count) {
-				// TODO: wire to sidebar badge state
-			},
+			show: notYetWired("sdk.notifications.show"),
+			setBadge: notYetWired("sdk.notifications.setBadge"),
 		},
 		theme: {
 			subscribe(fn) {
-				// Bridge LocalApi theme subscription to observable contract
-				let current: "dark" | "light" = "light";
-				void api.theme.get().then((state) => {
-					current = state.shouldUseDarkColors ? "dark" : "light";
-					fn(current);
+				// Observable contract: fire synchronously with the current value,
+				// then push updates. No async initial read — avoids racing
+				// onChanged events against a stale get() result.
+				fn(peekEffectiveTheme());
+				return api.theme.onChanged((state) => {
+					fn(state.shouldUseDarkColors ? "dark" : "light");
 				});
-				const unsub = api.theme.onChanged((state) => {
-					current = state.shouldUseDarkColors ? "dark" : "light";
-					fn(current);
-				});
-				return unsub;
 			},
-			peek() {
-				return document.documentElement.classList.contains("dark") ? "dark" : "light";
-			},
-			getEffective() {
-				return document.documentElement.classList.contains("dark") ? "dark" : "light";
-			},
+			peek: peekEffectiveTheme,
 		},
 		shell: {
 			openExternal: (url) => api.shell.openExternal({ url }),
 			copyText: (text) => api.shell.copyText({ text }),
 		},
 		fs: {
-			// TODO: wire when feature:invoke supports fs channels from main,
-			// or when a dedicated fs service is added.
-			readFile: () => Promise.reject(new Error("sdk.fs not yet wired")),
-			writeFile: () => Promise.reject(new Error("sdk.fs not yet wired")),
-			exists: () => Promise.reject(new Error("sdk.fs not yet wired")),
-			mkdir: () => Promise.reject(new Error("sdk.fs not yet wired")),
-			readdir: () => Promise.reject(new Error("sdk.fs not yet wired")),
-			remove: () => Promise.reject(new Error("sdk.fs not yet wired")),
+			readFile: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
+			writeFile: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
+			exists: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
+			mkdir: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
+			readdir: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
+			remove: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
 		},
 	};
 }
 
-// ─── Invoke adapter ────────────────────────────────────────────────────────
+// ─── Feature system ────────────────────────────────────────────────────────
 
-/**
- * Create the invoke adapter for the FeatureRouter.
- * In Electron: routes through preload bridge → main process.
- * In browser: routes directly to in-process handlers.
- */
-function createInvokeAdapter(
-	_api: LocalApi,
-): (featureId: string, channel: string, args?: unknown) => Promise<unknown> {
-	const bridge = (
-		globalThis as {
-			desktopApi?: {
-				invoke: (
-					ch: string,
-					input: unknown,
-				) => Promise<{ ok: boolean; value?: unknown; error?: { message: string } }>;
-			};
-		}
-	).desktopApi;
-
-	if (bridge) {
-		// Electron mode: route through the generic feature:invoke IPC channel
-		return async (featureId, channel, args) => {
-			const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
-			if (!result.ok) {
-				throw new Error(
-					result.error?.message ?? `feature:invoke failed for ${featureId}:${channel}`,
-				);
-			}
-			return result.value;
-		};
-	}
-
-	// Browser mode: route directly to in-process handlers
-	return (featureId, channel, args) => featureRouter.invoke(featureId, channel, args);
+export interface FeatureSystem {
+	readonly services: SdkFactoryServices;
+	/**
+	 * Get the shared SDK instance for a feature. Instances are cached per
+	 * feature and live until teardownFeature() — they are NOT tied to
+	 * component lifecycles.
+	 */
+	getSdk(featureId: string): SDK;
+	/** Shell-owned full teardown of a feature (plugin unload). */
+	teardownFeature(featureId: string): void;
 }
 
-// ─── Boot features (renderer-side) ─────────────────────────────────────────
-
-let servicesInstance: SdkFactoryServices | null = null;
-let initialized = false;
-
 /**
- * Initialize the feature system. Must be called once at app startup.
- * Idempotent: subsequent calls are no-ops (safe for HMR / StrictMode).
- * Boots all feature mainRegister() in browser mode (in Electron, main does this).
+ * Create the renderer-side feature system. Call once at app startup and pass
+ * the result to <SdkProvider>.
+ *
+ * In Electron mode: sdk.invoke falls back to the generic feature:invoke IPC
+ * channel (handlers live in the main process; `features` is not booted here).
+ * In browser mode: features are booted in-process via browserRegister()
+ * (falling back to mainRegister() for Node-free features).
  */
-export function initializeFeatureSystem(
+export function createFeatureSystem(
 	api: LocalApi,
-	features: readonly FeatureRegistration[],
-): void {
-	if (initialized) return;
-	initialized = true;
+	features: readonly FeatureRegistration[] = [],
+): FeatureSystem {
+	const bridge = getDesktopBridge();
 
-	const shellDelegates = createShellDelegates(api);
-	const invokeAdapter = createInvokeAdapter(api);
+	const featureRouter = new FeatureRouter(
+		bridge
+			? {
+					fallback: async (featureId, channel, args) => {
+						const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
+						if (!result.ok) {
+							throw new Error(result.error.message);
+						}
+						return result.value;
+					},
+				}
+			: {},
+	);
 
-	// Patch the featureRouter's invoke to use the adapter
-	// (in Electron mode, sdk.invoke goes through IPC; in browser mode, goes direct)
-	const originalInvoke = featureRouter.invoke.bind(featureRouter);
-	featureRouter.invoke = async (featureId: string, channel: string, args?: unknown) => {
-		// If we have a local handler (browser mode), use it directly
-		if (featureRouter.has(featureId, channel)) {
-			return originalInvoke(featureId, channel, args);
-		}
-		// Otherwise use the adapter (Electron mode → IPC, or error)
-		return invokeAdapter(featureId, channel, args);
-	};
-
-	servicesInstance = {
-		eventBus,
-		stateBroker,
-		capabilityRegistry,
-		contributionRegistry,
-		commandRegistry,
+	const services: SdkFactoryServices = {
+		eventBus: new EventBus(),
+		stateBroker: new StateBroker(),
+		capabilityRegistry: new CapabilityRegistry(),
+		contributionRegistry: new ContributionRegistry(),
+		commandRegistry: new CommandRegistry(),
 		featureRouter,
-		shellDelegates,
+		shellDelegates: createShellDelegates(api),
 	};
 
-	// In browser mode, boot features' mainRegister locally (no main process available)
-	const bridge = (globalThis as { desktopApi?: unknown }).desktopApi;
+	// Browser mode: boot feature backends in-process (no main process available).
 	if (!bridge) {
 		for (const feature of features) {
+			const register = feature.browserRegister?.bind(feature) ?? feature.mainRegister.bind(feature);
 			const mainSdk = featureRouter.createMainSdk(feature.id);
 			try {
-				feature.mainRegister(mainSdk);
+				register(mainSdk);
 			} catch (error) {
-				console.error(`[FeatureSystem] mainRegister failed for "${feature.id}":`, error);
+				console.error(`[FeatureSystem] Boot failed for "${feature.id}":`, error);
+				featureRouter.destroyFeature(feature.id);
 			}
 		}
 	}
+
+	const sdkCache = new Map<string, SDK>();
+
+	return {
+		services,
+		getSdk(featureId: string): SDK {
+			let sdk = sdkCache.get(featureId);
+			if (!sdk) {
+				sdk = createSdk(featureId, services);
+				sdkCache.set(featureId, sdk);
+			}
+			return sdk;
+		},
+		teardownFeature(featureId: string): void {
+			sdkCache.get(featureId)?.destroy();
+			sdkCache.delete(featureId);
+			teardownFeature(featureId, services);
+		},
+	};
 }
 
-// ─── React context + hook ──────────────────────────────────────────────────
+// ─── React context + hooks ─────────────────────────────────────────────────
 
-const SdkContext = createContext<SdkFactoryServices | null>(null);
+const FeatureSystemContext = createContext<FeatureSystem | null>(null);
 
-export function SdkProvider({ children }: { children: ReactNode }) {
-	if (!servicesInstance) {
-		throw new Error("SdkProvider requires initializeFeatureSystem() to be called first.");
+export function SdkProvider({
+	system,
+	children,
+}: {
+	readonly system: FeatureSystem;
+	readonly children: ReactNode;
+}) {
+	return <FeatureSystemContext.Provider value={system}>{children}</FeatureSystemContext.Provider>;
+}
+
+/** Access the feature system (registries, teardown) — for shell UI code. */
+export function useFeatureSystem(): FeatureSystem {
+	const system = useContext(FeatureSystemContext);
+	if (!system) {
+		throw new Error("useFeatureSystem must be used within <SdkProvider>.");
 	}
-	return <SdkContext.Provider value={servicesInstance}>{children}</SdkContext.Provider>;
+	return system;
 }
 
 /**
- * Get a scoped SDK instance for a feature.
+ * Get the shared SDK instance for a feature.
  * Call sites: `const sdk = useSdk("todos")` — stable across all migration stages.
- * Cleans up (calls sdk.destroy()) on unmount or featureId change.
+ * The instance is shared by every component of the feature and is NOT
+ * destroyed on unmount; teardown is shell-owned (FeatureSystem.teardownFeature).
  */
 export function useSdk(featureId: string): SDK {
-	const services = useContext(SdkContext);
-	if (!services) {
-		throw new Error(
-			"useSdk must be used within <SdkProvider>. Call initializeFeatureSystem() at app boot.",
-		);
-	}
-
-	const sdkRef = useRef<SDK | null>(null);
-
-	// Create or replace the SDK instance when featureId changes
-	if (!sdkRef.current || sdkRef.current.featureId !== featureId) {
-		sdkRef.current?.destroy();
-		sdkRef.current = createSdk(featureId, services);
-	}
-
-	// Destroy on unmount
-	useEffect(() => {
-		return () => {
-			sdkRef.current?.destroy();
-			sdkRef.current = null;
-		};
-	}, []);
-
-	return sdkRef.current;
+	return useFeatureSystem().getSdk(featureId);
 }

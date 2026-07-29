@@ -1,6 +1,7 @@
 import { FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
 /**
  * Central feature router for the main process.
@@ -23,13 +24,11 @@ export function bootFeatures(features: readonly FeatureRegistration[]): void {
 }
 
 /**
- * IPC handler for the "feature:invoke" channel.
+ * IPC handlers for the feature system.
  * Routes { featureId, channel, args } to the correct handler in the router.
  */
-export async function handleFeatureInvoke(input: {
-	featureId: string;
-	channel: string;
-	args?: unknown;
-}): Promise<unknown> {
-	return featureRouter.invoke(input.featureId, input.channel, input.args);
+export function createFeatureHandlers(): Pick<IpcHandlers, "feature:invoke"> {
+	return {
+		"feature:invoke": (input) => featureRouter.invoke(input.featureId, input.channel, input.args),
+	};
 }

@@ -1,0 +1,19 @@
+{
+	"name": "@anaconda-agentic-desktop/testing",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Test utilities for features and plugins: createFakeSdk, createFakeMainSdk",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json"
+	},
+	"dependencies": {
+		"@anaconda-agentic-desktop/feature-sdk": "workspace:*"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

@@ -1,3 +1,4 @@
+import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
 import { themeEvents, themeMethods } from "./features/theme.js";
 import { todoMethods } from "./features/todos.js";
@@ -12,6 +13,12 @@ export function mergeChannelMaps<
 	B extends Record<string, unknown>,
 	C extends Record<string, unknown>,
 >(a: A, b: B, c: C): A & B & C;
+export function mergeChannelMaps<
+	A extends Record<string, unknown>,
+	B extends Record<string, unknown>,
+	C extends Record<string, unknown>,
+	D extends Record<string, unknown>,
+>(a: A, b: B, c: C, d: D): A & B & C & D;
 export function mergeChannelMaps(
 	...parts: Array<Record<string, unknown>>
 ): Record<string, unknown> {
@@ -27,5 +34,5 @@ export function mergeChannelMaps(
 	return result;
 }
 
-export const ipcMethods = mergeChannelMaps(shellMethods, themeMethods, todoMethods);
+export const ipcMethods = mergeChannelMaps(shellMethods, themeMethods, todoMethods, featureMethods);
 export const ipcEvents = mergeChannelMaps(themeEvents);

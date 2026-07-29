@@ -1,10 +1,24 @@
-import type { MainSdk, SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	CapabilityRegistry,
+	CommandRegistry,
+	ContributionRegistry,
+	createSdk,
+	EventBus,
+	FeatureRouter,
+	StateBroker,
+} from "@anaconda-agentic-desktop/feature-sdk";
+
+import type {
+	MainSdk,
+	SchemaLike,
+	SDK,
+	SdkFactoryServices,
+	ShellDelegates,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 const noop = () => {};
-const asyncNoop = async () => undefined as unknown;
-const noopUnsub = () => noop;
 
-function notImplemented(method: string): (...args: unknown[]) => never {
+function notImplemented(method: string): (...args: never[]) => never {
 	return () => {
 		throw new Error(
 			`[FakeSdk] ${method} not implemented in test. Override it via createFakeSdk().`,
@@ -12,11 +26,28 @@ function notImplemented(method: string): (...args: unknown[]) => never {
 	};
 }
 
+/** Merge partial overrides into a base object, ignoring undefined values. */
+function merge<T extends object>(base: T, overrides?: Partial<T>): T {
+	if (!overrides) return base;
+	const result = { ...base };
+	for (const [key, value] of Object.entries(overrides)) {
+		if (value !== undefined) {
+			(result as Record<string, unknown>)[key] = value;
+		}
+	}
+	return result;
+}
+
 /**
  * Options for createFakeSdk. Provide only the methods your test exercises.
  */
 export interface FakeSdkOptions {
 	featureId: string;
+	/**
+	 * Backend handlers for sdk.invoke, keyed by channel. Registered on the
+	 * fake's real in-memory FeatureRouter — prefer this over overriding invoke.
+	 */
+	handlers?: Record<string, (args: unknown) => unknown | Promise<unknown>>;
 	invoke?: SDK["invoke"];
 	events?: Partial<SDK["events"]>;
 	state?: Partial<SDK["state"]>;
@@ -31,100 +62,126 @@ export interface FakeSdkOptions {
 	destroy?: SDK["destroy"];
 }
 
+/** SDK plus the backing in-memory services, for assertions in tests. */
+export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
+
 /**
  * Create a fake SDK for testing feature renderer code.
- * Override only the methods your test exercises; everything else throws or no-ops.
+ *
+ * Built on the REAL createSdk with real in-memory services (event bus, state
+ * broker, registries, router), so events/state/plugins behave exactly like
+ * production. Only the shell delegates are fakes (theme is "light",
+ * notifications no-op, fs throws until overridden). Use `handlers` to serve
+ * sdk.invoke calls; use the option overrides for anything else.
  */
-export function createFakeSdk(options: FakeSdkOptions): SDK {
-	const { featureId } = options;
+export function createFakeSdk(options: FakeSdkOptions): FakeSdk {
+	const shellDelegates: ShellDelegates = {
+		notifications: merge<SDK["notifications"]>(
+			{ show: noop, setBadge: noop },
+			options.notifications,
+		),
+		theme: merge<SDK["theme"]>(
+			{
+				subscribe: (fn) => {
+					fn("light");
+					return noop;
+				},
+				peek: () => "light",
+			},
+			options.theme,
+		),
+		shell: merge<SDK["shell"]>(
+			{
+				openExternal: async () => ({ opened: true }),
+				copyText: async () => undefined,
+			},
+			options.shell,
+		),
+		fs: merge<SDK["fs"]>(
+			{
+				readFile: notImplemented("sdk.fs.readFile"),
+				writeFile: notImplemented("sdk.fs.writeFile"),
+				exists: notImplemented("sdk.fs.exists"),
+				mkdir: notImplemented("sdk.fs.mkdir"),
+				readdir: notImplemented("sdk.fs.readdir"),
+				remove: notImplemented("sdk.fs.remove"),
+			},
+			options.fs,
+		),
+	};
+
+	const services: SdkFactoryServices = {
+		eventBus: new EventBus(),
+		stateBroker: new StateBroker(),
+		capabilityRegistry: new CapabilityRegistry(),
+		contributionRegistry: new ContributionRegistry(),
+		commandRegistry: new CommandRegistry(),
+		featureRouter: new FeatureRouter(),
+		shellDelegates,
+	};
+
+	if (options.handlers) {
+		const mainSdk = services.featureRouter.createMainSdk(options.featureId);
+		for (const [channel, handler] of Object.entries(options.handlers)) {
+			mainSdk.handle(channel, null, handler);
+		}
+	}
+
+	const sdk = createSdk(options.featureId, services);
 
 	return {
-		featureId,
-		invoke: options.invoke ?? (asyncNoop as SDK["invoke"]),
-		events: {
-			emit: options.events?.emit ?? noop,
-			on: options.events?.on ?? noopUnsub,
-			off: options.events?.off ?? noop,
-		},
-		state: {
-			register: options.state?.register ?? ((_name: string, _init: unknown) => ({ set: noop })),
-			get:
-				options.state?.get ??
-				(((_key: string) => ({
-					subscribe: (fn: (v: unknown) => void) => {
-						fn(null);
-						return noop;
-					},
-					peek: () => null as unknown,
-				})) as SDK["state"]["get"]),
-			peek: options.state?.peek ?? (() => null),
-		},
-		plugins: {
-			expose: options.plugins?.expose ?? noop,
-			get: options.plugins?.get ?? (() => null),
-		},
-		contribute: options.contribute ?? noop,
-		commands: {
-			register: options.commands?.register ?? noop,
-		},
-		notifications: {
-			show: options.notifications?.show ?? noop,
-			setBadge: options.notifications?.setBadge ?? noop,
-		},
-		theme: {
-			subscribe: options.theme?.subscribe ?? noopUnsub,
-			peek: options.theme?.peek ?? (() => "light" as const),
-			getEffective: options.theme?.getEffective ?? (() => "light" as const),
-		},
-		shell: {
-			openExternal: options.shell?.openExternal ?? (async () => ({ opened: true })),
-			copyText: options.shell?.copyText ?? (async () => undefined),
-		},
-		fs: {
-			readFile: options.fs?.readFile ?? notImplemented("sdk.fs.readFile"),
-			writeFile: options.fs?.writeFile ?? notImplemented("sdk.fs.writeFile"),
-			exists: options.fs?.exists ?? notImplemented("sdk.fs.exists"),
-			mkdir: options.fs?.mkdir ?? notImplemented("sdk.fs.mkdir"),
-			readdir: options.fs?.readdir ?? notImplemented("sdk.fs.readdir"),
-			remove: options.fs?.remove ?? notImplemented("sdk.fs.remove"),
-		},
-		tools: {
-			register: notImplemented("sdk.tools.register"),
-			invoke: notImplemented("sdk.tools.invoke") as unknown as SDK["tools"]["invoke"],
-			all: notImplemented("sdk.tools.all"),
-		},
-		intents: {
-			list: notImplemented("sdk.intents.list"),
-		},
-		navigate: notImplemented("sdk.navigate") as unknown as SDK["navigate"],
-		dispatch: notImplemented("sdk.dispatch") as unknown as SDK["dispatch"],
-		onDispose: options.onDispose ?? noop,
-		destroy: options.destroy ?? noop,
+		...sdk,
+		services,
+		invoke: options.invoke ?? sdk.invoke,
+		events: merge(sdk.events, options.events),
+		state: merge(sdk.state, options.state),
+		plugins: merge(sdk.plugins, options.plugins),
+		contribute: options.contribute ?? sdk.contribute,
+		commands: merge(sdk.commands, options.commands),
+		onDispose: options.onDispose ?? sdk.onDispose,
+		destroy: options.destroy ?? sdk.destroy,
 	};
 }
 
 /**
  * Create a fake MainSdk for testing feature main-process registration.
- * Tracks which handlers were registered.
+ * Tracks which handlers and schemas were registered.
  */
 export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
 	/** Map of registered handlers (channel → handler fn). */
-	registeredHandlers: Map<string, (args: unknown) => unknown | Promise<unknown>>;
+	registeredHandlers: Map<string, (args: never) => unknown | Promise<unknown>>;
+	/** Map of registered input schemas (channel → schema or null). */
+	registeredSchemas: Map<string, SchemaLike | null>;
 	/** List of dispose callbacks registered via onDispose(). */
 	disposeCallbacks: Array<() => void>;
+	/** Invoke a registered handler, validating args like the real router. */
+	invoke(channel: string, args?: unknown): Promise<unknown>;
 } {
-	const registeredHandlers = new Map<string, (args: unknown) => unknown | Promise<unknown>>();
+	const registeredHandlers = new Map<string, (args: never) => unknown | Promise<unknown>>();
+	const registeredSchemas = new Map<string, SchemaLike | null>();
 	const disposeCallbacks: Array<() => void> = [];
+	const featureId = options?.featureId ?? "test-feature";
 
 	return {
-		featureId: options?.featureId ?? "test-feature",
-		handle(channel, handler) {
+		featureId,
+		handle(channel, inputSchema, handler) {
 			registeredHandlers.set(channel, handler);
+			registeredSchemas.set(channel, inputSchema);
 		},
 		onDispose(fn) {
 			disposeCallbacks.push(fn);
 		},
 		registeredHandlers,
+		registeredSchemas,
 		disposeCallbacks,
+		async invoke(channel, args) {
+			const handler = registeredHandlers.get(channel);
+			if (!handler) {
+				throw new Error(`[FakeMainSdk] No handler registered for channel "${channel}".`);
+			}
+			const schema = registeredSchemas.get(channel);
+			const parsed = schema ? schema.parse(args) : args;
+			return (handler as (args: unknown) => unknown | Promise<unknown>)(parsed);
+		},
 	};
 }

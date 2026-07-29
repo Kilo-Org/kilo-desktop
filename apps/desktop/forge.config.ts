@@ -136,6 +136,7 @@ const config: ForgeConfig = {
 			platforms: ["linux"],
 			config: {
 				options: {
+					bin: "anaconda-agentic-desktop",
 					categories: ["Development"],
 					homepage: "https://github.com/anaconda/agentic-desktop",
 					maintainer: "Anaconda, Inc.",
@@ -147,6 +148,7 @@ const config: ForgeConfig = {
 			platforms: ["linux"],
 			config: {
 				options: {
+					bin: "anaconda-agentic-desktop",
 					categories: ["Development"],
 					homepage: "https://github.com/anaconda/agentic-desktop",
 				},
@@ -159,7 +161,7 @@ const config: ForgeConfig = {
 			config: {
 				...(s3Bucket ? { bucket: s3Bucket } : {}),
 				...(process.env.AWS_REGION ? { region: process.env.AWS_REGION } : {}),
-				public: true,
+				omitAcl: true,
 				keyResolver: ({
 					fileName,
 					platform,

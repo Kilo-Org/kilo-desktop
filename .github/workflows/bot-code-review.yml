@@ -1,0 +1,29 @@
+# Delegates @kilo PR reviews to the org reusable workflow (internal-actions).
+# Unlike the default setup, this only triggers on explicit @kilo mentions —
+# it does NOT auto-review on PR open/reopen.
+name: '[Bot] Code Review'
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  kilo-code-review:
+    name: Kilo Code Review
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+    if: |
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@kilo')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@kilo')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@kilo'))
+    # MUST stay @main. The OIDC token's job_workflow_ref claim reflects this ref; the Bedrock role
+    # trust policy pins StringEquals ...bot-code-review.yml@refs/heads/main. A SHA pin makes the claim
+    # end in @<sha> and fails sts:AssumeRoleWithWebIdentity.
+    uses: anaconda/internal-actions/.github/workflows/bot-code-review.yml@main

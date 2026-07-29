@@ -248,7 +248,7 @@ to `canary`.
 | `staging` | Release candidate for internal validation | QA / internal stakeholders | Manual `Staging Publish` workflow |
 | `prod`    | Stable customer release                   | Customers                  | Manual `Prod Publish` workflow    |
 
-Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB/RPM on Linux)
+Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB on Linux)
 and publishes to `anaconda-agentic-desktop/<channel>/<platform>/<arch>/`. Automatic update
 checks run only in packaged macOS and Windows builds that were given `UPDATE_PUBLISH_URL`.
 

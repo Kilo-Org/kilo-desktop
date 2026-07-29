@@ -143,17 +143,6 @@ const config: ForgeConfig = {
 				},
 			},
 		},
-		{
-			name: "@electron-forge/maker-rpm",
-			platforms: ["linux"],
-			config: {
-				options: {
-					bin: "anaconda-agentic-desktop",
-					categories: ["Development"],
-					homepage: "https://github.com/anaconda/agentic-desktop",
-				},
-			},
-		},
 	],
 	publishers: [
 		{

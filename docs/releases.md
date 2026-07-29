@@ -28,7 +28,7 @@ Forge uses only official makers:
 | -------- | ---------------------------------------------- | --------------------------------------------------------------------- |
 | macOS    | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                       |
 | Windows  | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                          |
-| Linux    | DEB and RPM                                    | Updates are provided by the package repository or manual installation |
+| Linux    | DEB                                            | Updates are provided by the package repository or manual installation |
 
 Automatic Electron update checks run only in packaged Windows and macOS builds. They are
 disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never start on
@@ -85,8 +85,8 @@ with repository/environment variables:
 
 Signing secrets and update variables live on the GitHub Environments above. `Build`
 attaches the `canary` environment so the same optional codesign material is available for
-manual makes; it does not publish to S3. The Linux job installs `fakeroot` and RPM
-tooling.
+manual makes; it does not publish to S3. The Linux job installs `fakeroot` for DEB
+packaging.
 
 ## Signing credentials
 

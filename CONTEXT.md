@@ -32,7 +32,13 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi)
 
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
-In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed).
+In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Features whose `mainRegister` uses Node APIs (SQLite, fs) must provide a browser-safe `browserRegister` to run in this mode.
+
+**Handlers and validation:** `mainSdk.handle(channel, inputSchema, handler)` — the input schema (a Zod schema) is required and validates args at the routing boundary before the handler runs. Pass `null` only for channels that take no input.
+
+**Errors:** expected failures throw `FeatureError` from the SDK (`throw new FeatureError("Todo not found.", "NOT_FOUND")`). The shell translates it across the IPC boundary so the message survives; generic errors are scrubbed to a generic string.
+
+**Lifecycles:** `useSdk(featureId)` returns a shared per-feature SDK instance that is NOT destroyed on component unmount. `sdk.destroy()` cleans up only what was registered through that instance. Full feature teardown (`teardownFeature`) is shell-owned and happens on feature/plugin unload only.
 
 ### FEATURES array (mandatory registration)
 
@@ -68,7 +74,7 @@ Each transition is a filesystem move. Source code stays the same because it prog
 | **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                           |
 | **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`. |
 | **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                       |
-| **MainSdk**        | The main-process counterpart of the SDK. Features register handlers via `mainSdk.handle(channel, handler)`.                                    |
+| **MainSdk**        | The main-process counterpart of the SDK. Features register handlers via `mainSdk.handle(channel, inputSchema, handler)`.                       |
 | **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                               |
 | **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                   |
 | **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                         |
@@ -90,6 +96,7 @@ Each transition is a filesystem move. Source code stays the same because it prog
 - Tests use `createFakeSdk` from `@anaconda-agentic-desktop/testing`
 - Cross-feature communication only through SDK primitives (events, state, plugins.get)
 - All events namespaced by feature ID: `featureId.eventName`
+- Expected handler failures throw `FeatureError` (never plain `Error` — its message gets scrubbed at the IPC boundary)
 - Each feature owns its own SQLite file if it persists data
 
 ## What NOT to do

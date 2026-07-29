@@ -1,16 +1,43 @@
-import type { MainSdk } from "../types/sdk.js";
+import { FeatureError } from "../errors.js";
 
-type Handler = (args: unknown) => unknown | Promise<unknown>;
+import type { MainSdk, SchemaLike } from "../types/sdk.js";
+
+type Handler = (args: never) => unknown | Promise<unknown>;
+
+interface HandlerEntry {
+	inputSchema: SchemaLike | null;
+	handler: Handler;
+}
+
+/**
+ * Fallback transport used when no local handler exists for a channel.
+ * In the renderer (Electron mode) this routes through the feature:invoke IPC channel.
+ */
+export type InvokeFallback = (
+	featureId: string,
+	channel: string,
+	args?: unknown,
+) => Promise<unknown>;
+
+export interface FeatureRouterOptions {
+	fallback?: InvokeFallback;
+}
 
 /**
  * In-memory handler router.
  * Stores handlers registered by features via mainSdk.handle().
- * In Electron mode: the main process populates this, called via IPC.
- * In browser mode: the renderer populates and calls this directly.
+ * In Electron main: features populate this; the IPC bridge calls invoke().
+ * In the renderer: local handlers win (browser mode); otherwise the fallback
+ * transport is used (Electron mode → IPC).
  */
 export class FeatureRouter {
-	private handlers = new Map<string, Map<string, Handler>>();
+	private handlers = new Map<string, Map<string, HandlerEntry>>();
 	private disposables = new Map<string, Array<() => void>>();
+	private readonly fallback: InvokeFallback | undefined;
+
+	constructor(options?: FeatureRouterOptions) {
+		this.fallback = options?.fallback;
+	}
 
 	/**
 	 * Create a MainSdk instance scoped to a specific feature.
@@ -26,8 +53,18 @@ export class FeatureRouter {
 
 		return {
 			featureId,
-			handle: (channel: string, handler: Handler) => {
-				this.handlers.get(featureId)!.set(channel, handler);
+			handle: <T>(
+				channel: string,
+				inputSchema: SchemaLike<T> | null,
+				handler: (args: T) => unknown | Promise<unknown>,
+			) => {
+				const channels = this.handlers.get(featureId)!;
+				if (channels.has(channel)) {
+					console.warn(
+						`[FeatureRouter] Handler for "${featureId}:${channel}" registered twice — replacing.`,
+					);
+				}
+				channels.set(channel, { inputSchema, handler });
 			},
 			onDispose: (fn: () => void) => {
 				this.disposables.get(featureId)!.push(fn);
@@ -37,21 +74,39 @@ export class FeatureRouter {
 
 	/**
 	 * Invoke a handler. Used by the SDK's sdk.invoke() and by the IPC bridge.
+	 * Validates args against the handler's input schema before invoking.
+	 * Unknown feature/channel falls back to the injected transport when present.
 	 */
 	async invoke(featureId: string, channel: string, args?: unknown): Promise<unknown> {
-		const featureHandlers = this.handlers.get(featureId);
-		if (!featureHandlers) {
-			throw new Error(`No handlers registered for feature: ${featureId}`);
+		const entry = this.handlers.get(featureId)?.get(channel);
+		if (!entry) {
+			if (this.fallback) {
+				return this.fallback(featureId, channel, args);
+			}
+			throw new FeatureError(
+				`No handler for channel "${channel}" in feature "${featureId}".`,
+				"NOT_FOUND",
+			);
 		}
-		const handler = featureHandlers.get(channel);
-		if (!handler) {
-			throw new Error(`No handler for channel "${channel}" in feature "${featureId}"`);
+
+		let parsedArgs: unknown = args;
+		if (entry.inputSchema) {
+			try {
+				parsedArgs = entry.inputSchema.parse(args);
+			} catch (error) {
+				throw new FeatureError(
+					`Invalid input for "${featureId}:${channel}": ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+					"VALIDATION",
+				);
+			}
 		}
-		return handler(args);
+		return (entry.handler as (args: unknown) => unknown | Promise<unknown>)(parsedArgs);
 	}
 
 	/**
-	 * Check if a feature has a handler for a channel.
+	 * Check if a feature has a local handler for a channel.
 	 */
 	has(featureId: string, channel: string): boolean {
 		return this.handlers.get(featureId)?.has(channel) ?? false;
@@ -59,6 +114,7 @@ export class FeatureRouter {
 
 	/**
 	 * Destroy a feature: run its disposables and remove all handlers.
+	 * Shell-owned — called on feature/plugin unload or app shutdown.
 	 */
 	destroyFeature(featureId: string): void {
 		const disposables = this.disposables.get(featureId);

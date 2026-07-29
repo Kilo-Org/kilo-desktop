@@ -21,7 +21,9 @@ export class EventBus {
 	emit(event: string, payload?: unknown): void {
 		const handlers = this.handlers.get(event);
 		if (!handlers) return;
-		for (const handler of handlers) {
+		// Snapshot so handlers subscribed during emit don't receive this event
+		// and unsubscriptions during emit don't affect iteration.
+		for (const handler of [...handlers]) {
 			try {
 				handler(payload);
 			} catch (error) {

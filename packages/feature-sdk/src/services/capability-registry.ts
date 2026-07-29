@@ -23,6 +23,14 @@ export class CapabilityRegistry {
 		return merged;
 	}
 
+	/** Remove a single named capability of a feature. */
+	remove(featureId: string, capabilityName: string): void {
+		const caps = this.capabilities.get(featureId);
+		if (!caps) return;
+		caps.delete(capabilityName);
+		if (caps.size === 0) this.capabilities.delete(featureId);
+	}
+
 	removeFeature(featureId: string): void {
 		this.capabilities.delete(featureId);
 	}

@@ -51,27 +51,33 @@ export * from "./features/<id>.js";
 
 ```typescript
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { listInput, createInput } from "@anaconda-agentic-desktop/contracts";
 import { MyService } from "./MyService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
 	const service = new MyService(/* deps */);
 
-	mainSdk.handle("list", (raw) => {
-		listInput.parse(raw);
-		return service.list();
-	});
+	// The input schema is validated at the routing boundary before the
+	// handler runs — handlers receive already-parsed args.
+	mainSdk.handle("list", listInput, () => service.list());
 
-	mainSdk.handle("create", (raw) => {
-		const input = createInput.parse(raw);
-		return service.create(input.name);
-	});
+	mainSdk.handle("create", createInput, (input) => service.create(input.name));
+
+	// Expected failures: throw FeatureError so the message survives IPC.
+	// mainSdk.handle("get", getInput, (input) => {
+	// 	const item = service.get(input.id);
+	// 	if (!item) throw new FeatureError("Item not found.", "NOT_FOUND");
+	// 	return item;
+	// });
 
 	mainSdk.onDispose(() => {
 		// Close DB connections, cleanup resources
 	});
 }
 ```
+
+If the feature must also run in standalone browser mode and `mainRegister` uses Node APIs (SQLite, fs), add a `browserRegister` with in-memory fakes and register it in `apps/web/src/features/features.ts`.
 
 **File:** `apps/desktop/src/main/features/<id>/MyService.ts` — business logic.
 
@@ -152,7 +158,8 @@ export const Route = createFileRoute("/features/<id>")({
 
 ```tsx
 import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
-// Use createFakeSdk({ featureId: "<id>", invoke: ... }) to mock sdk.invoke
+// Use createFakeSdk({ featureId: "<id>", handlers: { list: () => [...] } })
+// to serve sdk.invoke calls through the fake's real in-memory router.
 ```
 
 ### Step 7: Verify

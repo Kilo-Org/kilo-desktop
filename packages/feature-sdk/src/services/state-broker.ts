@@ -6,6 +6,17 @@ interface StoreEntry {
 	hydrated: boolean;
 }
 
+function notify(subscribers: Iterable<(value: unknown) => void>, value: unknown): void {
+	// Snapshot so subscriptions changed during notification don't affect iteration.
+	for (const fn of [...subscribers]) {
+		try {
+			fn(value);
+		} catch (error) {
+			console.warn("[StateBroker] Subscriber threw:", error);
+		}
+	}
+}
+
 /**
  * In-memory observable state broker.
  * Keys are namespaced: "featureId.storeName".
@@ -18,13 +29,17 @@ export class StateBroker {
 		const key = `${featureId}.${storeName}`;
 		const existing = this.stores.get(key);
 
-		if (existing && !existing.hydrated) {
-			// Hydrate placeholder created by a prior get()
+		if (existing) {
+			if (existing.hydrated) {
+				console.warn(
+					`[StateBroker] Store "${key}" registered twice — existing subscribers are preserved.`,
+				);
+			}
+			// Hydrate placeholder created by a prior get(), or re-hydrate on
+			// double register. Never drop existing subscribers.
 			existing.value = initialValue;
 			existing.hydrated = true;
-			for (const fn of existing.subscribers) {
-				fn(initialValue);
-			}
+			notify(existing.subscribers, initialValue);
 		} else {
 			this.stores.set(key, {
 				value: initialValue,
@@ -38,16 +53,14 @@ export class StateBroker {
 				const entry = this.stores.get(key);
 				if (!entry) return;
 				entry.value = value;
-				for (const fn of entry.subscribers) {
-					fn(value);
-				}
+				notify(entry.subscribers, value);
 			},
 		};
 	}
 
-	get<T = unknown>(namespacedKey: string): ReadableStore<T> {
+	get<T = unknown>(namespacedKey: string): ReadableStore<T | null> {
 		if (!this.stores.has(namespacedKey)) {
-			// Create unhydrated placeholder
+			// Create unhydrated placeholder (lazy resolution)
 			this.stores.set(namespacedKey, {
 				value: null,
 				subscribers: new Set(),
@@ -58,30 +71,36 @@ export class StateBroker {
 		const entry = this.stores.get(namespacedKey)!;
 
 		return {
-			subscribe: (fn: (value: T) => void) => {
+			subscribe: (fn: (value: T | null) => void) => {
 				const typedFn = fn as (value: unknown) => void;
 				entry.subscribers.add(typedFn);
-				typedFn(entry.value);
+				notify([typedFn], entry.value);
 				return () => {
 					entry.subscribers.delete(typedFn);
 				};
 			},
-			peek: () => entry.value as T,
+			peek: () => entry.value as T | null,
 		};
 	}
 
 	peek(namespacedKey: string): unknown {
-		return this.stores.get(namespacedKey)?.value ?? null;
+		const entry = this.stores.get(namespacedKey);
+		return entry ? entry.value : null;
+	}
+
+	/** Remove a single store, notifying subscribers with null before deletion. */
+	removeStore(namespacedKey: string): void {
+		const entry = this.stores.get(namespacedKey);
+		if (!entry) return;
+		notify(entry.subscribers, null);
+		this.stores.delete(namespacedKey);
 	}
 
 	removeByFeature(featureId: string): void {
 		const prefix = `${featureId}.`;
-		for (const [key, entry] of this.stores) {
+		for (const key of [...this.stores.keys()]) {
 			if (key.startsWith(prefix)) {
-				for (const fn of entry.subscribers) {
-					fn(null);
-				}
-				this.stores.delete(key);
+				this.removeStore(key);
 			}
 		}
 	}

@@ -39,11 +39,27 @@ export interface SDK {
 	navigate(intent: NavigateIntent): void;
 	dispatch(intent: DispatchIntent): void;
 
-	/** Register a cleanup function called when the feature is destroyed. */
+	/** Register a cleanup function called when this SDK instance is destroyed. */
 	onDispose(fn: () => void): void;
 
-	/** Destroy this SDK instance and run all dispose callbacks. */
+	/**
+	 * Destroy this SDK instance: unsubscribe its event handlers and remove the
+	 * stores, contributions, commands, and capabilities registered THROUGH it.
+	 * Does NOT tear down the feature's backend handlers — that is shell-owned
+	 * (see teardownFeature) and happens on feature/plugin unload, never on
+	 * component unmount.
+	 */
 	destroy(): void;
+}
+
+// ─── Schemas ─────────────────────────────────────────────────────────────────
+
+/**
+ * Minimal structural schema interface (satisfied by Zod schemas).
+ * parse() must throw on invalid input and return the parsed value.
+ */
+export interface SchemaLike<T = unknown> {
+	parse(input: unknown): T;
 }
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -70,7 +86,12 @@ export interface ReadableStore<T = unknown> {
 
 export interface SdkState {
 	register<T>(storeName: string, initialValue: T): StoreHandle<T>;
-	get<T = unknown>(namespacedKey: string): ReadableStore<T>;
+	/**
+	 * Look up a store by namespaced key ("featureId.storeName").
+	 * The value is T | null because the store may not be registered yet
+	 * (lazy resolution): subscribers receive null until it hydrates.
+	 */
+	get<T = unknown>(namespacedKey: string): ReadableStore<T | null>;
 	peek(namespacedKey: string): unknown;
 }
 
@@ -132,9 +153,10 @@ export interface SdkNotifications {
 }
 
 export interface SdkTheme {
+	/** Subscribe to theme changes. Fires synchronously with the current value. */
 	subscribe(fn: (theme: "dark" | "light") => void): () => void;
+	/** Read the current effective theme without subscribing. */
 	peek(): "dark" | "light";
-	getEffective(): "dark" | "light";
 }
 
 export interface SdkShell {
@@ -179,9 +201,18 @@ export interface DispatchIntent {
 
 export interface MainSdk {
 	readonly featureId: string;
-	/** Register a handler for a channel. Called by feature's mainRegister(). */
-	handle(channel: string, handler: (args: unknown) => unknown | Promise<unknown>): void;
-	/** Cleanup registration. */
+	/**
+	 * Register a handler for a channel. Called by the feature's mainRegister().
+	 * inputSchema validates args at the routing boundary before the handler
+	 * runs (throws FeatureError with code VALIDATION on failure). Pass null
+	 * only for channels that take no input.
+	 */
+	handle<T = unknown>(
+		channel: string,
+		inputSchema: SchemaLike<T> | null,
+		handler: (args: T) => unknown | Promise<unknown>,
+	): void;
+	/** Cleanup registration — runs when the shell tears the feature down. */
 	onDispose(fn: () => void): void;
 }
 
@@ -189,6 +220,16 @@ export interface MainSdk {
 
 export interface FeatureRegistration {
 	readonly id: string;
-	/** Main-process handler registration. Runs in Electron main OR in-browser. */
+	/**
+	 * Main-process handler registration. Runs in Electron main.
+	 * May use Node APIs (SQLite, fs, ...).
+	 */
 	mainRegister(mainSdk: MainSdk): void;
+	/**
+	 * Optional browser-mode registration. Standalone browser mode has no main
+	 * process; if the feature's mainRegister uses Node APIs it must provide a
+	 * browser-safe equivalent here (in-memory fakes). When omitted, browser
+	 * mode falls back to mainRegister — only valid for Node-free features.
+	 */
+	browserRegister?(mainSdk: MainSdk): void;
 }

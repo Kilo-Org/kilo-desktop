@@ -1,0 +1,103 @@
+# CONTEXT.md — Anaconda Agentic Desktop
+
+## What is this project?
+
+An Electron desktop app (React renderer) that will evolve into a plugin-based platform. Features are developed today against a shim SDK that mirrors the future plugin SDK. This allows features to migrate to plugins (and later to separate repos) via filesystem moves rather than rewrites.
+
+## Architecture
+
+```
+apps/
+├── desktop/   @anaconda-agentic-desktop/desktop   Electron main + preload
+└── web/       @anaconda-agentic-desktop/web       React 19 renderer (runs in Electron or standalone browser)
+
+packages/
+├── contracts/    @anaconda-agentic-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
+├── feature-sdk/  @anaconda-agentic-desktop/feature-sdk  Shim SDK — stable interface features program against
+└── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk)
+```
+
+## Key architectural decisions
+
+### Feature SDK (shim layer)
+
+Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`.
+
+- `sdk.invoke(channel, args)` — transport-agnostic call to the feature's backend handlers
+- `sdk.events` — namespaced pub/sub
+- `sdk.state` — observable stores
+- `sdk.plugins.expose/get` — cross-feature capabilities
+- `sdk.contribute` — register UI in shell zones
+- `sdk.commands` — command palette entries
+- `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi)
+
+In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
+In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed).
+
+### FEATURES array (mandatory registration)
+
+Every feature registers in `apps/desktop/src/main/features/registry/features.ts`. Adding a feature = adding an entry. Never hand-edit `Application.ts` for feature-specific code.
+
+### LocalApi scope
+
+`LocalApi` (`packages/contracts/src/local-api.ts`) is reserved for **shell-level services only**: theme, notifications, shell, filesystem. Features never add methods to `LocalApi`. Feature-scoped backend calls go through `sdk.invoke`.
+
+### Feature file structure
+
+Features live in three predictable locations inside apps:
+
+```
+apps/desktop/src/main/features/<id>/    # Node services, DB, handlers (mainRegister)
+apps/web/src/features/<id>/             # React components, hooks
+packages/contracts/src/features/<id>.ts # Zod schemas (moves to plugin on migration)
+```
+
+### Plugin migration path
+
+```
+Feature in apps → Plugin in plugins/ → Plugin in external repo
+```
+
+Each transition is a filesystem move. Source code stays the same because it programs against the SDK, not shell internals.
+
+## Terminology
+
+| Term               | Meaning                                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Feature**        | A product capability developed inside `apps/` that programs against the SDK. Will become a plugin later.                                       |
+| **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                           |
+| **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`. |
+| **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                       |
+| **MainSdk**        | The main-process counterpart of the SDK. Features register handlers via `mainSdk.handle(channel, handler)`.                                    |
+| **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                               |
+| **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                   |
+| **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                         |
+| **Contribution**   | A React component registered in a shell zone (dashboard widget, status bar item, etc.) via `sdk.contribute`.                                   |
+| **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                         |
+
+## Conventions
+
+- **TypeScript 7**, strict, `verbatimModuleSyntax: true`
+- **ESM** everywhere (`"type": "module"`)
+- **Zod 4** for schemas (workspace catalog `^4.4.3`)
+- **React 19** — function components + hooks only
+- **TanStack Router** (file-based, hash history) + **TanStack Query**
+- **shadcn/ui** (`base-nova` style, `lucide-react` icons, `@base-ui/react` primitives)
+- **@anaconda/shadcn-theme** for design tokens (CSS custom properties, Tailwind v4)
+- **Vitest** — `*.test.ts` (node), `*.browser.test.tsx` (Playwright/Chromium)
+- **oxlint + oxfmt** (not ESLint/Prettier)
+- **peerDependencies** for react, react-dom, zod in publishable packages
+- Tests use `createFakeSdk` from `@anaconda-agentic-desktop/testing`
+- Cross-feature communication only through SDK primitives (events, state, plugins.get)
+- All events namespaced by feature ID: `featureId.eventName`
+- Each feature owns its own SQLite file if it persists data
+
+## What NOT to do
+
+- Don't add feature methods to `LocalApi`
+- Don't import from other features' source
+- Don't import from `apps/*/src/lib/` or `apps/*/src/platform/` in feature code
+- Don't share DB tables across features
+- Don't use React Context for cross-feature communication
+- Don't emit un-namespaced events
+- Don't use ESLint/Prettier (use oxlint/oxfmt)

@@ -43,10 +43,9 @@ export function SdkConsumerView() {
 	const [capabilityResult, setCapabilityResult] = useState<string | null>(null);
 
 	function handleGetCapability() {
-		const cap = sdk.plugins.get("sdk-explorer");
+		const cap = sdk.plugins.get<{ explorerService: { getInfo: () => { name: string; version: string } } }>("sdk-explorer");
 		if (cap) {
-			const service = cap.explorerService as { getInfo: () => { name: string; version: string } };
-			const info = service.getInfo();
+			const info = cap.explorerService.getInfo();
 			setCapabilityResult(JSON.stringify(info));
 		} else {
 			setCapabilityResult("null — sdk-explorer has not exposed capabilities yet");
@@ -58,7 +57,8 @@ export function SdkConsumerView() {
 
 	function handlePeek() {
 		const value = sdk.state.peek("sdk-explorer.click-count");
-		setPeekedValue(JSON.stringify(value));
+		const exists = sdk.state.has("sdk-explorer.click-count");
+		setPeekedValue(`${JSON.stringify(value)} (has: ${exists})`);
 	}
 
 	return (

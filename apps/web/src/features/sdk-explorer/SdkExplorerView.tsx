@@ -155,35 +155,27 @@ export function SdkExplorerView() {
 	}
 
 	function handlePluginsGet() {
-		const cap = sdk.plugins.get("sdk-explorer");
+		const cap = sdk.plugins.get<{ explorerService: { getInfo: () => { name: string; version: string } } }>("sdk-explorer");
 		if (cap) {
-			const info = (cap.explorerService as { getInfo: () => unknown }).getInfo();
-			appendLog(`plugins.get("sdk-explorer") → ${JSON.stringify(info)}`);
+			const info = cap.explorerService.getInfo();
+			appendLog(`plugins.get<T>("sdk-explorer") → ${JSON.stringify(info)}`);
 		} else {
 			appendLog("plugins.get returned null (no capability found)");
 		}
 	}
 
 	function handleNotification() {
-		try {
-			sdk.notifications.show({
-				title: "SDK Explorer",
-				message: "This is a test notification from the SDK explorer feature.",
-				type: "success",
-			});
-			appendLog("notifications.show() called successfully");
-		} catch (e) {
-			appendLog(`notifications.show() threw (expected): ${(e as Error).message}`);
-		}
+		const result = sdk.notifications.show({
+			title: "SDK Explorer",
+			message: "This is a test notification from the SDK explorer feature.",
+			type: "success",
+		});
+		appendLog(`notifications.show() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`);
 	}
 
 	function handleBadge() {
-		try {
-			sdk.notifications.setBadge(notes.data?.length ?? 0);
-			appendLog("notifications.setBadge() called successfully");
-		} catch (e) {
-			appendLog(`notifications.setBadge() threw (expected): ${(e as Error).message}`);
-		}
+		const result = sdk.notifications.setBadge(notes.data?.length ?? 0);
+		appendLog(`notifications.setBadge() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`);
 	}
 
 	function handleCopyText() {

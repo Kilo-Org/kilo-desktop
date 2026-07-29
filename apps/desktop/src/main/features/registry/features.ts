@@ -1,5 +1,8 @@
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
+import { mainRegister as sdkConsumerMainRegister } from "../sdk-consumer/index.js";
+import { mainRegister as sdkExplorerMainRegister } from "../sdk-explorer/index.js";
+
 /**
  * Mandatory feature registration array.
  * Every feature that will become a plugin registers here.
@@ -10,7 +13,6 @@ import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk"
  * - mainRegister(mainSdk): registers handlers, opens DB, etc.
  */
 export const FEATURES: readonly FeatureRegistration[] = [
-	// Features are added here as they are created or migrated.
-	// Example:
-	// { id: "todos", mainRegister: todosMainRegister },
+	{ id: "sdk-explorer", mainRegister: sdkExplorerMainRegister },
+	{ id: "sdk-consumer", mainRegister: sdkConsumerMainRegister },
 ];

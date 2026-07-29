@@ -27,34 +27,11 @@ permissions:
 
 jobs:
   build:
-    if: >-
-      inputs.platform == 'all' ||
-      inputs.platform == matrix.target
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: mac
-            runner: macos-latest
-            artifact: mac-arm64
-            patterns: |
-              apps/desktop/out/make/**/*.dmg
-              apps/desktop/out/make/**/*.zip
-              apps/desktop/out/make/**/RELEASES.json
-          - target: windows
-            runner: windows-latest
-            artifact: windows-x64
-            patterns: |
-              apps/desktop/out/make/**/*.exe
-              apps/desktop/out/make/**/*.nupkg
-              apps/desktop/out/make/**/RELEASES
-          - target: linux
-            runner: ubuntu-latest
-            artifact: linux-x64
-            patterns: |
-              apps/desktop/out/make/**/*.deb
-              apps/desktop/out/make/**/*.rpm
-    runs-on: ${{ matrix.runner }}
+        target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","linux"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
     timeout-minutes: 90
     environment: canary
     permissions:
@@ -107,7 +84,15 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.patterns }}
+          name: ${{ matrix.target == 'mac' && 'mac-arm64' || format('{0}-x64', matrix.target) }}
+          path: |
+            apps/desktop/out/make/**/*.dmg
+            apps/desktop/out/make/**/*.zip
+            apps/desktop/out/make/**/RELEASES.json
+            apps/desktop/out/make/**/*.exe
+            apps/desktop/out/make/**/*.nupkg
+            apps/desktop/out/make/**/RELEASES
+            apps/desktop/out/make/**/*.deb
+            apps/desktop/out/make/**/*.rpm
           if-no-files-found: error
           retention-days: 7

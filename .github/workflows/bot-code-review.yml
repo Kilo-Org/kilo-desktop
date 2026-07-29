@@ -6,7 +6,7 @@
 #   @kilo                          → review with default model (claude-sonnet-4-6)
 #   @kilo model:opus               → review with Claude Opus 4
 #   @kilo model:sonnet             → review with Claude Sonnet 4 (explicit default)
-name: '[Bot] Code Review'
+name: "[Bot] Code Review"
 
 on:
   issue_comment:

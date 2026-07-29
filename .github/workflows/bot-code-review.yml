@@ -1,6 +1,11 @@
 # Delegates @kilo PR reviews to the org reusable workflow (internal-actions).
 # Unlike the default setup, this only triggers on explicit @kilo mentions —
 # it does NOT auto-review on PR open/reopen.
+#
+# Usage:
+#   @kilo                          → review with default model (claude-sonnet-4-6)
+#   @kilo model:opus               → review with Claude Opus 4
+#   @kilo model:sonnet             → review with Claude Sonnet 4 (explicit default)
 name: '[Bot] Code Review'
 
 on:
@@ -12,18 +17,60 @@ on:
     types: [submitted]
 
 jobs:
+  parse-comment:
+    name: Parse Comment
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@kilo')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@kilo')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@kilo'))
+    outputs:
+      model: ${{ steps.extract.outputs.model }}
+    steps:
+      - name: Extract model from comment
+        id: extract
+        env:
+          COMMENT_BODY: >-
+            ${{ github.event_name == 'pull_request_review'
+                && github.event.review.body
+                || github.event.comment.body }}
+        run: |
+          # Default model
+          DEFAULT_MODEL="us.anthropic.claude-sonnet-4-6"
+
+          # Map of short aliases to Bedrock model IDs
+          declare -A MODEL_MAP
+          MODEL_MAP[opus]="us.anthropic.claude-opus-4-6"
+          MODEL_MAP[sonnet]="us.anthropic.claude-sonnet-4-6"
+          MODEL_MAP[haiku]="us.anthropic.claude-haiku-4-5"
+
+          # Extract model:VALUE from the comment body
+          if [[ "$COMMENT_BODY" =~ model:([a-zA-Z0-9._-]+) ]]; then
+            ALIAS="${BASH_REMATCH[1]}"
+            if [[ -n "${MODEL_MAP[$ALIAS]}" ]]; then
+              echo "model=${MODEL_MAP[$ALIAS]}" >> "$GITHUB_OUTPUT"
+              echo "Resolved model alias '$ALIAS' → ${MODEL_MAP[$ALIAS]}"
+            else
+              # Treat as a full model ID if not in alias map
+              echo "model=${ALIAS}" >> "$GITHUB_OUTPUT"
+              echo "Using model ID directly: $ALIAS"
+            fi
+          else
+            echo "model=${DEFAULT_MODEL}" >> "$GITHUB_OUTPUT"
+            echo "No model specified, using default: $DEFAULT_MODEL"
+          fi
+
   kilo-code-review:
     name: Kilo Code Review
+    needs: parse-comment
     permissions:
       contents: read
       pull-requests: write
       id-token: write
       actions: read
-    if: |
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@kilo')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@kilo')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@kilo'))
     # MUST stay @main. The OIDC token's job_workflow_ref claim reflects this ref; the Bedrock role
     # trust policy pins StringEquals ...bot-code-review.yml@refs/heads/main. A SHA pin makes the claim
     # end in @<sha> and fails sts:AssumeRoleWithWebIdentity.
     uses: anaconda/internal-actions/.github/workflows/bot-code-review.yml@main
+    with:
+      model: ${{ needs.parse-comment.outputs.model }}

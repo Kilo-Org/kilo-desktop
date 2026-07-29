@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { FeatureError } from "../errors.js";
@@ -15,7 +15,10 @@ const noop = () => {};
 
 function makeServices(featureRouter = new FeatureRouter()) {
 	const shellDelegates: ShellDelegates = {
-		notifications: { show: noop, setBadge: noop },
+		notifications: {
+			show: () => ({ delivered: true }),
+			setBadge: () => ({ delivered: true }),
+		},
 		theme: {
 			subscribe: (fn) => {
 				fn("light");
@@ -172,6 +175,41 @@ describe("createSdk", () => {
 		// destroy after manual unsub must not throw (disposable already removed)
 		expect(() => sdk.destroy()).not.toThrow();
 	});
+
+	it("warns when subscribing to an un-namespaced event", () => {
+		const services = makeServices();
+		const sdk = createSdk("todos", services);
+		const warn = vi.spyOn(console, "warn").mockImplementation(noop);
+		try {
+			sdk.events.on("created", noop);
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining('Did you mean "todos.created"?'));
+			warn.mockClear();
+			sdk.events.on("todos.created", noop);
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("contribute returns an unregister handle that also drops the disposable", () => {
+		const services = makeServices();
+		const sdk = createSdk("todos", services);
+		const remove = sdk.contribute("statusbar", { component: null, label: "Todos" });
+		expect(services.contributionRegistry.getForZone("statusbar")).toHaveLength(1);
+		remove();
+		expect(services.contributionRegistry.getForZone("statusbar")).toEqual([]);
+		expect(() => sdk.destroy()).not.toThrow();
+	});
+
+	it("sdk.state.has distinguishes registered stores from placeholders", () => {
+		const services = makeServices();
+		const sdk = createSdk("todos", services);
+		expect(sdk.state.has("todos.items")).toBe(false);
+		sdk.state.get("todos.items"); // creates a placeholder
+		expect(sdk.state.has("todos.items")).toBe(false);
+		sdk.state.register("items", []);
+		expect(sdk.state.has("todos.items")).toBe(true);
+	});
 });
 
 describe("EventBus", () => {
@@ -265,6 +303,16 @@ describe("StateBroker", () => {
 		broker.removeStore("todos.items");
 		expect(latest).toBeNull();
 		expect(broker.peek("todos.items")).toBeNull();
+	});
+
+	it("unresolvedKeys reports placeholders that never hydrated", () => {
+		const broker = new StateBroker();
+		broker.register("todos", "items", []);
+		broker.get("todos.items");
+		broker.get("todos.typo-key");
+		expect(broker.unresolvedKeys()).toEqual(["todos.typo-key"]);
+		expect(broker.has("todos.items")).toBe(true);
+		expect(broker.has("todos.typo-key")).toBe(false);
 	});
 });
 

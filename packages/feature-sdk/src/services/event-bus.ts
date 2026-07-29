@@ -1,7 +1,16 @@
 /**
- * In-memory namespaced event bus.
- * Events are prefixed with featureId at the emitter side.
- * Subscribers listen to fully-qualified event names (e.g., "todos.deleted").
+ * In-memory namespaced event bus backing `sdk.events`.
+ *
+ * Shell infrastructure — features never construct this; they use
+ * `sdk.events.emit/on/off`, which delegate here with featureId prefixing.
+ *
+ * Guarantees:
+ * - Events are namespaced "featureId.eventName"; emit() is prefixed at the
+ *   SDK layer, subscribers use fully-qualified names.
+ * - Throwing handlers are isolated: logged, siblings still run.
+ * - Emission iterates a snapshot: handlers subscribed during emit do not
+ *   receive the in-flight event.
+ * - Fire-and-forget: no replay, no ordering guarantees across events.
  */
 export class EventBus {
 	private handlers = new Map<string, Set<(payload: unknown) => void>>();

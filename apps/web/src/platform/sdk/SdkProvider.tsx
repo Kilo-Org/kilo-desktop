@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 
 import {
 	CapabilityRegistry,
@@ -119,15 +119,20 @@ function createInvokeAdapter(
 // ─── Boot features (renderer-side) ─────────────────────────────────────────
 
 let servicesInstance: SdkFactoryServices | null = null;
+let initialized = false;
 
 /**
  * Initialize the feature system. Must be called once at app startup.
+ * Idempotent: subsequent calls are no-ops (safe for HMR / StrictMode).
  * Boots all feature mainRegister() in browser mode (in Electron, main does this).
  */
 export function initializeFeatureSystem(
 	api: LocalApi,
 	features: readonly FeatureRegistration[],
 ): void {
+	if (initialized) return;
+	initialized = true;
+
 	const shellDelegates = createShellDelegates(api);
 	const invokeAdapter = createInvokeAdapter(api);
 
@@ -181,6 +186,7 @@ export function SdkProvider({ children }: { children: ReactNode }) {
 /**
  * Get a scoped SDK instance for a feature.
  * Call sites: `const sdk = useSdk("todos")` — stable across all migration stages.
+ * Cleans up (calls sdk.destroy()) on unmount or featureId change.
  */
 export function useSdk(featureId: string): SDK {
 	const services = useContext(SdkContext);
@@ -189,7 +195,22 @@ export function useSdk(featureId: string): SDK {
 			"useSdk must be used within <SdkProvider>. Call initializeFeatureSystem() at app boot.",
 		);
 	}
-	// Memoize by featureId so the same SDK instance is reused across renders
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	return useMemo(() => createSdk(featureId, services), [featureId, services]);
+
+	const sdkRef = useRef<SDK | null>(null);
+
+	// Create or replace the SDK instance when featureId changes
+	if (!sdkRef.current || sdkRef.current.featureId !== featureId) {
+		sdkRef.current?.destroy();
+		sdkRef.current = createSdk(featureId, services);
+	}
+
+	// Destroy on unmount
+	useEffect(() => {
+		return () => {
+			sdkRef.current?.destroy();
+			sdkRef.current = null;
+		};
+	}, []);
+
+	return sdkRef.current;
 }

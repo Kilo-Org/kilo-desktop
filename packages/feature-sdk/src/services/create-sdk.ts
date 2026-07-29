@@ -90,11 +90,15 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 
 	// ─── Plugins (capabilities) ────────────────────────────────────────────────
 
+	let capabilityCleanupRegistered = false;
 	const plugins: SdkPlugins = {
 		expose(capabilityName: string, implementation: Record<string, unknown>) {
 			assertAlive();
 			services.capabilityRegistry.expose(featureId, capabilityName, implementation);
-			disposables.push(() => services.capabilityRegistry.removeFeature(featureId));
+			if (!capabilityCleanupRegistered) {
+				capabilityCleanupRegistered = true;
+				disposables.push(() => services.capabilityRegistry.removeFeature(featureId));
+			}
 		},
 		get(targetFeatureId: string) {
 			assertAlive();

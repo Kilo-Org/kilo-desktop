@@ -1,6 +1,14 @@
 /**
- * In-memory capability registry.
- * Features expose named capabilities; other features look them up by featureId.
+ * In-memory capability registry backing `sdk.plugins`.
+ *
+ * Shell infrastructure — features never construct this; they use
+ * `sdk.plugins.expose/get`, which delegate here.
+ *
+ * Capabilities are named API objects a feature exposes for others to call —
+ * the request/response counterpart to events and the only sanctioned
+ * cross-feature call path. get() merges all of a feature's capabilities
+ * into one object, or returns null when the feature exposed nothing
+ * (consumers must handle null: the feature may not be loaded).
  */
 export class CapabilityRegistry {
 	private capabilities = new Map<string, Map<string, Record<string, unknown>>>();

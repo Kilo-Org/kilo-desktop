@@ -18,9 +18,20 @@ function notify(subscribers: Iterable<(value: unknown) => void>, value: unknown)
 }
 
 /**
- * In-memory observable state broker.
- * Keys are namespaced: "featureId.storeName".
- * Follows the observable contract: subscribe fires immediately with current value.
+ * In-memory observable state broker backing `sdk.state`.
+ *
+ * Shell infrastructure — features never construct this; they use
+ * `sdk.state.register/get/peek`, which delegate here.
+ *
+ * Guarantees:
+ * - Keys are namespaced "featureId.storeName".
+ * - Observable contract: subscribe() fires synchronously with the current
+ *   value (useSyncExternalStore-compatible).
+ * - Lazy resolution: get() on an unregistered key returns a placeholder
+ *   emitting null; when the owner registers it, subscribers are notified
+ *   with the initial value (hydration).
+ * - Re-registering a hydrated store warns but preserves subscribers.
+ * - Throwing subscribers are isolated: logged, siblings still notified.
  */
 export class StateBroker {
 	private stores = new Map<string, StoreEntry>();
@@ -86,6 +97,24 @@ export class StateBroker {
 	peek(namespacedKey: string): unknown {
 		const entry = this.stores.get(namespacedKey);
 		return entry ? entry.value : null;
+	}
+
+	/** Whether a store has been registered by its owner (hydrated). */
+	has(namespacedKey: string): boolean {
+		return this.stores.get(namespacedKey)?.hydrated ?? false;
+	}
+
+	/**
+	 * Diagnostic: keys that were get()'d but never register()'d (unhydrated
+	 * placeholders). Persistent entries here usually mean a typo in the key
+	 * or a feature that never loaded. Intended for devtools/dev-mode logging.
+	 */
+	unresolvedKeys(): string[] {
+		const keys: string[] = [];
+		for (const [key, entry] of this.stores) {
+			if (!entry.hydrated) keys.push(key);
+		}
+		return keys;
 	}
 
 	/** Remove a single store, notifying subscribers with null before deletion. */

@@ -32,7 +32,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi)
 
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
-In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Features whose `mainRegister` uses Node APIs (SQLite, fs) must provide a browser-safe `browserRegister` to run in this mode.
+In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Only `browserRegister` boots in this mode — features without one are skipped with a warning. Node-free features opt in with `browserRegister: register`; features using Node APIs (SQLite, fs) must provide browser-safe fakes.
 
 **Handlers and validation:** `mainSdk.handle(channel, inputSchema, handler)` — the input schema (a Zod schema) is required and validates args at the routing boundary before the handler runs. Pass `null` only for channels that take no input.
 

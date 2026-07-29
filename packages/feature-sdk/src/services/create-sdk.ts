@@ -41,6 +41,10 @@ export interface SdkFactoryServices {
 /**
  * Create a scoped SDK instance for a feature.
  *
+ * Shell infrastructure — feature code never calls this; it receives SDK
+ * instances via useSdk(featureId) in the renderer, where the shell caches
+ * one instance per feature.
+ *
  * Everything registered THROUGH the instance (event subscriptions, stores,
  * capabilities, contributions, commands, onDispose callbacks) is tracked and
  * cleaned up by destroy(). destroy() deliberately does NOT touch the feature's
@@ -66,6 +70,12 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 		on(event: string, handler: (payload: unknown) => void) {
 			assertAlive();
+			if (!event.includes(".")) {
+				console.warn(
+					`[SDK] events.on("${event}") has no feature namespace — events are always ` +
+						`"featureId.eventName". Did you mean "${featureId}.${event}"?`,
+				);
+			}
 			const unsub = services.eventBus.on(event, handler);
 			// Wrap so manual unsubscription also drops the disposable
 			// (prevents unbounded growth on subscribe/unsubscribe churn).
@@ -99,6 +109,10 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 			assertAlive();
 			return services.stateBroker.peek(namespacedKey);
 		},
+		has(namespacedKey: string) {
+			assertAlive();
+			return services.stateBroker.has(namespacedKey);
+		},
 	};
 
 	// ─── Plugins (capabilities) ────────────────────────────────────────────────
@@ -113,9 +127,10 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 				disposables.add(() => services.capabilityRegistry.remove(featureId, capabilityName));
 			}
 		},
-		get(targetFeatureId: string) {
+		get<T extends Record<string, unknown> = Record<string, unknown>>(targetFeatureId: string) {
 			assertAlive();
-			return services.capabilityRegistry.get(targetFeatureId);
+			// Asserted, not validated — the registry stores untyped objects.
+			return services.capabilityRegistry.get(targetFeatureId) as T | null;
 		},
 	};
 
@@ -167,7 +182,13 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		contribute(zone: string, options: ContributionOptions) {
 			assertAlive();
 			const unregister = services.contributionRegistry.register(featureId, zone, options);
-			disposables.add(unregister);
+			// Wrap so a manual unregister also drops the disposable.
+			const dispose = () => {
+				disposables.delete(dispose);
+				unregister();
+			};
+			disposables.add(dispose);
+			return dispose;
 		},
 
 		notifications: services.shellDelegates.notifications,

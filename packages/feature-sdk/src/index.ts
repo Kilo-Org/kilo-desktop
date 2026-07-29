@@ -8,6 +8,7 @@ export type {
 	SdkPlugins,
 	SdkCommands,
 	SdkNotifications,
+	NotificationResult,
 	SdkTheme,
 	SdkShell,
 	SdkFs,

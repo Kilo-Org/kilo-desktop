@@ -27,11 +27,15 @@ function fakeLocalApi(): LocalApi {
 	};
 }
 
+function demoRegister(mainSdk: Parameters<FeatureRegistration["mainRegister"]>[0]) {
+	mainSdk.handle("greet", null, (args) => `Hello, ${(args as { name: string }).name}!`);
+}
+
 const demoFeature: FeatureRegistration = {
 	id: "demo",
-	mainRegister(mainSdk) {
-		mainSdk.handle("greet", null, (args) => `Hello, ${(args as { name: string }).name}!`);
-	},
+	mainRegister: demoRegister,
+	// Node-free feature: same registration in browser mode
+	browserRegister: demoRegister,
 };
 
 function makeSystem(): FeatureSystem {
@@ -101,5 +105,29 @@ describe("SdkProvider + useSdk", () => {
 	it("returns the same shared SDK instance for the same feature", () => {
 		const system = makeSystem();
 		expect(system.getSdk("demo")).toBe(system.getSdk("demo"));
+	});
+
+	it("skips features without browserRegister in browser mode (no mainRegister fallback)", async () => {
+		const nodeOnlyFeature: FeatureRegistration = {
+			id: "node-only",
+			mainRegister(mainSdk) {
+				mainSdk.handle("list", null, () => {
+					throw new Error("must never boot in the browser");
+				});
+			},
+		};
+		const system = createFeatureSystem(fakeLocalApi(), [nodeOnlyFeature]);
+		await expect(system.getSdk("node-only").invoke("list")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "NOT_FOUND",
+		});
+	});
+
+	it("reports undelivered notifications instead of throwing", () => {
+		const system = makeSystem();
+		const sdk = system.getSdk("demo");
+		const result = sdk.notifications.show({ type: "info", title: "Hi", message: "There" });
+		expect(result.delivered).toBe(false);
+		expect(result.reason).toMatch(/not yet wired/);
 	});
 });

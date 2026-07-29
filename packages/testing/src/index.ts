@@ -76,8 +76,10 @@ export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
  */
 export function createFakeSdk(options: FakeSdkOptions): FakeSdk {
 	const shellDelegates: ShellDelegates = {
+		// The fake reports successful delivery so feature code that checks the
+		// envelope takes its happy path in tests. Override to simulate absence.
 		notifications: merge<SDK["notifications"]>(
-			{ show: noop, setBadge: noop },
+			{ show: () => ({ delivered: true }), setBadge: () => ({ delivered: true }) },
 			options.notifications,
 		),
 		theme: merge<SDK["theme"]>(

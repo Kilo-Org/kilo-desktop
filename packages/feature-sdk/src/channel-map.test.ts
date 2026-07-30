@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
 
-import { defineMethod, withChannels } from "./channel-map.js";
+import { defineMethod } from "./channel-map.js";
 import { FeatureError } from "./errors.js";
 import { createSdk } from "./services/create-sdk.js";
 import type { ShellDelegates } from "./services/create-sdk.js";
@@ -32,6 +32,12 @@ const transformedChannels = {
 		z.string().transform((value) => value.length),
 	),
 } as const;
+
+type TodoService = {
+	list(): Promise<Todo[]>;
+	add(args: { title: string }): Promise<Todo>;
+	toggle(args: { id: string }): Promise<Todo>;
+};
 
 const noop = () => {};
 
@@ -70,8 +76,8 @@ function makeServices(featureRouter = new FeatureRouter()) {
 	};
 }
 
-describe("defineMethod + withChannels", () => {
-	it("types and parses invoke against the channel map", async () => {
+describe("defineMethod + sdk.client", () => {
+	it("invokes handlers through sdk.client", async () => {
 		const services = makeServices();
 		const mainSdk = services.featureRouter.createMainSdk("todos");
 		const items: Todo[] = [{ id: "1", title: "Milk", completed: false }];
@@ -84,26 +90,19 @@ describe("defineMethod + withChannels", () => {
 			completed: false,
 		}));
 
-		const sdk = withChannels(createSdk("todos", services), todosChannels);
+		const sdk = createSdk("todos", services);
+		const client = sdk.client as unknown as TodoService;
 
-		const listed = await sdk.invoke("list");
+		const listed = await client.list();
 		expect(listed).toEqual(items);
 		expectTypeOf(listed).toEqualTypeOf<Todo[]>();
 
-		const created = await sdk.invoke("add", { title: "Eggs" });
+		const created = await client.add({ title: "Eggs" });
 		expect(created).toEqual({ id: "2", title: "Eggs", completed: false });
 		expectTypeOf(created).toEqualTypeOf<Todo>();
 
-		if (import.meta.url === "") {
-			// @ts-expect-error unknown channel
-			void sdk.invoke("missing");
-			// @ts-expect-error add requires input
-			void sdk.invoke("add");
-			// @ts-expect-error title must be a string
-			void sdk.invoke("add", { title: 42 });
-			// @ts-expect-error handler output must match the channel contract
-			mainSdk.channels(todosChannels).handle("add", () => 42);
-		}
+		// sdk.invoke still works untyped
+		await expect(sdk.invoke("list")).resolves.toEqual(items);
 	});
 
 	it("distinguishes raw wire values from parsed handler values", async () => {
@@ -115,15 +114,12 @@ describe("defineMethod + withChannels", () => {
 			return String(value * 2);
 		});
 
-		const sdk = withChannels(createSdk("transformed", services), transformedChannels);
+		const sdk = createSdk("transformed", services);
 		const length = await sdk.invoke("length", "21");
 
 		expect(length).toBe(2);
-		expectTypeOf(length).toEqualTypeOf<number>();
 
 		if (import.meta.url === "") {
-			// @ts-expect-error invoke accepts the schema's raw input, not its parsed output
-			void sdk.invoke("length", 21);
 			// @ts-expect-error handler returns the output schema's raw input
 			mainSdk.channels(transformedChannels).handle("length", () => 42);
 		}
@@ -143,8 +139,9 @@ describe("defineMethod + withChannels", () => {
 		expect(services.featureRouter.has("todos", "add")).toBe(true);
 		expect(services.featureRouter.has("todos", "toggle")).toBe(true);
 
-		const sdk = withChannels(createSdk("todos", services), todosChannels);
-		await expect(sdk.invoke("toggle", { id: "7" })).resolves.toEqual({
+		const sdk = createSdk("todos", services);
+		const client = sdk.client as unknown as TodoService;
+		await expect(client.toggle({ id: "7" })).resolves.toEqual({
 			id: "7",
 			title: "Milk",
 			completed: true,

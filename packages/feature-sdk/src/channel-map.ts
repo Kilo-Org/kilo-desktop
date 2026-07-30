@@ -1,5 +1,4 @@
 import type { SchemaLike } from "./types/schema.js";
-import type { SDK } from "./types/sdk.js";
 
 /**
  * Input + output schemas for one feature channel (used by sdk.invoke / mainSdk.channels).
@@ -62,43 +61,18 @@ export type ChannelHandlerMap<C extends ChannelMap> = {
 };
 
 /**
- * Define a channel's input/output schemas. Prefer grouping these in a `as const`
- * channel map owned by the feature/plugin.
+ * Define a channel's input/output schemas. Prefer grouping these via
+ * `defineContract` in the contracts package.
  *
  * @example
- * export const todosChannels = {
- *   list: defineMethod(z.undefined(), z.array(todoSchema)),
- *   add: defineMethod(z.object({ title: z.string() }), todoSchema),
- * } as const;
+ * export const todosContract = defineContract({
+ *   list: { input: z.undefined(), output: z.array(todoSchema) },
+ *   add: { input: z.object({ title: z.string() }), output: todoSchema },
+ * });
  */
 export function defineMethod<TInputSchema extends SchemaLike, TOutputSchema extends SchemaLike>(
 	input: TInputSchema,
 	output: TOutputSchema,
 ): MethodContract<TInputSchema, TOutputSchema> {
 	return { input, output };
-}
-
-/**
- * SDK with invoke typed against a channel map. Channel names, args, and return
- * types are inferred. The feature router parses inputs and outputs once at the
- * handler boundary.
- */
-export interface TypedSDK<C extends ChannelMap> extends Omit<SDK, "invoke"> {
-	invoke<K extends keyof C & string>(
-		channel: K,
-		...args: InvokeArguments<ChannelInput<C[K]>>
-	): Promise<ChannelOutput<C[K]>>;
-}
-
-/**
- * Brand an SDK so invoke is typed against a channel map. Parsing happens in the
- * feature router; this is a compile-time view only.
- *
- * @example
- * const sdk = withChannels(useSdk("todos"), todosChannels);
- * const todos = await sdk.invoke("list");
- * const todo = await sdk.invoke("add", { title: "Milk" });
- */
-export function withChannels<C extends ChannelMap>(sdk: SDK, _channels: C): TypedSDK<C> {
-	return sdk as TypedSDK<C>;
 }

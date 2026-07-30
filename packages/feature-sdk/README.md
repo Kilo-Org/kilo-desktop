@@ -19,12 +19,8 @@ packages/contracts/src/features/<id>.ts # Zod schemas shared by both
 
 ```ts
 // packages/contracts/src/features/todos.ts
-// Shell channels use defineMethod from contracts (prefixed keys). Feature-SDK
-// channel maps reuse those method contracts unprefixed. On plugin migration,
-// move the channel map into the plugin and build it with defineMethod from
-// feature-sdk.
 import { z } from "zod";
-import { defineMethod } from "../contract.js";
+import { defineContract, defineMethod, type InferContract } from "../contract.js";
 
 export const todoSchema = z.object({
 	id: z.string(),
@@ -32,31 +28,27 @@ export const todoSchema = z.object({
 	completed: z.boolean(),
 });
 
-export const todoMethods = {
-	"todos:list": defineMethod(z.undefined(), z.array(todoSchema)),
-	"todos:add": defineMethod(z.object({ title: z.string().trim().min(1).max(120) }), todoSchema),
-	"todos:toggle": defineMethod(z.object({ id: z.string().min(1) }), todoSchema),
-} as const;
+export const todosContract = defineContract({
+	list: { input: z.undefined(), output: z.array(todoSchema) },
+	add: { input: z.object({ title: z.string().trim().min(1).max(120) }), output: todoSchema },
+	toggle: { input: z.object({ id: z.string().min(1) }), output: todoSchema },
+});
 
-export const todosChannels = {
-	list: todoMethods["todos:list"],
-	add: todoMethods["todos:add"],
-	toggle: todoMethods["todos:toggle"],
-} as const;
+export type TodoService = InferContract<typeof todosContract>;
 ```
 
 ```ts
 // apps/desktop/src/main/features/todos/index.ts
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { todosChannels } from "@anaconda-agentic-desktop/contracts";
+import { todosContract } from "@anaconda-agentic-desktop/contracts";
 import { TodoService } from "./TodoService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
 	const service = new TodoService();
 
-	// Input + output validated at the routing boundary from the channel map.
+	// Input + output validated at the routing boundary from the contract.
 	// handleAll is exhaustive: forgetting a channel is a compile error.
-	mainSdk.channels(todosChannels).handleAll({
+	mainSdk.channels(todosContract).handleAll({
 		list: () => service.list(),
 		add: (input) => service.add(input.title),
 		toggle: (input) => service.toggle(input.id),
@@ -66,20 +58,19 @@ export function mainRegister(mainSdk: MainSdk) {
 }
 ```
 
-**Frontend** — wrap `useSdk` with `withChannels` so invoke is typed:
+**Frontend** — use `useSdk<ServiceType>` for a typed proxy client:
 
 ```tsx
 // apps/web/src/features/todos/TodoList.tsx
 import { useQuery } from "@tanstack/react-query";
-import { withChannels } from "@anaconda-agentic-desktop/feature-sdk";
-import { todosChannels } from "@anaconda-agentic-desktop/contracts";
+import type { TodoService } from "@anaconda-agentic-desktop/contracts";
 import { useSdk } from "@/platform/sdk";
 
 export function TodoList() {
-	const sdk = withChannels(useSdk("todos"), todosChannels);
+	const { client } = useSdk<TodoService>("todos");
 	const todos = useQuery({
 		queryKey: ["todos", "list"],
-		queryFn: () => sdk.invoke("list"), // Promise<Todo[]>
+		queryFn: () => client.list(), // Promise<Todo[]>
 	});
 	// ...render
 }
@@ -93,11 +84,11 @@ export function TodoList() {
 
 Transport-agnostic request/response to a handler this feature registered in `mainRegister`. In Electron it crosses IPC through the generic `feature:invoke` channel; in standalone browser mode it calls the handler in-process. Same code either way.
 
-The base `SDK.invoke` is untyped (shell transport). Features should define a **channel map** with `defineMethod` and brand the instance with `withChannels` (compile-time types only — the router parses at the handler boundary):
+The base `SDK.invoke` is untyped (shell transport). Features define a **contract** with `defineContract` in the contracts package and use `useSdk<ServiceType>` for type-safe method-style access via `sdk.client`:
 
 ```ts
-const sdk = withChannels(useSdk("todos"), todosChannels);
-const todo = await sdk.invoke("add", { title: "Buy milk" }); // typed; parsed by the router
+const { client } = useSdk<TodoService>("todos");
+const todo = await client.add({ title: "Buy milk" }); // typed; parsed by the router
 ```
 
 Schemas may transform values. The typed SDK accepts the input schema's raw
@@ -108,7 +99,7 @@ feature router, in both Electron and browser mode.
 **Use when:** the renderer needs data or side effects from this feature's own backend (DB reads/writes, Node-only work).
 **Don't use for:** calling _another_ feature's backend — that's what capabilities (`sdk.plugins`) are for. `sdk.invoke` is scoped to your own `featureId` by construction.
 
-Register handlers with the same map so input and output are validated on the main side too. Prefer `mainSdk.channels(todosChannels).handleAll({ ... })` — it requires a handler for every channel in the map, so a newly added channel cannot be forgotten. `handle(channel, handler)` remains for registering channels one at a time.
+Register handlers with the same contract so input and output are validated on the main side too. Prefer `mainSdk.channels(todosContract).handleAll({ ... })` — it requires a handler for every channel in the map, so a newly added channel cannot be forgotten. `handle(channel, handler)` remains for registering channels one at a time.
 
 ### `sdk.events` — fire-and-forget pub/sub
 
@@ -267,7 +258,7 @@ import { createFakeSdk, createFakeMainSdk } from "@anaconda-agentic-desktop/test
 // Renderer tests: real in-memory event bus / state / router, fake shell delegates
 const sdk = createFakeSdk({
 	featureId: "todos",
-	channels: todosChannels,
+	channels: todosContract,
 	handlers: { list: () => [{ id: "1", title: "test", completed: false }] },
 });
 await sdk.invoke("list"); // served by the fake's real router

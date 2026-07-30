@@ -23,7 +23,8 @@ packages/
 
 Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`.
 
-- `sdk.invoke(channel, args)` — transport-agnostic call to the feature's backend handlers; features use `withChannels(sdk, channelMap)` for typed args/returns
+- `sdk.invoke(channel, args)` — transport-agnostic call to the feature's backend handlers
+- `sdk.client` — proxy that maps method calls to `invoke`; typed via `useSdk<ServiceType>(featureId)`
 - `sdk.events` — namespaced pub/sub
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` — cross-feature capabilities

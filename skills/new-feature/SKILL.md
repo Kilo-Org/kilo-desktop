@@ -130,16 +130,15 @@ export function createMutationOptions(sdk: MySdk, qc: QueryClient) {
 
 ```tsx
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { withChannels } from "@anaconda-agentic-desktop/feature-sdk";
-import { myFeatureChannels } from "@anaconda-agentic-desktop/contracts";
+import type { MyFeatureService } from "@anaconda-agentic-desktop/contracts";
 import { useSdk } from "@/platform/sdk";
 import { listQueryOptions, createMutationOptions } from "./use<Name>";
 
 export function <Name>View() {
-  const sdk = withChannels(useSdk("<id>"), myFeatureChannels);
+  const { client } = useSdk<MyFeatureService>("<id>");
   const qc = useQueryClient();
-  const items = useQuery(listQueryOptions(sdk));
-  const create = useMutation(createMutationOptions(sdk, qc));
+  const items = useQuery(listQueryOptions(client));
+  const create = useMutation(createMutationOptions(client, qc));
   // ...render
 }
 ```
@@ -199,8 +198,8 @@ pnpm lint     # No warnings
 
 ## Rules
 
-- Import from `@anaconda-agentic-desktop/feature-sdk` for SDK types, `withChannels`, and `defineMethod` (after plugin migration); use `useSdk` + `withChannels` in the renderer
-- Import from `@anaconda-agentic-desktop/contracts` for Zod schemas
+- Import from `@anaconda-agentic-desktop/feature-sdk` for SDK types and `defineMethod`; use `useSdk<ServiceType>` in the renderer
+- Import from `@anaconda-agentic-desktop/contracts` for Zod schemas, `defineContract`, and `InferContract`
 - Import from `@anaconda-agentic-desktop/testing` for test fakes
 - Never add methods to `LocalApi`
 - Never import from another feature

@@ -8,14 +8,20 @@ import type {
 export type { SchemaLike } from "./schema.js";
 
 /**
+ * Base type for the proxy client. Features narrow this via
+ * `useSdk<MyService>()` where `MyService extends SdkClient`.
+ */
+export type SdkClient = Record<string, (...args: never[]) => Promise<unknown>>;
+
+/**
  * The SDK interface that features (future plugins) program against.
  * Transport-agnostic: sdk.invoke routes to either Electron main or an in-process handler.
  *
- * Obtain an instance in React code via `useSdk(featureId)` — it returns a
- * shared, cached instance per feature that is NOT tied to component
+ * Obtain an instance in React code via `useSdk<ServiceType>(featureId)` — it
+ * returns a shared, cached instance per feature that is NOT tied to component
  * lifecycles. See packages/feature-sdk/README.md for the full guide.
  */
-export interface SDK {
+export interface SDK<T extends SdkClient = SdkClient> {
 	readonly featureId: string;
 
 	/**
@@ -23,19 +29,23 @@ export interface SDK {
 	 * Transport-agnostic: routes through Electron IPC in desktop mode, or
 	 * calls the handler directly in-process in browser mode.
 	 *
-	 * Returns `unknown` at this layer — prefer `withChannels(sdk, channels)` so
-	 * channel names, raw args, and parsed return types are inferred from the
-	 * feature's channel map. The feature router parses each boundary once.
+	 * Prefer `sdk.client` for typed method-style access.
 	 *
 	 * @example
-	 * const sdk = withChannels(useSdk("todos"), todosChannels);
-	 * const todos = await sdk.invoke("list");
-	 * const todo = await sdk.invoke("add", { title: "Buy milk" });
-	 *
-	 * Scoped to this feature only. To call ANOTHER feature, use
-	 * `sdk.plugins.get` (capabilities) instead.
+	 * const { client } = useSdk<TodoService>("todos");
+	 * const todo = await client.add({ title: "Buy milk" });
 	 */
 	invoke(channel: string, args?: unknown): Promise<unknown>;
+
+	/**
+	 * Proxy client that maps method calls to `invoke(channel, args)`.
+	 * Typed via the generic on `useSdk<ServiceType>(featureId)`.
+	 *
+	 * @example
+	 * const { client } = useSdk<TodoService>("todos");
+	 * const todo = await client.add({ title: "Buy milk" }); // Todo
+	 */
+	readonly client: T;
 
 	/** Namespaced event bus — fire-and-forget pub/sub. See {@link SdkEvents}. */
 	readonly events: SdkEvents;
@@ -361,7 +371,7 @@ export interface ChannelHandlers<C extends ChannelMap> {
  * Register the handlers that sdk.invoke() calls, and cleanup via onDispose.
  *
  * Bind the feature's channel map once so input/output validation stays aligned
- * with `withChannels` on the renderer.
+ * with `sdk.client` on the renderer.
  *
  * @example
  * export function mainRegister(mainSdk: MainSdk) {

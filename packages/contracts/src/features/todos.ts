@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineMethod } from "../contract.js";
+import { defineContract, defineMethod, type InferContract } from "../contract.js";
 
 export const todoSchema = z.object({
 	id: z.string(),
@@ -18,12 +18,17 @@ export const todoMethods = {
 } as const;
 
 /**
- * Feature-SDK channel map (unprefixed; scoped by featureId).
- * Use with `withChannels(useSdk("todos"), todosChannels)` and
- * `mainSdk.channels(todosChannels).handle("add", ...)`.
+ * Feature-SDK contract (unprefixed; scoped by featureId).
+ *
+ * @example
+ * const { client } = useSdk<TodoService>("todos");
+ * const todo = await client.add({ title: "Buy milk" });
  */
-export const todosChannels = {
-	list: todoMethods["todos:list"],
-	add: todoMethods["todos:add"],
-	toggle: todoMethods["todos:toggle"],
-} as const;
+export const todosContract = defineContract({
+	list: defineMethod(z.undefined(), z.array(todoSchema)),
+	add: defineMethod(z.object({ title: z.string().trim().min(1).max(120) }), todoSchema),
+	toggle: defineMethod(z.object({ id: z.string().min(1) }), todoSchema),
+});
+
+/** Method-style service type inferred from the contract. */
+export type TodoService = InferContract<typeof todosContract>;

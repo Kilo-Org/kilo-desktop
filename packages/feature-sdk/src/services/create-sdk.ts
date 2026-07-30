@@ -3,6 +3,7 @@ import type {
 	DispatchIntent,
 	NavigateIntent,
 	SDK,
+	SdkClient,
 	SdkCommands,
 	SdkEvents,
 	SdkFs,
@@ -166,13 +167,21 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 
 	// ─── SDK object ────────────────────────────────────────────────────────────
 
+	const invoke = async (channel: string, args?: unknown) => {
+		assertAlive();
+		return services.featureRouter.invoke(featureId, channel, args);
+	};
+
+	const client = new Proxy({} as SdkClient, {
+		get(_target, prop: string) {
+			return (...args: unknown[]) => invoke(prop, args[0]);
+		},
+	});
+
 	const sdk: SDK = {
 		featureId,
-
-		async invoke(channel: string, args?: unknown) {
-			assertAlive();
-			return services.featureRouter.invoke(featureId, channel, args);
-		},
+		invoke,
+		client,
 
 		events,
 		state,

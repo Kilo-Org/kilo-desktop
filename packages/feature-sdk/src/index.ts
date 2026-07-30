@@ -1,5 +1,6 @@
 // Types — the stable contract features program against
 export type {
+	SdkClient,
 	SDK,
 	SdkEvents,
 	SdkState,
@@ -29,7 +30,6 @@ export type {
 // Channel maps — typed sdk.invoke / mainSdk.channels against per-feature contracts
 export {
 	defineMethod,
-	withChannels,
 	type MethodContract,
 	type ChannelMap,
 	type ChannelInput,
@@ -39,7 +39,6 @@ export {
 	type ChannelHandlerMap,
 	type ChannelOutput,
 	type InvokeArguments,
-	type TypedSDK,
 } from "./channel-map.js";
 
 // Errors — thrown by feature handlers for expected failures

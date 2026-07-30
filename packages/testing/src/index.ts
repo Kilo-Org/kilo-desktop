@@ -6,7 +6,6 @@ import {
 	EventBus,
 	FeatureRouter,
 	StateBroker,
-	withChannels,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type {
@@ -16,7 +15,6 @@ import type {
 	SDK,
 	SdkFactoryServices,
 	ShellDelegates,
-	TypedSDK,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 const noop = () => {};
@@ -65,22 +63,18 @@ export type FakeSdkOptions = FakeSdkShellOptions & {
 };
 
 /**
- * Options for createFakeSdk with a channel map — enables typed invoke and
- * typed handlers registered on the fake's real in-memory FeatureRouter.
+ * Options for createFakeSdk with a channel map — registers typed handlers on
+ * the fake's real in-memory FeatureRouter so `sdk.client` calls work.
  */
 export type FakeSdkOptionsWithChannels<C extends ChannelMap> = FakeSdkShellOptions & {
 	featureId: string;
 	channels: C;
 	handlers?: Partial<ChannelHandlerMap<C>>;
-	invoke?: TypedSDK<C>["invoke"];
+	invoke?: SDK["invoke"];
 };
 
 /** SDK plus the backing in-memory services, for assertions in tests. */
-export type FakeSdk<C extends ChannelMap | undefined = undefined> = (C extends ChannelMap
-	? TypedSDK<C>
-	: SDK) & {
-	readonly services: SdkFactoryServices;
-};
+export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
 
 function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 	const shellDelegates: ShellDelegates = {
@@ -131,11 +125,11 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 	};
 }
 
-function applySdkOverrides<T extends SDK>(
-	sdk: T,
+function applySdkOverrides(
+	sdk: SDK,
 	services: SdkFactoryServices,
-	options: FakeSdkShellOptions & { invoke?: T["invoke"] },
-): T & { readonly services: SdkFactoryServices } {
+	options: FakeSdkShellOptions & { invoke?: SDK["invoke"] },
+): FakeSdk {
 	return {
 		...sdk,
 		services,
@@ -157,16 +151,15 @@ function applySdkOverrides<T extends SDK>(
  * broker, registries, router), so events/state/plugins behave exactly like
  * production. Only the shell delegates are fakes (theme is "light",
  * notifications no-op, fs throws until overridden). Pass `channels` (+ optional
- * `handlers`) for typed sdk.invoke; omit them when the test only needs shell
- * surface or an invoke override.
+ * `handlers`) to register handlers on the router so `sdk.client` works.
  */
 export function createFakeSdk(options: FakeSdkOptions): FakeSdk;
 export function createFakeSdk<C extends ChannelMap>(
 	options: FakeSdkOptionsWithChannels<C>,
-): FakeSdk<C>;
+): FakeSdk;
 export function createFakeSdk<C extends ChannelMap>(
 	options: FakeSdkOptions | FakeSdkOptionsWithChannels<C>,
-): FakeSdk | FakeSdk<C> {
+): FakeSdk {
 	const services = buildFakeServices(options);
 	const base = createSdk(options.featureId, services);
 
@@ -181,7 +174,6 @@ export function createFakeSdk<C extends ChannelMap>(
 				}
 			}
 		}
-		return applySdkOverrides(withChannels(base, channels), services, options);
 	}
 
 	return applySdkOverrides(base, services, options);

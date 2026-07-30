@@ -1,7 +1,7 @@
 import {
 	LocalApiError,
 	type DesktopApi,
-	type InvokeArguments,
+	type IpcInvokeArguments,
 	type IpcMethodChannel,
 	type IpcMethodOutput,
 	type LocalApi,
@@ -10,7 +10,7 @@ import {
 export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 	const invoke = async <C extends IpcMethodChannel>(
 		channel: C,
-		...args: InvokeArguments<C>
+		...args: IpcInvokeArguments<C>
 	): Promise<IpcMethodOutput<C>> => {
 		const result = await bridge.invoke(channel, ...args);
 		if (!result.ok) {

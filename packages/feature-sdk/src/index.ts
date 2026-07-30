@@ -21,9 +21,24 @@ export type {
 	Command,
 	NavigateIntent,
 	DispatchIntent,
+	ChannelHandlers,
 	MainSdk,
 	FeatureRegistration,
 } from "./types/sdk.js";
+
+// Channel maps — typed sdk.invoke / mainSdk.channels against per-feature contracts
+export {
+	defineMethod,
+	withChannels,
+	type MethodContract,
+	type ChannelMap,
+	type ChannelInput,
+	type ChannelHandlerInput,
+	type ChannelHandlerOutput,
+	type ChannelOutput,
+	type InvokeArguments,
+	type TypedSDK,
+} from "./channel-map.js";
 
 // Errors — thrown by feature handlers for expected failures
 export { FeatureError, type FeatureErrorCode } from "./errors.js";

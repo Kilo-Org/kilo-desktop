@@ -16,12 +16,14 @@ Scaffold a feature that programs against the SDK and is ready to migrate to a pl
 
 ## Workflow
 
-### Step 1: Create contracts (Zod schemas)
+### Step 1: Create contracts (Zod schemas + channel map)
 
 **File:** `packages/contracts/src/features/<id>.ts`
 
 ```typescript
 import { z } from "zod";
+
+import { defineIpcMethod } from "../contract.js";
 
 // Define your domain schemas
 export const myEntitySchema = z.object({
@@ -31,12 +33,14 @@ export const myEntitySchema = z.object({
 });
 export type MyEntity = z.infer<typeof myEntitySchema>;
 
-// Define input/output schemas for each operation
-export const listInput = z.undefined();
-export const listOutput = z.array(myEntitySchema);
-
-export const createInput = z.object({ name: z.string().min(1).max(100) });
-export const createOutput = myEntitySchema;
+// Channel map — single source of truth for sdk.invoke / mainSdk.channels().handle.
+// Built with defineIpcMethod while the file lives in contracts (same {input,output}
+// shape). On plugin migration, move this file and switch to defineMethod from
+// `@anaconda-agentic-desktop/feature-sdk`.
+export const myFeatureChannels = {
+	list: defineIpcMethod(z.undefined(), z.array(myEntitySchema)),
+	create: defineIpcMethod(z.object({ name: z.string().min(1).max(100) }), myEntitySchema),
+} as const;
 ```
 
 Export from `packages/contracts/src/index.ts`:
@@ -52,20 +56,19 @@ export * from "./features/<id>.js";
 ```typescript
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { listInput, createInput } from "@anaconda-agentic-desktop/contracts";
+import { myFeatureChannels } from "@anaconda-agentic-desktop/contracts";
 import { MyService } from "./MyService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
 	const service = new MyService(/* deps */);
 
-	// The input schema is validated at the routing boundary before the
-	// handler runs — handlers receive already-parsed args.
-	mainSdk.handle("list", listInput, () => service.list());
-
-	mainSdk.handle("create", createInput, (input) => service.create(input.name));
+	// Bind the channel map once; input + output validated at the routing boundary.
+	const api = mainSdk.channels(myFeatureChannels);
+	api.handle("list", () => service.list());
+	api.handle("create", (input) => service.create(input.name));
 
 	// Expected failures: throw FeatureError so the message survives IPC.
-	// mainSdk.handle("get", getInput, (input) => {
+	// api.handle("get", (input) => {
 	// 	const item = service.get(input.id);
 	// 	if (!item) throw new FeatureError("Item not found.", "NOT_FOUND");
 	// 	return item;
@@ -101,19 +104,21 @@ export const FEATURES: readonly FeatureRegistration[] = [
 
 ```typescript
 import { queryOptions, mutationOptions, type QueryClient } from "@tanstack/react-query";
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
-import { listOutput, createOutput } from "@anaconda-agentic-desktop/contracts";
+import type { TypedSDK } from "@anaconda-agentic-desktop/feature-sdk";
+import { myFeatureChannels } from "@anaconda-agentic-desktop/contracts";
 
-export function listQueryOptions(sdk: SDK) {
+type MySdk = TypedSDK<typeof myFeatureChannels>;
+
+export function listQueryOptions(sdk: MySdk) {
 	return queryOptions({
 		queryKey: ["<id>", "list"],
-		queryFn: async () => listOutput.parse(await sdk.invoke("list")),
+		queryFn: () => sdk.invoke("list"),
 	});
 }
 
-export function createMutationOptions(sdk: SDK, qc: QueryClient) {
+export function createMutationOptions(sdk: MySdk, qc: QueryClient) {
 	return mutationOptions({
-		mutationFn: async (name: string) => createOutput.parse(await sdk.invoke("create", { name })),
+		mutationFn: (name: string) => sdk.invoke("create", { name }),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["<id>", "list"] }),
 	});
 }
@@ -123,11 +128,13 @@ export function createMutationOptions(sdk: SDK, qc: QueryClient) {
 
 ```tsx
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { withChannels } from "@anaconda-agentic-desktop/feature-sdk";
+import { myFeatureChannels } from "@anaconda-agentic-desktop/contracts";
 import { useSdk } from "@/platform/sdk";
 import { listQueryOptions, createMutationOptions } from "./use<Name>";
 
 export function <Name>View() {
-  const sdk = useSdk("<id>");
+  const sdk = withChannels(useSdk("<id>"), myFeatureChannels);
   const qc = useQueryClient();
   const items = useQuery(listQueryOptions(sdk));
   const create = useMutation(createMutationOptions(sdk, qc));
@@ -158,7 +165,11 @@ export const Route = createFileRoute("/features/<id>")({
 
 ```tsx
 import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
-// Use createFakeSdk({ featureId: "<id>", handlers: { list: () => [...] } })
+// Use createFakeSdk({
+//   featureId: "<id>",
+//   channels: myFeatureChannels,
+//   handlers: { list: () => [...] },
+// })
 // to serve sdk.invoke calls through the fake's real in-memory router.
 ```
 
@@ -186,7 +197,7 @@ pnpm lint     # No warnings
 
 ## Rules
 
-- Import from `@anaconda-agentic-desktop/feature-sdk` for SDK types and `useSdk`
+- Import from `@anaconda-agentic-desktop/feature-sdk` for SDK types, `withChannels`, and `defineMethod` (after plugin migration); use `useSdk` + `withChannels` in the renderer
 - Import from `@anaconda-agentic-desktop/contracts` for Zod schemas
 - Import from `@anaconda-agentic-desktop/testing` for test fakes
 - Never add methods to `LocalApi`

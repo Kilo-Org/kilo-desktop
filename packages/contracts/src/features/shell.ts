@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-import { defineMethod } from "../contract.js";
+import { defineIpcMethod } from "../contract.js";
 
 export const shellMethods = {
-	"shell:open-external": defineMethod(
+	"shell:open-external": defineIpcMethod(
 		z.object({ url: z.string() }),
 		z.object({ opened: z.boolean() }),
 	),
-	"shell:copy-text": defineMethod(z.object({ text: z.string() }), z.undefined()),
+	"shell:copy-text": defineIpcMethod(z.object({ text: z.string() }), z.undefined()),
 } as const;

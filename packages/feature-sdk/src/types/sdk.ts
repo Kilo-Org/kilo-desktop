@@ -1,3 +1,7 @@
+import type { ChannelHandlerInput, ChannelHandlerOutput, ChannelMap } from "../channel-map.js";
+
+export type { SchemaLike } from "./schema.js";
+
 /**
  * The SDK interface that features (future plugins) program against.
  * Transport-agnostic: sdk.invoke routes to either Electron main or an in-process handler.
@@ -14,12 +18,14 @@ export interface SDK {
 	 * Transport-agnostic: routes through Electron IPC in desktop mode, or
 	 * calls the handler directly in-process in browser mode.
 	 *
-	 * Returns `unknown` on purpose — parse the result with the feature's
-	 * contract schema at the call site:
+	 * Returns `unknown` at this layer — prefer `withChannels(sdk, channels)` so
+	 * channel names, raw args, and parsed return types are inferred from the
+	 * feature's channel map. The feature router parses each boundary once.
 	 *
 	 * @example
-	 * const todos = listOutput.parse(await sdk.invoke("list"));
-	 * const todo = createOutput.parse(await sdk.invoke("create", { title: "Buy milk" }));
+	 * const sdk = withChannels(useSdk("todos"), todosChannels);
+	 * const todos = await sdk.invoke("list");
+	 * const todo = await sdk.invoke("add", { title: "Buy milk" });
 	 *
 	 * Scoped to this feature only. To call ANOTHER feature, use
 	 * `sdk.plugins.get` (capabilities) instead.
@@ -73,16 +79,6 @@ export interface SDK {
 	 * component unmount. Feature code should not call this.
 	 */
 	destroy(): void;
-}
-
-// ─── Schemas ─────────────────────────────────────────────────────────────────
-
-/**
- * Minimal structural schema interface (satisfied by Zod schemas).
- * parse() must throw on invalid input and return the parsed value.
- */
-export interface SchemaLike<T = unknown> {
-	parse(input: unknown): T;
 }
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -336,33 +332,43 @@ export interface DispatchIntent {
 // ─── MainSdk (main-process side) ─────────────────────────────────────────────
 
 /**
+ * Typed handler registrar bound to a channel map. Bind once via
+ * `mainSdk.channels(map)`, then register each channel.
+ */
+export interface ChannelHandlers<C extends ChannelMap> {
+	handle<K extends keyof C & string>(
+		channel: K,
+		handler: (
+			args: ChannelHandlerInput<C[K]>,
+		) => ChannelHandlerOutput<C[K]> | Promise<ChannelHandlerOutput<C[K]>>,
+	): void;
+}
+
+/**
  * The backend counterpart of the SDK, passed to a feature's mainRegister().
  * Register the handlers that sdk.invoke() calls, and cleanup via onDispose.
+ *
+ * Bind the feature's channel map once so input/output validation stays aligned
+ * with `withChannels` on the renderer.
  *
  * @example
  * export function mainRegister(mainSdk: MainSdk) {
  *   const service = new TodoService();
- *   mainSdk.handle("list", null, () => service.list());
- *   mainSdk.handle("create", createInput, (input) => service.create(input.title));
+ *   const api = mainSdk.channels(todosChannels);
+ *   api.handle("list", () => service.list());
+ *   api.handle("add", (input) => service.add(input.title));
  *   mainSdk.onDispose(() => service.close());
  * }
  */
 export interface MainSdk {
 	readonly featureId: string;
 	/**
-	 * Register a handler for a channel. inputSchema (a Zod schema) validates
-	 * args at the routing boundary before the handler runs — invalid input
-	 * throws FeatureError("VALIDATION") and the handler receives already-parsed
-	 * args. Pass null only for channels that take no input.
-	 *
-	 * Throw FeatureError from the handler for expected failures — its message
-	 * survives the IPC boundary; plain Errors are scrubbed.
+	 * Bind a channel map once, then register typed handlers. Input is parsed
+	 * before each handler runs; handler output is parsed before it is returned.
+	 * Throw FeatureError for expected failures whose messages should survive
+	 * the IPC boundary.
 	 */
-	handle<T = unknown>(
-		channel: string,
-		inputSchema: SchemaLike<T> | null,
-		handler: (args: T) => unknown | Promise<unknown>,
-	): void;
+	channels<C extends ChannelMap>(channels: C): ChannelHandlers<C>;
 	/** Cleanup registration — runs when the shell tears the feature down (shutdown, unload). */
 	onDispose(fn: () => void): void;
 }

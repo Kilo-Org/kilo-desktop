@@ -186,7 +186,7 @@ pnpm test
 
 Test changes:
 
-- Replace `LocalApiProvider` + fake `LocalApi` → `createFakeSdk({ featureId: "<id>", handlers: { ... } })`
+- Replace `LocalApiProvider` + fake `LocalApi` → `createFakeSdk({ featureId: "<id>", channels: myFeatureChannels, handlers: { ... } })`
 - Replace `import { ... } from "@/..."` → relative imports within plugin
 - Service tests move verbatim (they don't depend on shell infra)
 

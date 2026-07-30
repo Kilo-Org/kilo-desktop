@@ -18,41 +18,65 @@ packages/contracts/src/features/<id>.ts # Zod schemas shared by both
 **Backend** — register handlers in `mainRegister`, declare it in the FEATURES array:
 
 ```ts
+// packages/contracts/src/features/todos.ts
+// Shell IPC uses defineIpcMethod (prefixed). Feature-SDK channels reuse those
+// method contracts unprefixed. On plugin migration, move the channel map into
+// the plugin and build it with defineMethod from feature-sdk.
+import { z } from "zod";
+import { defineIpcMethod } from "../contract.js";
+
+export const todoSchema = z.object({
+	id: z.string(),
+	title: z.string(),
+	completed: z.boolean(),
+});
+
+export const todoMethods = {
+	"todos:list": defineIpcMethod(z.undefined(), z.array(todoSchema)),
+	"todos:add": defineIpcMethod(z.object({ title: z.string().trim().min(1).max(120) }), todoSchema),
+	"todos:toggle": defineIpcMethod(z.object({ id: z.string().min(1) }), todoSchema),
+} as const;
+
+export const todosChannels = {
+	list: todoMethods["todos:list"],
+	add: todoMethods["todos:add"],
+	toggle: todoMethods["todos:toggle"],
+} as const;
+```
+
+```ts
 // apps/desktop/src/main/features/todos/index.ts
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { createInput, getInput } from "@anaconda-agentic-desktop/contracts";
+import { todosChannels } from "@anaconda-agentic-desktop/contracts";
 import { TodoService } from "./TodoService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
 	const service = new TodoService();
+	const api = mainSdk.channels(todosChannels);
 
-	// Input is validated against the schema BEFORE the handler runs.
-	mainSdk.handle("list", null, () => service.list());
-	mainSdk.handle("create", createInput, (input) => service.create(input.title));
-	mainSdk.handle("get", getInput, (input) => {
-		const todo = service.get(input.id);
-		if (!todo) throw new FeatureError("Todo not found.", "NOT_FOUND");
-		return todo;
-	});
+	// Input + output validated at the routing boundary from the channel map.
+	api.handle("list", () => service.list());
+	api.handle("add", (input) => service.add(input.title));
+	api.handle("toggle", (input) => service.toggle(input.id));
 
 	mainSdk.onDispose(() => service.close()); // runs on shutdown / feature unload
 }
 ```
 
-**Frontend** — get the feature's SDK with `useSdk` and call `sdk.invoke`:
+**Frontend** — wrap `useSdk` with `withChannels` so invoke is typed:
 
 ```tsx
 // apps/web/src/features/todos/TodoList.tsx
 import { useQuery } from "@tanstack/react-query";
+import { withChannels } from "@anaconda-agentic-desktop/feature-sdk";
+import { todosChannels } from "@anaconda-agentic-desktop/contracts";
 import { useSdk } from "@/platform/sdk";
-import { listOutput } from "@anaconda-agentic-desktop/contracts";
 
 export function TodoList() {
-	const sdk = useSdk("todos");
+	const sdk = withChannels(useSdk("todos"), todosChannels);
 	const todos = useQuery({
 		queryKey: ["todos", "list"],
-		queryFn: async () => listOutput.parse(await sdk.invoke("list")),
+		queryFn: () => sdk.invoke("list"), // Promise<Todo[]>
 	});
 	// ...render
 }
@@ -66,14 +90,22 @@ export function TodoList() {
 
 Transport-agnostic request/response to a handler this feature registered in `mainRegister`. In Electron it crosses IPC through the generic `feature:invoke` channel; in standalone browser mode it calls the handler in-process. Same code either way.
 
+The base `SDK.invoke` is untyped (shell transport). Features should define a **channel map** with `defineMethod` and brand the instance with `withChannels` (compile-time types only — the router parses at the handler boundary):
+
 ```ts
-const todo = await sdk.invoke("create", { title: "Buy milk" });
+const sdk = withChannels(useSdk("todos"), todosChannels);
+const todo = await sdk.invoke("add", { title: "Buy milk" }); // typed; parsed by the router
 ```
+
+Schemas may transform values. The typed SDK accepts the input schema's raw
+input, handlers receive its parsed output, handlers return the output schema's
+raw input, and callers receive its parsed output. Parsing happens once in the
+feature router, in both Electron and browser mode.
 
 **Use when:** the renderer needs data or side effects from this feature's own backend (DB reads/writes, Node-only work).
 **Don't use for:** calling _another_ feature's backend — that's what capabilities (`sdk.plugins`) are for. `sdk.invoke` is scoped to your own `featureId` by construction.
 
-Validate outputs at the call site with your contract schemas (`listOutput.parse(...)`) — `invoke` returns `Promise<unknown>` on purpose, so the schema stays the single source of truth.
+Register handlers with the same map (`mainSdk.channels(todosChannels).handle("add", ...)`) so input and output are validated on the main side too.
 
 ### `sdk.events` — fire-and-forget pub/sub
 
@@ -209,7 +241,7 @@ throw new FeatureError("Todo not found.", "NOT_FOUND");
 // codes: "VALIDATION" | "NOT_FOUND" | "BUSINESS" (default)
 ```
 
-Schema failures in `mainSdk.handle` produce `FeatureError("VALIDATION")` automatically — you never validate input manually inside a handler.
+Invalid input produces `FeatureError("VALIDATION")` automatically — you never validate input manually inside a handler. Invalid handler output is an internal error: its schema details are retained as the server-side cause and scrubbed from the IPC response.
 
 ## Lifecycle
 
@@ -232,31 +264,32 @@ import { createFakeSdk, createFakeMainSdk } from "@anaconda-agentic-desktop/test
 // Renderer tests: real in-memory event bus / state / router, fake shell delegates
 const sdk = createFakeSdk({
 	featureId: "todos",
+	channels: todosChannels,
 	handlers: { list: () => [{ id: "1", title: "test", completed: false }] },
 });
 await sdk.invoke("list"); // served by the fake's real router
 sdk.services.eventBus.emit("other.thing", {}); // drive cross-feature scenarios
 
-// Backend registration tests
+// Backend registration tests — mainRegister supplies the channel map.
 const mainSdk = createFakeMainSdk({ featureId: "todos" });
 mainRegister(mainSdk);
-await mainSdk.invoke("create", { title: "x" }); // validates schema like the real router
+await mainSdk.invoke("create", { title: "x" }); // validates input and output like the real router
 ```
 
 ## Shell wiring (internals)
 
 Everything below is shell infrastructure. Feature code has no reason to import these.
 
-| Export                 | Role                                                                                                                                                                                                             |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `EventBus`             | Namespaced pub/sub backing `sdk.events`. Snapshot iteration; throwing handlers are isolated.                                                                                                                     |
-| `StateBroker`          | Observable stores backing `sdk.state`. Lazy placeholder resolution; subscribers survive re-registration.                                                                                                         |
-| `CapabilityRegistry`   | Named API objects backing `sdk.plugins`.                                                                                                                                                                         |
-| `ContributionRegistry` | Zone → contribution mapping backing `sdk.contribute`; `onChange` feeds shell re-renders.                                                                                                                         |
-| `CommandRegistry`      | Palette entries backing `sdk.commands`; ids auto-namespaced `featureId.commandId`.                                                                                                                               |
-| `FeatureRouter`        | `channel → handler` routing behind `sdk.invoke` and `mainSdk.handle`. Constructor takes an optional `fallback` transport — the renderer injects the IPC bridge here in Electron mode; local handlers always win. |
-| `createSdk`            | Builds a feature-scoped `SDK` facade over the services; tracks instance registrations for `destroy()`.                                                                                                           |
-| `teardownFeature`      | Full feature teardown across all services (plugin unload).                                                                                                                                                       |
+| Export                 | Role                                                                                                                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `EventBus`             | Namespaced pub/sub backing `sdk.events`. Snapshot iteration; throwing handlers are isolated.                                                                                                                       |
+| `StateBroker`          | Observable stores backing `sdk.state`. Lazy placeholder resolution; subscribers survive re-registration.                                                                                                           |
+| `CapabilityRegistry`   | Named API objects backing `sdk.plugins`.                                                                                                                                                                           |
+| `ContributionRegistry` | Zone → contribution mapping backing `sdk.contribute`; `onChange` feeds shell re-renders.                                                                                                                           |
+| `CommandRegistry`      | Palette entries backing `sdk.commands`; ids auto-namespaced `featureId.commandId`.                                                                                                                                 |
+| `FeatureRouter`        | `channel → handler` routing behind `sdk.invoke` and `mainSdk.channels`. Constructor takes an optional `fallback` transport — the renderer injects the IPC bridge here in Electron mode; local handlers always win. |
+| `createSdk`            | Builds a feature-scoped `SDK` facade over the services; tracks instance registrations for `destroy()`.                                                                                                             |
+| `teardownFeature`      | Full feature teardown across all services (plugin unload).                                                                                                                                                         |
 
 Where the wiring lives:
 

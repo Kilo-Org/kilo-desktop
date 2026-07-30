@@ -27,10 +27,13 @@ Nothing exists until the contract exists. Add the channel to
 
 ```ts
 export const todoMethods = {
-	"todos:list": defineMethod(z.undefined(), z.array(todoSchema)),
-	"todos:add": defineMethod(z.object({ title: z.string().trim().min(1).max(120) }), todoSchema),
-	"todos:toggle": defineMethod(z.object({ id: z.string().min(1) }), todoSchema),
-	"todos:remove": defineMethod(z.object({ id: z.string().min(1) }), z.object({ id: z.string() })),
+	"todos:list": defineIpcMethod(z.undefined(), z.array(todoSchema)),
+	"todos:add": defineIpcMethod(z.object({ title: z.string().trim().min(1).max(120) }), todoSchema),
+	"todos:toggle": defineIpcMethod(z.object({ id: z.string().min(1) }), todoSchema),
+	"todos:remove": defineIpcMethod(
+		z.object({ id: z.string().min(1) }),
+		z.object({ id: z.string() }),
+	),
 } as const;
 ```
 

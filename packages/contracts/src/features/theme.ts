@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineEvent, defineMethod } from "../contract.js";
+import { defineEvent, defineIpcMethod } from "../contract.js";
 
 export const themeSourceSchema = z.enum(["system", "light", "dark"]);
 export const themeStateSchema = z.object({
@@ -12,8 +12,8 @@ export type ThemeSource = z.infer<typeof themeSourceSchema>;
 export type ThemeState = z.infer<typeof themeStateSchema>;
 
 export const themeMethods = {
-	"theme:get": defineMethod(z.undefined(), themeStateSchema),
-	"theme:set": defineMethod(z.object({ source: themeSourceSchema }), themeStateSchema),
+	"theme:get": defineIpcMethod(z.undefined(), themeStateSchema),
+	"theme:set": defineIpcMethod(z.object({ source: themeSourceSchema }), themeStateSchema),
 } as const;
 
 export const themeEvents = {

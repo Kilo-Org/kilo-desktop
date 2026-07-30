@@ -16,7 +16,7 @@ export type IpcEventPayload<TChannel extends IpcEventChannel> = z.output<
 	(typeof ipcEvents)[TChannel]["payload"]
 >;
 
-export type InvokeArguments<TChannel extends IpcMethodChannel> =
+export type IpcInvokeArguments<TChannel extends IpcMethodChannel> =
 	IpcMethodInput<TChannel> extends undefined
 		? [input?: undefined]
 		: [input: IpcMethodInput<TChannel>];
@@ -24,7 +24,7 @@ export type InvokeArguments<TChannel extends IpcMethodChannel> =
 export interface DesktopApi {
 	invoke<TChannel extends IpcMethodChannel>(
 		channel: TChannel,
-		...args: InvokeArguments<TChannel>
+		...args: IpcInvokeArguments<TChannel>
 	): Promise<IpcResult<IpcMethodOutput<TChannel>>>;
 	on<TChannel extends IpcEventChannel>(
 		channel: TChannel,

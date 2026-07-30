@@ -28,7 +28,7 @@ export function TodoList() {
 	}
 
 	return (
-		<main className="mx-auto max-w-xl px-5 py-8">
+		<div className="mx-auto max-w-xl px-5 py-8">
 			<h1 className="text-2xl font-semibold tracking-tight">Todo List</h1>
 			<p className="text-muted-foreground mt-1 text-sm">
 				Todos load and update over typed IPC with TanStack Query.
@@ -83,6 +83,6 @@ export function TodoList() {
 					))}
 				</ul>
 			) : null}
-		</main>
+		</div>
 	);
 }

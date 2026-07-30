@@ -29,8 +29,8 @@ import {
  * - sdk.tools / sdk.intents / sdk.navigate / sdk.dispatch (deferred — expected to throw)
  * - sdk.onDispose (cleanup registration)
  */
-export function SdkExplorerView() {
-	const sdk = useSdk("sdk-explorer");
+export function SdkProducerView() {
+	const sdk = useSdk("sdk-producer");
 	const qc = useQueryClient();
 
 	// ─── sdk.invoke via TanStack Query ──────────────────────────────────────
@@ -49,7 +49,7 @@ export function SdkExplorerView() {
 
 	// ─── sdk.events — subscribe to our own events ───────────────────────────
 	useEffect(() => {
-		const unsub = sdk.events.on("sdk-explorer.note-added", (payload) => {
+		const unsub = sdk.events.on("sdk-producer.note-added", (payload) => {
 			appendLog(`Event received: note-added → ${JSON.stringify(payload)}`);
 		});
 		return unsub;
@@ -60,7 +60,7 @@ export function SdkExplorerView() {
 	const [stateHandle] = useState(() => sdk.state.register("click-count", 0));
 
 	useEffect(() => {
-		const store = sdk.state.get<number>("sdk-explorer.click-count");
+		const store = sdk.state.get<number>("sdk-producer.click-count");
 		const unsub = store.subscribe((value) => {
 			setClickCount(value ?? 0);
 		});
@@ -70,7 +70,7 @@ export function SdkExplorerView() {
 	// ─── sdk.plugins.expose — expose a capability on mount ──────────────────
 	useEffect(() => {
 		sdk.plugins.expose("explorerService", {
-			getInfo: () => ({ name: "sdk-explorer", version: "2.0.0" }),
+			getInfo: () => ({ name: "sdk-producer", version: "2.0.0" }),
 		});
 		appendLog("Capability exposed: explorerService");
 	}, [sdk]);
@@ -78,7 +78,7 @@ export function SdkExplorerView() {
 	// ─── sdk.contribute — register a UI contribution ────────────────────────
 	useEffect(() => {
 		sdk.contribute("status-bar", {
-			component: "SdkExplorerStatus",
+			component: "SdkProducerStatus",
 			label: "SDK Explorer",
 			priority: 10,
 		});
@@ -99,7 +99,7 @@ export function SdkExplorerView() {
 			id: "log-state",
 			label: "SDK Explorer: Log State",
 			handler: () => {
-				const peeked = sdk.state.peek("sdk-explorer.click-count");
+				const peeked = sdk.state.peek("sdk-producer.click-count");
 				appendLog(`Command executed: log-state → click-count = ${peeked}`);
 			},
 		});
@@ -120,7 +120,7 @@ export function SdkExplorerView() {
 	// ─── sdk.onDispose — register cleanup ───────────────────────────────────
 	useEffect(() => {
 		sdk.onDispose(() => {
-			console.info("[sdk-explorer] Dispose callback fired from renderer");
+			console.info("[sdk-producer] Dispose callback fired from renderer");
 		});
 	}, [sdk]);
 
@@ -147,7 +147,7 @@ export function SdkExplorerView() {
 	}
 
 	function handleEcho() {
-		echo.mutate("hello from sdk-explorer", {
+		echo.mutate("hello from sdk-producer", {
 			onSuccess: (result) => {
 				appendLog(`invoke("echo") → ${result.echoed}`);
 			},
@@ -157,10 +157,10 @@ export function SdkExplorerView() {
 	function handlePluginsGet() {
 		const cap = sdk.plugins.get<{
 			explorerService: { getInfo: () => { name: string; version: string } };
-		}>("sdk-explorer");
+		}>("sdk-producer");
 		if (cap) {
 			const info = cap.explorerService.getInfo();
-			appendLog(`plugins.get<T>("sdk-explorer") → ${JSON.stringify(info)}`);
+			appendLog(`plugins.get<T>("sdk-producer") → ${JSON.stringify(info)}`);
 		} else {
 			appendLog("plugins.get returned null (no capability found)");
 		}

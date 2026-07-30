@@ -34,6 +34,6 @@ export class NoteService {
 	}
 
 	echo(message: string): { echoed: string; timestamp: number } {
-		return { echoed: `[sdk-explorer] ${message}`, timestamp: Date.now() };
+		return { echoed: `[sdk-producer] ${message}`, timestamp: Date.now() };
 	}
 }

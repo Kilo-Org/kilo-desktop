@@ -3,7 +3,7 @@ export * from "./desktop-api.js";
 export * from "./features/feature-invoke.js";
 export * from "./features/shell.js";
 export * from "./features/theme.js";
-export * from "./features/sdk-explorer.js";
+export * from "./features/sdk-producer.js";
 export * from "./features/todos.js";
 export * from "./local-api.js";
 export * from "./registry.js";

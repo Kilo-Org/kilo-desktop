@@ -14,7 +14,7 @@ export function App() {
 					Todos
 				</Link>
 				<Link
-					to="/sdk-explorer"
+					to="/sdk-producer"
 					className="text-muted-foreground hover:text-foreground [&.active]:text-foreground [&.active]:font-medium"
 				>
 					SDK Producer

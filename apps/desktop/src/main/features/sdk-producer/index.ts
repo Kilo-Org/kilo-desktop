@@ -10,7 +10,7 @@ import {
 import { NoteService } from "./NoteService.js";
 
 /**
- * Main-process registration for the sdk-explorer feature.
+ * Main-process registration for the sdk-producer feature.
  * Demonstrates: mainSdk.handle(channel, schema, handler), mainSdk.onDispose()
  *
  * The input schema validates args at the routing boundary BEFORE the handler
@@ -31,6 +31,6 @@ export function mainRegister(mainSdk: MainSdk): void {
 
 	mainSdk.onDispose(() => {
 		// Cleanup: in a real feature this would close DB handles, cancel timers, etc.
-		console.info("[sdk-explorer] Feature disposed");
+		console.info("[sdk-producer] Feature disposed");
 	});
 }

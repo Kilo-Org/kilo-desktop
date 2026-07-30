@@ -3,9 +3,9 @@ import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { mainRegister } from "./index.js";
 
-describe("sdk-explorer mainRegister", () => {
+describe("sdk-producer mainRegister", () => {
 	it("registers all expected handlers", () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		expect(mainSdk.registeredHandlers.has("list")).toBe(true);
@@ -16,7 +16,7 @@ describe("sdk-explorer mainRegister", () => {
 	});
 
 	it("registers input schemas for all handlers", () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		// All channels have schemas registered
@@ -28,14 +28,14 @@ describe("sdk-explorer mainRegister", () => {
 	});
 
 	it("registers a dispose callback", () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		expect(mainSdk.disposeCallbacks.length).toBeGreaterThan(0);
 	});
 
 	it("list handler returns empty array initially (via invoke)", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		const result = await mainSdk.invoke("list", undefined);
@@ -43,7 +43,7 @@ describe("sdk-explorer mainRegister", () => {
 	});
 
 	it("add handler creates and returns a note (via invoke with validation)", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		const note = (await mainSdk.invoke("add", { text: "hello" })) as {
@@ -55,15 +55,15 @@ describe("sdk-explorer mainRegister", () => {
 	});
 
 	it("echo handler echoes with prefix (via invoke)", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		const result = (await mainSdk.invoke("echo", { message: "ping" })) as { echoed: string };
-		expect(result.echoed).toBe("[sdk-explorer] ping");
+		expect(result.echoed).toBe("[sdk-producer] ping");
 	});
 
 	it("add validation rejects empty text (schema enforced at boundary)", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		// Schema validation happens before handler runs
@@ -71,14 +71,14 @@ describe("sdk-explorer mainRegister", () => {
 	});
 
 	it("add validation rejects missing text field", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		await expect(async () => mainSdk.invoke("add", {})).rejects.toThrow();
 	});
 
 	it("delete handler works after adding a note", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		const note = (await mainSdk.invoke("add", { text: "to delete" })) as { id: string };
@@ -90,7 +90,7 @@ describe("sdk-explorer mainRegister", () => {
 	});
 
 	it("clear handler removes all notes and returns count", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-explorer" });
+		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
 		await mainSdk.invoke("add", { text: "one" });

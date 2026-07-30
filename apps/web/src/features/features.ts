@@ -19,7 +19,7 @@ import {
  * browser-safe fakes.
  */
 
-/** Browser-safe in-memory implementation of the sdk-explorer feature. */
+/** Browser-safe in-memory implementation of the sdk-producer feature. */
 function sdkExplorerBrowserRegister(mainSdk: MainSdk): void {
 	let notes: Note[] = [];
 
@@ -44,7 +44,7 @@ function sdkExplorerBrowserRegister(mainSdk: MainSdk): void {
 	});
 
 	mainSdk.handle("echo", echoInput, (input) => ({
-		echoed: `[sdk-explorer] ${input.message}`,
+		echoed: `[sdk-producer] ${input.message}`,
 		timestamp: Date.now(),
 	}));
 }
@@ -56,7 +56,7 @@ function sdkConsumerBrowserRegister(mainSdk: MainSdk): void {
 
 export const WEB_FEATURES: readonly FeatureRegistration[] = [
 	{
-		id: "sdk-explorer",
+		id: "sdk-producer",
 		mainRegister: sdkExplorerBrowserRegister,
 		browserRegister: sdkExplorerBrowserRegister,
 	},

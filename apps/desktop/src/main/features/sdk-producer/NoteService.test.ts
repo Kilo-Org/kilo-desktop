@@ -46,7 +46,7 @@ describe("NoteService", () => {
 	it("echoes a message with prefix and timestamp", () => {
 		const svc = new NoteService();
 		const result = svc.echo("test");
-		expect(result.echoed).toBe("[sdk-explorer] test");
+		expect(result.echoed).toBe("[sdk-producer] test");
 		expect(result.timestamp).toBeGreaterThan(0);
 	});
 });

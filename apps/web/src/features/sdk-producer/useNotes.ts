@@ -8,7 +8,7 @@ import {
 	echoOutput,
 } from "@anaconda-agentic-desktop/contracts";
 
-export const notesQueryKey = ["sdk-explorer", "notes"] as const;
+export const notesQueryKey = ["sdk-producer", "notes"] as const;
 
 export function listNotesQueryOptions(sdk: SDK) {
 	return queryOptions({
@@ -19,7 +19,7 @@ export function listNotesQueryOptions(sdk: SDK) {
 
 export function addNoteMutationOptions(sdk: SDK, qc: QueryClient) {
 	return mutationOptions({
-		mutationKey: ["sdk-explorer", "add"] as const,
+		mutationKey: ["sdk-producer", "add"] as const,
 		mutationFn: async (text: string) => addNoteOutput.parse(await sdk.invoke("add", { text })),
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: notesQueryKey });
@@ -29,7 +29,7 @@ export function addNoteMutationOptions(sdk: SDK, qc: QueryClient) {
 
 export function deleteNoteMutationOptions(sdk: SDK, qc: QueryClient) {
 	return mutationOptions({
-		mutationKey: ["sdk-explorer", "delete"] as const,
+		mutationKey: ["sdk-producer", "delete"] as const,
 		mutationFn: async (id: string) => deleteNoteOutput.parse(await sdk.invoke("delete", { id })),
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: notesQueryKey });
@@ -39,7 +39,7 @@ export function deleteNoteMutationOptions(sdk: SDK, qc: QueryClient) {
 
 export function clearNotesMutationOptions(sdk: SDK, qc: QueryClient) {
 	return mutationOptions({
-		mutationKey: ["sdk-explorer", "clear"] as const,
+		mutationKey: ["sdk-producer", "clear"] as const,
 		mutationFn: async () => clearNotesOutput.parse(await sdk.invoke("clear")),
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: notesQueryKey });
@@ -49,7 +49,7 @@ export function clearNotesMutationOptions(sdk: SDK, qc: QueryClient) {
 
 export function echoMutationOptions(sdk: SDK) {
 	return mutationOptions({
-		mutationKey: ["sdk-explorer", "echo"] as const,
+		mutationKey: ["sdk-producer", "echo"] as const,
 		mutationFn: async (message: string) => echoOutput.parse(await sdk.invoke("echo", { message })),
 	});
 }

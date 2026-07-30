@@ -3,14 +3,14 @@ import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import type { Note } from "@anaconda-agentic-desktop/contracts";
 
 /**
- * Tests for the sdk-explorer renderer layer.
+ * Tests for the sdk-producer renderer layer.
  *
  * The new createFakeSdk is built on REAL in-memory services (EventBus,
  * StateBroker, registries, router). This means events, state, plugins,
  * commands, and contributions all behave identically to production.
  * Only shell delegates are fakes.
  */
-describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => {
+describe("sdk-producer renderer — real SDK services via createFakeSdk", () => {
 	it("sdk.invoke routes to handlers registered via 'handlers' option", async () => {
 		const mockNotes: Note[] = [
 			{ id: "1", text: "hello", createdAt: 1000 },
@@ -18,7 +18,7 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 		];
 
 		const sdk = createFakeSdk({
-			featureId: "sdk-explorer",
+			featureId: "sdk-producer",
 			handlers: {
 				list: () => mockNotes,
 				echo: (args) => ({
@@ -36,16 +36,16 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 	});
 
 	it("sdk.invoke throws FeatureError for unknown channel", async () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		await expect(sdk.invoke("nonexistent")).rejects.toThrow(/No handler/);
 	});
 
 	it("sdk.events.emit and on work (real EventBus)", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		const received: unknown[] = [];
 
 		// Subscribe to the full namespaced event name
-		sdk.events.on("sdk-explorer.note-added", (payload) => {
+		sdk.events.on("sdk-producer.note-added", (payload) => {
 			received.push(payload);
 		});
 
@@ -56,10 +56,10 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 	});
 
 	it("sdk.events.on returns working unsubscribe function", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		const received: unknown[] = [];
 
-		const unsub = sdk.events.on("sdk-explorer.ping", (p) => received.push(p));
+		const unsub = sdk.events.on("sdk-producer.ping", (p) => received.push(p));
 		sdk.events.emit("ping", "first");
 		expect(received).toEqual(["first"]);
 
@@ -69,11 +69,11 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 	});
 
 	it("sdk.state.register and get work with real StateBroker", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		const handle = sdk.state.register("click-count", 0);
 
 		// State is namespaced
-		const store = sdk.state.get<number>("sdk-explorer.click-count");
+		const store = sdk.state.get<number>("sdk-producer.click-count");
 		let current: number | null = null;
 		store.subscribe((v) => {
 			current = v;
@@ -84,22 +84,22 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 		expect(current).toBe(5);
 
 		// peek works too
-		expect(sdk.state.peek("sdk-explorer.click-count")).toBe(5);
+		expect(sdk.state.peek("sdk-producer.click-count")).toBe(5);
 	});
 
 	it("sdk.state.get returns null for unregistered store (lazy resolution)", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
-		const store = sdk.state.get<number>("sdk-explorer.nonexistent");
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
+		const store = sdk.state.get<number>("sdk-producer.nonexistent");
 		expect(store.peek()).toBeNull();
 	});
 
 	it("sdk.plugins.expose and get round-trip (real CapabilityRegistry)", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		sdk.plugins.expose("explorerService", {
-			getInfo: () => ({ name: "sdk-explorer", version: "2.0.0" }),
+			getInfo: () => ({ name: "sdk-producer", version: "2.0.0" }),
 		});
 
-		const cap = sdk.plugins.get("sdk-explorer");
+		const cap = sdk.plugins.get("sdk-producer");
 		expect(cap).not.toBeNull();
 		expect(cap!.explorerService).toBeDefined();
 		const info = (cap!.explorerService as { getInfo: () => { version: string } }).getInfo();
@@ -107,7 +107,7 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 	});
 
 	it("sdk.contribute registers in the real ContributionRegistry", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		sdk.contribute("status-bar", {
 			component: "StatusWidget",
 			label: "SDK Explorer Status",
@@ -118,11 +118,11 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 		const contributions = sdk.services.contributionRegistry.getForZone("status-bar");
 		expect(contributions).toHaveLength(1);
 		expect(contributions[0]!.label).toBe("SDK Explorer Status");
-		expect(contributions[0]!.featureId).toBe("sdk-explorer");
+		expect(contributions[0]!.featureId).toBe("sdk-producer");
 	});
 
 	it("sdk.commands.register works with real CommandRegistry", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		let executed = false;
 		sdk.commands.register({
 			id: "test-cmd",
@@ -133,28 +133,28 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 		});
 
 		const commands = sdk.services.commandRegistry.all();
-		expect(commands.some((c: { id: string }) => c.id === "sdk-explorer.test-cmd")).toBe(true);
+		expect(commands.some((c: { id: string }) => c.id === "sdk-producer.test-cmd")).toBe(true);
 
 		// Execute the command
-		const cmd = commands.find((c: { id: string }) => c.id === "sdk-explorer.test-cmd");
+		const cmd = commands.find((c: { id: string }) => c.id === "sdk-producer.test-cmd");
 		cmd?.handler();
 		expect(executed).toBe(true);
 	});
 
 	it("sdk.notifications.show and setBadge are no-ops by default in fake", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		// Default fake notifications do not throw (unlike production which throws)
 		expect(() => sdk.notifications.show({ title: "T", message: "M", type: "info" })).not.toThrow();
 		expect(() => sdk.notifications.setBadge(3)).not.toThrow();
 	});
 
 	it("sdk.theme.peek returns 'light' by default in fake", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		expect(sdk.theme.peek()).toBe("light");
 	});
 
 	it("sdk.theme.subscribe fires synchronously with current value", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		let received: string | null = null;
 		sdk.theme.subscribe((t) => {
 			received = t;
@@ -163,18 +163,18 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 	});
 
 	it("sdk.shell.copyText and openExternal return promises", async () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		await expect(sdk.shell.copyText("test")).resolves.toBeUndefined();
 		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: true });
 	});
 
 	it("sdk.fs methods throw 'not implemented' by default in fake", async () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		await expect(async () => sdk.fs.exists("x")).rejects.toThrow(/not implemented/i);
 	});
 
 	it("deferred APIs (tools, intents, navigate, dispatch) throw", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		expect(() => sdk.tools.register({})).toThrow(/not available yet/);
 		expect(() => sdk.intents.list()).toThrow(/not available yet/);
 		expect(() => sdk.navigate({ plugin: "x", intent: "y" })).toThrow(/not available yet/);
@@ -182,7 +182,7 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 	});
 
 	it("sdk.destroy cleans up registrations", () => {
-		const sdk = createFakeSdk({ featureId: "sdk-explorer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		sdk.state.register("counter", 42);
 		sdk.plugins.expose("svc", { hello: () => "world" });
 		sdk.contribute("dashboard", { component: "Widget", label: "W" });
@@ -196,16 +196,16 @@ describe("sdk-explorer renderer — real SDK services via createFakeSdk", () => 
 		expect(disposed).toBe(true);
 
 		// State is cleaned
-		expect(sdk.services.stateBroker.peek("sdk-explorer.counter")).toBeNull();
+		expect(sdk.services.stateBroker.peek("sdk-producer.counter")).toBeNull();
 		// Capabilities are cleaned
-		expect(sdk.services.capabilityRegistry.get("sdk-explorer")).toBeNull();
+		expect(sdk.services.capabilityRegistry.get("sdk-producer")).toBeNull();
 		// Contributions are cleaned
 		expect(sdk.services.contributionRegistry.getForZone("dashboard")).toHaveLength(0);
 	});
 
 	it("sdk.destroy makes subsequent calls throw", async () => {
 		const sdk = createFakeSdk({
-			featureId: "sdk-explorer",
+			featureId: "sdk-producer",
 			handlers: { ping: () => "pong" },
 		});
 		sdk.destroy();

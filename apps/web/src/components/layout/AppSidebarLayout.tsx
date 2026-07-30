@@ -29,7 +29,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 		<TooltipProvider>
 			<SidebarProvider
 				defaultOpen={false}
-				className="bg-sidebar"
+				className="bg-sidebar h-svh min-h-0 overflow-hidden"
 				style={{ "--sidebar-width": "3rem" } as CSSProperties}
 			>
 				<Sidebar collapsible="none" className="h-svh border-none">
@@ -106,7 +106,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 					</SidebarFooter>
 				</Sidebar>
 
-				<SidebarInset className="bg-transparent pr-3 pb-3">
+				<SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent pr-3 pb-3">
 					<header className="flex h-14 items-center justify-end pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
 						<Button
 							variant="ghost"
@@ -117,7 +117,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 							<BellIcon />
 						</Button>
 					</header>
-					<div className="bg-muted border-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border">
+					<div className="bg-muted border-border flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-md border">
 						{children}
 					</div>
 				</SidebarInset>

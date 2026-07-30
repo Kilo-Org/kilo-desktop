@@ -23,7 +23,7 @@ Scaffold a feature that programs against the SDK and is ready to migrate to a pl
 ```typescript
 import { z } from "zod";
 
-import { defineIpcMethod } from "../contract.js";
+import { defineMethod } from "../contract.js";
 
 // Define your domain schemas
 export const myEntitySchema = z.object({
@@ -34,12 +34,12 @@ export const myEntitySchema = z.object({
 export type MyEntity = z.infer<typeof myEntitySchema>;
 
 // Channel map — single source of truth for sdk.invoke / mainSdk.channels().handle.
-// Built with defineIpcMethod while the file lives in contracts (same {input,output}
-// shape). On plugin migration, move this file and switch to defineMethod from
-// `@anaconda-agentic-desktop/feature-sdk`.
+// Built with defineMethod from contracts while the file lives here (same
+// {input,output} shape). On plugin migration, move this file and switch to
+// defineMethod from `@anaconda-agentic-desktop/feature-sdk`.
 export const myFeatureChannels = {
-	list: defineIpcMethod(z.undefined(), z.array(myEntitySchema)),
-	create: defineIpcMethod(z.object({ name: z.string().min(1).max(100) }), myEntitySchema),
+	list: defineMethod(z.undefined(), z.array(myEntitySchema)),
+	create: defineMethod(z.object({ name: z.string().min(1).max(100) }), myEntitySchema),
 } as const;
 ```
 

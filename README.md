@@ -162,7 +162,7 @@ It exports:
 
 | Export                                               | Purpose                                                 |
 | ---------------------------------------------------- | ------------------------------------------------------- |
-| `defineIpcMethod`, `defineEvent`                     | Build a channel contract from Zod input/output schemas  |
+| `defineMethod`, `defineEvent`                        | Build a channel contract from Zod input/output schemas  |
 | `ipcMethods`, `ipcEvents`, `mergeChannelMaps`        | Registries of every channel the app exposes             |
 | `IpcResult`, `ipcResultSchema`, `ipcErrorCodes`      | The success/error envelope crossing the bridge          |
 | `DesktopApi`, `IpcHandlers`, channel/payload helpers | Types for the preload surface and main-process handlers |

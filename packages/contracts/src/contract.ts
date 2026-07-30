@@ -12,7 +12,7 @@ export interface IpcEventContract<TPayload extends z.ZodType = z.ZodType> {
 	readonly payload: TPayload;
 }
 
-export function defineIpcMethod<TInput extends z.ZodType, TOutput extends z.ZodType>(
+export function defineMethod<TInput extends z.ZodType, TOutput extends z.ZodType>(
 	input: TInput,
 	output: TOutput,
 ): IpcMethodContract<TInput, TOutput> {

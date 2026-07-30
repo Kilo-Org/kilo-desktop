@@ -19,11 +19,12 @@ packages/contracts/src/features/<id>.ts # Zod schemas shared by both
 
 ```ts
 // packages/contracts/src/features/todos.ts
-// Shell IPC uses defineIpcMethod (prefixed). Feature-SDK channels reuse those
-// method contracts unprefixed. On plugin migration, move the channel map into
-// the plugin and build it with defineMethod from feature-sdk.
+// Shell channels use defineMethod from contracts (prefixed keys). Feature-SDK
+// channel maps reuse those method contracts unprefixed. On plugin migration,
+// move the channel map into the plugin and build it with defineMethod from
+// feature-sdk.
 import { z } from "zod";
-import { defineIpcMethod } from "../contract.js";
+import { defineMethod } from "../contract.js";
 
 export const todoSchema = z.object({
 	id: z.string(),
@@ -32,9 +33,9 @@ export const todoSchema = z.object({
 });
 
 export const todoMethods = {
-	"todos:list": defineIpcMethod(z.undefined(), z.array(todoSchema)),
-	"todos:add": defineIpcMethod(z.object({ title: z.string().trim().min(1).max(120) }), todoSchema),
-	"todos:toggle": defineIpcMethod(z.object({ id: z.string().min(1) }), todoSchema),
+	"todos:list": defineMethod(z.undefined(), z.array(todoSchema)),
+	"todos:add": defineMethod(z.object({ title: z.string().trim().min(1).max(120) }), todoSchema),
+	"todos:toggle": defineMethod(z.object({ id: z.string().min(1) }), todoSchema),
 } as const;
 
 export const todosChannels = {

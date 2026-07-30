@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineIpcMethod } from "../contract.js";
+import { defineMethod } from "../contract.js";
 
 /**
  * Generic channel for feature-scoped handler invocation.
@@ -14,5 +14,5 @@ export const featureInvokeInput = z.object({
 });
 
 export const featureMethods = {
-	"feature:invoke": defineIpcMethod(featureInvokeInput, z.unknown()),
+	"feature:invoke": defineMethod(featureInvokeInput, z.unknown()),
 } as const;

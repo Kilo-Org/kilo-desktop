@@ -12,6 +12,7 @@ describe("ElectronApp", () => {
 	});
 
 	it("owns identity, metadata, single-instance state, and scoped listeners", () => {
+		Object.defineProperty(process, "platform", { value: "darwin" });
 		const listener = vi.fn();
 		const electronApp = {
 			getAppPath: vi.fn(() => "/application"),

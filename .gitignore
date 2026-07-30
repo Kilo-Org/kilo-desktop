@@ -158,3 +158,6 @@ build/
 release/
 playwright-report/
 test-results/
+
+# Kilo agent workspace
+.kilo/*

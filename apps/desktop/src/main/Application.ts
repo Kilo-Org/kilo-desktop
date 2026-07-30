@@ -5,6 +5,8 @@ import { session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
+import { bootFeatures, createFeatureHandlers } from "./features/registry/feature-registry.js";
+import { FEATURES } from "./features/registry/features.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
 import { createThemeHandlers } from "./features/theme/handlers.js";
 import { createTodoHandlers } from "./features/todos/handlers.js";
@@ -93,10 +95,16 @@ export class Application {
 			throw new Error("TodoService must be created before IPC registration.");
 		}
 
+		// Boot features registered via FEATURES array (plugin-ready pattern).
+		// The returned disposer runs each feature's onDispose callbacks
+		// (DB close, etc.) on shutdown.
+		this.#disposers.push(bootFeatures(FEATURES));
+
 		const handlers = {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#theme, this.#preferences),
 			...createTodoHandlers(todoService),
+			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(handlers);
 		this.#disposers.push(() => this.#ipcServer.dispose());

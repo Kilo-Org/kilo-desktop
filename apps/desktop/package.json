@@ -30,6 +30,7 @@
 	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
+		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
 		"better-sqlite3": "^13.0.1",
 		"electron-debug": "^4.1.0",
 		"electron-log": "^5.4.3",
@@ -39,6 +40,7 @@
 		"update-electron-app": "^3.3.0"
 	},
 	"devDependencies": {
+		"@anaconda-agentic-desktop/testing": "workspace:*",
 		"@electron-forge/cli": "8.0.0-alpha.10",
 		"@electron-forge/maker-deb": "8.0.0-alpha.10",
 		"@electron-forge/maker-dmg": "8.0.0-alpha.10",

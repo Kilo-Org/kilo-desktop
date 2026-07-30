@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BellIcon, HomeIcon, LibraryBigIcon } from "lucide-react";
+import { BellIcon, HomeIcon, LibraryBigIcon, PackageIcon, PlugIcon, SplitIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,39 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 									<SidebarMenuButton tooltip="Library" className="size-8!">
 										<LibraryBigIcon />
 										<span>Library</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										isActive={pathname === "/sdk-producer"}
+										tooltip="SDK Producer"
+										render={<Link to="/sdk-producer" />}
+										className="size-8!"
+									>
+										<PackageIcon />
+										<span>SDK Producer</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										isActive={pathname === "/sdk-consumer"}
+										tooltip="SDK Consumer"
+										render={<Link to="/sdk-consumer" />}
+										className="size-8!"
+									>
+										<PlugIcon />
+										<span>SDK Consumer</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										isActive={pathname === "/split"}
+										tooltip="Split"
+										render={<Link to="/split" />}
+										className="size-8!"
+									>
+										<SplitIcon />
+										<span>Split</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 							</SidebarMenu>

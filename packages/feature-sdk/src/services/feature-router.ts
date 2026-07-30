@@ -1,0 +1,181 @@
+import type {
+	ChannelHandlerInput,
+	ChannelHandlerMap,
+	ChannelHandlerOutput,
+	ChannelMap,
+} from "../channel-map.js";
+import { FeatureError } from "../errors.js";
+import type { ChannelHandlers, MainSdk } from "../types/sdk.js";
+import type { SchemaLike } from "../types/schema.js";
+
+type Handler = (args: unknown) => unknown | Promise<unknown>;
+
+interface HandlerEntry {
+	inputSchema: SchemaLike;
+	outputSchema: SchemaLike;
+	handler: Handler;
+}
+
+/**
+ * Fallback transport used when no local handler exists for a channel.
+ * In the renderer (Electron mode) this routes through the feature:invoke IPC channel.
+ */
+export type InvokeFallback = (
+	featureId: string,
+	channel: string,
+	args?: unknown,
+) => Promise<unknown>;
+
+export interface FeatureRouterOptions {
+	fallback?: InvokeFallback;
+}
+
+/**
+ * In-memory handler router backing `sdk.invoke` and `mainSdk.channels`.
+ *
+ * Shell infrastructure — features never construct this; they register
+ * handlers through the MainSdk given to mainRegister() and call them
+ * through sdk.invoke().
+ *
+ * Deployment shapes:
+ * - Electron main: features populate it at boot; the "feature:invoke" IPC
+ *   handler calls invoke().
+ * - Renderer (Electron mode): empty of local handlers; every invoke() goes
+ *   through the injected fallback (IPC bridge).
+ * - Renderer (browser mode): features boot in-process; invoke() hits local
+ *   handlers directly. Local handlers always win over the fallback.
+ *
+ * Input and output schemas from the feature's channel map are parsed here at
+ * the routing boundary. Invalid input throws FeatureError("VALIDATION");
+ * invalid handler output is an internal error.
+ */
+export class FeatureRouter {
+	private handlers = new Map<string, Map<string, HandlerEntry>>();
+	private disposables = new Map<string, Array<() => void>>();
+	private readonly fallback: InvokeFallback | undefined;
+
+	constructor(options?: FeatureRouterOptions) {
+		this.fallback = options?.fallback;
+	}
+
+	/**
+	 * Create a MainSdk instance scoped to a specific feature.
+	 * The feature uses this to register its handlers.
+	 */
+	createMainSdk(featureId: string): MainSdk {
+		if (!this.handlers.has(featureId)) {
+			this.handlers.set(featureId, new Map());
+		}
+		if (!this.disposables.has(featureId)) {
+			this.disposables.set(featureId, []);
+		}
+
+		const channels = <C extends ChannelMap>(channelMap: C): ChannelHandlers<C> => {
+			const handle = <K extends keyof C & string>(
+				channel: K,
+				handler: (
+					args: ChannelHandlerInput<C[K]>,
+				) => ChannelHandlerOutput<C[K]> | Promise<ChannelHandlerOutput<C[K]>>,
+			) => {
+				const method = channelMap[channel]!;
+				const registeredChannels = this.handlers.get(featureId)!;
+				if (registeredChannels.has(channel)) {
+					console.warn(
+						`[FeatureRouter] Handler for "${featureId}:${channel}" registered twice — replacing.`,
+					);
+				}
+				registeredChannels.set(channel, {
+					inputSchema: method.input,
+					outputSchema: method.output,
+					handler: (args) => handler(args as ChannelHandlerInput<C[K]>),
+				});
+			};
+
+			return {
+				handle,
+				handleAll: (handlers: ChannelHandlerMap<C>) => {
+					// Iterate the channel map (not the handlers object) so the map
+					// stays the source of truth for which channels must exist.
+					for (const channel of Object.keys(channelMap) as Array<keyof C & string>) {
+						handle(channel, handlers[channel]);
+					}
+				},
+			};
+		};
+
+		return {
+			featureId,
+			channels,
+			onDispose: (fn: () => void) => {
+				this.disposables.get(featureId)!.push(fn);
+			},
+		};
+	}
+
+	/**
+	 * Invoke a handler. Used by the SDK's sdk.invoke() and by the IPC bridge.
+	 * Validates args against the handler's input schema before invoking, and
+	 * the result against the output schema.
+	 * Unknown feature/channel falls back to the injected transport when present.
+	 */
+	async invoke(featureId: string, channel: string, args?: unknown): Promise<unknown> {
+		const entry = this.handlers.get(featureId)?.get(channel);
+		if (!entry) {
+			if (this.fallback) {
+				return this.fallback(featureId, channel, args);
+			}
+			throw new FeatureError(
+				`No handler for channel "${channel}" in feature "${featureId}".`,
+				"NOT_FOUND",
+			);
+		}
+
+		let parsedArgs: unknown;
+		try {
+			parsedArgs = entry.inputSchema.parse(args);
+		} catch (error) {
+			throw new FeatureError(
+				`Invalid input for "${featureId}:${channel}": ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				"VALIDATION",
+			);
+		}
+
+		const rawOutput = await entry.handler(parsedArgs);
+
+		try {
+			return entry.outputSchema.parse(rawOutput);
+		} catch (error) {
+			throw new Error(`Handler for "${featureId}:${channel}" returned invalid output.`, {
+				cause: error,
+			});
+		}
+	}
+
+	/**
+	 * Check if a feature has a local handler for a channel.
+	 */
+	has(featureId: string, channel: string): boolean {
+		return this.handlers.get(featureId)?.has(channel) ?? false;
+	}
+
+	/**
+	 * Destroy a feature: run its disposables and remove all handlers.
+	 * Shell-owned — called on feature/plugin unload or app shutdown.
+	 */
+	destroyFeature(featureId: string): void {
+		const disposables = this.disposables.get(featureId);
+		if (disposables) {
+			for (const fn of disposables.reverse()) {
+				try {
+					fn();
+				} catch (error) {
+					console.warn(`[FeatureRouter] Dispose callback for "${featureId}" threw:`, error);
+				}
+			}
+		}
+		this.handlers.delete(featureId);
+		this.disposables.delete(featureId);
+	}
+}

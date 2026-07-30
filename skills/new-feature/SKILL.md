@@ -63,16 +63,18 @@ export function mainRegister(mainSdk: MainSdk) {
 	const service = new MyService(/* deps */);
 
 	// Bind the channel map once; input + output validated at the routing boundary.
-	const api = mainSdk.channels(myFeatureChannels);
-	api.handle("list", () => service.list());
-	api.handle("create", (input) => service.create(input.name));
+	// handleAll is exhaustive — every channel in the map must get a handler.
+	mainSdk.channels(myFeatureChannels).handleAll({
+		list: () => service.list(),
+		create: (input) => service.create(input.name),
 
-	// Expected failures: throw FeatureError so the message survives IPC.
-	// api.handle("get", (input) => {
-	// 	const item = service.get(input.id);
-	// 	if (!item) throw new FeatureError("Item not found.", "NOT_FOUND");
-	// 	return item;
-	// });
+		// Expected failures: throw FeatureError so the message survives IPC.
+		// get: (input) => {
+		// 	const item = service.get(input.id);
+		// 	if (!item) throw new FeatureError("Item not found.", "NOT_FOUND");
+		// 	return item;
+		// },
+	});
 
 	mainSdk.onDispose(() => {
 		// Close DB connections, cleanup resources

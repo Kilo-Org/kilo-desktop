@@ -1,4 +1,9 @@
-import type { ChannelHandlerInput, ChannelHandlerOutput, ChannelMap } from "../channel-map.js";
+import type {
+	ChannelHandlerInput,
+	ChannelHandlerMap,
+	ChannelHandlerOutput,
+	ChannelMap,
+} from "../channel-map.js";
 import { FeatureError } from "../errors.js";
 import type { ChannelHandlers, MainSdk } from "../types/sdk.js";
 import type { SchemaLike } from "../types/schema.js";
@@ -65,8 +70,8 @@ export class FeatureRouter {
 			this.disposables.set(featureId, []);
 		}
 
-		const channels = <C extends ChannelMap>(channelMap: C): ChannelHandlers<C> => ({
-			handle: <K extends keyof C & string>(
+		const channels = <C extends ChannelMap>(channelMap: C): ChannelHandlers<C> => {
+			const handle = <K extends keyof C & string>(
 				channel: K,
 				handler: (
 					args: ChannelHandlerInput<C[K]>,
@@ -84,8 +89,19 @@ export class FeatureRouter {
 					outputSchema: method.output,
 					handler: (args) => handler(args as ChannelHandlerInput<C[K]>),
 				});
-			},
-		});
+			};
+
+			return {
+				handle,
+				handleAll: (handlers: ChannelHandlerMap<C>) => {
+					// Iterate the channel map (not the handlers object) so the map
+					// stays the source of truth for which channels must exist.
+					for (const channel of Object.keys(channelMap) as Array<keyof C & string>) {
+						handle(channel, handlers[channel]);
+					}
+				},
+			};
+		};
 
 		return {
 			featureId,

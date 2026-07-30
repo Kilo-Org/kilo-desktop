@@ -129,6 +129,40 @@ describe("defineMethod + withChannels", () => {
 		}
 	});
 
+	it("handleAll registers every channel in the map", async () => {
+		const services = makeServices();
+		const mainSdk = services.featureRouter.createMainSdk("todos");
+
+		mainSdk.channels(todosChannels).handleAll({
+			list: () => [],
+			add: ({ title }) => ({ id: "1", title, completed: false }),
+			toggle: ({ id }) => ({ id, title: "Milk", completed: true }),
+		});
+
+		expect(services.featureRouter.has("todos", "list")).toBe(true);
+		expect(services.featureRouter.has("todos", "add")).toBe(true);
+		expect(services.featureRouter.has("todos", "toggle")).toBe(true);
+
+		const sdk = withChannels(createSdk("todos", services), todosChannels);
+		await expect(sdk.invoke("toggle", { id: "7" })).resolves.toEqual({
+			id: "7",
+			title: "Milk",
+			completed: true,
+		});
+
+		if (import.meta.url === "") {
+			// @ts-expect-error handleAll requires a handler for every channel in the map
+			mainSdk.channels(todosChannels).handleAll({ list: () => [] });
+			mainSdk.channels(todosChannels).handleAll({
+				list: () => [],
+				add: ({ title }) => ({ id: "1", title, completed: false }),
+				toggle: ({ id }) => ({ id, title: "Milk", completed: true }),
+				// @ts-expect-error handleAll rejects channels missing from the map
+				extra: () => null,
+			});
+		}
+	});
+
 	it("treats invalid handler output as an internal error", async () => {
 		const router = new FeatureRouter();
 		const mainSdk = router.createMainSdk("todos");

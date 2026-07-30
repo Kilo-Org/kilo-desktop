@@ -8,12 +8,15 @@
 		".": "./src/index.ts"
 	},
 	"scripts": {
-		"check": "tsc --noEmit -p tsconfig.json"
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*"
 	},
 	"devDependencies": {
-		"typescript": "catalog:"
+		"typescript": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
 	}
 }

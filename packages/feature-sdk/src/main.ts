@@ -7,6 +7,8 @@ export {
 	type ChannelInput,
 	type ChannelHandlerInput,
 	type ChannelHandlerOutput,
+	type ChannelHandler,
+	type ChannelHandlerMap,
 	type ChannelOutput,
 } from "./channel-map.js";
 export { FeatureError, type FeatureErrorCode } from "./errors.js";

@@ -35,6 +35,8 @@ export {
 	type ChannelInput,
 	type ChannelHandlerInput,
 	type ChannelHandlerOutput,
+	type ChannelHandler,
+	type ChannelHandlerMap,
 	type ChannelOutput,
 	type InvokeArguments,
 	type TypedSDK,

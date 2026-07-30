@@ -1,4 +1,9 @@
-import type { ChannelHandlerInput, ChannelHandlerOutput, ChannelMap } from "../channel-map.js";
+import type {
+	ChannelHandlerInput,
+	ChannelHandlerMap,
+	ChannelHandlerOutput,
+	ChannelMap,
+} from "../channel-map.js";
 
 export type { SchemaLike } from "./schema.js";
 
@@ -333,7 +338,8 @@ export interface DispatchIntent {
 
 /**
  * Typed handler registrar bound to a channel map. Bind once via
- * `mainSdk.channels(map)`, then register each channel.
+ * `mainSdk.channels(map)`, then register each channel — or use `handleAll`
+ * so the compiler proves no channel was forgotten.
  */
 export interface ChannelHandlers<C extends ChannelMap> {
 	handle<K extends keyof C & string>(
@@ -342,6 +348,12 @@ export interface ChannelHandlers<C extends ChannelMap> {
 			args: ChannelHandlerInput<C[K]>,
 		) => ChannelHandlerOutput<C[K]> | Promise<ChannelHandlerOutput<C[K]>>,
 	): void;
+	/**
+	 * Register a handler for every channel in the map at once. Exhaustive by
+	 * construction: adding a channel to the map without a handler here is a
+	 * compile error, so it can never fail at invoke time instead.
+	 */
+	handleAll(handlers: ChannelHandlerMap<C>): void;
 }
 
 /**
@@ -354,9 +366,10 @@ export interface ChannelHandlers<C extends ChannelMap> {
  * @example
  * export function mainRegister(mainSdk: MainSdk) {
  *   const service = new TodoService();
- *   const api = mainSdk.channels(todosChannels);
- *   api.handle("list", () => service.list());
- *   api.handle("add", (input) => service.add(input.title));
+ *   mainSdk.channels(todosChannels).handleAll({
+ *     list: () => service.list(),
+ *     add: (input) => service.add(input.title),
+ *   });
  *   mainSdk.onDispose(() => service.close());
  * }
  */

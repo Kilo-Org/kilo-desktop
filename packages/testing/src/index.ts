@@ -10,8 +10,7 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type {
-	ChannelHandlerInput,
-	ChannelHandlerOutput,
+	ChannelHandlerMap,
 	ChannelMap,
 	MainSdk,
 	SDK,
@@ -72,11 +71,7 @@ export type FakeSdkOptions = FakeSdkShellOptions & {
 export type FakeSdkOptionsWithChannels<C extends ChannelMap> = FakeSdkShellOptions & {
 	featureId: string;
 	channels: C;
-	handlers?: Partial<{
-		[K in keyof C]: (
-			args: ChannelHandlerInput<C[K]>,
-		) => ChannelHandlerOutput<C[K]> | Promise<ChannelHandlerOutput<C[K]>>;
-	}>;
+	handlers?: Partial<ChannelHandlerMap<C>>;
 	invoke?: TypedSDK<C>["invoke"];
 };
 
@@ -195,13 +190,19 @@ export function createFakeSdk<C extends ChannelMap>(
 /**
  * Create a fake MainSdk for testing feature main-process registration.
  * Backed by a real FeatureRouter — invoke/has go through the same validation
- * path as production.
+ * path as production, and dispose runs the same teardown.
  */
 export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
 	/** Invoke a registered handler, validating args/output like the real router. */
 	invoke(channel: string, args?: unknown): Promise<unknown>;
 	/** Whether a handler is registered for the channel. */
 	has(channel: string): boolean;
+	/**
+	 * Tear the feature down like the shell does on unload/shutdown: runs
+	 * onDispose callbacks (in reverse registration order) and removes all
+	 * handlers. Use to assert cleanup behavior registered in mainRegister.
+	 */
+	dispose(): void;
 } {
 	const featureId = options?.featureId ?? "test-feature";
 	const router = new FeatureRouter();
@@ -211,5 +212,6 @@ export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
 		...mainSdk,
 		invoke: (channel, args) => router.invoke(featureId, channel, args),
 		has: (channel) => router.has(featureId, channel),
+		dispose: () => router.destroyFeature(featureId),
 	};
 }

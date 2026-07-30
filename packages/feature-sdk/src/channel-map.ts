@@ -48,6 +48,19 @@ export type InvokeArguments<TInput> = [TInput] extends [undefined]
 	? [args?: undefined]
 	: [args: TInput];
 
+/** Main-process handler for one channel: parsed input in, raw output out. */
+export type ChannelHandler<M> = (
+	args: ChannelHandlerInput<M>,
+) => ChannelHandlerOutput<M> | Promise<ChannelHandlerOutput<M>>;
+
+/**
+ * One handler per channel in the map. Used by `mainSdk.channels(map).handleAll`
+ * — the compiler enforces that every channel gets a handler.
+ */
+export type ChannelHandlerMap<C extends ChannelMap> = {
+	[K in keyof C]: ChannelHandler<C[K]>;
+};
+
 /**
  * Define a channel's input/output schemas. Prefer grouping these in a `as const`
  * channel map owned by the feature/plugin.

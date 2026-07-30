@@ -53,12 +53,14 @@ import { TodoService } from "./TodoService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
 	const service = new TodoService();
-	const api = mainSdk.channels(todosChannels);
 
 	// Input + output validated at the routing boundary from the channel map.
-	api.handle("list", () => service.list());
-	api.handle("add", (input) => service.add(input.title));
-	api.handle("toggle", (input) => service.toggle(input.id));
+	// handleAll is exhaustive: forgetting a channel is a compile error.
+	mainSdk.channels(todosChannels).handleAll({
+		list: () => service.list(),
+		add: (input) => service.add(input.title),
+		toggle: (input) => service.toggle(input.id),
+	});
 
 	mainSdk.onDispose(() => service.close()); // runs on shutdown / feature unload
 }
@@ -106,7 +108,7 @@ feature router, in both Electron and browser mode.
 **Use when:** the renderer needs data or side effects from this feature's own backend (DB reads/writes, Node-only work).
 **Don't use for:** calling _another_ feature's backend — that's what capabilities (`sdk.plugins`) are for. `sdk.invoke` is scoped to your own `featureId` by construction.
 
-Register handlers with the same map (`mainSdk.channels(todosChannels).handle("add", ...)`) so input and output are validated on the main side too.
+Register handlers with the same map so input and output are validated on the main side too. Prefer `mainSdk.channels(todosChannels).handleAll({ ... })` — it requires a handler for every channel in the map, so a newly added channel cannot be forgotten. `handle(channel, handler)` remains for registering channels one at a time.
 
 ### `sdk.events` — fire-and-forget pub/sub
 
@@ -275,6 +277,7 @@ sdk.services.eventBus.emit("other.thing", {}); // drive cross-feature scenarios
 const mainSdk = createFakeMainSdk({ featureId: "todos" });
 mainRegister(mainSdk);
 await mainSdk.invoke("create", { title: "x" }); // validates input and output like the real router
+mainSdk.dispose(); // runs onDispose callbacks + clears handlers, like shell teardown
 ```
 
 ## Shell wiring (internals)

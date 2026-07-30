@@ -34,7 +34,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
 In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Only `browserRegister` boots in this mode — features without one are skipped with a warning. Node-free features opt in with `browserRegister: register`; features using Node APIs (SQLite, fs) must provide browser-safe fakes.
 
-**Handlers and validation:** `mainSdk.channels(channelMap)` binds the map once; `.handle(channel, handler)` infers handler types and validates input and output schemas at the routing boundary. Use `z.undefined()` for channels that take no input.
+**Handlers and validation:** `mainSdk.channels(channelMap)` binds the map once; `.handleAll({ ... })` registers a handler per channel and is exhaustive by type (preferred), `.handle(channel, handler)` registers one at a time. Handler types are inferred, and input and output schemas are validated at the routing boundary. Use `z.undefined()` for channels that take no input.
 
 **Errors:** expected failures throw `FeatureError` from the SDK (`throw new FeatureError("Todo not found.", "NOT_FOUND")`). The shell translates it across the IPC boundary so the message survives; generic errors are scrubbed to a generic string.
 

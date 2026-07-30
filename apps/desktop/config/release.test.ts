@@ -99,5 +99,27 @@ describe("release configuration", () => {
 				"win32",
 			),
 		).not.toThrow();
+		expect(() =>
+			validatePublishEnvironment(
+				{ RELEASE_CHANNEL: "prod", UPDATE_S3_BUCKET: "releases" },
+				"win32",
+			),
+		).toThrow("Azure Key Vault signing credentials or a certificate file");
+		expect(() =>
+			validatePublishEnvironment(
+				{
+					RELEASE_CHANNEL: "staging",
+					UPDATE_S3_BUCKET: "releases",
+					APPLE_SIGNING_IDENTITY: "Developer ID Application: Example",
+					APPLE_API_KEY: "/tmp/key.p8",
+					APPLE_API_KEY_ID: "KEYID",
+					APPLE_API_ISSUER: "issuer-uuid",
+				},
+				"linux",
+			),
+		).not.toThrow();
+		expect(
+			getUpdateFeedUrl({ publishUrl: "", channel: "canary", platform: "darwin", arch: "arm64" }),
+		).toBeUndefined();
 	});
 });

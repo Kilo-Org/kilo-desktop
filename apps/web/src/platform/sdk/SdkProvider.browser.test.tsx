@@ -1,31 +1,20 @@
 import { StrictMode, useEffect, useState } from "react";
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
+import type { DesktopApi } from "@anaconda-agentic-desktop/contracts";
 import { defineMethod, type FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
-import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
 
-import { createFeatureSystem, SdkProvider, useSdk, type FeatureSystem } from "./SdkProvider.js";
+import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 
-function fakeLocalApi(): LocalApi {
-	return {
-		todos: {
-			list: async () => [],
-			add: async ({ title }) => ({ id: "1", title, completed: false }),
-			toggle: async ({ id }) => ({ id, title: "x", completed: true }),
-		},
-		theme: {
-			get: async () => ({ source: "system", shouldUseDarkColors: false }),
-			set: async ({ source }) => ({ source, shouldUseDarkColors: source === "dark" }),
-			onChanged: () => () => undefined,
-		},
-		shell: {
-			openExternal: async () => ({ opened: true }),
-			copyText: async () => undefined,
-		},
-	};
-}
+import {
+	createFeatureSystem,
+	SdkProvider,
+	useFeatureSystem,
+	useSdk,
+	type FeatureSystem,
+} from "./SdkProvider.js";
 
 const undefinedSchema = {
 	parse(value: unknown): undefined {
@@ -69,13 +58,11 @@ function demoRegister(mainSdk: Parameters<FeatureRegistration["mainRegister"]>[0
 const demoFeature: FeatureRegistration = {
 	id: "demo",
 	mainRegister: demoRegister,
-	// Node-free feature: same registration in browser mode
 	browserRegister: demoRegister,
 };
 
-function makeSystem(): FeatureSystem {
-	// vitest browser mode has no window.desktopApi → browser mode, boots in-process
-	return createFeatureSystem(fakeLocalApi(), [demoFeature]);
+function makeSystem(features: FeatureRegistration[] = [demoFeature]): FeatureSystem {
+	return createFeatureSystem(createBrowserLocalApi(), features);
 }
 
 function Probe() {
@@ -100,6 +87,8 @@ function Probe() {
 
 afterEach(() => {
 	cleanup();
+	document.documentElement.classList.remove("dark");
+	vi.unstubAllGlobals();
 });
 
 describe("SdkProvider + useSdk", () => {
@@ -142,6 +131,13 @@ describe("SdkProvider + useSdk", () => {
 		expect(system.getSdk("demo")).toBe(system.getSdk("demo"));
 	});
 
+	it("tears down cached SDK instances", () => {
+		const system = makeSystem();
+		const sdk = system.getSdk("demo");
+		system.teardownFeature("demo");
+		expect(system.getSdk("demo")).not.toBe(sdk);
+	});
+
 	it("skips features without browserRegister in browser mode (no mainRegister fallback)", async () => {
 		const nodeOnlyFeature: FeatureRegistration = {
 			id: "node-only",
@@ -151,11 +147,25 @@ describe("SdkProvider + useSdk", () => {
 				});
 			},
 		};
-		const system = createFeatureSystem(fakeLocalApi(), [nodeOnlyFeature]);
+		const system = makeSystem([nodeOnlyFeature]);
 		await expect(system.getSdk("node-only").invoke("list")).rejects.toMatchObject({
 			name: "FeatureError",
 			code: "NOT_FOUND",
 		});
+	});
+
+	it("catches browserRegister boot failures", () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const broken: FeatureRegistration = {
+			id: "broken",
+			mainRegister() {},
+			browserRegister() {
+				throw new Error("boot boom");
+			},
+		};
+		createFeatureSystem(createBrowserLocalApi(), [broken]);
+		expect(errorSpy).toHaveBeenCalled();
+		errorSpy.mockRestore();
 	});
 
 	it("reports undelivered notifications instead of throwing", () => {
@@ -164,5 +174,63 @@ describe("SdkProvider + useSdk", () => {
 		const result = sdk.notifications.show({ type: "info", title: "Hi", message: "There" });
 		expect(result.delivered).toBe(false);
 		expect(result.reason).toMatch(/not yet wired/);
+	});
+
+	it("routes invoke through the Electron bridge when present", async () => {
+		const bridge = {
+			invoke: vi.fn().mockResolvedValue({ ok: true, value: "bridged" }),
+			on: vi.fn(() => () => undefined),
+		} as unknown as DesktopApi;
+		vi.stubGlobal("desktopApi", bridge);
+
+		const system = createFeatureSystem(createBrowserLocalApi(), []);
+		const result = await system.services.featureRouter.invoke("any", "channel", {});
+		expect(result).toBe("bridged");
+		expect(bridge.invoke).toHaveBeenCalledWith("feature:invoke", {
+			featureId: "any",
+			channel: "channel",
+			args: {},
+		});
+	});
+
+	it("throws when the Electron bridge returns ok: false", async () => {
+		const bridge = {
+			invoke: vi.fn().mockResolvedValue({
+				ok: false,
+				error: { code: "INTERNAL", message: "nope" },
+			}),
+			on: vi.fn(() => () => undefined),
+		} as unknown as DesktopApi;
+		vi.stubGlobal("desktopApi", bridge);
+
+		const system = createFeatureSystem(createBrowserLocalApi(), []);
+		await expect(system.services.featureRouter.invoke("any", "channel", {})).rejects.toThrow(
+			"nope",
+		);
+	});
+});
+
+describe("useFeatureSystem", () => {
+	it("throws outside SdkProvider", () => {
+		function Outside() {
+			useFeatureSystem();
+			return null;
+		}
+		expect(() => render(<Outside />)).toThrow(/must be used within <SdkProvider>/);
+	});
+
+	it("returns the provided system", () => {
+		const system = makeSystem();
+		let seen: FeatureSystem | null = null;
+		function Inside() {
+			seen = useFeatureSystem();
+			return null;
+		}
+		render(
+			<SdkProvider system={system}>
+				<Inside />
+			</SdkProvider>,
+		);
+		expect(seen).toBe(system);
 	});
 });

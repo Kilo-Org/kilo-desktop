@@ -3,18 +3,20 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"description": "Test utilities for features and plugins: createFakeSdk, createFakeMainSdk",
+	"description": "Test utilities for features and plugins: createFakeSdk, createFakeMainSdk, createFakeFeatureSystem",
 	"exports": {
 		".": "./src/index.ts"
 	},
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",
-		"test": "vitest run"
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*"
 	},
 	"devDependencies": {
+		"@vitest/coverage-v8": "5.0.0-beta.7",
 		"typescript": "catalog:",
 		"vitest": "catalog:",
 		"zod": "catalog:"

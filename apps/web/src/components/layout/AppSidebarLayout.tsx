@@ -32,7 +32,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 				className="bg-sidebar h-svh min-h-0 overflow-hidden"
 				style={{ "--sidebar-width": "3rem" } as CSSProperties}
 			>
-				<Sidebar collapsible="none" className="h-svh border-none">
+				<Sidebar collapsible="none" className="h-svh border-none" data-qa-id="app-sidebar">
 					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
 					<SidebarContent>
 						<SidebarGroup className="pt-0">
@@ -43,6 +43,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 										tooltip="Home"
 										render={<Link to="/" />}
 										className="size-8!"
+										data-qa-id="nav-home"
 									>
 										<HomeIcon />
 										<span>Home</span>
@@ -54,6 +55,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 										tooltip="Todo List"
 										render={<Link to="/todos" />}
 										className="size-8!"
+										data-qa-id="nav-todos"
 									>
 										<ListTodoIcon />
 										<span>Todo List</span>
@@ -65,6 +67,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 										tooltip="SDK Producer"
 										render={<Link to="/sdk-producer" />}
 										className="size-8!"
+										data-qa-id="nav-sdk-producer"
 									>
 										<PackageIcon />
 										<span>SDK Producer</span>
@@ -76,6 +79,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 										tooltip="SDK Consumer"
 										render={<Link to="/sdk-consumer" />}
 										className="size-8!"
+										data-qa-id="nav-sdk-consumer"
 									>
 										<PlugIcon />
 										<span>SDK Consumer</span>
@@ -87,6 +91,7 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 										tooltip="Split"
 										render={<Link to="/split" />}
 										className="size-8!"
+										data-qa-id="nav-split"
 									>
 										<SplitIcon />
 										<span>Split</span>

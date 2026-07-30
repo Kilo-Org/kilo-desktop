@@ -17,8 +17,8 @@ function resolveShouldUseDarkColors(source: ThemeSource): boolean {
 	return globalThis.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-export function createBrowserLocalApi(): LocalApi {
-	const todos: Todo[] = [];
+export function createBrowserLocalApi(options?: { readonly todos?: readonly Todo[] }): LocalApi {
+	const todos: Todo[] = [...(options?.todos ?? [])];
 	let themeSource: ThemeSource = "system";
 	const themeListeners = new Set<(state: ThemeState) => void>();
 	let mediaQuery: MediaQueryList | undefined;

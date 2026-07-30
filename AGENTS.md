@@ -22,6 +22,7 @@ Read [CONTEXT.md](./CONTEXT.md) for architecture, terminology, and conventions.
 | ------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------ |
 | `new-feature`       | `skills/new-feature/SKILL.md`       | Creating a new feature (scaffolds main handlers, renderer, contracts, tests, registration) |
 | `migrate-to-plugin` | `skills/migrate-to-plugin/SKILL.md` | Moving an existing feature into `plugins/<id>/` as a self-contained plugin                 |
+| `write-e2e-test`    | `skills/write-e2e-test/SKILL.md`    | Writing Playwright/Electron e2e page objects, fixtures, and `@smoke` specs                 |
 
 ## Key rules for AI agents
 
@@ -30,4 +31,6 @@ Read [CONTEXT.md](./CONTEXT.md) for architecture, terminology, and conventions.
 3. **Never import across features** — cross-feature = `sdk.events` / `sdk.plugins.get` / `sdk.state.get`.
 4. **Every feature registers in the FEATURES array** — never hand-edit `Application.ts`.
 5. **Tests use `createFakeSdk`** — never construct fake `LocalApi` objects in feature tests.
-6. **Use oxlint + oxfmt** — not ESLint/Prettier. Run `pnpm lint` and `pnpm format`.
+6. **Every feature ships at least one `@smoke` e2e spec** — see `docs/TESTING.md` for the tier taxonomy.
+7. **Use oxlint + oxfmt** — not ESLint/Prettier. Run `pnpm lint` and `pnpm format`.
+8. **Prefer Vitest over e2e** when Electron IPC / the packaged binary is not required.

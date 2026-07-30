@@ -158,11 +158,17 @@ export const Route = createFileRoute("/features/<id>")({
 
 ### Step 6: Write tests
 
-**Main service test:** `apps/desktop/src/main/features/<id>/MyService.test.ts`
+Every feature ships tests at four tiers. Prefer the cheapest tier that can catch the bug.
+
+**1. Unit — service logic** (`apps/desktop/src/main/features/<id>/MyService.test.ts`)
 
 - Test business logic directly (no IPC, no SDK)
 
-**Renderer test:** `apps/web/src/features/<id>/<Name>View.browser.test.tsx`
+**2. Integration (optional)** (`apps/desktop/src/main/features/<id>/MyService.integration.test.ts`)
+
+- Real SQLite / drizzle / `FeatureRouter` against a temp dir. Use when the feature persists data.
+
+**3. Component — browser** (`apps/web/src/features/<id>/<Name>View.browser.test.tsx`)
 
 ```tsx
 import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
@@ -174,12 +180,24 @@ import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
 // to serve sdk.invoke calls through the fake's real in-memory router.
 ```
 
+Interactive elements must carry stable `data-qa-id` attributes (queried by both Vitest browser tests and Playwright e2e via `testIdAttribute: "data-qa-id"`).
+
+**4. E2E smoke** — page object + `@smoke` spec under `e2e/`
+
+```
+e2e/pages/features/<id>/<name>-page.ts
+e2e/specs/features/<id>/<name>.spec.ts
+```
+
+Register the page object in `e2e/fixtures/features/<id>.ts` (extends shell). Tag the describe block with `@smoke` so it runs on every PR. See `skills/write-e2e-test/SKILL.md`.
+
 ### Step 7: Verify
 
 ```bash
-pnpm check    # Types pass
-pnpm test     # Tests pass
-pnpm lint     # No warnings
+pnpm check       # Types pass
+pnpm test        # Unit + integration + browser tests
+pnpm test:e2e:smoke  # Packaged Electron smoke (optional locally)
+pnpm lint        # No warnings
 ```
 
 ## Checklist
@@ -188,12 +206,16 @@ pnpm lint     # No warnings
 - [ ] `packages/contracts/src/index.ts` — re-export added
 - [ ] `apps/desktop/src/main/features/<id>/index.ts` — mainRegister
 - [ ] `apps/desktop/src/main/features/<id>/MyService.ts` — service
-- [ ] `apps/desktop/src/main/features/<id>/MyService.test.ts` — service test
+- [ ] `apps/desktop/src/main/features/<id>/MyService.test.ts` — service unit test
+- [ ] `apps/desktop/src/main/features/<id>/MyService.integration.test.ts` — if the feature persists data
 - [ ] `apps/desktop/src/main/features/registry/features.ts` — array entry added
 - [ ] `apps/web/src/features/<id>/use<Name>.ts` — query/mutation hooks
-- [ ] `apps/web/src/features/<id>/<Name>View.tsx` — main component
+- [ ] `apps/web/src/features/<id>/<Name>View.tsx` — main component with `data-qa-id`s
 - [ ] `apps/web/src/features/<id>/<Name>View.browser.test.tsx` — UI test
 - [ ] `apps/web/src/routes/features/<id>.tsx` — route file
+- [ ] `e2e/fixtures/features/<id>.ts` — page fixture
+  - [ ] `e2e/pages/features/<id>/` — page object
+  - [ ] `e2e/specs/features/<id>/` — `@smoke` spec
 - [ ] `pnpm check && pnpm test && pnpm lint` passes
 
 ## Rules
@@ -206,3 +228,5 @@ pnpm lint     # No warnings
 - Namespace events with feature ID: `sdk.events.emit("eventName", payload)` (auto-prefixed)
 - Own your own SQLite file if you persist data: `${userData}/features/<id>/data.db`
 - For cross-feature communication: `sdk.events`, `sdk.plugins.get`, `sdk.state.get`
+- Every feature ships at least one `@smoke` e2e spec
+- Prefer Vitest browser tests over e2e when Electron IPC / the packaged binary is not required

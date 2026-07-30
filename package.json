@@ -19,6 +19,7 @@
 		"lint:fix": "oxlint --fix",
 		"make": "pnpm --filter @anaconda-agentic-desktop/desktop run make",
 		"package": "pnpm --filter @anaconda-agentic-desktop/desktop run package",
+		"package:e2e": "pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e",
 		"postinstall": "node -e \"if (process.platform !== 'win32') require('node:fs').chmodSync('node_modules/@electron-forge/cli/dist/electron-forge.js', 0o755)\"",
 		"publish": "pnpm --filter @anaconda-agentic-desktop/desktop run publish",
 		"start": "pnpm dev:desktop",
@@ -27,7 +28,9 @@
 		"test:web": "pnpm --filter @anaconda-agentic-desktop/web test",
 		"test:desktop": "pnpm --filter @anaconda-agentic-desktop/desktop test",
 		"test:contracts": "pnpm --filter @anaconda-agentic-desktop/contracts test",
-		"test:e2e": "pnpm --filter @anaconda-agentic-desktop/desktop run test:e2e"
+		"test:e2e": "pnpm --filter @anaconda-agentic-desktop/e2e run test:e2e",
+		"test:e2e:smoke": "pnpm --filter @anaconda-agentic-desktop/e2e run test:e2e:smoke",
+		"coverage": "pnpm -r --if-present coverage"
 	},
 	"lint-staged": {
 		"*.{js,mjs,cjs,ts,tsx}": [
@@ -40,6 +43,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^24.13.3",
+		"@vitest/coverage-v8": "5.0.0-beta.7",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
 		"globals": "^17.7.0",

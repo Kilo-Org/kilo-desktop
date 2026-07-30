@@ -1,0 +1,54 @@
+name: Run Electron e2e
+description: >
+  Package the desktop app for Playwright (inspect fuse enabled) and run the
+  e2e suite. Callers must set NODE_AUTH_TOKEN / ANACONDA_NPM_TOKEN.
+
+inputs:
+  script:
+    description: e2e package script to run (test:e2e or test:e2e:smoke).
+    required: false
+    default: test:e2e
+  xvfb:
+    description: Wrap the test command in xvfb-run (Linux CI).
+    required: false
+    default: "false"
+  report-name:
+    description: Artifact name for the Playwright HTML report.
+    required: false
+    default: playwright-report
+  upload-on:
+    description: When to upload the report artifact (failure or always).
+    required: false
+    default: failure
+
+runs:
+  using: composite
+  steps:
+    - name: Install Playwright browsers
+      shell: bash
+      run: pnpm --filter @anaconda-agentic-desktop/e2e exec playwright install chromium --with-deps
+
+    - name: Package desktop for e2e
+      shell: bash
+      run: pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e
+
+    - name: Run e2e
+      shell: bash
+      env:
+        SKIP_BUILD: "true"
+      run: |
+        if [ "${{ inputs.xvfb }}" = "true" ]; then
+          xvfb-run --auto-servernum pnpm --filter @anaconda-agentic-desktop/e2e run ${{ inputs.script }}
+        else
+          pnpm --filter @anaconda-agentic-desktop/e2e run ${{ inputs.script }}
+        fi
+
+    - name: Upload Playwright report
+      if: ${{ inputs.upload-on == 'always' || failure() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.report-name }}
+        path: |
+          playwright-report/
+          test-results/
+        retention-days: 30

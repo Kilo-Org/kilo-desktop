@@ -185,7 +185,10 @@ const config: ForgeConfig = {
 			[FuseV1Options.RunAsNode]: false,
 			[FuseV1Options.EnableCookieEncryption]: true,
 			[FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-			[FuseV1Options.EnableNodeCliInspectArguments]: false,
+			// Playwright's electron.launch requires --inspect to work (waits for
+			// "Debugger listening on"). Enable for e2e packages only; keep off in
+			// production release builds.
+			[FuseV1Options.EnableNodeCliInspectArguments]: process.env.ELECTRON_ENABLE_INSPECT === "true",
 			[FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
 			[FuseV1Options.OnlyLoadAppFromAsar]: true,
 		}),

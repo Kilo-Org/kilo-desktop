@@ -29,7 +29,9 @@ export function TodoList() {
 
 	return (
 		<div className="mx-auto max-w-xl px-5 py-8">
-			<h1 className="text-2xl font-semibold tracking-tight">Todo List</h1>
+			<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="todos-heading">
+				Todo List
+			</h1>
 			<p className="text-muted-foreground mt-1 text-sm">
 				Todos load and update over typed IPC with TanStack Query.
 			</p>
@@ -38,6 +40,7 @@ export function TodoList() {
 				<Label htmlFor="new-todo">New todo</Label>
 				<Input
 					id="new-todo"
+					data-qa-id="todo-input"
 					placeholder="Buy milk"
 					maxLength={120}
 					autoComplete="off"
@@ -45,7 +48,7 @@ export function TodoList() {
 					aria-invalid={addTodo.isError}
 					onChange={(event) => setTitle(event.target.value)}
 				/>
-				<Button type="submit" disabled={!title.trim() || addTodo.isPending}>
+				<Button type="submit" data-qa-id="todo-add" disabled={!title.trim() || addTodo.isPending}>
 					{addTodo.isPending ? "Adding…" : "Add todo"}
 				</Button>
 			</form>

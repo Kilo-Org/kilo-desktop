@@ -179,12 +179,41 @@ pnpm test
 
 ## Test migration
 
-| Before (in apps)                                        | After (in plugin)                              |
+| Before (in apps / e2e)                                  | After (in plugin)                              |
 | ------------------------------------------------------- | ---------------------------------------------- |
 | `apps/desktop/src/main/features/<id>/MyService.test.ts` | `plugins/<id>/src/main/MyService.test.ts`      |
 | `apps/web/src/features/<id>/MyView.browser.test.tsx`    | `plugins/<id>/src/web/MyView.browser.test.tsx` |
+| `e2e/pages/features/<id>/`                              | `plugins/<id>/e2e/pages/`                      |
+| `e2e/specs/features/<id>/`                              | `plugins/<id>/e2e/specs/`                      |
 
-Test changes:
+### Step 10b: Move e2e assets
+
+```bash
+mkdir -p plugins/<id>/e2e/{pages,specs}
+git mv e2e/pages/features/<id>/* plugins/<id>/e2e/pages/
+git mv e2e/specs/features/<id>/* plugins/<id>/e2e/specs/
+```
+
+Create a plugin-local fixture so the page objects stay self-contained (no central registry edit — Playwright already globs `plugins/*/e2e/specs/**/*.spec.ts`):
+
+**File:** `plugins/<id>/e2e/fixtures.ts`
+
+```typescript
+import { test as base } from "@anaconda-agentic-desktop/e2e/fixtures";
+import { MyPage } from "./pages/my-page.js";
+
+export const test = base.extend<{ myPage: MyPage }>({
+	// Playwright requires `{}` destructuring; oxlint-disable no-empty-pattern when unused.
+	myPage: async ({}, use) => {
+		await use(new MyPage());
+	},
+});
+export const { expect } = test;
+```
+
+Update specs to `import { test } from "../fixtures.js"` instead of the first-party feature fixture. Delete `e2e/fixtures/features/<id>.ts` after the move.
+
+Test changes for unit/browser:
 
 - Replace `LocalApiProvider` + fake `LocalApi` → `createFakeSdk({ featureId: "<id>", channels: myFeatureChannels, handlers: { ... } })`
 - Replace `import { ... } from "@/..."` → relative imports within plugin
@@ -200,7 +229,9 @@ Test changes:
 - [ ] Feature removed from contracts re-exports
 - [ ] Route file deleted from `apps/web/src/routes/features/`
 - [ ] Registered in `BUNDLED_PLUGINS`
+- [ ] E2E pages + specs moved to `plugins/<id>/e2e/`
+- [ ] Plugin-local `e2e/fixtures.ts` created; shell fixture cleaned up
 - [ ] `pnpm install` succeeds
 - [ ] `pnpm check` passes
 - [ ] `pnpm test` passes
-- [ ] App still works end-to-end (manual or E2E test)
+- [ ] App still works end-to-end (`pnpm test:e2e:smoke`)

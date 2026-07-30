@@ -1,0 +1,33 @@
+import { useState, type ReactNode } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
+import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
+
+import { createDesktopQueryClient } from "@/lib/query/client";
+import { LocalApiProvider } from "@/platform/LocalApiProvider";
+import { SdkProvider, type FeatureSystem } from "@/platform/sdk";
+import { router } from "@/router";
+
+type AppProvidersProps = {
+	localApi: LocalApi;
+	system: FeatureSystem;
+	children?: ReactNode;
+};
+
+/**
+ * Shared provider stack used by `main.tsx` and app-level browser tests.
+ * When `children` is omitted, renders the app router (production path).
+ */
+export function AppProviders({ localApi, system, children }: AppProvidersProps) {
+	const [queryClient] = useState(() => createDesktopQueryClient());
+
+	return (
+		<LocalApiProvider api={localApi}>
+			<SdkProvider system={system}>
+				<QueryClientProvider client={queryClient}>
+					{children ?? <RouterProvider router={router} />}
+				</QueryClientProvider>
+			</SdkProvider>
+		</LocalApiProvider>
+	);
+}

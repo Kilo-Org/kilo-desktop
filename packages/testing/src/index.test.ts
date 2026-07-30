@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { defineMethod } from "@anaconda-agentic-desktop/feature-sdk";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { createFakeMainSdk, createFakeSdk } from "./index.js";
+import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "./index.js";
 
 const todoSchema = z.object({
 	id: z.string(),
@@ -37,11 +37,16 @@ describe("createFakeMainSdk", () => {
 		});
 	});
 
+	it("defaults featureId to test-feature when omitted", async () => {
+		const mainSdk = createFakeMainSdk();
+		mainSdk.channels(todosChannels).handle("list", () => []);
+		await expect(mainSdk.invoke("list")).resolves.toEqual([]);
+	});
+
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos" });
 		const order: string[] = [];
 
-		// A realistic mainRegister: handlers plus cleanup.
 		function mainRegister(sdk: MainSdk) {
 			sdk.channels(todosChannels).handleAll({
 				list: () => [],
@@ -75,5 +80,147 @@ describe("createFakeSdk", () => {
 		await expect(sdk.invoke("list")).resolves.toEqual([
 			{ id: "1", title: "Milk", completed: false },
 		]);
+	});
+
+	it("works without channels (shell-delegate-only fakes)", () => {
+		const sdk = createFakeSdk({ featureId: "shell-only" });
+		expect(sdk.featureId).toBe("shell-only");
+		expect(sdk.theme.peek()).toBe("light");
+		expect(sdk.notifications.show({ type: "info", title: "t", message: "m" }).delivered).toBe(true);
+		expect(sdk.notifications.setBadge(1).delivered).toBe(true);
+	});
+
+	it("theme.subscribe immediately invokes the listener with light", () => {
+		const sdk = createFakeSdk({ featureId: "theme" });
+		const listener = vi.fn();
+		const unsub = sdk.theme.subscribe(listener);
+		expect(listener).toHaveBeenCalledWith("light");
+		unsub();
+	});
+
+	it("shell delegates succeed by default", async () => {
+		const sdk = createFakeSdk({ featureId: "shell" });
+		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: true });
+		await expect(sdk.shell.copyText("hi")).resolves.toBeUndefined();
+	});
+
+	it("fs methods reject with notImplemented until overridden", async () => {
+		const sdk = createFakeSdk({ featureId: "fs" });
+		await expect(sdk.fs.readFile("x")).rejects.toThrow(/not implemented in test/);
+		await expect(sdk.fs.writeFile("x", "y")).rejects.toThrow(/not implemented in test/);
+		await expect(sdk.fs.exists("x")).rejects.toThrow(/not implemented in test/);
+		await expect(sdk.fs.mkdir("x")).rejects.toThrow(/not implemented in test/);
+		await expect(sdk.fs.readdir("x")).rejects.toThrow(/not implemented in test/);
+		await expect(sdk.fs.remove("x")).rejects.toThrow(/not implemented in test/);
+	});
+
+	it("merges partial shell/fs/notification/theme overrides", async () => {
+		const sdk = createFakeSdk({
+			featureId: "overrides",
+			notifications: { show: () => ({ delivered: false, reason: "blocked" }) },
+			theme: { peek: () => "dark" },
+			shell: { openExternal: async () => ({ opened: false }) },
+			fs: { exists: async () => true },
+		});
+
+		expect(sdk.notifications.show({ type: "info", title: "t", message: "m" })).toEqual({
+			delivered: false,
+			reason: "blocked",
+		});
+		expect(sdk.theme.peek()).toBe("dark");
+		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: false });
+		await expect(sdk.fs.exists("x")).resolves.toBe(true);
+	});
+
+	it("ignores undefined override values when merging", () => {
+		const sdk = createFakeSdk({
+			featureId: "merge-undefined",
+			theme: { peek: undefined } as unknown as { peek?: () => "dark" | "light" },
+		});
+		expect(sdk.theme.peek()).toBe("light");
+	});
+
+	it("allows overriding invoke, contribute, commands, events, state, destroy", async () => {
+		const customInvoke = vi.fn(async () => "custom");
+		const customContribute = vi.fn();
+		const customDestroy = vi.fn();
+		const sdk = createFakeSdk({
+			featureId: "custom",
+			invoke: customInvoke,
+			contribute: customContribute,
+			commands: { register: vi.fn() },
+			events: { emit: vi.fn() },
+			state: { peek: () => 42 },
+			destroy: customDestroy,
+			onDispose: vi.fn(),
+		});
+
+		await expect(sdk.invoke("anything")).resolves.toBe("custom");
+		expect(customInvoke).toHaveBeenCalled();
+		sdk.contribute("zone", { component: "X", label: "Label" });
+		expect(customContribute).toHaveBeenCalled();
+		expect(sdk.state.peek("x")).toBe(42);
+		sdk.destroy();
+		expect(customDestroy).toHaveBeenCalled();
+	});
+
+	it("registers only provided handlers when channels are given", async () => {
+		const sdk = createFakeSdk({
+			featureId: "partial",
+			channels: todosChannels,
+			handlers: {
+				list: () => [],
+				// add intentionally omitted
+			},
+		});
+		await expect(sdk.invoke("list")).resolves.toEqual([]);
+		await expect(sdk.invoke("add", { title: "x" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+
+	it("accepts channels without handlers (no router registration)", async () => {
+		const sdk = createFakeSdk({
+			featureId: "channels-only",
+			channels: todosChannels,
+		});
+		await expect(sdk.invoke("list")).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+
+	it("exposes backing services for assertions", () => {
+		const sdk = createFakeSdk({ featureId: "services" });
+		expect(sdk.services.eventBus).toBeDefined();
+		expect(sdk.services.stateBroker).toBeDefined();
+		expect(sdk.services.featureRouter).toBeDefined();
+	});
+});
+
+describe("createFakeFeatureSystem", () => {
+	it("returns registered sdks and creates unknown ids on shared services", () => {
+		const producer = createFakeSdk({ featureId: "sdk-producer" });
+		const system = createFakeFeatureSystem({ sdks: { "sdk-producer": producer } });
+
+		expect(system.getSdk("sdk-producer")).toBe(producer);
+		expect(system.services).toBe(producer.services);
+
+		const other = system.getSdk("other");
+		expect(other.featureId).toBe("other");
+		expect(system.getSdk("other")).toBe(other);
+	});
+
+	it("teardownFeature destroys and drops only the named sdk", () => {
+		const producer = createFakeSdk({ featureId: "sdk-producer" });
+		const destroy = vi.fn();
+		producer.destroy = destroy;
+		const system = createFakeFeatureSystem({ sdks: { "sdk-producer": producer } });
+
+		system.teardownFeature("missing");
+		expect(destroy).not.toHaveBeenCalled();
+
+		system.teardownFeature("sdk-producer");
+		expect(destroy).toHaveBeenCalledOnce();
+		expect(system.getSdk("sdk-producer")).not.toBe(producer);
+	});
+
+	it("requires services when no FakeSdk is provided", () => {
+		expect(() => createFakeFeatureSystem({ sdks: {} })).toThrow(/requires `services`/);
 	});
 });

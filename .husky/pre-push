@@ -1,1 +1,5 @@
+# Mirror the checks from .github/workflows/ci.yml so pushes don't fail in CI
 pnpm lint
+pnpm format:check
+pnpm check
+pnpm test

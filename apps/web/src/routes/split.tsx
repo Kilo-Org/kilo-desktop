@@ -9,11 +9,11 @@ import { SdkProducerView } from "@/features/sdk-producer/SdkProducerView";
  */
 function SplitView() {
 	return (
-		<div className="divide-border grid grid-cols-2 divide-x">
-			<div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 40px)" }}>
+		<div className="divide-border grid min-h-0 flex-1 grid-cols-2 divide-x overflow-hidden">
+			<div className="min-w-0 overflow-y-auto">
 				<SdkProducerView />
 			</div>
-			<div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 40px)" }}>
+			<div className="min-w-0 overflow-y-auto">
 				<SdkConsumerView />
 			</div>
 		</div>

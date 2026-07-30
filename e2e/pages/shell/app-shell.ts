@@ -1,11 +1,5 @@
-import {
-	click,
-	expectElementToBeVisible,
-	getLocatorByTestId,
-	getPage,
-	getURL,
-	waitForFunction,
-} from "@anaconda/playwright-utils";
+import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/playwright-utils";
+import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 export class AppShellPage {
 	private readonly sidebar = () => getLocatorByTestId("app-sidebar");
@@ -20,7 +14,9 @@ export class AppShellPage {
 	}
 
 	async verifyCustomProtocolBoot(): Promise<void> {
-		const href = await getURL();
+		// Use the utils page singleton (not barrel getURL/waitForFunction) — those named
+		// exports resolve as non-functions under Playwright's CJS interop on CI.
+		const href = getPage().url();
 		if (href !== "anaconda-agentic-desktop://app/#/") {
 			throw new Error(`Expected custom-protocol home URL, got "${href}"`);
 		}
@@ -40,7 +36,7 @@ export class AppShellPage {
 
 	async verifyThemeSyncApplied(): Promise<void> {
 		await this.verifyShellIsLoaded();
-		await waitForFunction(() => {
+		await getPage().waitForFunction(() => {
 			const scheme = document.documentElement.style.colorScheme;
 			return scheme === "light" || scheme === "dark";
 		});

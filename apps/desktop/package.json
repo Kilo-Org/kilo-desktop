@@ -6,6 +6,7 @@
 	"description": "Electron shell for Anaconda Agentic Desktop",
 	"productName": "Anaconda Agentic Desktop",
 	"author": "Anaconda, Inc.",
+	"license": "UNLICENSED",
 	"homepage": "https://github.com/anaconda/agentic-desktop",
 	"repository": {
 		"type": "git",
@@ -43,7 +44,6 @@
 		"@electron-forge/cli": "8.0.0-alpha.10",
 		"@electron-forge/maker-deb": "8.0.0-alpha.10",
 		"@electron-forge/maker-dmg": "8.0.0-alpha.10",
-		"@electron-forge/maker-rpm": "8.0.0-alpha.10",
 		"@electron-forge/maker-squirrel": "8.0.0-alpha.10",
 		"@electron-forge/maker-zip": "8.0.0-alpha.10",
 		"@electron-forge/plugin-fuses": "8.0.0-alpha.10",

@@ -43,8 +43,8 @@ The new `createFakeSdk` is built on real services. Most tests don't need overrid
 
 ```ts
 const sdk = createFakeSdk({
-    featureId: "my-feature",
-    handlers: { list: () => [...data] },
+	featureId: "my-feature",
+	handlers: { list: () => [...data] },
 });
 ```
 
@@ -67,6 +67,7 @@ Still must write `sdk.state.get("sdk-explorer.click-count")` instead of `sdk.sta
 ### 4. MEDIUM: `sdk.events.on` asymmetry with `emit` (unchanged)
 
 Still a DX trap. No `onOwn()` method was added. Feature developers must remember:
+
 - `sdk.events.emit("foo")` → emits `"sdk-explorer.foo"`
 - `sdk.events.on("sdk-explorer.foo", handler)` → must use full namespace
 
@@ -97,6 +98,7 @@ In v1, notifications were silently no-ops (`console.info`). In v2, they throw vi
 **Impact:** The "fail loud" philosophy is debatable here. Features shouldn't silently believe a user saw a notification — but crashing the feature because the notification system isn't wired yet is overly aggressive. In our sdk-explorer, we had to wrap every notification call in try/catch.
 
 **Recommendation:** Use a two-tier approach:
+
 - Development mode: throw (to catch unintended reliance on notifications)
 - Production mode: warn + no-op (graceful degradation)
 - Or: return a `{ delivered: false }` result instead of throwing
@@ -114,6 +116,7 @@ The `WEB_FEATURES` array must replicate handler logic from `apps/desktop/src/mai
 **Impact:** For our simple `NoteService`, this means maintaining two copies of the same logic. Any bug fix must be applied in both places. This will scale poorly.
 
 **Recommendation:**
+
 - For Node-free features, allow `WEB_FEATURES` to import from a shared location (e.g., a `features/` workspace package, or co-locate browser-safe handlers in `packages/contracts`)
 - Or document that `browserRegister` should import from a shared service file that lives outside both apps
 
@@ -126,6 +129,7 @@ When `browserRegister` is omitted, browser mode falls back to `mainRegister`. Bu
 **Impact:** A developer could add a feature with SQLite in `mainRegister`, forget to add `browserRegister`, and the standalone web app crashes silently on boot.
 
 **Recommendation:** Either:
+
 - Make `browserRegister` required (forcing explicit opt-in to "my mainRegister is browser-safe")
 - Or add a `nodeOnly: true` flag that skips the feature in browser mode
 - Or validate at boot time that `mainRegister` doesn't throw before committing the feature
@@ -165,22 +169,22 @@ Calling `sdk.state.get("some.nonexistent.key")` creates an unhydrated store entr
 
 ## Updated Priority Table
 
-| #   | Severity | Status   | Summary                                         |
-| --- | -------- | -------- | ----------------------------------------------- |
-| 1   | ~~Critical~~ | **FIXED** | Factory-based createFeatureSystem             |
-| 2   | ~~High~~     | **FIXED** | Cached SDK instances, no StrictMode issue     |
-| 11  | Medium   | NEW      | notifications.show throws — too aggressive    |
-| 12  | Medium   | NEW      | WEB_FEATURES duplication problem              |
-| 3   | Medium   | Open     | state.get requires full namespaced key        |
-| 4   | Medium   | Open     | events.on/emit asymmetry                      |
-| 5   | Medium   | Open     | plugins.get returns untyped Record            |
-| 13  | Low      | NEW      | browserRegister fallback is a runtime trap    |
-| 14  | Low      | NEW      | state.get creates phantom entries             |
-| 6   | Low      | Downgraded | contribute has no return handle (less needed now) |
-| 7   | Low      | Open     | sdk.fs not wired but on the type              |
-| 8   | ~~Low~~  | **FIXED** | createFakeSdk uses real services now          |
-| 9   | ~~Low~~  | **FIXED** | Command dedup with warn-and-replace           |
-| 10  | Low      | Open     | No sdk.runtime.mode                           |
+| #   | Severity     | Status     | Summary                                           |
+| --- | ------------ | ---------- | ------------------------------------------------- |
+| 1   | ~~Critical~~ | **FIXED**  | Factory-based createFeatureSystem                 |
+| 2   | ~~High~~     | **FIXED**  | Cached SDK instances, no StrictMode issue         |
+| 11  | Medium       | NEW        | notifications.show throws — too aggressive        |
+| 12  | Medium       | NEW        | WEB_FEATURES duplication problem                  |
+| 3   | Medium       | Open       | state.get requires full namespaced key            |
+| 4   | Medium       | Open       | events.on/emit asymmetry                          |
+| 5   | Medium       | Open       | plugins.get returns untyped Record                |
+| 13  | Low          | NEW        | browserRegister fallback is a runtime trap        |
+| 14  | Low          | NEW        | state.get creates phantom entries                 |
+| 6   | Low          | Downgraded | contribute has no return handle (less needed now) |
+| 7   | Low          | Open       | sdk.fs not wired but on the type                  |
+| 8   | ~~Low~~      | **FIXED**  | createFakeSdk uses real services now              |
+| 9   | ~~Low~~      | **FIXED**  | Command dedup with warn-and-replace               |
+| 10  | Low          | Open       | No sdk.runtime.mode                               |
 
 ---
 

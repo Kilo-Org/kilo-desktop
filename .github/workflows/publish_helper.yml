@@ -57,7 +57,7 @@ jobs:
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes fakeroot rpm
+          sudo apt-get install --yes fakeroot
 
       - name: Setup macOS code signing
         if: matrix.target == 'mac'

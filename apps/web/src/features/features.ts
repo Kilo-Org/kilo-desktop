@@ -55,6 +55,14 @@ function sdkConsumerBrowserRegister(mainSdk: MainSdk): void {
 }
 
 export const WEB_FEATURES: readonly FeatureRegistration[] = [
-	{ id: "sdk-explorer", mainRegister: sdkExplorerBrowserRegister, browserRegister: sdkExplorerBrowserRegister },
-	{ id: "sdk-consumer", mainRegister: sdkConsumerBrowserRegister, browserRegister: sdkConsumerBrowserRegister },
+	{
+		id: "sdk-explorer",
+		mainRegister: sdkExplorerBrowserRegister,
+		browserRegister: sdkExplorerBrowserRegister,
+	},
+	{
+		id: "sdk-consumer",
+		mainRegister: sdkConsumerBrowserRegister,
+		browserRegister: sdkConsumerBrowserRegister,
+	},
 ];

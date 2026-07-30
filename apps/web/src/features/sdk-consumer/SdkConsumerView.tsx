@@ -43,7 +43,9 @@ export function SdkConsumerView() {
 	const [capabilityResult, setCapabilityResult] = useState<string | null>(null);
 
 	function handleGetCapability() {
-		const cap = sdk.plugins.get<{ explorerService: { getInfo: () => { name: string; version: string } } }>("sdk-explorer");
+		const cap = sdk.plugins.get<{
+			explorerService: { getInfo: () => { name: string; version: string } };
+		}>("sdk-explorer");
 		if (cap) {
 			const info = cap.explorerService.getInfo();
 			setCapabilityResult(JSON.stringify(info));
@@ -66,9 +68,9 @@ export function SdkConsumerView() {
 			<header className="mb-6">
 				<h1 className="text-2xl font-semibold tracking-tight">SDK Consumer</h1>
 				<p className="text-muted-foreground mt-1 text-sm">
-					A separate feature that reads data from <code>sdk-explorer</code> via cross-feature
-					SDK primitives. Open <code>/#/sdk-explorer</code> in another tab and interact with it
-					— changes appear here in real time.
+					A separate feature that reads data from <code>sdk-explorer</code> via cross-feature SDK
+					primitives. Open <code>/#/sdk-explorer</code> in another tab and interact with it —
+					changes appear here in real time.
 				</p>
 			</header>
 
@@ -118,9 +120,7 @@ export function SdkConsumerView() {
 
 			{/* ─── Cross-feature capability ───────────────────────────────── */}
 			<section className="mb-6">
-				<h2 className="mb-2 text-lg font-medium">
-					sdk.plugins.get(&quot;sdk-explorer&quot;)
-				</h2>
+				<h2 className="mb-2 text-lg font-medium">sdk.plugins.get(&quot;sdk-explorer&quot;)</h2>
 				<button
 					type="button"
 					className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-3 py-1.5 text-xs font-medium"

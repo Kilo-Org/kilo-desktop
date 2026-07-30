@@ -9,7 +9,7 @@ import { SdkExplorerView } from "@/features/sdk-explorer/SdkExplorerView";
  */
 function SplitView() {
 	return (
-		<div className="grid grid-cols-2 divide-x divide-border">
+		<div className="divide-border grid grid-cols-2 divide-x">
 			<div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 40px)" }}>
 				<SdkExplorerView />
 			</div>

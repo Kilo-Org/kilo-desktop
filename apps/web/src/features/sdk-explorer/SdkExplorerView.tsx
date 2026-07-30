@@ -155,7 +155,9 @@ export function SdkExplorerView() {
 	}
 
 	function handlePluginsGet() {
-		const cap = sdk.plugins.get<{ explorerService: { getInfo: () => { name: string; version: string } } }>("sdk-explorer");
+		const cap = sdk.plugins.get<{
+			explorerService: { getInfo: () => { name: string; version: string } };
+		}>("sdk-explorer");
 		if (cap) {
 			const info = cap.explorerService.getInfo();
 			appendLog(`plugins.get<T>("sdk-explorer") → ${JSON.stringify(info)}`);
@@ -170,12 +172,16 @@ export function SdkExplorerView() {
 			message: "This is a test notification from the SDK explorer feature.",
 			type: "success",
 		});
-		appendLog(`notifications.show() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`);
+		appendLog(
+			`notifications.show() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
+		);
 	}
 
 	function handleBadge() {
 		const result = sdk.notifications.setBadge(notes.data?.length ?? 0);
-		appendLog(`notifications.setBadge() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`);
+		appendLog(
+			`notifications.setBadge() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
+		);
 	}
 
 	function handleCopyText() {

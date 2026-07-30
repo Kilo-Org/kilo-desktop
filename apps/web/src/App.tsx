@@ -17,7 +17,7 @@ export function App() {
 					to="/sdk-explorer"
 					className="text-muted-foreground hover:text-foreground [&.active]:text-foreground [&.active]:font-medium"
 				>
-					SDK Explorer
+					SDK Producer
 				</Link>
 				<Link
 					to="/sdk-consumer"

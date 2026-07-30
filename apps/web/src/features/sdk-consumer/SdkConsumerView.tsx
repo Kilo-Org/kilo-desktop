@@ -69,8 +69,8 @@ export function SdkConsumerView() {
 				<h1 className="text-2xl font-semibold tracking-tight">SDK Consumer</h1>
 				<p className="text-muted-foreground mt-1 text-sm">
 					A separate feature that reads data from <code>sdk-explorer</code> via cross-feature SDK
-					primitives. Open <code>/#/sdk-explorer</code> in another tab and interact with it —
-					changes appear here in real time.
+					primitives. Open <code>/#/sdk-explorer</code> in the SDK Producer tab and interact with it
+					— changes appear here in real time.
 				</p>
 			</header>
 

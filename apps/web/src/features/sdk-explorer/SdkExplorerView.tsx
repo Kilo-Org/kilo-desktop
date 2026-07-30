@@ -233,7 +233,7 @@ export function SdkExplorerView() {
 	return (
 		<main className="mx-auto max-w-3xl px-5 py-8">
 			<header className="mb-6">
-				<h1 className="text-2xl font-semibold tracking-tight">SDK Explorer</h1>
+				<h1 className="text-2xl font-semibold tracking-tight">SDK Producer</h1>
 				<p className="text-muted-foreground mt-1 text-sm">
 					Interactive demo exercising every SDK shim API. Feature ID:{" "}
 					<code className="bg-muted rounded px-1">{sdk.featureId}</code> | Theme:{" "}

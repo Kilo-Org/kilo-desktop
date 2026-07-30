@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BellIcon, HomeIcon, LibraryBigIcon, PackageIcon, PlugIcon, SplitIcon } from "lucide-react";
+import { BellIcon, HomeIcon, ListTodoIcon, PackageIcon, PlugIcon, SplitIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -49,9 +49,14 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 								<SidebarMenuItem>
-									<SidebarMenuButton tooltip="Library" className="size-8!">
-										<LibraryBigIcon />
-										<span>Library</span>
+									<SidebarMenuButton
+										isActive={pathname === "/todos"}
+										tooltip="Todo List"
+										render={<Link to="/todos" />}
+										className="size-8!"
+									>
+										<ListTodoIcon />
+										<span>Todo List</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 								<SidebarMenuItem>

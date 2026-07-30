@@ -1,7 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { TodoList } from "@/features/todos/TodoList";
+function HomePage() {
+	return (
+		<div className="flex min-h-full items-center justify-center p-8">
+			<p className="text-muted-foreground text-sm">Welcome to Anaconda Agentic Desktop.</p>
+		</div>
+	);
+}
 
 export const Route = createFileRoute("/")({
-	component: TodoList,
+	component: HomePage,
 });

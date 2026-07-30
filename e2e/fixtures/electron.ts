@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { test as baseTest, setPage } from "@anaconda/playwright-utils";
-import type { TestInfo } from "@playwright/test";
+import { test as baseTest, type TestInfo } from "@playwright/test";
+import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication } from "playwright";
 
 import { buildPackagedApp, killStrayProcesses } from "../utils/app-launcher.js";

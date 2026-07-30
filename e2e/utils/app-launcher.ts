@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 
-import { logger } from "@anaconda/playwright-utils";
+import { logger } from "@anaconda/playwright-utils/custom-logger";
 
 import { packagedExecutable, repoRoot } from "./paths.js";
 

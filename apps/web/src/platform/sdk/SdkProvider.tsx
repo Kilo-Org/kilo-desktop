@@ -9,6 +9,7 @@ import {
 	FeatureRouter,
 	StateBroker,
 	teardownFeature,
+	type SdkClient,
 	type FeatureRegistration,
 	type SDK,
 	type SdkFactoryServices,
@@ -198,11 +199,16 @@ export function useFeatureSystem(): FeatureSystem {
 }
 
 /**
- * Get the shared SDK instance for a feature.
- * Call sites: `const sdk = useSdk("todos")` — stable across all migration stages.
+ * Get the SDK instance for a feature. Pass a service type generic to get
+ * a typed `client` property with method-style access to channels.
+ *
+ * @example
+ * const { client } = useSdk<TodoService>("todos");
+ * const todo = await client.add({ title: "Buy milk" }); // typed as Todo
+ *
  * The instance is shared by every component of the feature and is NOT
  * destroyed on unmount; teardown is shell-owned (FeatureSystem.teardownFeature).
  */
-export function useSdk(featureId: string): SDK {
-	return useFeatureSystem().getSdk(featureId);
+export function useSdk<T extends SdkClient = SdkClient>(featureId: string): SDK<T> {
+	return useFeatureSystem().getSdk(featureId) as SDK<T>;
 }

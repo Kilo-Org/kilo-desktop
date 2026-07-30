@@ -9,8 +9,9 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type {
+	ChannelHandlerMap,
+	ChannelMap,
 	MainSdk,
-	SchemaLike,
 	SDK,
 	SdkFactoryServices,
 	ShellDelegates,
@@ -38,17 +39,7 @@ function merge<T extends object>(base: T, overrides?: Partial<T>): T {
 	return result;
 }
 
-/**
- * Options for createFakeSdk. Provide only the methods your test exercises.
- */
-export interface FakeSdkOptions {
-	featureId: string;
-	/**
-	 * Backend handlers for sdk.invoke, keyed by channel. Registered on the
-	 * fake's real in-memory FeatureRouter — prefer this over overriding invoke.
-	 */
-	handlers?: Record<string, (args: unknown) => unknown | Promise<unknown>>;
-	invoke?: SDK["invoke"];
+type FakeSdkShellOptions = {
 	events?: Partial<SDK["events"]>;
 	state?: Partial<SDK["state"]>;
 	plugins?: Partial<SDK["plugins"]>;
@@ -60,21 +51,32 @@ export interface FakeSdkOptions {
 	fs?: Partial<SDK["fs"]>;
 	onDispose?: SDK["onDispose"];
 	destroy?: SDK["destroy"];
-}
+};
+
+/**
+ * Options for createFakeSdk without a channel map — for tests that only exercise
+ * events/state/plugins/shell delegates (or override invoke entirely).
+ */
+export type FakeSdkOptions = FakeSdkShellOptions & {
+	featureId: string;
+	invoke?: SDK["invoke"];
+};
+
+/**
+ * Options for createFakeSdk with a channel map — registers typed handlers on
+ * the fake's real in-memory FeatureRouter so `sdk.client` calls work.
+ */
+export type FakeSdkOptionsWithChannels<C extends ChannelMap> = FakeSdkShellOptions & {
+	featureId: string;
+	channels: C;
+	handlers?: Partial<ChannelHandlerMap<C>>;
+	invoke?: SDK["invoke"];
+};
 
 /** SDK plus the backing in-memory services, for assertions in tests. */
 export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
 
-/**
- * Create a fake SDK for testing feature renderer code.
- *
- * Built on the REAL createSdk with real in-memory services (event bus, state
- * broker, registries, router), so events/state/plugins behave exactly like
- * production. Only the shell delegates are fakes (theme is "light",
- * notifications no-op, fs throws until overridden). Use `handlers` to serve
- * sdk.invoke calls; use the option overrides for anything else.
- */
-export function createFakeSdk(options: FakeSdkOptions): FakeSdk {
+function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 	const shellDelegates: ShellDelegates = {
 		// The fake reports successful delivery so feature code that checks the
 		// envelope takes its happy path in tests. Override to simulate absence.
@@ -112,7 +114,7 @@ export function createFakeSdk(options: FakeSdkOptions): FakeSdk {
 		),
 	};
 
-	const services: SdkFactoryServices = {
+	return {
 		eventBus: new EventBus(),
 		stateBroker: new StateBroker(),
 		capabilityRegistry: new CapabilityRegistry(),
@@ -121,16 +123,13 @@ export function createFakeSdk(options: FakeSdkOptions): FakeSdk {
 		featureRouter: new FeatureRouter(),
 		shellDelegates,
 	};
+}
 
-	if (options.handlers) {
-		const mainSdk = services.featureRouter.createMainSdk(options.featureId);
-		for (const [channel, handler] of Object.entries(options.handlers)) {
-			mainSdk.handle(channel, null, handler);
-		}
-	}
-
-	const sdk = createSdk(options.featureId, services);
-
+function applySdkOverrides(
+	sdk: SDK,
+	services: SdkFactoryServices,
+	options: FakeSdkShellOptions & { invoke?: SDK["invoke"] },
+): FakeSdk {
 	return {
 		...sdk,
 		services,
@@ -146,44 +145,65 @@ export function createFakeSdk(options: FakeSdkOptions): FakeSdk {
 }
 
 /**
+ * Create a fake SDK for testing feature renderer code.
+ *
+ * Built on the REAL createSdk with real in-memory services (event bus, state
+ * broker, registries, router), so events/state/plugins behave exactly like
+ * production. Only the shell delegates are fakes (theme is "light",
+ * notifications no-op, fs throws until overridden). Pass `channels` (+ optional
+ * `handlers`) to register handlers on the router so `sdk.client` works.
+ */
+export function createFakeSdk(options: FakeSdkOptions): FakeSdk;
+export function createFakeSdk<C extends ChannelMap>(
+	options: FakeSdkOptionsWithChannels<C>,
+): FakeSdk;
+export function createFakeSdk<C extends ChannelMap>(
+	options: FakeSdkOptions | FakeSdkOptionsWithChannels<C>,
+): FakeSdk {
+	const services = buildFakeServices(options);
+	const base = createSdk(options.featureId, services);
+
+	if ("channels" in options && options.channels) {
+		const channels = options.channels;
+		if (options.handlers) {
+			const api = services.featureRouter.createMainSdk(options.featureId).channels(channels);
+			for (const channel of Object.keys(options.handlers) as Array<keyof C & string>) {
+				const handler = options.handlers[channel];
+				if (handler) {
+					api.handle(channel, handler);
+				}
+			}
+		}
+	}
+
+	return applySdkOverrides(base, services, options);
+}
+
+/**
  * Create a fake MainSdk for testing feature main-process registration.
- * Tracks which handlers and schemas were registered.
+ * Backed by a real FeatureRouter — invoke/has go through the same validation
+ * path as production, and dispose runs the same teardown.
  */
 export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
-	/** Map of registered handlers (channel → handler fn). */
-	registeredHandlers: Map<string, (args: never) => unknown | Promise<unknown>>;
-	/** Map of registered input schemas (channel → schema or null). */
-	registeredSchemas: Map<string, SchemaLike | null>;
-	/** List of dispose callbacks registered via onDispose(). */
-	disposeCallbacks: Array<() => void>;
-	/** Invoke a registered handler, validating args like the real router. */
+	/** Invoke a registered handler, validating args/output like the real router. */
 	invoke(channel: string, args?: unknown): Promise<unknown>;
+	/** Whether a handler is registered for the channel. */
+	has(channel: string): boolean;
+	/**
+	 * Tear the feature down like the shell does on unload/shutdown: runs
+	 * onDispose callbacks (in reverse registration order) and removes all
+	 * handlers. Use to assert cleanup behavior registered in mainRegister.
+	 */
+	dispose(): void;
 } {
-	const registeredHandlers = new Map<string, (args: never) => unknown | Promise<unknown>>();
-	const registeredSchemas = new Map<string, SchemaLike | null>();
-	const disposeCallbacks: Array<() => void> = [];
 	const featureId = options?.featureId ?? "test-feature";
+	const router = new FeatureRouter();
+	const mainSdk = router.createMainSdk(featureId);
 
 	return {
-		featureId,
-		handle(channel, inputSchema, handler) {
-			registeredHandlers.set(channel, handler);
-			registeredSchemas.set(channel, inputSchema);
-		},
-		onDispose(fn) {
-			disposeCallbacks.push(fn);
-		},
-		registeredHandlers,
-		registeredSchemas,
-		disposeCallbacks,
-		async invoke(channel, args) {
-			const handler = registeredHandlers.get(channel);
-			if (!handler) {
-				throw new Error(`[FakeMainSdk] No handler registered for channel "${channel}".`);
-			}
-			const schema = registeredSchemas.get(channel);
-			const parsed = schema ? schema.parse(args) : args;
-			return (handler as (args: unknown) => unknown | Promise<unknown>)(parsed);
-		},
+		...mainSdk,
+		invoke: (channel, args) => router.invoke(featureId, channel, args),
+		has: (channel) => router.has(featureId, channel),
+		dispose: () => router.destroyFeature(featureId),
 	};
 }

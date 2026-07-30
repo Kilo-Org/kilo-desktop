@@ -3,7 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import { defineMethod, type FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
 
 import { createFeatureSystem, SdkProvider, useSdk, type FeatureSystem } from "./SdkProvider.js";
@@ -27,8 +27,43 @@ function fakeLocalApi(): LocalApi {
 	};
 }
 
+const undefinedSchema = {
+	parse(value: unknown): undefined {
+		if (value !== undefined) throw new Error("Expected undefined.");
+		return undefined;
+	},
+};
+
+const demoChannels = {
+	greet: defineMethod(
+		{
+			parse(value: unknown): { name: string } {
+				if (
+					typeof value !== "object" ||
+					value === null ||
+					!("name" in value) ||
+					typeof value.name !== "string"
+				) {
+					throw new Error("Expected an object with a string name.");
+				}
+				return { name: value.name };
+			},
+		},
+		{
+			parse(value: unknown): string {
+				if (typeof value !== "string") throw new Error("Expected a string.");
+				return value;
+			},
+		},
+	),
+} as const;
+
+const nodeOnlyChannels = {
+	list: defineMethod(undefinedSchema, { parse: (value: unknown) => value }),
+} as const;
+
 function demoRegister(mainSdk: Parameters<FeatureRegistration["mainRegister"]>[0]) {
-	mainSdk.handle("greet", null, (args) => `Hello, ${(args as { name: string }).name}!`);
+	mainSdk.channels(demoChannels).handle("greet", (args) => `Hello, ${args.name}!`);
 }
 
 const demoFeature: FeatureRegistration = {
@@ -111,7 +146,7 @@ describe("SdkProvider + useSdk", () => {
 		const nodeOnlyFeature: FeatureRegistration = {
 			id: "node-only",
 			mainRegister(mainSdk) {
-				mainSdk.handle("list", null, () => {
+				mainSdk.channels(nodeOnlyChannels).handle("list", () => {
 					throw new Error("must never boot in the browser");
 				});
 			},

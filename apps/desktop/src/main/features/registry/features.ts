@@ -1,7 +1,7 @@
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { mainRegister as sdkConsumerMainRegister } from "../sdk-consumer/index.js";
-import { mainRegister as sdkExplorerMainRegister } from "../sdk-producer/index.js";
+import { mainRegister as sdkProducerMainRegister } from "../sdk-producer/index.js";
 
 /**
  * Mandatory feature registration array.
@@ -13,6 +13,6 @@ import { mainRegister as sdkExplorerMainRegister } from "../sdk-producer/index.j
  * - mainRegister(mainSdk): registers handlers, opens DB, etc.
  */
 export const FEATURES: readonly FeatureRegistration[] = [
-	{ id: "sdk-producer", mainRegister: sdkExplorerMainRegister },
+	{ id: "sdk-producer", mainRegister: sdkProducerMainRegister },
 	{ id: "sdk-consumer", mainRegister: sdkConsumerMainRegister },
 ];

@@ -1,11 +1,18 @@
+import type {
+	ChannelHandlerInput,
+	ChannelHandlerMap,
+	ChannelHandlerOutput,
+	ChannelMap,
+} from "../channel-map.js";
 import { FeatureError } from "../errors.js";
+import type { ChannelHandlers, MainSdk } from "../types/sdk.js";
+import type { SchemaLike } from "../types/schema.js";
 
-import type { MainSdk, SchemaLike } from "../types/sdk.js";
-
-type Handler = (args: never) => unknown | Promise<unknown>;
+type Handler = (args: unknown) => unknown | Promise<unknown>;
 
 interface HandlerEntry {
-	inputSchema: SchemaLike | null;
+	inputSchema: SchemaLike;
+	outputSchema: SchemaLike;
 	handler: Handler;
 }
 
@@ -24,7 +31,7 @@ export interface FeatureRouterOptions {
 }
 
 /**
- * In-memory handler router backing `sdk.invoke` and `mainSdk.handle`.
+ * In-memory handler router backing `sdk.invoke` and `mainSdk.channels`.
  *
  * Shell infrastructure — features never construct this; they register
  * handlers through the MainSdk given to mainRegister() and call them
@@ -38,9 +45,9 @@ export interface FeatureRouterOptions {
  * - Renderer (browser mode): features boot in-process; invoke() hits local
  *   handlers directly. Local handlers always win over the fallback.
  *
- * Input schemas registered with handlers are validated here, at the routing
- * boundary — handlers receive already-parsed args and invalid input throws
- * FeatureError("VALIDATION").
+ * Input and output schemas from the feature's channel map are parsed here at
+ * the routing boundary. Invalid input throws FeatureError("VALIDATION");
+ * invalid handler output is an internal error.
  */
 export class FeatureRouter {
 	private handlers = new Map<string, Map<string, HandlerEntry>>();
@@ -63,21 +70,42 @@ export class FeatureRouter {
 			this.disposables.set(featureId, []);
 		}
 
-		return {
-			featureId,
-			handle: <T>(
-				channel: string,
-				inputSchema: SchemaLike<T> | null,
-				handler: (args: T) => unknown | Promise<unknown>,
+		const channels = <C extends ChannelMap>(channelMap: C): ChannelHandlers<C> => {
+			const handle = <K extends keyof C & string>(
+				channel: K,
+				handler: (
+					args: ChannelHandlerInput<C[K]>,
+				) => ChannelHandlerOutput<C[K]> | Promise<ChannelHandlerOutput<C[K]>>,
 			) => {
-				const channels = this.handlers.get(featureId)!;
-				if (channels.has(channel)) {
+				const method = channelMap[channel]!;
+				const registeredChannels = this.handlers.get(featureId)!;
+				if (registeredChannels.has(channel)) {
 					console.warn(
 						`[FeatureRouter] Handler for "${featureId}:${channel}" registered twice — replacing.`,
 					);
 				}
-				channels.set(channel, { inputSchema, handler });
-			},
+				registeredChannels.set(channel, {
+					inputSchema: method.input,
+					outputSchema: method.output,
+					handler: (args) => handler(args as ChannelHandlerInput<C[K]>),
+				});
+			};
+
+			return {
+				handle,
+				handleAll: (handlers: ChannelHandlerMap<C>) => {
+					// Iterate the channel map (not the handlers object) so the map
+					// stays the source of truth for which channels must exist.
+					for (const channel of Object.keys(channelMap) as Array<keyof C & string>) {
+						handle(channel, handlers[channel]);
+					}
+				},
+			};
+		};
+
+		return {
+			featureId,
+			channels,
 			onDispose: (fn: () => void) => {
 				this.disposables.get(featureId)!.push(fn);
 			},
@@ -86,7 +114,8 @@ export class FeatureRouter {
 
 	/**
 	 * Invoke a handler. Used by the SDK's sdk.invoke() and by the IPC bridge.
-	 * Validates args against the handler's input schema before invoking.
+	 * Validates args against the handler's input schema before invoking, and
+	 * the result against the output schema.
 	 * Unknown feature/channel falls back to the injected transport when present.
 	 */
 	async invoke(featureId: string, channel: string, args?: unknown): Promise<unknown> {
@@ -101,20 +130,27 @@ export class FeatureRouter {
 			);
 		}
 
-		let parsedArgs: unknown = args;
-		if (entry.inputSchema) {
-			try {
-				parsedArgs = entry.inputSchema.parse(args);
-			} catch (error) {
-				throw new FeatureError(
-					`Invalid input for "${featureId}:${channel}": ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-					"VALIDATION",
-				);
-			}
+		let parsedArgs: unknown;
+		try {
+			parsedArgs = entry.inputSchema.parse(args);
+		} catch (error) {
+			throw new FeatureError(
+				`Invalid input for "${featureId}:${channel}": ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				"VALIDATION",
+			);
 		}
-		return (entry.handler as (args: unknown) => unknown | Promise<unknown>)(parsedArgs);
+
+		const rawOutput = await entry.handler(parsedArgs);
+
+		try {
+			return entry.outputSchema.parse(rawOutput);
+		} catch (error) {
+			throw new Error(`Handler for "${featureId}:${channel}" returned invalid output.`, {
+				cause: error,
+			});
+		}
 	}
 
 	/**

@@ -24,6 +24,7 @@ packages/
 Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`.
 
 - `sdk.invoke(channel, args)` — transport-agnostic call to the feature's backend handlers
+- `sdk.client` — proxy that maps method calls to `invoke`; typed via `useSdk<ServiceType>(featureId)`
 - `sdk.events` — namespaced pub/sub
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` — cross-feature capabilities
@@ -34,7 +35,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
 In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Only `browserRegister` boots in this mode — features without one are skipped with a warning. Node-free features opt in with `browserRegister: register`; features using Node APIs (SQLite, fs) must provide browser-safe fakes.
 
-**Handlers and validation:** `mainSdk.handle(channel, inputSchema, handler)` — the input schema (a Zod schema) is required and validates args at the routing boundary before the handler runs. Pass `null` only for channels that take no input.
+**Handlers and validation:** `mainSdk.channels(channelMap)` binds the map once; `.handleAll({ ... })` registers a handler per channel and is exhaustive by type (preferred), `.handle(channel, handler)` registers one at a time. Handler types are inferred, and input and output schemas are validated at the routing boundary. Use `z.undefined()` for channels that take no input.
 
 **Errors:** expected failures throw `FeatureError` from the SDK (`throw new FeatureError("Todo not found.", "NOT_FOUND")`). The shell translates it across the IPC boundary so the message survives; generic errors are scrubbed to a generic string.
 
@@ -74,7 +75,7 @@ Each transition is a filesystem move. Source code stays the same because it prog
 | **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                           |
 | **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`. |
 | **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                       |
-| **MainSdk**        | The main-process counterpart of the SDK. Features register handlers via `mainSdk.handle(channel, inputSchema, handler)`.                       |
+| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers via `mainSdk.channels(channelMap).handle(...)`.                      |
 | **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                               |
 | **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                   |
 | **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                         |

@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { SdkProducerService } from "@anaconda-agentic-desktop/contracts";
 
 import { useSdk } from "@/platform/sdk";
 
@@ -12,17 +13,17 @@ import {
 } from "./useNotes";
 
 /**
- * SDK Explorer — Interactive demo exercising every SDK shim API.
+ * SDK Producer — Interactive demo exercising every SDK shim API.
  *
  * SDK APIs tested:
  * - sdk.featureId (identity)
- * - sdk.invoke (CRUD operations via handlers)
+ * - sdk.client / sdk.invoke (CRUD operations via handlers)
  * - sdk.events.emit / sdk.events.on (pub/sub)
  * - sdk.state.register / sdk.state.get / sdk.state.peek (reactive state)
  * - sdk.plugins.expose / sdk.plugins.get (capabilities)
  * - sdk.contribute (UI zone contributions)
  * - sdk.commands.register (command palette)
- * - sdk.notifications.show / sdk.notifications.setBadge (shell notifications — expected throw)
+ * - sdk.notifications.show / sdk.notifications.setBadge (shell notifications)
  * - sdk.theme.subscribe / sdk.theme.peek (theme observation)
  * - sdk.shell.openExternal / sdk.shell.copyText (shell operations)
  * - sdk.fs.* (filesystem — expected to reject as not yet wired)
@@ -30,10 +31,10 @@ import {
  * - sdk.onDispose (cleanup registration)
  */
 export function SdkProducerView() {
-	const sdk = useSdk("sdk-producer");
+	const sdk = useSdk<SdkProducerService>("sdk-producer");
 	const qc = useQueryClient();
 
-	// ─── sdk.invoke via TanStack Query ──────────────────────────────────────
+	// ─── sdk.client via TanStack Query ──────────────────────────────────────
 	const notes = useQuery(listNotesQueryOptions(sdk));
 	const addNote = useMutation(addNoteMutationOptions(sdk, qc));
 	const deleteNote = useMutation(deleteNoteMutationOptions(sdk, qc));
@@ -133,7 +134,7 @@ export function SdkProducerView() {
 		addNote.mutate(text, {
 			onSuccess: (note) => {
 				setNoteText("");
-				appendLog(`invoke("add") → created note: ${note.id}`);
+				appendLog(`client.add() → created note: ${note.id}`);
 				// Also emit an event to test sdk.events.emit
 				sdk.events.emit("note-added", { id: note.id, text: note.text });
 			},
@@ -149,7 +150,7 @@ export function SdkProducerView() {
 	function handleEcho() {
 		echo.mutate("hello from sdk-producer", {
 			onSuccess: (result) => {
-				appendLog(`invoke("echo") → ${result.echoed}`);
+				appendLog(`client.echo() → ${result.echoed}`);
 			},
 		});
 	}
@@ -241,9 +242,9 @@ export function SdkProducerView() {
 				</p>
 			</header>
 
-			{/* ─── sdk.invoke: Notes CRUD ─────────────────────────────────── */}
+			{/* ─── sdk.client: Notes CRUD ─────────────────────────────────── */}
 			<section className="mb-6">
-				<h2 className="mb-2 text-lg font-medium">sdk.invoke — Notes CRUD</h2>
+				<h2 className="mb-2 text-lg font-medium">sdk.client — Notes CRUD</h2>
 				<form className="mb-3 flex gap-2" onSubmit={handleAddNote}>
 					<input
 						className="border-input bg-background ring-offset-background placeholder:text-muted-foreground flex-1 rounded-md border px-3 py-2 text-sm"
@@ -294,7 +295,7 @@ export function SdkProducerView() {
 				<h2 className="mb-2 text-lg font-medium">SDK API Actions</h2>
 				<div className="flex flex-wrap gap-2">
 					<ActionButton label={`state.set (count: ${clickCount})`} onClick={handleStateClick} />
-					<ActionButton label="invoke echo" onClick={handleEcho} />
+					<ActionButton label="client.echo" onClick={handleEcho} />
 					<ActionButton label="plugins.get" onClick={handlePluginsGet} />
 					<ActionButton label="notifications.show" onClick={handleNotification} />
 					<ActionButton label="notifications.setBadge" onClick={handleBadge} />

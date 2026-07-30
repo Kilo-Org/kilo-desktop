@@ -8,30 +8,24 @@ describe("sdk-producer mainRegister", () => {
 		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
-		expect(mainSdk.registeredHandlers.has("list")).toBe(true);
-		expect(mainSdk.registeredHandlers.has("add")).toBe(true);
-		expect(mainSdk.registeredHandlers.has("delete")).toBe(true);
-		expect(mainSdk.registeredHandlers.has("clear")).toBe(true);
-		expect(mainSdk.registeredHandlers.has("echo")).toBe(true);
-	});
-
-	it("registers input schemas for all handlers", () => {
-		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
-		mainRegister(mainSdk);
-
-		// All channels have schemas registered
-		expect(mainSdk.registeredSchemas.has("list")).toBe(true);
-		expect(mainSdk.registeredSchemas.has("add")).toBe(true);
-		expect(mainSdk.registeredSchemas.has("delete")).toBe(true);
-		expect(mainSdk.registeredSchemas.has("clear")).toBe(true);
-		expect(mainSdk.registeredSchemas.has("echo")).toBe(true);
+		expect(mainSdk.has("list")).toBe(true);
+		expect(mainSdk.has("add")).toBe(true);
+		expect(mainSdk.has("delete")).toBe(true);
+		expect(mainSdk.has("clear")).toBe(true);
+		expect(mainSdk.has("echo")).toBe(true);
 	});
 
 	it("registers a dispose callback", () => {
 		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
+		let disposed = false;
+		mainSdk.onDispose(() => {
+			disposed = true;
+		});
 		mainRegister(mainSdk);
 
-		expect(mainSdk.disposeCallbacks.length).toBeGreaterThan(0);
+		mainSdk.dispose();
+		expect(disposed).toBe(true);
+		expect(mainSdk.has("list")).toBe(false);
 	});
 
 	it("list handler returns empty array initially (via invoke)", async () => {
@@ -66,7 +60,6 @@ describe("sdk-producer mainRegister", () => {
 		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
 		mainRegister(mainSdk);
 
-		// Schema validation happens before handler runs
 		await expect(async () => mainSdk.invoke("add", { text: "" })).rejects.toThrow();
 	});
 

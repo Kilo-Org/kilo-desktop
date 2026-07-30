@@ -12,6 +12,10 @@ import { getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
 
+/** Matches the app header band (p-3 + 32px control). */
+const TITLEBAR_HEIGHT = 56;
+const TRAFFIC_LIGHT_SIZE = 14;
+
 export class ElectronWindow {
 	#mainWindow: BrowserWindow | undefined;
 
@@ -29,7 +33,8 @@ export class ElectronWindow {
 			minWidth: 720,
 			minHeight: 520,
 			show: false,
-			backgroundColor: "#ffffff",
+			backgroundColor: "#f4f5f8",
+			...titleBarOptions(),
 			...input.options,
 			webPreferences: {
 				preload: input.preloadPath ?? path.join(import.meta.dirname, "preload.js"),
@@ -90,4 +95,25 @@ export class ElectronWindow {
 		for (const window of this.liveWindows) window.destroy();
 		this.#mainWindow = undefined;
 	}
+}
+
+function titleBarOptions(): BrowserWindowConstructorOptions {
+	if (process.platform === "darwin") {
+		return {
+			titleBarStyle: "hidden",
+			trafficLightPosition: {
+				x: 16,
+				y: Math.round((TITLEBAR_HEIGHT - TRAFFIC_LIGHT_SIZE) / 2),
+			},
+		};
+	}
+
+	return {
+		titleBarStyle: "hidden",
+		titleBarOverlay: {
+			height: TITLEBAR_HEIGHT,
+			color: "#f4f5f8",
+			symbolColor: "#1a1a1a",
+		},
+	};
 }

@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
-import type { Note } from "@anaconda-agentic-desktop/contracts";
+import { sdkProducerContract, type Note } from "@anaconda-agentic-desktop/contracts";
+import { defineMethod } from "@anaconda-agentic-desktop/feature-sdk";
+import { z } from "zod";
 
 /**
  * Tests for the sdk-producer renderer layer.
  *
- * The new createFakeSdk is built on REAL in-memory services (EventBus,
+ * The createFakeSdk is built on REAL in-memory services (EventBus,
  * StateBroker, registries, router). This means events, state, plugins,
  * commands, and contributions all behave identically to production.
  * Only shell delegates are fakes.
  */
 describe("sdk-producer renderer — real SDK services via createFakeSdk", () => {
-	it("sdk.invoke routes to handlers registered via 'handlers' option", async () => {
+	it("sdk.client routes to handlers registered via channels + handlers", async () => {
 		const mockNotes: Note[] = [
 			{ id: "1", text: "hello", createdAt: 1000 },
 			{ id: "2", text: "world", createdAt: 2000 },
@@ -19,10 +21,11 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 
 		const sdk = createFakeSdk({
 			featureId: "sdk-producer",
+			channels: sdkProducerContract,
 			handlers: {
 				list: () => mockNotes,
-				echo: (args) => ({
-					echoed: `[echo] ${(args as { message: string }).message}`,
+				echo: (args: { message: string }) => ({
+					echoed: `[echo] ${args.message}`,
 					timestamp: Date.now(),
 				}),
 			},
@@ -36,7 +39,7 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 	});
 
 	it("sdk.invoke throws FeatureError for unknown channel", async () => {
-		const sdk = createFakeSdk({ featureId: "sdk-producer" });
+		const sdk = createFakeSdk({ featureId: "sdk-producer", channels: sdkProducerContract });
 		await expect(sdk.invoke("nonexistent")).rejects.toThrow(/No handler/);
 	});
 
@@ -44,12 +47,10 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		const received: unknown[] = [];
 
-		// Subscribe to the full namespaced event name
 		sdk.events.on("sdk-producer.note-added", (payload) => {
 			received.push(payload);
 		});
 
-		// Emit without prefix — auto-prefixed by the SDK
 		sdk.events.emit("note-added", { id: "1", text: "hello" });
 
 		expect(received).toEqual([{ id: "1", text: "hello" }]);
@@ -65,14 +66,13 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 
 		unsub();
 		sdk.events.emit("ping", "second");
-		expect(received).toEqual(["first"]); // no second delivery
+		expect(received).toEqual(["first"]);
 	});
 
 	it("sdk.state.register and get work with real StateBroker", () => {
 		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		const handle = sdk.state.register("click-count", 0);
 
-		// State is namespaced
 		const store = sdk.state.get<number>("sdk-producer.click-count");
 		let current: number | null = null;
 		store.subscribe((v) => {
@@ -83,7 +83,6 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		handle.set(5);
 		expect(current).toBe(5);
 
-		// peek works too
 		expect(sdk.state.peek("sdk-producer.click-count")).toBe(5);
 	});
 
@@ -114,7 +113,6 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 			priority: 5,
 		});
 
-		// Verify via services access
 		const contributions = sdk.services.contributionRegistry.getForZone("status-bar");
 		expect(contributions).toHaveLength(1);
 		expect(contributions[0]!.label).toBe("SDK Explorer Status");
@@ -135,7 +133,6 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		const commands = sdk.services.commandRegistry.all();
 		expect(commands.some((c: { id: string }) => c.id === "sdk-producer.test-cmd")).toBe(true);
 
-		// Execute the command
 		const cmd = commands.find((c: { id: string }) => c.id === "sdk-producer.test-cmd");
 		cmd?.handler();
 		expect(executed).toBe(true);
@@ -143,7 +140,6 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 
 	it("sdk.notifications.show and setBadge are no-ops by default in fake", () => {
 		const sdk = createFakeSdk({ featureId: "sdk-producer" });
-		// Default fake notifications do not throw (unlike production which throws)
 		expect(() => sdk.notifications.show({ title: "T", message: "M", type: "info" })).not.toThrow();
 		expect(() => sdk.notifications.setBadge(3)).not.toThrow();
 	});
@@ -195,17 +191,18 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		sdk.destroy();
 		expect(disposed).toBe(true);
 
-		// State is cleaned
 		expect(sdk.services.stateBroker.peek("sdk-producer.counter")).toBeNull();
-		// Capabilities are cleaned
 		expect(sdk.services.capabilityRegistry.get("sdk-producer")).toBeNull();
-		// Contributions are cleaned
 		expect(sdk.services.contributionRegistry.getForZone("dashboard")).toHaveLength(0);
 	});
 
 	it("sdk.destroy makes subsequent calls throw", async () => {
+		const pingChannels = {
+			ping: defineMethod(z.undefined(), z.string()),
+		};
 		const sdk = createFakeSdk({
 			featureId: "sdk-producer",
+			channels: pingChannels,
 			handlers: { ping: () => "pong" },
 		});
 		sdk.destroy();

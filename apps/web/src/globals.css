@@ -1,5 +1,9 @@
 @import "tailwindcss";
-@import "@anaconda/shadcn-theme/styles";
+/* Temporary: vendored from anaconda/design-system-shadcn@main (packages/shadcn-theme, 284f27b33f29).
+   Restore the published package import when a release includes these exports. */
+/* @import "@anaconda/shadcn-theme/styles"; */
+@import "./styles/anaconda-theme/styles.css";
+@import "./styles/anaconda-theme/base-global.css";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 @import "shadcn/tailwind.css";

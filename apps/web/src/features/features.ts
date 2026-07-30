@@ -1,10 +1,7 @@
 import type { FeatureRegistration, MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 import {
-	addNoteInput,
-	clearNotesInput,
-	deleteNoteInput,
-	echoInput,
-	listNotesInput,
+	sdkConsumerContract,
+	sdkProducerContract,
 	type Note,
 } from "@anaconda-agentic-desktop/contracts";
 
@@ -20,45 +17,45 @@ import {
  */
 
 /** Browser-safe in-memory implementation of the sdk-producer feature. */
-function sdkExplorerBrowserRegister(mainSdk: MainSdk): void {
+function sdkProducerBrowserRegister(mainSdk: MainSdk): void {
 	let notes: Note[] = [];
 
-	mainSdk.handle("list", listNotesInput, () => [...notes]);
-
-	mainSdk.handle("add", addNoteInput, (input) => {
-		const note: Note = { id: crypto.randomUUID(), text: input.text, createdAt: Date.now() };
-		notes.push(note);
-		return note;
+	mainSdk.channels(sdkProducerContract).handleAll({
+		list: () => [...notes],
+		add: (input) => {
+			const note: Note = { id: crypto.randomUUID(), text: input.text, createdAt: Date.now() };
+			notes.push(note);
+			return note;
+		},
+		delete: (input) => {
+			const before = notes.length;
+			notes = notes.filter((n) => n.id !== input.id);
+			return { deleted: notes.length < before };
+		},
+		clear: () => {
+			const count = notes.length;
+			notes = [];
+			return { count };
+		},
+		echo: (input) => ({
+			echoed: `[sdk-producer] ${input.message}`,
+			timestamp: Date.now(),
+		}),
 	});
-
-	mainSdk.handle("delete", deleteNoteInput, (input) => {
-		const before = notes.length;
-		notes = notes.filter((n) => n.id !== input.id);
-		return { deleted: notes.length < before };
-	});
-
-	mainSdk.handle("clear", clearNotesInput, () => {
-		const count = notes.length;
-		notes = [];
-		return { count };
-	});
-
-	mainSdk.handle("echo", echoInput, (input) => ({
-		echoed: `[sdk-producer] ${input.message}`,
-		timestamp: Date.now(),
-	}));
 }
 
 /** sdk-consumer has a trivial ping handler (no Node deps). */
 function sdkConsumerBrowserRegister(mainSdk: MainSdk): void {
-	mainSdk.handle("ping", null, () => ({ pong: true, from: "sdk-consumer" }));
+	mainSdk.channels(sdkConsumerContract).handleAll({
+		ping: () => ({ pong: true as const, from: "sdk-consumer" }),
+	});
 }
 
 export const WEB_FEATURES: readonly FeatureRegistration[] = [
 	{
 		id: "sdk-producer",
-		mainRegister: sdkExplorerBrowserRegister,
-		browserRegister: sdkExplorerBrowserRegister,
+		mainRegister: sdkProducerBrowserRegister,
+		browserRegister: sdkProducerBrowserRegister,
 	},
 	{
 		id: "sdk-consumer",

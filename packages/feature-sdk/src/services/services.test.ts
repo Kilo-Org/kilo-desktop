@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
+import { defineMethod } from "../channel-map.js";
 import { FeatureError } from "../errors.js";
 import { CapabilityRegistry } from "./capability-registry.js";
 import { CommandRegistry } from "./command-registry.js";
@@ -12,6 +13,15 @@ import { createSdk, teardownFeature } from "./create-sdk.js";
 import type { ShellDelegates } from "./create-sdk.js";
 
 const noop = () => {};
+
+const testChannels = {
+	list: defineMethod(z.undefined(), z.array(z.unknown())),
+	greet: defineMethod(z.object({ name: z.string() }), z.string()),
+	yes: defineMethod(z.undefined(), z.string()),
+	create: defineMethod(z.object({ title: z.string().min(1) }), z.string()),
+	local: defineMethod(z.undefined(), z.string()),
+	fail: defineMethod(z.undefined(), z.unknown()),
+} as const;
 
 function makeServices(featureRouter = new FeatureRouter()) {
 	const shellDelegates: ShellDelegates = {
@@ -57,7 +67,9 @@ describe("createSdk", () => {
 	it("sdk.invoke routes to the feature router", async () => {
 		const services = makeServices();
 		const mainSdk = services.featureRouter.createMainSdk("todos");
-		mainSdk.handle("list", null, () => [{ id: "1", title: "test", completed: false }]);
+		mainSdk
+			.channels(testChannels)
+			.handle("list", () => [{ id: "1", title: "test", completed: false }]);
 
 		const sdk = createSdk("todos", services);
 		const result = await sdk.invoke("list");
@@ -127,7 +139,7 @@ describe("createSdk", () => {
 	it("sdk.destroy is instance-scoped: feature handlers and sibling instances survive", async () => {
 		const services = makeServices();
 		const mainSdk = services.featureRouter.createMainSdk("todos");
-		mainSdk.handle("list", null, () => ["kept"]);
+		mainSdk.channels(testChannels).handle("list", () => ["kept"]);
 
 		const a = createSdk("todos", services);
 		const b = createSdk("todos", services);
@@ -144,7 +156,7 @@ describe("createSdk", () => {
 	it("teardownFeature removes everything for the feature", async () => {
 		const services = makeServices();
 		const mainSdk = services.featureRouter.createMainSdk("todos");
-		mainSdk.handle("list", null, () => []);
+		mainSdk.channels(testChannels).handle("list", () => []);
 		let backendDisposed = false;
 		mainSdk.onDispose(() => {
 			backendDisposed = true;
@@ -340,7 +352,7 @@ describe("FeatureRouter", () => {
 	it("createMainSdk + invoke round-trips", async () => {
 		const router = new FeatureRouter();
 		const mainSdk = router.createMainSdk("my-feature");
-		mainSdk.handle("greet", null, (args: unknown) => `Hello, ${(args as { name: string }).name}!`);
+		mainSdk.channels(testChannels).handle("greet", (args) => `Hello, ${args.name}!`);
 
 		const result = await router.invoke("my-feature", "greet", { name: "World" });
 		expect(result).toBe("Hello, World!");
@@ -354,15 +366,14 @@ describe("FeatureRouter", () => {
 		});
 
 		const mainSdk = router.createMainSdk("f");
-		mainSdk.handle("yes", null, () => "ok");
+		mainSdk.channels(testChannels).handle("yes", () => "ok");
 		await expect(router.invoke("f", "nope")).rejects.toThrow(/No handler for channel/);
 	});
 
-	it("validates input against the registered schema", async () => {
+	it("validates input against the channel map", async () => {
 		const router = new FeatureRouter();
 		const mainSdk = router.createMainSdk("todos");
-		const createInput = z.object({ title: z.string().min(1) });
-		mainSdk.handle("create", createInput, (args) => args.title.toUpperCase());
+		mainSdk.channels(testChannels).handle("create", (args) => args.title.toUpperCase());
 
 		await expect(router.invoke("todos", "create", { title: "hi" })).resolves.toBe("HI");
 		await expect(router.invoke("todos", "create", { title: 42 })).rejects.toMatchObject({
@@ -380,7 +391,7 @@ describe("FeatureRouter", () => {
 			},
 		});
 		const mainSdk = router.createMainSdk("todos");
-		mainSdk.handle("local", null, () => "from-local");
+		mainSdk.channels(testChannels).handle("local", () => "from-local");
 
 		await expect(router.invoke("todos", "local")).resolves.toBe("from-local");
 		await expect(router.invoke("todos", "remote", { x: 1 })).resolves.toBe("from-fallback");
@@ -390,7 +401,7 @@ describe("FeatureRouter", () => {
 	it("propagates FeatureError from handlers", async () => {
 		const router = new FeatureRouter();
 		const mainSdk = router.createMainSdk("todos");
-		mainSdk.handle("fail", null, () => {
+		mainSdk.channels(testChannels).handle("fail", () => {
 			throw new FeatureError("Todo not found.", "NOT_FOUND");
 		});
 		await expect(router.invoke("todos", "fail")).rejects.toMatchObject({

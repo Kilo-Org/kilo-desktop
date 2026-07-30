@@ -10,6 +10,7 @@ import { ThemeSync } from "./ThemeSync";
 afterEach(() => {
 	cleanup();
 	document.documentElement.classList.remove("dark");
+	delete document.documentElement.dataset.theme;
 	document.documentElement.style.removeProperty("color-scheme");
 	vi.restoreAllMocks();
 });
@@ -44,9 +45,11 @@ describe("ThemeSync", () => {
 			</LocalApiProvider>,
 		);
 		await expect.poll(() => document.documentElement.classList.contains("dark")).toBe(true);
+		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
 
 		listener?.({ source: "light", shouldUseDarkColors: false });
 		await expect.poll(() => document.documentElement.classList.contains("dark")).toBe(false);
+		await expect.poll(() => document.documentElement.dataset.theme).toBeUndefined();
 
 		unmount();
 		expect(unsubscribe).toHaveBeenCalledOnce();

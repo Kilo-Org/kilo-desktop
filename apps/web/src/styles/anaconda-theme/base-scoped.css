@@ -1,0 +1,22 @@
+/*
+ * Scoped Base Defaults
+ *
+ * Purpose:
+ * - Applies default base styles for HTML elements scoped to the `.shadcn` class.
+ * - Prevents overriding styles in applications with an existing design system.
+ */
+
+@layer base {
+	.shadcn,
+	.shadcn * {
+		@apply border-border outline-ring/50;
+	}
+
+	.shadcn {
+		@apply bg-background text-foreground font-sans;
+	}
+
+	.shadcn button {
+		@apply cursor-pointer;
+	}
+}

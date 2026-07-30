@@ -1,0 +1,106 @@
+/*
+ * Semantic Design Tokens
+ *
+ * Purpose:
+ * - Maps color primitives to semantic Shadcn token roles (--primary, --border, etc.).
+ * - Defines light (`:root`) and dark (`[data-theme="dark"]`) values for every token.
+ * - No Tailwind utility mapping and no base resets defined here.
+ */
+
+:root {
+	/* Shadcn Required Theme Tokens */
+	--background: var(--storm-100);
+	--foreground: var(--storm-900);
+	--ring: var(--blue-600);
+	--input: var(--storm-300);
+	--border: var(--storm-200);
+	--destructive: var(--red-50);
+	--accent: var(--storm-150);
+	--accent-foreground: var(--storm-750);
+	--muted: var(--storm-50);
+	--muted-foreground: var(--storm-500);
+	--secondary: var(--neutral-800);
+	--secondary-foreground: var(--neutral-100);
+	--primary: var(--green-700);
+	--primary-foreground: var(--storm-900);
+	--popover: var(--storm-50);
+	--popover-foreground: var(--storm-900);
+	--card: var(--storm-50);
+	--card-foreground: var(--storm-900);
+	--sidebar: var(--storm-100);
+	--sidebar-foreground: var(--storm-900);
+	--sidebar-ring: var(--blue-600);
+	--sidebar-border: var(--storm-300);
+	--sidebar-accent: var(--storm-300);
+	--sidebar-accent-foreground: var(--storm-700);
+	--sidebar-primary: var(--storm-950);
+	--sidebar-primary-foreground: var(--storm-50);
+	--chart-1: var(--chart-orange-light);
+	--chart-2: var(--chart-teal-light);
+	--chart-3: var(--chart-cyan-light);
+	--chart-4: var(--chart-amber-light);
+	--chart-5: var(--chart-rose-light);
+
+	/* Custom colors provided by the UX team */
+	--destructive-foreground: var(--red-700);
+	--info: var(--blue-100);
+	--info-foreground: var(--blue-600);
+	--success: var(--green-100);
+	--success-foreground: var(--green-950);
+	--warning: var(--yellow-100);
+	--warning-foreground: var(--yellow-950);
+	--warning-border: var(--yellow-700);
+
+	/* Font families */
+	--font-sans: Inter, sans-serif;
+	--font-mono: "Source Code Pro", monospace;
+	--font-heading: Manrope, sans-serif;
+
+	/* Radius */
+	--radius: 0.625rem; /* 10px */
+}
+
+[data-theme="dark"] {
+	/* Shadcn Required Theme Tokens */
+	--background: var(--storm-900);
+	--foreground: var(--storm-50);
+	--ring: var(--blue-600);
+	--input: var(--storm-600);
+	--border: var(--storm-700);
+	--destructive: var(--red-700);
+	--accent: var(--storm-950);
+	--accent-foreground: var(--storm-300);
+	--muted: var(--storm-850);
+	--muted-foreground: var(--storm-400);
+	--secondary: var(--neutral-50);
+	--secondary-foreground: var(--neutral-800);
+	--primary: var(--lime-600);
+	--primary-foreground: var(--storm-900);
+	--popover: var(--storm-850);
+	--popover-foreground: var(--storm-50);
+	--card: var(--storm-850);
+	--card-foreground: var(--storm-50);
+	--sidebar: var(--storm-900);
+	--sidebar-foreground: var(--storm-50);
+	--sidebar-ring: var(--blue-600);
+	--sidebar-border: var(--storm-800);
+	--sidebar-accent: var(--storm-800);
+	--sidebar-accent-foreground: var(--storm-300);
+	--sidebar-primary: var(--blue-600);
+	--sidebar-primary-foreground: var(--storm-50);
+	--chart-1: var(--chart-orange-dark);
+	--chart-2: var(--chart-teal-dark);
+	--chart-3: var(--chart-cyan-dark);
+	--chart-4: var(--chart-amber-dark);
+	--chart-5: var(--chart-rose-dark);
+
+	/* Custom colors provided by the UX team */
+	--destructive-foreground: var(--red-50);
+	--info: var(--blue-700);
+	--info-foreground: var(--blue-50);
+	--success: var(--green-925);
+	--success-foreground: var(--green-50);
+	--warning: var(--yellow-700);
+	--warning-foreground: var(--neutral-900);
+	--warning-border: var(--yellow-700);
+}

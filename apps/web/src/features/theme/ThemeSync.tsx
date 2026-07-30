@@ -5,8 +5,14 @@ import type { ThemeState } from "@anaconda-agentic-desktop/contracts";
 import { useLocalApi } from "@/platform/LocalApiProvider";
 
 export function applyTheme(state: ThemeState): void {
-	document.documentElement.classList.toggle("dark", state.shouldUseDarkColors);
-	document.documentElement.style.colorScheme = state.shouldUseDarkColors ? "dark" : "light";
+	const root = document.documentElement;
+	root.classList.toggle("dark", state.shouldUseDarkColors);
+	if (state.shouldUseDarkColors) {
+		root.dataset.theme = "dark";
+	} else {
+		delete root.dataset.theme;
+	}
+	root.style.colorScheme = state.shouldUseDarkColors ? "dark" : "light";
 }
 
 export function ThemeSync() {

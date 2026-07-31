@@ -9,6 +9,8 @@ import { getAppIdentity } from "$config/app-identity.js";
 
 import { bootFeatures, createFeatureHandlers } from "./features/registry/feature-registry.js";
 import { FEATURES } from "./features/registry/features.js";
+import { AuthSessionService } from "./features/auth/auth-service.js";
+import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
 import { createThemeHandlers } from "./features/theme/handlers.js";
 import { createTodoHandlers } from "./features/todos/handlers.js";
@@ -31,6 +33,9 @@ export class Application {
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
 	readonly #theme = new ElectronTheme();
+	readonly #auth = new AuthSessionService({
+		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,
+	});
 	readonly #windows = new ElectronWindow(this.#shell);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
@@ -102,6 +107,7 @@ export class Application {
 		const handlers = {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#theme, preferences),
+ 			...createAuthHandlers(this.#auth),
 			...createTodoHandlers(todoService),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
@@ -114,6 +120,10 @@ export class Application {
 			this.#theme.onUpdated((state) => {
 				this.#windows.broadcast("theme:changed", state);
 			}),
+			this.#auth.onChanged((session) => {
+				this.#windows.broadcast("auth:changed", session);
+			}),
+			() => this.#auth.dispose(),
 		);
 	}
 

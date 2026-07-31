@@ -47,6 +47,7 @@ type FakeSdkShellOptions = {
 	commands?: Partial<SDK["commands"]>;
 	notifications?: Partial<SDK["notifications"]>;
 	theme?: Partial<SDK["theme"]>;
+	auth?: Partial<SDK["auth"]>;
 	shell?: Partial<SDK["shell"]>;
 	fs?: Partial<SDK["fs"]>;
 	onDispose?: SDK["onDispose"];
@@ -93,6 +94,20 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 				peek: () => "light",
 			},
 			options.theme,
+		),
+		auth: merge<SDK["auth"]>(
+			{
+				subscribe: (fn) => {
+					fn({ status: "anonymous" });
+					return noop;
+				},
+				peek: () => ({ status: "anonymous" }),
+				getSession: async () => ({ status: "anonymous" }),
+				refresh: async () => ({ status: "anonymous" }),
+				login: async () => ({ status: "anonymous" }),
+				logout: async () => ({ status: "anonymous" }),
+			},
+			options.auth,
 		),
 		shell: merge<SDK["shell"]>(
 			{

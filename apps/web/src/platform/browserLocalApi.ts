@@ -1,6 +1,7 @@
 import {
 	LocalApiError,
 	todoMethods,
+	type AuthSession,
 	type LocalApi,
 	type ThemeSource,
 	type ThemeState,
@@ -120,6 +121,26 @@ export function createBrowserLocalApi(options?: { readonly todos?: readonly Todo
 				} catch {
 					throw new LocalApiError("TRANSPORT", "Could not copy text to the clipboard.");
 				}
+			},
+		},
+		auth: {
+			async getSession(): Promise<AuthSession> {
+				// No keyring in the browser — always anonymous.
+				return { status: "anonymous" };
+			},
+			async refresh(): Promise<AuthSession> {
+				return { status: "anonymous" };
+			},
+			async login(): Promise<AuthSession> {
+				// No keyring/OAuth in browser mode — stay anonymous.
+				return { status: "anonymous" };
+			},
+			async logout(): Promise<AuthSession> {
+				return { status: "anonymous" };
+			},
+			onChanged() {
+				// Session never changes in browser mode.
+				return () => {};
 			},
 		},
 	};

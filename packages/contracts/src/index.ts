@@ -1,5 +1,6 @@
 export * from "./contract.js";
 export * from "./desktop-api.js";
+export * from "./features/auth.js";
 export * from "./features/feature-invoke.js";
 export * from "./features/shell.js";
 export * from "./features/theme.js";

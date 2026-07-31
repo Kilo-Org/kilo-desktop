@@ -80,7 +80,7 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 const config: ForgeConfig = {
 	packagerConfig: {
 		asar: {
-			unpack: "**/node_modules/better-sqlite3/**",
+			unpack: "**/node_modules/{better-sqlite3,@github/keytar}/**",
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",

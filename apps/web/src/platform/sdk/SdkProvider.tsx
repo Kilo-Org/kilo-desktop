@@ -16,7 +16,7 @@ import {
 	type ShellDelegates,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
-import type { DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession, DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
 // ─── Bridge detection ──────────────────────────────────────────────────────
 
@@ -50,6 +50,72 @@ function peekEffectiveTheme(): "dark" | "light" {
 	return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
+	// Module-scoped-per-delegate cache: unlike theme (a synchronous DOM read),
+	// the session resolves asynchronously. Seed anonymous, kick off one lazy
+	// resolve, and push the result to subscribers when it lands.
+	let session: AuthSession = { status: "anonymous" };
+	const subscribers = new Set<(session: AuthSession) => void>();
+	let started = false;
+	let stopOnChanged: (() => void) | undefined;
+
+	const update = (next: AuthSession): void => {
+		session = next;
+		for (const fn of subscribers) fn(next);
+	};
+
+	const start = (): void => {
+		if (started) return;
+		started = true;
+		void api.auth.getSession().then(update, () => {
+			// Adapter already maps failures to an error session; ignore rejections.
+		});
+		stopOnChanged = api.auth.onChanged(update);
+	};
+
+	// Symmetric with `subscribers`: tear down the upstream subscription once
+	// the last delegate subscriber unsubscribes, and allow a later subscribe
+	// to re-start it rather than leaking it for the process lifetime.
+	const stop = (): void => {
+		started = false;
+		stopOnChanged?.();
+		stopOnChanged = undefined;
+	};
+
+	return {
+		subscribe(fn) {
+			subscribers.add(fn);
+			fn(session);
+			start();
+			return () => {
+				subscribers.delete(fn);
+				if (subscribers.size === 0) stop();
+			};
+		},
+		peek: () => session,
+		async getSession() {
+			const next = await api.auth.getSession();
+			update(next);
+			return next;
+		},
+		async refresh() {
+			const next = await api.auth.refresh();
+			update(next);
+			return next;
+		},
+		async login() {
+			const next = await api.auth.login();
+			update(next);
+			return next;
+		},
+		async logout() {
+			const next = await api.auth.logout();
+			update(next);
+			return next;
+		},
+	};
+}
+
 function createShellDelegates(api: LocalApi): ShellDelegates {
 	return {
 		notifications: undeliveredNotifications(),
@@ -65,6 +131,7 @@ function createShellDelegates(api: LocalApi): ShellDelegates {
 			},
 			peek: peekEffectiveTheme,
 		},
+		auth: createAuthDelegate(api),
 		shell: {
 			openExternal: (url) => api.shell.openExternal({ url }),
 			copyText: (text) => api.shell.copyText({ text }),

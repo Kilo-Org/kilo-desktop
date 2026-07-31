@@ -34,5 +34,12 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			openExternal: (input) => invoke("shell:open-external", input),
 			copyText: (input) => invoke("shell:copy-text", input),
 		},
+		auth: {
+			getSession: () => invoke("auth:get-session"),
+			refresh: () => invoke("auth:refresh"),
+			login: () => invoke("auth:login"),
+			logout: () => invoke("auth:logout"),
+			onChanged: (listener) => bridge.on("auth:changed", listener),
+		},
 	};
 }

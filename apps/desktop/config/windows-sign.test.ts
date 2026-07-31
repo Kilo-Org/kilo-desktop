@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { promisifiedExecFile } = vi.hoisted(() => ({
 	promisifiedExecFile: vi.fn(),
@@ -12,6 +16,24 @@ vi.mock("node:child_process", () => {
 });
 
 import { hasAzureWindowsSigningCredentials, signWindowsFile } from "./windows-sign.js";
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+	await Promise.all(
+		temporaryDirectories
+			.splice(0)
+			.map((directory) => rm(directory, { recursive: true, force: true })),
+	);
+});
+
+async function temporaryNativeModule(contents: Uint8Array): Promise<string> {
+	const directory = await mkdtemp(path.join(os.tmpdir(), "anaconda-windows-sign-"));
+	temporaryDirectories.push(directory);
+	const filePath = path.join(directory, "native.node");
+	await writeFile(filePath, contents);
+	return filePath;
+}
 
 describe("windows signing helpers", () => {
 	beforeEach(() => {
@@ -79,6 +101,36 @@ describe("windows signing helpers", () => {
 		expect(error).toHaveBeenCalledWith("warning: timestamp\n");
 		log.mockRestore();
 		error.mockRestore();
+	});
+
+	it("skips native modules that are not Windows PE binaries", async () => {
+		const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+		const filePath = await temporaryNativeModule(new Uint8Array([0xcf, 0xfa, 0xed, 0xfe]));
+
+		await signWindowsFile(filePath, {
+			AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
+			AZURE_CERT_NAME: "codesign",
+		});
+
+		expect(promisifiedExecFile).not.toHaveBeenCalled();
+		expect(log).toHaveBeenCalledWith(`Skipping non-Windows native module: ${filePath}`);
+		log.mockRestore();
+	});
+
+	it("signs native modules that are Windows PE binaries", async () => {
+		promisifiedExecFile.mockResolvedValue({ stdout: "", stderr: "" });
+		const filePath = await temporaryNativeModule(new Uint8Array([0x4d, 0x5a, 0x00, 0x00]));
+
+		await signWindowsFile(filePath, {
+			AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
+			AZURE_CERT_NAME: "codesign",
+		});
+
+		expect(promisifiedExecFile).toHaveBeenCalledWith(
+			"AzureSignTool",
+			expect.arrayContaining([filePath]),
+			expect.objectContaining({ windowsHide: true }),
+		);
 	});
 
 	it("skips empty stdout and stderr from AzureSignTool", async () => {

@@ -5,13 +5,13 @@ import "./globals.css";
 import { AppProviders } from "@/app/AppProviders";
 import { WEB_FEATURES } from "@/features/features";
 import { createLocalApi } from "@/platform/createLocalApi";
-import { createFeatureSystem } from "@/platform/sdk";
+import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 const root = document.querySelector<HTMLDivElement>("#root");
 if (!root) throw new Error("Renderer root element was not found.");
 
 const localApi = createLocalApi();
-const featureSystem = createFeatureSystem(localApi, WEB_FEATURES);
+const featureSystem = createAppFeatureSystem(localApi, WEB_FEATURES);
 
 createRoot(root).render(
 	<StrictMode>

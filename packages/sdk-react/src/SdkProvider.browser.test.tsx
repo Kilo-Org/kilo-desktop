@@ -3,10 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { DesktopApi } from "@anaconda-agentic-desktop/contracts";
 import { defineMethod, type FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
-
-import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 
 import {
 	createFeatureSystem,
@@ -15,6 +12,7 @@ import {
 	useSdk,
 	type FeatureSystem,
 } from "./SdkProvider.js";
+import { createTestShellDelegates } from "./test-helpers.js";
 
 const undefinedSchema = {
 	parse(value: unknown): undefined {
@@ -62,7 +60,7 @@ const demoFeature: FeatureRegistration = {
 };
 
 function makeSystem(features: FeatureRegistration[] = [demoFeature]): FeatureSystem {
-	return createFeatureSystem(createBrowserLocalApi(), features);
+	return createFeatureSystem({ shellDelegates: createTestShellDelegates(), features });
 }
 
 function Probe() {
@@ -87,8 +85,6 @@ function Probe() {
 
 afterEach(() => {
 	cleanup();
-	document.documentElement.classList.remove("dark");
-	vi.unstubAllGlobals();
 });
 
 describe("SdkProvider + useSdk", () => {
@@ -139,6 +135,7 @@ describe("SdkProvider + useSdk", () => {
 	});
 
 	it("skips features without browserRegister in browser mode (no mainRegister fallback)", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		const nodeOnlyFeature: FeatureRegistration = {
 			id: "node-only",
 			mainRegister(mainSdk) {
@@ -152,6 +149,8 @@ describe("SdkProvider + useSdk", () => {
 			name: "FeatureError",
 			code: "NOT_FOUND",
 		});
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/no browserRegister/));
+		warnSpy.mockRestore();
 	});
 
 	it("catches browserRegister boot failures", () => {
@@ -163,50 +162,32 @@ describe("SdkProvider + useSdk", () => {
 				throw new Error("boot boom");
 			},
 		};
-		createFeatureSystem(createBrowserLocalApi(), [broken]);
+		createFeatureSystem({ shellDelegates: createTestShellDelegates(), features: [broken] });
 		expect(errorSpy).toHaveBeenCalled();
 		errorSpy.mockRestore();
 	});
 
-	it("reports undelivered notifications instead of throwing", () => {
+	it("exposes the host-provided shell delegates on the SDK", () => {
 		const system = makeSystem();
 		const sdk = system.getSdk("demo");
-		const result = sdk.notifications.show({ type: "info", title: "Hi", message: "There" });
-		expect(result.delivered).toBe(false);
-		expect(result.reason).toMatch(/not yet wired/);
-	});
-
-	it("routes invoke through the Electron bridge when present", async () => {
-		const bridge = {
-			invoke: vi.fn().mockResolvedValue({ ok: true, value: "bridged" }),
-			on: vi.fn(() => () => undefined),
-		} as unknown as DesktopApi;
-		vi.stubGlobal("desktopApi", bridge);
-
-		const system = createFeatureSystem(createBrowserLocalApi(), []);
-		const result = await system.services.featureRouter.invoke("any", "channel", {});
-		expect(result).toBe("bridged");
-		expect(bridge.invoke).toHaveBeenCalledWith("feature:invoke", {
-			featureId: "any",
-			channel: "channel",
-			args: {},
+		expect(sdk.theme.peek()).toBe("light");
+		expect(sdk.notifications.show({ type: "info", title: "Hi", message: "There" })).toEqual({
+			delivered: true,
 		});
 	});
 
-	it("throws when the Electron bridge returns ok: false", async () => {
-		const bridge = {
-			invoke: vi.fn().mockResolvedValue({
-				ok: false,
-				error: { code: "INTERNAL", message: "nope" },
-			}),
-			on: vi.fn(() => () => undefined),
-		} as unknown as DesktopApi;
-		vi.stubGlobal("desktopApi", bridge);
+	it("routes invoke through the invokeFallback when provided, without booting features", async () => {
+		const browserBoot = vi.fn();
+		const invokeFallback = vi.fn().mockResolvedValue("bridged");
+		const system = createFeatureSystem({
+			shellDelegates: createTestShellDelegates(),
+			invokeFallback,
+			features: [{ id: "demo", mainRegister: demoRegister, browserRegister: browserBoot }],
+		});
 
-		const system = createFeatureSystem(createBrowserLocalApi(), []);
-		await expect(system.services.featureRouter.invoke("any", "channel", {})).rejects.toThrow(
-			"nope",
-		);
+		await expect(system.getSdk("demo").invoke("greet", { name: "x" })).resolves.toBe("bridged");
+		expect(invokeFallback).toHaveBeenCalledWith("demo", "greet", { name: "x" });
+		expect(browserBoot).not.toHaveBeenCalled();
 	});
 });
 

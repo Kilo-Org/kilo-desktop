@@ -13,12 +13,9 @@ function makeBridge(overrides?: Partial<DesktopApi>): DesktopApi {
 }
 
 describe("createElectronLocalApi", () => {
-	it("forwards todos/theme/shell methods through the bridge", async () => {
+	it("forwards theme/shell methods through the bridge", async () => {
 		const invoke = vi
 			.fn()
-			.mockResolvedValueOnce({ ok: true, value: [] })
-			.mockResolvedValueOnce({ ok: true, value: { id: "1", title: "a", completed: false } })
-			.mockResolvedValueOnce({ ok: true, value: { id: "1", title: "a", completed: true } })
 			.mockResolvedValueOnce({
 				ok: true,
 				value: { source: "dark", shouldUseDarkColors: true },
@@ -32,9 +29,6 @@ describe("createElectronLocalApi", () => {
 		const on = vi.fn(() => () => undefined);
 		const api = createElectronLocalApi({ invoke, on } as unknown as DesktopApi);
 
-		await expect(api.todos.list()).resolves.toEqual([]);
-		await expect(api.todos.add({ title: "a" })).resolves.toMatchObject({ title: "a" });
-		await expect(api.todos.toggle({ id: "1" })).resolves.toMatchObject({ completed: true });
 		await expect(api.theme.get()).resolves.toMatchObject({ source: "dark" });
 		await expect(api.theme.set({ source: "light" })).resolves.toMatchObject({ source: "light" });
 		await expect(api.shell.openExternal({ url: "https://example.com" })).resolves.toEqual({
@@ -55,8 +49,8 @@ describe("createElectronLocalApi", () => {
 			}),
 		});
 		const api = createElectronLocalApi(bridge);
-		await expect(api.todos.list()).rejects.toBeInstanceOf(LocalApiError);
-		await expect(api.todos.list()).rejects.toMatchObject({
+		await expect(api.theme.get()).rejects.toBeInstanceOf(LocalApiError);
+		await expect(api.theme.get()).rejects.toMatchObject({
 			code: "INTERNAL",
 			message: "failed",
 		});

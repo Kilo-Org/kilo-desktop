@@ -13,24 +13,30 @@ describe("createLocalApi", () => {
 		const bridge = {
 			invoke: vi.fn().mockResolvedValue({
 				ok: true,
-				value: [{ id: "1", title: "From Electron", completed: false }],
+				value: { source: "dark", shouldUseDarkColors: true },
 			}),
 			on: vi.fn(() => () => undefined),
 		} as unknown as DesktopApi;
 		vi.stubGlobal("window", { desktopApi: bridge });
 
 		const api = createLocalApi();
-		await expect(api.todos.list()).resolves.toEqual([
-			{ id: "1", title: "From Electron", completed: false },
-		]);
-		expect(bridge.invoke).toHaveBeenCalledWith("todos:list");
+		await expect(api.theme.get()).resolves.toEqual({
+			source: "dark",
+			shouldUseDarkColors: true,
+		});
+		expect(bridge.invoke).toHaveBeenCalledWith("theme:get");
 	});
 
 	it("uses the browser adapter when the Electron bridge is absent", async () => {
 		vi.stubGlobal("window", {});
+		vi.stubGlobal(
+			"matchMedia",
+			vi.fn(() => ({ matches: false }) as MediaQueryList),
+		);
 		const api = createLocalApi();
-		await expect(api.todos.list()).resolves.toEqual([]);
-		const created = await api.todos.add({ title: "Browser todo" });
-		expect(created.title).toBe("Browser todo");
+		await expect(api.theme.get()).resolves.toEqual({
+			source: "system",
+			shouldUseDarkColors: false,
+		});
 	});
 });

@@ -2,14 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 
+import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+
 import type { Todo } from "@anaconda-agentic-desktop/contracts";
 
-import { BusinessError } from "../../platform/BusinessError.js";
-import type { AppDatabase } from "../../platform/db/client.js";
+import type { TodosDatabase } from "./db.js";
 import { todos } from "./schema.js";
 
 export class TodoService {
-	constructor(private readonly db: AppDatabase) {}
+	constructor(private readonly db: TodosDatabase) {}
 
 	list(): Todo[] {
 		return this.db.select().from(todos).all();
@@ -23,7 +24,8 @@ export class TodoService {
 
 	toggle(id: string): Todo {
 		const currentTodo = this.db.select().from(todos).where(eq(todos.id, id)).get();
-		if (!currentTodo) throw new BusinessError("Todo not found.");
+		// FeatureError so the message survives the IPC boundary (plain errors are scrubbed).
+		if (!currentTodo) throw new FeatureError("Todo not found.", "NOT_FOUND");
 
 		const todo: Todo = { ...currentTodo, completed: !currentTodo.completed };
 		this.db.update(todos).set({ completed: todo.completed }).where(eq(todos.id, id)).run();

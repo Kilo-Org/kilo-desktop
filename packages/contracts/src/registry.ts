@@ -1,7 +1,6 @@
 import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
 import { themeEvents, themeMethods } from "./features/theme.js";
-import { todoMethods } from "./features/todos.js";
 
 export function mergeChannelMaps<A extends Record<string, unknown>>(a: A): A;
 export function mergeChannelMaps<
@@ -34,5 +33,5 @@ export function mergeChannelMaps(
 	return result;
 }
 
-export const ipcMethods = mergeChannelMaps(shellMethods, themeMethods, todoMethods, featureMethods);
+export const ipcMethods = mergeChannelMaps(shellMethods, themeMethods, featureMethods);
 export const ipcEvents = mergeChannelMaps(themeEvents);

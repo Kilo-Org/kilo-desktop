@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
 import { themeEvents, themeMethods } from "./features/theme.js";
-import { todoMethods } from "./features/todos.js";
 import { ipcEvents, ipcMethods, mergeChannelMaps } from "./registry.js";
 
 describe("IPC registry", () => {
@@ -11,7 +10,6 @@ describe("IPC registry", () => {
 		expect(Object.keys(ipcMethods)).toHaveLength(
 			Object.keys(shellMethods).length +
 				Object.keys(themeMethods).length +
-				Object.keys(todoMethods).length +
 				Object.keys(featureMethods).length,
 		);
 	});
@@ -21,8 +19,8 @@ describe("IPC registry", () => {
 	});
 
 	it("throws on duplicate channel keys", () => {
-		expect(() => mergeChannelMaps({ "todos:list": 1 }, { "todos:list": 2 })).toThrow(
-			"Duplicate IPC channel key: todos:list",
+		expect(() => mergeChannelMaps({ "demo:list": 1 }, { "demo:list": 2 })).toThrow(
+			"Duplicate IPC channel key: demo:list",
 		);
 	});
 });

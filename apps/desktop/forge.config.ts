@@ -80,12 +80,15 @@ const config: ForgeConfig = {
 		name: "Anaconda Agentic Desktop",
 		ignore: (file) => {
 			if (!file) return false;
-			return !(
-				file === "/package.json" ||
-				file === "/.vite" ||
-				file.startsWith("/.vite/") ||
-				file === "/drizzle" ||
-				file.startsWith("/drizzle/")
+			// Allowlist: package manifest, built main/preload, and feature-owned
+			// drizzle migrations (loaded at runtime by each feature's database).
+			const keepRoots = ["/package.json", "/.vite", "/src/main/features/todos/drizzle"];
+			return !keepRoots.some(
+				(root) =>
+					file === root ||
+					file.startsWith(`${root}/`) ||
+					// Keep parent directories of a kept root so the packager descends into them.
+					root.startsWith(`${file}/`),
 			);
 		},
 		win32metadata: {

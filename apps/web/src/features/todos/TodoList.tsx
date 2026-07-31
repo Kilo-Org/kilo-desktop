@@ -1,20 +1,19 @@
 import { type FormEvent, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+
+import type { TodoService } from "@anaconda-agentic-desktop/contracts";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useLocalApi } from "@/platform/LocalApiProvider";
-
-import { addTodoMutationOptions, todosQueryOptions, toggleTodoMutationOptions } from "./todos";
 
 export function TodoList() {
-	const api = useLocalApi();
-	const queryClient = useQueryClient();
-	const todos = useQuery(todosQueryOptions(api));
-	const addTodo = useMutation(addTodoMutationOptions(api, queryClient));
-	const toggleTodo = useMutation(toggleTodoMutationOptions(api, queryClient));
+	const sdk = useSdk<TodoService>("todos");
+	const todos = useSdkQuery(sdk, "list");
+	const addTodo = useSdkMutation(sdk, "add", { invalidates: ["list"] });
+	const toggleTodo = useSdkMutation(sdk, "toggle", { invalidates: ["list"] });
 	const [title, setTitle] = useState("");
 	const mutationError = addTodo.error ?? toggleTodo.error;
 
@@ -22,9 +21,12 @@ export function TodoList() {
 		event.preventDefault();
 		const normalizedTitle = title.trim();
 		if (!normalizedTitle || addTodo.isPending) return;
-		addTodo.mutate(normalizedTitle, {
-			onSuccess: () => setTitle(""),
-		});
+		addTodo.mutate(
+			{ title: normalizedTitle },
+			{
+				onSuccess: () => setTitle(""),
+			},
+		);
 	}
 
 	return (
@@ -33,7 +35,7 @@ export function TodoList() {
 				Todo List
 			</h1>
 			<p className="text-muted-foreground mt-1 text-sm">
-				Todos load and update over typed IPC with TanStack Query.
+				Todos load and update through the feature SDK with TanStack Query.
 			</p>
 
 			<form className="my-6 grid gap-2" onSubmit={submit}>
@@ -76,7 +78,7 @@ export function TodoList() {
 								<Checkbox
 									checked={todo.completed}
 									disabled={toggleTodo.isPending}
-									onCheckedChange={() => toggleTodo.mutate(todo.id)}
+									onCheckedChange={() => toggleTodo.mutate({ id: todo.id })}
 								/>
 								<span className={todo.completed ? "text-muted-foreground line-through" : undefined}>
 									{todo.title}

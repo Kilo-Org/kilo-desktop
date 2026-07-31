@@ -104,7 +104,11 @@ const config: ForgeConfig = {
 		{
 			name: "@electron-forge/maker-dmg",
 			platforms: ["darwin"],
-			config: {},
+			config: {
+				// appdmg's alias encoder limits volume names to 27 characters. Keep
+				// enough headroom for the suffix macOS adds when a volume name collides.
+				title: "Anaconda Agentic",
+			},
 		},
 		{
 			name: "@electron-forge/maker-zip",

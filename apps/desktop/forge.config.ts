@@ -1,14 +1,12 @@
-import { execFile as execFileCallback } from "node:child_process";
 import { cp, mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { execa } from "execa";
 
 import {
 	getArtifactKey,
@@ -16,12 +14,10 @@ import {
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 } from "./config/release.js";
-import { resolvePnpmInvocation } from "./config/pnpm-invocation.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
 
-const execFile = promisify(execFileCallback);
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
@@ -38,25 +34,29 @@ function updateFeed(platform: string, arch: string): string | undefined {
 
 async function stageProductionDependencies(buildPath: string): Promise<void> {
 	const stagingDirectory = await mkdtemp(
-		path.join(os.tmpdir(), "anaconda-agentic-desktop-production-"),
+		path.join(workspaceRoot, ".anaconda-agentic-desktop-production-"),
 	);
-	const pnpmInvocation = resolvePnpmInvocation([
-		"--filter",
-		"@anaconda-agentic-desktop/desktop",
-		"deploy",
-		"--prod",
-		"--ignore-scripts",
-		"--offline",
-		"--frozen-lockfile",
-		stagingDirectory,
-	]);
 
 	try {
-		await execFile(pnpmInvocation.file, pnpmInvocation.args, {
-			cwd: workspaceRoot,
-			env: { ...process.env, HUSKY: "0" },
-			maxBuffer: 10 * 1024 * 1024,
-		});
+		await execa(
+			"pnpm",
+			[
+				"--filter",
+				"@anaconda-agentic-desktop/desktop",
+				"deploy",
+				"--prod",
+				"--ignore-scripts",
+				"--offline",
+				"--frozen-lockfile",
+				stagingDirectory,
+			],
+			{
+				cwd: workspaceRoot,
+				env: { HUSKY: "0" },
+				stderr: "inherit",
+				stdout: "inherit",
+			},
+		);
 		await cp(path.join(stagingDirectory, "node_modules"), path.join(buildPath, "node_modules"), {
 			recursive: true,
 		});

@@ -66,15 +66,27 @@ describe("TodoService", () => {
 });
 
 describe("resolveTodosMigrationsFolder", () => {
-	it("uses the drizzle folder next to the source file when present", () => {
-		expect(resolveTodosMigrationsFolder()).toBe(path.join(import.meta.dirname, "drizzle"));
+	const directories: string[] = [];
+
+	afterEach(() => {
+		for (const directory of directories.splice(0)) {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
 	});
 
-	it("falls back to the packaged source path when running from the bundle", () => {
-		// Bundled main.js lives at <package>/.vite/build — no sibling drizzle/.
-		const bundleDirectory = path.resolve(import.meta.dirname, "../../../../.vite/build");
+	it("uses the plugin-root drizzle folder when present", () => {
+		expect(resolveTodosMigrationsFolder()).toBe(path.resolve(import.meta.dirname, "../../drizzle"));
+	});
+
+	it("falls back to the deployed package path when running from the app bundle", () => {
+		// Bundled main.js lives at <app>/.vite/build — no plugin-root drizzle/.
+		const bundleDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "todos-bundle-"));
+		directories.push(bundleDirectory);
 		expect(resolveTodosMigrationsFolder(bundleDirectory)).toBe(
-			path.resolve(bundleDirectory, "../../src/main/features/todos/drizzle"),
+			path.resolve(
+				bundleDirectory,
+				"../../node_modules/@anaconda-agentic-desktop/plugin-todos/drizzle",
+			),
 		);
 	});
 });

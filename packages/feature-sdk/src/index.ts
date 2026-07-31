@@ -30,6 +30,8 @@ export type {
 // Channel maps — typed sdk.invoke / mainSdk.channels against per-feature contracts
 export {
 	defineMethod,
+	defineContract,
+	type InferContract,
 	type MethodContract,
 	type ChannelMap,
 	type ChannelInput,

@@ -80,9 +80,10 @@ const config: ForgeConfig = {
 		name: "Anaconda Agentic Desktop",
 		ignore: (file) => {
 			if (!file) return false;
-			// Allowlist: package manifest, built main/preload, and feature-owned
-			// drizzle migrations (loaded at runtime by each feature's database).
-			const keepRoots = ["/package.json", "/.vite", "/src/main/features/todos/drizzle"];
+			// Allowlist: package manifest and built main/preload. Plugin drizzle
+			// migrations ship inside node_modules via pnpm deploy (see
+			// stageProductionDependencies), not from the app source tree.
+			const keepRoots = ["/package.json", "/.vite"];
 			return !keepRoots.some(
 				(root) =>
 					file === root ||

@@ -27,14 +27,18 @@ export function createTodosDatabase(
 export type TodosDatabase = ReturnType<typeof createTodosDatabase>;
 
 /**
- * Resolve the feature's migrations folder in both layouts:
- * - source (tests, tooling): `drizzle/` next to this file
- * - bundled main.js (`<package>/.vite/build`): migrations ship at
- *   `<package>/src/main/features/todos/drizzle` (see the forge.config.ts
- *   packaging allowlist)
+ * Resolve the plugin's migrations folder in both layouts:
+ * - source (tests, tooling): `drizzle/` at the plugin package root
+ *   (`plugins/todos/drizzle`, two levels up from this file)
+ * - packaged app: the desktop main bundle lives at `<app>/.vite/build`, and
+ *   `pnpm deploy` ships this workspace package into the app's node_modules —
+ *   migrations resolve at `<app>/node_modules/<package>/drizzle`
  */
 export function resolveTodosMigrationsFolder(directory: string = import.meta.dirname): string {
-	const sourceLayout = path.join(directory, "drizzle");
+	const sourceLayout = path.resolve(directory, "../../drizzle");
 	if (fs.existsSync(sourceLayout)) return sourceLayout;
-	return path.resolve(directory, "../../src/main/features/todos/drizzle");
+	return path.resolve(
+		directory,
+		"../../node_modules/@anaconda-agentic-desktop/plugin-todos/drizzle",
+	);
 }

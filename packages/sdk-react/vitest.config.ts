@@ -21,8 +21,19 @@ export default defineConfig({
 	// Pre-bundle every dep used across test files up front — discovering them
 	// mid-run triggers a Vite re-optimization that swaps module instances
 	// between test files ("Vitest failed to find the current suite").
+	// vitest/internal/traces and @vitest/browser/locators are pulled in lazily
+	// by the vitest browser runtime itself, after the initial crawl.
 	optimizeDeps: {
-		include: ["react", "react-dom", "@tanstack/react-query", "@testing-library/react", "zod"],
+		include: [
+			"react",
+			"react-dom",
+			"@anaconda-agentic-desktop/feature-sdk",
+			"@tanstack/react-query",
+			"@testing-library/react",
+			"@vitest/browser/locators",
+			"vitest/internal/traces",
+			"zod",
+		],
 	},
 	test: {
 		name: "browser",

@@ -23,10 +23,13 @@ import type { FeatureRegistration, MainSdk } from "../types/sdk.js";
  * Shape of a plugin entry module as seen by the loader.
  * The `main` entry must export `mainRegister`; the `web` entry may export
  * `browserRegister` for browser-mode support (Electron-only plugins omit it).
+ * Entry modules may export anything else (components, hooks, ...) — the
+ * loader only looks at the registration functions.
  */
 export interface PluginModule {
 	mainRegister?: (mainSdk: MainSdk) => void;
 	browserRegister?: (mainSdk: MainSdk) => void;
+	[exportName: string]: unknown;
 }
 
 /**

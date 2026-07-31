@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { defineContract, defineMethod } from "./contract.js";
-import { todosContract } from "./features/todos.js";
+import { sdkProducerContract } from "./features/sdk-producer.js";
 
 describe("defineContract", () => {
 	it("returns the channel map unchanged (runtime is a plain object)", () => {
@@ -10,11 +10,11 @@ describe("defineContract", () => {
 		expect(defineContract(channels)).toBe(channels);
 	});
 
-	it("todosContract defines the todos feature channels", () => {
-		expect(Object.keys(todosContract)).toEqual(["list", "add", "toggle"]);
-		expect(todosContract.add.input.parse({ title: "  Buy milk " })).toEqual({
-			title: "Buy milk",
+	it("sdkProducerContract defines the sdk-producer feature channels", () => {
+		expect(Object.keys(sdkProducerContract)).toEqual(["list", "add", "delete", "clear", "echo"]);
+		expect(sdkProducerContract.add.input.parse({ text: "  hello " })).toEqual({
+			text: "hello",
 		});
-		expect(() => todosContract.add.input.parse({ title: "  " })).toThrow();
+		expect(() => sdkProducerContract.add.input.parse({ text: "  " })).toThrow();
 	});
 });

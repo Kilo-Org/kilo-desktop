@@ -5,7 +5,6 @@ export * from "./features/shell.js";
 export * from "./features/theme.js";
 export * from "./features/sdk-consumer.js";
 export * from "./features/sdk-producer.js";
-export * from "./features/todos.js";
 export * from "./local-api.js";
 export * from "./registry.js";
 export * from "./result.js";

@@ -76,3 +76,35 @@ export function defineMethod<TInputSchema extends SchemaLike, TOutputSchema exte
 ): MethodContract<TInputSchema, TOutputSchema> {
 	return { input, output };
 }
+
+/**
+ * Define a feature contract — a channel map that carries an inferred service
+ * type via `InferContract<typeof contract>`. Runtime value is a plain object;
+ * the type system does all the work. Lives in the SDK so plugins can define
+ * contracts without depending on shell-internal packages.
+ *
+ * @example
+ * export const todosContract = defineContract({
+ *   list: defineMethod(z.undefined(), z.array(todoSchema)),
+ *   add:  defineMethod(z.object({ title: z.string() }), todoSchema),
+ * });
+ * export type TodoService = InferContract<typeof todosContract>;
+ */
+export function defineContract<C extends ChannelMap>(channels: C): C {
+	return channels;
+}
+
+/**
+ * Infer a method-style service interface from a contract.
+ * Each channel becomes a method: input → args, output → return type.
+ * Channels with `undefined` input become zero-arg methods.
+ *
+ * @example
+ * type TodoService = InferContract<typeof todosContract>;
+ * // { list(): Promise<Todo[]>; add(args: { title: string }): Promise<Todo> }
+ */
+export type InferContract<C extends ChannelMap> = {
+	[K in keyof C & string]: [ChannelInput<C[K]>] extends [undefined]
+		? () => Promise<ChannelOutput<C[K]>>
+		: (args: ChannelInput<C[K]>) => Promise<ChannelOutput<C[K]>>;
+};

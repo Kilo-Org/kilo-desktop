@@ -2,12 +2,12 @@ import { type FormEvent, useState } from "react";
 
 import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
-import type { TodoService } from "@anaconda-agentic-desktop/contracts";
+import type { TodoService } from "../contracts/schemas.js";
 
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "./components/ui/button.js";
+import { Checkbox } from "./components/ui/checkbox.js";
+import { Input } from "./components/ui/input.js";
+import { Label } from "./components/ui/label.js";
 
 export function TodoList() {
 	const sdk = useSdk<TodoService>("todos");

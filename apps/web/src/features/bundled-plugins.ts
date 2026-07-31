@@ -13,13 +13,11 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  * Register each plugin's `web` entry here. Plugins whose web entry exports
  * `browserRegister` also work in standalone browser mode; Electron-only
  * plugins are skipped there with the standard warning.
- *
- * @example
- * import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
- * import * as todosWeb from "@anaconda-agentic-desktop/plugin-todos/web";
- *
- * export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
- *   { manifest: todosManifest, module: todosWeb },
- * ];
  */
-export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [];
+
+import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
+import * as todosWeb from "@anaconda-agentic-desktop/plugin-todos/web";
+
+export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{ manifest: todosManifest, module: todosWeb },
+];

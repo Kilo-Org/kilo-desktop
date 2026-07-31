@@ -1,4 +1,4 @@
-import { test } from "../../../fixtures/features/todos.js";
+import { test } from "../fixtures.js";
 
 test.describe("Todos @smoke", () => {
 	test("adds a todo through the SDK-backed todo list", async ({ appShellPage, todosPage }) => {

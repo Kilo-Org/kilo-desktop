@@ -18,7 +18,8 @@ packages/
 └── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
 
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
-plugins/          Bundled plugins (after migration from apps/)
+plugins/          Bundled plugins — self-contained workspace packages
+└── todos/        @anaconda-agentic-desktop/plugin-todos The first real plugin (plugin.json + src/{contracts,main,web})
 ```
 
 ## Key architectural decisions
@@ -50,6 +51,8 @@ In browser: `sdk.invoke` calls the handler directly in-process (no Electron need
 ### FEATURES array (mandatory registration)
 
 Every feature registers in `apps/desktop/src/main/features/registry/features.ts`. Adding a feature = adding an entry. Never hand-edit `Application.ts` for feature-specific code.
+
+Bundled plugins register in `BUNDLED_PLUGINS` instead (`apps/desktop/src/main/features/registry/bundled-plugins.ts` for the `main` entry, `apps/web/src/features/bundled-plugins.ts` for the `web` entry). The loader (`discoverPlugins` in feature-sdk) validates each `plugin.json` at boot and feeds the registrations into the same `FEATURES` / `WEB_FEATURES` boot paths, so features and plugins boot identically.
 
 ### LocalApi scope
 

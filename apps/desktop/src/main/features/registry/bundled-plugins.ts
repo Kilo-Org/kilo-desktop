@@ -20,14 +20,12 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  * 2. Add the workspace dep to apps/desktop/package.json (and apps/web if the
  *    plugin ships UI).
  * 3. Register it here (and in apps/web/src/features/bundled-plugins.ts when
- *    it has a `web` entry):
- *
- * @example
- * import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
- * import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
- *
- * export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
- *   { manifest: todosManifest, module: todosMain },
- * ];
+ *    it has a `web` entry).
  */
-export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [];
+
+import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
+import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
+
+export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{ manifest: todosManifest, module: todosMain },
+];

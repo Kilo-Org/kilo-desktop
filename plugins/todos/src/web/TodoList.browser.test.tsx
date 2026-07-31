@@ -3,7 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import { todosContract, type Todo } from "@anaconda-agentic-desktop/contracts";
+import { todosContract, type Todo } from "../contracts/schemas.js";
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import type { ChannelHandlerMap } from "@anaconda-agentic-desktop/feature-sdk";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";

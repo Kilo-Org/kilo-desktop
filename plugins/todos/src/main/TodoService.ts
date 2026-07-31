@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import type { Todo } from "@anaconda-agentic-desktop/contracts";
+import type { Todo } from "../contracts/schemas.js";
 
 import type { TodosDatabase } from "./db.js";
 import { todos } from "./schema.js";

@@ -103,9 +103,10 @@ Add main-process deps (better-sqlite3, drizzle-orm, etc.) if the feature persist
 | ------------------------------------------------------------------ | ---------------------------------------------- |
 | `from "@anaconda-agentic-desktop/contracts"` (for feature schemas) | `from "../contracts/schemas.js"`               |
 | `from "@/features/<id>/..."`                                       | Relative within `src/web/`                     |
-| `from "@/platform/sdk"`                                            | `from "@anaconda-agentic-desktop/feature-sdk"` |
+| `from "@/platform/sdk"`                                            | `from "@anaconda-agentic-desktop/sdk-react"`   |
+| `from "@/components/ui/..."` / `from "@/lib/utils"`                | Copy the shadcn primitives + `cn` into `src/web/components/ui/` and `src/web/lib/` (vendor code; excluded from coverage) |
 
-Imports from `@anaconda-agentic-desktop/feature-sdk`, `@anaconda-agentic-desktop/testing`, and `zod` stay unchanged.
+Imports from `@anaconda-agentic-desktop/feature-sdk`, `@anaconda-agentic-desktop/sdk-react`, `@anaconda-agentic-desktop/testing`, and `zod` stay unchanged. Contract helpers (`defineContract`, `defineMethod`, `InferContract`) come from `@anaconda-agentic-desktop/feature-sdk` — never from the shell-internal contracts package. Tailwind classes in plugin components keep working: `apps/web/src/globals.css` already has `@source "../../../plugins"` (one-time, done); plugin browser tests import their own `src/test/globals.css` (`@import "tailwindcss"`).
 
 ### Step 6: Create renderer entry (if needed)
 

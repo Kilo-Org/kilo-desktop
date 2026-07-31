@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { todosContract } from "@anaconda-agentic-desktop/contracts";
+import { todosContract } from "../contracts/schemas.js";
 
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 

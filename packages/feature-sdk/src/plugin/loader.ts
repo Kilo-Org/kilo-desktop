@@ -66,6 +66,17 @@ export interface PluginDiscovery {
 	issues: PluginDiscoveryIssue[];
 }
 
+export interface DiscoverPluginsOptions {
+	/**
+	 * Feature ids that are already taken by the shell's built-in registrations
+	 * (FEATURES / WEB_FEATURES). A plugin whose id collides is skipped with an
+	 * issue — otherwise the collision behaves differently per process (desktop
+	 * bootFeatures skips with a misleading "already booted" warning; browser
+	 * mode silently REPLACES the built-in feature's handlers).
+	 */
+	reservedIds?: Iterable<string>;
+}
+
 function describeManifestError(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
@@ -91,9 +102,11 @@ const noopRegister = (): void => {
 export function discoverPlugins(
 	bundled: readonly BundledPlugin[],
 	entry: PluginEntryKind,
+	options: DiscoverPluginsOptions = {},
 ): PluginDiscovery {
 	const plugins: DiscoveredPlugin[] = [];
 	const issues: PluginDiscoveryIssue[] = [];
+	const reservedIds = new Set(options.reservedIds);
 	const seenIds = new Set<string>();
 
 	for (const [index, candidate] of bundled.entries()) {
@@ -106,6 +119,14 @@ export function discoverPlugins(
 		}
 		const manifest = parsed.data;
 
+		if (reservedIds.has(manifest.id)) {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin id "${manifest.id}" collides with a built-in feature id — skipping the plugin.`,
+			});
+			continue;
+		}
+
 		if (seenIds.has(manifest.id)) {
 			issues.push({
 				pluginId: manifest.id,
@@ -115,9 +136,16 @@ export function discoverPlugins(
 		}
 		seenIds.add(manifest.id);
 
-		// A plugin without an entry for this process is not an error — e.g. a
-		// renderer-only plugin is invisible to the Electron main boot path.
+		// Registries are per-process, so a bundled entry whose manifest lacks
+		// this process's entry point is a registration mistake (e.g. added to
+		// the web registry but plugin.json declares no "web") — report it
+		// instead of silently dropping the plugin. Plugins that genuinely have
+		// no entry for a process simply are not added to that registry.
 		if (manifest[entry] === undefined) {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" is registered in the "${entry}" registry but its ${PLUGIN_MANIFEST_FILENAME} declares no "${entry}" entry — skipping.`,
+			});
 			continue;
 		}
 
@@ -164,4 +192,18 @@ function createRegistration(
  */
 export function pluginRegistrations(discovery: PluginDiscovery): FeatureRegistration[] {
 	return discovery.plugins.map((plugin) => plugin.registration);
+}
+
+/**
+ * Report discovery issues with the shared policy (one `[PluginLoader]`-
+ * prefixed error per skipped plugin). Both shell boot paths call this so the
+ * reporting behavior cannot drift between the desktop and web processes.
+ */
+export function reportPluginDiscoveryIssues(
+	discovery: PluginDiscovery,
+	log: (message: string) => void = console.error,
+): void {
+	for (const issue of discovery.issues) {
+		log(`[PluginLoader] ${issue.message}`);
+	}
 }

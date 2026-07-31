@@ -13,7 +13,7 @@
 		"dev": "pnpm dev:desktop",
 		"dev:web": "pnpm --filter @anaconda-agentic-desktop/web dev",
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env ANACONDA_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @anaconda-agentic-desktop/desktop start\"",
-		"format": "oxfmt",
+		"format": "oxfmt --no-error-on-unmatched-pattern",
 		"format:check": "oxfmt --check",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",

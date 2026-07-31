@@ -1,6 +1,7 @@
 import {
 	discoverPlugins,
 	pluginRegistrations,
+	reportPluginDiscoveryIssues,
 	type FeatureRegistration,
 	type MainSdk,
 } from "@anaconda-agentic-desktop/feature-sdk";
@@ -58,19 +59,8 @@ function sdkConsumerBrowserRegister(mainSdk: MainSdk): void {
 	});
 }
 
-/**
- * Plugin discovery phase (static, build-time — Decision #10): validates the
- * bundled plugin manifests and produces boot-ready registrations for the
- * renderer. Activation stays with createFeatureSystem (eager for now —
- * Decision #11); a broken plugin is skipped with an error instead of taking
- * down the boot sequence.
- */
-const pluginDiscovery = discoverPlugins(BUNDLED_PLUGINS, "web");
-for (const issue of pluginDiscovery.issues) {
-	console.error(`[PluginLoader] ${issue.message}`);
-}
-
-export const WEB_FEATURES: readonly FeatureRegistration[] = [
+/** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
+const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
 	{
 		id: "sdk-producer",
 		mainRegister: sdkProducerBrowserRegister,
@@ -81,5 +71,22 @@ export const WEB_FEATURES: readonly FeatureRegistration[] = [
 		mainRegister: sdkConsumerBrowserRegister,
 		browserRegister: sdkConsumerBrowserRegister,
 	},
+];
+
+/**
+ * Plugin discovery phase (static, build-time — Decision #10): validates the
+ * bundled plugin manifests and produces boot-ready registrations for the
+ * renderer. Activation stays with createFeatureSystem (eager for now —
+ * Decision #11); a broken plugin is skipped with an error instead of taking
+ * down the boot sequence. Built-in feature ids are reserved so a colliding
+ * plugin cannot shadow them.
+ */
+const pluginDiscovery = discoverPlugins(BUNDLED_PLUGINS, "web", {
+	reservedIds: BUILT_IN_WEB_FEATURES.map((feature) => feature.id),
+});
+reportPluginDiscoveryIssues(pluginDiscovery);
+
+export const WEB_FEATURES: readonly FeatureRegistration[] = [
+	...BUILT_IN_WEB_FEATURES,
 	...pluginRegistrations(pluginDiscovery),
 ];

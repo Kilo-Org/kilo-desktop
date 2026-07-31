@@ -75,7 +75,9 @@ export {
 export {
 	discoverPlugins,
 	pluginRegistrations,
+	reportPluginDiscoveryIssues,
 	type BundledPlugin,
+	type DiscoverPluginsOptions,
 	type PluginModule,
 	type PluginEntryKind,
 	type DiscoveredPlugin,

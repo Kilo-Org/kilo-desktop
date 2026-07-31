@@ -45,7 +45,7 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 
 ### Step 3: Create plugin.json
 
-**File:** `plugins/<id>/plugin.json` — validated by `pluginManifestSchema` from `@anaconda-agentic-desktop/feature-sdk` during discovery. Unknown keys are rejected (strict schema).
+**File:** `plugins/<id>/plugin.json` — validated by `pluginManifestSchema` from `@anaconda-agentic-desktop/feature-sdk` during discovery. Unknown keys are rejected (strict schema). The schema (`packages/feature-sdk/src/plugin/manifest.ts`) is the source of truth — if this template disagrees with it, trust the schema and update this skill.
 
 ```json
 {

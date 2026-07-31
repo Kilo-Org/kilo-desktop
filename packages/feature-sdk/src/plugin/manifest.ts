@@ -36,6 +36,11 @@ export type PluginRoute = z.infer<typeof pluginRouteSchema>;
 /**
  * `plugin.json` schema. Strict: unknown keys are rejected so typos fail at
  * discovery instead of being silently ignored.
+ *
+ * NOTE: the `migrate-to-plugin` skill (.agents/skills/migrate-to-plugin/
+ * SKILL.md, Step 3) documents this shape with a copy-paste template. When
+ * changing this schema, update the skill in the same PR — a drifted template
+ * produces manifests that are rejected at discovery.
  */
 export const pluginManifestSchema = z
 	.strictObject({

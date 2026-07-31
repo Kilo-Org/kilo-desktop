@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { defineMethod } from "../channel-map.js";
 import { FeatureRouter } from "../services/feature-router.js";
-import { discoverPlugins, pluginRegistrations, type BundledPlugin } from "./loader.js";
+import {
+	discoverPlugins,
+	pluginRegistrations,
+	reportPluginDiscoveryIssues,
+	type BundledPlugin,
+} from "./loader.js";
 
 import type { MainSdk } from "../types/sdk.js";
 
@@ -90,7 +95,7 @@ describe("discoverPlugins", () => {
 		]);
 	});
 
-	it("silently omits plugins without an entry for the current process", () => {
+	it("silently omits nothing — each registry lists only its own entries", () => {
 		const webOnly = {
 			id: "web-only",
 			displayName: "Web Only",
@@ -104,25 +109,46 @@ describe("discoverPlugins", () => {
 			main: "./src/main/index.ts",
 		};
 
-		const mainSide = discoverPlugins(
-			[
-				{ manifest: webOnly, module: {} },
-				{ manifest: mainOnly, module: { mainRegister } },
-			],
-			"main",
-		);
+		const mainSide = discoverPlugins([{ manifest: mainOnly, module: { mainRegister } }], "main");
 		expect(mainSide.plugins.map((p) => p.manifest.id)).toEqual(["main-only"]);
 		expect(mainSide.issues).toEqual([]);
 
-		const webSide = discoverPlugins(
-			[
-				{ manifest: webOnly, module: { browserRegister } },
-				{ manifest: mainOnly, module: {} },
-			],
-			"web",
-		);
+		const webSide = discoverPlugins([{ manifest: webOnly, module: { browserRegister } }], "web");
 		expect(webSide.plugins.map((p) => p.manifest.id)).toEqual(["web-only"]);
 		expect(webSide.issues).toEqual([]);
+	});
+
+	it("reports an issue when a registered plugin's manifest lacks the current entry", () => {
+		const webOnly = {
+			id: "web-only",
+			displayName: "Web Only",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+		};
+
+		// Registration mistake: a web-only plugin added to the main registry.
+		const discovery = discoverPlugins([{ manifest: webOnly, module: {} }], "main");
+
+		expect(discovery.plugins).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "web-only",
+				message: expect.stringContaining('declares no "main" entry'),
+			},
+		]);
+	});
+
+	it("skips plugins whose id collides with a reserved built-in feature id", () => {
+		const bundled: BundledPlugin[] = [{ manifest, module: { mainRegister } }];
+		const discovery = discoverPlugins(bundled, "main", { reservedIds: ["ping", "other"] });
+
+		expect(discovery.plugins).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining("collides with a built-in feature id"),
+			},
+		]);
 	});
 
 	it("wires browserRegister into the web-entry registration", () => {
@@ -155,5 +181,34 @@ describe("discoverPlugins", () => {
 describe("pluginRegistrations", () => {
 	it("returns an empty array for an empty registry", () => {
 		expect(pluginRegistrations(discoverPlugins([], "main"))).toEqual([]);
+	});
+});
+
+describe("reportPluginDiscoveryIssues", () => {
+	it("logs each issue with the [PluginLoader] prefix", () => {
+		const discovery = discoverPlugins([{ manifest: { id: "broken" }, module: {} }], "main");
+		const logged: string[] = [];
+
+		reportPluginDiscoveryIssues(discovery, (message) => logged.push(message));
+
+		expect(logged).toHaveLength(1);
+		expect(logged[0]).toMatch(/^\[PluginLoader\] /);
+	});
+
+	it("defaults to console.error", () => {
+		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			reportPluginDiscoveryIssues(discoverPlugins([{ manifest: {}, module: {} }], "main"));
+			expect(spy).toHaveBeenCalledOnce();
+			expect(spy.mock.calls[0]?.[0]).toContain("[PluginLoader]");
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("logs nothing for a clean discovery", () => {
+		const logged: string[] = [];
+		reportPluginDiscoveryIssues(discoverPlugins([], "main"), (message) => logged.push(message));
+		expect(logged).toEqual([]);
 	});
 });

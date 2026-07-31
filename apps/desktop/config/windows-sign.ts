@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { open } from "node:fs/promises";
 import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
@@ -15,6 +16,17 @@ export function hasAzureWindowsSigningCredentials(
 	return Boolean(environment.AZURE_KEY_VAULT_URI?.trim() && environment.AZURE_CERT_NAME?.trim());
 }
 
+async function isWindowsPortableExecutable(filePath: string): Promise<boolean> {
+	const file = await open(filePath, "r");
+	try {
+		const magic = Buffer.alloc(2);
+		const { bytesRead } = await file.read(magic, 0, magic.length, 0);
+		return bytesRead === magic.length && magic[0] === 0x4d && magic[1] === 0x5a;
+	} finally {
+		await file.close();
+	}
+}
+
 /**
  * Signs a Windows binary with AzureSignTool using Key Vault Managed Identity / az login.
  * Callers must only invoke this when Azure signing mode is selected; missing credentials fail hard.
@@ -28,6 +40,10 @@ export async function signWindowsFile(
 
 	if (!vaultUri || !certName) {
 		throw new Error("Azure Windows signing requires AZURE_KEY_VAULT_URI and AZURE_CERT_NAME.");
+	}
+	if (filePath.toLowerCase().endsWith(".node") && !(await isWindowsPortableExecutable(filePath))) {
+		console.log(`Skipping non-Windows native module: ${filePath}`);
+		return;
 	}
 
 	console.log(`Signing file with AzureSignTool: ${filePath}`);

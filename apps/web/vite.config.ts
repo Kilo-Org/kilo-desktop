@@ -4,10 +4,39 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+import {
+	criticalThemeStyle,
+	themeBootstrapScript,
+} from "../../packages/contracts/src/features/theme-tokens";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
+
+const CRITICAL_THEME_STYLE_PLACEHOLDER = "<!--vite-plugin-critical-theme-style-->";
+const THEME_BOOTSTRAP_PLACEHOLDER = "<!--vite-plugin-theme-bootstrap-->";
+
+function injectThemeBootstrap(): Plugin {
+	return {
+		name: "inject-theme-bootstrap",
+		transformIndexHtml(html) {
+			if (!html.includes(CRITICAL_THEME_STYLE_PLACEHOLDER)) {
+				throw new Error(
+					`index.html is missing ${CRITICAL_THEME_STYLE_PLACEHOLDER} — critical theme style would not be injected.`,
+				);
+			}
+			if (!html.includes(THEME_BOOTSTRAP_PLACEHOLDER)) {
+				throw new Error(
+					`index.html is missing ${THEME_BOOTSTRAP_PLACEHOLDER} — theme bootstrap would not be injected.`,
+				);
+			}
+			return html
+				.replace(CRITICAL_THEME_STYLE_PLACEHOLDER, `<style>${criticalThemeStyle()}</style>`)
+				.replace(THEME_BOOTSTRAP_PLACEHOLDER, `<script>${themeBootstrapScript()}</script>`);
+		},
+	};
+}
 
 export default defineConfig({
 	base: "./",
@@ -19,6 +48,7 @@ export default defineConfig({
 		}),
 		react(),
 		tailwindcss(),
+		injectThemeBootstrap(),
 	],
 	resolve: {
 		alias: {

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
-import { themeEvents, themeMethods } from "./features/theme.js";
+import { themeMethods } from "./features/theme.js";
 import { todoMethods } from "./features/todos.js";
-import { ipcEvents, ipcMethods, mergeChannelMaps } from "./registry.js";
+import { ipcMethods, mergeChannelMaps } from "./registry.js";
 
 describe("IPC registry", () => {
 	it("merged method channel count equals the sum of feature parts", () => {
@@ -14,10 +14,6 @@ describe("IPC registry", () => {
 				Object.keys(todoMethods).length +
 				Object.keys(featureMethods).length,
 		);
-	});
-
-	it("merged event channel count equals the sum of feature parts", () => {
-		expect(Object.keys(ipcEvents)).toHaveLength(Object.keys(themeEvents).length);
 	});
 
 	it("throws on duplicate channel keys", () => {

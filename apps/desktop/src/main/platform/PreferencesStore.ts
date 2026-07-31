@@ -1,8 +1,9 @@
 import Store from "electron-store";
 
-import type { ThemeSource } from "@anaconda-agentic-desktop/contracts";
+import { themeSourceSchema, type ThemeSource } from "@anaconda-agentic-desktop/contracts";
 
 export interface AppPreferences {
+	/** Last renderer-synced theme source — used to resolve cold-start native chrome. */
 	themeSource?: ThemeSource;
 }
 
@@ -14,14 +15,11 @@ export class PreferencesStore {
 	}
 
 	get themeSource(): ThemeSource | undefined {
-		return this.#store.get("themeSource");
+		const parsed = themeSourceSchema.safeParse(this.#store.get("themeSource"));
+		return parsed.success ? parsed.data : undefined;
 	}
 
 	setThemeSource(source: ThemeSource): void {
 		this.#store.set("themeSource", source);
-	}
-
-	clearThemeSource(): void {
-		this.#store.delete("themeSource");
 	}
 }

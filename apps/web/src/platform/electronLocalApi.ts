@@ -26,9 +26,7 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			toggle: (input) => invoke("todos:toggle", input),
 		},
 		theme: {
-			get: () => invoke("theme:get"),
-			set: (input) => invoke("theme:set", input),
-			onChanged: (listener) => bridge.on("theme:changed", listener),
+			sync: (input) => invoke("theme:sync", input),
 		},
 		shell: {
 			openExternal: (input) => invoke("shell:open-external", input),

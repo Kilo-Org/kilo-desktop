@@ -2,11 +2,7 @@ import path from "node:path";
 
 import { app, BrowserWindow, type BrowserWindowConstructorOptions } from "electron";
 
-import {
-	ipcEvents,
-	type IpcEventChannel,
-	type IpcEventPayload,
-} from "@anaconda-agentic-desktop/contracts";
+import { chromeFor, type ThemeChromeColors } from "@anaconda-agentic-desktop/contracts";
 
 import { getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
@@ -19,13 +15,17 @@ const TRAFFIC_LIGHT_SIZE = 14;
 export class ElectronWindow {
 	#mainWindow: BrowserWindow | undefined;
 
-	constructor(private readonly electronShell: ElectronShell) {}
+	constructor(
+		private readonly electronShell: ElectronShell,
+		private readonly shouldUseDarkColors: () => boolean,
+	) {}
 
 	create(input: {
 		readonly isDevelopment: boolean;
 		readonly preloadPath?: string;
 		readonly options?: BrowserWindowConstructorOptions;
 	}): BrowserWindow {
+		const chrome = chromeFor(this.shouldUseDarkColors());
 		const window = new BrowserWindow({
 			title: "Anaconda Agentic Desktop",
 			width: 960,
@@ -33,8 +33,8 @@ export class ElectronWindow {
 			minWidth: 720,
 			minHeight: 520,
 			show: false,
-			backgroundColor: "#f4f5f8",
-			...titleBarOptions(),
+			backgroundColor: chrome.background,
+			...titleBarOptions(chrome),
 			...input.options,
 			webPreferences: {
 				preload: input.preloadPath ?? path.join(import.meta.dirname, "preload.js"),
@@ -81,13 +81,17 @@ export class ElectronWindow {
 		window.focus();
 	}
 
-	broadcast<TChannel extends IpcEventChannel>(
-		channel: TChannel,
-		payload: IpcEventPayload<TChannel>,
-	): void {
-		const validatedPayload = ipcEvents[channel].payload.parse(payload);
+	/** Repaints native chrome to match the renderer-owned theme (pushed via `theme:sync`). */
+	applyColorScheme(shouldUseDarkColors: boolean): void {
+		const chrome = chromeFor(shouldUseDarkColors);
 		for (const window of this.liveWindows) {
-			window.webContents.send(channel, validatedPayload);
+			window.setBackgroundColor(chrome.background);
+			if (process.platform !== "darwin") {
+				window.setTitleBarOverlay({
+					color: chrome.background,
+					symbolColor: chrome.foreground,
+				});
+			}
 		}
 	}
 
@@ -97,7 +101,7 @@ export class ElectronWindow {
 	}
 }
 
-function titleBarOptions(): BrowserWindowConstructorOptions {
+function titleBarOptions(chrome: ThemeChromeColors): BrowserWindowConstructorOptions {
 	if (process.platform === "darwin") {
 		return {
 			titleBarStyle: "hidden",
@@ -112,8 +116,8 @@ function titleBarOptions(): BrowserWindowConstructorOptions {
 		titleBarStyle: "hidden",
 		titleBarOverlay: {
 			height: TITLEBAR_HEIGHT,
-			color: "#f4f5f8",
-			symbolColor: "#1a1a1a",
+			color: chrome.background,
+			symbolColor: chrome.foreground,
 		},
 	};
 }

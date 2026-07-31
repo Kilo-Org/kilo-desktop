@@ -6,8 +6,6 @@ const { contextBridge, ipcRenderer } = vi.hoisted(() => ({
 	},
 	ipcRenderer: {
 		invoke: vi.fn(),
-		on: vi.fn(),
-		removeListener: vi.fn(),
 	},
 }));
 
@@ -27,7 +25,6 @@ describe("preload desktopApi", () => {
 		await import("./preload.js");
 		const desktopApi = contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as {
 			invoke: (channel: string, input?: unknown) => Promise<unknown>;
-			on: (channel: string, listener: (payload: unknown) => void) => () => void;
 		};
 
 		await expect(desktopApi.invoke("todos:list")).resolves.toEqual({ ok: true, value: [] });
@@ -36,25 +33,5 @@ describe("preload desktopApi", () => {
 		expect(() => desktopApi.invoke("todos:unknown" as never)).toThrow(
 			"Unknown IPC method channel.",
 		);
-	});
-
-	it("validates event payloads and cleans up listeners", async () => {
-		await import("./preload.js");
-		const desktopApi = contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as {
-			on: (channel: string, listener: (payload: unknown) => void) => () => void;
-		};
-
-		const listener = vi.fn();
-		const unsubscribe = desktopApi.on("theme:changed", listener);
-		const handler = ipcRenderer.on.mock.calls[0]?.[1] as (event: unknown, payload: unknown) => void;
-
-		handler({}, { source: "dark", shouldUseDarkColors: true });
-		expect(listener).toHaveBeenCalledWith({ source: "dark", shouldUseDarkColors: true });
-
-		handler({}, { source: "nope" });
-		expect(listener).toHaveBeenCalledTimes(1);
-
-		unsubscribe();
-		expect(ipcRenderer.removeListener).toHaveBeenCalledWith("theme:changed", handler);
 	});
 });

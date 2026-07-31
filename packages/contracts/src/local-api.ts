@@ -1,4 +1,4 @@
-import type { ThemeSource, ThemeState } from "./features/theme.js";
+import type { ThemeState } from "./features/theme.js";
 import type { Todo } from "./features/todos.js";
 import type { IpcError } from "./result.js";
 
@@ -13,9 +13,8 @@ export interface LocalApi {
 		toggle(input: { id: string }): Promise<Todo>;
 	};
 	theme: {
-		get(): Promise<ThemeState>;
-		set(input: { source: ThemeSource }): Promise<ThemeState>;
-		onChanged(listener: (state: ThemeState) => void): () => void;
+		/** One-way push of the renderer-owned theme state so the host can paint matching native chrome. */
+		sync(input: ThemeState): Promise<void>;
 	};
 	shell: {
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;

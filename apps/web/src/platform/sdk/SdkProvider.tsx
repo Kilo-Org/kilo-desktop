@@ -18,6 +18,8 @@ import {
 
 import type { DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
+import { getColorSchemeSnapshot, subscribeColorScheme } from "@/platform/theme/color-scheme";
+
 // ─── Bridge detection ──────────────────────────────────────────────────────
 
 function getDesktopBridge(): DesktopApi | undefined {
@@ -46,24 +48,15 @@ function undeliveredNotifications(): ShellDelegates["notifications"] {
 	};
 }
 
-function peekEffectiveTheme(): "dark" | "light" {
-	return document.documentElement.classList.contains("dark") ? "dark" : "light";
-}
-
 function createShellDelegates(api: LocalApi): ShellDelegates {
 	return {
 		notifications: undeliveredNotifications(),
 		theme: {
 			subscribe(fn) {
-				// Observable contract: fire synchronously with the current value,
-				// then push updates. No async initial read — avoids racing
-				// onChanged events against a stale get() result.
-				fn(peekEffectiveTheme());
-				return api.theme.onChanged((state) => {
-					fn(state.shouldUseDarkColors ? "dark" : "light");
-				});
+				fn(getColorSchemeSnapshot());
+				return subscribeColorScheme(() => fn(getColorSchemeSnapshot()));
 			},
-			peek: peekEffectiveTheme,
+			peek: getColorSchemeSnapshot,
 		},
 		shell: {
 			openExternal: (url) => api.shell.openExternal({ url }),

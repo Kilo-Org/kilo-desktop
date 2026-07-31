@@ -1,17 +1,52 @@
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import { nativeTheme, type NativeTheme } from "electron";
 
-import type { ElectronTheme } from "../../platform/ElectronTheme.js";
+import type { IpcHandlers, ThemeSource, ThemeState } from "@anaconda-agentic-desktop/contracts";
+
+import type { ElectronWindow } from "../../platform/ElectronWindow.js";
 import type { PreferencesStore } from "../../platform/PreferencesStore.js";
 
-export function createThemeHandlers(
-	electronTheme: ElectronTheme,
+/**
+ * Single chrome policy: persist source for cold start, mirror nativeTheme for
+ * OS dialogs/menus, and repaint live windows.
+ */
+export function applyRendererTheme(
+	state: ThemeState,
+	electronWindow: ElectronWindow,
 	preferences: PreferencesStore,
-): Pick<IpcHandlers, "theme:get" | "theme:set"> {
+	theme: Pick<NativeTheme, "themeSource"> = nativeTheme,
+): void {
+	preferences.setThemeSource(state.source);
+	theme.themeSource = state.source;
+	electronWindow.applyColorScheme(state.shouldUseDarkColors);
+}
+
+/**
+ * Restore nativeTheme from preferences before the first window is created so
+ * backgroundColor / dialogs / menus agree with the renderer-owned source.
+ * After this, `nativeTheme.shouldUseDarkColors` is the cold-start chrome signal.
+ */
+export function restoreNativeThemeFromPreferences(
+	preferences: PreferencesStore,
+	theme: Pick<NativeTheme, "themeSource" | "shouldUseDarkColors"> = nativeTheme,
+): ThemeState {
+	const source: ThemeSource = preferences.themeSource ?? "system";
+	theme.themeSource = source;
+	return { source, shouldUseDarkColors: theme.shouldUseDarkColors };
+}
+
+/**
+ * The renderer owns theme state; main only mirrors it so native chrome can
+ * match. `theme:sync` is the single one-way entry point.
+ */
+export function createThemeHandlers(
+	electronWindow: ElectronWindow,
+	preferences: PreferencesStore,
+	theme: Pick<NativeTheme, "themeSource"> = nativeTheme,
+): Pick<IpcHandlers, "theme:sync"> {
 	return {
-		"theme:get": () => electronTheme.state,
-		"theme:set": ({ source }) => {
-			preferences.setThemeSource(source);
-			return electronTheme.setSource(source);
+		"theme:sync": (state) => {
+			applyRendererTheme(state, electronWindow, preferences, theme);
+			return undefined;
 		},
 	};
 }

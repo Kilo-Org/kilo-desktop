@@ -1,14 +1,17 @@
 import path from "node:path";
 
 import electronDebug from "electron-debug";
-import { session } from "electron";
+import { nativeTheme, session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
 import { bootFeatures, createFeatureHandlers } from "./features/registry/feature-registry.js";
 import { FEATURES } from "./features/registry/features.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
-import { createThemeHandlers } from "./features/theme/handlers.js";
+import {
+	createThemeHandlers,
+	restoreNativeThemeFromPreferences,
+} from "./features/theme/handlers.js";
 import { createTodoHandlers } from "./features/todos/handlers.js";
 import { TodoService } from "./features/todos/TodoService.js";
 import { createDatabase, resolveMigrationsFolder } from "./platform/db/client.js";
@@ -16,7 +19,6 @@ import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
-import { ElectronTheme } from "./platform/ElectronTheme.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
 import { IpcServer } from "./platform/IpcServer.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
@@ -28,9 +30,9 @@ export class Application {
 	readonly #protocol = new ElectronProtocol();
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
-	readonly #theme = new ElectronTheme();
 	readonly #preferences = new PreferencesStore();
-	readonly #windows = new ElectronWindow(this.#shell);
+	// After restoreNativeThemeFromPreferences, nativeTheme is the chrome signal.
+	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
 	#todoService: TodoService | undefined;
@@ -54,9 +56,6 @@ export class Application {
 			electronDebug({ showDevTools: false });
 		}
 
-		const savedTheme = this.#preferences.themeSource;
-		if (savedTheme) this.#theme.setSource(savedTheme);
-
 		this.#todoService = new TodoService(
 			createDatabase(path.join(this.#app.getPath("userData"), "app.db"), resolveMigrationsFolder()),
 		);
@@ -71,7 +70,7 @@ export class Application {
 
 		this.#disposers.push(this.#security.install(session.defaultSession));
 		this.#registerIpc();
-		this.#registerPushEvents();
+		restoreNativeThemeFromPreferences(this.#preferences);
 		this.#createWindow(isDevelopment);
 
 		this.#disposers.push(
@@ -102,20 +101,12 @@ export class Application {
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
-			...createThemeHandlers(this.#theme, this.#preferences),
+			...createThemeHandlers(this.#windows, this.#preferences),
 			...createTodoHandlers(todoService),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(handlers);
 		this.#disposers.push(() => this.#ipcServer.dispose());
-	}
-
-	#registerPushEvents(): void {
-		this.#disposers.push(
-			this.#theme.onUpdated((state) => {
-				this.#windows.broadcast("theme:changed", state);
-			}),
-		);
 	}
 
 	#dispose(): void {

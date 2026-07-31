@@ -22,6 +22,8 @@ const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
 const channel = getReleaseChannel(process.env);
+const channelTitle = channel.replace(/^./, (character) => character.toUpperCase());
+const dmgVolumeTitle = channel === "prod" ? "Agentic" : `Agentic ${channelTitle}`;
 const publishUrl = getUpdatePublishUrl(process.env);
 const s3Bucket = process.env.UPDATE_S3_BUCKET?.trim();
 const osxSign = resolveOsxSign(process.env);
@@ -107,7 +109,7 @@ const config: ForgeConfig = {
 			config: {
 				// appdmg's alias encoder limits volume names to 27 characters. Keep
 				// enough headroom for the suffix macOS adds when a volume name collides.
-				title: "Anaconda Agentic",
+				title: dmgVolumeTitle,
 			},
 		},
 		{

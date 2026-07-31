@@ -1,14 +1,12 @@
-import { execFile as execFileCallback } from "node:child_process";
 import { cp, mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { execa } from "execa";
 
 import {
 	getArtifactKey,
@@ -20,7 +18,6 @@ import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
 
-const execFile = promisify(execFileCallback);
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
@@ -37,13 +34,12 @@ function updateFeed(platform: string, arch: string): string | undefined {
 
 async function stageProductionDependencies(buildPath: string): Promise<void> {
 	const stagingDirectory = await mkdtemp(
-		path.join(os.tmpdir(), "anaconda-agentic-desktop-production-"),
+		path.join(workspaceRoot, ".anaconda-agentic-desktop-production-"),
 	);
-	const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 	try {
-		await execFile(
-			pnpmCommand,
+		await execa(
+			"pnpm",
 			[
 				"--filter",
 				"@anaconda-agentic-desktop/desktop",
@@ -56,8 +52,9 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 			],
 			{
 				cwd: workspaceRoot,
-				env: { ...process.env, HUSKY: "0" },
-				maxBuffer: 10 * 1024 * 1024,
+				env: { HUSKY: "0" },
+				stderr: "inherit",
+				stdout: "inherit",
 			},
 		);
 		await cp(path.join(stagingDirectory, "node_modules"), path.join(buildPath, "node_modules"), {
@@ -185,7 +182,10 @@ const config: ForgeConfig = {
 			[FuseV1Options.RunAsNode]: false,
 			[FuseV1Options.EnableCookieEncryption]: true,
 			[FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-			[FuseV1Options.EnableNodeCliInspectArguments]: false,
+			// Playwright's electron.launch requires --inspect to work (waits for
+			// "Debugger listening on"). Enable for e2e packages only; keep off in
+			// production release builds.
+			[FuseV1Options.EnableNodeCliInspectArguments]: process.env.ELECTRON_ENABLE_INSPECT === "true",
 			[FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
 			[FuseV1Options.OnlyLoadAppFromAsar]: true,
 		}),

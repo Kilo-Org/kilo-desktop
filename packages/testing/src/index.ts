@@ -19,8 +19,8 @@ import type {
 
 const noop = () => {};
 
-function notImplemented(method: string): (...args: never[]) => never {
-	return () => {
+function notImplemented(method: string): (...args: never[]) => Promise<never> {
+	return async () => {
 		throw new Error(
 			`[FakeSdk] ${method} not implemented in test. Override it via createFakeSdk().`,
 		);
@@ -177,6 +177,69 @@ export function createFakeSdk<C extends ChannelMap>(
 	}
 
 	return applySdkOverrides(base, services, options);
+}
+
+/**
+ * Minimal FeatureSystem stand-in for renderer tests that mount views under
+ * `<SdkProvider>`. Shape matches apps/web `FeatureSystem` without depending on
+ * the web package.
+ */
+export type FakeFeatureSystem = {
+	readonly services: SdkFactoryServices;
+	getSdk(featureId: string): SDK;
+	teardownFeature(featureId: string): void;
+};
+
+export type FakeFeatureSystemOptions = {
+	/** Pre-built SDK instances keyed by feature id. */
+	sdks: Readonly<Record<string, SDK>>;
+	/**
+	 * Shared factory services. Defaults to the first `FakeSdk`'s `.services`
+	 * when at least one entry was created via `createFakeSdk`.
+	 */
+	services?: SdkFactoryServices;
+};
+
+/**
+ * Build a fake FeatureSystem from a map of feature SDKs that share one
+ * service bus. Unknown `getSdk` ids get a live `createSdk` on the shared
+ * services; `teardownFeature` destroys and drops the named entry.
+ */
+export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): FakeFeatureSystem {
+	const cache = new Map<string, SDK>(Object.entries(options.sdks));
+
+	let services = options.services;
+	if (!services) {
+		for (const sdk of cache.values()) {
+			if ("services" in sdk && (sdk as FakeSdk).services) {
+				services = (sdk as FakeSdk).services;
+				break;
+			}
+		}
+	}
+	if (!services) {
+		throw new Error(
+			"createFakeFeatureSystem requires `services` or at least one FakeSdk (from createFakeSdk).",
+		);
+	}
+
+	const shared = services;
+	return {
+		services: shared,
+		getSdk(featureId: string): SDK {
+			const existing = cache.get(featureId);
+			if (existing) return existing;
+			const created = createSdk(featureId, shared);
+			cache.set(featureId, created);
+			return created;
+		},
+		teardownFeature(featureId: string): void {
+			const sdk = cache.get(featureId);
+			if (!sdk) return;
+			sdk.destroy();
+			cache.delete(featureId);
+		},
+	};
 }
 
 /**

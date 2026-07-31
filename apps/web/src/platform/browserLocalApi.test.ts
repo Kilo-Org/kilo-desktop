@@ -22,6 +22,13 @@ describe("createBrowserLocalApi", () => {
 		expect(await api.todos.list()).toEqual([toggled]);
 	});
 
+	it("seeds from initial todos", async () => {
+		const api = createBrowserLocalApi({
+			todos: [{ id: "1", title: "seeded", completed: true }],
+		});
+		expect(await api.todos.list()).toEqual([{ id: "1", title: "seeded", completed: true }]);
+	});
+
 	it("rejects blank titles and unknown todo ids", async () => {
 		const api = createBrowserLocalApi();
 		await expect(api.todos.add({ title: "   " })).rejects.toMatchObject({
@@ -107,5 +114,16 @@ describe("createBrowserLocalApi", () => {
 		await expect(api.shell.copyText({ text: "hello" })).rejects.toMatchObject({
 			code: "TRANSPORT",
 		});
+	});
+
+	it("falls back when crypto.randomUUID is unavailable and resolves dark theme", async () => {
+		vi.stubGlobal("crypto", {});
+		const api = createBrowserLocalApi();
+		const created = await api.todos.add({ title: "no-uuid" });
+		expect(created.id).toMatch(/^todo-/);
+
+		await api.theme.set({ source: "dark" });
+		expect(await api.theme.get()).toEqual({ source: "dark", shouldUseDarkColors: true });
+		vi.unstubAllGlobals();
 	});
 });

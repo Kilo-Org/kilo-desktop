@@ -32,11 +32,18 @@ describe("ElectronShell", () => {
 		},
 	);
 
+	it("rejects non-string external URLs", () => {
+		expect(parseSafeExternalUrl(undefined)).toBeUndefined();
+		expect(parseSafeExternalUrl(42)).toBeUndefined();
+		expect(parseSafeExternalUrl({ href: "https://anaconda.com" })).toBeUndefined();
+	});
+
 	it("opens safe URLs and reports failures", async () => {
 		openExternal.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("blocked"));
 		const adapter = new ElectronShell();
 		await expect(adapter.openExternal("https://anaconda.com")).resolves.toBe(true);
 		await expect(adapter.openExternal("https://anaconda.com")).resolves.toBe(false);
+		await expect(adapter.openExternal("javascript:alert(1)")).resolves.toBe(false);
 		expect(openExternal).toHaveBeenCalledTimes(2);
 	});
 

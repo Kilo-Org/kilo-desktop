@@ -39,6 +39,20 @@ describe("signing strategy resolution", () => {
 			appleIdPassword: "app-password",
 			teamId: "TEAMID",
 		});
+
+		expect(resolveOsxNotarize({})).toBeUndefined();
+		expect(
+			resolveOsxNotarize({
+				APPLE_API_KEY: "/tmp/key.p8",
+				APPLE_API_KEY_ID: "KEYID",
+			}),
+		).toBeUndefined();
+		expect(
+			resolveOsxNotarize({
+				APPLE_ID: "dev@example.com",
+				APPLE_APP_SPECIFIC_PASSWORD: "app-password",
+			}),
+		).toBeUndefined();
 	});
 
 	it("prefers Azure Windows signing over a local certificate", () => {

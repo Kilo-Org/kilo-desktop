@@ -3,9 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LocalApi, ThemeState } from "@anaconda-agentic-desktop/contracts";
 
+import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
 
 import { ThemeSync } from "./ThemeSync";
+
+function withTheme(api: LocalApi, theme: LocalApi["theme"]): LocalApi {
+	return { ...api, theme };
+}
 
 afterEach(() => {
 	cleanup();
@@ -19,25 +24,14 @@ describe("ThemeSync", () => {
 	it("applies the initial theme and responds to push updates", async () => {
 		let listener: ((state: ThemeState) => void) | undefined;
 		const unsubscribe = vi.fn();
-		const api: LocalApi = {
-			todos: {
-				list: async () => [],
-				add: async ({ title }) => ({ id: "1", title, completed: false }),
-				toggle: async ({ id }) => ({ id, title: "x", completed: true }),
-			},
-			theme: {
-				get: vi.fn().mockResolvedValue({ source: "dark", shouldUseDarkColors: true }),
-				set: async ({ source }) => ({ source, shouldUseDarkColors: source === "dark" }),
-				onChanged: vi.fn((nextListener) => {
-					listener = nextListener;
-					return unsubscribe;
-				}),
-			},
-			shell: {
-				openExternal: async () => ({ opened: true }),
-				copyText: async () => undefined,
-			},
-		};
+		const api = withTheme(createBrowserLocalApi(), {
+			get: vi.fn().mockResolvedValue({ source: "dark", shouldUseDarkColors: true }),
+			set: async ({ source }) => ({ source, shouldUseDarkColors: source === "dark" }),
+			onChanged: vi.fn((nextListener) => {
+				listener = nextListener;
+				return unsubscribe;
+			}),
+		});
 
 		const { unmount } = render(
 			<LocalApiProvider api={api}>
@@ -53,5 +47,26 @@ describe("ThemeSync", () => {
 
 		unmount();
 		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
+	it("ignores theme.get results after unmount", async () => {
+		let resolveGet: ((state: ThemeState) => void) | undefined;
+		const api = withTheme(createBrowserLocalApi(), {
+			get: () =>
+				new Promise((resolve) => {
+					resolveGet = resolve;
+				}),
+			set: async ({ source }) => ({ source, shouldUseDarkColors: source === "dark" }),
+			onChanged: () => () => undefined,
+		});
+
+		const { unmount } = render(
+			<LocalApiProvider api={api}>
+				<ThemeSync />
+			</LocalApiProvider>,
+		);
+		unmount();
+		resolveGet?.({ source: "dark", shouldUseDarkColors: true });
+		await expect.poll(() => document.documentElement.classList.contains("dark")).toBe(false);
 	});
 });

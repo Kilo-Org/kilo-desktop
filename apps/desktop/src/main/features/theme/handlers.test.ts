@@ -16,6 +16,12 @@ describe("createThemeHandlers", () => {
 		};
 
 		const handlers = createThemeHandlers(electronTheme as never, preferences as never);
+
+		expect(handlers["theme:get"](undefined)).toEqual({
+			source: "system",
+			shouldUseDarkColors: true,
+		});
+
 		const result = handlers["theme:set"]({ source: "dark" });
 
 		expect(preferences.setThemeSource).toHaveBeenCalledWith("dark");

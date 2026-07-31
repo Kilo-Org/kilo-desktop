@@ -14,7 +14,10 @@ apps/
 packages/
 ├── contracts/    @anaconda-agentic-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
 ├── feature-sdk/  @anaconda-agentic-desktop/feature-sdk  Shim SDK — stable interface features program against
-└── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk)
+└── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
+
+e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
+plugins/          Bundled plugins (after migration from apps/)
 ```
 
 ## Key architectural decisions
@@ -91,14 +94,19 @@ Each transition is a filesystem move. Source code stays the same because it prog
 - **TanStack Router** (file-based, hash history) + **TanStack Query**
 - **shadcn/ui** (`base-nova` style, `lucide-react` icons, `@base-ui/react` primitives)
 - **@anaconda/shadcn-theme** for design tokens (CSS custom properties, Tailwind v4)
-- **Vitest** — `*.test.ts` (node), `*.browser.test.tsx` (Playwright/Chromium)
+- **Vitest** — `*.test.ts` (node unit), `*.integration.test.ts` (serial node), `*.browser.test.tsx` (Chromium component), `*.app.test.tsx` (full app tree)
+- **Playwright e2e** — packaged Electron via `@anaconda/playwright-utils` in the root `e2e/` package; every feature ships at least one `@smoke` spec
+- **Coverage** — 90% lines/branches/functions/statements (`pnpm coverage`)
 - **oxlint + oxfmt** (not ESLint/Prettier)
 - **peerDependencies** for react, react-dom, zod in publishable packages
 - Tests use `createFakeSdk` from `@anaconda-agentic-desktop/testing`
+- Interactive elements use stable `data-qa-id` attributes (queried by Vitest browser + Playwright)
 - Cross-feature communication only through SDK primitives (events, state, plugins.get)
 - All events namespaced by feature ID: `featureId.eventName`
 - Expected handler failures throw `FeatureError` (never plain `Error` — its message gets scrubbed at the IPC boundary)
 - Each feature owns its own SQLite file if it persists data
+
+See [docs/TESTING.md](./docs/TESTING.md) for the full tier taxonomy and how to run each suite.
 
 ## What NOT to do
 

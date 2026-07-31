@@ -19,16 +19,21 @@ vi.mock("electron", () => ({
 	},
 }));
 
+import { protocol } from "electron";
+
 import {
 	createContentSecurityPolicy,
 	ElectronProtocol,
 	getDesktopUrl,
+	registerDesktopSchemes,
 	resolveRendererPath,
 } from "./ElectronProtocol.js";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+	handle.mockClear();
+	fetch.mockReset();
 	await Promise.all(
 		temporaryDirectories
 			.splice(0)
@@ -40,6 +45,16 @@ describe("ElectronProtocol", () => {
 	it("uses distinct Anaconda Desktop schemes", () => {
 		expect(getDesktopUrl(false)).toBe("anaconda-agentic-desktop://app/#/");
 		expect(getDesktopUrl(true)).toBe("anaconda-agentic-desktop-dev://app/#/");
+	});
+
+	it("registers privileged desktop schemes", () => {
+		registerDesktopSchemes();
+		expect(protocol.registerSchemesAsPrivileged).toHaveBeenCalledWith(
+			expect.arrayContaining([
+				expect.objectContaining({ scheme: "anaconda-agentic-desktop" }),
+				expect.objectContaining({ scheme: "anaconda-agentic-desktop-dev" }),
+			]),
+		);
 	});
 
 	it("creates a restrictive production CSP", () => {
@@ -104,6 +119,39 @@ describe("ElectronProtocol", () => {
 		expect(await response.text()).toBe("renderer");
 	});
 
+	it("serves production renderer files and rejects unknown hosts", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
+		temporaryDirectories.push(root);
+		await writeFile(path.join(root, "index.html"), "<html>home</html>");
+		await writeFile(path.join(root, "asset.bin"), "binary");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({ isDevelopment: false, rendererRoot: root });
+		adapter.register({ isDevelopment: false, rendererRoot: root });
+		expect(handle).toHaveBeenCalledTimes(1);
+
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const html = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));
+		expect(html.status).toBe(200);
+		expect(html.headers.get("Content-Type")).toContain("text/html");
+		expect(html.headers.get("X-Content-Type-Options")).toBe("nosniff");
+		expect(await html.text()).toBe("<html>home</html>");
+
+		const unknown = await protocolHandler(new Request("anaconda-agentic-desktop://app/asset.bin"));
+		expect(unknown.headers.get("Content-Type")).toBe("application/octet-stream");
+
+		const missing = await protocolHandler(new Request("anaconda-agentic-desktop://app/missing.js"));
+		expect(missing.status).toBe(404);
+
+		const foreignHost = await protocolHandler(new Request("anaconda-agentic-desktop://evil/"));
+		expect(foreignHost.status).toBe(404);
+
+		adapter.dispose();
+		expect(protocol.unhandle).toHaveBeenCalledWith("anaconda-agentic-desktop");
+		adapter.dispose();
+	});
+
 	it("resolves the SPA shell and assets inside the renderer root", async () => {
 		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
 		temporaryDirectories.push(root);
@@ -120,5 +168,7 @@ describe("ElectronProtocol", () => {
 		await expect(resolveRendererPath(root, "/settings/")).resolves.toBeUndefined();
 		await expect(resolveRendererPath(root, "/missing")).resolves.toBeUndefined();
 		await expect(resolveRendererPath(root, "/%2e%2e/secret")).resolves.toBeUndefined();
+		await expect(resolveRendererPath(root, "/%00secret")).resolves.toBeUndefined();
+		await expect(resolveRendererPath(root, "/%E0%A4%A")).resolves.toBeUndefined();
 	});
 });

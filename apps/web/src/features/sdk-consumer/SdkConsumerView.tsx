@@ -66,7 +66,9 @@ export function SdkConsumerView() {
 	return (
 		<main className="mx-auto max-w-3xl px-5 py-8">
 			<header className="mb-6">
-				<h1 className="text-2xl font-semibold tracking-tight">SDK Consumer</h1>
+				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="sdk-consumer-heading">
+					SDK Consumer
+				</h1>
 				<p className="text-muted-foreground mt-1 text-sm">
 					A separate feature that reads data from <code>sdk-producer</code> via cross-feature SDK
 					primitives. Open <code>/#/sdk-producer</code> in the SDK Producer tab and interact with it
@@ -89,6 +91,7 @@ export function SdkConsumerView() {
 				</div>
 				<button
 					type="button"
+					data-qa-id="sdk-consumer-peek"
 					className="bg-secondary text-secondary-foreground hover:bg-secondary/80 mt-2 rounded-md px-3 py-1.5 text-xs font-medium"
 					onClick={handlePeek}
 				>
@@ -123,6 +126,7 @@ export function SdkConsumerView() {
 				<h2 className="mb-2 text-lg font-medium">sdk.plugins.get(&quot;sdk-producer&quot;)</h2>
 				<button
 					type="button"
+					data-qa-id="sdk-consumer-capability"
 					className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-3 py-1.5 text-xs font-medium"
 					onClick={handleGetCapability}
 				>

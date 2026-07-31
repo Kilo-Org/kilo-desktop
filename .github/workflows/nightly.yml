@@ -1,0 +1,35 @@
+name: Nightly E2E
+
+on:
+  schedule:
+    # 01:00 UTC daily
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e-full:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, self-hosted-amd64-medium-privileged-on-demand, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    concurrency:
+      group: nightly-e2e-${{ matrix.os }}
+      cancel-in-progress: false
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/run-e2e
+        with:
+          xvfb: ${{ runner.os == 'Linux' }}
+          report-name: playwright-report-nightly-${{ matrix.os }}
+          upload-on: always

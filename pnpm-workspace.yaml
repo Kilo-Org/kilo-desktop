@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+  - plugins/*
+  - e2e
 
 catalog:
   typescript: ^7.0.2
@@ -22,6 +24,8 @@ allowBuilds:
   "@scarf/scarf": true
   fs-xattr: true
   macos-alias: true
+  "@anaconda/playwright-utils": false
+  unrs-resolver: false
 
 minimumReleaseAge: 0
 

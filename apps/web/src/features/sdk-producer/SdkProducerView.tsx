@@ -251,10 +251,12 @@ export function SdkProducerView() {
 						placeholder="Write a note..."
 						maxLength={500}
 						value={noteText}
+						data-qa-id="note-input"
 						onChange={(e) => setNoteText(e.target.value)}
 					/>
 					<button
 						type="submit"
+						data-qa-id="note-add"
 						className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium"
 						disabled={!noteText.trim() || addNote.isPending}
 					>
@@ -275,6 +277,7 @@ export function SdkProducerView() {
 						{notes.data?.map((note) => (
 							<li
 								key={note.id}
+								data-qa-id="note-item"
 								className="bg-muted flex items-center justify-between rounded px-3 py-2 text-sm"
 							>
 								<span>{note.text}</span>

@@ -1,0 +1,24 @@
+{
+	"name": "@anaconda-agentic-desktop/e2e",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Playwright/Electron e2e suite for Anaconda Agentic Desktop",
+	"exports": {
+		".": "./index.ts",
+		"./fixtures": "./fixtures/shell.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test:e2e": "playwright test --config playwright.config.ts",
+		"test:e2e:smoke": "playwright test --config playwright.config.ts --grep @smoke",
+		"test:e2e:headed": "playwright test --config playwright.config.ts --headed"
+	},
+	"devDependencies": {
+		"@anaconda/playwright-utils": "1.17.1",
+		"@playwright/test": "1.61.1",
+		"@types/node": "^24.13.3",
+		"playwright": "1.61.1",
+		"typescript": "catalog:"
+	}
+}

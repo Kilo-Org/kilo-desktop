@@ -6,6 +6,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 	interface FakeWindow {
 		options: {
 			backgroundColor?: string;
+			icon?: string;
 			titleBarOverlay?: { color: string; symbolColor: string; height: number };
 		};
 		webContents: {
@@ -28,7 +29,12 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 	}
 	return {
 		createdWindows: [] as FakeWindow[],
-		electronApp: { focus: vi.fn(), getName: vi.fn(() => "Test App"), isPackaged: false },
+		electronApp: {
+			focus: vi.fn(),
+			getName: vi.fn(() => "Test App"),
+			getAppPath: vi.fn(() => "/fake/app"),
+			isPackaged: false,
+		},
 	};
 });
 
@@ -88,6 +94,14 @@ describe("ElectronWindow", () => {
 		const lightWindows = new ElectronWindow(createShell() as never, () => false);
 		lightWindows.create({ isDevelopment: false });
 		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.light.background);
+	});
+
+	it("sets the Linux window icon from the unpackaged app path", () => {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		expect(createdWindows[0]?.options.icon).toBe("/fake/app/assets/icon.png");
+		expect(electronApp.getAppPath).toHaveBeenCalled();
 	});
 
 	it("sets the title-bar overlay colors at creation on non-darwin platforms", () => {

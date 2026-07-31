@@ -52,6 +52,7 @@ export { ContributionRegistry } from "./services/contribution-registry.js";
 export { CommandRegistry } from "./services/command-registry.js";
 export {
 	FeatureRouter,
+	type CreateMainSdkOptions,
 	type FeatureRouterOptions,
 	type InvokeFallback,
 } from "./services/feature-router.js";

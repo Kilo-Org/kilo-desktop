@@ -20,11 +20,6 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 	};
 
 	return {
-		todos: {
-			list: () => invoke("todos:list"),
-			add: (input) => invoke("todos:add", input),
-			toggle: (input) => invoke("todos:toggle", input),
-		},
 		theme: {
 			get: () => invoke("theme:get"),
 			set: (input) => invoke("theme:set", input),

@@ -386,6 +386,14 @@ export interface ChannelHandlers<C extends ChannelMap> {
 export interface MainSdk {
 	readonly featureId: string;
 	/**
+	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
+	 * created lazily on first access. Features persist ONLY here — open your
+	 * own SQLite file (`data.db`) instead of sharing a shell database.
+	 * Accessing it in an environment without storage (browser mode) throws;
+	 * Node-free features simply never touch it.
+	 */
+	readonly storageDir: string;
+	/**
 	 * Bind a channel map once, then register typed handlers. Input is parsed
 	 * before each handler runs; handler output is parsed before it is returned.
 	 * Throw FeatureError for expected failures whose messages should survive

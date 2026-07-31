@@ -43,6 +43,20 @@ describe("createFakeMainSdk", () => {
 		await expect(mainSdk.invoke("list")).resolves.toEqual([]);
 	});
 
+	it("provides a lazily created temp storageDir, stable across accesses", () => {
+		const fs = process.getBuiltinModule("node:fs");
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+
+		const first = mainSdk.storageDir;
+		expect(fs.existsSync(first)).toBe(true);
+		expect(mainSdk.storageDir).toBe(first);
+	});
+
+	it("uses the provided storageDir override", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos", storageDir: "/tmp/custom-todos" });
+		expect(mainSdk.storageDir).toBe("/tmp/custom-todos");
+	});
+
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos" });
 		const order: string[] = [];

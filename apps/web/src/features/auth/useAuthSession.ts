@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { AuthSession } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { useSdk } from "@/platform/sdk";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 /**
  * Read the current Anaconda session, re-rendering on transitions.

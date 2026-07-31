@@ -261,8 +261,14 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
  * Create a fake MainSdk for testing feature main-process registration.
  * Backed by a real FeatureRouter — invoke/has go through the same validation
  * path as production, and dispose runs the same teardown.
+ *
+ * `storageDir` defaults to a lazily created temp directory (Node only);
+ * pass `storageDir` to control where the feature persists in the test.
  */
-export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
+export function createFakeMainSdk(options?: {
+	featureId?: string;
+	storageDir?: string;
+}): MainSdk & {
 	/** Invoke a registered handler, validating args/output like the real router. */
 	invoke(channel: string, args?: unknown): Promise<unknown>;
 	/** Whether a handler is registered for the channel. */
@@ -276,10 +282,27 @@ export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
 } {
 	const featureId = options?.featureId ?? "test-feature";
 	const router = new FeatureRouter();
-	const mainSdk = router.createMainSdk(featureId);
+	const mainSdk = router.createMainSdk(featureId, {
+		resolveStorageDir: () => {
+			if (options?.storageDir !== undefined) return options.storageDir;
+			// Node-only, resolved lazily via process.getBuiltinModule so this
+			// module stays importable in browser tests (which never access it).
+			const fs = process.getBuiltinModule("node:fs");
+			const os = process.getBuiltinModule("node:os");
+			const path = process.getBuiltinModule("node:path");
+			return fs.mkdtempSync(path.join(os.tmpdir(), `fake-${featureId}-`));
+		},
+	});
 
 	return {
-		...mainSdk,
+		featureId: mainSdk.featureId,
+		// Delegate instead of spreading — spreading would eagerly invoke the
+		// lazy storageDir getter and create a temp dir every test.
+		get storageDir() {
+			return mainSdk.storageDir;
+		},
+		channels: mainSdk.channels,
+		onDispose: mainSdk.onDispose,
 		invoke: (channel, args) => router.invoke(featureId, channel, args),
 		has: (channel) => router.has(featureId, channel),
 		dispose: () => router.destroyFeature(featureId),

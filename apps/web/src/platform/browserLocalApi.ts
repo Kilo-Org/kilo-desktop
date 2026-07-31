@@ -1,16 +1,10 @@
 import {
 	LocalApiError,
-	todoMethods,
 	type AuthSession,
 	type LocalApi,
 	type ThemeSource,
 	type ThemeState,
-	type Todo,
 } from "@anaconda-agentic-desktop/contracts";
-
-function createId(): string {
-	return globalThis.crypto?.randomUUID?.() ?? `todo-${Date.now()}-${Math.random()}`;
-}
 
 function resolveShouldUseDarkColors(source: ThemeSource): boolean {
 	if (source === "dark") return true;
@@ -18,8 +12,7 @@ function resolveShouldUseDarkColors(source: ThemeSource): boolean {
 	return globalThis.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-export function createBrowserLocalApi(options?: { readonly todos?: readonly Todo[] }): LocalApi {
-	const todos: Todo[] = [...(options?.todos ?? [])];
+export function createBrowserLocalApi(): LocalApi {
 	let themeSource: ThemeSource = "system";
 	const themeListeners = new Set<(state: ThemeState) => void>();
 	let mediaQuery: MediaQueryList | undefined;
@@ -59,34 +52,6 @@ export function createBrowserLocalApi(options?: { readonly todos?: readonly Todo
 	};
 
 	return {
-		todos: {
-			async list() {
-				return [...todos];
-			},
-			async add(input) {
-				const parsed = todoMethods["todos:add"].input.safeParse(input);
-				if (!parsed.success) {
-					throw new LocalApiError("VALIDATION", "The request payload is invalid.");
-				}
-				const todo: Todo = {
-					id: createId(),
-					title: parsed.data.title,
-					completed: false,
-				};
-				todos.push(todo);
-				return todo;
-			},
-			async toggle(input) {
-				const index = todos.findIndex((todo) => todo.id === input.id);
-				const current = todos[index];
-				if (!current) {
-					throw new LocalApiError("BUSINESS", "Todo not found.");
-				}
-				const todo = { ...current, completed: !current.completed };
-				todos[index] = todo;
-				return todo;
-			},
-		},
 		theme: {
 			async get() {
 				return currentTheme();

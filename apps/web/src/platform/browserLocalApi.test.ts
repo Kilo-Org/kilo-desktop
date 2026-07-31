@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LocalApiError } from "@anaconda-agentic-desktop/contracts";
-
 import { createBrowserLocalApi } from "./browserLocalApi";
 
 afterEach(() => {
@@ -9,35 +7,6 @@ afterEach(() => {
 });
 
 describe("createBrowserLocalApi", () => {
-	it("lists, adds, and toggles in-memory todos", async () => {
-		const api = createBrowserLocalApi();
-		expect(await api.todos.list()).toEqual([]);
-
-		const created = await api.todos.add({ title: "  Buy milk  " });
-		expect(created).toMatchObject({ title: "Buy milk", completed: false });
-		expect(await api.todos.list()).toEqual([created]);
-
-		const toggled = await api.todos.toggle({ id: created.id });
-		expect(toggled.completed).toBe(true);
-		expect(await api.todos.list()).toEqual([toggled]);
-	});
-
-	it("seeds from initial todos", async () => {
-		const api = createBrowserLocalApi({
-			todos: [{ id: "1", title: "seeded", completed: true }],
-		});
-		expect(await api.todos.list()).toEqual([{ id: "1", title: "seeded", completed: true }]);
-	});
-
-	it("rejects blank titles and unknown todo ids", async () => {
-		const api = createBrowserLocalApi();
-		await expect(api.todos.add({ title: "   " })).rejects.toMatchObject({
-			name: "LocalApiError",
-			code: "VALIDATION",
-		});
-		await expect(api.todos.toggle({ id: "missing" })).rejects.toBeInstanceOf(LocalApiError);
-	});
-
 	it("tracks system theme with matchMedia and cleans up listeners", async () => {
 		const listeners = new Set<(event: MediaQueryListEvent) => void>();
 		const mediaQuery = {
@@ -128,14 +97,9 @@ describe("createBrowserLocalApi", () => {
 		expect(() => unsubscribe()).not.toThrow();
 	});
 
-	it("falls back when crypto.randomUUID is unavailable and resolves dark theme", async () => {
-		vi.stubGlobal("crypto", {});
+	it("resolves the dark theme without consulting matchMedia", async () => {
 		const api = createBrowserLocalApi();
-		const created = await api.todos.add({ title: "no-uuid" });
-		expect(created.id).toMatch(/^todo-/);
-
 		await api.theme.set({ source: "dark" });
 		expect(await api.theme.get()).toEqual({ source: "dark", shouldUseDarkColors: true });
-		vi.unstubAllGlobals();
 	});
 });

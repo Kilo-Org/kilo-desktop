@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import electronDebug from "electron-debug";
 import { session } from "electron";
 
@@ -13,9 +11,6 @@ import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
 import { createThemeHandlers } from "./features/theme/handlers.js";
-import { createTodoHandlers } from "./features/todos/handlers.js";
-import { TodoService } from "./features/todos/TodoService.js";
-import { createDatabase, resolveMigrationsFolder } from "./platform/db/client.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
@@ -66,10 +61,6 @@ export class Application {
 		const savedTheme = preferences.themeSource;
 		if (savedTheme) this.#theme.setSource(savedTheme);
 
-		const todoService = new TodoService(
-			createDatabase(path.join(this.#app.getPath("userData"), "app.db"), resolveMigrationsFolder()),
-		);
-
 		this.#disposers.push(configureUpdater());
 		const developmentOrigin = getWebDevServerUrl();
 		this.#protocol.register({
@@ -79,7 +70,7 @@ export class Application {
 		});
 
 		this.#disposers.push(this.#security.install(session.defaultSession));
-		this.#registerIpc(todoService, preferences);
+		this.#registerIpc(preferences);
 		this.#registerPushEvents();
 		this.#createWindow(isDevelopment);
 
@@ -98,17 +89,17 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(todoService: TodoService, preferences: PreferencesStore): void {
+	#registerIpc(preferences: PreferencesStore): void {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
-		// The returned disposer runs each feature's onDispose callbacks
-		// (DB close, etc.) on shutdown.
-		this.#disposers.push(bootFeatures(FEATURES));
+		// Each feature persists only under its own storage directory
+		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
+		// runs each feature's onDispose callbacks (DB close, etc.) on shutdown.
+		this.#disposers.push(bootFeatures(FEATURES, { storageRoot: this.#app.getPath("userData") }));
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#theme, preferences),
- 			...createAuthHandlers(this.#auth),
-			...createTodoHandlers(todoService),
+			...createAuthHandlers(this.#auth),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(handlers);

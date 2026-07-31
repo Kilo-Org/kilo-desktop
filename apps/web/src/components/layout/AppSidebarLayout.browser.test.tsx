@@ -10,7 +10,8 @@ import { page } from "vitest/browser";
 
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
-import { createFeatureSystem, SdkProvider } from "@/platform/sdk";
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 import { AppSidebarLayout } from "./AppSidebarLayout";
 
@@ -18,11 +19,6 @@ type AuthOverrides = Partial<LocalApi["auth"]>;
 
 function fakeLocalApi(session: AuthSession, auth: AuthOverrides = {}): LocalApi {
 	return {
-		todos: {
-			list: async () => [],
-			add: async ({ title }) => ({ id: "1", title, completed: false }),
-			toggle: async ({ id }) => ({ id, title: "x", completed: true }),
-		},
 		theme: {
 			get: async () => ({ source: "system", shouldUseDarkColors: false }),
 			set: async ({ source }) => ({ source, shouldUseDarkColors: source === "dark" }),
@@ -44,7 +40,7 @@ function fakeLocalApi(session: AuthSession, auth: AuthOverrides = {}): LocalApi 
 }
 
 function renderLayout(api: LocalApi) {
-	const system = createFeatureSystem(api);
+	const system = createAppFeatureSystem(api);
 	const rootRoute = createRootRoute({
 		component: () => <AppSidebarLayout>content</AppSidebarLayout>,
 	});

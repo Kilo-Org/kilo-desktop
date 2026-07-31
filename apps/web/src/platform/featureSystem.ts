@@ -1,28 +1,9 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createFeatureSystem, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 
-import {
-	CapabilityRegistry,
-	CommandRegistry,
-	ContributionRegistry,
-	createSdk,
-	EventBus,
-	FeatureRouter,
-	StateBroker,
-	teardownFeature,
-	type SdkClient,
-	type FeatureRegistration,
-	type SDK,
-	type SdkFactoryServices,
-	type ShellDelegates,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { FeatureRegistration, ShellDelegates } from "@anaconda-agentic-desktop/feature-sdk";
 
-import type { AuthSession, DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
-
-// ─── Bridge detection ──────────────────────────────────────────────────────
-
-function getDesktopBridge(): DesktopApi | undefined {
-	return (globalThis as { desktopApi?: DesktopApi }).desktopApi;
-}
+import { getDesktopBridge } from "./desktopBridge.js";
 
 // ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
 
@@ -116,7 +97,7 @@ function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
 	};
 }
 
-function createShellDelegates(api: LocalApi): ShellDelegates {
+export function createShellDelegates(api: LocalApi): ShellDelegates {
 	return {
 		notifications: undeliveredNotifications(),
 		theme: {
@@ -147,39 +128,29 @@ function createShellDelegates(api: LocalApi): ShellDelegates {
 	};
 }
 
-// ─── Feature system ────────────────────────────────────────────────────────
-
-export interface FeatureSystem {
-	readonly services: SdkFactoryServices;
-	/**
-	 * Get the shared SDK instance for a feature. Instances are cached per
-	 * feature and live until teardownFeature() — they are NOT tied to
-	 * component lifecycles.
-	 */
-	getSdk(featureId: string): SDK;
-	/** Shell-owned full teardown of a feature (plugin unload). */
-	teardownFeature(featureId: string): void;
-}
+// ─── App feature system ────────────────────────────────────────────────────
 
 /**
- * Create the renderer-side feature system. Call once at app startup and pass
- * the result to <SdkProvider>.
+ * Create the app's renderer-side feature system. Call once at startup and
+ * pass the result to <SdkProvider>.
  *
  * In Electron mode: sdk.invoke falls back to the generic feature:invoke IPC
  * channel (handlers live in the main process; `features` is not booted here).
  * In browser mode: features are booted in-process via browserRegister();
  * features without one are skipped with a warning.
  */
-export function createFeatureSystem(
+export function createAppFeatureSystem(
 	api: LocalApi,
 	features: readonly FeatureRegistration[] = [],
 ): FeatureSystem {
 	const bridge = getDesktopBridge();
 
-	const featureRouter = new FeatureRouter(
-		bridge
+	return createFeatureSystem({
+		shellDelegates: createShellDelegates(api),
+		features,
+		...(bridge
 			? {
-					fallback: async (featureId, channel, args) => {
+					invokeFallback: async (featureId: string, channel: string, args?: unknown) => {
 						const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
 						if (!result.ok) {
 							throw new Error(result.error.message);
@@ -187,95 +158,6 @@ export function createFeatureSystem(
 						return result.value;
 					},
 				}
-			: {},
-	);
-
-	const services: SdkFactoryServices = {
-		eventBus: new EventBus(),
-		stateBroker: new StateBroker(),
-		capabilityRegistry: new CapabilityRegistry(),
-		contributionRegistry: new ContributionRegistry(),
-		commandRegistry: new CommandRegistry(),
-		featureRouter,
-		shellDelegates: createShellDelegates(api),
-	};
-
-	// Browser mode: boot feature backends in-process (no main process available).
-	// Only browserRegister boots here — deliberately no fallback to mainRegister,
-	// which may use Node APIs. Node-free features opt in explicitly with
-	// `browserRegister: mainRegister`.
-	if (!bridge) {
-		for (const feature of features) {
-			if (!feature.browserRegister) {
-				console.warn(
-					`[FeatureSystem] Feature "${feature.id}" has no browserRegister — skipped in browser mode.`,
-				);
-				continue;
-			}
-			const mainSdk = featureRouter.createMainSdk(feature.id);
-			try {
-				feature.browserRegister(mainSdk);
-			} catch (error) {
-				console.error(`[FeatureSystem] Boot failed for "${feature.id}":`, error);
-				featureRouter.destroyFeature(feature.id);
-			}
-		}
-	}
-
-	const sdkCache = new Map<string, SDK>();
-
-	return {
-		services,
-		getSdk(featureId: string): SDK {
-			let sdk = sdkCache.get(featureId);
-			if (!sdk) {
-				sdk = createSdk(featureId, services);
-				sdkCache.set(featureId, sdk);
-			}
-			return sdk;
-		},
-		teardownFeature(featureId: string): void {
-			sdkCache.get(featureId)?.destroy();
-			sdkCache.delete(featureId);
-			teardownFeature(featureId, services);
-		},
-	};
-}
-
-// ─── React context + hooks ─────────────────────────────────────────────────
-
-const FeatureSystemContext = createContext<FeatureSystem | null>(null);
-
-export function SdkProvider({
-	system,
-	children,
-}: {
-	readonly system: FeatureSystem;
-	readonly children: ReactNode;
-}) {
-	return <FeatureSystemContext.Provider value={system}>{children}</FeatureSystemContext.Provider>;
-}
-
-/** Access the feature system (registries, teardown) — for shell UI code. */
-export function useFeatureSystem(): FeatureSystem {
-	const system = useContext(FeatureSystemContext);
-	if (!system) {
-		throw new Error("useFeatureSystem must be used within <SdkProvider>.");
-	}
-	return system;
-}
-
-/**
- * Get the SDK instance for a feature. Pass a service type generic to get
- * a typed `client` property with method-style access to channels.
- *
- * @example
- * const { client } = useSdk<TodoService>("todos");
- * const todo = await client.add({ title: "Buy milk" }); // typed as Todo
- *
- * The instance is shared by every component of the feature and is NOT
- * destroyed on unmount; teardown is shell-owned (FeatureSystem.teardownFeature).
- */
-export function useSdk<T extends SdkClient = SdkClient>(featureId: string): SDK<T> {
-	return useFeatureSystem().getSdk(featureId) as SDK<T>;
+			: {}),
+	});
 }

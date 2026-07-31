@@ -1,3 +1,6 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+
 import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
@@ -13,6 +16,16 @@ export const featureRouter = new FeatureRouter();
 
 const bootedFeatureIds = new Set<string>();
 
+export interface BootFeaturesOptions {
+	/**
+	 * Base data path (Electron `app.getPath("userData")`). Each feature gets
+	 * `${storageRoot}/plugins/<id>` as its `mainSdk.storageDir`, created
+	 * lazily on first access (Decision #20). Omit only in environments
+	 * without storage.
+	 */
+	storageRoot?: string;
+}
+
 /**
  * Boot all features: call mainRegister(mainSdk) for each entry.
  * Idempotent: features that are already booted are skipped. A mainRegister
@@ -20,14 +33,29 @@ const bootedFeatureIds = new Set<string>();
  * Returns a disposer that tears down all features booted by this call —
  * running their onDispose callbacks (DB close, etc.).
  */
-export function bootFeatures(features: readonly FeatureRegistration[]): () => void {
+export function bootFeatures(
+	features: readonly FeatureRegistration[],
+	options?: BootFeaturesOptions,
+): () => void {
+	const storageRoot = options?.storageRoot;
 	const booted: string[] = [];
 	for (const feature of features) {
 		if (bootedFeatureIds.has(feature.id)) {
 			console.warn(`[FeatureRegistry] Feature "${feature.id}" is already booted — skipping.`);
 			continue;
 		}
-		const mainSdk = featureRouter.createMainSdk(feature.id);
+		const mainSdk = featureRouter.createMainSdk(
+			feature.id,
+			storageRoot === undefined
+				? undefined
+				: {
+						resolveStorageDir: () => {
+							const dir = path.join(storageRoot, "plugins", feature.id);
+							mkdirSync(dir, { recursive: true });
+							return dir;
+						},
+					},
+		);
 		try {
 			feature.mainRegister(mainSdk);
 			bootedFeatureIds.add(feature.id);

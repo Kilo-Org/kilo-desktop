@@ -5,7 +5,7 @@ import { page } from "vitest/browser";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import { createSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { SdkProvider } from "@/platform/sdk";
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 
 import { SdkConsumerView } from "./SdkConsumerView";
 

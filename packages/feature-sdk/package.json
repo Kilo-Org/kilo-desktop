@@ -13,6 +13,9 @@
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
+	"peerDependencies": {
+		"zod": "^4.4.3"
+	},
 	"devDependencies": {
 		"@vitest/coverage-v8": "5.0.0-beta.7",
 		"typescript": "catalog:",

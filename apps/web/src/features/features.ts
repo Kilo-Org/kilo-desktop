@@ -1,9 +1,16 @@
-import type { FeatureRegistration, MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	discoverPlugins,
+	pluginRegistrations,
+	type FeatureRegistration,
+	type MainSdk,
+} from "@anaconda-agentic-desktop/feature-sdk";
 import {
 	sdkConsumerContract,
 	sdkProducerContract,
 	type Note,
 } from "@anaconda-agentic-desktop/contracts";
+
+import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 
 /**
  * Feature registrations used when the app runs standalone in a browser
@@ -51,6 +58,18 @@ function sdkConsumerBrowserRegister(mainSdk: MainSdk): void {
 	});
 }
 
+/**
+ * Plugin discovery phase (static, build-time — Decision #10): validates the
+ * bundled plugin manifests and produces boot-ready registrations for the
+ * renderer. Activation stays with createFeatureSystem (eager for now —
+ * Decision #11); a broken plugin is skipped with an error instead of taking
+ * down the boot sequence.
+ */
+const pluginDiscovery = discoverPlugins(BUNDLED_PLUGINS, "web");
+for (const issue of pluginDiscovery.issues) {
+	console.error(`[PluginLoader] ${issue.message}`);
+}
+
 export const WEB_FEATURES: readonly FeatureRegistration[] = [
 	{
 		id: "sdk-producer",
@@ -62,4 +81,5 @@ export const WEB_FEATURES: readonly FeatureRegistration[] = [
 		mainRegister: sdkConsumerBrowserRegister,
 		browserRegister: sdkConsumerBrowserRegister,
 	},
+	...pluginRegistrations(pluginDiscovery),
 ];

@@ -61,3 +61,24 @@ export {
 	type SdkFactoryServices,
 	type ShellDelegates,
 } from "./services/create-sdk.js";
+
+// Plugin system — manifest schema + loader (discover phase; activation stays
+// with the shell boot sequences)
+export {
+	PLUGIN_MANIFEST_FILENAME,
+	pluginManifestSchema,
+	pluginRouteSchema,
+	parsePluginManifest,
+	type PluginManifest,
+	type PluginRoute,
+} from "./plugin/manifest.js";
+export {
+	discoverPlugins,
+	pluginRegistrations,
+	type BundledPlugin,
+	type PluginModule,
+	type PluginEntryKind,
+	type DiscoveredPlugin,
+	type PluginDiscovery,
+	type PluginDiscoveryIssue,
+} from "./plugin/loader.js";

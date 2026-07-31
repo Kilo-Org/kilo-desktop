@@ -45,20 +45,27 @@ export default defineConfig({
 				resolve: {
 					dedupe: ["react", "react-dom"],
 				},
-				// Pre-bundle every dep used across test files up front — discovering
-				// them mid-run triggers a Vite re-optimization that swaps module
-				// instances between test files.
+				// Pre-bundle every dep discovered during a test run — including the
+				// vitest browser-mode internals that are only imported lazily by
+				// the vitest client. Any dep discovered mid-run triggers a Vite
+				// re-optimization that swaps module instances between the runner
+				// and the test files ("Vitest failed to find the current suite").
 				optimizeDeps: {
 					include: [
 						"react",
 						"react-dom",
+						"react/jsx-runtime",
+						"react/jsx-dev-runtime",
 						"@anaconda-agentic-desktop/feature-sdk",
 						"@anaconda-agentic-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
-						"@vitest/browser/locators",
-						"vitest/internal/traces",
 						"zod",
+						"vitest",
+						"vitest/internal/browser",
+						"vitest/internal/traces",
+						"@vitest/browser/client",
+						"@vitest/browser/locators",
 					],
 				},
 				test: {

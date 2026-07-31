@@ -99,8 +99,8 @@ with repository/environment variables:
 
 Signing secrets and update variables live on the GitHub Environments above. `Build`
 attaches the `canary` environment so the same optional codesign material is available for
-manual makes; it does not publish to S3. The Linux job installs `fakeroot` for DEB
-packaging.
+manual makes; it does not publish to S3. Linux jobs install `fakeroot` for DEB packaging
+and the `pkg-config`/`libsecret` development packages required to rebuild keytar.
 
 ## Signing credentials
 

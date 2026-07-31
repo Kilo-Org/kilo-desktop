@@ -248,6 +248,15 @@ to `canary`.
 | `staging` | Release candidate for internal validation | QA / internal stakeholders | Manual `Staging Publish` workflow |
 | `prod`    | Stable customer release                   | Customers                  | Manual `Prod Publish` workflow    |
 
+App identities are environment-specific so builds can be installed side by side:
+
+| Environment       | App name                         |
+| ----------------- | -------------------------------- |
+| Local development | Anaconda Agentic Desktop Dev     |
+| `canary`          | Anaconda Agentic Desktop Canary  |
+| `staging`         | Anaconda Agentic Desktop Staging |
+| `prod`            | Anaconda Agentic Desktop         |
+
 Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB on Linux)
 and publishes to `anaconda-agentic-desktop/<channel>/<platform>/<arch>/`. Automatic update
 checks run only in packaged macOS and Windows builds that were given `UPDATE_PUBLISH_URL`.

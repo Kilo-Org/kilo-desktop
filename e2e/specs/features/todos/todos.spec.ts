@@ -6,5 +6,7 @@ test.describe("Todos @smoke", () => {
 		await todosPage.verifyPageIsLoaded();
 		await todosPage.addTodo("Buy milk");
 		await todosPage.verifyTodoIsListed("Buy milk");
+		await todosPage.completeTodo("Buy milk");
+		await todosPage.verifyTodoIsCompleted("Buy milk");
 	});
 });

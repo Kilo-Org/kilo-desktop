@@ -1,7 +1,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { getAppIdentity } from "../../apps/desktop/config/app-identity.js";
+import { getReleaseChannel } from "../../apps/desktop/config/release.js";
+
 const thisDirectory = path.dirname(fileURLToPath(import.meta.url));
+const identity = getAppIdentity(getReleaseChannel(process.env));
 
 /** Repository root (parent of the e2e/ package). */
 export const repoRoot = path.resolve(thisDirectory, "../..");
@@ -11,17 +15,17 @@ export function packagedExecutable(): string {
 	const packageDirectory = path.join(
 		repoRoot,
 		"apps/desktop/out",
-		`Anaconda Agentic Desktop-${process.platform}-${process.arch}`,
+		`${identity.productName}-${process.platform}-${process.arch}`,
 	);
 	switch (process.platform) {
 		case "darwin":
 			return path.join(
 				packageDirectory,
-				"Anaconda Agentic Desktop.app/Contents/MacOS/anaconda-agentic-desktop",
+				`${identity.productName}.app/Contents/MacOS/${identity.productName}`,
 			);
 		case "win32":
-			return path.join(packageDirectory, "anaconda-agentic-desktop.exe");
+			return path.join(packageDirectory, `${identity.executableName}.exe`);
 		default:
-			return path.join(packageDirectory, "anaconda-agentic-desktop");
+			return path.join(packageDirectory, identity.executableName);
 	}
 }

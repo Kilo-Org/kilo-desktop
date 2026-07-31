@@ -30,7 +30,7 @@ Docs:
 
 ## Getting started
 
-Use Node 22.12 or newer (`.nvmrc` pins the version CI uses) and the pnpm version declared
+Use Node 24 or newer (`.nvmrc` pins the version CI uses) and the pnpm version declared
 in `packageManager`.
 
 The web app depends on `@anaconda/shadcn-theme`, and `pnpm-workspace.yaml` maps the

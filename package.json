@@ -6,7 +6,7 @@
 	"description": "Anaconda Agentic Desktop",
 	"packageManager": "pnpm@11.17.0",
 	"engines": {
-		"node": ">=22.12"
+		"node": ">=24"
 	},
 	"scripts": {
 		"check": "pnpm -r --if-present check",

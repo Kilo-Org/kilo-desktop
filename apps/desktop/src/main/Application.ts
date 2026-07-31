@@ -5,6 +5,8 @@ import { session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
+import { getAppIdentity } from "$config/app-identity.js";
+
 import { bootFeatures, createFeatureHandlers } from "./features/registry/feature-registry.js";
 import { FEATURES } from "./features/registry/features.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
@@ -29,19 +31,21 @@ export class Application {
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
 	readonly #theme = new ElectronTheme();
-	readonly #preferences = new PreferencesStore();
 	readonly #windows = new ElectronWindow(this.#shell);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
-	#todoService: TodoService | undefined;
 	#isShuttingDown = false;
 
 	async start(): Promise<void> {
-		this.#app.setIdentity();
+		const identity = getAppIdentity(
+			this.#app.metadata.isPackaged ? RELEASE_CHANNEL : "development",
+		);
+		this.#app.setIdentity(identity);
 		if (!this.#app.requestSingleInstanceLock()) {
 			this.#app.quit();
 			return;
 		}
+		const preferences = new PreferencesStore();
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
@@ -54,10 +58,10 @@ export class Application {
 			electronDebug({ showDevTools: false });
 		}
 
-		const savedTheme = this.#preferences.themeSource;
+		const savedTheme = preferences.themeSource;
 		if (savedTheme) this.#theme.setSource(savedTheme);
 
-		this.#todoService = new TodoService(
+		const todoService = new TodoService(
 			createDatabase(path.join(this.#app.getPath("userData"), "app.db"), resolveMigrationsFolder()),
 		);
 
@@ -70,7 +74,7 @@ export class Application {
 		});
 
 		this.#disposers.push(this.#security.install(session.defaultSession));
-		this.#registerIpc();
+		this.#registerIpc(todoService, preferences);
 		this.#registerPushEvents();
 		this.#createWindow(isDevelopment);
 
@@ -89,12 +93,7 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(): void {
-		const todoService = this.#todoService;
-		if (!todoService) {
-			throw new Error("TodoService must be created before IPC registration.");
-		}
-
+	#registerIpc(todoService: TodoService, preferences: PreferencesStore): void {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// The returned disposer runs each feature's onDispose callbacks
 		// (DB close, etc.) on shutdown.
@@ -102,7 +101,7 @@ export class Application {
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
-			...createThemeHandlers(this.#theme, this.#preferences),
+			...createThemeHandlers(this.#theme, preferences),
 			...createTodoHandlers(todoService),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;

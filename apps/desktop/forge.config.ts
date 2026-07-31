@@ -14,6 +14,7 @@ import {
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 } from "./config/release.js";
+import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
@@ -22,11 +23,18 @@ const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
 const channel = getReleaseChannel(process.env);
+const identity = getAppIdentity(channel);
 const publishUrl = getUpdatePublishUrl(process.env);
 const s3Bucket = process.env.UPDATE_S3_BUCKET?.trim();
 const osxSign = resolveOsxSign(process.env);
 const osxNotarize = resolveOsxNotarize(process.env);
 const windowsPlan = planWindowsSigning(process.env);
+const executableName =
+	process.platform === "darwin" ? identity.productName : identity.executableName;
+const appIcon =
+	process.platform === "darwin"
+		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, "assets/icon.icon")]
+		: path.join(packageRoot, "assets/icon");
 
 function updateFeed(platform: string, arch: string): string | undefined {
 	return getUpdateFeedUrl({ publishUrl, channel, platform, arch });
@@ -74,10 +82,12 @@ const config: ForgeConfig = {
 		asar: {
 			unpack: "**/node_modules/better-sqlite3/**",
 		},
-		appBundleId: "com.anaconda.agentic-desktop",
+		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
-		executableName: "anaconda-agentic-desktop",
-		name: "Anaconda Agentic Desktop",
+		executableName,
+		extraResource: path.join(packageRoot, "assets/icon.png"),
+		icon: appIcon,
+		name: identity.productName,
 		ignore: (file) => {
 			if (!file) return false;
 			return !(
@@ -90,10 +100,10 @@ const config: ForgeConfig = {
 		},
 		win32metadata: {
 			CompanyName: "Anaconda, Inc.",
-			FileDescription: "Anaconda Agentic Desktop",
-			InternalName: "AnacondaAgenticDesktop",
-			OriginalFilename: "anaconda-agentic-desktop.exe",
-			ProductName: "Anaconda Agentic Desktop",
+			FileDescription: identity.productName,
+			InternalName: identity.squirrelName,
+			OriginalFilename: `${identity.executableName}.exe`,
+			ProductName: identity.productName,
 		},
 		...(osxSign ? { osxSign } : {}),
 		...(osxNotarize ? { osxNotarize } : {}),
@@ -121,8 +131,8 @@ const config: ForgeConfig = {
 				const remoteReleases =
 					process.env.UPDATE_REMOTE_RELEASES === "true" ? updateFeed("win32", arch) : undefined;
 				return {
-					name: "AnacondaAgenticDesktop",
-					setupExe: "Anaconda-Agentic-Desktop-Setup.exe",
+					name: identity.squirrelName,
+					setupExe: identity.setupExecutableName,
 					...(remoteReleases ? { remoteReleases } : {}),
 					...(windowsPlan.squirrelCertificate ?? {}),
 				};
@@ -133,10 +143,13 @@ const config: ForgeConfig = {
 			platforms: ["linux"],
 			config: {
 				options: {
-					bin: "anaconda-agentic-desktop",
+					bin: identity.executableName,
 					categories: ["Development"],
 					homepage: "https://github.com/anaconda/agentic-desktop",
+					icon: path.join(packageRoot, "assets/icon.png"),
 					maintainer: "Anaconda, Inc.",
+					name: identity.executableName,
+					productName: identity.productName,
 				},
 			},
 		},

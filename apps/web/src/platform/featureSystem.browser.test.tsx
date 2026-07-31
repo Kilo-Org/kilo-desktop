@@ -1,7 +1,7 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopApi } from "@anaconda-agentic-desktop/contracts";
+import type { DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
 import { defineMethod, type FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
@@ -81,6 +81,43 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		await api.theme.set({ source: "dark" });
 		expect(seen).toEqual(["dark", "dark"]);
 		unsub();
+	});
+
+	it("adapts LocalApi auth state and operations to sdk.auth", async () => {
+		const authenticated = {
+			status: "authenticated",
+			user: { userId: "user-1" },
+		} as const;
+		const stopOnChanged = vi.fn();
+		let pushSession:
+			| ((session: Awaited<ReturnType<LocalApi["auth"]["getSession"]>>) => void)
+			| undefined;
+		const auth: LocalApi["auth"] = {
+			getSession: vi.fn().mockResolvedValue(authenticated),
+			refresh: vi.fn().mockResolvedValue({ status: "error", reason: "expired" }),
+			login: vi.fn().mockResolvedValue(authenticated),
+			logout: vi.fn().mockResolvedValue({ status: "anonymous" }),
+			onChanged(listener) {
+				pushSession = listener;
+				return stopOnChanged;
+			},
+		};
+		const api = { ...createBrowserLocalApi(), auth };
+		const sdkAuth = createAppFeatureSystem(api, []).getSdk("auth-consumer").auth;
+		const listener = vi.fn();
+		const unsubscribe = sdkAuth.subscribe(listener);
+
+		expect(listener).toHaveBeenCalledWith({ status: "anonymous" });
+		await expect.poll(() => sdkAuth.peek()).toEqual(authenticated);
+		pushSession?.({ status: "error", reason: "pushed" });
+		expect(sdkAuth.peek()).toEqual({ status: "error", reason: "pushed" });
+		await expect(sdkAuth.getSession()).resolves.toEqual(authenticated);
+		await expect(sdkAuth.refresh()).resolves.toEqual({ status: "error", reason: "expired" });
+		await expect(sdkAuth.login()).resolves.toEqual(authenticated);
+		await expect(sdkAuth.logout()).resolves.toEqual({ status: "anonymous" });
+
+		unsubscribe();
+		expect(stopOnChanged).toHaveBeenCalledOnce();
 	});
 
 	it("bridges sdk.shell to the LocalApi shell adapter", async () => {

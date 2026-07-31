@@ -85,6 +85,18 @@ describe("createBrowserLocalApi", () => {
 		});
 	});
 
+	it("reports an anonymous auth session with a no-op onChanged", async () => {
+		const api = createBrowserLocalApi();
+		expect(await api.auth.getSession()).toEqual({ status: "anonymous" });
+		expect(await api.auth.refresh()).toEqual({ status: "anonymous" });
+		expect(await api.auth.logout()).toEqual({ status: "anonymous" });
+
+		const listener = vi.fn();
+		const unsubscribe = api.auth.onChanged(listener);
+		expect(listener).not.toHaveBeenCalled();
+		expect(() => unsubscribe()).not.toThrow();
+	});
+
 	it("resolves the dark theme without consulting matchMedia", async () => {
 		const api = createBrowserLocalApi();
 		await api.theme.set({ source: "dark" });

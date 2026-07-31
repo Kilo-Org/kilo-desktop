@@ -1,3 +1,4 @@
+import type { AuthSession } from "./features/auth.js";
 import type { ThemeSource, ThemeState } from "./features/theme.js";
 import type { IpcError } from "./result.js";
 
@@ -16,6 +17,13 @@ export interface LocalApi {
 	shell: {
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;
 		copyText(input: { text: string }): Promise<void>;
+	};
+	auth: {
+		getSession(): Promise<AuthSession>;
+		refresh(): Promise<AuthSession>;
+		login(): Promise<AuthSession>;
+		logout(): Promise<AuthSession>;
+		onChanged(listener: (session: AuthSession) => void): () => void;
 	};
 }
 

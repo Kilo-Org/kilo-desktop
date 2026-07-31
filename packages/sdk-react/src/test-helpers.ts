@@ -20,6 +20,17 @@ export function createTestShellDelegates(): ShellDelegates {
 			},
 			peek: () => "light",
 		},
+		auth: {
+			subscribe(fn) {
+				fn({ status: "anonymous" });
+				return () => {};
+			},
+			peek: () => ({ status: "anonymous" }),
+			getSession: async () => ({ status: "anonymous" }),
+			refresh: async () => ({ status: "anonymous" }),
+			login: async () => ({ status: "anonymous" }),
+			logout: async () => ({ status: "anonymous" }),
+		},
 		shell: {
 			openExternal: async () => ({ opened: true }),
 			copyText: async () => undefined,

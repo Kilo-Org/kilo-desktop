@@ -74,6 +74,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	/** Shell-level services (delegated to the shell). NOTE: fs is not wired yet and rejects; notifications report `delivered: false` until wired. */
 	readonly notifications: SdkNotifications;
 	readonly theme: SdkTheme;
+	readonly auth: SdkAuth;
 	readonly shell: SdkShell;
 	readonly fs: SdkFs;
 
@@ -308,6 +309,64 @@ export interface SdkShell {
 	copyText(text: string): Promise<void>;
 }
 
+// ─── Auth ─────────────────────────────────────────────────────────────────
+
+/**
+ * Anaconda user identity attached to an authenticated session.
+ * All fields optional — service accounts may lack a user id or username.
+ * Value unions include `undefined` to stay structurally identical to the
+ * contract's zod-inferred type under `exactOptionalPropertyTypes`.
+ */
+export interface AuthUser {
+	userId?: string | undefined;
+	username?: string | undefined;
+	email?: string | undefined;
+	firstName?: string | undefined;
+	lastName?: string | undefined;
+}
+
+/**
+ * Discriminated-union session state exposed to features. Structurally
+ * identical to the contract's `authSessionSchema` inferred type — feature-sdk
+ * keeps a LOCAL copy so it never depends on `contracts`. Keep the two in sync.
+ */
+export type AuthSession =
+	| { status: "anonymous" }
+	| { status: "authenticated"; user: AuthUser }
+	| { status: "error"; reason: string };
+
+/**
+ * Anaconda session, shell-owned. Resolved lazily on first read; a logged-in
+ * user may briefly observe `anonymous` before the first async resolution lands.
+ *
+ * @example
+ * sdk.auth.peek(); // { status: "anonymous" } until resolved
+ * const unsub = sdk.auth.subscribe((s) => render(s)); // fires immediately
+ * await sdk.auth.refresh(); // force a re-resolve
+ */
+export interface SdkAuth {
+	/** Subscribe to session changes. Fires synchronously with the current value. */
+	subscribe(fn: (session: AuthSession) => void): () => void;
+	/** Read the current cached session without subscribing. */
+	peek(): AuthSession;
+	/** Resolve the session (cached after first call). */
+	getSession(): Promise<AuthSession>;
+	/** Force a re-resolution of the session. */
+	refresh(): Promise<AuthSession>;
+	/**
+	 * Run the interactive OAuth login flow (opens the system browser),
+	 * exchange the token for an API key, persist it, and re-resolve the
+	 * session. Resolves with the resulting session; failures resolve to an
+	 * `error` session rather than throwing.
+	 */
+	login(): Promise<AuthSession>;
+	/**
+	 * Delete the persisted API key and transition to an anonymous session.
+	 * Resolves with the resulting session.
+	 */
+	logout(): Promise<AuthSession>;
+}
+
 /** NOT WIRED YET — calls reject. Do not ship code paths relying on it. */
 export interface SdkFs {
 	readFile(relativePath: string): Promise<string>;
@@ -385,6 +444,14 @@ export interface ChannelHandlers<C extends ChannelMap> {
  */
 export interface MainSdk {
 	readonly featureId: string;
+	/**
+	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
+	 * created lazily on first access. Features persist ONLY here — open your
+	 * own SQLite file (`data.db`) instead of sharing a shell database.
+	 * Accessing it in an environment without storage (browser mode) throws;
+	 * Node-free features simply never touch it.
+	 */
+	readonly storageDir: string;
 	/**
 	 * Bind a channel map once, then register typed handlers. Input is parsed
 	 * before each handler runs; handler output is parsed before it is returned.

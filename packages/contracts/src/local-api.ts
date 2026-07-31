@@ -1,17 +1,14 @@
+import type { AuthSession } from "./features/auth.js";
 import type { ThemeSource, ThemeState } from "./features/theme.js";
-import type { Todo } from "./features/todos.js";
 import type { IpcError } from "./result.js";
 
 /**
- * Host-facing facade for the React app. Input/output shapes match ipcMethods so
- * Electron and browser adapters stay projections of the same contract.
+ * Host-facing facade for the React app — SHELL-LEVEL services only (theme,
+ * shell, ...). Features never add methods here; feature-scoped backend calls
+ * go through `sdk.invoke`. Input/output shapes match ipcMethods so Electron
+ * and browser adapters stay projections of the same contract.
  */
 export interface LocalApi {
-	todos: {
-		list(): Promise<Todo[]>;
-		add(input: { title: string }): Promise<Todo>;
-		toggle(input: { id: string }): Promise<Todo>;
-	};
 	theme: {
 		get(): Promise<ThemeState>;
 		set(input: { source: ThemeSource }): Promise<ThemeState>;
@@ -20,6 +17,13 @@ export interface LocalApi {
 	shell: {
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;
 		copyText(input: { text: string }): Promise<void>;
+	};
+	auth: {
+		getSession(): Promise<AuthSession>;
+		refresh(): Promise<AuthSession>;
+		login(): Promise<AuthSession>;
+		logout(): Promise<AuthSession>;
+		onChanged(listener: (session: AuthSession) => void): () => void;
 	};
 }
 

@@ -5,7 +5,7 @@ import { page } from "vitest/browser";
 import { AppProviders } from "@/app/AppProviders";
 import { WEB_FEATURES } from "@/features/features";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-import { createFeatureSystem } from "@/platform/sdk";
+import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 afterEach(() => {
 	cleanup();
@@ -17,7 +17,7 @@ afterEach(() => {
 describe("AppProviders (app-level)", () => {
 	it("boots the shell and navigates into registered feature routes", async () => {
 		const localApi = createBrowserLocalApi();
-		const system = createFeatureSystem(localApi, WEB_FEATURES);
+		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
 		const { baseElement } = render(<AppProviders localApi={localApi} system={system} />);
 		const screen = page.elementLocator(baseElement);
 
@@ -25,6 +25,8 @@ describe("AppProviders (app-level)", () => {
 
 		await screen.getByTestId("nav-todos").click();
 		await expect.element(screen.getByTestId("todos-heading")).toBeVisible();
+		// Todos is Electron-only — browser mode renders an explicit unavailable state.
+		await expect.element(screen.getByTestId("todos-unavailable")).toBeVisible();
 
 		await screen.getByTestId("nav-sdk-producer").click();
 		await expect.element(screen.getByTestId("note-input")).toBeVisible();

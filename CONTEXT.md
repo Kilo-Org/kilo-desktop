@@ -14,6 +14,7 @@ apps/
 packages/
 ├── contracts/    @anaconda-agentic-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
 ├── feature-sdk/  @anaconda-agentic-desktop/feature-sdk  Shim SDK — stable interface features program against
+├── sdk-react/    @anaconda-agentic-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
 └── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
 
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
@@ -41,6 +42,8 @@ In browser: `sdk.invoke` calls the handler directly in-process (no Electron need
 **Handlers and validation:** `mainSdk.channels(channelMap)` binds the map once; `.handleAll({ ... })` registers a handler per channel and is exhaustive by type (preferred), `.handle(channel, handler)` registers one at a time. Handler types are inferred, and input and output schemas are validated at the routing boundary. Use `z.undefined()` for channels that take no input.
 
 **Errors:** expected failures throw `FeatureError` from the SDK (`throw new FeatureError("Todo not found.", "NOT_FOUND")`). The shell translates it across the IPC boundary so the message survives; generic errors are scrubbed to a generic string.
+
+**Storage:** the shell provides a per-feature data directory as `mainSdk.storageDir` (`${userData}/plugins/<id>/`, created lazily). Features that persist open their own SQLite file there (`data.db`) and ship their drizzle migrations inside the feature directory. Nothing shares a shell database.
 
 **Lifecycles:** `useSdk(featureId)` returns a shared per-feature SDK instance that is NOT destroyed on component unmount. `sdk.destroy()` cleans up only what was registered through that instance. Full feature teardown (`teardownFeature`) is shell-owned and happens on feature/plugin unload only.
 

@@ -64,7 +64,7 @@ export function mainRegister(mainSdk: MainSdk) {
 // apps/web/src/features/todos/TodoList.tsx
 import { useQuery } from "@tanstack/react-query";
 import type { TodoService } from "@anaconda-agentic-desktop/contracts";
-import { useSdk } from "@/platform/sdk";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 export function TodoList() {
 	const { client } = useSdk<TodoService>("todos");
@@ -289,4 +289,4 @@ Everything below is shell infrastructure. Feature code has no reason to import t
 Where the wiring lives:
 
 - **Electron main:** `apps/desktop/src/main/features/registry/feature-registry.ts` — one `FeatureRouter`, booted from the FEATURES array; `feature:invoke` IPC handler; `FeatureError → BusinessError` translation.
-- **Renderer:** `apps/web/src/platform/sdk/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and boots features in-process in browser mode. Only `browserRegister` boots there (no `mainRegister` fallback — it may use Node APIs); Node-free features opt in with `browserRegister: register`, others are skipped with a warning.
+- **Renderer:** `packages/sdk-react/src/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and boots features in-process in browser mode (the host wires shell delegates and the Electron bridge in `apps/web/src/platform/featureSystem.ts`). Only `browserRegister` boots there (no `mainRegister` fallback — it may use Node APIs); Node-free features opt in with `browserRegister: register`, others are skipped with a warning.

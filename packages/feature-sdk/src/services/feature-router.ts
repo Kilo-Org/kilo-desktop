@@ -30,6 +30,15 @@ export interface FeatureRouterOptions {
 	fallback?: InvokeFallback;
 }
 
+export interface CreateMainSdkOptions {
+	/**
+	 * Resolve (and create, if needed) the feature's storage directory.
+	 * Called lazily on first `mainSdk.storageDir` access and cached.
+	 * Omit in environments without storage (browser mode) — access then throws.
+	 */
+	resolveStorageDir?: () => string;
+}
+
 /**
  * In-memory handler router backing `sdk.invoke` and `mainSdk.channels`.
  *
@@ -62,7 +71,7 @@ export class FeatureRouter {
 	 * Create a MainSdk instance scoped to a specific feature.
 	 * The feature uses this to register its handlers.
 	 */
-	createMainSdk(featureId: string): MainSdk {
+	createMainSdk(featureId: string, options?: CreateMainSdkOptions): MainSdk {
 		if (!this.handlers.has(featureId)) {
 			this.handlers.set(featureId, new Map());
 		}
@@ -103,8 +112,21 @@ export class FeatureRouter {
 			};
 		};
 
+		const resolveStorageDir = options?.resolveStorageDir;
+		let storageDir: string | undefined;
+
 		return {
 			featureId,
+			get storageDir(): string {
+				if (!resolveStorageDir) {
+					throw new Error(
+						`[FeatureRouter] Feature "${featureId}" has no storage directory in this ` +
+							`environment (browser mode provides no storage).`,
+					);
+				}
+				storageDir ??= resolveStorageDir();
+				return storageDir;
+			},
 			channels,
 			onDispose: (fn: () => void) => {
 				this.disposables.get(featureId)!.push(fn);

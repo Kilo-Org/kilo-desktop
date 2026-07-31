@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { useSdk } from "@/platform/sdk";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 /**
  * SDK Consumer — A second feature that ONLY consumes data from sdk-producer.

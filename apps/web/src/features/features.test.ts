@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { Note } from "@anaconda-agentic-desktop/contracts";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-import { createFeatureSystem } from "@/platform/sdk";
+import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 import { WEB_FEATURES } from "./features";
 
 describe("WEB_FEATURES browserRegister", () => {
 	it("boots sdk-producer CRUD including delete and clear", async () => {
-		const system = createFeatureSystem(createBrowserLocalApi(), WEB_FEATURES);
+		const system = createAppFeatureSystem(createBrowserLocalApi(), WEB_FEATURES);
 		const sdk = system.getSdk("sdk-producer");
 
 		const note = (await sdk.invoke("add", { text: "keep" })) as Note;
@@ -32,7 +32,7 @@ describe("WEB_FEATURES browserRegister", () => {
 	});
 
 	it("boots sdk-consumer ping", async () => {
-		const system = createFeatureSystem(createBrowserLocalApi(), WEB_FEATURES);
+		const system = createAppFeatureSystem(createBrowserLocalApi(), WEB_FEATURES);
 		const sdk = system.getSdk("sdk-consumer");
 		await expect(sdk.invoke("ping")).resolves.toEqual({
 			pong: true,

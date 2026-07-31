@@ -20,11 +20,6 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 	};
 
 	return {
-		todos: {
-			list: () => invoke("todos:list"),
-			add: (input) => invoke("todos:add", input),
-			toggle: (input) => invoke("todos:toggle", input),
-		},
 		theme: {
 			get: () => invoke("theme:get"),
 			set: (input) => invoke("theme:set", input),
@@ -33,6 +28,13 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 		shell: {
 			openExternal: (input) => invoke("shell:open-external", input),
 			copyText: (input) => invoke("shell:copy-text", input),
+		},
+		auth: {
+			getSession: () => invoke("auth:get-session"),
+			refresh: () => invoke("auth:refresh"),
+			login: () => invoke("auth:login"),
+			logout: () => invoke("auth:logout"),
+			onChanged: (listener) => bridge.on("auth:changed", listener),
 		},
 	};
 }

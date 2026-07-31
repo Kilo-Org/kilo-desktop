@@ -30,10 +30,10 @@ describe("preload desktopApi", () => {
 			on: (channel: string, listener: (payload: unknown) => void) => () => void;
 		};
 
-		await expect(desktopApi.invoke("todos:list")).resolves.toEqual({ ok: true, value: [] });
-		expect(ipcRenderer.invoke).toHaveBeenCalledWith("todos:list", undefined);
+		await expect(desktopApi.invoke("theme:get")).resolves.toEqual({ ok: true, value: [] });
+		expect(ipcRenderer.invoke).toHaveBeenCalledWith("theme:get", undefined);
 
-		expect(() => desktopApi.invoke("todos:unknown" as never)).toThrow(
+		expect(() => desktopApi.invoke("theme:unknown" as never)).toThrow(
 			"Unknown IPC method channel.",
 		);
 	});

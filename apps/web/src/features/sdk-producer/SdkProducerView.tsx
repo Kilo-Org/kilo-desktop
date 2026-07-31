@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SdkProducerService } from "@anaconda-agentic-desktop/contracts";
 
-import { useSdk } from "@/platform/sdk";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 import {
 	addNoteMutationOptions,

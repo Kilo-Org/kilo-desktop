@@ -27,13 +27,14 @@ export class ElectronWindow {
 		readonly options?: BrowserWindowConstructorOptions;
 	}): BrowserWindow {
 		const window = new BrowserWindow({
-			title: "Anaconda Agentic Desktop",
+			title: app.getName(),
 			width: 960,
 			height: 720,
 			minWidth: 720,
 			minHeight: 520,
 			show: false,
 			backgroundColor: "#f4f5f8",
+			...(process.platform === "linux" ? { icon: linuxWindowIcon() } : {}),
 			...titleBarOptions(),
 			...input.options,
 			webPreferences: {
@@ -116,4 +117,10 @@ function titleBarOptions(): BrowserWindowConstructorOptions {
 			symbolColor: "#1a1a1a",
 		},
 	};
+}
+
+function linuxWindowIcon(): string {
+	return app.isPackaged
+		? path.join(process.resourcesPath, "icon.png")
+		: path.join(app.getAppPath(), "assets/icon.png");
 }

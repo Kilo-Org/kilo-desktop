@@ -3,6 +3,7 @@ import type {
 	DispatchIntent,
 	NavigateIntent,
 	SDK,
+	SdkAuth,
 	SdkClient,
 	SdkCommands,
 	SdkEvents,
@@ -25,6 +26,7 @@ import type { StateBroker } from "./state-broker.js";
 export interface ShellDelegates {
 	notifications: SdkNotifications;
 	theme: SdkTheme;
+	auth: SdkAuth;
 	shell: SdkShell;
 	fs: SdkFs;
 }
@@ -202,6 +204,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 
 		notifications: services.shellDelegates.notifications,
 		theme: services.shellDelegates.theme,
+		auth: services.shellDelegates.auth,
 		shell: services.shellDelegates.shell,
 		fs: services.shellDelegates.fs,
 

@@ -1,4 +1,5 @@
 import { Application } from "./Application.js";
+import { createLogger } from "./platform/logger.js";
 import { registerDesktopSchemes } from "./platform/ElectronProtocol.js";
 import electronSquirrelStartup from "electron-squirrel-startup";
 
@@ -8,7 +9,7 @@ if (electronSquirrelStartup) {
 	registerDesktopSchemes();
 
 	void new Application().start().catch((error: unknown) => {
-		console.error("Anaconda Agentic Desktop failed to start.", error);
+		createLogger("startup").error("Anaconda Agentic Desktop failed to start.", error);
 		process.exitCode = 1;
 	});
 }

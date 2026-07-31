@@ -30,6 +30,7 @@ export default defineConfig({
 			external: [
 				"electron",
 				"better-sqlite3",
+				"@github/keytar",
 				"electron-store",
 				"electron-log",
 				"electron-squirrel-startup",

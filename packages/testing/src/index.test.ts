@@ -112,6 +112,20 @@ describe("createFakeSdk", () => {
 		unsub();
 	});
 
+	it("auth delegates report an anonymous session by default", async () => {
+		const sdk = createFakeSdk({ featureId: "auth" });
+		const listener = vi.fn();
+		const unsubscribe = sdk.auth.subscribe(listener);
+
+		expect(listener).toHaveBeenCalledWith({ status: "anonymous" });
+		expect(sdk.auth.peek()).toEqual({ status: "anonymous" });
+		await expect(sdk.auth.getSession()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.refresh()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.login()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.logout()).resolves.toEqual({ status: "anonymous" });
+		expect(() => unsubscribe()).not.toThrow();
+	});
+
 	it("shell delegates succeed by default", async () => {
 		const sdk = createFakeSdk({ featureId: "shell" });
 		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: true });

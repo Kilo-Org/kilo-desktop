@@ -3,6 +3,8 @@ import { session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
+import { getAppIdentity } from "$config/app-identity.js";
+
 import { bootFeatures, createFeatureHandlers } from "./features/registry/feature-registry.js";
 import { FEATURES } from "./features/registry/features.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
@@ -24,18 +26,21 @@ export class Application {
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
 	readonly #theme = new ElectronTheme();
-	readonly #preferences = new PreferencesStore();
 	readonly #windows = new ElectronWindow(this.#shell);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
 	#isShuttingDown = false;
 
 	async start(): Promise<void> {
-		this.#app.setIdentity();
+		const identity = getAppIdentity(
+			this.#app.metadata.isPackaged ? RELEASE_CHANNEL : "development",
+		);
+		this.#app.setIdentity(identity);
 		if (!this.#app.requestSingleInstanceLock()) {
 			this.#app.quit();
 			return;
 		}
+		const preferences = new PreferencesStore();
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
@@ -48,7 +53,7 @@ export class Application {
 			electronDebug({ showDevTools: false });
 		}
 
-		const savedTheme = this.#preferences.themeSource;
+		const savedTheme = preferences.themeSource;
 		if (savedTheme) this.#theme.setSource(savedTheme);
 
 		this.#disposers.push(configureUpdater());
@@ -60,7 +65,7 @@ export class Application {
 		});
 
 		this.#disposers.push(this.#security.install(session.defaultSession));
-		this.#registerIpc();
+		this.#registerIpc(preferences);
 		this.#registerPushEvents();
 		this.#createWindow(isDevelopment);
 
@@ -79,7 +84,7 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(): void {
+	#registerIpc(preferences: PreferencesStore): void {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// Each feature persists only under its own storage directory
 		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
@@ -88,7 +93,7 @@ export class Application {
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
-			...createThemeHandlers(this.#theme, this.#preferences),
+			...createThemeHandlers(this.#theme, preferences),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(handlers);

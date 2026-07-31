@@ -20,6 +20,20 @@ configuration.
 | `staging` | Release candidate for internal validation | QA / internal stakeholders | Manual `Staging Publish` workflow |
 | `prod`    | Stable customer release                   | Customers                  | Manual `Prod Publish` workflow    |
 
+Each environment has a distinct app identity so local development, Canary, Staging, and
+Production can coexist without sharing installers or application data:
+
+| Environment       | Product name                     | Identity suffix |
+| ----------------- | -------------------------------- | --------------- |
+| Local development | Anaconda Agentic Desktop Dev     | `dev`           |
+| `canary`          | Anaconda Agentic Desktop Canary  | `canary`        |
+| `staging`         | Anaconda Agentic Desktop Staging | `staging`       |
+| `prod`            | Anaconda Agentic Desktop         | none            |
+
+The suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
+Linux package and executable names, and Electron's application name (which separates
+the default user-data directory). Production retains the existing unsuffixed identity.
+
 ## Distribution matrix
 
 Forge uses only official makers:

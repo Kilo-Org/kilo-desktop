@@ -1,5 +1,7 @@
 import { app, type App, type RelaunchOptions } from "electron";
 
+import type { AppIdentity } from "$config/app-identity.js";
+
 export interface ElectronAppMetadata {
 	readonly appPath: string;
 	readonly appVersion: string;
@@ -33,12 +35,10 @@ export class ElectronApp {
 		return this.electronApp.requestSingleInstanceLock();
 	}
 
-	setIdentity(): void {
-		this.electronApp.setName("Anaconda Agentic Desktop");
+	setIdentity(identity: AppIdentity): void {
+		this.electronApp.setName(identity.productName);
 		this.electronApp.setAppUserModelId(
-			process.platform === "win32"
-				? "com.squirrel.AnacondaAgenticDesktop.anaconda-agentic-desktop"
-				: "com.anaconda.agentic-desktop",
+			process.platform === "win32" ? identity.windowsAppUserModelId : identity.appBundleId,
 		);
 	}
 

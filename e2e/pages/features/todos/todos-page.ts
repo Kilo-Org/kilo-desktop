@@ -1,5 +1,6 @@
 import {
 	click,
+	expectElementToBeChecked,
 	expectElementToBeVisible,
 	fill,
 	getLocatorByRole,
@@ -10,6 +11,7 @@ export class TodosPage {
 	private readonly heading = () => getLocatorByTestId("todos-heading");
 	private readonly input = () => getLocatorByTestId("todo-input");
 	private readonly addButton = () => getLocatorByTestId("todo-add");
+	private readonly todo = (title: string) => getLocatorByRole("checkbox", { name: title });
 
 	async verifyPageIsLoaded(): Promise<void> {
 		await expectElementToBeVisible(this.heading(), "Todo List heading should be visible");
@@ -21,9 +23,16 @@ export class TodosPage {
 	}
 
 	async verifyTodoIsListed(title: string): Promise<void> {
-		await expectElementToBeVisible(
-			getLocatorByRole("checkbox", { name: title }),
-			`Todo "${title}" should appear in the list`,
-		);
+		await expectElementToBeVisible(this.todo(title), `Todo "${title}" should appear in the list`);
+	}
+
+	async completeTodo(title: string): Promise<void> {
+		await click(this.todo(title));
+	}
+
+	async verifyTodoIsCompleted(title: string): Promise<void> {
+		await expectElementToBeChecked(this.todo(title), {
+			message: `Todo "${title}" should be completed`,
+		});
 	}
 }

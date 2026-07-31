@@ -57,7 +57,7 @@ jobs:
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes fakeroot
+          sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
 
       - name: Setup macOS code signing
         if: matrix.target == 'mac'

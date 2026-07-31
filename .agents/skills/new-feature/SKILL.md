@@ -159,6 +159,7 @@ export const Route = createFileRoute("/features/<id>")({
 ### Step 6: Write tests
 
 Every feature ships tests at four tiers. Prefer the cheapest tier that can catch the bug.
+See `.agents/skills/write-vitest/SKILL.md` (Vitest) and `.agents/skills/write-e2e-test/SKILL.md` (Playwright).
 
 **1. Unit — service logic** (`apps/desktop/src/main/features/<id>/MyService.test.ts`)
 
@@ -189,7 +190,7 @@ e2e/pages/features/<id>/<name>-page.ts
 e2e/specs/features/<id>/<name>.spec.ts
 ```
 
-Register the page object in `e2e/fixtures/features/<id>.ts` (extends shell). Tag the describe block with `@smoke` so it runs on every PR. See `skills/write-e2e-test/SKILL.md`.
+Register the page object in `e2e/fixtures/features/<id>.ts` (extends shell). Tag the describe block with `@smoke` so it runs on every PR. See `.agents/skills/write-e2e-test/SKILL.md`.
 
 ### Step 7: Verify
 

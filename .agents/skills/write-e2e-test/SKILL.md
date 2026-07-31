@@ -19,6 +19,7 @@ Electron e2e tests live in the root `e2e/` workspace package (`@anaconda-agentic
 
 **If it does not need Electron IPC or the packaged binary, it belongs in a Vitest browser test — not e2e.**
 Do not re-smoke the same CRUD journey in app-level and e2e.
+For Vitest tiers and fakes, see `.agents/skills/write-vitest/SKILL.md`.
 
 ## Three-file POM pattern
 

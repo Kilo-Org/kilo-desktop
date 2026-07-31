@@ -11,7 +11,7 @@
 | E2E smoke   | `@smoke` specs          | Playwright + packaged Electron | Every PR (Windows)                  |
 | E2E full    | all specs               | Playwright + packaged Electron | Nightly matrix + merge queue        |
 
-Coverage gate: **90%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.ts`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
+Coverage gate: **90%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.mjs`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
 
 App-level tests cover router + provider composition. Feature CRUD belongs in browser component tests and e2e (protocol / IPC / packaging).
 
@@ -80,11 +80,13 @@ plugins/<id>/e2e/                          # after migration — self-contained 
 
 ## Feature test obligations
 
-Every new feature (see `skills/new-feature/SKILL.md`) must ship:
+Every new feature (see `.agents/skills/new-feature/SKILL.md`) must ship:
 
 1. A service unit test
 2. A component browser test using `createFakeSdk`
 3. Stable `data-qa-id` attributes on interactive elements
 4. At least one `@smoke` e2e spec with a page object
 
-When migrating to a plugin (`skills/migrate-to-plugin/SKILL.md`), move e2e pages + specs into `plugins/<id>/e2e/` and add a plugin-local `fixtures.ts`. The Playwright config already globs `plugins/*/e2e/specs/**`.
+Agent skills: Vitest tiers → `.agents/skills/write-vitest/SKILL.md`; Playwright e2e → `.agents/skills/write-e2e-test/SKILL.md`.
+
+When migrating to a plugin (`.agents/skills/migrate-to-plugin/SKILL.md`), move e2e pages + specs into `plugins/<id>/e2e/` and add a plugin-local `fixtures.ts`. The Playwright config already globs `plugins/*/e2e/specs/**`.

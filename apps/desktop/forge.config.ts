@@ -123,6 +123,7 @@ const config: ForgeConfig = {
 				// appdmg's alias encoder limits volume names to 27 characters. Keep
 				// enough headroom for the suffix macOS adds when a volume name collides.
 				title: dmgVolumeTitle,
+				icon: path.join(packageRoot, "assets/icon.icns"),
 			},
 		},
 		{

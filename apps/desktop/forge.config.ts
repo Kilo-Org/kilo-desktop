@@ -16,6 +16,7 @@ import {
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 } from "./config/release.js";
+import { resolvePnpmInvocation } from "./config/pnpm-invocation.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
@@ -39,27 +40,23 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 	const stagingDirectory = await mkdtemp(
 		path.join(os.tmpdir(), "anaconda-agentic-desktop-production-"),
 	);
-	const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+	const pnpmInvocation = resolvePnpmInvocation([
+		"--filter",
+		"@anaconda-agentic-desktop/desktop",
+		"deploy",
+		"--prod",
+		"--ignore-scripts",
+		"--offline",
+		"--frozen-lockfile",
+		stagingDirectory,
+	]);
 
 	try {
-		await execFile(
-			pnpmCommand,
-			[
-				"--filter",
-				"@anaconda-agentic-desktop/desktop",
-				"deploy",
-				"--prod",
-				"--ignore-scripts",
-				"--offline",
-				"--frozen-lockfile",
-				stagingDirectory,
-			],
-			{
-				cwd: workspaceRoot,
-				env: { ...process.env, HUSKY: "0" },
-				maxBuffer: 10 * 1024 * 1024,
-			},
-		);
+		await execFile(pnpmInvocation.file, pnpmInvocation.args, {
+			cwd: workspaceRoot,
+			env: { ...process.env, HUSKY: "0" },
+			maxBuffer: 10 * 1024 * 1024,
+		});
 		await cp(path.join(stagingDirectory, "node_modules"), path.join(buildPath, "node_modules"), {
 			recursive: true,
 		});

@@ -1,20 +1,19 @@
-import path from "node:path";
-
 import electronDebug from "electron-debug";
 import { nativeTheme, session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
+import { getAppIdentity } from "$config/app-identity.js";
+
 import { bootFeatures, createFeatureHandlers } from "./features/registry/feature-registry.js";
 import { FEATURES } from "./features/registry/features.js";
+import { AuthSessionService } from "./features/auth/auth-service.js";
+import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
 import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
-import { createTodoHandlers } from "./features/todos/handlers.js";
-import { TodoService } from "./features/todos/TodoService.js";
-import { createDatabase, resolveMigrationsFolder } from "./platform/db/client.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
@@ -30,20 +29,25 @@ export class Application {
 	readonly #protocol = new ElectronProtocol();
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
-	readonly #preferences = new PreferencesStore();
+	readonly #auth = new AuthSessionService({
+		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,
+	});
 	// After restoreNativeThemeFromPreferences, nativeTheme is the chrome signal.
 	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
-	#todoService: TodoService | undefined;
 	#isShuttingDown = false;
 
 	async start(): Promise<void> {
-		this.#app.setIdentity();
+		const identity = getAppIdentity(
+			this.#app.metadata.isPackaged ? RELEASE_CHANNEL : "development",
+		);
+		this.#app.setIdentity(identity);
 		if (!this.#app.requestSingleInstanceLock()) {
 			this.#app.quit();
 			return;
 		}
+		const preferences = new PreferencesStore();
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
@@ -56,10 +60,6 @@ export class Application {
 			electronDebug({ showDevTools: false });
 		}
 
-		this.#todoService = new TodoService(
-			createDatabase(path.join(this.#app.getPath("userData"), "app.db"), resolveMigrationsFolder()),
-		);
-
 		this.#disposers.push(configureUpdater());
 		const developmentOrigin = getWebDevServerUrl();
 		this.#protocol.register({
@@ -69,8 +69,9 @@ export class Application {
 		});
 
 		this.#disposers.push(this.#security.install(session.defaultSession));
-		this.#registerIpc();
-		restoreNativeThemeFromPreferences(this.#preferences);
+		this.#registerIpc(preferences);
+		restoreNativeThemeFromPreferences(preferences);
+		this.#registerPushEvents();
 		this.#createWindow(isDevelopment);
 
 		this.#disposers.push(
@@ -88,25 +89,30 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(): void {
-		const todoService = this.#todoService;
-		if (!todoService) {
-			throw new Error("TodoService must be created before IPC registration.");
-		}
-
+	#registerIpc(preferences: PreferencesStore): void {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
-		// The returned disposer runs each feature's onDispose callbacks
-		// (DB close, etc.) on shutdown.
-		this.#disposers.push(bootFeatures(FEATURES));
+		// Each feature persists only under its own storage directory
+		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
+		// runs each feature's onDispose callbacks (DB close, etc.) on shutdown.
+		this.#disposers.push(bootFeatures(FEATURES, { storageRoot: this.#app.getPath("userData") }));
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
-			...createThemeHandlers(this.#windows, this.#preferences),
-			...createTodoHandlers(todoService),
+			...createThemeHandlers(this.#windows, preferences),
+			...createAuthHandlers(this.#auth),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(handlers);
 		this.#disposers.push(() => this.#ipcServer.dispose());
+	}
+
+	#registerPushEvents(): void {
+		this.#disposers.push(
+			this.#auth.onChanged((session) => {
+				this.#windows.broadcast("auth:changed", session);
+			}),
+			() => this.#auth.dispose(),
+		);
 	}
 
 	#dispose(): void {

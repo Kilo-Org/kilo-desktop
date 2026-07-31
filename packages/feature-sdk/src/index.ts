@@ -11,6 +11,9 @@ export type {
 	SdkNotifications,
 	NotificationResult,
 	SdkTheme,
+	SdkAuth,
+	AuthUser,
+	AuthSession,
 	SdkShell,
 	SdkFs,
 	SdkTools,
@@ -52,6 +55,7 @@ export { ContributionRegistry } from "./services/contribution-registry.js";
 export { CommandRegistry } from "./services/command-registry.js";
 export {
 	FeatureRouter,
+	type CreateMainSdkOptions,
 	type FeatureRouterOptions,
 	type InvokeFallback,
 } from "./services/feature-router.js";

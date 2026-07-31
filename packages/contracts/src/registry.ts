@@ -1,37 +1,33 @@
+import { authEvents, authMethods } from "./features/auth.js";
 import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
 import { themeMethods } from "./features/theme.js";
-import { todoMethods } from "./features/todos.js";
 
-export function mergeChannelMaps<A extends Record<string, unknown>>(a: A): A;
-export function mergeChannelMaps<
-	A extends Record<string, unknown>,
-	B extends Record<string, unknown>,
->(a: A, b: B): A & B;
-export function mergeChannelMaps<
-	A extends Record<string, unknown>,
-	B extends Record<string, unknown>,
-	C extends Record<string, unknown>,
->(a: A, b: B, c: C): A & B & C;
-export function mergeChannelMaps<
-	A extends Record<string, unknown>,
-	B extends Record<string, unknown>,
-	C extends Record<string, unknown>,
-	D extends Record<string, unknown>,
->(a: A, b: B, c: C, d: D): A & B & C & D;
-export function mergeChannelMaps(
-	...parts: Array<Record<string, unknown>>
-): Record<string, unknown> {
-	const result: Record<string, unknown> = {};
+/**
+ * Throws if any two channel maps share a key. A plain object spread already
+ * merges maps with the correct per-channel type; this only adds the one thing a
+ * spread cannot — detecting a channel-name collision between features instead
+ * of silently letting the last one win.
+ */
+export function assertNoDuplicateChannels(...parts: Array<Record<string, unknown>>): void {
+	const seen = new Set<string>();
 	for (const part of parts) {
 		for (const key of Object.keys(part)) {
-			if (Object.hasOwn(result, key)) {
+			if (seen.has(key)) {
 				throw new Error(`Duplicate IPC channel key: ${key}`);
 			}
-			result[key] = part[key];
+			seen.add(key);
 		}
 	}
-	return result;
 }
 
-export const ipcMethods = mergeChannelMaps(shellMethods, themeMethods, todoMethods, featureMethods);
+assertNoDuplicateChannels(shellMethods, themeMethods, authMethods, featureMethods);
+assertNoDuplicateChannels(authEvents);
+
+export const ipcMethods = {
+	...shellMethods,
+	...themeMethods,
+	...authMethods,
+	...featureMethods,
+};
+export const ipcEvents = { ...authEvents };

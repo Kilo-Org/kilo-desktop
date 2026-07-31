@@ -9,69 +9,13 @@ import {
 	FeatureRouter,
 	StateBroker,
 	teardownFeature,
-	type SdkClient,
 	type FeatureRegistration,
+	type InvokeFallback,
 	type SDK,
+	type SdkClient,
 	type SdkFactoryServices,
 	type ShellDelegates,
 } from "@anaconda-agentic-desktop/feature-sdk";
-
-import type { DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
-
-import { getColorSchemeSnapshot, subscribeColorScheme } from "@/platform/theme/color-scheme";
-
-// ─── Bridge detection ──────────────────────────────────────────────────────
-
-function getDesktopBridge(): DesktopApi | undefined {
-	return (globalThis as { desktopApi?: DesktopApi }).desktopApi;
-}
-
-// ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
-
-function undeliveredNotifications(): ShellDelegates["notifications"] {
-	// Not wired yet: expected capability absence, so report it in the result
-	// envelope instead of throwing (features detect the capability, not the
-	// platform). Warn once so the gap stays visible during development.
-	let warned = false;
-	const undelivered = (method: string) => {
-		if (!warned) {
-			warned = true;
-			console.warn(
-				`[FeatureSystem] ${method}: notifications are not wired yet — reporting delivered: false.`,
-			);
-		}
-		return { delivered: false, reason: "sdk.notifications is not yet wired to a shell service." };
-	};
-	return {
-		show: () => undelivered("sdk.notifications.show"),
-		setBadge: () => undelivered("sdk.notifications.setBadge"),
-	};
-}
-
-function createShellDelegates(api: LocalApi): ShellDelegates {
-	return {
-		notifications: undeliveredNotifications(),
-		theme: {
-			subscribe(fn) {
-				fn(getColorSchemeSnapshot());
-				return subscribeColorScheme(() => fn(getColorSchemeSnapshot()));
-			},
-			peek: getColorSchemeSnapshot,
-		},
-		shell: {
-			openExternal: (url) => api.shell.openExternal({ url }),
-			copyText: (text) => api.shell.copyText({ text }),
-		},
-		fs: {
-			readFile: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			writeFile: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			exists: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			mkdir: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			readdir: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			remove: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-		},
-	};
-}
 
 // ─── Feature system ────────────────────────────────────────────────────────
 
@@ -87,34 +31,33 @@ export interface FeatureSystem {
 	teardownFeature(featureId: string): void;
 }
 
-/**
- * Create the renderer-side feature system. Call once at app startup and pass
- * the result to <SdkProvider>.
- *
- * In Electron mode: sdk.invoke falls back to the generic feature:invoke IPC
- * channel (handlers live in the main process; `features` is not booted here).
- * In browser mode: features are booted in-process via browserRegister();
- * features without one are skipped with a warning.
- */
-export function createFeatureSystem(
-	api: LocalApi,
-	features: readonly FeatureRegistration[] = [],
-): FeatureSystem {
-	const bridge = getDesktopBridge();
+export interface CreateFeatureSystemOptions {
+	/** Host-provided shell services: notifications, theme, shell, fs. */
+	shellDelegates: ShellDelegates;
+	/**
+	 * Transport for channels that have no in-process handler. In Electron the
+	 * host routes this through its generic `feature:invoke` IPC bridge. When
+	 * provided, feature backends are assumed to live out of process and
+	 * `features` are NOT booted here.
+	 */
+	invokeFallback?: InvokeFallback;
+	/**
+	 * Features to boot in-process when no `invokeFallback` is provided
+	 * (browser mode — no main process available). Only `browserRegister`
+	 * boots; features without one are skipped with a warning. There is
+	 * deliberately no fallback to `mainRegister`, which may use Node APIs.
+	 */
+	features?: readonly FeatureRegistration[];
+}
 
-	const featureRouter = new FeatureRouter(
-		bridge
-			? {
-					fallback: async (featureId, channel, args) => {
-						const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
-						if (!result.ok) {
-							throw new Error(result.error.message);
-						}
-						return result.value;
-					},
-				}
-			: {},
-	);
+/**
+ * Create the renderer-side feature system. The host calls this once at app
+ * startup and passes the result to <SdkProvider>.
+ */
+export function createFeatureSystem(options: CreateFeatureSystemOptions): FeatureSystem {
+	const { invokeFallback, features = [] } = options;
+
+	const featureRouter = new FeatureRouter(invokeFallback ? { fallback: invokeFallback } : {});
 
 	const services: SdkFactoryServices = {
 		eventBus: new EventBus(),
@@ -123,14 +66,14 @@ export function createFeatureSystem(
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
 		featureRouter,
-		shellDelegates: createShellDelegates(api),
+		shellDelegates: options.shellDelegates,
 	};
 
 	// Browser mode: boot feature backends in-process (no main process available).
 	// Only browserRegister boots here — deliberately no fallback to mainRegister,
 	// which may use Node APIs. Node-free features opt in explicitly with
 	// `browserRegister: mainRegister`.
-	if (!bridge) {
+	if (!invokeFallback) {
 		for (const feature of features) {
 			if (!feature.browserRegister) {
 				console.warn(

@@ -7,25 +7,21 @@ import { createElectronLocalApi } from "./electronLocalApi";
 function makeBridge(overrides?: Partial<DesktopApi>): DesktopApi {
 	return {
 		invoke: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+		on: vi.fn(() => () => undefined),
 		...overrides,
 	} as unknown as DesktopApi;
 }
 
 describe("createElectronLocalApi", () => {
-	it("forwards todos/theme/shell methods through the bridge", async () => {
+	it("forwards theme/shell methods through the bridge", async () => {
 		const invoke = vi
 			.fn()
-			.mockResolvedValueOnce({ ok: true, value: [] })
-			.mockResolvedValueOnce({ ok: true, value: { id: "1", title: "a", completed: false } })
-			.mockResolvedValueOnce({ ok: true, value: { id: "1", title: "a", completed: true } })
 			.mockResolvedValueOnce({ ok: true, value: undefined })
 			.mockResolvedValueOnce({ ok: true, value: { opened: true } })
 			.mockResolvedValueOnce({ ok: true, value: undefined });
-		const api = createElectronLocalApi({ invoke } as unknown as DesktopApi);
+		const on = vi.fn(() => () => undefined);
+		const api = createElectronLocalApi({ invoke, on } as unknown as DesktopApi);
 
-		await expect(api.todos.list()).resolves.toEqual([]);
-		await expect(api.todos.add({ title: "a" })).resolves.toMatchObject({ title: "a" });
-		await expect(api.todos.toggle({ id: "1" })).resolves.toMatchObject({ completed: true });
 		await expect(
 			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
 		).resolves.toBeUndefined();
@@ -34,10 +30,14 @@ describe("createElectronLocalApi", () => {
 		});
 		await expect(api.shell.copyText({ text: "hi" })).resolves.toBeUndefined();
 
-		expect(invoke).toHaveBeenNthCalledWith(4, "theme:sync", {
+		expect(invoke).toHaveBeenNthCalledWith(1, "theme:sync", {
 			source: "dark",
 			shouldUseDarkColors: true,
 		});
+
+		const unsubscribe = api.auth.onChanged(() => undefined);
+		expect(on).toHaveBeenCalledWith("auth:changed", expect.any(Function));
+		unsubscribe();
 	});
 
 	it("throws LocalApiError when the bridge returns ok: false", async () => {
@@ -48,8 +48,12 @@ describe("createElectronLocalApi", () => {
 			}),
 		});
 		const api = createElectronLocalApi(bridge);
-		await expect(api.todos.list()).rejects.toBeInstanceOf(LocalApiError);
-		await expect(api.todos.list()).rejects.toMatchObject({
+		await expect(
+			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
+		).rejects.toBeInstanceOf(LocalApiError);
+		await expect(
+			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
+		).rejects.toMatchObject({
 			code: "INTERNAL",
 			message: "failed",
 		});

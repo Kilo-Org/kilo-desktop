@@ -10,6 +10,7 @@ export const themeStateSchema = z.object({
 	shouldUseDarkColors: z.boolean(),
 });
 
+export type ThemeSource = z.infer<typeof themeSourceSchema>;
 export type ThemeState = z.infer<typeof themeStateSchema>;
 
 export const themeMethods = {

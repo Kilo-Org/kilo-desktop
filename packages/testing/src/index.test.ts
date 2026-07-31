@@ -43,6 +43,20 @@ describe("createFakeMainSdk", () => {
 		await expect(mainSdk.invoke("list")).resolves.toEqual([]);
 	});
 
+	it("provides a lazily created temp storageDir, stable across accesses", () => {
+		const fs = process.getBuiltinModule("node:fs");
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+
+		const first = mainSdk.storageDir;
+		expect(fs.existsSync(first)).toBe(true);
+		expect(mainSdk.storageDir).toBe(first);
+	});
+
+	it("uses the provided storageDir override", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos", storageDir: "/tmp/custom-todos" });
+		expect(mainSdk.storageDir).toBe("/tmp/custom-todos");
+	});
+
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos" });
 		const order: string[] = [];
@@ -96,6 +110,20 @@ describe("createFakeSdk", () => {
 		const unsub = sdk.theme.subscribe(listener);
 		expect(listener).toHaveBeenCalledWith("light");
 		unsub();
+	});
+
+	it("auth delegates report an anonymous session by default", async () => {
+		const sdk = createFakeSdk({ featureId: "auth" });
+		const listener = vi.fn();
+		const unsubscribe = sdk.auth.subscribe(listener);
+
+		expect(listener).toHaveBeenCalledWith({ status: "anonymous" });
+		expect(sdk.auth.peek()).toEqual({ status: "anonymous" });
+		await expect(sdk.auth.getSession()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.refresh()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.login()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.logout()).resolves.toEqual({ status: "anonymous" });
+		expect(() => unsubscribe()).not.toThrow();
 	});
 
 	it("shell delegates succeed by default", async () => {

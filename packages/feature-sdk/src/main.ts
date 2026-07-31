@@ -12,4 +12,4 @@ export {
 	type ChannelOutput,
 } from "./channel-map.js";
 export { FeatureError, type FeatureErrorCode } from "./errors.js";
-export { FeatureRouter } from "./services/feature-router.js";
+export { FeatureRouter, type CreateMainSdkOptions } from "./services/feature-router.js";

@@ -11,6 +11,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 		webContents: {
 			setWindowOpenHandler: ReturnType<typeof vi.fn>;
 			on: ReturnType<typeof vi.fn>;
+			send: ReturnType<typeof vi.fn>;
 		};
 		once: ReturnType<typeof vi.fn>;
 		on: ReturnType<typeof vi.fn>;
@@ -27,7 +28,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 	}
 	return {
 		createdWindows: [] as FakeWindow[],
-		electronApp: { focus: vi.fn() },
+		electronApp: { focus: vi.fn(), getName: vi.fn(() => "Test App"), isPackaged: false },
 	};
 });
 
@@ -38,7 +39,7 @@ vi.mock("electron", () => ({
 			return createdWindows;
 		}
 		readonly options: (typeof createdWindows)[number]["options"];
-		readonly webContents = { setWindowOpenHandler: vi.fn(), on: vi.fn() };
+		readonly webContents = { setWindowOpenHandler: vi.fn(), on: vi.fn(), send: vi.fn() };
 		readonly once = vi.fn();
 		readonly on = vi.fn();
 		readonly loadURL = vi.fn();
@@ -224,5 +225,16 @@ describe("ElectronWindow", () => {
 		windows.destroyAll();
 		expect(window?.destroy).toHaveBeenCalled();
 		expect(windows.main).toBeUndefined();
+	});
+
+	it("broadcasts validated auth events to live windows", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		const window = createdWindows[0];
+
+		windows.broadcast("auth:changed", { status: "anonymous" });
+		expect(window?.webContents.send).toHaveBeenCalledWith("auth:changed", {
+			status: "anonymous",
+		});
 	});
 });

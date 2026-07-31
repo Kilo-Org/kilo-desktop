@@ -2,7 +2,13 @@ import path from "node:path";
 
 import { app, BrowserWindow, type BrowserWindowConstructorOptions } from "electron";
 
-import { chromeFor, type ThemeChromeColors } from "@anaconda-agentic-desktop/contracts";
+import {
+	chromeFor,
+	ipcEvents,
+	type IpcEventChannel,
+	type IpcEventPayload,
+	type ThemeChromeColors,
+} from "@anaconda-agentic-desktop/contracts";
 
 import { getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
@@ -27,13 +33,14 @@ export class ElectronWindow {
 	}): BrowserWindow {
 		const chrome = chromeFor(this.shouldUseDarkColors());
 		const window = new BrowserWindow({
-			title: "Anaconda Agentic Desktop",
+			title: app.getName(),
 			width: 960,
 			height: 720,
 			minWidth: 720,
 			minHeight: 520,
 			show: false,
 			backgroundColor: chrome.background,
+			...(process.platform === "linux" ? { icon: linuxWindowIcon() } : {}),
 			...titleBarOptions(chrome),
 			...input.options,
 			webPreferences: {
@@ -81,6 +88,16 @@ export class ElectronWindow {
 		window.focus();
 	}
 
+	broadcast<TChannel extends IpcEventChannel>(
+		channel: TChannel,
+		payload: IpcEventPayload<TChannel>,
+	): void {
+		const validatedPayload = ipcEvents[channel].payload.parse(payload);
+		for (const window of this.liveWindows) {
+			window.webContents.send(channel, validatedPayload);
+		}
+	}
+
 	/** Repaints native chrome to match the renderer-owned theme (pushed via `theme:sync`). */
 	applyColorScheme(shouldUseDarkColors: boolean): void {
 		const chrome = chromeFor(shouldUseDarkColors);
@@ -120,4 +137,10 @@ function titleBarOptions(chrome: ThemeChromeColors): BrowserWindowConstructorOpt
 			symbolColor: chrome.foreground,
 		},
 	};
+}
+
+function linuxWindowIcon(): string {
+	return app.isPackaged
+		? path.join(process.resourcesPath, "icon.png")
+		: path.join(app.getAppPath(), "assets/icon.png");
 }

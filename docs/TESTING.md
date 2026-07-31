@@ -8,7 +8,7 @@
 | Integration | `*.integration.test.ts` | Vitest node, serial            | Every PR                            |
 | Component   | `*.browser.test.tsx`    | Vitest Chromium                | Every PR                            |
 | App-level   | `*.app.test.tsx`        | Vitest Chromium                | Every PR (composition / routing)    |
-| E2E smoke   | `@smoke` specs          | Playwright + packaged Electron | Every PR (macOS)                    |
+| E2E smoke   | `@smoke` specs          | Playwright + packaged Electron | Every PR (Windows)                  |
 | E2E full    | all specs               | Playwright + packaged Electron | Nightly matrix + merge queue        |
 
 Coverage gate: **90%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.ts`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).

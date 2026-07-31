@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, self-hosted-amd64-medium-privileged-on-demand, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     concurrency:

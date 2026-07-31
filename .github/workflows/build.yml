@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","linux"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
-    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'windows-latest' || 'self-hosted-amd64-medium-privileged-on-demand' }}
     timeout-minutes: 90
     environment: canary
     permissions:

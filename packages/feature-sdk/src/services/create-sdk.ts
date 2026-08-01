@@ -1,7 +1,7 @@
 import type {
 	ContributionOptions,
 	DispatchIntent,
-	NavigateIntent,
+	NavigateOptions,
 	SDK,
 	SdkAuth,
 	SdkClient,
@@ -9,12 +9,15 @@ import type {
 	SdkEvents,
 	SdkFs,
 	SdkIntents,
+	SdkLocation,
+	SdkNavigation,
 	SdkNotifications,
 	SdkPlugins,
 	SdkShell,
 	SdkState,
 	SdkTheme,
 	SdkTools,
+	ShellLocation,
 } from "../types/sdk.js";
 import type { CapabilityRegistry } from "./capability-registry.js";
 import type { CommandRegistry } from "./command-registry.js";
@@ -29,6 +32,12 @@ export interface ShellDelegates {
 	auth: SdkAuth;
 	shell: SdkShell;
 	fs: SdkFs;
+	/**
+	 * Navigation over the shell's internal router (Decision #19). Exposed to
+	 * features as `sdk.navigate` + `sdk.location`; the router itself never
+	 * crosses the SDK boundary.
+	 */
+	navigation: SdkNavigation;
 }
 
 export interface SdkFactoryServices {
@@ -167,6 +176,26 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	};
 
+	// ─── Navigation (shell delegate) ───────────────────────────────────────────
+
+	const location: SdkLocation = {
+		subscribe(fn: (loc: ShellLocation) => void) {
+			assertAlive();
+			const unsub = services.shellDelegates.navigation.subscribe(fn);
+			// Wrap so manual unsubscription also drops the disposable.
+			const dispose = () => {
+				disposables.delete(dispose);
+				unsub();
+			};
+			disposables.add(dispose);
+			return dispose;
+		},
+		peek() {
+			assertAlive();
+			return services.shellDelegates.navigation.peek();
+		},
+	};
+
 	// ─── SDK object ────────────────────────────────────────────────────────────
 
 	const invoke = async (channel: string, args?: unknown) => {
@@ -208,12 +237,14 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		shell: services.shellDelegates.shell,
 		fs: services.shellDelegates.fs,
 
+		navigate(path: string, options?: NavigateOptions) {
+			assertAlive();
+			services.shellDelegates.navigation.navigate(path, options);
+		},
+		location,
+
 		tools,
 		intents,
-
-		navigate(_intent: NavigateIntent) {
-			throw new Error("sdk.navigate requires the full plugin system — not available yet.");
-		},
 
 		dispatch(_intent: DispatchIntent) {
 			throw new Error("sdk.dispatch requires the full plugin system — not available yet.");

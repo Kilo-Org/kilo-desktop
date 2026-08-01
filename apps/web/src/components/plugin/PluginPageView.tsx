@@ -1,0 +1,60 @@
+import { PLUGIN_PAGES, findPluginPage, type PluginPage } from "@/features/plugin-pages";
+import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
+
+type PluginPageViewProps = {
+	/** The catch-all route's splat, i.e. the path without the leading slash. */
+	splat: string | undefined;
+	/** Parsed search params of the current location. */
+	search: Record<string, unknown>;
+	/** Injectable for tests; defaults to the bundled plugin pages. */
+	pages?: readonly PluginPage[];
+	/** Injectable for tests; defaults to Electron bridge detection. */
+	desktopAvailable?: boolean;
+};
+
+/**
+ * Resolves a plugin page from the manifest registry at render time — the
+ * sanctioned host-owned route strategy (Decision #19): the shell's catch-all
+ * route (routes/$.tsx) delegates here, so plugin routes exist without
+ * touching the file-based route tree and plugins never see the router.
+ */
+export function PluginPageView({
+	splat,
+	search,
+	pages = PLUGIN_PAGES,
+	desktopAvailable = isDesktopBridgeAvailable(),
+}: PluginPageViewProps) {
+	const path = `/${splat ?? ""}`;
+	const page = findPluginPage(pages, path);
+
+	if (!page) {
+		return (
+			<div className="mx-auto max-w-xl px-5 py-8">
+				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-not-found">
+					Page not found
+				</h1>
+				<p className="text-muted-foreground mt-1 text-sm">
+					No plugin provides a page at <code className="bg-muted rounded px-1">{path}</code>.
+				</p>
+			</div>
+		);
+	}
+
+	// Electron-only plugins have no backend in standalone browser mode —
+	// render an explicit unavailable state instead of a dead page.
+	if (!page.browserSafe && !desktopAvailable) {
+		return (
+			<div className="mx-auto max-w-xl px-5 py-8">
+				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-heading">
+					{page.label}
+				</h1>
+				<p className="text-muted-foreground mt-1 text-sm" data-qa-id="plugin-page-unavailable">
+					{page.label} is not available in browser mode. Run the desktop app to use this feature.
+				</p>
+			</div>
+		);
+	}
+
+	const Page = page.component;
+	return <Page path={page.path} search={search} />;
+}

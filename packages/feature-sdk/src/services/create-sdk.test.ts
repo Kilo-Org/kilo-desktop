@@ -65,7 +65,7 @@ describe("createSdk", () => {
 		sdk.state.register("items", []);
 		sdk.plugins.expose("svc", { hello: () => "world" });
 		sdk.commands.register({ id: "add", label: "Add", handler: noop });
-		sdk.contribute("statusbar", { component: null, label: "Todos" });
+		sdk.contribute("status-bar", { component: null, label: "Todos" });
 
 		let disposed = false;
 		sdk.onDispose(() => {
@@ -77,7 +77,7 @@ describe("createSdk", () => {
 		expect(services.stateBroker.peek("todos.items")).toBeNull();
 		expect(services.capabilityRegistry.get("todos")).toBeNull();
 		expect(services.commandRegistry.all()).toEqual([]);
-		expect(services.contributionRegistry.getForZone("statusbar")).toEqual([]);
+		expect(services.contributionRegistry.getForZone("status-bar")).toEqual([]);
 		await expect(sdk.invoke("list")).rejects.toThrow(/destroyed/);
 	});
 
@@ -109,14 +109,14 @@ describe("createSdk", () => {
 
 		const sdk = createSdk("todos", services);
 		sdk.state.register("items", ["a"]);
-		sdk.contribute("statusbar", { component: null, label: "Todos" });
+		sdk.contribute("status-bar", { component: null, label: "Todos" });
 
 		teardownFeature("todos", services);
 
 		expect(backendDisposed).toBe(true);
 		expect(services.featureRouter.has("todos", "list")).toBe(false);
 		expect(services.stateBroker.peek("todos.items")).toBeNull();
-		expect(services.contributionRegistry.getForZone("statusbar")).toEqual([]);
+		expect(services.contributionRegistry.getForZone("status-bar")).toEqual([]);
 	});
 
 	it("manual event unsubscribe removes the tracked disposable", () => {
@@ -151,10 +151,10 @@ describe("createSdk", () => {
 	it("contribute returns an unregister handle that also drops the disposable", () => {
 		const services = makeServices();
 		const sdk = createSdk("todos", services);
-		const remove = sdk.contribute("statusbar", { component: null, label: "Todos" });
-		expect(services.contributionRegistry.getForZone("statusbar")).toHaveLength(1);
+		const remove = sdk.contribute("status-bar", { component: null, label: "Todos" });
+		expect(services.contributionRegistry.getForZone("status-bar")).toHaveLength(1);
 		remove();
-		expect(services.contributionRegistry.getForZone("statusbar")).toEqual([]);
+		expect(services.contributionRegistry.getForZone("status-bar")).toEqual([]);
 		expect(() => sdk.destroy()).not.toThrow();
 	});
 
@@ -214,8 +214,55 @@ describe("createSdk", () => {
 		expect(() => sdk.tools.invoke("f", "t", {})).toThrow(/full plugin system/);
 		expect(() => sdk.tools.all()).toThrow(/full plugin system/);
 		expect(() => sdk.intents.list()).toThrow(/full plugin system/);
-		expect(() => sdk.navigate({ plugin: "shell", intent: "open" })).toThrow(/full plugin system/);
 		expect(() => sdk.dispatch({ plugin: "shell", action: "noop" })).toThrow(/full plugin system/);
+	});
+
+	it("sdk.navigate forwards to the shell navigation delegate", () => {
+		const services = makeServices();
+		const navigate = vi.fn();
+		services.shellDelegates.navigation.navigate = navigate;
+		const sdk = createSdk("todos", services);
+
+		sdk.navigate("/todos", { search: { filter: "open" } });
+		expect(navigate).toHaveBeenCalledWith("/todos", { search: { filter: "open" } });
+
+		sdk.destroy();
+		expect(() => sdk.navigate("/todos")).toThrow(/destroyed/);
+	});
+
+	it("sdk.location subscribes through the delegate and cleans up on destroy", () => {
+		const services = makeServices();
+		const listeners = new Set<(loc: { path: string; search: Record<string, unknown> }) => void>();
+		services.shellDelegates.navigation = {
+			navigate: noop,
+			subscribe: (fn) => {
+				listeners.add(fn);
+				fn({ path: "/", search: {} });
+				return () => listeners.delete(fn);
+			},
+			peek: () => ({ path: "/", search: {} }),
+		};
+		const sdk = createSdk("todos", services);
+
+		expect(sdk.location.peek()).toEqual({ path: "/", search: {} });
+
+		let seen: unknown;
+		const unsub = sdk.location.subscribe((loc) => {
+			seen = loc;
+		});
+		expect(seen).toEqual({ path: "/", search: {} });
+		expect(listeners.size).toBe(1);
+
+		// Manual unsubscription removes the delegate subscription.
+		unsub();
+		expect(listeners.size).toBe(0);
+
+		// Subscriptions still alive at destroy() time are cleaned up.
+		sdk.location.subscribe(noop);
+		expect(listeners.size).toBe(1);
+		sdk.destroy();
+		expect(listeners.size).toBe(0);
+		expect(() => sdk.location.peek()).toThrow(/destroyed/);
 	});
 
 	it("destroy is idempotent and isolates throwing dispose callbacks", () => {

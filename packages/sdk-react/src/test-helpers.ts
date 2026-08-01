@@ -43,5 +43,13 @@ export function createTestShellDelegates(): ShellDelegates {
 			readdir: notImplemented("sdk.fs.readdir"),
 			remove: notImplemented("sdk.fs.remove"),
 		},
+		navigation: {
+			navigate: () => {},
+			subscribe(fn) {
+				fn({ path: "/", search: {} });
+				return () => {};
+			},
+			peek: () => ({ path: "/", search: {} }),
+		},
 	};
 }

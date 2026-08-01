@@ -6,6 +6,7 @@ import { FeatureRouter } from "../services/feature-router.js";
 import {
 	discoverPlugins,
 	pluginRegistrations,
+	pluginRoutes,
 	reportPluginDiscoveryIssues,
 	type BundledPlugin,
 } from "./loader.js";
@@ -181,6 +182,105 @@ describe("discoverPlugins", () => {
 describe("pluginRegistrations", () => {
 	it("returns an empty array for an empty registry", () => {
 		expect(pluginRegistrations(discoverPlugins([], "main"))).toEqual([]);
+	});
+});
+
+describe("route resolution", () => {
+	const PingPage = () => null;
+	const routedManifest = {
+		...manifest,
+		routes: [{ path: "/ping", label: "Ping", component: "PingPage", icon: "activity" }],
+	};
+
+	it("resolves manifest routes against the web entry module's exports", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { browserRegister, PingPage } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginRoutes(discovery)).toEqual([
+			{
+				pluginId: "ping",
+				path: "/ping",
+				label: "Ping",
+				icon: "activity",
+				component: PingPage,
+				browserSafe: true,
+			},
+		]);
+	});
+
+	it("marks routes of Electron-only plugins (main entry, no browserRegister) as not browser-safe", () => {
+		const bundled: BundledPlugin[] = [{ manifest: routedManifest, module: { PingPage } }];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginRoutes(discovery)[0]?.browserSafe).toBe(false);
+	});
+
+	it("treats renderer-only plugins (no main entry) as browser-safe", () => {
+		const webOnly = {
+			id: "web-only",
+			displayName: "Web Only",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+			routes: [{ path: "/web-only", label: "Web Only", component: "PingPage" }],
+		};
+		const discovery = discoverPlugins([{ manifest: webOnly, module: { PingPage } }], "web");
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginRoutes(discovery)[0]?.browserSafe).toBe(true);
+	});
+
+	it("skips a route whose component export is missing and keeps the plugin", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { browserRegister } }, // no PingPage export
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(discovery.plugins).toHaveLength(1);
+		expect(pluginRoutes(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining('names component export "PingPage"'),
+			},
+		]);
+	});
+
+	it("skips a route path already claimed by an earlier plugin", () => {
+		const OtherPage = () => null;
+		const rival = {
+			id: "rival",
+			displayName: "Rival",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+			routes: [{ path: "/ping", label: "Rival Ping", component: "OtherPage" }],
+		};
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { browserRegister, PingPage } },
+			{ manifest: rival, module: { OtherPage } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginRoutes(discovery).map((route) => route.pluginId)).toEqual(["ping"]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "rival",
+				message: expect.stringContaining('already claimed by plugin "ping"'),
+			},
+		]);
+	});
+
+	it("does not resolve routes for main-entry discovery (renderer concern)", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { mainRegister, PingPage } },
+		];
+		const discovery = discoverPlugins(bundled, "main");
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginRoutes(discovery)).toEqual([]);
 	});
 });
 

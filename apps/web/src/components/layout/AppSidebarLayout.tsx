@@ -3,16 +3,19 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
 	BellIcon,
 	HomeIcon,
-	ListTodoIcon,
 	LogOutIcon,
 	PackageIcon,
 	PlugIcon,
+	PuzzleIcon,
 	SplitIcon,
 	UserIcon,
 } from "lucide-react";
+import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 
+import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
+import { PLUGIN_PAGES, type PluginPage } from "@/features/plugin-pages";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -41,9 +44,44 @@ import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip
 
 type AppSidebarLayoutProps = {
 	children: ReactNode;
+	/** Injectable for tests; defaults to the bundled plugin pages. */
+	pluginPages?: readonly PluginPage[];
 };
 
-export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
+/**
+ * Icon for a plugin nav entry: the manifest declares a lucide icon name
+ * (kebab-case); unknown or missing names fall back to a generic plugin icon.
+ */
+function PluginNavIcon({ name }: { name: string | undefined }) {
+	if (name !== undefined && (iconNames as readonly string[]).includes(name)) {
+		return <DynamicIcon name={name as IconName} />;
+	}
+	return <PuzzleIcon />;
+}
+
+/**
+ * Sidebar nav entry derived from a plugin's manifest route — plugins add nav
+ * entries by declaring routes (or contributing to the "sidebar" zone), never
+ * by editing this layout.
+ */
+function PluginNavItem({ page, pathname }: { page: PluginPage; pathname: string }) {
+	return (
+		<SidebarMenuItem>
+			<SidebarMenuButton
+				isActive={pathname === page.path}
+				tooltip={page.label}
+				render={<Link to="/$" params={{ _splat: page.splat }} />}
+				className="size-8!"
+				data-qa-id={page.navQaId}
+			>
+				<PluginNavIcon name={page.icon} />
+				<span>{page.label}</span>
+			</SidebarMenuButton>
+		</SidebarMenuItem>
+	);
+}
+
+export function AppSidebarLayout({ children, pluginPages = PLUGIN_PAGES }: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const session = useAuthSession();
 	const sdk = useSdk("auth");
@@ -93,18 +131,6 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 								</SidebarMenuItem>
 								<SidebarMenuItem>
 									<SidebarMenuButton
-										isActive={pathname === "/todos"}
-										tooltip="Todo List"
-										render={<Link to="/todos" />}
-										className="size-8!"
-										data-qa-id="nav-todos"
-									>
-										<ListTodoIcon />
-										<span>Todo List</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
-								<SidebarMenuItem>
-									<SidebarMenuButton
 										isActive={pathname === "/sdk-producer"}
 										tooltip="SDK Producer"
 										render={<Link to="/sdk-producer" />}
@@ -139,8 +165,13 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 										<span>Split</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
+								{pluginPages.map((page) => (
+									<PluginNavItem key={page.path} page={page} pathname={pathname} />
+								))}
 							</SidebarMenu>
 						</SidebarGroup>
+						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
+						<ZoneOutlet zone="sidebar" className="flex flex-col items-center gap-2 px-2" />
 					</SidebarContent>
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-4">
@@ -215,6 +246,11 @@ export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
 					<div className="bg-muted border-border flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-md border">
 						{children}
 					</div>
+					{/* Status-bar contributions registered via sdk.contribute("status-bar", ...) */}
+					<ZoneOutlet
+						zone="status-bar"
+						className="text-muted-foreground flex h-6 shrink-0 items-center justify-end gap-3 px-2 pt-1 text-xs"
+					/>
 				</SidebarInset>
 			</SidebarProvider>
 		</TooltipProvider>

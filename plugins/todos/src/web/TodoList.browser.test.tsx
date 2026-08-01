@@ -9,7 +9,7 @@ import type { ChannelHandlerMap } from "@anaconda-agentic-desktop/feature-sdk";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
-import { TodoList } from "./TodoList";
+import { TodoList, TodosStatusBarItem } from "./TodoList";
 
 type TodoHandlers = ChannelHandlerMap<typeof todosContract>;
 
@@ -154,5 +154,56 @@ describe("TodoList", () => {
 		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
 		baseElement.querySelector("form")?.requestSubmit();
 		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+	});
+
+	it("contributes a status-bar item while mounted and removes it on unmount", async () => {
+		const sdk = createFakeSdk({
+			featureId: "todos",
+			channels: todosContract,
+			handlers: inMemoryHandlers(),
+		});
+		const system = createFakeFeatureSystem({ sdks: { todos: sdk } });
+		const registry = sdk.services.contributionRegistry;
+
+		const { unmount, baseElement } = render(
+			<SdkProvider system={system}>
+				<QueryClientProvider client={testClient()}>
+					<TodoList />
+				</QueryClientProvider>
+			</SdkProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+
+		const contributions = registry.getForZone("status-bar");
+		expect(contributions).toHaveLength(1);
+		expect(contributions[0]?.featureId).toBe("todos");
+		expect(contributions[0]?.component).toBe(TodosStatusBarItem);
+
+		unmount();
+		expect(registry.getForZone("status-bar")).toEqual([]);
+	});
+
+	it("TodosStatusBarItem shows how many todos are still open", async () => {
+		const sdk = createFakeSdk({
+			featureId: "todos",
+			channels: todosContract,
+			handlers: inMemoryHandlers([
+				{ id: "1", title: "Open", completed: false },
+				{ id: "2", title: "Done", completed: true },
+			]),
+		});
+		const system = createFakeFeatureSystem({ sdks: { todos: sdk } });
+
+		const { baseElement } = render(
+			<SdkProvider system={system}>
+				<QueryClientProvider client={testClient()}>
+					<TodosStatusBarItem />
+				</QueryClientProvider>
+			</SdkProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("1 open todo")).toBeVisible();
 	});
 });

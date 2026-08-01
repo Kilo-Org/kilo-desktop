@@ -54,14 +54,22 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 	"version": "1.0.0",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
-	"routes": [{ "path": "/<id>", "label": "<Human Name>", "icon": "<lucide-icon-name>" }],
+	"routes": [
+		{
+			"path": "/<id>",
+			"label": "<Human Name>",
+			"component": "<WebEntryExportName>",
+			"icon": "<lucide-icon-name>"
+		}
+	],
 	"zones": []
 }
 ```
 
 - `main` — main-process entry; the module must export `mainRegister(mainSdk)`. Omit for renderer-only plugins.
 - `web` — renderer entry; may export `browserRegister(mainSdk)` for standalone browser mode (omit the export for Electron-only plugins — browser mode then skips the plugin with a warning). Omit the field for headless plugins.
-- `routes` / `zones` — declared now, rendered by the shell from Slice 3. Omit or use `[]` if the plugin has no page / zone contributions.
+- `routes` — full pages the shell mounts on its catch-all route: the shell resolves `component` from the web entry module's exports, derives a sidebar nav entry from `label`/`icon` (kebab-case lucide name), and passes `PluginPageProps` (`path`, `search`) to the page. Requires `web`. Use `[]` if the plugin has no page.
+- `zones` — informational list of shell zones the plugin contributes to via `sdk.contribute` (canonical ids: `"sidebar"`, `"status-bar"`, `"dashboard"` — the `ShellZone` union from feature-sdk). Contributions to non-canonical zones render nowhere.
 - At least one of `main` / `web` is required.
 
 ### Step 4: Create package.json
@@ -131,7 +139,7 @@ export function browserRegister(mainSdk: MainSdk) {
 1. Delete the feature's entry from `apps/desktop/src/main/features/registry/features.ts`
 2. Remove the re-export from `packages/contracts/src/index.ts`
 3. Delete `packages/contracts/src/features/<id>.ts` (already moved)
-4. Delete the route file `apps/web/src/routes/features/<id>.tsx`
+4. Delete the feature's route file under `apps/web/src/routes/` — the manifest `routes` entry replaces it (the shell's catch-all `routes/$.tsx` mounts the page and the sidebar nav entry is derived automatically; no shell route or `AppSidebarLayout.tsx` edits)
 5. Remove the main-process feature directory (already moved)
 6. Remove the renderer feature directory (already moved)
 
@@ -229,7 +237,7 @@ Test changes for unit/browser:
 - [ ] Imports fixed (contracts → relative, @/ → relative or sdk)
 - [ ] Feature removed from FEATURES array
 - [ ] Feature removed from contracts re-exports
-- [ ] Route file deleted from `apps/web/src/routes/features/`
+- [ ] Shell route file deleted (manifest `routes` + the catch-all replace it; no `AppSidebarLayout.tsx` edits)
 - [ ] Registered in `BUNDLED_PLUGINS` (both desktop and web registries)
 - [ ] E2E pages + specs moved to `plugins/<id>/e2e/`
 - [ ] Plugin-local `e2e/fixtures.ts` created; shell fixture cleaned up

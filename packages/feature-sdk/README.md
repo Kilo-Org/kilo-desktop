@@ -175,10 +175,12 @@ await caps?.todoService.addTodo("From calendar");
 
 ### `sdk.contribute(zone, options)` — UI in shell zones
 
-Register a React component into a named shell zone (status bar, dashboard, ...). The shell decides where and how zones render. Returns an unregister handle for conditional UI; contributions are also cleaned up when the SDK instance is destroyed.
+Register a React component into a named shell zone. The shell decides where and how zones render — it renders only the canonical `ShellZone` ids (`"sidebar"`, `"status-bar"`, `"dashboard"`; import the `SIDEBAR_ZONE` / `STATUS_BAR_ZONE` / `DASHBOARD_ZONE` constants so a typo can't render nowhere). Contributions are priority-ordered (higher first). Returns an unregister handle for conditional UI; contributions are also cleaned up when the SDK instance is destroyed.
 
 ```ts
-const remove = sdk.contribute("statusbar", {
+import { STATUS_BAR_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
+
+const remove = sdk.contribute(STATUS_BAR_ZONE, {
 	component: TodoStatusBadge,
 	label: "Todos",
 	priority: 10, // higher renders first
@@ -188,7 +190,7 @@ remove();
 ```
 
 **Use when:** the feature wants presence in shell-owned chrome without owning a route.
-**Don't use for:** your feature's main view — that's a route file in `apps/web/src/routes/`.
+**Don't use for:** your feature's main view — declare a route in `plugin.json` (`routes[]`) and the host mounts it (plugins never touch the router).
 
 ### `sdk.commands` — command palette entries
 
@@ -220,7 +222,20 @@ if (!result.delivered) showInlineBanner(); // graceful fallback
 
 `sdk.fs` is **not wired yet** and rejects — don't ship code paths that rely on it.
 
-### Deferred: `sdk.tools`, `sdk.intents`, `sdk.navigate`, `sdk.dispatch`
+### `sdk.navigate` + `sdk.location` — shell navigation delegate
+
+The router is internal to the shell (Decision #19) — plugins never import it. Navigate by the absolute paths routes declare in `plugin.json`, and observe the current location like any other SDK observable:
+
+```ts
+sdk.navigate("/todos", { search: { filter: "open" } });
+
+sdk.location.peek(); // { path: "/todos", search: { filter: "open" } }
+const unsub = sdk.location.subscribe((loc) => setBreadcrumb(loc.path)); // fires immediately
+```
+
+Route pages mounted from `plugin.json` also receive `PluginPageProps` (`path`, `search`) as props.
+
+### Deferred: `sdk.tools`, `sdk.intents`, `sdk.dispatch`
 
 Placeholders for the full plugin system. They throw. They exist so the interface shape doesn't change when they arrive.
 

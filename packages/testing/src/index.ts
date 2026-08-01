@@ -50,6 +50,8 @@ type FakeSdkShellOptions = {
 	auth?: Partial<SDK["auth"]>;
 	shell?: Partial<SDK["shell"]>;
 	fs?: Partial<SDK["fs"]>;
+	/** Override the shell navigation delegate (sdk.navigate + sdk.location). */
+	navigation?: Partial<ShellDelegates["navigation"]>;
 	onDispose?: SDK["onDispose"];
 	destroy?: SDK["destroy"];
 };
@@ -126,6 +128,19 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 				remove: notImplemented("sdk.fs.remove"),
 			},
 			options.fs,
+		),
+		// The fake starts at "/" and navigation is a no-op. Override to record
+		// navigations or to drive location updates from the test.
+		navigation: merge<ShellDelegates["navigation"]>(
+			{
+				navigate: noop,
+				subscribe: (fn) => {
+					fn({ path: "/", search: {} });
+					return noop;
+				},
+				peek: () => ({ path: "/", search: {} }),
+			},
+			options.navigation,
 		),
 	};
 

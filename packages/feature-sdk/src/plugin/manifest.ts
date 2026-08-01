@@ -20,15 +20,20 @@ const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$
 /**
  * A full-page route contributed by the plugin. Declared in the manifest so the
  * HOST owns route creation (Decision #19) — plugins never import the router.
- * Rendering of declared routes lands in Slice 3; the fields are validated now
- * so manifests are forward-compatible.
+ * The shell mounts the named component export from the plugin's `web` entry
+ * when the path is visited, and derives a sidebar nav entry from label/icon.
  */
 export const pluginRouteSchema = z.strictObject({
 	/** Absolute route path, e.g. "/todos". */
 	path: z.string().regex(/^\/.*/, "Route path must start with '/'."),
 	/** Human-readable navigation label. */
 	label: z.string().min(1),
-	/** Optional lucide icon name for nav entries. */
+	/**
+	 * Name of the page component export in the plugin's `web` entry module
+	 * (e.g. "TodoList"). The component receives `PluginPageProps`.
+	 */
+	component: z.string().min(1),
+	/** Optional lucide icon name (kebab-case, e.g. "list-todo") for nav entries. */
 	icon: z.string().min(1).optional(),
 });
 export type PluginRoute = z.infer<typeof pluginRouteSchema>;
@@ -62,17 +67,24 @@ export const pluginManifestSchema = z
 		 * browser-mode support. Omit for headless plugins.
 		 */
 		web: z.string().min(1).optional(),
-		/** Full-page routes the host should create for this plugin (rendered from Slice 3). */
+		/**
+		 * Full-page routes the host creates for this plugin. A route requires a
+		 * `web` entry (its component is resolved from that module's exports).
+		 */
 		routes: z.array(pluginRouteSchema).default([]),
 		/**
-		 * Shell zones this plugin contributes to (e.g. "sidebar", "status-bar",
-		 * "dashboard"). Canonical `ShellZone` ids land in Slice 3; free-form
-		 * strings are accepted until then.
+		 * Shell zones this plugin contributes to via `sdk.contribute` —
+		 * informational, for tooling and review. Canonical ids are the
+		 * `ShellZone` union ("sidebar", "status-bar", "dashboard"); free-form
+		 * strings are accepted but render nowhere until the shell defines them.
 		 */
 		zones: z.array(z.string().min(1)).default([]),
 	})
 	.refine((manifest) => manifest.main !== undefined || manifest.web !== undefined, {
 		message: "Manifest must declare at least one entry point ('main' or 'web').",
+	})
+	.refine((manifest) => manifest.routes.length === 0 || manifest.web !== undefined, {
+		message: "Manifest declares routes but no 'web' entry to resolve their components from.",
 	});
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;
 

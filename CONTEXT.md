@@ -34,8 +34,9 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.events` — namespaced pub/sub
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` — cross-feature capabilities
-- `sdk.contribute` — register UI in shell zones
+- `sdk.contribute` — register UI in shell zones (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`; the shell renders only these)
 - `sdk.commands` — command palette entries
+- `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages are declared in `plugin.json` `routes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi)
 
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.

@@ -23,12 +23,26 @@ export type {
 	Contribution,
 	CommandDefinition,
 	Command,
-	NavigateIntent,
+	ShellLocation,
+	NavigateOptions,
+	SdkLocation,
+	SdkNavigation,
+	PluginPageProps,
 	DispatchIntent,
 	ChannelHandlers,
 	MainSdk,
 	FeatureRegistration,
 } from "./types/sdk.js";
+
+// Canonical shell zone ids (Decision #21)
+export {
+	SHELL_ZONES,
+	SIDEBAR_ZONE,
+	STATUS_BAR_ZONE,
+	DASHBOARD_ZONE,
+	isShellZone,
+	type ShellZone,
+} from "./types/zones.js";
 
 // Channel maps — typed sdk.invoke / mainSdk.channels against per-feature contracts
 export {
@@ -81,6 +95,7 @@ export {
 export {
 	discoverPlugins,
 	pluginRegistrations,
+	pluginRoutes,
 	reportPluginDiscoveryIssues,
 	type BundledPlugin,
 	type DiscoverPluginsOptions,
@@ -89,4 +104,5 @@ export {
 	type DiscoveredPlugin,
 	type PluginDiscovery,
 	type PluginDiscoveryIssue,
+	type ResolvedPluginRoute,
 } from "./plugin/loader.js";

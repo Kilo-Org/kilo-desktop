@@ -74,6 +74,14 @@ function makeServices(featureRouter = new FeatureRouter()) {
 			readdir: async () => [],
 			remove: async () => undefined,
 		},
+		navigation: {
+			navigate: noop,
+			subscribe: (fn) => {
+				fn({ path: "/", search: {} });
+				return noop;
+			},
+			peek: () => ({ path: "/", search: {} }),
+		},
 	};
 
 	return {

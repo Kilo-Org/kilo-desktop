@@ -55,6 +55,35 @@ export interface DiscoveredPlugin {
 	manifest: PluginManifest;
 	/** Feeds the existing boot paths (FEATURES / WEB_FEATURES shape). */
 	registration: FeatureRegistration;
+	/**
+	 * Manifest routes with their page components resolved from the web entry
+	 * module. Populated only for `entry: "web"` discovery (routes are a
+	 * renderer concern); routes whose component export is missing are skipped
+	 * with an issue.
+	 */
+	routes: ResolvedPluginRoute[];
+}
+
+/**
+ * A manifest route whose page component was resolved from the plugin's web
+ * entry module. `component` stays `unknown` — feature-sdk is React-free; the
+ * shell casts it to a component type when mounting.
+ */
+export interface ResolvedPluginRoute {
+	pluginId: string;
+	/** Absolute route path from the manifest, e.g. "/todos". */
+	path: string;
+	label: string;
+	/** Optional lucide icon name (kebab-case) for nav entries. */
+	icon?: string | undefined;
+	/** The resolved page component export (a React component to the shell). */
+	component: unknown;
+	/**
+	 * Whether the plugin can serve this route in browser mode. False for
+	 * Electron-only plugins (a declared `main` entry but no `browserRegister`)
+	 * — the shell renders an explicit unavailable state instead of a dead page.
+	 */
+	browserSafe: boolean;
 }
 
 /** A non-fatal problem found during discovery. The offending plugin is skipped. */
@@ -111,6 +140,7 @@ export function discoverPlugins(
 	const issues: PluginDiscoveryIssue[] = [];
 	const reservedIds = new Set(options.reservedIds);
 	const seenIds = new Set<string>();
+	const seenRoutePaths = new Map<string, string>();
 
 	for (const [index, candidate] of bundled.entries()) {
 		const parsed = pluginManifestSchema.safeParse(candidate.manifest);
@@ -154,11 +184,62 @@ export function discoverPlugins(
 
 		const registration = createRegistration(manifest, candidate.module, entry, issues);
 		if (registration) {
-			plugins.push({ manifest, registration });
+			const routes =
+				entry === "web" ? resolveRoutes(manifest, candidate.module, seenRoutePaths, issues) : [];
+			plugins.push({ manifest, registration, routes });
 		}
 	}
 
 	return { plugins, issues };
+}
+
+/**
+ * Resolve manifest routes against the web entry module's exports. Routes with
+ * a missing/non-component export, or a path already claimed by another plugin,
+ * are skipped with an issue — the plugin itself still loads.
+ */
+function resolveRoutes(
+	manifest: PluginManifest,
+	module: PluginModule,
+	seenRoutePaths: Map<string, string>,
+	issues: PluginDiscoveryIssue[],
+): ResolvedPluginRoute[] {
+	const routes: ResolvedPluginRoute[] = [];
+	// Electron-only plugins (main entry, no browserRegister) cannot serve their
+	// backend in standalone browser mode — the shell shows an unavailable state.
+	const browserSafe = manifest.main === undefined || typeof module.browserRegister === "function";
+
+	for (const route of manifest.routes) {
+		const claimedBy = seenRoutePaths.get(route.path);
+		if (claimedBy !== undefined) {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" declares route "${route.path}" which is already claimed by plugin "${claimedBy}" — skipping the route.`,
+			});
+			continue;
+		}
+
+		const component = module[route.component];
+		if (typeof component !== "function") {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" route "${route.path}" names component export "${route.component}" but the web entry does not export a component with that name — skipping the route.`,
+			});
+			continue;
+		}
+
+		seenRoutePaths.set(route.path, manifest.id);
+		routes.push({
+			pluginId: manifest.id,
+			path: route.path,
+			label: route.label,
+			icon: route.icon,
+			component,
+			browserSafe,
+		});
+	}
+
+	return routes;
 }
 
 function createRegistration(
@@ -195,6 +276,15 @@ function createRegistration(
  */
 export function pluginRegistrations(discovery: PluginDiscovery): FeatureRegistration[] {
 	return discovery.plugins.map((plugin) => plugin.registration);
+}
+
+/**
+ * All resolved routes across the discovered plugins, in registration order.
+ * The shell mounts these on its router (via its catch-all plugin route) and
+ * derives sidebar nav entries from them. Empty for `entry: "main"` discovery.
+ */
+export function pluginRoutes(discovery: PluginDiscovery): ResolvedPluginRoute[] {
+	return discovery.plugins.flatMap((plugin) => plugin.routes);
 }
 
 /**

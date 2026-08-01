@@ -8,7 +8,7 @@ const validManifest = {
 	version: "1.0.0",
 	main: "./src/main/index.ts",
 	web: "./src/web/index.ts",
-	routes: [{ path: "/todos", label: "Todos", icon: "list-checks" }],
+	routes: [{ path: "/todos", label: "Todos", component: "TodoList", icon: "list-checks" }],
 	zones: ["sidebar"],
 };
 
@@ -16,7 +16,9 @@ describe("pluginManifestSchema", () => {
 	it("accepts a full manifest", () => {
 		const manifest = parsePluginManifest(validManifest);
 		expect(manifest.id).toBe("todos");
-		expect(manifest.routes).toEqual([{ path: "/todos", label: "Todos", icon: "list-checks" }]);
+		expect(manifest.routes).toEqual([
+			{ path: "/todos", label: "Todos", component: "TodoList", icon: "list-checks" },
+		]);
 		expect(manifest.zones).toEqual(["sidebar"]);
 	});
 
@@ -71,7 +73,26 @@ describe("pluginManifestSchema", () => {
 	it("rejects routes whose path does not start with '/'", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			routes: [{ path: "todos", label: "Todos" }],
+			routes: [{ path: "todos", label: "Todos", component: "TodoList" }],
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects routes without a component export name", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			routes: [{ path: "/todos", label: "Todos" }],
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects routes on a manifest without a web entry", () => {
+		const result = pluginManifestSchema.safeParse({
+			id: "headless",
+			displayName: "Headless",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			routes: [{ path: "/headless", label: "Headless", component: "Page" }],
 		});
 		expect(result.success).toBe(false);
 	});
@@ -84,7 +105,7 @@ describe("pluginManifestSchema", () => {
 	it("rejects unknown route keys (strict)", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			routes: [{ path: "/todos", label: "Todos", component: "TodoList" }],
+			routes: [{ path: "/todos", label: "Todos", component: "TodoList", page: "TodoList" }],
 		});
 		expect(result.success).toBe(false);
 	});

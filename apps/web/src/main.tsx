@@ -6,12 +6,18 @@ import { AppProviders } from "@/app/AppProviders";
 import { WEB_FEATURES } from "@/features/features";
 import { createLocalApi } from "@/platform/createLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
+import { createRouterNavigation } from "@/platform/navigation";
+import { router } from "@/router";
 
 const root = document.querySelector<HTMLDivElement>("#root");
 if (!root) throw new Error("Renderer root element was not found.");
 
 const localApi = createLocalApi();
-const featureSystem = createAppFeatureSystem(localApi, WEB_FEATURES);
+const featureSystem = createAppFeatureSystem(
+	localApi,
+	WEB_FEATURES,
+	createRouterNavigation(router),
+);
 
 createRoot(root).render(
 	<StrictMode>

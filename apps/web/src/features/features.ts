@@ -86,6 +86,14 @@ const pluginDiscovery = discoverPlugins(BUNDLED_PLUGINS, "web", {
 });
 reportPluginDiscoveryIssues(pluginDiscovery);
 
+/**
+ * The renderer's plugin discovery result. Besides the registrations merged
+ * into WEB_FEATURES below, it carries the validated manifests and resolved
+ * routes that drive the shell's plugin pages and sidebar nav entries
+ * (see plugin-pages.ts).
+ */
+export const PLUGIN_DISCOVERY = pluginDiscovery;
+
 export const WEB_FEATURES: readonly FeatureRegistration[] = [
 	...BUILT_IN_WEB_FEATURES,
 	...pluginRegistrations(pluginDiscovery),

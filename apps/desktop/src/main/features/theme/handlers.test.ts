@@ -35,42 +35,17 @@ describe("createThemeHandlers", () => {
 describe("restoreNativeThemeFromPreferences", () => {
 	it("mirrors a forced dark preference onto nativeTheme before windows exist", () => {
 		const preferences = { themeSource: "dark" as const };
-		let themeSource: "system" | "light" | "dark" = "system";
-		const theme = {
-			get themeSource() {
-				return themeSource;
-			},
-			set themeSource(next: "system" | "light" | "dark") {
-				themeSource = next;
-			},
-			get shouldUseDarkColors() {
-				return themeSource === "dark";
-			},
-		};
+		const theme = { themeSource: "system" as "system" | "light" | "dark" };
 
-		const state = restoreNativeThemeFromPreferences(preferences as never, theme);
+		restoreNativeThemeFromPreferences(preferences as never, theme);
 		expect(theme.themeSource).toBe("dark");
-		expect(state).toEqual({ source: "dark", shouldUseDarkColors: true });
 	});
 
 	it("defaults to system when no preference is stored", () => {
 		const preferences = { themeSource: undefined };
-		let themeSource: "system" | "light" | "dark" = "light";
-		const theme = {
-			get themeSource() {
-				return themeSource;
-			},
-			set themeSource(next: "system" | "light" | "dark") {
-				themeSource = next;
-			},
-			get shouldUseDarkColors() {
-				return themeSource !== "light";
-			},
-		};
+		const theme = { themeSource: "light" as "system" | "light" | "dark" };
 
-		const state = restoreNativeThemeFromPreferences(preferences as never, theme);
+		restoreNativeThemeFromPreferences(preferences as never, theme);
 		expect(theme.themeSource).toBe("system");
-		expect(state.source).toBe("system");
-		expect(state.shouldUseDarkColors).toBe(true);
 	});
 });

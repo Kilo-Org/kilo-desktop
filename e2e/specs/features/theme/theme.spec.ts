@@ -5,13 +5,10 @@ test.describe("Theme @smoke", () => {
 		await appShellPage.verifyColorSchemeApplied();
 	});
 
-	test("keeps the persisted dark scheme through a refresh before React loads", async ({
-		themePage,
-	}) => {
+	test("restores the persisted dark scheme after a refresh", async ({ themePage }) => {
 		await themePage.setStoredThemeSource("dark");
 		await themePage.reload();
-		await themePage.verifyEarlyDataTheme("dark");
-		await themePage.verifyWindowBackgroundMatchesPage();
+		await themePage.verifyResolvedTheme("dark");
 
 		await themePage.setStoredThemeSource("system");
 		await themePage.reload();

@@ -1,37 +1,19 @@
 import { nativeTheme, type NativeTheme } from "electron";
 
-import type { IpcHandlers, ThemeSource, ThemeState } from "@anaconda-agentic-desktop/contracts";
+import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
 import type { ElectronWindow } from "../../platform/ElectronWindow.js";
 import type { PreferencesStore } from "../../platform/PreferencesStore.js";
 
 /**
- * Single chrome policy: persist source for cold start, mirror nativeTheme for
- * OS dialogs/menus, and repaint live windows.
- */
-export function applyRendererTheme(
-	state: ThemeState,
-	electronWindow: ElectronWindow,
-	preferences: PreferencesStore,
-	theme: Pick<NativeTheme, "themeSource"> = nativeTheme,
-): void {
-	preferences.setThemeSource(state.source);
-	theme.themeSource = state.source;
-	electronWindow.applyColorScheme(state.shouldUseDarkColors);
-}
-
-/**
  * Restore nativeTheme from preferences before the first window is created so
  * backgroundColor / dialogs / menus agree with the renderer-owned source.
- * After this, `nativeTheme.shouldUseDarkColors` is the cold-start chrome signal.
  */
 export function restoreNativeThemeFromPreferences(
 	preferences: PreferencesStore,
-	theme: Pick<NativeTheme, "themeSource" | "shouldUseDarkColors"> = nativeTheme,
-): ThemeState {
-	const source: ThemeSource = preferences.themeSource ?? "system";
-	theme.themeSource = source;
-	return { source, shouldUseDarkColors: theme.shouldUseDarkColors };
+	theme: Pick<NativeTheme, "themeSource"> = nativeTheme,
+): void {
+	theme.themeSource = preferences.themeSource ?? "system";
 }
 
 /**
@@ -45,7 +27,9 @@ export function createThemeHandlers(
 ): Pick<IpcHandlers, "theme:sync"> {
 	return {
 		"theme:sync": (state) => {
-			applyRendererTheme(state, electronWindow, preferences, theme);
+			preferences.setThemeSource(state.source);
+			theme.themeSource = state.source;
+			electronWindow.applyColorScheme(state.shouldUseDarkColors);
 			return undefined;
 		},
 	};

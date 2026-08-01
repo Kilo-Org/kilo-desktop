@@ -1,16 +1,16 @@
 import { z } from "zod";
 
 import { defineMethod } from "../contract.js";
+import { THEME_SOURCES } from "./theme-tokens.js";
 
 export * from "./theme-tokens.js";
 
-export const themeSourceSchema = z.enum(["system", "light", "dark"]);
+export const themeSourceSchema = z.enum(THEME_SOURCES);
 export const themeStateSchema = z.object({
 	source: themeSourceSchema,
 	shouldUseDarkColors: z.boolean(),
 });
 
-export type ThemeSource = z.infer<typeof themeSourceSchema>;
 export type ThemeState = z.infer<typeof themeStateSchema>;
 
 export const themeMethods = {

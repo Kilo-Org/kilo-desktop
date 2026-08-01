@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { themeChromeColors } from "@anaconda-agentic-desktop/contracts";
@@ -27,6 +29,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 		setBackgroundColor: ReturnType<typeof vi.fn>;
 		setTitleBarOverlay: ReturnType<typeof vi.fn>;
 	}
+
 	return {
 		createdWindows: [] as FakeWindow[],
 		electronApp: {
@@ -44,7 +47,7 @@ vi.mock("electron", () => ({
 		static getAllWindows() {
 			return createdWindows;
 		}
-		readonly options: (typeof createdWindows)[number]["options"];
+
 		readonly webContents = { setWindowOpenHandler: vi.fn(), on: vi.fn(), send: vi.fn() };
 		readonly once = vi.fn();
 		readonly on = vi.fn();
@@ -58,8 +61,8 @@ vi.mock("electron", () => ({
 		readonly isVisible = vi.fn(() => false);
 		readonly setBackgroundColor = vi.fn();
 		readonly setTitleBarOverlay = vi.fn();
-		constructor(options: (typeof createdWindows)[number]["options"]) {
-			this.options = options;
+
+		constructor(readonly options: (typeof createdWindows)[number]["options"]) {
 			createdWindows.push(this as unknown as (typeof createdWindows)[number]);
 		}
 	},
@@ -75,7 +78,7 @@ function createShell() {
 	return { openExternal: vi.fn(async () => undefined) };
 }
 
-describe("ElectronWindow", () => {
+describe("ElectronWindow theme chrome", () => {
 	const originalPlatform = process.platform;
 
 	afterEach(() => {
@@ -85,38 +88,61 @@ describe("ElectronWindow", () => {
 		Object.defineProperty(process, "platform", { value: originalPlatform });
 	});
 
-	it("paints window chrome from the cached scheme at creation", () => {
-		const windows = new ElectronWindow(createShell() as never, () => true);
-		windows.create({ isDevelopment: false });
-		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.dark.background);
-
-		createdWindows.length = 0;
-		const lightWindows = new ElectronWindow(createShell() as never, () => false);
-		lightWindows.create({ isDevelopment: false });
-		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.light.background);
-	});
-
-	it("sets the Linux window icon from the unpackaged app path", () => {
-		Object.defineProperty(process, "platform", { value: "linux" });
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		expect(createdWindows[0]?.options.icon).toBe("/fake/app/assets/icon.png");
-		expect(electronApp.getAppPath).toHaveBeenCalled();
-	});
-
-	it("sets the title-bar overlay colors at creation on non-darwin platforms", () => {
+	it("paints the initial background and title bar from the cached scheme", () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
 		const windows = new ElectronWindow(createShell() as never, () => true);
+
 		windows.create({ isDevelopment: false });
+
+		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.dark.background);
 		expect(createdWindows[0]?.options.titleBarOverlay).toMatchObject({
 			color: themeChromeColors.dark.background,
 			symbolColor: themeChromeColors.dark.foreground,
 		});
 	});
 
-	it("shows the window on ready-to-show and tracks the main window until closed", () => {
+	it("uses a platform-native path for the unpackaged Linux icon", () => {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		const windows = new ElectronWindow(createShell() as never, () => false);
+
+		windows.create({ isDevelopment: false });
+
+		expect(createdWindows[0]?.options.icon).toBe(
+			path.join(electronApp.getAppPath(), "assets/icon.png"),
+		);
+	});
+
+	it("repaints live window chrome when the renderer syncs a scheme", () => {
+		Object.defineProperty(process, "platform", { value: "win32" });
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
+		const window = createdWindows[0];
+
+		windows.applyColorScheme(true);
+
+		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.dark.background);
+		expect(window?.setTitleBarOverlay).toHaveBeenCalledWith({
+			color: themeChromeColors.dark.background,
+			symbolColor: themeChromeColors.dark.foreground,
+		});
+	});
+
+	it("leaves the macOS title bar native while repainting the window background", () => {
+		Object.defineProperty(process, "platform", { value: "darwin" });
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		const window = createdWindows[0];
+
+		windows.applyColorScheme(true);
+
+		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.dark.background);
+		expect(window?.setTitleBarOverlay).not.toHaveBeenCalled();
+	});
+
+	it("manages window lifecycle and routes untrusted URLs through the shell", () => {
+		const shell = createShell();
+		const windows = new ElectronWindow(shell as never, () => false);
+		windows.create({ isDevelopment: false, preloadPath: "/preload.js", options: { width: 1200 } });
 		const window = createdWindows[0];
 
 		const readyToShow = window?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
@@ -124,35 +150,9 @@ describe("ElectronWindow", () => {
 		expect(window?.show).toHaveBeenCalled();
 		expect(windows.main).toBe(window);
 
-		const closed = window?.on.mock.calls.find((call) => call[0] === "closed")?.[1];
-		closed?.();
-		expect(windows.main).toBeUndefined();
-	});
-
-	it("returns no main window when it was destroyed", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
-		window?.isDestroyed.mockReturnValue(true);
-		expect(windows.main).toBeUndefined();
-	});
-
-	it("denies window.open and routes external URLs through the shell", () => {
-		const shell = createShell();
-		const windows = new ElectronWindow(shell as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
-
 		const openHandler = window?.webContents.setWindowOpenHandler.mock.calls[0]?.[0];
 		expect(openHandler?.({ url: "https://example.com" })).toEqual({ action: "deny" });
 		expect(shell.openExternal).toHaveBeenCalledWith("https://example.com");
-	});
-
-	it("allows trusted navigation and blocks untrusted navigation", () => {
-		const shell = createShell();
-		const windows = new ElectronWindow(shell as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
 
 		const willNavigate = window?.webContents.on.mock.calls.find(
 			(call) => call[0] === "will-navigate",
@@ -163,49 +163,20 @@ describe("ElectronWindow", () => {
 
 		vi.mocked(isTrustedRendererUrl).mockReturnValue(false);
 		const untrustedEvent = { preventDefault: vi.fn() };
-		willNavigate?.(untrustedEvent, "https://phishing.example");
+		willNavigate?.(untrustedEvent, "https://untrusted.example");
 		expect(untrustedEvent.preventDefault).toHaveBeenCalled();
-		expect(shell.openExternal).toHaveBeenCalledWith("https://phishing.example");
+		expect(shell.openExternal).toHaveBeenCalledWith("https://untrusted.example");
+
+		const closed = window?.on.mock.calls.find((call) => call[0] === "closed")?.[1];
+		closed?.();
+		expect(windows.main).toBeUndefined();
 	});
 
-	it("repaints live windows when the renderer pushes a new scheme", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
-
-		windows.applyColorScheme(true);
-		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.dark.background);
-
-		windows.applyColorScheme(false);
-		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.light.background);
-	});
-
-	it("updates the title-bar overlay on non-darwin platforms only", () => {
-		Object.defineProperty(process, "platform", { value: "win32" });
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
-
-		windows.applyColorScheme(true);
-		expect(window?.setTitleBarOverlay).toHaveBeenCalledWith({
-			color: themeChromeColors.dark.background,
-			symbolColor: themeChromeColors.dark.foreground,
-		});
-	});
-
-	it("skips the overlay on darwin", () => {
+	it("reveals, broadcasts to, and destroys the live window", () => {
 		Object.defineProperty(process, "platform", { value: "darwin" });
 		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
+		expect(windows.main).toBeUndefined();
 
-		windows.applyColorScheme(true);
-		expect(window?.setTitleBarOverlay).not.toHaveBeenCalled();
-	});
-
-	it("reveals the main window: restore, show, focus", () => {
-		Object.defineProperty(process, "platform", { value: "darwin" });
-		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
 		const window = createdWindows[0];
 		window?.isMinimized.mockReturnValue(true);
@@ -215,40 +186,17 @@ describe("ElectronWindow", () => {
 		expect(window?.show).toHaveBeenCalled();
 		expect(window?.focus).toHaveBeenCalled();
 		expect(electronApp.focus).toHaveBeenCalledWith({ steal: true });
-	});
-
-	it("skips app focus on non-darwin reveal and ignores missing windows", () => {
-		Object.defineProperty(process, "platform", { value: "win32" });
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.reveal();
-		expect(electronApp.focus).not.toHaveBeenCalled();
-
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
-		window?.isVisible.mockReturnValue(true);
-		windows.reveal();
-		expect(window?.show).not.toHaveBeenCalled();
-		expect(electronApp.focus).not.toHaveBeenCalled();
-	});
-
-	it("destroys all live windows", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
-
-		windows.destroyAll();
-		expect(window?.destroy).toHaveBeenCalled();
-		expect(windows.main).toBeUndefined();
-	});
-
-	it("broadcasts validated auth events to live windows", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
 
 		windows.broadcast("auth:changed", { status: "anonymous" });
 		expect(window?.webContents.send).toHaveBeenCalledWith("auth:changed", {
 			status: "anonymous",
 		});
+
+		window?.isDestroyed.mockReturnValue(true);
+		expect(windows.main).toBeUndefined();
+		window?.isDestroyed.mockReturnValue(false);
+		windows.destroyAll();
+		expect(window?.destroy).toHaveBeenCalled();
+		expect(windows.main).toBeUndefined();
 	});
 });

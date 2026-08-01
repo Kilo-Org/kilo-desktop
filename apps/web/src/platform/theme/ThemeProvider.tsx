@@ -3,6 +3,7 @@ import {
 	use,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useState,
 	useSyncExternalStore,
 	type ReactNode,
@@ -44,8 +45,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 	const systemDark = useSyncExternalStore(subscribeSystemScheme, getSystemSchemeSnapshot);
 	const resolved = resolveColorScheme(source, systemDark);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		applyDocumentColorScheme(resolved);
+	}, [resolved]);
+
+	useEffect(() => {
 		void api.theme.sync({ source, shouldUseDarkColors: resolved === "dark" }).catch((error) => {
 			console.warn("[theme] failed to sync chrome to host", error);
 		});

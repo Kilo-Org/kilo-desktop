@@ -6,12 +6,15 @@ import {
 	resolveColorScheme,
 	resolveShouldUseDarkColors,
 	THEME_STORAGE_KEY,
+	THEME_SOURCES,
+	themeSourceSchema,
 	themeBootstrapScript,
 	themeChromeColors,
 } from "./theme.js";
 
 describe("theme contracts", () => {
 	it("resolves explicit and system sources", () => {
+		expect(themeSourceSchema.options).toEqual(THEME_SOURCES);
 		expect(resolveShouldUseDarkColors("dark", false)).toBe(true);
 		expect(resolveShouldUseDarkColors("light", true)).toBe(false);
 		expect(resolveShouldUseDarkColors("system", true)).toBe(true);

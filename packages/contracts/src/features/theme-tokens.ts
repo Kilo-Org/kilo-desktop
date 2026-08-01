@@ -1,4 +1,5 @@
-export type ThemeSource = "system" | "light" | "dark";
+export const THEME_SOURCES = ["system", "light", "dark"] as const;
+export type ThemeSource = (typeof THEME_SOURCES)[number];
 export type ResolvedColorScheme = "light" | "dark";
 
 /** localStorage key for the renderer-owned theme source (and the pre-paint bootstrap). */

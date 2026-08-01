@@ -48,6 +48,58 @@ describe("createBrowserLocalApi", () => {
 		});
 	});
 
+	it("shows web notifications only when permission is already granted", async () => {
+		const created: Array<{ title: string; options?: NotificationOptions }> = [];
+		class FakeNotification {
+			static permission: NotificationPermission = "granted";
+			constructor(title: string, options?: NotificationOptions) {
+				created.push({ title, ...(options ? { options } : {}) });
+			}
+		}
+		vi.stubGlobal("Notification", FakeNotification);
+
+		const api = createBrowserLocalApi();
+		await expect(
+			api.notifications.show({ title: "Hi", message: "There", type: "info" }),
+		).resolves.toEqual({ delivered: true });
+		expect(created).toEqual([{ title: "Hi", options: { body: "There" } }]);
+
+		FakeNotification.permission = "denied";
+		const denied = await api.notifications.show({ title: "Hi", message: "There", type: "info" });
+		expect(denied.delivered).toBe(false);
+		expect(denied.reason).toMatch(/permission/);
+	});
+
+	it("sets the app badge when the Badging API is available", async () => {
+		const setAppBadge = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { setAppBadge });
+		const api = createBrowserLocalApi();
+		await expect(api.notifications.setBadge({ count: 2 })).resolves.toEqual({ delivered: true });
+		expect(setAppBadge).toHaveBeenCalledWith(2);
+
+		setAppBadge.mockRejectedValueOnce(new Error("nope"));
+		const failed = await api.notifications.setBadge({ count: 2 });
+		expect(failed.delivered).toBe(false);
+
+		vi.stubGlobal("navigator", {});
+		const unsupported = await api.notifications.setBadge({ count: 2 });
+		expect(unsupported.delivered).toBe(false);
+		expect(unsupported.reason).toMatch(/not supported/);
+	});
+
+	it("rejects every fs method — no filesystem sandbox in browser mode", async () => {
+		const api = createBrowserLocalApi();
+		const scope = { featureId: "demo", path: "x.txt" };
+		await expect(api.fs.readFile(scope)).rejects.toMatchObject({ code: "TRANSPORT" });
+		await expect(api.fs.writeFile({ ...scope, content: "y" })).rejects.toThrow(
+			/not available in browser mode/,
+		);
+		await expect(api.fs.exists(scope)).rejects.toThrow(/not available in browser mode/);
+		await expect(api.fs.mkdir(scope)).rejects.toThrow(/not available in browser mode/);
+		await expect(api.fs.readdir(scope)).rejects.toThrow(/not available in browser mode/);
+		await expect(api.fs.remove(scope)).rejects.toThrow(/not available in browser mode/);
+	});
+
 	it("reports an anonymous auth session with a no-op onChanged", async () => {
 		const api = createBrowserLocalApi();
 		expect(await api.auth.getSession()).toEqual({ status: "anonymous" });

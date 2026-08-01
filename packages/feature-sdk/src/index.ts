@@ -16,6 +16,7 @@ export type {
 	AuthSession,
 	SdkShell,
 	SdkFs,
+	ShellFsDelegate,
 	SdkTools,
 	SdkIntents,
 	SchemaLike,

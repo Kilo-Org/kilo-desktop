@@ -56,14 +56,30 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		);
 	});
 
-	it("reports undelivered notifications instead of throwing", () => {
-		const system = createAppFeatureSystem(createBrowserLocalApi(), [demoFeature]);
-		const sdk = system.getSdk("demo");
-		const shown = sdk.notifications.show({ type: "info", title: "Hi", message: "There" });
-		expect(shown.delivered).toBe(false);
-		expect(shown.reason).toMatch(/not yet wired/);
-		const badge = sdk.notifications.setBadge(3);
-		expect(badge.delivered).toBe(false);
+	it("bridges sdk.notifications to the LocalApi notifications adapter", async () => {
+		const show = vi.fn(async () => ({ delivered: true }));
+		const setBadge = vi.fn(async () => ({ delivered: false, reason: "unsupported" }));
+		const api = { ...createBrowserLocalApi(), notifications: { show, setBadge } };
+		const sdk = createAppFeatureSystem(api, [demoFeature]).getSdk("demo");
+
+		await expect(
+			sdk.notifications.show({ type: "info", title: "Hi", message: "There" }),
+		).resolves.toEqual({ delivered: true });
+		expect(show).toHaveBeenCalledWith({ type: "info", title: "Hi", message: "There" });
+
+		await expect(sdk.notifications.setBadge(3)).resolves.toEqual({
+			delivered: false,
+			reason: "unsupported",
+		});
+		expect(setBadge).toHaveBeenCalledWith({ count: 3 });
+	});
+
+	it("reports undelivered browser notifications without permission instead of throwing", async () => {
+		const sdk = createAppFeatureSystem(createBrowserLocalApi(), [demoFeature]).getSdk("demo");
+		const result = await sdk.notifications.show({ type: "info", title: "Hi", message: "There" });
+		// Headless browser tests never carry a granted notification permission.
+		expect(result.delivered).toBe(false);
+		expect(result.reason).toBeDefined();
 	});
 
 	it("peeks and subscribes to the effective theme", () => {
@@ -133,15 +149,60 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		expect(open).toHaveBeenCalledWith("https://example.com", "_blank", "noopener,noreferrer");
 	});
 
-	it("rejects sdk.fs calls (not wired yet)", async () => {
+	it("scopes sdk.fs calls with the calling feature's id through the LocalApi fs adapter", async () => {
+		const calls: unknown[] = [];
+		const fs: LocalApi["fs"] = {
+			readFile: async (input) => {
+				calls.push(["readFile", input]);
+				return { content: "hello" };
+			},
+			writeFile: async (input) => {
+				calls.push(["writeFile", input]);
+			},
+			exists: async (input) => {
+				calls.push(["exists", input]);
+				return { exists: true };
+			},
+			mkdir: async (input) => {
+				calls.push(["mkdir", input]);
+			},
+			readdir: async (input) => {
+				calls.push(["readdir", input]);
+				return { entries: ["a.txt"] };
+			},
+			remove: async (input) => {
+				calls.push(["remove", input]);
+			},
+		};
+		const api = { ...createBrowserLocalApi(), fs };
+		const sdk = createAppFeatureSystem(api, [demoFeature]).getSdk("demo");
+
+		await expect(sdk.fs.readFile("notes/a.txt")).resolves.toBe("hello");
+		await sdk.fs.writeFile("notes/a.txt", "hi");
+		await expect(sdk.fs.exists("notes")).resolves.toBe(true);
+		await sdk.fs.mkdir("notes");
+		await expect(sdk.fs.readdir("notes")).resolves.toEqual(["a.txt"]);
+		await sdk.fs.remove("notes/a.txt");
+
+		expect(calls).toEqual([
+			["readFile", { featureId: "demo", path: "notes/a.txt" }],
+			["writeFile", { featureId: "demo", path: "notes/a.txt", content: "hi" }],
+			["exists", { featureId: "demo", path: "notes" }],
+			["mkdir", { featureId: "demo", path: "notes" }],
+			["readdir", { featureId: "demo", path: "notes" }],
+			["remove", { featureId: "demo", path: "notes/a.txt" }],
+		]);
+	});
+
+	it("rejects sdk.fs calls in browser mode (no filesystem sandbox)", async () => {
 		const system = createAppFeatureSystem(createBrowserLocalApi(), [demoFeature]);
 		const sdk = system.getSdk("demo");
-		await expect(sdk.fs.readFile("x")).rejects.toThrow(/not yet wired/);
-		await expect(sdk.fs.writeFile("x", "y")).rejects.toThrow(/not yet wired/);
-		await expect(sdk.fs.exists("x")).rejects.toThrow(/not yet wired/);
-		await expect(sdk.fs.mkdir("x")).rejects.toThrow(/not yet wired/);
-		await expect(sdk.fs.readdir("x")).rejects.toThrow(/not yet wired/);
-		await expect(sdk.fs.remove("x")).rejects.toThrow(/not yet wired/);
+		await expect(sdk.fs.readFile("x")).rejects.toThrow(/not available in browser mode/);
+		await expect(sdk.fs.writeFile("x", "y")).rejects.toThrow(/not available in browser mode/);
+		await expect(sdk.fs.exists("x")).rejects.toThrow(/not available in browser mode/);
+		await expect(sdk.fs.mkdir("x")).rejects.toThrow(/not available in browser mode/);
+		await expect(sdk.fs.readdir("x")).rejects.toThrow(/not available in browser mode/);
+		await expect(sdk.fs.remove("x")).rejects.toThrow(/not available in browser mode/);
 	});
 
 	it("wires sdk.navigate and sdk.location to the provided navigation delegate", () => {

@@ -27,7 +27,7 @@ import {
  * - sdk.theme.subscribe / sdk.theme.peek (theme observation)
  * - sdk.shell.openExternal / sdk.shell.copyText (shell operations)
  * - sdk.navigate / sdk.location (shell navigation delegate)
- * - sdk.fs.* (filesystem — expected to reject as not yet wired)
+ * - sdk.fs.* (scoped filesystem sandbox — Electron only; rejects in browser mode)
  * - sdk.tools / sdk.intents / sdk.dispatch (deferred — expected to throw)
  * - sdk.onDispose (cleanup registration)
  */
@@ -170,21 +170,25 @@ export function SdkProducerView() {
 	}
 
 	function handleNotification() {
-		const result = sdk.notifications.show({
-			title: "SDK Explorer",
-			message: "This is a test notification from the SDK explorer feature.",
-			type: "success",
-		});
-		appendLog(
-			`notifications.show() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
-		);
+		void sdk.notifications
+			.show({
+				title: "SDK Explorer",
+				message: "This is a test notification from the SDK explorer feature.",
+				type: "success",
+			})
+			.then((result) => {
+				appendLog(
+					`notifications.show() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
+				);
+			});
 	}
 
 	function handleBadge() {
-		const result = sdk.notifications.setBadge(notes.data?.length ?? 0);
-		appendLog(
-			`notifications.setBadge() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
-		);
+		void sdk.notifications.setBadge(notes.data?.length ?? 0).then((result) => {
+			appendLog(
+				`notifications.setBadge() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
+			);
+		});
 	}
 
 	function handleCopyText() {
@@ -200,10 +204,19 @@ export function SdkProducerView() {
 	}
 
 	function handleFsTest() {
-		void sdk.fs.exists("test.txt").then(
-			(exists) => appendLog(`fs.exists() → ${exists}`),
-			(err: Error) => appendLog(`fs.exists() FAILED (expected): ${err.message}`),
-		);
+		// Round-trip through the feature's scoped fs sandbox
+		// (`${userData}/plugins/sdk-producer/`). Browser mode has no
+		// filesystem, so the failure branch is expected there.
+		void (async () => {
+			try {
+				await sdk.fs.writeFile("demo/hello.txt", "Hello from sdk.fs!");
+				const content = await sdk.fs.readFile("demo/hello.txt");
+				const entries = await sdk.fs.readdir("demo");
+				appendLog(`fs round-trip → read "${content}", readdir: [${entries.join(", ")}]`);
+			} catch (error) {
+				appendLog(`fs round-trip FAILED: ${(error as Error).message}`);
+			}
+		})();
 	}
 
 	function handleNavigation() {
@@ -311,7 +324,7 @@ export function SdkProducerView() {
 					<ActionButton label="shell.copyText" onClick={handleCopyText} />
 					<ActionButton label="shell.openExternal" onClick={handleOpenExternal} />
 					<ActionButton label="navigate + location" onClick={handleNavigation} />
-					<ActionButton label="fs.exists (expect fail)" onClick={handleFsTest} />
+					<ActionButton label="fs round-trip" onClick={handleFsTest} />
 					<ActionButton label="deferred APIs (expect throws)" onClick={handleDeferredTest} />
 				</div>
 			</section>

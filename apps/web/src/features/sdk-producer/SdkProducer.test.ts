@@ -138,10 +138,12 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		expect(executed).toBe(true);
 	});
 
-	it("sdk.notifications.show and setBadge are no-ops by default in fake", () => {
+	it("sdk.notifications.show and setBadge report delivery in the fake", async () => {
 		const sdk = createFakeSdk({ featureId: "sdk-producer" });
-		expect(() => sdk.notifications.show({ title: "T", message: "M", type: "info" })).not.toThrow();
-		expect(() => sdk.notifications.setBadge(3)).not.toThrow();
+		await expect(
+			sdk.notifications.show({ title: "T", message: "M", type: "info" }),
+		).resolves.toEqual({ delivered: true });
+		await expect(sdk.notifications.setBadge(3)).resolves.toEqual({ delivered: true });
 	});
 
 	it("sdk.theme.peek returns 'light' by default in fake", () => {
@@ -164,9 +166,20 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: true });
 	});
 
-	it("sdk.fs methods throw 'not implemented' by default in fake", async () => {
+	it("sdk.fs round-trips through the fake's in-memory sandbox", async () => {
 		const sdk = createFakeSdk({ featureId: "sdk-producer" });
-		await expect(async () => sdk.fs.exists("x")).rejects.toThrow(/not implemented/i);
+		await expect(sdk.fs.exists("demo/hello.txt")).resolves.toBe(false);
+		await sdk.fs.writeFile("demo/hello.txt", "Hello from sdk.fs!");
+		await expect(sdk.fs.readFile("demo/hello.txt")).resolves.toBe("Hello from sdk.fs!");
+		await expect(sdk.fs.readdir("demo")).resolves.toEqual(["hello.txt"]);
+		await sdk.fs.remove("demo");
+		await expect(sdk.fs.exists("demo")).resolves.toBe(false);
+	});
+
+	it("sdk.fs rejects sandbox-escaping paths like production", async () => {
+		const sdk = createFakeSdk({ featureId: "sdk-producer" });
+		await expect(sdk.fs.readFile("../other/secret.txt")).rejects.toThrow(/cannot escape/);
+		await expect(sdk.fs.readFile("/etc/passwd")).rejects.toThrow(/must be relative/);
 	});
 
 	it("deferred APIs (tools, intents, dispatch) throw", () => {

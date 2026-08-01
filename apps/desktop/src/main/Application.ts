@@ -1,5 +1,6 @@
 import electronDebug from "electron-debug";
 import { nativeTheme, session } from "electron";
+import path from "node:path";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
@@ -9,18 +10,22 @@ import { bootFeatures, createFeatureHandlers } from "./features/registry/feature
 import { FEATURES } from "./features/registry/features.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
+import { createFsHandlers } from "./features/fs/handlers.js";
+import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
 import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
+import { ElectronNotifications } from "./platform/ElectronNotifications.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
 import { IpcServer } from "./platform/IpcServer.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
+import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { configureUpdater } from "./platform/Updater.js";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
@@ -29,6 +34,11 @@ export class Application {
 	readonly #protocol = new ElectronProtocol();
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
+	readonly #notifications = new ElectronNotifications();
+	// sdk.fs sandbox — same per-feature root as mainSdk.storageDir (Decision #20).
+	readonly #scopedFs = new ScopedFsService((featureId) =>
+		path.join(this.#app.getPath("userData"), "plugins", featureId),
+	);
 	readonly #auth = new AuthSessionService({
 		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,
 	});
@@ -100,6 +110,8 @@ export class Application {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#windows, preferences),
 			...createAuthHandlers(this.#auth),
+			...createNotificationsHandlers(this.#notifications),
+			...createFsHandlers(this.#scopedFs),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(handlers);

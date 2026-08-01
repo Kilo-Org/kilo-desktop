@@ -167,13 +167,13 @@ describe("SdkProvider + useSdk", () => {
 		errorSpy.mockRestore();
 	});
 
-	it("exposes the host-provided shell delegates on the SDK", () => {
+	it("exposes the host-provided shell delegates on the SDK", async () => {
 		const system = makeSystem();
 		const sdk = system.getSdk("demo");
 		expect(sdk.theme.peek()).toBe("light");
-		expect(sdk.notifications.show({ type: "info", title: "Hi", message: "There" })).toEqual({
-			delivered: true,
-		});
+		await expect(
+			sdk.notifications.show({ type: "info", title: "Hi", message: "There" }),
+		).resolves.toEqual({ delivered: true });
 	});
 
 	it("routes invoke through the invokeFallback when provided, without booting features", async () => {

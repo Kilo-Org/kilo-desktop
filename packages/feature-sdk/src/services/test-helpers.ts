@@ -24,8 +24,8 @@ export const testChannels = {
 export function makeServices(featureRouter = new FeatureRouter()) {
 	const shellDelegates: ShellDelegates = {
 		notifications: {
-			show: () => ({ delivered: true }),
-			setBadge: () => ({ delivered: true }),
+			show: async () => ({ delivered: true }),
+			setBadge: async () => ({ delivered: true }),
 		},
 		theme: {
 			subscribe: (fn) => {
@@ -47,7 +47,7 @@ export function makeServices(featureRouter = new FeatureRouter()) {
 		},
 		shell: { openExternal: async () => ({ opened: true }), copyText: async () => undefined },
 		fs: {
-			readFile: async () => "",
+			readFile: async (_featureId: string, _path: string) => "",
 			writeFile: async () => undefined,
 			exists: async () => false,
 			mkdir: async () => undefined,

@@ -4,14 +4,8 @@ import { z } from "zod";
 import { defineMethod } from "./channel-map.js";
 import { FeatureError } from "./errors.js";
 import { createSdk } from "./services/create-sdk.js";
-import type { ShellDelegates } from "./services/create-sdk.js";
-import { CapabilityRegistry } from "./services/capability-registry.js";
-import { CommandRegistry } from "./services/command-registry.js";
-import { ContributionRegistry } from "./services/contribution-registry.js";
-import { EventBus } from "./services/event-bus.js";
 import { FeatureRouter } from "./services/feature-router.js";
-import { createStaticNavigation } from "./services/navigation.js";
-import { StateBroker } from "./services/state-broker.js";
+import { makeServices } from "./services/test-helpers.js";
 
 const todoSchema = z.object({
 	id: z.string(),
@@ -39,55 +33,6 @@ type TodoService = {
 	add(args: { title: string }): Promise<Todo>;
 	toggle(args: { id: string }): Promise<Todo>;
 };
-
-const noop = () => {};
-
-function makeServices(featureRouter = new FeatureRouter()) {
-	const shellDelegates: ShellDelegates = {
-		notifications: {
-			show: () => ({ delivered: true }),
-			setBadge: () => ({ delivered: true }),
-		},
-		theme: {
-			subscribe: (fn) => {
-				fn("light");
-				return noop;
-			},
-			peek: () => "light",
-		},
-		auth: {
-			subscribe: (fn) => {
-				fn({ status: "anonymous" });
-				return noop;
-			},
-			peek: () => ({ status: "anonymous" }),
-			getSession: async () => ({ status: "anonymous" }),
-			refresh: async () => ({ status: "anonymous" }),
-			login: async () => ({ status: "anonymous" }),
-			logout: async () => ({ status: "anonymous" }),
-		},
-		shell: { openExternal: async () => ({ opened: true }), copyText: async () => undefined },
-		fs: {
-			readFile: async () => "",
-			writeFile: async () => undefined,
-			exists: async () => false,
-			mkdir: async () => undefined,
-			readdir: async () => [],
-			remove: async () => undefined,
-		},
-		navigation: createStaticNavigation(),
-	};
-
-	return {
-		eventBus: new EventBus(),
-		stateBroker: new StateBroker(),
-		capabilityRegistry: new CapabilityRegistry(),
-		contributionRegistry: new ContributionRegistry(),
-		commandRegistry: new CommandRegistry(),
-		featureRouter,
-		shellDelegates,
-	};
-}
 
 describe("defineMethod + sdk.client", () => {
 	it("invokes handlers through sdk.client", async () => {

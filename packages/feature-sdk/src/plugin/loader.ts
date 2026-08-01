@@ -1,5 +1,7 @@
 import { PLUGIN_MANIFEST_FILENAME, pluginManifestSchema, type PluginManifest } from "./manifest.js";
 
+import { isShellZone } from "../types/zones.js";
+
 import type { FeatureRegistration, MainSdk } from "../types/sdk.js";
 
 /**
@@ -107,6 +109,13 @@ export interface DiscoverPluginsOptions {
 	 * mode silently REPLACES the built-in feature's handlers).
 	 */
 	reservedIds?: Iterable<string>;
+	/**
+	 * Route paths owned by the shell's file-based routes ("/", "/split", ...).
+	 * Static shell routes always outrank the plugin catch-all, so a colliding
+	 * manifest route could never render — it is skipped with an issue instead
+	 * of producing a dead nav entry. Only consulted for `entry: "web"`.
+	 */
+	reservedRoutePaths?: Iterable<string>;
 }
 
 function describeManifestError(error: unknown): string {
@@ -139,6 +148,7 @@ export function discoverPlugins(
 	const plugins: DiscoveredPlugin[] = [];
 	const issues: PluginDiscoveryIssue[] = [];
 	const reservedIds = new Set(options.reservedIds);
+	const reservedRoutePaths = new Set(options.reservedRoutePaths);
 	const seenIds = new Set<string>();
 	const seenRoutePaths = new Map<string, string>();
 
@@ -169,6 +179,19 @@ export function discoverPlugins(
 		}
 		seenIds.add(manifest.id);
 
+		// Declared zones are metadata about the plugin's sdk.contribute usage.
+		// The shell renders only canonical ShellZone ids, so a non-canonical
+		// declaration is almost certainly a typo whose contribution would
+		// silently render nowhere — report it, but keep the plugin.
+		for (const zone of manifest.zones) {
+			if (!isShellZone(zone)) {
+				issues.push({
+					pluginId: manifest.id,
+					message: `Plugin "${manifest.id}" declares unknown zone "${zone}" — shell zones are "sidebar", "status-bar", and "dashboard"; contributions to other zones render nowhere.`,
+				});
+			}
+		}
+
 		// Registries are per-process, so a bundled entry whose manifest lacks
 		// this process's entry point is a registration mistake (e.g. added to
 		// the web registry but plugin.json declares no "web") — report it
@@ -185,7 +208,9 @@ export function discoverPlugins(
 		const registration = createRegistration(manifest, candidate.module, entry, issues);
 		if (registration) {
 			const routes =
-				entry === "web" ? resolveRoutes(manifest, candidate.module, seenRoutePaths, issues) : [];
+				entry === "web"
+					? resolveRoutes(manifest, candidate.module, reservedRoutePaths, seenRoutePaths, issues)
+					: [];
 			plugins.push({ manifest, registration, routes });
 		}
 	}
@@ -195,12 +220,14 @@ export function discoverPlugins(
 
 /**
  * Resolve manifest routes against the web entry module's exports. Routes with
- * a missing/non-component export, or a path already claimed by another plugin,
- * are skipped with an issue — the plugin itself still loads.
+ * a missing/non-component export, a path reserved by a shell route, or a path
+ * already claimed by another plugin are skipped with an issue — the plugin
+ * itself still loads.
  */
 function resolveRoutes(
 	manifest: PluginManifest,
 	module: PluginModule,
+	reservedRoutePaths: ReadonlySet<string>,
 	seenRoutePaths: Map<string, string>,
 	issues: PluginDiscoveryIssue[],
 ): ResolvedPluginRoute[] {
@@ -210,6 +237,16 @@ function resolveRoutes(
 	const browserSafe = manifest.main === undefined || typeof module.browserRegister === "function";
 
 	for (const route of manifest.routes) {
+		// Static shell routes outrank the plugin catch-all, so this route could
+		// never render — report it instead of surfacing a dead nav entry.
+		if (reservedRoutePaths.has(route.path)) {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" declares route "${route.path}" which collides with a shell-owned route — skipping the route.`,
+			});
+			continue;
+		}
+
 		const claimedBy = seenRoutePaths.get(route.path);
 		if (claimedBy !== undefined) {
 			issues.push({

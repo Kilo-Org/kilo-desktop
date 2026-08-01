@@ -273,6 +273,36 @@ describe("route resolution", () => {
 		]);
 	});
 
+	it("skips a route path reserved by a shell-owned route", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { browserRegister, PingPage } },
+		];
+		const discovery = discoverPlugins(bundled, "web", { reservedRoutePaths: ["/", "/ping"] });
+
+		expect(discovery.plugins).toHaveLength(1);
+		expect(pluginRoutes(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining("collides with a shell-owned route"),
+			},
+		]);
+	});
+
+	it("reports non-canonical declared zones and keeps the plugin", () => {
+		const zonedManifest = { ...manifest, zones: ["status-bar", "statusbar"] };
+		const bundled: BundledPlugin[] = [{ manifest: zonedManifest, module: { mainRegister } }];
+		const discovery = discoverPlugins(bundled, "main");
+
+		expect(discovery.plugins).toHaveLength(1);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining('unknown zone "statusbar"'),
+			},
+		]);
+	});
+
 	it("does not resolve routes for main-entry discovery (renderer concern)", () => {
 		const bundled: BundledPlugin[] = [
 			{ manifest: routedManifest, module: { mainRegister, PingPage } },

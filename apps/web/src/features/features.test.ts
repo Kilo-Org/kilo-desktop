@@ -1,42 +1,31 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
-import type { Note } from "@anaconda-agentic-desktop/contracts";
+import { SHELL_ROUTE_PATHS } from "./features";
 
-import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-import { createAppFeatureSystem } from "@/platform/featureSystem";
+/**
+ * SHELL_ROUTE_PATHS must mirror the generated route tree (it cannot import
+ * routeTree.gen directly — that would create an import cycle through the
+ * route components). This test reads the generated file as text so drift
+ * fails fast: a new shell route file must also be added to the reserved list,
+ * or a plugin could silently claim its path.
+ */
+describe("SHELL_ROUTE_PATHS", () => {
+	it("matches the shell-owned paths in routeTree.gen.ts", () => {
+		const routeTreePath = fileURLToPath(new URL("../routeTree.gen.ts", import.meta.url));
+		const source = readFileSync(routeTreePath, "utf8");
 
-import { WEB_FEATURES } from "./features";
+		const fullPathsLine = /fullPaths:\s*(.+)/.exec(source)?.[1];
+		expect(fullPathsLine).toBeDefined();
 
-describe("WEB_FEATURES browserRegister", () => {
-	it("boots sdk-producer CRUD including delete and clear", async () => {
-		const system = createAppFeatureSystem(createBrowserLocalApi(), WEB_FEATURES);
-		const sdk = system.getSdk("sdk-producer");
+		const generatedPaths = [...fullPathsLine!.matchAll(/'([^']+)'/g)]
+			.map((match) => match[1]!)
+			// "/$" is the plugin catch-all — the one route plugins resolve through.
+			.filter((path) => path !== "/$")
+			.sort();
 
-		const note = (await sdk.invoke("add", { text: "keep" })) as Note;
-		const other = (await sdk.invoke("add", { text: "drop" })) as Note;
-		expect((await sdk.invoke("list")) as Note[]).toHaveLength(2);
-
-		await expect(sdk.invoke("delete", { id: other.id })).resolves.toEqual({ deleted: true });
-		await expect(sdk.invoke("delete", { id: "missing" })).resolves.toEqual({ deleted: false });
-		expect((await sdk.invoke("list")) as Note[]).toEqual([note]);
-
-		await expect(sdk.invoke("clear")).resolves.toEqual({ count: 1 });
-		expect((await sdk.invoke("list")) as Note[]).toEqual([]);
-
-		const echo = (await sdk.invoke("echo", { message: "hi" })) as {
-			echoed: string;
-			timestamp: number;
-		};
-		expect(echo.echoed).toBe("[sdk-producer] hi");
-		expect(typeof echo.timestamp).toBe("number");
-	});
-
-	it("boots sdk-consumer ping", async () => {
-		const system = createAppFeatureSystem(createBrowserLocalApi(), WEB_FEATURES);
-		const sdk = system.getSdk("sdk-consumer");
-		await expect(sdk.invoke("ping")).resolves.toEqual({
-			pong: true,
-			from: "sdk-consumer",
-		});
+		expect([...SHELL_ROUTE_PATHS].sort()).toEqual(generatedPaths);
 	});
 });

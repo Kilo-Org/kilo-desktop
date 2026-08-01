@@ -1,3 +1,5 @@
+import { createStaticNavigation } from "@anaconda-agentic-desktop/feature-sdk";
+
 import type { SdkNavigation, ShellLocation } from "@anaconda-agentic-desktop/feature-sdk";
 
 /**
@@ -51,12 +53,14 @@ export function createRouterNavigation(router: ShellRouterLike): SdkNavigation {
 
 /**
  * Fallback delegate for hosts that boot a feature system without a router
- * (tests, tooling). Navigation is a warn-once no-op; the location reports "/".
+ * (tests, tooling). Built on the SDK's shared static delegate (location
+ * pinned to "/") with navigation upgraded to a warn-once no-op so the gap
+ * stays visible during development.
  */
 export function createInertNavigation(): SdkNavigation {
 	let warned = false;
-	const home: ShellLocation = { path: "/", search: {} };
 	return {
+		...createStaticNavigation(),
 		navigate(path) {
 			if (!warned) {
 				warned = true;
@@ -65,10 +69,5 @@ export function createInertNavigation(): SdkNavigation {
 				);
 			}
 		},
-		subscribe(fn) {
-			fn(home);
-			return () => {};
-		},
-		peek: () => home,
 	};
 }

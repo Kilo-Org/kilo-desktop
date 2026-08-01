@@ -3,6 +3,7 @@ import {
 	CommandRegistry,
 	ContributionRegistry,
 	createSdk,
+	createStaticNavigation,
 	EventBus,
 	FeatureRouter,
 	StateBroker,
@@ -129,19 +130,11 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 			},
 			options.fs,
 		),
-		// The fake starts at "/" and navigation is a no-op. Override to record
-		// navigations or to drive location updates from the test.
-		navigation: merge<ShellDelegates["navigation"]>(
-			{
-				navigate: noop,
-				subscribe: (fn) => {
-					fn({ path: "/", search: {} });
-					return noop;
-				},
-				peek: () => ({ path: "/", search: {} }),
-			},
-			options.navigation,
-		),
+		// The fake pins the location to "/" and navigation is a no-op — the
+		// shared static delegate keeps the subscribe-fires-synchronously
+		// contract aligned with production. Override to record navigations or
+		// to drive location updates from the test.
+		navigation: merge<ShellDelegates["navigation"]>(createStaticNavigation(), options.navigation),
 	};
 
 	return {

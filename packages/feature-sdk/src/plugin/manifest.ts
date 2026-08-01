@@ -24,8 +24,12 @@ const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$
  * when the path is visited, and derives a sidebar nav entry from label/icon.
  */
 export const pluginRouteSchema = z.strictObject({
-	/** Absolute route path, e.g. "/todos". */
-	path: z.string().regex(/^\/.*/, "Route path must start with '/'."),
+	/**
+	 * Absolute route path with at least one segment, e.g. "/todos". "/" is
+	 * rejected — the shell owns the root route, so a "/" plugin route could
+	 * never render.
+	 */
+	path: z.string().regex(/^\/.+/, "Route path must start with '/' and have at least one segment."),
 	/** Human-readable navigation label. */
 	label: z.string().min(1),
 	/**

@@ -7,20 +7,25 @@ The shim SDK that features program against today, shaped like the future plugin 
 
 ## Quick start
 
-A feature ships two halves that communicate only through the SDK:
+A feature ships two halves that communicate only through the SDK. In `apps/` (features awaiting migration) they live in three locations; a plugin folds the same split into one package:
 
 ```
-apps/desktop/src/main/features/<id>/    # backend: services, DB, handlers (mainRegister)
-apps/web/src/features/<id>/             # frontend: React components, hooks (useSdk)
-packages/contracts/src/features/<id>.ts # Zod schemas shared by both
+# Feature in apps/                              # Plugin in plugins/<id>/
+apps/desktop/src/main/features/<id>/            src/main/       # backend (mainRegister)
+apps/web/src/features/<id>/                     src/web/        # frontend (useSdk)
+packages/contracts/src/features/<id>.ts         src/contracts/  # Zod schemas shared by both
 ```
 
-**Backend** — register handlers in `mainRegister`, declare it in the FEATURES array:
+**Backend** — register handlers in `mainRegister`, declare it in the FEATURES array (or `plugin.json` + `BUNDLED_PLUGINS` for a plugin). The example paths below are the todos plugin:
 
 ```ts
-// packages/contracts/src/features/todos.ts
+// plugins/todos/src/contracts/schemas.ts
 import { z } from "zod";
-import { defineContract, defineMethod, type InferContract } from "../contract.js";
+import {
+	defineContract,
+	defineMethod,
+	type InferContract,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 export const todoSchema = z.object({
 	id: z.string(),
@@ -38,9 +43,9 @@ export type TodoService = InferContract<typeof todosContract>;
 ```
 
 ```ts
-// apps/desktop/src/main/features/todos/index.ts
+// plugins/todos/src/main/index.ts
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { todosContract } from "@anaconda-agentic-desktop/contracts";
+import { todosContract } from "../contracts/schemas.js";
 import { TodoService } from "./TodoService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
@@ -61,10 +66,10 @@ export function mainRegister(mainSdk: MainSdk) {
 **Frontend** — use `useSdk<ServiceType>` for a typed proxy client:
 
 ```tsx
-// apps/web/src/features/todos/TodoList.tsx
+// plugins/todos/src/web/TodoList.tsx
 import { useQuery } from "@tanstack/react-query";
-import type { TodoService } from "@anaconda-agentic-desktop/contracts";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import type { TodoService } from "../contracts/schemas.js";
 
 export function TodoList() {
 	const { client } = useSdk<TodoService>("todos");

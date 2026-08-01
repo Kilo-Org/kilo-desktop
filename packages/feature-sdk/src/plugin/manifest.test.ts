@@ -78,6 +78,14 @@ describe("pluginManifestSchema", () => {
 		expect(result.success).toBe(false);
 	});
 
+	it("rejects the bare '/' route path (shell-owned root)", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			routes: [{ path: "/", label: "Todos", component: "TodoList" }],
+		});
+		expect(result.success).toBe(false);
+	});
+
 	it("rejects routes without a component export name", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,

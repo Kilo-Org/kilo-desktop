@@ -81,6 +81,7 @@ export {
 	type SdkFactoryServices,
 	type ShellDelegates,
 } from "./services/create-sdk.js";
+export { createStaticNavigation } from "./services/navigation.js";
 
 // Plugin system — manifest schema + loader (discover phase; activation stays
 // with the shell boot sequences)

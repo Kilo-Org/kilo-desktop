@@ -6,15 +6,14 @@ import {
 	LogOutIcon,
 	PackageIcon,
 	PlugIcon,
-	PuzzleIcon,
 	SplitIcon,
 	UserIcon,
 } from "lucide-react";
-import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
+import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { PLUGIN_PAGES, type PluginPage } from "@/features/plugin-pages";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
@@ -49,22 +48,13 @@ type AppSidebarLayoutProps = {
 };
 
 /**
- * Icon for a plugin nav entry: the manifest declares a lucide icon name
- * (kebab-case); unknown or missing names fall back to a generic plugin icon.
- */
-function PluginNavIcon({ name }: { name: string | undefined }) {
-	if (name !== undefined && (iconNames as readonly string[]).includes(name)) {
-		return <DynamicIcon name={name as IconName} />;
-	}
-	return <PuzzleIcon />;
-}
-
-/**
  * Sidebar nav entry derived from a plugin's manifest route — plugins add nav
  * entries by declaring routes (or contributing to the "sidebar" zone), never
- * by editing this layout.
+ * by editing this layout. Icons resolve through the static bundled-plugin
+ * icon map (see features/plugin-icons.ts).
  */
 function PluginNavItem({ page, pathname }: { page: PluginPage; pathname: string }) {
+	const Icon = resolvePluginNavIcon(page.icon);
 	return (
 		<SidebarMenuItem>
 			<SidebarMenuButton
@@ -74,7 +64,7 @@ function PluginNavItem({ page, pathname }: { page: PluginPage; pathname: string 
 				className="size-8!"
 				data-qa-id={page.navQaId}
 			>
-				<PluginNavIcon name={page.icon} />
+				<Icon />
 				<span>{page.label}</span>
 			</SidebarMenuButton>
 		</SidebarMenuItem>

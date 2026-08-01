@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "../../lib/utils.js";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
 	return (

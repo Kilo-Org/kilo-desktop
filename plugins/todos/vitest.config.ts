@@ -12,10 +12,8 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 const coverage = {
 	...createCoverageConfig([
-		// Barrel / vendor UI (copied shadcn primitives) — no behavior of their own.
+		// Barrel — no behavior of its own.
 		"src/web/index.ts",
-		"**/components/ui/**",
-		"src/web/lib/**",
 		"src/test/**",
 	]),
 	// Scope coverage to plugin sources so the package-local vite cache and

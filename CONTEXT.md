@@ -15,7 +15,8 @@ packages/
 ├── contracts/    @anaconda-agentic-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
 ├── feature-sdk/  @anaconda-agentic-desktop/feature-sdk  Shim SDK — stable interface features program against
 ├── sdk-react/    @anaconda-agentic-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
-└── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
+├── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
+└── ui/           @anaconda-agentic-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
 
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
 plugins/          Bundled plugins — self-contained workspace packages
@@ -119,6 +120,7 @@ See [docs/TESTING.md](./docs/TESTING.md) for the full tier taxonomy and how to r
 - Don't add feature methods to `LocalApi`
 - Don't import from other features' source
 - Don't import from `apps/*/src/lib/` or `apps/*/src/platform/` in feature code
+- Don't copy shadcn/design-system components into features or plugins — import from `@anaconda-agentic-desktop/ui`
 - Don't share DB tables across features
 - Don't use React Context for cross-feature communication
 - Don't emit un-namespaced events

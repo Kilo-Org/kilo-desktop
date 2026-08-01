@@ -4,10 +4,10 @@ import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/s
 
 import type { TodoService } from "../contracts/schemas.js";
 
-import { Button } from "./components/ui/button.js";
-import { Checkbox } from "./components/ui/checkbox.js";
-import { Input } from "./components/ui/input.js";
-import { Label } from "./components/ui/label.js";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
+import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import { Label } from "@anaconda-agentic-desktop/ui/components/label";
 
 export function TodoList() {
 	const sdk = useSdk<TodoService>("todos");

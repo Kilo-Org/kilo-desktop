@@ -77,6 +77,29 @@ Feature in apps → Plugin in plugins/ → Plugin in external repo
 
 Each transition is a filesystem move. Source code stays the same because it programs against the SDK, not shell internals.
 
+### Dependency ownership (shell vs plugin)
+
+Three tiers decide where a dependency lives:
+
+**Tier 1 — Shared Runtime Set (shell-owned singletons).** Plugins declare these as `peerDependencies` and never bundle them; the host provides exactly one runtime copy. Shared because TWO copies break correctness, not for convenience:
+
+| Package                                 | Why a singleton                                                                    |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `react` / `react-dom`                   | Two copies = invalid hook calls, broken context                                    |
+| `@anaconda-agentic-desktop/feature-sdk` | Shared in-memory EventBus/StateBroker/CapabilityRegistry — a 2nd copy splits them  |
+| `@anaconda-agentic-desktop/sdk-react`   | React bindings must resolve the same SDK context                                   |
+| `@anaconda-agentic-desktop/ui`          | One design system: context identity in stateful components; upgrades apply at once |
+| `@tanstack/react-query`                 | `useSdkQuery` must hit the host's single QueryClientProvider/cache                 |
+| `zod`                                   | `instanceof ZodError` identity across the `feature:invoke` validation boundary     |
+
+**Deliberately shell-only (plugins never import these):** `@tanstack/react-router` (navigation is a shell delegate — `sdk.navigate`; the host creates routes from `plugin.json`), `@anaconda-agentic-desktop/contracts` (shell-internal; contract helpers come from feature-sdk), the Tailwind pipeline + `@anaconda/shadcn-theme` tokens (plugins ship class names only; the shell's `globals.css` scans `packages/ui` and `plugins/` via `@source`), and all Electron APIs (use SDK shell delegates).
+
+**Tier 2 — Per-plugin runtime deps (plugin-owned).** Implementation details of one plugin's feature (e.g. todos: `better-sqlite3`, `drizzle-orm`, its drizzle migrations). Normal workspace deps in-repo (pnpm dedupes); bundled into the plugin's build when external.
+
+**Tier 3 — Dev/test tooling.** Per-plugin `devDependencies`, never shipped: vitest, playwright, typescript, `@anaconda-agentic-desktop/testing`, `@anaconda-agentic-desktop/e2e`, drizzle-kit, tailwind-for-tests.
+
+**Rule of thumb:** two copies would break correctness or fork the design system → Tier 1. One plugin's business → Tier 2. Tooling → Tier 3. The singleton guarantee is implicit today (workspace hoisting); it becomes an enforced contract in Slice 5 (canonical externals list + peerDependencies + host-provided runtime).
+
 ## Terminology
 
 | Term               | Meaning                                                                                                                                        |

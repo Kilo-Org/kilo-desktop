@@ -1,5 +1,4 @@
 import { mkdirSync } from "node:fs";
-import path from "node:path";
 
 import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
@@ -7,6 +6,7 @@ import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk"
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
+import { featureStorageDir } from "../../platform/featureStorage.js";
 
 /**
  * Central feature router for the main process.
@@ -49,7 +49,7 @@ export function bootFeatures(
 				? {}
 				: {
 						resolveStorageDir: () => {
-							const dir = path.join(storageRoot, "plugins", feature.id);
+							const dir = featureStorageDir(storageRoot, feature.id);
 							mkdirSync(dir, { recursive: true });
 							return dir;
 						},

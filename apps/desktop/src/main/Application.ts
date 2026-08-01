@@ -1,6 +1,5 @@
 import electronDebug from "electron-debug";
 import { nativeTheme, session } from "electron";
-import path from "node:path";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
@@ -23,6 +22,7 @@ import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
+import { featureFsSandboxDir } from "./platform/featureStorage.js";
 import { IpcServer } from "./platform/IpcServer.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
@@ -35,9 +35,11 @@ export class Application {
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
 	readonly #notifications = new ElectronNotifications();
-	// sdk.fs sandbox — same per-feature root as mainSdk.storageDir (Decision #20).
+	// sdk.fs sandbox — a dedicated `fs/` subdir of the feature's Decision #20
+	// storage dir, kept a SIBLING of its SQLite data.db so no fs call can reach
+	// the database (see featureStorage.ts).
 	readonly #scopedFs = new ScopedFsService((featureId) =>
-		path.join(this.#app.getPath("userData"), "plugins", featureId),
+		featureFsSandboxDir(this.#app.getPath("userData"), featureId),
 	);
 	readonly #auth = new AuthSessionService({
 		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,

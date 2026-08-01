@@ -72,6 +72,18 @@ function createInMemoryShellFs(): ShellFsDelegate {
 		}
 	};
 
+	// Mirror production ScopedFsService: a path segment cannot be both a file
+	// and a directory. Reject when an ancestor is already a file (ENOTDIR).
+	const assertAncestorsAreDirs = (entry: Tree, key: string, relativePath: string): void => {
+		const parts = key.split("/");
+		for (let index = 1; index < parts.length; index += 1) {
+			const ancestor = parts.slice(0, index).join("/");
+			if (entry.files.has(ancestor)) {
+				throw new Error(`[FakeSdk] sdk.fs: "${relativePath}" is not a directory.`);
+			}
+		}
+	};
+
 	return {
 		async readFile(featureId, relativePath) {
 			const key = normalize(relativePath);
@@ -84,6 +96,10 @@ function createInMemoryShellFs(): ShellFsDelegate {
 		async writeFile(featureId, relativePath, content) {
 			const key = normalize(relativePath);
 			const entry = tree(featureId);
+			if (entry.dirs.has(key)) {
+				throw new Error(`[FakeSdk] sdk.fs: "${relativePath}" is a directory.`);
+			}
+			assertAncestorsAreDirs(entry, key, relativePath);
 			addAncestorDirs(entry, key);
 			entry.files.set(key, content);
 		},
@@ -95,6 +111,10 @@ function createInMemoryShellFs(): ShellFsDelegate {
 		async mkdir(featureId, relativePath) {
 			const key = normalize(relativePath);
 			const entry = tree(featureId);
+			if (entry.files.has(key)) {
+				throw new Error(`[FakeSdk] sdk.fs: "${relativePath}" is not a directory.`);
+			}
+			assertAncestorsAreDirs(entry, key, relativePath);
 			addAncestorDirs(entry, key);
 			entry.dirs.add(key);
 		},

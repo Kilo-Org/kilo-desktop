@@ -190,6 +190,16 @@ describe("createFakeSdk", () => {
 		await expect(sdk.fs.exists("")).resolves.toBe(true);
 	});
 
+	it("fs rejects file/dir key collisions like a real filesystem", async () => {
+		const sdk = createFakeSdk({ featureId: "fs-collision" });
+		await sdk.fs.writeFile("a.txt", "x");
+		// A directory cannot shadow an existing file, and vice versa.
+		await expect(sdk.fs.mkdir("a.txt")).rejects.toThrow(/not a directory/);
+		await expect(sdk.fs.writeFile("a.txt/child", "y")).rejects.toThrow(/not a directory/);
+		await sdk.fs.mkdir("dir");
+		await expect(sdk.fs.writeFile("dir", "z")).rejects.toThrow(/is a directory/);
+	});
+
 	it("routes every overridden fs method and falls back per method", async () => {
 		const calls: string[] = [];
 		const overridden = createFakeSdk({

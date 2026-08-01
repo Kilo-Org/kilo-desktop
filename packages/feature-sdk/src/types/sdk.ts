@@ -405,11 +405,13 @@ export interface SdkAuth {
  * not raw fs).
  *
  * **Scoping model:** every path is relative to this feature's private sandbox
- * directory — the Decision #20 storage root, `${userData}/plugins/<id>/` —
- * the same directory `mainSdk.storageDir` resolves to. The shell rejects
- * absolute paths and any path that escapes the sandbox (`..`); a feature can
- * never see another feature's files or the host filesystem. Expected failures
- * (missing file, escaping path) reject with a descriptive error.
+ * directory — a dedicated `fs/` subdirectory of the Decision #20 storage root,
+ * i.e. `${userData}/plugins/<id>/fs/`. That subdir is a sibling of the
+ * feature's SQLite `data.db`, never its parent, so `sdk.fs` can never reach
+ * the feature's database. The shell rejects absolute paths and any path that
+ * escapes the sandbox (`..`); a feature can never see another feature's files
+ * or the host filesystem. Expected failures (missing file, escaping path)
+ * reject with a descriptive error.
  *
  * Electron-only: browser mode has no filesystem, so calls reject — treat fs
  * as a detectable capability, not a given.
@@ -431,7 +433,7 @@ export interface SdkFs {
  * Host-side filesystem delegate. The host implements this ONCE for all
  * features; the SDK binds the calling feature's id so `sdk.fs` stays
  * featureId-free. `featureId` selects the sandbox root
- * (`${userData}/plugins/<featureId>/`) — the host must validate it and the
+ * (`${userData}/plugins/<featureId>/fs/`) — the host must validate it and the
  * relative path (see {@link SdkFs} for the scoping model).
  */
 export interface ShellFsDelegate {

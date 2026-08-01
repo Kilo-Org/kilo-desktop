@@ -49,8 +49,14 @@ export function createBrowserLocalApi(): LocalApi {
 						reason: "Notification permission has not been granted in this browser.",
 					};
 				}
-				new Notification(input.title, { body: input.message });
-				return { delivered: true };
+				try {
+					new Notification(input.title, { body: input.message });
+					return { delivered: true };
+				} catch {
+					// Some platforms require ServiceWorkerRegistration.showNotification
+					// and throw from the constructor even when permission is granted.
+					return { delivered: false, reason: "The notification could not be shown." };
+				}
 			},
 			async setBadge(input) {
 				// Badging API — not yet in lib.dom, hence the structural probe.

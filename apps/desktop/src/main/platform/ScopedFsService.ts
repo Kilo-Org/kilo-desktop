@@ -1,10 +1,9 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { BusinessError } from "./BusinessError.js";
+import { featureIdPattern } from "@anaconda-agentic-desktop/feature-sdk";
 
-/** Same charset the plugin manifest enforces for plugin ids. */
-const featureIdPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+import { BusinessError } from "./BusinessError.js";
 
 function isFsError(error: unknown): error is NodeJS.ErrnoException {
 	return error instanceof Error && "code" in error;
@@ -53,8 +52,12 @@ export class ScopedFsService {
 
 	async writeFile(featureId: string, relativePath: string, content: string): Promise<void> {
 		const target = await this.#resolve(featureId, relativePath);
-		await mkdir(path.dirname(target), { recursive: true });
-		await writeFile(target, content, "utf8");
+		try {
+			await mkdir(path.dirname(target), { recursive: true });
+			await writeFile(target, content, "utf8");
+		} catch (error) {
+			throw translateFsError(error, relativePath);
+		}
 	}
 
 	async exists(featureId: string, relativePath: string): Promise<boolean> {
@@ -63,14 +66,22 @@ export class ScopedFsService {
 			await stat(target);
 			return true;
 		} catch (error) {
-			if (isFsError(error) && error.code === "ENOENT") return false;
+			// ENOENT (nothing there) and ENOTDIR (an ancestor is a file) both
+			// mean "does not exist" — mirror Node's existsSync and the fake.
+			if (isFsError(error) && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
+				return false;
+			}
 			throw translateFsError(error, relativePath);
 		}
 	}
 
 	async mkdir(featureId: string, relativePath: string): Promise<void> {
 		const target = await this.#resolve(featureId, relativePath);
-		await mkdir(target, { recursive: true });
+		try {
+			await mkdir(target, { recursive: true });
+		} catch (error) {
+			throw translateFsError(error, relativePath);
+		}
 	}
 
 	async readdir(featureId: string, relativePath: string): Promise<string[]> {
@@ -103,6 +114,8 @@ function translateFsError(error: unknown, relativePath: string): unknown {
 			return new BusinessError(`sdk.fs: "${relativePath}" is a directory.`);
 		case "ENOTDIR":
 			return new BusinessError(`sdk.fs: "${relativePath}" is not a directory.`);
+		case "EEXIST":
+			return new BusinessError(`sdk.fs: "${relativePath}" already exists.`);
 		default:
 			return error;
 	}

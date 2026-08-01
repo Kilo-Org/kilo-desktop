@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { featureIdPattern } from "@anaconda-agentic-desktop/feature-sdk";
+
 import { defineMethod } from "../contract.js";
 
 /**
@@ -16,8 +18,8 @@ import { defineMethod } from "../contract.js";
  * holds regardless.
  */
 const scopedFsInputSchema = z.object({
-	/** Kebab-case feature id — same charset the plugin manifest enforces. */
-	featureId: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
+	/** Kebab-case feature id — shared charset with the plugin manifest. */
+	featureId: z.string().regex(featureIdPattern),
 	/** Path relative to the feature's sandbox dir. */
 	path: z.string(),
 });

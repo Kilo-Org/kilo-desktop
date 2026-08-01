@@ -70,6 +70,20 @@ describe("createBrowserLocalApi", () => {
 		expect(denied.reason).toMatch(/permission/);
 	});
 
+	it("reports undelivered instead of throwing when the Notification constructor throws", async () => {
+		class ThrowingNotification {
+			static permission: NotificationPermission = "granted";
+			constructor() {
+				throw new TypeError("must use ServiceWorkerRegistration.showNotification");
+			}
+		}
+		vi.stubGlobal("Notification", ThrowingNotification);
+		const api = createBrowserLocalApi();
+		const result = await api.notifications.show({ title: "Hi", message: "There", type: "info" });
+		expect(result.delivered).toBe(false);
+		expect(result.reason).toMatch(/could not be shown/);
+	});
+
 	it("sets the app badge when the Badging API is available", async () => {
 		const setAppBadge = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal("navigator", { setAppBadge });

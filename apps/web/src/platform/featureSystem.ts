@@ -99,7 +99,7 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 		},
 		// Scoped fs — the SDK binds each feature's id onto this delegate, and
 		// the main process confines every path to that feature's sandbox dir
-		// (`${userData}/plugins/<featureId>/`). Browser mode has no filesystem;
+		// (`${userData}/plugins/<featureId>/fs/`). Browser mode has no filesystem;
 		// its LocalApi adapter rejects.
 		fs: {
 			readFile: async (featureId, path) => (await api.fs.readFile({ featureId, path })).content,

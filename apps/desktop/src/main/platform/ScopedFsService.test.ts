@@ -76,6 +76,30 @@ describe("ScopedFsService", () => {
 		await expect(service.readdir("todos", "a-file.txt")).rejects.toThrow(BusinessError);
 	});
 
+	it("translates write-path failures to BusinessError", async () => {
+		await service.mkdir("todos", "adir");
+		// Writing onto an existing directory → EISDIR.
+		await expect(service.writeFile("todos", "adir", "x")).rejects.toThrow(/is a directory/);
+		await service.writeFile("todos", "afile.txt", "x");
+		// A path segment under an existing file is a translated BusinessError
+		// (EEXIST or ENOTDIR depending on platform), never a scrubbed INTERNAL.
+		const writeError = await service
+			.writeFile("todos", "afile.txt/child.txt", "y")
+			.catch((cause: unknown) => cause);
+		expect(writeError).toBeInstanceOf(BusinessError);
+		expect((writeError as Error).message).toMatch(/is not a directory|already exists/);
+		const mkdirError = await service
+			.mkdir("todos", "afile.txt/child")
+			.catch((cause: unknown) => cause);
+		expect(mkdirError).toBeInstanceOf(BusinessError);
+		expect((mkdirError as Error).message).toMatch(/is not a directory|already exists/);
+	});
+
+	it("exists returns false for a path under an existing file (ENOTDIR)", async () => {
+		await service.writeFile("todos", "file.txt", "x");
+		await expect(service.exists("todos", "file.txt/nope")).resolves.toBe(false);
+	});
+
 	it("treats the sandbox root itself as a valid readable directory", async () => {
 		await expect(service.readdir("fresh-feature", "")).resolves.toEqual([]);
 		await expect(service.exists("fresh-feature", "")).resolves.toBe(true);

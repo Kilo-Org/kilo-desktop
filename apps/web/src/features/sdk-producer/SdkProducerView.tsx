@@ -170,25 +170,31 @@ export function SdkProducerView() {
 	}
 
 	function handleNotification() {
-		void sdk.notifications
+		sdk.notifications
 			.show({
 				title: "SDK Explorer",
 				message: "This is a test notification from the SDK explorer feature.",
 				type: "success",
 			})
-			.then((result) => {
-				appendLog(
-					`notifications.show() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
-				);
-			});
+			.then(
+				(result) => {
+					appendLog(
+						`notifications.show() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
+					);
+				},
+				(error: Error) => appendLog(`notifications.show() FAILED: ${error.message}`),
+			);
 	}
 
 	function handleBadge() {
-		void sdk.notifications.setBadge(notes.data?.length ?? 0).then((result) => {
-			appendLog(
-				`notifications.setBadge() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
-			);
-		});
+		sdk.notifications.setBadge(notes.data?.length ?? 0).then(
+			(result) => {
+				appendLog(
+					`notifications.setBadge() → delivered: ${result.delivered}${result.reason ? `, reason: ${result.reason}` : ""}`,
+				);
+			},
+			(error: Error) => appendLog(`notifications.setBadge() FAILED: ${error.message}`),
+		);
 	}
 
 	function handleCopyText() {

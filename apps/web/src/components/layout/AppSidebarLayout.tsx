@@ -14,8 +14,8 @@ import {
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -24,7 +24,7 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
 import {
 	Sidebar,
 	SidebarContent,
@@ -36,8 +36,8 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
-} from "@/components/ui/sidebar";
-import { TooltipProvider } from "@/components/ui/tooltip";
+} from "@anaconda-agentic-desktop/ui/components/sidebar";
+import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 type AppSidebarLayoutProps = {
 	children: ReactNode;

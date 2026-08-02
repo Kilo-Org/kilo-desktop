@@ -1,7 +1,7 @@
 "use client";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Button } from "@/components/ui/button";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { AuiIf, ComposerPrimitive } from "@assistant-ui/react";
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import type { CSSProperties, FC } from "react";

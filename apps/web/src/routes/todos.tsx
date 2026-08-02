@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { TodoList } from "@/features/todos/TodoList";
+import { TodoList } from "@anaconda-agentic-desktop/plugin-todos/web";
+
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 
 export const Route = createFileRoute("/todos")({

@@ -14,20 +14,19 @@
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
+		"@anaconda-agentic-desktop/ui": "workspace:*",
 		"@anaconda/shadcn-theme": "0.0.1-alpha.3",
 		"@assistant-ui/react": "^0.15.1",
-		"@base-ui/react": "^1.6.0",
 		"@fontsource-variable/inter": "^5.3.0",
 		"@tanstack/react-query": "^5.101.4",
 		"@tanstack/react-router": "^1.170.18",
-		"class-variance-authority": "^0.7.1",
-		"clsx": "^2.1.1",
 		"lucide-react": "^1.27.0",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"react-use": "^17.6.1",
-		"tailwind-merge": "^3.6.0"
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@anaconda-agentic-desktop/testing": "workspace:*",

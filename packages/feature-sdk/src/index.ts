@@ -33,6 +33,8 @@ export type {
 // Channel maps — typed sdk.invoke / mainSdk.channels against per-feature contracts
 export {
 	defineMethod,
+	defineContract,
+	type InferContract,
 	type MethodContract,
 	type ChannelMap,
 	type ChannelInput,
@@ -65,3 +67,26 @@ export {
 	type SdkFactoryServices,
 	type ShellDelegates,
 } from "./services/create-sdk.js";
+
+// Plugin system — manifest schema + loader (discover phase; activation stays
+// with the shell boot sequences)
+export {
+	PLUGIN_MANIFEST_FILENAME,
+	pluginManifestSchema,
+	pluginRouteSchema,
+	parsePluginManifest,
+	type PluginManifest,
+	type PluginRoute,
+} from "./plugin/manifest.js";
+export {
+	discoverPlugins,
+	pluginRegistrations,
+	reportPluginDiscoveryIssues,
+	type BundledPlugin,
+	type DiscoverPluginsOptions,
+	type PluginModule,
+	type PluginEntryKind,
+	type DiscoveredPlugin,
+	type PluginDiscovery,
+	type PluginDiscoveryIssue,
+} from "./plugin/loader.js";

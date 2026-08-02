@@ -15,10 +15,12 @@ packages/
 ├── contracts/    @anaconda-agentic-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
 ├── feature-sdk/  @anaconda-agentic-desktop/feature-sdk  Shim SDK — stable interface features program against
 ├── sdk-react/    @anaconda-agentic-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
-└── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
+├── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
+└── ui/           @anaconda-agentic-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
 
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
-plugins/          Bundled plugins (after migration from apps/)
+plugins/          Bundled plugins — self-contained workspace packages
+└── todos/        @anaconda-agentic-desktop/plugin-todos The first real plugin (plugin.json + src/{contracts,main,web})
 ```
 
 ## Key architectural decisions
@@ -51,6 +53,8 @@ In browser: `sdk.invoke` calls the handler directly in-process (no Electron need
 
 Every feature registers in `apps/desktop/src/main/features/registry/features.ts`. Adding a feature = adding an entry. Never hand-edit `Application.ts` for feature-specific code.
 
+Bundled plugins register in `BUNDLED_PLUGINS` instead (`apps/desktop/src/main/features/registry/bundled-plugins.ts` for the `main` entry, `apps/web/src/features/bundled-plugins.ts` for the `web` entry). The loader (`discoverPlugins` in feature-sdk) validates each `plugin.json` at boot and feeds the registrations into the same `FEATURES` / `WEB_FEATURES` boot paths, so features and plugins boot identically.
+
 ### LocalApi scope
 
 `LocalApi` (`packages/contracts/src/local-api.ts`) is reserved for **shell-level services only**: theme, notifications, shell, filesystem. Features never add methods to `LocalApi`. Feature-scoped backend calls go through `sdk.invoke`.
@@ -72,6 +76,29 @@ Feature in apps → Plugin in plugins/ → Plugin in external repo
 ```
 
 Each transition is a filesystem move. Source code stays the same because it programs against the SDK, not shell internals.
+
+### Dependency ownership (shell vs plugin)
+
+Three tiers decide where a dependency lives:
+
+**Tier 1 — Shared Runtime Set (shell-owned singletons).** Plugins declare these as `peerDependencies` and never bundle them; the host provides exactly one runtime copy. Shared because TWO copies break correctness, not for convenience:
+
+| Package                                 | Why a singleton                                                                    |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `react` / `react-dom`                   | Two copies = invalid hook calls, broken context                                    |
+| `@anaconda-agentic-desktop/feature-sdk` | Shared in-memory EventBus/StateBroker/CapabilityRegistry — a 2nd copy splits them  |
+| `@anaconda-agentic-desktop/sdk-react`   | React bindings must resolve the same SDK context                                   |
+| `@anaconda-agentic-desktop/ui`          | One design system: context identity in stateful components; upgrades apply at once |
+| `@tanstack/react-query`                 | `useSdkQuery` must hit the host's single QueryClientProvider/cache                 |
+| `zod`                                   | `instanceof ZodError` identity across the `feature:invoke` validation boundary     |
+
+**Deliberately shell-only (plugins never import these):** `@tanstack/react-router` (navigation is a shell delegate — `sdk.navigate`; the host creates routes from `plugin.json`), `@anaconda-agentic-desktop/contracts` (shell-internal; contract helpers come from feature-sdk), the Tailwind pipeline + `@anaconda/shadcn-theme` tokens (plugins ship class names only; the shell's `globals.css` scans `packages/ui` and `plugins/` via `@source`), and all Electron APIs (use SDK shell delegates).
+
+**Tier 2 — Per-plugin runtime deps (plugin-owned).** Implementation details of one plugin's feature (e.g. todos: `better-sqlite3`, `drizzle-orm`, its drizzle migrations). Normal workspace deps in-repo (pnpm dedupes); bundled into the plugin's build when external.
+
+**Tier 3 — Dev/test tooling.** Per-plugin `devDependencies`, never shipped: vitest, playwright, typescript, `@anaconda-agentic-desktop/testing`, `@anaconda-agentic-desktop/e2e`, drizzle-kit, tailwind-for-tests.
+
+**Rule of thumb:** two copies would break correctness or fork the design system → Tier 1. One plugin's business → Tier 2. Tooling → Tier 3. The singleton guarantee is implicit today (workspace hoisting); it becomes an enforced contract in Slice 5 (canonical externals list + peerDependencies + host-provided runtime).
 
 ## Terminology
 
@@ -116,6 +143,7 @@ See [docs/TESTING.md](./docs/TESTING.md) for the full tier taxonomy and how to r
 - Don't add feature methods to `LocalApi`
 - Don't import from other features' source
 - Don't import from `apps/*/src/lib/` or `apps/*/src/platform/` in feature code
+- Don't copy shadcn/design-system components into features or plugins — import from `@anaconda-agentic-desktop/ui`
 - Don't share DB tables across features
 - Don't use React Context for cross-feature communication
 - Don't emit un-namespaced events

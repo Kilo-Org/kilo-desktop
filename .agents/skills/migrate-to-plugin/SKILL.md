@@ -17,9 +17,9 @@ Move a feature from `apps/` into a self-contained plugin under `plugins/<id>/`.
 1. Create the plugin directory structure
 2. Move files from their three locations into the plugin
 3. Update imports (contracts path, package references)
-4. Create `manifest.json` and `package.json`
+4. Create `plugin.json` and `package.json`
 5. Remove feature from shell (FEATURES array, contracts export, route file)
-6. Add to `BUNDLED_PLUGINS` in shell
+6. Add to `BUNDLED_PLUGINS` in both shell registries
 7. Verify with `pnpm check && pnpm test`
 
 ## Workflow
@@ -43,24 +43,26 @@ git mv apps/desktop/src/main/features/<id>/* plugins/<id>/src/main/
 git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 ```
 
-### Step 3: Create manifest.json
+### Step 3: Create plugin.json
 
-**File:** `plugins/<id>/manifest.json`
+**File:** `plugins/<id>/plugin.json` — validated by `pluginManifestSchema` from `@anaconda-agentic-desktop/feature-sdk` during discovery. Unknown keys are rejected (strict schema). The schema (`packages/feature-sdk/src/plugin/manifest.ts`) is the source of truth — if this template disagrees with it, trust the schema and update this skill.
 
 ```json
 {
 	"id": "<id>",
-	"name": "<Human Name>",
+	"displayName": "<Human Name>",
 	"version": "1.0.0",
-	"entry": "src/web/index.tsx",
-	"mainEntry": "src/main/index.ts",
-	"icon": "<lucide-icon-name>",
-	"group": "<sidebar-group>",
-	"intents": [{ "name": "view", "type": "navigation", "params": {} }]
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"routes": [{ "path": "/<id>", "label": "<Human Name>", "icon": "<lucide-icon-name>" }],
+	"zones": []
 }
 ```
 
-Omit `icon`, `group`, and navigation intents if the plugin is headless (no sidebar entry).
+- `main` — main-process entry; the module must export `mainRegister(mainSdk)`. Omit for renderer-only plugins.
+- `web` — renderer entry; may export `browserRegister(mainSdk)` for standalone browser mode (omit the export for Electron-only plugins — browser mode then skips the plugin with a warning). Omit the field for headless plugins.
+- `routes` / `zones` — declared now, rendered by the shell from Slice 3. Omit or use `[]` if the plugin has no page / zone contributions.
+- At least one of `main` / `web` is required.
 
 ### Step 4: Create package.json
 
@@ -73,8 +75,8 @@ Omit `icon`, `group`, and navigation intents if the plugin is headless (no sideb
 	"private": true,
 	"type": "module",
 	"exports": {
-		"./manifest": "./manifest.json",
-		"./web": "./src/web/index.tsx",
+		"./plugin.json": "./plugin.json",
+		"./web": "./src/web/index.ts",
 		"./main": "./src/main/index.ts"
 	},
 	"dependencies": {
@@ -101,38 +103,26 @@ Add main-process deps (better-sqlite3, drizzle-orm, etc.) if the feature persist
 | ------------------------------------------------------------------ | ---------------------------------------------- |
 | `from "@anaconda-agentic-desktop/contracts"` (for feature schemas) | `from "../contracts/schemas.js"`               |
 | `from "@/features/<id>/..."`                                       | Relative within `src/web/`                     |
-| `from "@/platform/sdk"`                                            | `from "@anaconda-agentic-desktop/feature-sdk"` |
+| `from "@/platform/sdk"`                                            | `from "@anaconda-agentic-desktop/sdk-react"`   |
+| `from "@/components/ui/..."` / `from "@/lib/utils"`                | `from "@anaconda-agentic-desktop/ui/components/..."` / `from "@anaconda-agentic-desktop/ui/lib/utils"` — the shared design-system package; NEVER copy shadcn components into a plugin |
 
-Imports from `@anaconda-agentic-desktop/feature-sdk`, `@anaconda-agentic-desktop/testing`, and `zod` stay unchanged.
+Imports from `@anaconda-agentic-desktop/feature-sdk`, `@anaconda-agentic-desktop/sdk-react`, `@anaconda-agentic-desktop/ui`, `@anaconda-agentic-desktop/testing`, and `zod` stay unchanged. Contract helpers (`defineContract`, `defineMethod`, `InferContract`) come from `@anaconda-agentic-desktop/feature-sdk` — never from the shell-internal contracts package. Tailwind classes in plugin components keep working: `apps/web/src/globals.css` already has `@source` entries for `packages/ui` and `plugins` (one-time, done); plugin browser tests import their own `src/test/globals.css` (`@import "tailwindcss"` + `@source` for `packages/ui`).
 
 ### Step 6: Create renderer entry (if needed)
 
-If the plugin has a UI (navigation intent), add `plugins/<id>/src/web/index.tsx`:
+If the plugin has a UI, add `plugins/<id>/src/web/index.ts` re-exporting the page/components. If the plugin should also work in standalone browser mode (no Electron main process), export a `browserRegister` with browser-safe handlers; Electron-only plugins (SQLite, fs) omit it and are skipped in browser mode with a warning:
 
-```tsx
-import { createRoot, type Root } from "react-dom/client";
-import { StrictMode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
-import { MyView } from "./MyView.js";
+```ts
+export { MyView } from "./MyView.js";
 
-let root: Root | null = null;
-const qc = new QueryClient();
+// Optional — only for browser-mode support (no Node APIs):
+import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import { myContract } from "../contracts/schemas.js";
 
-export function register(_sdk: SDK) {
-	// Register tools, state, capabilities, contributions here if needed
-}
-
-export function mount(sdk: SDK, container: HTMLElement) {
-	root = createRoot(container);
-	root.render(
-		<StrictMode>
-			<QueryClientProvider client={qc}>
-				<MyView sdk={sdk} />
-			</QueryClientProvider>
-		</StrictMode>,
-	);
-	sdk.onDispose(() => root?.unmount());
+export function browserRegister(mainSdk: MainSdk) {
+	mainSdk.channels(myContract).handleAll({
+		/* in-memory fakes */
+	});
 }
 ```
 
@@ -147,27 +137,39 @@ export function mount(sdk: SDK, container: HTMLElement) {
 
 ### Step 8: Register as bundled plugin
 
-**File:** `apps/web/src/features/plugin-system/bundled-plugins.ts` (or equivalent):
+`BUNDLED_PLUGINS` is one registry per process (each side imports only the entry it can run). Add the plugin to both when it ships both entries:
+
+**File:** `apps/desktop/src/main/features/registry/bundled-plugins.ts`
 
 ```typescript
+import myPluginManifest from "@anaconda-agentic-desktop/plugin-<id>/plugin.json" with { type: "json" };
+import * as myPluginMain from "@anaconda-agentic-desktop/plugin-<id>/main";
+
+export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{ manifest: myPluginManifest, module: myPluginMain },
+];
+```
+
+**File:** `apps/web/src/features/bundled-plugins.ts`
+
+```typescript
+import myPluginManifest from "@anaconda-agentic-desktop/plugin-<id>/plugin.json" with { type: "json" };
 import * as myPluginWeb from "@anaconda-agentic-desktop/plugin-<id>/web";
-import myPluginManifest from "@anaconda-agentic-desktop/plugin-<id>/manifest";
 
-export const BUNDLED_PLUGINS = {
-	"<id>": { manifest: myPluginManifest, module: myPluginWeb },
-};
+export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{ manifest: myPluginManifest, module: myPluginWeb },
+];
 ```
 
-### Step 9: Update pnpm-workspace.yaml (once)
+The loader (`discoverPlugins` in `@anaconda-agentic-desktop/feature-sdk`) validates the manifest at boot and feeds the registrations into the existing `FEATURES` / `WEB_FEATURES` boot paths. Also add the workspace dep to `apps/desktop/package.json` and (for UI plugins) `apps/web/package.json`:
 
-If `plugins/*` isn't already in the workspace:
-
-```yaml
-packages:
-  - apps/*
-  - packages/*
-  - plugins/*
+```json
+"@anaconda-agentic-desktop/plugin-<id>": "workspace:*"
 ```
+
+### Step 9: pnpm-workspace.yaml
+
+The `plugins/*` glob is already in `pnpm-workspace.yaml` — no edit needed. Run `pnpm install` so the new workspace package links.
 
 ### Step 10: Verify
 
@@ -221,14 +223,14 @@ Test changes for unit/browser:
 
 ## Checklist
 
-- [ ] `plugins/<id>/manifest.json` created
+- [ ] `plugins/<id>/plugin.json` created (validates against `pluginManifestSchema`)
 - [ ] `plugins/<id>/package.json` created
 - [ ] All source files moved from apps → plugin
 - [ ] Imports fixed (contracts → relative, @/ → relative or sdk)
 - [ ] Feature removed from FEATURES array
 - [ ] Feature removed from contracts re-exports
 - [ ] Route file deleted from `apps/web/src/routes/features/`
-- [ ] Registered in `BUNDLED_PLUGINS`
+- [ ] Registered in `BUNDLED_PLUGINS` (both desktop and web registries)
 - [ ] E2E pages + specs moved to `plugins/<id>/e2e/`
 - [ ] Plugin-local `e2e/fixtures.ts` created; shell fixture cleaned up
 - [ ] `pnpm install` succeeds

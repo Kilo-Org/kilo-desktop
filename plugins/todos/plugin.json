@@ -1,0 +1,9 @@
+{
+	"id": "todos",
+	"displayName": "Todos",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"routes": [{ "path": "/todos", "label": "Todo List", "icon": "list-todo" }],
+	"zones": []
+}

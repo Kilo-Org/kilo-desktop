@@ -1,0 +1,22 @@
+{
+	"$schema": "https://ui.shadcn.com/schema.json",
+	"style": "base-nova",
+	"rsc": false,
+	"tsx": true,
+	"tailwind": {
+		"config": "",
+		"css": "../../apps/web/src/globals.css",
+		"baseColor": "neutral",
+		"cssVariables": true,
+		"prefix": ""
+	},
+	"iconLibrary": "lucide",
+	"rtl": false,
+	"aliases": {
+		"components": "@anaconda-agentic-desktop/ui/components",
+		"utils": "@anaconda-agentic-desktop/ui/lib/utils",
+		"ui": "@anaconda-agentic-desktop/ui/components",
+		"lib": "@anaconda-agentic-desktop/ui/lib",
+		"hooks": "@anaconda-agentic-desktop/ui/hooks"
+	}
+}

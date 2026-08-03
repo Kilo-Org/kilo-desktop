@@ -1,5 +1,5 @@
 import electronDebug from "electron-debug";
-import { session } from "electron";
+import { nativeTheme, session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
@@ -10,12 +10,14 @@ import { FEATURES } from "./features/registry/features.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
-import { createThemeHandlers } from "./features/theme/handlers.js";
+import {
+	createThemeHandlers,
+	restoreNativeThemeFromPreferences,
+} from "./features/theme/handlers.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
-import { ElectronTheme } from "./platform/ElectronTheme.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
 import { IpcServer } from "./platform/IpcServer.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
@@ -27,11 +29,11 @@ export class Application {
 	readonly #protocol = new ElectronProtocol();
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
-	readonly #theme = new ElectronTheme();
 	readonly #auth = new AuthSessionService({
 		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,
 	});
-	readonly #windows = new ElectronWindow(this.#shell);
+	// After restoreNativeThemeFromPreferences, nativeTheme is the chrome signal.
+	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
 	#isShuttingDown = false;
@@ -58,9 +60,6 @@ export class Application {
 			electronDebug({ showDevTools: false });
 		}
 
-		const savedTheme = preferences.themeSource;
-		if (savedTheme) this.#theme.setSource(savedTheme);
-
 		this.#disposers.push(configureUpdater());
 		const developmentOrigin = getWebDevServerUrl();
 		this.#protocol.register({
@@ -71,6 +70,7 @@ export class Application {
 
 		this.#disposers.push(this.#security.install(session.defaultSession));
 		this.#registerIpc(preferences);
+		restoreNativeThemeFromPreferences(preferences);
 		this.#registerPushEvents();
 		this.#createWindow(isDevelopment);
 
@@ -98,7 +98,7 @@ export class Application {
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
-			...createThemeHandlers(this.#theme, preferences),
+			...createThemeHandlers(this.#windows, preferences),
 			...createAuthHandlers(this.#auth),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
@@ -108,9 +108,6 @@ export class Application {
 
 	#registerPushEvents(): void {
 		this.#disposers.push(
-			this.#theme.onUpdated((state) => {
-				this.#windows.broadcast("theme:changed", state);
-			}),
 			this.#auth.onChanged((session) => {
 				this.#windows.broadcast("auth:changed", session);
 			}),

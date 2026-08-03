@@ -1,15 +1,14 @@
 import { Outlet } from "@tanstack/react-router";
 
 import { AppSidebarLayout } from "@/components/layout/AppSidebarLayout";
-import { ThemeSync } from "@/features/theme/ThemeSync";
+import { ThemeProvider } from "@/platform/theme/ThemeProvider";
 
 export function App() {
 	return (
-		<>
-			<ThemeSync />
+		<ThemeProvider>
 			<AppSidebarLayout>
 				<Outlet />
 			</AppSidebarLayout>
-		</>
+		</ThemeProvider>
 	);
 }

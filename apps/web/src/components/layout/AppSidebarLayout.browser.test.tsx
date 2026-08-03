@@ -20,9 +20,7 @@ type AuthOverrides = Partial<LocalApi["auth"]>;
 function fakeLocalApi(session: AuthSession, auth: AuthOverrides = {}): LocalApi {
 	return {
 		theme: {
-			get: async () => ({ source: "system", shouldUseDarkColors: false }),
-			set: async ({ source }) => ({ source, shouldUseDarkColors: source === "dark" }),
-			onChanged: () => () => undefined,
+			sync: async () => undefined,
 		},
 		shell: {
 			openExternal: async () => ({ opened: true }),

@@ -6,6 +6,7 @@ import { defineMethod, type FeatureRegistration } from "@anaconda-agentic-deskto
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
+import { applyDocumentColorScheme } from "@/platform/theme/color-scheme";
 
 const demoChannels = {
 	greet: defineMethod(
@@ -43,7 +44,7 @@ const demoFeature: FeatureRegistration = {
 
 afterEach(() => {
 	cleanup();
-	document.documentElement.classList.remove("dark");
+	applyDocumentColorScheme("light");
 	vi.unstubAllGlobals();
 });
 
@@ -65,21 +66,21 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		expect(badge.delivered).toBe(false);
 	});
 
-	it("peeks and subscribes to the effective theme", async () => {
+	it("peeks and subscribes to the effective theme", () => {
 		const api = createBrowserLocalApi();
 		const system = createAppFeatureSystem(api, [demoFeature]);
 		const sdk = system.getSdk("demo");
 
 		expect(sdk.theme.peek()).toBe("light");
-		document.documentElement.classList.add("dark");
+		applyDocumentColorScheme("dark");
 		expect(sdk.theme.peek()).toBe("dark");
 
 		const seen: Array<"dark" | "light"> = [];
 		const unsub = sdk.theme.subscribe((theme) => seen.push(theme));
 		expect(seen).toEqual(["dark"]);
 
-		await api.theme.set({ source: "dark" });
-		expect(seen).toEqual(["dark", "dark"]);
+		applyDocumentColorScheme("light");
+		expect(seen).toEqual(["dark", "light"]);
 		unsub();
 	});
 

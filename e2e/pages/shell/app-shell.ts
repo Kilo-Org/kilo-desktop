@@ -42,7 +42,7 @@ export class AppShellPage {
 		}
 	}
 
-	async verifyThemeSyncApplied(): Promise<void> {
+	async verifyColorSchemeApplied(): Promise<void> {
 		await this.verifyShellIsLoaded();
 		await getPage().waitForFunction(() => {
 			const scheme = document.documentElement.style.colorScheme;

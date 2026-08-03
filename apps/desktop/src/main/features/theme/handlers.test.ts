@@ -1,31 +1,51 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createThemeHandlers } from "./handlers.js";
+import { createThemeHandlers, restoreNativeThemeFromPreferences } from "./handlers.js";
 
 describe("createThemeHandlers", () => {
-	it("persists theme source through preferences on set", () => {
-		const electronTheme = {
-			state: { source: "system" as const, shouldUseDarkColors: true },
-			setSource: vi.fn((source: "system" | "light" | "dark") => ({
-				source,
-				shouldUseDarkColors: source !== "light",
-			})),
-		};
-		const preferences = {
-			setThemeSource: vi.fn(),
-		};
+	it("persists source, applies nativeTheme, and repaints chrome on sync", () => {
+		const electronWindow = { applyColorScheme: vi.fn() };
+		const preferences = { setThemeSource: vi.fn() };
+		const theme = { themeSource: "system" as "system" | "light" | "dark" };
 
-		const handlers = createThemeHandlers(electronTheme as never, preferences as never);
+		const handlers = createThemeHandlers(electronWindow as never, preferences as never, theme);
 
-		expect(handlers["theme:get"](undefined)).toEqual({
-			source: "system",
-			shouldUseDarkColors: true,
-		});
-
-		const result = handlers["theme:set"]({ source: "dark" });
+		expect(handlers["theme:sync"]({ source: "dark", shouldUseDarkColors: true })).toBeUndefined();
 
 		expect(preferences.setThemeSource).toHaveBeenCalledWith("dark");
-		expect(electronTheme.setSource).toHaveBeenCalledWith("dark");
-		expect(result).toEqual({ source: "dark", shouldUseDarkColors: true });
+		expect(theme.themeSource).toBe("dark");
+		expect(electronWindow.applyColorScheme).toHaveBeenCalledWith(true);
+	});
+
+	it("persists system so cold start can re-resolve against the live OS scheme", () => {
+		const electronWindow = { applyColorScheme: vi.fn() };
+		const preferences = { setThemeSource: vi.fn() };
+		const theme = { themeSource: "dark" as "system" | "light" | "dark" };
+
+		const handlers = createThemeHandlers(electronWindow as never, preferences as never, theme);
+
+		handlers["theme:sync"]({ source: "system", shouldUseDarkColors: false });
+
+		expect(preferences.setThemeSource).toHaveBeenCalledWith("system");
+		expect(theme.themeSource).toBe("system");
+		expect(electronWindow.applyColorScheme).toHaveBeenCalledWith(false);
+	});
+});
+
+describe("restoreNativeThemeFromPreferences", () => {
+	it("mirrors a forced dark preference onto nativeTheme before windows exist", () => {
+		const preferences = { themeSource: "dark" as const };
+		const theme = { themeSource: "system" as "system" | "light" | "dark" };
+
+		restoreNativeThemeFromPreferences(preferences as never, theme);
+		expect(theme.themeSource).toBe("dark");
+	});
+
+	it("defaults to system when no preference is stored", () => {
+		const preferences = { themeSource: undefined };
+		const theme = { themeSource: "light" as "system" | "light" | "dark" };
+
+		restoreNativeThemeFromPreferences(preferences as never, theme);
+		expect(theme.themeSource).toBe("system");
 	});
 });

@@ -96,7 +96,7 @@ Each transition is a filesystem move. Source code stays the same because it prog
 - **@anaconda/shadcn-theme** for design tokens (CSS custom properties, Tailwind v4)
 - **Vitest** — `*.test.ts` (node unit), `*.integration.test.ts` (serial node), `*.browser.test.tsx` (Chromium component), `*.app.test.tsx` (full app tree)
 - **Playwright e2e** — packaged Electron via `@anaconda/playwright-utils` in the root `e2e/` package; every feature ships at least one `@smoke` spec
-- **Coverage** — 90% lines/branches/functions/statements (`pnpm coverage`)
+- **Coverage** — 80% lines/branches/functions/statements (`pnpm coverage`)
 - **oxlint + oxfmt** (not ESLint/Prettier)
 - **peerDependencies** for react, react-dom, zod in publishable packages
 - Tests use `createFakeSdk` from `@anaconda-agentic-desktop/testing`

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOutIcon, UserIcon } from "lucide-react";
+import { HomeIcon, LogOutIcon, NotebookIcon, UserIcon } from "lucide-react";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
@@ -203,6 +203,30 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 					<SidebarContent>
 						<SidebarGroup className="pt-0">
 							<SidebarMenu>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										isActive={pathname === "/"}
+										tooltip="Home"
+										render={<Link to="/" />}
+										className="size-8!"
+										data-qa-id="nav-home"
+									>
+										<HomeIcon />
+										<span>Home</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										isActive={pathname === "/notebook"}
+										tooltip="Notebook"
+										render={<Link to="/notebook" />}
+										className="size-8!"
+										data-qa-id="nav-notebook"
+									>
+										<NotebookIcon />
+										<span>Notebook</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
 								{navEntries.map((entry) => (
 									<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
 								))}

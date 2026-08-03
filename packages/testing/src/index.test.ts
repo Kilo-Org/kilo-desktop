@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -58,12 +60,15 @@ describe("createFakeMainSdk", () => {
 	});
 
 	it("resolvePluginAsset joins subpaths against the provided pluginDir", () => {
-		const mainSdk = createFakeMainSdk({
-			featureId: "todos",
-			pluginDir: "/tmp/fake-plugin",
-		});
-		expect(mainSdk.resolvePluginAsset("drizzle")).toBe("/tmp/fake-plugin/drizzle");
-		expect(mainSdk.resolvePluginAsset("seeds/en.json")).toBe("/tmp/fake-plugin/seeds/en.json");
+		// path.resolve produces platform-specific separators (e.g. backslashes on
+		// Windows), so build the expected values the same way rather than
+		// hard-coding forward slashes.
+		const pluginDir = path.resolve("/tmp/fake-plugin");
+		const mainSdk = createFakeMainSdk({ featureId: "todos", pluginDir });
+		expect(mainSdk.resolvePluginAsset("drizzle")).toBe(path.resolve(pluginDir, "drizzle"));
+		expect(mainSdk.resolvePluginAsset("seeds/en.json")).toBe(
+			path.resolve(pluginDir, "seeds/en.json"),
+		);
 	});
 
 	it("throws on resolvePluginAsset when no pluginDir is provided", () => {

@@ -53,5 +53,10 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			getAllFlags: () => invoke("feature-flag:get-all"),
 			onChanged: (listener) => bridge.on("feature-flag:changed", listener),
 		},
+		telemetry: {
+			track: async (input) => {
+				await invoke("telemetry:track", input);
+			},
+		},
 	};
 }

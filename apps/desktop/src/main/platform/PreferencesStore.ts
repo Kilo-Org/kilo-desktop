@@ -5,6 +5,10 @@ import { themeSourceSchema, type ThemeSource } from "@anaconda-agentic-desktop/c
 export interface AppPreferences {
 	/** Last renderer-synced theme source — used to resolve cold-start native chrome. */
 	themeSource?: ThemeSource;
+	/** Telemetry opt-out gate. Defaults to `true` (opt-out model). */
+	allowDataCollection?: boolean;
+	/** Stable per-install id, generated once and persisted across sessions. */
+	installationId?: string;
 }
 
 export class PreferencesStore {
@@ -21,5 +25,31 @@ export class PreferencesStore {
 
 	setThemeSource(source: ThemeSource): void {
 		this.#store.set("themeSource", source);
+	}
+
+	/**
+	 * Whether telemetry may collect data. Opt-out model: defaults to `true` when
+	 * unset. A settings-page toggle to flip this is a follow-up.
+	 */
+	get allowDataCollection(): boolean {
+		const value = this.#store.get("allowDataCollection");
+		return typeof value === "boolean" ? value : true;
+	}
+
+	setAllowDataCollection(allow: boolean): void {
+		this.#store.set("allowDataCollection", allow);
+	}
+
+	/**
+	 * Stable installation id, lazily generated on first read and persisted so it
+	 * survives restarts. Used as an OTEL resource attribute to correlate a
+	 * single install without identifying the user.
+	 */
+	getInstallationId(): string {
+		const existing = this.#store.get("installationId");
+		if (typeof existing !== "string" || existing.length === 0) {
+			this.#store.set("installationId", crypto.randomUUID());
+		}
+		return this.#store.get("installationId") as string;
 	}
 }

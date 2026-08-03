@@ -11,7 +11,7 @@
 | E2E smoke   | `@smoke` specs          | Playwright + packaged Electron | Every PR (Windows)                  |
 | E2E full    | all specs               | Playwright + packaged Electron | Nightly matrix + merge queue        |
 
-Coverage gate: **90%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.mjs`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
+Coverage gate: **80%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.mjs`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
 
 App-level tests cover router + provider composition. Feature CRUD belongs in browser component tests and e2e (protocol / IPC / packaging).
 
@@ -21,7 +21,7 @@ App-level tests cover router + provider composition. Feature CRUD belongs in bro
 # All Vitest tiers (unit + integration + browser)
 pnpm test
 
-# Coverage (enforces the 90% gate)
+# Coverage (enforces the 80% gate)
 pnpm coverage
 
 # E2E smoke against a packaged Electron app (uses package:e2e)

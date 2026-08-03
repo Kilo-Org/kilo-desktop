@@ -1,12 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import {
-	CapabilityRegistry,
-	EventBus,
-	FeatureError,
-	FeatureRouter,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import {
 	qualifyFeatureEvent,
@@ -25,12 +20,7 @@ import { BusinessError } from "../../platform/BusinessError.js";
  * Central feature router for the main process.
  * Populated by mainRegister() calls from each feature in the FEATURES array.
  */
-export const mainEventBus = new EventBus();
-export const mainCapabilityRegistry = new CapabilityRegistry();
-export const featureRouter = new FeatureRouter({
-	eventBus: mainEventBus,
-	capabilityRegistry: mainCapabilityRegistry,
-});
+export const featureRouter = new FeatureRouter();
 
 const bootedFeatureIds = new Set<string>();
 
@@ -102,7 +92,7 @@ export function bootFeatures(
 /**
  * Renderer-to-main event delivery. The origin renderer already received the
  * event in-process, so the relay excludes it while forwarding to other
- * windows. Delivering directly to mainEventBus prevents an echo back through
+ * windows. Delivering directly to the router's event bus prevents an echo through
  * MainSdk's outbound relay.
  */
 export function createFeatureMessageHandlers(
@@ -111,7 +101,7 @@ export function createFeatureMessageHandlers(
 	return {
 		"feature:event": (event, context) => {
 			const relayEvent = structuredClone(event);
-			mainEventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
+			featureRouter.eventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
 			relayToRenderers?.(relayEvent, context.senderId);
 		},
 	};

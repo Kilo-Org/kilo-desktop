@@ -1,12 +1,11 @@
 import {
-	CapabilityRegistry,
 	CommandRegistry,
 	ContributionRegistry,
 	createSdk,
 	createStaticNavigation,
-	EventBus,
 	FeatureRouter,
 	StateBroker,
+	teardownFeature as teardownSdkFeature,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type {
@@ -81,9 +80,7 @@ export type FakeSdkOptionsWithChannels<C extends ChannelMap> = FakeSdkShellOptio
 export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
 
 function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
-	const eventBus = new EventBus();
-	const capabilityRegistry = new CapabilityRegistry();
-	const featureRouter = new FeatureRouter({ eventBus, capabilityRegistry });
+	const featureRouter = new FeatureRouter();
 	const shellDelegates: ShellDelegates = {
 		// The fake reports successful delivery so feature code that checks the
 		// envelope takes its happy path in tests. Override to simulate absence.
@@ -141,9 +138,7 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 	};
 
 	return {
-		eventBus,
 		stateBroker: new StateBroker(),
-		capabilityRegistry,
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
 		featureRouter,
@@ -214,6 +209,7 @@ export type FakeFeatureSystem = {
 	readonly services: SdkFactoryServices;
 	getSdk(featureId: string): SDK;
 	teardownFeature(featureId: string): void;
+	dispose(): void;
 };
 
 export type FakeFeatureSystemOptions = {
@@ -250,9 +246,22 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
 	}
 
 	const shared = services;
+	let disposed = false;
+
+	function assertActive(): void {
+		if (disposed) throw new Error("FakeFeatureSystem has been disposed.");
+	}
+
+	function teardown(featureId: string): void {
+		cache.get(featureId)?.destroy();
+		cache.delete(featureId);
+		teardownSdkFeature(featureId, shared);
+	}
+
 	return {
 		services: shared,
 		getSdk(featureId: string): SDK {
+			assertActive();
 			const existing = cache.get(featureId);
 			if (existing) return existing;
 			const created = createSdk(featureId, shared);
@@ -260,10 +269,13 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
 			return created;
 		},
 		teardownFeature(featureId: string): void {
-			const sdk = cache.get(featureId);
-			if (!sdk) return;
-			sdk.destroy();
-			cache.delete(featureId);
+			assertActive();
+			teardown(featureId);
+		},
+		dispose(): void {
+			if (disposed) return;
+			disposed = true;
+			for (const featureId of [...cache.keys()]) teardown(featureId);
 		},
 	};
 }

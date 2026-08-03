@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createFeatureMessageHandlers, mainEventBus } from "./feature-registry.js";
+import { createFeatureMessageHandlers, featureRouter } from "./feature-registry.js";
 
 describe("feature event bridge", () => {
 	it("delivers renderer events to main subscribers and relays with the origin id", () => {
 		const listener = vi.fn();
 		const relay = vi.fn();
-		const unsubscribe = mainEventBus.on("renderer-source.changed", listener);
+		const unsubscribe = featureRouter.eventBus.on("renderer-source.changed", listener);
 		const event = {
 			featureId: "renderer-source",
 			name: "changed",
@@ -24,7 +24,7 @@ describe("feature event bridge", () => {
 
 	it("snapshots the relay before main subscribers can mutate the payload", () => {
 		const relay = vi.fn();
-		const unsubscribe = mainEventBus.on("renderer-source.changed", (payload) => {
+		const unsubscribe = featureRouter.eventBus.on("renderer-source.changed", (payload) => {
 			(payload as { id: string }).id = "mutated";
 		});
 		const event = {

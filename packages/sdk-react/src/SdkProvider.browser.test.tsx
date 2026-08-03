@@ -181,17 +181,20 @@ describe("SdkProvider + useSdk", () => {
 		});
 	});
 
-	it("routes invoke through the invokeFallback when provided, without booting features", async () => {
+	it("routes invoke through the host transport without booting browser features", async () => {
 		const browserBoot = vi.fn();
-		const invokeFallback = vi.fn().mockResolvedValue("bridged");
+		const invoke = vi.fn().mockResolvedValue("bridged");
 		const system = createFeatureSystem({
 			shellDelegates: createTestShellDelegates(),
-			invokeFallback,
+			transport: {
+				invoke,
+				events: { emit: vi.fn(), on: () => () => undefined },
+			},
 			features: [{ id: "demo", mainRegister: demoRegister, browserRegister: browserBoot }],
 		});
 
 		await expect(system.getSdk("demo").invoke("greet", { name: "x" })).resolves.toBe("bridged");
-		expect(invokeFallback).toHaveBeenCalledWith("demo", "greet", { name: "x" });
+		expect(invoke).toHaveBeenCalledWith("demo", "greet", { name: "x" });
 		expect(browserBoot).not.toHaveBeenCalled();
 	});
 
@@ -218,17 +221,38 @@ describe("SdkProvider + useSdk", () => {
 		});
 	});
 
+	it("disposes browser backends even when no renderer SDK was requested", () => {
+		const disposed = vi.fn();
+		const system = makeSystem([
+			{
+				id: "producer",
+				mainRegister() {},
+				browserRegister(mainSdk) {
+					mainSdk.plugins.expose("service", { read: () => "ready" });
+					mainSdk.onDispose(disposed);
+				},
+			},
+		]);
+
+		system.dispose();
+
+		expect(disposed).toHaveBeenCalledOnce();
+		expect(system.services.featureRouter.capabilityRegistry.get("producer")).toBeNull();
+	});
+
 	it("relays outbound events and does not echo inbound events", () => {
 		const emit = vi.fn();
 		let deliver: ((event: FeatureEvent) => void) | undefined;
 		const system = createFeatureSystem({
 			shellDelegates: createTestShellDelegates(),
-			invokeFallback: vi.fn(),
-			eventTransport: {
-				emit,
-				onEvent(handler) {
-					deliver = handler;
-					return () => undefined;
+			transport: {
+				invoke: vi.fn(),
+				events: {
+					emit,
+					on(handler) {
+						deliver = handler;
+						return () => undefined;
+					},
 				},
 			},
 		});
@@ -241,6 +265,24 @@ describe("SdkProvider + useSdk", () => {
 
 		expect(listener).toHaveBeenCalledTimes(2);
 		expect(emit).toHaveBeenCalledOnce();
+	});
+
+	it("detaches the host transport when the feature system is disposed", () => {
+		const detach = vi.fn();
+		const system = createFeatureSystem({
+			shellDelegates: createTestShellDelegates(),
+			transport: {
+				invoke: vi.fn(),
+				events: { emit: vi.fn(), on: () => detach },
+			},
+		});
+		system.getSdk("producer");
+
+		system.dispose();
+		system.dispose();
+
+		expect(detach).toHaveBeenCalledOnce();
+		expect(() => system.getSdk("producer")).toThrow(/disposed/);
 	});
 });
 

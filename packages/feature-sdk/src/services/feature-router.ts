@@ -30,7 +30,9 @@ export type InvokeFallback = (
 
 export interface FeatureRouterOptions {
 	fallback?: InvokeFallback;
+	/** Adopt an existing process-local bus; otherwise the router creates and owns one. */
 	eventBus?: EventBus;
+	/** Adopt an existing process-local registry; otherwise the router creates and owns one. */
 	capabilityRegistry?: CapabilityRegistry;
 }
 
@@ -53,7 +55,10 @@ export interface CreateMainSdkOptions {
 }
 
 /**
- * In-memory handler router backing `sdk.invoke` and `mainSdk.channels`.
+ * Process-local runtime spine backing `sdk.invoke`, `mainSdk.channels`, events,
+ * and cross-feature capabilities. SDK and MainSdk facades always use the bus
+ * and capability registry owned by this router, so those surfaces cannot drift
+ * onto disconnected service instances.
  *
  * Shell infrastructure — features never construct this; they register
  * handlers through the MainSdk given to mainRegister() and call them

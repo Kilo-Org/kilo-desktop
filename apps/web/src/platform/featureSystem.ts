@@ -153,17 +153,18 @@ export function createAppFeatureSystem(
 		features,
 		...(bridge
 			? {
-					eventTransport: {
-						emit: (event: FeatureEvent) => bridge.send("feature:event", event),
-						onEvent: (handler: (event: FeatureEvent) => void) =>
-							bridge.on("feature:event", handler),
-					},
-					invokeFallback: async (featureId: string, channel: string, args?: unknown) => {
-						const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
-						if (!result.ok) {
-							throw new Error(result.error.message);
-						}
-						return result.value;
+					transport: {
+						invoke: async (featureId: string, channel: string, args?: unknown) => {
+							const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
+							if (!result.ok) {
+								throw new Error(result.error.message);
+							}
+							return result.value;
+						},
+						events: {
+							emit: (event: FeatureEvent) => bridge.send("feature:event", event),
+							on: (handler: (event: FeatureEvent) => void) => bridge.on("feature:event", handler),
+						},
 					},
 				}
 			: {}),

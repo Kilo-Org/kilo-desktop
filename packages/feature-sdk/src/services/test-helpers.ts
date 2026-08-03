@@ -1,10 +1,8 @@
 import { z } from "zod";
 
 import { defineMethod } from "../channel-map.js";
-import { CapabilityRegistry } from "./capability-registry.js";
 import { CommandRegistry } from "./command-registry.js";
 import { ContributionRegistry } from "./contribution-registry.js";
-import { EventBus } from "./event-bus.js";
 import { FeatureRouter } from "./feature-router.js";
 import { createStaticNavigation } from "./navigation.js";
 import { StateBroker } from "./state-broker.js";
@@ -22,14 +20,7 @@ export const testChannels = {
 } as const;
 
 export function makeServices(featureRouter?: FeatureRouter) {
-	const eventBus = featureRouter?.eventBus ?? new EventBus();
-	const capabilityRegistry = featureRouter?.capabilityRegistry ?? new CapabilityRegistry();
-	const router =
-		featureRouter ??
-		new FeatureRouter({
-			eventBus,
-			capabilityRegistry,
-		});
+	const router = featureRouter ?? new FeatureRouter();
 	const shellDelegates: ShellDelegates = {
 		notifications: {
 			show: () => ({ delivered: true }),
@@ -66,9 +57,7 @@ export function makeServices(featureRouter?: FeatureRouter) {
 	};
 
 	return {
-		eventBus,
 		stateBroker: new StateBroker(),
-		capabilityRegistry,
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
 		featureRouter: router,

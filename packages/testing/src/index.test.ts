@@ -277,7 +277,7 @@ describe("createFakeSdk", () => {
 
 	it("exposes backing services for assertions", () => {
 		const sdk = createFakeSdk({ featureId: "services" });
-		expect(sdk.services.eventBus).toBeDefined();
+		expect(sdk.services.featureRouter.eventBus).toBeDefined();
 		expect(sdk.services.stateBroker).toBeDefined();
 		expect(sdk.services.featureRouter).toBeDefined();
 	});
@@ -312,5 +312,18 @@ describe("createFakeFeatureSystem", () => {
 
 	it("requires services when no FakeSdk is provided", () => {
 		expect(() => createFakeFeatureSystem({ sdks: {} })).toThrow(/requires `services`/);
+	});
+
+	it("disposes every cached SDK exactly once", () => {
+		const producer = createFakeSdk({ featureId: "sdk-producer" });
+		const destroy = vi.spyOn(producer, "destroy");
+		const system = createFakeFeatureSystem({ sdks: { "sdk-producer": producer } });
+		system.getSdk("consumer");
+
+		system.dispose();
+		system.dispose();
+
+		expect(destroy).toHaveBeenCalledOnce();
+		expect(() => system.getSdk("sdk-producer")).toThrow(/disposed/);
 	});
 });

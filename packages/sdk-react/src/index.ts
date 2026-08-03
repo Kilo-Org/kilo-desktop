@@ -5,6 +5,7 @@ export {
 	useSdk,
 	type CreateFeatureSystemOptions,
 	type FeatureSystem,
+	type FeatureSystemTransport,
 } from "./SdkProvider.js";
 
 export {

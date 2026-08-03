@@ -306,7 +306,7 @@ const sdk = createFakeSdk({
 	handlers: { list: () => [{ id: "1", title: "test", completed: false }] },
 });
 await sdk.invoke("list"); // served by the fake's real router
-sdk.services.eventBus.emit("other.thing", {}); // drive cross-feature scenarios
+sdk.services.featureRouter.eventBus.emit("other.thing", {}); // drive cross-feature scenarios
 
 // Backend registration tests — mainRegister supplies the channel map.
 const mainSdk = createFakeMainSdk({ featureId: "todos" });
@@ -323,18 +323,18 @@ linkedMainSdk.events.emit("changed", {}); // rendererSdk.events.on("todos.change
 
 Everything below is shell infrastructure. Feature code has no reason to import these.
 
-| Export                 | Role                                                                                                                                                                                                               |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `EventBus`             | Namespaced pub/sub shared by renderer SDKs or main SDKs; the shell bridges process-local buses without echoing.                                                                                                    |
-| `StateBroker`          | Observable stores backing `sdk.state`. Lazy placeholder resolution; subscribers survive re-registration.                                                                                                           |
-| `CapabilityRegistry`   | Named API objects backing `sdk.plugins`.                                                                                                                                                                           |
-| `ContributionRegistry` | Zone → contribution mapping backing `sdk.contribute`; `onChange` feeds shell re-renders.                                                                                                                           |
-| `CommandRegistry`      | Palette entries backing `sdk.commands`; ids auto-namespaced `featureId.commandId`.                                                                                                                                 |
-| `FeatureRouter`        | `channel → handler` routing behind `sdk.invoke` and `mainSdk.channels`. Constructor takes an optional `fallback` transport — the renderer injects the IPC bridge here in Electron mode; local handlers always win. |
-| `createSdk`            | Builds a feature-scoped `SDK` facade over the services; tracks instance registrations for `destroy()`.                                                                                                             |
-| `teardownFeature`      | Full feature teardown across all services (plugin unload).                                                                                                                                                         |
+| Export                 | Role                                                                                                                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EventBus`             | Namespaced pub/sub shared by renderer SDKs or main SDKs; the shell bridges process-local buses without echoing.                                                                                 |
+| `StateBroker`          | Observable stores backing `sdk.state`. Lazy placeholder resolution; subscribers survive re-registration.                                                                                        |
+| `CapabilityRegistry`   | Named API objects backing `sdk.plugins`.                                                                                                                                                        |
+| `ContributionRegistry` | Zone → contribution mapping backing `sdk.contribute`; `onChange` feeds shell re-renders.                                                                                                        |
+| `CommandRegistry`      | Palette entries backing `sdk.commands`; ids auto-namespaced `featureId.commandId`.                                                                                                              |
+| `FeatureRouter`        | Canonical process-local owner of channel handlers, the event bus, and capabilities. Its optional invoke fallback routes renderer calls through IPC in Electron mode; local handlers always win. |
+| `createSdk`            | Builds a feature-scoped `SDK` facade over the services; tracks instance registrations for `destroy()`.                                                                                          |
+| `teardownFeature`      | Full feature teardown across all services (plugin unload).                                                                                                                                      |
 
 Where the wiring lives:
 
-- **Electron main:** `apps/desktop/src/main/features/registry/feature-registry.ts` — one `FeatureRouter`, `EventBus`, and `CapabilityRegistry`, booted from the FEATURES array; `feature:invoke` request routing plus the `feature:event` push bridge; `FeatureError → BusinessError` translation.
-- **Renderer:** `packages/sdk-react/src/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and attaches the shell's event transport. In browser mode, `browserRegister` MainSdk instances share the exact renderer event bus and capability registry. Only `browserRegister` boots there (no `mainRegister` fallback — it may use Node APIs); Node-free features opt in with `browserRegister: register`, others are skipped with a warning.
+- **Electron main:** `apps/desktop/src/main/features/registry/feature-registry.ts` — one `FeatureRouter` owns the main-process `EventBus` and `CapabilityRegistry`, boots the FEATURES array, and backs `feature:invoke` plus the `feature:event` push bridge; `FeatureError → BusinessError` translation stays at the IPC boundary.
+- **Renderer:** `packages/sdk-react/src/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and accepts one cohesive Electron transport for invoke + events. In browser mode the transport is omitted, so `browserRegister` MainSdk instances necessarily share the router-owned event bus and capability registry. `FeatureSystem.dispose()` detaches the host transport and tears down the runtime.

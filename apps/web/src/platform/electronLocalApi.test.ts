@@ -16,28 +16,27 @@ describe("createElectronLocalApi", () => {
 	it("forwards theme/shell methods through the bridge", async () => {
 		const invoke = vi
 			.fn()
-			.mockResolvedValueOnce({
-				ok: true,
-				value: { source: "dark", shouldUseDarkColors: true },
-			})
-			.mockResolvedValueOnce({
-				ok: true,
-				value: { source: "light", shouldUseDarkColors: false },
-			})
+			.mockResolvedValueOnce({ ok: true, value: undefined })
 			.mockResolvedValueOnce({ ok: true, value: { opened: true } })
 			.mockResolvedValueOnce({ ok: true, value: undefined });
 		const on = vi.fn(() => () => undefined);
 		const api = createElectronLocalApi({ invoke, on } as unknown as DesktopApi);
 
-		await expect(api.theme.get()).resolves.toMatchObject({ source: "dark" });
-		await expect(api.theme.set({ source: "light" })).resolves.toMatchObject({ source: "light" });
+		await expect(
+			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
+		).resolves.toBeUndefined();
 		await expect(api.shell.openExternal({ url: "https://example.com" })).resolves.toEqual({
 			opened: true,
 		});
 		await expect(api.shell.copyText({ text: "hi" })).resolves.toBeUndefined();
 
-		const unsubscribe = api.theme.onChanged(() => undefined);
-		expect(on).toHaveBeenCalledWith("theme:changed", expect.any(Function));
+		expect(invoke).toHaveBeenNthCalledWith(1, "theme:sync", {
+			source: "dark",
+			shouldUseDarkColors: true,
+		});
+
+		const unsubscribe = api.auth.onChanged(() => undefined);
+		expect(on).toHaveBeenCalledWith("auth:changed", expect.any(Function));
 		unsubscribe();
 	});
 
@@ -49,8 +48,12 @@ describe("createElectronLocalApi", () => {
 			}),
 		});
 		const api = createElectronLocalApi(bridge);
-		await expect(api.theme.get()).rejects.toBeInstanceOf(LocalApiError);
-		await expect(api.theme.get()).rejects.toMatchObject({
+		await expect(
+			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
+		).rejects.toBeInstanceOf(LocalApiError);
+		await expect(
+			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
+		).rejects.toMatchObject({
 			code: "INTERNAL",
 			message: "failed",
 		});

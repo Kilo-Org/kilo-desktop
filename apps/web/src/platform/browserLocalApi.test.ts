@@ -7,48 +7,11 @@ afterEach(() => {
 });
 
 describe("createBrowserLocalApi", () => {
-	it("tracks system theme with matchMedia and cleans up listeners", async () => {
-		const listeners = new Set<(event: MediaQueryListEvent) => void>();
-		const mediaQuery = {
-			matches: true,
-			addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
-				listeners.add(listener);
-			}),
-			removeEventListener: vi.fn(
-				(_type: string, listener: (event: MediaQueryListEvent) => void) => {
-					listeners.delete(listener);
-				},
-			),
-		};
-		vi.stubGlobal(
-			"matchMedia",
-			vi.fn(() => mediaQuery),
-		);
-
+	it("treats theme sync as a no-op outside Electron", async () => {
 		const api = createBrowserLocalApi();
-		const themeListener = vi.fn();
-		const unsubscribe = api.theme.onChanged(themeListener);
-
-		expect(await api.theme.get()).toEqual({ source: "system", shouldUseDarkColors: true });
-		expect(mediaQuery.addEventListener).toHaveBeenCalledOnce();
-
-		for (const listener of listeners) {
-			listener({ matches: false } as MediaQueryListEvent);
-		}
-		expect(themeListener).toHaveBeenCalledWith({
-			source: "system",
-			shouldUseDarkColors: false,
-		});
-
-		await api.theme.set({ source: "light" });
-		expect(themeListener).toHaveBeenCalledWith({
-			source: "light",
-			shouldUseDarkColors: false,
-		});
-		expect(mediaQuery.removeEventListener).toHaveBeenCalled();
-
-		unsubscribe();
-		expect(listeners.size).toBe(0);
+		await expect(
+			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
+		).resolves.toBeUndefined();
 	});
 
 	it("opens external URLs and copies text", async () => {
@@ -95,11 +58,5 @@ describe("createBrowserLocalApi", () => {
 		const unsubscribe = api.auth.onChanged(listener);
 		expect(listener).not.toHaveBeenCalled();
 		expect(() => unsubscribe()).not.toThrow();
-	});
-
-	it("resolves the dark theme without consulting matchMedia", async () => {
-		const api = createBrowserLocalApi();
-		await api.theme.set({ source: "dark" });
-		expect(await api.theme.get()).toEqual({ source: "dark", shouldUseDarkColors: true });
 	});
 });

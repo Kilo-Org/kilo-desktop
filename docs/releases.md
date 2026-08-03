@@ -65,10 +65,18 @@ HTTPS.
 
 ## Build-time variables
 
+The desktop main bundle loads committed Vite variables from
+`apps/desktop/.env.<environment>`. Local development uses `.env.development`; packaged
+builds select `.env.canary`, `.env.staging`, or `.env.prod` from `RELEASE_CHANNEL`.
+Existing process variables override the committed value, and machine-specific overrides
+can use an ignored `.env.<environment>.local` file. Only public build-time values belong
+in the committed files; secrets remain in GitHub Environments.
+
 The Forge compile-time contract uses:
 
 | Variable                 | Meaning                                                                                 |
 | ------------------------ | --------------------------------------------------------------------------------------- |
+| `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file      |
 | `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                     |
 | `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                              |
 | `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                             |

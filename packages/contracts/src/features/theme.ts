@@ -1,21 +1,18 @@
 import { z } from "zod";
 
-import { defineEvent, defineMethod } from "../contract.js";
+import { defineMethod } from "../contract.js";
+import { THEME_SOURCES } from "./theme-tokens.js";
 
-export const themeSourceSchema = z.enum(["system", "light", "dark"]);
+export * from "./theme-tokens.js";
+
+export const themeSourceSchema = z.enum(THEME_SOURCES);
 export const themeStateSchema = z.object({
 	source: themeSourceSchema,
 	shouldUseDarkColors: z.boolean(),
 });
 
-export type ThemeSource = z.infer<typeof themeSourceSchema>;
 export type ThemeState = z.infer<typeof themeStateSchema>;
 
 export const themeMethods = {
-	"theme:get": defineMethod(z.undefined(), themeStateSchema),
-	"theme:set": defineMethod(z.object({ source: themeSourceSchema }), themeStateSchema),
-} as const;
-
-export const themeEvents = {
-	"theme:changed": defineEvent(themeStateSchema),
+	"theme:sync": defineMethod(themeStateSchema, z.undefined()),
 } as const;

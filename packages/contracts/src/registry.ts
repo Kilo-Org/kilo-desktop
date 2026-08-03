@@ -1,7 +1,7 @@
 import { authEvents, authMethods } from "./features/auth.js";
 import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
-import { themeEvents, themeMethods } from "./features/theme.js";
+import { themeMethods } from "./features/theme.js";
 
 /**
  * Throws if any two channel maps share a key. A plain object spread already
@@ -22,7 +22,7 @@ export function assertNoDuplicateChannels(...parts: Array<Record<string, unknown
 }
 
 assertNoDuplicateChannels(shellMethods, themeMethods, authMethods, featureMethods);
-assertNoDuplicateChannels(themeEvents, authEvents);
+assertNoDuplicateChannels(authEvents);
 
 export const ipcMethods = {
 	...shellMethods,
@@ -30,4 +30,4 @@ export const ipcMethods = {
 	...authMethods,
 	...featureMethods,
 };
-export const ipcEvents = { ...themeEvents, ...authEvents };
+export const ipcEvents = { ...authEvents };

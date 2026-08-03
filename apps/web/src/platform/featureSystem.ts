@@ -9,6 +9,7 @@ import type {
 
 import { getDesktopBridge } from "./desktopBridge.js";
 import { createInertNavigation } from "./navigation.js";
+import { getColorSchemeSnapshot, subscribeColorScheme } from "./theme/color-scheme.js";
 
 // ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
 
@@ -30,10 +31,6 @@ function undeliveredNotifications(): ShellDelegates["notifications"] {
 		show: () => undelivered("sdk.notifications.show"),
 		setBadge: () => undelivered("sdk.notifications.setBadge"),
 	};
-}
-
-function peekEffectiveTheme(): "dark" | "light" {
-	return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
 function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
@@ -107,15 +104,10 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 		notifications: undeliveredNotifications(),
 		theme: {
 			subscribe(fn) {
-				// Observable contract: fire synchronously with the current value,
-				// then push updates. No async initial read — avoids racing
-				// onChanged events against a stale get() result.
-				fn(peekEffectiveTheme());
-				return api.theme.onChanged((state) => {
-					fn(state.shouldUseDarkColors ? "dark" : "light");
-				});
+				fn(getColorSchemeSnapshot());
+				return subscribeColorScheme(() => fn(getColorSchemeSnapshot()));
 			},
-			peek: peekEffectiveTheme,
+			peek: getColorSchemeSnapshot,
 		},
 		auth: createAuthDelegate(api),
 		shell: {

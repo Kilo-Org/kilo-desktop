@@ -8,6 +8,7 @@ Revisions: 2026-07-31 (rev 2) — workspaces split out as a shared platform feat
 2026-07-31 (rev 4) — reference-folder grants moved from server-wide spawn config to **session-scoped rulesets** (§3.7): global rules were path-scoped but not workspace-scoped, silently granting every workspace's folders to every session. Verified: subagent sessions inherit `external_directory` rules; session rules auto-allow pre-ask for all tools incl. bash; folder removal = append-and-shadow (last-rule-wins); vendored adapter patched for create options
 2026-08-03 (rev 5) — future Git/worktree compatibility made explicit without adding it to v1 (§2/§12); chat transcripts and session lists virtualized with bounded active runtimes (§6/§7); the shell exposes an app-wide right-panel space while each feature owns its panel UI/state (§8)
 2026-08-03 (rev 6) — aligned with the implemented plugin-system slices: feature persistence uses `mainSdk.storageDir` under `${userData}/plugins/<id>/`; built-in versus plugin route/asset ownership is explicit (§3.5/§11); feature navigation uses `sdk.navigate`; proposed right-panel zones are identified as Phase 5 platform additions (§8); capability stubbing through `createFakeSdk` is confirmed (§13)
+2026-08-03 (rev 7) — aligned with plugin-system Slice 6 (PR #56): kilo-code resolves workspaces directly through `mainSdk.plugins`, subscribes to workspace changes through `mainSdk.events`, and emits renderer updates over the implemented cross-process event bridge; the renderer relay, `workspace_folder_cache`, resolved-workspace channel inputs, and Phase 2 polling interim are removed (§3.1/§3.5/§3.6/§4/§10/§12)
 
 This document is the full-picture spec for integrating [Kilo Code](https://kilo.ai) into the Anaconda Agentic Desktop app. It is written to be built **phase by phase** (see [§12 Phased implementation plan](#12-phased-implementation-plan)); each phase should be implementable from this document alone.
 
@@ -91,6 +92,7 @@ flowchart LR
   HomeUI -->|"workspaces capability"| WsFeature
   PanelSlot --> ChatPanelUI
   ChatPanelUI -->|"sdk.invoke"| KiloFeature
+  KiloFeature -->|"mainSdk.plugins.get + mainSdk.events"| WsFeature
   KiloFeature --> ServerMgr
   KiloFeature --> SessionIndex
   SessionIndex -->|"REST + SSE /global/event"| Srv
@@ -99,7 +101,7 @@ flowchart LR
   ServerMgr --> Srv
 ```
 
-**Main-side decoupling note:** kilo-code's main code never calls the workspaces feature (today `MainSdk` has no cross-feature primitives, and cross-feature imports are forbidden). The renderer resolves a workspace's folders through the workspaces capability and passes them into kilo-code channels; kilo-code caches the folder mapping (§4.2 `workspace_folder_cache`) so main can build the spawn-time permission config and answer directory-scoped calls on cold start without the renderer. See §3.6.
+**Main-side decoupling note:** kilo-code never imports workspaces implementation code, but its main code can resolve the workspaces feature's process-local capability through `mainSdk.plugins.get("workspaces")` and subscribe to `workspaces.*` through `mainSdk.events`. Workspace-sensitive channels take only a `workspaceId`; kilo-code main reads the current folders at the point of use. Missing capabilities degrade to `null`, so handlers must fail gracefully rather than assuming activation order. See §3.6.
 
 ### 3.2 Kilo server lifecycle (main process)
 
@@ -137,7 +139,7 @@ No permission rules go into spawn config — reference-folder access is granted 
 ### 3.3 Renderer ↔ server transport & auth
 
 - The chat surface talks to `kilo serve` **directly over `http://127.0.0.1:<port>` (REST + SSE)** using a typed `@kilocode/sdk/v2/client` client created in the renderer. This is what the assistant-ui adapter is built for, and it keeps high-frequency token streaming off our IPC bridge.
-- The renderer learns `{ baseUrl, username, password }` via `sdk.invoke("kilo-code", "server.getConnection", { workspace })` — the same shape as the OpenCode desktop's `awaitInitialization` IPC. The password is delivered over our IPC bridge (renderer is same-process trust), never written to disk anywhere.
+- The renderer learns `{ baseUrl, username, password, directory }` via its kilo-code SDK instance's `sdk.invoke("server.getConnection", { workspaceId })` — the same shape as the OpenCode desktop's `awaitInitialization` IPC, plus the authoritative primary-folder directory resolved in main. The password is delivered over our IPC bridge (renderer is same-process trust), never written to disk anywhere.
 - **Auth on every call**: REST clients set `Authorization: Basic base64("kilo:" + password)` (the generated SDK client supports an `auth` option). The SSE `EventSource` API cannot set headers, so the event stream authenticates with the server's `?auth_token=` query-param credential channel (supported server-side for exactly this reason). Every request — including health checks — is authenticated; there is no unauthenticated code path in the app.
 - **CORS**: handled at spawn via `--cors <renderer-origin>` (the server takes a `--cors` array; pass the dev-server origin and the packaged app's scheme/origin). This replaces the earlier IPC-proxy plan; the custom-fetch IPC proxy remains only as a documented fallback if `EventSource` CORS still misbehaves (decision gate in Phase 1).
 - **One SSE stream per process** (not per chat, not per workspace): the server publishes every event on `GET /global/event`, wrapped in a `{ directory, project, workspace, payload }` envelope, with a 10s heartbeat. We run exactly two subscribers total:
@@ -184,13 +186,13 @@ The integration ships as **two features**. Workspaces are shared platform infras
 
 **`workspaces` feature** (platform-level):
 
-| Layer        | Location                                        | Contents                                                                                                                                          |
-| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract     | `packages/contracts/src/features/workspaces.ts` | workspace/folder Zod schemas + `defineContract({ list, get, create, update, remove })`; exported from `packages/contracts/src/index.ts`           |
-| Main         | `apps/desktop/src/main/features/workspaces/`    | `index.ts` (`mainRegister`), `WorkspaceService.ts` (CRUD, path validation, primary-folder invariant), `schema.ts` (Drizzle)                       |
-| Renderer     | `apps/web/src/features/workspaces/`             | workspace management dialog (create/edit/delete, folder picking), `useWorkspaces.ts` query factories, capability exposure + event emission (§3.6) |
-| Persistence  | `${userData}/plugins/workspaces/data.db`        | own SQLite file at `path.join(mainSdk.storageDir, "data.db")` + own Drizzle migrations                                                            |
-| Registration | both registries                                 | one `workspaces` entry in FEATURES + WEB_FEATURES; never hand-edit `Application.ts`                                                               |
+| Layer        | Location                                        | Contents                                                                                                                                                                                             |
+| ------------ | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract     | `packages/contracts/src/features/workspaces.ts` | workspace/folder Zod schemas + `defineContract({ list, get, create, update, remove })`; exported from `packages/contracts/src/index.ts`                                                              |
+| Main         | `apps/desktop/src/main/features/workspaces/`    | `index.ts` (`mainRegister`: handlers + `mainSdk.plugins.expose` + post-commit `mainSdk.events.emit`), `WorkspaceService.ts` (CRUD, path validation, primary-folder invariant), `schema.ts` (Drizzle) |
+| Renderer     | `apps/web/src/features/workspaces/`             | workspace management dialog (create/edit/delete, folder picking), `useWorkspaces.ts` query factories, renderer capability exposure + event-driven query invalidation (§3.6)                          |
+| Persistence  | `${userData}/plugins/workspaces/data.db`        | own SQLite file at `path.join(mainSdk.storageDir, "data.db")` + own Drizzle migrations                                                                                                               |
+| Registration | both registries                                 | one `workspaces` entry in FEATURES + WEB_FEATURES; never hand-edit `Application.ts`                                                                                                                  |
 
 **`kilo-code` feature** (this integration):
 
@@ -205,38 +207,49 @@ The integration ships as **two features**. Workspaces are shared platform infras
 
 **Built-in versus plugin boundary:** v1 deliberately starts both capabilities as built-in features under `apps/`, so `/chat`, `/settings`, the Kilo CLI under `apps/desktop/vendor/kilo/`, and the two direct `FEATURES` / `WEB_FEATURES` registrations below are correct for this phase. If either feature later moves into `plugins/<id>/`, its contracts, entries, tests, routes, navigation, and packaged assets move with it: `plugin.json` declares `contributes.routes` / `contributes.nav`, contributed routes resolve under `/plugins/*`, and plugin-shipped assets such as migrations are located with `mainSdk.resolvePluginAsset(...)`. That resolver is intentionally unavailable to built-in features, so v1 must not use it for the app-owned Kilo binary. Moving the dynamic `/chat/$sessionId` route to a plugin will also require the plugin route layer to support the same parameterized route semantics; the currently implemented plugin page lookup is for resolved `/plugins/*` pages.
 
-**New shell capabilities required (Phase 1):**
+**Remaining shell capabilities required (Phase 1):**
 
-1. A generic main→renderer **feature event push channel** (`feature:event`), mirroring `feature:invoke`. Today only theme has push events (hand-wired), and `sdk.events` is renderer-only. The kilo-code feature needs server-pushed `session.status`/`attention`/`usage` updates. Implementation: preload listener + `ElectronWindow.broadcast` + bridge into `sdk.events` so feature code subscribes via `sdk.events.on("kilo-code.session-changed", ...)`. This is a small, generic shell addition owned by the platform, not a `LocalApi` feature method.
-2. A native **directory-picker dialog** delegate (e.g. `sdk.shell.showOpenDialog`). `sdk.fs` is explicitly **not wired** today (calls reject, per `packages/feature-sdk/src/types/sdk.ts`) and no picker exists; the workspaces feature needs it for folder selection. Shell-owned, exposed through the SDK like the other delegates.
-3. A **key/value settings delegate** backed by `electron-store` (e.g. `sdk.settings`), shell-owned so features don't each instantiate their own store files. Used for flat main-owned settings (`autoSettleDays`, default model, onboarding flags — see the storage tiers in §4.4). The OpenCode desktop uses the same pattern (`desktop/src/main/store.ts`, proxied to the renderer over IPC).
+1. A native **directory-picker dialog** delegate (e.g. `sdk.shell.showOpenDialog`). `sdk.fs` is explicitly **not wired** today (calls reject, per `packages/feature-sdk/src/types/sdk.ts`) and no picker exists; the workspaces feature needs it for folder selection. Shell-owned, exposed through the SDK like the other delegates.
+2. A **key/value settings delegate** backed by `electron-store` (e.g. `sdk.settings`), shell-owned so features don't each instantiate their own store files. Used for flat main-owned settings (`autoSettleDays`, default model, onboarding flags — see the storage tiers in §4.4). The OpenCode desktop uses the same pattern (`desktop/src/main/store.ts`, proxied to the renderer over IPC).
+
+The generic `feature:event` transport is already an SDK/shell primitive. `sdk.events` and `mainSdk.events` are symmetric and cross-process; kilo-code consumes that surface and adds no feature-owned IPC.
 
 ### 3.6 Cross-feature workspace capability
 
-The workspaces feature exposes its API as a renderer-side capability (the SDK's sanctioned cross-feature mechanism — `packages/feature-sdk/src/types/sdk.ts`):
+The workspaces feature exposes the same structural service in each process where it is needed. In Electron, the renderer capability delegates to the feature's typed channels while the main capability wraps `WorkspaceService` directly. Capabilities are process-local: the event bridge carries notifications across processes, not capability calls.
 
 ```typescript
-// Exposed by the workspaces feature via sdk.plugins.expose("workspaceService", ...)
+// Exposed in the renderer via sdk.plugins.expose("workspaceService", ...)
+// and in mainRegister via mainSdk.plugins.expose("workspaceService", ...).
 interface WorkspaceCapabilities {
 	workspaceService: {
 		list(): Promise<Workspace[]>;
 		get(id: string): Promise<Workspace | null>;
 		create(input: CreateWorkspaceInput): Promise<Workspace>;
 		update(input: UpdateWorkspaceInput): Promise<Workspace>;
-		remove(id: string): Promise<void>;
+		remove(id: string): Promise<{ deleted: boolean }>;
 	};
 }
 
 // Consumed by kilo-code (and future features):
 const caps = sdk.plugins.get<WorkspaceCapabilities>("workspaces"); // may be null — always handle
 const workspaces = await caps?.workspaceService.list();
+
+// Consumed independently by kilo-code main. Resolve lazily at the point of use;
+// do not capture null during feature activation.
+const mainCaps = mainSdk.plugins.get<WorkspaceCapabilities>("workspaces");
+const workspace = await mainCaps?.workspaceService.get(workspaceId);
 ```
 
 Rules for consumers:
 
-- `sdk.plugins.get` returning `null` is the contract that keeps features independently loadable — every call site must degrade gracefully (e.g. the home workspace selector shows "workspaces unavailable" rather than crashing).
-- Change notifications flow via events: `workspaces.workspace-created` / `workspaces.workspace-updated` / `workspaces.workspace-deleted`. The last-selected workspace id lives in an observable store: `sdk.state.get<string>("workspaces.active-workspace")`.
-- **Main-side flow** (because `MainSdk` has no cross-feature primitives): the renderer resolves a workspace's folders through the capability and passes them into kilo-code channels — e.g. `server.getConnection({ workspace: { id, primaryFolder, referenceFolders } })`. kilo-code caches the folder mapping (`workspace_folder_cache`, §4.2) so main can rebuild the spawn-time permission config and answer directory-scoped calls during a cold-start attention scan without renderer involvement. Folder edits propagate: `workspaces.workspace-updated` event → kilo-code renderer → `server.syncWorkspace` → cache refresh + append-and-shadow ruleset patches on every session of the workspace (§3.7).
+- `sdk.plugins.get` and `mainSdk.plugins.get` returning `null` is the contract that keeps features independently loadable. Renderer call sites degrade gracefully (for example, "workspaces unavailable"); main handlers throw an expected `FeatureError` when a requested workspace cannot currently be resolved.
+- The type parameter on `plugins.get<T>` is asserted, not runtime-validated. Capability changes stay additive, and capability round-trips are covered by tests (§13/§14).
+- Workspace CRUD handlers emit `workspaces.workspace-created` / `workspaces.workspace-updated` / `workspaces.workspace-deleted` from main only, after the database mutation commits. The shell relays those events to renderer subscribers; renderer code must not emit a duplicate CRUD event. Update/delete payloads include a structured-cloneable `before`/`after` snapshot (with `null` on the absent side), giving permission reconciliation the removed paths as well as the current workspace.
+- kilo-code main subscribes directly to `workspaces.workspace-updated` and `workspaces.workspace-deleted` through `mainSdk.events.on(...)` and applies the append-and-shadow session-rule updates from §3.7. Deletion shadows every workspace-managed reference-folder allow on the affected sessions. The renderer relay and `server.syncWorkspace` channel do not exist.
+- SDK events are fire-and-forget, at-most-once, and have no replay. Kilo therefore resolves the live workspace capability whenever it creates a ruleset or answers a directory-scoped request, and runs an initial reconciliation of existing session rules when `SessionIndexService` first starts (retrying if the capability is not active yet). Events make updates prompt; they are not the source of truth.
+- Event payloads must be structured-cloneable. The emitting SDK stamps its own feature ID, subscriptions use fully-qualified names, and throwing subscribers are isolated from sibling handlers. Main subscriptions are removed automatically when the feature is destroyed.
+- The last-selected workspace id remains renderer-only observable state: `sdk.state.get<string>("workspaces.active-workspace")`.
 - The **workspace management UI** (create/edit/delete dialog, folder picking) is owned solely by the workspaces feature. Other features open it by emitting `workspaces.open-manager` (e.g. the "Manage workspaces" entry in kilo-code's workspace selector).
 - Future consumers use the same capability for workspace folder inventory — no kilo-code involvement. Session-scoped consumers such as Terminal and Changes additionally resolve the session's effective working directory (§2.1), which is the primary folder in v1 and may be a worktree later.
 
@@ -244,10 +257,10 @@ Rules for consumers:
 
 Two requirements, and they pull in opposite directions: the agent must read **and write** a workspace's reference folders without ever surfacing a manual permission prompt — **but only within that workspace's sessions**. A Workspace B session touching Workspace A's folders must NOT sail through silently; it hits the normal permission prompt. Kilo's tool layer asks an `external_directory` permission (payload globs of the form `<abs-dir>/*`) whenever a tool touches a path outside the session's directory — and **rules short-circuit the ask entirely**: when a matching `allow` rule exists in the evaluation ruleset, the server never emits `permission.asked`, never queues a pending request, and nothing reaches the UI (verified in `packages/opencode/src/permission/index.ts` — `Permission.ask` returns before the ask path).
 
-**The mechanism: per-session rulesets, attached at session creation.** `POST /session` accepts `permission: Ruleset`, and session rules participate in ask evaluation exactly like config rules (verified: they are merged into the base ruleset in `kilocode/session/prompt.ts` before `Permission.ask` runs, and they cover the shell tool's path scan too — every tool shares the same `ctx.ask`). Every session we create carries exactly its workspace's folders:
+**The mechanism: per-session rulesets, attached at session creation.** `POST /session` accepts `permission: Ruleset`, and session rules participate in ask evaluation exactly like config rules (verified: they are merged into the base ruleset in `kilocode/session/prompt.ts` before `Permission.ask` runs, and they cover the shell tool's path scan too — every tool shares the same `ctx.ask`). `sessions.create` takes a `workspaceId`; kilo-code main resolves the current workspace through `mainSdk.plugins` immediately before it builds the ruleset. Every session we create carries exactly that live workspace's folders:
 
 ```jsonc
-// sessions.create({ workspace }) → POST /session
+// sessions.create({ workspaceId }) → main capability lookup → POST /session
 {
 	"permission": [
 		// two rules per reference folder: the bare path covers the dir itself,
@@ -264,7 +277,8 @@ Scoping falls out for free: a Workspace B session simply has no rule for Workspa
 
 - **Subagents inherit**: task-tool child sessions copy the parent's `external_directory` rules verbatim (the inheritance filter in `agent/subagent-permissions.ts` explicitly passes all `external_directory` rules and all denies), including on task resume. No separate handling needed for subagent sessions.
 - **Zero-prompt covers every tool**: read, write, edit, apply_patch, grep, glob, lsp, and bash path scans all evaluate the same session ruleset pre-ask.
-- **Folder edits are append-and-shadow**: `PATCH /session/:sessionID` is append-only (`Permission.merge` is concatenation; no remove endpoint), but evaluation is last-rule-wins. So `server.syncWorkspace` PATCHes **every** session of the edited workspace: new folders append `allow` rules; removed folders append a shadowing `{ pattern: <old>, action: "ask" }` (restores prompting) or `"deny"` rule. Rule lists stay tiny (two rules per folder, plus a shadow per removal); we dedupe exact triples on write.
+- **Folder edits are append-and-shadow**: `PATCH /session/:sessionID` is append-only (`Permission.merge` is concatenation; no remove endpoint), but evaluation is last-rule-wins. kilo-code's main-side `workspaces.workspace-updated` subscriber uses the event's `before`/`after` snapshots to PATCH **every** session of the edited workspace: new folders append `allow` rules; removed folders append a shadowing `{ pattern: <old>, action: "ask" }` (restores prompting) or `"deny"` rule. Rule lists stay tiny (two rules per folder, plus a shadow per removal); we dedupe exact triples on write.
+- **Missed-event recovery**: because SDK events have no replay, first-start reconciliation in `SessionIndexService` reads all current workspaces through the live main capability, inspects the rules already attached to existing sessions, adds missing allows, and shadows stale allows (including every workspace-managed allow for a deleted workspace). It retries if the capability is not active yet. A missed or pre-activation workspace event can delay reconciliation but can never make a stale local workspace copy authoritative.
 - **Session creation paths**: home composer, new-chat, and any future flow all go through `sessions.create`, which attaches the ruleset server-side. The vendored adapter's thread-list `initialize` currently sends `session.create({})` with no injection point — we patch our vendored copy to accept a create-options factory (adapter change §3.4 #6) so no code path can create a ruleset-less session.
 
 **Rejected alternatives:**
@@ -285,10 +299,10 @@ Scoping falls out for free: a Workspace B session simply has no rule for Workspa
 ### 4.1 Ownership split
 
 - **Kilo-owned** (inside the single `kilo serve`, app-owned under the XDG override, survives app restarts): sessions, messages, parts, costs, token counts, agents/MCP/skill/provider config, session titles.
-- **`workspaces`-feature-owned** (`${userData}/features/workspaces/data.db`): workspaces and their folders — the single source of truth for all features.
-- **`kilo-code`-feature-owned** (`${userData}/features/kilo-code/data.db`): session metadata (visited/settled), the workspace folder cache (drives session rulesets, §3.7), usage rollups. Flat settings (`autoSettleDays`, default model) live in **electron-store** via the shell k/v delegate (§4.4), not here.
+- **`workspaces`-feature-owned** (`${userData}/plugins/workspaces/data.db`): workspaces and their folders — the single source of truth for all features and the source used to construct permission rulesets.
+- **`kilo-code`-feature-owned** (`${userData}/plugins/kilo-code/data.db`): session metadata (visited/settled) and usage rollups. Flat settings (`autoSettleDays`, default model) live in **electron-store** via the shell k/v delegate (§4.4), not here.
 
-Hard rule (per CONTEXT.md): each feature owns its own SQLite file and tables are never shared or joined across features. kilo-code rows carry plain `workspaceId` strings — **no foreign keys into the workspaces feature's DB**; folder/name resolution always goes through the workspaces capability (§3.6). If a workspace is deleted, kilo-code rows keep their `workspaceId` and the UI renders them under an "Unknown workspace" bucket until `sessions.delete`/archive cleans them up.
+Hard rule (per CONTEXT.md): each feature owns its own SQLite file and tables are never shared or joined across features. kilo-code rows carry plain `workspaceId` strings — **no foreign keys into the workspaces feature's DB**; main-side folder resolution and renderer-side name resolution go through their process-local workspaces capabilities (§3.6). If a workspace is deleted, kilo-code rows keep their `workspaceId` and the UI renders them under an "Unknown workspace" bucket until `sessions.delete`/archive cleans them up; existing-session operations recover the Kilo directory from the `GlobalSession` record rather than a copied workspace row.
 
 ### 4.2 Tables
 
@@ -330,19 +344,6 @@ export const sessionMetadata = sqliteTable("session_metadata", {
 	createdAt: integer("created_at").notNull(),
 });
 
-// workspace_folder_cache — kilo-code's copy of every workspace's folders,
-// refreshed via server.getConnection / server.syncWorkspace (§3.6).
-// Used to build per-session permission rulesets (§3.7) and to answer
-// directory-scoped calls on cold start. NOTE: connection
-// details (port/password) are NEVER persisted — they are re-learned at
-// every spawn and live in main-process memory only (§3.2).
-export const workspaceFolderCache = sqliteTable("workspace_folder_cache", {
-	workspaceId: text("workspace_id").primaryKey(),
-	primaryFolder: text("primary_folder").notNull(),
-	referenceFolders: text("reference_folders", { mode: "json" }).$type<string[]>().notNull(),
-	updatedAt: integer("updated_at").notNull(),
-});
-
 // usage_daily — pre-aggregated cost/token rollups per UTC day
 export const usageDaily = sqliteTable("usage_daily", {
 	day: text("day").notNull(), // "2026-07-31"
@@ -360,7 +361,7 @@ export const usageDaily = sqliteTable("usage_daily", {
 
 ### 4.3 Derived session summary (contract type, not a table)
 
-The sidebar, attention section, and recent-chats list all consume one aggregated shape, produced by `SessionIndexService` (Kilo `GlobalSession` + live status + our metadata). Note it carries `workspaceId` only — workspace **names and folders are joined renderer-side** via the workspaces capability (the UI already subscribes to `workspaces.*` events, so renames propagate live); main-side `SessionIndexService` never queries the workspaces feature.
+The sidebar, attention section, and recent-chats list all consume one aggregated shape, produced by `SessionIndexService` (Kilo `GlobalSession` + live status + our metadata). It carries `workspaceId` only: workspace **names** are joined renderer-side through the renderer workspaces capability, while main services resolve folders directly through the main workspaces capability when they need them. The UI subscribes to `workspaces.*` events, so renames propagate live without adding names or folders to the high-frequency session event payload.
 
 ```typescript
 const sessionSummarySchema = z.object({
@@ -387,11 +388,11 @@ Status derivation (mirrors t3code `resolveSidebarV2Status`): pending plan-exit p
 
 Three storage tiers, chosen per concern (mirrors the OpenCode desktop's split):
 
-| Tier                                                 | Use for                                               | Examples here                                                                                                         |
-| ---------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| **SQLite (per-feature)**                             | Structured, queryable, relational, or aggregated data | `workspaces`/`workspace_folders` (invariants, relations), `session_metadata`, `workspace_folder_cache`, `usage_daily` |
-| **electron-store (shell-owned, via `sdk.settings`)** | Flat, main-owned key/value settings                   | `autoSettleDays`, default model ref, onboarding flags, window state                                                   |
-| **localStorage (renderer)**                          | Ephemeral renderer-only layout prefs                  | sidebar/panel widths, last-selected workspace id (renderer copy)                                                      |
+| Tier                                                 | Use for                                               | Examples here                                                                               |
+| ---------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **SQLite (per-feature)**                             | Structured, queryable, relational, or aggregated data | `workspaces`/`workspace_folders` (invariants, relations), `session_metadata`, `usage_daily` |
+| **electron-store (shell-owned, via `sdk.settings`)** | Flat, main-owned key/value settings                   | `autoSettleDays`, default model ref, onboarding flags, window state                         |
+| **localStorage (renderer)**                          | Ephemeral renderer-only layout prefs                  | sidebar/panel widths, last-selected workspace id (renderer copy)                            |
 
 Two hard rules on top:
 
@@ -409,10 +410,10 @@ Route: `/` (existing `HomeView`, `apps/web/src/features/home/HomeView.tsx`). The
 Centered hero composer (existing look kept) with three selectors rendered inside/under the composer input:
 
 1. **Workspace selector** — lists workspaces via the `workspaces` capability (`sdk.plugins.get("workspaces")`, §3.6); defaults to the last-used workspace (persisted in renderer localStorage and mirrored into the `workspaces.active-workspace` state store so other features can observe it). A **Manage workspaces** entry emits `workspaces.open-manager`, opening the workspaces feature's management dialog (create/edit/delete, folder picking via the new shell directory-picker, §3.5). If no workspace exists, the selector funnels straight into that create flow.
-2. **Agent selector** — `agents.list` for the selected workspace (built-ins first: Code, Architect/Plan, Ask, Debug, Orchestrator; then custom agents). Default: `code`.
-3. **Model selector** — `models.list` grouped by provider; shows only providers that are connected (have credentials). Default: last-used model, else the provider-marked default. Unconnected providers show a disabled row linking to Settings → Providers.
+2. **Agent selector** — `agents.list({ workspaceId })` for the selected workspace (built-ins first: Code, Architect/Plan, Ask, Debug, Orchestrator; then custom agents). Default: `code`.
+3. **Model selector** — `models.list({ workspaceId })` grouped by provider; shows only providers that are connected (have credentials). Default: last-used model, else the provider-marked default. Unconnected providers show a disabled row linking to Settings → Providers.
 
-On send: `sessions.create({ workspace })` (the resolved workspace object from the selector, §3.6) → ``sdk.navigate(`/chat/${sessionId}`, { search: { prompt } })`` — feature code uses the SDK navigation delegate rather than importing TanStack Router. The chat page's composer is pre-filled and auto-submits the first message with the chosen `{ agent, model }` (avoids racing session creation against the SSE stream on the home page).
+On send: `sessions.create({ workspaceId })` → ``sdk.navigate(`/chat/${sessionId}`, { search: { prompt } })`` — kilo-code main resolves the workspace and attaches its current permission ruleset; feature code uses the SDK navigation delegate rather than importing TanStack Router. The chat page's composer is pre-filled and auto-submits the first message with the chosen `{ agent, model }` (avoids racing session creation against the SSE stream on the home page).
 
 ### 5.2 Sections (below the composer, in order)
 
@@ -436,7 +437,7 @@ flowchart LR
 
 (Actual proportions: sidebar 256px resizable 208–(viewport−640), center flexible, shell-owned app right panel hidden until a tab is opened for the active scope.)
 
-- **Runtime**: the page reads the session's `workspaceId` from the aggregated index, resolves the workspace's folders via the workspaces capability (§3.6), calls `server.getConnection({ workspace: { id, primaryFolder, referenceFolders } })` (refreshes kilo-code's `workspace_folder_cache` and returns `{ baseUrl, username, password }` for the single shared server, §3.2/§3.3), and mounts `useKiloRuntime({ baseUrl, auth, directory: primaryFolder, initialSessionId })` inside `AssistantRuntimeProvider`. Session creation attaches the workspace's reference-folder ruleset (§3.7).
+- **Runtime**: the page reads the session's `workspaceId` from the aggregated index and calls `server.getConnection({ workspaceId })`. kilo-code main resolves the live workspace capability and returns `{ baseUrl, username, password, directory }` for the single shared server (§3.2/§3.3); the page mounts `useKiloRuntime({ baseUrl, auth, directory, initialSessionId })` inside `AssistantRuntimeProvider`. Session creation attaches the workspace's reference-folder ruleset (§3.7).
 - **Thread (composer included)**: assistant-ui `Thread` (installed via the already-configured `@assistant-ui` shadcn registry) — the registry component already composes its own composer internally, so the chat page mounts **no separate `Composer` component**. We customize the composer action bar inside our installed copy of the registry `thread.tsx`: add the agent + model selectors and a read-only workspace chip (workspace is fixed for an existing session). Selections feed the per-message `{ agent, model }` send options (adapter extension, §3.4). Tool UI is ported per §3.4: `ToolFallback`, `ToolGroup`, `ReasoningGroup`, bash/apply-patch tool UIs, plus the permission card and question card rendered from `useKiloPermissions()` / `useKiloQuestions()`. The home page is the exception — it has no thread, so it keeps its own standalone composer (§5.1).
 - **Approvals**: pending tool calls surface inline (permission card: Allow once / Always allow / Reject → `replyToPermission`) and via assistant-ui's `onRespondToToolApproval` on tool parts. Plan flow: when the agent is `architect`/plan and it proposes to build, a plan-exit permission surfaces as an **Approve plan & build** action (see §14 for the event-shape verification item).
 - **New chat**: a new-chat button in the sidebar header (and `Cmd/Ctrl+Shift+O` — verify against existing bindings) creates a session in the current workspace (`sessions.create`) and opens it through `sdk.navigate`.
@@ -545,7 +546,7 @@ Four sub-panels:
 
 Two contract files using `defineContract`/`defineMethod` (channel names unprefixed; scoped by `featureId` at registration).
 
-**`packages/contracts/src/features/workspaces.ts`** — the shared workspace surface (also exposed renderer-side as the §3.6 capability, which simply delegates to these channels):
+**`packages/contracts/src/features/workspaces.ts`** — the shared workspace surface. The renderer capability delegates to these channels; the structurally equivalent main capability calls `WorkspaceService` directly (§3.6):
 
 ```typescript
 const workspaceFolderSchema = z.object({
@@ -572,15 +573,10 @@ export const workspacesContract = defineContract({
 export type WorkspacesService = InferContract<typeof workspacesContract>;
 ```
 
-**`packages/contracts/src/features/kilo-code.ts`** — the integration surface (note: no workspace CRUD here — that lives in the workspaces feature; kilo-code channels take the **resolved** workspace where folder paths are needed):
+**`packages/contracts/src/features/kilo-code.ts`** — the integration surface (note: no workspace CRUD here — that lives in the workspaces feature; kilo-code channels take a `workspaceId` and resolve current folders in main where needed):
 
 ```typescript
-// Resolved via the workspaces capability renderer-side before calling (§3.6)
-const resolvedWorkspaceInput = z.object({
-	id: z.string(),
-	primaryFolder: z.string().min(1),
-	referenceFolders: z.array(z.string()),
-});
+const workspaceIdInput = z.object({ workspaceId: z.string() });
 
 // In-memory credentials for the single shared server (§3.2/§3.3).
 // Delivered per call, never persisted anywhere.
@@ -590,39 +586,29 @@ const connectionSchema = z.object({
 	password: z.string(), // per-spawn random; header: Basic base64(`${username}:${password}`); SSE: ?auth_token=
 	version: z.string(), // from the authenticated /global/health check
 });
+const workspaceConnectionSchema = connectionSchema.extend({
+	directory: z.string().min(1), // authoritative primary folder resolved in main
+});
 
 export const kiloCodeContract = defineContract({
-	// ── Server lifecycle (single shared server; workspace resolved → directory)
-	// Ensures the server (spawn + identity verification on first call), refreshes
-	// workspace_folder_cache, and returns connection credentials:
-	"server.getConnection": defineMethod(
-		z.object({ workspace: resolvedWorkspaceInput }),
-		connectionSchema,
-	),
-	"server.syncWorkspace": defineMethod(z.object({ workspace: resolvedWorkspaceInput }), okSchema), // folder edits → cache refresh + append-and-shadow ruleset patches on the workspace's sessions (§3.7)
+	// ── Server lifecycle (single shared server; main resolves workspace → directory)
+	// Ensures the server (spawn + identity verification on first call), resolves
+	// the current workspace through mainSdk.plugins, and returns credentials + directory:
+	"server.getConnection": defineMethod(workspaceIdInput, workspaceConnectionSchema),
 	"server.restart": defineMethod(z.undefined(), connectionSchema), // crash recovery / manual restart; respawns with fresh credentials
 	"server.status": defineMethod(z.undefined(), serverStatusSchema), // singleton: no workspaceId needed
 
 	// ── Catalogs (proxied from the shared server, directory-scoped)
-	// These ensure the server internally (spawn on first call) and refresh
-	// workspace_folder_cache, so they work on first contact with a workspace:
-	"agents.list": defineMethod(
-		z.object({ workspace: resolvedWorkspaceInput }),
-		z.array(agentInfoSchema),
-	),
-	"models.list": defineMethod(
-		z.object({ workspace: resolvedWorkspaceInput }),
-		z.array(providerModelsSchema),
-	),
+	// These ensure the server internally (spawn on first call) and resolve the
+	// workspace capability at call time, so they work on first contact:
+	"agents.list": defineMethod(workspaceIdInput, z.array(agentInfoSchema)),
+	"models.list": defineMethod(workspaceIdInput, z.array(providerModelsSchema)),
 
 	// ── Sessions (aggregated index + metadata)
 	"sessions.list": defineMethod(sessionListInput, z.array(sessionSummarySchema)),
-	// Creates the session server-side with directory = workspace.primaryFolder and
-	// attaches the reference-folder permission ruleset (§3.7):
-	"sessions.create": defineMethod(
-		z.object({ workspace: resolvedWorkspaceInput }),
-		z.object({ sessionId: z.string() }),
-	),
+	// Resolves the live workspace in main, creates the session with directory =
+	// primaryFolder, and attaches the reference-folder permission ruleset (§3.7):
+	"sessions.create": defineMethod(workspaceIdInput, z.object({ sessionId: z.string() })),
 	"sessions.rename": defineMethod(
 		z.object({ sessionId: z.string(), title: z.string().min(1) }),
 		okSchema,
@@ -682,9 +668,9 @@ export const kiloCodeContract = defineContract({
 export type KiloCodeService = InferContract<typeof kiloCodeContract>;
 ```
 
-**Push events** (main → renderer, namespaced `kilo-code.*`, over the new `feature:event` bridge): `session-changed` (upsert/remove of a `sessionSummary`), `attention-changed` (full attention list), `usage-updated`, `server-status-changed` (`{ workspaceId, status }`), `settings-changed` (providers/agents/MCPs/skills reload trigger).
+**Push events** are ordinary `mainSdk.events.emit(...)` calls, namespaced automatically as `kilo-code.*` and relayed by the implemented SDK bridge: `session-changed` (upsert/remove of a `sessionSummary`), `attention-changed` (full attention list), `usage-updated`, `server-status-changed` (`{ status }`; the server is a singleton), and `settings-changed` (providers/agents/MCPs/skills reload trigger). Payloads must be structured-cloneable. Delivery is fire-and-forget, at-most-once, and has no replay, so queries remain the snapshot/source-of-truth path and events trigger incremental updates or invalidation.
 
-Validation and errors follow the SDK rules: `mainSdk.channels(kiloCodeContract).handleAll({...})` (exhaustive), inputs/outputs validated at the boundary, expected failures throw `FeatureError` (e.g. `new FeatureError("Workspace not found.", "NOT_FOUND")`).
+Validation and errors follow the SDK rules: `mainSdk.channels(kiloCodeContract).handleAll({...})` (exhaustive), inputs/outputs validated at the boundary, expected failures throw `FeatureError` (e.g. `new FeatureError("Workspace not found.", "NOT_FOUND")`; an unavailable workspaces capability is also an expected failure). Existing-session mutations recover their directory from Kilo's `GlobalSession`; they do not require a copied workspace row after a workspace is deleted.
 
 ---
 
@@ -699,13 +685,12 @@ Validation and errors follow the SDK rules: `mainSdk.channels(kiloCodeContract).
 | Workspace management dialog  | `apps/web/src/features/workspaces/`                                                                              | App-level dialog mounted near root; opened via `workspaces.open-manager` event (§3.6)                                                                                              |
 | Shell nav                    | `apps/web/src/components/layout/AppSidebarLayout.tsx`                                                            | Add nav entries: Chats (`/chat`), Settings (`/settings`) with `data-qa-id="nav-chats"`, `"nav-settings"`                                                                           |
 | App-wide right-panel space   | `packages/feature-sdk/src/types/zones.ts` + `apps/web/src/components/layout/AppRightPanelSlot.tsx` + root layout | Add and render the canonical `app-right-panel` zone plus route-aware surface selection; add feature-owned nested-zone plumbing for `chat-right-panel-tab`; no shell tab state (§8) |
-| Feature event push channel   | `apps/desktop/src/main/` (shell) + `packages/contracts/src/features/feature-invoke.ts` area + preload            | Generic `feature:event` broadcast → `sdk.events` bridge (§3.5)                                                                                                                     |
 | Directory-picker delegate    | shell platform + preload + `packages/feature-sdk`                                                                | Native `showOpenDialog` exposed via `sdk.shell` (§3.5) — `sdk.fs` is not wired today                                                                                               |
 | Settings k/v delegate        | shell platform + `packages/feature-sdk` + `electron-store` dependency                                            | `sdk.settings` backed by electron-store for flat main-owned settings (§3.5, §4.4)                                                                                                  |
 | Kilo CLI vendoring           | `scripts/fetch-kilo.ts` + `apps/desktop/vendor/kilo/` + Forge config                                             | Pinned, checksum-verified binaries packaged as extra resources (§3.2)                                                                                                              |
 | Registrations                | `apps/desktop/src/main/features/registry/features.ts`, `apps/web/src/features/features.ts`                       | **two** entries each: `workspaces` and `kilo-code` (FEATURES + WEB_FEATURES)                                                                                                       |
 
-Browser mode: `workspaces` ships a `browserRegister` with an in-memory `WorkspaceService` (it is Node-light — the only Electron-ism is the folder picker, which the dialog hides in browser mode). `kilo-code` needs Node (spawns processes, SQLite) so its Electron `mainRegister` is primary; for the standalone-browser dev mode it provides a `browserRegister` with fakes (empty sessions, "requires the desktop app" empty states, mirrors the sdk-producer fake pattern).
+Browser mode: `workspaces` ships a `browserRegister` with an in-memory `WorkspaceService` and exposes the main capability there (it is Node-light — the only Electron-ism is the folder picker, which the dialog hides in browser mode). Browser `MainSdk` and renderer SDK instances share one router-owned event bus and capability registry, so renderer consumers can use that exposure directly; do not replace it with a second same-named renderer wrapper. `kilo-code` needs Node (spawns processes, SQLite) so its Electron `mainRegister` is primary; for the standalone-browser dev mode it provides a `browserRegister` with fakes (empty sessions, "requires the desktop app" empty states, mirrors the sdk-producer fake pattern).
 
 ---
 
@@ -715,13 +700,13 @@ Each phase is independently shippable and tested. File paths are relative to the
 
 ### Phase 1 — Foundations
 
-- Scaffold the **`workspaces`** feature (follow `.agents/skills/new-feature`): contract file + export, `WorkspaceService` (CRUD, primary-folder invariant, path validation) + SQLite, management dialog with folder picking, capability exposure + events + `active-workspace` store (§3.6), FEATURES/WEB_FEATURES entries.
-- Scaffold the **`kilo-code`** feature: contract file + export, `mainRegister` skeleton, FEATURES/WEB_FEATURES entries, SQLite + Drizzle setup.
-- Shell additions: `feature:event` push channel (+ preload + `sdk.events` bridge); native directory-picker delegate via `sdk.shell`; electron-store-backed `sdk.settings` delegate (§4.4).
+- Scaffold the **`workspaces`** feature (follow `.agents/skills/new-feature`): contract file + export, `WorkspaceService` (CRUD, primary-folder invariant, path validation) + SQLite, management dialog with folder picking, renderer capability + `active-workspace` store, main capability exposure, and post-commit main events (§3.6), FEATURES/WEB_FEATURES entries.
+- Scaffold the **`kilo-code`** feature: contract file + export, `mainRegister` skeleton, direct workspaces capability resolver + workspace-event reconciliation subscription, FEATURES/WEB_FEATURES entries, SQLite + Drizzle setup.
+- Remaining shell additions: native directory-picker delegate via `sdk.shell`; electron-store-backed `sdk.settings` delegate (§4.4). The SDK already owns the `feature:event` transport.
 - **Bundle the Kilo CLI**: `scripts/fetch-kilo.ts` downloads the pinned 1.x-line release artifacts (per platform/arch incl. `-baseline`), verifies SHA256, writes `apps/desktop/vendor/kilo/`; Forge packaging ships it as extra resources; record verified versions in §3.2.
 - `KiloServerManager` (**singleton**, §3.2): spawn the vendored `kilo serve` via `execa` (the app's standard process lib — no `cross-spawn`) with the full recipe — `--port 0` + stdout URL parse, per-spawn `KILO_SERVER_PASSWORD`, `KILO_PARENT_PID`, XDG isolation, `--cors` origins; authenticated `/global/health` identity check; in-memory-only connection registry; `onDispose` teardown (`KILO_CODE_CLI_PATH` override for local kilo builds). **CORS decision gate**: verify renderer `fetch`/`EventSource` against the spawned origins; implement the custom-fetch IPC proxy only if the flag proves insufficient.
 - Vendor the adapter into `apps/web/src/features/kilo-code/runtime/`, retarget to `@kilocode/sdk`, port its unit tests.
-- Tests: unit (WorkspaceService, server manager with mocked spawn — incl. stdout parse, auth-header injection, identity failure on 401, permission-rules builder), integration (both features' SQLite round-trips), `createFakeSdk` browser test of the workspace dialog + capability exposure, `@smoke` e2e: create a workspace.
+- Tests: unit (WorkspaceService, server manager with mocked spawn — incl. stdout parse, auth-header injection, identity failure on 401, permission-rules builder, direct main capability available/null paths, workspace-event reconciliation), integration (both features' SQLite round-trips), `createFakeSdk` browser test of the workspace dialog + renderer capability, `createFakeMainSdk`/`createLinkedFakeSdkPair` coverage of main capabilities and main→renderer events, `@smoke` e2e: create a workspace.
 
 ### Phase 2 — Chat MVP
 
@@ -729,14 +714,15 @@ Each phase is independently shippable and tested. File paths are relative to the
 - Port Thread (with its built-in composer) + tool UI from the `with-opencode` example; restyle to Anaconda tokens; add the agent/model selectors to the composer's action bar (§6).
 - Home composer selectors (workspace/agent/model) + send → create session → navigate → auto-submit first message.
 - Basic flat, cursor-paged, virtualized session list in the sidebar (no sections yet) + new-chat button.
-- `sessions.*` channels + `SessionIndexService` v1 (cross-directory listing on the single server; session create attaches the §3.7 reference-folder ruleset; no push events yet — TanStack Query polling/invalidation).
+- `sessions.*` channels + `SessionIndexService` v1: cross-directory listing on the single server; session create resolves the live workspace and attaches the §3.7 reference-folder ruleset; the single main `/global/event` subscription emits `kilo-code.session-changed` from day one. Queries provide the initial snapshot and push events update/invalidate it — no polling interim.
+- Renderer `KiloEventBus` goes live here as the one app-level `/global/event` subscription, and the adapter consumes its per-session streams instead of creating a stream per chat runtime.
 - Chat transcript pagination/virtualization + §6.1 bounded runtime lifecycle: only the visible chat runtime is mounted; navigation preserves lightweight restoration state but disposes message-level subscriptions and projections.
 - Tests: browser tests of chat view with fake sdk, including large transcript/session-list fixtures and repeated cross-session navigation with bounded-runtime assertions; adapter send/approval unit tests; `@smoke` e2e: send a prompt, see a streamed response (fake kilo server fixture, §13).
 
 ### Phase 3 — Approvals, attention, V2 sidebar fidelity
 
 - Permission + question cards wired to `replyToPermission`/`replyToQuestion`; plan-exit approval action (pending §14 verification).
-- `kilo-code.session-changed` push events from `SessionIndexService` (single main-side `/global/event` subscription, §3.3); drop polling. Renderer `KiloEventBus` goes live here, and the adapter switches from per-page EventSource to the shared stream.
+- Extend the Phase 2 push pipeline with `kilo-code.attention-changed` and the full permission/question/plan/failure status derivation; queries remain the replayable snapshot path.
 - Full §7 sidebar: Needs You/Active/Settled sections, status pills + recede rule, settle model, keyboard (`Cmd+1..9`, traversal, `Cmd+B`), resize, context menu + multi-select bulk actions.
 - Home **Needs attention** section + `sessions.attention` (shared Needs You filter).
 - `sessions.markVisited` unread model.
@@ -775,10 +761,10 @@ Each phase is independently shippable and tested. File paths are relative to the
 
 Follows [docs/TESTING.md](./TESTING.md) tiers and `.agents/skills/write-vitest` / `.agents/skills/write-e2e-test`:
 
-- **Unit (`*.test.ts`)**: `WorkspaceService` (primary-folder invariant, path validation), `sessionStatus.ts` derivation + section assignment, usage bucketing, config merge writers, adapter message projection + permission mapping (ported from the react-opencode tests), server manager state machine (mocked spawn/HTTP).
-- **Integration (`*.integration.test.ts`)**: SQLite round-trips for both features (workspaces + folders; session metadata, workspace folder cache, usage rollups), `SessionIndexService` against a **fake Kilo server** (see below), settings file writes into temp dirs.
+- **Unit (`*.test.ts`)**: `WorkspaceService` (primary-folder invariant, path validation, post-commit event payloads), main capability available/null degradation, workspace-update append-and-shadow plus missed-event startup reconciliation, `sessionStatus.ts` derivation + section assignment, usage bucketing, config merge writers, adapter message projection + permission mapping (ported from the react-opencode tests), server manager state machine (mocked spawn/HTTP). Use `createFakeMainSdk` and `createLinkedFakeSdkPair` for main capabilities and main↔renderer event delivery — never hand-roll SDK objects.
+- **Integration (`*.integration.test.ts`)**: SQLite round-trips for both features (workspaces + folders; session metadata and usage rollups), direct workspaces-capability resolution from kilo-code main, `SessionIndexService` against a **fake Kilo server** (see below), settings file writes into temp dirs.
 - **Browser (`*.browser.test.tsx`)**: all views with `createFakeSdk` from `@anaconda-agentic-desktop/testing` — never hand-rolled fakes. Sidebar sections, home sections, settings panels, chat composer selectors, workspace management dialog. kilo-code view tests stub the workspaces capability through `createFakeSdk({ plugins: { get: ... } })`, covering both the available capability and `null` degradation required by §3.6.
-- **App-level (`*.app.test.tsx`)**: router + providers tree: home → send → lands on `/chat/$sessionId`; settings nav; workspace create → selector reflects it (capability round-trip through both features).
+- **App-level (`*.app.test.tsx`)**: router + providers tree: home → send → lands on `/chat/$sessionId`; settings nav; workspace create → selector reflects the relayed main event and renderer capability. A main-registration test separately covers workspaces expose → kilo-code consume without renderer involvement.
 - **E2E (`@smoke`, Playwright/Electron)**: one per feature area minimum — workspace creation, chat send/stream, tool approval, sidebar status + settle, usage section, terminal tab, settings provider key, marketplace install. Layout mirrors features: `e2e/specs/features/workspaces/`, `e2e/specs/features/kilo-code/` (matching page objects under `e2e/pages/features/`).
 - **Fake Kilo server fixture** (new, `packages/testing` or `e2e/fixtures`): a small Node HTTP+SSE server implementing the subset of the Kilo v2 API we consume: Basic auth (`401` on wrong/missing credentials — exercises our identity check), `/global/health`, `/global/event` with the `{ directory, payload }` envelope + `?auth_token=` stream auth, session CRUD (incl. `permission` rulesets), messages, `session.status`/part-delta/permission events, provider+agent lists, cost fields. Used by integration tests and e2e so CI never needs real model credentials. Scripted scenarios: instant reply, slow stream, permission-ask, question-ask, error, cost-bearing messages, and **auto-grant scoping** (a session asserts NO `permission.asked` for paths covered by its own §3.7 ruleset, and that an ask DOES surface for a folder registered to a different workspace).
 - Coverage: repo gate is 80% lines/branches/functions/statements; the derivation/projection/aggregation modules should be at or near 100%.
@@ -788,24 +774,24 @@ Follows [docs/TESTING.md](./TESTING.md) tiers and `.agents/skills/write-vitest` 
 
 ## 14. Risks & open questions
 
-| #   | Item                                                                                                                                                                                                                                       | Impact                                                      | Mitigation / decision needed                                                                                                                                                                                                                                                                             |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **SDK line**: npm `@kilocode/cli`/`@kilocode/sdk` `latest` is 7.4.x (legacy) while the OpenCode-fork v2 SDK (`createKiloClient`/`createKiloServer`) is the 1.0.x `next` line                                                               | Adapter + server manager target the wrong API if mis-pinned | Phase 1 gate: pin exact 1.x versions, run the adapter's ported tests against a real `kilo serve`; record verified versions in §3.2                                                                                                                                                                       |
-| 2   | **API parity**: Kilo's v2 API vs `@opencode-ai/sdk@^1.18` (what the reference adapter imports) — endpoint shapes, event names (`EventPermissionAsked`, `EventMessagePartDelta`), `experimental.session.list({ roots })`, workspace headers | Vendored adapter may need per-endpoint adjustments          | Phase 1: diff the two OpenAPI specs (`packages/sdk/openapi.json` in both repos); keep the adapter's client surface isolated so deltas are one-file changes                                                                                                                                               |
-| 3   | **CORS**: renderer-origin `fetch`/SSE to `http://127.0.0.1:<port>` may be blocked                                                                                                                                                          | All chat streaming depends on it                            | Largely resolved: spawn passes `--cors <renderer-origin>` (§3.3) — verified in Phase 1 against both dev and packaged origins; the custom-fetch IPC proxy remains the documented fallback                                                                                                                 |
-| 4   | **Plan-approval representation**: exact Kilo event/permission shape when a plan-mode agent proposes to build (plan-exit permission? question? plain message?)                                                                              | "Press build on a plan" UX + `plan-ready` status            | Phase 3 spike against a real session; if it is a permission of a known kind, map to the violet pill + Approve-and-build action                                                                                                                                                                           |
-| 5   | **Marketplace catalog format**: `Kilo-Org/kilo-marketplace` repo structure may drift                                                                                                                                                       | Marketplace browse/install                                  | Cache + schema-validate the catalog; degrade to "marketplace unavailable" rather than breaking settings                                                                                                                                                                                                  |
-| 6   | **Cost granularity**: 90-day rollups need per-message cost fields on every provider (Kilo Gateway vs direct providers)                                                                                                                     | Usage section accuracy                                      | Phase 4: verify cost presence per provider; fall back to token-only display with an estimate disclaimer for cost-less providers                                                                                                                                                                          |
-| 7   | **Instance fan-in**: one server boots a lazy in-process instance per directory; many workspaces = many booted instances in a single process                                                                                                | Memory growth proportional to distinct directories touched  | Bounded by one process; monitor via `server.status`; `POST /global/dispose` evicts instances (coarse — all at once); evaluate per-instance disposal in Phase 2                                                                                                                                           |
-| 8   | **Secrets storage**: provider API keys must not land in our SQLite or plaintext project config                                                                                                                                             | Security                                                    | Kilo server auth store is app-owned via the XDG override (§3.2); project scope uses `{env:VAR}` indirection only (Kilo's trusted-config rule); app-owned future secrets use electron-store + `safeStorage` (§4.4); document in settings UI copy                                                          |
-| 9   | **Terminal transport** (Phase 5): kilo server-side PTY is the plan; `node-pty` (Windows/ConPTY) is the fallback                                                                                                                            | Terminal tab portability                                    | Spike the server PTY endpoints (one-time-ticket auth, `pty.*` events) in Phase 5 before committing to node-pty; if node-pty is needed, evaluate its ConPTY support matrix then; the panel frame ships regardless                                                                                         |
-| 10  | **assistant-ui version drift**: adapter peer `@assistant-ui/react ^0.15.0`; app has `^0.15.1`; upstream adapter moves fast                                                                                                                 | Runtime breakage on upgrades                                | Pin `@assistant-ui/react`; re-vendor deliberately; keep adapter unit tests green as the upgrade gate                                                                                                                                                                                                     |
-| 11  | **Shell folder-picker**: workspace creation needs a native directory dialog; `sdk.fs` is explicitly **not wired** today (calls reject) and no picker delegate exists                                                                       | Workspace UX blocked without it                             | Phase 1 adds a shell-owned `showOpenDialog` delegate via `sdk.shell` (§3.5) — platform work, not a feature `LocalApi` method                                                                                                                                                                             |
-| 12  | **Keyboard conflicts**: chat sidebar bindings (`Cmd+B`, `Cmd+1..9`, `Cmd+J`) vs shell/Electron defaults                                                                                                                                    | UX papercuts                                                | Scope bindings to the `/chat` route focus tree; audit against `AppSidebarLayout` and the command palette in Phase 3                                                                                                                                                                                      |
-| 13  | **Bundled binary signing**: the vendored `kilo` binary must be code-signed (Developer ID) and inside the app's notarization on macOS, and signed on Windows — unsigned binaries get Gatekeeper/SmartScreen-blocked                         | App won't run the agent on user machines                    | Wire into the existing release pipeline ([docs/releases.md](./releases.md)); smoke-test the **packaged** app on a clean machine per platform; re-verify on every CLI pin bump                                                                                                                            |
-| 14  | **Capability drift**: kilo-code (and future features) consume workspaces via `sdk.plugins.get`, whose type parameter is asserted, not validated — a breaking change in the workspaces capability fails at runtime, not compile time        | Cross-feature breakage as features multiply                 | Keep capability changes additive; version the capability object if a break is unavoidable; cover the capability contract (expose + consume round-trip) with an app-level test (§13)                                                                                                                      |
-| 15  | **Auto-grant breadth** (§3.7): session rulesets allow-list a workspace's reference folders — a sloppy workspace definition (filesystem root or `$HOME` as a folder) silently grants broad read/write access to that workspace's sessions   | Security footgun                                            | `WorkspaceService` validates + realpaths folders at registration and rejects dangerous roots (`/`, `$HOME`, drive roots); rules are exact-path globs only; grants are session-scoped, so a bad workspace never leaks into other workspaces; anything outside a session's own folders still asks normally |
-| 16  | **Ruleset retraction** (§3.7): `PATCH /session` is append-only — removing a reference folder can't delete the old allow rule                                                                                                               | Stale access lingers on pre-existing sessions               | Last-rule-wins evaluation: `server.syncWorkspace` appends a shadowing `ask`/`deny` rule for removed folders to every session of the workspace (new sessions are correct by construction); dedupe exact triples on write so rule lists stay tiny                                                          |
+| #   | Item                                                                                                                                                                                                                                                        | Impact                                                      | Mitigation / decision needed                                                                                                                                                                                                                                                                                                                |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **SDK line**: npm `@kilocode/cli`/`@kilocode/sdk` `latest` is 7.4.x (legacy) while the OpenCode-fork v2 SDK (`createKiloClient`/`createKiloServer`) is the 1.0.x `next` line                                                                                | Adapter + server manager target the wrong API if mis-pinned | Phase 1 gate: pin exact 1.x versions, run the adapter's ported tests against a real `kilo serve`; record verified versions in §3.2                                                                                                                                                                                                          |
+| 2   | **API parity**: Kilo's v2 API vs `@opencode-ai/sdk@^1.18` (what the reference adapter imports) — endpoint shapes, event names (`EventPermissionAsked`, `EventMessagePartDelta`), `experimental.session.list({ roots })`, workspace headers                  | Vendored adapter may need per-endpoint adjustments          | Phase 1: diff the two OpenAPI specs (`packages/sdk/openapi.json` in both repos); keep the adapter's client surface isolated so deltas are one-file changes                                                                                                                                                                                  |
+| 3   | **CORS**: renderer-origin `fetch`/SSE to `http://127.0.0.1:<port>` may be blocked                                                                                                                                                                           | All chat streaming depends on it                            | Largely resolved: spawn passes `--cors <renderer-origin>` (§3.3) — verified in Phase 1 against both dev and packaged origins; the custom-fetch IPC proxy remains the documented fallback                                                                                                                                                    |
+| 4   | **Plan-approval representation**: exact Kilo event/permission shape when a plan-mode agent proposes to build (plan-exit permission? question? plain message?)                                                                                               | "Press build on a plan" UX + `plan-ready` status            | Phase 3 spike against a real session; if it is a permission of a known kind, map to the violet pill + Approve-and-build action                                                                                                                                                                                                              |
+| 5   | **Marketplace catalog format**: `Kilo-Org/kilo-marketplace` repo structure may drift                                                                                                                                                                        | Marketplace browse/install                                  | Cache + schema-validate the catalog; degrade to "marketplace unavailable" rather than breaking settings                                                                                                                                                                                                                                     |
+| 6   | **Cost granularity**: 90-day rollups need per-message cost fields on every provider (Kilo Gateway vs direct providers)                                                                                                                                      | Usage section accuracy                                      | Phase 4: verify cost presence per provider; fall back to token-only display with an estimate disclaimer for cost-less providers                                                                                                                                                                                                             |
+| 7   | **Instance fan-in**: one server boots a lazy in-process instance per directory; many workspaces = many booted instances in a single process                                                                                                                 | Memory growth proportional to distinct directories touched  | Bounded by one process; monitor via `server.status`; `POST /global/dispose` evicts instances (coarse — all at once); evaluate per-instance disposal in Phase 2                                                                                                                                                                              |
+| 8   | **Secrets storage**: provider API keys must not land in our SQLite or plaintext project config                                                                                                                                                              | Security                                                    | Kilo server auth store is app-owned via the XDG override (§3.2); project scope uses `{env:VAR}` indirection only (Kilo's trusted-config rule); app-owned future secrets use electron-store + `safeStorage` (§4.4); document in settings UI copy                                                                                             |
+| 9   | **Terminal transport** (Phase 5): kilo server-side PTY is the plan; `node-pty` (Windows/ConPTY) is the fallback                                                                                                                                             | Terminal tab portability                                    | Spike the server PTY endpoints (one-time-ticket auth, `pty.*` events) in Phase 5 before committing to node-pty; if node-pty is needed, evaluate its ConPTY support matrix then; the panel frame ships regardless                                                                                                                            |
+| 10  | **assistant-ui version drift**: adapter peer `@assistant-ui/react ^0.15.0`; app has `^0.15.1`; upstream adapter moves fast                                                                                                                                  | Runtime breakage on upgrades                                | Pin `@assistant-ui/react`; re-vendor deliberately; keep adapter unit tests green as the upgrade gate                                                                                                                                                                                                                                        |
+| 11  | **Shell folder-picker**: workspace creation needs a native directory dialog; `sdk.fs` is explicitly **not wired** today (calls reject) and no picker delegate exists                                                                                        | Workspace UX blocked without it                             | Phase 1 adds a shell-owned `showOpenDialog` delegate via `sdk.shell` (§3.5) — platform work, not a feature `LocalApi` method                                                                                                                                                                                                                |
+| 12  | **Keyboard conflicts**: chat sidebar bindings (`Cmd+B`, `Cmd+1..9`, `Cmd+J`) vs shell/Electron defaults                                                                                                                                                     | UX papercuts                                                | Scope bindings to the `/chat` route focus tree; audit against `AppSidebarLayout` and the command palette in Phase 3                                                                                                                                                                                                                         |
+| 13  | **Bundled binary signing**: the vendored `kilo` binary must be code-signed (Developer ID) and inside the app's notarization on macOS, and signed on Windows — unsigned binaries get Gatekeeper/SmartScreen-blocked                                          | App won't run the agent on user machines                    | Wire into the existing release pipeline ([docs/releases.md](./releases.md)); smoke-test the **packaged** app on a clean machine per platform; re-verify on every CLI pin bump                                                                                                                                                               |
+| 14  | **Capability drift**: kilo-code (and future features) consume workspaces via `sdk.plugins.get` / `mainSdk.plugins.get`, whose type parameter is asserted, not validated — a breaking change in the workspaces capability fails at runtime, not compile time | Cross-feature breakage as features multiply                 | Keep renderer and main capability shapes aligned and additive; version the capability object if a break is unavoidable; cover both process-local expose/consume round-trips in tests (§13)                                                                                                                                                  |
+| 15  | **Auto-grant breadth** (§3.7): session rulesets allow-list a workspace's reference folders — a sloppy workspace definition (filesystem root or `$HOME` as a folder) silently grants broad read/write access to that workspace's sessions                    | Security footgun                                            | `WorkspaceService` validates + realpaths folders at registration and rejects dangerous roots (`/`, `$HOME`, drive roots); rules are exact-path globs only; grants are session-scoped, so a bad workspace never leaks into other workspaces; anything outside a session's own folders still asks normally                                    |
+| 16  | **Ruleset retraction** (§3.7): `PATCH /session` is append-only — removing a reference folder can't delete the old allow rule                                                                                                                                | Stale access lingers on pre-existing sessions               | Last-rule-wins evaluation: the main-side workspace-event subscriber appends a shadowing `ask`/`deny` rule for removed folders to every session of the workspace; first-start reconciliation repairs missed non-replayed events; new sessions resolve current folders by construction; dedupe exact triples on write so rule lists stay tiny |
 
 ---
 

@@ -22,8 +22,8 @@ describe("SHELL_ROUTE_PATHS", () => {
 
 		const generatedPaths = [...fullPathsLine!.matchAll(/'([^']+)'/g)]
 			.map((match) => match[1]!)
-			// "/$" is the plugin catch-all — the one route plugins resolve through.
-			.filter((path) => path !== "/$")
+			// "/plugins/$" is the plugin catch-all — the one route plugins resolve through.
+			.filter((path) => path !== "/plugins/$")
 			.sort();
 
 		expect([...SHELL_ROUTE_PATHS].sort()).toEqual(generatedPaths);

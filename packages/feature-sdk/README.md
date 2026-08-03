@@ -238,12 +238,12 @@ if (!result.delivered) showInlineBanner(); // graceful fallback
 
 ### `sdk.navigate` + `sdk.location` — shell navigation delegate
 
-The router is internal to the shell (Decision #19) — plugins never import it. Navigate by the absolute paths routes declare in `plugin.json`, and observe the current location like any other SDK observable:
+The router is internal to the shell (Decision #19) — plugins never import it. Plugin routes are mounted under the `/plugins/*` namespace so shell and plugin routes cannot collide; the loader prefixes manifest paths for you. Navigate by the full resolved path (or by `PluginPageProps.path` the shell passes into your page), and observe the current location like any other SDK observable:
 
 ```ts
-sdk.navigate("/todos", { search: { filter: "open" } });
+sdk.navigate("/plugins/todos", { search: { filter: "open" } });
 
-sdk.location.peek(); // { path: "/todos", search: { filter: "open" } }
+sdk.location.peek(); // { path: "/plugins/todos", search: { filter: "open" } }
 const unsub = sdk.location.subscribe((loc) => setBreadcrumb(loc.path)); // fires immediately
 ```
 

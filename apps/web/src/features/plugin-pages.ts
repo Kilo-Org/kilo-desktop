@@ -1,4 +1,8 @@
-import { pluginRoutes, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	PLUGIN_ROUTE_NAMESPACE,
+	pluginRoutes,
+	type PluginDiscovery,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 import type { PluginPageProps } from "@anaconda-agentic-desktop/feature-sdk";
 import type { ComponentType } from "react";
@@ -7,13 +11,14 @@ import { PLUGIN_DISCOVERY } from "./features.js";
 
 /**
  * A full-page route declared in a plugin manifest (`contributes.routes`),
- * ready for the shell to render: the shell's catch-all route (routes/$.tsx)
- * mounts `component` when `path` is visited. Plugins never touch the router
- * (Decision #19); navigation entries are separate (`contributes.nav`).
+ * ready for the shell to render: the shell's catch-all route
+ * (routes/plugins/$.tsx) mounts `component` when `path` is visited. Plugins
+ * never touch the router (Decision #19); navigation entries are separate
+ * (`contributes.nav`).
  */
 export interface PluginPage {
 	pluginId: string;
-	/** Absolute route path from the manifest, e.g. "/todos". */
+	/** Full resolved route path, e.g. "/plugins/todos". */
 	path: string;
 	/** Optional page title for the browser-mode unavailable state. */
 	title: string | undefined;
@@ -24,9 +29,14 @@ export interface PluginPage {
 	 * of a dead page.
 	 */
 	browserSafe: boolean;
-	/** `path` without the leading slash — the catch-all route's splat param. */
+	/**
+	 * `path` with the `/plugins/` prefix stripped — the catch-all route's
+	 * splat param (e.g. `"todos"` for `/plugins/todos`).
+	 */
 	splat: string;
 }
+
+const PLUGIN_ROUTE_PREFIX = `${PLUGIN_ROUTE_NAMESPACE}/`;
 
 /** Derive renderable pages from a discovery result (pure — unit-testable). */
 export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
@@ -38,7 +48,9 @@ export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
 		// React-specific interpretation (feature-sdk stays React-free).
 		component: route.component as ComponentType<PluginPageProps>,
 		browserSafe: route.browserSafe,
-		splat: route.path.slice(1),
+		splat: route.path.startsWith(PLUGIN_ROUTE_PREFIX)
+			? route.path.slice(PLUGIN_ROUTE_PREFIX.length)
+			: route.path.replace(/^\//, ""),
 	}));
 }
 

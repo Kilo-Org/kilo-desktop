@@ -106,6 +106,7 @@ export {
 	pluginNav,
 	pluginZoneContributions,
 	reportPluginDiscoveryIssues,
+	PLUGIN_ROUTE_NAMESPACE,
 	type BundledPlugin,
 	type DiscoverPluginsOptions,
 	type PluginModule,

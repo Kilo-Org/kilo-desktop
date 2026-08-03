@@ -24,12 +24,12 @@ describe("createRouterNavigation", () => {
 		const { router } = makeFakeRouter();
 		const navigation = createRouterNavigation(router);
 
-		navigation.navigate("/todos");
-		expect(router.navigate).toHaveBeenLastCalledWith({ to: "/todos" });
+		navigation.navigate("/plugins/todos");
+		expect(router.navigate).toHaveBeenLastCalledWith({ to: "/plugins/todos" });
 
-		navigation.navigate("/todos", { search: { filter: "open" }, replace: true });
+		navigation.navigate("/plugins/todos", { search: { filter: "open" }, replace: true });
 		expect(router.navigate).toHaveBeenLastCalledWith({
-			to: "/todos",
+			to: "/plugins/todos",
 			search: { filter: "open" },
 			replace: true,
 		});
@@ -49,10 +49,10 @@ describe("createRouterNavigation", () => {
 		const unsub = navigation.subscribe((location) => seen.push(location));
 		expect(seen).toEqual([{ path: "/", search: {} }]);
 
-		navigation.navigate("/todos", { search: { filter: "open" } });
+		navigation.navigate("/plugins/todos", { search: { filter: "open" } });
 		expect(seen).toEqual([
 			{ path: "/", search: {} },
-			{ path: "/todos", search: { filter: "open" } },
+			{ path: "/plugins/todos", search: { filter: "open" } },
 		]);
 
 		unsub();
@@ -68,7 +68,7 @@ describe("createInertNavigation", () => {
 		try {
 			const navigation = createInertNavigation();
 
-			navigation.navigate("/todos");
+			navigation.navigate("/plugins/todos");
 			navigation.navigate("/again");
 			expect(warn).toHaveBeenCalledOnce();
 			expect(warn.mock.calls[0]?.[0]).toContain("no shell router is wired");

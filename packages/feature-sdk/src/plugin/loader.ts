@@ -5,6 +5,22 @@ import { isShellZone } from "../types/zones.js";
 import type { FeatureRegistration, MainSdk } from "../types/sdk.js";
 
 /**
+ * URL namespace that every plugin-declared route is mounted under.
+ *
+ * Manifests declare a plugin-relative path (e.g. `"/todos"`); the loader
+ * prefixes it with this namespace when producing resolved routes and nav
+ * entries, so the shell's catch-all lives at `/plugins/$` and shell routes
+ * cannot collide with plugin routes by construction (PR #52 review).
+ * Kept as a module constant so the shell can strip it symmetrically when
+ * building splat params for its router links.
+ */
+export const PLUGIN_ROUTE_NAMESPACE = "/plugins";
+
+function prefixPluginPath(path: string): string {
+	return `${PLUGIN_ROUTE_NAMESPACE}${path}`;
+}
+
+/**
  * Plugin loader — Decisions #10, #11, #17.
  *
  * Discovery is static and build-time: the shell lists its plugins in a
@@ -81,7 +97,11 @@ export interface DiscoveredPlugin {
  */
 export interface ResolvedPluginRoute {
 	pluginId: string;
-	/** Absolute route path from the manifest, e.g. "/todos". */
+	/**
+	 * Full resolved route path, e.g. `"/plugins/todos"`. The loader prefixes
+	 * the manifest's plugin-relative path with `PLUGIN_ROUTE_NAMESPACE` so
+	 * shell and plugin routes cannot collide by construction.
+	 */
 	path: string;
 	/** Optional human-readable page title (browser-mode unavailable state). */
 	title?: string | undefined;
@@ -98,7 +118,10 @@ export interface ResolvedPluginRoute {
 /** A resolved sidebar nav entry (pure data — no component to resolve). */
 export interface ResolvedPluginNav {
 	pluginId: string;
-	/** Destination path, e.g. "/todos". */
+	/**
+	 * Full resolved destination path, e.g. `"/plugins/todos"` (prefixed with
+	 * `PLUGIN_ROUTE_NAMESPACE`).
+	 */
 	to: string;
 	label: string;
 	/** Optional lucide icon name (kebab-case). */
@@ -277,6 +300,8 @@ function resolveContributions(
 	for (const route of routeDecls) {
 		// Static shell routes outrank the plugin catch-all, so this route could
 		// never render — report it instead of surfacing a dead nav entry.
+		// The manifest declares plugin-relative paths (checked pre-prefix); the
+		// shell reserves its own paths under the same shape.
 		if (reservedRoutePaths.has(route.path)) {
 			issues.push({
 				pluginId: manifest.id,
@@ -285,7 +310,8 @@ function resolveContributions(
 			continue;
 		}
 
-		const claimedBy = seenRoutePaths.get(route.path);
+		const resolvedPath = prefixPluginPath(route.path);
+		const claimedBy = seenRoutePaths.get(resolvedPath);
 		if (claimedBy !== undefined) {
 			issues.push({
 				pluginId: manifest.id,
@@ -303,10 +329,10 @@ function resolveContributions(
 			continue;
 		}
 
-		seenRoutePaths.set(route.path, manifest.id);
+		seenRoutePaths.set(resolvedPath, manifest.id);
 		routes.push({
 			pluginId: manifest.id,
-			path: route.path,
+			path: resolvedPath,
 			title: route.title,
 			component,
 			browserSafe,
@@ -315,7 +341,7 @@ function resolveContributions(
 
 	const nav: ResolvedPluginNav[] = navDecls.map((entry) => ({
 		pluginId: manifest.id,
-		to: entry.to,
+		to: prefixPluginPath(entry.to),
 		label: entry.label,
 		icon: entry.icon,
 		priority: entry.priority ?? 0,

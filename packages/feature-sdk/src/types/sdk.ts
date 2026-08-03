@@ -85,12 +85,13 @@ export interface SDK<T extends SdkClient = SdkClient> {
 
 	/**
 	 * Navigate the shell router to an absolute path (shell delegate,
-	 * Decision #19). The router never leaks to plugins — pass the path a
-	 * route declares in its manifest (e.g. "/todos").
+	 * Decision #19). The router never leaks to plugins — pass the resolved
+	 * path of a plugin route (e.g. "/plugins/todos"), the plugin's own
+	 * page path from `PluginPageProps.path`, or any shell path.
 	 *
 	 * @example
-	 * sdk.navigate("/todos");
-	 * sdk.navigate("/todos", { search: { filter: "open" } });
+	 * sdk.navigate("/plugins/todos");
+	 * sdk.navigate("/plugins/todos", { search: { filter: "open" } });
 	 */
 	navigate(path: string, options?: NavigateOptions): void;
 
@@ -403,7 +404,7 @@ export interface SdkFs {
 
 /** Snapshot of the shell router's current location. */
 export interface ShellLocation {
-	/** Current pathname, e.g. "/todos". */
+	/** Current pathname, e.g. "/plugins/todos". */
 	path: string;
 	/** Parsed search params of the current location. */
 	search: Record<string, unknown>;
@@ -421,7 +422,7 @@ export interface NavigateOptions {
  * `sdk.location`. Mirrors the theme/auth observable contract.
  *
  * @example
- * sdk.location.peek(); // { path: "/todos", search: {} }
+ * sdk.location.peek(); // { path: "/plugins/todos", search: {} }
  * const unsub = sdk.location.subscribe((loc) => render(loc)); // fires immediately
  */
 export interface SdkLocation {
@@ -446,7 +447,7 @@ export interface SdkNavigation extends SdkLocation {
  * live subscription instead of a render-time snapshot.
  */
 export interface PluginPageProps {
-	/** The manifest route path that matched, e.g. "/todos". */
+	/** The full resolved route path that matched, e.g. "/plugins/todos". */
 	path: string;
 	/** Parsed search params of the current location. */
 	search: Record<string, unknown>;

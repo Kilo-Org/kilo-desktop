@@ -23,7 +23,7 @@ function DemoPage({ path, search }: PluginPageProps) {
 function makePage(overrides: Partial<PluginPage> = {}): PluginPage {
 	return {
 		pluginId: "demo",
-		path: "/demo",
+		path: "/plugins/demo",
 		title: "Demo",
 		component: DemoPage,
 		browserSafe: true,
@@ -46,7 +46,7 @@ describe("PluginPageView", () => {
 
 		await expect.element(screen.getByTestId("demo-page")).toBeVisible();
 		expect(screen.getByTestId("demo-page").query()?.textContent).toBe(
-			'/demo search={"filter":"open"}',
+			'/plugins/demo search={"filter":"open"}',
 		);
 	});
 

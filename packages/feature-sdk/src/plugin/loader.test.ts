@@ -199,7 +199,7 @@ describe("contribution resolution", () => {
 		},
 	};
 
-	it("resolves routes against the web entry module's exports", () => {
+	it("resolves routes against the web entry module's exports (paths prefixed with /plugins)", () => {
 		const bundled: BundledPlugin[] = [
 			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
 		];
@@ -209,7 +209,7 @@ describe("contribution resolution", () => {
 		expect(pluginRoutes(discovery)).toEqual([
 			{
 				pluginId: "ping",
-				path: "/ping",
+				path: "/plugins/ping",
 				title: "Ping",
 				component: PingPage,
 				browserSafe: true,
@@ -217,14 +217,14 @@ describe("contribution resolution", () => {
 		]);
 	});
 
-	it("resolves nav entries as pure data (priority defaulted)", () => {
+	it("resolves nav entries as pure data with paths prefixed under /plugins", () => {
 		const bundled: BundledPlugin[] = [
 			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
 		];
 		const discovery = discoverPlugins(bundled, "web");
 
 		expect(pluginNav(discovery)).toEqual([
-			{ pluginId: "ping", to: "/ping", label: "Ping", icon: "activity", priority: 5 },
+			{ pluginId: "ping", to: "/plugins/ping", label: "Ping", icon: "activity", priority: 5 },
 		]);
 	});
 
@@ -269,6 +269,7 @@ describe("contribution resolution", () => {
 
 		expect(discovery.issues).toEqual([]);
 		expect(pluginRoutes(discovery)[0]?.browserSafe).toBe(true);
+		expect(pluginRoutes(discovery)[0]?.path).toBe("/plugins/web-only");
 	});
 
 	it("skips a route whose component export is missing and keeps the plugin", () => {

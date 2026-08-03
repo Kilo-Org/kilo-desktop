@@ -1,8 +1,10 @@
+import { PLUGIN_ROUTE_NAMESPACE } from "@anaconda-agentic-desktop/feature-sdk";
+
 import { PLUGIN_PAGES, findPluginPage, type PluginPage } from "@/features/plugin-pages";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 
 type PluginPageViewProps = {
-	/** The catch-all route's splat, i.e. the path without the leading slash. */
+	/** The catch-all route's splat, i.e. the path after `/plugins/`. */
 	splat: string | undefined;
 	/** Parsed search params of the current location. */
 	search: Record<string, unknown>;
@@ -15,8 +17,9 @@ type PluginPageViewProps = {
 /**
  * Resolves a plugin page from the manifest registry at render time — the
  * sanctioned host-owned route strategy (Decision #19): the shell's catch-all
- * route (routes/$.tsx) delegates here, so plugin routes exist without
- * touching the file-based route tree and plugins never see the router.
+ * route (routes/plugins/$.tsx) delegates here, so plugin routes exist under
+ * the `/plugins/*` namespace without touching the file-based route tree and
+ * plugins never see the router.
  */
 export function PluginPageView({
 	splat,
@@ -24,7 +27,7 @@ export function PluginPageView({
 	pages = PLUGIN_PAGES,
 	desktopAvailable = isDesktopBridgeAvailable(),
 }: PluginPageViewProps) {
-	const path = `/${splat ?? ""}`;
+	const path = `${PLUGIN_ROUTE_NAMESPACE}/${splat ?? ""}`;
 	const page = findPluginPage(pages, path);
 
 	if (!page) {

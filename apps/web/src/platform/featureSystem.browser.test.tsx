@@ -155,8 +155,8 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		});
 		const sdk = system.getSdk("demo");
 
-		sdk.navigate("/todos", { search: { filter: "open" } });
-		expect(navigate).toHaveBeenCalledWith("/todos", { search: { filter: "open" } });
+		sdk.navigate("/plugins/todos", { search: { filter: "open" } });
+		expect(navigate).toHaveBeenCalledWith("/plugins/todos", { search: { filter: "open" } });
 		expect(sdk.location.peek()).toEqual({ path: "/here", search: {} });
 	});
 
@@ -165,7 +165,7 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		try {
 			const system = createAppFeatureSystem(createBrowserLocalApi(), [demoFeature]);
 			const sdk = system.getSdk("demo");
-			expect(() => sdk.navigate("/todos")).not.toThrow();
+			expect(() => sdk.navigate("/plugins/todos")).not.toThrow();
 			expect(warn).toHaveBeenCalledWith(expect.stringContaining("no shell router is wired"));
 			expect(sdk.location.peek()).toEqual({ path: "/", search: {} });
 		} finally {

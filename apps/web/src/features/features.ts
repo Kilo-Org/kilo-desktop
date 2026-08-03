@@ -75,9 +75,10 @@ const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
 
 /**
  * Route paths owned by the shell's file-based routes (apps/web/src/routes/).
- * Passed to plugin discovery so a manifest route colliding with a shell page
- * is skipped with an issue instead of rendering a dead nav entry — static
- * shell routes always outrank the plugin catch-all (routes/$.tsx).
+ * Passed to plugin discovery for defense in depth: plugin routes are mounted
+ * under the `/plugins/*` namespace so a shell-owned path (declared without
+ * that prefix) cannot collide by construction, but the check still catches
+ * a manifest that accidentally re-declares a shell path pre-prefix.
  *
  * Kept as a literal (importing routeTree.gen here would create an import
  * cycle through the route components); features.test.ts asserts it stays in

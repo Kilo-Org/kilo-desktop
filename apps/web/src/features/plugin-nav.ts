@@ -1,34 +1,44 @@
-import { pluginNav, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	PLUGIN_ROUTE_NAMESPACE,
+	pluginNav,
+	type PluginDiscovery,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 import { PLUGIN_DISCOVERY } from "./features.js";
 
 /**
  * A sidebar nav entry declared in a plugin manifest (`contributes.nav`).
  * Pure data — the shell renders it as a link without touching plugin code.
- * `to` may point at one of the plugin's routes or any shell path; the sidebar
- * links through the catch-all route so static shell routes still win at
- * resolution time.
+ * `to` is the full resolved path (already prefixed with `/plugins/`); the
+ * sidebar links through the catch-all route (`/plugins/$`).
  */
 export interface PluginNavEntry {
 	pluginId: string;
-	/** Destination path, e.g. "/todos". */
+	/** Full resolved destination path, e.g. "/plugins/todos". */
 	to: string;
 	label: string;
 	/** Lucide icon name (kebab-case), if declared. */
 	icon: string | undefined;
 	/** Higher renders first. */
 	priority: number;
-	/** `to` without the leading slash — the catch-all route's splat param. */
+	/**
+	 * `to` with the `/plugins/` prefix stripped — the catch-all route's splat
+	 * param (e.g. `"todos"` for `/plugins/todos`).
+	 */
 	splat: string;
 	/** Stable test id for the nav entry, e.g. "nav-todos". */
 	navQaId: string;
 }
 
+const PLUGIN_ROUTE_PREFIX = `${PLUGIN_ROUTE_NAMESPACE}/`;
+
 /** Derive sidebar nav entries from a discovery result, priority-ordered (pure). */
 export function buildPluginNav(discovery: PluginDiscovery): PluginNavEntry[] {
 	return pluginNav(discovery)
 		.map((entry) => {
-			const splat = entry.to.slice(1);
+			const splat = entry.to.startsWith(PLUGIN_ROUTE_PREFIX)
+				? entry.to.slice(PLUGIN_ROUTE_PREFIX.length)
+				: entry.to.replace(/^\//, "");
 			return {
 				pluginId: entry.pluginId,
 				to: entry.to,

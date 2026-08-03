@@ -186,8 +186,10 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 			},
 		});
 
-		sdk.navigate("/todos", { search: { filter: "open" } });
-		expect(navigated).toEqual([{ path: "/todos", options: { search: { filter: "open" } } }]);
+		sdk.navigate("/plugins/todos", { search: { filter: "open" } });
+		expect(navigated).toEqual([
+			{ path: "/plugins/todos", options: { search: { filter: "open" } } },
+		]);
 		expect(sdk.location.peek()).toEqual({ path: "/sdk-producer", search: {} });
 	});
 

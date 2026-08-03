@@ -51,8 +51,8 @@ type AppSidebarLayoutProps = {
  * Sidebar nav entry declared by a plugin (`contributes.nav`) — plugins add nav
  * entries by declaring them in the manifest, never by editing this layout.
  * Icons resolve through the static bundled-plugin icon map (plugin-icons.ts).
- * The link goes through the catch-all route (`/$`) so a plugin route resolves
- * to its page while a shell-owned path still wins by static-route precedence.
+ * The link goes through the plugin catch-all route (`/plugins/$`) so plugin
+ * paths cannot collide with shell paths by construction.
  */
 function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: string }) {
 	const Icon = resolvePluginNavIcon(entry.icon);
@@ -61,7 +61,7 @@ function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: s
 			<SidebarMenuButton
 				isActive={pathname === entry.to}
 				tooltip={entry.label}
-				render={<Link to="/$" params={{ _splat: entry.splat }} />}
+				render={<Link to="/plugins/$" params={{ _splat: entry.splat }} />}
 				className="size-8!"
 				data-qa-id={entry.navQaId}
 			>

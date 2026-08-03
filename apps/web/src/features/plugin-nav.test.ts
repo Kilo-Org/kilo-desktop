@@ -31,14 +31,14 @@ function makeDiscovery(): PluginDiscovery {
 }
 
 describe("buildPluginNav", () => {
-	it("derives priority-ordered nav entries (splat + qa id) as pure data", () => {
+	it("derives priority-ordered nav entries with resolved /plugins paths", () => {
 		const nav = buildPluginNav(makeDiscovery());
 
 		// Higher priority first: Stats (10) before Demo (1).
 		expect(nav).toEqual([
 			{
 				pluginId: "demo",
-				to: "/demo/stats",
+				to: "/plugins/demo/stats",
 				label: "Stats",
 				icon: undefined,
 				priority: 10,
@@ -47,7 +47,7 @@ describe("buildPluginNav", () => {
 			},
 			{
 				pluginId: "demo",
-				to: "/demo",
+				to: "/plugins/demo",
 				label: "Demo",
 				icon: "list-todo",
 				priority: 1,
@@ -59,8 +59,8 @@ describe("buildPluginNav", () => {
 });
 
 describe("PLUGIN_NAV", () => {
-	it("contains the bundled todos nav entry from its manifest", () => {
-		const todos = PLUGIN_NAV.find((entry) => entry.to === "/todos");
+	it("contains the bundled todos nav entry under the /plugins namespace", () => {
+		const todos = PLUGIN_NAV.find((entry) => entry.to === "/plugins/todos");
 		expect(todos).toBeDefined();
 		expect(todos?.pluginId).toBe("todos");
 		expect(todos?.label).toBe("Todo List");

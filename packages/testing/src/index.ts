@@ -272,10 +272,16 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
  *
  * `storageDir` defaults to a lazily created temp directory (Node only);
  * pass `storageDir` to control where the feature persists in the test.
+ *
+ * `pluginDir` powers `mainSdk.resolvePluginAsset(subpath)`: pass the
+ * plugin package root (or any directory holding the assets the test needs)
+ * and the fake resolves `subpath` against it. Omit for tests that never
+ * call `resolvePluginAsset`; access then throws with the shell's error.
  */
 export function createFakeMainSdk(options?: {
 	featureId?: string;
 	storageDir?: string;
+	pluginDir?: string;
 }): MainSdk & {
 	/** Invoke a registered handler, validating args/output like the real router. */
 	invoke(channel: string, args?: unknown): Promise<unknown>;
@@ -290,6 +296,7 @@ export function createFakeMainSdk(options?: {
 } {
 	const featureId = options?.featureId ?? "test-feature";
 	const router = new FeatureRouter();
+	const pluginDir = options?.pluginDir;
 	const mainSdk = router.createMainSdk(featureId, {
 		resolveStorageDir: () => {
 			if (options?.storageDir !== undefined) return options.storageDir;
@@ -300,6 +307,14 @@ export function createFakeMainSdk(options?: {
 			const path = process.getBuiltinModule("node:path");
 			return fs.mkdtempSync(path.join(os.tmpdir(), `fake-${featureId}-`));
 		},
+		...(pluginDir === undefined
+			? {}
+			: {
+					resolvePluginAsset: (subpath: string) => {
+						const path = process.getBuiltinModule("node:path");
+						return path.resolve(pluginDir, subpath);
+					},
+				}),
 	});
 
 	return {
@@ -309,6 +324,7 @@ export function createFakeMainSdk(options?: {
 		get storageDir() {
 			return mainSdk.storageDir;
 		},
+		resolvePluginAsset: mainSdk.resolvePluginAsset,
 		channels: mainSdk.channels,
 		onDispose: mainSdk.onDispose,
 		invoke: (channel, args) => router.invoke(featureId, channel, args),

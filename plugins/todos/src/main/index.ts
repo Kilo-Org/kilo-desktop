@@ -12,11 +12,16 @@ import { TodoService } from "./TodoService.js";
  *
  * Persists to its own SQLite file under the shell-provided per-feature
  * storage directory (`${userData}/plugins/todos/data.db`) — nothing shares
- * the shell database. Electron-only: there is deliberately no
- * browserRegister (Decision #7), so browser mode skips todos.
+ * the shell database. Migrations are shipped in the plugin package under
+ * `drizzle/` and located via `mainSdk.resolvePluginAsset`; the shell owns
+ * the source-vs-packaged layout question. Electron-only: there is
+ * deliberately no browserRegister (Decision #7), so browser mode skips todos.
  */
 export function mainRegister(mainSdk: MainSdk): void {
-	const db = createTodosDatabase(path.join(mainSdk.storageDir, "data.db"));
+	const db = createTodosDatabase(
+		path.join(mainSdk.storageDir, "data.db"),
+		mainSdk.resolvePluginAsset("drizzle"),
+	);
 	const service = new TodoService(db);
 
 	mainSdk.channels(todosContract).handleAll({

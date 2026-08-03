@@ -57,6 +57,20 @@ describe("createFakeMainSdk", () => {
 		expect(mainSdk.storageDir).toBe("/tmp/custom-todos");
 	});
 
+	it("resolvePluginAsset joins subpaths against the provided pluginDir", () => {
+		const mainSdk = createFakeMainSdk({
+			featureId: "todos",
+			pluginDir: "/tmp/fake-plugin",
+		});
+		expect(mainSdk.resolvePluginAsset("drizzle")).toBe("/tmp/fake-plugin/drizzle");
+		expect(mainSdk.resolvePluginAsset("seeds/en.json")).toBe("/tmp/fake-plugin/seeds/en.json");
+	});
+
+	it("throws on resolvePluginAsset when no pluginDir is provided", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+		expect(() => mainSdk.resolvePluginAsset("drizzle")).toThrow(/no plugin asset directory/);
+	});
+
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos" });
 		const order: string[] = [];

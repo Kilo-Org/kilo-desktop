@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import { createTodosDatabase, resolveTodosMigrationsFolder, type TodosDatabase } from "./db.js";
+import { createTodosDatabase, type TodosDatabase } from "./db.js";
 import { TodoService } from "./TodoService.js";
+
+const MIGRATIONS_FOLDER = path.resolve(import.meta.dirname, "../../drizzle");
 
 describe("TodoService", () => {
 	const directories: string[] = [];
@@ -29,7 +31,7 @@ describe("TodoService", () => {
 	}
 
 	function openService(directory: string): TodoService {
-		const db = createTodosDatabase(path.join(directory, "data.db"));
+		const db = createTodosDatabase(path.join(directory, "data.db"), MIGRATIONS_FOLDER);
 		databases.push(db);
 		return new TodoService(db);
 	}
@@ -62,32 +64,5 @@ describe("TodoService", () => {
 		} catch (error) {
 			expect(error).toMatchObject({ code: "NOT_FOUND" });
 		}
-	});
-});
-
-describe("resolveTodosMigrationsFolder", () => {
-	const directories: string[] = [];
-
-	afterEach(() => {
-		for (const directory of directories.splice(0)) {
-			fs.rmSync(directory, { recursive: true, force: true });
-		}
-	});
-
-	it("uses the plugin-root drizzle folder when present", () => {
-		expect(resolveTodosMigrationsFolder()).toBe(path.resolve(import.meta.dirname, "../../drizzle"));
-	});
-
-	it("resolves the installed package's drizzle folder from a bundle layout", () => {
-		// The bundled main.js lives away from the plugin source (e.g.
-		// <app>/.vite/build), so the relative candidate misses and the resolver
-		// locates the plugin package by name instead. The result must exist and
-		// point at a plugin-todos/drizzle folder.
-		const bundleDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "todos-bundle-"));
-		directories.push(bundleDirectory);
-
-		const resolved = resolveTodosMigrationsFolder(bundleDirectory);
-		expect(resolved.endsWith("drizzle")).toBe(true);
-		expect(fs.existsSync(path.join(resolved, "meta", "_journal.json"))).toBe(true);
 	});
 });

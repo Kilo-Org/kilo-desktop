@@ -523,6 +523,22 @@ export interface MainSdk {
 	 */
 	readonly storageDir: string;
 	/**
+	 * Resolve a static asset shipped inside this plugin's package to an
+	 * absolute filesystem path (e.g. `mainSdk.resolvePluginAsset("drizzle")`
+	 * for a drizzle migrations folder, or `"seeds/en.json"` for seed data).
+	 *
+	 * The shell owns the "which layout am I in" question — plugins do NOT
+	 * branch on packaged vs source vs test. The shell resolves the asset
+	 * against the plugin package it discovered at boot; missing assets throw
+	 * with the searched path so failures surface immediately instead of
+	 * downstream (e.g. drizzle's "Can't find meta/_journal.json").
+	 *
+	 * Throws in environments without a plugin directory (built-in features
+	 * that ship no assets; browser mode); features that never call it are
+	 * unaffected.
+	 */
+	resolvePluginAsset(subpath: string): string;
+	/**
 	 * Bind a channel map once, then register typed handlers. Input is parsed
 	 * before each handler runs; handler output is parsed before it is returned.
 	 * Throw FeatureError for expected failures whose messages should survive
@@ -557,4 +573,12 @@ export interface FeatureRegistration {
 	 * { id: "todos", mainRegister: register, browserRegister: register }
 	 */
 	browserRegister?(mainSdk: MainSdk): void;
+	/**
+	 * Resolve a subpath inside the plugin's installed package to an absolute
+	 * filesystem path. Populated by the loader for plugin registrations
+	 * (threaded through from `BundledPlugin.resolveAsset`); undefined for
+	 * built-in feature registrations from the FEATURES / WEB_FEATURES arrays.
+	 * Backs `mainSdk.resolvePluginAsset`.
+	 */
+	resolveAsset?: (subpath: string) => string;
 }

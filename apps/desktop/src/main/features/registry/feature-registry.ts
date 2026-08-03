@@ -44,18 +44,22 @@ export function bootFeatures(
 			console.warn(`[FeatureRegistry] Feature "${feature.id}" is already booted — skipping.`);
 			continue;
 		}
-		const mainSdk = featureRouter.createMainSdk(
-			feature.id,
-			storageRoot === undefined
-				? undefined
+		const mainSdk = featureRouter.createMainSdk(feature.id, {
+			...(storageRoot === undefined
+				? {}
 				: {
 						resolveStorageDir: () => {
 							const dir = path.join(storageRoot, "plugins", feature.id);
 							mkdirSync(dir, { recursive: true });
 							return dir;
 						},
-					},
-		);
+					}),
+			// Plugin registrations from the loader carry a resolveAsset (they know
+			// where their package lives on disk); built-in FEATURES don't and
+			// mainSdk.resolvePluginAsset would throw for them, which is fine —
+			// they ship no assets.
+			...(feature.resolveAsset ? { resolvePluginAsset: feature.resolveAsset } : {}),
+		});
 		try {
 			feature.mainRegister(mainSdk);
 			bootedFeatureIds.add(feature.id);

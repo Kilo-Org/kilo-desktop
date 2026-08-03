@@ -165,6 +165,28 @@ describe("discoverPlugins", () => {
 		expect(() => registration?.mainRegister(undefined as unknown as MainSdk)).not.toThrow();
 	});
 
+	it("threads BundledPlugin.resolveAsset onto the produced registration (main entry)", () => {
+		const resolveAsset = vi.fn((subpath: string) => `/plugins/ping/${subpath}`);
+		const bundled: BundledPlugin[] = [{ manifest, module: { mainRegister }, resolveAsset }];
+		const discovery = discoverPlugins(bundled, "main");
+
+		expect(discovery.plugins[0]?.registration.resolveAsset).toBe(resolveAsset);
+	});
+
+	it("threads BundledPlugin.resolveAsset onto the produced registration (web entry)", () => {
+		const resolveAsset = vi.fn((subpath: string) => `/plugins/ping/${subpath}`);
+		const bundled: BundledPlugin[] = [{ manifest, module: { browserRegister }, resolveAsset }];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(discovery.plugins[0]?.registration.resolveAsset).toBe(resolveAsset);
+	});
+
+	it("leaves resolveAsset undefined when BundledPlugin does not provide one", () => {
+		const bundled: BundledPlugin[] = [{ manifest, module: { mainRegister } }];
+		const discovery = discoverPlugins(bundled, "main");
+		expect(discovery.plugins[0]?.registration.resolveAsset).toBeUndefined();
+	});
+
 	it("omits browserRegister for Electron-only plugins so browser mode skips them", () => {
 		const bundled: BundledPlugin[] = [{ manifest, module: {} }];
 		const discovery = discoverPlugins(bundled, "web");

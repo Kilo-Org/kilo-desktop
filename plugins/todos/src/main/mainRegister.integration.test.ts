@@ -8,6 +8,10 @@ import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { mainRegister } from "./index.js";
 
+// The plugin package root — `drizzle/` sits next to `plugin.json` here,
+// exactly the layout mainSdk.resolvePluginAsset resolves against in production.
+const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
+
 describe("todos mainRegister", () => {
 	const directories: string[] = [];
 
@@ -20,7 +24,11 @@ describe("todos mainRegister", () => {
 	function bootedSdk() {
 		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "todos-feature-"));
 		directories.push(storageDir);
-		const mainSdk = createFakeMainSdk({ featureId: "todos", storageDir });
+		const mainSdk = createFakeMainSdk({
+			featureId: "todos",
+			storageDir,
+			pluginDir: PLUGIN_DIR,
+		});
 		mainRegister(mainSdk);
 		return { mainSdk, storageDir };
 	}

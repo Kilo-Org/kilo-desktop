@@ -79,6 +79,19 @@ export interface BundledPlugin {
 	manifest: unknown;
 	/** The plugin's entry module for the current process. */
 	module: PluginModule;
+	/**
+	 * Resolve a subpath inside the plugin's installed package (drizzle
+	 * migrations, seed JSON, templates) to an absolute filesystem path.
+	 * Populated by the shell's registration site — it knows how it discovered
+	 * the plugin (workspace source vs `pnpm deploy`d node_modules) and hides
+	 * that from the plugin. The loader threads this into `FeatureRegistration`
+	 * so `mainRegister(mainSdk)` sees it as `mainSdk.resolvePluginAsset`.
+	 *
+	 * Optional so the field can be introduced without breaking existing
+	 * registrations; a plugin that calls `resolvePluginAsset` without one
+	 * gets a clear error from the SDK.
+	 */
+	resolveAsset?: (subpath: string) => string;
 }
 
 /** Which entry point the current process boots plugins through. */
@@ -259,7 +272,7 @@ export function discoverPlugins(
 			continue;
 		}
 
-		const registration = createRegistration(manifest, candidate.module, entry, issues);
+		const registration = createRegistration(manifest, candidate, entry, issues);
 		if (registration) {
 			// Contributions are a renderer concern — only resolved for web discovery.
 			const resolved =
@@ -375,10 +388,17 @@ function resolveContributions(
 
 function createRegistration(
 	manifest: PluginManifest,
-	module: PluginModule,
+	bundled: BundledPlugin,
 	entry: PluginEntryKind,
 	issues: PluginDiscoveryIssue[],
 ): FeatureRegistration | undefined {
+	const { module, resolveAsset } = bundled;
+	// Thread `resolveAsset` through to every produced registration — bootFeatures
+	// wires it into `mainSdk.resolvePluginAsset`. Undefined for plugins whose
+	// registration site did not supply one (older BUNDLED_PLUGINS entries);
+	// mainSdk.resolvePluginAsset then throws with a clear error at call time.
+	const assetFields = resolveAsset ? { resolveAsset } : {};
+
 	if (entry === "main") {
 		const { mainRegister } = module;
 		if (typeof mainRegister !== "function") {
@@ -388,7 +408,7 @@ function createRegistration(
 			});
 			return undefined;
 		}
-		return { id: manifest.id, mainRegister };
+		return { id: manifest.id, mainRegister, ...assetFields };
 	}
 
 	const { browserRegister } = module;
@@ -396,6 +416,7 @@ function createRegistration(
 		id: manifest.id,
 		mainRegister: noopRegister,
 		...(typeof browserRegister === "function" ? { browserRegister } : {}),
+		...assetFields,
 	};
 }
 

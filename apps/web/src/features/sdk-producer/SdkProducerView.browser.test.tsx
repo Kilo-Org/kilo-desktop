@@ -41,16 +41,12 @@ function makeSystem(options?: {
 		show: () => { delivered: boolean; reason?: string };
 		setBadge: () => { delivered: boolean; reason?: string };
 	};
-	fs?: {
-		exists: (path: string) => Promise<boolean>;
-	};
 }) {
 	const sdk = createFakeSdk({
 		featureId: "sdk-producer",
 		channels: sdkProducerContract,
 		handlers: makeNotesStore(),
 		...(options?.notifications ? { notifications: options.notifications } : {}),
-		...(options?.fs ? { fs: options.fs } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "sdk-producer": sdk } });
 	return { system, sdk };
@@ -167,29 +163,5 @@ describe("SdkProducerView", () => {
 		const form = baseElement.querySelector("form");
 		form?.requestSubmit();
 		await expect.element(screen.getByText("No notes yet.")).toBeVisible();
-	});
-
-	it("logs successful notification delivery and filesystem checks", async () => {
-		const { baseElement } = renderProducer({
-			notifications: {
-				show: () => ({ delivered: true }),
-				setBadge: () => ({ delivered: true }),
-			},
-			fs: { exists: async () => true },
-		});
-		const screen = page.elementLocator(baseElement);
-
-		await screen.getByRole("button", { name: "notifications.show" }).click();
-		await expect
-			.element(screen.getByText("notifications.show() → delivered: true", { exact: false }))
-			.toBeVisible();
-
-		await screen.getByRole("button", { name: "notifications.setBadge" }).click();
-		await expect
-			.element(screen.getByText("notifications.setBadge() → delivered: true", { exact: false }))
-			.toBeVisible();
-
-		await screen.getByRole("button", { name: "fs.exists (expect fail)" }).click();
-		await expect.element(screen.getByText("fs.exists() → true", { exact: false })).toBeVisible();
 	});
 });

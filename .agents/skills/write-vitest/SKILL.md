@@ -96,7 +96,7 @@ afterEach(() => {
 
 ## Coverage
 
-- Shared gate: `vitest.coverage.shared.mjs` — **80%** lines / branches / functions / statements.
+- Shared gate: `vitest.coverage.shared.mjs` — **90%** lines / branches / functions / statements.
 - Extend via `createCoverageConfig([...extraExclude])` only for intentional gaps (generated files, entrypoints covered by e2e, test helpers).
 - Exclude `**/test-helpers.ts` when it is fixture-only.
 - Run: `pnpm coverage` (or package-scoped `pnpm --filter <pkg> coverage`).
@@ -105,7 +105,7 @@ afterEach(() => {
 
 ```bash
 pnpm test                 # all Vitest tiers
-pnpm coverage             # Vitest + 80% gate
+pnpm coverage             # Vitest + 90% gate
 pnpm test:web
 pnpm test:desktop
 pnpm --filter @anaconda-agentic-desktop/feature-sdk test

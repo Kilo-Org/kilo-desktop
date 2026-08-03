@@ -1,12 +1,11 @@
 import {
-	CapabilityRegistry,
 	CommandRegistry,
 	ContributionRegistry,
 	createSdk,
 	createStaticNavigation,
-	EventBus,
 	FeatureRouter,
 	StateBroker,
+	teardownFeature as teardownSdkFeature,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type {
@@ -81,6 +80,7 @@ export type FakeSdkOptionsWithChannels<C extends ChannelMap> = FakeSdkShellOptio
 export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
 
 function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
+	const featureRouter = new FeatureRouter();
 	const shellDelegates: ShellDelegates = {
 		// The fake reports successful delivery so feature code that checks the
 		// envelope takes its happy path in tests. Override to simulate absence.
@@ -138,12 +138,10 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 	};
 
 	return {
-		eventBus: new EventBus(),
 		stateBroker: new StateBroker(),
-		capabilityRegistry: new CapabilityRegistry(),
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
-		featureRouter: new FeatureRouter(),
+		featureRouter,
 		shellDelegates,
 	};
 }
@@ -211,6 +209,7 @@ export type FakeFeatureSystem = {
 	readonly services: SdkFactoryServices;
 	getSdk(featureId: string): SDK;
 	teardownFeature(featureId: string): void;
+	dispose(): void;
 };
 
 export type FakeFeatureSystemOptions = {
@@ -247,9 +246,22 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
 	}
 
 	const shared = services;
+	let disposed = false;
+
+	function assertActive(): void {
+		if (disposed) throw new Error("FakeFeatureSystem has been disposed.");
+	}
+
+	function teardown(featureId: string): void {
+		cache.get(featureId)?.destroy();
+		cache.delete(featureId);
+		teardownSdkFeature(featureId, shared);
+	}
+
 	return {
 		services: shared,
 		getSdk(featureId: string): SDK {
+			assertActive();
 			const existing = cache.get(featureId);
 			if (existing) return existing;
 			const created = createSdk(featureId, shared);
@@ -257,10 +269,13 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
 			return created;
 		},
 		teardownFeature(featureId: string): void {
-			const sdk = cache.get(featureId);
-			if (!sdk) return;
-			sdk.destroy();
-			cache.delete(featureId);
+			assertActive();
+			teardown(featureId);
+		},
+		dispose(): void {
+			if (disposed) return;
+			disposed = true;
+			for (const featureId of [...cache.keys()]) teardown(featureId);
 		},
 	};
 }
@@ -278,24 +293,24 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
  * and the fake resolves `subpath` against it. Omit for tests that never
  * call `resolvePluginAsset`; access then throws with the shell's error.
  */
-export function createFakeMainSdk(options?: {
-	featureId?: string;
-	storageDir?: string;
-	pluginDir?: string;
-}): MainSdk & {
+export type FakeMainSdk = MainSdk & {
 	/** Invoke a registered handler, validating args/output like the real router. */
 	invoke(channel: string, args?: unknown): Promise<unknown>;
 	/** Whether a handler is registered for the channel. */
 	has(channel: string): boolean;
-	/**
-	 * Tear the feature down like the shell does on unload/shutdown: runs
-	 * onDispose callbacks (in reverse registration order) and removes all
-	 * handlers. Use to assert cleanup behavior registered in mainRegister.
-	 */
+	/** Tear the feature down like the shell does on unload/shutdown. */
 	dispose(): void;
-} {
+};
+
+export function createFakeMainSdk(options?: {
+	featureId?: string;
+	storageDir?: string;
+	pluginDir?: string;
+	/** Internal shared services; prefer createLinkedFakeSdkPair for linked tests. */
+	services?: SdkFactoryServices;
+}): FakeMainSdk {
 	const featureId = options?.featureId ?? "test-feature";
-	const router = new FeatureRouter();
+	const router = options?.services?.featureRouter ?? new FeatureRouter();
 	const pluginDir = options?.pluginDir;
 	const mainSdk = router.createMainSdk(featureId, {
 		resolveStorageDir: () => {
@@ -319,6 +334,8 @@ export function createFakeMainSdk(options?: {
 
 	return {
 		featureId: mainSdk.featureId,
+		events: mainSdk.events,
+		plugins: mainSdk.plugins,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {
@@ -330,5 +347,26 @@ export function createFakeMainSdk(options?: {
 		invoke: (channel, args) => router.invoke(featureId, channel, args),
 		has: (channel) => router.has(featureId, channel),
 		dispose: () => router.destroyFeature(featureId),
+	};
+}
+
+/**
+ * Create renderer and main SDKs backed by one real EventBus, capability
+ * registry, and FeatureRouter. Use this for cross-boundary feature tests that
+ * should exercise the browser-mode semantics without hand-wiring services.
+ */
+export function createLinkedFakeSdkPair(options?: { featureId?: string }): {
+	rendererSdk: FakeSdk;
+	mainSdk: FakeMainSdk;
+	createMainSdk(featureId: string): FakeMainSdk;
+} {
+	const featureId = options?.featureId ?? "test-feature";
+	const services = buildFakeServices({});
+	const rendererSdk = applySdkOverrides(createSdk(featureId, services), services, {});
+	const mainSdk = createFakeMainSdk({ featureId, services });
+	return {
+		rendererSdk,
+		mainSdk,
+		createMainSdk: (targetFeatureId) => createFakeMainSdk({ featureId: targetFeatureId, services }),
 	};
 }

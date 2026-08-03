@@ -5,10 +5,8 @@ import { defineMethod } from "./channel-map.js";
 import { FeatureError } from "./errors.js";
 import { createSdk } from "./services/create-sdk.js";
 import type { ShellDelegates } from "./services/create-sdk.js";
-import { CapabilityRegistry } from "./services/capability-registry.js";
 import { CommandRegistry } from "./services/command-registry.js";
 import { ContributionRegistry } from "./services/contribution-registry.js";
-import { EventBus } from "./services/event-bus.js";
 import { FeatureRouter } from "./services/feature-router.js";
 import { createStaticNavigation } from "./services/navigation.js";
 import { StateBroker } from "./services/state-broker.js";
@@ -79,9 +77,7 @@ function makeServices(featureRouter = new FeatureRouter()) {
 	};
 
 	return {
-		eventBus: new EventBus(),
 		stateBroker: new StateBroker(),
-		capabilityRegistry: new CapabilityRegistry(),
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
 		featureRouter,

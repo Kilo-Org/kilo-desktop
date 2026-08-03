@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { mainRegister } from "./index.js";
@@ -38,6 +38,8 @@ describe("sdk-producer mainRegister", () => {
 
 	it("add handler creates and returns a note (via invoke with validation)", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "sdk-producer" });
+		const onNoteAdded = vi.fn();
+		mainSdk.events.on("sdk-producer.note-added", onNoteAdded);
 		mainRegister(mainSdk);
 
 		const note = (await mainSdk.invoke("add", { text: "hello" })) as {
@@ -46,6 +48,11 @@ describe("sdk-producer mainRegister", () => {
 		};
 		expect(note.text).toBe("hello");
 		expect(note.id).toBeDefined();
+		expect(onNoteAdded).toHaveBeenCalledWith({ id: note.id, text: "hello" });
+		const capabilities = mainSdk.plugins.get<{
+			notesService: { count(): number };
+		}>("sdk-producer");
+		expect(capabilities?.notesService.count()).toBe(1);
 	});
 
 	it("echo handler echoes with prefix (via invoke)", async () => {

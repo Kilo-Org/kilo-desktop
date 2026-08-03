@@ -137,7 +137,11 @@ export interface SDK<T extends SdkClient = SdkClient> {
  * const unsub = sdk.events.on("todos.created", (payload) => refresh());
  */
 export interface SdkEvents {
-	/** Emit an event (auto-prefixed with this featureId: "featureId.event"). */
+	/**
+	 * Emit an event (auto-prefixed with this featureId: "featureId.event").
+	 * Payloads must be structured-cloneable so Electron and browser mode have
+	 * the same contract.
+	 */
 	emit(event: string, payload?: unknown): void;
 	/**
 	 * Subscribe to a fully-qualified event ("featureId.event", any feature).
@@ -514,6 +518,10 @@ export interface ChannelHandlers<C extends ChannelMap> {
  */
 export interface MainSdk {
 	readonly featureId: string;
+	/** Cross-process, namespaced events. Emissions are prefixed with featureId. */
+	readonly events: Pick<SdkEvents, "emit" | "on">;
+	/** Main-process cross-feature capability exposure and discovery. */
+	readonly plugins: SdkPlugins;
 	/**
 	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
 	 * created lazily on first access. Features persist ONLY here — open your

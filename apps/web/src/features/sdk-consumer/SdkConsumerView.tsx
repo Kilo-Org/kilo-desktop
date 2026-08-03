@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import type { SdkConsumerService } from "@anaconda-agentic-desktop/contracts";
 
 /**
  * SDK Consumer — A second feature that ONLY consumes data from sdk-producer.
@@ -11,7 +12,7 @@ import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
  * - sdk.plugins.get("sdk-producer") — cross-feature capability access
  */
 export function SdkConsumerView() {
-	const sdk = useSdk("sdk-consumer");
+	const sdk = useSdk<SdkConsumerService>("sdk-consumer");
 
 	// ─── Cross-feature state: read sdk-producer's click-count ────────────
 	const [clickCount, setClickCount] = useState<number | null>(null);
@@ -61,6 +62,19 @@ export function SdkConsumerView() {
 		const value = sdk.state.peek("sdk-producer.click-count");
 		const exists = sdk.state.has("sdk-producer.click-count");
 		setPeekedValue(`${JSON.stringify(value)} (has: ${exists})`);
+	}
+
+	// ─── Main-side capability conformance ────────────────────────────────
+	const [mainCapabilityResult, setMainCapabilityResult] = useState<string | null>(null);
+
+	function handleMainCapabilityRead() {
+		void sdk.client.ping().then((result) => {
+			setMainCapabilityResult(
+				result.producerNoteCount === null
+					? "null — sdk-producer main capability is unavailable"
+					: `${result.producerNoteCount} note(s) via mainSdk.plugins.get`,
+			);
+		});
 	}
 
 	return (
@@ -134,6 +148,21 @@ export function SdkConsumerView() {
 				</button>
 				{capabilityResult && (
 					<pre className="bg-muted mt-2 rounded p-3 font-mono text-xs">{capabilityResult}</pre>
+				)}
+			</section>
+
+			<section className="mb-6">
+				<h2 className="mb-2 text-lg font-medium">mainSdk.plugins.get(&quot;sdk-producer&quot;)</h2>
+				<button
+					type="button"
+					data-qa-id="sdk-consumer-main-capability"
+					className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-3 py-1.5 text-xs font-medium"
+					onClick={handleMainCapabilityRead}
+				>
+					Read producer note count in main
+				</button>
+				{mainCapabilityResult && (
+					<pre className="bg-muted mt-2 rounded p-3 font-mono text-xs">{mainCapabilityResult}</pre>
 				)}
 			</section>
 		</main>

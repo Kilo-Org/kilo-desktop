@@ -13,3 +13,5 @@ export {
 } from "./channel-map.js";
 export { FeatureError, type FeatureErrorCode } from "./errors.js";
 export { FeatureRouter, type CreateMainSdkOptions } from "./services/feature-router.js";
+export { EventBus, type FeatureEvent } from "./services/event-bus.js";
+export { CapabilityRegistry } from "./services/capability-registry.js";

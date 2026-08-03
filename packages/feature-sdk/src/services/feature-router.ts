@@ -7,6 +7,8 @@ import type {
 import { FeatureError } from "../errors.js";
 import type { ChannelHandlers, MainSdk } from "../types/sdk.js";
 import type { SchemaLike } from "../types/schema.js";
+import { CapabilityRegistry } from "./capability-registry.js";
+import { emitFeatureEvent, EventBus, type FeatureEvent } from "./event-bus.js";
 
 type Handler = (args: unknown) => unknown | Promise<unknown>;
 
@@ -28,9 +30,15 @@ export type InvokeFallback = (
 
 export interface FeatureRouterOptions {
 	fallback?: InvokeFallback;
+	/** Adopt an existing process-local bus; otherwise the router creates and owns one. */
+	eventBus?: EventBus;
+	/** Adopt an existing process-local registry; otherwise the router creates and owns one. */
+	capabilityRegistry?: CapabilityRegistry;
 }
 
 export interface CreateMainSdkOptions {
+	/** Optional main-to-renderer relay. Browser mode omits it. */
+	emitEvent?: (event: FeatureEvent) => void;
 	/**
 	 * Resolve (and create, if needed) the feature's storage directory.
 	 * Called lazily on first `mainSdk.storageDir` access and cached.
@@ -47,7 +55,10 @@ export interface CreateMainSdkOptions {
 }
 
 /**
- * In-memory handler router backing `sdk.invoke` and `mainSdk.channels`.
+ * Process-local runtime spine backing `sdk.invoke`, `mainSdk.channels`, events,
+ * and cross-feature capabilities. SDK and MainSdk facades always use the bus
+ * and capability registry owned by this router, so those surfaces cannot drift
+ * onto disconnected service instances.
  *
  * Shell infrastructure — features never construct this; they register
  * handlers through the MainSdk given to mainRegister() and call them
@@ -69,9 +80,13 @@ export class FeatureRouter {
 	private handlers = new Map<string, Map<string, HandlerEntry>>();
 	private disposables = new Map<string, Array<() => void>>();
 	private readonly fallback: InvokeFallback | undefined;
+	readonly eventBus: EventBus;
+	readonly capabilityRegistry: CapabilityRegistry;
 
 	constructor(options?: FeatureRouterOptions) {
 		this.fallback = options?.fallback;
+		this.eventBus = options?.eventBus ?? new EventBus();
+		this.capabilityRegistry = options?.capabilityRegistry ?? new CapabilityRegistry();
 	}
 
 	/**
@@ -122,9 +137,47 @@ export class FeatureRouter {
 		const resolveStorageDir = options?.resolveStorageDir;
 		const resolvePluginAsset = options?.resolvePluginAsset;
 		let storageDir: string | undefined;
+		const disposables = this.disposables.get(featureId)!;
+		const exposedCapabilities = new Set<string>();
+
+		const events: MainSdk["events"] = {
+			emit: (name, payload) => {
+				emitFeatureEvent(this.eventBus, { featureId, name, payload }, options?.emitEvent);
+			},
+			on: (event, handler) => {
+				if (!event.includes(".")) {
+					console.warn(
+						`[MainSdk] events.on("${event}") has no feature namespace — events are always ` +
+							`"featureId.eventName". Did you mean "${featureId}.${event}"?`,
+					);
+				}
+				const unsubscribe = this.eventBus.on(event, handler);
+				const dispose = () => {
+					const index = disposables.indexOf(dispose);
+					if (index >= 0) disposables.splice(index, 1);
+					unsubscribe();
+				};
+				disposables.push(dispose);
+				return dispose;
+			},
+		};
+
+		const plugins: MainSdk["plugins"] = {
+			expose: (capabilityName, implementation) => {
+				this.capabilityRegistry.expose(featureId, capabilityName, implementation);
+				if (!exposedCapabilities.has(capabilityName)) {
+					exposedCapabilities.add(capabilityName);
+					disposables.push(() => this.capabilityRegistry.remove(featureId, capabilityName));
+				}
+			},
+			get: <T extends Record<string, unknown> = Record<string, unknown>>(targetFeatureId: string) =>
+				this.capabilityRegistry.get(targetFeatureId) as T | null,
+		};
 
 		return {
 			featureId,
+			events,
+			plugins,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(
@@ -207,7 +260,7 @@ export class FeatureRouter {
 	destroyFeature(featureId: string): void {
 		const disposables = this.disposables.get(featureId);
 		if (disposables) {
-			for (const fn of disposables.reverse()) {
+			for (const fn of [...disposables].reverse()) {
 				try {
 					fn();
 				} catch (error) {

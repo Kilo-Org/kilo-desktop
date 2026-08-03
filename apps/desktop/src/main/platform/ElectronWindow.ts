@@ -91,9 +91,11 @@ export class ElectronWindow {
 	broadcast<TChannel extends IpcEventChannel>(
 		channel: TChannel,
 		payload: IpcEventPayload<TChannel>,
+		excludeSenderId?: number,
 	): void {
 		const validatedPayload = ipcEvents[channel].payload.parse(payload);
 		for (const window of this.liveWindows) {
+			if (excludeSenderId !== undefined && window.webContents.id === excludeSenderId) continue;
 			window.webContents.send(channel, validatedPayload);
 		}
 	}

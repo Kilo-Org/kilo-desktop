@@ -19,10 +19,9 @@ import type {
 	SdkTools,
 	ShellLocation,
 } from "../types/sdk.js";
-import type { CapabilityRegistry } from "./capability-registry.js";
 import type { CommandRegistry } from "./command-registry.js";
 import type { ContributionRegistry } from "./contribution-registry.js";
-import type { EventBus } from "./event-bus.js";
+import { emitFeatureEvent, type FeatureEvent } from "./event-bus.js";
 import type { FeatureRouter } from "./feature-router.js";
 import type { StateBroker } from "./state-broker.js";
 
@@ -41,11 +40,12 @@ export interface ShellDelegates {
 }
 
 export interface SdkFactoryServices {
-	eventBus: EventBus;
+	/** Optional renderer-to-main transport. Browser mode omits it. */
+	emitEvent?: (event: FeatureEvent) => void;
 	stateBroker: StateBroker;
-	capabilityRegistry: CapabilityRegistry;
 	contributionRegistry: ContributionRegistry;
 	commandRegistry: CommandRegistry;
+	/** Canonical owner of handlers, events, and process-local capabilities. */
 	featureRouter: FeatureRouter;
 	shellDelegates: ShellDelegates;
 }
@@ -65,6 +65,7 @@ export interface SdkFactoryServices {
  */
 export function createSdk(featureId: string, services: SdkFactoryServices): SDK {
 	const disposables = new Set<() => void>();
+	const { capabilityRegistry, eventBus } = services.featureRouter;
 	let destroyed = false;
 
 	function assertAlive(): void {
@@ -78,7 +79,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 	const events: SdkEvents = {
 		emit(event: string, payload?: unknown) {
 			assertAlive();
-			services.eventBus.emit(`${featureId}.${event}`, payload);
+			emitFeatureEvent(eventBus, { featureId, name: event, payload }, services.emitEvent);
 		},
 		on(event: string, handler: (payload: unknown) => void) {
 			assertAlive();
@@ -88,7 +89,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 						`"featureId.eventName". Did you mean "${featureId}.${event}"?`,
 				);
 			}
-			const unsub = services.eventBus.on(event, handler);
+			const unsub = eventBus.on(event, handler);
 			// Wrap so manual unsubscription also drops the disposable
 			// (prevents unbounded growth on subscribe/unsubscribe churn).
 			const dispose = () => {
@@ -100,7 +101,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 		off(event: string, handler: (payload: unknown) => void) {
 			assertAlive();
-			services.eventBus.off(event, handler);
+			eventBus.off(event, handler);
 		},
 	};
 
@@ -133,16 +134,16 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 	const plugins: SdkPlugins = {
 		expose(capabilityName: string, implementation: Record<string, unknown>) {
 			assertAlive();
-			services.capabilityRegistry.expose(featureId, capabilityName, implementation);
+			capabilityRegistry.expose(featureId, capabilityName, implementation);
 			if (!exposedCapabilities.has(capabilityName)) {
 				exposedCapabilities.add(capabilityName);
-				disposables.add(() => services.capabilityRegistry.remove(featureId, capabilityName));
+				disposables.add(() => capabilityRegistry.remove(featureId, capabilityName));
 			}
 		},
 		get<T extends Record<string, unknown> = Record<string, unknown>>(targetFeatureId: string) {
 			assertAlive();
 			// Asserted, not validated — the registry stores untyped objects.
-			return services.capabilityRegistry.get(targetFeatureId) as T | null;
+			return capabilityRegistry.get(targetFeatureId) as T | null;
 		},
 	};
 
@@ -282,10 +283,11 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
  * hold references to them.
  */
 export function teardownFeature(featureId: string, services: SdkFactoryServices): void {
-	services.eventBus.removeByPrefix(`${featureId}.`);
+	const { capabilityRegistry, eventBus } = services.featureRouter;
+	eventBus.removeByPrefix(`${featureId}.`);
 	services.stateBroker.removeByFeature(featureId);
 	services.contributionRegistry.removeFeature(featureId);
 	services.commandRegistry.removeFeature(featureId);
-	services.capabilityRegistry.removeFeature(featureId);
+	capabilityRegistry.removeFeature(featureId);
 	services.featureRouter.destroyFeature(featureId);
 }

@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer } = vi.hoisted(() => ({
 	},
 	ipcRenderer: {
 		invoke: vi.fn(),
+		send: vi.fn(),
 		on: vi.fn(),
 		removeListener: vi.fn(),
 	},
@@ -61,5 +62,21 @@ describe("preload desktopApi", () => {
 
 		unsubscribe();
 		expect(ipcRenderer.removeListener).toHaveBeenCalledWith("auth:changed", handler);
+	});
+
+	it("validates and sends renderer feature events", async () => {
+		await import("./preload.js");
+		const desktopApi = contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as {
+			send: (channel: string, payload: unknown) => void;
+		};
+		const payload = { featureId: "sdk-producer", name: "note-added", payload: { id: "1" } };
+
+		desktopApi.send("feature:event", payload);
+		expect(ipcRenderer.send).toHaveBeenCalledWith("feature:event", payload);
+
+		expect(() => desktopApi.send("feature:unknown", payload)).toThrow(
+			"Unknown IPC message channel.",
+		);
+		expect(() => desktopApi.send("feature:event", { featureId: "", name: "x" })).toThrow();
 	});
 });

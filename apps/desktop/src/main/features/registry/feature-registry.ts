@@ -3,8 +3,16 @@ import path from "node:path";
 
 import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import {
+	qualifyFeatureEvent,
+	type FeatureEvent,
+	type FeatureRegistration,
+} from "@anaconda-agentic-desktop/feature-sdk";
+import type {
+	FeatureEventPayload,
+	IpcHandlers,
+	IpcMessageHandlers,
+} from "@anaconda-agentic-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
 
@@ -17,6 +25,8 @@ export const featureRouter = new FeatureRouter();
 const bootedFeatureIds = new Set<string>();
 
 export interface BootFeaturesOptions {
+	/** Relay main-emitted events to every renderer window. */
+	emitEvent?: (event: FeatureEvent) => void;
 	/**
 	 * Base data path (Electron `app.getPath("userData")`). Each feature gets
 	 * `${storageRoot}/plugins/<id>` as its `mainSdk.storageDir`, created
@@ -45,6 +55,7 @@ export function bootFeatures(
 			continue;
 		}
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
+			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(storageRoot === undefined
 				? {}
 				: {
@@ -75,6 +86,24 @@ export function bootFeatures(
 			featureRouter.destroyFeature(id);
 			bootedFeatureIds.delete(id);
 		}
+	};
+}
+
+/**
+ * Renderer-to-main event delivery. The origin renderer already received the
+ * event in-process, so the relay excludes it while forwarding to other
+ * windows. Delivering directly to the router's event bus prevents an echo through
+ * MainSdk's outbound relay.
+ */
+export function createFeatureMessageHandlers(
+	relayToRenderers?: (event: FeatureEventPayload, senderId: number) => void,
+): Pick<IpcMessageHandlers, "feature:event"> {
+	return {
+		"feature:event": (event, context) => {
+			const relayEvent = structuredClone(event);
+			featureRouter.eventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
+			relayToRenderers?.(relayEvent, context.senderId);
+		},
 	};
 }
 

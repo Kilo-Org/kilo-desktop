@@ -25,11 +25,32 @@ describe("createSdk", () => {
 		const services = makeServices();
 		const sdk = createSdk("todos", services);
 		let received: unknown = null;
-		services.eventBus.on("todos.created", (payload) => {
+		services.featureRouter.eventBus.on("todos.created", (payload) => {
 			received = payload;
 		});
 		sdk.events.emit("created", { id: "1" });
 		expect(received).toEqual({ id: "1" });
+	});
+
+	it("sdk.events.emit cannot spoof another feature namespace", () => {
+		const services = makeServices();
+		const sdk = createSdk("producer", services);
+		const spoofed = vi.fn();
+		const stamped = vi.fn();
+		services.featureRouter.eventBus.on("other.changed", spoofed);
+		services.featureRouter.eventBus.on("producer.other.changed", stamped);
+
+		sdk.events.emit("other.changed", 1);
+
+		expect(spoofed).not.toHaveBeenCalled();
+		expect(stamped).toHaveBeenCalledWith(1);
+	});
+
+	it("sdk.events.emit rejects payloads that cannot cross IPC", () => {
+		const sdk = createSdk("todos", makeServices());
+		expect(() => sdk.events.emit("created", { callback: () => undefined })).toThrow(
+			/structured-cloneable/,
+		);
 	});
 
 	it("sdk.state.register and get work with namespacing", () => {
@@ -75,7 +96,7 @@ describe("createSdk", () => {
 		sdk.destroy();
 		expect(disposed).toBe(true);
 		expect(services.stateBroker.peek("todos.items")).toBeNull();
-		expect(services.capabilityRegistry.get("todos")).toBeNull();
+		expect(services.featureRouter.capabilityRegistry.get("todos")).toBeNull();
 		expect(services.commandRegistry.all()).toEqual([]);
 		expect(services.contributionRegistry.getForZone("status-bar")).toEqual([]);
 		await expect(sdk.invoke("list")).rejects.toThrow(/destroyed/);
@@ -127,7 +148,7 @@ describe("createSdk", () => {
 			calls += 1;
 		});
 		unsub();
-		services.eventBus.emit("other.event");
+		services.featureRouter.eventBus.emit("other.event");
 		expect(calls).toBe(0);
 		// destroy after manual unsub must not throw (disposable already removed)
 		expect(() => sdk.destroy()).not.toThrow();
@@ -177,7 +198,7 @@ describe("createSdk", () => {
 		};
 		sdk.events.on("todos.ping", handler);
 		sdk.events.off("todos.ping", handler);
-		services.eventBus.emit("todos.ping");
+		services.featureRouter.eventBus.emit("todos.ping");
 		expect(calls).toBe(0);
 	});
 
@@ -205,7 +226,7 @@ describe("createSdk", () => {
 		sdk.plugins.expose("svc", { a: 2 });
 		expect(sdk.plugins.get("todos")).toEqual({ svc: { a: 2 } });
 		sdk.destroy();
-		expect(services.capabilityRegistry.get("todos")).toBeNull();
+		expect(services.featureRouter.capabilityRegistry.get("todos")).toBeNull();
 	});
 
 	it("deferred surfaces throw until the plugin system lands", () => {

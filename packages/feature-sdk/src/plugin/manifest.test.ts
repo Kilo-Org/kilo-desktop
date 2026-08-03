@@ -8,29 +8,49 @@ const validManifest = {
 	version: "1.0.0",
 	main: "./src/main/index.ts",
 	web: "./src/web/index.ts",
-	routes: [{ path: "/todos", label: "Todos", component: "TodoList", icon: "list-checks" }],
-	zones: ["sidebar"],
+	contributes: {
+		routes: [{ path: "/todos", component: "TodoList", title: "Todo List" }],
+		nav: [{ to: "/todos", label: "Todos", icon: "list-checks" }],
+		zones: [{ zone: "status-bar", component: "TodosStatusBarItem" }],
+	},
 };
 
 describe("pluginManifestSchema", () => {
 	it("accepts a full manifest", () => {
 		const manifest = parsePluginManifest(validManifest);
 		expect(manifest.id).toBe("todos");
-		expect(manifest.routes).toEqual([
-			{ path: "/todos", label: "Todos", component: "TodoList", icon: "list-checks" },
+		expect(manifest.contributes.routes).toEqual([
+			{ path: "/todos", component: "TodoList", title: "Todo List" },
 		]);
-		expect(manifest.zones).toEqual(["sidebar"]);
+		expect(manifest.contributes.nav).toEqual([
+			{ to: "/todos", label: "Todos", icon: "list-checks" },
+		]);
+		expect(manifest.contributes.zones).toEqual([
+			{ zone: "status-bar", component: "TodosStatusBarItem" },
+		]);
 	});
 
-	it("defaults routes and zones to empty arrays", () => {
+	it("defaults contributes and its arrays to empty", () => {
 		const manifest = parsePluginManifest({
 			id: "headless",
 			displayName: "Headless",
 			version: "0.1.0",
 			main: "./src/main/index.ts",
 		});
-		expect(manifest.routes).toEqual([]);
-		expect(manifest.zones).toEqual([]);
+		expect(manifest.contributes).toEqual({ routes: [], nav: [], zones: [] });
+	});
+
+	it("defaults omitted contributes arrays individually", () => {
+		const manifest = parsePluginManifest({
+			id: "nav-only",
+			displayName: "Nav Only",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+			contributes: { nav: [{ to: "/x", label: "X" }] },
+		});
+		expect(manifest.contributes.routes).toEqual([]);
+		expect(manifest.contributes.zones).toEqual([]);
+		expect(manifest.contributes.nav).toHaveLength(1);
 	});
 
 	it("accepts a renderer-only manifest (web without main)", () => {
@@ -73,7 +93,7 @@ describe("pluginManifestSchema", () => {
 	it("rejects routes whose path does not start with '/'", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			routes: [{ path: "todos", label: "Todos", component: "TodoList" }],
+			contributes: { routes: [{ path: "todos", component: "TodoList" }] },
 		});
 		expect(result.success).toBe(false);
 	});
@@ -81,7 +101,7 @@ describe("pluginManifestSchema", () => {
 	it("rejects the bare '/' route path (shell-owned root)", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			routes: [{ path: "/", label: "Todos", component: "TodoList" }],
+			contributes: { routes: [{ path: "/", component: "TodoList" }] },
 		});
 		expect(result.success).toBe(false);
 	});
@@ -89,20 +109,58 @@ describe("pluginManifestSchema", () => {
 	it("rejects routes without a component export name", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			routes: [{ path: "/todos", label: "Todos" }],
+			contributes: { routes: [{ path: "/todos", title: "Todos" }] },
 		});
 		expect(result.success).toBe(false);
 	});
 
-	it("rejects routes on a manifest without a web entry", () => {
+	it("rejects nav entries without a label", () => {
 		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: { nav: [{ to: "/todos" }] },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects zone contributions without a component", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: { zones: [{ zone: "status-bar" }] },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects routes/zones on a manifest without a web entry", () => {
+		const routesResult = pluginManifestSchema.safeParse({
 			id: "headless",
 			displayName: "Headless",
 			version: "1.0.0",
 			main: "./src/main/index.ts",
-			routes: [{ path: "/headless", label: "Headless", component: "Page" }],
+			contributes: { routes: [{ path: "/headless", component: "Page" }] },
 		});
-		expect(result.success).toBe(false);
+		expect(routesResult.success).toBe(false);
+
+		const zonesResult = pluginManifestSchema.safeParse({
+			id: "headless",
+			displayName: "Headless",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			contributes: { zones: [{ zone: "status-bar", component: "Widget" }] },
+		});
+		expect(zonesResult.success).toBe(false);
+	});
+
+	it("allows nav-only contributions without a web entry", () => {
+		// Nav entries are pure data (no component to resolve), so they do not
+		// require a web module — a plugin may link to shell/other paths.
+		const result = pluginManifestSchema.safeParse({
+			id: "linker",
+			displayName: "Linker",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			contributes: { nav: [{ to: "/todos", label: "Todos" }] },
+		});
+		expect(result.success).toBe(true);
 	});
 
 	it("rejects unknown manifest keys (strict)", () => {
@@ -113,7 +171,15 @@ describe("pluginManifestSchema", () => {
 	it("rejects unknown route keys (strict)", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			routes: [{ path: "/todos", label: "Todos", component: "TodoList", page: "TodoList" }],
+			contributes: { routes: [{ path: "/todos", component: "TodoList", page: "TodoList" }] },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects unknown contributes keys (strict)", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: { routes: [], nav: [], zones: [], menus: [] },
 		});
 		expect(result.success).toBe(false);
 	});

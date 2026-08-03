@@ -22,9 +22,10 @@ A feature ships two halves that communicate only through the SDK:
   (`apps/desktop/src/main/features/registry/features.ts`) and, for browser mode,
   `WEB_FEATURES` (`apps/web/src/features/features.ts`). Plugins instead ship a
   `plugin.json` and register in `BUNDLED_PLUGINS`.
-- **UI surfaces**: full pages are declared as manifest `routes` (the shell mounts them
-  and derives sidebar nav entries — no shell edits); small widgets register into shell
-  zones (`sidebar`, `status-bar`, `dashboard`) via `sdk.contribute`.
+- **UI surfaces**: declared statically in `plugin.json` `contributes` — `routes` (full
+  pages the shell mounts), `nav` (sidebar entries), and `zones` (persistent status-bar /
+  dashboard widgets, host-mounted at activation). No shell edits. The imperative
+  `sdk.contribute` remains for conditional, page-scoped widgets.
 
 ## Follow these instead
 

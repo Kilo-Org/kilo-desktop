@@ -17,30 +17,85 @@ const pluginIdPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /** Semver-ish: MAJOR.MINOR.PATCH with optional pre-release / build metadata. */
 const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
+/** Absolute path with at least one segment (e.g. "/todos"). "/" is reserved for the shell. */
+const routePathSchema = z
+	.string()
+	.regex(/^\/.+/, "Path must start with '/' and have at least one segment.");
+
 /**
- * A full-page route contributed by the plugin. Declared in the manifest so the
- * HOST owns route creation (Decision #19) — plugins never import the router.
- * The shell mounts the named component export from the plugin's `web` entry
- * when the path is visited, and derives a sidebar nav entry from label/icon.
+ * A full-page route contributed by the plugin (`contributes.routes`). The HOST
+ * owns route creation (Decision #19) — plugins never import the router; the
+ * shell mounts the named component export from the plugin's `web` entry when
+ * the path is visited and passes it `PluginPageProps`.
+ *
+ * Routing only — navigation is declared separately in `contributes.nav`, so a
+ * route can exist without a sidebar entry (detail pages) and a nav entry can
+ * point anywhere.
  */
 export const pluginRouteSchema = z.strictObject({
-	/**
-	 * Absolute route path with at least one segment, e.g. "/todos". "/" is
-	 * rejected — the shell owns the root route, so a "/" plugin route could
-	 * never render.
-	 */
-	path: z.string().regex(/^\/.+/, "Route path must start with '/' and have at least one segment."),
-	/** Human-readable navigation label. */
-	label: z.string().min(1),
+	/** Absolute route path, e.g. "/todos". */
+	path: routePathSchema,
 	/**
 	 * Name of the page component export in the plugin's `web` entry module
-	 * (e.g. "TodoList"). The component receives `PluginPageProps`.
+	 * (e.g. "TodoList") — resolved by the host at discovery (B1).
 	 */
 	component: z.string().min(1),
-	/** Optional lucide icon name (kebab-case, e.g. "list-todo") for nav entries. */
-	icon: z.string().min(1).optional(),
+	/** Optional human-readable page title (used for the browser-mode unavailable state). */
+	title: z.string().min(1).optional(),
 });
 export type PluginRoute = z.infer<typeof pluginRouteSchema>;
+
+/**
+ * A primary-navigation (sidebar) entry (`contributes.nav`). Pure data — no
+ * component reference — so the shell can render it without touching plugin
+ * code. `to` may point at one of this plugin's routes or any shell/other path.
+ */
+export const pluginNavEntrySchema = z.strictObject({
+	/** Destination path, e.g. "/todos". */
+	to: routePathSchema,
+	/** Sidebar label / tooltip. */
+	label: z.string().min(1),
+	/** Optional lucide icon name (kebab-case, e.g. "list-todo"). */
+	icon: z.string().min(1).optional(),
+	/** Higher renders first among nav entries. Default 0 — matches `sdk.contribute`. */
+	priority: z.number().int().optional(),
+});
+export type PluginNavEntry = z.infer<typeof pluginNavEntrySchema>;
+
+/**
+ * A zone widget contribution (`contributes.zones`). The host mounts the named
+ * component export into the given shell zone at plugin activation, so it is
+ * PERSISTENT — present regardless of which page is showing (unlike the
+ * page-scoped, conditional `sdk.contribute`). Use this for a status-bar badge
+ * or dashboard card that should always be there while the plugin is active.
+ */
+export const pluginZoneContributionSchema = z.strictObject({
+	/** Canonical shell zone id ("sidebar", "status-bar", "dashboard"). */
+	zone: z.string().min(1),
+	/** Name of the component export in the plugin's `web` entry module. */
+	component: z.string().min(1),
+	/** Optional label (accessibility / registry key); defaults to the component name. */
+	label: z.string().min(1).optional(),
+	/** Higher renders first within the zone. Default 0 — matches `sdk.contribute`. */
+	priority: z.number().int().optional(),
+});
+export type PluginZoneContribution = z.infer<typeof pluginZoneContributionSchema>;
+
+/**
+ * Everything a plugin adds to the shell, declared statically (B1 / VS Code
+ * `contributes` model). `routes` and `zones` name component exports the host
+ * resolves and mounts; `nav` is pure data. The imperative `sdk.contribute`
+ * remains for dynamic, app-state-dependent contributions.
+ */
+export const pluginContributesSchema = z.strictObject({
+	/** Full-page routes (path → component export). */
+	routes: z.array(pluginRouteSchema).default([]),
+	/** Primary-navigation (sidebar) entries. */
+	nav: z.array(pluginNavEntrySchema).default([]),
+	/** Persistent zone widgets (zone + component export), host-mounted at activation. */
+	zones: z.array(pluginZoneContributionSchema).default([]),
+});
+export type PluginContributes = z.infer<typeof pluginContributesSchema>;
 
 /**
  * `plugin.json` schema. Strict: unknown keys are rejected so typos fail at
@@ -71,25 +126,20 @@ export const pluginManifestSchema = z
 		 * browser-mode support. Omit for headless plugins.
 		 */
 		web: z.string().min(1).optional(),
-		/**
-		 * Full-page routes the host creates for this plugin. A route requires a
-		 * `web` entry (its component is resolved from that module's exports).
-		 */
-		routes: z.array(pluginRouteSchema).default([]),
-		/**
-		 * Shell zones this plugin contributes to via `sdk.contribute` —
-		 * informational, for tooling and review. Canonical ids are the
-		 * `ShellZone` union ("sidebar", "status-bar", "dashboard"); free-form
-		 * strings are accepted but render nowhere until the shell defines them.
-		 */
-		zones: z.array(z.string().min(1)).default([]),
+		/** Declarative UI contributions (routes, nav, zone widgets). */
+		contributes: pluginContributesSchema.default({ routes: [], nav: [], zones: [] }),
 	})
 	.refine((manifest) => manifest.main !== undefined || manifest.web !== undefined, {
 		message: "Manifest must declare at least one entry point ('main' or 'web').",
 	})
-	.refine((manifest) => manifest.routes.length === 0 || manifest.web !== undefined, {
-		message: "Manifest declares routes but no 'web' entry to resolve their components from.",
-	});
+	.refine(
+		(manifest) =>
+			(manifest.contributes.routes.length === 0 && manifest.contributes.zones.length === 0) ||
+			manifest.web !== undefined,
+		{
+			message: "Manifest declares route/zone components but no 'web' entry to resolve them from.",
+		},
+	);
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;
 
 /**

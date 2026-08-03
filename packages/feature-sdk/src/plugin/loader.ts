@@ -58,12 +58,20 @@ export interface DiscoveredPlugin {
 	/** Feeds the existing boot paths (FEATURES / WEB_FEATURES shape). */
 	registration: FeatureRegistration;
 	/**
-	 * Manifest routes with their page components resolved from the web entry
-	 * module. Populated only for `entry: "web"` discovery (routes are a
-	 * renderer concern); routes whose component export is missing are skipped
-	 * with an issue.
+	 * `contributes.routes` with their page components resolved from the web
+	 * entry module. Populated only for `entry: "web"` discovery (a renderer
+	 * concern); routes whose component export is missing, whose path collides
+	 * with a shell route, or duplicates another plugin's are skipped.
 	 */
 	routes: ResolvedPluginRoute[];
+	/** `contributes.nav` sidebar entries (pure data). Web-entry discovery only. */
+	nav: ResolvedPluginNav[];
+	/**
+	 * `contributes.zones` widgets with their components resolved. Web-entry
+	 * discovery only; entries for non-canonical zones or missing components are
+	 * skipped with an issue.
+	 */
+	zones: ResolvedPluginZoneContribution[];
 }
 
 /**
@@ -75,9 +83,8 @@ export interface ResolvedPluginRoute {
 	pluginId: string;
 	/** Absolute route path from the manifest, e.g. "/todos". */
 	path: string;
-	label: string;
-	/** Optional lucide icon name (kebab-case) for nav entries. */
-	icon?: string | undefined;
+	/** Optional human-readable page title (browser-mode unavailable state). */
+	title?: string | undefined;
 	/** The resolved page component export (a React component to the shell). */
 	component: unknown;
 	/**
@@ -85,6 +92,35 @@ export interface ResolvedPluginRoute {
 	 * Electron-only plugins (a declared `main` entry but no `browserRegister`)
 	 * — the shell renders an explicit unavailable state instead of a dead page.
 	 */
+	browserSafe: boolean;
+}
+
+/** A resolved sidebar nav entry (pure data — no component to resolve). */
+export interface ResolvedPluginNav {
+	pluginId: string;
+	/** Destination path, e.g. "/todos". */
+	to: string;
+	label: string;
+	/** Optional lucide icon name (kebab-case). */
+	icon?: string | undefined;
+	/** Higher renders first. Default 0. */
+	priority: number;
+}
+
+/**
+ * A resolved persistent zone widget. The host mounts `component` into `zone`
+ * at plugin activation (never page-scoped). `component` stays `unknown` —
+ * the shell casts it. `browserSafe` gates mounting in standalone browser mode.
+ */
+export interface ResolvedPluginZoneContribution {
+	pluginId: string;
+	/** Canonical shell zone id. */
+	zone: string;
+	label: string;
+	/** The resolved component export. */
+	component: unknown;
+	/** Higher renders first within the zone. Default 0. */
+	priority: number;
 	browserSafe: boolean;
 }
 
@@ -179,19 +215,6 @@ export function discoverPlugins(
 		}
 		seenIds.add(manifest.id);
 
-		// Declared zones are metadata about the plugin's sdk.contribute usage.
-		// The shell renders only canonical ShellZone ids, so a non-canonical
-		// declaration is almost certainly a typo whose contribution would
-		// silently render nowhere — report it, but keep the plugin.
-		for (const zone of manifest.zones) {
-			if (!isShellZone(zone)) {
-				issues.push({
-					pluginId: manifest.id,
-					message: `Plugin "${manifest.id}" declares unknown zone "${zone}" — shell zones are "sidebar", "status-bar", and "dashboard"; contributions to other zones render nowhere.`,
-				});
-			}
-		}
-
 		// Registries are per-process, so a bundled entry whose manifest lacks
 		// this process's entry point is a registration mistake (e.g. added to
 		// the web registry but plugin.json declares no "web") — report it
@@ -207,36 +230,51 @@ export function discoverPlugins(
 
 		const registration = createRegistration(manifest, candidate.module, entry, issues);
 		if (registration) {
-			const routes =
+			// Contributions are a renderer concern — only resolved for web discovery.
+			const resolved =
 				entry === "web"
-					? resolveRoutes(manifest, candidate.module, reservedRoutePaths, seenRoutePaths, issues)
-					: [];
-			plugins.push({ manifest, registration, routes });
+					? resolveContributions(
+							manifest,
+							candidate.module,
+							reservedRoutePaths,
+							seenRoutePaths,
+							issues,
+						)
+					: { routes: [], nav: [], zones: [] };
+			plugins.push({ manifest, registration, ...resolved });
 		}
 	}
 
 	return { plugins, issues };
 }
 
+interface ResolvedContributions {
+	routes: ResolvedPluginRoute[];
+	nav: ResolvedPluginNav[];
+	zones: ResolvedPluginZoneContribution[];
+}
+
 /**
- * Resolve manifest routes against the web entry module's exports. Routes with
- * a missing/non-component export, a path reserved by a shell route, or a path
- * already claimed by another plugin are skipped with an issue — the plugin
+ * Resolve a plugin's declarative `contributes` against its web entry module.
+ * Route/zone components are looked up by export name; nav entries are pure
+ * data. Individual bad contributions are skipped with an issue — the plugin
  * itself still loads.
  */
-function resolveRoutes(
+function resolveContributions(
 	manifest: PluginManifest,
 	module: PluginModule,
 	reservedRoutePaths: ReadonlySet<string>,
 	seenRoutePaths: Map<string, string>,
 	issues: PluginDiscoveryIssue[],
-): ResolvedPluginRoute[] {
-	const routes: ResolvedPluginRoute[] = [];
+): ResolvedContributions {
 	// Electron-only plugins (main entry, no browserRegister) cannot serve their
-	// backend in standalone browser mode — the shell shows an unavailable state.
+	// backend in standalone browser mode — the shell shows an unavailable state
+	// for their routes and omits their zone widgets.
 	const browserSafe = manifest.main === undefined || typeof module.browserRegister === "function";
+	const { routes: routeDecls, nav: navDecls, zones: zoneDecls } = manifest.contributes;
 
-	for (const route of manifest.routes) {
+	const routes: ResolvedPluginRoute[] = [];
+	for (const route of routeDecls) {
 		// Static shell routes outrank the plugin catch-all, so this route could
 		// never render — report it instead of surfacing a dead nav entry.
 		if (reservedRoutePaths.has(route.path)) {
@@ -269,14 +307,52 @@ function resolveRoutes(
 		routes.push({
 			pluginId: manifest.id,
 			path: route.path,
-			label: route.label,
-			icon: route.icon,
+			title: route.title,
 			component,
 			browserSafe,
 		});
 	}
 
-	return routes;
+	const nav: ResolvedPluginNav[] = navDecls.map((entry) => ({
+		pluginId: manifest.id,
+		to: entry.to,
+		label: entry.label,
+		icon: entry.icon,
+		priority: entry.priority ?? 0,
+	}));
+
+	const zones: ResolvedPluginZoneContribution[] = [];
+	for (const contribution of zoneDecls) {
+		// The shell renders only canonical ShellZone ids — a widget targeting an
+		// unknown zone would silently render nowhere, so skip it with an issue.
+		if (!isShellZone(contribution.zone)) {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" contributes to unknown zone "${contribution.zone}" — shell zones are "sidebar", "status-bar", and "dashboard"; skipping the contribution.`,
+			});
+			continue;
+		}
+
+		const component = module[contribution.component];
+		if (typeof component !== "function") {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" zone contribution names component export "${contribution.component}" but the web entry does not export a component with that name — skipping the contribution.`,
+			});
+			continue;
+		}
+
+		zones.push({
+			pluginId: manifest.id,
+			zone: contribution.zone,
+			label: contribution.label ?? contribution.component,
+			component,
+			priority: contribution.priority ?? 0,
+			browserSafe,
+		});
+	}
+
+	return { routes, nav, zones };
 }
 
 function createRegistration(
@@ -317,11 +393,29 @@ export function pluginRegistrations(discovery: PluginDiscovery): FeatureRegistra
 
 /**
  * All resolved routes across the discovered plugins, in registration order.
- * The shell mounts these on its router (via its catch-all plugin route) and
- * derives sidebar nav entries from them. Empty for `entry: "main"` discovery.
+ * The shell mounts these on its router (via its catch-all plugin route).
+ * Empty for `entry: "main"` discovery.
  */
 export function pluginRoutes(discovery: PluginDiscovery): ResolvedPluginRoute[] {
 	return discovery.plugins.flatMap((plugin) => plugin.routes);
+}
+
+/**
+ * All resolved sidebar nav entries across the discovered plugins. The shell
+ * renders these in its primary navigation. Empty for `entry: "main"`.
+ */
+export function pluginNav(discovery: PluginDiscovery): ResolvedPluginNav[] {
+	return discovery.plugins.flatMap((plugin) => plugin.nav);
+}
+
+/**
+ * All resolved persistent zone widgets across the discovered plugins. The
+ * shell mounts these into their zones at activation. Empty for `entry: "main"`.
+ */
+export function pluginZoneContributions(
+	discovery: PluginDiscovery,
+): ResolvedPluginZoneContribution[] {
+	return discovery.plugins.flatMap((plugin) => plugin.zones);
 }
 
 /**

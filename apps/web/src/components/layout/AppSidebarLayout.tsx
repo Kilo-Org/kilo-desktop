@@ -14,7 +14,7 @@ import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
-import { PLUGIN_PAGES, type PluginPage } from "@/features/plugin-pages";
+import { PLUGIN_NAV, type PluginNavEntry } from "@/features/plugin-nav";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -43,35 +43,36 @@ import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip
 
 type AppSidebarLayoutProps = {
 	children: ReactNode;
-	/** Injectable for tests; defaults to the bundled plugin pages. */
-	pluginPages?: readonly PluginPage[];
+	/** Injectable for tests; defaults to the bundled plugin nav entries. */
+	navEntries?: readonly PluginNavEntry[];
 };
 
 /**
- * Sidebar nav entry derived from a plugin's manifest route — plugins add nav
- * entries by declaring routes (or contributing to the "sidebar" zone), never
- * by editing this layout. Icons resolve through the static bundled-plugin
- * icon map (see features/plugin-icons.ts).
+ * Sidebar nav entry declared by a plugin (`contributes.nav`) — plugins add nav
+ * entries by declaring them in the manifest, never by editing this layout.
+ * Icons resolve through the static bundled-plugin icon map (plugin-icons.ts).
+ * The link goes through the catch-all route (`/$`) so a plugin route resolves
+ * to its page while a shell-owned path still wins by static-route precedence.
  */
-function PluginNavItem({ page, pathname }: { page: PluginPage; pathname: string }) {
-	const Icon = resolvePluginNavIcon(page.icon);
+function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: string }) {
+	const Icon = resolvePluginNavIcon(entry.icon);
 	return (
 		<SidebarMenuItem>
 			<SidebarMenuButton
-				isActive={pathname === page.path}
-				tooltip={page.label}
-				render={<Link to="/$" params={{ _splat: page.splat }} />}
+				isActive={pathname === entry.to}
+				tooltip={entry.label}
+				render={<Link to="/$" params={{ _splat: entry.splat }} />}
 				className="size-8!"
-				data-qa-id={page.navQaId}
+				data-qa-id={entry.navQaId}
 			>
 				<Icon />
-				<span>{page.label}</span>
+				<span>{entry.label}</span>
 			</SidebarMenuButton>
 		</SidebarMenuItem>
 	);
 }
 
-export function AppSidebarLayout({ children, pluginPages = PLUGIN_PAGES }: AppSidebarLayoutProps) {
+export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const session = useAuthSession();
 	const sdk = useSdk("auth");
@@ -155,8 +156,8 @@ export function AppSidebarLayout({ children, pluginPages = PLUGIN_PAGES }: AppSi
 										<span>Split</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
-								{pluginPages.map((page) => (
-									<PluginNavItem key={page.path} page={page} pathname={pathname} />
+								{navEntries.map((entry) => (
+									<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
 								))}
 							</SidebarMenu>
 						</SidebarGroup>

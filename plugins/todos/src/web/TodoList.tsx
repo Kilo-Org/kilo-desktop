@@ -1,6 +1,5 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useState } from "react";
 
-import { STATUS_BAR_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
 import type { TodoService } from "../contracts/schemas.js";
@@ -11,8 +10,10 @@ import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import { Label } from "@anaconda-agentic-desktop/ui/components/label";
 
 /**
- * Status-bar zone contribution (rendered by the shell's ZoneOutlet): shows
- * how many todos are still open while the todos page is mounted.
+ * Status-bar zone contribution. Declared in plugin.json (`contributes.zones`)
+ * and mounted by the shell at plugin activation, so the open-todo count is
+ * PERSISTENT — it shows regardless of which page is visible, not only while
+ * the todos page is mounted.
  */
 export function TodosStatusBarItem() {
 	const sdk = useSdk<TodoService>("todos");
@@ -33,16 +34,6 @@ export function TodoList() {
 	const toggleTodo = useSdkMutation(sdk, "toggle", { invalidates: ["list"] });
 	const [title, setTitle] = useState("");
 	const mutationError = addTodo.error ?? toggleTodo.error;
-
-	// Zone contribution via sdk.contribute — the returned dispose removes it
-	// again when the page unmounts (conditional UI).
-	useEffect(() => {
-		return sdk.contribute(STATUS_BAR_ZONE, {
-			component: TodosStatusBarItem,
-			label: "Open todos",
-			priority: 10,
-		});
-	}, [sdk]);
 
 	function submit(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();

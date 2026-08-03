@@ -17,10 +17,12 @@ function makeDiscovery(): PluginDiscovery {
 					version: "1.0.0",
 					main: "./src/main/index.ts",
 					web: "./src/web/index.ts",
-					routes: [
-						{ path: "/demo", label: "Demo", component: "TodosPage", icon: "list-todo" },
-						{ path: "/demo/stats", label: "Demo Stats", component: "StatsPage" },
-					],
+					contributes: {
+						routes: [
+							{ path: "/demo", component: "TodosPage", title: "Demo" },
+							{ path: "/demo/stats", component: "StatsPage" },
+						],
+					},
 				},
 				module: { TodosPage, StatsPage },
 			},
@@ -30,29 +32,25 @@ function makeDiscovery(): PluginDiscovery {
 }
 
 describe("buildPluginPages", () => {
-	it("derives renderable pages (splat + nav qa id) from resolved routes", () => {
+	it("derives renderable pages (path, title, splat) from resolved routes", () => {
 		const pages = buildPluginPages(makeDiscovery());
 
 		expect(pages).toEqual([
 			{
 				pluginId: "demo",
 				path: "/demo",
-				label: "Demo",
-				icon: "list-todo",
+				title: "Demo",
 				component: TodosPage,
 				browserSafe: false,
 				splat: "demo",
-				navQaId: "nav-demo",
 			},
 			{
 				pluginId: "demo",
 				path: "/demo/stats",
-				label: "Demo Stats",
-				icon: undefined,
+				title: undefined,
 				component: StatsPage,
 				browserSafe: false,
 				splat: "demo/stats",
-				navQaId: "nav-demo-stats",
 			},
 		]);
 	});
@@ -61,8 +59,8 @@ describe("buildPluginPages", () => {
 describe("findPluginPage", () => {
 	it("finds a page by its exact manifest path", () => {
 		const pages = buildPluginPages(makeDiscovery());
-		expect(findPluginPage(pages, "/demo")?.label).toBe("Demo");
-		expect(findPluginPage(pages, "/demo/stats")?.label).toBe("Demo Stats");
+		expect(findPluginPage(pages, "/demo")?.title).toBe("Demo");
+		expect(findPluginPage(pages, "/demo/stats")?.path).toBe("/demo/stats");
 		expect(findPluginPage(pages, "/nope")).toBeUndefined();
 	});
 });
@@ -72,9 +70,8 @@ describe("PLUGIN_PAGES", () => {
 		const todos = findPluginPage(PLUGIN_PAGES, "/todos");
 		expect(todos).toBeDefined();
 		expect(todos?.pluginId).toBe("todos");
-		expect(todos?.label).toBe("Todo List");
-		expect(todos?.icon).toBe("list-todo");
-		expect(todos?.navQaId).toBe("nav-todos");
+		expect(todos?.title).toBe("Todo List");
+		expect(todos?.splat).toBe("todos");
 		// Electron-only plugin: no browserRegister.
 		expect(todos?.browserSafe).toBe(false);
 	});

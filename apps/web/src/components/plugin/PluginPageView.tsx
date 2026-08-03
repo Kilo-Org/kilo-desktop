@@ -43,13 +43,14 @@ export function PluginPageView({
 	// Electron-only plugins have no backend in standalone browser mode —
 	// render an explicit unavailable state instead of a dead page.
 	if (!page.browserSafe && !desktopAvailable) {
+		const title = page.title ?? page.path;
 		return (
 			<div className="mx-auto max-w-xl px-5 py-8">
 				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-heading">
-					{page.label}
+					{title}
 				</h1>
 				<p className="text-muted-foreground mt-1 text-sm" data-qa-id="plugin-page-unavailable">
-					{page.label} is not available in browser mode. Run the desktop app to use this feature.
+					{title} is not available in browser mode. Run the desktop app to use this feature.
 				</p>
 			</div>
 		);

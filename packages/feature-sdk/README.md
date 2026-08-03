@@ -180,22 +180,31 @@ await caps?.todoService.addTodo("From calendar");
 
 ### `sdk.contribute(zone, options)` — UI in shell zones
 
-Register a React component into a named shell zone. The shell decides where and how zones render — it renders only the canonical `ShellZone` ids (`"sidebar"`, `"status-bar"`, `"dashboard"`; import the `SIDEBAR_ZONE` / `STATUS_BAR_ZONE` / `DASHBOARD_ZONE` constants so a typo can't render nowhere). Contributions are priority-ordered (higher first). Returns an unregister handle for conditional UI; contributions are also cleaned up when the SDK instance is destroyed.
+Register a React component into a named shell zone. The shell renders only the canonical `ShellZone` ids (`"sidebar"`, `"status-bar"`, `"dashboard"`; import `SIDEBAR_ZONE` / `STATUS_BAR_ZONE` / `DASHBOARD_ZONE` so a typo can't render nowhere). Contributions are priority-ordered (higher first). Returns an unregister handle; contributions are also cleaned up when the SDK instance is destroyed.
+
+`sdk.contribute` is the **imperative, page-scoped** path — the contribution exists only while the calling component is mounted, so it is right for _conditional_ UI that appears in certain app states:
 
 ```ts
 import { STATUS_BAR_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 
+// Only while this component is mounted:
 const remove = sdk.contribute(STATUS_BAR_ZONE, {
-	component: TodoStatusBadge,
-	label: "Todos",
-	priority: 10, // higher renders first
+	component: SyncingBadge,
+	label: "Syncing",
+	priority: 10,
 });
-// later, e.g. when the feature's "compact mode" turns on:
-remove();
+remove(); // e.g. when syncing finishes
 ```
 
-**Use when:** the feature wants presence in shell-owned chrome without owning a route.
-**Don't use for:** your feature's main view — declare a route in `plugin.json` (`routes[]`) and the host mounts it (plugins never touch the router).
+For a widget that should be **always present** while the plugin is active (a status-bar count, a dashboard card), declare it in `plugin.json` `contributes.zones` instead — the host mounts it at activation, independent of any page:
+
+```jsonc
+"contributes": {
+  "zones": [{ "zone": "status-bar", "component": "TodosStatusBarItem" }]
+}
+```
+
+**Use routes, not contributions, for the feature's main view** — declare them in `plugin.json` `contributes.routes` (the host mounts them; plugins never touch the router).
 
 ### `sdk.commands` — command palette entries
 

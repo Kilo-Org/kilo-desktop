@@ -6,18 +6,17 @@ import type { ComponentType } from "react";
 import { PLUGIN_DISCOVERY } from "./features.js";
 
 /**
- * A full-page route declared in a plugin manifest, ready for the shell to
- * render: the shell's catch-all route (routes/$.tsx) mounts `component` when
- * `path` is visited, and AppSidebarLayout derives a nav entry from it.
- * Plugins never touch the router (Decision #19).
+ * A full-page route declared in a plugin manifest (`contributes.routes`),
+ * ready for the shell to render: the shell's catch-all route (routes/$.tsx)
+ * mounts `component` when `path` is visited. Plugins never touch the router
+ * (Decision #19); navigation entries are separate (`contributes.nav`).
  */
 export interface PluginPage {
 	pluginId: string;
 	/** Absolute route path from the manifest, e.g. "/todos". */
 	path: string;
-	label: string;
-	/** Lucide icon name (kebab-case) for the nav entry, if declared. */
-	icon: string | undefined;
+	/** Optional page title for the browser-mode unavailable state. */
+	title: string | undefined;
 	component: ComponentType<PluginPageProps>;
 	/**
 	 * False for Electron-only plugins (main entry, no browserRegister): in
@@ -27,27 +26,20 @@ export interface PluginPage {
 	browserSafe: boolean;
 	/** `path` without the leading slash — the catch-all route's splat param. */
 	splat: string;
-	/** Stable test id for the derived nav entry, e.g. "nav-todos". */
-	navQaId: string;
 }
 
 /** Derive renderable pages from a discovery result (pure — unit-testable). */
 export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
-	return pluginRoutes(discovery).map((route) => {
-		const splat = route.path.slice(1);
-		return {
-			pluginId: route.pluginId,
-			path: route.path,
-			label: route.label,
-			icon: route.icon,
-			// The loader verified this export is a function; the shell owns the
-			// React-specific interpretation (feature-sdk stays React-free).
-			component: route.component as ComponentType<PluginPageProps>,
-			browserSafe: route.browserSafe,
-			splat,
-			navQaId: `nav-${splat.replaceAll("/", "-")}`,
-		};
-	});
+	return pluginRoutes(discovery).map((route) => ({
+		pluginId: route.pluginId,
+		path: route.path,
+		title: route.title,
+		// The loader verified this export is a function; the shell owns the
+		// React-specific interpretation (feature-sdk stays React-free).
+		component: route.component as ComponentType<PluginPageProps>,
+		browserSafe: route.browserSafe,
+		splat: route.path.slice(1),
+	}));
 }
 
 export function findPluginPage(pages: readonly PluginPage[], path: string): PluginPage | undefined {

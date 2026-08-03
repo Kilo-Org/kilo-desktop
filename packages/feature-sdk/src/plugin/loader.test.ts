@@ -5,8 +5,10 @@ import { defineMethod } from "../channel-map.js";
 import { FeatureRouter } from "../services/feature-router.js";
 import {
 	discoverPlugins,
+	pluginNav,
 	pluginRegistrations,
 	pluginRoutes,
+	pluginZoneContributions,
 	reportPluginDiscoveryIssues,
 	type BundledPlugin,
 } from "./loader.js";
@@ -185,16 +187,21 @@ describe("pluginRegistrations", () => {
 	});
 });
 
-describe("route resolution", () => {
+describe("contribution resolution", () => {
 	const PingPage = () => null;
+	const PingStatus = () => null;
 	const routedManifest = {
 		...manifest,
-		routes: [{ path: "/ping", label: "Ping", component: "PingPage", icon: "activity" }],
+		contributes: {
+			routes: [{ path: "/ping", component: "PingPage", title: "Ping" }],
+			nav: [{ to: "/ping", label: "Ping", icon: "activity", priority: 5 }],
+			zones: [{ zone: "status-bar", component: "PingStatus", priority: 3 }],
+		},
 	};
 
-	it("resolves manifest routes against the web entry module's exports", () => {
+	it("resolves routes against the web entry module's exports", () => {
 		const bundled: BundledPlugin[] = [
-			{ manifest: routedManifest, module: { browserRegister, PingPage } },
+			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
 		];
 		const discovery = discoverPlugins(bundled, "web");
 
@@ -203,20 +210,51 @@ describe("route resolution", () => {
 			{
 				pluginId: "ping",
 				path: "/ping",
-				label: "Ping",
-				icon: "activity",
+				title: "Ping",
 				component: PingPage,
 				browserSafe: true,
 			},
 		]);
 	});
 
-	it("marks routes of Electron-only plugins (main entry, no browserRegister) as not browser-safe", () => {
-		const bundled: BundledPlugin[] = [{ manifest: routedManifest, module: { PingPage } }];
+	it("resolves nav entries as pure data (priority defaulted)", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginNav(discovery)).toEqual([
+			{ pluginId: "ping", to: "/ping", label: "Ping", icon: "activity", priority: 5 },
+		]);
+	});
+
+	it("resolves zone widgets against the module and defaults label to the component name", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginZoneContributions(discovery)).toEqual([
+			{
+				pluginId: "ping",
+				zone: "status-bar",
+				label: "PingStatus",
+				component: PingStatus,
+				priority: 3,
+				browserSafe: true,
+			},
+		]);
+	});
+
+	it("marks routes and zones of Electron-only plugins as not browser-safe", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { PingPage, PingStatus } },
+		];
 		const discovery = discoverPlugins(bundled, "web");
 
 		expect(discovery.issues).toEqual([]);
 		expect(pluginRoutes(discovery)[0]?.browserSafe).toBe(false);
+		expect(pluginZoneContributions(discovery)[0]?.browserSafe).toBe(false);
 	});
 
 	it("treats renderer-only plugins (no main entry) as browser-safe", () => {
@@ -225,7 +263,7 @@ describe("route resolution", () => {
 			displayName: "Web Only",
 			version: "1.0.0",
 			web: "./src/web/index.ts",
-			routes: [{ path: "/web-only", label: "Web Only", component: "PingPage" }],
+			contributes: { routes: [{ path: "/web-only", component: "PingPage" }] },
 		};
 		const discovery = discoverPlugins([{ manifest: webOnly, module: { PingPage } }], "web");
 
@@ -235,7 +273,7 @@ describe("route resolution", () => {
 
 	it("skips a route whose component export is missing and keeps the plugin", () => {
 		const bundled: BundledPlugin[] = [
-			{ manifest: routedManifest, module: { browserRegister } }, // no PingPage export
+			{ manifest: routedManifest, module: { browserRegister, PingStatus } }, // no PingPage
 		];
 		const discovery = discoverPlugins(bundled, "web");
 
@@ -249,6 +287,40 @@ describe("route resolution", () => {
 		]);
 	});
 
+	it("skips a zone widget whose component export is missing", () => {
+		const bundled: BundledPlugin[] = [
+			{ manifest: routedManifest, module: { browserRegister, PingPage } }, // no PingStatus
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginZoneContributions(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining('names component export "PingStatus"'),
+			},
+		]);
+	});
+
+	it("skips a zone widget targeting a non-canonical zone", () => {
+		const badZone = {
+			...manifest,
+			contributes: { zones: [{ zone: "statusbar", component: "PingStatus" }] },
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: badZone, module: { browserRegister, PingStatus } }],
+			"web",
+		);
+
+		expect(pluginZoneContributions(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining('unknown zone "statusbar"'),
+			},
+		]);
+	});
+
 	it("skips a route path already claimed by an earlier plugin", () => {
 		const OtherPage = () => null;
 		const rival = {
@@ -256,10 +328,10 @@ describe("route resolution", () => {
 			displayName: "Rival",
 			version: "1.0.0",
 			web: "./src/web/index.ts",
-			routes: [{ path: "/ping", label: "Rival Ping", component: "OtherPage" }],
+			contributes: { routes: [{ path: "/ping", component: "OtherPage" }] },
 		};
 		const bundled: BundledPlugin[] = [
-			{ manifest: routedManifest, module: { browserRegister, PingPage } },
+			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
 			{ manifest: rival, module: { OtherPage } },
 		];
 		const discovery = discoverPlugins(bundled, "web");
@@ -275,7 +347,7 @@ describe("route resolution", () => {
 
 	it("skips a route path reserved by a shell-owned route", () => {
 		const bundled: BundledPlugin[] = [
-			{ manifest: routedManifest, module: { browserRegister, PingPage } },
+			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
 		];
 		const discovery = discoverPlugins(bundled, "web", { reservedRoutePaths: ["/", "/ping"] });
 
@@ -289,28 +361,16 @@ describe("route resolution", () => {
 		]);
 	});
 
-	it("reports non-canonical declared zones and keeps the plugin", () => {
-		const zonedManifest = { ...manifest, zones: ["status-bar", "statusbar"] };
-		const bundled: BundledPlugin[] = [{ manifest: zonedManifest, module: { mainRegister } }];
-		const discovery = discoverPlugins(bundled, "main");
-
-		expect(discovery.plugins).toHaveLength(1);
-		expect(discovery.issues).toEqual([
-			{
-				pluginId: "ping",
-				message: expect.stringContaining('unknown zone "statusbar"'),
-			},
-		]);
-	});
-
-	it("does not resolve routes for main-entry discovery (renderer concern)", () => {
+	it("does not resolve contributions for main-entry discovery (renderer concern)", () => {
 		const bundled: BundledPlugin[] = [
-			{ manifest: routedManifest, module: { mainRegister, PingPage } },
+			{ manifest: routedManifest, module: { mainRegister, PingPage, PingStatus } },
 		];
 		const discovery = discoverPlugins(bundled, "main");
 
 		expect(discovery.issues).toEqual([]);
 		expect(pluginRoutes(discovery)).toEqual([]);
+		expect(pluginNav(discovery)).toEqual([]);
+		expect(pluginZoneContributions(discovery)).toEqual([]);
 	});
 });
 

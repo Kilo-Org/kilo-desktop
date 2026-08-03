@@ -24,12 +24,10 @@ function makePage(overrides: Partial<PluginPage> = {}): PluginPage {
 	return {
 		pluginId: "demo",
 		path: "/demo",
-		label: "Demo",
-		icon: undefined,
+		title: "Demo",
 		component: DemoPage,
 		browserSafe: true,
 		splat: "demo",
-		navQaId: "nav-demo",
 		...overrides,
 	};
 }

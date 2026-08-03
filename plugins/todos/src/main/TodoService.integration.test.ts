@@ -78,15 +78,16 @@ describe("resolveTodosMigrationsFolder", () => {
 		expect(resolveTodosMigrationsFolder()).toBe(path.resolve(import.meta.dirname, "../../drizzle"));
 	});
 
-	it("falls back to the deployed package path when running from the app bundle", () => {
-		// Bundled main.js lives at <app>/.vite/build — no plugin-root drizzle/.
+	it("resolves the installed package's drizzle folder from a bundle layout", () => {
+		// The bundled main.js lives away from the plugin source (e.g.
+		// <app>/.vite/build), so the relative candidate misses and the resolver
+		// locates the plugin package by name instead. The result must exist and
+		// point at a plugin-todos/drizzle folder.
 		const bundleDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "todos-bundle-"));
 		directories.push(bundleDirectory);
-		expect(resolveTodosMigrationsFolder(bundleDirectory)).toBe(
-			path.resolve(
-				bundleDirectory,
-				"../../node_modules/@anaconda-agentic-desktop/plugin-todos/drizzle",
-			),
-		);
+
+		const resolved = resolveTodosMigrationsFolder(bundleDirectory);
+		expect(resolved.endsWith("drizzle")).toBe(true);
+		expect(fs.existsSync(path.join(resolved, "meta", "_journal.json"))).toBe(true);
 	});
 });

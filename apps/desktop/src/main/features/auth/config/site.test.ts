@@ -125,10 +125,17 @@ describe("buildOAuthConfig", () => {
 		expect(buildOAuthConfig(site).issuerUrl).toBe("https://auth-local");
 	});
 
-	it("yields an empty clientId when neither source resolves", () => {
+	it("yields an empty client ID when no configured source resolves", () => {
 		vi.stubEnv("VITE_AUTH_CLIENT_ID", "");
 		const site: ResolvedSite = { domain: "anaconda.test" };
 
 		expect(buildOAuthConfig(site).clientId).toBe("");
+	});
+
+	it("ignores a blank site override", () => {
+		vi.stubEnv("VITE_AUTH_CLIENT_ID", "env-client");
+		const site: ResolvedSite = { domain: "anaconda.test", client_id: " " };
+
+		expect(buildOAuthConfig(site).clientId).toBe("env-client");
 	});
 });

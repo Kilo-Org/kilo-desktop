@@ -85,13 +85,13 @@ export async function resolveSite(loader: ConfigLoader = defaultLoader): Promise
 
 /**
  * Builds the OAuth config for a resolved site. The client id comes from the
- * site config, else `VITE_AUTH_CLIENT_ID`; an empty `clientId` (neither source)
- * is checked by `AuthSessionService.login` before starting a doomed flow.
+ * site config, then the environment-specific value injected by Vite. A missing
+ * value is rejected by the Vite build and guarded again by the auth service.
  */
 export function buildOAuthConfig(site: ResolvedSite): OAuthConfig {
 	return {
 		domain: site.domain,
-		clientId: site.client_id ?? import.meta.env.VITE_AUTH_CLIENT_ID ?? "",
+		clientId: site.client_id?.trim() || import.meta.env.VITE_AUTH_CLIENT_ID?.trim() || "",
 		redirectUrl: site.redirect_uri ?? DEFAULT_REDIRECT_URL,
 		...(site.auth_domain_override ? { issuerUrl: `https://${site.auth_domain_override}` } : {}),
 	};

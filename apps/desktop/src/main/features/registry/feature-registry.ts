@@ -110,8 +110,9 @@ export function createFeatureMessageHandlers(
 ): Pick<IpcMessageHandlers, "feature:event"> {
 	return {
 		"feature:event": (event, context) => {
+			const relayEvent = structuredClone(event);
 			mainEventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
-			relayToRenderers?.(event, context.senderId);
+			relayToRenderers?.(relayEvent, context.senderId);
 		},
 	};
 }

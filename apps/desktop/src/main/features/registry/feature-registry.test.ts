@@ -21,4 +21,29 @@ describe("feature event bridge", () => {
 		expect(relay).toHaveBeenCalledWith(event, 42);
 		unsubscribe();
 	});
+
+	it("snapshots the relay before main subscribers can mutate the payload", () => {
+		const relay = vi.fn();
+		const unsubscribe = mainEventBus.on("renderer-source.changed", (payload) => {
+			(payload as { id: string }).id = "mutated";
+		});
+		const event = {
+			featureId: "renderer-source",
+			name: "changed",
+			payload: { id: "original" },
+		};
+
+		createFeatureMessageHandlers(relay)["feature:event"](event, { senderId: 42 });
+
+		expect(event.payload.id).toBe("mutated");
+		expect(relay).toHaveBeenCalledWith(
+			{
+				featureId: "renderer-source",
+				name: "changed",
+				payload: { id: "original" },
+			},
+			42,
+		);
+		unsubscribe();
+	});
 });

@@ -56,4 +56,26 @@ describe("IpcServer one-way messages", () => {
 
 		expect(ipcMain.removeListener).toHaveBeenCalledWith("feature:event", listener);
 	});
+
+	it("logs message handler failures through the injected logger", () => {
+		const error = new Error("relay failed");
+		const logger = { error: vi.fn() };
+		const server = new IpcServer(ipcMain as never, logger);
+		server.register({} as IpcHandlers, {
+			"feature:event": () => {
+				throw error;
+			},
+		});
+		const listener = listeners.get("feature:event")!;
+
+		listener(
+			{ sender: { id: 7 } },
+			{ featureId: "producer", name: "changed", payload: { id: "1" } },
+		);
+
+		expect(logger.error).toHaveBeenCalledWith(
+			"IPC message handler failed for feature:event",
+			error,
+		);
+	});
 });

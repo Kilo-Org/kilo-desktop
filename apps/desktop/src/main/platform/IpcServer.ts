@@ -12,6 +12,9 @@ import {
 
 import { BusinessError } from "./BusinessError.js";
 import { isTrustedIpcSender } from "./ElectronSecurity.js";
+import { createLogger, type Logger } from "./logger.js";
+
+type IpcLogger = Pick<Logger, "error">;
 
 function failure(code: "VALIDATION" | "AUTHORIZATION" | "BUSINESS" | "INTERNAL", message: string) {
 	return { ok: false, error: { code, message } } as const;
@@ -21,7 +24,10 @@ export class IpcServer {
 	#channels: IpcMethodChannel[] = [];
 	#messageListeners = new Map<IpcMessageChannel, Parameters<IpcMain["removeListener"]>[1]>();
 
-	constructor(private readonly electronIpcMain: IpcMain = ipcMain) {}
+	constructor(
+		private readonly electronIpcMain: IpcMain = ipcMain,
+		private readonly logger: IpcLogger = createLogger("ipc"),
+	) {}
 
 	register(handlers: IpcHandlers, messageHandlers?: IpcMessageHandlers): void {
 		this.dispose();
@@ -52,7 +58,7 @@ export class IpcServer {
 					if (error instanceof BusinessError) {
 						return failure("BUSINESS", error.message);
 					}
-					console.error(`IPC handler failed for ${channel}`, error);
+					this.logger.error(`IPC handler failed for ${channel}`, error);
 					return failure("INTERNAL", "The desktop operation failed.");
 				}
 			});
@@ -68,7 +74,7 @@ export class IpcServer {
 				try {
 					messageHandlers[channel](parsedPayload.data, { senderId: event.sender.id });
 				} catch (error) {
-					console.error(`IPC message handler failed for ${channel}`, error);
+					this.logger.error(`IPC message handler failed for ${channel}`, error);
 				}
 			};
 			this.electronIpcMain.on(channel, listener);

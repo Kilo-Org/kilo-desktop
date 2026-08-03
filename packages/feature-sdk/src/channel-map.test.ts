@@ -10,6 +10,7 @@ import { CommandRegistry } from "./services/command-registry.js";
 import { ContributionRegistry } from "./services/contribution-registry.js";
 import { EventBus } from "./services/event-bus.js";
 import { FeatureRouter } from "./services/feature-router.js";
+import { createStaticNavigation } from "./services/navigation.js";
 import { StateBroker } from "./services/state-broker.js";
 
 const todoSchema = z.object({
@@ -74,6 +75,7 @@ function makeServices(featureRouter = new FeatureRouter()) {
 			readdir: async () => [],
 			remove: async () => undefined,
 		},
+		navigation: createStaticNavigation(),
 	};
 
 	return {

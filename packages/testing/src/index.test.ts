@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -55,6 +57,23 @@ describe("createFakeMainSdk", () => {
 	it("uses the provided storageDir override", () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos", storageDir: "/tmp/custom-todos" });
 		expect(mainSdk.storageDir).toBe("/tmp/custom-todos");
+	});
+
+	it("resolvePluginAsset joins subpaths against the provided pluginDir", () => {
+		// path.resolve produces platform-specific separators (e.g. backslashes on
+		// Windows), so build the expected values the same way rather than
+		// hard-coding forward slashes.
+		const pluginDir = path.resolve("/tmp/fake-plugin");
+		const mainSdk = createFakeMainSdk({ featureId: "todos", pluginDir });
+		expect(mainSdk.resolvePluginAsset("drizzle")).toBe(path.resolve(pluginDir, "drizzle"));
+		expect(mainSdk.resolvePluginAsset("seeds/en.json")).toBe(
+			path.resolve(pluginDir, "seeds/en.json"),
+		);
+	});
+
+	it("throws on resolvePluginAsset when no pluginDir is provided", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+		expect(() => mainSdk.resolvePluginAsset("drizzle")).toThrow(/no plugin asset directory/);
 	});
 
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {

@@ -143,6 +143,36 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		await expect(sdk.fs.readdir("x")).rejects.toThrow(/not yet wired/);
 		await expect(sdk.fs.remove("x")).rejects.toThrow(/not yet wired/);
 	});
+
+	it("wires sdk.navigate and sdk.location to the provided navigation delegate", () => {
+		const navigate = vi.fn();
+		const system = createAppFeatureSystem(createBrowserLocalApi(), [demoFeature], {
+			navigate,
+			subscribe: (fn) => {
+				fn({ path: "/here", search: {} });
+				return () => {};
+			},
+			peek: () => ({ path: "/here", search: {} }),
+		});
+		const sdk = system.getSdk("demo");
+
+		sdk.navigate("/plugins/todos", { search: { filter: "open" } });
+		expect(navigate).toHaveBeenCalledWith("/plugins/todos", { search: { filter: "open" } });
+		expect(sdk.location.peek()).toEqual({ path: "/here", search: {} });
+	});
+
+	it("falls back to inert warn-once navigation when no delegate is provided", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const system = createAppFeatureSystem(createBrowserLocalApi(), [demoFeature]);
+			const sdk = system.getSdk("demo");
+			expect(() => sdk.navigate("/plugins/todos")).not.toThrow();
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining("no shell router is wired"));
+			expect(sdk.location.peek()).toEqual({ path: "/", search: {} });
+		} finally {
+			warn.mockRestore();
+		}
+	});
 });
 
 describe("createAppFeatureSystem (Electron mode)", () => {

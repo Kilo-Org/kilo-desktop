@@ -37,6 +37,13 @@ export interface CreateMainSdkOptions {
 	 * Omit in environments without storage (browser mode) — access then throws.
 	 */
 	resolveStorageDir?: () => string;
+	/**
+	 * Resolve a subpath inside the plugin's installed package to an absolute
+	 * filesystem path. Backs `mainSdk.resolvePluginAsset(subpath)`. Omit for
+	 * built-in features (they ship no assets) and browser mode — calling
+	 * `resolvePluginAsset` then throws.
+	 */
+	resolvePluginAsset?: (subpath: string) => string;
 }
 
 /**
@@ -113,6 +120,7 @@ export class FeatureRouter {
 		};
 
 		const resolveStorageDir = options?.resolveStorageDir;
+		const resolvePluginAsset = options?.resolvePluginAsset;
 		let storageDir: string | undefined;
 
 		return {
@@ -126,6 +134,16 @@ export class FeatureRouter {
 				}
 				storageDir ??= resolveStorageDir();
 				return storageDir;
+			},
+			resolvePluginAsset: (subpath: string) => {
+				if (!resolvePluginAsset) {
+					throw new Error(
+						`[FeatureRouter] Feature "${featureId}" has no plugin asset directory in this ` +
+							`environment — resolvePluginAsset is only available to plugins booted from a ` +
+							`discovered manifest (built-in features and browser mode do not ship assets).`,
+					);
+				}
+				return resolvePluginAsset(subpath);
 			},
 			channels,
 			onDispose: (fn: () => void) => {

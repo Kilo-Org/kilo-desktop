@@ -20,12 +20,20 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  * 2. Add the workspace dep to apps/desktop/package.json (and apps/web if the
  *    plugin ships UI).
  * 3. Register it here (and in apps/web/src/features/bundled-plugins.ts when
- *    it has a `web` entry).
+ *    it has a `web` entry). `resolveAsset` lets `mainSdk.resolvePluginAsset`
+ *    locate files shipped inside the plugin package (drizzle migrations,
+ *    seed data, ...).
  */
 
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
 
+import { bundledPluginAssetResolver } from "./bundled-plugin-assets.js";
+
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
-	{ manifest: todosManifest, module: todosMain },
+	{
+		manifest: todosManifest,
+		module: todosMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-todos"),
+	},
 ];

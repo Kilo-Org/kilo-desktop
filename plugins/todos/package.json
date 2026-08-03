@@ -7,8 +7,7 @@
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
-		"./web": "./src/web/index.ts",
-		"./contracts": "./src/contracts/schemas.ts"
+		"./web": "./src/web/index.ts"
 	},
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",

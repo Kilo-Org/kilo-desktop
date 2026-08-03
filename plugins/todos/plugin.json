@@ -4,6 +4,9 @@
 	"version": "1.0.0",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
-	"routes": [{ "path": "/todos", "label": "Todo List", "icon": "list-todo" }],
-	"zones": []
+	"contributes": {
+		"routes": [{ "path": "/todos", "component": "TodoList", "title": "Todo List" }],
+		"nav": [{ "to": "/todos", "label": "Todo List", "icon": "list-todo" }],
+		"zones": [{ "zone": "status-bar", "component": "TodosStatusBarItem" }]
+	}
 }

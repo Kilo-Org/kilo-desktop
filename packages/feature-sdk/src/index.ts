@@ -23,12 +23,26 @@ export type {
 	Contribution,
 	CommandDefinition,
 	Command,
-	NavigateIntent,
+	ShellLocation,
+	NavigateOptions,
+	SdkLocation,
+	SdkNavigation,
+	PluginPageProps,
 	DispatchIntent,
 	ChannelHandlers,
 	MainSdk,
 	FeatureRegistration,
 } from "./types/sdk.js";
+
+// Canonical shell zone ids (Decision #21)
+export {
+	SHELL_ZONES,
+	SIDEBAR_ZONE,
+	STATUS_BAR_ZONE,
+	DASHBOARD_ZONE,
+	isShellZone,
+	type ShellZone,
+} from "./types/zones.js";
 
 // Channel maps — typed sdk.invoke / mainSdk.channels against per-feature contracts
 export {
@@ -67,6 +81,7 @@ export {
 	type SdkFactoryServices,
 	type ShellDelegates,
 } from "./services/create-sdk.js";
+export { createStaticNavigation } from "./services/navigation.js";
 
 // Plugin system — manifest schema + loader (discover phase; activation stays
 // with the shell boot sequences)
@@ -74,14 +89,25 @@ export {
 	PLUGIN_MANIFEST_FILENAME,
 	pluginManifestSchema,
 	pluginRouteSchema,
+	pluginNavEntrySchema,
+	pluginZoneContributionSchema,
+	pluginContributesSchema,
 	parsePluginManifest,
 	type PluginManifest,
 	type PluginRoute,
+	type PluginNavEntry,
+	type PluginZoneContribution,
+	type PluginContributes,
 } from "./plugin/manifest.js";
 export {
 	discoverPlugins,
 	pluginRegistrations,
+	pluginRoutes,
+	pluginNav,
+	pluginZoneContributions,
 	reportPluginDiscoveryIssues,
+	PLUGIN_ROUTE_NAMESPACE,
+	stripPluginNamespace,
 	type BundledPlugin,
 	type DiscoverPluginsOptions,
 	type PluginModule,
@@ -89,4 +115,7 @@ export {
 	type DiscoveredPlugin,
 	type PluginDiscovery,
 	type PluginDiscoveryIssue,
+	type ResolvedPluginRoute,
+	type ResolvedPluginNav,
+	type ResolvedPluginZoneContribution,
 } from "./plugin/loader.js";

@@ -80,11 +80,23 @@ const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
  * Decision #11); a broken plugin is skipped with an error instead of taking
  * down the boot sequence. Built-in feature ids are reserved so a colliding
  * plugin cannot shadow them.
+ *
+ * Plugin routes are mounted under the `/plugins/*` namespace (routes/plugins/$.tsx),
+ * so shell routes and plugin routes cannot collide by construction — no
+ * shell-route reservation list is required.
  */
 const pluginDiscovery = discoverPlugins(BUNDLED_PLUGINS, "web", {
 	reservedIds: BUILT_IN_WEB_FEATURES.map((feature) => feature.id),
 });
 reportPluginDiscoveryIssues(pluginDiscovery);
+
+/**
+ * The renderer's plugin discovery result. Besides the registrations merged
+ * into WEB_FEATURES below, it carries the validated manifests and resolved
+ * routes that drive the shell's plugin pages and sidebar nav entries
+ * (see plugin-pages.ts).
+ */
+export const PLUGIN_DISCOVERY = pluginDiscovery;
 
 export const WEB_FEATURES: readonly FeatureRegistration[] = [
 	...BUILT_IN_WEB_FEATURES,

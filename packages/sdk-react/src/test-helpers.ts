@@ -1,3 +1,5 @@
+import { createStaticNavigation } from "@anaconda-agentic-desktop/feature-sdk";
+
 import type { ShellDelegates } from "@anaconda-agentic-desktop/feature-sdk";
 
 function notImplemented(method: string): (...args: never[]) => Promise<never> {
@@ -43,5 +45,6 @@ export function createTestShellDelegates(): ShellDelegates {
 			readdir: notImplemented("sdk.fs.readdir"),
 			remove: notImplemented("sdk.fs.remove"),
 		},
+		navigation: createStaticNavigation(),
 	};
 }

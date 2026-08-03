@@ -1,9 +1,14 @@
 import { createFeatureSystem, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
-import type { FeatureRegistration, ShellDelegates } from "@anaconda-agentic-desktop/feature-sdk";
+import type {
+	FeatureRegistration,
+	SdkNavigation,
+	ShellDelegates,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 import { getDesktopBridge } from "./desktopBridge.js";
+import { createInertNavigation } from "./navigation.js";
 import { getColorSchemeSnapshot, subscribeColorScheme } from "./theme/color-scheme.js";
 
 // ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
@@ -94,7 +99,7 @@ function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
 	};
 }
 
-export function createShellDelegates(api: LocalApi): ShellDelegates {
+export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation): ShellDelegates {
 	return {
 		notifications: undeliveredNotifications(),
 		theme: {
@@ -117,6 +122,7 @@ export function createShellDelegates(api: LocalApi): ShellDelegates {
 			readdir: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
 			remove: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
 		},
+		navigation: navigation ?? createInertNavigation(),
 	};
 }
 
@@ -130,15 +136,19 @@ export function createShellDelegates(api: LocalApi): ShellDelegates {
  * channel (handlers live in the main process; `features` is not booted here).
  * In browser mode: features are booted in-process via browserRegister();
  * features without one are skipped with a warning.
+ *
+ * `navigation` is the router-backed delegate from `createRouterNavigation`;
+ * when omitted (tests, tooling) navigation is an inert warn-once no-op.
  */
 export function createAppFeatureSystem(
 	api: LocalApi,
 	features: readonly FeatureRegistration[] = [],
+	navigation?: SdkNavigation,
 ): FeatureSystem {
 	const bridge = getDesktopBridge();
 
 	return createFeatureSystem({
-		shellDelegates: createShellDelegates(api),
+		shellDelegates: createShellDelegates(api, navigation),
 		features,
 		...(bridge
 			? {

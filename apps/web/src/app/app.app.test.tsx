@@ -23,10 +23,11 @@ describe("AppProviders (app-level)", () => {
 
 		await expect.element(screen.getByTestId("app-sidebar")).toBeVisible();
 
+		// The todos nav entry is derived from the plugin manifest route.
 		await screen.getByTestId("nav-todos").click();
-		await expect.element(screen.getByTestId("todos-heading")).toBeVisible();
+		await expect.element(screen.getByTestId("plugin-page-heading")).toBeVisible();
 		// Todos is Electron-only — browser mode renders an explicit unavailable state.
-		await expect.element(screen.getByTestId("todos-unavailable")).toBeVisible();
+		await expect.element(screen.getByTestId("plugin-page-unavailable")).toBeVisible();
 
 		await screen.getByTestId("nav-sdk-producer").click();
 		await expect.element(screen.getByTestId("note-input")).toBeVisible();

@@ -4,6 +4,7 @@ import type {
 	ChannelHandlerOutput,
 	ChannelMap,
 } from "../channel-map.js";
+import type { ShellZone } from "./zones.js";
 
 export type { SchemaLike } from "./schema.js";
 
@@ -63,10 +64,14 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 * Returns an unregister function for conditional UI; contributions are
 	 * also cleaned up automatically when this SDK instance is destroyed.
 	 *
+	 * Any string is accepted, but the shell renders only the canonical
+	 * {@link ShellZone} ids — prefer the exported constants (STATUS_BAR_ZONE,
+	 * SIDEBAR_ZONE, DASHBOARD_ZONE) so a typo cannot render nowhere.
+	 *
 	 * @example
-	 * const remove = sdk.contribute("statusbar", { component: TodoBadge, label: "Todos", priority: 10 });
+	 * const remove = sdk.contribute("status-bar", { component: TodoBadge, label: "Todos", priority: 10 });
 	 */
-	contribute(zone: string, options: ContributionOptions): () => void;
+	contribute(zone: ShellZone | (string & {}), options: ContributionOptions): () => void;
 
 	/** Register commands in the command palette. See {@link SdkCommands}. */
 	readonly commands: SdkCommands;
@@ -78,10 +83,28 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	readonly shell: SdkShell;
 	readonly fs: SdkFs;
 
+	/**
+	 * Navigate the shell router to an absolute path (shell delegate,
+	 * Decision #19). The router never leaks to plugins — pass the resolved
+	 * path of a plugin route (e.g. "/plugins/todos"), the plugin's own
+	 * page path from `PluginPageProps.path`, or any shell path.
+	 *
+	 * @example
+	 * sdk.navigate("/plugins/todos");
+	 * sdk.navigate("/plugins/todos", { search: { filter: "open" } });
+	 */
+	navigate(path: string, options?: NavigateOptions): void;
+
+	/**
+	 * Observable current location of the shell router. subscribe() fires
+	 * synchronously with the current value; subscriptions made through this
+	 * SDK instance are cleaned up on destroy().
+	 */
+	readonly location: SdkLocation;
+
 	/** Not yet available — requires the full plugin system. Calling these throws. */
 	readonly tools: SdkTools;
 	readonly intents: SdkIntents;
-	navigate(intent: NavigateIntent): void;
 	dispatch(intent: DispatchIntent): void;
 
 	/** Register a cleanup function called when this SDK instance is destroyed. */
@@ -377,6 +400,59 @@ export interface SdkFs {
 	remove(relativePath: string): Promise<void>;
 }
 
+// ─── Navigation (shell delegate) ─────────────────────────────────────────────
+
+/** Snapshot of the shell router's current location. */
+export interface ShellLocation {
+	/** Current pathname, e.g. "/plugins/todos". */
+	path: string;
+	/** Parsed search params of the current location. */
+	search: Record<string, unknown>;
+}
+
+export interface NavigateOptions {
+	/** Search params serialized into the destination URL. */
+	search?: Record<string, unknown>;
+	/** Replace the current history entry instead of pushing a new one. */
+	replace?: boolean;
+}
+
+/**
+ * Read-only observable of the shell router's current location, exposed as
+ * `sdk.location`. Mirrors the theme/auth observable contract.
+ *
+ * @example
+ * sdk.location.peek(); // { path: "/plugins/todos", search: {} }
+ * const unsub = sdk.location.subscribe((loc) => render(loc)); // fires immediately
+ */
+export interface SdkLocation {
+	/** Subscribe to location changes. Fires synchronously with the current value. */
+	subscribe(fn: (location: ShellLocation) => void): () => void;
+	/** Read the current location without subscribing. */
+	peek(): ShellLocation;
+}
+
+/**
+ * Shell-owned navigation delegate (Decision #19). The shell implements this
+ * over its internal router; plugins consume it as `sdk.navigate` +
+ * `sdk.location` and never import the router.
+ */
+export interface SdkNavigation extends SdkLocation {
+	navigate(path: string, options?: NavigateOptions): void;
+}
+
+/**
+ * Props the shell passes to a plugin's page component when it mounts a route
+ * declared in `plugin.json`. Pages may ignore them; use `sdk.location` for a
+ * live subscription instead of a render-time snapshot.
+ */
+export interface PluginPageProps {
+	/** The full resolved route path that matched, e.g. "/plugins/todos". */
+	path: string;
+	/** Parsed search params of the current location. */
+	search: Record<string, unknown>;
+}
+
 // ─── Deferred (plugin system required) ───────────────────────────────────────
 
 /** NOT AVAILABLE YET — placeholder so the interface shape is stable. Calls throw. */
@@ -389,12 +465,6 @@ export interface SdkTools {
 /** NOT AVAILABLE YET — placeholder so the interface shape is stable. Calls throw. */
 export interface SdkIntents {
 	list(): unknown[];
-}
-
-export interface NavigateIntent {
-	plugin: string;
-	intent: string;
-	params?: Record<string, unknown>;
 }
 
 export interface DispatchIntent {
@@ -453,6 +523,22 @@ export interface MainSdk {
 	 */
 	readonly storageDir: string;
 	/**
+	 * Resolve a static asset shipped inside this plugin's package to an
+	 * absolute filesystem path (e.g. `mainSdk.resolvePluginAsset("drizzle")`
+	 * for a drizzle migrations folder, or `"seeds/en.json"` for seed data).
+	 *
+	 * The shell owns the "which layout am I in" question — plugins do NOT
+	 * branch on packaged vs source vs test. The shell resolves the asset
+	 * against the plugin package it discovered at boot; missing assets throw
+	 * with the searched path so failures surface immediately instead of
+	 * downstream (e.g. drizzle's "Can't find meta/_journal.json").
+	 *
+	 * Throws in environments without a plugin directory (built-in features
+	 * that ship no assets; browser mode); features that never call it are
+	 * unaffected.
+	 */
+	resolvePluginAsset(subpath: string): string;
+	/**
 	 * Bind a channel map once, then register typed handlers. Input is parsed
 	 * before each handler runs; handler output is parsed before it is returned.
 	 * Throw FeatureError for expected failures whose messages should survive
@@ -487,4 +573,12 @@ export interface FeatureRegistration {
 	 * { id: "todos", mainRegister: register, browserRegister: register }
 	 */
 	browserRegister?(mainSdk: MainSdk): void;
+	/**
+	 * Resolve a subpath inside the plugin's installed package to an absolute
+	 * filesystem path. Populated by the loader for plugin registrations
+	 * (threaded through from `BundledPlugin.resolveAsset`); undefined for
+	 * built-in feature registrations from the FEATURES / WEB_FEATURES arrays.
+	 * Backs `mainSdk.resolvePluginAsset`.
+	 */
+	resolveAsset?: (subpath: string) => string;
 }

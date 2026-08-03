@@ -7,20 +7,25 @@ The shim SDK that features program against today, shaped like the future plugin 
 
 ## Quick start
 
-A feature ships two halves that communicate only through the SDK:
+A feature ships two halves that communicate only through the SDK. In `apps/` (features awaiting migration) they live in three locations; a plugin folds the same split into one package:
 
 ```
-apps/desktop/src/main/features/<id>/    # backend: services, DB, handlers (mainRegister)
-apps/web/src/features/<id>/             # frontend: React components, hooks (useSdk)
-packages/contracts/src/features/<id>.ts # Zod schemas shared by both
+# Feature in apps/                              # Plugin in plugins/<id>/
+apps/desktop/src/main/features/<id>/            src/main/       # backend (mainRegister)
+apps/web/src/features/<id>/                     src/web/        # frontend (useSdk)
+packages/contracts/src/features/<id>.ts         src/contracts/  # Zod schemas shared by both
 ```
 
-**Backend** — register handlers in `mainRegister`, declare it in the FEATURES array:
+**Backend** — register handlers in `mainRegister`, declare it in the FEATURES array (or `plugin.json` + `BUNDLED_PLUGINS` for a plugin). The example paths below are the todos plugin:
 
 ```ts
-// packages/contracts/src/features/todos.ts
+// plugins/todos/src/contracts/schemas.ts
 import { z } from "zod";
-import { defineContract, defineMethod, type InferContract } from "../contract.js";
+import {
+	defineContract,
+	defineMethod,
+	type InferContract,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 export const todoSchema = z.object({
 	id: z.string(),
@@ -38,9 +43,9 @@ export type TodoService = InferContract<typeof todosContract>;
 ```
 
 ```ts
-// apps/desktop/src/main/features/todos/index.ts
+// plugins/todos/src/main/index.ts
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { todosContract } from "@anaconda-agentic-desktop/contracts";
+import { todosContract } from "../contracts/schemas.js";
 import { TodoService } from "./TodoService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
@@ -61,10 +66,10 @@ export function mainRegister(mainSdk: MainSdk) {
 **Frontend** — use `useSdk<ServiceType>` for a typed proxy client:
 
 ```tsx
-// apps/web/src/features/todos/TodoList.tsx
+// plugins/todos/src/web/TodoList.tsx
 import { useQuery } from "@tanstack/react-query";
-import type { TodoService } from "@anaconda-agentic-desktop/contracts";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import type { TodoService } from "../contracts/schemas.js";
 
 export function TodoList() {
 	const { client } = useSdk<TodoService>("todos");
@@ -175,20 +180,31 @@ await caps?.todoService.addTodo("From calendar");
 
 ### `sdk.contribute(zone, options)` — UI in shell zones
 
-Register a React component into a named shell zone (status bar, dashboard, ...). The shell decides where and how zones render. Returns an unregister handle for conditional UI; contributions are also cleaned up when the SDK instance is destroyed.
+Register a React component into a named shell zone. The shell renders only the canonical `ShellZone` ids (`"sidebar"`, `"status-bar"`, `"dashboard"`; import `SIDEBAR_ZONE` / `STATUS_BAR_ZONE` / `DASHBOARD_ZONE` so a typo can't render nowhere). Contributions are priority-ordered (higher first). Returns an unregister handle; contributions are also cleaned up when the SDK instance is destroyed.
+
+`sdk.contribute` is the **imperative, page-scoped** path — the contribution exists only while the calling component is mounted, so it is right for _conditional_ UI that appears in certain app states:
 
 ```ts
-const remove = sdk.contribute("statusbar", {
-	component: TodoStatusBadge,
-	label: "Todos",
-	priority: 10, // higher renders first
+import { STATUS_BAR_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
+
+// Only while this component is mounted:
+const remove = sdk.contribute(STATUS_BAR_ZONE, {
+	component: SyncingBadge,
+	label: "Syncing",
+	priority: 10,
 });
-// later, e.g. when the feature's "compact mode" turns on:
-remove();
+remove(); // e.g. when syncing finishes
 ```
 
-**Use when:** the feature wants presence in shell-owned chrome without owning a route.
-**Don't use for:** your feature's main view — that's a route file in `apps/web/src/routes/`.
+For a widget that should be **always present** while the plugin is active (a status-bar count, a dashboard card), declare it in `plugin.json` `contributes.zones` instead — the host mounts it at activation, independent of any page:
+
+```jsonc
+"contributes": {
+  "zones": [{ "zone": "status-bar", "component": "TodosStatusBarItem" }]
+}
+```
+
+**Use routes, not contributions, for the feature's main view** — declare them in `plugin.json` `contributes.routes` (the host mounts them; plugins never touch the router).
 
 ### `sdk.commands` — command palette entries
 
@@ -220,7 +236,20 @@ if (!result.delivered) showInlineBanner(); // graceful fallback
 
 `sdk.fs` is **not wired yet** and rejects — don't ship code paths that rely on it.
 
-### Deferred: `sdk.tools`, `sdk.intents`, `sdk.navigate`, `sdk.dispatch`
+### `sdk.navigate` + `sdk.location` — shell navigation delegate
+
+The router is internal to the shell (Decision #19) — plugins never import it. Plugin routes are mounted under the `/plugins/*` namespace so shell and plugin routes cannot collide; the loader prefixes manifest paths for you. Navigate by the full resolved path (or by `PluginPageProps.path` the shell passes into your page), and observe the current location like any other SDK observable:
+
+```ts
+sdk.navigate("/plugins/todos", { search: { filter: "open" } });
+
+sdk.location.peek(); // { path: "/plugins/todos", search: { filter: "open" } }
+const unsub = sdk.location.subscribe((loc) => setBreadcrumb(loc.path)); // fires immediately
+```
+
+Route pages mounted from `plugin.json` also receive `PluginPageProps` (`path`, `search`) as props.
+
+### Deferred: `sdk.tools`, `sdk.intents`, `sdk.dispatch`
 
 Placeholders for the full plugin system. They throw. They exist so the interface shape doesn't change when they arrive.
 

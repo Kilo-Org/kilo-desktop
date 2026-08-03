@@ -107,6 +107,7 @@ export {
 	pluginZoneContributions,
 	reportPluginDiscoveryIssues,
 	PLUGIN_ROUTE_NAMESPACE,
+	stripPluginNamespace,
 	type BundledPlugin,
 	type DiscoverPluginsOptions,
 	type PluginModule,

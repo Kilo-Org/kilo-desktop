@@ -21,6 +21,22 @@ function prefixPluginPath(path: string): string {
 }
 
 /**
+ * Strip the `/plugins/` prefix a loader-resolved path always carries, yielding
+ * the catch-all route's splat param (e.g. `"todos"` for `"/plugins/todos"`).
+ * Exported so shell code that builds `<Link to="/plugins/$" params>` links
+ * shares the same namespace convention as the loader.
+ */
+export function stripPluginNamespace(resolvedPath: string): string {
+	const prefix = `${PLUGIN_ROUTE_NAMESPACE}/`;
+	if (!resolvedPath.startsWith(prefix)) {
+		throw new Error(
+			`stripPluginNamespace: path "${resolvedPath}" is not under ${PLUGIN_ROUTE_NAMESPACE}/ — resolved plugin paths are always prefixed.`,
+		);
+	}
+	return resolvedPath.slice(prefix.length);
+}
+
+/**
  * Plugin loader — Decisions #10, #11, #17.
  *
  * Discovery is static and build-time: the shell lists its plugins in a
@@ -168,13 +184,6 @@ export interface DiscoverPluginsOptions {
 	 * mode silently REPLACES the built-in feature's handlers).
 	 */
 	reservedIds?: Iterable<string>;
-	/**
-	 * Route paths owned by the shell's file-based routes ("/", "/split", ...).
-	 * Static shell routes always outrank the plugin catch-all, so a colliding
-	 * manifest route could never render — it is skipped with an issue instead
-	 * of producing a dead nav entry. Only consulted for `entry: "web"`.
-	 */
-	reservedRoutePaths?: Iterable<string>;
 }
 
 function describeManifestError(error: unknown): string {
@@ -207,7 +216,6 @@ export function discoverPlugins(
 	const plugins: DiscoveredPlugin[] = [];
 	const issues: PluginDiscoveryIssue[] = [];
 	const reservedIds = new Set(options.reservedIds);
-	const reservedRoutePaths = new Set(options.reservedRoutePaths);
 	const seenIds = new Set<string>();
 	const seenRoutePaths = new Map<string, string>();
 
@@ -256,13 +264,7 @@ export function discoverPlugins(
 			// Contributions are a renderer concern — only resolved for web discovery.
 			const resolved =
 				entry === "web"
-					? resolveContributions(
-							manifest,
-							candidate.module,
-							reservedRoutePaths,
-							seenRoutePaths,
-							issues,
-						)
+					? resolveContributions(manifest, candidate.module, seenRoutePaths, issues)
 					: { routes: [], nav: [], zones: [] };
 			plugins.push({ manifest, registration, ...resolved });
 		}
@@ -286,7 +288,6 @@ interface ResolvedContributions {
 function resolveContributions(
 	manifest: PluginManifest,
 	module: PluginModule,
-	reservedRoutePaths: ReadonlySet<string>,
 	seenRoutePaths: Map<string, string>,
 	issues: PluginDiscoveryIssue[],
 ): ResolvedContributions {
@@ -298,18 +299,9 @@ function resolveContributions(
 
 	const routes: ResolvedPluginRoute[] = [];
 	for (const route of routeDecls) {
-		// Static shell routes outrank the plugin catch-all, so this route could
-		// never render — report it instead of surfacing a dead nav entry.
-		// The manifest declares plugin-relative paths (checked pre-prefix); the
-		// shell reserves its own paths under the same shape.
-		if (reservedRoutePaths.has(route.path)) {
-			issues.push({
-				pluginId: manifest.id,
-				message: `Plugin "${manifest.id}" declares route "${route.path}" which collides with a shell-owned route — skipping the route.`,
-			});
-			continue;
-		}
-
+		// Plugin routes live under `/plugins/*` (see PLUGIN_ROUTE_NAMESPACE), so
+		// shell and plugin routes cannot collide by construction — only
+		// plugin-vs-plugin duplicate paths are meaningful here.
 		const resolvedPath = prefixPluginPath(route.path);
 		const claimedBy = seenRoutePaths.get(resolvedPath);
 		if (claimedBy !== undefined) {

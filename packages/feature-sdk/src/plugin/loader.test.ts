@@ -346,22 +346,6 @@ describe("contribution resolution", () => {
 		]);
 	});
 
-	it("skips a route path reserved by a shell-owned route", () => {
-		const bundled: BundledPlugin[] = [
-			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
-		];
-		const discovery = discoverPlugins(bundled, "web", { reservedRoutePaths: ["/", "/ping"] });
-
-		expect(discovery.plugins).toHaveLength(1);
-		expect(pluginRoutes(discovery)).toEqual([]);
-		expect(discovery.issues).toEqual([
-			{
-				pluginId: "ping",
-				message: expect.stringContaining("collides with a shell-owned route"),
-			},
-		]);
-	});
-
 	it("does not resolve contributions for main-entry discovery (renderer concern)", () => {
 		const bundled: BundledPlugin[] = [
 			{ manifest: routedManifest, module: { mainRegister, PingPage, PingStatus } },

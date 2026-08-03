@@ -1,6 +1,6 @@
 import {
-	PLUGIN_ROUTE_NAMESPACE,
 	pluginNav,
+	stripPluginNamespace,
 	type PluginDiscovery,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
@@ -30,15 +30,11 @@ export interface PluginNavEntry {
 	navQaId: string;
 }
 
-const PLUGIN_ROUTE_PREFIX = `${PLUGIN_ROUTE_NAMESPACE}/`;
-
 /** Derive sidebar nav entries from a discovery result, priority-ordered (pure). */
 export function buildPluginNav(discovery: PluginDiscovery): PluginNavEntry[] {
 	return pluginNav(discovery)
 		.map((entry) => {
-			const splat = entry.to.startsWith(PLUGIN_ROUTE_PREFIX)
-				? entry.to.slice(PLUGIN_ROUTE_PREFIX.length)
-				: entry.to.replace(/^\//, "");
+			const splat = stripPluginNamespace(entry.to);
 			return {
 				pluginId: entry.pluginId,
 				to: entry.to,

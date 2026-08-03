@@ -74,29 +74,19 @@ const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
 ];
 
 /**
- * Route paths owned by the shell's file-based routes (apps/web/src/routes/).
- * Passed to plugin discovery for defense in depth: plugin routes are mounted
- * under the `/plugins/*` namespace so a shell-owned path (declared without
- * that prefix) cannot collide by construction, but the check still catches
- * a manifest that accidentally re-declares a shell path pre-prefix.
- *
- * Kept as a literal (importing routeTree.gen here would create an import
- * cycle through the route components); features.test.ts asserts it stays in
- * sync with the generated route tree.
- */
-export const SHELL_ROUTE_PATHS = ["/", "/sdk-consumer", "/sdk-producer", "/split"] as const;
-
-/**
  * Plugin discovery phase (static, build-time — Decision #10): validates the
  * bundled plugin manifests and produces boot-ready registrations for the
  * renderer. Activation stays with createFeatureSystem (eager for now —
  * Decision #11); a broken plugin is skipped with an error instead of taking
  * down the boot sequence. Built-in feature ids are reserved so a colliding
  * plugin cannot shadow them.
+ *
+ * Plugin routes are mounted under the `/plugins/*` namespace (routes/plugins/$.tsx),
+ * so shell routes and plugin routes cannot collide by construction — no
+ * shell-route reservation list is required.
  */
 const pluginDiscovery = discoverPlugins(BUNDLED_PLUGINS, "web", {
 	reservedIds: BUILT_IN_WEB_FEATURES.map((feature) => feature.id),
-	reservedRoutePaths: SHELL_ROUTE_PATHS,
 });
 reportPluginDiscoveryIssues(pluginDiscovery);
 

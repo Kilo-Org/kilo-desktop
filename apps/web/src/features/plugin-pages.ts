@@ -1,6 +1,6 @@
 import {
-	PLUGIN_ROUTE_NAMESPACE,
 	pluginRoutes,
+	stripPluginNamespace,
 	type PluginDiscovery,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
@@ -36,8 +36,6 @@ export interface PluginPage {
 	splat: string;
 }
 
-const PLUGIN_ROUTE_PREFIX = `${PLUGIN_ROUTE_NAMESPACE}/`;
-
 /** Derive renderable pages from a discovery result (pure — unit-testable). */
 export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
 	return pluginRoutes(discovery).map((route) => ({
@@ -48,9 +46,7 @@ export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
 		// React-specific interpretation (feature-sdk stays React-free).
 		component: route.component as ComponentType<PluginPageProps>,
 		browserSafe: route.browserSafe,
-		splat: route.path.startsWith(PLUGIN_ROUTE_PREFIX)
-			? route.path.slice(PLUGIN_ROUTE_PREFIX.length)
-			: route.path.replace(/^\//, ""),
+		splat: stripPluginNamespace(route.path),
 	}));
 }
 

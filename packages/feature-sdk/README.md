@@ -106,9 +106,9 @@ feature router, in both Electron and browser mode.
 
 Register handlers with the same contract so input and output are validated on the main side too. Prefer `mainSdk.channels(todosContract).handleAll({ ... })` — it requires a handler for every channel in the map, so a newly added channel cannot be forgotten. `handle(channel, handler)` remains for registering channels one at a time.
 
-### `sdk.events` — fire-and-forget pub/sub
+### `sdk.events` / `mainSdk.events` — fire-and-forget pub/sub
 
-Cross-feature notifications. `emit` is auto-prefixed with your feature ID; `on` subscribes to fully-qualified names, so you can listen to any feature's events.
+Cross-feature and cross-process notifications. `emit` is auto-prefixed with your feature ID; `on` subscribes to fully-qualified names, so you can listen to any feature's events from the renderer or main process.
 
 ```ts
 // In the todos feature — emits "todos.created"
@@ -118,12 +118,18 @@ sdk.events.emit("created", { id: todo.id });
 const unsub = sdk.events.on("todos.created", (payload) => {
 	refreshDashboard();
 });
+
+// The same API is available in mainRegister.
+mainSdk.events.emit("indexed", { count: 3 }); // emits "todos.indexed"
+mainSdk.events.on("workspaces.workspace-updated", (payload) => refresh(payload));
 ```
 
 **Use when:** something happened and zero-or-more other features may care. Emitter must not depend on who is listening.
 **Don't use for:** request/response (use `invoke` or capabilities), or state another feature needs to _read at any time_ (use `sdk.state`). Events are not replayed — a subscriber that attaches late missed earlier emissions.
 
-Subscriptions made through an SDK instance are cleaned up automatically when that instance is destroyed. Handlers that throw are isolated (logged, siblings still run).
+Delivery is fire-and-forget, at-most-once, and has no replay. Payloads must be structured-cloneable; invalid payloads throw at the SDK boundary in both browser and Electron mode. Electron relays through the shell-owned `feature:event` bridge, while browser-mode `SDK` and `MainSdk` share one in-process bus. Origin events are delivered locally before relay, and inbound bridge delivery bypasses the outbound path to prevent echo loops.
+
+Subscriptions made through an SDK instance or `MainSdk` are cleaned up automatically when the feature is destroyed. Handlers that throw are isolated (logged, siblings still run).
 
 ### `sdk.state` — observable shared state
 
@@ -157,7 +163,7 @@ function useStore<T>(store: ReadableStore<T>): T {
 **Use when:** other features (or many of your own components) need to observe a value over time — counts, selection, status.
 **Don't use for:** persistence (state is in-memory, renderer-side) or high-frequency data (every `set` notifies synchronously).
 
-### `sdk.plugins` — capabilities (cross-feature APIs)
+### `sdk.plugins` / `mainSdk.plugins` — capabilities (cross-feature APIs)
 
 The request/response counterpart to events: one feature exposes a named API object, others look it up by feature ID. This is the **only** sanctioned way to call another feature.
 
@@ -173,6 +179,11 @@ interface TodoCapabilities {
 }
 const caps = sdk.plugins.get<TodoCapabilities>("todos"); // type is ASSERTED, not validated
 await caps?.todoService.addTodo("From calendar");
+
+// Main features use the same lazy, graceful-null capability contract.
+mainSdk.plugins.expose("workspaceService", { get: (id: string) => findWorkspace(id) });
+const workspaces = mainSdk.plugins.get<WorkspaceCapabilities>("workspaces");
+const workspace = workspaces?.workspaceService.get(id);
 ```
 
 **Use when:** feature B needs to actively call feature A (not just hear about its events).
@@ -282,7 +293,11 @@ Rule of thumb for feature authors: register cleanup with `onDispose`, never call
 Use `@anaconda-agentic-desktop/testing` — never hand-roll SDK fakes:
 
 ```ts
-import { createFakeSdk, createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import {
+	createFakeSdk,
+	createFakeMainSdk,
+	createLinkedFakeSdkPair,
+} from "@anaconda-agentic-desktop/testing";
 
 // Renderer tests: real in-memory event bus / state / router, fake shell delegates
 const sdk = createFakeSdk({
@@ -298,6 +313,10 @@ const mainSdk = createFakeMainSdk({ featureId: "todos" });
 mainRegister(mainSdk);
 await mainSdk.invoke("create", { title: "x" }); // validates input and output like the real router
 mainSdk.dispose(); // runs onDispose callbacks + clears handlers, like shell teardown
+
+// Cross-boundary unit tests — one real bus and capability registry.
+const { rendererSdk, mainSdk: linkedMainSdk } = createLinkedFakeSdkPair({ featureId: "todos" });
+linkedMainSdk.events.emit("changed", {}); // rendererSdk.events.on("todos.changed") receives it
 ```
 
 ## Shell wiring (internals)
@@ -306,7 +325,7 @@ Everything below is shell infrastructure. Feature code has no reason to import t
 
 | Export                 | Role                                                                                                                                                                                                               |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `EventBus`             | Namespaced pub/sub backing `sdk.events`. Snapshot iteration; throwing handlers are isolated.                                                                                                                       |
+| `EventBus`             | Namespaced pub/sub shared by renderer SDKs or main SDKs; the shell bridges process-local buses without echoing.                                                                                                    |
 | `StateBroker`          | Observable stores backing `sdk.state`. Lazy placeholder resolution; subscribers survive re-registration.                                                                                                           |
 | `CapabilityRegistry`   | Named API objects backing `sdk.plugins`.                                                                                                                                                                           |
 | `ContributionRegistry` | Zone → contribution mapping backing `sdk.contribute`; `onChange` feeds shell re-renders.                                                                                                                           |
@@ -317,5 +336,5 @@ Everything below is shell infrastructure. Feature code has no reason to import t
 
 Where the wiring lives:
 
-- **Electron main:** `apps/desktop/src/main/features/registry/feature-registry.ts` — one `FeatureRouter`, booted from the FEATURES array; `feature:invoke` IPC handler; `FeatureError → BusinessError` translation.
-- **Renderer:** `packages/sdk-react/src/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and boots features in-process in browser mode (the host wires shell delegates and the Electron bridge in `apps/web/src/platform/featureSystem.ts`). Only `browserRegister` boots there (no `mainRegister` fallback — it may use Node APIs); Node-free features opt in with `browserRegister: register`, others are skipped with a warning.
+- **Electron main:** `apps/desktop/src/main/features/registry/feature-registry.ts` — one `FeatureRouter`, `EventBus`, and `CapabilityRegistry`, booted from the FEATURES array; `feature:invoke` request routing plus the `feature:event` push bridge; `FeatureError → BusinessError` translation.
+- **Renderer:** `packages/sdk-react/src/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and attaches the shell's event transport. In browser mode, `browserRegister` MainSdk instances share the exact renderer event bus and capability registry. Only `browserRegister` boots there (no `mainRegister` fallback — it may use Node APIs); Node-free features opt in with `browserRegister: register`, others are skipped with a warning.

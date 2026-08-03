@@ -1,5 +1,5 @@
 /**
- * In-memory namespaced event bus backing `sdk.events`.
+ * In-memory namespaced event bus backing `sdk.events` and `mainSdk.events`.
  *
  * Shell infrastructure — features never construct this; they use
  * `sdk.events.emit/on/off`, which delegate here with featureId prefixing.
@@ -48,4 +48,47 @@ export class EventBus {
 			}
 		}
 	}
+}
+
+/** Transport-neutral envelope used by the shell's cross-process event bridge. */
+export interface FeatureEvent {
+	featureId: string;
+	name: string;
+	payload?: unknown;
+}
+
+/** Return the fully-qualified event name stamped by the emitting SDK. */
+export function qualifyFeatureEvent(featureId: string, name: string): string {
+	if (featureId.length === 0) throw new Error("Feature event featureId must not be empty.");
+	if (name.length === 0) throw new Error("Feature event name must not be empty.");
+	return `${featureId}.${name}`;
+}
+
+/**
+ * Guard the shared browser/Electron event contract before local delivery.
+ * Electron would reject these values later at webContents.send/ipcRenderer.send;
+ * checking at the SDK boundary gives feature authors a deterministic error in
+ * both deployment modes.
+ */
+export function assertStructuredCloneable(payload: unknown): void {
+	cloneEventPayload(payload);
+}
+
+function cloneEventPayload(payload: unknown): unknown {
+	try {
+		return structuredClone(payload);
+	} catch (error) {
+		throw new TypeError("Feature event payload must be structured-cloneable.", { cause: error });
+	}
+}
+
+/** Deliver locally and optionally relay to another process exactly once. */
+export function emitFeatureEvent(
+	eventBus: EventBus,
+	event: FeatureEvent,
+	relay?: (event: FeatureEvent) => void,
+): void {
+	const relayedPayload = cloneEventPayload(event.payload);
+	eventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
+	relay?.({ ...event, payload: relayedPayload });
 }

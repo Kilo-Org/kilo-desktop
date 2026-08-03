@@ -1,10 +1,23 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
+import {
+	CapabilityRegistry,
+	EventBus,
+	FeatureError,
+	FeatureRouter,
+} from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import {
+	qualifyFeatureEvent,
+	type FeatureEvent,
+	type FeatureRegistration,
+} from "@anaconda-agentic-desktop/feature-sdk";
+import type {
+	FeatureEventPayload,
+	IpcHandlers,
+	IpcMessageHandlers,
+} from "@anaconda-agentic-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
 
@@ -12,11 +25,18 @@ import { BusinessError } from "../../platform/BusinessError.js";
  * Central feature router for the main process.
  * Populated by mainRegister() calls from each feature in the FEATURES array.
  */
-export const featureRouter = new FeatureRouter();
+export const mainEventBus = new EventBus();
+export const mainCapabilityRegistry = new CapabilityRegistry();
+export const featureRouter = new FeatureRouter({
+	eventBus: mainEventBus,
+	capabilityRegistry: mainCapabilityRegistry,
+});
 
 const bootedFeatureIds = new Set<string>();
 
 export interface BootFeaturesOptions {
+	/** Relay main-emitted events to every renderer window. */
+	emitEvent?: (event: FeatureEvent) => void;
 	/**
 	 * Base data path (Electron `app.getPath("userData")`). Each feature gets
 	 * `${storageRoot}/plugins/<id>` as its `mainSdk.storageDir`, created
@@ -45,6 +65,7 @@ export function bootFeatures(
 			continue;
 		}
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
+			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(storageRoot === undefined
 				? {}
 				: {
@@ -75,6 +96,23 @@ export function bootFeatures(
 			featureRouter.destroyFeature(id);
 			bootedFeatureIds.delete(id);
 		}
+	};
+}
+
+/**
+ * Renderer-to-main event delivery. The origin renderer already received the
+ * event in-process, so the relay excludes it while forwarding to other
+ * windows. Delivering directly to mainEventBus prevents an echo back through
+ * MainSdk's outbound relay.
+ */
+export function createFeatureMessageHandlers(
+	relayToRenderers?: (event: FeatureEventPayload, senderId: number) => void,
+): Pick<IpcMessageHandlers, "feature:event"> {
+	return {
+		"feature:event": (event, context) => {
+			mainEventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
+			relayToRenderers?.(event, context.senderId);
+		},
 	};
 }
 

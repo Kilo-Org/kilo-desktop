@@ -2,7 +2,10 @@ import { ipcMain, type IpcMain } from "electron";
 
 import {
 	ipcMethods,
+	ipcMessages,
 	type IpcHandlers,
+	type IpcMessageChannel,
+	type IpcMessageHandlers,
 	type IpcMethodChannel,
 	type IpcResult,
 } from "@anaconda-agentic-desktop/contracts";
@@ -16,10 +19,11 @@ function failure(code: "VALIDATION" | "AUTHORIZATION" | "BUSINESS" | "INTERNAL",
 
 export class IpcServer {
 	#channels: IpcMethodChannel[] = [];
+	#messageListeners = new Map<IpcMessageChannel, Parameters<IpcMain["removeListener"]>[1]>();
 
 	constructor(private readonly electronIpcMain: IpcMain = ipcMain) {}
 
-	register(handlers: IpcHandlers): void {
+	register(handlers: IpcHandlers, messageHandlers?: IpcMessageHandlers): void {
 		this.dispose();
 		for (const channel of Object.keys(ipcMethods) as IpcMethodChannel[]) {
 			this.electronIpcMain.handle(channel, async (event, rawInput: unknown) => {
@@ -54,10 +58,30 @@ export class IpcServer {
 			});
 			this.#channels.push(channel);
 		}
+
+		if (!messageHandlers) return;
+		for (const channel of Object.keys(ipcMessages) as IpcMessageChannel[]) {
+			const listener = (event: Electron.IpcMainEvent, rawPayload: unknown): void => {
+				if (!isTrustedIpcSender(event)) return;
+				const parsedPayload = ipcMessages[channel].payload.safeParse(rawPayload);
+				if (!parsedPayload.success) return;
+				try {
+					messageHandlers[channel](parsedPayload.data, { senderId: event.sender.id });
+				} catch (error) {
+					console.error(`IPC message handler failed for ${channel}`, error);
+				}
+			};
+			this.electronIpcMain.on(channel, listener);
+			this.#messageListeners.set(channel, listener);
+		}
 	}
 
 	dispose(): void {
 		for (const channel of this.#channels) this.electronIpcMain.removeHandler(channel);
 		this.#channels = [];
+		for (const [channel, listener] of this.#messageListeners) {
+			this.electronIpcMain.removeListener(channel, listener);
+		}
+		this.#messageListeners.clear();
 	}
 }

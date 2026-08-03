@@ -21,7 +21,15 @@ export const testChannels = {
 	fail: defineMethod(z.undefined(), z.unknown()),
 } as const;
 
-export function makeServices(featureRouter = new FeatureRouter()) {
+export function makeServices(featureRouter?: FeatureRouter) {
+	const eventBus = featureRouter?.eventBus ?? new EventBus();
+	const capabilityRegistry = featureRouter?.capabilityRegistry ?? new CapabilityRegistry();
+	const router =
+		featureRouter ??
+		new FeatureRouter({
+			eventBus,
+			capabilityRegistry,
+		});
 	const shellDelegates: ShellDelegates = {
 		notifications: {
 			show: () => ({ delivered: true }),
@@ -58,12 +66,12 @@ export function makeServices(featureRouter = new FeatureRouter()) {
 	};
 
 	return {
-		eventBus: new EventBus(),
+		eventBus,
 		stateBroker: new StateBroker(),
-		capabilityRegistry: new CapabilityRegistry(),
+		capabilityRegistry,
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
-		featureRouter,
+		featureRouter: router,
 		shellDelegates,
 	};
 }

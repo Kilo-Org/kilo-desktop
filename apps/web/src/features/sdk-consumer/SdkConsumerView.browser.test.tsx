@@ -4,6 +4,7 @@ import { page } from "vitest/browser";
 
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import { createSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import { sdkConsumerContract } from "@anaconda-agentic-desktop/contracts";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 
@@ -15,6 +16,16 @@ function makeSharedSystem() {
 	producer.plugins.expose("explorerService", {
 		getInfo: () => ({ name: "sdk-producer", version: "2.0.0" }),
 	});
+	producer.services.featureRouter
+		.createMainSdk("sdk-consumer")
+		.channels(sdkConsumerContract)
+		.handleAll({
+			ping: () => ({
+				pong: true,
+				from: "sdk-consumer",
+				producerNoteCount: 7,
+			}),
+		});
 	const consumer = createSdk("sdk-consumer", producer.services);
 	const system = createFakeFeatureSystem({
 		sdks: { "sdk-producer": producer, "sdk-consumer": consumer },
@@ -85,5 +96,18 @@ describe("SdkConsumerView", () => {
 		producer.events.emit("note-added", { id: "abcdef12-xxxx", text: "hello" });
 		await expect.element(screen.getByText(/note-added: id=abcdef12/)).toBeVisible();
 		await expect.element(screen.getByText(/text="hello"/)).toBeVisible();
+	});
+
+	it("shows the result of a main-side capability read", async () => {
+		const { system } = makeSharedSystem();
+		const { baseElement } = render(
+			<SdkProvider system={system}>
+				<SdkConsumerView />
+			</SdkProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("sdk-consumer-main-capability").click();
+		await expect.element(screen.getByText("7 note(s) via mainSdk.plugins.get")).toBeVisible();
 	});
 });

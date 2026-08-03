@@ -31,9 +31,9 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 
 - `sdk.invoke(channel, args)` — transport-agnostic call to the feature's backend handlers
 - `sdk.client` — proxy that maps method calls to `invoke`; typed via `useSdk<ServiceType>(featureId)`
-- `sdk.events` — namespaced pub/sub
+- `sdk.events` / `mainSdk.events` — symmetric, namespaced, cross-process pub/sub
 - `sdk.state` — observable stores
-- `sdk.plugins.expose/get` — cross-feature capabilities
+- `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
 - `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
 - `sdk.commands` — command palette entries
 - `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
@@ -41,6 +41,12 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
 In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Only `browserRegister` boots in this mode — features without one are skipped with a warning. Node-free features opt in with `browserRegister: register`; features using Node APIs (SQLite, fs) must provide browser-safe fakes.
+
+**Events:** renderer and main use the same `emit`/`on` shape. `emit("changed", payload)` is always stamped with the caller's feature ID, while `on("other-feature.changed", handler)` takes a fully-qualified name. In Electron, the shell relays `feature:event` envelopes between the main bus and every renderer window; origin-aware delivery prevents echo loops. Browser `SDK` and `MainSdk` share one in-process bus. Delivery is fire-and-forget, at-most-once, with no replay; late subscribers miss prior events. Payloads must be structured-cloneable and are guarded at the SDK boundary.
+
+**Main-side capabilities:** every process owns a shared `CapabilityRegistry`. A feature may expose an API from `mainRegister` with `mainSdk.plugins.expose`; another main feature resolves it lazily with `mainSdk.plugins.get<T>(featureId)`. Missing or inactive providers return `null`, so activation order does not matter. Capabilities stay process-local—the event bridge is the cross-process primitive.
+
+Main-side cross-feature `invoke` through the shared `FeatureRouter` is intentionally not exposed. Main uses capabilities for the same typed, graceful-null contract as the renderer.
 
 **Handlers and validation:** `mainSdk.channels(channelMap)` binds the map once; `.handleAll({ ... })` registers a handler per channel and is exhaustive by type (preferred), `.handle(channel, handler)` registers one at a time. Handler types are inferred, and input and output schemas are validated at the routing boundary. Use `z.undefined()` for channels that take no input.
 
@@ -109,7 +115,7 @@ Three tiers decide where a dependency lives:
 | **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                                  |
 | **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                                        |
 | **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                              |
-| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers via `mainSdk.channels(channelMap).handle(...)`.                                                                             |
+| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers and use `mainSdk.events` / `mainSdk.plugins` for main-side feature communication.                                           |
 | **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                                      |
 | **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                          |
 | **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                                |
@@ -130,12 +136,14 @@ Three tiers decide where a dependency lives:
 - **Coverage** — 90% lines/branches/functions/statements (`pnpm coverage`)
 - **oxlint + oxfmt** (not ESLint/Prettier)
 - **peerDependencies** for react, react-dom, zod in publishable packages
-- Tests use `createFakeSdk` from `@anaconda-agentic-desktop/testing`
+- Tests use `createFakeSdk` / `createFakeMainSdk` / `createLinkedFakeSdkPair` from `@anaconda-agentic-desktop/testing`
 - Interactive elements use stable `data-qa-id` attributes (queried by Vitest browser + Playwright)
 - Cross-feature communication only through SDK primitives (events, state, plugins.get)
 - All events namespaced by feature ID: `featureId.eventName`
 - Expected handler failures throw `FeatureError` (never plain `Error` — its message gets scrubbed at the IPC boundary)
 - Each feature owns its own SQLite file if it persists data
+
+The kilo-code integration can therefore subscribe to workspace changes and resolve workspace capabilities directly in main. It does not need a renderer relay, renderer-resolved channel inputs, correctness-critical cross-feature caches, or polling for main-originated session changes.
 
 See [docs/TESTING.md](./docs/TESTING.md) for the full tier taxonomy and how to run each suite.
 

@@ -23,6 +23,7 @@ import type { CapabilityRegistry } from "./capability-registry.js";
 import type { CommandRegistry } from "./command-registry.js";
 import type { ContributionRegistry } from "./contribution-registry.js";
 import type { EventBus } from "./event-bus.js";
+import { emitFeatureEvent, type FeatureEvent } from "./event-bus.js";
 import type { FeatureRouter } from "./feature-router.js";
 import type { StateBroker } from "./state-broker.js";
 
@@ -42,6 +43,8 @@ export interface ShellDelegates {
 
 export interface SdkFactoryServices {
 	eventBus: EventBus;
+	/** Optional renderer-to-main transport. Browser mode omits it. */
+	emitEvent?: (event: FeatureEvent) => void;
 	stateBroker: StateBroker;
 	capabilityRegistry: CapabilityRegistry;
 	contributionRegistry: ContributionRegistry;
@@ -78,7 +81,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 	const events: SdkEvents = {
 		emit(event: string, payload?: unknown) {
 			assertAlive();
-			services.eventBus.emit(`${featureId}.${event}`, payload);
+			emitFeatureEvent(services.eventBus, { featureId, name: event, payload }, services.emitEvent);
 		},
 		on(event: string, handler: (payload: unknown) => void) {
 			assertAlive();

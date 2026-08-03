@@ -3,7 +3,12 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { defineMethod, type FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	defineMethod,
+	type FeatureEvent,
+	type FeatureRegistration,
+	type MainSdk,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 import {
 	createFeatureSystem,
@@ -188,6 +193,54 @@ describe("SdkProvider + useSdk", () => {
 		await expect(system.getSdk("demo").invoke("greet", { name: "x" })).resolves.toBe("bridged");
 		expect(invokeFallback).toHaveBeenCalledWith("demo", "greet", { name: "x" });
 		expect(browserBoot).not.toHaveBeenCalled();
+	});
+
+	it("shares one event bus and capability registry with browser MainSdk", () => {
+		let browserMainSdk: MainSdk | undefined;
+		const feature: FeatureRegistration = {
+			id: "producer",
+			mainRegister() {},
+			browserRegister(mainSdk) {
+				browserMainSdk = mainSdk;
+				mainSdk.plugins.expose("service", { read: () => "ready" });
+			},
+		};
+		const system = makeSystem([feature]);
+		const rendererSdk = system.getSdk("consumer");
+		const listener = vi.fn();
+		rendererSdk.events.on("producer.changed", listener);
+
+		browserMainSdk!.events.emit("changed", { id: "1" });
+
+		expect(listener).toHaveBeenCalledWith({ id: "1" });
+		expect(rendererSdk.plugins.get("producer")).toEqual({
+			service: { read: expect.any(Function) },
+		});
+	});
+
+	it("relays outbound events and does not echo inbound events", () => {
+		const emit = vi.fn();
+		let deliver: ((event: FeatureEvent) => void) | undefined;
+		const system = createFeatureSystem({
+			shellDelegates: createTestShellDelegates(),
+			invokeFallback: vi.fn(),
+			eventTransport: {
+				emit,
+				onEvent(handler) {
+					deliver = handler;
+					return () => undefined;
+				},
+			},
+		});
+		const sdk = system.getSdk("producer");
+		const listener = vi.fn();
+		sdk.events.on("producer.changed", listener);
+
+		sdk.events.emit("changed", { source: "local" });
+		deliver!({ featureId: "producer", name: "changed", payload: { source: "main" } });
+
+		expect(listener).toHaveBeenCalledTimes(2);
+		expect(emit).toHaveBeenCalledOnce();
 	});
 });
 

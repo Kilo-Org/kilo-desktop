@@ -7,9 +7,11 @@ import {
 	createSdk,
 	EventBus,
 	FeatureRouter,
+	qualifyFeatureEvent,
 	StateBroker,
 	teardownFeature,
 	type FeatureRegistration,
+	type FeatureEvent,
 	type InvokeFallback,
 	type SDK,
 	type SdkClient,
@@ -42,6 +44,15 @@ export interface CreateFeatureSystemOptions {
 	 */
 	invokeFallback?: InvokeFallback;
 	/**
+	 * Optional Electron event transport. Outbound events have already been
+	 * namespace-stamped and cloneability-checked by the SDK; inbound events
+	 * are delivered directly to the local bus so they are not echoed back.
+	 */
+	eventTransport?: {
+		emit(event: FeatureEvent): void;
+		onEvent(handler: (event: FeatureEvent) => void): () => void;
+	};
+	/**
 	 * Features to boot in-process when no `invokeFallback` is provided
 	 * (browser mode — no main process available). Only `browserRegister`
 	 * boots; features without one are skipped with a warning. There is
@@ -56,18 +67,30 @@ export interface CreateFeatureSystemOptions {
  */
 export function createFeatureSystem(options: CreateFeatureSystemOptions): FeatureSystem {
 	const { invokeFallback, features = [] } = options;
+	const eventTransport = options.eventTransport;
 
-	const featureRouter = new FeatureRouter(invokeFallback ? { fallback: invokeFallback } : {});
+	const eventBus = new EventBus();
+	const capabilityRegistry = new CapabilityRegistry();
+	const featureRouter = new FeatureRouter({
+		...(invokeFallback ? { fallback: invokeFallback } : {}),
+		eventBus,
+		capabilityRegistry,
+	});
 
 	const services: SdkFactoryServices = {
-		eventBus: new EventBus(),
+		eventBus,
+		...(eventTransport ? { emitEvent: (event: FeatureEvent) => eventTransport.emit(event) } : {}),
 		stateBroker: new StateBroker(),
-		capabilityRegistry: new CapabilityRegistry(),
+		capabilityRegistry,
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
 		featureRouter,
 		shellDelegates: options.shellDelegates,
 	};
+
+	eventTransport?.onEvent((event) => {
+		eventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
+	});
 
 	// Browser mode: boot feature backends in-process (no main process available).
 	// Only browserRegister boots here — deliberately no fallback to mainRegister,

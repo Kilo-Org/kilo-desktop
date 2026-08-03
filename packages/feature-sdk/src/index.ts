@@ -64,7 +64,13 @@ export {
 export { FeatureError, type FeatureErrorCode } from "./errors.js";
 
 // Services — used by the shell to wire things up
-export { EventBus } from "./services/event-bus.js";
+export {
+	EventBus,
+	assertStructuredCloneable,
+	emitFeatureEvent,
+	qualifyFeatureEvent,
+	type FeatureEvent,
+} from "./services/event-bus.js";
 export { StateBroker } from "./services/state-broker.js";
 export { CapabilityRegistry } from "./services/capability-registry.js";
 export { ContributionRegistry } from "./services/contribution-registry.js";

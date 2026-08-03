@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { authEvents, authMethods } from "./features/auth.js";
+import { featureEvents, featureMessages } from "./features/feature-event.js";
 import { featureMethods } from "./features/feature-invoke.js";
 import { shellMethods } from "./features/shell.js";
 import { themeMethods } from "./features/theme.js";
-import { assertNoDuplicateChannels, ipcEvents, ipcMethods } from "./registry.js";
+import { assertNoDuplicateChannels, ipcEvents, ipcMessages, ipcMethods } from "./registry.js";
 
 describe("IPC registry", () => {
 	it("merged method channel count equals the sum of feature parts", () => {
@@ -17,7 +18,10 @@ describe("IPC registry", () => {
 	});
 
 	it("merged event channel count equals the sum of feature parts", () => {
-		expect(Object.keys(ipcEvents)).toHaveLength(Object.keys(authEvents).length);
+		expect(Object.keys(ipcEvents)).toHaveLength(
+			Object.keys(authEvents).length + Object.keys(featureEvents).length,
+		);
+		expect(Object.keys(ipcMessages)).toHaveLength(Object.keys(featureMessages).length);
 	});
 
 	it("throws on duplicate channel keys", () => {

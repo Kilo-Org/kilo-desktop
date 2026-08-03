@@ -32,6 +32,27 @@ describe("createSdk", () => {
 		expect(received).toEqual({ id: "1" });
 	});
 
+	it("sdk.events.emit cannot spoof another feature namespace", () => {
+		const services = makeServices();
+		const sdk = createSdk("producer", services);
+		const spoofed = vi.fn();
+		const stamped = vi.fn();
+		services.eventBus.on("other.changed", spoofed);
+		services.eventBus.on("producer.other.changed", stamped);
+
+		sdk.events.emit("other.changed", 1);
+
+		expect(spoofed).not.toHaveBeenCalled();
+		expect(stamped).toHaveBeenCalledWith(1);
+	});
+
+	it("sdk.events.emit rejects payloads that cannot cross IPC", () => {
+		const sdk = createSdk("todos", makeServices());
+		expect(() => sdk.events.emit("created", { callback: () => undefined })).toThrow(
+			/structured-cloneable/,
+		);
+	});
+
 	it("sdk.state.register and get work with namespacing", () => {
 		const services = makeServices();
 		const sdk = createSdk("todos", services);

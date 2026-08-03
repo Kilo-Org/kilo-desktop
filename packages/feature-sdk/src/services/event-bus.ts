@@ -82,7 +82,11 @@ function cloneEventPayload(payload: unknown): unknown {
 	}
 }
 
-/** Deliver locally and optionally relay to another process exactly once. */
+/**
+ * Deliver locally and optionally relay to another process exactly once.
+ * Invalid payloads fail before delivery, while host transport failures are
+ * isolated so a fire-and-forget event cannot fail the publishing operation.
+ */
 export function emitFeatureEvent(
 	eventBus: EventBus,
 	event: FeatureEvent,
@@ -90,5 +94,13 @@ export function emitFeatureEvent(
 ): void {
 	const relayedPayload = cloneEventPayload(event.payload);
 	eventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
-	relay?.({ ...event, payload: relayedPayload });
+	if (!relay) return;
+	try {
+		relay({ ...event, payload: relayedPayload });
+	} catch (error) {
+		console.warn(
+			`[FeatureEvent] Relay for "${qualifyFeatureEvent(event.featureId, event.name)}" failed:`,
+			error,
+		);
+	}
 }

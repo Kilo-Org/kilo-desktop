@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { EventBus } from "./event-bus.js";
+import { emitFeatureEvent, EventBus } from "./event-bus.js";
 
 describe("EventBus", () => {
 	it("handler errors do not propagate to other handlers", () => {
@@ -43,5 +43,33 @@ describe("EventBus", () => {
 		bus.emit("other.event");
 		expect(aCalled).toBe(false);
 		expect(bCalled).toBe(true);
+	});
+
+	it("isolates relay failures after local delivery", () => {
+		const bus = new EventBus();
+		const received = vi.fn();
+		const relayError = new Error("renderer unavailable");
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		bus.on("producer.changed", received);
+
+		try {
+			expect(() =>
+				emitFeatureEvent(
+					bus,
+					{ featureId: "producer", name: "changed", payload: { id: "1" } },
+					() => {
+						throw relayError;
+					},
+				),
+			).not.toThrow();
+
+			expect(received).toHaveBeenCalledWith({ id: "1" });
+			expect(warn).toHaveBeenCalledWith(
+				'[FeatureEvent] Relay for "producer.changed" failed:',
+				relayError,
+			);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });

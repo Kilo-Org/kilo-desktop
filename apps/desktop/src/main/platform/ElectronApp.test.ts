@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: {} }));
 
+import { getAppIdentity } from "$config/app-identity.js";
+
 import { ElectronApp } from "./ElectronApp.js";
 
 describe("ElectronApp", () => {
@@ -40,9 +42,12 @@ describe("ElectronApp", () => {
 		});
 		expect(adapter.getPath("userData")).toBe("/paths/userData");
 		expect(adapter.requestSingleInstanceLock()).toBe(true);
-		adapter.setIdentity();
-		expect(electronApp.setName).toHaveBeenCalledWith("Anaconda Agentic Desktop");
-		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith("com.anaconda.agentic-desktop");
+		const identity = getAppIdentity("canary");
+		adapter.setIdentity(identity);
+		expect(electronApp.setName).toHaveBeenCalledWith("Anaconda Agentic Desktop Canary");
+		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith(
+			process.platform === "win32" ? identity.windowsAppUserModelId : identity.appBundleId,
+		);
 
 		const dispose = adapter.on("activate", listener);
 		expect(electronApp.on).toHaveBeenCalledWith("activate", listener);
@@ -70,10 +75,10 @@ describe("ElectronApp", () => {
 		await expect(adapter.whenReady()).resolves.toBeUndefined();
 		expect(electronApp.whenReady).toHaveBeenCalledOnce();
 
-		adapter.setIdentity();
-		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith(
-			"com.squirrel.AnacondaAgenticDesktop.anaconda-agentic-desktop",
-		);
+		const identity = getAppIdentity("canary");
+		adapter.setIdentity(identity);
+		expect(electronApp.setName).toHaveBeenCalledWith(identity.productName);
+		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith(identity.windowsAppUserModelId);
 
 		adapter.quit();
 		adapter.exit(2);

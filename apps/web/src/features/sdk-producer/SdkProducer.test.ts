@@ -169,12 +169,28 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		await expect(async () => sdk.fs.exists("x")).rejects.toThrow(/not implemented/i);
 	});
 
-	it("deferred APIs (tools, intents, navigate, dispatch) throw", () => {
+	it("deferred APIs (tools, intents, dispatch) throw", () => {
 		const sdk = createFakeSdk({ featureId: "sdk-producer" });
 		expect(() => sdk.tools.register({})).toThrow(/not available yet/);
 		expect(() => sdk.intents.list()).toThrow(/not available yet/);
-		expect(() => sdk.navigate({ plugin: "x", intent: "y" })).toThrow(/not available yet/);
 		expect(() => sdk.dispatch({ plugin: "x", action: "y" })).toThrow(/not available yet/);
+	});
+
+	it("sdk.navigate and sdk.location go through the fake navigation delegate", () => {
+		const navigated: Array<{ path: string; options: unknown }> = [];
+		const sdk = createFakeSdk({
+			featureId: "sdk-producer",
+			navigation: {
+				navigate: (path, options) => navigated.push({ path, options }),
+				peek: () => ({ path: "/sdk-producer", search: {} }),
+			},
+		});
+
+		sdk.navigate("/plugins/todos", { search: { filter: "open" } });
+		expect(navigated).toEqual([
+			{ path: "/plugins/todos", options: { search: { filter: "open" } } },
+		]);
+		expect(sdk.location.peek()).toEqual({ path: "/sdk-producer", search: {} });
 	});
 
 	it("sdk.destroy cleans up registrations", () => {

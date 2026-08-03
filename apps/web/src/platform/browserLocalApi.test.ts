@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LocalApiError } from "@anaconda-agentic-desktop/contracts";
-
 import { createBrowserLocalApi } from "./browserLocalApi";
 
 afterEach(() => {
@@ -9,77 +7,11 @@ afterEach(() => {
 });
 
 describe("createBrowserLocalApi", () => {
-	it("lists, adds, and toggles in-memory todos", async () => {
+	it("treats theme sync as a no-op outside Electron", async () => {
 		const api = createBrowserLocalApi();
-		expect(await api.todos.list()).toEqual([]);
-
-		const created = await api.todos.add({ title: "  Buy milk  " });
-		expect(created).toMatchObject({ title: "Buy milk", completed: false });
-		expect(await api.todos.list()).toEqual([created]);
-
-		const toggled = await api.todos.toggle({ id: created.id });
-		expect(toggled.completed).toBe(true);
-		expect(await api.todos.list()).toEqual([toggled]);
-	});
-
-	it("seeds from initial todos", async () => {
-		const api = createBrowserLocalApi({
-			todos: [{ id: "1", title: "seeded", completed: true }],
-		});
-		expect(await api.todos.list()).toEqual([{ id: "1", title: "seeded", completed: true }]);
-	});
-
-	it("rejects blank titles and unknown todo ids", async () => {
-		const api = createBrowserLocalApi();
-		await expect(api.todos.add({ title: "   " })).rejects.toMatchObject({
-			name: "LocalApiError",
-			code: "VALIDATION",
-		});
-		await expect(api.todos.toggle({ id: "missing" })).rejects.toBeInstanceOf(LocalApiError);
-	});
-
-	it("tracks system theme with matchMedia and cleans up listeners", async () => {
-		const listeners = new Set<(event: MediaQueryListEvent) => void>();
-		const mediaQuery = {
-			matches: true,
-			addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
-				listeners.add(listener);
-			}),
-			removeEventListener: vi.fn(
-				(_type: string, listener: (event: MediaQueryListEvent) => void) => {
-					listeners.delete(listener);
-				},
-			),
-		};
-		vi.stubGlobal(
-			"matchMedia",
-			vi.fn(() => mediaQuery),
-		);
-
-		const api = createBrowserLocalApi();
-		const themeListener = vi.fn();
-		const unsubscribe = api.theme.onChanged(themeListener);
-
-		expect(await api.theme.get()).toEqual({ source: "system", shouldUseDarkColors: true });
-		expect(mediaQuery.addEventListener).toHaveBeenCalledOnce();
-
-		for (const listener of listeners) {
-			listener({ matches: false } as MediaQueryListEvent);
-		}
-		expect(themeListener).toHaveBeenCalledWith({
-			source: "system",
-			shouldUseDarkColors: false,
-		});
-
-		await api.theme.set({ source: "light" });
-		expect(themeListener).toHaveBeenCalledWith({
-			source: "light",
-			shouldUseDarkColors: false,
-		});
-		expect(mediaQuery.removeEventListener).toHaveBeenCalled();
-
-		unsubscribe();
-		expect(listeners.size).toBe(0);
+		await expect(
+			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
+		).resolves.toBeUndefined();
 	});
 
 	it("opens external URLs and copies text", async () => {
@@ -116,14 +48,15 @@ describe("createBrowserLocalApi", () => {
 		});
 	});
 
-	it("falls back when crypto.randomUUID is unavailable and resolves dark theme", async () => {
-		vi.stubGlobal("crypto", {});
+	it("reports an anonymous auth session with a no-op onChanged", async () => {
 		const api = createBrowserLocalApi();
-		const created = await api.todos.add({ title: "no-uuid" });
-		expect(created.id).toMatch(/^todo-/);
+		expect(await api.auth.getSession()).toEqual({ status: "anonymous" });
+		expect(await api.auth.refresh()).toEqual({ status: "anonymous" });
+		expect(await api.auth.logout()).toEqual({ status: "anonymous" });
 
-		await api.theme.set({ source: "dark" });
-		expect(await api.theme.get()).toEqual({ source: "dark", shouldUseDarkColors: true });
-		vi.unstubAllGlobals();
+		const listener = vi.fn();
+		const unsubscribe = api.auth.onChanged(listener);
+		expect(listener).not.toHaveBeenCalled();
+		expect(() => unsubscribe()).not.toThrow();
 	});
 });

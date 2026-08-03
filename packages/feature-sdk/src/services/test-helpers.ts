@@ -6,6 +6,7 @@ import { CommandRegistry } from "./command-registry.js";
 import { ContributionRegistry } from "./contribution-registry.js";
 import { EventBus } from "./event-bus.js";
 import { FeatureRouter } from "./feature-router.js";
+import { createStaticNavigation } from "./navigation.js";
 import { StateBroker } from "./state-broker.js";
 import type { ShellDelegates } from "./create-sdk.js";
 
@@ -33,6 +34,17 @@ export function makeServices(featureRouter = new FeatureRouter()) {
 			},
 			peek: () => "light",
 		},
+		auth: {
+			subscribe: (fn) => {
+				fn({ status: "anonymous" });
+				return noop;
+			},
+			peek: () => ({ status: "anonymous" }),
+			getSession: async () => ({ status: "anonymous" }),
+			refresh: async () => ({ status: "anonymous" }),
+			login: async () => ({ status: "anonymous" }),
+			logout: async () => ({ status: "anonymous" }),
+		},
 		shell: { openExternal: async () => ({ opened: true }), copyText: async () => undefined },
 		fs: {
 			readFile: async () => "",
@@ -42,6 +54,7 @@ export function makeServices(featureRouter = new FeatureRouter()) {
 			readdir: async () => [],
 			remove: async () => undefined,
 		},
+		navigation: createStaticNavigation(),
 	};
 
 	return {

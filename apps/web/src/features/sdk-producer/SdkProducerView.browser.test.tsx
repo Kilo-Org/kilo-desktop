@@ -6,7 +6,7 @@ import { page } from "vitest/browser";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import { sdkProducerContract, type Note } from "@anaconda-agentic-desktop/contracts";
 
-import { SdkProvider } from "@/platform/sdk";
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 
 import { SdkProducerView } from "./SdkProducerView";
 

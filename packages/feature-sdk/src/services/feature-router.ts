@@ -30,6 +30,22 @@ export interface FeatureRouterOptions {
 	fallback?: InvokeFallback;
 }
 
+export interface CreateMainSdkOptions {
+	/**
+	 * Resolve (and create, if needed) the feature's storage directory.
+	 * Called lazily on first `mainSdk.storageDir` access and cached.
+	 * Omit in environments without storage (browser mode) — access then throws.
+	 */
+	resolveStorageDir?: () => string;
+	/**
+	 * Resolve a subpath inside the plugin's installed package to an absolute
+	 * filesystem path. Backs `mainSdk.resolvePluginAsset(subpath)`. Omit for
+	 * built-in features (they ship no assets) and browser mode — calling
+	 * `resolvePluginAsset` then throws.
+	 */
+	resolvePluginAsset?: (subpath: string) => string;
+}
+
 /**
  * In-memory handler router backing `sdk.invoke` and `mainSdk.channels`.
  *
@@ -62,7 +78,7 @@ export class FeatureRouter {
 	 * Create a MainSdk instance scoped to a specific feature.
 	 * The feature uses this to register its handlers.
 	 */
-	createMainSdk(featureId: string): MainSdk {
+	createMainSdk(featureId: string, options?: CreateMainSdkOptions): MainSdk {
 		if (!this.handlers.has(featureId)) {
 			this.handlers.set(featureId, new Map());
 		}
@@ -103,8 +119,32 @@ export class FeatureRouter {
 			};
 		};
 
+		const resolveStorageDir = options?.resolveStorageDir;
+		const resolvePluginAsset = options?.resolvePluginAsset;
+		let storageDir: string | undefined;
+
 		return {
 			featureId,
+			get storageDir(): string {
+				if (!resolveStorageDir) {
+					throw new Error(
+						`[FeatureRouter] Feature "${featureId}" has no storage directory in this ` +
+							`environment (browser mode provides no storage).`,
+					);
+				}
+				storageDir ??= resolveStorageDir();
+				return storageDir;
+			},
+			resolvePluginAsset: (subpath: string) => {
+				if (!resolvePluginAsset) {
+					throw new Error(
+						`[FeatureRouter] Feature "${featureId}" has no plugin asset directory in this ` +
+							`environment — resolvePluginAsset is only available to plugins booted from a ` +
+							`discovered manifest (built-in features and browser mode do not ship assets).`,
+					);
+				}
+				return resolvePluginAsset(subpath);
+			},
 			channels,
 			onDispose: (fn: () => void) => {
 				this.disposables.get(featureId)!.push(fn);

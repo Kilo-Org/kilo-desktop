@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import path from "node:path";
 
 import { logger } from "@anaconda/playwright-utils/custom-logger";
 
@@ -12,7 +13,7 @@ export function killStrayProcesses(): void {
 	const executable = packagedExecutable();
 	if (process.platform === "win32") {
 		try {
-			execFileSync("taskkill", ["/F", "/IM", "anaconda-agentic-desktop.exe", "/T"], {
+			execFileSync("taskkill", ["/F", "/IM", path.basename(executable), "/T"], {
 				stdio: "ignore",
 			});
 		} catch {

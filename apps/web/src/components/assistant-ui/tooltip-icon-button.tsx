@@ -2,9 +2,14 @@
 
 import { type ComponentPropsWithRef, forwardRef } from "react";
 
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 export type TooltipIconButtonProps = ComponentPropsWithRef<typeof Button> & {
 	tooltip: string;

@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SdkProducerService } from "@anaconda-agentic-desktop/contracts";
 
-import { useSdk } from "@/platform/sdk";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 import {
 	addNoteMutationOptions,
@@ -21,13 +21,14 @@ import {
  * - sdk.events.emit / sdk.events.on (pub/sub)
  * - sdk.state.register / sdk.state.get / sdk.state.peek (reactive state)
  * - sdk.plugins.expose / sdk.plugins.get (capabilities)
- * - sdk.contribute (UI zone contributions)
+ * - sdk.contribute (UI zone contributions — rendered by the shell's ZoneOutlet)
  * - sdk.commands.register (command palette)
  * - sdk.notifications.show / sdk.notifications.setBadge (shell notifications)
  * - sdk.theme.subscribe / sdk.theme.peek (theme observation)
  * - sdk.shell.openExternal / sdk.shell.copyText (shell operations)
+ * - sdk.navigate / sdk.location (shell navigation delegate)
  * - sdk.fs.* (filesystem — expected to reject as not yet wired)
- * - sdk.tools / sdk.intents / sdk.navigate / sdk.dispatch (deferred — expected to throw)
+ * - sdk.tools / sdk.intents / sdk.dispatch (deferred — expected to throw)
  * - sdk.onDispose (cleanup registration)
  */
 export function SdkProducerView() {
@@ -78,12 +79,13 @@ export function SdkProducerView() {
 
 	// ─── sdk.contribute — register a UI contribution ────────────────────────
 	useEffect(() => {
-		sdk.contribute("status-bar", {
-			component: "SdkProducerStatus",
+		const remove = sdk.contribute("status-bar", {
+			component: SdkProducerStatusBarItem,
 			label: "SDK Explorer",
 			priority: 10,
 		});
 		appendLog("Contribution registered: status-bar zone");
+		return remove;
 	}, [sdk]);
 
 	// ─── sdk.commands.register — add command palette entries ─────────────────
@@ -204,6 +206,15 @@ export function SdkProducerView() {
 		);
 	}
 
+	function handleNavigation() {
+		const location = sdk.location.peek();
+		appendLog(`location.peek() → ${location.path}`);
+		// Navigate to this feature's own route — proves the delegate is wired
+		// without yanking the user off the page.
+		sdk.navigate("/sdk-producer");
+		appendLog(`navigate("/sdk-producer") dispatched`);
+	}
+
 	function handleDeferredTest() {
 		const results: string[] = [];
 		try {
@@ -217,16 +228,11 @@ export function SdkProducerView() {
 			results.push(`intents.list: threw`);
 		}
 		try {
-			sdk.navigate({ plugin: "x", intent: "y" });
-		} catch {
-			results.push(`navigate: threw`);
-		}
-		try {
 			sdk.dispatch({ plugin: "x", action: "y" });
 		} catch {
 			results.push(`dispatch: threw`);
 		}
-		appendLog(`Deferred APIs (all expected to throw): ${results.length}/4 threw correctly`);
+		appendLog(`Deferred APIs (all expected to throw): ${results.length}/3 threw correctly`);
 	}
 
 	// ─── Render ─────────────────────────────────────────────────────────────
@@ -304,6 +310,7 @@ export function SdkProducerView() {
 					<ActionButton label="notifications.setBadge" onClick={handleBadge} />
 					<ActionButton label="shell.copyText" onClick={handleCopyText} />
 					<ActionButton label="shell.openExternal" onClick={handleOpenExternal} />
+					<ActionButton label="navigate + location" onClick={handleNavigation} />
 					<ActionButton label="fs.exists (expect fail)" onClick={handleFsTest} />
 					<ActionButton label="deferred APIs (expect throws)" onClick={handleDeferredTest} />
 				</div>
@@ -338,4 +345,9 @@ function ActionButton({ label, onClick }: { label: string; onClick: () => void }
 			{label}
 		</button>
 	);
+}
+
+/** Status-bar zone contribution — rendered by the shell's ZoneOutlet while this view is mounted. */
+function SdkProducerStatusBarItem() {
+	return <span data-qa-id="sdk-producer-status-bar-item">SDK Explorer active</span>;
 }

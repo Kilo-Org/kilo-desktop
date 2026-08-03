@@ -14,8 +14,8 @@
 	"rtl": false,
 	"aliases": {
 		"components": "@/components",
-		"utils": "@/lib/utils",
-		"ui": "@/components/ui",
+		"utils": "@anaconda-agentic-desktop/ui/lib/utils",
+		"ui": "@anaconda-agentic-desktop/ui/components",
 		"lib": "@/lib",
 		"hooks": "@/hooks"
 	},

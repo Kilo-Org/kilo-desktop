@@ -3,6 +3,7 @@ import {
 	CommandRegistry,
 	ContributionRegistry,
 	createSdk,
+	createStaticNavigation,
 	EventBus,
 	FeatureRouter,
 	StateBroker,
@@ -47,8 +48,11 @@ type FakeSdkShellOptions = {
 	commands?: Partial<SDK["commands"]>;
 	notifications?: Partial<SDK["notifications"]>;
 	theme?: Partial<SDK["theme"]>;
+	auth?: Partial<SDK["auth"]>;
 	shell?: Partial<SDK["shell"]>;
 	fs?: Partial<SDK["fs"]>;
+	/** Override the shell navigation delegate (sdk.navigate + sdk.location). */
+	navigation?: Partial<ShellDelegates["navigation"]>;
 	onDispose?: SDK["onDispose"];
 	destroy?: SDK["destroy"];
 };
@@ -94,6 +98,20 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 			},
 			options.theme,
 		),
+		auth: merge<SDK["auth"]>(
+			{
+				subscribe: (fn) => {
+					fn({ status: "anonymous" });
+					return noop;
+				},
+				peek: () => ({ status: "anonymous" }),
+				getSession: async () => ({ status: "anonymous" }),
+				refresh: async () => ({ status: "anonymous" }),
+				login: async () => ({ status: "anonymous" }),
+				logout: async () => ({ status: "anonymous" }),
+			},
+			options.auth,
+		),
 		shell: merge<SDK["shell"]>(
 			{
 				openExternal: async () => ({ opened: true }),
@@ -112,6 +130,11 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 			},
 			options.fs,
 		),
+		// The fake pins the location to "/" and navigation is a no-op — the
+		// shared static delegate keeps the subscribe-fires-synchronously
+		// contract aligned with production. Override to record navigations or
+		// to drive location updates from the test.
+		navigation: merge<ShellDelegates["navigation"]>(createStaticNavigation(), options.navigation),
 	};
 
 	return {
@@ -246,8 +269,20 @@ export function createFakeFeatureSystem(options: FakeFeatureSystemOptions): Fake
  * Create a fake MainSdk for testing feature main-process registration.
  * Backed by a real FeatureRouter — invoke/has go through the same validation
  * path as production, and dispose runs the same teardown.
+ *
+ * `storageDir` defaults to a lazily created temp directory (Node only);
+ * pass `storageDir` to control where the feature persists in the test.
+ *
+ * `pluginDir` powers `mainSdk.resolvePluginAsset(subpath)`: pass the
+ * plugin package root (or any directory holding the assets the test needs)
+ * and the fake resolves `subpath` against it. Omit for tests that never
+ * call `resolvePluginAsset`; access then throws with the shell's error.
  */
-export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
+export function createFakeMainSdk(options?: {
+	featureId?: string;
+	storageDir?: string;
+	pluginDir?: string;
+}): MainSdk & {
 	/** Invoke a registered handler, validating args/output like the real router. */
 	invoke(channel: string, args?: unknown): Promise<unknown>;
 	/** Whether a handler is registered for the channel. */
@@ -261,10 +296,37 @@ export function createFakeMainSdk(options?: { featureId?: string }): MainSdk & {
 } {
 	const featureId = options?.featureId ?? "test-feature";
 	const router = new FeatureRouter();
-	const mainSdk = router.createMainSdk(featureId);
+	const pluginDir = options?.pluginDir;
+	const mainSdk = router.createMainSdk(featureId, {
+		resolveStorageDir: () => {
+			if (options?.storageDir !== undefined) return options.storageDir;
+			// Node-only, resolved lazily via process.getBuiltinModule so this
+			// module stays importable in browser tests (which never access it).
+			const fs = process.getBuiltinModule("node:fs");
+			const os = process.getBuiltinModule("node:os");
+			const path = process.getBuiltinModule("node:path");
+			return fs.mkdtempSync(path.join(os.tmpdir(), `fake-${featureId}-`));
+		},
+		...(pluginDir === undefined
+			? {}
+			: {
+					resolvePluginAsset: (subpath: string) => {
+						const path = process.getBuiltinModule("node:path");
+						return path.resolve(pluginDir, subpath);
+					},
+				}),
+	});
 
 	return {
-		...mainSdk,
+		featureId: mainSdk.featureId,
+		// Delegate instead of spreading — spreading would eagerly invoke the
+		// lazy storageDir getter and create a temp dir every test.
+		get storageDir() {
+			return mainSdk.storageDir;
+		},
+		resolvePluginAsset: mainSdk.resolvePluginAsset,
+		channels: mainSdk.channels,
+		onDispose: mainSdk.onDispose,
 		invoke: (channel, args) => router.invoke(featureId, channel, args),
 		has: (channel) => router.has(featureId, channel),
 		dispose: () => router.destroyFeature(featureId),

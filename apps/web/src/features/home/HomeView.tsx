@@ -6,6 +6,7 @@ import {
 import type { FC } from "react";
 
 import { Composer } from "@/components/assistant-ui/composer";
+import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 
 /**
  * Stub model until home → chat navigation is wired. Keeps the official
@@ -46,6 +47,8 @@ export function HomeView() {
 							<Composer />
 						</div>
 					</div>
+					{/* Dashboard widgets registered via sdk.contribute("dashboard", ...) */}
+					<ZoneOutlet zone="dashboard" className="mt-6 grid gap-3" />
 				</div>
 			</div>
 		</AssistantRuntimeProvider>

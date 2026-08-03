@@ -20,6 +20,20 @@ configuration.
 | `staging` | Release candidate for internal validation | QA / internal stakeholders | Manual `Staging Publish` workflow |
 | `prod`    | Stable customer release                   | Customers                  | Manual `Prod Publish` workflow    |
 
+Each environment has a distinct app identity so local development, Canary, Staging, and
+Production can coexist without sharing installers or application data:
+
+| Environment       | Product name                     | Identity suffix |
+| ----------------- | -------------------------------- | --------------- |
+| Local development | Anaconda Agentic Desktop Dev     | `dev`           |
+| `canary`          | Anaconda Agentic Desktop Canary  | `canary`        |
+| `staging`         | Anaconda Agentic Desktop Staging | `staging`       |
+| `prod`            | Anaconda Agentic Desktop         | none            |
+
+The suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
+Linux package and executable names, and Electron's application name (which separates
+the default user-data directory). Production retains the existing unsuffixed identity.
+
 ## Distribution matrix
 
 Forge uses only official makers:
@@ -51,10 +65,18 @@ HTTPS.
 
 ## Build-time variables
 
+The desktop main bundle loads committed Vite variables from
+`apps/desktop/.env.<environment>`. Local development uses `.env.development`; packaged
+builds select `.env.canary`, `.env.staging`, or `.env.prod` from `RELEASE_CHANNEL`.
+Existing process variables override the committed value, and machine-specific overrides
+can use an ignored `.env.<environment>.local` file. Only public build-time values belong
+in the committed files; secrets remain in GitHub Environments.
+
 The Forge compile-time contract uses:
 
 | Variable                 | Meaning                                                                                 |
 | ------------------------ | --------------------------------------------------------------------------------------- |
+| `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file      |
 | `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                     |
 | `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                              |
 | `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                             |
@@ -85,8 +107,8 @@ with repository/environment variables:
 
 Signing secrets and update variables live on the GitHub Environments above. `Build`
 attaches the `canary` environment so the same optional codesign material is available for
-manual makes; it does not publish to S3. The Linux job installs `fakeroot` for DEB
-packaging.
+manual makes; it does not publish to S3. Linux jobs install `fakeroot` for DEB packaging
+and the `pkg-config`/`libsecret` development packages required to rebuild keytar.
 
 ## Signing credentials
 

@@ -6,10 +6,10 @@ import { noop } from "./test-helpers.js";
 describe("ContributionRegistry", () => {
 	it("register returns an unregister function that only removes that contribution", () => {
 		const registry = new ContributionRegistry();
-		const unregister = registry.register("todos", "statusbar", { component: null, label: "A" });
-		registry.register("todos", "statusbar", { component: null, label: "B" });
+		const unregister = registry.register("todos", "status-bar", { component: null, label: "A" });
+		registry.register("todos", "status-bar", { component: null, label: "B" });
 		unregister();
-		expect(registry.getForZone("statusbar").map((c) => c.label)).toEqual(["B"]);
+		expect(registry.getForZone("status-bar").map((c) => c.label)).toEqual(["B"]);
 	});
 
 	it("stores size and sorts a zone by priority descending", () => {
@@ -36,14 +36,14 @@ describe("ContributionRegistry", () => {
 			registry.onChange(() => {
 				throw new Error("listener boom");
 			});
-			registry.register("todos", "statusbar", { component: null, label: "A" });
+			registry.register("todos", "status-bar", { component: null, label: "A" });
 			expect(calls).toBe(1);
 			expect(warn).toHaveBeenCalledWith(
 				expect.stringContaining("onChange handler threw:"),
 				expect.any(Error),
 			);
 			unsub();
-			registry.register("todos", "statusbar", { component: null, label: "B" });
+			registry.register("todos", "status-bar", { component: null, label: "B" });
 			expect(calls).toBe(1);
 		} finally {
 			warn.mockRestore();
@@ -52,9 +52,9 @@ describe("ContributionRegistry", () => {
 
 	it("unregister is idempotent when the contribution is already gone", () => {
 		const registry = new ContributionRegistry();
-		const unregister = registry.register("todos", "statusbar", { component: null, label: "A" });
+		const unregister = registry.register("todos", "status-bar", { component: null, label: "A" });
 		unregister();
 		expect(() => unregister()).not.toThrow();
-		expect(registry.getForZone("statusbar")).toEqual([]);
+		expect(registry.getForZone("status-bar")).toEqual([]);
 	});
 });

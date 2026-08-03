@@ -1,0 +1,29 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { AnacondaKeyringWriteError, OAuthCallbackError, SystemKeyringError } from "./errors.js";
+
+describe("auth errors", () => {
+	it("preserves filesystem error codes for keyring write failures", () => {
+		const cause = Object.assign(new Error("denied"), { code: "EACCES" });
+
+		expect(new AnacondaKeyringWriteError("/tmp/keyring", cause).errnoCode).toBe("EACCES");
+	});
+
+	it("leaves errnoCode undefined when a write error has no code", () => {
+		expect(
+			new AnacondaKeyringWriteError("/tmp/keyring", new Error("denied")).errnoCode,
+		).toBeUndefined();
+	});
+
+	it("adds Linux keyring troubleshooting context", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+
+		expect(new SystemKeyringError(new Error("unavailable")).message).toMatch(/libsecret/);
+	});
+
+	it("falls back to the OAuth error code when no description is provided", () => {
+		expect(new OAuthCallbackError("access_denied").message).toBe(
+			"OAuth callback error: access_denied",
+		);
+	});
+});

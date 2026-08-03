@@ -71,7 +71,10 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!.env.example
+!apps/desktop/.env.canary
+!apps/desktop/.env.development
+!apps/desktop/.env.prod
+!apps/desktop/.env.staging
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -151,6 +154,7 @@ Thumbs.db
 
 # Agent plans
 .omo
+.kilo
 
 # App specific
 apps/desktop/.data/

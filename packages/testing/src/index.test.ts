@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -41,6 +43,37 @@ describe("createFakeMainSdk", () => {
 		const mainSdk = createFakeMainSdk();
 		mainSdk.channels(todosChannels).handle("list", () => []);
 		await expect(mainSdk.invoke("list")).resolves.toEqual([]);
+	});
+
+	it("provides a lazily created temp storageDir, stable across accesses", () => {
+		const fs = process.getBuiltinModule("node:fs");
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+
+		const first = mainSdk.storageDir;
+		expect(fs.existsSync(first)).toBe(true);
+		expect(mainSdk.storageDir).toBe(first);
+	});
+
+	it("uses the provided storageDir override", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos", storageDir: "/tmp/custom-todos" });
+		expect(mainSdk.storageDir).toBe("/tmp/custom-todos");
+	});
+
+	it("resolvePluginAsset joins subpaths against the provided pluginDir", () => {
+		// path.resolve produces platform-specific separators (e.g. backslashes on
+		// Windows), so build the expected values the same way rather than
+		// hard-coding forward slashes.
+		const pluginDir = path.resolve("/tmp/fake-plugin");
+		const mainSdk = createFakeMainSdk({ featureId: "todos", pluginDir });
+		expect(mainSdk.resolvePluginAsset("drizzle")).toBe(path.resolve(pluginDir, "drizzle"));
+		expect(mainSdk.resolvePluginAsset("seeds/en.json")).toBe(
+			path.resolve(pluginDir, "seeds/en.json"),
+		);
+	});
+
+	it("throws on resolvePluginAsset when no pluginDir is provided", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+		expect(() => mainSdk.resolvePluginAsset("drizzle")).toThrow(/no plugin asset directory/);
 	});
 
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {
@@ -96,6 +129,20 @@ describe("createFakeSdk", () => {
 		const unsub = sdk.theme.subscribe(listener);
 		expect(listener).toHaveBeenCalledWith("light");
 		unsub();
+	});
+
+	it("auth delegates report an anonymous session by default", async () => {
+		const sdk = createFakeSdk({ featureId: "auth" });
+		const listener = vi.fn();
+		const unsubscribe = sdk.auth.subscribe(listener);
+
+		expect(listener).toHaveBeenCalledWith({ status: "anonymous" });
+		expect(sdk.auth.peek()).toEqual({ status: "anonymous" });
+		await expect(sdk.auth.getSession()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.refresh()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.login()).resolves.toEqual({ status: "anonymous" });
+		await expect(sdk.auth.logout()).resolves.toEqual({ status: "anonymous" });
+		expect(() => unsubscribe()).not.toThrow();
 	});
 
 	it("shell delegates succeed by default", async () => {

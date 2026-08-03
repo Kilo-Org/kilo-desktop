@@ -16,6 +16,41 @@ describe("FeatureRouter", () => {
 		expect(result).toBe("Hello, World!");
 	});
 
+	it("resolves storageDir lazily and caches the result", () => {
+		const router = new FeatureRouter();
+		const resolveStorageDir = vi.fn(() => "/tmp/plugins/my-feature");
+		const mainSdk = router.createMainSdk("my-feature", { resolveStorageDir });
+
+		expect(resolveStorageDir).not.toHaveBeenCalled();
+		expect(mainSdk.storageDir).toBe("/tmp/plugins/my-feature");
+		expect(mainSdk.storageDir).toBe("/tmp/plugins/my-feature");
+		expect(resolveStorageDir).toHaveBeenCalledTimes(1);
+	});
+
+	it("throws on storageDir access when no resolver is provided (browser mode)", () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("my-feature");
+		expect(() => mainSdk.storageDir).toThrow(/no storage directory/);
+	});
+
+	it("resolvePluginAsset delegates to the injected resolver", () => {
+		const router = new FeatureRouter();
+		const resolvePluginAsset = vi.fn((subpath: string) => `/tmp/plugins/my-feature/${subpath}`);
+		const mainSdk = router.createMainSdk("my-feature", { resolvePluginAsset });
+
+		expect(mainSdk.resolvePluginAsset("drizzle")).toBe("/tmp/plugins/my-feature/drizzle");
+		expect(mainSdk.resolvePluginAsset("seeds/en.json")).toBe(
+			"/tmp/plugins/my-feature/seeds/en.json",
+		);
+		expect(resolvePluginAsset).toHaveBeenCalledTimes(2);
+	});
+
+	it("throws on resolvePluginAsset when no resolver is provided (built-in features, browser mode)", () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("my-feature");
+		expect(() => mainSdk.resolvePluginAsset("drizzle")).toThrow(/no plugin asset directory/);
+	});
+
 	it("throws FeatureError NOT_FOUND on unknown feature or channel", async () => {
 		const router = new FeatureRouter();
 		await expect(router.invoke("unknown", "nope")).rejects.toMatchObject({

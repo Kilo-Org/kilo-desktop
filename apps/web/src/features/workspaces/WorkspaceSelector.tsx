@@ -100,7 +100,7 @@ export function WorkspaceSelector() {
 				side="bottom"
 				sideOffset={6}
 				collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
-				className="w-64 p-0"
+				className="w-64 gap-0 p-0"
 				onKeyDown={(event) => {
 					if (event.key === "Escape") setOpen(false);
 				}}
@@ -112,6 +112,7 @@ export function WorkspaceSelector() {
 					filter={filterWorkspaceItems}
 				>
 					<CommandInput placeholder="Search workspaces…" />
+					<CommandSeparator />
 					<CommandList>
 						{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 						<CommandGroup>
@@ -182,20 +183,20 @@ export function WorkspaceSelector() {
 								</CommandItem>
 							))}
 						</CommandGroup>
-						<CommandSeparator />
-						<CommandGroup forceMount className="pt-2">
-							<CommandItem
-								value="create-workspace"
-								onSelect={() => {
-									setOpen(false);
-									openCreate();
-								}}
-							>
-								<PlusIcon />
-								Create workspace
-							</CommandItem>
-						</CommandGroup>
 					</CommandList>
+					<CommandSeparator />
+					<CommandGroup forceMount>
+						<CommandItem
+							value="create-workspace"
+							onSelect={() => {
+								setOpen(false);
+								openCreate();
+							}}
+						>
+							<PlusIcon />
+							Create workspace
+						</CommandItem>
+					</CommandGroup>
 				</Command>
 			</PopoverContent>
 		</Popover>

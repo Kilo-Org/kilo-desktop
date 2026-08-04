@@ -141,6 +141,24 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
+	it("removes inherited macOS dynamic-loader overrides", async () => {
+		const { manager, spawn } = createHarness({
+			platform: "darwin",
+			environment: {
+				PATH: "/bin",
+				DYLD_INSERT_LIBRARIES: "/tmp/injected.dylib",
+				DYLD_LIBRARY_PATH: "/tmp/libraries",
+				DYLD_FRAMEWORK_PATH: "/tmp/frameworks",
+			},
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		expect(environment.PATH).toBe("/bin");
+		expect(Object.keys(environment).filter((name) => name.startsWith("DYLD_"))).toEqual([]);
+		manager.dispose();
+	});
+
 	it("rejects a foreign server that does not accept the per-launch credentials", async () => {
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const { manager, statuses } = createHarness({

@@ -1,8 +1,8 @@
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 export class KiloCodePage {
-	async verifyAuthenticatedServerTransport(): Promise<void> {
-		const result = await getPage().evaluate(async () => {
+	async verifyAuthenticatedServerTransport(workspaceName: string): Promise<void> {
+		const result = await getPage().evaluate(async (expectedWorkspaceName) => {
 			type InvokeResult =
 				| { ok: true; value: unknown }
 				| { ok: false; error: { code: string; message: string } };
@@ -24,10 +24,20 @@ export class KiloCodePage {
 				return response.value;
 			};
 
-			const workspaces = (await invoke("workspaces", "list")) as Array<{ id: string }>;
-			if (!workspaces[0]) throw new Error("Kilo smoke test requires a workspace.");
+			const workspaces = (await invoke("workspaces", "list")) as Array<{
+				id: string;
+				name: string;
+				folders: Array<{ path: string; isPrimary: boolean }>;
+			}>;
+			const workspace = workspaces.find((candidate) => candidate.name === expectedWorkspaceName);
+			if (!workspace) {
+				throw new Error(`Kilo smoke test requires workspace ${expectedWorkspaceName}.`);
+			}
+			const primaryFolder = workspace.folders.find((folder) => folder.isPrimary);
+			if (!primaryFolder)
+				throw new Error(`Workspace ${expectedWorkspaceName} has no primary folder.`);
 			const connection = (await invoke("kilo-code", "server.getConnection", {
-				workspaceId: workspaces[0].id,
+				workspaceId: workspace.id,
 			})) as {
 				baseUrl: string;
 				username: string;
@@ -54,19 +64,23 @@ export class KiloCodePage {
 				healthOk: healthResponse.ok && health.healthy === true,
 				healthVersion: health.version,
 				connectionVersion: connection.version,
-				hasDirectory: connection.directory.length > 0,
+				directory: connection.directory,
+				expectedDirectory: primaryFolder.path,
 				eventOk: eventResponse.ok,
 				eventContentType,
 			};
-		});
+		}, workspaceName);
 
 		if (!result.healthOk || result.healthVersion !== result.connectionVersion) {
 			throw new Error(
 				`Expected authenticated Kilo health ${result.connectionVersion}, got ${result.healthVersion ?? "unhealthy"}.`,
 			);
 		}
-		if (!result.hasDirectory)
-			throw new Error("Kilo connection did not include a workspace directory.");
+		if (result.directory !== result.expectedDirectory) {
+			throw new Error(
+				`Expected Kilo directory ${result.expectedDirectory}, got ${result.directory || "no directory"}.`,
+			);
+		}
 		if (!result.eventOk || !result.eventContentType.includes("text/event-stream")) {
 			throw new Error(
 				`Expected authenticated Kilo SSE, got ${result.eventContentType || "no content type"}.`,

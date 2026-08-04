@@ -7,6 +7,6 @@ test.describe("Kilo Code @smoke", () => {
 		workspaceFolder,
 	}) => {
 		await workspacesPage.createWorkspaceFromFolder(workspaceFolder.name);
-		await kiloCodePage.verifyAuthenticatedServerTransport();
+		await kiloCodePage.verifyAuthenticatedServerTransport(workspaceFolder.name);
 	});
 });

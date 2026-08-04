@@ -303,6 +303,11 @@ export class KiloServerManager {
 		delete environment.NODE_OPTIONS;
 		delete environment.ELECTRON_RUN_AS_NODE;
 		if (this.#options.platform === "linux") delete environment.LD_PRELOAD;
+		if (this.#options.platform === "darwin") {
+			for (const name of Object.keys(environment)) {
+				if (name.startsWith("DYLD_")) delete environment[name];
+			}
+		}
 		return environment;
 	}
 

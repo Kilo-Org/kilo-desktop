@@ -1,5 +1,6 @@
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import { FolderIcon, FolderPlusIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useEffect, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 
 import {
@@ -352,6 +353,17 @@ function WorkspaceFormDialog({
 														size="sm"
 														role="listitem"
 														className="flex-nowrap gap-2 px-2 py-1"
+														render={
+															<motion.div
+																layout="position"
+																transition={{
+																	type: "spring",
+																	stiffness: 500,
+																	damping: 35,
+																	mass: 0.8,
+																}}
+															/>
+														}
 													>
 														<ItemMedia variant="icon" className="text-muted-foreground">
 															<FolderIcon />

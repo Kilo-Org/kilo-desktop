@@ -12,10 +12,12 @@ import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
  * frames nteract's dev server when one is configured — the iframe loads only in
  * development, where the CSP grants the Vite origin.
  */
-const NTERACT_ORIGIN: string | undefined = import.meta.env["VITE_NTERACT_ORIGIN"];
 const DEFAULT_NOTEBOOK_PATH = "/tmp/ad-nb-python.ipynb";
 
-function buildSrc(origin: string, notebookPath: string): string {
+/** Read at render time, not module scope, so tests can drive both branches. */
+function nteractSrc(notebookPath: string): string | undefined {
+	const origin: string | undefined = import.meta.env["VITE_NTERACT_ORIGIN"];
+	if (!origin) return undefined;
 	const url = new URL(origin);
 	url.searchParams.set("path", notebookPath);
 	return url.toString();
@@ -25,6 +27,7 @@ export function NotebookView() {
 	const sdk = useSdk<NotebookService>("notebook");
 	const status = useSdkQuery(sdk, "status");
 	const daemon = status.data?.daemon;
+	const frameSrc = nteractSrc(DEFAULT_NOTEBOOK_PATH);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
@@ -42,9 +45,9 @@ export function NotebookView() {
 					</p>
 				</div>
 			</div>
-			{NTERACT_ORIGIN ? (
+			{frameSrc ? (
 				<iframe
-					src={buildSrc(NTERACT_ORIGIN, DEFAULT_NOTEBOOK_PATH)}
+					src={frameSrc}
 					title="nteract notebook"
 					className="min-h-0 flex-1 border-0"
 					allow="clipboard-read; clipboard-write; fullscreen"

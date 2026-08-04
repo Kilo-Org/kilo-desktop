@@ -1,5 +1,5 @@
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { notebookContract, type NotebookStatus } from "@anaconda-agentic-desktop/contracts";
@@ -23,7 +23,10 @@ function renderView(status: () => NotebookStatus | Promise<NotebookStatus>) {
 	);
 }
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	vi.unstubAllEnvs();
+});
 
 describe("NotebookView", () => {
 	it("reports the daemon version and relay port once status resolves", async () => {
@@ -67,5 +70,17 @@ describe("NotebookView", () => {
 
 		await expect.element(page.getByTestId("notebook-placeholder")).toBeVisible();
 		expect(document.querySelector('[data-qa-id="notebook-frame"]')).toBeNull();
+	});
+
+	it("frames nteract's dev server when an origin is configured", async () => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
+		renderView(() => ({ relayPort: 51234, daemon: null }));
+
+		const frame = document.querySelector('[data-qa-id="notebook-frame"]');
+		// The notebook path travels as a query param, not a route segment.
+		expect(frame?.getAttribute("src")).toBe(
+			"http://localhost:8737/?path=%2Ftmp%2Fad-nb-python.ipynb",
+		);
+		expect(document.querySelector('[data-qa-id="notebook-placeholder"]')).toBeNull();
 	});
 });

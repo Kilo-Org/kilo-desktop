@@ -36,9 +36,9 @@ describe("createRouterNavigation", () => {
 	});
 
 	it("peek reflects the router's current location", () => {
-		const { router } = makeFakeRouter("/sdk-producer");
+		const { router } = makeFakeRouter("/settings");
 		const navigation = createRouterNavigation(router);
-		expect(navigation.peek()).toEqual({ path: "/sdk-producer", search: {} });
+		expect(navigation.peek()).toEqual({ path: "/settings", search: {} });
 	});
 
 	it("subscribe fires synchronously and after each resolved navigation", () => {

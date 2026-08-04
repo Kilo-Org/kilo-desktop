@@ -1,14 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-	BellIcon,
-	HomeIcon,
-	LogOutIcon,
-	PackageIcon,
-	PlugIcon,
-	SplitIcon,
-	UserIcon,
-} from "lucide-react";
+import { BellIcon, HomeIcon, LogOutIcon, UserIcon } from "lucide-react";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
@@ -121,42 +113,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 										<span>Home</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
-								<SidebarMenuItem>
-									<SidebarMenuButton
-										isActive={pathname === "/sdk-producer"}
-										tooltip="SDK Producer"
-										render={<Link to="/sdk-producer" />}
-										className="size-8!"
-										data-qa-id="nav-sdk-producer"
-									>
-										<PackageIcon />
-										<span>SDK Producer</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
-								<SidebarMenuItem>
-									<SidebarMenuButton
-										isActive={pathname === "/sdk-consumer"}
-										tooltip="SDK Consumer"
-										render={<Link to="/sdk-consumer" />}
-										className="size-8!"
-										data-qa-id="nav-sdk-consumer"
-									>
-										<PlugIcon />
-										<span>SDK Consumer</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
-								<SidebarMenuItem>
-									<SidebarMenuButton
-										isActive={pathname === "/split"}
-										tooltip="Split"
-										render={<Link to="/split" />}
-										className="size-8!"
-										data-qa-id="nav-split"
-									>
-										<SplitIcon />
-										<span>Split</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
+
 								{navEntries.map((entry) => (
 									<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
 								))}

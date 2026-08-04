@@ -176,10 +176,9 @@ describe("SdkProducerView", () => {
 	it("logs successful notification delivery and filesystem checks", async () => {
 		const { baseElement } = renderProducer({
 			notifications: {
-				show: () => ({ delivered: true }),
-				setBadge: () => ({ delivered: true }),
+				show: async () => ({ delivered: true }),
+				setBadge: async () => ({ delivered: true }),
 			},
-			fs: { exists: async () => true },
 		});
 		const screen = page.elementLocator(baseElement);
 
@@ -193,7 +192,9 @@ describe("SdkProducerView", () => {
 			.element(screen.getByText("notifications.setBadge() → delivered: true", { exact: false }))
 			.toBeVisible();
 
-		await screen.getByRole("button", { name: "fs.exists (expect fail)" }).click();
-		await expect.element(screen.getByText("fs.exists() → true", { exact: false })).toBeVisible();
+		// createFakeSdk ships an in-memory scoped fs sandbox, so the round-trip
+		// (writeFile → readFile → readdir) succeeds without touching disk.
+		await screen.getByRole("button", { name: "fs round-trip" }).click();
+		await expect.element(screen.getByText("fs round-trip → read", { exact: false })).toBeVisible();
 	});
 });

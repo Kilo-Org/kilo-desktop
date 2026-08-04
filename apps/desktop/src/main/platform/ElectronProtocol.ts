@@ -7,6 +7,8 @@ import { net, protocol } from "electron";
 export const DESKTOP_HOST = "app";
 export const DESKTOP_PRODUCTION_SCHEME = "anaconda-agentic-desktop";
 export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
+// Host seam: dynamic loopback connect sources need an explicit plugin permission before this
+// can be derived from a future kilo-code plugin manifest.
 const KILO_CONNECT_SOURCE = "http://127.0.0.1:*";
 
 const MIME_TYPES: Readonly<Record<string, string>> = {

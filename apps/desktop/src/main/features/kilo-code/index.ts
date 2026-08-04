@@ -10,6 +10,7 @@ import {
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { KiloServerManager } from "./KiloServerManager.js";
+import { getBuiltInKiloResourceRoots } from "./builtInAssets.js";
 import { resolveKiloInstallation } from "./installation.js";
 
 export interface KiloServerController {
@@ -28,7 +29,9 @@ export function registerKiloCode(mainSdk: MainSdk, options: RegisterKiloCodeOpti
 		options.createServer ??
 		((onStatusChange: (status: KiloServerStatus) => void) =>
 			new KiloServerManager({
-				installation: resolveKiloInstallation(),
+				installation: resolveKiloInstallation({
+					resourceRoots: getBuiltInKiloResourceRoots(),
+				}),
 				runtimeDirectory: path.join(mainSdk.storageDir, "runtime"),
 				allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
 				onStatusChange,

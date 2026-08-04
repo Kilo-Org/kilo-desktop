@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getKiloCliArtifact, KILO_CLI_VERSION } from "./kilo-cli.js";
+import { getKiloCliArtifact, KILO_CLI_VERSION } from "./artifacts.js";
 
 describe("Kilo CLI artifacts", () => {
 	it("pins the supported native targets and compatibility-first x64 variants", () => {

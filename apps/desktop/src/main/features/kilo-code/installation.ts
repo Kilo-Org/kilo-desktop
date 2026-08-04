@@ -3,41 +3,46 @@ import path from "node:path";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import { getKiloCliArtifact } from "$config/kilo-cli.js";
-
 import type { KiloInstallation } from "./KiloServerManager.js";
+import { getKiloCliArtifact } from "./cli/artifacts.js";
+
+export interface KiloInstallationResolutionOptions {
+	readonly resourceRoots: readonly string[];
+	readonly environment?: NodeJS.ProcessEnv;
+	readonly platform?: NodeJS.Platform;
+	readonly arch?: NodeJS.Architecture;
+	readonly exists?: (candidatePath: string) => boolean;
+}
 
 export function resolveKiloInstallation(
-	environment: NodeJS.ProcessEnv = process.env,
+	options: KiloInstallationResolutionOptions,
 ): KiloInstallation {
-	const artifact = getKiloCliArtifact();
+	const environment = options.environment ?? process.env;
+	const artifact = getKiloCliArtifact(options.platform, options.arch);
 	const override = environment.KILO_CODE_CLI_PATH?.trim();
 	if (override) {
+		const executablePath = path.resolve(override);
 		return {
-			executablePath: path.resolve(override),
-			treeSitterWasmDirectory: path.join(path.dirname(path.resolve(override)), "tree-sitter"),
+			executablePath,
+			treeSitterWasmDirectory: path.join(path.dirname(executablePath), "tree-sitter"),
 		};
 	}
 
-	const packagedRoot = path.join(process.resourcesPath, "kilo", artifact.target, "bin");
-	const developmentRoot = path.resolve(
-		import.meta.dirname,
-		"../../vendor/kilo",
-		artifact.target,
-		"bin",
+	const exists = options.exists ?? existsSync;
+	const binDirectories = options.resourceRoots.map((root) =>
+		path.join(root, artifact.target, "bin"),
 	);
-	const binDirectory = existsSync(path.join(packagedRoot, artifact.executable))
-		? packagedRoot
-		: developmentRoot;
-	const executablePath = path.join(binDirectory, artifact.executable);
-	if (!existsSync(executablePath)) {
+	const binDirectory = binDirectories.find((candidate) =>
+		exists(path.join(candidate, artifact.executable)),
+	);
+	if (!binDirectory) {
 		throw new FeatureError(
-			`Bundled Kilo CLI is missing at ${executablePath}. Run pnpm fetch:kilo.`,
+			`Bundled Kilo CLI is missing from the configured resource roots. Run pnpm fetch:kilo.`,
 			"BUSINESS",
 		);
 	}
 	return {
-		executablePath,
+		executablePath: path.join(binDirectory, artifact.executable),
 		treeSitterWasmDirectory: path.join(binDirectory, "tree-sitter"),
 	};
 }

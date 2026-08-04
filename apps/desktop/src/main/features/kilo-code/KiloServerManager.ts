@@ -11,7 +11,7 @@ import type { KiloServerConnection, KiloServerStatus } from "@anaconda-agentic-d
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { execa } from "execa";
 
-import { KILO_CLI_VERSION } from "$config/kilo-cli.js";
+import { KILO_CLI_VERSION } from "./cli/artifacts.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);

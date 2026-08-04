@@ -89,7 +89,9 @@ const config: ForgeConfig = {
 		executableName,
 		extraResource: [
 			path.join(packageRoot, "assets/icon.png"),
-			path.join(packageRoot, "vendor/kilo"),
+			// Host seam: a future plugin manifest needs packaged-resource support before this
+			// feature-owned directory can be declared entirely by kilo-code.
+			path.join(packageRoot, "src/main/features/kilo-code/resources/kilo"),
 		],
 		icon: appIcon,
 		name: identity.productName,

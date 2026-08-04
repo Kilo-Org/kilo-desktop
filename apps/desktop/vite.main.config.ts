@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { builtinModules } from "node:module";
 
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, normalizePath } from "vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
 import {
@@ -25,7 +25,7 @@ export default defineConfig(({ command }) => {
 			viteStaticCopy({
 				targets: [
 					{
-						src: path.resolve(root, "drizzle/workspaces"),
+						src: normalizePath(path.resolve(root, "drizzle/workspaces")),
 						dest: "drizzle",
 					},
 				],

@@ -192,6 +192,7 @@ export function WorkspaceSelector() {
 					<CommandSeparator />
 					<CommandGroup forceMount>
 						<CommandItem
+							data-qa-id="workspace-create-command"
 							value="create-workspace"
 							onSelect={() => {
 								setOpen(false);

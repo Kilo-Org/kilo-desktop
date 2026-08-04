@@ -1,5 +1,7 @@
 import { authEvents, authMethods } from "./features/auth.js";
 import { featureMethods } from "./features/feature-invoke.js";
+import { fsMethods } from "./features/fs.js";
+import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
 import { themeMethods } from "./features/theme.js";
 
@@ -21,7 +23,14 @@ export function assertNoDuplicateChannels(...parts: Array<Record<string, unknown
 	}
 }
 
-assertNoDuplicateChannels(shellMethods, themeMethods, authMethods, featureMethods);
+assertNoDuplicateChannels(
+	shellMethods,
+	themeMethods,
+	authMethods,
+	featureMethods,
+	notificationsMethods,
+	fsMethods,
+);
 assertNoDuplicateChannels(authEvents);
 
 export const ipcMethods = {
@@ -29,5 +38,7 @@ export const ipcMethods = {
 	...themeMethods,
 	...authMethods,
 	...featureMethods,
+	...notificationsMethods,
+	...fsMethods,
 };
 export const ipcEvents = { ...authEvents };

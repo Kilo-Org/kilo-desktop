@@ -13,26 +13,6 @@ import { getColorSchemeSnapshot, subscribeColorScheme } from "./theme/color-sche
 
 // ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
 
-function undeliveredNotifications(): ShellDelegates["notifications"] {
-	// Not wired yet: expected capability absence, so report it in the result
-	// envelope instead of throwing (features detect the capability, not the
-	// platform). Warn once so the gap stays visible during development.
-	let warned = false;
-	const undelivered = (method: string) => {
-		if (!warned) {
-			warned = true;
-			console.warn(
-				`[FeatureSystem] ${method}: notifications are not wired yet — reporting delivered: false.`,
-			);
-		}
-		return { delivered: false, reason: "sdk.notifications is not yet wired to a shell service." };
-	};
-	return {
-		show: () => undelivered("sdk.notifications.show"),
-		setBadge: () => undelivered("sdk.notifications.setBadge"),
-	};
-}
-
 function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
 	// Module-scoped-per-delegate cache: unlike theme (a synchronous DOM read),
 	// the session resolves asynchronously. Seed anonymous, kick off one lazy
@@ -101,7 +81,10 @@ function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
 
 export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation): ShellDelegates {
 	return {
-		notifications: undeliveredNotifications(),
+		notifications: {
+			show: (opts) => api.notifications.show(opts),
+			setBadge: (count) => api.notifications.setBadge({ count }),
+		},
 		theme: {
 			subscribe(fn) {
 				fn(getColorSchemeSnapshot());
@@ -114,13 +97,17 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 			openExternal: (url) => api.shell.openExternal({ url }),
 			copyText: (text) => api.shell.copyText({ text }),
 		},
+		// Scoped fs — the SDK binds each feature's id onto this delegate, and
+		// the main process confines every path to that feature's sandbox dir
+		// (`${userData}/plugins/<featureId>/fs/`). Browser mode has no filesystem;
+		// its LocalApi adapter rejects.
 		fs: {
-			readFile: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			writeFile: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			exists: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			mkdir: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			readdir: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
-			remove: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),
+			readFile: async (featureId, path) => (await api.fs.readFile({ featureId, path })).content,
+			writeFile: (featureId, path, content) => api.fs.writeFile({ featureId, path, content }),
+			exists: async (featureId, path) => (await api.fs.exists({ featureId, path })).exists,
+			mkdir: (featureId, path) => api.fs.mkdir({ featureId, path }),
+			readdir: async (featureId, path) => (await api.fs.readdir({ featureId, path })).entries,
+			remove: (featureId, path) => api.fs.remove({ featureId, path }),
 		},
 		navigation: navigation ?? createInertNavigation(),
 	};

@@ -76,7 +76,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	/** Register commands in the command palette. See {@link SdkCommands}. */
 	readonly commands: SdkCommands;
 
-	/** Shell-level services (delegated to the shell). NOTE: fs is not wired yet and rejects; notifications report `delivered: false` until wired. */
+	/** Shell-level services (delegated to the shell). fs is sandboxed per feature — see {@link SdkFs}. */
 	readonly notifications: SdkNotifications;
 	readonly theme: SdkTheme;
 	readonly auth: SdkAuth;
@@ -102,7 +102,11 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 */
 	readonly location: SdkLocation;
 
-	/** Not yet available — requires the full plugin system. Calling these throws. */
+	/**
+	 * Deferred — no consumer exists yet; calling these throws. See
+	 * docs/plugin-implementation-plan.md (Slice 4, "Deferred APIs") for the
+	 * rationale and timeline.
+	 */
 	readonly tools: SdkTools;
 	readonly intents: SdkIntents;
 	dispatch(intent: DispatchIntent): void;
@@ -287,20 +291,26 @@ export interface SdkCommands {
 
 // ─── Shell-level services ────────────────────────────────────────────────────
 
-/** Result envelope for notification delivery. */
+/**
+ * Result envelope for notification delivery. `reason` includes `undefined` to
+ * stay structurally identical to the contract's zod-inferred type under
+ * `exactOptionalPropertyTypes`.
+ */
 export interface NotificationResult {
 	delivered: boolean;
-	/** Present when delivered is false (e.g., service not wired yet). */
-	reason?: string;
+	/** Present when delivered is false (e.g., unsupported platform, permission denied). */
+	reason?: string | undefined;
 }
 
 /**
- * Shell notifications. NOT WIRED YET: calls are safe but report
- * `{ delivered: false, reason }` — check the result if delivery matters,
- * and prefer capability detection over environment branching.
+ * Shell notifications, delegated to the host (Electron OS notifications and
+ * dock/taskbar badge; browser mode uses the Web Notification/Badging APIs
+ * where available). Delivery is best-effort and never throws for expected
+ * capability absence: check the result envelope if delivery matters, and
+ * prefer capability detection over environment branching.
  *
  * @example
- * const result = sdk.notifications.show({ type: "info", title: "Hi", message: "..." });
+ * const result = await sdk.notifications.show({ type: "info", title: "Hi", message: "..." });
  * if (!result.delivered) fallbackInlineBanner();
  */
 export interface SdkNotifications {
@@ -308,8 +318,8 @@ export interface SdkNotifications {
 		title: string;
 		message: string;
 		type: "info" | "success" | "warning" | "error";
-	}): NotificationResult;
-	setBadge(count: number): NotificationResult;
+	}): Promise<NotificationResult>;
+	setBadge(count: number): Promise<NotificationResult>;
 }
 
 /**
@@ -390,7 +400,26 @@ export interface SdkAuth {
 	logout(): Promise<AuthSession>;
 }
 
-/** NOT WIRED YET — calls reject. Do not ship code paths relying on it. */
+/**
+ * Scoped filesystem access, delegated to the shell (a capability boundary,
+ * not raw fs).
+ *
+ * **Scoping model:** every path is relative to this feature's private sandbox
+ * directory — a dedicated `fs/` subdirectory of the Decision #20 storage root,
+ * i.e. `${userData}/plugins/<id>/fs/`. That subdir is a sibling of the
+ * feature's SQLite `data.db`, never its parent, so `sdk.fs` can never reach
+ * the feature's database. The shell rejects absolute paths and any path that
+ * escapes the sandbox (`..`); a feature can never see another feature's files
+ * or the host filesystem. Expected failures (missing file, escaping path)
+ * reject with a descriptive error.
+ *
+ * Electron-only: browser mode has no filesystem, so calls reject — treat fs
+ * as a detectable capability, not a given.
+ *
+ * @example
+ * await sdk.fs.writeFile("settings.json", JSON.stringify(settings));
+ * const raw = await sdk.fs.readFile("settings.json");
+ */
 export interface SdkFs {
 	readFile(relativePath: string): Promise<string>;
 	writeFile(relativePath: string, content: string): Promise<void>;
@@ -398,6 +427,22 @@ export interface SdkFs {
 	mkdir(relativePath: string): Promise<void>;
 	readdir(relativePath: string): Promise<string[]>;
 	remove(relativePath: string): Promise<void>;
+}
+
+/**
+ * Host-side filesystem delegate. The host implements this ONCE for all
+ * features; the SDK binds the calling feature's id so `sdk.fs` stays
+ * featureId-free. `featureId` selects the sandbox root
+ * (`${userData}/plugins/<featureId>/fs/`) — the host must validate it and the
+ * relative path (see {@link SdkFs} for the scoping model).
+ */
+export interface ShellFsDelegate {
+	readFile(featureId: string, relativePath: string): Promise<string>;
+	writeFile(featureId: string, relativePath: string, content: string): Promise<void>;
+	exists(featureId: string, relativePath: string): Promise<boolean>;
+	mkdir(featureId: string, relativePath: string): Promise<void>;
+	readdir(featureId: string, relativePath: string): Promise<string[]>;
+	remove(featureId: string, relativePath: string): Promise<void>;
 }
 
 // ─── Navigation (shell delegate) ─────────────────────────────────────────────
@@ -455,14 +500,20 @@ export interface PluginPageProps {
 
 // ─── Deferred (plugin system required) ───────────────────────────────────────
 
-/** NOT AVAILABLE YET — placeholder so the interface shape is stable. Calls throw. */
+/**
+ * DEFERRED — placeholder so the interface shape is stable. Calls throw.
+ * See docs/plugin-implementation-plan.md (Slice 4, "Deferred APIs").
+ */
 export interface SdkTools {
 	register(definition: unknown): void;
 	invoke(featureId: string, toolName: string, args: unknown): Promise<unknown>;
 	all(): unknown[];
 }
 
-/** NOT AVAILABLE YET — placeholder so the interface shape is stable. Calls throw. */
+/**
+ * DEFERRED — placeholder so the interface shape is stable. Calls throw.
+ * See docs/plugin-implementation-plan.md (Slice 4, "Deferred APIs").
+ */
 export interface SdkIntents {
 	list(): unknown[];
 }

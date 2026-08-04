@@ -16,15 +16,158 @@ import type {
 	SDK,
 	SdkFactoryServices,
 	ShellDelegates,
+	ShellFsDelegate,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 const noop = () => {};
 
-function notImplemented(method: string): (...args: never[]) => Promise<never> {
-	return async () => {
-		throw new Error(
-			`[FakeSdk] ${method} not implemented in test. Override it via createFakeSdk().`,
-		);
+/**
+ * In-memory `sdk.fs` fake mirroring the production scoping model: paths are
+ * relative to a per-feature sandbox, and absolute or escaping (`..`) paths
+ * are rejected — so a test catches a path bug the same way production would.
+ * State lives per fake instance; nothing touches the real filesystem.
+ */
+function createInMemoryShellFs(): ShellFsDelegate {
+	type Tree = { files: Map<string, string>; dirs: Set<string> };
+	const trees = new Map<string, Tree>();
+
+	const tree = (featureId: string): Tree => {
+		let entry = trees.get(featureId);
+		if (!entry) {
+			// The sandbox root ("") always exists, matching the lazily created
+			// production sandbox dir.
+			entry = { files: new Map(), dirs: new Set([""]) };
+			trees.set(featureId, entry);
+		}
+		return entry;
+	};
+
+	const normalize = (relativePath: string): string => {
+		if (relativePath.startsWith("/") || /^[A-Za-z]:[\\/]/.test(relativePath)) {
+			throw new Error(
+				`[FakeSdk] sdk.fs paths must be relative to the feature's sandbox directory: "${relativePath}".`,
+			);
+		}
+		const parts: string[] = [];
+		for (const segment of relativePath.split("/")) {
+			if (segment === "" || segment === ".") continue;
+			if (segment === "..") {
+				if (parts.length === 0) {
+					throw new Error(
+						`[FakeSdk] sdk.fs paths cannot escape the feature's sandbox directory: "${relativePath}".`,
+					);
+				}
+				parts.pop();
+				continue;
+			}
+			parts.push(segment);
+		}
+		return parts.join("/");
+	};
+
+	const addAncestorDirs = (entry: Tree, key: string): void => {
+		const parts = key.split("/");
+		for (let index = 1; index < parts.length; index += 1) {
+			entry.dirs.add(parts.slice(0, index).join("/"));
+		}
+	};
+
+	// Mirror production ScopedFsService: a path segment cannot be both a file
+	// and a directory. Reject when an ancestor is already a file (ENOTDIR).
+	const assertAncestorsAreDirs = (entry: Tree, key: string, relativePath: string): void => {
+		const parts = key.split("/");
+		for (let index = 1; index < parts.length; index += 1) {
+			const ancestor = parts.slice(0, index).join("/");
+			if (entry.files.has(ancestor)) {
+				throw new Error(`[FakeSdk] sdk.fs: "${relativePath}" is not a directory.`);
+			}
+		}
+	};
+
+	return {
+		async readFile(featureId, relativePath) {
+			const key = normalize(relativePath);
+			const content = tree(featureId).files.get(key);
+			if (content === undefined) {
+				throw new Error(`[FakeSdk] sdk.fs: no such file or directory: "${relativePath}".`);
+			}
+			return content;
+		},
+		async writeFile(featureId, relativePath, content) {
+			const key = normalize(relativePath);
+			const entry = tree(featureId);
+			if (entry.dirs.has(key)) {
+				throw new Error(`[FakeSdk] sdk.fs: "${relativePath}" is a directory.`);
+			}
+			assertAncestorsAreDirs(entry, key, relativePath);
+			addAncestorDirs(entry, key);
+			entry.files.set(key, content);
+		},
+		async exists(featureId, relativePath) {
+			const key = normalize(relativePath);
+			const entry = tree(featureId);
+			return entry.files.has(key) || entry.dirs.has(key);
+		},
+		async mkdir(featureId, relativePath) {
+			const key = normalize(relativePath);
+			const entry = tree(featureId);
+			if (entry.files.has(key)) {
+				throw new Error(`[FakeSdk] sdk.fs: "${relativePath}" is not a directory.`);
+			}
+			assertAncestorsAreDirs(entry, key, relativePath);
+			addAncestorDirs(entry, key);
+			entry.dirs.add(key);
+		},
+		async readdir(featureId, relativePath) {
+			const key = normalize(relativePath);
+			const entry = tree(featureId);
+			if (!entry.dirs.has(key)) {
+				throw new Error(`[FakeSdk] sdk.fs: no such file or directory: "${relativePath}".`);
+			}
+			const prefix = key === "" ? "" : `${key}/`;
+			const children = new Set<string>();
+			for (const candidate of [...entry.files.keys(), ...entry.dirs]) {
+				if (candidate === "" || candidate === key || !candidate.startsWith(prefix)) continue;
+				children.add(candidate.slice(prefix.length).split("/")[0]!);
+			}
+			return [...children].sort();
+		},
+		async remove(featureId, relativePath) {
+			const key = normalize(relativePath);
+			const entry = tree(featureId);
+			if (key === "") {
+				entry.files.clear();
+				entry.dirs.clear();
+				entry.dirs.add("");
+				return;
+			}
+			const prefix = `${key}/`;
+			for (const file of [...entry.files.keys()]) {
+				if (file === key || file.startsWith(prefix)) entry.files.delete(file);
+			}
+			for (const dir of [...entry.dirs]) {
+				if (dir === key || dir.startsWith(prefix)) entry.dirs.delete(dir);
+			}
+		},
+	};
+}
+
+/**
+ * Adapt featureId-free `sdk.fs` overrides (what feature tests naturally
+ * write) onto the featureId-scoped delegate, falling back to the in-memory
+ * fake for methods left out.
+ */
+function adaptFsOverrides(base: ShellFsDelegate, overrides: Partial<SDK["fs"]>): ShellFsDelegate {
+	return {
+		readFile: (featureId, p) =>
+			overrides.readFile ? overrides.readFile(p) : base.readFile(featureId, p),
+		writeFile: (featureId, p, content) =>
+			overrides.writeFile ? overrides.writeFile(p, content) : base.writeFile(featureId, p, content),
+		exists: (featureId, p) => (overrides.exists ? overrides.exists(p) : base.exists(featureId, p)),
+		mkdir: (featureId, p) => (overrides.mkdir ? overrides.mkdir(p) : base.mkdir(featureId, p)),
+		readdir: (featureId, p) =>
+			overrides.readdir ? overrides.readdir(p) : base.readdir(featureId, p),
+		remove: (featureId, p) => (overrides.remove ? overrides.remove(p) : base.remove(featureId, p)),
 	};
 }
 
@@ -50,6 +193,10 @@ type FakeSdkShellOptions = {
 	theme?: Partial<SDK["theme"]>;
 	auth?: Partial<SDK["auth"]>;
 	shell?: Partial<SDK["shell"]>;
+	/**
+	 * Override the fs delegate (featureId-free, like `sdk.fs`). Defaults to a
+	 * working in-memory filesystem scoped per feature.
+	 */
 	fs?: Partial<SDK["fs"]>;
 	/** Override the shell navigation delegate (sdk.navigate + sdk.location). */
 	navigation?: Partial<ShellDelegates["navigation"]>;
@@ -81,11 +228,12 @@ export type FakeSdkOptionsWithChannels<C extends ChannelMap> = FakeSdkShellOptio
 export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
 
 function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
+	const memoryFs = createInMemoryShellFs();
 	const shellDelegates: ShellDelegates = {
 		// The fake reports successful delivery so feature code that checks the
 		// envelope takes its happy path in tests. Override to simulate absence.
 		notifications: merge<SDK["notifications"]>(
-			{ show: () => ({ delivered: true }), setBadge: () => ({ delivered: true }) },
+			{ show: async () => ({ delivered: true }), setBadge: async () => ({ delivered: true }) },
 			options.notifications,
 		),
 		theme: merge<SDK["theme"]>(
@@ -119,17 +267,10 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 			},
 			options.shell,
 		),
-		fs: merge<SDK["fs"]>(
-			{
-				readFile: notImplemented("sdk.fs.readFile"),
-				writeFile: notImplemented("sdk.fs.writeFile"),
-				exists: notImplemented("sdk.fs.exists"),
-				mkdir: notImplemented("sdk.fs.mkdir"),
-				readdir: notImplemented("sdk.fs.readdir"),
-				remove: notImplemented("sdk.fs.remove"),
-			},
-			options.fs,
-		),
+		// In-memory scoped fs (per fake instance) mirroring the production
+		// sandbox semantics. Override individual methods to force failures or
+		// record calls.
+		fs: options.fs ? adaptFsOverrides(memoryFs, options.fs) : memoryFs,
 		// The fake pins the location to "/" and navigation is a no-op — the
 		// shared static delegate keeps the subscribe-fires-synchronously
 		// contract aligned with production. Override to record navigations or
@@ -173,8 +314,9 @@ function applySdkOverrides(
  * Built on the REAL createSdk with real in-memory services (event bus, state
  * broker, registries, router), so events/state/plugins behave exactly like
  * production. Only the shell delegates are fakes (theme is "light",
- * notifications no-op, fs throws until overridden). Pass `channels` (+ optional
- * `handlers`) to register handlers on the router so `sdk.client` works.
+ * notifications report delivered, fs is an in-memory sandbox). Pass `channels`
+ * (+ optional `handlers`) to register handlers on the router so `sdk.client`
+ * works.
  */
 export function createFakeSdk(options: FakeSdkOptions): FakeSdk;
 export function createFakeSdk<C extends ChannelMap>(

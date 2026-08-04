@@ -16,6 +16,7 @@ export type {
 	AuthSession,
 	SdkShell,
 	SdkFs,
+	ShellFsDelegate,
 	SdkTools,
 	SdkIntents,
 	SchemaLike,
@@ -87,6 +88,7 @@ export { createStaticNavigation } from "./services/navigation.js";
 // with the shell boot sequences)
 export {
 	PLUGIN_MANIFEST_FILENAME,
+	featureIdPattern,
 	pluginManifestSchema,
 	pluginRouteSchema,
 	pluginNavEntrySchema,

@@ -38,8 +38,8 @@ function makeNotesStore() {
 
 function makeSystem(options?: {
 	notifications?: {
-		show: () => { delivered: boolean; reason?: string };
-		setBadge: () => { delivered: boolean; reason?: string };
+		show: () => Promise<{ delivered: boolean; reason?: string }>;
+		setBadge: () => Promise<{ delivered: boolean; reason?: string }>;
 	};
 	fs?: {
 		exists: (path: string) => Promise<boolean>;
@@ -96,8 +96,8 @@ describe("SdkProducerView", () => {
 	it("exercises SDK API action buttons", async () => {
 		const { baseElement, sdk } = renderProducer({
 			notifications: {
-				show: () => ({ delivered: false, reason: "test undelivered" }),
-				setBadge: () => ({ delivered: false, reason: "badge undelivered" }),
+				show: async () => ({ delivered: false, reason: "test undelivered" }),
+				setBadge: async () => ({ delivered: false, reason: "badge undelivered" }),
 			},
 		});
 		const screen = page.elementLocator(baseElement);
@@ -139,8 +139,12 @@ describe("SdkProducerView", () => {
 		await screen.getByRole("button", { name: "shell.openExternal" }).click();
 		await expect.element(screen.getByText(/shell\.openExternal\(\) →/)).toBeVisible();
 
-		await screen.getByRole("button", { name: "fs.exists (expect fail)" }).click();
-		await expect.element(screen.getByText(/fs\.exists\(\) FAILED/)).toBeVisible();
+		await screen.getByRole("button", { name: "fs round-trip" }).click();
+		await expect
+			.element(
+				screen.getByText(/fs round-trip → read "Hello from sdk\.fs!", readdir: \[hello\.txt\]/),
+			)
+			.toBeVisible();
 
 		await screen.getByRole("button", { name: "deferred APIs (expect throws)" }).click();
 		await expect.element(screen.getByText(/Deferred APIs \(all expected to throw\)/)).toBeVisible();
@@ -172,10 +176,9 @@ describe("SdkProducerView", () => {
 	it("logs successful notification delivery and filesystem checks", async () => {
 		const { baseElement } = renderProducer({
 			notifications: {
-				show: () => ({ delivered: true }),
-				setBadge: () => ({ delivered: true }),
+				show: async () => ({ delivered: true }),
+				setBadge: async () => ({ delivered: true }),
 			},
-			fs: { exists: async () => true },
 		});
 		const screen = page.elementLocator(baseElement);
 
@@ -189,7 +192,9 @@ describe("SdkProducerView", () => {
 			.element(screen.getByText("notifications.setBadge() → delivered: true", { exact: false }))
 			.toBeVisible();
 
-		await screen.getByRole("button", { name: "fs.exists (expect fail)" }).click();
-		await expect.element(screen.getByText("fs.exists() → true", { exact: false })).toBeVisible();
+		// createFakeSdk ships an in-memory scoped fs sandbox, so the round-trip
+		// (writeFile → readFile → readdir) succeeds without touching disk.
+		await screen.getByRole("button", { name: "fs round-trip" }).click();
+		await expect.element(screen.getByText("fs round-trip → read", { exact: false })).toBeVisible();
 	});
 });

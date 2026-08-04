@@ -69,7 +69,7 @@ describe("preload desktopApi", () => {
 		const desktopApi = contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as {
 			send: (channel: string, payload: unknown) => void;
 		};
-		const payload = { featureId: "sdk-producer", name: "note-added", payload: { id: "1" } };
+		const payload = { featureId: "todos", name: "item-added", payload: { id: "1" } };
 
 		desktopApi.send("feature:event", payload);
 		expect(ipcRenderer.send).toHaveBeenCalledWith("feature:event", payload);

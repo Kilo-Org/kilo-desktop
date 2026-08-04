@@ -6,15 +6,10 @@ import {
 
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { mainRegister as sdkConsumerMainRegister } from "../sdk-consumer/index.js";
-import { mainRegister as sdkProducerMainRegister } from "../sdk-producer/index.js";
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 
 /** Built-in features developed inside apps/ (three-location pattern). */
-const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [
-	{ id: "sdk-producer", mainRegister: sdkProducerMainRegister },
-	{ id: "sdk-consumer", mainRegister: sdkConsumerMainRegister },
-];
+const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validate the

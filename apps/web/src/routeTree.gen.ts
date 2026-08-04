@@ -10,29 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SdkConsumerRouteImport } from './routes/sdk-consumer'
-import { Route as SdkProducerRouteImport } from './routes/sdk-producer'
-import { Route as SplitRouteImport } from './routes/split'
 import { Route as PluginsSplatRouteImport } from './routes/plugins/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SdkConsumerRoute = SdkConsumerRouteImport.update({
-  id: '/sdk-consumer',
-  path: '/sdk-consumer',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SdkProducerRoute = SdkProducerRouteImport.update({
-  id: '/sdk-producer',
-  path: '/sdk-producer',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SplitRoute = SplitRouteImport.update({
-  id: '/split',
-  path: '/split',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PluginsSplatRoute = PluginsSplatRouteImport.update({
@@ -43,45 +25,27 @@ const PluginsSplatRoute = PluginsSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/sdk-consumer': typeof SdkConsumerRoute
-  '/sdk-producer': typeof SdkProducerRoute
-  '/split': typeof SplitRoute
   '/plugins/$': typeof PluginsSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/sdk-consumer': typeof SdkConsumerRoute
-  '/sdk-producer': typeof SdkProducerRoute
-  '/split': typeof SplitRoute
   '/plugins/$': typeof PluginsSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/sdk-consumer': typeof SdkConsumerRoute
-  '/sdk-producer': typeof SdkProducerRoute
-  '/split': typeof SplitRoute
   '/plugins/$': typeof PluginsSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sdk-consumer' | '/sdk-producer' | '/split' | '/plugins/$'
+  fullPaths: '/' | '/plugins/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sdk-consumer' | '/sdk-producer' | '/split' | '/plugins/$'
-  id:
-    | '__root__'
-    | '/'
-    | '/sdk-consumer'
-    | '/sdk-producer'
-    | '/split'
-    | '/plugins/$'
+  to: '/' | '/plugins/$'
+  id: '__root__' | '/' | '/plugins/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SdkConsumerRoute: typeof SdkConsumerRoute
-  SdkProducerRoute: typeof SdkProducerRoute
-  SplitRoute: typeof SplitRoute
   PluginsSplatRoute: typeof PluginsSplatRoute
 }
 
@@ -92,27 +56,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sdk-consumer': {
-      id: '/sdk-consumer'
-      path: '/sdk-consumer'
-      fullPath: '/sdk-consumer'
-      preLoaderRoute: typeof SdkConsumerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sdk-producer': {
-      id: '/sdk-producer'
-      path: '/sdk-producer'
-      fullPath: '/sdk-producer'
-      preLoaderRoute: typeof SdkProducerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/split': {
-      id: '/split'
-      path: '/split'
-      fullPath: '/split'
-      preLoaderRoute: typeof SplitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/plugins/$': {
@@ -127,9 +70,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SdkConsumerRoute: SdkConsumerRoute,
-  SdkProducerRoute: SdkProducerRoute,
-  SplitRoute: SplitRoute,
   PluginsSplatRoute: PluginsSplatRoute,
 }
 export const routeTree = rootRouteImport

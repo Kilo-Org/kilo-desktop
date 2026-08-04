@@ -48,8 +48,7 @@ import type {
 	WorkspacesService,
 } from "@anaconda-agentic-desktop/contracts";
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
-
-import { workspacesQueryKey } from "./WorkspacesFeatureProvider";
+import { sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
 
 export type WorkspaceDialogState =
 	| null
@@ -179,7 +178,8 @@ function WorkspaceFormDialog({
 				? sdk.client.update({ id: workspace.id, name, folders })
 				: sdk.client.create({ name, folders }),
 		onSuccess: async (saved) => {
-			queryClient.setQueryData<Workspace[]>(workspacesQueryKey, (current) => {
+			const listQueryKey = sdkQueryKey(sdk, "list");
+			queryClient.setQueryData<Workspace[]>(listQueryKey, (current) => {
 				if (!current) return [saved];
 				if (current.some((item) => item.id === saved.id)) {
 					return current.map((item) => (item.id === saved.id ? saved : item));
@@ -187,7 +187,7 @@ function WorkspaceFormDialog({
 				return [...current, saved];
 			});
 			if (!workspace) setActiveWorkspaceId(saved.id);
-			await queryClient.invalidateQueries({ queryKey: workspacesQueryKey });
+			await queryClient.invalidateQueries({ queryKey: listQueryKey });
 			onClose();
 		},
 		onError: (reason) =>
@@ -309,7 +309,7 @@ function WorkspaceFormDialog({
 									onDrop(event);
 								}}
 								className={cn(
-									"rounded-xl border transition-colors",
+									"rounded-lg border transition-colors",
 									folders.length === 0 && "border-dashed",
 									isDragging ? "border-primary border-dashed bg-primary/5" : "border-border",
 								)}
@@ -325,7 +325,7 @@ function WorkspaceFormDialog({
 												void chooseFolders();
 											}
 										}}
-										className="hover:bg-foreground/5 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-[11px] text-center transition-colors"
+										className="hover:bg-foreground/5 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-[calc(var(--radius-lg)-1px)] text-center transition-colors"
 									>
 										<div className="bg-foreground/10 text-muted-foreground flex size-9 items-center justify-center rounded-full">
 											<FolderPlusIcon className="size-4" />
@@ -338,7 +338,7 @@ function WorkspaceFormDialog({
 										</div>
 									</div>
 								) : folders.length === 0 ? (
-									<div className="text-muted-foreground flex min-h-32 flex-col items-center justify-center gap-2 rounded-[11px] px-6 text-center text-sm">
+									<div className="text-muted-foreground flex min-h-32 flex-col items-center justify-center gap-2 rounded-[calc(var(--radius-lg)-1px)] px-6 text-center text-sm">
 										<FolderIcon className="size-5" />
 										Folder selection requires the desktop app.
 									</div>
@@ -402,14 +402,18 @@ function WorkspaceFormDialog({
 										</TooltipProvider>
 										<div className="border-border border-t p-1">
 											{canPickDirectories ? (
-												<button
-													type="button"
-													onClick={() => void chooseFolders()}
-													className="text-muted-foreground hover:bg-foreground/5 hover:text-foreground flex w-full items-center gap-2 rounded-lg px-2 py-1 text-sm transition-colors"
+												<Item
+													size="sm"
+													render={<button type="button" onClick={() => void chooseFolders()} />}
+													className="text-muted-foreground hover:bg-foreground/5 hover:text-foreground min-h-8 flex-nowrap gap-2 px-2 py-1"
 												>
-													<FolderPlusIcon className="size-4" />
-													Add folder
-												</button>
+													<ItemMedia variant="icon" className="text-muted-foreground">
+														<FolderPlusIcon />
+													</ItemMedia>
+													<ItemContent>
+														<ItemTitle className="font-normal">Add folder</ItemTitle>
+													</ItemContent>
+												</Item>
 											) : (
 												<p className="text-muted-foreground px-2 py-1 text-xs">
 													Adding folders requires the desktop app.
@@ -456,7 +460,7 @@ function DeleteWorkspaceDialog({
 					workspaces.find((candidate) => candidate.id !== workspace.id)?.id ?? null,
 				);
 			}
-			await queryClient.invalidateQueries({ queryKey: workspacesQueryKey });
+			await queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "list") });
 			onClose();
 		},
 		onError: (reason) =>

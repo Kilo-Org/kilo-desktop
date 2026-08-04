@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	createContext,
 	useContext,
@@ -16,11 +16,10 @@ import type {
 	WorkspacesService,
 } from "@anaconda-agentic-desktop/contracts";
 import type { SDK, StoreHandle } from "@anaconda-agentic-desktop/feature-sdk";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { sdkQueryKey, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
 import { WorkspaceDialogs, type WorkspaceDialogState } from "./WorkspaceDialogs";
 
-export const workspacesQueryKey = ["workspaces", "list"] as const;
 const ACTIVE_WORKSPACE_KEY = "workspaces.active-workspace";
 
 type WorkspacesSdk = SDK<WorkspacesService>;
@@ -82,10 +81,7 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 		activeStore.peek,
 	);
 	const [dialog, setDialog] = useState<WorkspaceDialogState>(null);
-	const query = useQuery({
-		queryKey: workspacesQueryKey,
-		queryFn: () => sdk.client.list(),
-	});
+	const query = useSdkQuery(sdk, "list");
 	const workspaces = query.data ?? [];
 
 	const setActiveWorkspaceId = (id: string | null) => bootstrap.activeHandle.set(id);
@@ -107,7 +103,7 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 
 	useEffect(() => {
 		const invalidate = () => {
-			void queryClient.invalidateQueries({ queryKey: workspacesQueryKey });
+			void queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "list") });
 		};
 		const unsubscribers = [
 			sdk.events.on("workspaces.workspace-created", invalidate),

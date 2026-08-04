@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   merge_group:
@@ -55,7 +53,8 @@ jobs:
       - run: pnpm --filter @anaconda-agentic-desktop/web exec playwright install chromium --with-deps
       - run: pnpm coverage
 
-  e2e-smoke:
+  e2e-pr:
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -70,7 +69,8 @@ jobs:
           script: test:e2e:smoke
           report-name: playwright-report-smoke
 
-  # Merge-queue gate: e2e on macOS + Windows (in addition to the PR smoke job).
+  # Validate the combined merge-queue commit with the full suite on both
+  # supported desktop platforms. This replaces, rather than repeats, PR smoke.
   e2e-merge:
     if: github.event_name == 'merge_group'
     strategy:
@@ -92,3 +92,29 @@ jobs:
       - uses: ./.github/actions/run-e2e
         with:
           report-name: playwright-report-merge-${{ matrix.os }}
+
+  # Keep the displayed name while it is the required branch-protection check.
+  # The gate covers PR smoke or both merge-queue matrix legs, as appropriate.
+  e2e-gate:
+    name: e2e-smoke
+    if: always()
+    needs: [e2e-pr, e2e-merge]
+    runs-on: self-hosted-amd64-medium-privileged-on-demand
+    steps:
+      - name: Verify required E2E jobs
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_RESULT: ${{ needs.e2e-pr.result }}
+          MERGE_RESULT: ${{ needs.e2e-merge.result }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" && "$PR_RESULT" == "success" ]]; then
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "merge_group" && "$MERGE_RESULT" == "success" ]]; then
+            exit 0
+          fi
+
+          echo "E2E gate failed: event=$EVENT_NAME pr=$PR_RESULT merge=$MERGE_RESULT"
+          exit 1

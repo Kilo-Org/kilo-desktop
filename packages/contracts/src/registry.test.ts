@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { authEvents, authMethods } from "./features/auth.js";
 import { featureEvents, featureMessages } from "./features/feature-event.js";
 import { featureMethods } from "./features/feature-invoke.js";
+import { fsMethods } from "./features/fs.js";
+import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
 import { themeMethods } from "./features/theme.js";
 import { assertNoDuplicateChannels, ipcEvents, ipcMessages, ipcMethods } from "./registry.js";
@@ -13,7 +15,9 @@ describe("IPC registry", () => {
 			Object.keys(shellMethods).length +
 				Object.keys(themeMethods).length +
 				Object.keys(authMethods).length +
-				Object.keys(featureMethods).length,
+				Object.keys(featureMethods).length +
+				Object.keys(notificationsMethods).length +
+				Object.keys(fsMethods).length,
 		);
 	});
 

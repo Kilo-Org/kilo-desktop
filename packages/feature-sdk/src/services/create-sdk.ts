@@ -17,6 +17,7 @@ import type {
 	SdkState,
 	SdkTheme,
 	SdkTools,
+	ShellFsDelegate,
 	ShellLocation,
 } from "../types/sdk.js";
 import type { CommandRegistry } from "./command-registry.js";
@@ -30,7 +31,13 @@ export interface ShellDelegates {
 	theme: SdkTheme;
 	auth: SdkAuth;
 	shell: SdkShell;
-	fs: SdkFs;
+	/**
+	 * Scoped filesystem over the per-feature sandbox
+	 * (`${userData}/plugins/<id>/`). The host implements this once; createSdk
+	 * binds the calling feature's id so `sdk.fs` cannot reach another
+	 * feature's sandbox.
+	 */
+	fs: ShellFsDelegate;
 	/**
 	 * Navigation over the shell's internal router (Decision #19). Exposed to
 	 * features as `sdk.navigate` + `sdk.location`; the router itself never
@@ -158,6 +165,8 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 	};
 
 	// ─── Deferred (throws) ─────────────────────────────────────────────────────
+	// tools/intents/dispatch have no consumer yet — see
+	// docs/plugin-implementation-plan.md (Slice 4, "Deferred APIs").
 
 	const tools: SdkTools = {
 		register() {
@@ -194,6 +203,38 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		peek() {
 			assertAlive();
 			return services.shellDelegates.navigation.peek();
+		},
+	};
+
+	// ─── Filesystem (shell delegate, scoped to this feature) ──────────────────
+
+	// Bind this feature's id so the host delegate resolves every path against
+	// the feature's own sandbox dir. Async wrappers so a destroyed SDK rejects
+	// instead of throwing synchronously.
+	const fs: SdkFs = {
+		async readFile(relativePath: string) {
+			assertAlive();
+			return services.shellDelegates.fs.readFile(featureId, relativePath);
+		},
+		async writeFile(relativePath: string, content: string) {
+			assertAlive();
+			return services.shellDelegates.fs.writeFile(featureId, relativePath, content);
+		},
+		async exists(relativePath: string) {
+			assertAlive();
+			return services.shellDelegates.fs.exists(featureId, relativePath);
+		},
+		async mkdir(relativePath: string) {
+			assertAlive();
+			return services.shellDelegates.fs.mkdir(featureId, relativePath);
+		},
+		async readdir(relativePath: string) {
+			assertAlive();
+			return services.shellDelegates.fs.readdir(featureId, relativePath);
+		},
+		async remove(relativePath: string) {
+			assertAlive();
+			return services.shellDelegates.fs.remove(featureId, relativePath);
 		},
 	};
 
@@ -236,7 +277,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		theme: services.shellDelegates.theme,
 		auth: services.shellDelegates.auth,
 		shell: services.shellDelegates.shell,
-		fs: services.shellDelegates.fs,
+		fs,
 
 		navigate(path: string, options?: NavigateOptions) {
 			assertAlive();

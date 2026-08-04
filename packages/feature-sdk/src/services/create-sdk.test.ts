@@ -238,6 +238,54 @@ describe("createSdk", () => {
 		expect(() => sdk.dispatch({ plugin: "shell", action: "noop" })).toThrow(/full plugin system/);
 	});
 
+	it("sdk.fs binds this feature's id onto the shell fs delegate", async () => {
+		const services = makeServices();
+		const calls: unknown[][] = [];
+		services.shellDelegates.fs = {
+			readFile: async (...args) => {
+				calls.push(args);
+				return "content";
+			},
+			writeFile: async (...args) => {
+				calls.push(args);
+			},
+			exists: async (...args) => {
+				calls.push(args);
+				return true;
+			},
+			mkdir: async (...args) => {
+				calls.push(args);
+			},
+			readdir: async (...args) => {
+				calls.push(args);
+				return ["a.txt"];
+			},
+			remove: async (...args) => {
+				calls.push(args);
+			},
+		};
+		const sdk = createSdk("todos", services);
+
+		await expect(sdk.fs.readFile("notes/a.txt")).resolves.toBe("content");
+		await sdk.fs.writeFile("notes/a.txt", "hi");
+		await expect(sdk.fs.exists("notes")).resolves.toBe(true);
+		await sdk.fs.mkdir("notes");
+		await expect(sdk.fs.readdir("notes")).resolves.toEqual(["a.txt"]);
+		await sdk.fs.remove("notes/a.txt");
+
+		expect(calls).toEqual([
+			["todos", "notes/a.txt"],
+			["todos", "notes/a.txt", "hi"],
+			["todos", "notes"],
+			["todos", "notes"],
+			["todos", "notes"],
+			["todos", "notes/a.txt"],
+		]);
+
+		sdk.destroy();
+		await expect(sdk.fs.readFile("notes/a.txt")).rejects.toThrow(/destroyed/);
+	});
+
 	it("sdk.navigate forwards to the shell navigation delegate", () => {
 		const services = makeServices();
 		const navigate = vi.fn();

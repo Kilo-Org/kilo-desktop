@@ -11,8 +11,14 @@ import { z } from "zod";
 /** Canonical manifest filename at the plugin package root. */
 export const PLUGIN_MANIFEST_FILENAME = "plugin.json";
 
-/** Plugin ids are kebab-case: lowercase alphanumerics separated by single dashes. */
-const pluginIdPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/**
+ * Feature/plugin ids are kebab-case: lowercase alphanumerics separated by
+ * single dashes. This is the single source of truth for the id charset —
+ * shell services that scope by feature id (e.g. `sdk.fs`) reuse it so a valid
+ * plugin id can never be rejected at a downstream boundary.
+ */
+export const featureIdPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const pluginIdPattern = featureIdPattern;
 
 /** Semver-ish: MAJOR.MINOR.PATCH with optional pre-release / build metadata. */
 const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;

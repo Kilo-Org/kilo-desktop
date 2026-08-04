@@ -83,10 +83,12 @@ package with `pnpm --filter` or `pnpm -r`.
 | `pnpm test:contracts` | Contracts registry tests                                               |
 | `pnpm test:e2e`       | Package the app and exercise the hardened executable through typed IPC |
 
-Schema changes use the desktop package directly:
+Schema changes live with the feature/plugin that owns the database (Decision
+#20 — each feature owns its own SQLite file and drizzle migrations). Generate
+migrations from that package, e.g. the todos plugin:
 
 ```bash
-pnpm --filter @anaconda-agentic-desktop/desktop db:generate
+pnpm --filter @anaconda-agentic-desktop/plugin-todos db:generate
 ```
 
 ## Monorepo layout

@@ -62,7 +62,7 @@ describe("WorkspaceService", () => {
 				{ path: second, isPrimary: false },
 			],
 		});
-		const ids = new Map(created.folders.map((item) => [item.path, item.id]));
+		const [createdFirst, createdSecond] = created.folders;
 
 		const updated = service.update(created.id, {
 			folders: [
@@ -70,14 +70,12 @@ describe("WorkspaceService", () => {
 				{ path: second, isPrimary: true },
 			],
 		});
-		const canonicalFirst = fs.realpathSync(first);
-		const canonicalSecond = fs.realpathSync(second);
 		expect(updated.name).toBe("My workspace");
-		expect(updated.folders.map((item) => item.path)).toEqual([canonicalSecond, canonicalFirst]);
-		expect(updated.folders.map((item) => item.id)).toEqual([
-			ids.get(canonicalSecond),
-			ids.get(canonicalFirst),
+		expect(updated.folders.map((item) => item.path)).toEqual([
+			createdSecond!.path,
+			createdFirst!.path,
 		]);
+		expect(updated.folders.map((item) => item.id)).toEqual([createdSecond!.id, createdFirst!.id]);
 
 		expect(service.update(created.id, { name: "", folders: updated.folders }).name).toBe("Second");
 	});

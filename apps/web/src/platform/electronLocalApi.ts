@@ -24,6 +24,7 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			sync: (input) => invoke("theme:sync", input),
 		},
 		shell: {
+			canPickDirectories: true,
 			openExternal: (input) => invoke("shell:open-external", input),
 			copyText: (input) => invoke("shell:copy-text", input),
 			showOpenDialog: (input) => invoke("shell:show-open-dialog", input),

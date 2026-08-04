@@ -16,10 +16,14 @@ afterEach(() => {
 describe("WorkspaceSelector", () => {
 	it("creates an unnamed workspace through the native folder delegate", async () => {
 		const api = createBrowserLocalApi();
-		api.shell.showOpenDialog = vi
-			.fn()
-			.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/Project"] })
-			.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/Second"] });
+		api.shell = {
+			...api.shell,
+			canPickDirectories: true,
+			showOpenDialog: vi
+				.fn()
+				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/Project"] })
+				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/Second"] }),
+		};
 		const system = createAppFeatureSystem(api, WEB_FEATURES);
 		render(
 			<AppProviders localApi={api} system={system}>
@@ -65,6 +69,12 @@ describe("WorkspaceSelector", () => {
 			.element(page.getByRole("combobox", { name: "Select workspace" }))
 			.toHaveTextContent("Second");
 
+		system.getSdk("workspaces").events.emit("open-manager");
+		await expect.element(page.getByText("Manage workspaces", { exact: true })).toBeVisible();
+		await expect.element(page.getByRole("button", { name: "Edit Second" })).toBeVisible();
+		await expect.element(page.getByRole("button", { name: "Delete Second" })).toBeVisible();
+		await page.getByRole("button", { name: "Close" }).click();
+
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		await page.getByRole("button", { name: "Workspace actions for Second" }).click();
 		await page.getByText("Delete", { exact: true }).click();
@@ -76,10 +86,14 @@ describe("WorkspaceSelector", () => {
 
 	it("filters workspaces by name when searching", async () => {
 		const api = createBrowserLocalApi();
-		api.shell.showOpenDialog = vi
-			.fn()
-			.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/AlphaProject"] })
-			.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/BetaProject"] });
+		api.shell = {
+			...api.shell,
+			canPickDirectories: true,
+			showOpenDialog: vi
+				.fn()
+				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/AlphaProject"] })
+				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/BetaProject"] }),
+		};
 		const system = createAppFeatureSystem(api, WEB_FEATURES);
 		render(
 			<AppProviders localApi={api} system={system}>
@@ -131,5 +145,27 @@ describe("WorkspaceSelector", () => {
 		await expect
 			.element(page.getByRole("combobox", { name: "Select workspace" }))
 			.toHaveTextContent("AlphaProject");
+	});
+
+	it("shows a desktop-required state when directory picking is unavailable", async () => {
+		const api = createBrowserLocalApi();
+		const showOpenDialog = vi.spyOn(api.shell, "showOpenDialog");
+		const system = createAppFeatureSystem(api, WEB_FEATURES);
+		render(
+			<AppProviders localApi={api} system={system}>
+				<HomeView />
+			</AppProviders>,
+		);
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		await page.getByText("Create workspace", { exact: true }).click();
+		await expect
+			.element(page.getByText("Folder selection requires the desktop app.", { exact: true }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole("button", { name: /Drop folders/ }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: "Create workspace" })).toBeDisabled();
+		expect(showOpenDialog).not.toHaveBeenCalled();
 	});
 });

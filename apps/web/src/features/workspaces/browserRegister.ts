@@ -44,8 +44,9 @@ export function workspacesBrowserRegister(mainSdk: MainSdk): void {
 		}
 	};
 
-	const find = (id: string) => {
-		const workspace = workspaces.find((candidate) => candidate.id === id);
+	const find = (id: string) => workspaces.find((candidate) => candidate.id === id) ?? null;
+	const findRequired = (id: string) => {
+		const workspace = find(id);
 		if (!workspace) throw new FeatureError("Workspace not found.", "NOT_FOUND");
 		return workspace;
 	};
@@ -76,7 +77,7 @@ export function workspacesBrowserRegister(mainSdk: MainSdk): void {
 			return after;
 		},
 		update: async ({ id, ...input }) => {
-			const before = find(id);
+			const before = findRequired(id);
 			const folders = validate(input.folders);
 			const ids = new Map(before.folders.map((folder) => [folder.path, folder.id]));
 			const after: Workspace = {
@@ -96,7 +97,7 @@ export function workspacesBrowserRegister(mainSdk: MainSdk): void {
 			return after;
 		},
 		remove: async ({ id }) => {
-			const before = find(id);
+			const before = findRequired(id);
 			workspaces = workspaces.filter((workspace) => workspace.id !== id);
 			mainSdk.events.emit("workspace-deleted", { before, after: null });
 			return { deleted: true };

@@ -113,10 +113,12 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 			sdk.events.on("workspaces.workspace-created", invalidate),
 			sdk.events.on("workspaces.workspace-updated", invalidate),
 			sdk.events.on("workspaces.workspace-deleted", invalidate),
-			sdk.events.on("workspaces.open-manager", () => setDialog({ mode: "create" })),
+			sdk.events.on("workspaces.open-manager", () =>
+				setDialog(workspaces.length === 0 ? { mode: "create" } : { mode: "manage" }),
+			),
 		];
 		return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-	}, [queryClient, sdk]);
+	}, [queryClient, sdk, workspaces.length]);
 
 	const context = useMemo<WorkspacesContextValue>(
 		() => ({
@@ -138,6 +140,7 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 			<WorkspaceDialogs
 				dialog={dialog}
 				onClose={() => setDialog(null)}
+				onDialogChange={setDialog}
 				sdk={sdk}
 				queryClient={queryClient}
 				workspaces={workspaces}

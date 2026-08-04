@@ -34,6 +34,7 @@ export function createTestShellDelegates(): ShellDelegates {
 			logout: async () => ({ status: "anonymous" }),
 		},
 		shell: {
+			canPickDirectories: true,
 			openExternal: async () => ({ opened: true }),
 			copyText: async () => undefined,
 			showOpenDialog: async () => ({ canceled: true, paths: [] }),

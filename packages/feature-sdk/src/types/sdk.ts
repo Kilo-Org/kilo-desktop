@@ -337,6 +337,7 @@ export interface DirectoryOpenDialogOptions {
 
 /** OS-level shell actions (open browser, clipboard, native folder access). */
 export interface SdkShell {
+	readonly canPickDirectories: boolean;
 	openExternal(url: string): Promise<{ opened: boolean }>;
 	copyText(text: string): Promise<void>;
 	showOpenDialog(

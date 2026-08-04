@@ -46,10 +46,9 @@ export class WorkspaceService {
 			);
 	}
 
-	get(id: string): Workspace {
+	get(id: string): Workspace | null {
 		const workspace = this.db.select().from(workspaces).where(eq(workspaces.id, id)).get();
-		if (!workspace) throw new FeatureError("Workspace not found.", "NOT_FOUND");
-		return this.hydrate(workspace);
+		return workspace ? this.hydrate(workspace) : null;
 	}
 
 	create(input: SaveWorkspaceInput): Workspace {
@@ -80,11 +79,11 @@ export class WorkspaceService {
 				.run();
 		});
 
-		return this.get(workspaceId);
+		return this.getRequired(workspaceId);
 	}
 
 	update(id: string, input: SaveWorkspaceInput): Workspace {
-		const before = this.get(id);
+		const before = this.getRequired(id);
 		const folders = this.validateFolders(input.folders);
 		const name =
 			input.name === undefined ? before.name : this.resolveName(input.name, folders[0]!.path, id);
@@ -108,14 +107,20 @@ export class WorkspaceService {
 				.run();
 		});
 
-		return this.get(id);
+		return this.getRequired(id);
 	}
 
 	remove(id: string): Workspace {
-		const workspace = this.get(id);
+		const workspace = this.getRequired(id);
 		this.db.transaction((tx) => {
 			tx.delete(workspaces).where(eq(workspaces.id, id)).run();
 		});
+		return workspace;
+	}
+
+	getRequired(id: string): Workspace {
+		const workspace = this.get(id);
+		if (!workspace) throw new FeatureError("Workspace not found.", "NOT_FOUND");
 		return workspace;
 	}
 

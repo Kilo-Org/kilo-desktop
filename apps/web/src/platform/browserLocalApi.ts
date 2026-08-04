@@ -11,6 +11,7 @@ export function createBrowserLocalApi(): LocalApi {
 			async sync() {},
 		},
 		shell: {
+			canPickDirectories: false,
 			async openExternal(input) {
 				const opened = globalThis.open(input.url, "_blank", "noopener,noreferrer");
 				if (!opened) {

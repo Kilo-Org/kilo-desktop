@@ -70,7 +70,7 @@ describe("workspacesBrowserRegister", () => {
 		sdk.dispose();
 	});
 
-	it("rejects invalid folder sets and missing workspaces", async () => {
+	it("rejects invalid folder sets and missing mutations while reads return null", async () => {
 		const sdk = boot();
 		await expect(sdk.invoke("create", { folders: [] })).rejects.toMatchObject({
 			code: "VALIDATION",
@@ -83,9 +83,7 @@ describe("workspacesBrowserRegister", () => {
 				],
 			}),
 		).rejects.toMatchObject({ code: "VALIDATION" });
-		await expect(sdk.invoke("get", { id: "missing" })).rejects.toMatchObject({
-			code: "NOT_FOUND",
-		});
+		await expect(sdk.invoke("get", { id: "missing" })).resolves.toBeNull();
 		await expect(sdk.invoke("remove", { id: "missing" })).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});

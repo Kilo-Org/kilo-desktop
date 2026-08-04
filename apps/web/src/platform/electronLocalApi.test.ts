@@ -27,6 +27,7 @@ describe("createElectronLocalApi", () => {
 		const on = vi.fn(() => () => undefined);
 		const getPathForFile = vi.fn(() => "/tmp/dropped");
 		const api = createElectronLocalApi({ invoke, on, getPathForFile } as unknown as DesktopApi);
+		expect(api.shell.canPickDirectories).toBe(true);
 
 		await expect(
 			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),

@@ -30,7 +30,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 			return after;
 		},
 		update: async ({ id, ...input }) => {
-			const before = service.get(id);
+			const before = service.getRequired(id);
 			const after = service.update(id, input);
 			mainSdk.events.emit("workspace-updated", { before, after });
 			return after;

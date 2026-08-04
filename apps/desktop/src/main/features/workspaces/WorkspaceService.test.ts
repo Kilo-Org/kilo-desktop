@@ -113,10 +113,13 @@ describe("WorkspaceService", () => {
 		);
 	});
 
-	it("reports not found and rolls back a failed transaction", () => {
-		expect(() => service.get("missing")).toThrowError(
-			expect.objectContaining({ code: "NOT_FOUND" }),
-		);
+	it("returns null for missing reads, rejects missing mutations, and rolls back failures", () => {
+		expect(service.get("missing")).toBeNull();
+		expect(() =>
+			service.update("missing", {
+				folders: [{ path: folder("Missing"), isPrimary: true }],
+			}),
+		).toThrowError(expect.objectContaining({ code: "NOT_FOUND" }));
 		db.$client.close();
 		db = createWorkspacesDatabase(path.join(root, "rollback.db"), MIGRATIONS);
 		service = new WorkspaceService(db, () => "same-id");

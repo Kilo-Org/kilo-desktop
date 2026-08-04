@@ -21,6 +21,7 @@ describe("createBrowserLocalApi", () => {
 		vi.stubGlobal("navigator", { clipboard: { writeText } });
 
 		const api = createBrowserLocalApi();
+		expect(api.shell.canPickDirectories).toBe(false);
 		await expect(api.shell.openExternal({ url: "https://example.com" })).resolves.toEqual({
 			opened: true,
 		});

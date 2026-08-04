@@ -43,7 +43,7 @@ export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceInputSchema>;
 
 export const workspacesContract = defineContract({
 	list: defineMethod(z.undefined(), z.array(workspaceSchema)),
-	get: defineMethod(z.object({ id: z.string().min(1) }), workspaceSchema),
+	get: defineMethod(z.object({ id: z.string().min(1) }), workspaceSchema.nullable()),
 	create: defineMethod(createWorkspaceInputSchema, workspaceSchema),
 	update: defineMethod(updateWorkspaceInputSchema, workspaceSchema),
 	remove: defineMethod(z.object({ id: z.string().min(1) }), z.object({ deleted: z.boolean() })),
@@ -53,7 +53,7 @@ export type WorkspacesService = InferContract<typeof workspacesContract>;
 
 export interface WorkspaceCapabilityService {
 	list(): Promise<Workspace[]>;
-	get(id: string): Promise<Workspace>;
+	get(id: string): Promise<Workspace | null>;
 	create(input: CreateWorkspaceInput): Promise<Workspace>;
 	update(input: UpdateWorkspaceInput): Promise<Workspace>;
 	remove(id: string): Promise<{ deleted: boolean }>;

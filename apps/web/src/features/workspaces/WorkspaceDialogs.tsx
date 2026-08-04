@@ -1,5 +1,5 @@
 import { useMutation, type QueryClient } from "@tanstack/react-query";
-import { FolderIcon, FolderPlusIcon, XIcon } from "lucide-react";
+import { FolderIcon, FolderPlusIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useEffect, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 
 import {
@@ -53,6 +53,7 @@ import { workspacesQueryKey } from "./WorkspacesFeatureProvider";
 
 export type WorkspaceDialogState =
 	| null
+	| { mode: "manage" }
 	| { mode: "create" }
 	| { mode: "edit"; workspace: Workspace }
 	| { mode: "delete"; workspace: Workspace };
@@ -60,6 +61,7 @@ export type WorkspaceDialogState =
 type WorkspaceDialogsProps = {
 	dialog: WorkspaceDialogState;
 	onClose(): void;
+	onDialogChange(dialog: Exclude<WorkspaceDialogState, null>): void;
 	sdk: SDK<WorkspacesService>;
 	queryClient: QueryClient;
 	workspaces: Workspace[];
@@ -70,6 +72,7 @@ type WorkspaceDialogsProps = {
 const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
 export function WorkspaceDialogs(props: WorkspaceDialogsProps) {
+	if (props.dialog?.mode === "manage") return <ManageWorkspacesDialog {...props} />;
 	if (props.dialog?.mode === "delete")
 		return <DeleteWorkspaceDialog {...props} workspace={props.dialog.workspace} />;
 	if (props.dialog?.mode === "create" || props.dialog?.mode === "edit") {
@@ -80,6 +83,71 @@ export function WorkspaceDialogs(props: WorkspaceDialogsProps) {
 		);
 	}
 	return null;
+}
+
+function ManageWorkspacesDialog({
+	dialog,
+	onClose,
+	onDialogChange,
+	workspaces,
+}: WorkspaceDialogsProps) {
+	return (
+		<Dialog open={dialog !== null} onOpenChange={(open) => !open && onClose()}>
+			<DialogContent
+				data-qa-id="workspace-manager-dialog"
+				className="sm:max-w-lg"
+				showCloseButton={false}
+			>
+				<DialogHeader>
+					<DialogTitle>Manage workspaces</DialogTitle>
+				</DialogHeader>
+				<div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
+					{workspaces.length === 0 ? (
+						<p className="text-muted-foreground py-6 text-center text-sm">No workspaces yet.</p>
+					) : (
+						workspaces.map((workspace) => (
+							<div
+								key={workspace.id}
+								className="border-border flex items-center gap-2 rounded-lg border px-3 py-2"
+							>
+								<FolderIcon className="text-muted-foreground size-4 shrink-0" />
+								<span className="min-w-0 flex-1 truncate text-sm font-medium">
+									{workspace.name}
+								</span>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									aria-label={`Edit ${workspace.name}`}
+									onClick={() => onDialogChange({ mode: "edit", workspace })}
+								>
+									<PencilIcon />
+								</Button>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									aria-label={`Delete ${workspace.name}`}
+									onClick={() => onDialogChange({ mode: "delete", workspace })}
+								>
+									<Trash2Icon />
+								</Button>
+							</div>
+						))
+					)}
+				</div>
+				<DialogFooter>
+					<Button type="button" variant="outline" onClick={onClose}>
+						Close
+					</Button>
+					<Button type="button" onClick={() => onDialogChange({ mode: "create" })}>
+						<PlusIcon data-icon="inline-start" />
+						Create workspace
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
 }
 
 function WorkspaceFormDialog({
@@ -96,6 +164,7 @@ function WorkspaceFormDialog({
 	);
 	const [error, setError] = useState<string | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
+	const canPickDirectories = sdk.shell.canPickDirectories;
 
 	useEffect(() => {
 		setName(workspace?.name ?? "");
@@ -141,6 +210,10 @@ function WorkspaceFormDialog({
 
 	const chooseFolders = async () => {
 		setError(null);
+		if (!canPickDirectories) {
+			setError("Folder selection requires the desktop app.");
+			return;
+		}
 		try {
 			const result = await sdk.shell.showOpenDialog({ kind: "directory", multiple: true });
 			if (!result.canceled) addPaths(result.paths);
@@ -151,6 +224,7 @@ function WorkspaceFormDialog({
 
 	const onDrop = (event: DragEvent) => {
 		event.preventDefault();
+		if (!canPickDirectories) return;
 		const paths: string[] = [];
 		for (const item of event.dataTransfer.items) {
 			const entry = item.webkitGetAsEntry();
@@ -220,7 +294,7 @@ function WorkspaceFormDialog({
 							<div
 								onDragOver={(event) => {
 									event.preventDefault();
-									setIsDragging(true);
+									if (canPickDirectories) setIsDragging(true);
 								}}
 								onDragLeave={(event) => {
 									if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -237,7 +311,7 @@ function WorkspaceFormDialog({
 									isDragging ? "border-primary border-dashed bg-primary/5" : "border-border",
 								)}
 							>
-								{folders.length === 0 ? (
+								{folders.length === 0 && canPickDirectories ? (
 									<div
 										role="button"
 										tabIndex={0}
@@ -256,6 +330,11 @@ function WorkspaceFormDialog({
 												or click to choose folders
 											</span>
 										</div>
+									</div>
+								) : folders.length === 0 ? (
+									<div className="text-muted-foreground flex min-h-32 flex-col items-center justify-center gap-2 rounded-[11px] px-6 text-center text-sm">
+										<FolderIcon className="size-5" />
+										Folder selection requires the desktop app.
 									</div>
 								) : (
 									<div className="flex flex-col">
@@ -305,6 +384,7 @@ function WorkspaceFormDialog({
 																size="icon-xs"
 																aria-label={`Remove ${folder.path}`}
 																className="text-muted-foreground -mr-1.5"
+																disabled={!canPickDirectories && folders.length === 1}
 																onClick={() => removeFolder(folder.path)}
 															>
 																<XIcon />
@@ -315,14 +395,20 @@ function WorkspaceFormDialog({
 											</ItemGroup>
 										</TooltipProvider>
 										<div className="border-border border-t p-1">
-											<button
-												type="button"
-												onClick={() => void chooseFolders()}
-												className="text-muted-foreground hover:bg-foreground/5 hover:text-foreground flex w-full items-center gap-2 rounded-lg px-2 py-1 text-sm transition-colors"
-											>
-												<FolderPlusIcon className="size-4" />
-												Add folder
-											</button>
+											{canPickDirectories ? (
+												<button
+													type="button"
+													onClick={() => void chooseFolders()}
+													className="text-muted-foreground hover:bg-foreground/5 hover:text-foreground flex w-full items-center gap-2 rounded-lg px-2 py-1 text-sm transition-colors"
+												>
+													<FolderPlusIcon className="size-4" />
+													Add folder
+												</button>
+											) : (
+												<p className="text-muted-foreground px-2 py-1 text-xs">
+													Adding folders requires the desktop app.
+												</p>
+											)}
 										</div>
 									</div>
 								)}

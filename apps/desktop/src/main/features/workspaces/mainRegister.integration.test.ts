@@ -61,13 +61,18 @@ describe("workspaces mainRegister", () => {
 	});
 
 	it("validates channels and closes the database on disposal", async () => {
-		const { mainSdk } = boot();
+		const { mainSdk, project } = boot();
 		await expect(mainSdk.invoke("create", { folders: [] })).rejects.toMatchObject({
 			code: "VALIDATION",
 		});
-		await expect(mainSdk.invoke("get", { id: "missing" })).rejects.toMatchObject({
-			code: "NOT_FOUND",
-		});
+		await expect(mainSdk.invoke("get", { id: "missing" })).resolves.toBeNull();
+		await expect(
+			mainSdk.invoke("update", {
+				id: "missing",
+				name: "Missing",
+				folders: [{ path: project, isPrimary: true }],
+			}),
+		).rejects.toMatchObject({ code: "NOT_FOUND" });
 		mainSdk.dispose();
 		await expect(mainSdk.invoke("list")).rejects.toMatchObject({ code: "NOT_FOUND" });
 	});

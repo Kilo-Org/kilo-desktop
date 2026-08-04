@@ -30,7 +30,7 @@ import {
 	PopoverTrigger,
 } from "@anaconda-agentic-desktop/ui/components/popover";
 
-import { useWorkspacesFeature } from "./WorkspacesFeatureProvider";
+import { useWorkspacesFeature } from "./WorkspacesFeatureContext";
 
 const NO_COMMAND_SELECTION = "__no-workspace-command-selection__";
 

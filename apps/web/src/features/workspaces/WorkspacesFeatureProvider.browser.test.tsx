@@ -11,7 +11,8 @@ import {
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
-import { useWorkspacesFeature, WorkspacesFeatureProvider } from "./WorkspacesFeatureProvider";
+import { useWorkspacesFeature } from "./WorkspacesFeatureContext";
+import { WorkspacesFeatureProvider } from "./WorkspacesFeatureProvider";
 
 const workspace: Workspace = {
 	id: "workspace-1",

@@ -1,16 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-	createContext,
-	useContext,
-	useEffect,
-	useMemo,
-	useState,
-	useSyncExternalStore,
-	type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type {
-	Workspace,
 	WorkspaceCapabilityService,
 	WorkspaceCapabilities,
 	WorkspacesService,
@@ -19,6 +10,7 @@ import type { SDK, StoreHandle } from "@anaconda-agentic-desktop/feature-sdk";
 import { sdkQueryKey, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
 import { WorkspaceDialogs, type WorkspaceDialogState } from "./WorkspaceDialogs";
+import { WorkspacesContext, type WorkspacesContextValue } from "./WorkspacesFeatureContext";
 
 const ACTIVE_WORKSPACE_KEY = "workspaces.active-workspace";
 
@@ -48,26 +40,6 @@ function ensureBootstrap(sdk: WorkspacesSdk): Bootstrap {
 	const created = { activeHandle };
 	bootstraps.set(sdk, created);
 	return created;
-}
-
-type WorkspacesContextValue = {
-	workspaces: Workspace[];
-	activeWorkspaceId: string | null;
-	setActiveWorkspaceId(id: string | null): void;
-	isLoading: boolean;
-	isUnavailable: boolean;
-	openCreate(): void;
-	openEdit(workspace: Workspace): void;
-	openDelete(workspace: Workspace): void;
-};
-
-const WorkspacesContext = createContext<WorkspacesContextValue | null>(null);
-
-export function useWorkspacesFeature(): WorkspacesContextValue {
-	const value = useContext(WorkspacesContext);
-	if (!value)
-		throw new Error("useWorkspacesFeature must be used within WorkspacesFeatureProvider.");
-	return value;
 }
 
 export function WorkspacesFeatureProvider({ children }: { children: ReactNode }) {

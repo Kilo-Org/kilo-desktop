@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
+// The default `createNotification` arrow calls `new Notification(...).show()`,
+// so the mocked class must expose `show()` for the "default factory" test below.
 vi.mock("electron", () => ({
 	app: {},
-	Notification: class {},
+	Notification: class {
+		show() {}
+	},
 }));
 
 import { ElectronNotifications } from "./ElectronNotifications.js";
@@ -67,5 +71,19 @@ describe("ElectronNotifications", () => {
 		const result = unsupported.notifications.setBadge(1);
 		expect(result.delivered).toBe(false);
 		expect(result.reason).toMatch(/not supported/);
+	});
+
+	it("defaults to Electron's Notification constructor when no factory is injected", () => {
+		// Covers the default `createNotification` arrow: with no factory arg,
+		// `show()` must fall back to `new Notification(options).show()` — the
+		// mocked class above provides a no-op `show()` so this stays a pure
+		// wiring test (no OS calls).
+		const notifications = new ElectronNotifications(
+			{ setBadgeCount: () => true } as unknown as App,
+			() => true,
+		);
+		expect(notifications.show({ title: "T", message: "M", type: "info" })).toEqual({
+			delivered: true,
+		});
 	});
 });

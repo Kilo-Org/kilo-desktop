@@ -9,8 +9,10 @@ import { promisify } from "node:util";
 
 import type { KiloServerConnection, KiloServerStatus } from "@anaconda-agentic-desktop/contracts";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { net } from "electron";
 import { execa } from "execa";
 
+import { createLogger } from "../../platform/logger.js";
 import { KILO_CLI_VERSION } from "./cli/artifacts.js";
 
 const execFile = promisify(execFileCallback);
@@ -19,6 +21,9 @@ const DEFAULT_CORS_ORIGINS = [
 	"anaconda-agentic-desktop://app",
 	"anaconda-agentic-desktop-dev://app",
 ] as const;
+const GENERIC_STARTUP_ERROR = "Kilo server failed to start.";
+
+class KiloOperationalError extends Error {}
 
 export interface KiloInstallation {
 	readonly executablePath: string;
@@ -79,14 +84,6 @@ function appendNoProxy(current: string | undefined): string {
 	return [...entries].join(",");
 }
 
-function createDefaultLogger(): KiloLogger {
-	return {
-		info: (message) => console.info(`[KiloServer] ${message}`),
-		warn: (message) => console.warn(`[KiloServer] ${message}`),
-		error: (message) => console.error(`[KiloServer] ${message}`),
-	};
-}
-
 function defaultSpawn(
 	executablePath: string,
 	args: readonly string[],
@@ -94,6 +91,7 @@ function defaultSpawn(
 ): KiloChildProcess {
 	return execa(executablePath, args, {
 		...options,
+		buffer: false,
 		reject: false,
 		stderr: "pipe",
 		stdout: "pipe",
@@ -152,7 +150,9 @@ export class KiloServerManager {
 			corsOrigins: options.corsOrigins ?? DEFAULT_CORS_ORIGINS,
 			environment: options.environment ?? process.env,
 			platform: options.platform ?? process.platform,
-			fetch: options.fetch ?? globalThis.fetch,
+			fetch:
+				options.fetch ??
+				((input, init) => net.fetch(input instanceof URL ? input.toString() : input, init)),
 			spawn: options.spawn ?? defaultSpawn,
 			signalProcessGroup:
 				options.signalProcessGroup ?? ((pid, signal) => process.kill(-pid, signal)),
@@ -164,7 +164,7 @@ export class KiloServerManager {
 					});
 				}),
 			onStatusChange: options.onStatusChange ?? (() => undefined),
-			logger: options.logger ?? createDefaultLogger(),
+			logger: options.logger ?? createLogger("kilo-code"),
 			startupTimeoutMs: options.startupTimeoutMs ?? 30_000,
 			healthTimeoutMs: options.healthTimeoutMs ?? 10_000,
 			healthRequestTimeoutMs: options.healthRequestTimeoutMs ?? 3_000,
@@ -226,15 +226,18 @@ export class KiloServerManager {
 				detached: this.#options.platform !== "win32",
 				env: environment,
 			});
-			if (!child.pid) throw new Error("Kilo server did not provide a process id.");
+			if (!child.pid) {
+				throw new KiloOperationalError("Kilo server did not provide a process id.");
+			}
 			this.#child = child;
 			this.#watchChild(child);
+			child.stderr?.resume();
 
 			const baseUrl = await this.#waitForListeningUrl(child);
 			const version = await this.#waitForHealthy(baseUrl, authHeader);
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
 			if (!this.#options.allowVersionMismatch && version !== this.#options.expectedVersion) {
-				throw new Error(
+				throw new KiloOperationalError(
 					`Kilo server version mismatch: expected ${this.#options.expectedVersion}, got ${version}.`,
 				);
 			}
@@ -246,15 +249,17 @@ export class KiloServerManager {
 			return this.#publicConnection(connection);
 		} catch (error) {
 			if (child) await this.#terminate(child);
-			const message = safeErrorMessage(error, [password, authHeader]);
+			const internalMessage = safeErrorMessage(error, [password, authHeader]);
+			const publicMessage =
+				error instanceof KiloOperationalError ? internalMessage : GENERIC_STARTUP_ERROR;
 			this.#connection = undefined;
 			if (this.#disposed) {
 				this.#setStatus({ status: "stopped" });
 				throw new FeatureError("Kilo Code has shut down.", "BUSINESS");
 			}
-			this.#setStatus({ status: "error", message });
-			this.#options.logger.error(message);
-			throw new FeatureError(message, "BUSINESS");
+			this.#setStatus({ status: "error", message: publicMessage });
+			this.#options.logger.error(internalMessage);
+			throw new FeatureError(publicMessage, "BUSINESS");
 		}
 	}
 
@@ -315,17 +320,23 @@ export class KiloServerManager {
 	}
 
 	#waitForListeningUrl(child: KiloChildProcess): Promise<string> {
-		if (!child.stdout) return Promise.reject(new Error("Kilo server stdout is unavailable."));
+		if (!child.stdout) {
+			return Promise.reject(new KiloOperationalError("Kilo server stdout is unavailable."));
+		}
 		return new Promise((resolve, reject) => {
 			const lines = createInterface({ input: child.stdout! });
 			const timeout = setTimeout(() => {
 				cleanup();
-				reject(new Error("Kilo server did not report a listening URL before startup timed out."));
+				reject(
+					new KiloOperationalError(
+						"Kilo server did not report a listening URL before startup timed out.",
+					),
+				);
 			}, this.#options.startupTimeoutMs);
 			const onExit = (exitCode: number | null, signal: NodeJS.Signals | null) => {
 				cleanup();
 				reject(
-					new Error(
+					new KiloOperationalError(
 						`Kilo server exited before becoming ready (${signal ?? `code ${exitCode ?? "unknown"}`}).`,
 					),
 				);
@@ -333,6 +344,7 @@ export class KiloServerManager {
 			const cleanup = () => {
 				clearTimeout(timeout);
 				lines.close();
+				child.stdout?.resume();
 				child.off("exit", onExit);
 			};
 			child.on("exit", onExit);
@@ -342,7 +354,9 @@ export class KiloServerManager {
 				try {
 					const url = new URL(match[1].replace(/[),.;]+$/, ""));
 					if (url.protocol !== "http:" || !LOOPBACK_HOSTS.has(url.hostname) || !url.port) {
-						throw new Error(`Kilo reported a non-loopback listening URL: ${url.origin}`);
+						throw new KiloOperationalError(
+							`Kilo reported a non-loopback listening URL: ${url.origin}`,
+						);
 					}
 					cleanup();
 					resolve(url.origin);
@@ -356,7 +370,7 @@ export class KiloServerManager {
 
 	async #waitForHealthy(baseUrl: string, authorization: string): Promise<string> {
 		const deadline = Date.now() + this.#options.healthTimeoutMs;
-		let lastError: unknown = new Error("Kilo health check did not complete.");
+		let lastError: unknown = new KiloOperationalError("Kilo health check did not complete.");
 		while (Date.now() <= deadline) {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), this.#options.healthRequestTimeoutMs);
@@ -366,16 +380,16 @@ export class KiloServerManager {
 					signal: controller.signal,
 				});
 				if (response.status === 401) {
-					throw new Error("Kilo server rejected its per-launch credentials.");
+					throw new KiloOperationalError("Kilo server rejected its per-launch credentials.");
 				}
 				if (response.ok) {
 					const health = (await response.json()) as { healthy?: unknown; version?: unknown };
 					if (health.healthy !== true || typeof health.version !== "string" || !health.version) {
-						throw new Error("Kilo server returned an invalid health response.");
+						throw new KiloOperationalError("Kilo server returned an invalid health response.");
 					}
 					return health.version;
 				}
-				lastError = new Error(`Kilo health check returned HTTP ${response.status}.`);
+				lastError = new KiloOperationalError(`Kilo health check returned HTTP ${response.status}.`);
 			} catch (error) {
 				lastError = error;
 				if (error instanceof Error && error.message.includes("per-launch credentials")) throw error;

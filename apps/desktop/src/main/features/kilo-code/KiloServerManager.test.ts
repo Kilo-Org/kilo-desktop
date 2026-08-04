@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { KiloServerStatus } from "@anaconda-agentic-desktop/contracts";
 
+const electronNet = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("electron", () => ({ net: electronNet }));
+
 import {
 	KiloServerManager,
 	type KiloChildProcess,
@@ -33,7 +36,7 @@ class FakeChild extends EventEmitter implements KiloChildProcess {
 	}
 }
 
-function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
+function createHarness(overrides: Partial<KiloServerManagerOptions> = {}, useInjectedFetch = true) {
 	const children: FakeChild[] = [];
 	const spawn = vi.fn(
 		(
@@ -64,7 +67,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 		environment: { PATH: "/bin", NODE_OPTIONS: "--inspect", LD_PRELOAD: "bad.so" },
 		platform: "linux",
 		spawn,
-		fetch,
+		...(useInjectedFetch ? { fetch } : {}),
 		signalProcessGroup: (_pid, signal) => {
 			if (signal === "SIGTERM") children.at(-1)?.exit(0, signal);
 		},
@@ -154,6 +157,19 @@ describe("KiloServerManager", () => {
 		expect(logger.error).toHaveBeenCalledWith("Kilo server rejected its per-launch credentials.");
 	});
 
+	it("uses Electron net.fetch for health checks by default", async () => {
+		electronNet.fetch.mockResolvedValueOnce(Response.json({ healthy: true, version: "7.4.20" }));
+		const { manager } = createHarness({}, false);
+
+		await manager.ensureRunning();
+
+		expect(electronNet.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:4321/global/health",
+			expect.objectContaining({ headers: expect.any(Object) }),
+		);
+		manager.dispose();
+	});
+
 	it("rejects a mismatched bundled version but permits local override versions", async () => {
 		const mismatchFetch = vi.fn(async () =>
 			Response.json({ healthy: true, version: "9.0.0-dev" }),
@@ -166,6 +182,25 @@ describe("KiloServerManager", () => {
 		const override = createHarness({ fetch: mismatchFetch, allowVersionMismatch: true });
 		await expect(override.manager.ensureRunning()).resolves.toMatchObject({ version: "9.0.0-dev" });
 		override.manager.dispose();
+	});
+
+	it("scrubs unexpected startup failures while retaining the internal error in logs", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const { manager, statuses } = createHarness({
+			spawn: () => {
+				throw new Error("spawn /Users/example/private/kilo ENOENT");
+			},
+			logger,
+		});
+
+		await expect(manager.ensureRunning()).rejects.toMatchObject({
+			message: "Kilo server failed to start.",
+		});
+		expect(statuses.at(-1)).toEqual({
+			status: "error",
+			message: "Kilo server failed to start.",
+		});
+		expect(logger.error).toHaveBeenCalledWith("spawn /Users/example/private/kilo ENOENT");
 	});
 
 	it("clears a crashed connection and starts a fresh child on the next request", async () => {

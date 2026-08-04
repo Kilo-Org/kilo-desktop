@@ -25,6 +25,12 @@ export function createBrowserLocalApi(): LocalApi {
 					throw new LocalApiError("TRANSPORT", "Could not copy text to the clipboard.");
 				}
 			},
+			async showOpenDialog() {
+				throw new LocalApiError("TRANSPORT", "Folder selection requires the desktop app.");
+			},
+			getPathForFile() {
+				return null;
+			},
 		},
 		auth: {
 			async getSession(): Promise<AuthSession> {

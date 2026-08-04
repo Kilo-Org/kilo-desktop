@@ -116,6 +116,8 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 			{
 				openExternal: async () => ({ opened: true }),
 				copyText: async () => undefined,
+				showOpenDialog: async () => ({ canceled: true, paths: [] }),
+				getPathForFile: () => null,
 			},
 			options.shell,
 		),

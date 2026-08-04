@@ -7,6 +7,7 @@ import { createDesktopQueryClient } from "@/lib/query/client";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
 import { SdkProvider, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 import { router } from "@/router";
+import { WorkspacesFeatureProvider } from "@/features/workspaces/WorkspacesFeatureProvider";
 
 type AppProvidersProps = {
 	localApi: LocalApi;
@@ -25,7 +26,9 @@ export function AppProviders({ localApi, system, children }: AppProvidersProps) 
 		<LocalApiProvider api={localApi}>
 			<SdkProvider system={system}>
 				<QueryClientProvider client={queryClient}>
-					{children ?? <RouterProvider router={router} />}
+					<WorkspacesFeatureProvider>
+						{children ?? <RouterProvider router={router} />}
+					</WorkspacesFeatureProvider>
 				</QueryClientProvider>
 			</SdkProvider>
 		</LocalApiProvider>

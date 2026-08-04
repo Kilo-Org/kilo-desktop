@@ -26,6 +26,8 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 		shell: {
 			openExternal: (input) => invoke("shell:open-external", input),
 			copyText: (input) => invoke("shell:copy-text", input),
+			showOpenDialog: (input) => invoke("shell:show-open-dialog", input),
+			getPathForFile: (file) => bridge.getPathForFile(file),
 		},
 		auth: {
 			getSession: () => invoke("auth:get-session"),

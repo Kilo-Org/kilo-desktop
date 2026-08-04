@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { openExternal, writeText } = vi.hoisted(() => ({
+const { openExternal, showOpenDialog, writeText } = vi.hoisted(() => ({
 	openExternal: vi.fn(),
+	showOpenDialog: vi.fn(),
 	writeText: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
 	clipboard: { writeText },
+	dialog: { showOpenDialog },
 	shell: { openExternal },
 }));
 
@@ -16,6 +18,19 @@ describe("ElectronShell", () => {
 	beforeEach(() => {
 		openExternal.mockReset();
 		writeText.mockReset();
+		showOpenDialog.mockReset();
+	});
+
+	it("maps directory dialog options and results", async () => {
+		showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ["/tmp/one", "/tmp/two"] });
+		const adapter = new ElectronShell();
+		await expect(adapter.showOpenDialog({ kind: "directory", multiple: true })).resolves.toEqual({
+			canceled: false,
+			paths: ["/tmp/one", "/tmp/two"],
+		});
+		expect(showOpenDialog).toHaveBeenCalledWith({
+			properties: ["openDirectory", "multiSelections"],
+		});
 	});
 
 	it.each([

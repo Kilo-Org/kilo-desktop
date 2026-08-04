@@ -330,10 +330,19 @@ export interface SdkTheme {
 	peek(): "dark" | "light";
 }
 
-/** OS-level shell actions (open browser, clipboard). */
+export interface DirectoryOpenDialogOptions {
+	kind: "directory";
+	multiple?: boolean;
+}
+
+/** OS-level shell actions (open browser, clipboard, native folder access). */
 export interface SdkShell {
 	openExternal(url: string): Promise<{ opened: boolean }>;
 	copyText(text: string): Promise<void>;
+	showOpenDialog(
+		options: DirectoryOpenDialogOptions,
+	): Promise<{ canceled: boolean; paths: string[] }>;
+	getPathForFile(file: File): string | null;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────

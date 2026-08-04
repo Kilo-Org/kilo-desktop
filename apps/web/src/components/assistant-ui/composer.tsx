@@ -4,7 +4,7 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { AuiIf, ComposerPrimitive } from "@assistant-ui/react";
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
-import type { CSSProperties, FC } from "react";
+import type { CSSProperties, FC, ReactNode } from "react";
 
 const composerStyle = {
 	["--composer-bg" as string]:
@@ -13,7 +13,7 @@ const composerStyle = {
 	["--composer-padding" as string]: "8px",
 } as CSSProperties;
 
-export const Composer: FC = () => {
+export const Composer: FC<{ leadingAction?: ReactNode }> = ({ leadingAction }) => {
 	return (
 		<ComposerPrimitive.Root
 			className="aui-composer-root relative flex w-full flex-col"
@@ -31,47 +31,50 @@ export const Composer: FC = () => {
 					enterKeyHint="send"
 					aria-label="Message input"
 				/>
-				<ComposerAction />
+				<ComposerAction leadingAction={leadingAction} />
 			</div>
 		</ComposerPrimitive.Root>
 	);
 };
 
-const ComposerAction: FC = () => {
+const ComposerAction: FC<{ leadingAction?: ReactNode }> = ({ leadingAction }) => {
 	return (
-		<div className="aui-composer-action-wrapper relative flex items-center justify-end">
-			<AuiIf condition={(s) => !s.thread.isRunning}>
-				<ComposerPrimitive.Send
-					render={
-						<TooltipIconButton
-							tooltip="Send message"
-							side="bottom"
-							type="button"
-							variant="default"
-							size="icon"
-							className="aui-composer-send size-7 rounded-full"
-							aria-label="Send message"
-						/>
-					}
-				>
-					<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
-				</ComposerPrimitive.Send>
-			</AuiIf>
-			<AuiIf condition={(s) => s.thread.isRunning}>
-				<ComposerPrimitive.Cancel
-					render={
-						<Button
-							type="button"
-							variant="default"
-							size="icon"
-							className="aui-composer-cancel size-7 rounded-full"
-							aria-label="Stop generating"
-						/>
-					}
-				>
-					<SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
-				</ComposerPrimitive.Cancel>
-			</AuiIf>
+		<div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
+			<div className="min-w-0">{leadingAction}</div>
+			<div className="flex items-center">
+				<AuiIf condition={(s) => !s.thread.isRunning}>
+					<ComposerPrimitive.Send
+						render={
+							<TooltipIconButton
+								tooltip="Send message"
+								side="bottom"
+								type="button"
+								variant="default"
+								size="icon"
+								className="aui-composer-send size-7 rounded-full"
+								aria-label="Send message"
+							/>
+						}
+					>
+						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
+					</ComposerPrimitive.Send>
+				</AuiIf>
+				<AuiIf condition={(s) => s.thread.isRunning}>
+					<ComposerPrimitive.Cancel
+						render={
+							<Button
+								type="button"
+								variant="default"
+								size="icon"
+								className="aui-composer-cancel size-7 rounded-full"
+								aria-label="Stop generating"
+							/>
+						}
+					>
+						<SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
+					</ComposerPrimitive.Cancel>
+				</AuiIf>
+			</div>
 		</div>
 	);
 };

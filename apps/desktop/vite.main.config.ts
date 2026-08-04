@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { builtinModules } from "node:module";
 
 import { defineConfig, loadEnv } from "vite";
+import { viteStaticCopy } from "vite-plugin-static-copy";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -20,6 +21,16 @@ export default defineConfig(({ command }) => {
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
 	return {
+		plugins: [
+			viteStaticCopy({
+				targets: [
+					{
+						src: path.resolve(root, "drizzle/workspaces"),
+						dest: "drizzle",
+					},
+				],
+			}),
+		],
 		define: {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_CHANNEL: JSON.stringify(channel),

@@ -7,6 +7,7 @@ import type { FC } from "react";
 
 import { Composer } from "@/components/assistant-ui/composer";
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
+import { WorkspaceSelector } from "@/features/workspaces/WorkspaceSelector";
 
 /**
  * Stub model until home → chat navigation is wired. Keeps the official
@@ -44,7 +45,7 @@ export function HomeView() {
 							className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both pointer-events-none absolute top-1/2 left-1/2 h-[260px] w-[680px] max-w-[92%] -translate-x-1/2 -translate-y-1/2 rounded-[140px] bg-green-300/40 blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] dark:bg-green-900/25"
 						/>
 						<div className="relative z-10">
-							<Composer />
+							<Composer leadingAction={<WorkspaceSelector />} />
 						</div>
 					</div>
 					{/* Dashboard widgets registered via sdk.contribute("dashboard", ...) */}

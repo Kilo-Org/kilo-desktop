@@ -25,6 +25,8 @@ function fakeLocalApi(session: AuthSession, auth: AuthOverrides = {}): LocalApi 
 		shell: {
 			openExternal: async () => ({ opened: true }),
 			copyText: async () => undefined,
+			showOpenDialog: async () => ({ canceled: true, paths: [] }),
+			getPathForFile: () => null,
 		},
 		auth: {
 			getSession: async () => session,

@@ -2,23 +2,38 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+import { workspacesContract } from "@anaconda-agentic-desktop/contracts";
 import { createFakeSdk, createFakeFeatureSystem } from "@anaconda-agentic-desktop/testing";
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 
+import { WorkspacesFeatureProvider } from "@/features/workspaces/WorkspacesFeatureProvider";
 import { HomeView } from "./HomeView";
 
 afterEach(() => {
 	cleanup();
+	localStorage.clear();
 });
 
 /** HomeView renders the "dashboard" zone, which needs a feature system. */
 function renderHome() {
-	const system = createFakeFeatureSystem({ sdks: { home: createFakeSdk({ featureId: "home" }) } });
+	const workspaces = createFakeSdk({
+		featureId: "workspaces",
+		channels: workspacesContract,
+		handlers: { list: async () => [] },
+	});
+	const system = createFakeFeatureSystem({ sdks: { workspaces } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<SdkProvider system={system}>
-			<div className="h-[600px]">
-				<HomeView />
-			</div>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<div className="h-[600px]">
+						<HomeView />
+					</div>
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
 		</SdkProvider>,
 	);
 }

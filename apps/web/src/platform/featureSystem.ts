@@ -114,6 +114,8 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 		shell: {
 			openExternal: (url) => api.shell.openExternal({ url }),
 			copyText: (text) => api.shell.copyText({ text }),
+			showOpenDialog: (options) => api.shell.showOpenDialog(options),
+			getPathForFile: (file) => api.shell.getPathForFile(file),
 		},
 		fs: {
 			readFile: () => Promise.reject(new Error("sdk.fs is not yet wired to a shell service.")),

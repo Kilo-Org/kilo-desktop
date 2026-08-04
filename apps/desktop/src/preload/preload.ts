@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import {
 	ipcEvents,
@@ -20,6 +20,10 @@ const invoke = ((channel: IpcMethodChannel, input?: unknown) => {
 }) as DesktopApi["invoke"];
 
 const desktopApi: DesktopApi = {
+	getPathForFile(file) {
+		const resolved = webUtils.getPathForFile(file);
+		return resolved || null;
+	},
 	invoke,
 	send: <TChannel extends IpcMessageChannel>(
 		channel: TChannel,

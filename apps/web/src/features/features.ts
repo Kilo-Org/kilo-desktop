@@ -12,6 +12,7 @@ import {
 } from "@anaconda-agentic-desktop/contracts";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
+import { workspacesBrowserRegister } from "./workspaces/browserRegister.js";
 
 /**
  * Feature registrations used when the app runs standalone in a browser
@@ -81,6 +82,11 @@ const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
 		id: "sdk-consumer",
 		mainRegister: sdkConsumerBrowserRegister,
 		browserRegister: sdkConsumerBrowserRegister,
+	},
+	{
+		id: "workspaces",
+		mainRegister: workspacesBrowserRegister,
+		browserRegister: workspacesBrowserRegister,
 	},
 ];
 

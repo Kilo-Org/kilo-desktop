@@ -34,6 +34,7 @@
 		"@github/keytar": "^7.10.6",
 		"atomically": "catalog:",
 		"better-sqlite3": "^13.0.1",
+		"drizzle-orm": "^0.44.7",
 		"electron-debug": "^4.1.0",
 		"electron-log": "^5.4.3",
 		"electron-squirrel-startup": "^1.0.1",
@@ -65,10 +66,12 @@
 		"cross-env": "^10.1.0",
 		"electron": "catalog:",
 		"electron-winstaller": "5.4.4",
+		"drizzle-kit": "^0.31.8",
 		"playwright": "1.61.1",
 		"tsx": "^4.23.1",
 		"typescript": "catalog:",
 		"vite": "catalog:",
+		"vite-plugin-static-copy": "^3.1.4",
 		"vitest": "catalog:",
 		"zod": "catalog:"
 	}

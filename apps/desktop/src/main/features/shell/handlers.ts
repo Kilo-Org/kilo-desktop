@@ -4,7 +4,7 @@ import type { ElectronShell } from "../../platform/ElectronShell.js";
 
 export function createShellHandlers(
 	electronShell: ElectronShell,
-): Pick<IpcHandlers, "shell:open-external" | "shell:copy-text"> {
+): Pick<IpcHandlers, "shell:open-external" | "shell:copy-text" | "shell:show-open-dialog"> {
 	return {
 		"shell:open-external": async ({ url }) => ({
 			opened: await electronShell.openExternal(url),
@@ -12,5 +12,9 @@ export function createShellHandlers(
 		"shell:copy-text": ({ text }) => {
 			electronShell.copyText(text);
 		},
-	} satisfies Pick<IpcHandlers, "shell:open-external" | "shell:copy-text">;
+		"shell:show-open-dialog": (input) => electronShell.showOpenDialog(input),
+	} satisfies Pick<
+		IpcHandlers,
+		"shell:open-external" | "shell:copy-text" | "shell:show-open-dialog"
+	>;
 }

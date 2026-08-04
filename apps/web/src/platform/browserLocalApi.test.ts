@@ -46,6 +46,13 @@ describe("createBrowserLocalApi", () => {
 		await expect(api.shell.copyText({ text: "hello" })).rejects.toMatchObject({
 			code: "TRANSPORT",
 		});
+		await expect(
+			api.shell.showOpenDialog({ kind: "directory", multiple: true }),
+		).rejects.toMatchObject({
+			code: "TRANSPORT",
+			message: "Folder selection requires the desktop app.",
+		});
+		expect(api.shell.getPathForFile(new File([], "folder"))).toBeNull();
 	});
 
 	it("reports an anonymous auth session with a no-op onChanged", async () => {

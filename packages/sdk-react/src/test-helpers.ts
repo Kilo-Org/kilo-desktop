@@ -36,6 +36,8 @@ export function createTestShellDelegates(): ShellDelegates {
 		shell: {
 			openExternal: async () => ({ opened: true }),
 			copyText: async () => undefined,
+			showOpenDialog: async () => ({ canceled: true, paths: [] }),
+			getPathForFile: () => null,
 		},
 		fs: {
 			readFile: notImplemented("sdk.fs.readFile"),

@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
@@ -129,10 +130,10 @@ describe("KiloServerManager", () => {
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: "/vendor/tree-sitter",
-			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
-			XDG_DATA_HOME: "/tmp/kilo-test-runtime/data",
-			XDG_CACHE_HOME: "/tmp/kilo-test-runtime/cache",
-			XDG_STATE_HOME: "/tmp/kilo-test-runtime/state",
+			XDG_CONFIG_HOME: path.join("/tmp/kilo-test-runtime", "config"),
+			XDG_DATA_HOME: path.join("/tmp/kilo-test-runtime", "data"),
+			XDG_CACHE_HOME: path.join("/tmp/kilo-test-runtime", "cache"),
+			XDG_STATE_HOME: path.join("/tmp/kilo-test-runtime", "state"),
 			NO_PROXY: "127.0.0.1,localhost",
 		});
 		expect(options.env.NODE_OPTIONS).toBeUndefined();

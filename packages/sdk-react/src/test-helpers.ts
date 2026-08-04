@@ -12,8 +12,8 @@ function notImplemented(method: string): (...args: never[]) => Promise<never> {
 export function createTestShellDelegates(): ShellDelegates {
 	return {
 		notifications: {
-			show: () => ({ delivered: true }),
-			setBadge: () => ({ delivered: true }),
+			show: async () => ({ delivered: true }),
+			setBadge: async () => ({ delivered: true }),
 		},
 		theme: {
 			subscribe(fn) {

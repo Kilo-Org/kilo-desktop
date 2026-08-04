@@ -13,18 +13,23 @@ import {
 import { FEATURES } from "./features/registry/features.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
+import { createFsHandlers } from "./features/fs/handlers.js";
+import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
 import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
+import { ElectronNotifications } from "./platform/ElectronNotifications.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
+import { featureFsSandboxDir } from "./platform/featureStorage.js";
 import { IpcServer } from "./platform/IpcServer.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
+import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { configureUpdater } from "./platform/Updater.js";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
@@ -33,6 +38,13 @@ export class Application {
 	readonly #protocol = new ElectronProtocol();
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
+	readonly #notifications = new ElectronNotifications();
+	// sdk.fs sandbox — a dedicated `fs/` subdir of the feature's Decision #20
+	// storage dir, kept a SIBLING of its SQLite data.db so no fs call can reach
+	// the database (see featureStorage.ts).
+	readonly #scopedFs = new ScopedFsService((featureId) =>
+		featureFsSandboxDir(this.#app.getPath("userData"), featureId),
+	);
 	readonly #auth = new AuthSessionService({
 		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,
 	});
@@ -109,6 +121,8 @@ export class Application {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#windows, preferences),
 			...createAuthHandlers(this.#auth),
+			...createNotificationsHandlers(this.#notifications),
+			...createFsHandlers(this.#scopedFs),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(

@@ -11,6 +11,7 @@ import { page } from "vitest/browser";
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 import { AppSidebarLayout } from "./AppSidebarLayout";
@@ -19,6 +20,7 @@ type AuthOverrides = Partial<LocalApi["auth"]>;
 
 function fakeLocalApi(session: AuthSession, auth: AuthOverrides = {}): LocalApi {
 	return {
+		...createBrowserLocalApi(),
 		theme: {
 			sync: async () => undefined,
 		},

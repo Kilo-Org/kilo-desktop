@@ -30,6 +30,18 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			showOpenDialog: (input) => invoke("shell:show-open-dialog", input),
 			getPathForFile: (file) => bridge.getPathForFile(file),
 		},
+		notifications: {
+			show: (input) => invoke("notifications:show", input),
+			setBadge: (input) => invoke("notifications:set-badge", input),
+		},
+		fs: {
+			readFile: (input) => invoke("fs:read-file", input),
+			writeFile: (input) => invoke("fs:write-file", input),
+			exists: (input) => invoke("fs:exists", input),
+			mkdir: (input) => invoke("fs:mkdir", input),
+			readdir: (input) => invoke("fs:readdir", input),
+			remove: (input) => invoke("fs:remove", input),
+		},
 		auth: {
 			getSession: () => invoke("auth:get-session"),
 			refresh: () => invoke("auth:refresh"),

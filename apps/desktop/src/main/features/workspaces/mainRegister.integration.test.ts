@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { WorkspaceCapabilities } from "@anaconda-agentic-desktop/contracts";
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { mainRegister } from "./index.js";
@@ -41,6 +42,9 @@ describe("workspaces mainRegister", () => {
 		})) as { id: string; name: string };
 		expect(created.name).toBe("Project");
 		expect(createdEvent).toHaveBeenCalledWith({ before: null, after: created });
+		const capability = mainSdk.plugins.get<WorkspaceCapabilities>("workspaces")?.workspaceService;
+		expect(capability).toBeDefined();
+		await expect(capability!.get(created.id)).resolves.toEqual(created);
 
 		const updated = await mainSdk.invoke("update", {
 			id: created.id,
@@ -51,7 +55,7 @@ describe("workspaces mainRegister", () => {
 		await expect(mainSdk.invoke("list")).resolves.toEqual([updated]);
 		expect(fs.existsSync(path.join(storageDir, "data.db"))).toBe(true);
 
-		await expect(mainSdk.invoke("remove", { id: created.id })).resolves.toEqual({ deleted: true });
+		await expect(capability!.remove(created.id)).resolves.toEqual({ deleted: true });
 		expect(deletedEvent).toHaveBeenCalledWith({ before: updated, after: null });
 		mainSdk.dispose();
 	});

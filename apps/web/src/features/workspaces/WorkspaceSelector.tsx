@@ -158,7 +158,12 @@ export function WorkspaceSelector() {
 										>
 											<MoreHorizontalIcon />
 										</DropdownMenuTrigger>
-										<DropdownMenuContent align="end" onPointerDown={stop} onKeyDown={stop}>
+										<DropdownMenuContent
+											align="end"
+											onPointerDown={stop}
+											onKeyDown={stop}
+											onClick={stop}
+										>
 											<DropdownMenuItem
 												onClick={() => {
 													setOpen(false);

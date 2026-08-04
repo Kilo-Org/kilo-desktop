@@ -33,7 +33,7 @@ describe("WorkspaceSelector", () => {
 		).toBe("bottom");
 		await expect.element(page.getByText("No workspaces yet.")).toBeVisible();
 		await page.getByText("Create workspace", { exact: true }).click();
-		await page.getByRole("button", { name: /Drop project folders/ }).click();
+		await page.getByRole("button", { name: /Drop folders/ }).click();
 		const projectFolder = page.getByText("Project", { exact: true });
 		await expect.element(projectFolder).toBeVisible();
 		await projectFolder.hover();
@@ -90,12 +90,23 @@ describe("WorkspaceSelector", () => {
 		for (const name of ["AlphaProject", "BetaProject"]) {
 			await page.getByRole("combobox", { name: "Select workspace" }).click();
 			await page.getByText("Create workspace", { exact: true }).click();
-			await page.getByRole("button", { name: /Drop project folders/ }).click();
+			await page.getByRole("button", { name: /Drop folders/ }).click();
 			await page.getByRole("button", { name: "Create workspace" }).click();
 			await expect
 				.element(page.getByRole("combobox", { name: "Select workspace" }))
 				.toHaveTextContent(name);
 		}
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		const alphaOption = page.getByRole("option", { name: /AlphaProject/ }).element();
+		fireEvent.pointerMove(alphaOption);
+		await waitFor(() => expect(alphaOption).toHaveAttribute("aria-selected", "true"));
+		await page.getByRole("button", { name: "Workspace actions for AlphaProject" }).click();
+		await page.getByText("Edit", { exact: true }).click();
+		await page.getByRole("button", { name: "Cancel" }).click();
+		await expect
+			.element(page.getByRole("combobox", { name: "Select workspace" }))
+			.toHaveTextContent("BetaProject");
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		const search = page.getByRole("combobox", { name: "Search workspaces" });

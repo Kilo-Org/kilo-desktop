@@ -30,29 +30,35 @@ export const workspaceChangeSchema = z.object({
 });
 export type WorkspaceChange = z.infer<typeof workspaceChangeSchema>;
 
+export const createWorkspaceInputSchema = z.object({
+	name: z.string().optional(),
+	folders: z.array(workspaceFolderInputSchema).min(1),
+});
+export type CreateWorkspaceInput = z.infer<typeof createWorkspaceInputSchema>;
+
+export const updateWorkspaceInputSchema = createWorkspaceInputSchema.extend({
+	id: z.string().min(1),
+});
+export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceInputSchema>;
+
 export const workspacesContract = defineContract({
 	list: defineMethod(z.undefined(), z.array(workspaceSchema)),
 	get: defineMethod(z.object({ id: z.string().min(1) }), workspaceSchema),
-	create: defineMethod(
-		z.object({
-			name: z.string().optional(),
-			folders: z.array(workspaceFolderInputSchema).min(1),
-		}),
-		workspaceSchema,
-	),
-	update: defineMethod(
-		z.object({
-			id: z.string().min(1),
-			name: z.string().optional(),
-			folders: z.array(workspaceFolderInputSchema).min(1),
-		}),
-		workspaceSchema,
-	),
+	create: defineMethod(createWorkspaceInputSchema, workspaceSchema),
+	update: defineMethod(updateWorkspaceInputSchema, workspaceSchema),
 	remove: defineMethod(z.object({ id: z.string().min(1) }), z.object({ deleted: z.boolean() })),
 });
 
 export type WorkspacesService = InferContract<typeof workspacesContract>;
 
+export interface WorkspaceCapabilityService {
+	list(): Promise<Workspace[]>;
+	get(id: string): Promise<Workspace>;
+	create(input: CreateWorkspaceInput): Promise<Workspace>;
+	update(input: UpdateWorkspaceInput): Promise<Workspace>;
+	remove(id: string): Promise<{ deleted: boolean }>;
+}
+
 export interface WorkspaceCapabilities extends Record<string, unknown> {
-	workspaceService: WorkspacesService;
+	workspaceService: WorkspaceCapabilityService;
 }

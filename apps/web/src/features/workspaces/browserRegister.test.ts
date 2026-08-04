@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Workspace } from "@anaconda-agentic-desktop/contracts";
+import type { Workspace, WorkspaceCapabilities } from "@anaconda-agentic-desktop/contracts";
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { workspacesBrowserRegister } from "./browserRegister";
@@ -26,6 +26,9 @@ describe("workspacesBrowserRegister", () => {
 		})) as Workspace;
 		expect(project.name).toBe("Project");
 		expect(createdEvent).toHaveBeenCalledWith({ before: null, after: project });
+		const capability = sdk.plugins.get<WorkspaceCapabilities>("workspaces")?.workspaceService;
+		expect(capability).toBeDefined();
+		await expect(capability!.get(project.id)).resolves.toEqual(project);
 
 		const duplicate = (await sdk.invoke("create", {
 			folders: [{ path: "C:\\projects\\Project", isPrimary: true }],
@@ -62,7 +65,7 @@ describe("workspacesBrowserRegister", () => {
 		expect(regenerated).toMatchObject({ name: "Second" });
 		await expect(sdk.invoke("get", { id: project.id })).resolves.toEqual(regenerated);
 
-		await expect(sdk.invoke("remove", { id: explicit.id })).resolves.toEqual({ deleted: true });
+		await expect(capability!.remove(explicit.id)).resolves.toEqual({ deleted: true });
 		expect(deletedEvent).toHaveBeenCalledWith({ before: explicit, after: null });
 		sdk.dispose();
 	});

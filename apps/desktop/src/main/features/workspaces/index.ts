@@ -2,7 +2,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { workspacesContract } from "@anaconda-agentic-desktop/contracts";
-import type { WorkspacesService } from "@anaconda-agentic-desktop/contracts";
+import type {
+	WorkspaceCapabilityService,
+	WorkspacesService,
+} from "@anaconda-agentic-desktop/contracts";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { createWorkspacesDatabase } from "./db.js";
@@ -39,7 +42,15 @@ export function mainRegister(mainSdk: MainSdk): void {
 		},
 	};
 
-	mainSdk.plugins.expose("workspaceService", api);
+	const workspaceService = {
+		list: () => api.list(),
+		get: (id) => api.get({ id }),
+		create: (input) => api.create(input),
+		update: (input) => api.update(input),
+		remove: (id) => api.remove({ id }),
+	} satisfies WorkspaceCapabilityService;
+
+	mainSdk.plugins.expose("workspaceService", workspaceService);
 	mainSdk.channels(workspacesContract).handleAll(api);
 	mainSdk.onDispose(() => db.$client.close());
 }

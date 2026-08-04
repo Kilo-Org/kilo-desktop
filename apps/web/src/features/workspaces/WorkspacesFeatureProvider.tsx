@@ -11,6 +11,7 @@ import {
 
 import type {
 	Workspace,
+	WorkspaceCapabilityService,
 	WorkspaceCapabilities,
 	WorkspacesService,
 } from "@anaconda-agentic-desktop/contracts";
@@ -36,7 +37,14 @@ function ensureBootstrap(sdk: WorkspacesSdk): Bootstrap {
 	const saved = globalThis.localStorage?.getItem(ACTIVE_WORKSPACE_KEY) ?? null;
 	const activeHandle = sdk.state.register<string | null>("active-workspace", saved);
 	if (!sdk.plugins.get<WorkspaceCapabilities>("workspaces")?.workspaceService) {
-		sdk.plugins.expose("workspaceService", sdk.client as unknown as Record<string, unknown>);
+		const workspaceService = {
+			list: () => sdk.client.list(),
+			get: (id) => sdk.client.get({ id }),
+			create: (input) => sdk.client.create(input),
+			update: (input) => sdk.client.update(input),
+			remove: (id) => sdk.client.remove({ id }),
+		} satisfies WorkspaceCapabilityService;
+		sdk.plugins.expose("workspaceService", workspaceService);
 	}
 	const created = { activeHandle };
 	bootstraps.set(sdk, created);

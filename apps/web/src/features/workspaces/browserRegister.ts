@@ -1,5 +1,6 @@
 import type {
 	Workspace,
+	WorkspaceCapabilityService,
 	WorkspaceFolderInput,
 	WorkspacesService,
 } from "@anaconda-agentic-desktop/contracts";
@@ -102,6 +103,14 @@ export function workspacesBrowserRegister(mainSdk: MainSdk): void {
 		},
 	};
 
-	mainSdk.plugins.expose("workspaceService", service);
+	const workspaceService = {
+		list: () => service.list(),
+		get: (id) => service.get({ id }),
+		create: (input) => service.create(input),
+		update: (input) => service.update(input),
+		remove: (id) => service.remove({ id }),
+	} satisfies WorkspaceCapabilityService;
+
+	mainSdk.plugins.expose("workspaceService", workspaceService);
 	mainSdk.channels(workspacesContract).handleAll(service);
 }

@@ -185,7 +185,7 @@ function WorkspaceFormDialog({
 		event.preventDefault();
 		setError(null);
 		if (folders.length === 0) {
-			setError("Add at least one project folder.");
+			setError("Add at least one folder.");
 			return;
 		}
 		mutation.mutate();
@@ -240,11 +240,11 @@ function WorkspaceFormDialog({
 										}}
 										className="hover:bg-foreground/5 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-[11px] text-center transition-colors"
 									>
-										<div className="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-full">
+										<div className="bg-foreground/10 text-muted-foreground flex size-9 items-center justify-center rounded-full">
 											<FolderPlusIcon className="size-4" />
 										</div>
 										<div className="flex flex-col gap-0.5">
-											<span className="text-sm font-medium">Drop project folders here</span>
+											<span className="text-sm font-medium">Drop folders here</span>
 											<span className="text-muted-foreground text-xs">
 												or click to choose folders
 											</span>

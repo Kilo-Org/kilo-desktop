@@ -81,7 +81,7 @@ export function WorkspaceSelector() {
 						type="button"
 						variant="ghost"
 						size="sm"
-						className="hover:bg-accent aria-expanded:bg-accent dark:hover:bg-muted dark:aria-expanded:bg-muted h-7 max-w-56 rounded-full"
+						className="h-7 max-w-56 rounded-full"
 						role="combobox"
 						aria-expanded={open}
 						aria-label="Select workspace"

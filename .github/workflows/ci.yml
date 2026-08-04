@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   lint-format:
-    runs-on: self-hosted-amd64-medium-privileged-on-demand
+    runs-on: ubuntu-latest
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
@@ -23,7 +23,7 @@ jobs:
       - run: pnpm format:check
 
   typecheck:
-    runs-on: self-hosted-amd64-medium-privileged-on-demand
+    runs-on: ubuntu-latest
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [self-hosted-amd64-medium-privileged-on-demand, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     concurrency:
       # Windows runners contend over native modules and SQLite files.
@@ -99,7 +99,7 @@ jobs:
     name: e2e-smoke
     if: always()
     needs: [e2e-pr, e2e-merge]
-    runs-on: self-hosted-amd64-medium-privileged-on-demand
+    runs-on: ubuntu-latest
     steps:
       - name: Verify required E2E jobs
         shell: bash

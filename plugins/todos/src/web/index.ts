@@ -11,4 +11,4 @@
  * skips this plugin with the standard warning and the shell renders an
  * explicit unavailable state for the /todos route.
  */
-export { TodoList, TodosStatusBarItem } from "./TodoList.js";
+export { TodoList } from "./TodoList.js";

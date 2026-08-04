@@ -9,7 +9,7 @@ import type { ChannelHandlerMap } from "@anaconda-agentic-desktop/feature-sdk";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
-import { TodoList, TodosStatusBarItem } from "./TodoList";
+import { TodoList } from "./TodoList";
 
 type TodoHandlers = ChannelHandlerMap<typeof todosContract>;
 
@@ -154,28 +154,5 @@ describe("TodoList", () => {
 		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
 		baseElement.querySelector("form")?.requestSubmit();
 		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
-	});
-
-	it("TodosStatusBarItem shows how many todos are still open", async () => {
-		const sdk = createFakeSdk({
-			featureId: "todos",
-			channels: todosContract,
-			handlers: inMemoryHandlers([
-				{ id: "1", title: "Open", completed: false },
-				{ id: "2", title: "Done", completed: true },
-			]),
-		});
-		const system = createFakeFeatureSystem({ sdks: { todos: sdk } });
-
-		const { baseElement } = render(
-			<SdkProvider system={system}>
-				<QueryClientProvider client={testClient()}>
-					<TodosStatusBarItem />
-				</QueryClientProvider>
-			</SdkProvider>,
-		);
-		const screen = page.elementLocator(baseElement);
-
-		await expect.element(screen.getByText("1 open todo")).toBeVisible();
 	});
 });

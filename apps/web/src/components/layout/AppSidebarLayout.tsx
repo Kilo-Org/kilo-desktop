@@ -165,7 +165,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 						<ZoneOutlet zone="sidebar" className="flex flex-col items-center gap-2 px-2" />
 					</SidebarContent>
 					{session.status === "authenticated" && (
-						<SidebarFooter className="px-2 pb-4">
+						<SidebarFooter className="px-2 pb-3">
 							<SidebarMenu>
 								<SidebarMenuItem>
 									<DropdownMenu>

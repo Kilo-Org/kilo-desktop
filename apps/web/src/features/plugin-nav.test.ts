@@ -5,6 +5,7 @@ import { discoverPlugins, type PluginDiscovery } from "@anaconda-agentic-desktop
 import { buildPluginNav, PLUGIN_NAV } from "./plugin-nav";
 
 const Page = () => null;
+const DemoNavIcon = () => null;
 
 function makeDiscovery(): PluginDiscovery {
 	return discoverPlugins(
@@ -18,12 +19,12 @@ function makeDiscovery(): PluginDiscovery {
 					contributes: {
 						routes: [{ path: "/demo", component: "Page" }],
 						nav: [
-							{ to: "/demo", label: "Demo", icon: "list-todo", priority: 1 },
+							{ to: "/demo", label: "Demo", icon: "DemoNavIcon", priority: 1 },
 							{ to: "/demo/stats", label: "Stats", priority: 10 },
 						],
 					},
 				},
-				module: { Page },
+				module: { Page, DemoNavIcon },
 			},
 		],
 		"web",
@@ -41,6 +42,7 @@ describe("buildPluginNav", () => {
 				to: "/plugins/demo/stats",
 				label: "Stats",
 				icon: undefined,
+				iconComponent: undefined,
 				priority: 10,
 				splat: "demo/stats",
 				navQaId: "nav-demo-stats",
@@ -49,12 +51,25 @@ describe("buildPluginNav", () => {
 				pluginId: "demo",
 				to: "/plugins/demo",
 				label: "Demo",
-				icon: "list-todo",
+				icon: "DemoNavIcon",
+				iconComponent: DemoNavIcon,
 				priority: 1,
 				splat: "demo",
 				navQaId: "nav-demo",
 			},
 		]);
+	});
+
+	it("resolves iconComponent from module exports (component takes priority)", () => {
+		const nav = buildPluginNav(makeDiscovery());
+		const demoEntry = nav.find((e) => e.label === "Demo");
+		expect(demoEntry?.iconComponent).toBe(DemoNavIcon);
+	});
+
+	it("leaves iconComponent undefined when icon does not match a module export", () => {
+		const nav = buildPluginNav(makeDiscovery());
+		const statsEntry = nav.find((e) => e.label === "Stats");
+		expect(statsEntry?.iconComponent).toBeUndefined();
 	});
 });
 
@@ -64,7 +79,8 @@ describe("PLUGIN_NAV", () => {
 		expect(todos).toBeDefined();
 		expect(todos?.pluginId).toBe("todos");
 		expect(todos?.label).toBe("Todo List");
-		expect(todos?.icon).toBe("list-todo");
+		expect(todos?.icon).toBe("TodoNavIcon");
+		expect(todos?.iconComponent).toBeDefined();
 		expect(todos?.navQaId).toBe("nav-todos");
 	});
 });

@@ -50,12 +50,13 @@ type AppSidebarLayoutProps = {
 /**
  * Sidebar nav entry declared by a plugin (`contributes.nav`) — plugins add nav
  * entries by declaring them in the manifest, never by editing this layout.
- * Icons resolve through the static bundled-plugin icon map (plugin-icons.ts).
+ * Icons resolve through the plugin's exported component first, then the static
+ * bundled-plugin icon map (plugin-icons.ts), then the PuzzleIcon fallback.
  * The link goes through the plugin catch-all route (`/plugins/$`) so plugin
  * paths cannot collide with shell paths by construction.
  */
 function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: string }) {
-	const Icon = resolvePluginNavIcon(entry.icon);
+	const Icon = resolvePluginNavIcon(entry.icon, entry.iconComponent);
 	return (
 		<SidebarMenuItem>
 			<SidebarMenuButton

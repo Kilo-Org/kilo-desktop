@@ -144,7 +144,12 @@ export interface ResolvedPluginRoute {
 	browserSafe: boolean;
 }
 
-/** A resolved sidebar nav entry (pure data — no component to resolve). */
+/**
+ * A resolved sidebar nav entry. If the manifest `icon` value matches a
+ * function export in the plugin's web entry module, `iconComponent` holds
+ * it (same pattern as route/zone component resolution). Otherwise the
+ * string falls through so the shell can look it up in a static icon map.
+ */
 export interface ResolvedPluginNav {
 	pluginId: string;
 	/**
@@ -153,8 +158,20 @@ export interface ResolvedPluginNav {
 	 */
 	to: string;
 	label: string;
-	/** Optional lucide icon name (kebab-case). */
+	/**
+	 * The raw icon string from the manifest. When `iconComponent` is set this
+	 * is still present (it's the export name that resolved); when
+	 * `iconComponent` is undefined the shell falls back to a static icon map
+	 * keyed by this string.
+	 */
 	icon?: string | undefined;
+	/**
+	 * The resolved icon component export from the plugin's web entry module.
+	 * Present when `icon` names a function export; absent otherwise. The shell
+	 * casts it to a React component. Stays `unknown` because feature-sdk is
+	 * React-free.
+	 */
+	iconComponent?: unknown | undefined;
 	/** Higher renders first. Default 0. */
 	priority: number;
 }
@@ -344,13 +361,29 @@ function resolveContributions(
 		});
 	}
 
-	const nav: ResolvedPluginNav[] = navDecls.map((entry) => ({
-		pluginId: manifest.id,
-		to: prefixPluginPath(entry.to),
-		label: entry.label,
-		icon: entry.icon,
-		priority: entry.priority ?? 0,
-	}));
+	const nav: ResolvedPluginNav[] = navDecls.map((entry) => {
+		// Attempt to resolve `icon` as an export name from the web entry module
+		// (same pattern as route/zone component resolution). React components
+		// can be functions (standard components) or objects (forwardRef, memo),
+		// so we accept both. If found, the shell uses it directly; otherwise it
+		// falls back to its static icon map.
+		const iconExport = entry.icon !== undefined ? module[entry.icon] : undefined;
+		const iconComponent =
+			iconExport !== undefined &&
+			iconExport !== null &&
+			(typeof iconExport === "function" || typeof iconExport === "object")
+				? iconExport
+				: undefined;
+
+		return {
+			pluginId: manifest.id,
+			to: prefixPluginPath(entry.to),
+			label: entry.label,
+			icon: entry.icon,
+			iconComponent,
+			priority: entry.priority ?? 0,
+		};
+	});
 
 	const zones: ResolvedPluginZoneContribution[] = [];
 	for (const contribution of zoneDecls) {

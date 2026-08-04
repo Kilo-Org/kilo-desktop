@@ -1,3 +1,5 @@
+import type { ComponentType } from "react";
+
 import {
 	pluginNav,
 	stripPluginNamespace,
@@ -17,8 +19,13 @@ export interface PluginNavEntry {
 	/** Full resolved destination path, e.g. "/plugins/todos". */
 	to: string;
 	label: string;
-	/** Lucide icon name (kebab-case), if declared. */
+	/** Lucide icon name (kebab-case), if declared and not resolved to a component. */
 	icon: string | undefined;
+	/**
+	 * Resolved icon component exported by the plugin's web entry module.
+	 * Takes priority over the `icon` string when present.
+	 */
+	iconComponent: ComponentType | undefined;
 	/** Higher renders first. */
 	priority: number;
 	/**
@@ -40,6 +47,7 @@ export function buildPluginNav(discovery: PluginDiscovery): PluginNavEntry[] {
 				to: entry.to,
 				label: entry.label,
 				icon: entry.icon,
+				iconComponent: entry.iconComponent as ComponentType | undefined,
 				priority: entry.priority,
 				splat,
 				navQaId: `nav-${splat.replaceAll("/", "-")}`,

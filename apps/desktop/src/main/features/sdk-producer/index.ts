@@ -12,10 +12,17 @@ import { NoteService } from "./NoteService.js";
  */
 export function mainRegister(mainSdk: MainSdk): void {
 	const service = new NoteService();
+	mainSdk.plugins.expose("notesService", {
+		count: () => service.list().length,
+	});
 
 	mainSdk.channels(sdkProducerContract).handleAll({
 		list: () => service.list(),
-		add: (input) => service.add(input.text),
+		add: (input) => {
+			const note = service.add(input.text);
+			mainSdk.events.emit("note-added", { id: note.id, text: note.text });
+			return note;
+		},
 		delete: (input) => service.delete(input.id),
 		clear: () => service.clear(),
 		echo: (input) => service.echo(input.message),

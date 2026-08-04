@@ -6,7 +6,12 @@ import { z } from "zod";
 import { defineMethod } from "@anaconda-agentic-desktop/feature-sdk";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "./index.js";
+import {
+	createFakeFeatureSystem,
+	createFakeMainSdk,
+	createFakeSdk,
+	createLinkedFakeSdkPair,
+} from "./index.js";
 
 const todoSchema = z.object({
 	id: z.string(),
@@ -97,6 +102,44 @@ describe("createFakeMainSdk", () => {
 		expect(order).toEqual(["second", "first"]);
 		expect(mainSdk.has("list")).toBe(false);
 		await expect(mainSdk.invoke("list")).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+
+	it("provides real events and plugins surfaces", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "producer" });
+		const listener = vi.fn();
+		mainSdk.events.on("producer.changed", listener);
+		mainSdk.plugins.expose("service", { read: () => "ok" });
+
+		mainSdk.events.emit("changed", 1);
+		expect(listener).toHaveBeenCalledWith(1);
+		expect(mainSdk.plugins.get("producer")).toEqual({
+			service: { read: expect.any(Function) },
+		});
+	});
+});
+
+describe("createLinkedFakeSdkPair", () => {
+	it("links main and renderer events in both directions on one bus", () => {
+		const { mainSdk, rendererSdk } = createLinkedFakeSdkPair({ featureId: "producer" });
+		const rendererListener = vi.fn();
+		const mainListener = vi.fn();
+		rendererSdk.events.on("producer.from-main", rendererListener);
+		mainSdk.events.on("producer.from-renderer", mainListener);
+
+		mainSdk.events.emit("from-main", { side: "main" });
+		rendererSdk.events.emit("from-renderer", { side: "renderer" });
+
+		expect(rendererListener).toHaveBeenCalledWith({ side: "main" });
+		expect(mainListener).toHaveBeenCalledWith({ side: "renderer" });
+	});
+
+	it("links main and renderer capabilities", () => {
+		const { mainSdk, rendererSdk } = createLinkedFakeSdkPair({ featureId: "producer" });
+		expect(rendererSdk.plugins.get("producer")).toBeNull();
+		mainSdk.plugins.expose("service", { read: () => "ok" });
+		expect(rendererSdk.plugins.get("producer")).toEqual({
+			service: { read: expect.any(Function) },
+		});
 	});
 });
 
@@ -345,7 +388,7 @@ describe("createFakeSdk", () => {
 
 	it("exposes backing services for assertions", () => {
 		const sdk = createFakeSdk({ featureId: "services" });
-		expect(sdk.services.eventBus).toBeDefined();
+		expect(sdk.services.featureRouter.eventBus).toBeDefined();
 		expect(sdk.services.stateBroker).toBeDefined();
 		expect(sdk.services.featureRouter).toBeDefined();
 	});
@@ -380,5 +423,18 @@ describe("createFakeFeatureSystem", () => {
 
 	it("requires services when no FakeSdk is provided", () => {
 		expect(() => createFakeFeatureSystem({ sdks: {} })).toThrow(/requires `services`/);
+	});
+
+	it("disposes every cached SDK exactly once", () => {
+		const producer = createFakeSdk({ featureId: "sdk-producer" });
+		const destroy = vi.spyOn(producer, "destroy");
+		const system = createFakeFeatureSystem({ sdks: { "sdk-producer": producer } });
+		system.getSdk("consumer");
+
+		system.dispose();
+		system.dispose();
+
+		expect(destroy).toHaveBeenCalledOnce();
+		expect(() => system.getSdk("sdk-producer")).toThrow(/disposed/);
 	});
 });

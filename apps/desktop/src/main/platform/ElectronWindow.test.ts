@@ -12,6 +12,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 			titleBarOverlay?: { color: string; symbolColor: string; height: number };
 		};
 		webContents: {
+			id: number;
 			setWindowOpenHandler: ReturnType<typeof vi.fn>;
 			on: ReturnType<typeof vi.fn>;
 			send: ReturnType<typeof vi.fn>;
@@ -48,7 +49,12 @@ vi.mock("electron", () => ({
 			return createdWindows;
 		}
 
-		readonly webContents = { setWindowOpenHandler: vi.fn(), on: vi.fn(), send: vi.fn() };
+		readonly webContents = {
+			id: createdWindows.length + 1,
+			setWindowOpenHandler: vi.fn(),
+			on: vi.fn(),
+			send: vi.fn(),
+		};
 		readonly once = vi.fn();
 		readonly on = vi.fn();
 		readonly loadURL = vi.fn();
@@ -198,5 +204,18 @@ describe("ElectronWindow theme chrome", () => {
 		windows.destroyAll();
 		expect(window?.destroy).toHaveBeenCalled();
 		expect(windows.main).toBeUndefined();
+	});
+
+	it("broadcasts renderer events to every window except their origin", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		windows.create({ isDevelopment: false });
+		const [origin, other] = createdWindows;
+		const event = { featureId: "producer", name: "changed", payload: { id: "1" } };
+
+		windows.broadcast("feature:event", event, origin?.webContents.id);
+
+		expect(origin?.webContents.send).not.toHaveBeenCalled();
+		expect(other?.webContents.send).toHaveBeenCalledWith("feature:event", event);
 	});
 });

@@ -8,6 +8,15 @@ import { sdkConsumerContract } from "@anaconda-agentic-desktop/contracts";
  */
 export function mainRegister(mainSdk: MainSdk): void {
 	mainSdk.channels(sdkConsumerContract).handleAll({
-		ping: () => ({ pong: true as const, from: "sdk-consumer" }),
+		ping: () => {
+			const producer = mainSdk.plugins.get<{
+				notesService: { count(): number };
+			}>("sdk-producer");
+			return {
+				pong: true as const,
+				from: "sdk-consumer",
+				producerNoteCount: producer?.notesService.count() ?? null,
+			};
+		},
 	});
 }

@@ -5,7 +5,11 @@ import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
 
 import { getAppIdentity } from "$config/app-identity.js";
 
-import { bootFeatures, createFeatureHandlers } from "./features/registry/feature-registry.js";
+import {
+	bootFeatures,
+	createFeatureHandlers,
+	createFeatureMessageHandlers,
+} from "./features/registry/feature-registry.js";
 import { FEATURES } from "./features/registry/features.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
@@ -106,7 +110,12 @@ export class Application {
 		// Each feature persists only under its own storage directory
 		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
 		// runs each feature's onDispose callbacks (DB close, etc.) on shutdown.
-		this.#disposers.push(bootFeatures(FEATURES, { storageRoot: this.#app.getPath("userData") }));
+		this.#disposers.push(
+			bootFeatures(FEATURES, {
+				storageRoot: this.#app.getPath("userData"),
+				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
+			}),
+		);
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
@@ -116,7 +125,12 @@ export class Application {
 			...createFsHandlers(this.#scopedFs),
 			...createFeatureHandlers(),
 		} satisfies IpcHandlers;
-		this.#ipcServer.register(handlers);
+		this.#ipcServer.register(
+			handlers,
+			createFeatureMessageHandlers((event, senderId) =>
+				this.#windows.broadcast("feature:event", event, senderId),
+			),
+		);
 		this.#disposers.push(() => this.#ipcServer.dispose());
 	}
 

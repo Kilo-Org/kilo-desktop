@@ -2,7 +2,11 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
-import { defineMethod, type FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	defineMethod,
+	type FeatureEvent,
+	type FeatureRegistration,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
@@ -237,6 +241,39 @@ describe("createAppFeatureSystem (browser mode)", () => {
 });
 
 describe("createAppFeatureSystem (Electron mode)", () => {
+	it("relays feature events in both directions and detaches on dispose", () => {
+		const send = vi.fn();
+		const detach = vi.fn();
+		let receive: ((event: FeatureEvent) => void) | undefined;
+		const bridge = {
+			invoke: vi.fn(),
+			send,
+			on: vi.fn((_channel, listener: (event: FeatureEvent) => void) => {
+				receive = listener;
+				return detach;
+			}),
+		} as unknown as DesktopApi;
+		vi.stubGlobal("desktopApi", bridge);
+
+		const system = createAppFeatureSystem(createBrowserLocalApi(), []);
+		const sdk = system.getSdk("renderer-feature");
+		const received = vi.fn();
+		sdk.events.on("main-feature.changed", received);
+
+		sdk.events.emit("changed", { id: "renderer" });
+		expect(send).toHaveBeenCalledWith("feature:event", {
+			featureId: "renderer-feature",
+			name: "changed",
+			payload: { id: "renderer" },
+		});
+
+		receive?.({ featureId: "main-feature", name: "changed", payload: { id: "main" } });
+		expect(received).toHaveBeenCalledWith({ id: "main" });
+
+		system.dispose();
+		expect(detach).toHaveBeenCalledOnce();
+	});
+
 	it("routes invoke through the Electron bridge when present", async () => {
 		const bridge = {
 			invoke: vi.fn().mockResolvedValue({ ok: true, value: "bridged" }),

@@ -1,15 +1,15 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import {
-	CapabilityRegistry,
 	CommandRegistry,
 	ContributionRegistry,
 	createSdk,
-	EventBus,
 	FeatureRouter,
+	qualifyFeatureEvent,
 	StateBroker,
 	teardownFeature,
 	type FeatureRegistration,
+	type FeatureEvent,
 	type InvokeFallback,
 	type SDK,
 	type SdkClient,
@@ -29,20 +29,30 @@ export interface FeatureSystem {
 	getSdk(featureId: string): SDK;
 	/** Shell-owned full teardown of a feature (plugin unload). */
 	teardownFeature(featureId: string): void;
+	/** Tear down the complete runtime, including its host transport subscription. */
+	dispose(): void;
+}
+
+/** Complete host transport for Electron mode. Omit it in browser mode. */
+export interface FeatureSystemTransport {
+	readonly invoke: InvokeFallback;
+	readonly events: {
+		emit(event: FeatureEvent): void;
+		on(handler: (event: FeatureEvent) => void): () => void;
+	};
 }
 
 export interface CreateFeatureSystemOptions {
 	/** Host-provided shell services: notifications, theme, shell, fs. */
 	shellDelegates: ShellDelegates;
 	/**
-	 * Transport for channels that have no in-process handler. In Electron the
-	 * host routes this through its generic `feature:invoke` IPC bridge. When
-	 * provided, feature backends are assumed to live out of process and
-	 * `features` are NOT booted here.
+	 * Complete Electron transport. When present, feature backends live out of
+	 * process and `features` are not booted here. Browser mode omits this and
+	 * shares the FeatureRouter's in-process event bus and capabilities.
 	 */
-	invokeFallback?: InvokeFallback;
+	transport?: FeatureSystemTransport;
 	/**
-	 * Features to boot in-process when no `invokeFallback` is provided
+	 * Features to boot in-process when no transport is provided
 	 * (browser mode — no main process available). Only `browserRegister`
 	 * boots; features without one are skipped with a warning. There is
 	 * deliberately no fallback to `mainRegister`, which may use Node APIs.
@@ -55,25 +65,29 @@ export interface CreateFeatureSystemOptions {
  * startup and passes the result to <SdkProvider>.
  */
 export function createFeatureSystem(options: CreateFeatureSystemOptions): FeatureSystem {
-	const { invokeFallback, features = [] } = options;
+	const { features = [], transport } = options;
 
-	const featureRouter = new FeatureRouter(invokeFallback ? { fallback: invokeFallback } : {});
+	const featureRouter = new FeatureRouter(transport ? { fallback: transport.invoke } : undefined);
 
 	const services: SdkFactoryServices = {
-		eventBus: new EventBus(),
+		...(transport ? { emitEvent: (event: FeatureEvent) => transport.events.emit(event) } : {}),
 		stateBroker: new StateBroker(),
-		capabilityRegistry: new CapabilityRegistry(),
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
 		featureRouter,
 		shellDelegates: options.shellDelegates,
 	};
 
+	const detachTransport = transport?.events.on((event) => {
+		featureRouter.eventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
+	});
+	const bootedFeatureIds = new Set<string>();
+
 	// Browser mode: boot feature backends in-process (no main process available).
 	// Only browserRegister boots here — deliberately no fallback to mainRegister,
 	// which may use Node APIs. Node-free features opt in explicitly with
 	// `browserRegister: mainRegister`.
-	if (!invokeFallback) {
+	if (!transport) {
 		for (const feature of features) {
 			if (!feature.browserRegister) {
 				console.warn(
@@ -84,6 +98,7 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 			const mainSdk = featureRouter.createMainSdk(feature.id);
 			try {
 				feature.browserRegister(mainSdk);
+				bootedFeatureIds.add(feature.id);
 			} catch (error) {
 				console.error(`[FeatureSystem] Boot failed for "${feature.id}":`, error);
 				featureRouter.destroyFeature(feature.id);
@@ -92,10 +107,23 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 	}
 
 	const sdkCache = new Map<string, SDK>();
+	let disposed = false;
+
+	function assertActive(): void {
+		if (disposed) throw new Error("FeatureSystem has been disposed.");
+	}
+
+	function teardown(featureId: string): void {
+		sdkCache.get(featureId)?.destroy();
+		sdkCache.delete(featureId);
+		bootedFeatureIds.delete(featureId);
+		teardownFeature(featureId, services);
+	}
 
 	return {
 		services,
 		getSdk(featureId: string): SDK {
+			assertActive();
 			let sdk = sdkCache.get(featureId);
 			if (!sdk) {
 				sdk = createSdk(featureId, services);
@@ -104,9 +132,15 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 			return sdk;
 		},
 		teardownFeature(featureId: string): void {
-			sdkCache.get(featureId)?.destroy();
-			sdkCache.delete(featureId);
-			teardownFeature(featureId, services);
+			assertActive();
+			teardown(featureId);
+		},
+		dispose(): void {
+			if (disposed) return;
+			disposed = true;
+			detachTransport?.();
+			const featureIds = new Set([...bootedFeatureIds, ...sdkCache.keys()]);
+			for (const featureId of featureIds) teardown(featureId);
 		},
 	};
 }

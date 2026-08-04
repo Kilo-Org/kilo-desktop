@@ -221,7 +221,7 @@ describe("sdk-producer renderer — real SDK services via createFakeSdk", () => 
 		expect(disposed).toBe(true);
 
 		expect(sdk.services.stateBroker.peek("sdk-producer.counter")).toBeNull();
-		expect(sdk.services.capabilityRegistry.get("sdk-producer")).toBeNull();
+		expect(sdk.services.featureRouter.capabilityRegistry.get("sdk-producer")).toBeNull();
 		expect(sdk.services.contributionRegistry.getForZone("dashboard")).toHaveLength(0);
 	});
 

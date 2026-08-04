@@ -27,12 +27,14 @@ import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 /** Browser-safe in-memory implementation of the sdk-producer feature. */
 function sdkProducerBrowserRegister(mainSdk: MainSdk): void {
 	let notes: Note[] = [];
+	mainSdk.plugins.expose("notesService", { count: () => notes.length });
 
 	mainSdk.channels(sdkProducerContract).handleAll({
 		list: () => [...notes],
 		add: (input) => {
 			const note: Note = { id: crypto.randomUUID(), text: input.text, createdAt: Date.now() };
 			notes.push(note);
+			mainSdk.events.emit("note-added", { id: note.id, text: note.text });
 			return note;
 		},
 		delete: (input) => {
@@ -55,7 +57,16 @@ function sdkProducerBrowserRegister(mainSdk: MainSdk): void {
 /** sdk-consumer has a trivial ping handler (no Node deps). */
 function sdkConsumerBrowserRegister(mainSdk: MainSdk): void {
 	mainSdk.channels(sdkConsumerContract).handleAll({
-		ping: () => ({ pong: true as const, from: "sdk-consumer" }),
+		ping: () => {
+			const producer = mainSdk.plugins.get<{
+				notesService: { count(): number };
+			}>("sdk-producer");
+			return {
+				pong: true as const,
+				from: "sdk-consumer",
+				producerNoteCount: producer?.notesService.count() ?? null,
+			};
+		},
 	});
 }
 

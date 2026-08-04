@@ -137,8 +137,6 @@ export function SdkProducerView() {
 			onSuccess: (note) => {
 				setNoteText("");
 				appendLog(`client.add() → created note: ${note.id}`);
-				// Also emit an event to test sdk.events.emit
-				sdk.events.emit("note-added", { id: note.id, text: note.text });
 			},
 		});
 	}

@@ -2,6 +2,7 @@ import { createFeatureSystem, type FeatureSystem } from "@anaconda-agentic-deskt
 
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
 import type {
+	FeatureEvent,
 	FeatureRegistration,
 	SdkNavigation,
 	ShellDelegates,
@@ -139,12 +140,18 @@ export function createAppFeatureSystem(
 		features,
 		...(bridge
 			? {
-					invokeFallback: async (featureId: string, channel: string, args?: unknown) => {
-						const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
-						if (!result.ok) {
-							throw new Error(result.error.message);
-						}
-						return result.value;
+					transport: {
+						invoke: async (featureId: string, channel: string, args?: unknown) => {
+							const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
+							if (!result.ok) {
+								throw new Error(result.error.message);
+							}
+							return result.value;
+						},
+						events: {
+							emit: (event: FeatureEvent) => bridge.send("feature:event", event),
+							on: (handler: (event: FeatureEvent) => void) => bridge.on("feature:event", handler),
+						},
 					},
 				}
 			: {}),

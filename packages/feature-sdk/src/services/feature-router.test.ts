@@ -16,6 +16,96 @@ describe("FeatureRouter", () => {
 		expect(result).toBe("Hello, World!");
 	});
 
+	it("mainSdk.events stamps namespaces, delivers locally, and relays once", () => {
+		const relay = vi.fn();
+		const router = new FeatureRouter();
+		const producer = router.createMainSdk("producer", { emitEvent: relay });
+		const consumer = router.createMainSdk("consumer");
+		const received = vi.fn();
+		consumer.events.on("producer.changed", received);
+
+		producer.events.emit("changed", { id: "1" });
+
+		expect(received).toHaveBeenCalledOnce();
+		expect(received).toHaveBeenCalledWith({ id: "1" });
+		expect(relay).toHaveBeenCalledOnce();
+		expect(relay).toHaveBeenCalledWith({
+			featureId: "producer",
+			name: "changed",
+			payload: { id: "1" },
+		});
+	});
+
+	it("snapshots a relay payload before local handlers can mutate it", () => {
+		const relay = vi.fn();
+		const router = new FeatureRouter();
+		const producer = router.createMainSdk("producer", { emitEvent: relay });
+		router.eventBus.on("producer.changed", (payload) => {
+			(payload as { id: string }).id = "mutated";
+		});
+		const payload = { id: "original" };
+
+		producer.events.emit("changed", payload);
+
+		expect(payload.id).toBe("mutated");
+		expect(relay).toHaveBeenCalledWith({
+			featureId: "producer",
+			name: "changed",
+			payload: { id: "original" },
+		});
+	});
+
+	it("mainSdk.events rejects payloads that cannot cross IPC", () => {
+		const mainSdk = new FeatureRouter().createMainSdk("producer");
+		expect(() => mainSdk.events.emit("changed", { callback: () => undefined })).toThrow(
+			/structured-cloneable/,
+		);
+	});
+
+	it("mainSdk.events cannot spoof another feature namespace", () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("producer");
+		const spoofed = vi.fn();
+		const stamped = vi.fn();
+		router.eventBus.on("other.changed", spoofed);
+		router.eventBus.on("producer.other.changed", stamped);
+
+		mainSdk.events.emit("other.changed", 1);
+
+		expect(spoofed).not.toHaveBeenCalled();
+		expect(stamped).toHaveBeenCalledWith(1);
+	});
+
+	it("destroyFeature cleans up main-side event subscriptions", () => {
+		const router = new FeatureRouter();
+		const consumer = router.createMainSdk("consumer");
+		const received = vi.fn();
+		const disposed = vi.fn();
+		consumer.onDispose(disposed);
+		consumer.events.on("producer.changed", received);
+
+		router.destroyFeature("consumer");
+		router.eventBus.emit("producer.changed", { id: "1" });
+
+		expect(received).not.toHaveBeenCalled();
+		expect(disposed).toHaveBeenCalledOnce();
+	});
+
+	it("mainSdk.plugins resolves lazily, degrades to null, and cleans up exposure", () => {
+		const router = new FeatureRouter();
+		const consumer = router.createMainSdk("consumer");
+		const producer = router.createMainSdk("producer");
+
+		expect(consumer.plugins.get("producer")).toBeNull();
+		producer.plugins.expose("service", { read: () => "ready" });
+		expect(consumer.plugins.get("producer")).toEqual({
+			service: { read: expect.any(Function) },
+		});
+
+		router.destroyFeature("producer");
+		expect(consumer.plugins.get("producer")).toBeNull();
+	});
+
 	it("resolves storageDir lazily and caches the result", () => {
 		const router = new FeatureRouter();
 		const resolveStorageDir = vi.fn(() => "/tmp/plugins/my-feature");

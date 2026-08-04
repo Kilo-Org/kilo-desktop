@@ -2,11 +2,14 @@ import { contextBridge, ipcRenderer } from "electron";
 
 import {
 	ipcEvents,
+	ipcMessages,
 	ipcMethods,
 	type DesktopApi,
 	type IpcEventChannel,
 	type IpcEventPayload,
 	type IpcMethodChannel,
+	type IpcMessageChannel,
+	type IpcMessagePayload,
 } from "@anaconda-agentic-desktop/contracts";
 
 const invoke = ((channel: IpcMethodChannel, input?: unknown) => {
@@ -18,6 +21,16 @@ const invoke = ((channel: IpcMethodChannel, input?: unknown) => {
 
 const desktopApi: DesktopApi = {
 	invoke,
+	send: <TChannel extends IpcMessageChannel>(
+		channel: TChannel,
+		payload: IpcMessagePayload<TChannel>,
+	) => {
+		if (!(channel in ipcMessages)) {
+			throw new Error("Unknown IPC message channel.");
+		}
+		const parsedPayload = ipcMessages[channel].payload.parse(payload);
+		ipcRenderer.send(channel, parsedPayload);
+	},
 	on: <TChannel extends IpcEventChannel>(
 		channel: TChannel,
 		listener: (payload: IpcEventPayload<TChannel>) => void,

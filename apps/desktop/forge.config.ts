@@ -87,7 +87,12 @@ const config: ForgeConfig = {
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
 		executableName,
-		extraResource: path.join(packageRoot, "assets/icon.png"),
+		extraResource: [
+			path.join(packageRoot, "assets/icon.png"),
+			// Host seam: a future plugin manifest needs packaged-resource support before this
+			// feature-owned directory can be declared entirely by kilo-code.
+			path.join(packageRoot, "src/main/features/kilo-code/resources/kilo"),
+		],
 		icon: appIcon,
 		name: identity.productName,
 		ignore: (file) => {

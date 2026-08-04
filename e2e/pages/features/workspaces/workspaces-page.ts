@@ -3,7 +3,6 @@ import {
 	expectElementToBeVisible,
 	getLocatorByRole,
 	getLocatorByTestId,
-	getLocatorByText,
 } from "@anaconda/playwright-utils";
 
 export class WorkspacesPage {
@@ -15,7 +14,9 @@ export class WorkspacesPage {
 		await click(getLocatorByRole("button", { name: /Drop folders/ }));
 		await click(getLocatorByRole("button", { name: "Create workspace" }));
 		await expectElementToBeVisible(
-			getLocatorByText(folderName, { exact: true }),
+			getLocatorByRole("combobox", { name: "Select workspace" }).getByText(folderName, {
+				exact: true,
+			}),
 			`Workspace selector should display the folder-derived name "${folderName}"`,
 		);
 	}

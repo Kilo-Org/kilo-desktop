@@ -87,7 +87,10 @@ const config: ForgeConfig = {
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
 		executableName,
-		extraResource: path.join(packageRoot, "assets/icon.png"),
+		extraResource: [
+			path.join(packageRoot, "assets/icon.png"),
+			path.join(packageRoot, "vendor/kilo"),
+		],
 		icon: appIcon,
 		name: identity.productName,
 		ignore: (file) => {

@@ -158,6 +158,7 @@ Thumbs.db
 
 # App specific
 apps/desktop/.data/
+apps/desktop/vendor/kilo/
 build/
 release/
 playwright-report/

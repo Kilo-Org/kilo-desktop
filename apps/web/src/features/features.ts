@@ -6,6 +6,7 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
+import { kiloCodeBrowserRegister } from "./kilo-code/browserRegister.js";
 import { workspacesBrowserRegister } from "./workspaces/browserRegister.js";
 
 /**
@@ -25,6 +26,11 @@ const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
 		id: "workspaces",
 		mainRegister: workspacesBrowserRegister,
 		browserRegister: workspacesBrowserRegister,
+	},
+	{
+		id: "kilo-code",
+		mainRegister: kiloCodeBrowserRegister,
+		browserRegister: kiloCodeBrowserRegister,
 	},
 ];
 

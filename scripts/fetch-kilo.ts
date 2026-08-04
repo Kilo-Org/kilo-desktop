@@ -1,8 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { KILO_CLI_VERSION } from "../apps/desktop/src/main/features/kilo-code/cli/artifacts.js";
-import { stageKiloCli } from "../apps/desktop/src/main/features/kilo-code/cli/stage.js";
+import { KILO_CLI_VERSION } from "../apps/desktop/src/main/features/kilo-code/cli-distribution/artifacts.js";
+import { stageKiloCli } from "../apps/desktop/src/main/features/kilo-code/cli-distribution/stage.js";
 import {
 	hasAzureWindowsSigningCredentials,
 	signWindowsFile,

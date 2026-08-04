@@ -4,7 +4,7 @@ import path from "node:path";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import type { KiloInstallation } from "./KiloServerManager.js";
-import { getKiloCliArtifact } from "./cli/artifacts.js";
+import { getKiloCliArtifact } from "./cli-distribution/artifacts.js";
 
 export interface KiloInstallationResolutionOptions {
 	readonly resourceRoots: readonly string[];

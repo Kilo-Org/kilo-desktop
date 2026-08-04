@@ -1,3 +1,4 @@
+/** Pinned native packages distributed with the desktop application. */
 export const KILO_CLI_VERSION = "7.4.20";
 
 export interface KiloCliArtifact {

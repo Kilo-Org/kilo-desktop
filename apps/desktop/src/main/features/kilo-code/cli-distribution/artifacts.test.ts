@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { getKiloCliArtifact, KILO_CLI_VERSION } from "./artifacts.js";
 
-describe("Kilo CLI artifacts", () => {
+describe("Kilo CLI distribution artifacts", () => {
 	it("pins the supported native targets and compatibility-first x64 variants", () => {
 		expect(KILO_CLI_VERSION).toBe("7.4.20");
 		expect(getKiloCliArtifact("darwin", "arm64")).toMatchObject({

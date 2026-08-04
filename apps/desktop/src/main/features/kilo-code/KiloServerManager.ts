@@ -13,7 +13,7 @@ import { net } from "electron";
 import { execa } from "execa";
 
 import { createLogger } from "../../platform/logger.js";
-import { KILO_CLI_VERSION } from "./cli/artifacts.js";
+import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);

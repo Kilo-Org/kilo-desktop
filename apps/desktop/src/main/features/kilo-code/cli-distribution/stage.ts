@@ -17,7 +17,7 @@ import { execa } from "execa";
 
 import { getKiloCliArtifact, KILO_CLI_VERSION, type KiloCliArtifact } from "./artifacts.js";
 
-interface StagedManifest {
+interface CliDistributionManifest {
 	readonly version: string;
 	readonly packageName: string;
 	readonly integrity: string;
@@ -38,13 +38,13 @@ export interface StageKiloCliResult {
 
 async function isCurrent(
 	targetDirectory: string,
-	expected: StagedManifest,
+	expected: CliDistributionManifest,
 	artifact: KiloCliArtifact,
 ): Promise<boolean> {
 	try {
 		const manifest = JSON.parse(
 			await readFile(path.join(targetDirectory, "staged.json"), "utf8"),
-		) as StagedManifest;
+		) as CliDistributionManifest;
 		await access(path.join(targetDirectory, "bin", artifact.executable));
 		await access(path.join(targetDirectory, "bin", "tree-sitter"));
 		return (
@@ -117,7 +117,7 @@ async function installArtifact(stagingDirectory: string, artifact: KiloCliArtifa
 					packageName: artifact.packageName,
 					integrity: artifact.integrity,
 					target: artifact.target,
-				} satisfies StagedManifest,
+				} satisfies CliDistributionManifest,
 				null,
 				2,
 			)}\n`,
@@ -161,7 +161,7 @@ async function collectExecutables(directory: string): Promise<string[]> {
 export async function stageKiloCli(options: StageKiloCliOptions): Promise<StageKiloCliResult> {
 	const artifact = options.artifact ?? getKiloCliArtifact();
 	const targetDirectory = path.join(options.resourceRoot, artifact.target);
-	const manifest: StagedManifest = {
+	const manifest: CliDistributionManifest = {
 		version: KILO_CLI_VERSION,
 		packageName: artifact.packageName,
 		integrity: artifact.integrity,

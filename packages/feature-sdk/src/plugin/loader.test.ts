@@ -246,8 +246,58 @@ describe("contribution resolution", () => {
 		const discovery = discoverPlugins(bundled, "web");
 
 		expect(pluginNav(discovery)).toEqual([
-			{ pluginId: "ping", to: "/plugins/ping", label: "Ping", icon: "activity", priority: 5 },
+			{
+				pluginId: "ping",
+				to: "/plugins/ping",
+				label: "Ping",
+				icon: "activity",
+				iconComponent: undefined,
+				priority: 5,
+			},
 		]);
+	});
+
+	it("resolves nav icon as a component when the module exports a matching function", () => {
+		const PingNavIcon = () => null;
+		const iconManifest = {
+			...manifest,
+			contributes: {
+				routes: [{ path: "/ping", component: "PingPage", title: "Ping" }],
+				nav: [{ to: "/ping", label: "Ping", icon: "PingNavIcon", priority: 2 }],
+				zones: [],
+			},
+		};
+		const bundled: BundledPlugin[] = [
+			{ manifest: iconManifest, module: { browserRegister, PingPage, PingNavIcon } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginNav(discovery)).toEqual([
+			{
+				pluginId: "ping",
+				to: "/plugins/ping",
+				label: "Ping",
+				icon: "PingNavIcon",
+				iconComponent: PingNavIcon,
+				priority: 2,
+			},
+		]);
+	});
+
+	it("leaves iconComponent undefined when icon names a non-function export", () => {
+		const iconManifest = {
+			...manifest,
+			contributes: {
+				nav: [{ to: "/ping", label: "Ping", icon: "NOT_A_FUNCTION" }],
+			},
+		};
+		const bundled: BundledPlugin[] = [
+			{ manifest: iconManifest, module: { browserRegister, NOT_A_FUNCTION: "a string" } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginNav(discovery)[0]?.iconComponent).toBeUndefined();
+		expect(pluginNav(discovery)[0]?.icon).toBe("NOT_A_FUNCTION");
 	});
 
 	it("resolves zone widgets against the module and defaults label to the component name", () => {

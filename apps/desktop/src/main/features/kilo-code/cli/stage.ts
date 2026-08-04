@@ -1,4 +1,3 @@
-import { execFile as execFileCallback } from "node:child_process";
 import {
 	access,
 	chmod,
@@ -13,11 +12,10 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
+
+import { execa } from "execa";
 
 import { getKiloCliArtifact, KILO_CLI_VERSION, type KiloCliArtifact } from "./artifacts.js";
-
-const execFile = promisify(execFileCallback);
 
 interface StagedManifest {
 	readonly version: string;
@@ -74,8 +72,8 @@ async function installArtifact(stagingDirectory: string, artifact: KiloCliArtifa
 				2,
 			)}\n`,
 		);
-		await execFile(
-			process.platform === "win32" ? "npm.cmd" : "npm",
+		await execa(
+			"npm",
 			[
 				"install",
 				"--ignore-scripts",

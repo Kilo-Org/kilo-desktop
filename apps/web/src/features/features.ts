@@ -6,6 +6,7 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
+import { workspacesBrowserRegister } from "./workspaces/browserRegister.js";
 
 /**
  * Feature registrations used when the app runs standalone in a browser
@@ -19,7 +20,13 @@ import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
  */
 
 /** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
-const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [];
+const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
+	{
+		id: "workspaces",
+		mainRegister: workspacesBrowserRegister,
+		browserRegister: workspacesBrowserRegister,
+	},
+];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validates the

@@ -113,10 +113,7 @@ describe("registerPluginZoneContributions", () => {
 });
 
 describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
-	it("contains the bundled todos status-bar widget from its manifest", () => {
-		const todos = PLUGIN_ZONE_CONTRIBUTIONS.find((c) => c.pluginId === "todos");
-		expect(todos).toBeDefined();
-		expect(todos?.zone).toBe("status-bar");
-		expect(todos?.browserSafe).toBe(false);
+	it("has no zone contributions from the bundled todos plugin", () => {
+		expect(PLUGIN_ZONE_CONTRIBUTIONS.find((c) => c.pluginId === "todos")).toBeUndefined();
 	});
 });

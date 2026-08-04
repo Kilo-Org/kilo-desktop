@@ -262,8 +262,11 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 		),
 		shell: merge<SDK["shell"]>(
 			{
+				canPickDirectories: true,
 				openExternal: async () => ({ opened: true }),
 				copyText: async () => undefined,
+				showOpenDialog: async () => ({ canceled: true, paths: [] }),
+				getPathForFile: () => null,
 			},
 			options.shell,
 		),

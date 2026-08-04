@@ -65,8 +65,8 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 * also cleaned up automatically when this SDK instance is destroyed.
 	 *
 	 * Any string is accepted, but the shell renders only the canonical
-	 * {@link ShellZone} ids — prefer the exported constants (STATUS_BAR_ZONE,
-	 * SIDEBAR_ZONE, DASHBOARD_ZONE) so a typo cannot render nowhere.
+	 * {@link ShellZone} ids — prefer the exported zone constants so a typo
+	 * cannot render nowhere.
 	 *
 	 * @example
 	 * const remove = sdk.contribute("status-bar", { component: TodoBadge, label: "Todos", priority: 10 });
@@ -340,10 +340,20 @@ export interface SdkTheme {
 	peek(): "dark" | "light";
 }
 
-/** OS-level shell actions (open browser, clipboard). */
+export interface DirectoryOpenDialogOptions {
+	kind: "directory";
+	multiple?: boolean;
+}
+
+/** OS-level shell actions (open browser, clipboard, native folder access). */
 export interface SdkShell {
+	readonly canPickDirectories: boolean;
 	openExternal(url: string): Promise<{ opened: boolean }>;
 	copyText(text: string): Promise<void>;
+	showOpenDialog(
+		options: DirectoryOpenDialogOptions,
+	): Promise<{ canceled: boolean; paths: string[] }>;
+	getPathForFile(file: File): string | null;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────

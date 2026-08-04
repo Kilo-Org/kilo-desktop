@@ -191,7 +191,7 @@ const workspace = workspaces?.workspaceService.get(id);
 
 ### `sdk.contribute(zone, options)` — UI in shell zones
 
-Register a React component into a named shell zone. The shell renders only the canonical `ShellZone` ids (`"sidebar"`, `"status-bar"`, `"dashboard"`; import `SIDEBAR_ZONE` / `STATUS_BAR_ZONE` / `DASHBOARD_ZONE` so a typo can't render nowhere). Contributions are priority-ordered (higher first). Returns an unregister handle; contributions are also cleaned up when the SDK instance is destroyed.
+Register a React component into a named shell zone. The shell renders only the canonical `ShellZone` ids (`"sidebar"`, `"status-bar"`, `"dashboard"`, `"home-composer-leading-action"`; import the exported zone constants so a typo can't render nowhere). Contributions are priority-ordered (higher first). Returns an unregister handle; contributions are also cleaned up when the SDK instance is destroyed.
 
 `sdk.contribute` is the **imperative, page-scoped** path — the contribution exists only while the calling component is mounted, so it is right for _conditional_ UI that appears in certain app states:
 

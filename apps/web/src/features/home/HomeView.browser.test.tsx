@@ -9,18 +9,22 @@ import { HomeView } from "./HomeView";
 
 afterEach(() => {
 	cleanup();
+	localStorage.clear();
 });
 
 /** HomeView renders the "dashboard" zone, which needs a feature system. */
 function renderHome() {
-	const system = createFakeFeatureSystem({ sdks: { home: createFakeSdk({ featureId: "home" }) } });
-	return render(
+	const system = createFakeFeatureSystem({
+		sdks: { home: createFakeSdk({ featureId: "home" }) },
+	});
+	const result = render(
 		<SdkProvider system={system}>
 			<div className="h-[600px]">
 				<HomeView />
 			</div>
 		</SdkProvider>,
 	);
+	return result;
 }
 
 describe("HomeView", () => {

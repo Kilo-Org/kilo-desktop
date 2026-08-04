@@ -1,4 +1,13 @@
-import { clipboard, shell, type Clipboard, type Shell } from "electron";
+import {
+	BrowserWindow,
+	clipboard,
+	dialog,
+	shell,
+	type Clipboard,
+	type Dialog,
+	type OpenDialogOptions,
+	type Shell,
+} from "electron";
 
 const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
@@ -16,6 +25,7 @@ export class ElectronShell {
 	constructor(
 		private readonly electronShell: Shell = shell,
 		private readonly electronClipboard: Clipboard = clipboard,
+		private readonly electronDialog: Dialog = dialog,
 	) {}
 
 	async openExternal(rawUrl: unknown): Promise<boolean> {
@@ -31,5 +41,19 @@ export class ElectronShell {
 
 	copyText(text: string): void {
 		this.electronClipboard.writeText(text);
+	}
+
+	async showOpenDialog(options: {
+		kind: "directory";
+		multiple?: boolean | undefined;
+	}): Promise<{ canceled: boolean; paths: string[] }> {
+		const properties: OpenDialogOptions["properties"] = ["openDirectory"];
+		if (options.multiple) properties.push("multiSelections");
+		const dialogOptions = { properties } satisfies OpenDialogOptions;
+		const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+		const result = parentWindow
+			? await this.electronDialog.showOpenDialog(parentWindow, dialogOptions)
+			: await this.electronDialog.showOpenDialog(dialogOptions);
+		return { canceled: result.canceled, paths: result.filePaths };
 	}
 }

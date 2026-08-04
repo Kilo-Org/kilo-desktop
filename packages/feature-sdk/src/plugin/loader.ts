@@ -1,6 +1,6 @@
 import { PLUGIN_MANIFEST_FILENAME, pluginManifestSchema, type PluginManifest } from "./manifest.js";
 
-import { isShellZone } from "../types/zones.js";
+import { isShellZone, SHELL_ZONES } from "../types/zones.js";
 
 import type { FeatureRegistration, MainSdk } from "../types/sdk.js";
 
@@ -392,7 +392,7 @@ function resolveContributions(
 		if (!isShellZone(contribution.zone)) {
 			issues.push({
 				pluginId: manifest.id,
-				message: `Plugin "${manifest.id}" contributes to unknown zone "${contribution.zone}" — shell zones are "sidebar", "status-bar", and "dashboard"; skipping the contribution.`,
+				message: `Plugin "${manifest.id}" contributes to unknown zone "${contribution.zone}" — shell zones are ${SHELL_ZONES.map((zone) => `"${zone}"`).join(", ")}; skipping the contribution.`,
 			});
 			continue;
 		}

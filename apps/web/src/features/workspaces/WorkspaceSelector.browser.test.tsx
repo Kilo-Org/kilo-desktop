@@ -2,11 +2,31 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	createFakeFeatureSystem,
+	createFakeMainSdk,
+	createFakeSdk,
+} from "@anaconda-agentic-desktop/testing";
+
 import { AppProviders } from "@/app/AppProviders";
-import { WEB_FEATURES } from "@/features/features";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-import { createAppFeatureSystem } from "@/platform/featureSystem";
 import { WorkspaceSelector } from "./WorkspaceSelector";
+import { workspacesBrowserRegister } from "./browserRegister";
+
+function renderSelector(shell: Partial<SDK["shell"]> = {}) {
+	const api = createBrowserLocalApi();
+	const sdk = createFakeSdk({ featureId: "workspaces", shell });
+	const mainSdk = createFakeMainSdk({ featureId: "workspaces", services: sdk.services });
+	workspacesBrowserRegister(mainSdk);
+	const system = createFakeFeatureSystem({ sdks: { workspaces: sdk } });
+	const result = render(
+		<AppProviders localApi={api} system={system}>
+			<WorkspaceSelector />
+		</AppProviders>,
+	);
+	return { ...result, sdk };
+}
 
 afterEach(() => {
 	cleanup();
@@ -15,21 +35,12 @@ afterEach(() => {
 
 describe("WorkspaceSelector", () => {
 	it("creates an unnamed workspace through the native folder delegate", async () => {
-		const api = createBrowserLocalApi();
-		api.shell = {
-			...api.shell,
-			canPickDirectories: true,
+		const { sdk } = renderSelector({
 			showOpenDialog: vi
 				.fn()
 				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/Project"] })
 				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/Second"] }),
-		};
-		const system = createAppFeatureSystem(api, WEB_FEATURES);
-		render(
-			<AppProviders localApi={api} system={system}>
-				<WorkspaceSelector />
-			</AppProviders>,
-		);
+		});
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		expect(
@@ -69,7 +80,7 @@ describe("WorkspaceSelector", () => {
 			.element(page.getByRole("combobox", { name: "Select workspace" }))
 			.toHaveTextContent("Second");
 
-		system.getSdk("workspaces").events.emit("open-manager");
+		sdk.events.emit("open-manager");
 		await expect.element(page.getByText("Manage workspaces", { exact: true })).toBeVisible();
 		await expect.element(page.getByRole("button", { name: "Edit Second" })).toBeVisible();
 		await expect.element(page.getByRole("button", { name: "Delete Second" })).toBeVisible();
@@ -85,21 +96,12 @@ describe("WorkspaceSelector", () => {
 	});
 
 	it("filters workspaces by name when searching", async () => {
-		const api = createBrowserLocalApi();
-		api.shell = {
-			...api.shell,
-			canPickDirectories: true,
+		renderSelector({
 			showOpenDialog: vi
 				.fn()
 				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/AlphaProject"] })
 				.mockResolvedValueOnce({ canceled: false, paths: ["/tmp/BetaProject"] }),
-		};
-		const system = createAppFeatureSystem(api, WEB_FEATURES);
-		render(
-			<AppProviders localApi={api} system={system}>
-				<WorkspaceSelector />
-			</AppProviders>,
-		);
+		});
 
 		for (const name of ["AlphaProject", "BetaProject"]) {
 			await page.getByRole("combobox", { name: "Select workspace" }).click();
@@ -148,14 +150,8 @@ describe("WorkspaceSelector", () => {
 	});
 
 	it("shows a desktop-required state when directory picking is unavailable", async () => {
-		const api = createBrowserLocalApi();
-		const showOpenDialog = vi.spyOn(api.shell, "showOpenDialog");
-		const system = createAppFeatureSystem(api, WEB_FEATURES);
-		render(
-			<AppProviders localApi={api} system={system}>
-				<WorkspaceSelector />
-			</AppProviders>,
-		);
+		const showOpenDialog = vi.fn();
+		renderSelector({ canPickDirectories: false, showOpenDialog });
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		await page.getByText("Create workspace", { exact: true }).click();
@@ -170,17 +166,7 @@ describe("WorkspaceSelector", () => {
 	});
 
 	it("keeps the specific validation message when a dropped item is not a folder", async () => {
-		const api = createBrowserLocalApi();
-		api.shell = {
-			...api.shell,
-			canPickDirectories: true,
-		};
-		const system = createAppFeatureSystem(api, WEB_FEATURES);
-		render(
-			<AppProviders localApi={api} system={system}>
-				<WorkspaceSelector />
-			</AppProviders>,
-		);
+		renderSelector();
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		await page.getByText("Create workspace", { exact: true }).click();
@@ -204,19 +190,8 @@ describe("WorkspaceSelector", () => {
 	});
 
 	it("prevents scrolling when Space opens the folder picker", async () => {
-		const api = createBrowserLocalApi();
 		const showOpenDialog = vi.fn().mockResolvedValue({ canceled: true, paths: [] });
-		api.shell = {
-			...api.shell,
-			canPickDirectories: true,
-			showOpenDialog,
-		};
-		const system = createAppFeatureSystem(api, WEB_FEATURES);
-		render(
-			<AppProviders localApi={api} system={system}>
-				<WorkspaceSelector />
-			</AppProviders>,
-		);
+		renderSelector({ showOpenDialog });
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		await page.getByText("Create workspace", { exact: true }).click();

@@ -100,8 +100,8 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 		if (activeWorkspaceId && workspaces.some((workspace) => workspace.id === activeWorkspaceId)) {
 			return;
 		}
-		// A newly created id can be selected before the list refetch lands; wait for it.
-		if (activeWorkspaceId && query.isFetching) return;
+		// Avoid selecting from stale data while a create/delete refetch is pending.
+		if (query.isFetching) return;
 		setActiveWorkspaceId(workspaces[0]?.id ?? null);
 	}, [activeWorkspaceId, query.isFetching, query.isSuccess, workspaces]);
 

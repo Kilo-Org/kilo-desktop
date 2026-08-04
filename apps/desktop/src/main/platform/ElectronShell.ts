@@ -1,4 +1,5 @@
 import {
+	BrowserWindow,
 	clipboard,
 	dialog,
 	shell,
@@ -48,7 +49,11 @@ export class ElectronShell {
 	}): Promise<{ canceled: boolean; paths: string[] }> {
 		const properties: OpenDialogOptions["properties"] = ["openDirectory"];
 		if (options.multiple) properties.push("multiSelections");
-		const result = await this.electronDialog.showOpenDialog({ properties });
+		const dialogOptions = { properties } satisfies OpenDialogOptions;
+		const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+		const result = parentWindow
+			? await this.electronDialog.showOpenDialog(parentWindow, dialogOptions)
+			: await this.electronDialog.showOpenDialog(dialogOptions);
 		return { canceled: result.canceled, paths: result.filePaths };
 	}
 }

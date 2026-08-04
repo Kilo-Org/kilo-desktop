@@ -226,10 +226,11 @@ function WorkspaceFormDialog({
 		event.preventDefault();
 		if (!canPickDirectories) return;
 		const paths: string[] = [];
+		let hasInvalidEntry = false;
 		for (const item of event.dataTransfer.items) {
 			const entry = item.webkitGetAsEntry();
 			if (!entry?.isDirectory) {
-				setError("Only folders can be added to a workspace.");
+				hasInvalidEntry = true;
 				continue;
 			}
 			const file = item.getAsFile();
@@ -238,7 +239,9 @@ function WorkspaceFormDialog({
 				if (path) paths.push(path);
 			}
 		}
-		if (paths.length === 0 && !error) setError("Dropped folders could not be resolved.");
+		if (hasInvalidEntry) setError("Only folders can be added to a workspace.");
+		else if (paths.length === 0) setError("Dropped folders could not be resolved.");
+		else setError(null);
 		addPaths(paths);
 	};
 
@@ -317,7 +320,10 @@ function WorkspaceFormDialog({
 										tabIndex={0}
 										onClick={() => void chooseFolders()}
 										onKeyDown={(event: KeyboardEvent) => {
-											if (event.key === "Enter" || event.key === " ") void chooseFolders();
+											if (event.key === "Enter" || event.key === " ") {
+												event.preventDefault();
+												void chooseFolders();
+											}
 										}}
 										className="hover:bg-foreground/5 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-[11px] text-center transition-colors"
 									>
@@ -440,8 +446,10 @@ function DeleteWorkspaceDialog({
 	setActiveWorkspaceId,
 	workspace,
 }: WorkspaceDialogsProps & { workspace: Workspace }) {
+	const [error, setError] = useState<string | null>(null);
 	const mutation = useMutation({
 		mutationFn: () => sdk.client.remove({ id: workspace.id }),
+		onMutate: () => setError(null),
 		onSuccess: async () => {
 			if (activeWorkspaceId === workspace.id) {
 				setActiveWorkspaceId(
@@ -451,6 +459,8 @@ function DeleteWorkspaceDialog({
 			await queryClient.invalidateQueries({ queryKey: workspacesQueryKey });
 			onClose();
 		},
+		onError: (reason) =>
+			setError(reason instanceof Error ? reason.message : "Could not delete workspace."),
 	});
 	return (
 		<AlertDialog open={dialog !== null} onOpenChange={(open) => !open && onClose()}>
@@ -461,6 +471,7 @@ function DeleteWorkspaceDialog({
 						This removes the workspace from the app. Project folders and their files will not be
 						deleted.
 					</AlertDialogDescription>
+					{error ? <FieldError>{error}</FieldError> : null}
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel disabled={mutation.isPending}>Cancel</AlertDialogCancel>

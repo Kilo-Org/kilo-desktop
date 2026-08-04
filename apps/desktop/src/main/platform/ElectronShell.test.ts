@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { openExternal, showOpenDialog, writeText } = vi.hoisted(() => ({
-	openExternal: vi.fn(),
-	showOpenDialog: vi.fn(),
-	writeText: vi.fn(),
-}));
+const { getAllWindows, getFocusedWindow, openExternal, parentWindow, showOpenDialog, writeText } =
+	vi.hoisted(() => ({
+		getAllWindows: vi.fn(),
+		getFocusedWindow: vi.fn(),
+		openExternal: vi.fn(),
+		parentWindow: {},
+		showOpenDialog: vi.fn(),
+		writeText: vi.fn(),
+	}));
 
 vi.mock("electron", () => ({
+	BrowserWindow: { getAllWindows, getFocusedWindow },
 	clipboard: { writeText },
 	dialog: { showOpenDialog },
 	shell: { openExternal },
@@ -19,6 +24,8 @@ describe("ElectronShell", () => {
 		openExternal.mockReset();
 		writeText.mockReset();
 		showOpenDialog.mockReset();
+		getFocusedWindow.mockReset().mockReturnValue(parentWindow);
+		getAllWindows.mockReset().mockReturnValue([]);
 	});
 
 	it("maps directory dialog options and results", async () => {
@@ -28,9 +35,32 @@ describe("ElectronShell", () => {
 			canceled: false,
 			paths: ["/tmp/one", "/tmp/two"],
 		});
-		expect(showOpenDialog).toHaveBeenCalledWith({
+		expect(showOpenDialog).toHaveBeenCalledWith(parentWindow, {
 			properties: ["openDirectory", "multiSelections"],
 		});
+	});
+
+	it("uses the first app window when no window is focused", async () => {
+		getFocusedWindow.mockReturnValue(undefined);
+		getAllWindows.mockReturnValue([parentWindow]);
+		showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+		const adapter = new ElectronShell();
+
+		await adapter.showOpenDialog({ kind: "directory" });
+
+		expect(showOpenDialog).toHaveBeenCalledWith(parentWindow, {
+			properties: ["openDirectory"],
+		});
+	});
+
+	it("falls back to an unparented dialog when no app window is available", async () => {
+		getFocusedWindow.mockReturnValue(undefined);
+		showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+		const adapter = new ElectronShell();
+
+		await adapter.showOpenDialog({ kind: "directory" });
+
+		expect(showOpenDialog).toHaveBeenCalledWith({ properties: ["openDirectory"] });
 	});
 
 	it.each([

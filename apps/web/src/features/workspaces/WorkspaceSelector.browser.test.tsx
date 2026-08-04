@@ -168,4 +168,68 @@ describe("WorkspaceSelector", () => {
 		await expect.element(page.getByRole("button", { name: "Create workspace" })).toBeDisabled();
 		expect(showOpenDialog).not.toHaveBeenCalled();
 	});
+
+	it("keeps the specific validation message when a dropped item is not a folder", async () => {
+		const api = createBrowserLocalApi();
+		api.shell = {
+			...api.shell,
+			canPickDirectories: true,
+		};
+		const system = createAppFeatureSystem(api, WEB_FEATURES);
+		render(
+			<AppProviders localApi={api} system={system}>
+				<HomeView />
+			</AppProviders>,
+		);
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		await page.getByText("Create workspace", { exact: true }).click();
+		const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
+		Object.defineProperty(drop, "dataTransfer", {
+			value: {
+				items: [
+					{
+						webkitGetAsEntry: () => ({ isDirectory: false }),
+						getAsFile: () => new File(["content"], "notes.txt"),
+					},
+				],
+			},
+		});
+		fireEvent(page.getByRole("button", { name: /Drop folders/ }).element(), drop);
+
+		await expect.element(page.getByText("Only folders can be added to a workspace.")).toBeVisible();
+		await expect
+			.element(page.getByText("Dropped folders could not be resolved."))
+			.not.toBeInTheDocument();
+	});
+
+	it("prevents scrolling when Space opens the folder picker", async () => {
+		const api = createBrowserLocalApi();
+		const showOpenDialog = vi.fn().mockResolvedValue({ canceled: true, paths: [] });
+		api.shell = {
+			...api.shell,
+			canPickDirectories: true,
+			showOpenDialog,
+		};
+		const system = createAppFeatureSystem(api, WEB_FEATURES);
+		render(
+			<AppProviders localApi={api} system={system}>
+				<HomeView />
+			</AppProviders>,
+		);
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		await page.getByText("Create workspace", { exact: true }).click();
+		const dropZone = page.getByRole("button", { name: /Drop folders/ }).element();
+		const space = new KeyboardEvent("keydown", {
+			key: " ",
+			bubbles: true,
+			cancelable: true,
+		});
+
+		fireEvent(dropZone, space);
+
+		expect(space.defaultPrevented).toBe(true);
+		expect(showOpenDialog).toHaveBeenCalledOnce();
+	});
 });

@@ -71,7 +71,6 @@ export class ScopedFsService {
 			if (isFsError(error) && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
 				return false;
 			}
-			/* v8 ignore next -- defensive rethrow: unmapped fs errno codes (EACCES, EPERM, EIO, …) reach the IPC scrubber; not portably reproducible in unit tests. */
 			throw translateFsError(error, relativePath);
 		}
 	}
@@ -117,7 +116,6 @@ function translateFsError(error: unknown, relativePath: string): unknown {
 			return new BusinessError(`sdk.fs: "${relativePath}" is not a directory.`);
 		case "EEXIST":
 			return new BusinessError(`sdk.fs: "${relativePath}" already exists.`);
-		/* v8 ignore next 2 -- defensive fallthrough: unmapped fs errno codes are passed through so the IPC scrubber turns them into a generic INTERNAL error; not portably reproducible. */
 		default:
 			return error;
 	}

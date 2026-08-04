@@ -22,6 +22,7 @@ describe("AppProviders (app-level)", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("app-sidebar")).toBeVisible();
+		await expect.element(screen.getByRole("combobox", { name: "Select workspace" })).toBeVisible();
 
 		// The todos nav entry is derived from the plugin manifest route.
 		await screen.getByTestId("nav-todos").click();

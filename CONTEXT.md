@@ -34,7 +34,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.events` / `mainSdk.events` — symmetric, namespaced, cross-process pub/sub
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
-- `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
+- `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`, `home-composer-leading-action`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
 - `sdk.commands` — command palette entries
 - `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)

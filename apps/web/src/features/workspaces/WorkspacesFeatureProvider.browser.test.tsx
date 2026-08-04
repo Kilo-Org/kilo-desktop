@@ -6,8 +6,10 @@ import { page } from "vitest/browser";
 import {
 	workspacesContract,
 	type Workspace,
+	type WorkspaceCapabilities,
 	type WorkspacesService,
 } from "@anaconda-agentic-desktop/contracts";
+import { HOME_COMPOSER_LEADING_ACTION_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
@@ -64,10 +66,40 @@ function renderProvider(handlers: Partial<WorkspacesService>) {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, queryClient, sdk };
+	return { ...result, queryClient, sdk, system };
 }
 
 describe("WorkspacesFeatureProvider", () => {
+	it("contributes the selector to the home composer while mounted", async () => {
+		const { system, unmount } = renderProvider({ list: async () => [] });
+
+		await vi.waitFor(() => {
+			expect(
+				system.services.contributionRegistry.getForZone(HOME_COMPOSER_LEADING_ACTION_ZONE),
+			).toEqual([
+				expect.objectContaining({ featureId: "workspaces", label: "Workspace selector" }),
+			]);
+		});
+
+		unmount();
+		expect(
+			system.services.contributionRegistry.getForZone(HOME_COMPOSER_LEADING_ACTION_ZONE),
+		).toEqual([]);
+	});
+
+	it("exposes id-based workspace capabilities through the renderer SDK", async () => {
+		const get = vi.fn(async ({ id }: { id: string }) => ({ ...workspace, id }));
+		const remove = vi.fn(async () => ({ deleted: true }));
+		const { sdk } = renderProvider({ list: async () => [], get, remove });
+		const capability = sdk.plugins.get<WorkspaceCapabilities>("workspaces")?.workspaceService;
+
+		expect(capability).toBeDefined();
+		await expect(capability!.get(workspace.id)).resolves.toEqual(workspace);
+		await expect(capability!.remove(workspace.id)).resolves.toEqual({ deleted: true });
+		expect(get).toHaveBeenCalledWith({ id: workspace.id });
+		expect(remove).toHaveBeenCalledWith({ id: workspace.id });
+	});
+
 	it("does not reactivate a deleted workspace while its list refetch is pending", async () => {
 		let resolveRefetch!: (workspaces: Workspace[]) => void;
 		const refetch = new Promise<Workspace[]>((resolve) => {

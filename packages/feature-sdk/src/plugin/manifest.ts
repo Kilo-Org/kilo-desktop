@@ -76,7 +76,7 @@ export type PluginNavEntry = z.infer<typeof pluginNavEntrySchema>;
  * or dashboard card that should always be there while the plugin is active.
  */
 export const pluginZoneContributionSchema = z.strictObject({
-	/** Canonical shell zone id ("sidebar", "status-bar", "dashboard"). */
+	/** Canonical shell zone id exported by feature-sdk. */
 	zone: z.string().min(1),
 	/** Name of the component export in the plugin's `web` entry module. */
 	component: z.string().min(1),

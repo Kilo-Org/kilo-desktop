@@ -7,9 +7,14 @@
  * constants instead of retyping the strings so drift (e.g. "statusbar" vs
  * "status-bar") cannot creep back in.
  */
-export const SHELL_ZONES = ["sidebar", "status-bar", "dashboard"] as const;
+export const SHELL_ZONES = [
+	"sidebar",
+	"status-bar",
+	"dashboard",
+	"home-composer-leading-action",
+] as const;
 
-/** Union of the canonical shell zone ids ("sidebar" | "status-bar" | "dashboard"). */
+/** Union of the canonical shell zone ids rendered by the app shell. */
 export type ShellZone = (typeof SHELL_ZONES)[number];
 
 /** Sidebar navigation region of the shell layout. */
@@ -18,6 +23,8 @@ export const SIDEBAR_ZONE = "sidebar" satisfies ShellZone;
 export const STATUS_BAR_ZONE = "status-bar" satisfies ShellZone;
 /** Widget area on the home/dashboard page. */
 export const DASHBOARD_ZONE = "dashboard" satisfies ShellZone;
+/** Leading action area inside the home page composer. */
+export const HOME_COMPOSER_LEADING_ACTION_ZONE = "home-composer-leading-action" satisfies ShellZone;
 
 /** Whether a free-form zone string is one of the canonical shell zones. */
 export function isShellZone(zone: string): zone is ShellZone {

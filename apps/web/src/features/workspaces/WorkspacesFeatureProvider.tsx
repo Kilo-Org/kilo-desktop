@@ -6,10 +6,15 @@ import type {
 	WorkspaceCapabilities,
 	WorkspacesService,
 } from "@anaconda-agentic-desktop/contracts";
-import type { SDK, StoreHandle } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	HOME_COMPOSER_LEADING_ACTION_ZONE,
+	type SDK,
+	type StoreHandle,
+} from "@anaconda-agentic-desktop/feature-sdk";
 import { sdkQueryKey, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
 import { WorkspaceDialogs, type WorkspaceDialogState } from "./WorkspaceDialogs";
+import { WorkspaceSelector } from "./WorkspaceSelector";
 import { WorkspacesContext, type WorkspacesContextValue } from "./WorkspacesFeatureContext";
 
 const ACTIVE_WORKSPACE_KEY = "workspaces.active-workspace";
@@ -57,6 +62,13 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 	const workspaces = query.data ?? [];
 
 	const setActiveWorkspaceId = (id: string | null) => bootstrap.activeHandle.set(id);
+
+	useEffect(() => {
+		return sdk.contribute(HOME_COMPOSER_LEADING_ACTION_ZONE, {
+			component: WorkspaceSelector,
+			label: "Workspace selector",
+		});
+	}, [sdk]);
 
 	useEffect(() => {
 		if (activeWorkspaceId) localStorage.setItem(ACTIVE_WORKSPACE_KEY, activeWorkspaceId);

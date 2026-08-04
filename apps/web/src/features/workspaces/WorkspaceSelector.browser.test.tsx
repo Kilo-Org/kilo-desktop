@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { AppProviders } from "@/app/AppProviders";
-import { HomeView } from "@/features/home/HomeView";
 import { WEB_FEATURES } from "@/features/features";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
+import { WorkspaceSelector } from "./WorkspaceSelector";
 
 afterEach(() => {
 	cleanup();
@@ -27,7 +27,7 @@ describe("WorkspaceSelector", () => {
 		const system = createAppFeatureSystem(api, WEB_FEATURES);
 		render(
 			<AppProviders localApi={api} system={system}>
-				<HomeView />
+				<WorkspaceSelector />
 			</AppProviders>,
 		);
 
@@ -97,7 +97,7 @@ describe("WorkspaceSelector", () => {
 		const system = createAppFeatureSystem(api, WEB_FEATURES);
 		render(
 			<AppProviders localApi={api} system={system}>
-				<HomeView />
+				<WorkspaceSelector />
 			</AppProviders>,
 		);
 
@@ -153,7 +153,7 @@ describe("WorkspaceSelector", () => {
 		const system = createAppFeatureSystem(api, WEB_FEATURES);
 		render(
 			<AppProviders localApi={api} system={system}>
-				<HomeView />
+				<WorkspaceSelector />
 			</AppProviders>,
 		);
 
@@ -178,7 +178,7 @@ describe("WorkspaceSelector", () => {
 		const system = createAppFeatureSystem(api, WEB_FEATURES);
 		render(
 			<AppProviders localApi={api} system={system}>
-				<HomeView />
+				<WorkspaceSelector />
 			</AppProviders>,
 		);
 
@@ -214,7 +214,7 @@ describe("WorkspaceSelector", () => {
 		const system = createAppFeatureSystem(api, WEB_FEATURES);
 		render(
 			<AppProviders localApi={api} system={system}>
-				<HomeView />
+				<WorkspaceSelector />
 			</AppProviders>,
 		);
 

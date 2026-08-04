@@ -41,6 +41,7 @@ export {
 	SIDEBAR_ZONE,
 	STATUS_BAR_ZONE,
 	DASHBOARD_ZONE,
+	HOME_COMPOSER_LEADING_ACTION_ZONE,
 	isShellZone,
 	type ShellZone,
 } from "./types/zones.js";

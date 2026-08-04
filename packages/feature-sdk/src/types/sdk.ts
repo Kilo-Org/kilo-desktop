@@ -65,8 +65,8 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 * also cleaned up automatically when this SDK instance is destroyed.
 	 *
 	 * Any string is accepted, but the shell renders only the canonical
-	 * {@link ShellZone} ids — prefer the exported constants (STATUS_BAR_ZONE,
-	 * SIDEBAR_ZONE, DASHBOARD_ZONE) so a typo cannot render nowhere.
+	 * {@link ShellZone} ids — prefer the exported zone constants so a typo
+	 * cannot render nowhere.
 	 *
 	 * @example
 	 * const remove = sdk.contribute("status-bar", { component: TodoBadge, label: "Todos", priority: 10 });

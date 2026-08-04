@@ -28,15 +28,5 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByTestId("plugin-page-heading")).toBeVisible();
 		// Todos is Electron-only — browser mode renders an explicit unavailable state.
 		await expect.element(screen.getByTestId("plugin-page-unavailable")).toBeVisible();
-
-		await screen.getByTestId("nav-sdk-producer").click();
-		await expect.element(screen.getByTestId("note-input")).toBeVisible();
-
-		await screen.getByTestId("nav-sdk-consumer").click();
-		await expect.element(screen.getByTestId("sdk-consumer-heading")).toBeVisible();
-
-		await screen.getByTestId("nav-split").click();
-		await expect.element(screen.getByTestId("sdk-consumer-heading")).toBeVisible();
-		await expect.element(screen.getByTestId("note-input")).toBeVisible();
 	});
 });

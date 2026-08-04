@@ -8,8 +8,6 @@ export * from "./features/notifications.js";
 export * from "./features/shell.js";
 export * from "./features/theme.js";
 export * from "./features/workspaces.js";
-export * from "./features/sdk-consumer.js";
-export * from "./features/sdk-producer.js";
 export * from "./local-api.js";
 export * from "./registry.js";
 export * from "./result.js";

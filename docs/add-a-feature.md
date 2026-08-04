@@ -35,7 +35,6 @@ A feature ships two halves that communicate only through the SDK:
 | [packages/feature-sdk/README.md](../packages/feature-sdk/README.md)                 | Quick start with the full backend + frontend example (the todos plugin) |
 | [`.agents/skills/new-feature/`](../.agents/skills/new-feature/SKILL.md)             | Step-by-step scaffold for a new feature in `apps/`                      |
 | [`.agents/skills/migrate-to-plugin/`](../.agents/skills/migrate-to-plugin/SKILL.md) | Moving a feature into `plugins/<id>/`                                   |
-| **Live reference:** `sdk-producer` / `sdk-consumer` in `apps/`                      | Working demo features exercising every SDK API                          |
 | **Live plugin reference:** `plugins/todos/`                                         | A complete self-contained plugin (routes, zones, own DB, e2e)           |
 
 ## Verify

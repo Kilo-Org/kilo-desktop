@@ -3,13 +3,7 @@ import {
 	pluginRegistrations,
 	reportPluginDiscoveryIssues,
 	type FeatureRegistration,
-	type MainSdk,
 } from "@anaconda-agentic-desktop/feature-sdk";
-import {
-	sdkConsumerContract,
-	sdkProducerContract,
-	type Note,
-} from "@anaconda-agentic-desktop/contracts";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 import { workspacesBrowserRegister } from "./workspaces/browserRegister.js";
@@ -25,64 +19,8 @@ import { workspacesBrowserRegister } from "./workspaces/browserRegister.js";
  * browser-safe fakes.
  */
 
-/** Browser-safe in-memory implementation of the sdk-producer feature. */
-function sdkProducerBrowserRegister(mainSdk: MainSdk): void {
-	let notes: Note[] = [];
-	mainSdk.plugins.expose("notesService", { count: () => notes.length });
-
-	mainSdk.channels(sdkProducerContract).handleAll({
-		list: () => [...notes],
-		add: (input) => {
-			const note: Note = { id: crypto.randomUUID(), text: input.text, createdAt: Date.now() };
-			notes.push(note);
-			mainSdk.events.emit("note-added", { id: note.id, text: note.text });
-			return note;
-		},
-		delete: (input) => {
-			const before = notes.length;
-			notes = notes.filter((n) => n.id !== input.id);
-			return { deleted: notes.length < before };
-		},
-		clear: () => {
-			const count = notes.length;
-			notes = [];
-			return { count };
-		},
-		echo: (input) => ({
-			echoed: `[sdk-producer] ${input.message}`,
-			timestamp: Date.now(),
-		}),
-	});
-}
-
-/** sdk-consumer has a trivial ping handler (no Node deps). */
-function sdkConsumerBrowserRegister(mainSdk: MainSdk): void {
-	mainSdk.channels(sdkConsumerContract).handleAll({
-		ping: () => {
-			const producer = mainSdk.plugins.get<{
-				notesService: { count(): number };
-			}>("sdk-producer");
-			return {
-				pong: true as const,
-				from: "sdk-consumer",
-				producerNoteCount: producer?.notesService.count() ?? null,
-			};
-		},
-	});
-}
-
 /** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
 const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
-	{
-		id: "sdk-producer",
-		mainRegister: sdkProducerBrowserRegister,
-		browserRegister: sdkProducerBrowserRegister,
-	},
-	{
-		id: "sdk-consumer",
-		mainRegister: sdkConsumerBrowserRegister,
-		browserRegister: sdkConsumerBrowserRegister,
-	},
 	{
 		id: "workspaces",
 		mainRegister: workspacesBrowserRegister,

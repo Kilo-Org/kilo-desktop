@@ -396,11 +396,11 @@ describe("createFakeSdk", () => {
 
 describe("createFakeFeatureSystem", () => {
 	it("returns registered sdks and creates unknown ids on shared services", () => {
-		const producer = createFakeSdk({ featureId: "sdk-producer" });
-		const system = createFakeFeatureSystem({ sdks: { "sdk-producer": producer } });
+		const notes = createFakeSdk({ featureId: "notes" });
+		const system = createFakeFeatureSystem({ sdks: { notes } });
 
-		expect(system.getSdk("sdk-producer")).toBe(producer);
-		expect(system.services).toBe(producer.services);
+		expect(system.getSdk("notes")).toBe(notes);
+		expect(system.services).toBe(notes.services);
 
 		const other = system.getSdk("other");
 		expect(other.featureId).toBe("other");
@@ -408,17 +408,17 @@ describe("createFakeFeatureSystem", () => {
 	});
 
 	it("teardownFeature destroys and drops only the named sdk", () => {
-		const producer = createFakeSdk({ featureId: "sdk-producer" });
+		const notes = createFakeSdk({ featureId: "notes" });
 		const destroy = vi.fn();
-		producer.destroy = destroy;
-		const system = createFakeFeatureSystem({ sdks: { "sdk-producer": producer } });
+		notes.destroy = destroy;
+		const system = createFakeFeatureSystem({ sdks: { notes } });
 
 		system.teardownFeature("missing");
 		expect(destroy).not.toHaveBeenCalled();
 
-		system.teardownFeature("sdk-producer");
+		system.teardownFeature("notes");
 		expect(destroy).toHaveBeenCalledOnce();
-		expect(system.getSdk("sdk-producer")).not.toBe(producer);
+		expect(system.getSdk("notes")).not.toBe(notes);
 	});
 
 	it("requires services when no FakeSdk is provided", () => {
@@ -426,15 +426,15 @@ describe("createFakeFeatureSystem", () => {
 	});
 
 	it("disposes every cached SDK exactly once", () => {
-		const producer = createFakeSdk({ featureId: "sdk-producer" });
-		const destroy = vi.spyOn(producer, "destroy");
-		const system = createFakeFeatureSystem({ sdks: { "sdk-producer": producer } });
+		const notes = createFakeSdk({ featureId: "notes" });
+		const destroy = vi.spyOn(notes, "destroy");
+		const system = createFakeFeatureSystem({ sdks: { notes } });
 		system.getSdk("consumer");
 
 		system.dispose();
 		system.dispose();
 
 		expect(destroy).toHaveBeenCalledOnce();
-		expect(() => system.getSdk("sdk-producer")).toThrow(/disposed/);
+		expect(() => system.getSdk("notes")).toThrow(/disposed/);
 	});
 });

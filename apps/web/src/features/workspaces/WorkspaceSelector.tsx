@@ -113,7 +113,7 @@ export function WorkspaceSelector() {
 				>
 					<CommandInput placeholder="Search workspaces…" />
 					<CommandSeparator />
-					<CommandList>
+					<CommandList className="scroll-fade max-h-[calc(2rem*4+0.5rem)]">
 						{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 						<CommandGroup>
 							{isLoading ? (

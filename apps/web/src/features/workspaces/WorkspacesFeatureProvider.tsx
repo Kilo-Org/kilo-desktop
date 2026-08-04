@@ -100,8 +100,10 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 		if (activeWorkspaceId && workspaces.some((workspace) => workspace.id === activeWorkspaceId)) {
 			return;
 		}
+		// A newly created id can be selected before the list refetch lands; wait for it.
+		if (activeWorkspaceId && query.isFetching) return;
 		setActiveWorkspaceId(workspaces[0]?.id ?? null);
-	}, [activeWorkspaceId, query.isSuccess, workspaces]);
+	}, [activeWorkspaceId, query.isFetching, query.isSuccess, workspaces]);
 
 	useEffect(() => {
 		const invalidate = () => {

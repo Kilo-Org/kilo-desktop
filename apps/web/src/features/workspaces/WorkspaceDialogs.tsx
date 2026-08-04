@@ -110,6 +110,13 @@ function WorkspaceFormDialog({
 				? sdk.client.update({ id: workspace.id, name, folders })
 				: sdk.client.create({ name, folders }),
 		onSuccess: async (saved) => {
+			queryClient.setQueryData<Workspace[]>(workspacesQueryKey, (current) => {
+				if (!current) return [saved];
+				if (current.some((item) => item.id === saved.id)) {
+					return current.map((item) => (item.id === saved.id ? saved : item));
+				}
+				return [...current, saved];
+			});
 			if (!workspace) setActiveWorkspaceId(saved.id);
 			await queryClient.invalidateQueries({ queryKey: workspacesQueryKey });
 			onClose();

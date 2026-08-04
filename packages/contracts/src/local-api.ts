@@ -1,4 +1,5 @@
 import type { AuthSession } from "./features/auth.js";
+import type { NotificationDeliveryResult } from "./features/notifications.js";
 import type { ThemeState } from "./features/theme.js";
 import type { IpcError } from "./result.js";
 
@@ -16,6 +17,27 @@ export interface LocalApi {
 	shell: {
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;
 		copyText(input: { text: string }): Promise<void>;
+	};
+	notifications: {
+		show(input: {
+			title: string;
+			message: string;
+			type: "info" | "success" | "warning" | "error";
+		}): Promise<NotificationDeliveryResult>;
+		setBadge(input: { count: number }): Promise<NotificationDeliveryResult>;
+	};
+	/**
+	 * Scoped filesystem backing `sdk.fs`. `featureId` selects the calling
+	 * feature's sandbox dir (`${userData}/plugins/<featureId>/`); `path` is
+	 * relative to it. See `features/fs.ts` for the full scoping model.
+	 */
+	fs: {
+		readFile(input: { featureId: string; path: string }): Promise<{ content: string }>;
+		writeFile(input: { featureId: string; path: string; content: string }): Promise<void>;
+		exists(input: { featureId: string; path: string }): Promise<{ exists: boolean }>;
+		mkdir(input: { featureId: string; path: string }): Promise<void>;
+		readdir(input: { featureId: string; path: string }): Promise<{ entries: string[] }>;
+		remove(input: { featureId: string; path: string }): Promise<void>;
 	};
 	auth: {
 		getSession(): Promise<AuthSession>;

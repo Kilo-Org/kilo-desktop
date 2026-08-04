@@ -158,12 +158,14 @@ describe("createFakeSdk", () => {
 		]);
 	});
 
-	it("works without channels (shell-delegate-only fakes)", () => {
+	it("works without channels (shell-delegate-only fakes)", async () => {
 		const sdk = createFakeSdk({ featureId: "shell-only" });
 		expect(sdk.featureId).toBe("shell-only");
 		expect(sdk.theme.peek()).toBe("light");
-		expect(sdk.notifications.show({ type: "info", title: "t", message: "m" }).delivered).toBe(true);
-		expect(sdk.notifications.setBadge(1).delivered).toBe(true);
+		await expect(
+			sdk.notifications.show({ type: "info", title: "t", message: "m" }),
+		).resolves.toEqual({ delivered: true });
+		await expect(sdk.notifications.setBadge(1)).resolves.toEqual({ delivered: true });
 	});
 
 	it("theme.subscribe immediately invokes the listener with light", () => {
@@ -194,32 +196,141 @@ describe("createFakeSdk", () => {
 		await expect(sdk.shell.copyText("hi")).resolves.toBeUndefined();
 	});
 
-	it("fs methods reject with notImplemented until overridden", async () => {
+	it("fs is an in-memory sandbox: write, read, list, remove", async () => {
 		const sdk = createFakeSdk({ featureId: "fs" });
-		await expect(sdk.fs.readFile("x")).rejects.toThrow(/not implemented in test/);
-		await expect(sdk.fs.writeFile("x", "y")).rejects.toThrow(/not implemented in test/);
-		await expect(sdk.fs.exists("x")).rejects.toThrow(/not implemented in test/);
-		await expect(sdk.fs.mkdir("x")).rejects.toThrow(/not implemented in test/);
-		await expect(sdk.fs.readdir("x")).rejects.toThrow(/not implemented in test/);
-		await expect(sdk.fs.remove("x")).rejects.toThrow(/not implemented in test/);
+		await expect(sdk.fs.exists("notes/a.txt")).resolves.toBe(false);
+		await sdk.fs.writeFile("notes/a.txt", "hello");
+		await expect(sdk.fs.readFile("notes/a.txt")).resolves.toBe("hello");
+		await expect(sdk.fs.exists("notes")).resolves.toBe(true);
+		await sdk.fs.mkdir("notes/archive");
+		await expect(sdk.fs.readdir("notes")).resolves.toEqual(["a.txt", "archive"]);
+		await expect(sdk.fs.readdir("")).resolves.toEqual(["notes"]);
+		await sdk.fs.remove("notes");
+		await expect(sdk.fs.exists("notes")).resolves.toBe(false);
+		await expect(sdk.fs.readFile("notes/a.txt")).rejects.toThrow(/no such file/);
+		await expect(sdk.fs.readdir("notes")).rejects.toThrow(/no such file/);
+	});
+
+	it("fs sandboxes are scoped per feature and reject escaping paths", async () => {
+		const a = createFakeSdk({ featureId: "feature-a" });
+		const b = createFakeSdk({ featureId: "feature-b" });
+		await a.fs.writeFile("shared.txt", "from a");
+		await expect(b.fs.exists("shared.txt")).resolves.toBe(false);
+
+		await expect(a.fs.readFile("/etc/passwd")).rejects.toThrow(/must be relative/);
+		await expect(a.fs.readFile("../feature-b/shared.txt")).rejects.toThrow(/cannot escape/);
+		// Dot segments that stay inside the sandbox are fine.
+		await expect(a.fs.readFile("./nested/../shared.txt")).resolves.toBe("from a");
+	});
+
+	it("fs remove('') clears the sandbox but keeps the root readable", async () => {
+		const sdk = createFakeSdk({ featureId: "fs-root" });
+		await sdk.fs.writeFile("a/b.txt", "x");
+		await sdk.fs.mkdir("c");
+		await sdk.fs.remove("");
+		await expect(sdk.fs.readdir("")).resolves.toEqual([]);
+		await expect(sdk.fs.exists("a")).resolves.toBe(false);
+		await expect(sdk.fs.exists("")).resolves.toBe(true);
+	});
+
+	it("fs rejects file/dir key collisions like a real filesystem", async () => {
+		const sdk = createFakeSdk({ featureId: "fs-collision" });
+		await sdk.fs.writeFile("a.txt", "x");
+		// A directory cannot shadow an existing file, and vice versa.
+		await expect(sdk.fs.mkdir("a.txt")).rejects.toThrow(/not a directory/);
+		await expect(sdk.fs.writeFile("a.txt/child", "y")).rejects.toThrow(/not a directory/);
+		await sdk.fs.mkdir("dir");
+		await expect(sdk.fs.writeFile("dir", "z")).rejects.toThrow(/is a directory/);
+	});
+
+	it("routes every overridden fs method and falls back per method", async () => {
+		const calls: string[] = [];
+		const overridden = createFakeSdk({
+			featureId: "fs-all-overrides",
+			fs: {
+				readFile: async (p) => {
+					calls.push(`readFile:${p}`);
+					return "o";
+				},
+				writeFile: async (p) => {
+					calls.push(`writeFile:${p}`);
+				},
+				exists: async (p) => {
+					calls.push(`exists:${p}`);
+					return true;
+				},
+				mkdir: async (p) => {
+					calls.push(`mkdir:${p}`);
+				},
+				readdir: async (p) => {
+					calls.push(`readdir:${p}`);
+					return ["o.txt"];
+				},
+				remove: async (p) => {
+					calls.push(`remove:${p}`);
+				},
+			},
+		});
+		await expect(overridden.fs.readFile("f")).resolves.toBe("o");
+		await overridden.fs.writeFile("f", "x");
+		await expect(overridden.fs.exists("f")).resolves.toBe(true);
+		await overridden.fs.mkdir("d");
+		await expect(overridden.fs.readdir("d")).resolves.toEqual(["o.txt"]);
+		await overridden.fs.remove("f");
+		expect(calls).toEqual([
+			"readFile:f",
+			"writeFile:f",
+			"exists:f",
+			"mkdir:d",
+			"readdir:d",
+			"remove:f",
+		]);
+
+		// A partial override leaves the other methods on the in-memory sandbox.
+		const partial = createFakeSdk({
+			featureId: "fs-partial",
+			fs: { readFile: async () => "overridden" },
+		});
+		await partial.fs.writeFile("kept.txt", "v");
+		await expect(partial.fs.exists("kept.txt")).resolves.toBe(true);
+		await partial.fs.mkdir("dir");
+		await expect(partial.fs.readdir("")).resolves.toEqual(["dir", "kept.txt"]);
+		await partial.fs.remove("kept.txt");
+		await expect(partial.fs.exists("kept.txt")).resolves.toBe(false);
+		await expect(partial.fs.readFile("anything")).resolves.toBe("overridden");
+	});
+
+	it("navigation defaults report the home location", () => {
+		const sdk = createFakeSdk({ featureId: "nav" });
+		expect(sdk.location.peek()).toEqual({ path: "/", search: {} });
+		const seen: unknown[] = [];
+		const unsub = sdk.location.subscribe((location) => seen.push(location));
+		expect(seen).toEqual([{ path: "/", search: {} }]);
+		expect(() => unsub()).not.toThrow();
+		expect(() => sdk.navigate("/anywhere")).not.toThrow();
 	});
 
 	it("merges partial shell/fs/notification/theme overrides", async () => {
 		const sdk = createFakeSdk({
 			featureId: "overrides",
-			notifications: { show: () => ({ delivered: false, reason: "blocked" }) },
+			notifications: { show: async () => ({ delivered: false, reason: "blocked" }) },
 			theme: { peek: () => "dark" },
 			shell: { openExternal: async () => ({ opened: false }) },
 			fs: { exists: async () => true },
 		});
 
-		expect(sdk.notifications.show({ type: "info", title: "t", message: "m" })).toEqual({
+		await expect(
+			sdk.notifications.show({ type: "info", title: "t", message: "m" }),
+		).resolves.toEqual({
 			delivered: false,
 			reason: "blocked",
 		});
 		expect(sdk.theme.peek()).toBe("dark");
 		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: false });
+		// Overridden method wins; the rest falls back to the in-memory sandbox.
 		await expect(sdk.fs.exists("x")).resolves.toBe(true);
+		await sdk.fs.writeFile("x.txt", "kept");
+		await expect(sdk.fs.readFile("x.txt")).resolves.toBe("kept");
 	});
 
 	it("ignores undefined override values when merging", () => {

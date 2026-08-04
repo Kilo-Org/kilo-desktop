@@ -50,7 +50,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @anaconda-agentic-desktop/web exec playwright install chromium --with-deps
+      # --with-deps is only needed on Linux (apt system libraries). On Windows
+      # it runs a slow, silent Media Foundation DISM install (~3min) that
+      # headless tests don't need; on macOS it is a no-op.
+      - if: runner.os == 'Linux'
+        run: pnpm --filter @anaconda-agentic-desktop/web exec playwright install chromium --with-deps
+      - if: runner.os != 'Linux'
+        run: pnpm --filter @anaconda-agentic-desktop/web exec playwright install chromium
       - run: pnpm coverage
 
   e2e-pr:

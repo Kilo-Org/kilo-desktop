@@ -31,9 +31,17 @@ runs:
         sudo apt-get update
         sudo apt-get install --yes build-essential libsecret-1-dev pkg-config
 
-    - name: Install Playwright browsers
+    # --with-deps is only needed on Linux. On Windows it runs a slow, silent
+    # Media Foundation DISM install (~3min) that the e2e tests don't need.
+    - name: Install Playwright browsers (Linux)
+      if: runner.os == 'Linux'
       shell: bash
       run: pnpm --filter @anaconda-agentic-desktop/e2e exec playwright install chromium --with-deps
+
+    - name: Install Playwright browsers (macOS/Windows)
+      if: runner.os != 'Linux'
+      shell: bash
+      run: pnpm --filter @anaconda-agentic-desktop/e2e exec playwright install chromium
 
     - name: Package desktop for e2e
       shell: bash

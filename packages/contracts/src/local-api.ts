@@ -15,8 +15,14 @@ export interface LocalApi {
 		sync(input: ThemeState): Promise<void>;
 	};
 	shell: {
+		readonly canPickDirectories: boolean;
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;
 		copyText(input: { text: string }): Promise<void>;
+		showOpenDialog(input: {
+			kind: "directory";
+			multiple?: boolean;
+		}): Promise<{ canceled: boolean; paths: string[] }>;
+		getPathForFile(file: File): string | null;
 	};
 	notifications: {
 		show(input: {

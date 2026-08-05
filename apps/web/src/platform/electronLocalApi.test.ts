@@ -6,6 +6,7 @@ import { createElectronLocalApi } from "./electronLocalApi";
 
 function makeBridge(overrides?: Partial<DesktopApi>): DesktopApi {
 	return {
+		getPathForFile: vi.fn(() => null),
 		invoke: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
 		on: vi.fn(() => () => undefined),
 		...overrides,
@@ -18,9 +19,15 @@ describe("createElectronLocalApi", () => {
 			.fn()
 			.mockResolvedValueOnce({ ok: true, value: undefined })
 			.mockResolvedValueOnce({ ok: true, value: { opened: true } })
-			.mockResolvedValueOnce({ ok: true, value: undefined });
+			.mockResolvedValueOnce({ ok: true, value: undefined })
+			.mockResolvedValueOnce({
+				ok: true,
+				value: { canceled: false, paths: ["/tmp/project"] },
+			});
 		const on = vi.fn(() => () => undefined);
-		const api = createElectronLocalApi({ invoke, on } as unknown as DesktopApi);
+		const getPathForFile = vi.fn(() => "/tmp/dropped");
+		const api = createElectronLocalApi({ invoke, on, getPathForFile } as unknown as DesktopApi);
+		expect(api.shell.canPickDirectories).toBe(true);
 
 		await expect(
 			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
@@ -29,10 +36,21 @@ describe("createElectronLocalApi", () => {
 			opened: true,
 		});
 		await expect(api.shell.copyText({ text: "hi" })).resolves.toBeUndefined();
+		await expect(api.shell.showOpenDialog({ kind: "directory", multiple: true })).resolves.toEqual({
+			canceled: false,
+			paths: ["/tmp/project"],
+		});
+		const file = new File([], "project");
+		expect(api.shell.getPathForFile(file)).toBe("/tmp/dropped");
+		expect(getPathForFile).toHaveBeenCalledWith(file);
 
 		expect(invoke).toHaveBeenNthCalledWith(1, "theme:sync", {
 			source: "dark",
 			shouldUseDarkColors: true,
+		});
+		expect(invoke).toHaveBeenNthCalledWith(4, "shell:show-open-dialog", {
+			kind: "directory",
+			multiple: true,
 		});
 
 		const unsubscribe = api.auth.onChanged(() => undefined);

@@ -61,6 +61,8 @@ describe("ElectronProtocol", () => {
 		const policy = createContentSecurityPolicy();
 		expect(policy).toContain("default-src 'self'");
 		expect(policy).toContain("connect-src 'self'");
+		expect(policy).toContain("http://127.0.0.1:*");
+		expect(policy).not.toContain("http://localhost:*");
 		expect(policy).toContain("object-src 'none'");
 		expect(policy).toContain("frame-ancestors 'none'");
 		expect(policy).not.toContain("unsafe-eval");

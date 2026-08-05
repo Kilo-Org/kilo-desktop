@@ -44,7 +44,13 @@ export function makeServices(featureRouter?: FeatureRouter) {
 			login: async () => ({ status: "anonymous" }),
 			logout: async () => ({ status: "anonymous" }),
 		},
-		shell: { openExternal: async () => ({ opened: true }), copyText: async () => undefined },
+		shell: {
+			canPickDirectories: true,
+			openExternal: async () => ({ opened: true }),
+			copyText: async () => undefined,
+			showOpenDialog: async () => ({ canceled: true, paths: [] }),
+			getPathForFile: () => null,
+		},
 		fs: {
 			readFile: async (_featureId: string, _path: string) => "",
 			writeFile: async () => undefined,

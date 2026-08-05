@@ -9,24 +9,6 @@ import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import { Label } from "@anaconda-agentic-desktop/ui/components/label";
 
-/**
- * Status-bar zone contribution. Declared in plugin.json (`contributes.zones`)
- * and mounted by the shell at plugin activation, so the open-todo count is
- * PERSISTENT — it shows regardless of which page is visible, not only while
- * the todos page is mounted.
- */
-export function TodosStatusBarItem() {
-	const sdk = useSdk<TodoService>("todos");
-	const todos = useSdkQuery(sdk, "list");
-	const open = todos.data?.filter((todo) => !todo.completed).length;
-
-	return (
-		<span data-qa-id="todos-status-bar-item">
-			{open === undefined ? "Todos" : `${String(open)} open ${open === 1 ? "todo" : "todos"}`}
-		</span>
-	);
-}
-
 export function TodoList() {
 	const sdk = useSdk<TodoService>("todos");
 	const todos = useSdkQuery(sdk, "list");

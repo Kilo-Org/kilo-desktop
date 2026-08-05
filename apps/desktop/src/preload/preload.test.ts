@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { contextBridge, ipcRenderer } = vi.hoisted(() => ({
+const { contextBridge, ipcRenderer, getPathForFile } = vi.hoisted(() => ({
 	contextBridge: {
 		exposeInMainWorld: vi.fn(),
 	},
@@ -10,17 +10,30 @@ const { contextBridge, ipcRenderer } = vi.hoisted(() => ({
 		on: vi.fn(),
 		removeListener: vi.fn(),
 	},
+	getPathForFile: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
 	contextBridge,
 	ipcRenderer,
+	webUtils: { getPathForFile },
 }));
 
 describe("preload desktopApi", () => {
 	beforeEach(() => {
 		vi.resetModules();
 		vi.clearAllMocks();
+	});
+
+	it("resolves dropped files through the preload-only Electron API", async () => {
+		getPathForFile.mockReturnValueOnce("/tmp/project").mockReturnValueOnce("");
+		await import("./preload.js");
+		const desktopApi = contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as {
+			getPathForFile(file: File): string | null;
+		};
+		const file = new File([], "project");
+		expect(desktopApi.getPathForFile(file)).toBe("/tmp/project");
+		expect(desktopApi.getPathForFile(file)).toBeNull();
 	});
 
 	it("forwards allowed invoke channels and rejects unknown ones", async () => {
@@ -69,7 +82,7 @@ describe("preload desktopApi", () => {
 		const desktopApi = contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as {
 			send: (channel: string, payload: unknown) => void;
 		};
-		const payload = { featureId: "sdk-producer", name: "note-added", payload: { id: "1" } };
+		const payload = { featureId: "todos", name: "item-added", payload: { id: "1" } };
 
 		desktopApi.send("feature:event", payload);
 		expect(ipcRenderer.send).toHaveBeenCalledWith("feature:event", payload);

@@ -95,8 +95,11 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 		},
 		auth: createAuthDelegate(api),
 		shell: {
+			canPickDirectories: api.shell.canPickDirectories,
 			openExternal: (url) => api.shell.openExternal({ url }),
 			copyText: (text) => api.shell.copyText({ text }),
+			showOpenDialog: (options) => api.shell.showOpenDialog(options),
+			getPathForFile: (file) => api.shell.getPathForFile(file),
 		},
 		// Scoped fs — the SDK binds each feature's id onto this delegate, and
 		// the main process confines every path to that feature's sandbox dir

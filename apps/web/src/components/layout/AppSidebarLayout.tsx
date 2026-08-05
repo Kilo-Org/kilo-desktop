@@ -1,14 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-	BellIcon,
-	HomeIcon,
-	LogOutIcon,
-	PackageIcon,
-	PlugIcon,
-	SplitIcon,
-	UserIcon,
-} from "lucide-react";
+import { BellIcon, HomeIcon, LogOutIcon, UserIcon } from "lucide-react";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
@@ -50,12 +42,13 @@ type AppSidebarLayoutProps = {
 /**
  * Sidebar nav entry declared by a plugin (`contributes.nav`) — plugins add nav
  * entries by declaring them in the manifest, never by editing this layout.
- * Icons resolve through the static bundled-plugin icon map (plugin-icons.ts).
+ * Icons resolve through the plugin's exported component first, then the static
+ * bundled-plugin icon map (plugin-icons.ts), then the PuzzleIcon fallback.
  * The link goes through the plugin catch-all route (`/plugins/$`) so plugin
  * paths cannot collide with shell paths by construction.
  */
 function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: string }) {
-	const Icon = resolvePluginNavIcon(entry.icon);
+	const Icon = resolvePluginNavIcon(entry.icon, entry.iconComponent);
 	return (
 		<SidebarMenuItem>
 			<SidebarMenuButton
@@ -120,42 +113,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 										<span>Home</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
-								<SidebarMenuItem>
-									<SidebarMenuButton
-										isActive={pathname === "/sdk-producer"}
-										tooltip="SDK Producer"
-										render={<Link to="/sdk-producer" />}
-										className="size-8!"
-										data-qa-id="nav-sdk-producer"
-									>
-										<PackageIcon />
-										<span>SDK Producer</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
-								<SidebarMenuItem>
-									<SidebarMenuButton
-										isActive={pathname === "/sdk-consumer"}
-										tooltip="SDK Consumer"
-										render={<Link to="/sdk-consumer" />}
-										className="size-8!"
-										data-qa-id="nav-sdk-consumer"
-									>
-										<PlugIcon />
-										<span>SDK Consumer</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
-								<SidebarMenuItem>
-									<SidebarMenuButton
-										isActive={pathname === "/split"}
-										tooltip="Split"
-										render={<Link to="/split" />}
-										className="size-8!"
-										data-qa-id="nav-split"
-									>
-										<SplitIcon />
-										<span>Split</span>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
+
 								{navEntries.map((entry) => (
 									<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
 								))}
@@ -165,7 +123,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 						<ZoneOutlet zone="sidebar" className="flex flex-col items-center gap-2 px-2" />
 					</SidebarContent>
 					{session.status === "authenticated" && (
-						<SidebarFooter className="px-2 pb-4">
+						<SidebarFooter className="px-2 pb-3">
 							<SidebarMenu>
 								<SidebarMenuItem>
 									<DropdownMenu>

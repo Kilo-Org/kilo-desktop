@@ -22,10 +22,10 @@ A feature ships two halves that communicate only through the SDK:
   (`apps/desktop/src/main/features/registry/features.ts`) and, for browser mode,
   `WEB_FEATURES` (`apps/web/src/features/features.ts`). Plugins instead ship a
   `plugin.json` and register in `BUNDLED_PLUGINS`.
-- **UI surfaces**: declared statically in `plugin.json` `contributes` — `routes` (full
-  pages the shell mounts), `nav` (sidebar entries), and `zones` (persistent status-bar /
-  dashboard widgets, host-mounted at activation). No shell edits. The imperative
-  `sdk.contribute` remains for conditional, page-scoped widgets.
+- **UI and lifecycle surfaces**: declared statically in `plugin.json` `contributes` —
+  `providers` (app-lifetime React providers), `routes` (full pages the shell mounts),
+  `nav` (sidebar entries), and `zones` (plugin-lifetime zone registrations). No shell
+  edits. The imperative `sdk.contribute` remains for conditional widgets.
 
 ## Follow these instead
 
@@ -35,7 +35,6 @@ A feature ships two halves that communicate only through the SDK:
 | [packages/feature-sdk/README.md](../packages/feature-sdk/README.md)                 | Quick start with the full backend + frontend example (the todos plugin) |
 | [`.agents/skills/new-feature/`](../.agents/skills/new-feature/SKILL.md)             | Step-by-step scaffold for a new feature in `apps/`                      |
 | [`.agents/skills/migrate-to-plugin/`](../.agents/skills/migrate-to-plugin/SKILL.md) | Moving a feature into `plugins/<id>/`                                   |
-| **Live reference:** `sdk-producer` / `sdk-consumer` in `apps/`                      | Working demo features exercising every SDK API                          |
 | **Live plugin reference:** `plugins/todos/`                                         | A complete self-contained plugin (routes, zones, own DB, e2e)           |
 
 ## Verify

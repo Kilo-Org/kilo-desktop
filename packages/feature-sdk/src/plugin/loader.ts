@@ -1,6 +1,6 @@
 import { PLUGIN_MANIFEST_FILENAME, pluginManifestSchema, type PluginManifest } from "./manifest.js";
 
-import { isShellZone } from "../types/zones.js";
+import { isShellZone, SHELL_ZONES } from "../types/zones.js";
 
 import type { FeatureRegistration, MainSdk } from "../types/sdk.js";
 
@@ -103,6 +103,11 @@ export interface DiscoveredPlugin {
 	/** Feeds the existing boot paths (FEATURES / WEB_FEATURES shape). */
 	registration: FeatureRegistration;
 	/**
+	 * `contributes.providers` components resolved from the web entry module.
+	 * Web-entry discovery only.
+	 */
+	providers: ResolvedPluginProviderContribution[];
+	/**
 	 * `contributes.routes` with their page components resolved from the web
 	 * entry module. Populated only for `entry: "web"` discovery (a renderer
 	 * concern); routes whose component export is missing, whose path collides
@@ -144,7 +149,12 @@ export interface ResolvedPluginRoute {
 	browserSafe: boolean;
 }
 
-/** A resolved sidebar nav entry (pure data — no component to resolve). */
+/**
+ * A resolved sidebar nav entry. If the manifest `icon` value matches a
+ * function export in the plugin's web entry module, `iconComponent` holds
+ * it (same pattern as route/zone component resolution). Otherwise the
+ * string falls through so the shell can look it up in a static icon map.
+ */
 export interface ResolvedPluginNav {
 	pluginId: string;
 	/**
@@ -153,8 +163,20 @@ export interface ResolvedPluginNav {
 	 */
 	to: string;
 	label: string;
-	/** Optional lucide icon name (kebab-case). */
+	/**
+	 * The raw icon string from the manifest. When `iconComponent` is set this
+	 * is still present (it's the export name that resolved); when
+	 * `iconComponent` is undefined the shell falls back to a static icon map
+	 * keyed by this string.
+	 */
 	icon?: string | undefined;
+	/**
+	 * The resolved icon component export from the plugin's web entry module.
+	 * Present when `icon` names a function export; absent otherwise. The shell
+	 * casts it to a React component. Stays `unknown` because feature-sdk is
+	 * React-free.
+	 */
+	iconComponent?: unknown | undefined;
 	/** Higher renders first. Default 0. */
 	priority: number;
 }
@@ -172,6 +194,19 @@ export interface ResolvedPluginZoneContribution {
 	/** The resolved component export. */
 	component: unknown;
 	/** Higher renders first within the zone. Default 0. */
+	priority: number;
+	browserSafe: boolean;
+}
+
+/**
+ * An app-lifetime provider resolved from a plugin's web entry. The SDK stays
+ * React-free, so the shell owns the component cast and composition.
+ */
+export interface ResolvedPluginProviderContribution {
+	pluginId: string;
+	/** The resolved provider component export. */
+	component: unknown;
+	/** Higher-priority providers wrap lower-priority providers. Default 0. */
 	priority: number;
 	browserSafe: boolean;
 }
@@ -278,7 +313,7 @@ export function discoverPlugins(
 			const resolved =
 				entry === "web"
 					? resolveContributions(manifest, candidate.module, seenRoutePaths, issues)
-					: { routes: [], nav: [], zones: [] };
+					: { providers: [], routes: [], nav: [], zones: [] };
 			plugins.push({ manifest, registration, ...resolved });
 		}
 	}
@@ -287,6 +322,7 @@ export function discoverPlugins(
 }
 
 interface ResolvedContributions {
+	providers: ResolvedPluginProviderContribution[];
 	routes: ResolvedPluginRoute[];
 	nav: ResolvedPluginNav[];
 	zones: ResolvedPluginZoneContribution[];
@@ -294,9 +330,9 @@ interface ResolvedContributions {
 
 /**
  * Resolve a plugin's declarative `contributes` against its web entry module.
- * Route/zone components are looked up by export name; nav entries are pure
- * data. Individual bad contributions are skipped with an issue — the plugin
- * itself still loads.
+ * Provider/route/zone components are looked up by export name; nav entries are
+ * pure data. Individual bad contributions are skipped with an issue — the
+ * plugin itself still loads.
  */
 function resolveContributions(
 	manifest: PluginManifest,
@@ -306,9 +342,33 @@ function resolveContributions(
 ): ResolvedContributions {
 	// Electron-only plugins (main entry, no browserRegister) cannot serve their
 	// backend in standalone browser mode — the shell shows an unavailable state
-	// for their routes and omits their zone widgets.
+	// for their routes and omits their providers and zone widgets.
 	const browserSafe = manifest.main === undefined || typeof module.browserRegister === "function";
-	const { routes: routeDecls, nav: navDecls, zones: zoneDecls } = manifest.contributes;
+	const {
+		providers: providerDecls,
+		routes: routeDecls,
+		nav: navDecls,
+		zones: zoneDecls,
+	} = manifest.contributes;
+
+	const providers: ResolvedPluginProviderContribution[] = [];
+	for (const contribution of providerDecls) {
+		const component = module[contribution.component];
+		if (typeof component !== "function") {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" provider contribution names component export "${contribution.component}" but the web entry does not export a provider component with that name — skipping the contribution.`,
+			});
+			continue;
+		}
+
+		providers.push({
+			pluginId: manifest.id,
+			component,
+			priority: contribution.priority ?? 0,
+			browserSafe,
+		});
+	}
 
 	const routes: ResolvedPluginRoute[] = [];
 	for (const route of routeDecls) {
@@ -344,13 +404,29 @@ function resolveContributions(
 		});
 	}
 
-	const nav: ResolvedPluginNav[] = navDecls.map((entry) => ({
-		pluginId: manifest.id,
-		to: prefixPluginPath(entry.to),
-		label: entry.label,
-		icon: entry.icon,
-		priority: entry.priority ?? 0,
-	}));
+	const nav: ResolvedPluginNav[] = navDecls.map((entry) => {
+		// Attempt to resolve `icon` as an export name from the web entry module
+		// (same pattern as route/zone component resolution). React components
+		// can be functions (standard components) or objects (forwardRef, memo),
+		// so we accept both. If found, the shell uses it directly; otherwise it
+		// falls back to its static icon map.
+		const iconExport = entry.icon !== undefined ? module[entry.icon] : undefined;
+		const iconComponent =
+			iconExport !== undefined &&
+			iconExport !== null &&
+			(typeof iconExport === "function" || typeof iconExport === "object")
+				? iconExport
+				: undefined;
+
+		return {
+			pluginId: manifest.id,
+			to: prefixPluginPath(entry.to),
+			label: entry.label,
+			icon: entry.icon,
+			iconComponent,
+			priority: entry.priority ?? 0,
+		};
+	});
 
 	const zones: ResolvedPluginZoneContribution[] = [];
 	for (const contribution of zoneDecls) {
@@ -359,7 +435,7 @@ function resolveContributions(
 		if (!isShellZone(contribution.zone)) {
 			issues.push({
 				pluginId: manifest.id,
-				message: `Plugin "${manifest.id}" contributes to unknown zone "${contribution.zone}" — shell zones are "sidebar", "status-bar", and "dashboard"; skipping the contribution.`,
+				message: `Plugin "${manifest.id}" contributes to unknown zone "${contribution.zone}" — shell zones are ${SHELL_ZONES.map((zone) => `"${zone}"`).join(", ")}; skipping the contribution.`,
 			});
 			continue;
 		}
@@ -383,7 +459,7 @@ function resolveContributions(
 		});
 	}
 
-	return { routes, nav, zones };
+	return { providers, routes, nav, zones };
 }
 
 function createRegistration(
@@ -455,6 +531,13 @@ export function pluginZoneContributions(
 	discovery: PluginDiscovery,
 ): ResolvedPluginZoneContribution[] {
 	return discovery.plugins.flatMap((plugin) => plugin.zones);
+}
+
+/** All resolved app-lifetime providers across discovered web plugins. */
+export function pluginProviderContributions(
+	discovery: PluginDiscovery,
+): ResolvedPluginProviderContribution[] {
+	return discovery.plugins.flatMap((plugin) => plugin.providers);
 }
 
 /**

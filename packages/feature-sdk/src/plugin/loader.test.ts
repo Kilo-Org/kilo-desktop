@@ -6,6 +6,7 @@ import { FeatureRouter } from "../services/feature-router.js";
 import {
 	discoverPlugins,
 	pluginNav,
+	pluginProviderContributions,
 	pluginRegistrations,
 	pluginRoutes,
 	pluginZoneContributions,
@@ -246,8 +247,58 @@ describe("contribution resolution", () => {
 		const discovery = discoverPlugins(bundled, "web");
 
 		expect(pluginNav(discovery)).toEqual([
-			{ pluginId: "ping", to: "/plugins/ping", label: "Ping", icon: "activity", priority: 5 },
+			{
+				pluginId: "ping",
+				to: "/plugins/ping",
+				label: "Ping",
+				icon: "activity",
+				iconComponent: undefined,
+				priority: 5,
+			},
 		]);
+	});
+
+	it("resolves nav icon as a component when the module exports a matching function", () => {
+		const PingNavIcon = () => null;
+		const iconManifest = {
+			...manifest,
+			contributes: {
+				routes: [{ path: "/ping", component: "PingPage", title: "Ping" }],
+				nav: [{ to: "/ping", label: "Ping", icon: "PingNavIcon", priority: 2 }],
+				zones: [],
+			},
+		};
+		const bundled: BundledPlugin[] = [
+			{ manifest: iconManifest, module: { browserRegister, PingPage, PingNavIcon } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginNav(discovery)).toEqual([
+			{
+				pluginId: "ping",
+				to: "/plugins/ping",
+				label: "Ping",
+				icon: "PingNavIcon",
+				iconComponent: PingNavIcon,
+				priority: 2,
+			},
+		]);
+	});
+
+	it("leaves iconComponent undefined when icon names a non-function export", () => {
+		const iconManifest = {
+			...manifest,
+			contributes: {
+				nav: [{ to: "/ping", label: "Ping", icon: "NOT_A_FUNCTION" }],
+			},
+		};
+		const bundled: BundledPlugin[] = [
+			{ manifest: iconManifest, module: { browserRegister, NOT_A_FUNCTION: "a string" } },
+		];
+		const discovery = discoverPlugins(bundled, "web");
+
+		expect(pluginNav(discovery)[0]?.iconComponent).toBeUndefined();
+		expect(pluginNav(discovery)[0]?.icon).toBe("NOT_A_FUNCTION");
 	});
 
 	it("resolves zone widgets against the module and defaults label to the component name", () => {
@@ -266,6 +317,65 @@ describe("contribution resolution", () => {
 				browserSafe: true,
 			},
 		]);
+	});
+
+	it("resolves app-lifetime providers against the web entry module", () => {
+		const PingProvider = () => null;
+		const providerManifest = {
+			...manifest,
+			contributes: {
+				providers: [{ component: "PingProvider", priority: 7 }],
+			},
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: providerManifest, module: { browserRegister, PingProvider } }],
+			"web",
+		);
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginProviderContributions(discovery)).toEqual([
+			{
+				pluginId: "ping",
+				component: PingProvider,
+				priority: 7,
+				browserSafe: true,
+			},
+		]);
+	});
+
+	it("skips a provider whose component export is missing", () => {
+		const providerManifest = {
+			...manifest,
+			contributes: { providers: [{ component: "MissingProvider" }] },
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: providerManifest, module: { browserRegister } }],
+			"web",
+		);
+
+		expect(pluginProviderContributions(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining(
+					'provider contribution names component export "MissingProvider"',
+				),
+			},
+		]);
+	});
+
+	it("marks providers from Electron-only plugins as not browser-safe", () => {
+		const PingProvider = () => null;
+		const providerManifest = {
+			...manifest,
+			contributes: { providers: [{ component: "PingProvider" }] },
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: providerManifest, module: { PingProvider } }],
+			"web",
+		);
+
+		expect(pluginProviderContributions(discovery)[0]?.browserSafe).toBe(false);
 	});
 
 	it("marks routes and zones of Electron-only plugins as not browser-safe", () => {
@@ -377,6 +487,7 @@ describe("contribution resolution", () => {
 		expect(discovery.issues).toEqual([]);
 		expect(pluginRoutes(discovery)).toEqual([]);
 		expect(pluginNav(discovery)).toEqual([]);
+		expect(pluginProviderContributions(discovery)).toEqual([]);
 		expect(pluginZoneContributions(discovery)).toEqual([]);
 	});
 });

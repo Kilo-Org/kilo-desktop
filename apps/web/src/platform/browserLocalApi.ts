@@ -18,6 +18,7 @@ export function createBrowserLocalApi(): LocalApi {
 			async sync() {},
 		},
 		shell: {
+			canPickDirectories: false,
 			async openExternal(input) {
 				const opened = globalThis.open(input.url, "_blank", "noopener,noreferrer");
 				if (!opened) {
@@ -31,6 +32,12 @@ export function createBrowserLocalApi(): LocalApi {
 				} catch {
 					throw new LocalApiError("TRANSPORT", "Could not copy text to the clipboard.");
 				}
+			},
+			async showOpenDialog() {
+				throw new LocalApiError("TRANSPORT", "Folder selection requires the desktop app.");
+			},
+			getPathForFile() {
+				return null;
 			},
 		},
 		notifications: {

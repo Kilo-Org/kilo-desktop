@@ -32,6 +32,9 @@ export type {
 	DispatchIntent,
 	ChannelHandlers,
 	MainSdk,
+	MainSdkFetch,
+	MainSdkLogger,
+	MainSdkNet,
 	FeatureRegistration,
 } from "./types/sdk.js";
 
@@ -41,6 +44,7 @@ export {
 	SIDEBAR_ZONE,
 	STATUS_BAR_ZONE,
 	DASHBOARD_ZONE,
+	HOME_COMPOSER_LEADING_ACTION_ZONE,
 	isShellZone,
 	type ShellZone,
 } from "./types/zones.js";
@@ -99,12 +103,14 @@ export {
 	pluginRouteSchema,
 	pluginNavEntrySchema,
 	pluginZoneContributionSchema,
+	pluginProviderContributionSchema,
 	pluginContributesSchema,
 	parsePluginManifest,
 	type PluginManifest,
 	type PluginRoute,
 	type PluginNavEntry,
 	type PluginZoneContribution,
+	type PluginProviderContribution,
 	type PluginContributes,
 } from "./plugin/manifest.js";
 export {
@@ -113,6 +119,7 @@ export {
 	pluginRoutes,
 	pluginNav,
 	pluginZoneContributions,
+	pluginProviderContributions,
 	reportPluginDiscoveryIssues,
 	PLUGIN_ROUTE_NAMESPACE,
 	stripPluginNamespace,
@@ -126,4 +133,5 @@ export {
 	type ResolvedPluginRoute,
 	type ResolvedPluginNav,
 	type ResolvedPluginZoneContribution,
+	type ResolvedPluginProviderContribution,
 } from "./plugin/loader.js";

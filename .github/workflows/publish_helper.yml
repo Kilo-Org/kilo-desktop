@@ -36,7 +36,7 @@ jobs:
             runner: windows-latest
             timeout_minutes: 60
           - target: linux
-            runner: self-hosted-amd64-medium-privileged-on-demand
+            runner: ubuntu-latest
             timeout_minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}

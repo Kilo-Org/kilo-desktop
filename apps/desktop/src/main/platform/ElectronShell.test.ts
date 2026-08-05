@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { openExternal, writeText } = vi.hoisted(() => ({
-	openExternal: vi.fn(),
-	writeText: vi.fn(),
-}));
+const { getAllWindows, getFocusedWindow, openExternal, parentWindow, showOpenDialog, writeText } =
+	vi.hoisted(() => ({
+		getAllWindows: vi.fn(),
+		getFocusedWindow: vi.fn(),
+		openExternal: vi.fn(),
+		parentWindow: {},
+		showOpenDialog: vi.fn(),
+		writeText: vi.fn(),
+	}));
 
 vi.mock("electron", () => ({
+	BrowserWindow: { getAllWindows, getFocusedWindow },
 	clipboard: { writeText },
+	dialog: { showOpenDialog },
 	shell: { openExternal },
 }));
 
@@ -16,6 +23,44 @@ describe("ElectronShell", () => {
 	beforeEach(() => {
 		openExternal.mockReset();
 		writeText.mockReset();
+		showOpenDialog.mockReset();
+		getFocusedWindow.mockReset().mockReturnValue(parentWindow);
+		getAllWindows.mockReset().mockReturnValue([]);
+	});
+
+	it("maps directory dialog options and results", async () => {
+		showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ["/tmp/one", "/tmp/two"] });
+		const adapter = new ElectronShell();
+		await expect(adapter.showOpenDialog({ kind: "directory", multiple: true })).resolves.toEqual({
+			canceled: false,
+			paths: ["/tmp/one", "/tmp/two"],
+		});
+		expect(showOpenDialog).toHaveBeenCalledWith(parentWindow, {
+			properties: ["openDirectory", "multiSelections"],
+		});
+	});
+
+	it("uses the first app window when no window is focused", async () => {
+		getFocusedWindow.mockReturnValue(undefined);
+		getAllWindows.mockReturnValue([parentWindow]);
+		showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+		const adapter = new ElectronShell();
+
+		await adapter.showOpenDialog({ kind: "directory" });
+
+		expect(showOpenDialog).toHaveBeenCalledWith(parentWindow, {
+			properties: ["openDirectory"],
+		});
+	});
+
+	it("falls back to an unparented dialog when no app window is available", async () => {
+		getFocusedWindow.mockReturnValue(undefined);
+		showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+		const adapter = new ElectronShell();
+
+		await adapter.showOpenDialog({ kind: "directory" });
+
+		expect(showOpenDialog).toHaveBeenCalledWith({ properties: ["openDirectory"] });
 	});
 
 	it.each([

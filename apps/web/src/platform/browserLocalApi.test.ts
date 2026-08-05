@@ -21,6 +21,7 @@ describe("createBrowserLocalApi", () => {
 		vi.stubGlobal("navigator", { clipboard: { writeText } });
 
 		const api = createBrowserLocalApi();
+		expect(api.shell.canPickDirectories).toBe(false);
 		await expect(api.shell.openExternal({ url: "https://example.com" })).resolves.toEqual({
 			opened: true,
 		});
@@ -46,6 +47,13 @@ describe("createBrowserLocalApi", () => {
 		await expect(api.shell.copyText({ text: "hello" })).rejects.toMatchObject({
 			code: "TRANSPORT",
 		});
+		await expect(
+			api.shell.showOpenDialog({ kind: "directory", multiple: true }),
+		).rejects.toMatchObject({
+			code: "TRANSPORT",
+			message: "Folder selection requires the desktop app.",
+		});
+		expect(api.shell.getPathForFile(new File([], "folder"))).toBeNull();
 	});
 
 	it("shows web notifications only when permission is already granted", async () => {

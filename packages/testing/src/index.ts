@@ -12,6 +12,8 @@ import type {
 	ChannelHandlerMap,
 	ChannelMap,
 	MainSdk,
+	MainSdkFetch,
+	MainSdkLogger,
 	SDK,
 	SdkFactoryServices,
 	ShellDelegates,
@@ -19,6 +21,11 @@ import type {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 const noop = () => {};
+const noopMainSdkLogger = {
+	info: noop,
+	warn: noop,
+	error: noop,
+} satisfies MainSdkLogger;
 
 /**
  * In-memory `sdk.fs` fake mirroring the production scoping model: paths are
@@ -262,8 +269,11 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 		),
 		shell: merge<SDK["shell"]>(
 			{
+				canPickDirectories: true,
 				openExternal: async () => ({ opened: true }),
 				copyText: async () => undefined,
+				showOpenDialog: async () => ({ canceled: true, paths: [] }),
+				getPathForFile: () => null,
 			},
 			options.shell,
 		),
@@ -444,17 +454,25 @@ export type FakeMainSdk = MainSdk & {
 	dispose(): void;
 };
 
-export function createFakeMainSdk(options?: {
+export interface FakeMainSdkOptions {
 	featureId?: string;
 	storageDir?: string;
 	pluginDir?: string;
+	/** Feature-scoped logger fake. Defaults to a no-op logger. */
+	logger?: MainSdkLogger;
+	/** Network fake. Defaults to the current runtime's global fetch. */
+	fetch?: MainSdkFetch;
 	/** Internal shared services; prefer createLinkedFakeSdkPair for linked tests. */
 	services?: SdkFactoryServices;
-}): FakeMainSdk {
+}
+
+export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 	const featureId = options?.featureId ?? "test-feature";
 	const router = options?.services?.featureRouter ?? new FeatureRouter();
 	const pluginDir = options?.pluginDir;
 	const mainSdk = router.createMainSdk(featureId, {
+		logger: options?.logger ?? noopMainSdkLogger,
+		fetch: options?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
 		resolveStorageDir: () => {
 			if (options?.storageDir !== undefined) return options.storageDir;
 			// Node-only, resolved lazily via process.getBuiltinModule so this
@@ -476,6 +494,8 @@ export function createFakeMainSdk(options?: {
 
 	return {
 		featureId: mainSdk.featureId,
+		logger: mainSdk.logger,
+		net: mainSdk.net,
 		events: mainSdk.events,
 		plugins: mainSdk.plugins,
 		// Delegate instead of spreading — spreading would eagerly invoke the

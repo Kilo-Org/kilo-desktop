@@ -65,8 +65,8 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 * also cleaned up automatically when this SDK instance is destroyed.
 	 *
 	 * Any string is accepted, but the shell renders only the canonical
-	 * {@link ShellZone} ids — prefer the exported constants (STATUS_BAR_ZONE,
-	 * SIDEBAR_ZONE, DASHBOARD_ZONE) so a typo cannot render nowhere.
+	 * {@link ShellZone} ids — prefer the exported zone constants so a typo
+	 * cannot render nowhere.
 	 *
 	 * @example
 	 * const remove = sdk.contribute("status-bar", { component: TodoBadge, label: "Todos", priority: 10 });
@@ -340,10 +340,20 @@ export interface SdkTheme {
 	peek(): "dark" | "light";
 }
 
-/** OS-level shell actions (open browser, clipboard). */
+export interface DirectoryOpenDialogOptions {
+	kind: "directory";
+	multiple?: boolean;
+}
+
+/** OS-level shell actions (open browser, clipboard, native folder access). */
 export interface SdkShell {
+	readonly canPickDirectories: boolean;
 	openExternal(url: string): Promise<{ opened: boolean }>;
 	copyText(text: string): Promise<void>;
+	showOpenDialog(
+		options: DirectoryOpenDialogOptions,
+	): Promise<{ canceled: boolean; paths: string[] }>;
+	getPathForFile(file: File): string | null;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────
@@ -530,6 +540,20 @@ export interface DispatchIntent {
 
 // ─── MainSdk (main-process side) ─────────────────────────────────────────────
 
+/** Feature-scoped application logger supplied by the host process. */
+export interface MainSdkLogger {
+	info(message: string, ...args: unknown[]): void;
+	warn(message: string, ...args: unknown[]): void;
+	error(message: string, ...args: unknown[]): void;
+}
+
+/** Host-backed fetch implementation used by main-process features. */
+export type MainSdkFetch = typeof globalThis.fetch;
+
+export interface MainSdkNet {
+	fetch: MainSdkFetch;
+}
+
 /**
  * Typed handler registrar bound to a channel map. Bind once via
  * `mainSdk.channels(map)`, then register each channel — or use `handleAll`
@@ -569,6 +593,10 @@ export interface ChannelHandlers<C extends ChannelMap> {
  */
 export interface MainSdk {
 	readonly featureId: string;
+	/** Feature-scoped host logger (Electron uses electron-log). */
+	readonly logger: MainSdkLogger;
+	/** Host networking delegate (Electron uses net.fetch). */
+	readonly net: MainSdkNet;
 	/** Cross-process, namespaced events. Emissions are prefixed with featureId. */
 	readonly events: Pick<SdkEvents, "emit" | "on">;
 	/** Main-process cross-feature capability exposure and discovery. */

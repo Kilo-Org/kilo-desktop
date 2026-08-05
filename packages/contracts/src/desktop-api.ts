@@ -26,6 +26,8 @@ export type InvokeArguments<TChannel extends IpcMethodChannel> =
 		: [input: IpcMethodInput<TChannel>];
 
 export interface DesktopApi {
+	/** Preload-only resolver for Electron's opaque dropped File objects. */
+	getPathForFile(file: File): string | null;
 	invoke<TChannel extends IpcMethodChannel>(
 		channel: TChannel,
 		...args: InvokeArguments<TChannel>

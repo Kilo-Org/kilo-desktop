@@ -213,7 +213,7 @@ Migration from `apps/` is a filesystem move. Migration to an external repo is `n
 
 `sdk.tools` is **no longer deferred** — de-stubbed in PR #71 and wired to a plugin-authored registration path in issue #74:
 
-- **Registry:** in-memory `ToolRegistry` (`packages/feature-sdk/src/services/tool-registry.ts`) backs `sdk.tools.register/all/invoke`, notifies subscribers on change, and cleans up per-feature via `teardownFeature`.
+- **Registry:** in-memory `ToolRegistry` (`packages/feature-sdk/src/services/tool-registry.ts`) backs `sdk.tools.register`/`all` and the shell-only `services.toolRegistry.invoke(featureId, name, args)`, notifies subscribers on change, and cleans up per-feature via `teardownFeature`. There is deliberately no `invoke` on the plugin-facing `SdkTools` — tools are the AI adapter, not a cross-plugin RPC channel; cross-plugin code uses `sdk.plugins.get<T>`.
 - **Producer:** each plugin owns its tool registration inside its web entry's `webRegister(sdk: SDK)` — a new SDK boot hook that runs at renderer boot in **both** browser and Electron modes (unlike `browserRegister`, which is browser-only). `webRegister` receives the renderer `SDK` (with `.tools`); handlers may call `sdk.invoke` and hop to main-side IPC handlers when needed. This is the seam that keeps tool metadata + handlers in the plugin, not in a central app-level file.
 - **Consumer:** the WebMCP bridge (`apps/web/src/platform/webmcp/installWebMcp.ts`) publishes every opted-in tool (`ToolDefinition.exposeToModelContext: true`) to `document.modelContext` and re-syncs on registry changes. `exposeToModelContext` defaults to **false** — registering a tool does NOT auto-expose it to the unauthenticated local relay.
 

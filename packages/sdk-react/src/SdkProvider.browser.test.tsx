@@ -172,6 +172,34 @@ describe("SdkProvider + useSdk", () => {
 		errorSpy.mockRestore();
 	});
 
+	it("skips webRegister when browserRegister failed (backend is dead)", () => {
+		// If browserRegister threw the FeatureRouter entry was torn down, so tool
+		// handlers registered by webRegister would only produce failing invocations.
+		// Skip webRegister entirely in that case.
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const webRegisterSpy = vi.fn();
+		const brokenBoot: FeatureRegistration = {
+			id: "broken-boot",
+			mainRegister() {},
+			browserRegister() {
+				throw new Error("boot boom");
+			},
+			webRegister: webRegisterSpy,
+		};
+		const system = createFeatureSystem({
+			shellDelegates: createTestShellDelegates(),
+			features: [brokenBoot],
+		});
+		expect(webRegisterSpy).not.toHaveBeenCalled();
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringMatching(/Skipping webRegister for "broken-boot"/),
+		);
+		expect(system.services.toolRegistry.all()).toEqual([]);
+		errorSpy.mockRestore();
+		warnSpy.mockRestore();
+	});
+
 	it("runs webRegister at boot in browser mode with the renderer SDK", () => {
 		const seen: string[] = [];
 		const feature: FeatureRegistration = {

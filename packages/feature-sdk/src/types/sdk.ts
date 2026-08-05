@@ -540,7 +540,14 @@ export interface ToolAnnotations {
  * handler; when present, the handler receives its parsed output.
  */
 export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
-	/** Tool name, auto-namespaced to "featureId_name" for AI clients. */
+	/**
+	 * Tool name. Stored in the registry under the namespaced id `featureId.name`
+	 * (the `.`-form is the internal key used by `services.toolRegistry.invoke`
+	 * and by `RegisteredTool.id`). When published to MCP clients through the
+	 * WebMCP bridge, the wire name is sanitized to `featureId_name` because MCP
+	 * tool names are restricted to `[A-Za-z0-9_]`. Prefer `[A-Za-z0-9_]`-only
+	 * names to avoid the sanitization step and any collision risk.
+	 */
 	name: string;
 	description: string;
 	/** JSON Schema (draft 2020-12) describing the arguments object. */
@@ -576,13 +583,9 @@ export interface RegisteredTool {
 
 /**
  * Feature-registered tools for an AI runtime. Tool names are auto-namespaced by
- * feature id. A consumer (the WebMCP bridge) reads {@link all} and subscribes to
- * {@link subscribe} to publish them to `document.modelContext`.
- */
-/**
- * Feature-registered tools for an AI runtime. Tool names are auto-namespaced by
- * feature id. A consumer (the WebMCP bridge) reads {@link all} and subscribes to
- * {@link subscribe} to publish them to `document.modelContext`.
+ * feature id (`featureId.name` internally, `featureId_name` on the MCP wire).
+ * A consumer (the WebMCP bridge) reads {@link all} and subscribes to registry
+ * change notifications to publish them to `document.modelContext`.
  *
  * Note there is deliberately no `invoke` on this plugin-facing surface. Tools
  * are the AI adapter over a domain function; plugin code should never

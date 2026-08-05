@@ -84,6 +84,10 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 		featureRouter.eventBus.emit(qualifyFeatureEvent(event.featureId, event.name), event.payload);
 	});
 	const bootedFeatureIds = new Set<string>();
+	// Features whose browserRegister threw and whose FeatureRouter entry was torn
+	// down. In browser mode their `sdk.invoke` path is dead, so `webRegister`
+	// would only register tools whose handlers can never succeed — skip them.
+	const failedFeatureIds = new Set<string>();
 
 	// Browser mode: boot feature backends in-process (no main process available).
 	// Only browserRegister boots here — deliberately no fallback to mainRegister,
@@ -104,6 +108,7 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 			} catch (error) {
 				console.error(`[FeatureSystem] Boot failed for "${feature.id}":`, error);
 				featureRouter.destroyFeature(feature.id);
+				failedFeatureIds.add(feature.id);
 			}
 		}
 	}
@@ -131,6 +136,14 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 	// app (a bad plugin isolates itself), so we log and continue.
 	for (const feature of features) {
 		if (!feature.webRegister) continue;
+		if (failedFeatureIds.has(feature.id)) {
+			// browserRegister failed for this feature; its backend is gone. Tools
+			// registered here would only produce failing invocations. Skip.
+			console.warn(
+				`[FeatureSystem] Skipping webRegister for "${feature.id}" — browserRegister failed.`,
+			);
+			continue;
+		}
 		try {
 			feature.webRegister(getOrCreateSdk(feature.id));
 		} catch (error) {

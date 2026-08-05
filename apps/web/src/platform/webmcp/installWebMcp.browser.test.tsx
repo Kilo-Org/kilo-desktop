@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import type { ModelContextTesting } from "@mcp-b/webmcp-types";
@@ -114,5 +114,34 @@ describe("installWebMcp", () => {
 				return output;
 			})(),
 		).rejects.toThrow(/kaboom/);
+	});
+
+	it("skips a second tool whose sanitized MCP name would collide with an existing one", async () => {
+		// Two registry ids that both sanitize to `todos_collide_x` on the MCP wire.
+		// The first wins; the second is dropped with a warning so it can't silently
+		// overwrite the earlier publication on document.modelContext.
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		todos.tools.register({
+			name: "collide.x",
+			description: "First (dot form)",
+			exposeToModelContext: true,
+			handler: () => "first",
+		});
+		todos.tools.register({
+			name: "collide_x",
+			description: "Second (underscore form)",
+			exposeToModelContext: true,
+			handler: () => "second",
+		});
+
+		await expect.poll(() => listToolNames()).toContain("todos_collide_x");
+		// Only ONE MCP entry with that name — no shadow duplicate.
+		expect(listTools().filter((tool) => tool.name === "todos_collide_x")).toHaveLength(1);
+		// The winner is the FIRST one registered (dot form).
+		expect(listTools().find((tool) => tool.name === "todos_collide_x")?.description).toBe(
+			"First (dot form)",
+		);
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/sanitizes to MCP name/));
+		warnSpy.mockRestore();
 	});
 });

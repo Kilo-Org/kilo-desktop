@@ -44,14 +44,32 @@ export function installWebMcp(system: FeatureSystem): void {
 	// `signature` captures the advertised descriptor so a re-registered tool whose
 	// metadata changed is re-published rather than left stale.
 	const published = new Map<string, { controller: AbortController; signature: string }>();
+	// Tracks which registry id currently owns each sanitized MCP wire name, so
+	// two tools that sanitize to the same name don't silently overwrite one
+	// another on `document.modelContext`. First registration wins; the loser is
+	// logged loudly so the plugin author can pick a distinct name.
+	const mcpNameOwners = new Map<string, string>();
 
 	const publish = (tool: RegisteredTool): void => {
+		const mcpName = toMcpToolName(tool);
+		const existingOwner = mcpNameOwners.get(mcpName);
+		if (existingOwner && existingOwner !== tool.id) {
+			console.warn(
+				`[webmcp] Tool "${tool.id}" sanitizes to MCP name "${mcpName}", which is already ` +
+					`owned by "${existingOwner}". Skipping to avoid overwriting the earlier tool. ` +
+					`Use only [A-Za-z0-9_] in tool + feature ids to prevent collisions.`,
+			);
+			return;
+		}
+		mcpNameOwners.set(mcpName, tool.id);
+
 		const controller = new AbortController();
-		published.set(tool.id, { controller, signature: descriptorSignature(tool) });
+		const entry = { controller, signature: descriptorSignature(tool) };
+		published.set(tool.id, entry);
 		void Promise.resolve(
 			modelContext.registerTool(
 				{
-					name: toMcpToolName(tool),
+					name: mcpName,
 					description: tool.description,
 					inputSchema: (tool.inputSchema as InputSchema | undefined) ?? EMPTY_INPUT_SCHEMA,
 					...(tool.annotations ? { annotations: tool.annotations as ToolAnnotations } : {}),
@@ -60,9 +78,23 @@ export function installWebMcp(system: FeatureSystem): void {
 				{ signal: controller.signal },
 			),
 		).catch((error: unknown) => {
-			published.delete(tool.id);
+			// Delete only if THIS attempt still owns the entry. A concurrent
+			// re-publish (metadata change, quick unregister/register) may have
+			// swapped in a fresh entry we must not evict.
+			if (published.get(tool.id) === entry) {
+				published.delete(tool.id);
+				if (mcpNameOwners.get(mcpName) === tool.id) mcpNameOwners.delete(mcpName);
+			}
 			console.warn(`[webmcp] Failed to publish tool "${tool.id}":`, error);
 		});
+	};
+
+	const unpublish = (id: string, entry: { controller: AbortController }): void => {
+		entry.controller.abort();
+		published.delete(id);
+		for (const [mcpName, owner] of mcpNameOwners) {
+			if (owner === id) mcpNameOwners.delete(mcpName);
+		}
 	};
 
 	const sync = (): void => {
@@ -72,10 +104,7 @@ export function installWebMcp(system: FeatureSystem): void {
 
 		// Remove tools that are gone or no longer exposed.
 		for (const [id, entry] of published) {
-			if (!live.has(id)) {
-				entry.controller.abort();
-				published.delete(id);
-			}
+			if (!live.has(id)) unpublish(id, entry);
 		}
 
 		for (const tool of tools) {
@@ -84,8 +113,7 @@ export function installWebMcp(system: FeatureSystem): void {
 				publish(tool);
 			} else if (existing.signature !== descriptorSignature(tool)) {
 				// Metadata changed on a re-register: re-publish so clients see the update.
-				existing.controller.abort();
-				published.delete(tool.id);
+				unpublish(tool.id, existing);
 				publish(tool);
 			}
 		}

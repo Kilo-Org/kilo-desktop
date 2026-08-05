@@ -31,10 +31,21 @@ export class ToolRegistry {
 		if (this.tools.has(id)) {
 			console.warn(`[ToolRegistry] Tool "${id}" registered twice — replacing.`);
 		}
-		this.tools.set(id, { definition, featureId });
+		// Bind the returned closure to THIS entry object, not just the id string.
+		// Two callers can legitimately register the same name (register-twice
+		// warns-and-replaces), and destroying an SDK re-runs any raw closures
+		// stashed in its disposable set. A stale unregister for a replaced or
+		// already-torn-down entry must be a no-op — not silently evict whichever
+		// entry now owns the id. Same identity-check pattern as the WebMCP
+		// bridge's publish/unpublish race guard.
+		const entry = { definition, featureId };
+		this.tools.set(id, entry);
 		this.notify();
 		return () => {
-			if (this.tools.delete(id)) this.notify();
+			if (this.tools.get(id) === entry) {
+				this.tools.delete(id);
+				this.notify();
+			}
 		};
 	}
 

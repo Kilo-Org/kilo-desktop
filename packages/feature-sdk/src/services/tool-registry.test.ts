@@ -70,4 +70,54 @@ describe("ToolRegistry", () => {
 		registry.register("todos", base);
 		expect(listener).toHaveBeenCalledTimes(2);
 	});
+
+	it("stale unregister from a replaced registration does not evict the current owner", () => {
+		// register-twice warns-and-replaces (the older registration is expected
+		// to be dead). If the returned unregister closure deleted by id-only, it
+		// would silently tear down whichever entry now occupies the id — killing
+		// the replacement instead of a no-opping the stale caller.
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const registry = new ToolRegistry();
+		const unregisterA = registry.register("todos", { ...base, handler: () => "A" });
+		const unregisterB = registry.register("todos", { ...base, handler: () => "B" });
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/registered twice — replacing/));
+
+		// The stale unregister for the replaced registration must be a no-op:
+		// B is still the active owner of `todos.greet` and must remain listed.
+		unregisterA();
+		expect(registry.all().map((tool) => tool.id)).toEqual(["todos.greet"]);
+
+		// B's unregister still works — it holds the identity for the current entry.
+		unregisterB();
+		expect(registry.all()).toEqual([]);
+
+		// A follow-up call on either stale closure is also a no-op.
+		unregisterA();
+		unregisterB();
+		expect(registry.all()).toEqual([]);
+		warnSpy.mockRestore();
+	});
+
+	it("double unregister is a no-op and does not double-fire subscribers", () => {
+		const registry = new ToolRegistry();
+		const listener = vi.fn();
+		registry.subscribe(listener);
+		const unregister = registry.register("todos", base);
+		expect(listener).toHaveBeenCalledTimes(1); // register
+
+		unregister();
+		expect(listener).toHaveBeenCalledTimes(2); // unregister
+		unregister();
+		expect(listener).toHaveBeenCalledTimes(2); // second call: no-op, no notify
+	});
+
+	it("unregister after removeFeature is a no-op (the entry is already gone)", () => {
+		const registry = new ToolRegistry();
+		const listener = vi.fn();
+		const unregister = registry.register("todos", base);
+		registry.removeFeature("todos");
+		registry.subscribe(listener);
+		unregister();
+		expect(listener).not.toHaveBeenCalled();
+	});
 });

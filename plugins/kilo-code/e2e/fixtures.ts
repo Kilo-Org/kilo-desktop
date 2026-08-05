@@ -2,8 +2,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { KiloCodePage } from "../../pages/features/kilo-code/kilo-code-page.js";
-import { test as shellTest } from "../shell.js";
+import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
+
+import { KiloCodePage } from "./pages/kilo-code-page.js";
 
 type KiloCodeFixtures = {
 	kiloCodePage: KiloCodePage;
@@ -22,3 +23,5 @@ export const test = shellTest.extend<KiloCodeFixtures>({
 		await use(new KiloCodePage());
 	},
 });
+
+export const { expect } = test;

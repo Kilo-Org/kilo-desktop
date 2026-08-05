@@ -4,7 +4,6 @@ export * from "./features/auth.js";
 export * from "./features/feature-invoke.js";
 export * from "./features/feature-event.js";
 export * from "./features/fs.js";
-export * from "./features/kilo-code.js";
 export * from "./features/notifications.js";
 export * from "./features/shell.js";
 export * from "./features/theme.js";

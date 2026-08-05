@@ -1,10 +1,18 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
-import type { KiloServerConnection, KiloServerStatus } from "@anaconda-agentic-desktop/contracts";
-import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk, createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
-import { registerKiloCode, type KiloServerController } from "./index.js";
+import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
+import {
+	createKiloServerManagerOptions,
+	registerKiloCode,
+	type KiloServerController,
+} from "./index.js";
 import type { WorkspaceCapabilities } from "./workspace-capability.js";
+
+const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
 
 function fakeServer() {
 	const connection: KiloServerConnection = {
@@ -22,6 +30,36 @@ function fakeServer() {
 }
 
 describe("kilo-code main registration", () => {
+	it("builds the server from plugin assets and host networking and logging delegates", () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const fetch = vi.fn() as unknown as typeof globalThis.fetch;
+		const mainSdk = createFakeMainSdk({
+			featureId: "kilo-code",
+			pluginDir: PLUGIN_DIR,
+			logger,
+			fetch,
+			storageDir: "/plugin-data/kilo-code",
+		});
+		const resolveInstallation = vi.fn(() => ({
+			executablePath: "/plugin/kilo",
+			treeSitterWasmDirectory: "/plugin/tree-sitter",
+		}));
+		const onStatusChange = vi.fn();
+
+		const options = createKiloServerManagerOptions(mainSdk, onStatusChange, resolveInstallation);
+
+		expect(resolveInstallation).toHaveBeenCalledWith({
+			resourceRoots: [path.join(PLUGIN_DIR, "resources/kilo")],
+		});
+		expect(options).toMatchObject({
+			fetch,
+			logger,
+			onStatusChange,
+			runtimeDirectory: path.join("/plugin-data/kilo-code", "runtime"),
+		});
+		mainSdk.dispose();
+	});
+
 	it("starts the singleton server immediately and resolves the live workspace for connections", async () => {
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-code" });
 		const workspaces = createMainSdk("workspaces");

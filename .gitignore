@@ -158,7 +158,7 @@ Thumbs.db
 
 # App specific
 apps/desktop/.data/
-apps/desktop/src/main/features/kilo-code/resources/kilo/
+plugins/kilo-code/resources/kilo/
 build/
 release/
 playwright-report/

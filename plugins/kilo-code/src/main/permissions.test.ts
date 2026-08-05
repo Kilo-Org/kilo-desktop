@@ -61,4 +61,16 @@ describe("Kilo reference-folder permissions", () => {
 			]),
 		).toHaveLength(1);
 	});
+
+	it("reconciles workspace creation and removal from empty snapshots", () => {
+		const current = workspace("/primary", ["/"]);
+		expect(reconcileReferenceFolderRules(null, current)).toEqual([
+			{ permission: "external_directory", pattern: "/", action: "allow" },
+			{ permission: "external_directory", pattern: "//*", action: "allow" },
+		]);
+		expect(reconcileReferenceFolderRules(current, null)).toEqual([
+			{ permission: "external_directory", pattern: "/", action: "ask" },
+			{ permission: "external_directory", pattern: "//*", action: "ask" },
+		]);
+	});
 });

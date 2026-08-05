@@ -78,12 +78,21 @@ NSIS installer `.exe`, needing 7z-style extraction in CI).
 ## State of the branch to land
 
 `runtimed-standalone-assets` @ `45f91612` (2 commits) in worktree
-`~/.t3/worktrees/nteract/runtimed-standalone-assets`. **Pushed to origin as of
-2026-08-05; still no PR** — opening one is the next upstream step.
+`~/.t3/worktrees/nteract/runtimed-standalone-assets`. **PR
+[nteract#4125](https://github.com/nteract/nteract/pull/4125) is open but still a
+DRAFT** — mark it ready for review; that is the next upstream step. No reviewer has
+been requested yet.
 
-**Risk 4 has not bitten.** The branch is still based exactly on `origin/main`
-(`152eb6e4`, 0 commits behind as of 2026-08-05), so `release-common.yml` has not
-drifted. It has not rotted — but that clock is running again.
+**All 16 checks pass, but that does not prove the assets publish.** The jobs that
+would exercise this change — `Linux (release artifacts)`, `matrix.platform.name`,
+`E2E` — all report `skipping` on PRs. So CI green here says the change breaks
+nothing; it does _not_ say the three new assets appear. Only a real prerelease run
+shows that, which is why
+[Verifying](#verifying-the-workflow-change) still matters after merge.
+
+**Risk 4 is now live, mildly.** The branch is **1 commit behind `origin/main`** as
+of 2026-08-05 (was 0). Nothing in that commit touches `release-common.yml`, so
+there is no conflict yet — but the drift clock has started ticking.
 
 What it does (a publishing-only change, +35/−3 in `release-common.yml`, +7/−1 in
 `RELEASING.md`):
@@ -144,10 +153,10 @@ assets and _shipping_ them.
    What remains is sourcing the binary from a released asset instead of a local
    path, and signing under our identity. See
    [Daemon bundling, as built](#daemon-bundling-as-built).
-4. **Pin by commit hash.** The commit-hash-equality constraint is unchanged: app
-   and sidecar must be pinned to the same nteract commit, not merely a
-   compatible protocol version. Pin explicitly. **Not yet done** — `RUNTIMED_BINARY`
-   takes any path, with no version assertion.
+4. ~~**Pin by commit hash.**~~ **Done** — see
+   [Commit-hash pinning, as built](#commit-hash-pinning-as-built). Still absent at
+   the _staging_ boundary: `RUNTIMED_BINARY` accepts any path, so a mismatched
+   binary is caught at attach time rather than at build time.
 
 ## Daemon bundling, as built
 

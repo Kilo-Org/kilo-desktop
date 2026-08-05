@@ -65,6 +65,7 @@ export default defineConfig(({ command }) => {
 					// missing optional dep.
 					"@vscode/proxy-agent",
 					"@vscode/windows-ca-certs",
+					"ws",
 					...builtinModules,
 					...builtinModules.map((module) => `node:${module}`),
 				],

@@ -1,8 +1,23 @@
 # Handoff: serve nteract's SPA from our protocol + CSP (handoff steps 3 & 4)
 
-Status: **design decided and recorded, implementation ~15% done.** The additive part of the
-protocol layer has landed and is green (`pnpm check && pnpm lint && pnpm format:check && pnpm test`
-— 410 tests pass). Everything below is remaining work.
+Status: **steps A–F implemented and green** (`pnpm check && pnpm lint && pnpm format:check &&
+pnpm test` — 440 desktop + 102 web tests pass; branch coverage 89.3%, up from an 88.98% baseline,
+against an 80% threshold). **Packaged verification is the remaining gate** — see "Verification".
+
+Corrections to this plan's own text, found while implementing it:
+
+- The gate is **80%** on all four coverage metrics (`vitest.coverage.shared.mjs`), not 90%.
+- `NOTEBOOK_HOST` went in **`packages/contracts`** (`features/notebook.ts`), as Step D anticipated,
+  because the renderer needs it too.
+- Step E's asset logic went in `config/notebook-bundle-asset.ts` with `stage-notebook-bundle.ts` as
+  the thin script, mirroring how `daemon-asset.ts`/`stage-daemon.ts` are split — the plan named only
+  the script.
+- `mainRegister` needed a **`resolveBundleRoot` test seam** alongside the existing
+  `resolveDaemonBinary`, for the same reason: the default reads `app.getAppPath()`, so
+  `mainRegister.integration.test.ts` cannot construct the feature without it.
+- Unit tests must run with **cwd = `apps/desktop`**. The `$config` alias lives in that package's
+  `vitest.config.ts`, so `pnpm vitest run <path>` from the repo root fails to resolve
+  `$config/*.js` — a module-not-found error unrelated to the code under test.
 
 Read first, in order:
 
@@ -56,7 +71,20 @@ code yet, which is why the suite is still green:
 - `createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes?)` — the notebook-origin
   policy. Read its docstring; every extra grant has a stated reason.
 
-## Remaining work
+## What landed for each step
+
+Steps A–F below are implemented as described, with the deltas noted above. Files added:
+`platform/ElectronProtocol.ts` (extended), `features/registry/embedded-hosts.ts`,
+`features/notebook/notebook-bundle-path.ts`, `config/notebook-bundle-asset.ts`,
+`config/stage-notebook-bundle.ts`, plus tests for each. Two traps confirmed handled with tests that
+fail if they regress:
+
+- The thunk: `ElectronProtocol.test.ts` "reads contributed hosts per request" flips an array
+  **after** `register()` and asserts the host becomes reachable — a snapshot fails it.
+- The origin move: `mainRegister.integration.test.ts` "accepts a websocket from the notebook origin,
+  not the app origin" asserts `://notebook` upgrades and `://app` gets 401.
+
+The original step text is kept below as the specification each piece was built against.
 
 ### Step A — teach `ElectronProtocol` about embedded hosts
 
@@ -209,6 +237,36 @@ metrics.
 - **`@smoke` e2e** — mandatory per feature and already exists; it must keep passing. Asserting the
   iframe is present is in scope here. Asserting a **cell executes** is old-handoff step 9, a
   separate piece of work — do not scope-creep into it.
+
+## Verified: the first packaged render works
+
+Done on 2026-08-05, arm64 macOS, with a debug `runtimed` (`2.6.3+560e539`) and the prebuilt bundle:
+
+```
+RUNTIMED_BINARY=~/p/nteract/target/debug/runtimed \
+NTERACT_BUNDLE=~/p/nteract/apps/notebook/dist \
+pnpm --filter @anaconda-agentic-desktop/desktop package
+```
+
+Result — the notebook **renders and executes** in the packaged app: 32 cells, WASM initialized,
+kernel reached `Running`/Idle, and `print("embedded in agentic-desktop:", platform.python_version())`
+returned `3.13.11` with `sum(range(101))` → `5050`. **Zero CSP violations and zero
+`Network.loadingFailed` events**, checked over CDP in both the app page and the notebook frame.
+The frame's `location.origin` is `anaconda-agentic-desktop://notebook`, confirming origin isolation.
+
+Findings worth keeping:
+
+- **`extraResource` on a directory does land as `Contents/Resources/notebook/`** — the plan said
+  verify rather than assume. It does; the `packageAfterCopy` fallback is not needed.
+- **Packaging locally needs an icon workaround.** `@electron/packager` derives `assets/icon.icon`
+  from `icon.icns` by swapping the extension (`mac.js` → `normalizeIconExtension('.icon')`), so
+  removing `.icon` from `forge.config.ts`'s icon array does **not** avoid `actool`. What works
+  without full Xcode: point the icon at a directory holding only `icon.icns` (e.g. copy it to
+  `/tmp/`) for the local build, and revert. Full Xcode 26+ is the real fix. See the
+  `e2e-local-prereqs` memory.
+- A **debug** `runtimed` is sufficient for this verification; no release build needed.
+- D5 held exactly as predicted: text output, markdown, and tracebacks render. Plots were not
+  exercised and remain blocked by design.
 
 ## Verification, and the trap in it
 

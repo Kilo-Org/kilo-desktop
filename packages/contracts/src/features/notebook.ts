@@ -2,6 +2,16 @@ import { z } from "zod";
 
 import { defineContract, defineMethod, type InferContract } from "../contract.js";
 
+/**
+ * Host the notebook bundle is served from on the desktop scheme — a sibling of
+ * `app`, not a path under it, which is what makes it a separate origin with its
+ * own CSP and storage (docs/notebook-embedding-decisions.md, D1).
+ *
+ * Lives in contracts because both sides need it: main serves this host, and the
+ * renderer builds the iframe `src` from it.
+ */
+export const NOTEBOOK_HOST = "notebook";
+
 export const notebookDaemonSchema = z.object({
 	version: z.string(),
 	socketPath: z.string(),

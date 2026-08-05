@@ -23,10 +23,13 @@ import { protocol } from "electron";
 
 import {
 	createContentSecurityPolicy,
+	createEmbeddedContentSecurityPolicy,
 	ElectronProtocol,
+	findEmbeddedHost,
 	getDesktopUrl,
 	registerDesktopSchemes,
 	resolveRendererPath,
+	type EmbeddedWebHost,
 } from "./ElectronProtocol.js";
 
 const temporaryDirectories: string[] = [];
@@ -278,6 +281,179 @@ describe("ElectronProtocol", () => {
 
 		expect(response.status).toBe(404);
 		expect(fetch).not.toHaveBeenCalled();
+	it("matches an embedded host exactly", () => {
+		const hosts: EmbeddedWebHost[] = [{ host: "notebook", root: "/bundle" }];
+		expect(findEmbeddedHost(hosts, "notebook")).toBe(hosts[0]);
+		// A near-miss must not borrow the notebook's looser policy.
+		expect(findEmbeddedHost(hosts, "notebook.evil")).toBeUndefined();
+		expect(findEmbeddedHost([], "notebook")).toBeUndefined();
+	});
+
+	it("grants an embedded bundle only what it needs, and names the app as its framer", () => {
+		const policy = createEmbeddedContentSecurityPolicy("anaconda-agentic-desktop://app");
+		expect(policy).toContain("'wasm-unsafe-eval'");
+		expect(policy).toContain("ws://127.0.0.1:*");
+		expect(policy).toContain("worker-src 'self' blob:");
+		expect(policy).toContain("frame-ancestors anaconda-agentic-desktop://app");
+		// A wasm grant is not an eval grant; nteract's plot renderers stay blocked (D5).
+		expect(policy).not.toContain("'unsafe-eval'");
+	});
+
+	it("serves an embedded host from its own root under its own policy", async () => {
+		const appRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
+		const enclosing = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-enclosing-"));
+		const bundleRoot = path.join(enclosing, "notebook");
+		temporaryDirectories.push(appRoot, enclosing);
+		await mkdir(bundleRoot);
+		await writeFile(path.join(appRoot, "index.html"), "<html>app</html>");
+		await writeFile(path.join(bundleRoot, "index.html"), "<html>notebook</html>");
+		await mkdir(path.join(bundleRoot, "assets"));
+		await writeFile(path.join(bundleRoot, "assets", "runtimed_bg.wasm"), "\0asm");
+		// Outside the bundle root, so a successful traversal would actually leak it.
+		await writeFile(path.join(enclosing, "secret-sibling"), "no");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: false,
+			rendererRoot: appRoot,
+			embeddedHosts: () => [
+				{
+					host: "notebook",
+					root: bundleRoot,
+					routes: { "/__nteract_dev_relay/config": async () => ({ token: "t" }) },
+				},
+			],
+		});
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const shell = await protocolHandler(new Request("anaconda-agentic-desktop://notebook/"));
+		expect(shell.status).toBe(200);
+		expect(await shell.text()).toBe("<html>notebook</html>");
+		expect(shell.headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
+
+		// Streaming wasm compilation rejects any other MIME type.
+		const wasm = await protocolHandler(
+			new Request("anaconda-agentic-desktop://notebook/assets/runtimed_bg.wasm"),
+		);
+		expect(wasm.headers.get("Content-Type")).toBe("application/wasm");
+
+		const config = await protocolHandler(
+			new Request("anaconda-agentic-desktop://notebook/__nteract_dev_relay/config"),
+		);
+		expect(await config.json()).toEqual({ token: "t" });
+
+		// The app keeps its strict policy and only learns to frame the sibling host.
+		const appShell = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));
+		const appPolicy = appShell.headers.get("Content-Security-Policy") ?? "";
+		expect(appPolicy).toContain("frame-src 'self' anaconda-agentic-desktop://notebook");
+		expect(appPolicy).toContain("frame-ancestors 'self'");
+		expect(appPolicy).not.toContain("wasm-unsafe-eval");
+
+		// New caller of resolveRendererPath, so assert containment holds for it too.
+		const escape = await protocolHandler(
+			new Request("anaconda-agentic-desktop://notebook/%2e%2e/secret-sibling"),
+		);
+		expect(escape.status).toBe(404);
+		expect(escape.headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
+	});
+
+	it("keeps the app policy byte-identical when no host is contributed", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
+		temporaryDirectories.push(root);
+		await writeFile(path.join(root, "index.html"), "app");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({ isDevelopment: false, rendererRoot: root, embeddedHosts: () => [] });
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const response = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));
+		expect(response.headers.get("Content-Security-Policy")).toBe(createContentSecurityPolicy());
+		const unknown = await protocolHandler(new Request("anaconda-agentic-desktop://notebook/"));
+		expect(unknown.status).toBe(404);
+	});
+
+	it("reads contributed hosts per request, since features boot after registration", async () => {
+		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-notebook-"));
+		temporaryDirectories.push(bundleRoot);
+		await writeFile(path.join(bundleRoot, "index.html"), "late");
+
+		// Mirrors Application.start: protocol.register runs before bootFeatures, so a
+		// snapshotted array would be empty for the process's whole lifetime.
+		let hosts: readonly EmbeddedWebHost[] = [];
+		const adapter = new ElectronProtocol();
+		adapter.register({ isDevelopment: false, rendererRoot: "/unused", embeddedHosts: () => hosts });
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		expect(
+			(await protocolHandler(new Request("anaconda-agentic-desktop://notebook/"))).status,
+		).toBe(404);
+		hosts = [{ host: "notebook", root: bundleRoot }];
+		const served = await protocolHandler(new Request("anaconda-agentic-desktop://notebook/"));
+		expect(await served.text()).toBe("late");
+	});
+
+	it("serves 404 for a contributed host that ships no bundle", async () => {
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: false,
+			rendererRoot: "/unused",
+			embeddedHosts: () => [{ host: "notebook", root: undefined }],
+		});
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		// An expected state, not an error: this build bundles no notebook UI.
+		const response = await protocolHandler(new Request("anaconda-agentic-desktop://notebook/"));
+		expect(response.status).toBe(404);
+	});
+
+	it("prefers a route over a file the bundle ships at the same path", async () => {
+		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-notebook-"));
+		temporaryDirectories.push(bundleRoot);
+		await mkdir(path.join(bundleRoot, "__nteract_dev_relay"), { recursive: true });
+		await writeFile(path.join(bundleRoot, "__nteract_dev_relay", "config"), "stale-from-disk");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: false,
+			rendererRoot: "/unused",
+			embeddedHosts: () => [
+				{
+					host: "notebook",
+					root: bundleRoot,
+					routes: { "/__nteract_dev_relay/config": async () => ({ live: true }) },
+				},
+			],
+		});
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const response = await protocolHandler(
+			new Request("anaconda-agentic-desktop://notebook/__nteract_dev_relay/config"),
+		);
+		expect(await response.json()).toEqual({ live: true });
+	});
+
+	it("does not proxy embedded-host requests to the web dev server", async () => {
+		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-notebook-"));
+		temporaryDirectories.push(bundleRoot);
+		await mkdir(path.join(bundleRoot, "assets"));
+		await writeFile(path.join(bundleRoot, "assets", "nteract.js"), "notebook chunk");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: true,
+			rendererRoot: "/unused",
+			developmentOrigin: "http://localhost:5173",
+			embeddedHosts: () => [{ host: "notebook", root: bundleRoot }],
+		});
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const response = await protocolHandler(
+			new Request("anaconda-agentic-desktop-dev://notebook/assets/nteract.js"),
+		);
+
+		// The Vite server serves the app, not nteract — proxying here would 404.
+		expect(fetch).not.toHaveBeenCalled();
+		expect(await response.text()).toBe("notebook chunk");
 	});
 
 	it("resolves the SPA shell and assets inside the renderer root", async () => {

@@ -11,6 +11,7 @@ import {
 	createFeatureHandlers,
 	createFeatureMessageHandlers,
 } from "./features/registry/feature-registry.js";
+import { collectEmbeddedHosts } from "./features/registry/embedded-hosts.js";
 import { FEATURES } from "./features/registry/features.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
@@ -103,6 +104,7 @@ export class Application {
 				isDevelopment,
 				rendererRoot: getProductionRendererRoot(import.meta.dirname),
 				...(developmentOrigin ? { developmentOrigin } : {}),
+				embeddedHosts: collectEmbeddedHosts,
 			});
 
 			// Bootstrap networking before #registerIpc (bootFeatures): merge the

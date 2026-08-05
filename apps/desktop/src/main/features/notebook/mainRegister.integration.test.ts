@@ -6,7 +6,7 @@ import { WebSocket } from "ws";
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { mainRegister } from "./index.js";
-import { RELAY_WS_PATH } from "./NotebookRelayService.js";
+import { CONFIG_PATH, RELAY_WS_PATH } from "./NotebookRelayService.js";
 import { encodeFrame, encodeTypedFrame } from "./wire/codec.js";
 import { FrameType } from "./wire/constants.js";
 
@@ -109,11 +109,13 @@ async function boot(options: { withDaemon?: boolean } = {}) {
 	// a real Electron process, and the value decides which origin the relay trusts.
 	// Resolving to no binary keeps these tests off the spawn path — they cover the
 	// relay, and DaemonProcessService.test.ts covers supervision. It also avoids
-	// the default resolver's `app.getAppPath()`, unavailable outside Electron.
+	// the default resolver's `app.getAppPath()`, unavailable outside Electron —
+	// which is why the bundle root is stubbed out for the same reason.
 	mainRegister(mainSdk, {
 		isDevelopment: false,
 		socketPath: "unused",
 		resolveDaemonBinary: () => undefined,
+		resolveBundleRoot: () => undefined,
 		...(connect ? { connect } : {}),
 	});
 	return mainSdk;
@@ -157,6 +159,56 @@ describe("notebook mainRegister", () => {
 		// rather than leaving `daemon: null` unexplained.
 		expect(status.process.status).toBe("failed");
 		expect(status.process.reason).toContain("no daemon binary");
+		mainSdk.dispose();
+	});
+
+	it("contributes the notebook bundle host with the relay config on its own origin", async () => {
+		const mainSdk = await boot();
+
+		// The platform reads this back generically; nteract's browser host fetches
+		// the config from a path it hardcodes, so it has to live on this origin.
+		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"] as {
+			host: string;
+			root: string | undefined;
+			routes: Record<string, () => Promise<{ websocket_url: string; token: string }>>;
+		};
+		expect(capability.host).toBe("notebook");
+		expect(capability.root).toBeUndefined();
+
+		const config = await capability.routes[CONFIG_PATH]?.();
+		// Fetching the config is what starts the relay, so serving assets alone
+		// leaves the loopback port unbound.
+		expect(config?.websocket_url).toContain(RELAY_WS_PATH);
+		mainSdk.dispose();
+	});
+
+	it("accepts a websocket from the notebook origin, not the app origin", async () => {
+		const mainSdk = await boot();
+		const { relayPort } = (await mainSdk.invoke("status")) as { relayPort: number };
+		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"] as {
+			routes: Record<string, () => Promise<{ token: string }>>;
+		};
+		const { token } = await capability.routes[CONFIG_PATH]!();
+		const url = `ws://127.0.0.1:${relayPort}${RELAY_WS_PATH}?token=${token}`;
+
+		// nteract's document is served from the notebook host, so the relay must
+		// trust that origin. Leaving this at `://app` 401s every upgrade, which the
+		// view then reports as an unavailable daemon.
+		const accepted = new WebSocket(url, {
+			headers: { Origin: "anaconda-agentic-desktop://notebook" },
+		});
+		sockets.push(accepted);
+		await expect(
+			new Promise((resolve) => accepted.once("open", () => resolve("open"))),
+		).resolves.toBe("open");
+
+		const rejected = new WebSocket(url, {
+			headers: { Origin: "anaconda-agentic-desktop://app" },
+		});
+		sockets.push(rejected);
+		await expect(new Promise((_resolve, reject) => rejected.once("error", reject))).rejects.toThrow(
+			/401/,
+		);
 		mainSdk.dispose();
 	});
 

@@ -1,3 +1,4 @@
+import { NOTEBOOK_HOST } from "@anaconda-agentic-desktop/contracts";
 import type { NotebookService, NotebookStatus } from "@anaconda-agentic-desktop/contracts";
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
@@ -7,16 +8,44 @@ import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
  * loopback relay (NotebookRelayService) so nteract's stock browser host can
  * reach the daemon from inside Electron.
  *
- * The relay's client is nteract's own bundle, which we do not serve from our
- * protocol yet. Until then this view reports relay and daemon reachability, and
- * frames nteract's dev server when one is configured — the iframe loads only in
- * development, where the CSP grants the Vite origin.
+ * In the desktop app the bundle is served from its own protocol host, which
+ * frames here. Browser mode has no custom protocol at all, so it still needs
+ * `VITE_NTERACT_ORIGIN` pointing at nteract's dev server.
  */
 const DEFAULT_NOTEBOOK_PATH = "/tmp/ad-nb-python.ipynb";
 
+/**
+ * Matches both the production and `-dev` desktop schemes. Not imported from
+ * main's `ElectronProtocol`, which the web app cannot reach; the prefix is all
+ * this needs, and getting it wrong falls back to browser mode rather than
+ * framing a wrong origin.
+ */
+const DESKTOP_SCHEME_PREFIX = "anaconda-agentic-desktop";
+
+/**
+ * The renderer cannot read `app.isPackaged`, so it cannot derive the scheme —
+ * but it does not need to: its own origin already carries the right one, and
+ * only the host differs. Returns undefined off the custom protocol (browser
+ * mode), where the notebook host does not exist.
+ */
+export function notebookOriginFrom(appOrigin: string): string | undefined {
+	let url: URL;
+	try {
+		url = new URL(appOrigin);
+	} catch {
+		return undefined;
+	}
+	if (!url.protocol.startsWith(DESKTOP_SCHEME_PREFIX)) return undefined;
+	// Assembled rather than read off `url.origin`, which is "null" for a scheme
+	// the URL parser does not know is special.
+	return `${url.protocol}//${NOTEBOOK_HOST}`;
+}
+
 /** Read at render time, not module scope, so tests can drive both branches. */
 function nteractSrc(notebookPath: string): string | undefined {
-	const origin: string | undefined = import.meta.env["VITE_NTERACT_ORIGIN"];
+	const origin =
+		notebookOriginFrom(window.location.origin) ??
+		(import.meta.env["VITE_NTERACT_ORIGIN"] as string | undefined);
 	if (!origin) return undefined;
 	const url = new URL(origin);
 	url.searchParams.set("path", notebookPath);
@@ -75,7 +104,7 @@ export function NotebookView() {
 					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
 					data-qa-id="notebook-placeholder"
 				>
-					The notebook interface is not bundled yet.
+					The notebook interface is not bundled in this build.
 				</div>
 			)}
 		</div>

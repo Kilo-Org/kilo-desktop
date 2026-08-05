@@ -7,7 +7,7 @@ import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-deskto
 
 import { AppProviders } from "@/app/AppProviders";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-import { NotebookView } from "./NotebookView";
+import { NotebookView, notebookOriginFrom } from "./NotebookView";
 
 function renderView(status: () => NotebookStatus | Promise<NotebookStatus>) {
 	const sdk = createFakeSdk({
@@ -110,6 +110,23 @@ describe("NotebookView", () => {
 		await expect
 			.element(page.getByTestId("notebook-status"))
 			.toHaveTextContent("Notebook service unavailable.");
+	});
+
+	it("derives the notebook origin by substituting the host on our own", () => {
+		// The renderer cannot read app.isPackaged, so the scheme has to come from its
+		// own origin — otherwise a dev build would frame the production host.
+		expect(notebookOriginFrom("anaconda-agentic-desktop://app")).toBe(
+			"anaconda-agentic-desktop://notebook",
+		);
+		expect(notebookOriginFrom("anaconda-agentic-desktop-dev://app")).toBe(
+			"anaconda-agentic-desktop-dev://notebook",
+		);
+	});
+
+	it("has no notebook origin in browser mode, where the protocol does not exist", () => {
+		expect(notebookOriginFrom("http://localhost:5173")).toBeUndefined();
+		expect(notebookOriginFrom("https://anaconda.com")).toBeUndefined();
+		expect(notebookOriginFrom("not a url")).toBeUndefined();
 	});
 
 	it("shows a placeholder while nteract's bundle is not served from our protocol", async () => {

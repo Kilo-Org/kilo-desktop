@@ -173,6 +173,14 @@ export function createEmbeddedContentSecurityPolicy(
 	].join("; ");
 }
 
+/** Exact host match, so `notebook.evil` cannot borrow the notebook's policy. */
+export function findEmbeddedHost(
+	hosts: readonly EmbeddedWebHost[],
+	host: string,
+): EmbeddedWebHost | undefined {
+	return hosts.find((candidate) => candidate.host === host);
+}
+
 export async function resolveRendererPath(
 	rendererRoot: string,
 	requestPathname: string,
@@ -240,9 +248,16 @@ function isRelayWidgetProbe(request: Request, requestUrl: URL): boolean {
 	return !accept.includes("text/html");
 }
 
+/**
+ * Builds the policy once the response's inline script hashes are known. Which
+ * of the two policies applies is a property of the requested host, so the
+ * caller decides and this only supplies the hashes it extracted.
+ */
+type ContentSecurityPolicyBuilder = (inlineScriptHashes: readonly string[]) => string;
+
 async function withSecurityHeaders(
 	response: Response,
-	developmentOrigin?: string,
+	buildPolicy: ContentSecurityPolicyBuilder,
 ): Promise<Response> {
 	const headers = new Headers(response.headers);
 	let body: BodyInit | null = response.body;
@@ -252,16 +267,34 @@ async function withSecurityHeaders(
 		body = bytes;
 		inlineScriptHashes = getInlineScriptHashes(new TextDecoder().decode(bytes));
 	}
-	headers.set(
-		"Content-Security-Policy",
-		createContentSecurityPolicy(developmentOrigin, inlineScriptHashes),
-	);
+	headers.set("Content-Security-Policy", buildPolicy(inlineScriptHashes));
 	headers.set("X-Content-Type-Options", "nosniff");
 	return new Response(body, {
 		status: response.status,
 		statusText: response.statusText,
 		headers,
 	});
+}
+
+function contentTypeFor(filePath: string): string {
+	return MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+/**
+ * Routes are consulted before the filesystem so a same-origin JSON endpoint
+ * cannot be shadowed by a file the bundle happens to ship at that path.
+ */
+async function serveEmbeddedHost(embedded: EmbeddedWebHost, requestUrl: URL): Promise<Response> {
+	const route = embedded.routes?.[requestUrl.pathname];
+	if (route) return Response.json(await route());
+
+	// No bundle in this build — an expected state, not an error.
+	if (!embedded.root) return new Response(null, { status: 404 });
+
+	const filePath = await resolveRendererPath(embedded.root, requestUrl.pathname);
+	if (!filePath) return new Response(null, { status: 404 });
+	const body = Uint8Array.from(await readFile(filePath));
+	return new Response(body, { headers: { "Content-Type": contentTypeFor(filePath) } });
 }
 
 export class ElectronProtocol {
@@ -271,22 +304,53 @@ export class ElectronProtocol {
 		readonly isDevelopment: boolean;
 		readonly rendererRoot: string;
 		readonly developmentOrigin?: string;
+		/**
+		 * Evaluated per request, not read once here: `protocol.register` runs before
+		 * `bootFeatures` in `Application.start`, so a snapshotted array would stay
+		 * empty for the process's whole lifetime.
+		 */
+		readonly embeddedHosts?: () => readonly EmbeddedWebHost[];
 	}): void {
 		const scheme = getDesktopScheme(input.isDevelopment);
 		if (this.#registeredScheme === scheme) return;
 
+		const appOrigin = getDesktopOrigin(input.isDevelopment);
+		const appPolicyFor = (embeddedHosts: readonly EmbeddedWebHost[]) => {
+			const frameOrigins = embeddedHosts.map((embedded) =>
+				getDesktopOrigin(input.isDevelopment, embedded.host),
+			);
+			return (inlineScriptHashes: readonly string[]) =>
+				createContentSecurityPolicy(input.developmentOrigin, inlineScriptHashes, frameOrigins);
+		};
+		const embeddedPolicy = (inlineScriptHashes: readonly string[]) =>
+			createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes);
+
 		protocol.handle(scheme, async (request) => {
 			const requestUrl = new URL(request.url);
+			const embeddedHosts = input.embeddedHosts?.() ?? [];
+
 			if (requestUrl.host !== DESKTOP_HOST) {
-				return withSecurityHeaders(new Response(null, { status: 404 }), input.developmentOrigin);
+				const embedded = findEmbeddedHost(embeddedHosts, requestUrl.host);
+				if (!embedded) {
+					return withSecurityHeaders(
+						new Response(null, { status: 404 }),
+						appPolicyFor(embeddedHosts),
+					);
+				}
+				return withSecurityHeaders(await serveEmbeddedHost(embedded, requestUrl), embeddedPolicy);
 			}
 
 			// Force the relay widget onto its direct same-origin iframe path (see
 			// WEBMCP_WIDGET_PATH) by failing the `embed.js` `fetch()` probe.
 			if (requestUrl.pathname === WEBMCP_WIDGET_PATH && isRelayWidgetProbe(request, requestUrl)) {
-				return withSecurityHeaders(new Response(null, { status: 404 }), input.developmentOrigin);
+				return withSecurityHeaders(
+					new Response(null, { status: 404 }),
+					appPolicyFor(embeddedHosts),
+				);
 			}
 
+			// Deliberately scoped to the app host: an embedded host's assets are not
+			// served by the web dev server and would 404 if proxied there.
 			if (input.isDevelopment && input.developmentOrigin) {
 				const targetUrl = new URL(
 					`${requestUrl.pathname}${requestUrl.search}`,
@@ -295,22 +359,20 @@ export class ElectronProtocol {
 				const response = await net.fetch(targetUrl.toString(), {
 					method: request.method,
 				});
-				return withSecurityHeaders(response, input.developmentOrigin);
+				return withSecurityHeaders(response, appPolicyFor(embeddedHosts));
 			}
 
 			const filePath = await resolveRendererPath(input.rendererRoot, requestUrl.pathname);
 			if (!filePath) {
-				return withSecurityHeaders(new Response(null, { status: 404 }), input.developmentOrigin);
+				return withSecurityHeaders(
+					new Response(null, { status: 404 }),
+					appPolicyFor(embeddedHosts),
+				);
 			}
 			const body = Uint8Array.from(await readFile(filePath));
 			return withSecurityHeaders(
-				new Response(body, {
-					headers: {
-						"Content-Type":
-							MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream",
-					},
-				}),
-				input.developmentOrigin,
+				new Response(body, { headers: { "Content-Type": contentTypeFor(filePath) } }),
+				appPolicyFor(embeddedHosts),
 			);
 		});
 		this.#registeredScheme = scheme;

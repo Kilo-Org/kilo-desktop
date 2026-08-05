@@ -2,16 +2,17 @@ import type net from "node:net";
 
 import { app } from "electron";
 
-import { notebookContract } from "@anaconda-agentic-desktop/contracts";
+import { notebookContract, NOTEBOOK_HOST } from "@anaconda-agentic-desktop/contracts";
 import type { NotebookService } from "@anaconda-agentic-desktop/contracts";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import { getDesktopScheme, DESKTOP_HOST } from "../../platform/ElectronProtocol.js";
+import { getDesktopOrigin } from "../../platform/ElectronProtocol.js";
 import { createLogger } from "../../platform/logger.js";
 import { DaemonProcessService } from "./DaemonProcessService.js";
 import { resolveDaemonBinaryPath } from "./daemon-binary-path.js";
 import { readBundledDaemonVersion } from "./daemon-version.js";
-import { NotebookRelayService } from "./NotebookRelayService.js";
+import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
+import { CONFIG_PATH, NotebookRelayService } from "./NotebookRelayService.js";
 import { RuntimedService, type RuntimedLogger } from "./RuntimedService.js";
 
 export interface NotebookFeatureOptions {
@@ -28,6 +29,11 @@ export interface NotebookFeatureOptions {
 	 * `app.getAppPath()`.
 	 */
 	readonly resolveDaemonBinary?: () => string | undefined;
+	/**
+	 * Overrides where the nteract bundle is found, for the same reason as
+	 * `resolveDaemonBinary`: the default reads `app.getAppPath()`.
+	 */
+	readonly resolveBundleRoot?: () => string | undefined;
 }
 
 export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions = {}): void {
@@ -40,13 +46,24 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 	});
 	const relay = new NotebookRelayService({
 		runtimed,
-		allowedOrigin: `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}`,
+		// The WebSocket is opened by nteract's document, which we serve from the
+		// notebook host — not the app host. Pointing this at `app` 401s every
+		// upgrade, and the view reports that as an unavailable daemon.
+		allowedOrigin: getDesktopOrigin(isDevelopment, NOTEBOOK_HOST),
 		logger,
 	});
 	const resolveBinary =
 		options.resolveDaemonBinary ??
 		(() =>
 			resolveDaemonBinaryPath({
+				isPackaged: app.isPackaged,
+				resourcesPath: process.resourcesPath,
+				appPath: app.getAppPath(),
+			}));
+	const resolveBundleRoot =
+		options.resolveBundleRoot ??
+		(() =>
+			resolveNotebookBundleRoot({
 				isPackaged: app.isPackaged,
 				resourcesPath: process.resourcesPath,
 				appPath: app.getAppPath(),
@@ -96,6 +113,15 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 	};
 
 	mainSdk.channels(notebookContract).handleAll(api);
+	// The platform reads this back generically (collectEmbeddedHosts) and owns the
+	// CSP it is served under, so no feature name reaches platform/ (D2, D3).
+	// `relay.config()` starts the relay on demand, which is why serving assets
+	// does not bind the loopback port but fetching the config does.
+	mainSdk.plugins.expose("embeddedWebHost", {
+		host: NOTEBOOK_HOST,
+		root: resolveBundleRoot(),
+		routes: { [CONFIG_PATH]: () => relay.config() },
+	});
 	mainSdk.onDispose(() => {
 		void daemonProcess.dispose();
 		void relay.dispose();

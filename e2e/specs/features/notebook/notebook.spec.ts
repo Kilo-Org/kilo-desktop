@@ -8,8 +8,11 @@ test.describe("Notebook @smoke", () => {
 		await appShellPage.navigateToFeature("notebook");
 		await notebookPage.verifySurfaceIsOpen();
 		// Proves the main-process feature booted and registered `notebook:status`
-		// in the packaged binary. The daemon itself is not bundled yet, so only
-		// the relay port is asserted — `daemon` stays null until the sidecar ships.
+		// in the packaged binary.
 		await notebookPage.verifyStatusChannelReportsBoundRelay();
+		// And that the sidecar staged into the bundle actually runs from there.
+		// Only e2e can catch this: `pnpm test` stubs the binary path away, so a
+		// daemon that ships but never spawns looks green at every other tier.
+		await notebookPage.verifyDaemonIsReachable();
 	});
 });

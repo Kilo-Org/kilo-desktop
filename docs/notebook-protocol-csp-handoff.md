@@ -1,8 +1,10 @@
 # Handoff: serve nteract's SPA from our protocol + CSP (handoff steps 3 & 4)
 
-Status: **steps A–F implemented and green** (`pnpm check && pnpm lint && pnpm format:check &&
-pnpm test` — 440 desktop + 102 web tests pass; branch coverage 89.3%, up from an 88.98% baseline,
-against an 80% threshold). **Packaged verification is the remaining gate** — see "Verification".
+Status: **done.** Steps A–F are implemented, the gate is green
+(`pnpm check && pnpm lint && pnpm format:check && pnpm test` — 445 desktop + 102 web tests; desktop
+branch coverage 89.67%, web 81.73%, against an 80% threshold), and the packaged render is verified
+end-to-end (see "Verified: the first packaged render works"). The `@smoke` suite is 6/6 in **both**
+build configurations — with the daemon and bundle staged, and without, which is what CI runs.
 
 Corrections to this plan's own text, found while implementing it:
 
@@ -238,6 +240,23 @@ metrics.
   iframe is present is in scope here. Asserting a **cell executes** is old-handoff step 9, a
   separate piece of work — do not scope-creep into it.
 
+Landed: `verifyFramesTheNotebookOrigin()` asserts the frame `src` matches the notebook **host** on
+whichever scheme the app is running under. It checks the `src`, not the frame's content, because CI
+stages no bundle and the host legitimately 404s there; what can regress is the origin the renderer
+derives, which is wrong the moment it falls back to `VITE_NTERACT_ORIGIN`. Note the regex tolerates
+an optional `/` before `?path=`: Chromium emits one for this non-special scheme where Node's URL
+parser does not, so a Node-derived expectation fails in the browser.
+
+**A CI-only failure was found and fixed while running this.** `verifyDaemonIsReachable()` (added in
+`db16a29`) asserted `process.status` is `running`/`external`, but `RUNTIMED_BINARY` is opt-in and
+**CI never sets it**, so every CI run would have failed on a build behaving exactly as designed.
+`notebook:status` cannot distinguish the two cases — it reports `failed` both for "none bundled" and
+for "a bundled one that would not start", and only the second is a regression. The check now asks
+disk instead, via `packagedDaemonExists()` in `e2e/utils/paths.ts`, and pushes a `skipped-assertion`
+annotation when it skips so a run does not silently look like it covered more than it did.
+**If you add an e2e assertion about the daemon or the bundle, gate it the same way** — neither is
+staged in CI.
+
 ## Verified: the first packaged render works
 
 Done on 2026-08-05, arm64 macOS, with a debug `runtimed` (`2.6.3+560e539`) and the prebuilt bundle:
@@ -269,6 +288,8 @@ Findings worth keeping:
   exercised and remain blocked by design.
 
 ## Verification, and the trap in it
+
+Both gates below have been run and pass; kept for how to reproduce them.
 
 `pnpm test` passing proves nothing about whether this works. The whole point of the pair is that it
 is the first time anything renders in a packaged build, so:

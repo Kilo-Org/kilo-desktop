@@ -1,6 +1,6 @@
 # Embedding the nteract notebook in Electron — handoff
 
-Status: **partially built.** Steps 1 and 5 have landed in `apps/desktop/src/main/features/notebook/`; the original "hard blocker" is resolved. Sections 3, 4 and 6 of the work breakdown are still open. See [What has landed](#what-has-landed) before acting on anything below — two of this doc's original recommendations were inverted by what we found while building.
+Status: **partially built.** Steps 1, 3, 4, 5 and 6 have landed; the original "hard blocker" is resolved. The notebook renders and executes Python in a packaged build. Steps 8 (blob resolver) and 9 (a spec that executes a cell) remain. See [What has landed](#what-has-landed) before acting on anything below — two of this doc's original recommendations were inverted by what we found while building.
 
 > **Sections 3 and 4 below are superseded.** They plan a same-origin `/notebook/` path; the chosen design serves the bundle from a separate protocol **host**, which removes the Vite `base` patch, the directory-index fallback, and the test inversion they call for. Follow [notebook-protocol-csp-handoff.md](./notebook-protocol-csp-handoff.md) instead, with the rationale in [notebook-embedding-decisions.md](./notebook-embedding-decisions.md). Read sections 3 and 4 only for the constraints they record.
 
@@ -181,17 +181,15 @@ Worth a legal review before committing, not after.
 
 Both original gating questions are answered: standalone binaries exist (PR #4125), and `ElectronHost` turned out not to be needed. Done: frame client + codec tests, sidecar spawn/supervise/dispose, commit-hash pinning, and the loopback relay (which replaced the MessagePort-through-preload plan, so the contextBridge allowlist gap no longer matters).
 
+Steps 3 and 4 are now **done** as well — see [notebook-protocol-csp-handoff.md](./notebook-protocol-csp-handoff.md). The notebook renders and executes Python in a packaged `.app`, and `@smoke` is 6/6 both with the daemon and bundle staged and without (the latter is what CI runs). Neither is staged in CI, so an e2e assertion about either must be gated on its presence — see that doc's Step F notes.
+
 Remaining, in order:
 
-1. **Protocol serving + CSP change, together** (steps 3 and 4). Neither is verifiable alone; the pair is the first time anything renders in a packaged build. Requires deliberately updating the two assertions at `ElectronProtocol.test.ts:65` and `:168`.
-2. **Blob resolver over our protocol** (step 8). Not needed for text output; required for plots, images, DataFrames.
-3. **`@smoke` spec that executes a cell in the packaged app** (step 9).
-4. `ElectronHost` upstream, if we still want to drop the loopback socket.
+1. **Blob resolver over our protocol** (step 8). Not needed for text output; required for plots, images, DataFrames.
+2. **`@smoke` spec that executes a cell in the packaged app** (step 9). Execution is verified by hand today, not by a spec.
+3. `ElectronHost` upstream, if we still want to drop the loopback socket.
 
-Two things worth starting in parallel rather than after:
-
-- **Re-run `@smoke`.** It has not been run since spawn/supervision landed, and that is the change most likely to have moved it.
-- **Legal review of the Git-LFS'd renderer bundles** (see License, item 3). Untouched, and it gates shipping rather than building.
+Also still open, and gating shipping rather than building: the **legal review of the Git-LFS'd renderer bundles** (see License, item 3). Untouched.
 
 ## Open questions
 

@@ -1,0 +1,19 @@
+{
+	"name": "@opencode-ai/sdk",
+	"version": "1.18.5-kilo.0",
+	"private": true,
+	"type": "module",
+	"description": "Minimal Kilo SDK compatibility facade for assistant-ui's OpenCode adapter",
+	"exports": {
+		"./v2/client": "./src/v2/client.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json"
+	},
+	"dependencies": {
+		"@kilocode/sdk": "7.4.20"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

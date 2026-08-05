@@ -8,6 +8,7 @@
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
+		"./runtime": "./src/web/runtime/index.ts",
 		"./cli-distribution": "./src/main/cli-distribution/index.ts"
 	},
 	"scripts": {
@@ -17,6 +18,9 @@
 	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@assistant-ui/react": "0.15.1",
+		"@assistant-ui/react-opencode": "0.2.17",
+		"@kilocode/sdk": "7.4.20",
 		"execa": "^9.6.0",
 		"zod": "catalog:"
 	},

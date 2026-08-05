@@ -7,6 +7,9 @@ test.describe("Notebook @smoke", () => {
 	}) => {
 		await appShellPage.navigateToFeature("notebook");
 		await notebookPage.verifySurfaceIsOpen();
+		// The packaged renderer must frame the notebook protocol host. Only e2e
+		// exercises the real `window.location.origin` this is derived from.
+		await notebookPage.verifyFramesTheNotebookOrigin();
 		// Proves the main-process feature booted and registered `notebook:status`
 		// in the packaged binary.
 		await notebookPage.verifyStatusChannelReportsBoundRelay();

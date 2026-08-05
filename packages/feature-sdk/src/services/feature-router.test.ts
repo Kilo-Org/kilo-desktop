@@ -16,6 +16,18 @@ describe("FeatureRouter", () => {
 		expect(result).toBe("Hello, World!");
 	});
 
+	it("exposes injected host logger and network delegates", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const fetch = vi.fn(async () => Response.json({ ok: true })) as typeof globalThis.fetch;
+		const mainSdk = new FeatureRouter().createMainSdk("my-feature", { logger, fetch });
+
+		expect(mainSdk.logger).toBe(logger);
+		mainSdk.logger.warn("careful", { id: "1" });
+		expect(logger.warn).toHaveBeenCalledWith("careful", { id: "1" });
+		await expect(mainSdk.net.fetch("https://example.test")).resolves.toBeInstanceOf(Response);
+		expect(fetch).toHaveBeenCalledWith("https://example.test");
+	});
+
 	it("mainSdk.events stamps namespaces, delivers locally, and relays once", () => {
 		const relay = vi.fn();
 		const router = new FeatureRouter();

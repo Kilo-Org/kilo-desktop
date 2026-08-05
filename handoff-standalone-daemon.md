@@ -200,10 +200,22 @@ is no longer a guess.
 
 ## Spawn and supervise the daemon
 
-Was: **nothing spawns the daemon** — `mainRegister` only queried it. Being built
-now, hanging off the lazy-start pattern in `features/notebook/index.ts:38` and the
-`mainSdk.onDispose` at line 56, with path resolution in `index.ts` (`*Service.ts`
-files are lint-forbidden from importing electron).
+Was: **nothing spawns the daemon** — `mainRegister` only queried it. **Now built**
+(`25986a8`): `DaemonProcessService.ts` supervises the child, `daemon-binary-path.ts`
+locates it, and both hang off the lazy-start path in `features/notebook/index.ts`
+plus its `mainSdk.onDispose`. Path resolution lives in `index.ts` because
+`*Service.ts` files are lint-forbidden from importing electron; the Electron values
+(`isPackaged`, `resourcesPath`, `appPath`) are therefore passed in, which is also
+what makes it unit-testable.
+
+`RuntimedService.isListening()` is the readiness probe — a bare connect, since the
+daemon binds before initializing pools and offers no ready signal. The process
+lifecycle is surfaced to the renderer through a new `process` field on
+`notebookStatusSchema`, so the view distinguishes "no bundled sidecar" from "crash
+loop" from "starting" rather than showing an unexplained `daemon: null`.
+
+**Still not done on this axis: commit-hash pinning** (see below) — the one piece
+that connect-first makes load-bearing rather than hygiene.
 
 ### What the daemon's CLI actually guarantees
 
@@ -339,19 +351,27 @@ nothing from here on has ever run in a packaged build.
 
 ## State of agentic-desktop
 
-`t3code/9d5bc891`, **12 commits unpushed, no PR.**
+`t3code/9d5bc891`, **13 commits unpushed, no PR.**
 
-- Relay + daemon client transport built, registered in `FEATURES`, tested at all
-  four tiers. Full gate green: `pnpm check && pnpm lint && pnpm format:check &&
-pnpm test` (**660 tests** after this session's additions).
-- Notebook suite run 10× consecutively — 99/99 each time, no socket-timing
+- Relay + daemon client transport + spawn/supervision built, registered in
+  `FEATURES`, tested at all four tiers. Full gate green: `pnpm check && pnpm lint
+&& pnpm format:check && pnpm test` (**693 tests**).
+- Notebook suite run 10× consecutively — 130/130 each time, no socket-timing
   flakiness.
+- Notebook feature coverage 93.7% stmts / 96.0% lines; the two uncovered lines in
+  `DaemonProcessService.ts` are its production `defaultSleep`/`spawn` defaults,
+  which the tests replace with seams by design.
 - `e29cb35` fixed a real packaging regression (`ws` missing from the main
   bundle's Vite externals → rolldown inlined a CJS package into ESM output →
   `require("events")` crashed the packaged app at startup). **`pnpm test` cannot
   catch this class of bug** — the documented gate omits e2e.
-- **`@smoke` is 6/6** — green for the first time, verified against a bundle that
-  contains the daemon.
+- **`@smoke` was 6/6** at `68cd883` — green for the first time, verified against a
+  bundle that contains the daemon. **Not re-run since spawn/supervision landed**,
+  and that is the one change most likely to move it: before `25986a8` the packaged
+  app only ever _queried_ the daemon, whereas now opening `/notebook` probes and,
+  finding nothing, actually spawns the staged binary. Re-run it before trusting the
+  6/6 — see [Local prerequisites](#local-prerequisites), which is why it was not
+  re-run here (needs full Xcode).
 
 ## Also outstanding
 

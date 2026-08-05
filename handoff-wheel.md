@@ -1,5 +1,14 @@
 # Handoff: source `runtimed` from the Python wheel
 
+> **SUPERSEDED — do not follow this plan.** See
+> `handoff-standalone-daemon.md`. The premise below is false: the published
+> wheels contain **no** `runtimed` binary (`_bin/` holds only `.gitkeep` on all
+> four platforms) because `python/runtimed/.gitignore` makes maturin drop the
+> daemon CI stages there. Verified by extracting real release assets. The daemon
+> is also Python-free (no `libpython`), so the wheel was never the right
+> carrier. Decision: publish standalone per-platform assets instead. Kept for
+> the reasoning trail only.
+
 Next step for the notebook feature. Supersedes the "publish standalone binaries"
 plan for the sidecar problem — see [Why the wheel](#why-the-wheel).
 

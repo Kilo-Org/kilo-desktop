@@ -11,7 +11,7 @@
 		"zones": [
 			{
 				"zone": "home-composer-leading-action",
-				"component": "WorkspacesWidget",
+				"component": "WorkspaceSelector",
 				"label": "Workspace selector"
 			}
 		]

@@ -12,8 +12,8 @@ import {
 } from "@anaconda-agentic-desktop/testing";
 
 import { workspacesBrowserRegister } from "./browserRegister";
+import { WorkspaceSelector } from "./WorkspaceSelector";
 import { WorkspacesFeatureProvider } from "./WorkspacesFeatureProvider";
-import { WorkspacesWidget } from "./WorkspacesWidget";
 
 function renderSelector(shell: Partial<SDK["shell"]> = {}) {
 	const sdk = createFakeSdk({ featureId: "workspaces", shell });
@@ -25,7 +25,7 @@ function renderSelector(shell: Partial<SDK["shell"]> = {}) {
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<WorkspacesWidget />
+					<WorkspaceSelector />
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,

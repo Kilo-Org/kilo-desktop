@@ -77,11 +77,12 @@ NSIS installer `.exe`, needing 7z-style extraction in CI).
 
 ## State of the branch to land
 
-`runtimed-standalone-assets` @ `22d094ca` in worktree
-`~/.t3/worktrees/nteract/runtimed-standalone-assets`. **Unpushed, no PR.**
+`runtimed-standalone-assets` @ `45f91612` (2 commits) in worktree
+`~/.t3/worktrees/nteract/runtimed-standalone-assets`. **Pushed to origin as of
+2026-08-05; still no PR** — opening one is the next upstream step.
 
 **Risk 4 has not bitten.** The branch is still based exactly on `origin/main`
-(`152eb6e4`, 0 commits behind as of 2026-08-04), so `release-common.yml` has not
+(`152eb6e4`, 0 commits behind as of 2026-08-05), so `release-common.yml` has not
 drifted. It has not rotted — but that clock is running again.
 
 What it does (a publishing-only change, +35/−3 in `release-common.yml`, +7/−1 in
@@ -115,9 +116,10 @@ unquoted, so the shell expanded them against the real cwd before the `case`
 compared anything, and nothing matched. If you re-test this, quote the patterns
 and match against a directory of touched dummy filenames.
 
-### One real gap found, not yet fixed
+### One real gap found — now fixed
 
-The **release-body table still advertises the daemon as Linux-only.** In the
+**Done** in `45f91612`. The **release-body table advertised the daemon as
+Linux-only.** In the
 `Generate release body` step (~line 1530), the download table emits:
 
 ```
@@ -133,16 +135,68 @@ assets and _shipping_ them.
 
 ## Then, in order
 
-1. **Add the release-body rows** above. Small and self-contained.
-2. **Land `22d094ca` upstream.** It is safe to merge as additive assets — see
+1. ~~**Add the release-body rows** above.~~ **Done**, `45f91612`.
+2. **Land the branch upstream.** Pushed, but **no PR yet** — open one. It is safe
+   to merge as additive assets — see
    [Verifying](#verifying-the-workflow-change) before doing so.
-3. **Consume the assets in agentic-desktop**: download the platform daemon at
-   build time, place via `extraResource`, sign it under our identity so it
-   survives our notarization. **Prove signing on real hardware early** — it is
-   still the most likely late surprise, just a smaller one than documented.
+3. **Consume the assets in agentic-desktop.** **Partly done** (`76230fe`): the
+   staging + `extraResource` half is built and proven in a real packaged bundle.
+   What remains is sourcing the binary from a released asset instead of a local
+   path, and signing under our identity. See
+   [Daemon bundling, as built](#daemon-bundling-as-built).
 4. **Pin by commit hash.** The commit-hash-equality constraint is unchanged: app
    and sidecar must be pinned to the same nteract commit, not merely a
-   compatible protocol version. Pin explicitly.
+   compatible protocol version. Pin explicitly. **Not yet done** — `RUNTIMED_BINARY`
+   takes any path, with no version assertion.
+
+## Daemon bundling, as built
+
+`76230fe` in agentic-desktop. `apps/desktop/config/daemon-asset.ts` (+ colocated
+test, 8 cases) stages the daemon into gitignored `apps/desktop/build/daemon/`;
+`config/stage-daemon.ts` is the entry point, run via a new `prepare:daemon`
+script that `premake`/`prepackage`/`prepublish` all reach through
+`prepare:build`.
+
+**Source is `RUNTIMED_BINARY`, a local path — not a download.** Deliberate: the
+release assets do not exist until step 2 lands, so there is nothing to download
+yet. Swapping in a fetch means changing only `stageDaemonBinary`'s source; the
+staging, naming, guard, and `extraResource` wiring are source-agnostic.
+
+Three things worth knowing before changing this:
+
+- **Staging must be a script, not a Forge hook.** `extraResource` is a _value_ in
+  `forge.config.ts`, evaluated at module load, so the file must already exist by
+  then. Every Forge hook runs too late. This is why it hangs off `prepackage`.
+- **The asset name is load-bearing.** It is `runtimed-nightly` (or `runtimed` on
+  stable), matching `daemonBinaryBasename` in `socket-path.ts`, because the
+  daemon derives its Unix socket _and_ its Windows pipe name from its own
+  basename (`daemon_binary_basename_for`, `crates/runt-workspace/src/lib.rs:75`).
+  Rename the file and the app looks for the wrong pipe on Windows.
+- **A magic-byte guard rejects non-executables** (Mach-O thin/universal, ELF, PE).
+  A truncated download or an HTML error page saved under the right filename would
+  otherwise package fine and only fail at spawn.
+
+Verified on real hardware: the daemon lands at
+`Contents/Resources/runtimed-nightly` in the packaged `.app` and runs from there
+(`--version` → `2.6.3+22d094c`, exit 0). `codesign --force --options runtime`
+over it succeeds, `--verify --strict` passes, and it still runs after signing —
+so hardened-runtime signing does not break the binary. **That was ad-hoc
+signing: there are 0 valid codesigning identities on this machine**
+(`security find-identity -v -p codesigning`), so real Developer ID signing and
+notarization remain unproven and can only be exercised in CI, which populates
+`APPLE_SIGNING_IDENTITY` (`.github/actions/setup-macos-codesign/action.yml:59`).
+
+Also confirmed: `socket-path.ts` predicts the daemon's socket location exactly.
+Running the real daemon logs
+`Socket: "/Users/…/Library/Caches/runt-nightly/runtimed.sock"`, which is
+byte-identical to `resolveDaemonSocketPath()` for the same env. That assumption
+is no longer a guess.
+
+Still unbuilt on this axis: **nothing spawns the daemon.** `mainRegister` only
+queries it. Spawn/health/dispose is the next piece — attach to the lazy-start
+pattern in `features/notebook/index.ts:38` and the `mainSdk.onDispose` at line 56,
+and put path resolution there (`*Service.ts` files are lint-forbidden from
+importing electron).
 
 ### Optionally, upstream hygiene
 
@@ -181,29 +235,30 @@ nothing from here on has ever run in a packaged build.
 **That publishes a real prerelease — get explicit approval first.**
 `release-common.yml` is `workflow_call` only and cannot be dispatched directly.
 
-## State of agentic-desktop (unchanged this session)
+## State of agentic-desktop
 
-`t3code/9d5bc891`, **9 commits unpushed, no PR.** No code was written this
-session — it was all investigation.
+`t3code/9d5bc891`, **12 commits unpushed, no PR.**
 
 - Relay + daemon client transport built, registered in `FEATURES`, tested at all
   four tiers. Full gate green: `pnpm check && pnpm lint && pnpm format:check &&
-pnpm test` (652 tests), plus `pnpm coverage` (80% gate).
+pnpm test` (**660 tests** after this session's additions).
 - Notebook suite run 10× consecutively — 99/99 each time, no socket-timing
   flakiness.
 - `e29cb35` fixed a real packaging regression (`ws` missing from the main
   bundle's Vite externals → rolldown inlined a CJS package into ESM output →
   `require("events")` crashed the packaged app at startup). **`pnpm test` cannot
   catch this class of bug** — the documented gate omits e2e.
-- 5 of 6 `@smoke` specs pass, including notebook.
+- **`@smoke` is 6/6** — green for the first time, verified against a bundle that
+  contains the daemon.
 
 ## Also outstanding
 
-- **Workspaces `@smoke` fails** — pre-existing, unrelated. Playwright
-  strict-mode violation: `getByText(folderName, {exact: true})` matches both the
-  workspace selector and a tooltip trigger in the create dialog
-  (`e2e/pages/features/workspaces/workspaces-page.ts:17`). Small and
-  self-contained; fixing it gets the smoke suite fully green.
+- ~~**Workspaces `@smoke` fails.**~~ **Fixed**, `4c188ff`. The page-wide
+  `getByText(folderName, {exact: true})` matched both the workspace selector and
+  a tooltip trigger in the create dialog; the assertion is now scoped to the
+  combobox, which is what its failure message already claimed to check.
+  Confirmed with a negative control (asserting a sentinel name fails), so the
+  test still has teeth.
 - **Product questions still open:** private vs. shared daemon; iframe vs.
   `WebContentsView`; whether v1 needs `.ipynb` open/save (the runtime is pinned
   by the file's `kernelspec` metadata, **not** the `?runtime=` param — a
@@ -229,6 +284,12 @@ pnpm test` (652 tests), plus `pnpm coverage` (80% gate).
   `icon.icon` aside and restore it (it is tracked; do not leave it moved).
 - Packaging takes ~5–7 min; once `apps/desktop/out/` exists reuse it with
   `SKIP_BUILD=true pnpm test:e2e:smoke`.
+- **Build `out/` with `package:e2e`, never plain `package`.** `electron.launch`
+  waits for `"Debugger listening on"`, which needs the
+  `EnableNodeCliInspectArguments` fuse — gated on `ELECTRON_ENABLE_INSPECT`,
+  which only `package:e2e` sets. A plain `pnpm package` yields an `out/` that
+  looks fine and then **hangs every spec silently** until the timeout, with no
+  error. Cost me a 10-minute dead end this session.
 - Building nteract in a fresh worktree needs gitignored generated assets first:
   `git lfs pull && cargo xtask artifacts ensure runtime,sift,renderer &&
 cargo xtask artifacts ensure mcp-widget`. Without them `-p runtimed` panics on

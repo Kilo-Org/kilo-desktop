@@ -199,17 +199,17 @@ Companion chat UI is ported from `/Users/jlowe/Repositories/assistant-ui/example
 
 ### 3.5 Feature shape (per repo conventions)
 
-The integration ships as **two features**. Workspaces are shared platform infrastructure — kilo-code is the first consumer, but terminal, notebooks, git, and future features all need "which folders am I working in" — so workspaces get their own feature rather than living inside kilo-code. The two features never import each other's code; every cross-feature flow goes through SDK primitives (`sdk.plugins` capabilities, `sdk.events`, `sdk.state`).
+The integration ships as a bundled **workspaces plugin** and a built-in **kilo-code feature**. Workspaces are shared platform infrastructure — kilo-code is the first consumer, but terminal, notebooks, git, and future features all need "which folders am I working in" — so workspaces remain independently packaged rather than living inside kilo-code. The two never import each other's code; every cross-feature flow goes through SDK primitives (`sdk.plugins` capabilities, `sdk.events`, `sdk.state`).
 
-**`workspaces` feature** (platform-level):
+**`workspaces` plugin** (platform-level):
 
-| Layer        | Location                                        | Contents                                                                                                                                                                                             |
-| ------------ | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract     | `packages/contracts/src/features/workspaces.ts` | workspace/folder Zod schemas + `defineContract({ list, get, create, update, remove })`; exported from `packages/contracts/src/index.ts`                                                              |
-| Main         | `apps/desktop/src/main/features/workspaces/`    | `index.ts` (`mainRegister`: handlers + `mainSdk.plugins.expose` + post-commit `mainSdk.events.emit`), `WorkspaceService.ts` (CRUD, path validation, primary-folder invariant), `schema.ts` (Drizzle) |
-| Renderer     | `apps/web/src/features/workspaces/`             | workspace management dialog (create/edit/delete, folder picking), `useWorkspaces.ts` query factories, renderer capability exposure + event-driven query invalidation (§3.6)                          |
-| Persistence  | `${userData}/plugins/workspaces/data.db`        | own SQLite file at `path.join(mainSdk.storageDir, "data.db")` + own Drizzle migrations                                                                                                               |
-| Registration | both registries                                 | one `workspaces` entry in FEATURES + WEB_FEATURES; never hand-edit `Application.ts`                                                                                                                  |
+| Layer        | Location                                      | Contents                                                                                                                                                                                             |
+| ------------ | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract     | `plugins/workspaces/src/contracts/schemas.ts` | workspace/folder Zod schemas + `defineContract({ list, get, create, update, remove })`                                                                                                               |
+| Main         | `plugins/workspaces/src/main/`                | `index.ts` (`mainRegister`: handlers + `mainSdk.plugins.expose` + post-commit `mainSdk.events.emit`), `WorkspaceService.ts` (CRUD, path validation, primary-folder invariant), `schema.ts` (Drizzle) |
+| Renderer     | `plugins/workspaces/src/web/`                 | manifest-mounted workspace selector and management dialogs, renderer capability exposure + event-driven query invalidation (§3.6)                                                                    |
+| Persistence  | `${userData}/plugins/workspaces/data.db`      | own SQLite file at `path.join(mainSdk.storageDir, "data.db")` + own Drizzle migrations                                                                                                               |
+| Registration | bundled plugin registries                     | `plugin.json` plus one `workspaces` entry in each `BUNDLED_PLUGINS` registry                                                                                                                         |
 
 **`kilo-code` feature** (this integration):
 
@@ -222,7 +222,7 @@ The integration ships as **two features**. Workspaces are shared platform infras
 | Persistence  | `${userData}/plugins/kilo-code/`               | Phase 2 uses only `runtime/{config,data,cache,state}` for isolated Kilo state. Phase 3 introduces scope-aware session metadata; the usage phase introduces usage rollups.                                                    |
 | Errors       | —                                              | `FeatureError` for expected failures (survives IPC); never plain `Error`                                                                                                                                                     |
 
-**Built-in versus plugin boundary:** v1 deliberately starts both capabilities as built-in features under `apps/`, so `/chat`, `/settings`, and the two direct `FEATURES` / `WEB_FEATURES` registrations below are correct for this phase. Kilo's CLI metadata, staging implementation, tests, and generated resources are already co-located under `apps/desktop/src/main/features/kilo-code/`, so they move with the main feature directory. `installation.ts` knows only about injected resource roots; `builtInAssets.ts` is the single built-in adapter and is replaced by `mainSdk.resolvePluginAsset("resources/kilo")` during migration. Contracts, entries, tests, routes, navigation, and packaged assets otherwise follow the normal migration guide. Moving the dynamic `/chat/$sessionId` route to a plugin will also require the plugin route layer to support the same parameterized route semantics; the currently implemented plugin page lookup is for resolved `/plugins/*` pages.
+**Built-in versus plugin boundary:** workspaces is a bundled plugin under `plugins/workspaces/`; kilo-code remains built in under `apps/`. Kilo's CLI metadata, staging implementation, tests, and generated resources are co-located under `apps/desktop/src/main/features/kilo-code/`, so they move with the main feature directory when kilo-code is migrated. `installation.ts` knows only about injected resource roots; `builtInAssets.ts` is the single built-in adapter and is replaced by `mainSdk.resolvePluginAsset("resources/kilo")` during that migration. Moving the dynamic `/chat/$sessionId` route to a plugin will also require the plugin route layer to support the same parameterized route semantics; the currently implemented plugin page lookup is for resolved `/plugins/*` pages.
 
 Three host seams remain intentionally isolated rather than expanding the plugin platform during Phase 2:
 
@@ -331,7 +331,7 @@ Hard rule (per CONTEXT.md): each feature owns its own SQLite file and tables are
 
 ### 4.2 Tables
 
-**`workspaces` feature** (Drizzle, `apps/desktop/src/main/features/workspaces/schema.ts`):
+**`workspaces` plugin** (Drizzle, `plugins/workspaces/src/main/schema.ts`):
 
 ```typescript
 // workspaces — a named project grouping
@@ -546,7 +546,7 @@ Four sub-panels:
 
 Two contract files using `defineContract`/`defineMethod` (channel names unprefixed; scoped by `featureId` at registration).
 
-**`packages/contracts/src/features/workspaces.ts`** — the shared workspace surface. The renderer capability delegates to these channels; the structurally equivalent main capability calls `WorkspaceService` directly (§3.6):
+**`plugins/workspaces/src/contracts/schemas.ts`** — the plugin-owned workspace surface. The renderer capability delegates to these channels; the structurally equivalent main capability calls `WorkspaceService` directly (§3.6):
 
 ```typescript
 const workspaceFolderSchema = z.object({
@@ -682,13 +682,13 @@ Validation and errors follow the SDK rules: `mainSdk.channels(kiloCodeContract).
 | New route `/settings`        | `apps/web/src/routes/settings.tsx`                                                                               | Settings shell with section registry (§9)                                                                                                                                          |
 | Feature navigation           | `sdk.navigate` / `sdk.location`                                                                                  | Feature code never imports the shell's TanStack Router; direct route files remain shell-owned                                                                                      |
 | Home page rework             | `apps/web/src/features/home/HomeView.tsx`                                                                        | Remove stub adapter; wire selectors + sections (§5)                                                                                                                                |
-| Workspace management dialog  | `apps/web/src/features/workspaces/`                                                                              | App-level dialog mounted near root; opened via `workspaces.open-manager` event (§3.6)                                                                                              |
+| Workspace management dialog  | `plugins/workspaces/src/web/`                                                                                    | Manifest-mounted composer widget and dialogs; opened via `workspaces.open-manager` event (§3.6)                                                                                    |
 | Shell nav                    | `apps/web/src/components/layout/AppSidebarLayout.tsx`                                                            | Add nav entries: Chats (`/chat`), Settings (`/settings`) with `data-qa-id="nav-chats"`, `"nav-settings"`                                                                           |
 | App-wide right-panel space   | `packages/feature-sdk/src/types/zones.ts` + `apps/web/src/components/layout/AppRightPanelSlot.tsx` + root layout | Add and render the canonical `app-right-panel` zone plus route-aware surface selection; add feature-owned nested-zone plumbing for `chat-right-panel-tab`; no shell tab state (§8) |
 | Directory-picker delegate    | shell platform + preload + `packages/feature-sdk`                                                                | Native `showOpenDialog` exposed via `sdk.shell` (§3.5) — `sdk.fs` is not wired today                                                                                               |
 | Future settings k/v delegate | shell platform + `packages/feature-sdk` + `electron-store` dependency                                            | Add `sdk.settings` with the first concrete app preference, not in Phase 2 (§3.5, §4.4)                                                                                             |
 | Kilo CLI vendoring           | feature-owned `cli/` + `resources/kilo/`; thin `scripts/fetch-kilo.ts` host wrapper; Forge config                | Pinned, checksum-verified binaries packaged as extra resources (§3.2)                                                                                                              |
-| Registrations                | `apps/desktop/src/main/features/registry/features.ts`, `apps/web/src/features/features.ts`                       | **two** entries each: `workspaces` and `kilo-code` (FEATURES + WEB_FEATURES)                                                                                                       |
+| Registrations                | built-in feature registries plus both `bundled-plugins.ts` registries                                            | `kilo-code` remains in FEATURES/WEB_FEATURES; `workspaces` is loaded from its manifest through BUNDLED_PLUGINS                                                                     |
 
 Browser mode: `workspaces` ships a `browserRegister` with an in-memory `WorkspaceService` and exposes the main capability there (it is Node-light — the only Electron-ism is the folder picker, which the dialog hides in browser mode). Browser `MainSdk` and renderer SDK instances share one router-owned event bus and capability registry, so renderer consumers can use that exposure directly; do not replace it with a second same-named renderer wrapper. `kilo-code` needs Node to spawn its server, so standalone-browser mode reports an `unavailable` lifecycle status and throws the expected "requires the desktop app" error for connection/restart calls.
 
@@ -700,7 +700,7 @@ Each phase is independently shippable and tested. File paths are relative to the
 
 ### Phase 1 — Workspaces
 
-- Scaffold the **`workspaces`** feature (follow `.agents/skills/new-feature`): contract file + export, `WorkspaceService` (CRUD, primary-folder invariant, path validation) + SQLite, management dialog with folder picking, renderer capability + `active-workspace` store, main capability exposure, and post-commit main events (§3.6), FEATURES/WEB_FEATURES entries.
+- Build the **`workspaces`** capability as the self-contained `plugins/workspaces` package: plugin-owned contracts, `WorkspaceService` (CRUD, primary-folder invariant, path validation) + SQLite, management dialog with folder picking, renderer capability + `active-workspace` store, main capability exposure, post-commit main events, and bundled-plugin registrations (§3.6).
 - Add the native directory-picker delegate via `sdk.shell`.
 - Tests: unit (`WorkspaceService`), integration (workspaces SQLite round-trips), `createFakeSdk` browser test of the workspace dialog + renderer capability, `createFakeMainSdk`/`createLinkedFakeSdkPair` coverage of main capabilities and main→renderer events, `@smoke` e2e: create a workspace.
 
@@ -771,7 +771,7 @@ Follows [docs/TESTING.md](./TESTING.md) tiers and `.agents/skills/write-vitest` 
 - **Integration (`*.integration.test.ts`)**: SQLite round-trips for both features (workspaces + folders; session metadata and usage rollups), direct workspaces-capability resolution from kilo-code main, `SessionIndexService` against a **fake Kilo server** (see below), settings file writes into temp dirs.
 - **Browser (`*.browser.test.tsx`)**: all views with `createFakeSdk` from `@anaconda-agentic-desktop/testing` — never hand-rolled fakes. Sidebar sections, home sections, settings panels, chat composer selectors, workspace management dialog. kilo-code view tests stub the workspaces capability through `createFakeSdk({ plugins: { get: ... } })`, covering both the available capability and `null` degradation required by §3.6.
 - **App-level (`*.app.test.tsx`)**: router + providers tree: home → send → lands on `/chat/$sessionId`; settings nav; workspace create → selector reflects the relayed main event and renderer capability. A main-registration test separately covers workspaces expose → kilo-code consume without renderer involvement.
-- **E2E (`@smoke`, Playwright/Electron)**: one per feature area minimum — workspace creation, chat send/stream, tool approval, sidebar status + settle, usage section, terminal tab, settings provider key, marketplace install. Layout mirrors features: `e2e/specs/features/workspaces/`, `e2e/specs/features/kilo-code/` (matching page objects under `e2e/pages/features/`).
+- **E2E (`@smoke`, Playwright/Electron)**: one per feature area minimum — workspace creation, chat send/stream, tool approval, sidebar status + settle, usage section, terminal tab, settings provider key, marketplace install. The workspace smoke suite lives with its plugin under `plugins/workspaces/e2e/`; built-in kilo-code coverage remains under `e2e/specs/features/kilo-code/`.
 - **Fake Kilo server fixture** (new, `packages/testing` or `e2e/fixtures`): a small Node HTTP+SSE server implementing the subset of the Kilo v2 API we consume: Basic auth (`401` on wrong/missing credentials — exercises our identity check), `/global/health`, `/global/event` with the `{ directory, payload }` envelope, session CRUD (incl. `permission` rulesets), messages, `session.status`/part-delta/permission events, provider+agent lists, cost fields. Used by integration tests and chat e2e so CI never needs real model credentials. Scripted scenarios: instant reply, slow stream, permission-ask, question-ask, error, cost-bearing messages, and **auto-grant scoping** (a session asserts NO `permission.asked` for paths covered by its own §3.7 ruleset, and that an ask DOES surface for a folder registered to a different workspace).
 - Coverage: repo gate is 90% lines/branches/functions/statements; the derivation/projection/aggregation modules should be at or near 100%.
 - All interactive elements get stable `data-qa-id` attributes.

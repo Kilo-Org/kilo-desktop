@@ -5,8 +5,9 @@ import path from "node:path";
 
 import { asc, eq } from "drizzle-orm";
 
-import type { Workspace, WorkspaceFolderInput } from "@anaconda-agentic-desktop/contracts";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+
+import type { Workspace, WorkspaceFolderInput } from "../contracts/schemas.js";
 
 import type { WorkspacesDatabase } from "./db.js";
 import { workspaceFolders, workspaces } from "./schema.js";

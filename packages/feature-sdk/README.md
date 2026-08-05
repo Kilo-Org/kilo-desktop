@@ -216,13 +216,26 @@ const remove = sdk.contribute(STATUS_BAR_ZONE, {
 remove(); // e.g. when syncing finishes
 ```
 
-For a widget that should be **always present** while the plugin is active (a status-bar count, a dashboard card), declare it in `plugin.json` `contributes.zones` instead — the host mounts it at activation, independent of any page:
+For a widget whose registration should last for the plugin lifetime, declare it in `plugin.json` `contributes.zones`. It renders whenever the shell exposes that zone's outlet:
 
 ```jsonc
 "contributes": {
   "zones": [{ "zone": "status-bar", "component": "TodosStatusBarItem" }]
 }
 ```
+
+For lifecycle behavior that must remain mounted across every route—capability
+exposure, shared observable state, global dialogs, or event listeners—declare a
+provider exported by the plugin's web entry:
+
+```jsonc
+"contributes": {
+  "providers": [{ "component": "WorkspacesFeatureProvider", "priority": 10 }]
+}
+```
+
+The shell composes providers inside its SDK and query providers. Higher-priority
+providers wrap lower-priority providers; equal priorities keep plugin registry order.
 
 **Use routes, not contributions, for the feature's main view** — declare them in `plugin.json` `contributes.routes` (the host mounts them; plugins never touch the router).
 

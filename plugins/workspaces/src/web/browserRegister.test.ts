@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Workspace, WorkspaceCapabilities } from "@anaconda-agentic-desktop/contracts";
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
+import type { Workspace, WorkspaceCapabilities } from "../contracts/schemas.js";
 import { workspacesBrowserRegister } from "./browserRegister";
 
 describe("workspacesBrowserRegister", () => {
@@ -34,6 +34,14 @@ describe("workspacesBrowserRegister", () => {
 			folders: [{ path: "C:\\projects\\Project", isPrimary: true }],
 		})) as Workspace;
 		expect(duplicate.name).toBe("Project (2)");
+		const thirdProject = (await sdk.invoke("create", {
+			folders: [{ path: "/another/Project", isPrimary: true }],
+		})) as Workspace;
+		expect(thirdProject.name).toBe("Project (3)");
+		const fallbackName = (await sdk.invoke("create", {
+			folders: [{ path: "/", isPrimary: true }],
+		})) as Workspace;
+		expect(fallbackName.name).toBe("Workspace");
 		const explicit = (await sdk.invoke("create", {
 			name: "  Alpha  ",
 			folders: [{ path: "/projects/Alpha", isPrimary: true }],
@@ -43,6 +51,8 @@ describe("workspacesBrowserRegister", () => {
 			"Alpha",
 			"Project",
 			"Project (2)",
+			"Project (3)",
+			"Workspace",
 		]);
 
 		const retainedFolderId = project.folders[0]!.id;
@@ -75,6 +85,9 @@ describe("workspacesBrowserRegister", () => {
 		await expect(sdk.invoke("create", { folders: [] })).rejects.toMatchObject({
 			code: "VALIDATION",
 		});
+		await expect(
+			sdk.invoke("create", { folders: [{ path: "/project", isPrimary: false }] }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
 		await expect(
 			sdk.invoke("create", {
 				folders: [

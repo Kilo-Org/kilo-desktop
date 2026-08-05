@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-	KiloServerConnection,
-	KiloServerStatus,
-	WorkspaceCapabilities,
-} from "@anaconda-agentic-desktop/contracts";
+import type { KiloServerConnection, KiloServerStatus } from "@anaconda-agentic-desktop/contracts";
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
 import { registerKiloCode, type KiloServerController } from "./index.js";
+import type { WorkspaceCapabilities } from "./workspace-capability.js";
 
 function fakeServer() {
 	const connection: KiloServerConnection = {
@@ -48,10 +45,6 @@ describe("kilo-code main registration", () => {
 		);
 		workspaces.plugins.expose("workspaceService", {
 			get,
-			list: vi.fn(),
-			create: vi.fn(),
-			update: vi.fn(),
-			remove: vi.fn(),
 		} satisfies WorkspaceCapabilities["workspaceService"]);
 		const server = fakeServer();
 		registerKiloCode(mainSdk, { createServer: () => server });

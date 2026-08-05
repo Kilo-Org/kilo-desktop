@@ -9,6 +9,7 @@ const validManifest = {
 	main: "./src/main/index.ts",
 	web: "./src/web/index.ts",
 	contributes: {
+		providers: [{ component: "TodosProvider", priority: 10 }],
 		routes: [{ path: "/todos", component: "TodoList", title: "Todo List" }],
 		nav: [{ to: "/todos", label: "Todos", icon: "list-checks" }],
 		zones: [{ zone: "status-bar", component: "TodosStatusBarItem" }],
@@ -19,6 +20,7 @@ describe("pluginManifestSchema", () => {
 	it("accepts a full manifest", () => {
 		const manifest = parsePluginManifest(validManifest);
 		expect(manifest.id).toBe("todos");
+		expect(manifest.contributes.providers).toEqual([{ component: "TodosProvider", priority: 10 }]);
 		expect(manifest.contributes.routes).toEqual([
 			{ path: "/todos", component: "TodoList", title: "Todo List" },
 		]);
@@ -37,7 +39,7 @@ describe("pluginManifestSchema", () => {
 			version: "0.1.0",
 			main: "./src/main/index.ts",
 		});
-		expect(manifest.contributes).toEqual({ routes: [], nav: [], zones: [] });
+		expect(manifest.contributes).toEqual({ providers: [], routes: [], nav: [], zones: [] });
 	});
 
 	it("defaults omitted contributes arrays individually", () => {
@@ -49,6 +51,7 @@ describe("pluginManifestSchema", () => {
 			contributes: { nav: [{ to: "/x", label: "X" }] },
 		});
 		expect(manifest.contributes.routes).toEqual([]);
+		expect(manifest.contributes.providers).toEqual([]);
 		expect(manifest.contributes.zones).toEqual([]);
 		expect(manifest.contributes.nav).toHaveLength(1);
 	});
@@ -130,7 +133,24 @@ describe("pluginManifestSchema", () => {
 		expect(result.success).toBe(false);
 	});
 
-	it("rejects routes/zones on a manifest without a web entry", () => {
+	it("rejects provider contributions without a component", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: { providers: [{ priority: 1 }] },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects providers/routes/zones on a manifest without a web entry", () => {
+		const providersResult = pluginManifestSchema.safeParse({
+			id: "headless",
+			displayName: "Headless",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			contributes: { providers: [{ component: "Provider" }] },
+		});
+		expect(providersResult.success).toBe(false);
+
 		const routesResult = pluginManifestSchema.safeParse({
 			id: "headless",
 			displayName: "Headless",
@@ -179,7 +199,7 @@ describe("pluginManifestSchema", () => {
 	it("rejects unknown contributes keys (strict)", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			contributes: { routes: [], nav: [], zones: [], menus: [] },
+			contributes: { providers: [], routes: [], nav: [], zones: [], menus: [] },
 		});
 		expect(result.success).toBe(false);
 	});

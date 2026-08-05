@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { Workspace } from "@anaconda-agentic-desktop/contracts";
+import type { Workspace } from "../contracts/schemas.js";
 
 export type WorkspacesContextValue = {
 	workspaces: Workspace[];

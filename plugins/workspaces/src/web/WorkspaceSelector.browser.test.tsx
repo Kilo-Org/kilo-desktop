@@ -12,6 +12,7 @@ import {
 } from "@anaconda-agentic-desktop/testing";
 
 import { workspacesBrowserRegister } from "./browserRegister";
+import { WorkspacesFeatureProvider } from "./WorkspacesFeatureProvider";
 import { WorkspacesWidget } from "./WorkspacesWidget";
 
 function renderSelector(shell: Partial<SDK["shell"]> = {}) {
@@ -23,7 +24,9 @@ function renderSelector(shell: Partial<SDK["shell"]> = {}) {
 	const result = render(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
-				<WorkspacesWidget />
+				<WorkspacesFeatureProvider>
+					<WorkspacesWidget />
+				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
 	);

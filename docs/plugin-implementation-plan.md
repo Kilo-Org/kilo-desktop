@@ -150,7 +150,7 @@ Migration from `apps/` is a filesystem move. Migration to an external repo is `n
 
 **Scope:**
 
-- Define `plugin.json` Zod schema (`id`, `displayName`, `version`, `main`, `web`, `routes`, `zones`)
+- Define `plugin.json` Zod schema (`id`, `displayName`, `version`, `main`, `web`, `providers`, `routes`, `zones`)
 - **Add `plugins/*` to `pnpm-workspace.yaml`** (one-time; today the globs are only `apps/*` and `packages/*`)
 - Move **todos** to `plugins/todos/` with the package structure above (todos is throwaway and now fully SDK-based after Slice 1 — the ideal first plugin)
 - **Persistence:** with Decision #20 done in Slice 1, this is a pure move — todos already opens `${mainSdk.storageDir}/data.db` and its drizzle schema/migrations already live inside the feature directory; `git mv` them to `plugins/todos/drizzle/` and verify the runtime path is unchanged (`${userData}/plugins/todos/data.db`)

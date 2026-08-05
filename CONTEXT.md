@@ -36,6 +36,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
 - `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`, `home-composer-leading-action`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
+- `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
 - `sdk.commands` — command palette entries
 - `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)
@@ -111,18 +112,18 @@ Three tiers decide where a dependency lives:
 
 ## Terminology
 
-| Term               | Meaning                                                                                                                                                                                               |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Feature**        | A product capability developed inside `apps/` that programs against the SDK. Will become a plugin later.                                                                                              |
-| **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                                  |
-| **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                                        |
-| **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                              |
-| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers, use `mainSdk.events` / `mainSdk.plugins` for main-side communication, and consume host logging/network delegates.          |
-| **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                                      |
-| **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                          |
-| **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                                |
-| **Contribution**   | A UI element a plugin adds to a shell zone. Declared statically in `plugin.json` `contributes` (host-mounted, persistent) or registered imperatively via `sdk.contribute` (page-scoped, conditional). |
-| **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                                |
+| Term               | Meaning                                                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Feature**        | A product capability developed inside `apps/` that programs against the SDK. Will become a plugin later.                                                                                     |
+| **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                         |
+| **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                               |
+| **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                     |
+| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers, use `mainSdk.events` / `mainSdk.plugins` for main-side communication, and consume host logging/network delegates. |
+| **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                             |
+| **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                 |
+| **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                       |
+| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, host-mounted zone widgets, routes, and nav; conditional zone UI uses `sdk.contribute`.                 |
+| **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                       |
 
 ## Conventions
 

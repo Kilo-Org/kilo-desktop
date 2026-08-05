@@ -13,12 +13,27 @@ import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 afterEach(() => {
 	cleanup();
+	localStorage.clear();
 });
 
 /**
  * App-level: router + provider composition. Feature CRUD lives in browser/e2e tiers.
  */
 describe("AppProviders (app-level)", () => {
+	it("keeps the workspaces lifecycle active without rendering its home widget", async () => {
+		const localApi = createBrowserLocalApi();
+		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
+		render(
+			<AppProviders localApi={localApi} system={system}>
+				<div>Non-home route</div>
+			</AppProviders>,
+		);
+
+		system.getSdk("workspaces").events.emit("open-manager");
+
+		await expect.element(page.getByRole("heading", { name: "Create workspace" })).toBeVisible();
+	});
+
 	it("boots the shell and navigates into registered feature routes", async () => {
 		const localApi = createBrowserLocalApi();
 		const system = createAppFeatureSystem(localApi, WEB_FEATURES);

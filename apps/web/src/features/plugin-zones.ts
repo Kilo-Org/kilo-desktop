@@ -9,9 +9,9 @@ import { PLUGIN_DISCOVERY } from "./features.js";
 
 /**
  * A persistent zone widget declared in a plugin manifest (`contributes.zones`).
- * Unlike the page-scoped imperative `sdk.contribute`, these are host-mounted at
- * activation and stay present for the plugin's lifetime — the right model for a
- * status-bar badge or dashboard card that should always be there.
+ * Unlike the page-scoped imperative `sdk.contribute`, these are registered at
+ * activation for the plugin lifetime and render whenever the shell exposes the
+ * target zone. App-lifetime lifecycle behavior belongs in `contributes.providers`.
  */
 export interface PluginZoneContribution {
 	pluginId: string;

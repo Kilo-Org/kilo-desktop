@@ -2,6 +2,8 @@
 
 Status: **partially built.** Steps 1 and 5 have landed in `apps/desktop/src/main/features/notebook/`; the original "hard blocker" is resolved. Sections 3, 4 and 6 of the work breakdown are still open. See [What has landed](#what-has-landed) before acting on anything below — two of this doc's original recommendations were inverted by what we found while building.
 
+> **Sections 3 and 4 below are superseded.** They plan a same-origin `/notebook/` path; the chosen design serves the bundle from a separate protocol **host**, which removes the Vite `base` patch, the directory-index fallback, and the test inversion they call for. Follow [notebook-protocol-csp-handoff.md](./notebook-protocol-csp-handoff.md) instead, with the rationale in [notebook-embedding-decisions.md](./notebook-embedding-decisions.md). Read sections 3 and 4 only for the constraints they record.
+
 Goal: ship nteract's notebook UI inside the packaged agentic-desktop app, installed with it, with real Python execution and no dev server.
 
 ## What has landed

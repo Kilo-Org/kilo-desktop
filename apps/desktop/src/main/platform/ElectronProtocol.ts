@@ -32,7 +32,11 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
 	".map": "application/json; charset=utf-8",
 	".png": "image/png",
 	".svg": "image/svg+xml",
+	".ttf": "font/ttf",
 	".txt": "text/plain; charset=utf-8",
+	// Streaming WebAssembly compilation rejects anything but this exact type, so
+	// falling through to application/octet-stream breaks the notebook's wasm.
+	".wasm": "application/wasm",
 	".webp": "image/webp",
 	".woff": "font/woff",
 	".woff2": "font/woff2",
@@ -42,8 +46,38 @@ export function getDesktopScheme(isDevelopment: boolean): string {
 	return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
 }
 
+export function getDesktopOrigin(isDevelopment: boolean, host: string = DESKTOP_HOST): string {
+	return `${getDesktopScheme(isDevelopment)}://${host}`;
+}
+
 export function getDesktopUrl(isDevelopment: boolean): string {
-	return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}/#/`;
+	return `${getDesktopOrigin(isDevelopment)}/#/`;
+}
+
+/**
+ * A third-party web bundle served from its own host on our scheme, framed by the
+ * app renderer. Contributed by a feature (see `collectEmbeddedHosts`) rather than
+ * wired here, so `platform/` stays free of feature names.
+ *
+ * A distinct host — not a path under `app` — is what makes this a distinct
+ * origin, which is what earns the separate CSP below plus a storage partition
+ * and no IPC trust (`isTrustedRendererUrl` matches `app` only). See
+ * docs/notebook-embedding-decisions.md, D1.
+ */
+export interface EmbeddedWebHost {
+	/** Host component on the desktop scheme, e.g. `notebook`. */
+	readonly host: string;
+	/**
+	 * Directory the bundle is served from. `undefined` means this build ships no
+	 * bundle — an expected state, served as 404 rather than treated as an error.
+	 */
+	readonly root: string | undefined;
+	/**
+	 * Same-origin JSON endpoints the bundle expects to fetch, by exact pathname.
+	 * Needed because nteract's browser host fetches a config path it hardcodes,
+	 * so the endpoint has to appear on the bundle's own origin.
+	 */
+	readonly routes?: Readonly<Record<string, () => Promise<unknown>>>;
 }
 
 export function registerDesktopSchemes(): void {
@@ -73,6 +107,7 @@ const RELAY_WS_SOURCES = Array.from({ length: 9348 - 9333 + 1 }, (_unused, index
 export function createContentSecurityPolicy(
 	developmentOrigin?: string,
 	inlineScriptHashes: readonly string[] = [],
+	frameOrigins: readonly string[] = [],
 ): string {
 	const developmentSources = developmentOrigin ? ` ${new URL(developmentOrigin).origin} ws:` : "";
 	const trustedInlineScripts = inlineScriptHashes.map((hash) => ` 'sha256-${hash}'`).join("");
@@ -92,10 +127,49 @@ export function createContentSecurityPolicy(
 		// permit being framed by the same-origin app (a `'none'` here blocks the
 		// relay iframe and breaks tool discovery). No cross-origin embedders exist
 		// under the custom scheme, so `'self'` still blocks external framing.
-		"frame-src 'self'",
+		`frame-src 'self'${frameOrigins.length > 0 ? ` ${frameOrigins.join(" ")}` : ""}`,
 		"object-src 'none'",
 		"base-uri 'none'",
 		"frame-ancestors 'self'",
+	].join("; ");
+}
+
+/**
+ * Policy for an embedded third-party bundle. Deliberately looser than the app's
+ * own — and deliberately written here rather than declared by the feature that
+ * contributes the bundle, so the party being constrained is not the party
+ * choosing the constraint (docs/notebook-embedding-decisions.md, D2).
+ *
+ * What the extra grants buy, none of which the app origin gains:
+ * - `'wasm-unsafe-eval'`: the notebook bundle instantiates a wasm module.
+ * - `ws://127.0.0.1:*`: the loopback relay carrying typed frames to the daemon.
+ * - `http://127.0.0.1:*` on connect/img/media: the daemon's blob server binds an
+ *   ephemeral port, so an exact port would make this policy a function of the
+ *   running sidecar. Tightenable to 'self' once blobs are served from our own
+ *   protocol — see D4.
+ * - `worker-src blob:`: renderer plugins start workers from blob URLs.
+ */
+export function createEmbeddedContentSecurityPolicy(
+	appOrigin: string,
+	inlineScriptHashes: readonly string[] = [],
+): string {
+	const trustedInlineScripts = inlineScriptHashes.map((hash) => ` 'sha256-${hash}'`).join("");
+	const loopback = "http://127.0.0.1:*";
+	return [
+		"default-src 'self'",
+		`script-src 'self' 'wasm-unsafe-eval'${trustedInlineScripts}`,
+		"style-src 'self' 'unsafe-inline'",
+		`img-src 'self' data: blob: ${loopback}`,
+		"font-src 'self' data:",
+		`media-src 'self' data: blob: ${loopback}`,
+		`connect-src 'self' ${loopback} ws://127.0.0.1:*`,
+		"worker-src 'self' blob:",
+		"object-src 'none'",
+		"base-uri 'none'",
+		"form-action 'none'",
+		// The child's own header is what decides whether it can be framed, so the
+		// app origin has to be named here — `frame-src` on the parent is not enough.
+		`frame-ancestors ${appOrigin}`,
 	].join("; ");
 }
 

@@ -55,7 +55,7 @@ describe("kilo-code main registration", () => {
 			fetch,
 			logger,
 			onStatusChange,
-			runtimeDirectory: "/plugin-data/kilo-code/runtime",
+			runtimeDirectory: path.join("/plugin-data/kilo-code", "runtime"),
 		});
 		mainSdk.dispose();
 	});

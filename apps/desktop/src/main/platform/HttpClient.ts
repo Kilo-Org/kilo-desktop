@@ -5,7 +5,6 @@ export class HttpClient {
 		return net.request(options);
 	}
 
-	fetch(input: string | globalThis.Request, init?: RequestInit): Promise<Response> {
-		return net.fetch(input, init);
-	}
+	readonly fetch: typeof globalThis.fetch = (input, init) =>
+		net.fetch(input instanceof URL ? input.toString() : input, init);
 }

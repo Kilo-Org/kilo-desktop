@@ -5,7 +5,7 @@ import type {
 	ChannelMap,
 } from "../channel-map.js";
 import { FeatureError } from "../errors.js";
-import type { ChannelHandlers, MainSdk } from "../types/sdk.js";
+import type { ChannelHandlers, MainSdk, MainSdkFetch, MainSdkLogger } from "../types/sdk.js";
 import type { SchemaLike } from "../types/schema.js";
 import { CapabilityRegistry } from "./capability-registry.js";
 import { emitFeatureEvent, EventBus, type FeatureEvent } from "./event-bus.js";
@@ -39,6 +39,10 @@ export interface FeatureRouterOptions {
 export interface CreateMainSdkOptions {
 	/** Optional main-to-renderer relay. Browser mode omits it. */
 	emitEvent?: (event: FeatureEvent) => void;
+	/** Feature-scoped host logger. Defaults to a console-backed logger. */
+	logger?: MainSdkLogger;
+	/** Host fetch implementation. Defaults to the current runtime's global fetch. */
+	fetch?: MainSdkFetch;
 	/**
 	 * Resolve (and create, if needed) the feature's storage directory.
 	 * Called lazily on first `mainSdk.storageDir` access and cached.
@@ -52,6 +56,15 @@ export interface CreateMainSdkOptions {
 	 * `resolvePluginAsset` then throws.
 	 */
 	resolvePluginAsset?: (subpath: string) => string;
+}
+
+function createConsoleLogger(featureId: string): MainSdkLogger {
+	const prefix = `[${featureId}]`;
+	return {
+		info: (message, ...args) => console.info(prefix, message, ...args),
+		warn: (message, ...args) => console.warn(prefix, message, ...args),
+		error: (message, ...args) => console.error(prefix, message, ...args),
+	};
 }
 
 /**
@@ -136,6 +149,9 @@ export class FeatureRouter {
 
 		const resolveStorageDir = options?.resolveStorageDir;
 		const resolvePluginAsset = options?.resolvePluginAsset;
+		const logger = options?.logger ?? createConsoleLogger(featureId);
+		const fetchImpl: MainSdkFetch =
+			options?.fetch ?? ((input, init) => globalThis.fetch(input, init));
 		let storageDir: string | undefined;
 		const disposables = this.disposables.get(featureId)!;
 		const exposedCapabilities = new Set<string>();
@@ -176,6 +192,8 @@ export class FeatureRouter {
 
 		return {
 			featureId,
+			logger,
+			net: { fetch: fetchImpl },
 			events,
 			plugins,
 			get storageDir(): string {

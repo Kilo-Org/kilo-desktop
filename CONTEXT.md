@@ -38,6 +38,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.commands` — command palette entries
 - `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)
+- `mainSdk.logger` / `mainSdk.net.fetch` — main-process shell delegates. Electron supplies a feature-scoped `electron-log` sink and `net.fetch`; browser/test environments provide runtime implementations or explicit fakes. Plugins never import Electron or shell logging modules directly.
 
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
 In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Only `browserRegister` boots in this mode — features without one are skipped with a warning. Node-free features opt in with `browserRegister: register`; features using Node APIs (SQLite, fs) must provide browser-safe fakes.
@@ -115,7 +116,7 @@ Three tiers decide where a dependency lives:
 | **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                                  |
 | **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                                        |
 | **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                              |
-| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers and use `mainSdk.events` / `mainSdk.plugins` for main-side feature communication.                                           |
+| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers, use `mainSdk.events` / `mainSdk.plugins` for main-side communication, and consume host logging/network delegates.          |
 | **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                                      |
 | **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                          |
 | **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                                |

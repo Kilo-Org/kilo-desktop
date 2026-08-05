@@ -81,6 +81,18 @@ describe("createFakeMainSdk", () => {
 		expect(() => mainSdk.resolvePluginAsset("drizzle")).toThrow(/no plugin asset directory/);
 	});
 
+	it("uses injected logger and network delegates", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const fetch = vi.fn(async () => Response.json({ ok: true })) as typeof globalThis.fetch;
+		const mainSdk = createFakeMainSdk({ featureId: "todos", logger, fetch });
+
+		expect(mainSdk.logger).toBe(logger);
+		mainSdk.logger.info("ready", { id: "1" });
+		expect(logger.info).toHaveBeenCalledWith("ready", { id: "1" });
+		await expect(mainSdk.net.fetch("https://example.test")).resolves.toBeInstanceOf(Response);
+		expect(fetch).toHaveBeenCalledWith("https://example.test");
+	});
+
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos" });
 		const order: string[] = [];

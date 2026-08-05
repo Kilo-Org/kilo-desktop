@@ -540,6 +540,20 @@ export interface DispatchIntent {
 
 // ─── MainSdk (main-process side) ─────────────────────────────────────────────
 
+/** Feature-scoped application logger supplied by the host process. */
+export interface MainSdkLogger {
+	info(message: string, ...args: unknown[]): void;
+	warn(message: string, ...args: unknown[]): void;
+	error(message: string, ...args: unknown[]): void;
+}
+
+/** Host-backed fetch implementation used by main-process features. */
+export type MainSdkFetch = typeof globalThis.fetch;
+
+export interface MainSdkNet {
+	fetch: MainSdkFetch;
+}
+
 /**
  * Typed handler registrar bound to a channel map. Bind once via
  * `mainSdk.channels(map)`, then register each channel — or use `handleAll`
@@ -579,6 +593,10 @@ export interface ChannelHandlers<C extends ChannelMap> {
  */
 export interface MainSdk {
 	readonly featureId: string;
+	/** Feature-scoped host logger (Electron uses electron-log). */
+	readonly logger: MainSdkLogger;
+	/** Host networking delegate (Electron uses net.fetch). */
+	readonly net: MainSdkNet;
 	/** Cross-process, namespaced events. Emissions are prefixed with featureId. */
 	readonly events: Pick<SdkEvents, "emit" | "on">;
 	/** Main-process cross-feature capability exposure and discovery. */

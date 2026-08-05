@@ -32,6 +32,9 @@ export type {
 	DispatchIntent,
 	ChannelHandlers,
 	MainSdk,
+	MainSdkFetch,
+	MainSdkLogger,
+	MainSdkNet,
 	FeatureRegistration,
 } from "./types/sdk.js";
 

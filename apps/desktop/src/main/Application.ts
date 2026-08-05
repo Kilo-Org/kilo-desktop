@@ -27,7 +27,9 @@ import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
 import { featureFsSandboxDir } from "./platform/featureStorage.js";
+import { HttpClient } from "./platform/HttpClient.js";
 import { IpcServer } from "./platform/IpcServer.js";
+import { createLogger } from "./platform/logger.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { configureUpdater } from "./platform/Updater.js";
@@ -39,6 +41,7 @@ export class Application {
 	readonly #security = new ElectronSecurity();
 	readonly #shell = new ElectronShell();
 	readonly #notifications = new ElectronNotifications();
+	readonly #http = new HttpClient();
 	// sdk.fs sandbox — a dedicated `fs/` subdir of the feature's Decision #20
 	// storage dir, kept a SIBLING of its SQLite data.db so no fs call can reach
 	// the database (see featureStorage.ts).
@@ -114,6 +117,8 @@ export class Application {
 			bootFeatures(FEATURES, {
 				storageRoot: this.#app.getPath("userData"),
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
+				createLogger,
+				fetch: this.#http.fetch,
 			}),
 		);
 

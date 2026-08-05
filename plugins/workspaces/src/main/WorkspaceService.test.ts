@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createWorkspacesDatabase, type WorkspacesDatabase } from "./db.js";
 import { WorkspaceService } from "./WorkspaceService.js";
 
-const MIGRATIONS = path.resolve(import.meta.dirname, "../../../../drizzle/workspaces");
+const MIGRATIONS = path.resolve(import.meta.dirname, "../../drizzle");
 
 describe("WorkspaceService", () => {
 	let root: string;

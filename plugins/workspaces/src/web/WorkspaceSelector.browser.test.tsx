@@ -1,29 +1,31 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import {
 	createFakeFeatureSystem,
 	createFakeMainSdk,
 	createFakeSdk,
 } from "@anaconda-agentic-desktop/testing";
 
-import { AppProviders } from "@/app/AppProviders";
-import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-import { WorkspaceSelector } from "./WorkspaceSelector";
 import { workspacesBrowserRegister } from "./browserRegister";
+import { WorkspacesWidget } from "./WorkspacesWidget";
 
 function renderSelector(shell: Partial<SDK["shell"]> = {}) {
-	const api = createBrowserLocalApi();
 	const sdk = createFakeSdk({ featureId: "workspaces", shell });
 	const mainSdk = createFakeMainSdk({ featureId: "workspaces", services: sdk.services });
 	workspacesBrowserRegister(mainSdk);
 	const system = createFakeFeatureSystem({ sdks: { workspaces: sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const result = render(
-		<AppProviders localApi={api} system={system}>
-			<WorkspaceSelector />
-		</AppProviders>,
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesWidget />
+			</QueryClientProvider>
+		</SdkProvider>,
 	);
 	return { ...result, sdk };
 }

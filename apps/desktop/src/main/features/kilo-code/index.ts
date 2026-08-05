@@ -5,13 +5,13 @@ import {
 	type KiloCodeService,
 	type KiloServerConnection,
 	type KiloServerStatus,
-	type WorkspaceCapabilities,
 } from "@anaconda-agentic-desktop/contracts";
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { KiloServerManager } from "./KiloServerManager.js";
 import { getBuiltInKiloResourceRoots } from "./builtInAssets.js";
 import { resolveKiloInstallation } from "./installation.js";
+import type { WorkspaceCapabilities } from "./workspace-capability.js";
 
 export interface KiloServerController {
 	readonly status: KiloServerStatus;

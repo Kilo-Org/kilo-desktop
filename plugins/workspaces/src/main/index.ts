@@ -1,24 +1,17 @@
-import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { workspacesContract } from "@anaconda-agentic-desktop/contracts";
-import type {
-	WorkspaceCapabilityService,
-	WorkspacesService,
-} from "@anaconda-agentic-desktop/contracts";
+import type { WorkspaceCapabilityService, WorkspacesService } from "../contracts/schemas.js";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import { workspacesContract } from "../contracts/schemas.js";
 import { createWorkspacesDatabase } from "./db.js";
 import { WorkspaceService } from "./WorkspaceService.js";
 
-function migrationsFolder(): string {
-	const bundled = path.join(import.meta.dirname, "drizzle", "workspaces");
-	if (existsSync(bundled)) return bundled;
-	return path.resolve(import.meta.dirname, "../../../../drizzle/workspaces");
-}
-
 export function mainRegister(mainSdk: MainSdk): void {
-	const db = createWorkspacesDatabase(path.join(mainSdk.storageDir, "data.db"), migrationsFolder());
+	const db = createWorkspacesDatabase(
+		path.join(mainSdk.storageDir, "data.db"),
+		mainSdk.resolvePluginAsset("drizzle"),
+	);
 	const service = new WorkspaceService(db);
 
 	const api: WorkspacesService = {

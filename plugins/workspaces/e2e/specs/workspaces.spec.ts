@@ -1,4 +1,4 @@
-import { test } from "../../fixtures/features/workspaces.js";
+import { test } from "../fixtures.js";
 
 test.describe("Workspaces @smoke", () => {
 	test("creates an unnamed workspace from the native folder picker", async ({

@@ -4,10 +4,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { WorkspaceCapabilities } from "@anaconda-agentic-desktop/contracts";
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
+import type { WorkspaceCapabilities } from "../contracts/schemas.js";
 import { mainRegister } from "./index.js";
+
+const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
 
 describe("workspaces mainRegister", () => {
 	const directories: string[] = [];
@@ -23,7 +25,11 @@ describe("workspaces mainRegister", () => {
 		const project = path.join(storageDir, "Project");
 		fs.mkdirSync(project);
 		directories.push(storageDir);
-		const mainSdk = createFakeMainSdk({ featureId: "workspaces", storageDir });
+		const mainSdk = createFakeMainSdk({
+			featureId: "workspaces",
+			storageDir,
+			pluginDir: PLUGIN_DIR,
+		});
 		mainRegister(mainSdk);
 		return { mainSdk, project, storageDir };
 	}

@@ -4,6 +4,10 @@ import { page } from "vitest/browser";
 
 import { AppProviders } from "@/app/AppProviders";
 import { WEB_FEATURES } from "@/features/features";
+import {
+	PLUGIN_ZONE_CONTRIBUTIONS,
+	registerPluginZoneContributions,
+} from "@/features/plugin-zones";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 
@@ -18,6 +22,9 @@ describe("AppProviders (app-level)", () => {
 	it("boots the shell and navigates into registered feature routes", async () => {
 		const localApi = createBrowserLocalApi();
 		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
+		registerPluginZoneContributions(system, PLUGIN_ZONE_CONTRIBUTIONS, {
+			desktopAvailable: false,
+		});
 		const { baseElement } = render(<AppProviders localApi={localApi} system={system} />);
 		const screen = page.elementLocator(baseElement);
 

@@ -1,4 +1,4 @@
-import type { Workspace } from "@anaconda-agentic-desktop/contracts";
+import type { Workspace } from "./workspace-capability.js";
 
 export interface ExternalDirectoryRule {
 	readonly permission: "external_directory";

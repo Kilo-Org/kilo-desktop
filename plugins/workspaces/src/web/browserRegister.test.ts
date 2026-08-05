@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Workspace, WorkspaceCapabilities } from "@anaconda-agentic-desktop/contracts";
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
+import type { Workspace, WorkspaceCapabilities } from "../contracts/schemas.js";
 import { workspacesBrowserRegister } from "./browserRegister";
 
 describe("workspacesBrowserRegister", () => {

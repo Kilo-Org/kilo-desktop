@@ -27,10 +27,17 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
 
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
+import workspacesManifest from "@anaconda-agentic-desktop/plugin-workspaces/plugin.json" with { type: "json" };
+import * as workspacesMain from "@anaconda-agentic-desktop/plugin-workspaces/main";
 
 import { bundledPluginAssetResolver } from "./bundled-plugin-assets.js";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{
+		manifest: workspacesManifest,
+		module: workspacesMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-workspaces"),
+	},
 	{
 		manifest: todosManifest,
 		module: todosMain,

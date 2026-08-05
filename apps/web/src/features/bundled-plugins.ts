@@ -17,7 +17,10 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
 
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosWeb from "@anaconda-agentic-desktop/plugin-todos/web";
+import workspacesManifest from "@anaconda-agentic-desktop/plugin-workspaces/plugin.json" with { type: "json" };
+import * as workspacesWeb from "@anaconda-agentic-desktop/plugin-workspaces/web";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{ manifest: workspacesManifest, module: workspacesWeb },
 	{ manifest: todosManifest, module: todosWeb },
 ];

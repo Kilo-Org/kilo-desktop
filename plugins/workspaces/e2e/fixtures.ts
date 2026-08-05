@@ -2,8 +2,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { WorkspacesPage } from "../../pages/features/workspaces/workspaces-page.js";
-import { test as shellTest } from "../shell.js";
+import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
+
+import { WorkspacesPage } from "./pages/workspaces-page.js";
 
 type WorkspacesFixtures = {
 	workspacesPage: WorkspacesPage;

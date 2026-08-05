@@ -1,6 +1,31 @@
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 export class KiloCodePage {
+	async createWorkspace(folderPath: string, name: string): Promise<void> {
+		await getPage().evaluate(
+			async ({ folderPath, name }) => {
+				type InvokeResult =
+					| { ok: true; value: unknown }
+					| { ok: false; error: { code: string; message: string } };
+				type DesktopGlobal = typeof globalThis & {
+					desktopApi: {
+						invoke(
+							channel: "feature:invoke",
+							input: { featureId: string; channel: string; args?: unknown },
+						): Promise<InvokeResult>;
+					};
+				};
+				const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
+					featureId: "workspaces",
+					channel: "create",
+					args: { name, folders: [{ path: folderPath, isPrimary: true }] },
+				});
+				if (!response.ok) throw new Error(`[${response.error.code}] ${response.error.message}`);
+			},
+			{ folderPath, name },
+		);
+	}
+
 	async verifyAuthenticatedServerTransport(workspaceName: string): Promise<void> {
 		const result = await getPage().evaluate(async (expectedWorkspaceName) => {
 			type InvokeResult =

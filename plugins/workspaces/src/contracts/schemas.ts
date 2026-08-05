@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { defineContract, defineMethod, type InferContract } from "../contract.js";
+import {
+	defineContract,
+	defineMethod,
+	type InferContract,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 export const workspaceFolderInputSchema = z.object({
 	path: z.string().min(1),

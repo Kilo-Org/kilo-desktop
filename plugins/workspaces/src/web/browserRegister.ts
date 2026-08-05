@@ -3,9 +3,10 @@ import type {
 	WorkspaceCapabilityService,
 	WorkspaceFolderInput,
 	WorkspacesService,
-} from "@anaconda-agentic-desktop/contracts";
-import { workspacesContract } from "@anaconda-agentic-desktop/contracts";
+} from "../contracts/schemas.js";
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+
+import { workspacesContract } from "../contracts/schemas.js";
 
 const basename = (folderPath: string) =>
 	folderPath

@@ -43,11 +43,7 @@ import {
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import type {
-	Workspace,
-	WorkspaceFolderInput,
-	WorkspacesService,
-} from "@anaconda-agentic-desktop/contracts";
+import type { Workspace, WorkspaceFolderInput, WorkspacesService } from "../contracts/schemas.js";
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
 

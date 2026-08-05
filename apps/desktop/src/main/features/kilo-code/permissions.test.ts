@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { Workspace } from "@anaconda-agentic-desktop/contracts";
-
 import {
 	buildReferenceFolderRules,
 	deduplicatePermissionRules,
 	reconcileReferenceFolderRules,
 } from "./permissions.js";
+import type { Workspace } from "./workspace-capability.js";
 
 function workspace(primary: string, references: string[]): Workspace {
 	return {

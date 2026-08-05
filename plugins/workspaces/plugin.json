@@ -1,0 +1,18 @@
+{
+	"id": "workspaces",
+	"displayName": "Workspaces",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"routes": [],
+		"nav": [],
+		"zones": [
+			{
+				"zone": "home-composer-leading-action",
+				"component": "WorkspacesWidget",
+				"label": "Workspace selector"
+			}
+		]
+	}
+}

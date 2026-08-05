@@ -20,7 +20,8 @@ packages/
 
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
 plugins/          Bundled plugins — self-contained workspace packages
-└── todos/        @anaconda-agentic-desktop/plugin-todos The first real plugin (plugin.json + src/{contracts,main,web})
+├── todos/        @anaconda-agentic-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
+└── workspaces/   @anaconda-agentic-desktop/plugin-workspaces Workspace management and persistence
 ```
 
 ## Key architectural decisions

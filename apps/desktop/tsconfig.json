@@ -10,7 +10,6 @@
 	"include": [
 		"config/**/*.ts",
 		"src/**/*.ts",
-		"drizzle.config.ts",
 		"forge.config.ts",
 		"vite.main.config.ts",
 		"vite.preload.config.ts",

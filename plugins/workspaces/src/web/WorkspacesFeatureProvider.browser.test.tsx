@@ -8,8 +8,7 @@ import {
 	type Workspace,
 	type WorkspaceCapabilities,
 	type WorkspacesService,
-} from "@anaconda-agentic-desktop/contracts";
-import { HOME_COMPOSER_LEADING_ACTION_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
+} from "../contracts/schemas.js";
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
@@ -66,25 +65,14 @@ function renderProvider(handlers: Partial<WorkspacesService>) {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, queryClient, sdk, system };
+	return { ...result, queryClient, sdk };
 }
 
 describe("WorkspacesFeatureProvider", () => {
-	it("contributes the selector to the home composer while mounted", async () => {
-		const { system, unmount } = renderProvider({ list: async () => [] });
+	it("provides workspace state to its children", async () => {
+		renderProvider({ list: async () => [] });
 
-		await vi.waitFor(() => {
-			expect(
-				system.services.contributionRegistry.getForZone(HOME_COMPOSER_LEADING_ACTION_ZONE),
-			).toEqual([
-				expect.objectContaining({ featureId: "workspaces", label: "Workspace selector" }),
-			]);
-		});
-
-		unmount();
-		expect(
-			system.services.contributionRegistry.getForZone(HOME_COMPOSER_LEADING_ACTION_ZONE),
-		).toEqual([]);
+		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
 	});
 
 	it("exposes id-based workspace capabilities through the renderer SDK", async () => {

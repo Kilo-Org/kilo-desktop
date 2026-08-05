@@ -70,9 +70,17 @@ function renderProvider(handlers: Partial<WorkspacesService>) {
 
 describe("WorkspacesFeatureProvider", () => {
 	it("provides workspace state to its children", async () => {
-		renderProvider({ list: async () => [] });
+		const { sdk } = renderProvider({ list: async () => [] });
 
 		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+		sdk.events.emit("open-manager");
+		await expect.element(page.getByRole("heading", { name: "Create workspace" })).toBeVisible();
+	});
+
+	it("rejects consuming workspace state outside its provider", () => {
+		expect(() => render(<Harness />)).toThrowError(
+			"useWorkspacesFeature must be used within WorkspacesFeatureProvider.",
+		);
 	});
 
 	it("exposes id-based workspace capabilities through the renderer SDK", async () => {

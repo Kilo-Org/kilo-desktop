@@ -50,11 +50,15 @@ describe("WorkspaceService", () => {
 		expect(service.create({ folders: [{ path: project, isPrimary: true }] }).name).toBe(
 			"Project (2)",
 		);
+		expect(service.create({ folders: [{ path: project, isPrimary: true }] }).name).toBe(
+			"Project (4)",
+		);
 	});
 
 	it("keeps retained folder ids, normalizes primary ordering, and only renames when cleared", () => {
 		const first = folder("First");
 		const second = folder("Second");
+		const third = folder("Third");
 		const created = service.create({
 			name: "My workspace",
 			folders: [
@@ -68,14 +72,21 @@ describe("WorkspaceService", () => {
 			folders: [
 				{ path: first, isPrimary: false },
 				{ path: second, isPrimary: true },
+				{ path: third, isPrimary: false },
 			],
 		});
 		expect(updated.name).toBe("My workspace");
 		expect(updated.folders.map((item) => item.path)).toEqual([
 			createdSecond!.path,
 			createdFirst!.path,
+			fs.realpathSync.native(third),
 		]);
-		expect(updated.folders.map((item) => item.id)).toEqual([createdSecond!.id, createdFirst!.id]);
+		expect(updated.folders.slice(0, 2).map((item) => item.id)).toEqual([
+			createdSecond!.id,
+			createdFirst!.id,
+		]);
+		expect(updated.folders[2]!.id).not.toBe(createdFirst!.id);
+		expect(updated.folders[2]!.id).not.toBe(createdSecond!.id);
 
 		expect(service.update(created.id, { name: "", folders: updated.folders }).name).toBe("Second");
 	});
@@ -88,6 +99,8 @@ describe("WorkspaceService", () => {
 
 	it("enforces folder safety and primary invariants", () => {
 		const project = folder("Project");
+		const file = path.join(root, "file.txt");
+		fs.writeFileSync(file, "not a directory");
 		expect(() => service.create({ folders: [] })).toThrow("at least one folder");
 		expect(() => service.create({ folders: [{ path: project, isPrimary: false }] })).toThrow(
 			"exactly one primary",
@@ -108,6 +121,9 @@ describe("WorkspaceService", () => {
 		);
 		expect(() => service.create({ folders: [{ path: "relative", isPrimary: true }] })).toThrow(
 			"absolute paths",
+		);
+		expect(() => service.create({ folders: [{ path: file, isPrimary: true }] })).toThrow(
+			"does not exist or is not a directory",
 		);
 	});
 

@@ -172,6 +172,82 @@ describe("SdkProvider + useSdk", () => {
 		errorSpy.mockRestore();
 	});
 
+	it("runs webRegister at boot in browser mode with the renderer SDK", () => {
+		const seen: string[] = [];
+		const feature: FeatureRegistration = {
+			id: "web-only",
+			mainRegister() {},
+			browserRegister() {},
+			webRegister(sdk) {
+				seen.push(sdk.featureId);
+				// The renderer SDK exposes .tools; ensure calling it works.
+				sdk.tools.register({
+					name: "hello",
+					description: "greet",
+					handler: () => "world",
+				});
+			},
+		};
+		const system = createFeatureSystem({
+			shellDelegates: createTestShellDelegates(),
+			features: [feature],
+		});
+		expect(seen).toEqual(["web-only"]);
+		expect(system.services.toolRegistry.all().map((tool) => tool.id)).toEqual(["web-only.hello"]);
+	});
+
+	it("runs webRegister at boot in Electron mode (with a host transport)", () => {
+		const seen: string[] = [];
+		const feature: FeatureRegistration = {
+			id: "electron-plugin",
+			mainRegister() {},
+			webRegister(sdk) {
+				seen.push(sdk.featureId);
+			},
+		};
+		createFeatureSystem({
+			shellDelegates: createTestShellDelegates(),
+			transport: {
+				invoke: vi.fn(),
+				events: { emit: vi.fn(), on: () => () => undefined },
+			},
+			features: [feature],
+		});
+		expect(seen).toEqual(["electron-plugin"]);
+	});
+
+	it("catches webRegister failures without disturbing other features", () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const bad: FeatureRegistration = {
+			id: "bad",
+			mainRegister() {},
+			webRegister() {
+				throw new Error("webRegister boom");
+			},
+		};
+		const good: FeatureRegistration = {
+			id: "good",
+			mainRegister() {},
+			webRegister(sdk) {
+				sdk.tools.register({ name: "ok", description: "ok", handler: () => 1 });
+			},
+		};
+		const system = createFeatureSystem({
+			shellDelegates: createTestShellDelegates(),
+			transport: {
+				invoke: vi.fn(),
+				events: { emit: vi.fn(), on: () => () => undefined },
+			},
+			features: [bad, good],
+		});
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.stringMatching(/webRegister failed for "bad"/),
+			expect.any(Error),
+		);
+		expect(system.services.toolRegistry.all().map((tool) => tool.id)).toEqual(["good.ok"]);
+		errorSpy.mockRestore();
+	});
+
 	it("exposes the host-provided shell delegates on the SDK", async () => {
 		const system = makeSystem();
 		const sdk = system.getSdk("demo");

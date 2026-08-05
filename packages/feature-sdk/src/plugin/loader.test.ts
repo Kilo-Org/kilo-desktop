@@ -165,6 +165,18 @@ describe("discoverPlugins", () => {
 		expect(() => registration?.mainRegister(undefined as unknown as MainSdk)).not.toThrow();
 	});
 
+	it("wires webRegister into the web-entry registration (plugin-authored tools, issue #74)", () => {
+		const webRegister = vi.fn();
+		const bundled: BundledPlugin[] = [{ manifest, module: { webRegister } }];
+		const discovery = discoverPlugins(bundled, "web");
+
+		const registration = discovery.plugins[0]?.registration;
+		expect(registration?.webRegister).toBe(webRegister);
+		// webRegister lives on the web entry only — main-entry discovery ignores it.
+		const mainSide = discoverPlugins([{ manifest, module: { mainRegister, webRegister } }], "main");
+		expect(mainSide.plugins[0]?.registration.webRegister).toBeUndefined();
+	});
+
 	it("threads BundledPlugin.resolveAsset onto the produced registration (main entry)", () => {
 		const resolveAsset = vi.fn((subpath: string) => `/plugins/ping/${subpath}`);
 		const bundled: BundledPlugin[] = [{ manifest, module: { mainRegister }, resolveAsset }];

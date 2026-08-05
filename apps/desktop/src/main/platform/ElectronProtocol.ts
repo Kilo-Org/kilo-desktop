@@ -11,6 +11,16 @@ export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
 // can be derived from a future kilo-code plugin manifest.
 const KILO_CONNECT_SOURCE = "http://127.0.0.1:*";
 
+/**
+ * Path of the self-hosted WebMCP relay widget. The relay `embed.js` first tries to
+ * `fetch()` this file to build a `blob:` iframe; under our hardened CSP that path is
+ * unusable (its injected inline config script and blob-inherited policy break). We
+ * force the alternative same-origin iframe path by returning 404 to the `fetch()`
+ * probe (see {@link isRelayWidgetProbe}), so the widget loads as a real document
+ * whose inline script is covered by the per-response inline-hash CSP.
+ */
+const WEBMCP_WIDGET_PATH = "/webmcp/widget.html";
+
 const MIME_TYPES: Readonly<Record<string, string>> = {
 	".css": "text/css; charset=utf-8",
 	".html": "text/html; charset=utf-8",
@@ -51,6 +61,15 @@ export function registerDesktopSchemes(): void {
 	);
 }
 
+/** Loopback WebSocket origins the WebMCP relay widget probes (ports 9333–9348).
+ * IPv4 only: Chromium rejects bracketed IPv6 literals (`ws://[::1]:PORT`) as
+ * invalid CSP sources, and the relay daemon + injected embed use `127.0.0.1`.
+ * Scoped to this range instead of a `:*` wildcard so renderer script cannot open
+ * WebSockets to arbitrary local ports. */
+const RELAY_WS_SOURCES = Array.from({ length: 9348 - 9333 + 1 }, (_unused, index) => 9333 + index)
+	.map((port) => `ws://127.0.0.1:${port}`)
+	.join(" ");
+
 export function createContentSecurityPolicy(
 	developmentOrigin?: string,
 	inlineScriptHashes: readonly string[] = [],
@@ -63,10 +82,19 @@ export function createContentSecurityPolicy(
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' data: blob:",
 		"font-src 'self' data:",
-		`connect-src 'self' ${KILO_CONNECT_SOURCE}${developmentSources}`,
+		// `connect-src`: `KILO_CONNECT_SOURCE` reaches the local Kilo server;
+		// `RELAY_WS_SOURCES` are the loopback WebSockets the self-hosted WebMCP
+		// relay widget uses to reach the `@mcp-b/webmcp-local-relay` daemon.
+		`connect-src 'self' ${KILO_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
+		// `frame-src 'self'`: the app embeds the WebMCP relay widget in a hidden
+		// same-origin iframe. `frame-ancestors 'self'`: the widget response must
+		// permit being framed by the same-origin app (a `'none'` here blocks the
+		// relay iframe and breaks tool discovery). No cross-origin embedders exist
+		// under the custom scheme, so `'self'` still blocks external framing.
+		"frame-src 'self'",
 		"object-src 'none'",
 		"base-uri 'none'",
-		"frame-ancestors 'none'",
+		"frame-ancestors 'self'",
 	].join("; ");
 }
 
@@ -108,6 +136,20 @@ function getInlineScriptHashes(document: string): string[] {
 	);
 }
 
+/**
+ * Distinguishes the relay `embed.js` `fetch()` probe of the widget from a real iframe
+ * navigation. `fetch()` sends `Sec-Fetch-Dest: empty`; iframe navigations send an
+ * iframe/document destination and an HTML-preferring `Accept`. When the fetch-metadata
+ * header is unavailable we fall back to the `Accept` header. Returning 404 to the probe
+ * makes `embed.js` use its direct same-origin iframe path instead of a blob iframe.
+ */
+function isRelayWidgetProbe(request: Request): boolean {
+	const destination = request.headers.get("Sec-Fetch-Dest");
+	if (destination) return destination === "empty";
+	const accept = request.headers.get("Accept") ?? "";
+	return !accept.includes("text/html");
+}
+
 async function withSecurityHeaders(
 	response: Response,
 	developmentOrigin?: string,
@@ -146,6 +188,12 @@ export class ElectronProtocol {
 		protocol.handle(scheme, async (request) => {
 			const requestUrl = new URL(request.url);
 			if (requestUrl.host !== DESKTOP_HOST) {
+				return withSecurityHeaders(new Response(null, { status: 404 }), input.developmentOrigin);
+			}
+
+			// Force the relay widget onto its direct same-origin iframe path (see
+			// WEBMCP_WIDGET_PATH) by failing the `embed.js` `fetch()` probe.
+			if (requestUrl.pathname === WEBMCP_WIDGET_PATH && isRelayWidgetProbe(request)) {
 				return withSecurityHeaders(new Response(null, { status: 404 }), input.developmentOrigin);
 			}
 

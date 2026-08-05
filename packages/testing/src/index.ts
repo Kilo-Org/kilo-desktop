@@ -6,6 +6,7 @@ import {
 	FeatureRouter,
 	StateBroker,
 	teardownFeature as teardownSdkFeature,
+	ToolRegistry,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type {
@@ -285,6 +286,7 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 		stateBroker: new StateBroker(),
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
+		toolRegistry: new ToolRegistry(),
 		featureRouter,
 		shellDelegates,
 	};

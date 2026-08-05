@@ -8,6 +8,7 @@ import {
 	qualifyFeatureEvent,
 	StateBroker,
 	teardownFeature,
+	ToolRegistry,
 	type FeatureRegistration,
 	type FeatureEvent,
 	type InvokeFallback,
@@ -74,6 +75,7 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 		stateBroker: new StateBroker(),
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
+		toolRegistry: new ToolRegistry(),
 		featureRouter,
 		shellDelegates: options.shellDelegates,
 	};
@@ -113,6 +115,29 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 		if (disposed) throw new Error("FeatureSystem has been disposed.");
 	}
 
+	function getOrCreateSdk(featureId: string): SDK {
+		let sdk = sdkCache.get(featureId);
+		if (!sdk) {
+			sdk = createSdk(featureId, services);
+			sdkCache.set(featureId, sdk);
+		}
+		return sdk;
+	}
+
+	// Renderer-side setup for every feature, run in BOTH modes (unlike
+	// browserRegister which only runs in browser mode). This is where a plugin
+	// registers `sdk.tools` and other renderer-only concerns — see FeatureRegistration
+	// `webRegister` and issue #74. A throwing webRegister must not break the whole
+	// app (a bad plugin isolates itself), so we log and continue.
+	for (const feature of features) {
+		if (!feature.webRegister) continue;
+		try {
+			feature.webRegister(getOrCreateSdk(feature.id));
+		} catch (error) {
+			console.error(`[FeatureSystem] webRegister failed for "${feature.id}":`, error);
+		}
+	}
+
 	function teardown(featureId: string): void {
 		sdkCache.get(featureId)?.destroy();
 		sdkCache.delete(featureId);
@@ -124,12 +149,7 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 		services,
 		getSdk(featureId: string): SDK {
 			assertActive();
-			let sdk = sdkCache.get(featureId);
-			if (!sdk) {
-				sdk = createSdk(featureId, services);
-				sdkCache.set(featureId, sdk);
-			}
-			return sdk;
+			return getOrCreateSdk(featureId);
 		},
 		teardownFeature(featureId: string): void {
 			assertActive();

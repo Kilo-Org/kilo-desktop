@@ -31,6 +31,20 @@ export default defineConfig({
 		projects: [
 			{
 				test: {
+					name: "unit",
+					// Plain unit tests co-located with source. Excludes the .integration
+					// and .browser suffixes handled by the projects below.
+					include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+					exclude: [
+						"src/**/*.integration.test.ts",
+						"src/**/*.browser.test.ts",
+						"src/**/*.browser.test.tsx",
+					],
+					environment: "node",
+				},
+			},
+			{
+				test: {
 					name: "integration",
 					include: ["src/main/**/*.integration.test.ts"],
 					environment: "node",

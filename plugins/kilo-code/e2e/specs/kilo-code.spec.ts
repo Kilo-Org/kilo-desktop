@@ -1,4 +1,4 @@
-import { test } from "../../fixtures/features/kilo-code.js";
+import { test } from "../fixtures.js";
 
 test.describe("Kilo Code @smoke", () => {
 	test("starts the packaged CLI and exposes authenticated health and SSE", async ({

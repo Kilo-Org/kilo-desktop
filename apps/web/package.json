@@ -14,6 +14,7 @@
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@anaconda-agentic-desktop/plugin-kilo-code": "workspace:*",
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@anaconda-agentic-desktop/plugin-workspaces": "workspace:*",
 		"@anaconda-agentic-desktop/sdk-react": "workspace:*",

@@ -142,7 +142,18 @@ nteract publishes `runt-darwin-arm64` and `runt-darwin-x64`, but standalone `run
 
 **No child-process supervision exists in this repo.** No `spawn`/`utilityProcess`, no health check, restart, or shutdown pattern. Closest analogue is `features/auth/oauth/callback-server.ts` (node:http server, `EADDRINUSE` handling, injected logger, explicit close). Disposal convention is `Application.#disposers` (LIFO on `before-quit`) plus `mainSdk.onDispose`.
 
-Also decide whether we spawn our own private daemon or reuse a user-installed one. nteract installs a **per-user** launchd/systemd service (`crates/runtimed-service`, driven by `runt daemon doctor --fix`). Two daemons on one machine invites confusion; sharing invites version-coupling conflicts. Recommend a private instance with an explicit `RUNTIMED_SOCKET_PATH` under our own app-support dir — and note that env var **panics if its parent directory does not exist**, so create the dir first.
+Also decide whether we spawn our own private daemon or reuse a user-installed one. nteract installs a **per-user** launchd/systemd service (`crates/runtimed-service`, driven by `runt daemon doctor --fix`). Two daemons on one machine invites confusion; sharing invites version-coupling conflicts.
+
+> **Superseded — see `runtimed-private-instance-handoff.md`.** This section
+> originally recommended a private instance via an explicit
+> `RUNTIMED_SOCKET_PATH`. That does not work: the single-instance `flock` is on
+> `{daemon_base_dir}/daemon.lock`, derived from the compile-time channel and
+> **not** from `--socket`, so a second daemon contends for the same lock, loses,
+> and exits with code 0. We currently attach to whatever daemon is already
+> listening; a real private instance needs a cache-namespace override in nteract's
+> Rust, which is a larger change than it appears.
+
+Note `RUNTIMED_SOCKET_PATH` **panics if its parent directory does not exist**, so create the dir first.
 
 Socket paths: production is `~/Library/Caches/runt/runtimed.sock` (macOS) with **no** `worktrees` segment; dev mode (`RUNTIMED_DEV=1` or `RUNTIMED_WORKSPACE_PATH`) inserts `worktrees/<sha256(path)[..12]>`. Windows uses a named pipe (`\\.\pipe\…`) — `node:net` handles both, but verify nothing upstream assumes `AF_UNIX`.
 

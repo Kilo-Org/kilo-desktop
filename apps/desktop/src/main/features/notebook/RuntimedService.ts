@@ -20,6 +20,7 @@ import { resolveDaemonSocketPath } from "./socket-path.js";
 
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 const DAEMON_INFO_TIMEOUT_MS = 1_000;
+const PROBE_TIMEOUT_MS = 1_000;
 
 export interface DaemonInfo {
 	readonly version: string;
@@ -164,6 +165,24 @@ export class RuntimedService {
 		} catch (error) {
 			socket.destroy();
 			throw error;
+		}
+	}
+
+	/**
+	 * True when something is listening on the daemon endpoint. Deliberately only
+	 * a connect — the daemon binds its socket before initializing kernel pools,
+	 * so accepting a connection is the earliest honest readiness edge, and the
+	 * daemon offers no machine-readable ready signal to wait for instead.
+	 */
+	async isListening(): Promise<boolean> {
+		let socket: net.Socket | undefined;
+		try {
+			socket = await this.#openSocket(PROBE_TIMEOUT_MS);
+			return true;
+		} catch {
+			return false;
+		} finally {
+			socket?.destroy();
 		}
 	}
 

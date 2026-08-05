@@ -32,6 +32,7 @@ describe("NotebookView", () => {
 	it("reports the daemon version and relay port once status resolves", async () => {
 		renderView(() => ({
 			relayPort: 51234,
+			process: { status: "running" },
 			daemon: {
 				version: "2.6.3",
 				socketPath: "/tmp/runtimed.sock",
@@ -46,13 +47,39 @@ describe("NotebookView", () => {
 	});
 
 	it("distinguishes a missing daemon from an unreachable service", async () => {
-		renderView(() => ({ relayPort: 51234, daemon: null }));
+		renderView(() => ({ relayPort: 51234, process: { status: "idle" }, daemon: null }));
 
 		// A null daemon is an expected state — the sidecar may not be running —
 		// so it must not read as a service failure.
 		await expect
 			.element(page.getByTestId("notebook-status"))
 			.toHaveTextContent("Daemon not running.");
+	});
+
+	it("explains why the daemon is absent when the supervisor gave up", async () => {
+		// `daemon: null` alone is ambiguous — no bundled sidecar looks identical to
+		// a crash loop. The supervisor's reason is what distinguishes them.
+		renderView(() => ({
+			relayPort: 51234,
+			process: { status: "failed", reason: "no daemon binary is bundled with this build" },
+			daemon: null,
+		}));
+
+		await expect
+			.element(page.getByTestId("notebook-status"))
+			.toHaveTextContent("Daemon unavailable: no daemon binary is bundled with this build");
+	});
+
+	it("reads a restart as progress rather than as an error", async () => {
+		renderView(() => ({
+			relayPort: 51234,
+			process: { status: "restarting" },
+			daemon: null,
+		}));
+
+		await expect
+			.element(page.getByTestId("notebook-status"))
+			.toHaveTextContent("Restarting the notebook daemon…");
 	});
 
 	it("surfaces an unavailable notebook service", async () => {
@@ -66,7 +93,7 @@ describe("NotebookView", () => {
 	});
 
 	it("shows a placeholder while nteract's bundle is not served from our protocol", async () => {
-		renderView(() => ({ relayPort: 51234, daemon: null }));
+		renderView(() => ({ relayPort: 51234, process: { status: "idle" }, daemon: null }));
 
 		await expect.element(page.getByTestId("notebook-placeholder")).toBeVisible();
 		expect(document.querySelector('[data-qa-id="notebook-frame"]')).toBeNull();
@@ -74,7 +101,7 @@ describe("NotebookView", () => {
 
 	it("frames nteract's dev server when an origin is configured", async () => {
 		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
-		renderView(() => ({ relayPort: 51234, daemon: null }));
+		renderView(() => ({ relayPort: 51234, process: { status: "idle" }, daemon: null }));
 
 		const frame = document.querySelector('[data-qa-id="notebook-frame"]');
 		// The notebook path travels as a query param, not a route segment.

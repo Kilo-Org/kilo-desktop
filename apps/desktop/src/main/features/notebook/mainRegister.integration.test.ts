@@ -107,9 +107,13 @@ async function boot(options: { withDaemon?: boolean } = {}) {
 	}
 	// isDevelopment is passed explicitly: `app.isPackaged` is unavailable outside
 	// a real Electron process, and the value decides which origin the relay trusts.
+	// Resolving to no binary keeps these tests off the spawn path — they cover the
+	// relay, and DaemonProcessService.test.ts covers supervision. It also avoids
+	// the default resolver's `app.getAppPath()`, unavailable outside Electron.
 	mainRegister(mainSdk, {
 		isDevelopment: false,
 		socketPath: "unused",
+		resolveDaemonBinary: () => undefined,
 		...(connect ? { connect } : {}),
 	});
 	return mainSdk;
@@ -121,6 +125,7 @@ describe("notebook mainRegister", () => {
 
 		const status = (await mainSdk.invoke("status")) as {
 			relayPort: number;
+			process: { status: string };
 			daemon: { version: string; blobPort: number | null; isDevMode: boolean } | null;
 		};
 
@@ -131,16 +136,27 @@ describe("notebook mainRegister", () => {
 			isDevMode: true,
 			blobPort: 48637,
 		});
+		// A daemon was already listening, so the supervisor attached instead of
+		// spawning — the same path a user's own nteract daemon takes.
+		expect(status.process).toEqual({ status: "external" });
 		mainSdk.dispose();
 	});
 
 	it("reports a null daemon rather than failing when the daemon is unreachable", async () => {
 		const mainSdk = await boot({ withDaemon: false });
 
-		const status = (await mainSdk.invoke("status")) as { relayPort: number; daemon: unknown };
+		const status = (await mainSdk.invoke("status")) as {
+			relayPort: number;
+			process: { status: string; reason?: string };
+			daemon: unknown;
+		};
 
 		expect(status.relayPort).toBeGreaterThan(0);
 		expect(status.daemon).toBeNull();
+		// With nothing listening and no bundled binary, the supervisor explains why
+		// rather than leaving `daemon: null` unexplained.
+		expect(status.process.status).toBe("failed");
+		expect(status.process.reason).toContain("no daemon binary");
 		mainSdk.dispose();
 	});
 

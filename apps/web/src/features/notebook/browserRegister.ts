@@ -9,7 +9,9 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
  */
 export function notebookBrowserRegister(mainSdk: MainSdk): void {
 	const service: NotebookService = {
-		status: async () => ({ relayPort: 0, daemon: null }),
+		// `idle` rather than `failed`: nothing was attempted and nothing is broken,
+		// so the view reports a plain absence instead of an error.
+		status: async () => ({ relayPort: 0, process: { status: "idle" }, daemon: null }),
 	};
 	mainSdk.channels(notebookContract).handleAll(service);
 }

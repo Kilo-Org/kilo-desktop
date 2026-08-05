@@ -343,6 +343,37 @@ describe("RuntimedService.queryDaemonInfo", () => {
 	});
 });
 
+describe("RuntimedService.isListening", () => {
+	it("is true when something accepts on the endpoint", async () => {
+		// A bare accept with no reply is enough: the daemon binds its socket before
+		// initializing kernel pools, so accepting is the earliest honest readiness
+		// edge, and it publishes no machine-readable ready signal to wait for.
+		const daemon = await startDaemon(() => {});
+		const service = new RuntimedService({ socketPath: "/tmp/x.sock", connect: daemon.connect });
+
+		expect(await service.isListening()).toBe(true);
+	});
+
+	it("is false when nothing is listening", async () => {
+		const service = new RuntimedService({ socketPath: "/nonexistent/runtimed.sock" });
+
+		expect(await service.isListening()).toBe(false);
+	});
+
+	it("leaves no socket behind, so probing in a poll loop cannot leak handles", async () => {
+		const connections: net.Socket[] = [];
+		const daemon = await startDaemon((socket) => connections.push(socket));
+		const service = new RuntimedService({ socketPath: "/tmp/x.sock", connect: daemon.connect });
+
+		for (let i = 0; i < 3; i += 1) expect(await service.isListening()).toBe(true);
+
+		await vi.waitFor(() => {
+			expect(connections).toHaveLength(3);
+			expect(connections.every((socket) => socket.destroyed)).toBe(true);
+		});
+	});
+});
+
 describe("RuntimedService.socketPath", () => {
 	it("defaults to the resolved daemon path when none is given", () => {
 		expect(new RuntimedService().socketPath).toMatch(/runtimed\.sock|pipe/);

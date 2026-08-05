@@ -167,11 +167,17 @@ Three things worth knowing before changing this:
 - **Staging must be a script, not a Forge hook.** `extraResource` is a _value_ in
   `forge.config.ts`, evaluated at module load, so the file must already exist by
   then. Every Forge hook runs too late. This is why it hangs off `prepackage`.
-- **The asset name is load-bearing.** It is `runtimed-nightly` (or `runtimed` on
-  stable), matching `daemonBinaryBasename` in `socket-path.ts`, because the
-  daemon derives its Unix socket _and_ its Windows pipe name from its own
-  basename (`daemon_binary_basename_for`, `crates/runt-workspace/src/lib.rs:75`).
-  Rename the file and the app looks for the wrong pipe on Windows.
+- **The asset name should match `daemonBinaryBasename`, but not for the reason
+  previously recorded here.** This doc used to claim the daemon derives its Unix
+  socket and Windows pipe name from its own file basename, so renaming the asset
+  would point the app at the wrong pipe. **That is wrong.** The channel comes from
+  the _compile-time_ `option_env!("RUNT_BUILD_CHANNEL")`
+  (`crates/runt-workspace/src/lib.rs:43-45`), and both the pipe name
+  (`daemon_binary_basename_for`, `:75`) and the cache namespace
+  (`cache_namespace_for`, `:60`) are derived from that channel — never from
+  `argv[0]` or `current_exe()`. Renaming the staged file changes nothing at
+  runtime. Keep the names aligned anyway, so the asset on disk describes which
+  channel it was built from.
 - **A magic-byte guard rejects non-executables** (Mach-O thin/universal, ELF, PE).
   A truncated download or an HTML error page saved under the right filename would
   otherwise package fine and only fail at spawn.
@@ -192,11 +198,107 @@ Running the real daemon logs
 byte-identical to `resolveDaemonSocketPath()` for the same env. That assumption
 is no longer a guess.
 
-Still unbuilt on this axis: **nothing spawns the daemon.** `mainRegister` only
-queries it. Spawn/health/dispose is the next piece — attach to the lazy-start
-pattern in `features/notebook/index.ts:38` and the `mainSdk.onDispose` at line 56,
-and put path resolution there (`*Service.ts` files are lint-forbidden from
-importing electron).
+## Spawn and supervise the daemon
+
+Was: **nothing spawns the daemon** — `mainRegister` only queried it. Being built
+now, hanging off the lazy-start pattern in `features/notebook/index.ts:38` and the
+`mainSdk.onDispose` at line 56, with path resolution in `index.ts` (`*Service.ts`
+files are lint-forbidden from importing electron).
+
+### What the daemon's CLI actually guarantees
+
+Read out of the Rust source rather than assumed; each of these shaped the design.
+
+- **Bare `runtimed` == `runtimed run`, in the foreground** (`crates/runtimed/src/main.rs:439`,
+  defaults `:467-476`). No `fork`/`daemonize` anywhere, so it is a normal child to
+  supervise. `--socket <path>` overrides the endpoint; `--log-level`, `--dev`, and
+  pool-size flags are the other relevant ones.
+- **No machine-readable readiness signal.** No pid file, no stdout handshake —
+  only a `tracing` line to stderr and `{daemon_base_dir}/runtimed.log`
+  (`[runtimed] Listening on "<path>"`, `daemon.rs:2124`, Windows `:2442`). **Poll
+  the socket instead**, which is what nteract itself does. Bind happens before
+  pool init, so a successful connect is a valid readiness edge.
+- **`RUNTIMED_SOCKET_PATH` panics if the parent directory is missing**
+  (`runt-workspace/src/lib.rs:1211-1219`) — confirmed. Worse, it is checked
+  _before_ the `#[cfg(windows)]` pipe branch (`:1171-1176`), so on Windows a
+  filesystem-style value becomes the pipe name and fails to create. Prefer the
+  `--socket` flag over this env var.
+- **`RUNTIMED_CACHE_NAMESPACE` is not read by any Rust code** — only by nteract's
+  TS/Vite files. `RUNT_BUILD_CHANNEL` is compile-time only; setting either at
+  runtime does nothing. Our `socket-path.ts` honors both, which is harmless but
+  should not be mistaken for a way to relocate a spawned daemon.
+- **No idle auto-shutdown.** It runs until told to stop.
+- **Graceful shutdown is Unix-only.** SIGTERM/SIGINT → `trigger_shutdown()`
+  (`main.rs:787-817`), which drains rooms and unlinks the socket
+  (`daemon.rs:2336-2338`) — but shutdown can legitimately _fail_ and leave it
+  running when a room isn't durable (`daemon.rs:1682-1689`), so a supervisor needs
+  a SIGKILL timeout. Windows has **no signal path at all** (the handler block is
+  `#[cfg(unix)]`); nteract's own service stop is `taskkill /F`. Kernels are safe
+  either way: process groups killed via `killpg` on Unix
+  (`runtime_agent_handle.rs:190-207`), Job Objects with `KILL_ON_JOB_CLOSE` on
+  Windows (`runtime_agent_manifest.rs:412-448`), so they die with the daemon
+  rather than orphaning.
+
+### Decision: daemon identity — default path, connect-first
+
+**The finding that drove this.** The single-instance guard is an `flock` on
+`{daemon_base_dir}/daemon.lock` (`crates/runtimed/src/singleton.rs:60-98`,
+acquired in `Daemon::new`, `daemon.rs:1522`) — and `daemon_base_dir()` is derived
+from the **channel and dev-mode**, _not_ from `--socket`. On lock loss the process
+logs "Another daemon already running" and calls **`std::process::exit(0)`**
+(`main.rs:768-782`) — a success exit code. So two daemons of the same channel
+collide on the lock even with different `--socket` values, and the loser looks
+like a clean spawn while binding nothing.
+
+Options considered:
+
+1. **Default path, connect-first** ← **CHOSEN.** Probe the default socket; if a
+   daemon answers, use it. Otherwise spawn our bundled binary bare (no `--socket`)
+   and poll until it binds. This makes the lock collision _harmless_: a lock
+   holder implies a daemon on exactly the socket we are already connecting to.
+   `socket-path.ts` is verified byte-identical to the daemon's own computation for
+   this path. Cost: we share with a user-installed nteract of the same channel, so
+   the commit-hash pinning check below stops being optional.
+2. **Private via dev-mode isolation.** `RUNTIMED_DEV=1` +
+   `RUNTIMED_WORKSPACE_PATH=<our app-support dir>` relocates base dir, socket,
+   _and_ lock under `worktrees/<hash>/` — true isolation. Rejected: repurposes a
+   dev-only flag in production, also relocates logs and caches, and carries
+   unknown other dev-mode behavior differences.
+3. **Private via `--socket` only.** Isolates the socket but not the lock, so a
+   user's nteract daemon silently prevents ours from ever binding. Rejected as
+   actively broken.
+
+This supersedes the older "recommend a private instance with an explicit
+`RUNTIMED_SOCKET_PATH`" note — that recommendation predates the lock finding and
+is option 3, the broken one.
+
+### Decision: supervision — restart with backoff
+
+Options considered:
+
+1. **Restart with capped exponential backoff** ← **CHOSEN.** Respawn on
+   unexpected exit, with a give-up threshold, surfaced through the status channel.
+   Matches nteract's own service definitions (launchd `KeepAlive{Crashed}`,
+   `runtimed-service/src/lib.rs:753-788`; systemd `Restart=on-failure`, `:250-273`).
+2. **Spawn once, no restart.** Smaller surface, but a crashed daemon would leave
+   the feature dead until the next status call.
+
+### Consequences to respect when implementing
+
+- **Do not hold the child's stdio pipes open.** nteract's own Windows service
+  spawns with all three stdio set to NUL and warns that a held parent pipe hangs
+  interactive callers (`runtimed-service/src/lib.rs:951-966`). Either `ignore`
+  them or drain them; do not leave a full pipe unread.
+- **An exit code of 0 is not proof we own the daemon** — it is what the lock loser
+  returns. Readiness must be established by connecting, never by "spawn didn't
+  fail."
+- **Watch for an early child exit while polling.** nteract's xtask polls readiness
+  and `try_wait()`s the child in the same loop so an immediate exit is reported
+  instead of timing out (`xtask/src/main.rs:3110-3130`). Worth copying.
+- **Commit-hash pinning is now load-bearing, not hygiene.** Because we may attach
+  to a user's daemon, the version check moves onto the critical path. nteract's own
+  Tauri app version-checks the running daemon's commit hash and upgrades on
+  mismatch (`crates/notebook/src/lib.rs:2074-2100`). Still **not done** here.
 
 ### Optionally, upstream hygiene
 

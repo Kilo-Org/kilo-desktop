@@ -1,4 +1,4 @@
-import type { NotebookService } from "@anaconda-agentic-desktop/contracts";
+import type { NotebookService, NotebookStatus } from "@anaconda-agentic-desktop/contracts";
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
 /**
@@ -23,6 +23,20 @@ function nteractSrc(notebookPath: string): string | undefined {
 	return url.toString();
 }
 
+/**
+ * Why no daemon is reachable. A `failed` supervisor carries the reason (no
+ * bundled sidecar, a spawn error, an exhausted restart budget); the other states
+ * are transient, so they read as progress rather than as an error.
+ */
+function daemonAbsenceMessage(process: NotebookStatus["process"]): string {
+	if (process.status === "failed") {
+		return `Daemon unavailable: ${process.reason ?? "the notebook daemon could not be started."}`;
+	}
+	if (process.status === "starting") return "Starting the notebook daemon…";
+	if (process.status === "restarting") return "Restarting the notebook daemon…";
+	return "Daemon not running.";
+}
+
 export function NotebookView() {
 	const sdk = useSdk<NotebookService>("notebook");
 	const status = useSdkQuery(sdk, "status");
@@ -37,11 +51,11 @@ export function NotebookView() {
 					<p className="text-muted-foreground truncate text-xs" data-qa-id="notebook-status">
 						{status.isLoading
 							? "Connecting…"
-							: status.isError
+							: status.isError || !status.data
 								? "Notebook service unavailable."
 								: daemon
 									? `Daemon ${daemon.version} · relay port ${status.data?.relayPort}`
-									: "Daemon not running."}
+									: daemonAbsenceMessage(status.data.process)}
 					</p>
 				</div>
 			</div>

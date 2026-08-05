@@ -11,6 +11,12 @@ describe("notebookBrowserRegister", () => {
 		notebookBrowserRegister(mainSdk);
 
 		expect(mainSdk.has("status")).toBe(true);
-		await expect(mainSdk.invoke("status")).resolves.toEqual({ relayPort: 0, daemon: null });
+		// `idle`, not `failed`: browser mode never attempts a spawn, so there is no
+		// failure to report — just an absence.
+		await expect(mainSdk.invoke("status")).resolves.toEqual({
+			relayPort: 0,
+			process: { status: "idle" },
+			daemon: null,
+		});
 	});
 });

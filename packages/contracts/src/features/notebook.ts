@@ -15,11 +15,26 @@ export type NotebookDaemon = z.infer<typeof notebookDaemonSchema>;
  * `external` means a daemon we did not spawn was already listening — expected,
  * since a user may run nteract's own service-installed daemon of the same
  * channel, which owns the singleton lock we would otherwise contend for.
+ * `incompatible` is that same case with a commit skew: the app and daemon must
+ * be built from the same nteract commit, and we cannot displace a daemon that
+ * holds the lock.
  */
 export const notebookProcessSchema = z.object({
-	status: z.enum(["idle", "starting", "external", "running", "restarting", "failed", "stopped"]),
+	status: z.enum([
+		"idle",
+		"starting",
+		"external",
+		"incompatible",
+		"running",
+		"restarting",
+		"failed",
+		"stopped",
+	]),
 	/** Present only on `failed`, carrying why we gave up. */
 	reason: z.string().optional(),
+	/** Present only on `incompatible`, naming the two commits that disagree. */
+	runningVersion: z.string().optional(),
+	bundledVersion: z.string().optional(),
 });
 export type NotebookProcess = z.infer<typeof notebookProcessSchema>;
 

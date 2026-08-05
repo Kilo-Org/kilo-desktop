@@ -32,6 +32,9 @@ function daemonAbsenceMessage(process: NotebookStatus["process"]): string {
 	if (process.status === "failed") {
 		return `Daemon unavailable: ${process.reason ?? "the notebook daemon could not be started."}`;
 	}
+	if (process.status === "incompatible") {
+		return `A different notebook daemon is already running (${process.runningVersion ?? "unknown"}); this app needs ${process.bundledVersion ?? "its bundled version"}.`;
+	}
 	if (process.status === "starting") return "Starting the notebook daemon…";
 	if (process.status === "restarting") return "Restarting the notebook daemon…";
 	return "Daemon not running.";

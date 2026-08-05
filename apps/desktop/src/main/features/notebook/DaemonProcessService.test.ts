@@ -93,6 +93,8 @@ function build(
 		readyTimeoutMs?: number;
 		maxRestartAttempts?: number;
 		shutdownGraceMs?: number;
+		runningVersion?: () => Promise<string | undefined>;
+		bundledVersion?: () => Promise<string | undefined>;
 	} = {},
 ) {
 	const spawned: string[] = [];
@@ -119,6 +121,8 @@ function build(
 			? {}
 			: { maxRestartAttempts: options.maxRestartAttempts }),
 		...(options.shutdownGraceMs === undefined ? {} : { shutdownGraceMs: options.shutdownGraceMs }),
+		...(options.runningVersion ? { runningVersion: options.runningVersion } : {}),
+		...(options.bundledVersion ? { bundledVersion: options.bundledVersion } : {}),
 	});
 	return { service, spawned };
 }
@@ -273,6 +277,64 @@ describe("DaemonProcessService.ensureRunning", () => {
 
 		expect(first).toEqual(second);
 		expect(spawned).toHaveLength(1);
+	});
+
+	it("attaches to an external daemon built from the same commit", async () => {
+		const { service } = build({
+			probe: async () => true,
+			runningVersion: async () => "2.6.3+22d094c",
+			bundledVersion: async () => "2.6.3+22d094c",
+		});
+
+		expect(await service.ensureRunning()).toEqual({ status: "external" });
+	});
+
+	it("refuses an external daemon from a different commit instead of speaking v4 at it", async () => {
+		// We cannot displace it — it holds the singleton lock — and typed-frame v4
+		// has no downgrade path, so attaching would corrupt traffic instead of
+		// failing cleanly.
+		const { service, spawned } = build({
+			probe: async () => true,
+			runningVersion: async () => "2.6.3+aaaaaaa",
+			bundledVersion: async () => "2.6.3+bbbbbbb",
+		});
+
+		expect(await service.ensureRunning()).toEqual({
+			status: "incompatible",
+			runningVersion: "2.6.3+aaaaaaa",
+			bundledVersion: "2.6.3+bbbbbbb",
+		});
+		// Spawning would be futile: the lock loser exits 0 while binding nothing.
+		expect(spawned).toEqual([]);
+	});
+
+	it("attaches when a version is unidentifiable, so a local build is not blocked", async () => {
+		const { service } = build({
+			probe: async () => true,
+			runningVersion: async () => "2.6.3",
+			bundledVersion: async () => "2.6.3+22d094c",
+		});
+
+		expect(await service.ensureRunning()).toEqual({ status: "external" });
+	});
+
+	it("does not version-check a daemon it spawned itself", async () => {
+		// Our child is the bundled binary by construction, so querying its version
+		// would only add latency to every notebook open.
+		const runningVersion = vi.fn(async () => "2.6.3+aaaaaaa");
+		const { probe, state } = probeSwitch();
+		const { service } = build({
+			probe: async () => {
+				const listening = await probe();
+				state.listening = true;
+				return listening;
+			},
+			runningVersion,
+			bundledVersion: async () => "2.6.3+bbbbbbb",
+		});
+
+		expect((await service.ensureRunning()).status).toBe("running");
+		expect(runningVersion).not.toHaveBeenCalled();
 	});
 
 	it("short-circuits once running instead of re-probing", async () => {

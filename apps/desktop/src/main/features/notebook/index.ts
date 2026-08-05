@@ -10,6 +10,7 @@ import { getDesktopScheme, DESKTOP_HOST } from "../../platform/ElectronProtocol.
 import { createLogger } from "../../platform/logger.js";
 import { DaemonProcessService } from "./DaemonProcessService.js";
 import { resolveDaemonBinaryPath } from "./daemon-binary-path.js";
+import { readBundledDaemonVersion } from "./daemon-version.js";
 import { NotebookRelayService } from "./NotebookRelayService.js";
 import { RuntimedService, type RuntimedLogger } from "./RuntimedService.js";
 
@@ -50,9 +51,12 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 				resourcesPath: process.resourcesPath,
 				appPath: app.getAppPath(),
 			}));
+	const binaryPath = resolveBinary();
 	const daemonProcess = new DaemonProcessService({
-		binaryPath: resolveBinary(),
+		binaryPath,
 		probe: () => runtimed.isListening(),
+		runningVersion: async () => (await runtimed.queryDaemonInfo())?.version,
+		bundledVersion: binaryPath ? () => readBundledDaemonVersion(binaryPath) : async () => undefined,
 		logger,
 	});
 
@@ -63,12 +67,21 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		status: async () => {
 			const relayPort = await relay.start();
 			const process_ = await daemonProcess.ensureRunning();
-			const daemon = await runtimed.queryDaemonInfo();
+			// A commit-skewed daemon is reachable but unusable, so it must not be
+			// reported as a working daemon — the view would otherwise show a healthy
+			// version string for a connection that will corrupt on first frame.
+			const daemon = process_.status === "incompatible" ? null : await runtimed.queryDaemonInfo();
 			return {
 				relayPort,
 				process: {
 					status: process_.status,
 					...("reason" in process_ ? { reason: process_.reason } : {}),
+					...(process_.status === "incompatible"
+						? {
+								runningVersion: process_.runningVersion,
+								bundledVersion: process_.bundledVersion,
+							}
+						: {}),
 				},
 				daemon: daemon
 					? {

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
+import { compareDaemonVersions } from "./daemon-version.js";
 import type { RuntimedLogger } from "./RuntimedService.js";
 
 /**
@@ -41,6 +42,17 @@ export type DaemonState =
 	| { readonly status: "starting" }
 	/** A daemon we did not spawn was already listening; we attached to it. */
 	| { readonly status: "external" }
+	/**
+	 * A daemon we did not spawn holds the socket, but it was built from a
+	 * different commit than the one we bundle. Terminal: we cannot displace it
+	 * (it owns the singleton lock) and we cannot speak to it (typed-frame v4 has
+	 * no downgrade path).
+	 */
+	| {
+			readonly status: "incompatible";
+			readonly runningVersion: string;
+			readonly bundledVersion: string;
+	  }
 	/** Our child is up and its socket accepted a connection. */
 	| { readonly status: "running"; readonly pid: number }
 	/** Child died unexpectedly; a restart is scheduled. */
@@ -59,6 +71,14 @@ export interface DaemonProcessOptions {
 	readonly binaryPath?: string | undefined;
 	/** Resolves once the daemon socket accepts a connection. */
 	readonly probe: () => Promise<boolean>;
+	/**
+	 * Version of the daemon currently listening, as it reports itself. Only
+	 * consulted on the attach path — a daemon we spawned is by construction the
+	 * one we bundle. Undefined means unidentifiable, which does not block.
+	 */
+	readonly runningVersion?: () => Promise<string | undefined>;
+	/** Version of the staged binary; undefined when this build bundles none. */
+	readonly bundledVersion?: () => Promise<string | undefined>;
 	readonly logger?: RuntimedLogger;
 	/** Test seams. */
 	readonly spawnProcess?: (binaryPath: string) => ChildProcess;
@@ -85,6 +105,8 @@ export function restartDelayMs(attempt: number): number {
 export class DaemonProcessService {
 	readonly #binaryPath: string | undefined;
 	readonly #probe: () => Promise<boolean>;
+	readonly #runningVersion: (() => Promise<string | undefined>) | undefined;
+	readonly #bundledVersion: (() => Promise<string | undefined>) | undefined;
 	readonly #logger: RuntimedLogger;
 	readonly #spawnProcess: (binaryPath: string) => ChildProcess;
 	readonly #sleep: (ms: number) => Promise<void>;
@@ -106,6 +128,8 @@ export class DaemonProcessService {
 	constructor(options: DaemonProcessOptions) {
 		this.#binaryPath = options.binaryPath;
 		this.#probe = options.probe;
+		this.#runningVersion = options.runningVersion;
+		this.#bundledVersion = options.bundledVersion;
 		this.#logger = options.logger ?? noopLogger;
 		this.#spawnProcess =
 			options.spawnProcess ??
@@ -155,15 +179,40 @@ export class DaemonProcessService {
 		if (await this.#probe()) {
 			// Could be a user-installed nteract daemon or our own survivor from a
 			// previous run; either way it owns the lock and the socket.
-			this.#logger.info("[notebook] attached to an already-running daemon");
-			this.#state = { status: "external" };
-			return this.#state;
+			return this.#attachToExternal();
 		}
 
 		if (!this.#binaryPath) {
 			return this.#fail("no daemon binary is bundled with this build");
 		}
 		return this.#spawnAndWait();
+	}
+
+	/**
+	 * Accepts the daemon already on the socket, unless its commit differs from
+	 * ours. Restarting it is not an option: killing a daemon we did not start
+	 * could drop another app's live kernels, and it holds the lock regardless of
+	 * what `--socket` we would pass. Reporting the skew is all we can honestly do.
+	 */
+	async #attachToExternal(): Promise<DaemonState> {
+		const [running, bundled] = await Promise.all([
+			this.#runningVersion?.(),
+			this.#bundledVersion?.(),
+		]);
+		if (compareDaemonVersions(running, bundled) === "mismatch") {
+			this.#logger.warn(
+				`[notebook] the running daemon (${running}) was built from a different commit than the bundled one (${bundled})`,
+			);
+			this.#state = {
+				status: "incompatible",
+				runningVersion: running ?? "unknown",
+				bundledVersion: bundled ?? "unknown",
+			};
+			return this.#state;
+		}
+		this.#logger.info("[notebook] attached to an already-running daemon");
+		this.#state = { status: "external" };
+		return this.#state;
 	}
 
 	async #spawnAndWait(): Promise<DaemonState> {

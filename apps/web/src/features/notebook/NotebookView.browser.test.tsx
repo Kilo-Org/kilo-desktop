@@ -70,6 +70,26 @@ describe("NotebookView", () => {
 			.toHaveTextContent("Daemon unavailable: no daemon binary is bundled with this build");
 	});
 
+	it("names both versions when another app's daemon holds the socket", async () => {
+		// This is not a transient state and not something the user can wait out, so
+		// the message has to explain the conflict rather than read as "starting".
+		renderView(() => ({
+			relayPort: 51234,
+			process: {
+				status: "incompatible",
+				runningVersion: "2.6.3+aaaaaaa",
+				bundledVersion: "2.6.3+bbbbbbb",
+			},
+			daemon: null,
+		}));
+
+		await expect
+			.element(page.getByTestId("notebook-status"))
+			.toHaveTextContent(
+				"A different notebook daemon is already running (2.6.3+aaaaaaa); this app needs 2.6.3+bbbbbbb.",
+			);
+	});
+
 	it("reads a restart as progress rather than as an error", async () => {
 		renderView(() => ({
 			relayPort: 51234,

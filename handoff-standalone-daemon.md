@@ -316,10 +316,45 @@ Options considered:
 - **Watch for an early child exit while polling.** nteract's xtask polls readiness
   and `try_wait()`s the child in the same loop so an immediate exit is reported
   instead of timing out (`xtask/src/main.rs:3110-3130`). Worth copying.
-- **Commit-hash pinning is now load-bearing, not hygiene.** Because we may attach
-  to a user's daemon, the version check moves onto the critical path. nteract's own
-  Tauri app version-checks the running daemon's commit hash and upgrades on
-  mismatch (`crates/notebook/src/lib.rs:2074-2100`). Still **not done** here.
+- ~~**Commit-hash pinning is now load-bearing, not hygiene.**~~ **Done** — see
+  below.
+
+## Commit-hash pinning, as built
+
+`daemon-version.ts` (+ colocated test) and a new `incompatible` state on
+`DaemonProcessService`. Checked **only on the attach path**: a daemon we spawned is
+the bundled binary by construction, so version-querying our own child would just
+add latency to every notebook open.
+
+- **Commit, never semver.** CI appends `+{git_sha}`, and two builds of the same
+  `X.Y.Z` from different commits are not interchangeable. Matches nteract's own
+  `extract_commit_hash` (`crates/notebook/src/lib.rs:1618`).
+- **`+dirty` is stripped**, deliberately, and upstream documents the same reasoning
+  (`:1611-1615`): it marks an unclean tree, not a different commit, so treating it
+  as a mismatch would reject every local rebuild.
+- **Unknown does not block.** If either side carries no SHA — a local `cargo build`
+  with no CI stamp — we attach anyway. Refusing to run against a daemon we cannot
+  identify would break development, where both sides are usually the same build.
+- **We refuse, we do not upgrade.** This is the one place we deliberately diverge
+  from nteract, whose Tauri app runs `runtimed install` to replace the running
+  daemon (`:2074-2100`). We must not: killing a daemon we did not start could drop
+  another app's live kernels, and it holds the lock regardless of what `--socket` we
+  pass. So `incompatible` is terminal and surfaced to the renderer.
+- **`status.daemon` is forced to `null` when incompatible.** Otherwise the view
+  would print a healthy version string for a connection that corrupts on first
+  frame — reachable is not the same as usable under typed-frame v4.
+
+**Verified against the real daemon**, not only in unit tests: spawned the staged
+binary (`2.6.3+22d094c`, pid 22625) → `running`, `queryDaemonInfo` agreed, disposal
+left no stray process. Then, with a faked bundled version (`2.6.3+deadbee`) against
+that same live daemon → `incompatible`, both versions reported. Worth knowing this
+machine has a real `/Applications/nteract.app` daemon running (pid 837), which is
+exactly the shared-daemon collision this check exists for.
+
+**The gap that remains is at the staging boundary, not at runtime.**
+`RUNTIMED_BINARY` still accepts any path, so a mismatched binary is caught when the
+app attaches rather than when the bundle is built. Once step 2 lands and the source
+becomes a released asset, assert the SHA at download time too.
 
 ### Optionally, upstream hygiene
 

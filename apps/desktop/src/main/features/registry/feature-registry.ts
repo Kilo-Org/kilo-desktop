@@ -34,6 +34,12 @@ export interface BootFeaturesOptions {
 	 * without storage.
 	 */
 	storageRoot?: string;
+	/**
+	 * Optional callback invoked before each feature's mainRegister runs.
+	 * Used by the shell to push per-feature progress to the splash window
+	 * without features needing to import any shell internals.
+	 */
+	onBeforeFeatureBoot?: (featureId: string) => void;
 }
 
 /**
@@ -54,6 +60,7 @@ export function bootFeatures(
 			console.warn(`[FeatureRegistry] Feature "${feature.id}" is already booted — skipping.`);
 			continue;
 		}
+		options?.onBeforeFeatureBoot?.(feature.id);
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(storageRoot === undefined

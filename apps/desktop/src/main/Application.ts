@@ -20,6 +20,7 @@ import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
+import { BootProgressReporter } from "./platform/BootProgressReporter.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronNotifications } from "./platform/ElectronNotifications.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
@@ -30,6 +31,7 @@ import { featureFsSandboxDir } from "./platform/featureStorage.js";
 import { IpcServer } from "./platform/IpcServer.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
+import { SplashWindow } from "./platform/SplashWindow.js";
 import { configureUpdater } from "./platform/Updater.js";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
@@ -76,7 +78,18 @@ export class Application {
 			electronDebug({ showDevTools: false });
 		}
 
+		// --- Splash / boot progress ---
+		const reporter = new BootProgressReporter();
+		const splash = new SplashWindow(reporter, {
+			isDark: nativeTheme.shouldUseDarkColors,
+		});
+		splash.show();
+		this.#disposers.push(() => reporter.dispose());
+
+		reporter.report("updates", "Checking for updates\u2026");
 		this.#disposers.push(configureUpdater());
+
+		reporter.report("initializing", "Configuring protocols\u2026");
 		const developmentOrigin = getWebDevServerUrl();
 		this.#protocol.register({
 			isDevelopment,
@@ -85,10 +98,20 @@ export class Application {
 		});
 
 		this.#disposers.push(this.#security.install(session.defaultSession));
-		this.#registerIpc(preferences);
+
+		reporter.report("features", "Preparing features\u2026");
+		this.#registerIpc(preferences, reporter);
 		restoreNativeThemeFromPreferences(preferences);
 		this.#registerPushEvents();
-		this.#createWindow(isDevelopment);
+
+		reporter.complete();
+
+		// Start creating the main window (hidden) concurrently with closing the
+		// splash — this eliminates the dead gap between the splash disappearing
+		// and the main window appearing. Both run in parallel; we wait for both.
+		this.#windows.create({ isDevelopment, deferShow: true });
+		await Promise.all([splash.close(), this.#windows.whenReady()]);
+		this.#windows.reveal();
 
 		this.#disposers.push(
 			this.#app.on("activate", () => {
@@ -105,7 +128,7 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(preferences: PreferencesStore): void {
+	#registerIpc(preferences: PreferencesStore, reporter?: BootProgressReporter): void {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// Each feature persists only under its own storage directory
 		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
@@ -114,6 +137,9 @@ export class Application {
 			bootFeatures(FEATURES, {
 				storageRoot: this.#app.getPath("userData"),
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
+				...(reporter
+					? { onBeforeFeatureBoot: (featureId: string) => reporter.reportFeature(featureId) }
+					: {}),
 			}),
 		);
 

@@ -1,8 +1,10 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
 	kiloCodeContract,
 	type KiloCodeService,
+	type KiloGetConnectionInput,
 	type KiloServerConnection,
 	type KiloServerStatus,
 } from "../contracts/schemas.js";
@@ -11,6 +13,10 @@ import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sd
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
 import { resolveKiloInstallation } from "./installation.js";
 import type { WorkspaceCapabilities } from "./workspace-capability.js";
+
+export function unscopedRuntimeDirectory(storageDir: string): string {
+	return path.join(storageDir, "runtime", "unscoped");
+}
 
 export interface KiloServerController {
 	readonly status: KiloServerStatus;
@@ -50,21 +56,31 @@ export function registerKiloCode(mainSdk: MainSdk, options: RegisterKiloCodeOpti
 	// connection request can retry without producing an unhandled rejection here.
 	void server.ensureRunning().catch(() => undefined);
 
-	const service: KiloCodeService = {
-		"server.getConnection": async ({ workspaceId }) => {
+	const resolveDirectory = async (input: KiloGetConnectionInput): Promise<string> => {
+		if ("workspaceId" in input) {
 			const workspaceService =
 				mainSdk.plugins.get<WorkspaceCapabilities>("workspaces")?.workspaceService;
 			if (!workspaceService) {
 				throw new FeatureError("Workspaces are unavailable.", "BUSINESS");
 			}
-			const workspace = await workspaceService.get(workspaceId);
+			const workspace = await workspaceService.get(input.workspaceId);
 			if (!workspace) throw new FeatureError("Workspace not found.", "NOT_FOUND");
 			const primaryFolder = workspace.folders.find((folder) => folder.isPrimary);
 			if (!primaryFolder) {
 				throw new FeatureError("Workspace has no primary folder.", "BUSINESS");
 			}
+			return primaryFolder.path;
+		}
+		const directory = unscopedRuntimeDirectory(mainSdk.storageDir);
+		await mkdir(directory, { recursive: true });
+		return directory;
+	};
+
+	const service: KiloCodeService = {
+		"server.getConnection": async (input) => {
+			const directory = await resolveDirectory(input);
 			const connection = await server.ensureRunning();
-			return { ...connection, directory: primaryFolder.path };
+			return { ...connection, directory };
 		},
 		"server.restart": async () => server.restart(),
 		"server.status": async () => server.status,

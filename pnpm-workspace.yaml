@@ -21,6 +21,11 @@ autoInstallPeers: false
 
 overrides:
   "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:packages/kilo-opencode-sdk-compat"
+  # Keep react-opencode on the same core/store as @assistant-ui/react so Vite
+  # does not embed a second AssistantContext (breaks composer typing).
+  "@assistant-ui/core": "0.3.5"
+  "@assistant-ui/store": "0.3.3"
+  "@assistant-ui/tap": "0.9.9"
 
 allowBuilds:
   electron: true

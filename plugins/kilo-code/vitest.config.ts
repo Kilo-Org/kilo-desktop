@@ -19,6 +19,8 @@ export default defineConfig({
 				"src/main/cli-distribution/stage.ts",
 				"src/main/index.ts",
 				"src/web/index.ts",
+				// Registry-installed assistant-ui kit — covered via ChatPage mount, not line coverage.
+				"src/web/components/**",
 				"src/test/**",
 			]),
 			include: ["src/**"],
@@ -43,7 +45,19 @@ export default defineConfig({
 			},
 			{
 				plugins: [react(), tailwindcss()],
-				resolve: { dedupe: ["react", "react-dom"] },
+				resolve: {
+					dedupe: [
+						"react",
+						"react-dom",
+						"@assistant-ui/react",
+						"@assistant-ui/core",
+						"@assistant-ui/store",
+						"@assistant-ui/tap",
+					],
+					alias: {
+						"@": path.join(root, "src/web"),
+					},
+				},
 				optimizeDeps: {
 					include: [
 						"react",
@@ -51,6 +65,8 @@ export default defineConfig({
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
 						"@anaconda-agentic-desktop/feature-sdk",
+						"@anaconda-agentic-desktop/sdk-react",
+						"@tanstack/react-query",
 						"@testing-library/react",
 						"zod",
 						"vitest",

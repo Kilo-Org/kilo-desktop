@@ -1,3 +1,5 @@
+import { mkdtemp, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -8,6 +10,7 @@ import type { KiloServerConnection, KiloServerStatus } from "../contracts/schema
 import {
 	createKiloServerManagerOptions,
 	registerKiloCode,
+	unscopedRuntimeDirectory,
 	type KiloServerController,
 } from "./index.js";
 import type { WorkspaceCapabilities } from "./workspace-capability.js";
@@ -133,6 +136,25 @@ describe("kilo-code main registration", () => {
 		});
 		await expect(mainSdk.invoke("server.status")).resolves.toEqual({ status: "stopped" });
 		await expect(mainSdk.invoke("server.restart")).resolves.toMatchObject({ version: "7.4.20" });
+		mainSdk.dispose();
+	});
+
+	it("resolves an unscoped connection without workspaces and creates the directory", async () => {
+		const storageDir = await mkdtemp(path.join(os.tmpdir(), "kilo-code-unscoped-"));
+		const mainSdk = createFakeMainSdk({ featureId: "kilo-code", storageDir });
+		const server = fakeServer();
+		registerKiloCode(mainSdk, { createServer: () => server });
+
+		const directory = unscopedRuntimeDirectory(storageDir);
+		await expect(mainSdk.invoke("server.getConnection", { scope: "unscoped" })).resolves.toEqual({
+			baseUrl: "http://127.0.0.1:4321",
+			username: "kilo",
+			password: "secret",
+			version: "7.4.20",
+			directory,
+		});
+		expect((await stat(directory)).isDirectory()).toBe(true);
+		expect(server.ensureRunning).toHaveBeenCalledTimes(2);
 		mainSdk.dispose();
 	});
 });

@@ -18,11 +18,21 @@
 	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
-		"@assistant-ui/react": "0.15.1",
+		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
+		"@anaconda-agentic-desktop/ui": "workspace:*",
+		"@assistant-ui/react": "0.15.4",
+		"@assistant-ui/react-markdown": "^0.14.8",
 		"@assistant-ui/react-opencode": "0.2.17",
 		"@kilocode/sdk": "7.4.20",
+		"class-variance-authority": "^0.7.1",
 		"execa": "^9.6.0",
-		"zod": "catalog:"
+		"lucide-react": "^1.27.0",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"remark-gfm": "^4.0.1",
+		"tw-shimmer": "^0.4.12",
+		"zod": "catalog:",
+		"zustand": "^5.0.14"
 	},
 	"devDependencies": {
 		"@anaconda-agentic-desktop/e2e": "workspace:*",

@@ -1,23 +1,33 @@
-import {
-	click,
-	expectElementToBeVisible,
-	getLocatorByRole,
-	getLocatorByTestId,
-} from "@anaconda/playwright-utils";
+import { expectElementToBeVisible, getLocatorByTestId } from "@anaconda/playwright-utils";
+import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 export class WorkspacesPage {
-	private readonly createCommand = () => getLocatorByTestId("workspace-create-command");
-
-	async createWorkspaceFromFolder(folderName: string): Promise<void> {
-		await click(getLocatorByRole("combobox", { name: "Select workspace" }));
-		await click(this.createCommand(), { stable: true });
-		await click(getLocatorByRole("button", { name: /Drop folders/ }));
-		await click(getLocatorByRole("button", { name: "Create workspace" }));
+	async createWorkspaceFromFolder(folderPath: string, folderName: string): Promise<void> {
+		await getPage().evaluate(
+			async ({ folderPath, folderName }) => {
+				type InvokeResult =
+					| { ok: true; value: unknown }
+					| { ok: false; error: { code: string; message: string } };
+				type DesktopGlobal = typeof globalThis & {
+					desktopApi: {
+						invoke(
+							channel: "feature:invoke",
+							input: { featureId: string; channel: string; args?: unknown },
+						): Promise<InvokeResult>;
+					};
+				};
+				const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
+					featureId: "workspaces",
+					channel: "create",
+					args: { name: folderName, folders: [{ path: folderPath, isPrimary: true }] },
+				});
+				if (!response.ok) throw new Error(`[${response.error.code}] ${response.error.message}`);
+			},
+			{ folderPath, folderName },
+		);
 		await expectElementToBeVisible(
-			getLocatorByRole("combobox", { name: "Select workspace" }).getByText(folderName, {
-				exact: true,
-			}),
-			`Workspace selector should display the folder-derived name "${folderName}"`,
+			getLocatorByTestId("app-sidebar"),
+			"App sidebar should remain visible after creating a workspace",
 		);
 	}
 }

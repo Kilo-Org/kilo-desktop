@@ -5,6 +5,6 @@ test.describe("Workspaces @smoke", () => {
 		workspacesPage,
 		workspaceFolder,
 	}) => {
-		await workspacesPage.createWorkspaceFromFolder(workspaceFolder.name);
+		await workspacesPage.createWorkspaceFromFolder(workspaceFolder.path, workspaceFolder.name);
 	});
 });

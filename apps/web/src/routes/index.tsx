@@ -1,7 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-
-import { HomeView } from "@/features/home/HomeView";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
-	component: HomeView,
+	beforeLoad: () => {
+		throw redirect({
+			to: "/plugins/$",
+			params: { _splat: "chat" },
+		});
+	},
 });

@@ -6,8 +6,8 @@
 	"web": "./src/web/index.ts",
 	"contributes": {
 		"providers": [],
-		"routes": [],
-		"nav": [],
+		"routes": [{ "path": "/chat", "component": "ChatPage", "title": "Chat" }],
+		"nav": [{ "to": "/chat", "label": "Chat", "icon": "ChatNavIcon" }],
 		"zones": []
 	}
 }

@@ -8,12 +8,6 @@
 		"providers": [{ "component": "WorkspacesFeatureProvider" }],
 		"routes": [],
 		"nav": [],
-		"zones": [
-			{
-				"zone": "home-composer-leading-action",
-				"component": "WorkspaceSelector",
-				"label": "Workspace selector"
-			}
-		]
+		"zones": []
 	}
 }

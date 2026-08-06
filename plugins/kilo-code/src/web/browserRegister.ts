@@ -8,7 +8,7 @@ const unavailable = (): never => {
 
 export function kiloCodeBrowserRegister(mainSdk: MainSdk): void {
 	const service: KiloCodeService = {
-		"server.getConnection": async () => unavailable(),
+		"server.getConnection": async (_input) => unavailable(),
 		"server.restart": async () => unavailable(),
 		"server.status": async () => ({
 			status: "unavailable",

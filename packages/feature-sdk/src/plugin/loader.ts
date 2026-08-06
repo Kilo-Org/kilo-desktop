@@ -109,6 +109,11 @@ export interface DiscoveredPlugin {
 	/** Feeds the existing boot paths (FEATURES / WEB_FEATURES shape). */
 	registration: FeatureRegistration;
 	/**
+	 * `contributes.providers` components resolved from the web entry module.
+	 * Web-entry discovery only.
+	 */
+	providers: ResolvedPluginProviderContribution[];
+	/**
 	 * `contributes.routes` with their page components resolved from the web
 	 * entry module. Populated only for `entry: "web"` discovery (a renderer
 	 * concern); routes whose component export is missing, whose path collides
@@ -195,6 +200,19 @@ export interface ResolvedPluginZoneContribution {
 	/** The resolved component export. */
 	component: unknown;
 	/** Higher renders first within the zone. Default 0. */
+	priority: number;
+	browserSafe: boolean;
+}
+
+/**
+ * An app-lifetime provider resolved from a plugin's web entry. The SDK stays
+ * React-free, so the shell owns the component cast and composition.
+ */
+export interface ResolvedPluginProviderContribution {
+	pluginId: string;
+	/** The resolved provider component export. */
+	component: unknown;
+	/** Higher-priority providers wrap lower-priority providers. Default 0. */
 	priority: number;
 	browserSafe: boolean;
 }
@@ -301,7 +319,7 @@ export function discoverPlugins(
 			const resolved =
 				entry === "web"
 					? resolveContributions(manifest, candidate.module, seenRoutePaths, issues)
-					: { routes: [], nav: [], zones: [] };
+					: { providers: [], routes: [], nav: [], zones: [] };
 			plugins.push({ manifest, registration, ...resolved });
 		}
 	}
@@ -310,6 +328,7 @@ export function discoverPlugins(
 }
 
 interface ResolvedContributions {
+	providers: ResolvedPluginProviderContribution[];
 	routes: ResolvedPluginRoute[];
 	nav: ResolvedPluginNav[];
 	zones: ResolvedPluginZoneContribution[];
@@ -317,9 +336,9 @@ interface ResolvedContributions {
 
 /**
  * Resolve a plugin's declarative `contributes` against its web entry module.
- * Route/zone components are looked up by export name; nav entries are pure
- * data. Individual bad contributions are skipped with an issue — the plugin
- * itself still loads.
+ * Provider/route/zone components are looked up by export name; nav entries are
+ * pure data. Individual bad contributions are skipped with an issue — the
+ * plugin itself still loads.
  */
 function resolveContributions(
 	manifest: PluginManifest,
@@ -329,9 +348,33 @@ function resolveContributions(
 ): ResolvedContributions {
 	// Electron-only plugins (main entry, no browserRegister) cannot serve their
 	// backend in standalone browser mode — the shell shows an unavailable state
-	// for their routes and omits their zone widgets.
+	// for their routes and omits their providers and zone widgets.
 	const browserSafe = manifest.main === undefined || typeof module.browserRegister === "function";
-	const { routes: routeDecls, nav: navDecls, zones: zoneDecls } = manifest.contributes;
+	const {
+		providers: providerDecls,
+		routes: routeDecls,
+		nav: navDecls,
+		zones: zoneDecls,
+	} = manifest.contributes;
+
+	const providers: ResolvedPluginProviderContribution[] = [];
+	for (const contribution of providerDecls) {
+		const component = module[contribution.component];
+		if (typeof component !== "function") {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" provider contribution names component export "${contribution.component}" but the web entry does not export a provider component with that name — skipping the contribution.`,
+			});
+			continue;
+		}
+
+		providers.push({
+			pluginId: manifest.id,
+			component,
+			priority: contribution.priority ?? 0,
+			browserSafe,
+		});
+	}
 
 	const routes: ResolvedPluginRoute[] = [];
 	for (const route of routeDecls) {
@@ -422,7 +465,7 @@ function resolveContributions(
 		});
 	}
 
-	return { routes, nav, zones };
+	return { providers, routes, nav, zones };
 }
 
 function createRegistration(
@@ -495,6 +538,13 @@ export function pluginZoneContributions(
 	discovery: PluginDiscovery,
 ): ResolvedPluginZoneContribution[] {
 	return discovery.plugins.flatMap((plugin) => plugin.zones);
+}
+
+/** All resolved app-lifetime providers across discovered web plugins. */
+export function pluginProviderContributions(
+	discovery: PluginDiscovery,
+): ResolvedPluginProviderContribution[] {
+	return discovery.plugins.flatMap((plugin) => plugin.providers);
 }
 
 /**

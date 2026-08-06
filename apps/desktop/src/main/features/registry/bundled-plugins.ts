@@ -1,4 +1,6 @@
 import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
+import { app } from "electron";
+import path from "node:path";
 
 /**
  * Bundled workspace plugins — main-process side (Decision #17).
@@ -25,12 +27,37 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  *    seed data, ...).
  */
 
+import kiloCodeManifest from "@anaconda-agentic-desktop/plugin-kilo-code/plugin.json" with { type: "json" };
+import * as kiloCodeMain from "@anaconda-agentic-desktop/plugin-kilo-code/main";
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
+import workspacesManifest from "@anaconda-agentic-desktop/plugin-workspaces/plugin.json" with { type: "json" };
+import * as workspacesMain from "@anaconda-agentic-desktop/plugin-workspaces/main";
 
 import { bundledPluginAssetResolver } from "./bundled-plugin-assets.js";
 
+const resolveKiloCodePackageAsset = bundledPluginAssetResolver(
+	"@anaconda-agentic-desktop/plugin-kilo-code",
+);
+
+function resolveKiloCodeAsset(subpath: string): string {
+	if (app.isPackaged && subpath === "resources/kilo") {
+		return path.join(process.resourcesPath, "kilo");
+	}
+	return resolveKiloCodePackageAsset(subpath);
+}
+
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{
+		manifest: workspacesManifest,
+		module: workspacesMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-workspaces"),
+	},
+	{
+		manifest: kiloCodeManifest,
+		module: kiloCodeMain,
+		resolveAsset: resolveKiloCodeAsset,
+	},
 	{
 		manifest: todosManifest,
 		module: todosMain,

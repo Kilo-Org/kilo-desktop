@@ -70,10 +70,10 @@ export type PluginNavEntry = z.infer<typeof pluginNavEntrySchema>;
 
 /**
  * A zone widget contribution (`contributes.zones`). The host mounts the named
- * component export into the given shell zone at plugin activation, so it is
- * PERSISTENT — present regardless of which page is showing (unlike the
- * page-scoped, conditional `sdk.contribute`). Use this for a status-bar badge
- * or dashboard card that should always be there while the plugin is active.
+ * component export into the given shell zone at plugin activation. The
+ * registration persists for the plugin lifetime; the component renders while
+ * the shell exposes that zone's outlet. Use `contributes.providers` instead
+ * for lifecycle work that must stay mounted across every route.
  */
 export const pluginZoneContributionSchema = z.strictObject({
 	/** Canonical shell zone id exported by feature-sdk. */
@@ -88,12 +88,28 @@ export const pluginZoneContributionSchema = z.strictObject({
 export type PluginZoneContribution = z.infer<typeof pluginZoneContributionSchema>;
 
 /**
+ * An app-lifetime React provider contribution (`contributes.providers`). The
+ * host composes the named component around the app router after its own SDK
+ * and query providers, so plugin capabilities, state, and event listeners stay
+ * active independently of route-scoped widgets.
+ */
+export const pluginProviderContributionSchema = z.strictObject({
+	/** Name of a provider component export in the plugin's `web` entry module. */
+	component: z.string().min(1),
+	/** Higher-priority providers wrap lower-priority providers. Default 0. */
+	priority: z.number().int().optional(),
+});
+export type PluginProviderContribution = z.infer<typeof pluginProviderContributionSchema>;
+
+/**
  * Everything a plugin adds to the shell, declared statically (B1 / VS Code
- * `contributes` model). `routes` and `zones` name component exports the host
- * resolves and mounts; `nav` is pure data. The imperative `sdk.contribute`
- * remains for dynamic, app-state-dependent contributions.
+ * `contributes` model). `providers`, `routes`, and `zones` name component
+ * exports the host resolves and mounts; `nav` is pure data. The imperative
+ * `sdk.contribute` remains for dynamic, app-state-dependent contributions.
  */
 export const pluginContributesSchema = z.strictObject({
+	/** App-lifetime provider components, composed inside the shell's SDK/query providers. */
+	providers: z.array(pluginProviderContributionSchema).default([]),
 	/** Full-page routes (path → component export). */
 	routes: z.array(pluginRouteSchema).default([]),
 	/** Primary-navigation (sidebar) entries. */
@@ -132,18 +148,21 @@ export const pluginManifestSchema = z
 		 * browser-mode support. Omit for headless plugins.
 		 */
 		web: z.string().min(1).optional(),
-		/** Declarative UI contributions (routes, nav, zone widgets). */
-		contributes: pluginContributesSchema.default({ routes: [], nav: [], zones: [] }),
+		/** Declarative UI contributions (providers, routes, nav, zone widgets). */
+		contributes: pluginContributesSchema.default({ providers: [], routes: [], nav: [], zones: [] }),
 	})
 	.refine((manifest) => manifest.main !== undefined || manifest.web !== undefined, {
 		message: "Manifest must declare at least one entry point ('main' or 'web').",
 	})
 	.refine(
 		(manifest) =>
-			(manifest.contributes.routes.length === 0 && manifest.contributes.zones.length === 0) ||
+			(manifest.contributes.providers.length === 0 &&
+				manifest.contributes.routes.length === 0 &&
+				manifest.contributes.zones.length === 0) ||
 			manifest.web !== undefined,
 		{
-			message: "Manifest declares route/zone components but no 'web' entry to resolve them from.",
+			message:
+				"Manifest declares provider/route/zone components but no 'web' entry to resolve them from.",
 		},
 	);
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;

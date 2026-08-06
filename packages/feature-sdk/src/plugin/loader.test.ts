@@ -6,6 +6,7 @@ import { FeatureRouter } from "../services/feature-router.js";
 import {
 	discoverPlugins,
 	pluginNav,
+	pluginProviderContributions,
 	pluginRegistrations,
 	pluginRoutes,
 	pluginZoneContributions,
@@ -330,6 +331,65 @@ describe("contribution resolution", () => {
 		]);
 	});
 
+	it("resolves app-lifetime providers against the web entry module", () => {
+		const PingProvider = () => null;
+		const providerManifest = {
+			...manifest,
+			contributes: {
+				providers: [{ component: "PingProvider", priority: 7 }],
+			},
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: providerManifest, module: { browserRegister, PingProvider } }],
+			"web",
+		);
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginProviderContributions(discovery)).toEqual([
+			{
+				pluginId: "ping",
+				component: PingProvider,
+				priority: 7,
+				browserSafe: true,
+			},
+		]);
+	});
+
+	it("skips a provider whose component export is missing", () => {
+		const providerManifest = {
+			...manifest,
+			contributes: { providers: [{ component: "MissingProvider" }] },
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: providerManifest, module: { browserRegister } }],
+			"web",
+		);
+
+		expect(pluginProviderContributions(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining(
+					'provider contribution names component export "MissingProvider"',
+				),
+			},
+		]);
+	});
+
+	it("marks providers from Electron-only plugins as not browser-safe", () => {
+		const PingProvider = () => null;
+		const providerManifest = {
+			...manifest,
+			contributes: { providers: [{ component: "PingProvider" }] },
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: providerManifest, module: { PingProvider } }],
+			"web",
+		);
+
+		expect(pluginProviderContributions(discovery)[0]?.browserSafe).toBe(false);
+	});
+
 	it("marks routes and zones of Electron-only plugins as not browser-safe", () => {
 		const bundled: BundledPlugin[] = [
 			{ manifest: routedManifest, module: { PingPage, PingStatus } },
@@ -439,6 +499,7 @@ describe("contribution resolution", () => {
 		expect(discovery.issues).toEqual([]);
 		expect(pluginRoutes(discovery)).toEqual([]);
 		expect(pluginNav(discovery)).toEqual([]);
+		expect(pluginProviderContributions(discovery)).toEqual([]);
 		expect(pluginZoneContributions(discovery)).toEqual([]);
 	});
 });

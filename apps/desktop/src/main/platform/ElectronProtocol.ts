@@ -7,9 +7,9 @@ import { net, protocol } from "electron";
 export const DESKTOP_HOST = "app";
 export const DESKTOP_PRODUCTION_SCHEME = "anaconda-agentic-desktop";
 export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
-// Host seam: dynamic loopback connect sources need an explicit plugin permission before this
-// can be derived from a future kilo-code plugin manifest.
-const KILO_CONNECT_SOURCE = "http://127.0.0.1:*";
+// Application policy: renderer features may connect to app-managed loopback servers on
+// ephemeral ports. Remote HTTP, localhost aliases, and WebSocket origins remain disallowed.
+const LOOPBACK_SERVER_CONNECT_SOURCE = "http://127.0.0.1:*";
 
 /**
  * Path of the self-hosted WebMCP relay widget. The relay `embed.js` first tries to
@@ -82,10 +82,11 @@ export function createContentSecurityPolicy(
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' data: blob:",
 		"font-src 'self' data:",
-		// `connect-src`: `KILO_CONNECT_SOURCE` reaches the local Kilo server;
-		// `RELAY_WS_SOURCES` are the loopback WebSockets the self-hosted WebMCP
-		// relay widget uses to reach the `@mcp-b/webmcp-local-relay` daemon.
-		`connect-src 'self' ${KILO_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
+		// `connect-src`: `LOOPBACK_SERVER_CONNECT_SOURCE` reaches app-managed
+		// loopback servers (e.g. the local Kilo server); `RELAY_WS_SOURCES` are
+		// the loopback WebSockets the self-hosted WebMCP relay widget uses to
+		// reach the `@mcp-b/webmcp-local-relay` daemon.
+		`connect-src 'self' ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
 		// `frame-src 'self'`: the app embeds the WebMCP relay widget in a hidden
 		// same-origin iframe. `frame-ancestors 'self'`: the widget response must
 		// permit being framed by the same-origin app (a `'none'` here blocks the

@@ -106,6 +106,15 @@ feature router, in both Electron and browser mode.
 
 Register handlers with the same contract so input and output are validated on the main side too. Prefer `mainSdk.channels(todosContract).handleAll({ ... })` — it requires a handler for every channel in the map, so a newly added channel cannot be forgotten. `handle(channel, handler)` remains for registering channels one at a time.
 
+### `mainSdk.logger` / `mainSdk.net.fetch` — host process services
+
+Main-process features use these delegates instead of importing Electron or shell implementation modules. The Electron host supplies a feature-scoped `electron-log` logger and a fetch implementation backed by `net.fetch`; browser mode uses runtime defaults, and tests can inject structural fakes through `createFakeMainSdk`.
+
+```ts
+mainSdk.logger.info("server ready", { version });
+const response = await mainSdk.net.fetch("https://example.test/health");
+```
+
 ### `sdk.events` / `mainSdk.events` — fire-and-forget pub/sub
 
 Cross-feature and cross-process notifications. `emit` is auto-prefixed with your feature ID; `on` subscribes to fully-qualified names, so you can listen to any feature's events from the renderer or main process.
@@ -207,13 +216,26 @@ const remove = sdk.contribute(STATUS_BAR_ZONE, {
 remove(); // e.g. when syncing finishes
 ```
 
-For a widget that should be **always present** while the plugin is active (a status-bar count, a dashboard card), declare it in `plugin.json` `contributes.zones` instead — the host mounts it at activation, independent of any page:
+For a widget whose registration should last for the plugin lifetime, declare it in `plugin.json` `contributes.zones`. It renders whenever the shell exposes that zone's outlet:
 
 ```jsonc
 "contributes": {
   "zones": [{ "zone": "status-bar", "component": "TodosStatusBarItem" }]
 }
 ```
+
+For lifecycle behavior that must remain mounted across every route—capability
+exposure, shared observable state, global dialogs, or event listeners—declare a
+provider exported by the plugin's web entry:
+
+```jsonc
+"contributes": {
+  "providers": [{ "component": "WorkspacesFeatureProvider", "priority": 10 }]
+}
+```
+
+The shell composes providers inside its SDK and query providers. Higher-priority
+providers wrap lower-priority providers; equal priorities keep plugin registry order.
 
 **Use routes, not contributions, for the feature's main view** — declare them in `plugin.json` `contributes.routes` (the host mounts them; plugins never touch the router).
 
@@ -293,6 +315,7 @@ Rule of thumb for feature authors: register cleanup with `onDispose`, never call
 Use `@anaconda-agentic-desktop/testing` — never hand-roll SDK fakes:
 
 ```ts
+import { vi } from "vitest";
 import {
 	createFakeSdk,
 	createFakeMainSdk,
@@ -309,7 +332,11 @@ await sdk.invoke("list"); // served by the fake's real router
 sdk.services.featureRouter.eventBus.emit("other.thing", {}); // drive cross-feature scenarios
 
 // Backend registration tests — mainRegister supplies the channel map.
-const mainSdk = createFakeMainSdk({ featureId: "todos" });
+const mainSdk = createFakeMainSdk({
+	featureId: "todos",
+	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+	fetch: vi.fn(),
+});
 mainRegister(mainSdk);
 await mainSdk.invoke("create", { title: "x" }); // validates input and output like the real router
 mainSdk.dispose(); // runs onDispose callbacks + clears handlers, like shell teardown

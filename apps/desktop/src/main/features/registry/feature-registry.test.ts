@@ -31,12 +31,17 @@ describe("feature registration", () => {
 		const relay = vi.fn();
 		const disposed = vi.fn();
 		const resolveAsset = vi.fn((subpath: string) => `/plugin/${subpath}`);
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const createLogger = vi.fn(() => logger);
+		const fetch = vi.fn(async () => Response.json({ ok: true })) as typeof globalThis.fetch;
 		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		const featureId = "registry-options-test";
 		const registration = {
 			id: featureId,
 			resolveAsset,
 			mainRegister(mainSdk: MainSdk) {
+				expect(mainSdk.logger).toBe(logger);
+				expect(mainSdk.net.fetch).toBe(fetch);
 				expect(mainSdk.storageDir).toBe(path.join(storageRoot, "plugins", featureId));
 				expect(mainSdk.resolvePluginAsset("migrations")).toBe("/plugin/migrations");
 				mainSdk.events.emit("ready", { id: "1" });
@@ -44,8 +49,9 @@ describe("feature registration", () => {
 			},
 		};
 
-		const dispose = bootFeatures([registration], { emitEvent: relay, storageRoot });
-		const duplicateDispose = bootFeatures([registration], { emitEvent: relay, storageRoot });
+		const options = { emitEvent: relay, storageRoot, createLogger, fetch };
+		const dispose = bootFeatures([registration], options);
+		const duplicateDispose = bootFeatures([registration], options);
 
 		expect(relay).toHaveBeenCalledWith({
 			featureId,
@@ -53,6 +59,8 @@ describe("feature registration", () => {
 			payload: { id: "1" },
 		});
 		expect(resolveAsset).toHaveBeenCalledWith("migrations");
+		expect(createLogger).toHaveBeenCalledOnce();
+		expect(createLogger).toHaveBeenCalledWith(featureId);
 		expect(warning).toHaveBeenCalledWith(expect.stringContaining("is already booted"));
 		duplicateDispose();
 		expect(disposed).not.toHaveBeenCalled();

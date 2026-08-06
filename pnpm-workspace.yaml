@@ -19,6 +19,9 @@ nodeLinker: hoisted
 injectWorkspacePackages: true
 autoInstallPeers: false
 
+overrides:
+  "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:packages/kilo-opencode-sdk-compat"
+
 allowBuilds:
   electron: true
   electron-winstaller: true

@@ -6,6 +6,8 @@ import {
 	qualifyFeatureEvent,
 	type FeatureEvent,
 	type FeatureRegistration,
+	type MainSdkFetch,
+	type MainSdkLogger,
 } from "@anaconda-agentic-desktop/feature-sdk";
 import type {
 	FeatureEventPayload,
@@ -27,6 +29,10 @@ const bootedFeatureIds = new Set<string>();
 export interface BootFeaturesOptions {
 	/** Relay main-emitted events to every renderer window. */
 	emitEvent?: (event: FeatureEvent) => void;
+	/** Create the host logger scoped to a feature id. */
+	createLogger?: (featureId: string) => MainSdkLogger;
+	/** Host networking implementation shared by main-process features. */
+	fetch?: MainSdkFetch;
 	/**
 	 * Base data path (Electron `app.getPath("userData")`). Each feature gets
 	 * `${storageRoot}/plugins/<id>` as its `mainSdk.storageDir`, created
@@ -56,6 +62,8 @@ export function bootFeatures(
 		}
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
+			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
+			...(options?.fetch ? { fetch: options.fetch } : {}),
 			...(storageRoot === undefined
 				? {}
 				: {

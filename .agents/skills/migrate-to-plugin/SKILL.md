@@ -55,6 +55,7 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
 	"contributes": {
+		"providers": [],
 		"routes": [{ "path": "/<id>", "component": "<WebEntryExportName>", "title": "<Human Name>" }],
 		"nav": [{ "to": "/<id>", "label": "<Human Name>", "icon": "<lucide-icon-name>" }],
 		"zones": []
@@ -65,9 +66,10 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 - `main` — main-process entry; the module must export `mainRegister(mainSdk)`. Omit for renderer-only plugins.
 - `web` — renderer entry; may export `browserRegister(mainSdk)` for standalone browser mode (omit the export for Electron-only plugins — browser mode then skips the plugin with a warning). Omit the field for headless plugins.
 - `contributes` — everything the plugin adds to the shell, declared statically (VS Code–style):
+  - `providers` — app-lifetime React providers (`component` export name plus optional `priority`). The shell composes them inside `SdkProvider` and `QueryClientProvider`, so plugin capabilities, state, dialogs, and event listeners can remain active independently of the current route. Higher priority wraps lower priority. Requires `web`.
   - `routes` — full pages (`path` → `component` export). The shell mounts the component on its catch-all route and passes it `PluginPageProps` (`path`, `search`); optional `title` is used for the browser-mode unavailable state. Routes require `web`.
   - `nav` — sidebar entries (pure data): `to` (any path), `label`, optional `icon` (kebab-case lucide name) and `priority` (higher first). Decoupled from routes — a route can have no nav entry, and a nav entry can point anywhere.
-  - `zones` — **persistent** zone widgets (`zone` + `component` export), host-mounted at activation and present regardless of the current page. Canonical zones: `"sidebar"`, `"status-bar"`, `"dashboard"`. Use this for a status-bar count or dashboard card; use imperative `sdk.contribute` only for conditional, page-scoped UI. Requires `web`.
+  - `zones` — plugin-lifetime zone registrations (`zone` + `component` export), rendered whenever the shell exposes that zone's outlet. Canonical zones: `"sidebar"`, `"status-bar"`, `"dashboard"`, `"home-composer-leading-action"`. Use this for visible widgets; use `providers` for lifecycle work that must remain mounted across routes, and imperative `sdk.contribute` for conditional UI. Requires `web`.
 - At least one of `main` / `web` is required.
 
 ### Step 4: Create package.json

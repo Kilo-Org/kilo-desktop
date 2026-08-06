@@ -1,5 +1,13 @@
 // Main-process entry — exported from "@anaconda-agentic-desktop/feature-sdk/main"
-export type { MainSdk, ChannelHandlers, FeatureRegistration, SchemaLike } from "./types/sdk.js";
+export type {
+	MainSdk,
+	MainSdkFetch,
+	MainSdkLogger,
+	MainSdkNet,
+	ChannelHandlers,
+	FeatureRegistration,
+	SchemaLike,
+} from "./types/sdk.js";
 export {
 	defineMethod,
 	type MethodContract,

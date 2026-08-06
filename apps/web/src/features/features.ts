@@ -6,8 +6,6 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
-import { kiloCodeBrowserRegister } from "./kilo-code/browserRegister.js";
-import { workspacesBrowserRegister } from "./workspaces/browserRegister.js";
 
 /**
  * Feature registrations used when the app runs standalone in a browser
@@ -21,18 +19,7 @@ import { workspacesBrowserRegister } from "./workspaces/browserRegister.js";
  */
 
 /** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
-const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
-	{
-		id: "workspaces",
-		mainRegister: workspacesBrowserRegister,
-		browserRegister: workspacesBrowserRegister,
-	},
-	{
-		id: "kilo-code",
-		mainRegister: kiloCodeBrowserRegister,
-		browserRegister: kiloCodeBrowserRegister,
-	},
-];
+const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validates the

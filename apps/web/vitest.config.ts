@@ -33,7 +33,26 @@ export default defineConfig({
 				plugins: [react(), tailwindcss()],
 				resolve: {
 					alias,
-					dedupe: ["react", "react-dom"],
+					dedupe: [
+						"react",
+						"react-dom",
+						"@anaconda-agentic-desktop/sdk-react",
+						"@assistant-ui/react",
+						"@assistant-ui/core",
+						"@assistant-ui/store",
+						"@assistant-ui/tap",
+					],
+				},
+				optimizeDeps: {
+					include: [
+						"react",
+						"react-dom",
+						"react/jsx-runtime",
+						"react/jsx-dev-runtime",
+						"@anaconda-agentic-desktop/sdk-react",
+						"@tanstack/react-query",
+						"@testing-library/react",
+					],
 				},
 				test: {
 					name: "browser",

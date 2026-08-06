@@ -45,6 +45,7 @@ export default defineConfig({
 		dedupe: [
 			"react",
 			"react-dom",
+			"@anaconda-agentic-desktop/sdk-react",
 			"@assistant-ui/react",
 			"@assistant-ui/core",
 			"@assistant-ui/store",

@@ -97,6 +97,33 @@ describe("feature registration", () => {
 		expect(registered).toHaveBeenCalledOnce();
 		retryDispose();
 	});
+
+	it("invokes onBeforeFeatureBoot callback for each feature before mainRegister", () => {
+		const featureId = "registry-progress-test";
+		const progress = vi.fn();
+		const registerOrder: string[] = [];
+
+		const dispose = bootFeatures(
+			[
+				{
+					id: featureId,
+					mainRegister() {
+						registerOrder.push("register");
+					},
+				},
+			],
+			{
+				onBeforeFeatureBoot: (id) => {
+					progress(id);
+					registerOrder.push("progress");
+				},
+			},
+		);
+
+		expect(progress).toHaveBeenCalledWith(featureId);
+		expect(registerOrder).toEqual(["progress", "register"]);
+		dispose();
+	});
 });
 
 describe("feature event bridge", () => {

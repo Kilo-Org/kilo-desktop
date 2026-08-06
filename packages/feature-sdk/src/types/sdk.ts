@@ -5,6 +5,7 @@ import type {
 	ChannelMap,
 } from "../channel-map.js";
 import type { ShellZone } from "./zones.js";
+import type { SchemaLike } from "./schema.js";
 
 export type { SchemaLike } from "./schema.js";
 
@@ -512,16 +513,102 @@ export interface PluginPageProps {
 	search: Record<string, unknown>;
 }
 
-// ─── Deferred (plugin system required) ───────────────────────────────────────
+// ─── Tools (AI-runtime tool registry) ────────────────────────────────────────
 
 /**
- * DEFERRED — placeholder so the interface shape is stable. Calls throw.
- * See docs/plugin-implementation-plan.md (Slice 4, "Deferred APIs").
+ * Behaviour hints for an AI runtime, mirroring the MCP / WebMCP tool
+ * annotation vocabulary. All optional; consumers treat absence as "unknown".
+ */
+export interface ToolAnnotations {
+	/** Display title distinct from the machine name. */
+	title?: string;
+	/** The tool only reads state and never mutates. */
+	readOnlyHint?: boolean;
+	/** The tool may perform destructive/irreversible actions. */
+	destructiveHint?: boolean;
+	/** Calling repeatedly with the same args has no additional effect. */
+	idempotentHint?: boolean;
+	/** The tool reaches beyond local state (network, external systems). */
+	openWorldHint?: boolean;
+}
+
+/**
+ * A tool a feature exposes to an AI runtime (e.g. the WebMCP bridge).
+ *
+ * `inputSchema` is a JSON Schema object advertised to clients. `validate` is an
+ * optional structural validator (satisfied by a Zod schema) run before the
+ * handler; when present, the handler receives its parsed output.
+ */
+export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
+	/**
+	 * Tool name. Stored in the registry under the namespaced id `featureId.name`
+	 * (the `.`-form is the internal key used by `services.toolRegistry.invoke`
+	 * and by `RegisteredTool.id`). When published to MCP clients through the
+	 * WebMCP bridge, the wire name is sanitized to `featureId_name` because MCP
+	 * tool names are restricted to `[A-Za-z0-9_]`. Prefer `[A-Za-z0-9_]`-only
+	 * names to avoid the sanitization step and any collision risk.
+	 */
+	name: string;
+	description: string;
+	/** JSON Schema (draft 2020-12) describing the arguments object. */
+	inputSchema?: Readonly<Record<string, unknown>>;
+	/** Optional validator; its parsed value is passed to `handler`. */
+	validate?: SchemaLike<TArgs>;
+	annotations?: ToolAnnotations;
+	/**
+	 * Opt-in to publishing this tool to external AI runtimes — specifically the
+	 * WebMCP bridge (`document.modelContext`), which relays it to the local,
+	 * UNAUTHENTICATED MCP relay reachable by any local process. Defaults to
+	 * `false`: a tool is registered for in-app use but NOT exposed externally
+	 * unless it explicitly opts in. Prefer leaving mutating/destructive tools
+	 * unexposed unless external agent access is intended.
+	 */
+	exposeToModelContext?: boolean;
+	handler: (args: TArgs) => TResult | Promise<TResult>;
+}
+
+/** A tool as stored in the registry, with its owning feature and namespaced id. */
+export interface RegisteredTool {
+	/** Owning feature id. */
+	featureId: string;
+	/** Namespaced id, "featureId.name" (the registry key). */
+	id: string;
+	name: string;
+	description: string;
+	inputSchema?: Readonly<Record<string, unknown>>;
+	annotations?: ToolAnnotations;
+	/** Whether the tool opted in to external WebMCP exposure (see ToolDefinition). */
+	exposeToModelContext: boolean;
+}
+
+/**
+ * Feature-registered tools for an AI runtime. Tool names are auto-namespaced by
+ * feature id (`featureId.name` internally, `featureId_name` on the MCP wire).
+ * A consumer (the WebMCP bridge) reads {@link all} and subscribes to registry
+ * change notifications to publish them to `document.modelContext`.
+ *
+ * Note there is deliberately no `invoke` on this plugin-facing surface. Tools
+ * are the AI adapter over a domain function; plugin code should never
+ * round-trip through the adapter to reach code it owns (that pays arg-validation
+ * / JSON Schema / CallToolResult overhead for zero benefit). The idiomatic
+ * pattern:
+ *
+ *   1. Write the domain function.
+ *   2. Expose it to other plugins via `sdk.plugins.expose(name, impl)`.
+ *   3. Optionally adapt it as an AI tool via `sdk.tools.register(...)`, whose
+ *      `handler` calls the same domain function.
+ *
+ * Cross-plugin code calls `sdk.plugins.get<T>("otherFeatureId")?.method(...)`.
+ * The only code that ever invokes a tool programmatically is the shell (the
+ * WebMCP bridge, on behalf of the AI), and it uses
+ * `services.toolRegistry.invoke(featureId, name, args)` — infrastructure, not
+ * a plugin API.
  */
 export interface SdkTools {
-	register(definition: unknown): void;
-	invoke(featureId: string, toolName: string, args: unknown): Promise<unknown>;
-	all(): unknown[];
+	/** Register one of THIS feature's tools. Returns an unregister function. */
+	register(definition: ToolDefinition): () => void;
+	/** Read-only metadata for all currently registered tools across features. */
+	all(): RegisteredTool[];
 }
 
 /**
@@ -660,6 +747,25 @@ export interface FeatureRegistration {
 	 * { id: "todos", mainRegister: register, browserRegister: register }
 	 */
 	browserRegister?(mainSdk: MainSdk): void;
+	/**
+	 * Renderer-side setup that runs at boot in BOTH modes (browser and Electron),
+	 * unlike {@link browserRegister} which only fires in browser mode. Receives
+	 * the full renderer {@link SDK} — including `sdk.tools` — so a plugin can
+	 * own its own WebMCP tool registration (see issue #74) instead of the shell
+	 * reaching in through `system.getSdk(id).tools.register(...)`. Handlers may
+	 * call `sdk.invoke(...)`: in Electron mode this routes to the main-process
+	 * handlers registered by `mainRegister`; in browser mode it resolves
+	 * in-process via `browserRegister`.
+	 *
+	 * @example
+	 * export function webRegister(sdk: SDK) {
+	 *   sdk.tools.register({
+	 *     name: "list", description: "...", exposeToModelContext: true,
+	 *     handler: () => sdk.invoke("list"),
+	 *   });
+	 * }
+	 */
+	webRegister?(sdk: SDK): void;
 	/**
 	 * Resolve a subpath inside the plugin's installed package to an absolute
 	 * filesystem path. Populated by the loader for plugin registrations

@@ -18,6 +18,9 @@ export type {
 	SdkFs,
 	ShellFsDelegate,
 	SdkTools,
+	ToolDefinition,
+	ToolAnnotations,
+	RegisteredTool,
 	SdkIntents,
 	SchemaLike,
 	ContributionOptions,
@@ -80,6 +83,7 @@ export { StateBroker } from "./services/state-broker.js";
 export { CapabilityRegistry } from "./services/capability-registry.js";
 export { ContributionRegistry } from "./services/contribution-registry.js";
 export { CommandRegistry } from "./services/command-registry.js";
+export { ToolRegistry } from "./services/tool-registry.js";
 export {
 	FeatureRouter,
 	type CreateMainSdkOptions,

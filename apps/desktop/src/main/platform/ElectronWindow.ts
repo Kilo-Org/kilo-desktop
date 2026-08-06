@@ -30,6 +30,8 @@ export class ElectronWindow {
 		readonly isDevelopment: boolean;
 		readonly preloadPath?: string;
 		readonly options?: BrowserWindowConstructorOptions;
+		/** When true, the window is not shown on ready-to-show. Use `reveal()` to show it. */
+		readonly deferShow?: boolean;
 	}): BrowserWindow {
 		const chrome = chromeFor(this.shouldUseDarkColors());
 		const window = new BrowserWindow({
@@ -54,7 +56,9 @@ export class ElectronWindow {
 		});
 
 		this.#mainWindow = window;
-		window.once("ready-to-show", () => window.show());
+		if (!input.deferShow) {
+			window.once("ready-to-show", () => window.show());
+		}
 		window.on("closed", () => {
 			if (this.#mainWindow === window) this.#mainWindow = undefined;
 		});
@@ -69,6 +73,23 @@ export class ElectronWindow {
 		});
 		void window.loadURL(getDesktopUrl(input.isDevelopment));
 		return window;
+	}
+
+	/**
+	 * Returns a promise that resolves when the main window is ready to show.
+	 * Call after `create({ deferShow: true })` to know when the renderer is painted.
+	 * Times out after 10s to prevent hanging forever if ready-to-show never fires.
+	 */
+	whenReady(): Promise<void> {
+		const window = this.#mainWindow;
+		if (!window || window.isDestroyed()) return Promise.resolve();
+		return new Promise((resolve) => {
+			const timeout = setTimeout(() => resolve(), 10_000);
+			window.once("ready-to-show", () => {
+				clearTimeout(timeout);
+				resolve();
+			});
+		});
 	}
 
 	get main(): BrowserWindow | undefined {

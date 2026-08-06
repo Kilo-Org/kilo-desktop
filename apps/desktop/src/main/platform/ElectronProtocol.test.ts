@@ -64,10 +64,32 @@ describe("ElectronProtocol", () => {
 		expect(policy).toContain("http://127.0.0.1:*");
 		expect(policy).not.toContain("http://localhost:*");
 		expect(policy).toContain("object-src 'none'");
-		expect(policy).toContain("frame-ancestors 'none'");
+		// `'self'` (not `'none'`): the relay widget iframe is same-origin. Still
+		// blocks cross-origin framing — no external origins exist under the scheme.
+		expect(policy).toContain("frame-ancestors 'self'");
 		expect(policy).not.toContain("unsafe-eval");
 		expect(policy).not.toContain("https:");
 		expect(policy).not.toContain("wss:");
+	});
+
+	it("allows the self-hosted WebMCP relay (same-origin frame + loopback websockets)", () => {
+		const policy = createContentSecurityPolicy();
+		const connectSrc = policy
+			.split(";")
+			.map((directive) => directive.trim())
+			.find((directive) => directive.startsWith("connect-src"));
+		// Scoped to the relay's discovery range on IPv4 loopback, not a `:*`
+		// wildcard. IPv6 literals are omitted — Chromium rejects them as invalid
+		// CSP sources.
+		expect(connectSrc).toContain("ws://127.0.0.1:9333");
+		expect(connectSrc).toContain("ws://127.0.0.1:9348");
+		expect(connectSrc).not.toContain("ws://[::1]");
+		expect(connectSrc).not.toContain("ws://127.0.0.1:*");
+		expect(policy).toContain("frame-src 'self'");
+		// The relay widget loads in a same-origin iframe, so the shared CSP must
+		// allow same-origin framing; `'none'` would block it.
+		expect(policy).toContain("frame-ancestors 'self'");
+		expect(policy).not.toContain("frame-ancestors 'none'");
 	});
 
 	it("allows only the inline scripts present in an HTML response", async () => {
@@ -152,6 +174,55 @@ describe("ElectronProtocol", () => {
 		adapter.dispose();
 		expect(protocol.unhandle).toHaveBeenCalledWith("anaconda-agentic-desktop");
 		adapter.dispose();
+	});
+
+	it("fails the relay widget fetch probe so embed.js uses the direct iframe path", async () => {
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: true,
+			rendererRoot: "/unused",
+			developmentOrigin: "http://localhost:5173",
+		});
+		const protocolHandler = handle.mock.calls.at(-1)?.[1] as (
+			request: Request,
+		) => Promise<Response>;
+
+		const response = await protocolHandler(
+			new Request("anaconda-agentic-desktop-dev://app/webmcp/widget.html", {
+				headers: { "Sec-Fetch-Dest": "empty" },
+			}),
+		);
+
+		expect(response.status).toBe(404);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("serves the relay widget for iframe navigations", async () => {
+		fetch.mockResolvedValue(
+			new Response("<html></html>", {
+				headers: { "Content-Type": "text/html; charset=utf-8" },
+			}),
+		);
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: true,
+			rendererRoot: "/unused",
+			developmentOrigin: "http://localhost:5173",
+		});
+		const protocolHandler = handle.mock.calls.at(-1)?.[1] as (
+			request: Request,
+		) => Promise<Response>;
+
+		const response = await protocolHandler(
+			new Request("anaconda-agentic-desktop-dev://app/webmcp/widget.html", {
+				headers: { "Sec-Fetch-Dest": "iframe", Accept: "text/html" },
+			}),
+		);
+
+		expect(fetch).toHaveBeenCalledWith("http://localhost:5173/webmcp/widget.html", {
+			method: "GET",
+		});
+		expect(response.status).toBe(200);
 	});
 
 	it("resolves the SPA shell and assets inside the renderer root", async () => {

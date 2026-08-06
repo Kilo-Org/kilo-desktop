@@ -21,6 +21,7 @@ import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
+import { BootProgressReporter } from "./platform/BootProgressReporter.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronNotifications } from "./platform/ElectronNotifications.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
@@ -34,6 +35,7 @@ import { createLogger } from "./platform/logger.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
 import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
+import { SplashWindow } from "./platform/SplashWindow.js";
 import { configureUpdater } from "./platform/Updater.js";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
@@ -81,25 +83,55 @@ export class Application {
 			electronDebug({ showDevTools: false });
 		}
 
-		this.#disposers.push(configureUpdater());
-		const developmentOrigin = getWebDevServerUrl();
-		this.#protocol.register({
-			isDevelopment,
-			rendererRoot: getProductionRendererRoot(import.meta.dirname),
-			...(developmentOrigin ? { developmentOrigin } : {}),
+		// --- Splash / boot progress ---
+		const reporter = new BootProgressReporter();
+		const splash = new SplashWindow(reporter, {
+			isDark: nativeTheme.shouldUseDarkColors,
 		});
+		splash.show();
+		this.#disposers.push(() => reporter.dispose());
 
-		this.#disposers.push(this.#security.install(session.defaultSession));
-		// Bootstrap networking before #registerIpc (bootFeatures): merge the
-		// login-shell env into process.env so GUI-launched builds see env-var
-		// proxies (`shell-env` no-ops on Windows), then patch in-process
-		// http/https/fetch so third-party deps honor corporate/system proxies.
-		Object.assign(process.env, await shellEnv());
-		installProxyAgent();
-		this.#registerIpc(preferences);
-		restoreNativeThemeFromPreferences(preferences);
-		this.#registerPushEvents();
-		this.#createWindow(isDevelopment);
+		try {
+			reporter.report("updates", "Checking for updates\u2026");
+			this.#disposers.push(configureUpdater());
+
+			reporter.report("initializing", "Configuring protocols\u2026");
+			const developmentOrigin = getWebDevServerUrl();
+			this.#protocol.register({
+				isDevelopment,
+				rendererRoot: getProductionRendererRoot(import.meta.dirname),
+				...(developmentOrigin ? { developmentOrigin } : {}),
+			});
+
+      // Bootstrap networking before #registerIpc (bootFeatures): merge the
+      // login-shell env into process.env so GUI-launched builds see env-var
+      // proxies (`shell-env` no-ops on Windows), then patch in-process
+      // http/https/fetch so third-party deps honor corporate/system proxies.
+   		Object.assign(process.env, await shellEnv());
+  		installProxyAgent();
+      
+			this.#disposers.push(this.#security.install(session.defaultSession));
+
+			reporter.report("features", "Preparing features\u2026");
+			this.#registerIpc(preferences, reporter);
+			restoreNativeThemeFromPreferences(preferences);
+			this.#registerPushEvents();
+		} catch (error) {
+			// Boot failed — close the splash and quit. Do not reveal a
+			// half-initialized main window without security/IPC/handlers.
+			reporter.complete();
+			await splash.close();
+			this.#app.quit();
+			throw error;
+		}
+
+		reporter.complete();
+
+		// Create the main window concurrently with closing the splash
+		// so there's no dead gap between the two.
+		this.#windows.create({ isDevelopment, deferShow: true });
+		await Promise.all([splash.close(), this.#windows.whenReady()]);
+		this.#windows.reveal();
 
 		this.#disposers.push(
 			this.#app.on("activate", () => {
@@ -116,7 +148,7 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(preferences: PreferencesStore): void {
+	#registerIpc(preferences: PreferencesStore, reporter?: BootProgressReporter): void {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// Each feature persists only under its own storage directory
 		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
@@ -127,6 +159,9 @@ export class Application {
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
 				createLogger,
 				fetch: this.#http.fetch,
+				...(reporter
+					? { onBeforeFeatureBoot: (featureId: string) => reporter.reportFeature(featureId) }
+					: {}),
 			}),
 		);
 

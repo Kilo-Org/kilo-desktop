@@ -80,6 +80,15 @@ function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
 	};
 }
 
+function createFeatureFlagsDelegate(api: LocalApi): ShellDelegates["featureFlags"] {
+	return {
+		getFlag: <T>(key: string, defaultValue?: T) =>
+			api.featureFlags.getFlag(key, defaultValue) as Promise<T>,
+		getAllFlags: () => api.featureFlags.getAllFlags(),
+		subscribe: (fn) => api.featureFlags.onChanged(fn),
+	};
+}
+
 export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation): ShellDelegates {
 	return {
 		notifications: {
@@ -94,6 +103,7 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 			peek: getColorSchemeSnapshot,
 		},
 		auth: createAuthDelegate(api),
+		featureFlags: createFeatureFlagsDelegate(api),
 		shell: {
 			canPickDirectories: api.shell.canPickDirectories,
 			openExternal: (url) => api.shell.openExternal({ url }),

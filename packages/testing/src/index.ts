@@ -199,6 +199,7 @@ type FakeSdkShellOptions = {
 	notifications?: Partial<SDK["notifications"]>;
 	theme?: Partial<SDK["theme"]>;
 	auth?: Partial<SDK["auth"]>;
+	featureFlags?: Partial<SDK["featureFlags"]>;
 	shell?: Partial<SDK["shell"]>;
 	/**
 	 * Override the fs delegate (featureId-free, like `sdk.fs`). Defaults to a
@@ -267,6 +268,14 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 				logout: async () => ({ status: "anonymous" }),
 			},
 			options.auth,
+		),
+		featureFlags: merge<SDK["featureFlags"]>(
+			{
+				getFlag: async (_key, defaultValue) => defaultValue as never,
+				getAllFlags: async () => ({}),
+				subscribe: () => noop,
+			},
+			options.featureFlags,
 		),
 		shell: merge<SDK["shell"]>(
 			{

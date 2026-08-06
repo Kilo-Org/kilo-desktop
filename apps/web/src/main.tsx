@@ -12,6 +12,7 @@ import { createLocalApi } from "@/platform/createLocalApi";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 import { createRouterNavigation } from "@/platform/navigation";
+import { installWebMcp } from "@/platform/webmcp/installWebMcp";
 import { router } from "@/router";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -29,6 +30,13 @@ const featureSystem = createAppFeatureSystem(
 registerPluginZoneContributions(featureSystem, PLUGIN_ZONE_CONTRIBUTIONS, {
 	desktopAvailable: isDesktopBridgeAvailable(),
 });
+
+// Publish the ToolRegistry to document.modelContext and start the local relay
+// bridge for external MCP clients. Tools are owned by plugins: each plugin's
+// `webRegister` (invoked by createFeatureSystem) registers its own tools via
+// `sdk.tools`, and this bridge auto-picks them up through the registry's
+// change notifications (see issue #74).
+installWebMcp(featureSystem);
 
 createRoot(root).render(
 	<StrictMode>

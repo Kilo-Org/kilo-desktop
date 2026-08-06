@@ -55,6 +55,15 @@ export default defineConfig({
 		host: "127.0.0.1",
 		port: 5173,
 		strictPort: true,
+		// The desktop shell loads the renderer over the custom
+		// `anaconda-agentic-desktop-dev://app` scheme, so Vite's HMR client would
+		// otherwise derive a bogus `ws://app/` socket URL (ERR_NAME_NOT_RESOLVED).
+		// Pin the client to the real dev server so HMR connects directly.
+		hmr: {
+			protocol: "ws",
+			host: "127.0.0.1",
+			clientPort: 5173,
+		},
 	},
 	build: {
 		outDir: "dist",

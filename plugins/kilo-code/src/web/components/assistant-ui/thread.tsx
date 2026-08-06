@@ -121,10 +121,6 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 						isEmpty && "justify-center",
 					)}
 				>
-					<AuiIf condition={isNewChatView}>
-						<Welcome />
-					</AuiIf>
-
 					<div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
 						<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
 					</div>
@@ -137,7 +133,22 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 					>
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
-						<Composer />
+						<div className="relative flex w-full flex-col">
+							<AuiIf condition={isNewChatView}>
+								<Welcome />
+							</AuiIf>
+							<div className="relative">
+								{isEmpty ? (
+									<div
+										aria-hidden="true"
+										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/20 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[260px] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[140px] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+									/>
+								) : null}
+								<div className="relative z-10">
+									<Composer />
+								</div>
+							</div>
+						</div>
 						<AuiIf condition={isNewChatView}>
 							<ThreadSuggestions />
 						</AuiIf>
@@ -177,7 +188,7 @@ const ThreadScrollToBottom: FC = () => {
 
 const ThreadWelcome: FC = () => {
 	return (
-		<div className="aui-thread-welcome-root mb-6 flex flex-col items-center px-4 text-center">
+		<div className="aui-thread-welcome-root relative z-10 mb-6 flex flex-col items-center px-4 text-center">
 			<h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-semibold duration-200">
 				How can I help you today?
 			</h1>

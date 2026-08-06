@@ -114,6 +114,9 @@ importers:
       '@github/keytar':
         specifier: ^7.10.6
         version: 7.10.6
+      '@launchdarkly/node-client-sdk':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@vscode/proxy-agent':
         specifier: ^0.44.0
         version: 0.44.0(supports-color@8.1.1)
@@ -1939,6 +1942,7 @@ packages:
   '@kilocode/sdk@7.4.20':
     resolution: {integrity: sha512-Dl1gBNAtZ3z8FWl4+Q08d7iP+mr8Rg2tqqn6kU9NJLlhuVtKUlp6PyIXqutam2zn+hu5xdRfbHwNauy4yHufmw==}
 
+<<<<<<< HEAD
   '@lobehub/icons@5.15.0':
     resolution: {integrity: sha512-+Zca8eBEeogivK9cyOh37TUYCJiISo2EisKNElIFP+mS9P5dUX2e9HxEs9V4h2Z446VXyC/Gp2i86mI/pjJlxg==}
     peerDependencies:
@@ -1946,6 +1950,17 @@ packages:
       antd: ^6.1.1
       react: ^19.0.0
       react-dom: ^19.0.0
+=======
+  '@launchdarkly/js-client-sdk-common@1.30.1':
+    resolution: {integrity: sha512-Mhx5kSHGIUY/VOvCYDh79wy3PS7LsTaIjJkwVPxOuj079XvJDCULC2ks2R3RINs259Ln1KRg17ks2CCrllfG8Q==}
+
+  '@launchdarkly/js-sdk-common@2.25.2':
+    resolution: {integrity: sha512-l/OJiIGnLS6Qt6J/Lc3KgUXL4vAES5wsxIgNZcw3yCUbDEuTyVR9Qya9Aqy1klg2kF1VsHiY2wvaKimlIZK7+g==}
+
+  '@launchdarkly/node-client-sdk@4.0.0':
+    resolution: {integrity: sha512-S6WEshuKAEy7veoor7vi8YEk9JelJuMCh56JmJ6FG5jNHi6sjPC0keAu+gZpJipJfUDoY38DHWZrsrLeuaAPgA==}
+    engines: {node: '>=20'}
+>>>>>>> a5cd88e4 (feat: LaunchDarkly feature-flag service (main process))
 
   '@malept/cross-spawn-promise@1.1.1':
     resolution: {integrity: sha512-RTBGWL5FWQcg9orDOCcp4LvItNzUPcyEU9bwaeJX0rJ1IQxzucC48Y0/sQLp/g6t99IQgAlGIaesJS+gTn7tVQ==}
@@ -5695,6 +5710,10 @@ packages:
   kuler@2.0.0:
     resolution: {integrity: sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==}
 
+  launchdarkly-eventsource@2.2.0:
+    resolution: {integrity: sha512-u38fYlLSq/m6oFz0MS1/76Sj2xzlYhTKZ+sf/vju6PA86PMc6fPlY5k8CdU79edLXjNwsvIQTDvDNy3llDqB8A==}
+    engines: {node: '>=0.12.0'}
+
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
@@ -9202,6 +9221,17 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - supports-color
+
+  '@launchdarkly/js-client-sdk-common@1.30.1':
+    dependencies:
+      '@launchdarkly/js-sdk-common': 2.25.2
+
+  '@launchdarkly/js-sdk-common@2.25.2': {}
+
+  '@launchdarkly/node-client-sdk@4.0.0':
+    dependencies:
+      '@launchdarkly/js-client-sdk-common': 1.30.1
+      launchdarkly-eventsource: 2.2.0
 
   '@malept/cross-spawn-promise@1.1.1':
     dependencies:
@@ -12974,6 +13004,8 @@ snapshots:
   kleur@4.1.5: {}
 
   kuler@2.0.0: {}
+
+  launchdarkly-eventsource@2.2.0: {}
 
   levn@0.4.1:
     dependencies:

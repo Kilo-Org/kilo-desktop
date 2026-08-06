@@ -92,3 +92,90 @@ export function passportToUser(response: WhoamiResponse): AuthUser {
 	if (passport.profile?.last_name != null) user.lastName = passport.profile.last_name;
 	return user;
 }
+
+/**
+ * `GET /api/auth/userinfo` passport. Every field is nullish/optional so server
+ * shape drift never fails parsing; only `passport.attributes` is consumed today,
+ * but the full shape is modeled for future consumers.
+ */
+const userGroupSchema = z.object({
+	id: z.string().nullish(),
+	name: z.string().nullish(),
+	org_id: z.string().nullish(),
+	source: z.string().nullish(),
+});
+
+const organizationSchema = z.object({
+	id: z.string().nullish(),
+	name: z.string().nullish(),
+	role: z.string().nullish(),
+	created_at: z.string().nullish(),
+	groups: z.array(userGroupSchema).nullish(),
+});
+
+const userInfoProfileSchema = z.object({
+	username: z.string().nullish(),
+	email: z.string().nullish(),
+	first_name: z.string().nullish(),
+	last_name: z.string().nullish(),
+	is_confirmed: z.boolean().nullish(),
+	is_consented: z.boolean().nullish(),
+	is_disabled: z.boolean().nullish(),
+});
+
+const userInfoAttributeSchema = z.object({
+	id: z.string(),
+	group: z.string(),
+	data: z.unknown().optional(),
+});
+
+export const userInfoResponseSchema = z.object({
+	passport: z
+		.object({
+			user_id: z.string().nullish(),
+			profile: userInfoProfileSchema.nullish(),
+			organizations: z.array(organizationSchema).nullish(),
+			subscriptions: z.array(z.string()).nullish(),
+			attributes: z.array(userInfoAttributeSchema).nullish(),
+			expires_at: z.string().nullish(),
+		})
+		.nullish(),
+});
+
+export type UserInfoResponse = z.infer<typeof userInfoResponseSchema>;
+
+export type UserInfoAttribute = z.infer<typeof userInfoAttributeSchema>;
+
+/**
+ * Fetches the OIDC userinfo passport attributes with the API key as bearer token.
+ * Any failure (network, 401/403, non-OK, unparseable) resolves to an empty list
+ * rather than throwing.
+ */
+export async function getUserInfo(
+	domain: string,
+	apiKey: string,
+	fetchImpl: OAuthFetch,
+	userAgent: string,
+): Promise<UserInfoAttribute[]> {
+	let response: Response;
+	try {
+		response = await fetchImpl(`https://${domain}/api/auth/userinfo`, {
+			method: "GET",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"User-Agent": userAgent,
+			},
+		});
+	} catch {
+		return [];
+	}
+
+	if (!response.ok) return [];
+
+	try {
+		const payload = userInfoResponseSchema.parse(await response.json());
+		return payload.passport?.attributes ?? [];
+	} catch {
+		return [];
+	}
+}

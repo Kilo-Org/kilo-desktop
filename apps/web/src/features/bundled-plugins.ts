@@ -15,15 +15,15 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  * plugins are skipped there with the standard warning.
  */
 
-import kiloCodeManifest from "@anaconda-agentic-desktop/plugin-kilo-code/plugin.json" with { type: "json" };
-import * as kiloCodeWeb from "@anaconda-agentic-desktop/plugin-kilo-code/web";
+import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
+import * as kiloServerWeb from "@anaconda-agentic-desktop/plugin-kilo-server/web";
+import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
+import * as kiloUiWeb from "@anaconda-agentic-desktop/plugin-kilo-ui/web";
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosWeb from "@anaconda-agentic-desktop/plugin-todos/web";
-import workspacesManifest from "@anaconda-agentic-desktop/plugin-workspaces/plugin.json" with { type: "json" };
-import * as workspacesWeb from "@anaconda-agentic-desktop/plugin-workspaces/web";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
-	{ manifest: workspacesManifest, module: workspacesWeb },
-	{ manifest: kiloCodeManifest, module: kiloCodeWeb },
+	{ manifest: kiloUiManifest, module: kiloUiWeb },
+	{ manifest: kiloServerManifest, module: kiloServerWeb },
 	{ manifest: todosManifest, module: todosWeb },
 ];

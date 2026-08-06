@@ -42,15 +42,6 @@ export default defineConfig({
 		alias: {
 			"@": srcRoot,
 		},
-		dedupe: [
-			"react",
-			"react-dom",
-			"@anaconda-agentic-desktop/sdk-react",
-			"@assistant-ui/react",
-			"@assistant-ui/core",
-			"@assistant-ui/store",
-			"@assistant-ui/tap",
-		],
 	},
 	server: {
 		host: "127.0.0.1",

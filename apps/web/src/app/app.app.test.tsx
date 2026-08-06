@@ -20,7 +20,7 @@ afterEach(() => {
  * App-level: router + provider composition. Feature CRUD lives in browser/e2e tiers.
  */
 describe("AppProviders (app-level)", () => {
-	it("keeps the workspaces lifecycle active without rendering its home widget", async () => {
+	it("keeps the kilo-ui workspaces lifecycle active without rendering its home widget", async () => {
 		const localApi = createBrowserLocalApi();
 		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
 		render(
@@ -29,7 +29,7 @@ describe("AppProviders (app-level)", () => {
 			</AppProviders>,
 		);
 
-		system.getSdk("workspaces").events.emit("open-manager");
+		system.getSdk("kilo-ui").events.emit("open-manager");
 
 		await expect.element(page.getByRole("heading", { name: "Create workspace" })).toBeVisible();
 	});

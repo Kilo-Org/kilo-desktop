@@ -30,7 +30,7 @@ catalogs:
       version: 4.4.3
 
 overrides:
-  '@assistant-ui/react-opencode>@opencode-ai/sdk': link:plugins/kilo-code/opencode-sdk-compat
+  '@assistant-ui/react-opencode>@opencode-ai/sdk': link:plugins/kilo-ui/opencode-sdk-compat
   '@assistant-ui/core': 0.3.5
   '@assistant-ui/store': 0.3.3
   '@assistant-ui/tap': 0.9.9
@@ -42,9 +42,18 @@ importers:
 
   .:
     devDependencies:
+      '@anaconda-agentic-desktop/feature-sdk':
+        specifier: workspace:*
+        version: link:packages/feature-sdk
+      '@anaconda-agentic-desktop/sdk-react':
+        specifier: workspace:*
+        version: link:packages/sdk-react
+      '@anaconda-agentic-desktop/ui':
+        specifier: workspace:*
+        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@opencode-ai/sdk':
         specifier: workspace:*
-        version: link:plugins/kilo-code/opencode-sdk-compat
+        version: link:plugins/kilo-ui/opencode-sdk-compat
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
@@ -93,15 +102,15 @@ importers:
       '@anaconda-agentic-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
-      '@anaconda-agentic-desktop/plugin-kilo-code':
+      '@anaconda-agentic-desktop/plugin-kilo-server':
         specifier: workspace:*
-        version: file:plugins/kilo-code(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(supports-color@8.1.1)(tailwindcss@4.3.3)(use-sync-external-store@1.6.0(react@19.2.8))
+        version: link:../../plugins/kilo-server
+      '@anaconda-agentic-desktop/plugin-kilo-ui':
+        specifier: workspace:*
+        version: file:plugins/kilo-ui(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@anaconda-agentic-desktop/ui@file:packages/ui(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@tanstack/react-query@5.101.4(react@19.2.8))(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)(tailwindcss@4.3.3)(use-sync-external-store@1.6.0(react@19.2.8))(zod@4.4.3)
       '@anaconda-agentic-desktop/plugin-todos':
         specifier: workspace:*
         version: link:../../plugins/todos
-      '@anaconda-agentic-desktop/plugin-workspaces':
-        specifier: workspace:*
-        version: link:../../plugins/workspaces
       '@github/keytar':
         specifier: ^7.10.6
         version: 7.10.6
@@ -138,6 +147,9 @@ importers:
       update-electron-app:
         specifier: ^3.3.0
         version: 3.3.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@anaconda-agentic-desktop/testing':
         specifier: workspace:*
@@ -211,9 +223,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
 
   apps/web:
     dependencies:
@@ -223,15 +232,15 @@ importers:
       '@anaconda-agentic-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
-      '@anaconda-agentic-desktop/plugin-kilo-code':
+      '@anaconda-agentic-desktop/plugin-kilo-server':
         specifier: workspace:*
-        version: file:plugins/kilo-code(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(supports-color@8.1.1)(tailwindcss@4.3.3)(use-sync-external-store@1.6.0(react@19.2.8))
+        version: link:../../plugins/kilo-server
+      '@anaconda-agentic-desktop/plugin-kilo-ui':
+        specifier: link:../../plugins/kilo-ui
+        version: link:../../plugins/kilo-ui
       '@anaconda-agentic-desktop/plugin-todos':
         specifier: workspace:*
         version: link:../../plugins/todos
-      '@anaconda-agentic-desktop/plugin-workspaces':
-        specifier: workspace:*
-        version: link:../../plugins/workspaces
       '@anaconda-agentic-desktop/sdk-react':
         specifier: workspace:*
         version: link:../../packages/sdk-react
@@ -498,17 +507,36 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
-  plugins/kilo-code:
+  plugins/kilo-server:
     dependencies:
       '@anaconda-agentic-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
-      '@anaconda-agentic-desktop/sdk-react':
+      execa:
+        specifier: ^9.6.0
+        version: 9.6.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@anaconda-agentic-desktop/testing':
         specifier: workspace:*
-        version: link:../../packages/sdk-react
-      '@anaconda-agentic-desktop/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  plugins/kilo-ui:
+    dependencies:
       '@assistant-ui/react':
         specifier: 0.15.4
         version: 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -524,30 +552,27 @@ importers:
       '@opencode-ai/sdk':
         specifier: workspace:*
         version: link:opencode-sdk-compat
+      better-sqlite3:
+        specifier: ^13.0.1
+        version: 13.0.1
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
-      execa:
-        specifier: ^9.6.0
-        version: 9.6.1
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.1)
       lucide-react:
         specifier: ^1.27.0
         version: 1.27.0(react@19.2.8)
-      react:
-        specifier: ^19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: ^19.2.8
-        version: 19.2.8(react@19.2.8)
+      motion:
+        specifier: ^12.43.0
+        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1(supports-color@8.1.1)
       tw-shimmer:
         specifier: ^0.4.12
         version: 0.4.12(tailwindcss@4.3.3)
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -555,9 +580,18 @@ importers:
       '@anaconda-agentic-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
+      '@anaconda-agentic-desktop/feature-sdk':
+        specifier: workspace:*
+        version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/sdk-react':
+        specifier: workspace:*
+        version: link:../../packages/sdk-react
       '@anaconda-agentic-desktop/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@anaconda-agentic-desktop/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@anaconda/playwright-utils':
         specifier: 1.17.1
         version: 1.17.1(@playwright/test@1.61.1)(jiti@2.7.0)(supports-color@8.1.1)
@@ -567,9 +601,15 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@tanstack/react-query':
+        specifier: ^5.101.4
+        version: 5.101.4(react@19.2.8)
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
@@ -591,15 +631,21 @@ importers:
       '@vitest/coverage-v8':
         specifier: 5.0.0-beta.7
         version: 5.0.0-beta.7(@vitest/browser@5.0.0-beta.7)(vitest@5.0.0-beta.7)
+      drizzle-kit:
+        specifier: ^0.31.4
+        version: 0.31.10
       playwright:
         specifier: 1.61.1
         version: 1.61.1
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
-      tsx:
-        specifier: ^4.23.1
-        version: 4.23.1
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -609,8 +655,11 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
-  plugins/kilo-code/opencode-sdk-compat:
+  plugins/kilo-ui/opencode-sdk-compat:
     dependencies:
       '@kilocode/sdk':
         specifier: 7.4.20
@@ -711,103 +760,6 @@ importers:
         specifier: 'catalog:'
         version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
-  plugins/workspaces:
-    dependencies:
-      '@anaconda-agentic-desktop/feature-sdk':
-        specifier: workspace:*
-        version: link:../../packages/feature-sdk
-      '@anaconda-agentic-desktop/sdk-react':
-        specifier: workspace:*
-        version: link:../../packages/sdk-react
-      '@anaconda-agentic-desktop/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@tanstack/react-query':
-        specifier: ^5.101.4
-        version: 5.101.4(react@19.2.8)
-      better-sqlite3:
-        specifier: ^13.0.1
-        version: 13.0.1
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.1)
-      lucide-react:
-        specifier: ^1.27.0
-        version: 1.27.0(react@19.2.8)
-      motion:
-        specifier: ^12.43.0
-        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react:
-        specifier: ^19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: ^19.2.8
-        version: 19.2.8(react@19.2.8)
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
-    devDependencies:
-      '@anaconda-agentic-desktop/e2e':
-        specifier: workspace:*
-        version: link:../../e2e
-      '@anaconda-agentic-desktop/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
-      '@anaconda/playwright-utils':
-        specifier: 1.17.1
-        version: 1.17.1(@playwright/test@1.61.1)(jiti@2.7.0)(supports-color@8.1.1)
-      '@playwright/test':
-        specifier: 1.61.1
-        version: 1.61.1
-      '@tailwindcss/vite':
-        specifier: ^4.3.3
-        version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
-      '@testing-library/react':
-        specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@types/better-sqlite3':
-        specifier: ^7.6.13
-        version: 7.6.13
-      '@types/node':
-        specifier: ^24.13.3
-        version: 24.13.3
-      '@types/react':
-        specifier: ^19.2.17
-        version: 19.2.17
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.17)
-      '@vitejs/plugin-react':
-        specifier: ^6.0.4
-        version: 6.0.4(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
-      '@vitest/browser':
-        specifier: 5.0.0-beta.7
-        version: 5.0.0-beta.7(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-beta.7)
-      '@vitest/browser-playwright':
-        specifier: 5.0.0-beta.7
-        version: 5.0.0-beta.7(playwright@1.61.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-beta.7)
-      '@vitest/coverage-v8':
-        specifier: 5.0.0-beta.7
-        version: 5.0.0-beta.7(@vitest/browser@5.0.0-beta.7)(vitest@5.0.0-beta.7)
-      drizzle-kit:
-        specifier: ^0.31.4
-        version: 0.31.10
-      playwright:
-        specifier: 1.61.1
-        version: 1.61.1
-      tailwindcss:
-        specifier: ^4.3.3
-        version: 4.3.3
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
-
 packages:
 
   '@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk':
@@ -815,8 +767,27 @@ packages:
     peerDependencies:
       zod: ^4.4.3
 
-  '@anaconda-agentic-desktop/plugin-kilo-code@file:plugins/kilo-code':
-    resolution: {directory: plugins/kilo-code, type: directory}
+  '@anaconda-agentic-desktop/plugin-kilo-ui@file:plugins/kilo-ui':
+    resolution: {directory: plugins/kilo-ui, type: directory}
+    peerDependencies:
+      '@anaconda-agentic-desktop/feature-sdk': ^0.1.0
+      '@anaconda-agentic-desktop/sdk-react': ^0.1.0
+      '@anaconda-agentic-desktop/ui': ^0.1.0
+      '@tanstack/react-query': ^5.101.4
+      react: ^19.0.0
+      react-dom: ^19.0.0
+      zod: ^4.0.0
+    peerDependenciesMeta:
+      '@anaconda-agentic-desktop/sdk-react':
+        optional: true
+      '@anaconda-agentic-desktop/ui':
+        optional: true
+      '@tanstack/react-query':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   '@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react':
     resolution: {directory: packages/sdk-react, type: directory}
@@ -1982,8 +1953,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@opencode-ai/sdk@file:plugins/kilo-code/opencode-sdk-compat':
-    resolution: {directory: plugins/kilo-code/opencode-sdk-compat, type: directory}
+  '@opencode-ai/sdk@file:plugins/kilo-ui/opencode-sdk-compat':
+    resolution: {directory: plugins/kilo-ui/opencode-sdk-compat, type: directory}
 
   '@oxc-project/types@0.139.0':
     resolution: {integrity: sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw==}
@@ -7705,36 +7676,66 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  '@anaconda-agentic-desktop/plugin-kilo-code@file:plugins/kilo-code(@tanstack/react-query@5.101.4(react@19.2.8))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(supports-color@8.1.1)(tailwindcss@4.3.3)(use-sync-external-store@1.6.0(react@19.2.8))':
+  '@anaconda-agentic-desktop/plugin-kilo-ui@file:plugins/kilo-ui(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@anaconda-agentic-desktop/ui@file:packages/ui(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@tanstack/react-query@5.101.4(react@19.2.8))(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)(tailwindcss@4.3.3)(use-sync-external-store@1.6.0(react@19.2.8))(zod@4.4.3)':
     dependencies:
       '@anaconda-agentic-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@anaconda-agentic-desktop/sdk-react': file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
-      '@anaconda-agentic-desktop/ui': file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
       '@assistant-ui/react-markdown': 0.14.8(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)
       '@assistant-ui/react-opencode': 0.2.17(patch_hash=14a1e5db7d36fccc2716cf05530fab1bb06c44a637627022a60ead429dc36598)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
       '@kilocode/sdk': 7.4.20
-      '@opencode-ai/sdk': file:plugins/kilo-code/opencode-sdk-compat
+      '@opencode-ai/sdk': file:plugins/kilo-ui/opencode-sdk-compat
+      better-sqlite3: 13.0.1
       class-variance-authority: 0.7.1
-      execa: 9.6.1
+      drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.1)
       lucide-react: 1.27.0(react@19.2.8)
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      motion: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       remark-gfm: 4.0.1(supports-color@8.1.1)
       tw-shimmer: 0.4.12(tailwindcss@4.3.3)
       zod: 4.4.3
       zustand: 5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    optionalDependencies:
+      '@anaconda-agentic-desktop/sdk-react': file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
+      '@anaconda-agentic-desktop/ui': file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@tanstack/react-query': 5.101.4(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:
       - '@assistant-ui/tap'
-      - '@date-fns/tz'
-      - '@tanstack/react-query'
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@emotion/is-prop-valid'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
       - '@types/react'
       - '@types/react-dom'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
       - assistant-cloud
-      - date-fns
+      - bun-types
+      - expo-sqlite
+      - gel
       - immer
       - ioredis
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
       - redis
+      - sql.js
+      - sqlite3
       - supports-color
       - tailwindcss
       - use-sync-external-store
@@ -7746,6 +7747,7 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
       zod: 4.4.3
+    optional: true
 
   '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
@@ -7834,7 +7836,7 @@ snapshots:
       '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
       '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
       '@assistant-ui/store': 0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
-      '@opencode-ai/sdk': link:plugins/kilo-code/opencode-sdk-compat
+      '@opencode-ai/sdk': link:plugins/kilo-ui/opencode-sdk-compat
       react: 19.2.8
     optionalDependencies:
       '@types/react': 19.2.17
@@ -9086,7 +9088,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@opencode-ai/sdk@file:plugins/kilo-code/opencode-sdk-compat':
+  '@opencode-ai/sdk@file:plugins/kilo-ui/opencode-sdk-compat':
     dependencies:
       '@kilocode/sdk': 7.4.20
 

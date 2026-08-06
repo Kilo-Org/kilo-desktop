@@ -52,6 +52,8 @@ export default defineConfig({
 						"@anaconda-agentic-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
+						"use-sync-external-store/shim",
+						"use-sync-external-store/shim/with-selector",
 					],
 				},
 				test: {

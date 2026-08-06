@@ -24,10 +24,8 @@ export class AppShellPage {
 	async verifyCustomProtocolBoot(): Promise<void> {
 		// Use the utils page singleton (not barrel getURL/waitForFunction) — those named
 		// exports resolve as non-functions under Playwright's CJS interop on CI.
-		const href = getPage().url();
-		if (href !== "anaconda-agentic-desktop://app/#/") {
-			throw new Error(`Expected custom-protocol home URL, got "${href}"`);
-		}
+		// Shell `/` redirects to the kilo-code chat page (plugins cannot own `/`).
+		await getPage().waitForURL("anaconda-agentic-desktop://app/#/plugins/chat");
 
 		const hasDesktopInvoke = await getPage().evaluate(
 			() => typeof (globalThis as { desktopApi?: { invoke?: unknown } }).desktopApi?.invoke,

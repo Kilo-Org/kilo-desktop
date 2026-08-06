@@ -81,6 +81,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	readonly notifications: SdkNotifications;
 	readonly theme: SdkTheme;
 	readonly auth: SdkAuth;
+	readonly featureFlags: SdkFeatureFlags;
 	readonly shell: SdkShell;
 	readonly fs: SdkFs;
 
@@ -339,6 +340,30 @@ export interface SdkTheme {
 	subscribe(fn: (theme: "dark" | "light") => void): () => void;
 	/** Read the current effective theme without subscribing. */
 	peek(): "dark" | "light";
+}
+
+/** Map of feature-flag keys to their evaluated values. */
+export type FeatureFlagMap = Record<string, unknown>;
+
+/**
+ * Feature flags, shell-owned. Read-through: `getFlag`/`getAllFlags` query the
+ * host on each call (no client-side cache yet). `subscribe` relays host
+ * change notifications so features can re-read on change.
+ *
+ * @example
+ * const enabled = await sdk.featureFlags.getFlag("todos.newEditor", false);
+ * const unsub = sdk.featureFlags.subscribe((flags) => render(flags));
+ */
+export interface SdkFeatureFlags {
+	/** Read one flag from the host, resolving to `defaultValue` if absent. */
+	getFlag<T>(key: string, defaultValue?: T): Promise<T>;
+	/** Read the full flag map from the host. */
+	getAllFlags(): Promise<FeatureFlagMap>;
+	/**
+	 * Subscribe to flag changes. Does NOT fire synchronously — call
+	 * getAllFlags() for an initial value. Returns an unsubscribe function.
+	 */
+	subscribe(fn: (flags: FeatureFlagMap) => void): () => void;
 }
 
 export interface DirectoryOpenDialogOptions {

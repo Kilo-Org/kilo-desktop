@@ -45,6 +45,11 @@ export function makeServices(featureRouter?: FeatureRouter) {
 			login: async () => ({ status: "anonymous" }),
 			logout: async () => ({ status: "anonymous" }),
 		},
+		featureFlags: {
+			getFlag: async (_key, defaultValue) => defaultValue as never,
+			getAllFlags: async () => ({}),
+			subscribe: () => noop,
+		},
 		shell: {
 			canPickDirectories: true,
 			openExternal: async () => ({ opened: true }),

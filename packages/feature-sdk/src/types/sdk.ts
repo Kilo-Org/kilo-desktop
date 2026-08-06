@@ -346,9 +346,10 @@ export interface SdkTheme {
 export type FeatureFlagMap = Record<string, unknown>;
 
 /**
- * Feature flags, shell-owned. Read-through: `getFlag`/`getAllFlags` query the
- * host on each call (no client-side cache yet). `subscribe` relays host
- * change notifications so features can re-read on change.
+ * Feature flags, shell-owned. The delegate keeps a synchronous cache of the
+ * flag map: `subscribe` fires immediately with the current cache and `peek`
+ * reads it without subscribing (`{}` until the host's first resolve lands).
+ * `getFlag`/`getAllFlags` still query the host directly.
  *
  * @example
  * const enabled = await sdk.featureFlags.getFlag("todos.newEditor", false);
@@ -360,10 +361,12 @@ export interface SdkFeatureFlags {
 	/** Read the full flag map from the host. */
 	getAllFlags(): Promise<FeatureFlagMap>;
 	/**
-	 * Subscribe to flag changes. Does NOT fire synchronously — call
-	 * getAllFlags() for an initial value. Returns an unsubscribe function.
+	 * Subscribe to flag changes. Fires synchronously with the current cached
+	 * map and again on every host change. Returns an unsubscribe function.
 	 */
 	subscribe(fn: (flags: FeatureFlagMap) => void): () => void;
+	/** Read the current cached flag map without subscribing (`{}` until first resolve). */
+	peek(): FeatureFlagMap;
 }
 
 export interface DirectoryOpenDialogOptions {

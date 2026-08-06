@@ -273,7 +273,11 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 			{
 				getFlag: async (_key, defaultValue) => defaultValue as never,
 				getAllFlags: async () => ({}),
-				subscribe: () => noop,
+				subscribe: (fn) => {
+					fn({});
+					return noop;
+				},
+				peek: () => ({}),
 			},
 			options.featureFlags,
 		),

@@ -48,7 +48,11 @@ export function makeServices(featureRouter?: FeatureRouter) {
 		featureFlags: {
 			getFlag: async (_key, defaultValue) => defaultValue as never,
 			getAllFlags: async () => ({}),
-			subscribe: () => noop,
+			subscribe: (fn) => {
+				fn({});
+				return noop;
+			},
+			peek: () => ({}),
 		},
 		shell: {
 			canPickDirectories: true,

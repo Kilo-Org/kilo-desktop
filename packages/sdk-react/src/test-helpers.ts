@@ -33,6 +33,15 @@ export function createTestShellDelegates(): ShellDelegates {
 			login: async () => ({ status: "anonymous" }),
 			logout: async () => ({ status: "anonymous" }),
 		},
+		featureFlags: {
+			getFlag: async (_key, defaultValue) => defaultValue as never,
+			getAllFlags: async () => ({}),
+			subscribe(fn) {
+				fn({});
+				return () => {};
+			},
+			peek: () => ({}),
+		},
 		shell: {
 			canPickDirectories: true,
 			openExternal: async () => ({ opened: true }),

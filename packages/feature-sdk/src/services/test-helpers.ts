@@ -6,6 +6,7 @@ import { ContributionRegistry } from "./contribution-registry.js";
 import { FeatureRouter } from "./feature-router.js";
 import { createStaticNavigation } from "./navigation.js";
 import { StateBroker } from "./state-broker.js";
+import { ToolRegistry } from "./tool-registry.js";
 import type { ShellDelegates } from "./create-sdk.js";
 
 export const noop = () => {};
@@ -66,6 +67,7 @@ export function makeServices(featureRouter?: FeatureRouter) {
 		stateBroker: new StateBroker(),
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),
+		toolRegistry: new ToolRegistry(),
 		featureRouter: router,
 		shellDelegates,
 	};

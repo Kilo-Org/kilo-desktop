@@ -2,7 +2,7 @@ import { PLUGIN_MANIFEST_FILENAME, pluginManifestSchema, type PluginManifest } f
 
 import { isShellZone, SHELL_ZONES } from "../types/zones.js";
 
-import type { FeatureRegistration, MainSdk } from "../types/sdk.js";
+import type { FeatureRegistration, MainSdk, SDK } from "../types/sdk.js";
 
 /**
  * URL namespace that every plugin-declared route is mounted under.
@@ -63,6 +63,12 @@ export function stripPluginNamespace(resolvedPath: string): string {
 export interface PluginModule {
 	mainRegister?: (mainSdk: MainSdk) => void;
 	browserRegister?: (mainSdk: MainSdk) => void;
+	/**
+	 * Renderer-side setup that runs at boot in both modes (see
+	 * {@link FeatureRegistration.webRegister}). Optional; a plugin that has no
+	 * renderer-side registrations omits it. Only picked up from the `web` entry.
+	 */
+	webRegister?: (sdk: SDK) => void;
 	[exportName: string]: unknown;
 }
 
@@ -487,11 +493,12 @@ function createRegistration(
 		return { id: manifest.id, mainRegister, ...assetFields };
 	}
 
-	const { browserRegister } = module;
+	const { browserRegister, webRegister } = module;
 	return {
 		id: manifest.id,
 		mainRegister: noopRegister,
 		...(typeof browserRegister === "function" ? { browserRegister } : {}),
+		...(typeof webRegister === "function" ? { webRegister } : {}),
 		...assetFields,
 	};
 }

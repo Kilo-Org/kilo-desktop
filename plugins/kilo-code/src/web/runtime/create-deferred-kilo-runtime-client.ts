@@ -12,6 +12,9 @@ export function createDeferredKiloRuntimeClient(
 	connectionPromise: Promise<KiloWorkspaceConnection>,
 ): KiloClient {
 	const ready = connectionPromise.then(createKiloRuntimeClient);
+	// Callers still observe rejections via await; attach a handler so a rejected
+	// connection does not become an unhandled rejection when the client is unused.
+	void ready.catch(() => undefined);
 	return createAwaitingProxy(() => ready) as KiloClient;
 }
 

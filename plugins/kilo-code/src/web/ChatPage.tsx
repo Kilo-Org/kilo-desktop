@@ -46,15 +46,37 @@ export function ChatPage() {
 	const connectionInput = useMemo(() => ({ scope: "unscoped" as const, chatId }), [chatId]);
 	const connection = useSdkQuery(sdk, "server.getConnection", connectionInput);
 
+	// Recreate when the query recovers after an error (refetch / restart). A single
+	// ensureQueryData promise permanently rejects and would block sends forever.
 	const connectionPromise = useMemo(() => {
+		if (connection.data) {
+			return Promise.resolve(connection.data);
+		}
+		if (connection.isError && !connection.isFetching) {
+			const error =
+				connection.error instanceof Error
+					? connection.error
+					: new Error(String(connection.error ?? "Could not connect to Kilo"));
+			const rejected = Promise.reject(error);
+			// Keep the rejection for send-time awaiters; avoid an unhandled rejection if
+			// the user never sends while the banner is showing.
+			void rejected.catch(() => undefined);
+			return rejected;
+		}
 		const promise = queryClient.ensureQueryData(
 			sdkQueryOptions(sdk, "server.getConnection", connectionInput),
 		);
-		// Keep the rejection for send-time awaiters; avoid an unhandled rejection if
-		// the user never sends while the banner is showing.
 		void promise.catch(() => undefined);
 		return promise;
-	}, [connectionInput, queryClient, sdk]);
+	}, [
+		connection.data,
+		connection.errorUpdatedAt,
+		connection.isError,
+		connection.isFetching,
+		connectionInput,
+		queryClient,
+		sdk,
+	]);
 
 	const connectionStatus = {
 		isPending: connection.isPending,

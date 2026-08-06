@@ -329,7 +329,7 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({ children, startIndex, end
 	const isReasoningStreaming = useAuiState((s) => {
 		if (s.message.status?.type !== "running") return false;
 		for (let index = startIndex; index <= endIndex; index++) {
-			if (s.message.parts[index]?.status.type === "running") return true;
+			if (s.message.parts[index]?.status?.type === "running") return true;
 		}
 		return false;
 	});

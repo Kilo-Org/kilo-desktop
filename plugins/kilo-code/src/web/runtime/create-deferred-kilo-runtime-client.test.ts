@@ -77,4 +77,22 @@ describe("createDeferredKiloRuntimeClient", () => {
 		await expect(client.session.create({}, { throwOnError: true })).rejects.toThrow(error);
 		expect(createKiloRuntimeClient).not.toHaveBeenCalled();
 	});
+
+	it("does not report an unhandled rejection when the connection fails unused", async () => {
+		const error = new Error("Kilo failed to start");
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", onUnhandled);
+
+		try {
+			createDeferredKiloRuntimeClient(Promise.reject(error));
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
 });

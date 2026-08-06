@@ -7,7 +7,12 @@ import {
 } from "@launchdarkly/node-client-sdk";
 
 import { createLogger, type Logger } from "../../platform/logger.js";
-import type { FeatureFlagEvents, FeatureFlagContext, FeatureFlagProvider } from "./types.js";
+import type {
+	FeatureFlagEvents,
+	FeatureFlagContext,
+	FeatureFlagProvider,
+	StartStatus,
+} from "./types.js";
 
 export interface LaunchDarklyProviderOptions {
 	clientSideId: string;
@@ -16,6 +21,9 @@ export interface LaunchDarklyProviderOptions {
 }
 
 type FlagMap = Record<string, unknown>;
+
+/** Seconds to wait for the first flag payload before `start()` resolves. */
+const START_TIMEOUT_SECONDS = 5;
 
 function toLdContext(ctx: FeatureFlagContext): LDContext {
 	return {
@@ -28,8 +36,9 @@ function toLdContext(ctx: FeatureFlagContext): LDContext {
 }
 
 /**
- * LaunchDarkly-backed provider. `start()` never throws — a non-`complete`
- * initialization is logged and the client degrades to returning defaults.
+ * LaunchDarkly-backed provider. Initialization never throws and is never
+ * surfaced to users: on failure the client returns defaults while the SDK's
+ * streaming source reconnects on its own (including after going offline).
  */
 export class LaunchDarklyProvider
 	extends EventEmitter<FeatureFlagEvents>
@@ -37,6 +46,8 @@ export class LaunchDarklyProvider
 {
 	readonly #client: LDClient;
 	readonly #logger: Logger;
+	/** Shared result of the single `start()`; the client is a start-once singleton. */
+	#start: Promise<StartStatus> | undefined;
 
 	constructor(options: LaunchDarklyProviderOptions) {
 		super();
@@ -50,14 +61,25 @@ export class LaunchDarklyProvider
 		});
 	}
 
-	async start(): Promise<void> {
+	async start(): Promise<StartStatus> {
+		this.#start ??= this.#startOnce();
+		return this.#start;
+	}
+
+	async #startOnce(): Promise<StartStatus> {
 		try {
-			const result = await this.#client.start();
-			if (result.status !== "complete") {
-				this.#logger.warn(`LaunchDarkly initialization status: ${result.status}`);
+			const result = await this.#client.start({ timeout: START_TIMEOUT_SECONDS });
+			if (result.status === "failed") {
+				this.#logger.error("LaunchDarkly initialization failed", result.error);
+			} else if (result.status === "timeout") {
+				this.#logger.warn(
+					`LaunchDarkly did not initialize within ${START_TIMEOUT_SECONDS}s; using defaults until flags stream in.`,
+				);
 			}
+			return result.status;
 		} catch (cause) {
 			this.#logger.error("LaunchDarkly failed to start", cause);
+			return "failed";
 		}
 	}
 
@@ -70,7 +92,18 @@ export class LaunchDarklyProvider
 	}
 
 	async identify(context: FeatureFlagContext): Promise<void> {
-		await this.#client.identify(toLdContext(context));
+		// identify() sets the active context immediately (before flags load), so
+		// swallowing a slow/offline failure still leaves the derived context in
+		// place for the SDK to evaluate once it reconnects. start() must run first.
+		await this.start();
+		try {
+			await this.#client.identify(toLdContext(context));
+		} catch (cause) {
+			this.#logger.warn(
+				"LaunchDarkly identify did not complete; will apply once connected.",
+				cause,
+			);
+		}
 	}
 
 	async dispose(): Promise<void> {

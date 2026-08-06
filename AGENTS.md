@@ -16,6 +16,14 @@ Before editing files for a substantial task:
 
 Read [CONTEXT.md](./CONTEXT.md) for architecture, terminology, and conventions.
 
+## Running the app
+
+Start the desktop app in dev with `pn dev` (alias for `pnpm dev` → `dev:desktop`)
+from the workspace root. It boots the Vite web dev server on port 5173 first,
+then launches Electron pointed at it via `ANACONDA_WEB_DEV_SERVER_URL`. Do **not**
+run `electron-forge start` (or the desktop package's `start` script) directly —
+without the web dev server the renderer window loads empty.
+
 ## Local Skills
 
 Project skills live under [`.agents/skills/`](./.agents/skills/).

@@ -61,8 +61,15 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 		const env = import.meta.env;
 		const overrides = parseOverrides(env.VITE_FEATURE_FLAG_OVERRIDES);
 
+		const clientSideId = env.VITE_LAUNCHDARKLY_CLIENT_SIDE_ID ?? "";
+		if (!clientSideId) {
+			logger.warn(
+				"No LaunchDarkly client-side ID configured (VITE_LAUNCHDARKLY_CLIENT_SIDE_ID); flags will resolve to defaults.",
+			);
+		}
+
 		const provider = new LaunchDarklyProvider({
-			clientSideId: env.VITE_LAUNCHDARKLY_CLIENT_SIDE_ID ?? "",
+			clientSideId,
 			initialContext: ANONYMOUS_CONTEXT,
 			logger,
 		});
@@ -90,7 +97,6 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 		try {
 			const context = await deriveContext(this.#auth);
 			await this.#provider.identify(context);
-			await this.#provider.start();
 			this.emit("change", this.getAllFlags());
 		} catch (cause) {
 			this.#logger.error("Feature-flag initialization failed", cause);
@@ -114,10 +120,16 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 
 	getAllFlags(): FlagMap {
 		try {
-			return this.#provider.getAllFlags();
+			const flags = this.#provider.getAllFlags();
+			// Force overridden flags on, mirroring getFlag(); the renderer's
+			// useFeatureFlag reads this map, so overrides must be reflected here too.
+			for (const key of this.#overrides) {
+				flags[key] = true;
+			}
+			return flags;
 		} catch (cause) {
 			this.#logger.error("Failed to read all feature flags", cause);
-			return {};
+			return Object.fromEntries([...this.#overrides].map((key) => [key, true]));
 		}
 	}
 

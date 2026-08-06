@@ -116,10 +116,10 @@ export class Application {
 
 			reporter.report("features", "Preparing features\u2026");
 			this.#registerIpc(preferences, reporter);
+			this.#registerPushEvents();
 			// initialize() swallows its own errors, so it can't fail the boot.
 			await this.#featureFlags?.initialize();
 			restoreNativeThemeFromPreferences(preferences);
-			this.#registerPushEvents();
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
 			// half-initialized main window without security/IPC/handlers.

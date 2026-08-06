@@ -168,3 +168,6 @@ test-results/
 
 # Kilo agent workspace
 .kilo/*
+
+# LaunchDarkly offline cache
+ldclient-user-cache/

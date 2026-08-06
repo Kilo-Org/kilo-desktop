@@ -109,14 +109,12 @@ export class Application {
 			this.#registerPushEvents();
 		} finally {
 			reporter.complete();
+			// Guarantee the splash is always closed — even if a boot step throws.
+			// Create the main window concurrently so there's no dead gap on success.
+			this.#windows.create({ isDevelopment, deferShow: true });
+			await Promise.all([splash.close(), this.#windows.whenReady()]);
+			this.#windows.reveal();
 		}
-
-		// Start creating the main window (hidden) concurrently with closing the
-		// splash — this eliminates the dead gap between the splash disappearing
-		// and the main window appearing. Both run in parallel; we wait for both.
-		this.#windows.create({ isDevelopment, deferShow: true });
-		await Promise.all([splash.close(), this.#windows.whenReady()]);
-		this.#windows.reveal();
 
 		this.#disposers.push(
 			this.#app.on("activate", () => {

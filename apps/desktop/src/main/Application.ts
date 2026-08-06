@@ -107,14 +107,22 @@ export class Application {
 			this.#registerIpc(preferences, reporter);
 			restoreNativeThemeFromPreferences(preferences);
 			this.#registerPushEvents();
-		} finally {
+		} catch (error) {
+			// Boot failed — close the splash and quit. Do not reveal a
+			// half-initialized main window without security/IPC/handlers.
 			reporter.complete();
-			// Guarantee the splash is always closed — even if a boot step throws.
-			// Create the main window concurrently so there's no dead gap on success.
-			this.#windows.create({ isDevelopment, deferShow: true });
-			await Promise.all([splash.close(), this.#windows.whenReady()]);
-			this.#windows.reveal();
+			await splash.close();
+			this.#app.quit();
+			throw error;
 		}
+
+		reporter.complete();
+
+		// Create the main window concurrently with closing the splash
+		// so there's no dead gap between the two.
+		this.#windows.create({ isDevelopment, deferShow: true });
+		await Promise.all([splash.close(), this.#windows.whenReady()]);
+		this.#windows.reveal();
 
 		this.#disposers.push(
 			this.#app.on("activate", () => {

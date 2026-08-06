@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-import { useFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+import { useFeatureSystem } from "./SdkProvider.js";
 
 /**
  * Read a feature flag synchronously in the renderer, backed by the shell

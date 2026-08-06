@@ -52,6 +52,7 @@ describe("SplashWindow", () => {
 	afterEach(() => {
 		reporter.dispose();
 		vi.clearAllMocks();
+		vi.useRealTimers();
 	});
 
 	it("creates a frameless, non-resizable window with correct dimensions", () => {
@@ -119,7 +120,6 @@ describe("SplashWindow", () => {
 		expect(fakeWindows.created[0]!.webContents.executeJavaScript).toHaveBeenCalledWith(
 			expect.stringContaining("Preparing todos"),
 		);
-		vi.useRealTimers();
 	});
 
 	it("close() destroys the window when it was never shown (fast boot skip)", async () => {
@@ -139,7 +139,6 @@ describe("SplashWindow", () => {
 		expect(fakeWindows.created[0]!.show).not.toHaveBeenCalled();
 		expect(fakeWindows.created[0]!.destroy).toHaveBeenCalled();
 		expect(splash.wasSkipped).toBe(true);
-		vi.useRealTimers();
 	});
 
 	it("close() waits minimum display time when splash was shown", async () => {
@@ -164,7 +163,6 @@ describe("SplashWindow", () => {
 
 		expect(fakeWindows.created[0]!.destroy).toHaveBeenCalled();
 		expect(splash.wasSkipped).toBe(false);
-		vi.useRealTimers();
 	});
 
 	it("close() is idempotent — second call resolves immediately", async () => {

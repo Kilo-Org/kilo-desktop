@@ -89,25 +89,27 @@ export class Application {
 		splash.show();
 		this.#disposers.push(() => reporter.dispose());
 
-		reporter.report("updates", "Checking for updates\u2026");
-		this.#disposers.push(configureUpdater());
+		try {
+			reporter.report("updates", "Checking for updates\u2026");
+			this.#disposers.push(configureUpdater());
 
-		reporter.report("initializing", "Configuring protocols\u2026");
-		const developmentOrigin = getWebDevServerUrl();
-		this.#protocol.register({
-			isDevelopment,
-			rendererRoot: getProductionRendererRoot(import.meta.dirname),
-			...(developmentOrigin ? { developmentOrigin } : {}),
-		});
+			reporter.report("initializing", "Configuring protocols\u2026");
+			const developmentOrigin = getWebDevServerUrl();
+			this.#protocol.register({
+				isDevelopment,
+				rendererRoot: getProductionRendererRoot(import.meta.dirname),
+				...(developmentOrigin ? { developmentOrigin } : {}),
+			});
 
-		this.#disposers.push(this.#security.install(session.defaultSession));
+			this.#disposers.push(this.#security.install(session.defaultSession));
 
-		reporter.report("features", "Preparing features\u2026");
-		this.#registerIpc(preferences, reporter);
-		restoreNativeThemeFromPreferences(preferences);
-		this.#registerPushEvents();
-
-		reporter.complete();
+			reporter.report("features", "Preparing features\u2026");
+			this.#registerIpc(preferences, reporter);
+			restoreNativeThemeFromPreferences(preferences);
+			this.#registerPushEvents();
+		} finally {
+			reporter.complete();
+		}
 
 		// Start creating the main window (hidden) concurrently with closing the
 		// splash — this eliminates the dead gap between the splash disappearing

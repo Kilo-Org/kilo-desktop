@@ -57,7 +57,11 @@ export class BootProgressReporter {
 		this.#message = message;
 		this.#logger.info(`[${phase}] ${message}`);
 		for (const listener of this.#listeners) {
-			listener({ phase, message });
+			try {
+				listener({ phase, message });
+			} catch {
+				// Listener errors must not abort the boot sequence.
+			}
 		}
 	}
 

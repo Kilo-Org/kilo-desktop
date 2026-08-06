@@ -78,12 +78,17 @@ export class ElectronWindow {
 	/**
 	 * Returns a promise that resolves when the main window is ready to show.
 	 * Call after `create({ deferShow: true })` to know when the renderer is painted.
+	 * Times out after 10s to prevent hanging forever if ready-to-show never fires.
 	 */
 	whenReady(): Promise<void> {
 		const window = this.#mainWindow;
 		if (!window || window.isDestroyed()) return Promise.resolve();
 		return new Promise((resolve) => {
-			window.once("ready-to-show", () => resolve());
+			const timeout = setTimeout(() => resolve(), 10_000);
+			window.once("ready-to-show", () => {
+				clearTimeout(timeout);
+				resolve();
+			});
 		});
 	}
 

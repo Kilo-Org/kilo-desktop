@@ -99,4 +99,19 @@ describe("BootProgressReporter", () => {
 			"[updates] Checking for updates…",
 		);
 	});
+
+	it("isolates listener errors — a throwing listener does not abort later listeners", () => {
+		const reporter = new BootProgressReporter(noopLogger);
+		const badListener = vi.fn(() => {
+			throw new Error("listener failure");
+		});
+		const goodListener = vi.fn();
+		reporter.onProgress(badListener);
+		reporter.onProgress(goodListener);
+
+		reporter.report("features", "Preparing…");
+
+		expect(badListener).toHaveBeenCalledOnce();
+		expect(goodListener).toHaveBeenCalledOnce();
+	});
 });

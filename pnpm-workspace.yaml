@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - plugins/*
+  - plugins/kilo-code/opencode-sdk-compat
   - e2e
 
 catalog:
@@ -20,7 +21,7 @@ injectWorkspacePackages: true
 autoInstallPeers: false
 
 overrides:
-  "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:packages/kilo-opencode-sdk-compat"
+  "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:plugins/kilo-code/opencode-sdk-compat"
   # Keep react-opencode on the same core/store as @assistant-ui/react so Vite
   # does not embed a second AssistantContext (breaks composer typing).
   "@assistant-ui/core": "0.3.5"
@@ -46,4 +47,4 @@ registries:
   "@anaconda": https://npm.pkg.github.com/
 
 patchedDependencies:
-  "@assistant-ui/react-opencode@0.2.17": patches/@assistant-ui__react-opencode@0.2.17.patch
+  "@assistant-ui/react-opencode@0.2.17": plugins/kilo-code/patches/@assistant-ui__react-opencode@0.2.17.patch

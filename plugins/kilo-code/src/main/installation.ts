@@ -37,7 +37,7 @@ export function resolveKiloInstallation(
 	);
 	if (!binDirectory) {
 		throw new FeatureError(
-			`Bundled Kilo CLI is missing from the configured resource roots. Run pnpm fetch:kilo.`,
+			`Bundled Kilo CLI is missing from the configured resource roots. Run pnpm --filter @anaconda-agentic-desktop/plugin-kilo-code run fetch-cli.`,
 			"BUSINESS",
 		);
 	}

@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { KiloServerStatus } from "@anaconda-agentic-desktop/contracts";
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
-import { kiloCodeBrowserRegister } from "./browserRegister";
+import type { KiloServerStatus } from "../contracts/schemas.js";
+import { kiloCodeBrowserRegister } from "./browserRegister.js";
 
 describe("kiloCodeBrowserRegister", () => {
 	it("renders a desktop-required state and rejects process lifecycle operations", async () => {
@@ -24,6 +24,12 @@ describe("kiloCodeBrowserRegister", () => {
 
 		render(<StatusProbe />);
 		expect(await screen.findByText("unavailable")).toBeVisible();
+		await expect(
+			rendererSdk.invoke("server.getConnection", { workspaceId: "workspace-1" }),
+		).rejects.toMatchObject({
+			code: "BUSINESS",
+			message: "Kilo Code requires the desktop app.",
+		});
 		await expect(rendererSdk.invoke("server.restart")).rejects.toMatchObject({
 			code: "BUSINESS",
 			message: "Kilo Code requires the desktop app.",

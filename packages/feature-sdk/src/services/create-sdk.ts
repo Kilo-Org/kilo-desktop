@@ -25,6 +25,7 @@ import type { ContributionRegistry } from "./contribution-registry.js";
 import { emitFeatureEvent, type FeatureEvent } from "./event-bus.js";
 import type { FeatureRouter } from "./feature-router.js";
 import type { StateBroker } from "./state-broker.js";
+import type { ToolRegistry } from "./tool-registry.js";
 
 export interface ShellDelegates {
 	notifications: SdkNotifications;
@@ -52,6 +53,8 @@ export interface SdkFactoryServices {
 	stateBroker: StateBroker;
 	contributionRegistry: ContributionRegistry;
 	commandRegistry: CommandRegistry;
+	/** AI-runtime tool registry backing `sdk.tools`. */
+	toolRegistry: ToolRegistry;
 	/** Canonical owner of handlers, events, and process-local capabilities. */
 	featureRouter: FeatureRouter;
 	shellDelegates: ShellDelegates;
@@ -164,21 +167,31 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	};
 
-	// ─── Deferred (throws) ─────────────────────────────────────────────────────
-	// tools/intents/dispatch have no consumer yet — see
-	// docs/plugin-implementation-plan.md (Slice 4, "Deferred APIs").
+	// ─── Tools (AI-runtime tool registry) ──────────────────────────────────────
+	// Plugin-facing: register (own tools) + all (read-only metadata). No
+	// invoke — tools are the AI adapter; plugin code calls its domain function
+	// or `sdk.plugins.get<T>(...)` for cross-plugin RPC. Cross-feature tool
+	// invocation is a shell concern (WebMCP bridge → `services.toolRegistry`).
 
 	const tools: SdkTools = {
-		register() {
-			throw new Error("sdk.tools requires the full plugin system — not available yet.");
-		},
-		invoke() {
-			throw new Error("sdk.tools requires the full plugin system — not available yet.");
+		register(definition) {
+			assertAlive();
+			const unregister = services.toolRegistry.register(featureId, definition);
+			disposables.add(unregister);
+			return () => {
+				disposables.delete(unregister);
+				unregister();
+			};
 		},
 		all() {
-			throw new Error("sdk.tools requires the full plugin system — not available yet.");
+			assertAlive();
+			return services.toolRegistry.all();
 		},
 	};
+
+	// ─── Deferred (throws) ─────────────────────────────────────────────────────
+	// intents/dispatch have no consumer yet — see
+	// docs/plugin-implementation-plan.md (Slice 4, "Deferred APIs").
 
 	const intents: SdkIntents = {
 		list() {
@@ -329,6 +342,7 @@ export function teardownFeature(featureId: string, services: SdkFactoryServices)
 	services.stateBroker.removeByFeature(featureId);
 	services.contributionRegistry.removeFeature(featureId);
 	services.commandRegistry.removeFeature(featureId);
+	services.toolRegistry.removeFeature(featureId);
 	capabilityRegistry.removeFeature(featureId);
 	services.featureRouter.destroyFeature(featureId);
 }

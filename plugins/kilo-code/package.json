@@ -1,0 +1,49 @@
+{
+	"name": "@anaconda-agentic-desktop/plugin-kilo-code",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Kilo Code runtime plugin",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./runtime": "./src/web/runtime/index.ts",
+		"./cli-distribution": "./src/main/cli-distribution/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@assistant-ui/react": "0.15.1",
+		"@assistant-ui/react-opencode": "0.2.17",
+		"@kilocode/sdk": "7.4.20",
+		"execa": "^9.6.0",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@anaconda-agentic-desktop/e2e": "workspace:*",
+		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@anaconda/playwright-utils": "1.17.1",
+		"@playwright/test": "1.61.1",
+		"@tailwindcss/vite": "^4.3.3",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.0.0-beta.7",
+		"@vitest/browser-playwright": "5.0.0-beta.7",
+		"@vitest/coverage-v8": "5.0.0-beta.7",
+		"playwright": "1.61.1",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

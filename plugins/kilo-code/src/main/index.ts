@@ -5,11 +5,10 @@ import {
 	type KiloCodeService,
 	type KiloServerConnection,
 	type KiloServerStatus,
-} from "@anaconda-agentic-desktop/contracts";
+} from "../contracts/schemas.js";
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import { KiloServerManager } from "./KiloServerManager.js";
-import { getBuiltInKiloResourceRoots } from "./builtInAssets.js";
+import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
 import { resolveKiloInstallation } from "./installation.js";
 import type { WorkspaceCapabilities } from "./workspace-capability.js";
 
@@ -24,18 +23,28 @@ interface RegisterKiloCodeOptions {
 	createServer?: (onStatusChange: (status: KiloServerStatus) => void) => KiloServerController;
 }
 
+export function createKiloServerManagerOptions(
+	mainSdk: MainSdk,
+	onStatusChange: (status: KiloServerStatus) => void,
+	resolveInstallation: typeof resolveKiloInstallation = resolveKiloInstallation,
+): KiloServerManagerOptions {
+	return {
+		installation: resolveInstallation({
+			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
+		}),
+		runtimeDirectory: path.join(mainSdk.storageDir, "runtime"),
+		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
+		fetch: mainSdk.net.fetch,
+		logger: mainSdk.logger,
+		onStatusChange,
+	};
+}
+
 export function registerKiloCode(mainSdk: MainSdk, options: RegisterKiloCodeOptions = {}): void {
 	const createServer =
 		options.createServer ??
 		((onStatusChange: (status: KiloServerStatus) => void) =>
-			new KiloServerManager({
-				installation: resolveKiloInstallation({
-					resourceRoots: getBuiltInKiloResourceRoots(),
-				}),
-				runtimeDirectory: path.join(mainSdk.storageDir, "runtime"),
-				allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
-				onStatusChange,
-			}));
+			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange)));
 	const server = createServer((status) => mainSdk.events.emit("server-status-changed", status));
 	// The manager records and emits startup failures; keep app initialization alive so a later
 	// connection request can retry without producing an unhandled rejection here.

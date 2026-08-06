@@ -4,10 +4,7 @@ import { PassThrough } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { KiloServerStatus } from "@anaconda-agentic-desktop/contracts";
-
-const electronNet = vi.hoisted(() => ({ fetch: vi.fn() }));
-vi.mock("electron", () => ({ net: electronNet }));
+import type { KiloServerStatus } from "../contracts/schemas.js";
 
 import {
 	KiloServerManager,
@@ -37,7 +34,7 @@ class FakeChild extends EventEmitter implements KiloChildProcess {
 	}
 }
 
-function createHarness(overrides: Partial<KiloServerManagerOptions> = {}, useInjectedFetch = true) {
+function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 	const children: FakeChild[] = [];
 	const spawn = vi.fn(
 		(
@@ -68,7 +65,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}, useInj
 		environment: { PATH: "/bin", NODE_OPTIONS: "--inspect", LD_PRELOAD: "bad.so" },
 		platform: "linux",
 		spawn,
-		...(useInjectedFetch ? { fetch } : {}),
+		fetch,
 		signalProcessGroup: (_pid, signal) => {
 			if (signal === "SIGTERM") children.at(-1)?.exit(0, signal);
 		},
@@ -109,7 +106,14 @@ describe("KiloServerManager", () => {
 			{ status: "starting" },
 			{ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.20" },
 		]);
+		await expect(manager.ensureRunning()).resolves.toEqual(first);
+		expect(spawn).toHaveBeenCalledOnce();
 		manager.dispose();
+		manager.dispose();
+		await expect(manager.ensureRunning()).rejects.toMatchObject({
+			code: "BUSINESS",
+			message: "Kilo Code has shut down.",
+		});
 	});
 
 	it("spawns with isolated state, loopback CORS, and a sanitized inherited environment", async () => {
@@ -176,19 +180,6 @@ describe("KiloServerManager", () => {
 		expect(logger.error).toHaveBeenCalledWith("Kilo server rejected its per-launch credentials.");
 	});
 
-	it("uses Electron net.fetch for health checks by default", async () => {
-		electronNet.fetch.mockResolvedValueOnce(Response.json({ healthy: true, version: "7.4.20" }));
-		const { manager } = createHarness({}, false);
-
-		await manager.ensureRunning();
-
-		expect(electronNet.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:4321/global/health",
-			expect.objectContaining({ headers: expect.any(Object) }),
-		);
-		manager.dispose();
-	});
-
 	it("rejects a mismatched bundled version but permits local override versions", async () => {
 		const mismatchFetch = vi.fn(async () =>
 			Response.json({ healthy: true, version: "9.0.0-dev" }),
@@ -201,6 +192,42 @@ describe("KiloServerManager", () => {
 		const override = createHarness({ fetch: mismatchFetch, allowVersionMismatch: true });
 		await expect(override.manager.ensureRunning()).resolves.toMatchObject({ version: "9.0.0-dev" });
 		override.manager.dispose();
+	});
+
+	it("rejects children without process ids and non-loopback listening URLs", async () => {
+		const missingPid = createHarness({ spawn: () => new FakeChild(0) });
+		await expect(missingPid.manager.ensureRunning()).rejects.toThrow(
+			"Kilo server did not provide a process id.",
+		);
+
+		const nonLoopback = createHarness({
+			spawn: () => {
+				const child = new FakeChild();
+				queueMicrotask(() => child.stdout.write("kilo server listening on http://0.0.0.0:4321\n"));
+				return child;
+			},
+		});
+		await expect(nonLoopback.manager.ensureRunning()).rejects.toThrow(
+			"Kilo reported a non-loopback listening URL",
+		);
+	});
+
+	it("rejects invalid and unhealthy health responses", async () => {
+		const invalid = createHarness({
+			fetch: vi.fn(async () => Response.json({ healthy: false, version: "7.4.20" })),
+		});
+		await expect(invalid.manager.ensureRunning()).rejects.toThrow(
+			"Kilo server returned an invalid health response.",
+		);
+
+		const unavailable = createHarness({
+			fetch: vi.fn(async () => new Response(null, { status: 503 })),
+			healthTimeoutMs: 1,
+			healthRetryDelayMs: 5,
+		});
+		await expect(unavailable.manager.ensureRunning()).rejects.toThrow(
+			"Kilo health check returned HTTP 503.",
+		);
 	});
 
 	it("scrubs unexpected startup failures while retaining the internal error in logs", async () => {
@@ -269,6 +296,7 @@ describe("KiloServerManager", () => {
 			spawn: () => child,
 			startupTimeoutMs: 1,
 			shutdownTimeoutMs: 1,
+			fetch: vi.fn(),
 			signalProcessGroup: () => child.exit(0),
 			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		});

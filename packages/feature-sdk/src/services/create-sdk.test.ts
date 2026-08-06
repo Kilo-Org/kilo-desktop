@@ -229,11 +229,28 @@ describe("createSdk", () => {
 		expect(services.featureRouter.capabilityRegistry.get("todos")).toBeNull();
 	});
 
+	it("sdk.tools registers and lists tools; execution goes through the registry (shell surface)", async () => {
+		const services = makeServices();
+		const sdk = createSdk("todos", services);
+		const unregister = sdk.tools.register({
+			name: "echo",
+			description: "Echo the input back",
+			handler: (args) => args,
+		});
+		// sdk.tools is a plugin-facing REGISTER + read-only enumerate surface; no
+		// invoke here on purpose (see SdkTools docstring — tools are the AI
+		// adapter, not a cross-plugin RPC channel). The shell/WebMCP bridge runs
+		// tools via services.toolRegistry.invoke on behalf of the AI runtime.
+		expect(sdk.tools.all().map((tool) => tool.id)).toEqual(["todos.echo"]);
+		await expect(services.toolRegistry.invoke("todos", "echo", { a: 1 })).resolves.toEqual({
+			a: 1,
+		});
+		unregister();
+		expect(sdk.tools.all()).toEqual([]);
+	});
+
 	it("deferred surfaces throw until the plugin system lands", () => {
 		const sdk = createSdk("todos", makeServices());
-		expect(() => sdk.tools.register({})).toThrow(/full plugin system/);
-		expect(() => sdk.tools.invoke("f", "t", {})).toThrow(/full plugin system/);
-		expect(() => sdk.tools.all()).toThrow(/full plugin system/);
 		expect(() => sdk.intents.list()).toThrow(/full plugin system/);
 		expect(() => sdk.dispatch({ plugin: "shell", action: "noop" })).toThrow(/full plugin system/);
 	});

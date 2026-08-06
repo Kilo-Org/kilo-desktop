@@ -7,12 +7,10 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import type { KiloServerConnection, KiloServerStatus } from "@anaconda-agentic-desktop/contracts";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { net } from "electron";
 import { execa } from "execa";
 
-import { createLogger } from "../../platform/logger.js";
+import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 
 const execFile = promisify(execFileCallback);
@@ -55,7 +53,7 @@ export interface KiloServerManagerOptions {
 	readonly corsOrigins?: readonly string[];
 	readonly environment?: NodeJS.ProcessEnv;
 	readonly platform?: NodeJS.Platform;
-	readonly fetch?: typeof fetch;
+	readonly fetch: typeof fetch;
 	readonly spawn?: (
 		executablePath: string,
 		args: readonly string[],
@@ -64,7 +62,7 @@ export interface KiloServerManagerOptions {
 	readonly signalProcessGroup?: (pid: number, signal: NodeJS.Signals) => void;
 	readonly killWindowsTree?: (pid: number) => Promise<void>;
 	readonly onStatusChange?: (status: KiloServerStatus) => void;
-	readonly logger?: KiloLogger;
+	readonly logger: KiloLogger;
 	readonly startupTimeoutMs?: number;
 	readonly healthTimeoutMs?: number;
 	readonly healthRequestTimeoutMs?: number;
@@ -150,9 +148,7 @@ export class KiloServerManager {
 			corsOrigins: options.corsOrigins ?? DEFAULT_CORS_ORIGINS,
 			environment: options.environment ?? process.env,
 			platform: options.platform ?? process.platform,
-			fetch:
-				options.fetch ??
-				((input, init) => net.fetch(input instanceof URL ? input.toString() : input, init)),
+			fetch: options.fetch,
 			spawn: options.spawn ?? defaultSpawn,
 			signalProcessGroup:
 				options.signalProcessGroup ?? ((pid, signal) => process.kill(-pid, signal)),
@@ -164,7 +160,7 @@ export class KiloServerManager {
 					});
 				}),
 			onStatusChange: options.onStatusChange ?? (() => undefined),
-			logger: options.logger ?? createLogger("kilo-code"),
+			logger: options.logger,
 			startupTimeoutMs: options.startupTimeoutMs ?? 30_000,
 			healthTimeoutMs: options.healthTimeoutMs ?? 10_000,
 			healthRequestTimeoutMs: options.healthRequestTimeoutMs ?? 3_000,

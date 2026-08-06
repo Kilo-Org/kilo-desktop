@@ -1,5 +1,6 @@
-import { kiloCodeContract, type KiloCodeService } from "@anaconda-agentic-desktop/contracts";
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+
+import { kiloCodeContract, type KiloCodeService } from "../contracts/schemas.js";
 
 const unavailable = (): never => {
 	throw new FeatureError("Kilo Code requires the desktop app.", "BUSINESS");

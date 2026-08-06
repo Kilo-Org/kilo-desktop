@@ -29,10 +29,19 @@ catalogs:
       specifier: ^4.4.3
       version: 4.4.3
 
+overrides:
+  '@assistant-ui/react-opencode>@opencode-ai/sdk': link:packages/kilo-opencode-sdk-compat
+
 importers:
 
   .:
     devDependencies:
+      '@anaconda-agentic-desktop/plugin-kilo-code':
+        specifier: workspace:*
+        version: file:plugins/kilo-code(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@opencode-ai/sdk':
+        specifier: workspace:*
+        version: link:packages/kilo-opencode-sdk-compat
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
@@ -81,12 +90,15 @@ importers:
       '@anaconda-agentic-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/plugin-kilo-code':
+        specifier: workspace:*
+        version: file:plugins/kilo-code(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@anaconda-agentic-desktop/plugin-todos':
         specifier: workspace:*
-        version: file:plugins/todos(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)
+        version: link:../../plugins/todos
       '@anaconda-agentic-desktop/plugin-workspaces':
         specifier: workspace:*
-        version: file:plugins/workspaces(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)
+        version: link:../../plugins/workspaces
       '@github/keytar':
         specifier: ^7.10.6
         version: 7.10.6
@@ -208,6 +220,9 @@ importers:
       '@anaconda-agentic-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/plugin-kilo-code':
+        specifier: workspace:*
+        version: file:plugins/kilo-code(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
       '@anaconda-agentic-desktop/plugin-todos':
         specifier: workspace:*
         version: link:../../plugins/todos
@@ -229,6 +244,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.3.0
         version: 5.3.0
+      '@mcp-b/webmcp-polyfill':
+        specifier: 4.0.0
+        version: 4.0.0
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.2.8)
@@ -257,6 +275,12 @@ importers:
       '@anaconda-agentic-desktop/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@mcp-b/webmcp-local-relay':
+        specifier: 4.0.0
+        version: 4.0.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)
+      '@mcp-b/webmcp-types':
+        specifier: 4.0.0
+        version: 4.0.0
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -292,7 +316,7 @@ importers:
         version: 1.61.1
       shadcn:
         specifier: ^4.16.0
-        version: 4.16.0(supports-color@8.1.1)(typescript@7.0.2)
+        version: 4.16.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)(typescript@7.0.2)
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -360,6 +384,16 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+
+  packages/kilo-opencode-sdk-compat:
+    dependencies:
+      '@kilocode/sdk':
+        specifier: 7.4.20
+        version: 7.4.20
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   packages/sdk-react:
     devDependencies:
@@ -470,6 +504,88 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+
+  plugins/kilo-code:
+    dependencies:
+      '@anaconda-agentic-desktop/feature-sdk':
+        specifier: workspace:*
+        version: link:../../packages/feature-sdk
+      '@assistant-ui/react':
+        specifier: 0.15.1
+        version: 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@assistant-ui/react-opencode':
+        specifier: 0.2.17
+        version: 0.2.17(@assistant-ui/react@0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+      '@kilocode/sdk':
+        specifier: 7.4.20
+        version: 7.4.20
+      execa:
+        specifier: ^9.6.0
+        version: 9.6.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@anaconda-agentic-desktop/e2e':
+        specifier: workspace:*
+        version: link:../../e2e
+      '@anaconda-agentic-desktop/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@anaconda/playwright-utils':
+        specifier: 1.17.1
+        version: 1.17.1(@playwright/test@1.61.1)(jiti@2.7.0)(supports-color@8.1.1)
+      '@playwright/test':
+        specifier: 1.61.1
+        version: 1.61.1
+      '@tailwindcss/vite':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.4
+        version: 6.0.4(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@vitest/browser':
+        specifier: 5.0.0-beta.7
+        version: 5.0.0-beta.7(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-beta.7)
+      '@vitest/browser-playwright':
+        specifier: 5.0.0-beta.7
+        version: 5.0.0-beta.7(playwright@1.61.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-beta.7)
+      '@vitest/coverage-v8':
+        specifier: 5.0.0-beta.7
+        version: 5.0.0-beta.7(@vitest/browser@5.0.0-beta.7)(vitest@5.0.0-beta.7)
+      playwright:
+        specifier: 1.61.1
+        version: 1.61.1
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
   plugins/todos:
     dependencies:
@@ -666,26 +782,8 @@ packages:
     peerDependencies:
       zod: ^4.4.3
 
-  '@anaconda-agentic-desktop/plugin-todos@file:plugins/todos':
-    resolution: {directory: plugins/todos, type: directory}
-
-  '@anaconda-agentic-desktop/plugin-workspaces@file:plugins/workspaces':
-    resolution: {directory: plugins/workspaces, type: directory}
-
-  '@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react':
-    resolution: {directory: packages/sdk-react, type: directory}
-    peerDependencies:
-      '@anaconda-agentic-desktop/feature-sdk': ^0.1.0
-      '@tanstack/react-query': ^5.101.4
-      react: ^19.0.0
-      react-dom: ^19.0.0
-      zod: ^4.0.0
-
-  '@anaconda-agentic-desktop/ui@file:packages/ui':
-    resolution: {directory: packages/ui, type: directory}
-    peerDependencies:
-      react: ^19.0.0
-      react-dom: ^19.0.0
+  '@anaconda-agentic-desktop/plugin-kilo-code@file:plugins/kilo-code':
+    resolution: {directory: plugins/kilo-code, type: directory}
 
   '@anaconda/playwright-utils@1.17.1':
     resolution: {integrity: sha512-82tFlYV2K/KtAqfYdCg7F2d2R0RS/95/YzGhAo/SmLHpoPlVD61ueSVuewi2O4bXFtjfVmkVa7xIDiaWzyy9lw==, tarball: https://npm.pkg.github.com/download/@anaconda/playwright-utils/1.17.1/3cbc5f2acbc5b7c1f34b5a1421c0a9a40ceca511}
@@ -716,6 +814,35 @@ packages:
       zustand:
         optional: true
 
+  '@assistant-ui/core@0.3.5':
+    resolution: {integrity: sha512-+3hFt6g+y83rbQAjbWZCvtCe4J5RIYwjcRWRly56AxIQqcXv11vFJTc4587RkOEGZTkjp8FUOA2ILEW5YoweHg==}
+    peerDependencies:
+      '@assistant-ui/store': ^0.3.0
+      '@assistant-ui/tap': ^0.9.0
+      '@types/react': '*'
+      assistant-cloud: ^0.1.31
+      react: ^18 || ^19
+      zustand: ^5.0.11
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      assistant-cloud:
+        optional: true
+      react:
+        optional: true
+      zustand:
+        optional: true
+
+  '@assistant-ui/react-opencode@0.2.17':
+    resolution: {integrity: sha512-mB3q772KaxeE+E7dpIrjpsk2I0v4GBt/0oQS2I8YxvKeRDF0Bbc4G3rIEfXJF1B/Xb9SvurIHP0kmZZrpWoB1w==}
+    peerDependencies:
+      '@assistant-ui/react': ^0.15.0
+      '@types/react': '*'
+      react: ^18 || ^19
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   '@assistant-ui/react@0.15.1':
     resolution: {integrity: sha512-SZdhTCL7HdfsOs3K9pqDLpUPrsigvKjt2TawGaY0bU/Wt//U/dbNN9bRdTYYZ5wbAOPfpm8TNvZoLSXjZSkm8g==}
     peerDependencies:
@@ -731,6 +858,16 @@ packages:
 
   '@assistant-ui/store@0.3.2':
     resolution: {integrity: sha512-D6NgnYEifDcusQd6CbokNutqfHA2OEr1sz0/+ds+Bc7xsm8ghRxkvBubtttIYQKaajALPPJbWcr/zcvGv21g0g==}
+    peerDependencies:
+      '@assistant-ui/tap': ^0.9.0
+      '@types/react': '*'
+      react: ^18 || ^19
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@assistant-ui/store@0.3.3':
+    resolution: {integrity: sha512-kNkxE6vNkaBTGwJc3NcAYB+MoDSk08ab8VLJ3wFdr4xR3Y8YApWMojMYvoy1E/VCNmvli8m3Zh+qpTqoFWRuSA==}
     peerDependencies:
       '@assistant-ui/tap': ^0.9.0
       '@types/react': '*'
@@ -992,6 +1129,9 @@ packages:
 
   '@blazediff/core@1.9.1':
     resolution: {integrity: sha512-ehg3jIkYKulZh+8om/O25vkvSsXXwC+skXmyA87FFx6A/45eqOkZsBltMw/TVteb0mloiGT8oGRTcjRAz66zaA==}
+
+  '@cfworker/json-schema@4.1.1':
+    resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
 
   '@colors/colors@1.6.0':
     resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
@@ -1697,6 +1837,12 @@ packages:
   '@hapi/topo@6.0.2':
     resolution: {integrity: sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg==}
 
+  '@hono/node-server@1.19.17':
+    resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
+    engines: {node: '>=18.14.1'}
+    peerDependencies:
+      hono: ^4
+
   '@hono/node-server@2.0.12':
     resolution: {integrity: sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==}
     engines: {node: '>=20'}
@@ -1746,6 +1892,9 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
+  '@kilocode/sdk@7.4.20':
+    resolution: {integrity: sha512-Dl1gBNAtZ3z8FWl4+Q08d7iP+mr8Rg2tqqn6kU9NJLlhuVtKUlp6PyIXqutam2zn+hu5xdRfbHwNauy4yHufmw==}
+
   '@malept/cross-spawn-promise@1.1.1':
     resolution: {integrity: sha512-RTBGWL5FWQcg9orDOCcp4LvItNzUPcyEU9bwaeJX0rJ1IQxzucC48Y0/sQLp/g6t99IQgAlGIaesJS+gTn7tVQ==}
     engines: {node: '>= 10'}
@@ -1753,6 +1902,28 @@ packages:
   '@malept/cross-spawn-promise@2.0.0':
     resolution: {integrity: sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg==}
     engines: {node: '>= 12.13.0'}
+
+  '@mcp-b/webmcp-local-relay@4.0.0':
+    resolution: {integrity: sha512-X1Wr7UcHy9iBiYTUsBK7UVrdrQsbPuyLKurrZlgfZVQCBghr7BnZKt32E2m/45x40vNo532ZLe15Xs3q3zedNQ==}
+    engines: {node: '>=22'}
+    hasBin: true
+
+  '@mcp-b/webmcp-polyfill@4.0.0':
+    resolution: {integrity: sha512-7M6WS3IcxaIEhidbS9N7wrrGjtJf474Vi4Fn1hGkFkmYFT5EoFw/kS/4CSdUR/KmlInO1kyluHRY6t3avMQfFw==}
+    engines: {node: '>=18'}
+
+  '@mcp-b/webmcp-types@4.0.0':
+    resolution: {integrity: sha512-CUBBmiut1UBsiD3FAF6xrLKeKAuJkzd6/BlL1C/uo8sVpwY42NW4mls9rLcTxmLF/8Cj5/ZOwJiLzXl/T3GIQg==}
+
+  '@modelcontextprotocol/sdk@1.29.0':
+    resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@cfworker/json-schema': ^4.1.1
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      '@cfworker/json-schema':
+        optional: true
 
   '@modelcontextprotocol/sdk@1.30.0':
     resolution: {integrity: sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==}
@@ -3623,6 +3794,17 @@ packages:
 
   assistant-stream@0.3.31:
     resolution: {integrity: sha512-3qkTkttgTLe1jNMHIIiYk7dC4VoJk9MyDA7aNYF08g1rme1DaZAyecUYH/0eywI6naRwu8EAICw9WTn0sahyPw==}
+    peerDependencies:
+      ioredis: ^5.10.1
+      redis: ^5.12.1
+    peerDependenciesMeta:
+      ioredis:
+        optional: true
+      redis:
+        optional: true
+
+  assistant-stream@0.3.33:
+    resolution: {integrity: sha512-ZUP5hGMtucRpg1TQWCMX3Tp7iOvhG4KWrKTJYtNUCbtDvPuMod4JbBp2JJp8ThrNALXBi3OlE4ZU1a/6W11Cog==}
     peerDependencies:
       ioredis: ^5.10.1
       redis: ^5.12.1
@@ -7205,122 +7387,47 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  '@anaconda-agentic-desktop/plugin-todos@file:plugins/todos(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)':
+  '@anaconda-agentic-desktop/plugin-kilo-code@file:plugins/kilo-code(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@anaconda-agentic-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@anaconda-agentic-desktop/sdk-react': file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
-      '@anaconda-agentic-desktop/ui': file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@tanstack/react-query': 5.101.4(react@19.2.8)
-      better-sqlite3: 13.0.1
-      drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.1)
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      '@assistant-ui/react': 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@assistant-ui/react-opencode': 0.2.17(@assistant-ui/react@0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
+      '@kilocode/sdk': 7.4.20
+      execa: 9.6.1
       zod: 4.4.3
     transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@date-fns/tz'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
+      - '@assistant-ui/tap'
       - '@types/react'
       - '@types/react-dom'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - bun-types
-      - date-fns
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
+      - assistant-cloud
+      - immer
+      - ioredis
+      - react
+      - react-dom
+      - redis
+      - use-sync-external-store
+      - zustand
 
-  '@anaconda-agentic-desktop/plugin-workspaces@file:plugins/workspaces(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)':
+  '@anaconda-agentic-desktop/plugin-kilo-code@file:plugins/kilo-code(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))':
     dependencies:
       '@anaconda-agentic-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@anaconda-agentic-desktop/sdk-react': file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
-      '@anaconda-agentic-desktop/ui': file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@tanstack/react-query': 5.101.4(react@19.2.8)
-      better-sqlite3: 13.0.1
-      drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.1)
-      lucide-react: 1.27.0(react@19.2.8)
-      motion: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
+      '@assistant-ui/react': 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@assistant-ui/react-opencode': 0.2.17(@assistant-ui/react@0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+      '@kilocode/sdk': 7.4.20
+      execa: 9.6.1
       zod: 4.4.3
     transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@date-fns/tz'
-      - '@electric-sql/pglite'
-      - '@emotion/is-prop-valid'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
+      - '@assistant-ui/tap'
       - '@types/react'
       - '@types/react-dom'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - bun-types
-      - date-fns
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)':
-    dependencies:
-      '@anaconda-agentic-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@tanstack/react-query': 5.101.4(react@19.2.8)
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      zod: 4.4.3
-
-  '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@base-ui/react': 1.6.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      class-variance-authority: 0.7.1
-      clsx: 2.1.1
-      cmdk: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      lucide-react: 1.27.0(react@19.2.8)
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      tailwind-merge: 3.6.0
-    transitivePeerDependencies:
-      - '@date-fns/tz'
-      - '@types/react'
-      - '@types/react-dom'
-      - date-fns
+      - assistant-cloud
+      - immer
+      - ioredis
+      - react
+      - react-dom
+      - redis
+      - use-sync-external-store
+      - zustand
 
   '@anaconda/playwright-utils@1.17.1(@playwright/test@1.61.1)(jiti@2.7.0)(supports-color@8.1.1)':
     dependencies:
@@ -7358,7 +7465,7 @@ snapshots:
 
   '@anaconda/shadcn-theme@0.0.1-alpha.3': {}
 
-  '@assistant-ui/core@0.3.2(@assistant-ui/store@0.3.2(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
+  '@assistant-ui/core@0.3.2(@assistant-ui/store@0.3.2(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))':
     dependencies:
       '@assistant-ui/store': 0.3.2(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
       '@assistant-ui/tap': 0.9.8(@types/react@19.2.17)(react@19.2.8)
@@ -7373,9 +7480,56 @@ snapshots:
       - ioredis
       - redis
 
+  '@assistant-ui/core@0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
+    dependencies:
+      '@assistant-ui/store': 0.3.3(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
+      '@assistant-ui/tap': 0.9.8(@types/react@19.2.17)(react@19.2.8)
+      assistant-stream: 0.3.33
+      nanoid: 6.0.0
+    optionalDependencies:
+      '@types/react': 19.2.17
+      assistant-cloud: 0.1.37
+      react: 19.2.8
+      zustand: 5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    transitivePeerDependencies:
+      - ioredis
+      - redis
+
+  '@assistant-ui/react-opencode@0.2.17(@assistant-ui/react@0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
+    dependencies:
+      '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+      '@assistant-ui/react': 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@assistant-ui/store': 0.3.3(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
+      '@opencode-ai/sdk': link:packages/kilo-opencode-sdk-compat
+      react: 19.2.8
+    optionalDependencies:
+      '@types/react': 19.2.17
+    transitivePeerDependencies:
+      - '@assistant-ui/tap'
+      - assistant-cloud
+      - ioredis
+      - redis
+      - zustand
+
+  '@assistant-ui/react-opencode@0.2.17(@assistant-ui/react@0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)':
+    dependencies:
+      '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+      '@assistant-ui/react': 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@assistant-ui/store': 0.3.3(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
+      '@opencode-ai/sdk': link:packages/kilo-opencode-sdk-compat
+      react: 19.2.8
+    optionalDependencies:
+      '@types/react': 19.2.17
+    transitivePeerDependencies:
+      - '@assistant-ui/tap'
+      - assistant-cloud
+      - ioredis
+      - redis
+      - zustand
+
   '@assistant-ui/react@0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))':
     dependencies:
-      '@assistant-ui/core': 0.3.2(@assistant-ui/store@0.3.2(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+      '@assistant-ui/core': 0.3.2(@assistant-ui/store@0.3.2(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.37)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
       '@assistant-ui/store': 0.3.2(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
       '@assistant-ui/tap': 0.9.8(@types/react@19.2.17)(react@19.2.8)
       '@radix-ui/primitive': 1.1.7
@@ -7406,6 +7560,13 @@ snapshots:
       - use-sync-external-store
 
   '@assistant-ui/store@0.3.2(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)':
+    dependencies:
+      '@assistant-ui/tap': 0.9.8(@types/react@19.2.17)(react@19.2.8)
+      react: 19.2.8
+    optionalDependencies:
+      '@types/react': 19.2.17
+
+  '@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.8(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)':
     dependencies:
       '@assistant-ui/tap': 0.9.8(@types/react@19.2.17)(react@19.2.8)
       react: 19.2.8
@@ -7807,6 +7968,8 @@ snapshots:
   '@bcoe/v8-coverage@1.0.2': {}
 
   '@blazediff/core@1.9.1': {}
+
+  '@cfworker/json-schema@4.1.1': {}
 
   '@colors/colors@1.6.0': {}
 
@@ -8454,6 +8617,10 @@ snapshots:
     dependencies:
       '@hapi/hoek': 11.0.7
 
+  '@hono/node-server@1.19.17(hono@4.12.32)':
+    dependencies:
+      hono: 4.12.32
+
   '@hono/node-server@2.0.12(hono@4.12.32)':
     dependencies:
       hono: 4.12.32
@@ -8502,6 +8669,10 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@kilocode/sdk@7.4.20':
+    dependencies:
+      cross-spawn: 7.0.6
+
   '@malept/cross-spawn-promise@1.1.1':
     dependencies:
       cross-spawn: 7.0.6
@@ -8511,7 +8682,50 @@ snapshots:
     dependencies:
       cross-spawn: 7.0.6
 
-  '@modelcontextprotocol/sdk@1.30.0(supports-color@8.1.1)(zod@3.25.76)':
+  '@mcp-b/webmcp-local-relay@4.0.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)':
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)(zod@3.25.76)
+      ws: 8.21.1
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@mcp-b/webmcp-polyfill@4.0.0':
+    dependencies:
+      '@cfworker/json-schema': 4.1.1
+      '@mcp-b/webmcp-types': 4.0.0
+      '@standard-schema/spec': 1.1.0
+
+  '@mcp-b/webmcp-types@4.0.0': {}
+
+  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)(zod@3.25.76)':
+    dependencies:
+      '@hono/node-server': 1.19.17(hono@4.12.32)
+      ajv: 8.20.0
+      ajv-formats: 3.0.1
+      content-type: 1.0.5
+      cors: 2.8.6
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.0
+      express: 5.2.1(supports-color@8.1.1)
+      express-rate-limit: 8.6.1(express@5.2.1(supports-color@8.1.1))(supports-color@8.1.1)
+      hono: 4.12.32
+      jose: 6.2.4
+      json-schema-typed: 8.0.2
+      pkce-challenge: 5.0.1
+      raw-body: 3.0.2
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
+    optionalDependencies:
+      '@cfworker/json-schema': 4.1.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)(zod@3.25.76)':
     dependencies:
       '@hono/node-server': 2.0.12(hono@4.12.32)
       ajv: 8.20.0
@@ -8530,6 +8744,8 @@ snapshots:
       raw-body: 3.0.2
       zod: 3.25.76
       zod-to-json-schema: 3.25.2(zod@3.25.76)
+    optionalDependencies:
+      '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:
       - supports-color
 
@@ -10241,12 +10457,18 @@ snapshots:
 
   assistant-cloud@0.1.37:
     dependencies:
-      assistant-stream: 0.3.31
+      assistant-stream: 0.3.33
     transitivePeerDependencies:
       - ioredis
       - redis
 
   assistant-stream@0.3.31:
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      nanoid: 6.0.0
+      secure-json-parse: 4.1.0
+
+  assistant-stream@0.3.33:
     dependencies:
       '@standard-schema/spec': 1.1.0
       nanoid: 6.0.0
@@ -13154,14 +13376,14 @@ snapshots:
 
   setprototypeof@1.2.0: {}
 
-  shadcn@4.16.0(supports-color@8.1.1)(typescript@7.0.2):
+  shadcn@4.16.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)(typescript@7.0.2):
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
       '@babel/parser': 7.29.7
       '@babel/plugin-transform-typescript': 7.29.7(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
       '@dotenvx/dotenvx': 1.75.1
-      '@modelcontextprotocol/sdk': 1.30.0(supports-color@8.1.1)(zod@3.25.76)
+      '@modelcontextprotocol/sdk': 1.30.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)(zod@3.25.76)
       '@types/validate-npm-package-name': 4.0.2
       browserslist: 4.28.7
       commander: 14.0.3

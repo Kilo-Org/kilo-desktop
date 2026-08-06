@@ -1,4 +1,5 @@
 import electronDebug from "electron-debug";
+import { shellEnv } from "shell-env";
 import { nativeTheme, session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
@@ -32,6 +33,7 @@ import { HttpClient } from "./platform/HttpClient.js";
 import { IpcServer } from "./platform/IpcServer.js";
 import { createLogger } from "./platform/logger.js";
 import { PreferencesStore } from "./platform/PreferencesStore.js";
+import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { SplashWindow } from "./platform/SplashWindow.js";
 import { configureUpdater } from "./platform/Updater.js";
@@ -100,6 +102,13 @@ export class Application {
 				rendererRoot: getProductionRendererRoot(import.meta.dirname),
 				...(developmentOrigin ? { developmentOrigin } : {}),
 			});
+
+			// Bootstrap networking before #registerIpc (bootFeatures): merge the
+			// login-shell env into process.env so GUI-launched builds see env-var
+			// proxies (`shell-env` no-ops on Windows), then patch in-process
+			// http/https/fetch so third-party deps honor corporate/system proxies.
+			Object.assign(process.env, await shellEnv());
+			installProxyAgent();
 
 			this.#disposers.push(this.#security.install(session.defaultSession));
 

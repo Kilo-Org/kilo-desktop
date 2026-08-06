@@ -47,6 +47,18 @@ export default defineConfig(({ command }) => {
 					"update-electron-app",
 					"electron-debug",
 					"execa",
+					// shell-env resolves its own nested execa@5 (CJS default export);
+					// keep it external so bundling does not rewrite that import onto
+					// the workspace's execa@9 (ESM, no default export).
+					"shell-env",
+					// Bundle-external: @vscode/proxy-agent conditionally requires the
+					// optional native addon @vscode/windows-ca-certs, which we do not
+					// install (addCertificatesV2 → false, so it is never reached at
+					// runtime). Keep the package external so its own require resolves
+					// from node_modules and the bundler does not try to inline the
+					// missing optional dep.
+					"@vscode/proxy-agent",
+					"@vscode/windows-ca-certs",
 					...builtinModules,
 					...builtinModules.map((module) => `node:${module}`),
 				],

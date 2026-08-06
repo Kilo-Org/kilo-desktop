@@ -33,6 +33,9 @@ allowBuilds:
   "@github/keytar": true
   "@anaconda/playwright-utils": false
   unrs-resolver: false
+  # Optional native addon pulled in transitively by @vscode/proxy-agent. We
+  # never load it (addCertificatesV2 → false), so skip its native build.
+  "@vscode/windows-ca-certs": false
 
 minimumReleaseAge: 0
 

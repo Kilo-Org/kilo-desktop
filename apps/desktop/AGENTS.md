@@ -34,6 +34,11 @@ For testability, code paths that log accept an injected logger (a structural
 `{ info; warn; error }`) defaulting to `createLogger(...)`, so tests pass a
 no-op logger instead of initializing `electron-log` against a mocked `electron`.
 
+Do **not** write tests that assert logging behavior — that a logger was called,
+with what message, or at what level. Logs/loggers are diagnostic output, not
+observable behavior; asserting on them couples tests to wording and adds no
+value. Test what the code _does_, not what it _logs_.
+
 ## Utilities / lodash
 
 Use `lodash` for deep-equality and collection helpers (e.g. `isEqual`,

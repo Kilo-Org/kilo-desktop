@@ -10,12 +10,13 @@ import type { KiloServerConnection, KiloServerStatus } from "../contracts/schema
 import {
 	createKiloServerManagerOptions,
 	registerKiloCode,
-	unscopedRuntimeDirectory,
+	unscopedChatDirectory,
 	type KiloServerController,
 } from "./index.js";
 import type { WorkspaceCapabilities } from "./workspace-capability.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
+const CHAT_ID = "11111111-1111-4111-8111-111111111111";
 
 function fakeServer() {
 	const connection: KiloServerConnection = {
@@ -139,20 +140,23 @@ describe("kilo-code main registration", () => {
 		mainSdk.dispose();
 	});
 
-	it("resolves an unscoped connection without workspaces and creates the directory", async () => {
+	it("resolves an unscoped connection without workspaces and creates a per-chat directory", async () => {
 		const storageDir = await mkdtemp(path.join(os.tmpdir(), "kilo-code-unscoped-"));
 		const mainSdk = createFakeMainSdk({ featureId: "kilo-code", storageDir });
 		const server = fakeServer();
 		registerKiloCode(mainSdk, { createServer: () => server });
 
-		const directory = unscopedRuntimeDirectory(storageDir);
-		await expect(mainSdk.invoke("server.getConnection", { scope: "unscoped" })).resolves.toEqual({
+		const directory = unscopedChatDirectory(storageDir, CHAT_ID);
+		await expect(
+			mainSdk.invoke("server.getConnection", { scope: "unscoped", chatId: CHAT_ID }),
+		).resolves.toEqual({
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
 			password: "secret",
 			version: "7.4.20",
 			directory,
 		});
+		expect(directory).toBe(path.join(storageDir, "chats", CHAT_ID));
 		expect((await stat(directory)).isDirectory()).toBe(true);
 		expect(server.ensureRunning).toHaveBeenCalledTimes(2);
 		mainSdk.dispose();

@@ -33,9 +33,9 @@ export type KiloServerConnection = z.infer<typeof kiloServerConnectionSchema>;
 export type KiloWorkspaceConnection = z.infer<typeof kiloWorkspaceConnectionSchema>;
 export type KiloServerStatus = z.infer<typeof kiloServerStatusSchema>;
 
-/** Connection request: unscoped app directory, or a workspace's primary folder. */
+/** Connection request: unscoped per-chat directory, or a workspace's primary folder. */
 export const kiloGetConnectionInputSchema = z.union([
-	z.object({ scope: z.literal("unscoped") }),
+	z.object({ scope: z.literal("unscoped"), chatId: z.uuid() }),
 	z.object({ workspaceId: z.string().min(1) }),
 ]);
 

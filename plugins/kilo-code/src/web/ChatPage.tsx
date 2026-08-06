@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { MessageSquareIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 
@@ -33,7 +33,7 @@ function ChatThread({
 
 /**
  * Full-page chat surface contributed by kilo-code (`/plugins/chat`).
- * Uses an unscoped Kilo directory — no workspace picker yet.
+ * Uses a per-chat unscoped Kilo directory under `{storageDir}/chats/<chatId>/`.
  *
  * Mounts the composer immediately. `server.getConnection` may still be
  * resolving (Kilo starting); the composer waits on first send before clearing
@@ -42,17 +42,19 @@ function ChatThread({
 export function ChatPage() {
 	const sdk = useSdk<KiloCodeService>("kilo-code");
 	const queryClient = useQueryClient();
-	const connection = useSdkQuery(sdk, "server.getConnection", { scope: "unscoped" });
+	const [chatId] = useState(() => crypto.randomUUID());
+	const connectionInput = useMemo(() => ({ scope: "unscoped" as const, chatId }), [chatId]);
+	const connection = useSdkQuery(sdk, "server.getConnection", connectionInput);
 
 	const connectionPromise = useMemo(() => {
 		const promise = queryClient.ensureQueryData(
-			sdkQueryOptions(sdk, "server.getConnection", { scope: "unscoped" }),
+			sdkQueryOptions(sdk, "server.getConnection", connectionInput),
 		);
 		// Keep the rejection for send-time awaiters; avoid an unhandled rejection if
 		// the user never sends while the banner is showing.
 		void promise.catch(() => undefined);
 		return promise;
-	}, [queryClient, sdk]);
+	}, [connectionInput, queryClient, sdk]);
 
 	const connectionStatus = {
 		isPending: connection.isPending,

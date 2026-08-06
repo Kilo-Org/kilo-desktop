@@ -14,8 +14,15 @@ import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerMa
 import { resolveKiloInstallation } from "./installation.js";
 import type { WorkspaceCapabilities } from "./workspace-capability.js";
 
-export function unscopedRuntimeDirectory(storageDir: string): string {
-	return path.join(storageDir, "runtime", "unscoped");
+/** Per-chat scratch directory for unscoped chats: `{storageDir}/chats/<chatId>/`. */
+export function unscopedChatDirectory(storageDir: string, chatId: string): string {
+	const chatsRoot = path.resolve(storageDir, "chats");
+	const directory = path.resolve(chatsRoot, chatId);
+	const relative = path.relative(chatsRoot, directory);
+	if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+		throw new FeatureError("Invalid chat id.", "VALIDATION");
+	}
+	return directory;
 }
 
 export interface KiloServerController {
@@ -71,7 +78,7 @@ export function registerKiloCode(mainSdk: MainSdk, options: RegisterKiloCodeOpti
 			}
 			return primaryFolder.path;
 		}
-		const directory = unscopedRuntimeDirectory(mainSdk.storageDir);
+		const directory = unscopedChatDirectory(mainSdk.storageDir, input.chatId);
 		await mkdir(directory, { recursive: true });
 		return directory;
 	};

@@ -101,9 +101,23 @@ describe("ChatPage", () => {
 	});
 
 	it("renders the thread without eagerly initializing a remote session", async () => {
-		const { baseElement } = renderChatPage({});
+		const getConnection = vi.fn(async () => connection);
+		const { baseElement } = renderChatPage({
+			"server.getConnection": getConnection,
+		});
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await vi.waitFor(() => {
+			expect(getConnection).toHaveBeenCalled();
+		});
+		expect(getConnection).toHaveBeenCalledWith(
+			expect.objectContaining({
+				scope: "unscoped",
+				chatId: expect.stringMatching(
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+				),
+			}),
+		);
 	});
 });

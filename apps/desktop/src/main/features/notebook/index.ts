@@ -44,14 +44,6 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		logger,
 		...(options.connect ? { connect: options.connect } : {}),
 	});
-	const relay = new NotebookRelayService({
-		runtimed,
-		// The WebSocket is opened by nteract's document, which we serve from the
-		// notebook host — not the app host. Pointing this at `app` 401s every
-		// upgrade, and the view reports that as an unavailable daemon.
-		allowedOrigin: getDesktopOrigin(isDevelopment, NOTEBOOK_HOST),
-		logger,
-	});
 	const resolveBinary =
 		options.resolveDaemonBinary ??
 		(() =>
@@ -74,6 +66,19 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		probe: () => runtimed.isListening(),
 		runningVersion: async () => (await runtimed.queryDaemonInfo())?.version,
 		bundledVersion: binaryPath ? () => readBundledDaemonVersion(binaryPath) : async () => undefined,
+		logger,
+	});
+	const relay = new NotebookRelayService({
+		runtimed,
+		// The WebSocket is opened by nteract's document, which we serve from the
+		// notebook host — not the app host. Pointing this at `app` 401s every
+		// upgrade, and the view reports that as an unavailable daemon.
+		allowedOrigin: getDesktopOrigin(isDevelopment, NOTEBOOK_HOST),
+		// nteract dials as soon as it has the config, which for a cold start is
+		// well before the sidecar binds. Without this the relay only ever saw
+		// ENOENT and reported a terminal failure for a daemon that was still coming
+		// up — the `status` channel awaited the supervisor, but nteract never calls it.
+		ensureDaemon: () => daemonProcess.ensureRunning(),
 		logger,
 	});
 

@@ -4,6 +4,7 @@ import type { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
+import type { DaemonState } from "./DaemonProcessService.js";
 import type { NotebookHandshake, RuntimedLogger, RuntimedService } from "./RuntimedService.js";
 
 /**
@@ -38,6 +39,21 @@ export const RELAY_WS_PATH = "/notebook-relay";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
+const RETRY_GUIDANCE = "Retry once the daemon is available.";
+
+/**
+ * Why the supervisor will not produce a daemon, or undefined when it still might.
+ * Only `failed` and `incompatible` are terminal; everything else is either
+ * reachable already or on its way, and dialing decides which.
+ */
+function terminalDaemonReason(state: DaemonState): string | undefined {
+	if (state.status === "failed") return state.reason;
+	if (state.status === "incompatible") {
+		return `a different notebook daemon is already running (${state.runningVersion}); this app needs ${state.bundledVersion}`;
+	}
+	return undefined;
+}
+
 export interface NotebookRelayOptions {
 	readonly runtimed: RuntimedService;
 	readonly logger?: RuntimedLogger;
@@ -45,6 +61,13 @@ export interface NotebookRelayOptions {
 	readonly handshakeFor?: (url: URL) => NotebookHandshake;
 	/** Origin the renderer connects from; enforced on upgrade when provided. */
 	readonly allowedOrigin?: string;
+	/**
+	 * Brings the daemon up before we dial its socket. nteract opens the WebSocket
+	 * as soon as it has fetched the config, which is seconds before a cold-start
+	 * sidecar binds — without this the first dials all fail on ENOENT. Optional so
+	 * a relay can still be pointed at an externally managed daemon.
+	 */
+	readonly ensureDaemon?: () => Promise<DaemonState>;
 }
 
 export interface RelayConfig {
@@ -79,6 +102,7 @@ export class NotebookRelayService {
 	readonly #logger: RuntimedLogger;
 	readonly #handshakeFor: (url: URL) => NotebookHandshake;
 	readonly #allowedOrigin: string | undefined;
+	readonly #ensureDaemon: (() => Promise<DaemonState>) | undefined;
 	readonly #token = randomBytes(32).toString("base64url");
 
 	#server: Server | undefined;
@@ -90,6 +114,7 @@ export class NotebookRelayService {
 		this.#logger = options.logger ?? noopLogger;
 		this.#handshakeFor = options.handshakeFor ?? defaultHandshakeFor;
 		this.#allowedOrigin = options.allowedOrigin;
+		this.#ensureDaemon = options.ensureDaemon;
 	}
 
 	get port(): number {
@@ -178,6 +203,25 @@ export class NotebookRelayService {
 	}
 
 	async #bridge(ws: WebSocket, url: URL): Promise<void> {
+		// nteract renders `unavailable` as a terminal amber banner with a Retry
+		// button, so a daemon that is merely still starting must not report as one.
+		// `progress` drives its existing spinner instead, and the await is what
+		// stops us dialing a socket that has not been bound yet.
+		if (this.#ensureDaemon) {
+			sendControl(ws, { type: "progress", payload: { status: "starting" } });
+			const state = await this.#ensureDaemon();
+			const reason = terminalDaemonReason(state);
+			if (reason) {
+				this.#logger.warn(`[notebook] daemon unavailable: ${reason}`);
+				sendControl(ws, {
+					type: "unavailable",
+					payload: { reason: "daemon_unavailable", message: reason, guidance: RETRY_GUIDANCE },
+				});
+				ws.close(1011, "daemon unavailable");
+				return;
+			}
+		}
+
 		let connection;
 		try {
 			connection = await this.#runtimed.connectNotebook(this.#handshakeFor(url));

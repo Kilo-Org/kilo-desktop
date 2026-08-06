@@ -212,6 +212,33 @@ describe("notebook mainRegister", () => {
 		mainSdk.dispose();
 	});
 
+	it("tells nteract the daemon is starting rather than unavailable", async () => {
+		// nteract fetches the config and dials immediately; it never invokes `status`,
+		// so the relay is the only thing that can make it wait for the supervisor.
+		// Sending `unavailable` here shows a terminal amber banner during a normal
+		// cold start.
+		const mainSdk = await boot();
+		const { relayPort } = (await mainSdk.invoke("status")) as { relayPort: number };
+		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"] as {
+			routes: Record<string, () => Promise<{ token: string }>>;
+		};
+		const { token } = await capability.routes[CONFIG_PATH]!();
+
+		const ws = new WebSocket(`ws://127.0.0.1:${relayPort}${RELAY_WS_PATH}?token=${token}`, {
+			headers: { Origin: "anaconda-agentic-desktop://notebook" },
+		});
+		sockets.push(ws);
+		const messages: Record<string, unknown>[] = [];
+		ws.on("message", (data: Buffer, isBinary: boolean) => {
+			if (!isBinary) messages.push(JSON.parse(data.toString("utf8")) as Record<string, unknown>);
+		});
+
+		await expect.poll(() => messages.some((m) => m.type === "ready")).toBe(true);
+		expect(messages[0]).toEqual({ type: "progress", payload: { status: "starting" } });
+		expect(messages.some((m) => m.type === "unavailable")).toBe(false);
+		mainSdk.dispose();
+	});
+
 	it("serves the relay websocket at the started port and closes it on disposal", async () => {
 		const mainSdk = await boot();
 		const { relayPort } = (await mainSdk.invoke("status")) as { relayPort: number };

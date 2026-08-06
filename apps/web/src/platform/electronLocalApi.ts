@@ -50,7 +50,6 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			onChanged: (listener) => bridge.on("auth:changed", listener),
 		},
 		featureFlags: {
-			getFlag: (key, defaultValue) => invoke("feature-flag:get", { key, defaultValue }),
 			getAllFlags: () => invoke("feature-flag:get-all"),
 			onChanged: (listener) => bridge.on("feature-flag:changed", listener),
 		},

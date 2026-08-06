@@ -271,7 +271,6 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 		),
 		featureFlags: merge<SDK["featureFlags"]>(
 			{
-				getFlag: async (_key, defaultValue) => defaultValue as never,
 				getAllFlags: async () => ({}),
 				subscribe: (fn) => {
 					fn({});

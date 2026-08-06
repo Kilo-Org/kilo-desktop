@@ -349,15 +349,12 @@ export type FeatureFlagMap = Record<string, unknown>;
  * Feature flags, shell-owned. The delegate keeps a synchronous cache of the
  * flag map: `subscribe` fires immediately with the current cache and `peek`
  * reads it without subscribing (`{}` until the host's first resolve lands).
- * `getFlag`/`getAllFlags` still query the host directly.
+ * `getAllFlags` still queries the host directly.
  *
  * @example
- * const enabled = await sdk.featureFlags.getFlag("todos.newEditor", false);
  * const unsub = sdk.featureFlags.subscribe((flags) => render(flags));
  */
 export interface SdkFeatureFlags {
-	/** Read one flag from the host, resolving to `defaultValue` if absent. */
-	getFlag<T>(key: string, defaultValue?: T): Promise<T>;
 	/** Read the full flag map from the host. */
 	getAllFlags(): Promise<FeatureFlagMap>;
 	/**

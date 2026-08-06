@@ -53,7 +53,6 @@ export interface LocalApi {
 		onChanged(listener: (session: AuthSession) => void): () => void;
 	};
 	featureFlags: {
-		getFlag(key: string, defaultValue?: unknown): Promise<unknown>;
 		getAllFlags(): Promise<Record<string, unknown>>;
 		onChanged(listener: (flags: Record<string, unknown>) => void): () => void;
 	};

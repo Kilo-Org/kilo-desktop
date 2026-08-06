@@ -8,15 +8,19 @@ export const ANONYMOUS_CONTEXT: FeatureFlagContext = { isEmployee: false };
 
 /** Derives a {@link FeatureFlagContext} from the current auth session; never throws. */
 export async function deriveContext(auth: AuthSessionService): Promise<FeatureFlagContext> {
-	const session: AuthSession = await auth.getSession().catch(() => {
-		return { status: "error", reason: "Unable to retrieve user session" };
-	});
+	// The two reads are independent (getSubscription does not depend on the
+	// resolved session), so issue them concurrently; each falls back on error.
+	const [session, subscription] = await Promise.all([
+		auth.getSession().catch((): AuthSession => {
+			return { status: "error", reason: "Unable to retrieve user session" };
+		}),
+		auth.getSubscription().catch(() => FREE_SUBSCRIPTION),
+	]);
 
 	if (session.status !== "authenticated") return ANONYMOUS_CONTEXT;
 
 	const isEmployee = session.user.email?.split("@")[1]?.toLowerCase() === "anaconda.com";
 	const userId = session.user.userId;
-	const subscription = await auth.getSubscription().catch(() => FREE_SUBSCRIPTION);
 
 	return { isEmployee, userId, subscription };
 }

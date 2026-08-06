@@ -13,14 +13,6 @@ function makeApi(featureFlags: Partial<LocalApi["featureFlags"]>): LocalApi {
 const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("createShellDelegates featureFlags", () => {
-	it("reads getFlag through to the host on each call", async () => {
-		const getFlag = vi.fn(async () => true);
-		const { featureFlags } = createShellDelegates(makeApi({ getFlag }));
-
-		await expect(featureFlags.getFlag("todos.newEditor", false)).resolves.toBe(true);
-		expect(getFlag).toHaveBeenCalledWith("todos.newEditor", false);
-	});
-
 	it("seeds the cache from getAllFlags on first subscribe", async () => {
 		const getAllFlags = vi.fn(async () => ({ "todos.newEditor": true }));
 		const { featureFlags } = createShellDelegates(makeApi({ getAllFlags }));

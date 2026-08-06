@@ -17,6 +17,7 @@ import type {
 export interface LaunchDarklyProviderOptions {
 	clientSideId: string;
 	initialContext: FeatureFlagContext;
+	appVersion: string;
 	logger?: Logger;
 }
 
@@ -24,16 +25,6 @@ type FlagMap = Record<string, unknown>;
 
 /** Seconds to wait for the first flag payload before `start()` resolves. */
 const START_TIMEOUT_SECONDS = 5;
-
-function toLdContext(ctx: FeatureFlagContext): LDContext {
-	return {
-		kind: "user",
-		key: ctx.userId ?? "anonymous",
-		anonymous: !ctx.userId,
-		is_anaconda_employee: ctx.isEmployee,
-		subscription: ctx.subscription,
-	};
-}
 
 /**
  * LaunchDarkly-backed provider. Initialization never throws and is never
@@ -46,19 +37,33 @@ export class LaunchDarklyProvider
 {
 	readonly #client: LDClient;
 	readonly #logger: Logger;
+	/** Process-static app version stamped onto every LD context as `app_version`. */
+	readonly #appVersion: string;
 	/** Shared result of the single `start()`; the client is a start-once singleton. */
 	#start: Promise<StartStatus> | undefined;
 
 	constructor(options: LaunchDarklyProviderOptions) {
 		super();
 		this.#logger = options.logger ?? createLogger("launch-darkly");
-		this.#client = createClient(options.clientSideId, toLdContext(options.initialContext), {
+		this.#appVersion = options.appVersion;
+		this.#client = createClient(options.clientSideId, this.#toLdContext(options.initialContext), {
 			logger: this.#logger as LDLogger,
 		});
 
 		this.#client.on("change", () => {
 			this.emit("change");
 		});
+	}
+
+	#toLdContext(ctx: FeatureFlagContext): LDContext {
+		return {
+			kind: "user",
+			key: ctx.userId ?? "anonymous",
+			anonymous: !ctx.userId,
+			is_anaconda_employee: ctx.isEmployee,
+			subscription: ctx.subscription,
+			app_version: this.#appVersion,
+		};
 	}
 
 	async start(): Promise<StartStatus> {
@@ -97,7 +102,7 @@ export class LaunchDarklyProvider
 		// place for the SDK to evaluate once it reconnects. start() must run first.
 		await this.start();
 		try {
-			await this.#client.identify(toLdContext(context));
+			await this.#client.identify(this.#toLdContext(context));
 		} catch (cause) {
 			this.#logger.warn(
 				"LaunchDarkly identify did not complete; will apply once connected.",

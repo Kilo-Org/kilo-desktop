@@ -53,6 +53,7 @@ function makeProvider(extra: Partial<LaunchDarklyProviderOptions> = {}) {
 	return new LaunchDarklyProvider({
 		clientSideId: "test-id",
 		initialContext: { isEmployee: false },
+		appVersion: "1.2.3",
 		logger: fakeLogger(),
 		...extra,
 	});
@@ -119,6 +120,7 @@ describe("LaunchDarklyProvider", () => {
 			anonymous: false,
 			is_anaconda_employee: true,
 			subscription: "free_subscription",
+			app_version: "1.2.3",
 		});
 	});
 

@@ -46,7 +46,6 @@ export function makeServices(featureRouter?: FeatureRouter) {
 			logout: async () => ({ status: "anonymous" }),
 		},
 		featureFlags: {
-			getFlag: async (_key, defaultValue) => defaultValue as never,
 			getAllFlags: async () => ({}),
 			subscribe: (fn) => {
 				fn({});

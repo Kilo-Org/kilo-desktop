@@ -15,7 +15,6 @@ interface FeatureFlagServiceDeps {
 	auth: AuthSessionService;
 	overrides: Set<string>;
 	logger: Logger;
-	appVersion: string;
 }
 
 type FlagMap = Record<string, unknown>;
@@ -71,6 +70,7 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 		const provider = new LaunchDarklyProvider({
 			clientSideId,
 			initialContext: ANONYMOUS_CONTEXT,
+			appVersion: options.appVersion,
 			logger,
 		});
 
@@ -79,9 +79,11 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 			auth: options.auth,
 			overrides,
 			logger,
-			appVersion: options.appVersion,
 		});
 
+		// bindAuthToProvider re-identifies the provider on later login/logout
+		// transitions; initialize() (below, called by the shell) seeds the
+		// boot-time context. They don't overlap — do not "dedupe" them.
 		service.#stopAuth = bindAuthToProvider(options.auth, provider, (cause) => {
 			logger.error("Failed to re-identify feature-flag context on auth change", cause);
 		});
@@ -93,6 +95,12 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 		return service;
 	}
 
+	/**
+	 * Boot-time context seed: derive the initial context and identify the
+	 * provider once at startup. Subsequent login/logout transitions are handled
+	 * by bindAuthToProvider (wired in create()) — the two are distinct entry
+	 * points and are intentionally not deduplicated.
+	 */
 	async initialize(): Promise<void> {
 		try {
 			const context = await deriveContext(this.#auth);
@@ -119,18 +127,19 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 	}
 
 	getAllFlags(): FlagMap {
+		let flags: FlagMap;
 		try {
-			const flags = this.#provider.getAllFlags();
-			// Force overridden flags on, mirroring getFlag(); the renderer's
-			// useFeatureFlag reads this map, so overrides must be reflected here too.
-			for (const key of this.#overrides) {
-				flags[key] = true;
-			}
-			return flags;
+			flags = this.#provider.getAllFlags();
 		} catch (cause) {
 			this.#logger.error("Failed to read all feature flags", cause);
-			return Object.fromEntries([...this.#overrides].map((key) => [key, true]));
+			flags = {};
 		}
+		// Overlay overrides so the renderer's useFeatureFlag (which reads this
+		// map) sees them too, mirroring getFlag()'s override decision.
+		for (const key of this.#overrides) {
+			flags[key] = true;
+		}
+		return flags;
 	}
 
 	dispose(): Promise<void> {

@@ -136,8 +136,6 @@ describe("createBrowserLocalApi", () => {
 
 	it("resolves feature flags to their defaults with a no-op onChanged", async () => {
 		const api = createBrowserLocalApi();
-		expect(await api.featureFlags.getFlag("todos.newEditor", false)).toBe(false);
-		expect(await api.featureFlags.getFlag("missing")).toBeUndefined();
 		expect(await api.featureFlags.getAllFlags()).toEqual({});
 
 		const listener = vi.fn();

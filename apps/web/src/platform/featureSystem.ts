@@ -113,8 +113,6 @@ function createFeatureFlagsDelegate(api: LocalApi): ShellDelegates["featureFlags
 	};
 
 	return {
-		getFlag: <T>(key: string, defaultValue?: T) =>
-			api.featureFlags.getFlag(key, defaultValue) as Promise<T>,
 		async getAllFlags() {
 			const next = await api.featureFlags.getAllFlags();
 			update(next);

@@ -101,8 +101,6 @@ describe("createElectronLocalApi", () => {
 	it("forwards feature-flag reads and relays feature-flag:changed", async () => {
 		const invoke = vi.fn(async (channel: string) => {
 			switch (channel) {
-				case "feature-flag:get":
-					return { ok: true, value: true };
 				case "feature-flag:get-all":
 					return { ok: true, value: { "todos.newEditor": true } };
 				default:
@@ -112,11 +110,6 @@ describe("createElectronLocalApi", () => {
 		const on = vi.fn(() => () => undefined);
 		const api = createElectronLocalApi(makeBridge({ invoke: invoke as never, on }));
 
-		await expect(api.featureFlags.getFlag("todos.newEditor", false)).resolves.toBe(true);
-		expect(invoke).toHaveBeenCalledWith("feature-flag:get", {
-			key: "todos.newEditor",
-			defaultValue: false,
-		});
 		await expect(api.featureFlags.getAllFlags()).resolves.toEqual({ "todos.newEditor": true });
 
 		const unsubscribe = api.featureFlags.onChanged(() => undefined);

@@ -103,13 +103,13 @@ export class Application {
 				...(developmentOrigin ? { developmentOrigin } : {}),
 			});
 
-      // Bootstrap networking before #registerIpc (bootFeatures): merge the
-      // login-shell env into process.env so GUI-launched builds see env-var
-      // proxies (`shell-env` no-ops on Windows), then patch in-process
-      // http/https/fetch so third-party deps honor corporate/system proxies.
-   		Object.assign(process.env, await shellEnv());
-  		installProxyAgent();
-      
+			// Bootstrap networking before #registerIpc (bootFeatures): merge the
+			// login-shell env into process.env so GUI-launched builds see env-var
+			// proxies (`shell-env` no-ops on Windows), then patch in-process
+			// http/https/fetch so third-party deps honor corporate/system proxies.
+			Object.assign(process.env, await shellEnv());
+			installProxyAgent();
+
 			this.#disposers.push(this.#security.install(session.defaultSession));
 
 			reporter.report("features", "Preparing features\u2026");

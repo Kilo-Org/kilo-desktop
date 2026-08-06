@@ -46,6 +46,21 @@ export interface BootFeaturesOptions {
 	 * without features needing to import any shell internals.
 	 */
 	onBeforeFeatureBoot?: (featureId: string) => void;
+	/**
+	 * Receive `mainSdk.boot.reportProgress(msg)` calls a feature makes while
+	 * `bootFeatures` is running. After `bootFeatures` returns, subsequent
+	 * calls become silent no-ops so async work started during boot cannot
+	 * push stale progress into shell UI. Omitting the callback is fine —
+	 * features that call the hook still see a no-op, they never crash.
+	 *
+	 * Distinct from {@link onBeforeFeatureBoot}: the shell fires
+	 * `onBeforeFeatureBoot(id)` once before each feature's `mainRegister`
+	 * (default "Preparing <id>…" splash line); `onFeatureProgress` is fired
+	 * BY the feature from inside `mainRegister` via
+	 * `mainSdk.boot.reportProgress(message)` for fine-grained messages like
+	 * "Staging Miniconda…".
+	 */
+	onFeatureProgress?: (featureId: string, message: string) => void;
 }
 
 /**
@@ -60,6 +75,11 @@ export function bootFeatures(
 	options?: BootFeaturesOptions,
 ): () => void {
 	const storageRoot = options?.storageRoot;
+	const onFeatureProgress = options?.onFeatureProgress;
+	// One flag per bootFeatures call — flipping it after the loop turns every
+	// feature's reportProgress into a no-op, even if the feature keeps a
+	// reference to the reporter after mainRegister returned.
+	let bootWindowOpen = true;
 	const booted: string[] = [];
 	for (const feature of features) {
 		if (bootedFeatureIds.has(feature.id)) {
@@ -85,6 +105,16 @@ export function bootFeatures(
 			// mainSdk.resolvePluginAsset would throw for them, which is fine —
 			// they ship no assets.
 			...(feature.resolveAsset ? { resolvePluginAsset: feature.resolveAsset } : {}),
+			// Gate reportProgress on this call's boot window so a feature that
+			// captured the reporter cannot push a message after boot has ended.
+			...(onFeatureProgress
+				? {
+						reportBootProgress: (message: string) => {
+							if (!bootWindowOpen) return;
+							onFeatureProgress(feature.id, message);
+						},
+					}
+				: {}),
 		});
 		try {
 			feature.mainRegister(mainSdk);
@@ -96,6 +126,7 @@ export function bootFeatures(
 			featureRouter.destroyFeature(feature.id);
 		}
 	}
+	bootWindowOpen = false;
 	return () => {
 		for (const id of booted.reverse()) {
 			featureRouter.destroyFeature(id);

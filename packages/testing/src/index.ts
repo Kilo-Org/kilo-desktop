@@ -476,6 +476,12 @@ export interface FakeMainSdkOptions {
 	logger?: MainSdkLogger;
 	/** Network fake. Defaults to the current runtime's global fetch. */
 	fetch?: MainSdkFetch;
+	/**
+	 * Receive `mainSdk.boot.reportProgress(msg)` calls. Defaults to a no-op
+	 * (production behaviour after `bootFeatures` returns). Pass a spy to
+	 * assert on progress messages emitted from `mainRegister`.
+	 */
+	reportBootProgress?: (message: string) => void;
 	/** Internal shared services; prefer createLinkedFakeSdkPair for linked tests. */
 	services?: SdkFactoryServices;
 }
@@ -504,6 +510,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 						return path.resolve(pluginDir, subpath);
 					},
 				}),
+		...(options?.reportBootProgress ? { reportBootProgress: options.reportBootProgress } : {}),
 	});
 
 	return {
@@ -512,6 +519,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		net: mainSdk.net,
 		events: mainSdk.events,
 		plugins: mainSdk.plugins,
+		boot: mainSdk.boot,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {

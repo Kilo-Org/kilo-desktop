@@ -37,6 +37,7 @@ export type {
 	DispatchIntent,
 	ChannelHandlers,
 	MainSdk,
+	MainSdkBoot,
 	MainSdkFetch,
 	MainSdkLogger,
 	MainSdkNet,

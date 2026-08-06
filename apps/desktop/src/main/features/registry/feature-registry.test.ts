@@ -124,6 +124,35 @@ describe("feature registration", () => {
 		expect(registerOrder).toEqual(["progress", "register"]);
 		dispose();
 	});
+
+	it("routes mainSdk.boot.reportProgress to onFeatureProgress during boot and no-ops after", () => {
+		const featureId = "registry-boot-progress-test";
+		const onFeatureProgress = vi.fn();
+		let capturedSdk: MainSdk | undefined;
+
+		const dispose = bootFeatures(
+			[
+				{
+					id: featureId,
+					mainRegister(mainSdk) {
+						capturedSdk = mainSdk;
+						mainSdk.boot.reportProgress("Preparing…");
+						mainSdk.boot.reportProgress("Ready.");
+					},
+				},
+			],
+			{ onFeatureProgress },
+		);
+
+		expect(onFeatureProgress).toHaveBeenNthCalledWith(1, featureId, "Preparing…");
+		expect(onFeatureProgress).toHaveBeenNthCalledWith(2, featureId, "Ready.");
+
+		// Late calls (async task that finished after boot) must be silent no-ops.
+		capturedSdk?.boot.reportProgress("late — should be ignored");
+		expect(onFeatureProgress).toHaveBeenCalledTimes(2);
+
+		dispose();
+	});
 });
 
 describe("feature event bridge", () => {

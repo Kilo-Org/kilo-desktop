@@ -667,6 +667,27 @@ export interface MainSdkNet {
 }
 
 /**
+ * Boot-time hooks a feature's `mainRegister` may call while the shell is
+ * still starting up. Every hook is a no-op after `bootFeatures` returns so
+ * a stray late call from an async task never mutates shell UI.
+ *
+ * @example
+ * export function mainRegister(mainSdk: MainSdk) {
+ *   mainSdk.boot.reportProgress("Staging conda…");
+ *   // ...long-running staging work...
+ * }
+ */
+export interface MainSdkBoot {
+	/**
+	 * Report a human-readable progress message while this feature is booting.
+	 * Delivered to the host's boot-progress channel (e.g. a splash window);
+	 * silently dropped once `bootFeatures` has finished so features cannot
+	 * accidentally push UI updates after the app has moved on.
+	 */
+	reportProgress(message: string): void;
+}
+
+/**
  * Typed handler registrar bound to a channel map. Bind once via
  * `mainSdk.channels(map)`, then register each channel — or use `handleAll`
  * so the compiler proves no channel was forgotten.
@@ -713,6 +734,12 @@ export interface MainSdk {
 	readonly events: Pick<SdkEvents, "emit" | "on">;
 	/** Main-process cross-feature capability exposure and discovery. */
 	readonly plugins: SdkPlugins;
+	/**
+	 * Boot-time hooks. Only meaningful during `mainRegister`; after
+	 * `bootFeatures` returns every hook becomes a no-op so features that
+	 * spawn async work cannot push stale progress updates into shell UI.
+	 */
+	readonly boot: MainSdkBoot;
 	/**
 	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
 	 * created lazily on first access. Features persist ONLY here — open your

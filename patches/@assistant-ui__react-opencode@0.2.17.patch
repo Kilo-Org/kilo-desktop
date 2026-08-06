@@ -1,0 +1,269 @@
+diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
+index d795d5799d059d01327a3edbcd998fdbeeae317c..08315d7d93ba48eadc7796fd49b66e0bc7418bad 100644
+--- a/dist/useOpenCodeRuntime.js
++++ b/dist/useOpenCodeRuntime.js
+@@ -8,8 +8,8 @@ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection.js"
+ import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter.js";
+ import { useOpenCodeControllerState } from "./useOpenCodeControllerState.js";
+ import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming.js";
+-import { useEffect, useEffectEvent, useMemo } from "react";
+-import { ExportedMessageRepository, pickExternalStoreSharedOptions, useAuiState, useExternalStoreRuntime, useRemoteThreadListRuntime } from "@assistant-ui/react";
++import { useEffect, useEffectEvent, useMemo, useRef } from "react";
++import { ExportedMessageRepository, pickExternalStoreSharedOptions, useAui, useAuiState, useExternalStoreRuntime, useRemoteThreadListRuntime } from "@assistant-ui/react";
+ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+ //#region src/useOpenCodeRuntime.ts
+ const createRegistry = (client) => {
+@@ -52,8 +52,18 @@ const NOOP_CONTROLLER = {
+ 	replyToQuestion: async () => {},
+ 	rejectQuestion: async () => {}
+ };
+-const NOOP_ON_NEW = () => Promise.reject(/* @__PURE__ */ new Error("OpenCode session is still initializing"));
+ const isOpenCodeStateRunning = (state) => state.runState.type === "streaming" || state.runState.type === "cancelling" || state.runState.type === "reverting" || state.sessionStatus?.type === "busy" || state.sessionStatus?.type === "retry";
++const sendMessage = async (controller, message, options) => {
++	const sendOptions = {
++		model: options.defaultModel,
++		agent: options.defaultAgent
++	};
++	if (!(message.startRun ?? message.role === "user")) {
++		await controller.stageMessage(message, sendOptions);
++		return;
++	}
++	await controller.sendMessage(message, sendOptions);
++};
+ const useOpenCodeThreadRuntime = (controller, options) => {
+ 	const state = useOpenCodeControllerState(controller);
+ 	const onLoadError = useEffectEvent((error) => {
+@@ -88,15 +98,7 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+ 		...options.adapters && { adapters: options.adapters },
+ 		onNew: async (message) => {
+ 			try {
+-				const sendOptions = {
+-					model: options.defaultModel,
+-					agent: options.defaultAgent
+-				};
+-				if (!(message.startRun ?? message.role === "user")) {
+-					await controller.stageMessage(message, sendOptions);
+-					return;
+-				}
+-				await controller.sendMessage(message, sendOptions);
++				await sendMessage(controller, message, options);
+ 			} catch (error) {
+ 				options.onError?.(error);
+ 				throw error;
+@@ -134,14 +136,53 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+ 	});
+ };
+ const useRuntimeHook = (client, registry, options) => {
++	const aui = useAui();
+ 	const sessionId = useAuiState((state) => state.threadListItem.externalId ?? state.threadListItem.remoteId);
++	const threadStatus = useAuiState((state) => state.threadListItem.status);
++	const initializationRef = useRef(void 0);
++	const scheduledRestorationsRef = useRef(/* @__PURE__ */ new WeakSet());
++	const initializeController = () => {
++		initializationRef.current ??= aui.threadListItem.initialize().then(({ externalId, remoteId }) => getController(registry, client, externalId ?? remoteId)).catch((error) => {
++			initializationRef.current = void 0;
++			throw error;
++		});
++		return initializationRef.current;
++	};
++	const restoreMessage = async (message) => {
++		const text = message.content.filter((part) => part.type === "text").map((part) => part.text).join("");
++		const currentText = aui.composer.getState().text;
++		if (text && currentText !== text && !currentText.startsWith(`${text}\n`)) aui.composer.setText(currentText.length > 0 ? `${text}\n${currentText}` : text);
++		const attachmentIds = new Set(aui.composer.getState().attachments.map(({ id }) => id));
++		for (const attachment of message.attachments ?? []) if (!attachmentIds.has(attachment.id)) await aui.composer.addAttachment(attachment);
++	};
+ 	const controller = sessionId ? getController(registry, client, sessionId) : NOOP_CONTROLLER;
+ 	const threadRuntime = useOpenCodeThreadRuntime(controller, options);
+ 	const fallbackRuntime = useExternalStoreRuntime({
+-		isDisabled: true,
+-		isLoading: true,
++		...pickExternalStoreSharedOptions(options),
++		isDisabled: false,
++		isSendDisabled: options.isSendDisabled || threadStatus !== "new",
++		isLoading: false,
+ 		messageRepository: ExportedMessageRepository.fromArray([]),
+-		onNew: NOOP_ON_NEW
++		...options.adapters && { adapters: options.adapters },
++		onNew: async (message) => {
++			let initialized = false;
++			try {
++				const initializedController = await initializeController();
++				initialized = true;
++				await sendMessage(initializedController, message, options);
++			} catch (error) {
++				if (!initialized && !scheduledRestorationsRef.current.has(message)) {
++					scheduledRestorationsRef.current.add(message);
++					setTimeout(() => {
++						restoreMessage(message).catch((restoreError) => {
++							options.onError?.(restoreError);
++						});
++					}, 0);
++				}
++				options.onError?.(error);
++				throw error;
++			}
++		}
+ 	});
+ 	if (!sessionId) return fallbackRuntime;
+ 	return threadRuntime;
+diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
+index 66a324b9fd650a6d396ea30064377a07e49218a7..97d85379947c4dbd170fb4c26a2bd575d5269df1 100644
+--- a/src/useOpenCodeRuntime.ts
++++ b/src/useOpenCodeRuntime.ts
+@@ -3,6 +3,7 @@
+ import {
+   ExportedMessageRepository,
+   pickExternalStoreSharedOptions,
++  useAui,
+   useAuiState,
+   useExternalStoreRuntime,
+   useRemoteThreadListRuntime,
+@@ -13,7 +14,7 @@ import type {
+   ThreadMessage,
+ } from "@assistant-ui/react";
+ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+-import { useEffect, useEffectEvent, useMemo } from "react";
++import { useEffect, useEffectEvent, useMemo, useRef } from "react";
+ import type {
+   OpenCodeRuntimeOptions,
+   OpenCodeThreadControllerLike,
+@@ -95,9 +96,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
+   rejectQuestion: async () => {},
+ };
+ 
+-const NOOP_ON_NEW = () =>
+-  Promise.reject(new Error("OpenCode session is still initializing"));
+-
+ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+   state.runState.type === "streaming" ||
+   state.runState.type === "cancelling" ||
+@@ -105,6 +103,22 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+   state.sessionStatus?.type === "busy" ||
+   state.sessionStatus?.type === "retry";
+ 
++const sendMessage = async (
++  controller: OpenCodeThreadControllerLike,
++  message: AppendMessage,
++  options: OpenCodeRuntimeOptions,
++) => {
++  const sendOptions = {
++    model: options.defaultModel,
++    agent: options.defaultAgent,
++  };
++  if (!(message.startRun ?? message.role === "user")) {
++    await controller.stageMessage(message, sendOptions);
++    return;
++  }
++  await controller.sendMessage(message, sendOptions);
++};
++
+ const useOpenCodeThreadRuntime = (
+   controller: OpenCodeThreadControllerLike,
+   options: OpenCodeRuntimeOptions,
+@@ -163,15 +177,7 @@ const useOpenCodeThreadRuntime = (
+     ...(options.adapters && { adapters: options.adapters }),
+     onNew: async (message: AppendMessage) => {
+       try {
+-        const sendOptions = {
+-          model: options.defaultModel,
+-          agent: options.defaultAgent,
+-        };
+-        if (!(message.startRun ?? message.role === "user")) {
+-          await controller.stageMessage(message, sendOptions);
+-          return;
+-        }
+-        await controller.sendMessage(message, sendOptions);
++        await sendMessage(controller, message, options);
+       } catch (error) {
+         options.onError?.(error);
+         throw error;
+@@ -219,9 +225,53 @@ const useRuntimeHook = (
+   registry: OpenCodeControllerRegistry,
+   options: OpenCodeRuntimeOptions,
+ ) => {
++  const aui = useAui();
+   const sessionId = useAuiState(
+     (state) => state.threadListItem.externalId ?? state.threadListItem.remoteId,
+   );
++  const threadStatus = useAuiState((state) => state.threadListItem.status);
++  const initializationRef = useRef<
++    Promise<OpenCodeThreadControllerLike> | undefined
++  >(undefined);
++  const scheduledRestorationsRef = useRef(new WeakSet<AppendMessage>());
++
++  const initializeController = () => {
++    initializationRef.current ??= aui.threadListItem
++      .initialize()
++      .then(({ externalId, remoteId }) =>
++        getController(registry, client, externalId ?? remoteId),
++      )
++      .catch((error: unknown) => {
++        initializationRef.current = undefined;
++        throw error;
++      });
++    return initializationRef.current;
++  };
++
++  const restoreMessage = async (message: AppendMessage) => {
++    const text = message.content
++      .filter((part) => part.type === "text")
++      .map((part) => part.text)
++      .join("");
++    const currentText = aui.composer.getState().text;
++    if (
++      text &&
++      currentText !== text &&
++      !currentText.startsWith(`${text}\n`)
++    ) {
++      aui.composer.setText(
++        currentText.length > 0 ? `${text}\n${currentText}` : text,
++      );
++    }
++    const attachmentIds = new Set(
++      aui.composer.getState().attachments.map(({ id }) => id),
++    );
++    for (const attachment of message.attachments ?? []) {
++      if (!attachmentIds.has(attachment.id)) {
++        await aui.composer.addAttachment(attachment);
++      }
++    }
++  };
+ 
+   const controller = sessionId
+     ? getController(registry, client, sessionId)
+@@ -230,10 +280,31 @@ const useRuntimeHook = (
+   const threadRuntime = useOpenCodeThreadRuntime(controller, options);
+ 
+   const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
+-    isDisabled: true,
+-    isLoading: true,
++    ...pickExternalStoreSharedOptions(options),
++    isDisabled: false,
++    isSendDisabled: options.isSendDisabled || threadStatus !== "new",
++    isLoading: false,
+     messageRepository: ExportedMessageRepository.fromArray([]),
+-    onNew: NOOP_ON_NEW,
++    ...(options.adapters && { adapters: options.adapters }),
++    onNew: async (message: AppendMessage) => {
++      let initialized = false;
++      try {
++        const initializedController = await initializeController();
++        initialized = true;
++        await sendMessage(initializedController, message, options);
++      } catch (error) {
++        if (!initialized && !scheduledRestorationsRef.current.has(message)) {
++          scheduledRestorationsRef.current.add(message);
++          setTimeout(() => {
++            void restoreMessage(message).catch((restoreError: unknown) => {
++              options.onError?.(restoreError);
++            });
++          }, 0);
++        }
++        options.onError?.(error);
++        throw error;
++      }
++    },
+   });
+ 
+   if (!sessionId) return fallbackRuntime;

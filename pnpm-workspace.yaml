@@ -44,3 +44,6 @@ minimumReleaseAge: 0
 registries:
   default: https://registry.npmjs.org/
   "@anaconda": https://npm.pkg.github.com/
+
+patchedDependencies:
+  "@assistant-ui/react-opencode@0.2.17": patches/@assistant-ui__react-opencode@0.2.17.patch

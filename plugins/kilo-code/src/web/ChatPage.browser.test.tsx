@@ -19,12 +19,6 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 	return {
 		...actual,
 		AssistantRuntimeProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-		useAui: () => ({
-			threadListItem: { initialize: vi.fn().mockResolvedValue({ remoteId: "ses_test" }) },
-		}),
-		useAuiState: (
-			selector: (state: { threadListItem: { status: string; remoteId?: string } }) => unknown,
-		) => selector({ threadListItem: { status: "regular", remoteId: "ses_test" } }),
 	};
 });
 
@@ -104,7 +98,7 @@ describe("ChatPage", () => {
 			.toBeVisible();
 	});
 
-	it("renders the thread once an unscoped connection is ready", async () => {
+	it("renders the thread without eagerly initializing a remote session", async () => {
 		const { baseElement } = renderChatPage({});
 		const screen = page.elementLocator(baseElement);
 

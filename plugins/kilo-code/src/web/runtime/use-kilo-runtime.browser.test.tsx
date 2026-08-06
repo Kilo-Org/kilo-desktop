@@ -48,6 +48,7 @@ describe("useKiloRuntime", () => {
 					providerID: "anthropic",
 					modelID: "claude-sonnet",
 				},
+				isSendDisabled: true,
 				onError,
 			}),
 		);
@@ -61,6 +62,7 @@ describe("useKiloRuntime", () => {
 				providerID: "anthropic",
 				modelID: "claude-sonnet",
 			},
+			isSendDisabled: true,
 			onError,
 		});
 	});

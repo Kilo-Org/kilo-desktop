@@ -13,6 +13,7 @@ export interface UseKiloRuntimeOptions {
 		providerID: string;
 		modelID: string;
 	};
+	isSendDisabled?: boolean;
 	onError?: (error: unknown) => void;
 }
 
@@ -21,6 +22,7 @@ export function useKiloRuntime({
 	initialSessionId,
 	defaultAgent,
 	defaultModel,
+	isSendDisabled,
 	onError,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	const client = useMemo(
@@ -33,6 +35,7 @@ export function useKiloRuntime({
 		...(initialSessionId === undefined ? {} : { initialSessionId }),
 		...(defaultAgent === undefined ? {} : { defaultAgent }),
 		...(defaultModel === undefined ? {} : { defaultModel }),
+		...(isSendDisabled === undefined ? {} : { isSendDisabled }),
 		...(onError === undefined ? {} : { onError }),
 	});
 }

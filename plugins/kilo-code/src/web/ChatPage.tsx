@@ -1,6 +1,5 @@
-import { AssistantRuntimeProvider, useAui, useAuiState } from "@assistant-ui/react";
+import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { MessageSquareIcon } from "lucide-react";
-import { useEffect, type FC } from "react";
 
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
@@ -13,32 +12,10 @@ import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
  */
 export const ChatNavIcon = MessageSquareIcon;
 
-/**
- * `@assistant-ui/react-opencode` keeps the composer disabled until the
- * RemoteThreadList item has a remote session id. The official with-opencode
- * example creates that via the thread-list "New" control; we have no thread
- * list yet, so initialize eagerly or the input stays disabled.
- */
-const EnsureKiloSession: FC = () => {
-	const aui = useAui();
-	const status = useAuiState((s) => s.threadListItem.status);
-	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
-
-	useEffect(() => {
-		if (status !== "new" || remoteId) return;
-		void aui.threadListItem.initialize().catch((error: unknown) => {
-			console.error("[ChatPage] Failed to initialize Kilo session", error);
-		});
-	}, [aui, status, remoteId]);
-
-	return null;
-};
-
 function ChatThread({ connection }: { connection: KiloWorkspaceConnection }) {
 	const runtime = useKiloRuntime({ connection });
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
-			<EnsureKiloSession />
 			<div className="flex h-full min-h-0 flex-col" data-qa-id="kilo-chat-thread">
 				<Thread />
 			</div>

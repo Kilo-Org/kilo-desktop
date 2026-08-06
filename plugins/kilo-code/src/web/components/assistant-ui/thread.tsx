@@ -32,6 +32,7 @@ import {
 	SuggestionPrimitive,
 	ThreadPrimitive,
 	type ToolCallMessagePartComponent,
+	useAui,
 	useAuiState,
 } from "@assistant-ui/react";
 import {
@@ -42,6 +43,7 @@ import {
 	ChevronRightIcon,
 	CopyIcon,
 	DownloadIcon,
+	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
 	PencilIcon,
@@ -51,10 +53,15 @@ import {
 import {
 	createContext,
 	useContext,
+	useRef,
+	useState,
 	type ComponentType,
 	type FC,
+	type FormEvent,
 	type PropsWithChildren,
 } from "react";
+
+import { useChatConnection } from "../../ChatConnectionContext.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
@@ -111,7 +118,7 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 			}}
 		>
 			<ThreadPrimitive.Viewport
-				turnAnchor="top"
+				turnAnchor="bottom"
 				autoScroll
 				data-slot="aui_thread-viewport"
 				className="relative flex flex-1 flex-col overflow-x-auto overflow-y-auto scroll-smooth"
@@ -233,8 +240,51 @@ const ThreadSuggestionItem: FC = () => {
 };
 
 const Composer: FC = () => {
+	const aui = useAui();
+	const { isPending, connectionPromise } = useChatConnection();
+	const [isConnecting, setIsConnecting] = useState(false);
+	const isConnectingRef = useRef(false);
+
+	const sendWhenConnected = () => {
+		if (isConnectingRef.current) {
+			return;
+		}
+		const composer = aui.composer.getState();
+		if (composer.isEmpty) {
+			return;
+		}
+
+		isConnectingRef.current = true;
+		setIsConnecting(true);
+		void (async () => {
+			try {
+				await connectionPromise;
+				aui.composer.send();
+			} catch {
+				// Connection errors surface via the ChatPage banner.
+			} finally {
+				isConnectingRef.current = false;
+				setIsConnecting(false);
+			}
+		})();
+	};
+
+	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+		// When Kilo is still starting, wait before composer.send() so the draft
+		// stays visible and the send button can show a spinner. preventDefault
+		// skips ComposerPrimitive.Root's built-in send handler (Enter key).
+		if (!isPending && !isConnecting) {
+			return;
+		}
+		event.preventDefault();
+		sendWhenConnected();
+	};
+
 	return (
-		<ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+		<ComposerPrimitive.Root
+			className="aui-composer-root relative flex w-full flex-col"
+			onSubmit={handleSubmit}
+		>
 			<ComposerPrimitive.AttachmentDropzone
 				render={
 					<div
@@ -246,19 +296,31 @@ const Composer: FC = () => {
 				<ComposerAttachments />
 				<ComposerPrimitive.Input
 					placeholder="Send a message..."
-					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
+					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
 					rows={1}
 					autoFocus
 					enterKeyHint="send"
 					aria-label="Message input"
+					disabled={isConnecting}
 				/>
-				<ComposerAction />
+				<ComposerAction
+					isConnecting={isConnecting}
+					isConnectionPending={isPending}
+					onSendWhenConnected={sendWhenConnected}
+				/>
 			</ComposerPrimitive.AttachmentDropzone>
 		</ComposerPrimitive.Root>
 	);
 };
 
-const ComposerAction: FC = () => {
+const ComposerAction: FC<{
+	isConnecting: boolean;
+	isConnectionPending: boolean;
+	onSendWhenConnected: () => void;
+}> = ({ isConnecting, isConnectionPending, onSendWhenConnected }) => {
+	const isRunning = useAuiState((s) => s.thread.isRunning);
+	const canSend = useAuiState((s) => s.composer.canSend);
+
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
 			<ComposerAddAttachment />
@@ -299,7 +361,38 @@ const ComposerAction: FC = () => {
 						</ComposerPrimitive.StopDictation>
 					</AuiIf>
 				</AuiIf>
-				<AuiIf condition={(s) => !s.thread.isRunning}>
+				{isConnecting ? (
+					<TooltipIconButton
+						tooltip="Connecting to Kilo"
+						side="bottom"
+						type="button"
+						variant="default"
+						size="icon"
+						disabled
+						className="aui-composer-connecting size-7 rounded-full"
+						aria-label="Connecting to Kilo"
+						data-qa-id="kilo-composer-connecting"
+					>
+						<Loader2Icon className="aui-composer-connecting-icon size-4.5 animate-spin" />
+					</TooltipIconButton>
+				) : null}
+				{!isConnecting && !isRunning && isConnectionPending ? (
+					<TooltipIconButton
+						tooltip="Send message"
+						side="bottom"
+						type="button"
+						variant="default"
+						size="icon"
+						disabled={!canSend}
+						className="aui-composer-send size-7 rounded-full"
+						aria-label="Send message"
+						data-qa-id="kilo-composer-send-when-connected"
+						onClick={onSendWhenConnected}
+					>
+						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
+					</TooltipIconButton>
+				) : null}
+				{!isConnecting && !isRunning && !isConnectionPending ? (
 					<ComposerPrimitive.Send
 						render={
 							<TooltipIconButton
@@ -315,8 +408,8 @@ const ComposerAction: FC = () => {
 					>
 						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
 					</ComposerPrimitive.Send>
-				</AuiIf>
-				<AuiIf condition={(s) => s.thread.isRunning}>
+				) : null}
+				{!isConnecting && isRunning ? (
 					<ComposerPrimitive.Cancel
 						render={
 							<Button
@@ -330,7 +423,7 @@ const ComposerAction: FC = () => {
 					>
 						<SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
 					</ComposerPrimitive.Cancel>
-				</AuiIf>
+				) : null}
 			</div>
 		</div>
 	);

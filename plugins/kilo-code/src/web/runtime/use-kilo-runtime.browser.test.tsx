@@ -5,10 +5,15 @@ import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloWorkspaceConnection } from "../../contracts/schemas.js";
+import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
 vi.mock("@assistant-ui/react-opencode", () => ({
 	useOpenCodeRuntime: vi.fn(() => ({ source: "kilo-test-runtime" })),
+}));
+
+vi.mock("./create-deferred-kilo-runtime-client.js", () => ({
+	createDeferredKiloRuntimeClient: vi.fn(() => ({ deferred: true })),
 }));
 
 const connection: KiloWorkspaceConnection = {
@@ -64,6 +69,18 @@ describe("useKiloRuntime", () => {
 			},
 			isSendDisabled: true,
 			onError,
+		});
+	});
+
+	it("injects a deferred client when given a connection promise", () => {
+		const connectionPromise = Promise.resolve(connection);
+		const deferredClient = { deferred: true };
+
+		renderHook(() => useKiloRuntime({ connectionPromise }));
+
+		expect(createDeferredKiloRuntimeClient).toHaveBeenCalledExactlyOnceWith(connectionPromise);
+		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
+			client: deferredClient,
 		});
 	});
 

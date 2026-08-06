@@ -75,16 +75,17 @@ afterEach(() => {
 });
 
 describe("ChatPage", () => {
-	it("shows a loading state while the connection is pending", async () => {
+	it("renders the thread while the connection is still pending", async () => {
 		const { baseElement } = renderChatPage({
 			"server.getConnection": () => new Promise<KiloWorkspaceConnection>(() => undefined),
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByTestId("kilo-chat-loading")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-loading")).not.toBeInTheDocument();
 	});
 
-	it("shows an error when the connection fails", async () => {
+	it("shows an error banner when the connection fails but keeps the thread mounted", async () => {
 		const { baseElement } = renderChatPage({
 			"server.getConnection": async () => {
 				throw new FeatureError("Kilo Code requires the desktop app.", "BUSINESS");
@@ -96,6 +97,7 @@ describe("ChatPage", () => {
 		await expect
 			.element(screen.getByText(/Could not connect to Kilo: Kilo Code requires the desktop app/))
 			.toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
 	});
 
 	it("renders the thread without eagerly initializing a remote session", async () => {

@@ -1,25 +1,26 @@
+import type { ValueOf } from "type-fest";
 import type { UserInfoAttribute } from "./actions.js";
 
-export const USER_SUBSCRIPTIONS = [
-	"free_subscription",
-	"starter_subscription",
-	"business_subscription",
-	"commercial_subscription",
-	"security_subscription",
-	"enterprise_subscription",
-	"platform_subscription",
-] as const;
+export const SUBSCRIPTION_TIERS = {
+	free: "free_subscription",
+	starter: "starter_subscription",
+	business: "business_subscription",
+	commercial: "commercial_subscription",
+	security: "security_subscription",
+	enterprise: "enterprise_subscription",
+	platform: "platform_subscription",
+} as const;
 
-export type UserSubscription = (typeof USER_SUBSCRIPTIONS)[number];
+export type UserSubscription = ValueOf<typeof SUBSCRIPTION_TIERS>;
 
-export const FREE_SUBSCRIPTION: UserSubscription = USER_SUBSCRIPTIONS[0];
+export const FREE_SUBSCRIPTION: UserSubscription = SUBSCRIPTION_TIERS.free;
 
-const SUBSCRIPTION_SET = new Set<string>(USER_SUBSCRIPTIONS);
+const SUBSCRIPTION_SET = new Set<string>(Object.values(SUBSCRIPTION_TIERS));
 
 /**
  * Keeps `group === "subscriptions"` attributes, takes the `id` prefix before the
  * first `.` (`"business_subscription.org-id"` → `"business_subscription"`), and
- * drops anything not in {@link USER_SUBSCRIPTIONS}.
+ * drops anything not in {@link SUBSCRIPTION_TIERS}.
  */
 export function extractSubscriptionsFromAttributes(
 	attributes: readonly UserInfoAttribute[] = [],

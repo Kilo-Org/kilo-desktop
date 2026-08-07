@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { BellIcon, LogOutIcon, UserIcon } from "lucide-react";
 
@@ -56,7 +56,6 @@ function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: s
 				isActive={pathname === entry.to}
 				tooltip={entry.label}
 				render={<Link to="/plugins/$" params={{ _splat: entry.splat }} />}
-				className="size-8!"
 				data-qa-id={entry.navQaId}
 			>
 				<Icon />
@@ -98,14 +97,12 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 	return (
 		<TooltipProvider>
-			<SidebarProvider
-				defaultOpen={false}
-				className="bg-sidebar h-svh min-h-0 overflow-hidden"
-				style={{ "--sidebar-width": "3rem" } as CSSProperties}
-			>
+			<SidebarProvider className="bg-sidebar h-svh min-h-0 overflow-hidden">
 				<Sidebar collapsible="none" className="h-svh border-none" data-qa-id="app-sidebar">
 					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
 					<SidebarContent>
+						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
+						<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
 						<SidebarGroup className="pt-0">
 							<SidebarMenu>
 								{navEntries.map((entry) => (
@@ -113,8 +110,6 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 								))}
 							</SidebarMenu>
 						</SidebarGroup>
-						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-						<ZoneOutlet zone="sidebar" className="flex flex-col items-center gap-2 px-2" />
 					</SidebarContent>
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-3">
@@ -125,13 +120,22 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 											render={
 												<SidebarMenuButton
 													aria-label={`Account menu for ${accountName}`}
-													className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground size-8! p-0!"
+													size="lg"
+													className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
 												/>
 											}
 										>
 											<Avatar className="size-8">
 												<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
 											</Avatar>
+											<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+												<span className="truncate font-medium">{accountName}</span>
+												{accountEmail && (
+													<span className="text-muted-foreground truncate text-xs">
+														{accountEmail}
+													</span>
+												)}
+											</div>
 										</DropdownMenuTrigger>
 										<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
 											<DropdownMenuGroup>

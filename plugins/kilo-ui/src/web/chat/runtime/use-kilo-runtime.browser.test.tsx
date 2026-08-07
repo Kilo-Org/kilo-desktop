@@ -43,11 +43,13 @@ describe("useKiloRuntime", () => {
 
 	it("injects a Kilo client and forwards runtime options", () => {
 		const onError = vi.fn();
+		const onThreadIdChange = vi.fn();
 
 		renderHook(() =>
 			useKiloRuntime({
 				connection,
 				initialSessionId: "session-1",
+				onThreadIdChange,
 				defaultAgent: "build",
 				defaultModel: {
 					providerID: "anthropic",
@@ -62,6 +64,7 @@ describe("useKiloRuntime", () => {
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			client: expect.any(KiloClient),
 			initialSessionId: "session-1",
+			onThreadIdChange,
 			defaultAgent: "build",
 			defaultModel: {
 				providerID: "anthropic",

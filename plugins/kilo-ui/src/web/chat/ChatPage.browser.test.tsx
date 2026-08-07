@@ -22,6 +22,7 @@ import {
 } from "../../contracts/workspaces/schemas.js";
 import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvider.js";
 import { ChatConnectionProvider, useChatConnection } from "./connection/ChatConnectionContext.js";
+import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage } from "./ChatPage.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 
@@ -115,7 +116,9 @@ function renderChatPage(options?: {
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ChatPage />
+					<ChatFeatureProvider>
+						<ChatPage />
+					</ChatFeatureProvider>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,

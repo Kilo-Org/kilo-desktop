@@ -24,6 +24,8 @@ export interface UseKiloRuntimeOptions {
 	/** Pre-built client (tests). Takes precedence over connection options. */
 	client?: KiloClient;
 	initialSessionId?: string;
+	/** Fires when the active remote thread id changes (OpenCode session switch). */
+	onThreadIdChange?: (threadId: string | undefined) => void;
 	defaultAgent?: string;
 	defaultModel?: {
 		providerID: string;
@@ -40,6 +42,7 @@ export function useKiloRuntime({
 	connectionPromise,
 	client: clientOption,
 	initialSessionId,
+	onThreadIdChange,
 	defaultAgent,
 	defaultModel,
 	variant,
@@ -99,6 +102,7 @@ export function useKiloRuntime({
 	return useOpenCodeRuntime({
 		client,
 		...(initialSessionId === undefined ? {} : { initialSessionId }),
+		...(onThreadIdChange === undefined ? {} : { onThreadIdChange }),
 		...(defaultAgent === undefined ? {} : { defaultAgent }),
 		...(defaultModel === undefined ? {} : { defaultModel }),
 		...(isSendDisabled === undefined ? {} : { isSendDisabled }),

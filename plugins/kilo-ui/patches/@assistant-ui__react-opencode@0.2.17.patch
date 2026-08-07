@@ -1,5 +1,49 @@
+diff --git a/dist/openCodeThreadListAdapter.js b/dist/openCodeThreadListAdapter.js
+index 31bbfc1f7371c516365258552117aa6a7e394543..bd5ffe59c310b9f8937831a21587efc72c63e49e 100644
+--- a/dist/openCodeThreadListAdapter.js
++++ b/dist/openCodeThreadListAdapter.js
+@@ -1,3 +1,4 @@
++import { createAssistantStream } from "assistant-stream";
+ import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions.js";
+ import "@opencode-ai/sdk/v2/client";
+ //#region src/openCodeThreadListAdapter.ts
+@@ -10,6 +11,8 @@ const mapThreadMetadata = (session) => ({
+ 	externalId: session.id,
+ 	title: session.title
+ });
++/** OpenCode's default title before an AI-generated name is applied. */
++const isPlaceholderTitle = (title) => !title || /^New session\b/i.test(title);
+ const createOpenCodeThreadListAdapter = (client) => ({
+ 	list: async () => {
+ 		const response = await client.experimental.session.list({
+@@ -53,10 +56,21 @@ const createOpenCodeThreadListAdapter = (client) => ({
+ 		};
+ 	},
+ 	generateTitle: async (remoteId) => {
+-		await client.session.summarize({ sessionID: remoteId }, OPEN_CODE_REQUEST_OPTIONS);
+-		return new ReadableStream({ start(controller) {
+-			controller.close();
+-		} });
++		const readTitle = async () => {
++			const response = await client.session.get({ sessionID: remoteId }, OPEN_CODE_REQUEST_OPTIONS);
++			return response.data?.title?.trim() ?? "";
++		};
++		// OpenCode auto-titles in parallel with the agent run (not via summarize).
++		// Poll briefly so the remote thread list receives text parts — empty
++		// streams never update the sidebar.
++		let title = await readTitle();
++		for (let attempt = 0; attempt < 40 && isPlaceholderTitle(title); attempt++) {
++			await new Promise((resolve) => setTimeout(resolve, 250));
++			title = await readTitle();
++		}
++		return createAssistantStream((controller) => {
++			if (title) controller.appendText(title);
++		});
+ 	},
+ 	fetch: async (threadId) => {
+ 		const response = await client.session.get({ sessionID: threadId }, OPEN_CODE_REQUEST_OPTIONS);
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d5799d059d01327a3edbcd998fdbeeae317c..08315d7d93ba48eadc7796fd49b66e0bc7418bad 100644
+index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee3c701b03 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
 @@ -8,8 +8,8 @@ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection.js"
@@ -13,12 +57,14 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..08315d7d93ba48eadc7796fd49b66e0b
  import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
  //#region src/useOpenCodeRuntime.ts
  const createRegistry = (client) => {
-@@ -52,8 +52,18 @@ const NOOP_CONTROLLER = {
+@@ -52,10 +52,26 @@ const NOOP_CONTROLLER = {
  	replyToQuestion: async () => {},
  	rejectQuestion: async () => {}
  };
 -const NOOP_ON_NEW = () => Promise.reject(/* @__PURE__ */ new Error("OpenCode session is still initializing"));
  const isOpenCodeStateRunning = (state) => state.runState.type === "streaming" || state.runState.type === "cancelling" || state.runState.type === "reverting" || state.sessionStatus?.type === "busy" || state.sessionStatus?.type === "retry";
++/** OpenCode's default title before an AI-generated name is applied. */
++const isPlaceholderTitle = (title) => !title || /^New session\b/i.test(title);
 +const sendMessage = async (controller, message, options) => {
 +	const sendOptions = {
 +		model: options.defaultModel,
@@ -31,9 +77,31 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..08315d7d93ba48eadc7796fd49b66e0b
 +	await controller.sendMessage(message, sendOptions);
 +};
  const useOpenCodeThreadRuntime = (controller, options) => {
++	const aui = useAui();
  	const state = useOpenCodeControllerState(controller);
++	const listTitle = useAuiState((s) => s.threadListItem.title);
++	const listStatus = useAuiState((s) => s.threadListItem.status);
++	const sessionTitle = state.session?.title?.trim() ?? "";
  	const onLoadError = useEffectEvent((error) => {
-@@ -88,15 +98,7 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+ 		options.onError?.(error);
+ 	});
+@@ -63,6 +79,15 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+ 		if (controller === NOOP_CONTROLLER) return;
+ 		controller.load().catch(onLoadError);
+ 	}, [controller]);
++	// Lazy session init marks the thread "regular" before RemoteThreadList's
++	// runEnd→generateTitle listener is registered, so auto-titles never reach
++	// the sidebar. Mirror OpenCode session.title into the thread list item.
++	useEffect(() => {
++		if (listStatus === "new") return;
++		if (isPlaceholderTitle(sessionTitle)) return;
++		if (listTitle === sessionTitle) return;
++		aui.threadListItem.rename(sessionTitle);
++	}, [aui, listStatus, listTitle, sessionTitle]);
+ 	const messageTiming = useOpenCodeStreamingTiming(state, isOpenCodeStateRunning(state));
+ 	const messageRepository = useMemo(() => projectOpenCodeThreadRepository(state, messageTiming), [state, messageTiming]);
+ 	const extras = useMemo(() => openCodeExtras.provide({
+@@ -88,15 +113,7 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		...options.adapters && { adapters: options.adapters },
  		onNew: async (message) => {
  			try {
@@ -50,7 +118,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..08315d7d93ba48eadc7796fd49b66e0b
  			} catch (error) {
  				options.onError?.(error);
  				throw error;
-@@ -134,14 +136,53 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -134,14 +151,53 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  	});
  };
  const useRuntimeHook = (client, registry, options) => {
@@ -108,7 +176,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..08315d7d93ba48eadc7796fd49b66e0b
  	if (!sessionId) return fallbackRuntime;
  	return threadRuntime;
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b9fd650a6d396ea30064377a07e49218a7..97d85379947c4dbd170fb4c26a2bd575d5269df1 100644
+index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca929173123eb1b 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -138,10 +206,14 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..97d85379947c4dbd170fb4c26a2bd575
  const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.runState.type === "streaming" ||
    state.runState.type === "cancelling" ||
-@@ -105,6 +103,22 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+@@ -105,11 +103,35 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.sessionStatus?.type === "busy" ||
    state.sessionStatus?.type === "retry";
  
++/** OpenCode's default title before an AI-generated name is applied. */
++const isPlaceholderTitle = (title: string) =>
++  !title || /^New session\b/i.test(title);
++
 +const sendMessage = async (
 +  controller: OpenCodeThreadControllerLike,
 +  message: AppendMessage,
@@ -161,7 +233,33 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..97d85379947c4dbd170fb4c26a2bd575
  const useOpenCodeThreadRuntime = (
    controller: OpenCodeThreadControllerLike,
    options: OpenCodeRuntimeOptions,
-@@ -163,15 +177,7 @@ const useOpenCodeThreadRuntime = (
+ ): AssistantRuntime => {
++  const aui = useAui();
+   const state = useOpenCodeControllerState(controller);
++  const listTitle = useAuiState((s) => s.threadListItem.title);
++  const listStatus = useAuiState((s) => s.threadListItem.status);
++  const sessionTitle = state.session?.title?.trim() ?? "";
+   const onLoadError = useEffectEvent((error: unknown) => {
+     options.onError?.(error);
+   });
+@@ -119,6 +141,16 @@ const useOpenCodeThreadRuntime = (
+     void controller.load().catch(onLoadError);
+   }, [controller]);
+ 
++  // Lazy session init marks the thread "regular" before RemoteThreadList's
++  // runEnd→generateTitle listener is registered, so auto-titles never reach
++  // the sidebar. Mirror OpenCode session.title into the thread list item.
++  useEffect(() => {
++    if (listStatus === "new") return;
++    if (isPlaceholderTitle(sessionTitle)) return;
++    if (listTitle === sessionTitle) return;
++    aui.threadListItem.rename(sessionTitle);
++  }, [aui, listStatus, listTitle, sessionTitle]);
++
+   const isRunning = isOpenCodeStateRunning(state);
+ 
+   const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
+@@ -163,15 +195,7 @@ const useOpenCodeThreadRuntime = (
      ...(options.adapters && { adapters: options.adapters }),
      onNew: async (message: AppendMessage) => {
        try {
@@ -178,7 +276,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..97d85379947c4dbd170fb4c26a2bd575
        } catch (error) {
          options.onError?.(error);
          throw error;
-@@ -219,9 +225,53 @@ const useRuntimeHook = (
+@@ -219,9 +243,53 @@ const useRuntimeHook = (
    registry: OpenCodeControllerRegistry,
    options: OpenCodeRuntimeOptions,
  ) => {
@@ -232,7 +330,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..97d85379947c4dbd170fb4c26a2bd575
  
    const controller = sessionId
      ? getController(registry, client, sessionId)
-@@ -230,10 +280,31 @@ const useRuntimeHook = (
+@@ -230,10 +298,31 @@ const useRuntimeHook = (
    const threadRuntime = useOpenCodeThreadRuntime(controller, options);
  
    const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({

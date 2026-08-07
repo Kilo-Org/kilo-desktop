@@ -116,4 +116,17 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 	it("has no zone contributions from the bundled todos plugin", () => {
 		expect(PLUGIN_ZONE_CONTRIBUTIONS.find((c) => c.pluginId === "todos")).toBeUndefined();
 	});
+
+	it("includes kilo-ui ThreadList in the sidebar zone", () => {
+		const contribution = PLUGIN_ZONE_CONTRIBUTIONS.find(
+			(c) => c.pluginId === "kilo-ui" && c.zone === "sidebar",
+		);
+		expect(contribution).toMatchObject({
+			pluginId: "kilo-ui",
+			zone: "sidebar",
+			label: "Chats",
+			priority: 10,
+		});
+		expect(contribution?.component).toBeTypeOf("function");
+	});
 });

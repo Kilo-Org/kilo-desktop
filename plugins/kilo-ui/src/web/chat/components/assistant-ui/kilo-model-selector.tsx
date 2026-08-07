@@ -1,12 +1,15 @@
 "use client";
 
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { StarIcon } from "lucide-react";
 import {
 	useMemo,
+	useRef,
 	useState,
 	type FC,
 	type KeyboardEvent,
 	type MouseEvent,
+	type MutableRefObject,
 	type PointerEvent,
 	type ReactNode,
 } from "react";
@@ -28,6 +31,7 @@ import {
 	type KiloProviderGroup,
 } from "../../model-catalog.js";
 import { sortModelsWithFavoritesFirst } from "../../model-favorites.js";
+import { filterModelsBySearchQuery } from "../../model-search.js";
 import { ProviderIcon } from "../../provider-icon.js";
 import { useModelFavorites } from "../../use-model-favorites.js";
 import {
@@ -45,6 +49,40 @@ import {
 
 type RailSelection = "favorites" | (string & {});
 
+/** Approximate row height for name + description + padding; measureElement corrects drift. */
+const MODEL_ROW_ESTIMATE_PX = 52;
+const MODEL_LIST_OVERSCAN = 12;
+
+function nextHighlightIndex(
+	length: number,
+	currentIndex: number,
+	key: "ArrowDown" | "ArrowUp" | "Home" | "End",
+): number {
+	if (length <= 0) {
+		return -1;
+	}
+	switch (key) {
+		case "Home":
+			return 0;
+		case "End":
+			return length - 1;
+		case "ArrowDown":
+			if (currentIndex < 0) {
+				return 0;
+			}
+			return Math.min(currentIndex + 1, length - 1);
+		case "ArrowUp":
+			if (currentIndex < 0) {
+				return 0;
+			}
+			return Math.max(currentIndex - 1, 0);
+		default: {
+			const _exhaustive: never = key;
+			return _exhaustive;
+		}
+	}
+}
+
 /**
  * Composer model picker: assistant-ui ModelSelector compound API with a
  * t3code-style provider rail (favorites + providers) and searchable list.
@@ -55,25 +93,13 @@ export const KiloModelSelector: FC = () => {
 	const { favoriteIds, toggleFavorite, hasFavorites } = useModelFavorites();
 	const [railSelection, setRailSelection] = useState<RailSelection | undefined>(undefined);
 	const [searchQuery, setSearchQuery] = useState("");
+	const [highlightId, setHighlightId] = useState<string | undefined>(undefined);
+	const scrollToHighlightedRef = useRef<(id: string) => void>(() => {});
+	const visibleModelsRef = useRef<readonly KiloCatalogModel[]>([]);
 
 	const providers = catalog?.providers ?? [];
 	const models = catalog?.models ?? [];
 	const isSearching = searchQuery.trim().length > 0;
-
-	const modelsWithIcons = useMemo(
-		() =>
-			models.map((entry) => ({
-				...entry,
-				icon: (
-					<ProviderIcon
-						provider={entry.providerID}
-						size={14}
-						fallbackLabel={entry.description ?? entry.providerID}
-					/>
-				),
-			})),
-		[models],
-	);
 
 	const activeRail: RailSelection | undefined = useMemo(() => {
 		if (railSelection === "favorites") {
@@ -92,41 +118,79 @@ export const KiloModelSelector: FC = () => {
 	}, [hasFavorites, model, providers, railSelection]);
 
 	const visibleModels = useMemo(() => {
-		if (isSearching) {
-			return modelsWithIcons;
-		}
-		if (activeRail === "favorites") {
-			return modelsWithIcons.filter((entry) => favoriteIds.has(entry.id));
-		}
-		if (!activeRail) {
-			return sortModelsWithFavoritesFirst(modelsWithIcons, favoriteIds);
-		}
-		return sortModelsWithFavoritesFirst(
-			modelsWithIcons.filter((entry) => entry.providerID === activeRail),
-			favoriteIds,
-		);
-	}, [activeRail, favoriteIds, isSearching, modelsWithIcons]);
+		const scoped = (() => {
+			if (isSearching) {
+				return models;
+			}
+			if (activeRail === "favorites") {
+				return models.filter((entry) => favoriteIds.has(entry.id));
+			}
+			if (!activeRail) {
+				return sortModelsWithFavoritesFirst(models, favoriteIds);
+			}
+			return sortModelsWithFavoritesFirst(
+				models.filter((entry) => entry.providerID === activeRail),
+				favoriteIds,
+			);
+		})();
+		return isSearching ? filterModelsBySearchQuery(scoped, searchQuery) : scoped;
+	}, [activeRail, favoriteIds, isSearching, models, searchQuery]);
 
-	const value = model ? modelRefToId(model) : undefined;
+	visibleModelsRef.current = visibleModels;
+
+	const selectedId = model ? modelRefToId(model) : undefined;
+	const commandValue =
+		highlightId && visibleModels.some((entry) => entry.id === highlightId)
+			? highlightId
+			: (visibleModels.find((entry) => entry.id === selectedId)?.id ?? visibleModels[0]?.id);
+
+	// ModelSelectorValue reads `selectedModel.icon` for the trigger — attach an icon
+	// only for the selected row so we don't rebuild JSX for the whole catalog.
+	const modelsForSelector = useMemo(() => {
+		if (!selectedId) {
+			return models;
+		}
+		const selectedIndex = models.findIndex((entry) => entry.id === selectedId);
+		if (selectedIndex < 0) {
+			return models;
+		}
+		const selected = models[selectedIndex]!;
+		const next = models.slice();
+		next[selectedIndex] = {
+			...selected,
+			icon: (
+				<ProviderIcon
+					provider={selected.providerID}
+					variant="color"
+					size={14}
+					fallbackLabel={selected.description ?? selected.providerID}
+				/>
+			),
+		};
+		return next;
+	}, [models, selectedId]);
+
 	const showSidebar = !isSearching && providers.length > 0;
-	const disabled = isCatalogPending || isCatalogError || modelsWithIcons.length === 0;
+	const disabled = isCatalogPending || isCatalogError || models.length === 0;
 
 	return (
 		<ModelSelectorRoot
-			models={modelsWithIcons}
-			{...(value === undefined ? {} : { value })}
+			models={modelsForSelector}
+			{...(selectedId === undefined ? {} : { value: selectedId })}
 			{...(effort === undefined ? {} : { effort })}
 			onValueChange={(next) => {
 				const parsed = parseModelId(next);
 				if (parsed) {
 					setModel(parsed);
 					setRailSelection(parsed.providerID);
+					setHighlightId(next);
 				}
 			}}
 			onEffortChange={setEffort}
 			onOpenChange={(open) => {
 				if (!open) {
 					setSearchQuery("");
+					setHighlightId(undefined);
 				}
 			}}
 		>
@@ -145,9 +209,40 @@ export const KiloModelSelector: FC = () => {
 			</ModelSelectorTrigger>
 			<ModelSelectorContent
 				searchable
+				shouldFilter={false}
 				align="start"
 				className="w-[min(100vw,22.5rem)] max-w-[90vw] p-0"
 				data-qa-id="kilo-model-selector-content"
+				{...(commandValue !== undefined ? { commandValue } : {})}
+				onCommandValueChange={(next) => {
+					setHighlightId(next);
+					scrollToHighlightedRef.current(next);
+				}}
+				onCommandKeyDown={(event) => {
+					if (
+						event.key !== "ArrowDown" &&
+						event.key !== "ArrowUp" &&
+						event.key !== "Home" &&
+						event.key !== "End"
+					) {
+						return;
+					}
+					const list = visibleModelsRef.current;
+					if (list.length === 0) {
+						return;
+					}
+					event.preventDefault();
+					const currentIndex = commandValue
+						? list.findIndex((entry) => entry.id === commandValue)
+						: -1;
+					const nextIndex = nextHighlightIndex(list.length, currentIndex, event.key);
+					const next = list[nextIndex];
+					if (!next) {
+						return;
+					}
+					setHighlightId(next.id);
+					scrollToHighlightedRef.current(next.id);
+				}}
 			>
 				<div className="flex max-h-86 overflow-hidden">
 					{showSidebar ? (
@@ -170,37 +265,103 @@ export const KiloModelSelector: FC = () => {
 									<ModelSelectorSearch
 										placeholder="Search models..."
 										value={searchQuery}
-										onValueChange={setSearchQuery}
+										onValueChange={(next) => {
+											setSearchQuery(next);
+											setHighlightId(undefined);
+										}}
 										className="h-full text-sm leading-none"
 									/>
 								</div>
 							</div>
 						</div>
-						<ModelSelectorList className="max-h-72 px-1 py-1">
-							<ModelSelectorEmpty>
-								{activeRail === "favorites" && !isSearching
+						<VirtualizedCatalogList
+							models={visibleModels}
+							favoriteIds={favoriteIds}
+							emptyLabel={
+								activeRail === "favorites" && !isSearching
 									? "No favorite models yet."
-									: "No models found."}
-							</ModelSelectorEmpty>
-							{visibleModels.map((entry) => (
-								<CatalogModelItem
-									key={entry.id}
-									model={entry}
-									isFavorite={favoriteIds.has(entry.id)}
-									onToggleFavorite={() => {
-										toggleFavorite({
-											providerID: entry.providerID,
-											modelID: entry.modelID,
-										});
-									}}
-								/>
-							))}
-						</ModelSelectorList>
+									: "No models found."
+							}
+							scrollToHighlightedRef={scrollToHighlightedRef}
+							onToggleFavorite={(entry) => {
+								toggleFavorite({
+									providerID: entry.providerID,
+									modelID: entry.modelID,
+								});
+							}}
+						/>
 					</div>
 				</div>
 				<ModelSelectorEffort data-qa-id="kilo-model-selector-effort" />
 			</ModelSelectorContent>
 		</ModelSelectorRoot>
+	);
+};
+
+const VirtualizedCatalogList: FC<{
+	models: readonly KiloCatalogModel[];
+	favoriteIds: ReadonlySet<string>;
+	emptyLabel: string;
+	scrollToHighlightedRef: MutableRefObject<(id: string) => void>;
+	onToggleFavorite: (model: KiloCatalogModel) => void;
+}> = ({ models, favoriteIds, emptyLabel, scrollToHighlightedRef, onToggleFavorite }) => {
+	const listRef = useRef<HTMLDivElement>(null);
+	const modelsRef = useRef(models);
+	modelsRef.current = models;
+
+	const virtualizer = useVirtualizer({
+		count: models.length,
+		getScrollElement: () => listRef.current,
+		estimateSize: () => MODEL_ROW_ESTIMATE_PX,
+		overscan: MODEL_LIST_OVERSCAN,
+		getItemKey: (index) => models[index]?.id ?? index,
+	});
+
+	// Keep highlight→scroll wiring current without an effect (ref update during render).
+	scrollToHighlightedRef.current = (id) => {
+		const index = modelsRef.current.findIndex((entry) => entry.id === id);
+		if (index >= 0) {
+			virtualizer.scrollToIndex(index, { align: "auto" });
+		}
+	};
+
+	const virtualItems = virtualizer.getVirtualItems();
+
+	return (
+		<ModelSelectorList ref={listRef} className="max-h-72 px-1 py-1">
+			{models.length === 0 ? <ModelSelectorEmpty>{emptyLabel}</ModelSelectorEmpty> : null}
+			{models.length > 0 ? (
+				<div
+					className="relative w-full"
+					style={{ height: virtualizer.getTotalSize() }}
+					data-qa-id="kilo-model-selector-virtual-list"
+				>
+					{virtualItems.map((virtualRow) => {
+						const entry = models[virtualRow.index];
+						if (!entry) {
+							return null;
+						}
+						return (
+							<div
+								key={entry.id}
+								data-index={virtualRow.index}
+								ref={virtualizer.measureElement}
+								className="absolute top-0 left-0 w-full"
+								style={{ transform: `translateY(${virtualRow.start}px)` }}
+							>
+								<CatalogModelItem
+									model={entry}
+									isFavorite={favoriteIds.has(entry.id)}
+									onToggleFavorite={() => {
+										onToggleFavorite(entry);
+									}}
+								/>
+							</div>
+						);
+					})}
+				</div>
+			) : null}
+		</ModelSelectorList>
 	);
 };
 
@@ -247,6 +408,7 @@ const ProviderRail: FC<{
 							>
 								<ProviderIcon
 									provider={provider.id}
+									variant={isSelected ? "color" : "mono"}
 									size={20}
 									fallbackLabel={provider.name}
 									className="size-5"
@@ -324,7 +486,14 @@ const CatalogModelItem: FC<{
 			className="group/model-item rounded-md py-2 pe-10"
 			data-qa-id={`kilo-model-option-${model.id}`}
 		>
-			{model.icon ? <span className="mt-0.5 shrink-0 [&_svg]:size-3.5">{model.icon}</span> : null}
+			<span className="mt-0.5 shrink-0 [&_svg]:size-3.5">
+				<ProviderIcon
+					provider={model.providerID}
+					variant="color"
+					size={14}
+					fallbackLabel={model.description ?? model.providerID}
+				/>
+			</span>
 			<span className="flex min-w-0 flex-1 flex-col">
 				<span className="truncate font-medium">{model.name}</span>
 				{model.description ? (

@@ -9,6 +9,7 @@ import {
 	useState,
 	createContext,
 	useContext,
+	type ComponentProps,
 	type ComponentPropsWithoutRef,
 	type ReactNode,
 } from "react";
@@ -363,6 +364,17 @@ export type ModelSelectorContentProps = Omit<
 	 */
 	side?: ComponentPropsWithoutRef<typeof PopoverContent>["side"];
 	searchable?: boolean;
+	/**
+	 * Override cmdk filtering. Set `false` when the consumer filters (and
+	 * optionally virtualizes) the list themselves.
+	 */
+	shouldFilter?: boolean;
+	/** Controlled cmdk highlight value (keyboard / pointer). */
+	commandValue?: string;
+	/** Fires when the cmdk highlighted item changes (keyboard / hover). */
+	onCommandValueChange?: (value: string) => void;
+	/** Key handler on the cmdk root (e.g. full-list virtualized navigation). */
+	onCommandKeyDown?: ComponentPropsWithoutRef<typeof Command>["onKeyDown"];
 };
 
 // Base UI's Popover re-evaluates collision flipping whenever the popup
@@ -417,6 +429,10 @@ function ModelSelectorContent({
 	side,
 	sideOffset = 6,
 	searchable,
+	shouldFilter: shouldFilterProp,
+	commandValue,
+	onCommandValueChange,
+	onCommandKeyDown,
 	children,
 	initialFocus,
 	...props
@@ -425,6 +441,7 @@ function ModelSelectorContent({
 	const { side: renderedSide, popupRef } = useLazyFlipSide();
 	const contentNodeRef = useRef<HTMLDivElement | null>(null);
 	const unfiltered = searchable === false || (!searchable && children === undefined);
+	const shouldFilter = shouldFilterProp ?? !unfiltered;
 
 	const setContentRef = useCallback(
 		(node: HTMLDivElement | null) => {
@@ -459,8 +476,11 @@ function ModelSelectorContent({
 		>
 			<Command
 				className="bg-transparent"
-				shouldFilter={!unfiltered}
-				{...(value !== undefined ? { defaultValue: value } : {})}
+				shouldFilter={shouldFilter}
+				{...(commandValue !== undefined ? { value: commandValue } : {})}
+				{...(onCommandValueChange ? { onValueChange: onCommandValueChange } : {})}
+				{...(onCommandKeyDown ? { onKeyDown: onCommandKeyDown } : {})}
+				{...(commandValue === undefined && value !== undefined ? { defaultValue: value } : {})}
 			>
 				{unfiltered && <ModelSelectorFocusAnchor />}
 				{children ?? (
@@ -484,13 +504,14 @@ function ModelSelectorSearch({
 	return <CommandInput data-slot="model-selector-search" placeholder={placeholder} {...props} />;
 }
 
-export type ModelSelectorListProps = ComponentPropsWithoutRef<typeof CommandList>;
+export type ModelSelectorListProps = ComponentProps<typeof CommandList>;
 
-function ModelSelectorList({ className, children, ...props }: ModelSelectorListProps) {
+function ModelSelectorList({ className, children, ref, ...props }: ModelSelectorListProps) {
 	const { models } = useModelSelectorContext();
 
 	return (
 		<CommandList
+			ref={ref}
 			data-slot="model-selector-list"
 			className={cn(
 				"[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",

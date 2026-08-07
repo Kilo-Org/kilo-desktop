@@ -11,7 +11,7 @@ import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
-import { ensureScratchChatDirectory } from "./chat/scratch-directory.js";
+import { ensureUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
 
 type KiloServerCapabilities = {
 	connectionService: {
@@ -62,7 +62,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 			if (!connectionService) {
 				throw new FeatureError("Kilo Server is unavailable.", "BUSINESS");
 			}
-			const directory = await ensureScratchChatDirectory(mainSdk.storageDir, chatId);
+			const directory = await ensureUnscopedChatDirectory(mainSdk.storageDir, chatId);
 			return connectionService.getConnection({ directory });
 		},
 	};

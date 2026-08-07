@@ -31,7 +31,7 @@ function ChatThread({
 
 /**
  * Full-page chat surface contributed by kilo-ui (`/plugins/chat`).
- * Ensures a scratch directory under `{userData}/chats/<chatId>/`, then connects
+ * Ensures a directory for the unscoped chat under `{userData}/chats/<chatId>/`, then connects
  * via kilo-server with that directory.
  *
  * Mounts the composer immediately. Connection may still be resolving (Kilo

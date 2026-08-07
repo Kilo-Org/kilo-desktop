@@ -10,8 +10,8 @@ export function userDataRoot(storageDir: string): string {
 	return path.resolve(storageDir, "../..");
 }
 
-/** Per-chat scratch directory: `{userData}/chats/<chatId>/`. */
-export function scratchChatDirectory(userData: string, chatId: string): string {
+/** Per-chat directory for an unscoped chat: `{userData}/chats/<chatId>/`. */
+export function unscopedChatDirectory(userData: string, chatId: string): string {
 	const chatsRoot = path.resolve(userData, "chats");
 	const directory = path.resolve(chatsRoot, chatId);
 	const relative = path.relative(chatsRoot, directory);
@@ -21,11 +21,11 @@ export function scratchChatDirectory(userData: string, chatId: string): string {
 	return directory;
 }
 
-export async function ensureScratchChatDirectory(
+export async function ensureUnscopedChatDirectory(
 	storageDir: string,
 	chatId: string,
 ): Promise<string> {
-	const directory = scratchChatDirectory(userDataRoot(storageDir), chatId);
+	const directory = unscopedChatDirectory(userDataRoot(storageDir), chatId);
 	await mkdir(directory, { recursive: true });
 	return directory;
 }

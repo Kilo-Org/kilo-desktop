@@ -58,10 +58,7 @@ function filterWorkspaceItems(value: string, search: string, keywords?: string[]
 	return terms.some((term) => term.toLowerCase().includes(query)) ? 1 : 0;
 }
 
-export function getWorkspaceTriggerLabel(
-	active: Workspace | undefined,
-	isLoading: boolean,
-): string {
+function getWorkspaceTriggerLabel(active: Workspace | undefined, isLoading: boolean): string {
 	if (active) return active.name;
 	if (isLoading) return "Loading workspaces…";
 	return "Select workspace";
@@ -78,15 +75,15 @@ type WorkspacePickerContextValue = {
 
 const WorkspacePickerContext = createContext<WorkspacePickerContextValue | null>(null);
 
-function useWorkspacePicker(): WorkspacePickerContextValue {
+export function useWorkspacePicker(): WorkspacePickerContextValue {
 	const value = use(WorkspacePickerContext);
 	if (!value) {
-		throw new Error("WorkspacePicker components must be used within WorkspacePicker.Root.");
+		throw new Error("WorkspacePicker components must be used within WorkspacePickerRoot.");
 	}
 	return value;
 }
 
-function WorkspacePickerRoot({
+export function WorkspacePickerRoot({
 	children,
 	contentAlign = "start",
 }: {
@@ -289,7 +286,7 @@ type TriggerRenderProps = {
 	onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
 };
 
-function WorkspacePickerTrigger({
+export function WorkspacePickerTrigger({
 	children,
 	render,
 	"aria-label": ariaLabel = "Select workspace",
@@ -313,9 +310,3 @@ function WorkspacePickerTrigger({
 
 	return <PopoverTrigger render={trigger}>{children}</PopoverTrigger>;
 }
-
-export const WorkspacePicker = {
-	Root: WorkspacePickerRoot,
-	Trigger: WorkspacePickerTrigger,
-	usePicker: useWorkspacePicker,
-};

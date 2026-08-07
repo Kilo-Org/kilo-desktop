@@ -2,7 +2,10 @@
 
 import type { FC } from "react";
 
-import { WorkspacePicker } from "../../../workspaces/WorkspacePicker.js";
+import {
+	WorkspacePickerRoot,
+	WorkspacePickerTrigger,
+} from "../../../workspaces/WorkspacePicker.js";
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
 
 export const DraftWelcomeHeadline: FC = () => {
@@ -15,8 +18,8 @@ export const DraftWelcomeHeadline: FC = () => {
 				{active ? (
 					<>
 						<span className="shrink-0">What should we work on in{"\u00a0"}</span>
-						<WorkspacePicker.Root contentAlign="center">
-							<WorkspacePicker.Trigger
+						<WorkspacePickerRoot contentAlign="center">
+							<WorkspacePickerTrigger
 								aria-label="Change workspace"
 								render={
 									<button
@@ -27,8 +30,8 @@ export const DraftWelcomeHeadline: FC = () => {
 								}
 							>
 								<span className="truncate">{active.name}</span>
-							</WorkspacePicker.Trigger>
-						</WorkspacePicker.Root>
+							</WorkspacePickerTrigger>
+						</WorkspacePickerRoot>
 						<span className="shrink-0">?</span>
 					</>
 				) : (

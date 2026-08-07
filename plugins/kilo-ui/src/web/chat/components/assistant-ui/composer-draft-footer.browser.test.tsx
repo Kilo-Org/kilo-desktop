@@ -38,15 +38,22 @@ const connection: KiloWorkspaceConnection = {
 	directory: "/tmp/chats/test",
 };
 
-const emptyModelSelection = {
-	model: undefined,
+const modelSelection = {
+	model: { providerID: "kilo", modelID: "test-model" },
 	setModel: () => undefined,
 	effort: undefined,
 	setEffort: () => undefined,
 	catalog: {
-		providers: [],
-		models: [],
-		defaults: {},
+		providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
+		models: [
+			{
+				id: "kilo/test-model",
+				name: "Test Model",
+				providerID: "kilo",
+				modelID: "test-model",
+			},
+		],
+		defaults: { kilo: "test-model" },
 	},
 	isCatalogPending: false,
 	isCatalogError: false,
@@ -67,7 +74,7 @@ function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadM
 					connectionPromise: Promise.resolve(connection),
 				}}
 			>
-				<ChatModelSelectionProvider value={emptyModelSelection}>
+				<ChatModelSelectionProvider value={modelSelection}>
 					<div className="h-[480px]">
 						<Thread />
 					</div>
@@ -120,6 +127,23 @@ describe("ComposerDraftFooter", () => {
 		await expect.element(screen.getByTestId("kilo-composer-draft-footer")).toBeVisible();
 		await expect.element(screen.getByRole("combobox", { name: "Select workspace" })).toBeVisible();
 		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toBeVisible();
+	});
+
+	it("opens the model selector when the workspace selector was already open", async () => {
+		const { baseElement } = renderThread();
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByRole("combobox", { name: "Select workspace" }).click();
+		await expect.element(screen.getByText("No workspaces yet.")).toBeVisible();
+
+		await screen.getByRole("combobox", { name: "Select model" }).click();
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+
+		await expect.element(screen.getByTestId("kilo-model-selector-content")).toBeVisible();
+		await expect.element(screen.getByPlaceholder("Search models...")).toHaveFocus();
+		await expect.element(screen.getByText("No workspaces yet.")).not.toBeInTheDocument();
 	});
 
 	it("hides the draft footer when the thread has messages", async () => {

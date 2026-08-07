@@ -10,7 +10,6 @@ import {
 	cloneElement,
 	createContext,
 	use,
-	useRef,
 	useState,
 	type KeyboardEvent,
 	type MouseEvent,
@@ -67,7 +66,6 @@ export function getWorkspaceTriggerLabel(
 type WorkspacePickerContextValue = {
 	open: boolean;
 	setOpen: (open: boolean) => void;
-	triggerRef: { current: HTMLButtonElement | null };
 	onTriggerKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
 	active: Workspace | undefined;
 	isLoading: boolean;
@@ -103,7 +101,6 @@ function WorkspacePickerRoot({
 	} = useWorkspacesFeature();
 	const [open, setOpen] = useState(false);
 	const [commandValue, setCommandValue] = useState(NO_COMMAND_SELECTION);
-	const triggerRef = useRef<HTMLButtonElement>(null);
 	const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
 	const isUnscoped = activeWorkspaceId === null;
 	const stop = (event: MouseEvent | KeyboardEvent) => event.stopPropagation();
@@ -121,7 +118,6 @@ function WorkspacePickerRoot({
 			value={{
 				open,
 				setOpen,
-				triggerRef,
 				onTriggerKeyDown,
 				active,
 				isLoading,
@@ -133,7 +129,6 @@ function WorkspacePickerRoot({
 				onOpenChange={(nextOpen) => {
 					if (nextOpen) setCommandValue(NO_COMMAND_SELECTION);
 					setOpen(nextOpen);
-					if (!nextOpen) requestAnimationFrame(() => triggerRef.current?.focus());
 				}}
 			>
 				{children}
@@ -282,11 +277,10 @@ function WorkspacePickerTrigger({
 	render: ReactElement<TriggerRenderProps>;
 	"aria-label"?: string;
 }) {
-	const { open, triggerRef, onTriggerKeyDown } = useWorkspacePicker();
+	const { open, onTriggerKeyDown } = useWorkspacePicker();
 	const existingKeyDown = render.props.onKeyDown;
 
 	const trigger = cloneElement(render, {
-		ref: triggerRef,
 		role: "combobox",
 		"aria-expanded": open,
 		"aria-label": ariaLabel,

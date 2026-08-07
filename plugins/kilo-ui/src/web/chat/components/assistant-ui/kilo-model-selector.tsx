@@ -2,6 +2,7 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { StarIcon } from "lucide-react";
+import { motion } from "motion/react";
 import {
 	useMemo,
 	useRef,
@@ -349,13 +350,23 @@ const VirtualizedCatalogList: FC<{
 								className="absolute top-0 left-0 w-full"
 								style={{ transform: `translateY(${virtualRow.start}px)` }}
 							>
-								<CatalogModelItem
-									model={entry}
-									isFavorite={favoriteIds.has(entry.id)}
-									onToggleFavorite={() => {
-										onToggleFavorite(entry);
+								<motion.div
+									layout="position"
+									transition={{
+										type: "spring",
+										stiffness: 500,
+										damping: 35,
+										mass: 0.8,
 									}}
-								/>
+								>
+									<CatalogModelItem
+										model={entry}
+										isFavorite={favoriteIds.has(entry.id)}
+										onToggleFavorite={() => {
+											onToggleFavorite(entry);
+										}}
+									/>
+								</motion.div>
 							</div>
 						);
 					})}

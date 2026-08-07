@@ -65,16 +65,13 @@ export function writeModelSelection(
 	}
 }
 
-/** Prefer a stored model when it still exists in the catalog; otherwise undefined. */
+/** Return a stored model only after the catalog confirms it is still available. */
 export function resolveStoredModel(
 	catalog: KiloModelCatalog | undefined,
 	stored: KiloModelRef | undefined,
 ): KiloModelRef | undefined {
-	if (!stored) {
+	if (!catalog || !stored) {
 		return undefined;
-	}
-	if (!catalog) {
-		return stored;
 	}
 	const id = modelRefToId(stored);
 	return catalog.models.some((model) => model.id === id) ? stored : undefined;

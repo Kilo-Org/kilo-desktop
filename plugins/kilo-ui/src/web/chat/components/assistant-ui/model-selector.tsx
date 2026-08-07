@@ -340,7 +340,10 @@ function ModelSelectorValue({
 		showEffort && effort !== undefined ? efforts?.find((e) => e.id === effort)?.name : undefined;
 
 	return (
-		<span data-slot="model-selector-value" className={cn("flex items-center gap-2", className)}>
+		<span
+			data-slot="model-selector-value"
+			className={cn("flex items-center gap-2 dark:text-foreground/90", className)}
+		>
 			{selectedModel.icon && <ModelIcon>{selectedModel.icon}</ModelIcon>}
 			<span className="font-medium whitespace-nowrap">{selectedModel.name}</span>
 			{effortName && (

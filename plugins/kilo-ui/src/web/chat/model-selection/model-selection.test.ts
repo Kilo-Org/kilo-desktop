@@ -69,7 +69,7 @@ describe("model-selection", () => {
 
 	it("resolves a stored model only when it still exists in the catalog", () => {
 		const stored = { providerID: "anthropic", modelID: "claude-sonnet" };
-		expect(resolveStoredModel(undefined, stored)).toEqual(stored);
+		expect(resolveStoredModel(undefined, stored)).toBeUndefined();
 		expect(resolveStoredModel(catalog, stored)).toEqual(stored);
 		expect(resolveStoredModel(catalog, { providerID: "openai", modelID: "gpt-5" })).toBeUndefined();
 	});

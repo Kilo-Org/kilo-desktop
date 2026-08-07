@@ -12,23 +12,23 @@ import {
 
 import type { KiloUiChatService, KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
-import { ChatConnectionProvider } from "./ChatConnectionContext.js";
-import { ChatModelSelectionProvider } from "./ChatModelSelectionContext.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { Thread } from "./components/assistant-ui/thread.js";
-import { modelRefToId } from "./model-catalog.js";
+import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
+import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
+import { modelRefToId } from "./model-selection/model-catalog.js";
+import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
+import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
-import { useKiloModelCatalog } from "./use-kilo-model-catalog.js";
-import { usePersistedModelSelection } from "./use-persisted-model-selection.js";
 
 function ChatThread({
 	connectionPromise,
-	catalogScopeKey,
+	catalogConnection,
 }: {
 	connectionPromise: Promise<KiloWorkspaceConnection>;
-	catalogScopeKey: string;
+	catalogConnection: KiloWorkspaceConnection | undefined;
 }) {
-	const catalogQuery = useKiloModelCatalog(connectionPromise, catalogScopeKey);
+	const catalogQuery = useKiloModelCatalog(catalogConnection);
 	const { model, setModel, effort, setEffort } = usePersistedModelSelection(catalogQuery.data);
 	const activeEffort = resolveModelEffort(
 		catalogQuery.data?.models ?? [],
@@ -144,13 +144,6 @@ export function ChatPage() {
 		connectionPromise,
 	};
 
-	// Prefer the resolved directory; while a workspace-scoped connection is still
-	// loading, key by workspace id so we do not briefly fall back to the unscoped
-	// chat id (which would thrash the model catalog query).
-	const catalogScopeKey =
-		connection.data?.directory ??
-		(activeWorkspaceId ? `workspace:${activeWorkspaceId}` : `chat:${chatId}`);
-
 	return (
 		<ChatConnectionProvider status={connectionStatus}>
 			{connection.isError ? (
@@ -160,7 +153,7 @@ export function ChatPage() {
 				</p>
 			) : null}
 			{/* Keep ChatThread mounted across workspace switches; deferred client retargets in place. */}
-			<ChatThread connectionPromise={connectionPromise} catalogScopeKey={catalogScopeKey} />
+			<ChatThread connectionPromise={connectionPromise} catalogConnection={connection.data} />
 		</ChatConnectionProvider>
 	);
 }

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { OAuthFetch } from "./types.js";
 import type { ResolvedSite } from "./config/site.js";
-import { AuthSessionService } from "./auth-service.js";
+import { AuthSessionService, type UserInfoFetcher } from "./auth-service.js";
+import { FREE_SUBSCRIPTION, SUBSCRIPTION_TIERS } from "./utils.js";
 
 const site: ResolvedSite = { domain: "anaconda.test", client_id: "test-client" };
 
@@ -424,6 +425,83 @@ describe("AuthSessionService", () => {
 				reason: "Keyring is read-only; cannot delete API key.",
 			});
 			expect(deleteToken).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("userinfo caching", () => {
+		const businessAttributes = [{ id: "business_subscription.org-1", group: "subscriptions" }];
+
+		function serviceWith(getUserInfo: UserInfoFetcher) {
+			return new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: fakeKeyring("api-key"),
+				fetch: vi.fn(),
+				getUserInfo,
+				logger: silentLogger,
+			});
+		}
+
+		it("does not cache a failure and retries on the next call", async () => {
+			const getUserInfo = vi
+				.fn<UserInfoFetcher>()
+				.mockRejectedValueOnce(new Error("offline"))
+				.mockResolvedValueOnce(businessAttributes);
+			const service = serviceWith(getUserInfo);
+
+			await expect(service.getUserInfo()).rejects.toThrow("offline");
+			await expect(service.getUserInfo()).resolves.toEqual(businessAttributes);
+			expect(getUserInfo).toHaveBeenCalledTimes(2);
+		});
+
+		it("caches a successful result", async () => {
+			const getUserInfo = vi.fn<UserInfoFetcher>(async () => businessAttributes);
+			const service = serviceWith(getUserInfo);
+
+			await expect(service.getUserInfo()).resolves.toEqual(businessAttributes);
+			await expect(service.getUserInfo()).resolves.toEqual(businessAttributes);
+			expect(getUserInfo).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not stick free-tier after a transient getSubscription failure", async () => {
+			const getUserInfo = vi
+				.fn<UserInfoFetcher>()
+				.mockRejectedValueOnce(new Error("offline"))
+				.mockResolvedValueOnce(businessAttributes);
+			const service = serviceWith(getUserInfo);
+
+			const first = await service.getSubscription().catch(() => FREE_SUBSCRIPTION);
+			expect(first).toBe(FREE_SUBSCRIPTION);
+
+			await expect(service.getSubscription()).resolves.toBe(SUBSCRIPTION_TIERS.business);
+			expect(getUserInfo).toHaveBeenCalledTimes(2);
+		});
+
+		it("re-resolves userinfo after a session change clears the cache", async () => {
+			const getUserInfo = vi.fn<UserInfoFetcher>(async () => businessAttributes);
+			const renamedBody = {
+				passport: {
+					user_id: "u1",
+					profile: { username: "ada", email: "ada@example.com", first_name: "Augusta" },
+				},
+			};
+			const fetch = vi
+				.fn<OAuthFetch>()
+				.mockResolvedValueOnce(jsonResponse(whoamiBody))
+				.mockResolvedValueOnce(jsonResponse(renamedBody));
+			const service = new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: fakeKeyring("api-key"),
+				fetch,
+				getUserInfo,
+				logger: silentLogger,
+			});
+
+			await service.getSession();
+			await service.getUserInfo();
+			await service.refresh();
+			await service.getUserInfo();
+
+			expect(getUserInfo).toHaveBeenCalledTimes(2);
 		});
 	});
 });

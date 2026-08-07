@@ -7,6 +7,7 @@ import type {
 	SdkClient,
 	SdkCommands,
 	SdkEvents,
+	SdkFeatureFlags,
 	SdkFs,
 	SdkIntents,
 	SdkLocation,
@@ -31,6 +32,7 @@ export interface ShellDelegates {
 	notifications: SdkNotifications;
 	theme: SdkTheme;
 	auth: SdkAuth;
+	featureFlags: SdkFeatureFlags;
 	shell: SdkShell;
 	/**
 	 * Scoped filesystem over the per-feature sandbox
@@ -251,8 +253,24 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	};
 
-	// ─── SDK object ────────────────────────────────────────────────────────────
+	// ─── Feature flags (shell delegate) ───────────────────────────────────────
 
+	const featureFlags: SdkFeatureFlags = {
+		...services.shellDelegates.featureFlags,
+		subscribe(fn) {
+			assertAlive();
+			const unsub = services.shellDelegates.featureFlags.subscribe(fn);
+			// Wrap so manual unsubscription also drops the disposable.
+			const dispose = () => {
+				disposables.delete(dispose);
+				unsub();
+			};
+			disposables.add(dispose);
+			return dispose;
+		},
+	};
+
+	// ─── SDK object ────────────────────────────────────────────────────────────
 	const invoke = async (channel: string, args?: unknown) => {
 		assertAlive();
 		return services.featureRouter.invoke(featureId, channel, args);
@@ -289,6 +307,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		notifications: services.shellDelegates.notifications,
 		theme: services.shellDelegates.theme,
 		auth: services.shellDelegates.auth,
+		featureFlags,
 		shell: services.shellDelegates.shell,
 		fs,
 

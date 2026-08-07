@@ -35,6 +35,7 @@
 		"@anaconda-agentic-desktop/plugin-kilo-ui": "link:../../plugins/kilo-ui",
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@github/keytar": "^7.10.6",
+		"@launchdarkly/node-client-sdk": "^4.0.0",
 		"@vscode/proxy-agent": "^0.44.0",
 		"atomically": "catalog:",
 		"electron-debug": "^4.1.0",
@@ -72,6 +73,7 @@
 		"electron-winstaller": "5.4.4",
 		"playwright": "1.61.1",
 		"tsx": "^4.23.1",
+		"type-fest": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"

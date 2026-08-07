@@ -1,6 +1,11 @@
 import { type FormEvent, useState } from "react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import {
+	useFeatureFlag,
+	useSdk,
+	useSdkMutation,
+	useSdkQuery,
+} from "@anaconda-agentic-desktop/sdk-react";
 
 import type { TodoService } from "../contracts/schemas.js";
 
@@ -17,6 +22,7 @@ export function TodoList() {
 	const toggleTodo = useSdkMutation(sdk, "toggle", { invalidates: ["list"] });
 	const [title, setTitle] = useState("");
 	const mutationError = addTodo.error ?? toggleTodo.error;
+	const showFeatureFlagBanner = useFeatureFlag("test");
 
 	function submit(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
@@ -38,6 +44,12 @@ export function TodoList() {
 			<p className="text-muted-foreground mt-1 text-sm">
 				Todos load and update through the feature SDK with TanStack Query.
 			</p>
+
+			{showFeatureFlagBanner ? (
+				<p className="text-primary mt-1 text-sm font-medium" data-qa-id="todos-feature-flag-banner">
+					Now with more feature flags!
+				</p>
+			) : null}
 
 			<form className="my-6 grid gap-2" onSubmit={submit}>
 				<Label htmlFor="new-todo">New todo</Label>

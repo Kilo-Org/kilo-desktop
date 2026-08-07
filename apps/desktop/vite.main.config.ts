@@ -24,16 +24,6 @@ export default defineConfig(({ command }) => {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_CHANNEL: JSON.stringify(channel),
 			UPDATE_PUBLISH_URL: JSON.stringify(getUpdatePublishUrl(process.env)),
-			// Absolute path to the kilo-server plugin's CLI resource root in the
-			// workspace source tree. Baked in at bundle time so the Electron
-			// main bundle can find the fetched CLI in dev, where pnpm's
-			// `injectWorkspacePackages` creates hardlinked node_modules copies
-			// that don't include the gitignored `resources/kilo/` directory.
-			// Unused when app.isPackaged is true (production uses Electron's
-			// process.resourcesPath).
-			__KILO_SERVER_DEV_RESOURCE_ROOT__: JSON.stringify(
-				path.resolve(root, "../../plugins/kilo-server/resources/kilo"),
-			),
 		},
 		resolve: {
 			alias: {

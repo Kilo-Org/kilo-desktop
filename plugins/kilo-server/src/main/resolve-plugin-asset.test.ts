@@ -20,16 +20,6 @@ describe("createKiloServerResolveAsset", () => {
 		expect(resolveAsset("resources/kilo")).toBe(path.join("/App/Contents/Resources", "kilo"));
 	});
 
-	it("packaged mode ignores devResourceRoot", () => {
-		const resolveAsset = createKiloServerResolveAsset({
-			isPackaged: true,
-			packagedResourcesPath: "/App/Contents/Resources",
-			devResourceRoot: "/workspace/plugins/kilo-server/resources/kilo",
-		});
-
-		expect(resolveAsset("resources/kilo")).toBe(path.join("/App/Contents/Resources", "kilo"));
-	});
-
 	it("resolves non-CLI assets from the plugin package when packaged", () => {
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: true,
@@ -39,18 +29,10 @@ describe("createKiloServerResolveAsset", () => {
 		expect(resolveAsset("plugin.json")).toBe(path.join(packageRoot, "plugin.json"));
 	});
 
-	it("resolves CLI assets from devResourceRoot when unpackaged (dev mode)", () => {
-		const devResourceRoot = "/workspace/plugins/kilo-server/resources/kilo";
-		const resolveAsset = createKiloServerResolveAsset({
-			isPackaged: false,
-			packagedResourcesPath: "/unused",
-			devResourceRoot,
-		});
-
-		expect(resolveAsset("resources/kilo")).toBe(devResourceRoot);
-	});
-
-	it("falls back to package resolution for CLI when devResourceRoot is absent", () => {
+	it("resolves CLI assets via the linked plugin package when unpackaged", () => {
+		// With apps/* depending on plugin-kilo-server via `link:` protocol,
+		// require.resolve returns the workspace source path, where fetch-cli
+		// stages the CLI binary.
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
@@ -63,7 +45,6 @@ describe("createKiloServerResolveAsset", () => {
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
-			devResourceRoot: "/workspace/plugins/kilo-server/resources/kilo",
 		});
 
 		expect(resolveAsset("plugin.json")).toBe(path.join(packageRoot, "plugin.json"));

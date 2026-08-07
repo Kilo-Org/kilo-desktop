@@ -103,7 +103,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/feature-sdk
       '@anaconda-agentic-desktop/plugin-kilo-server':
-        specifier: workspace:*
+        specifier: link:../../plugins/kilo-server
         version: link:../../plugins/kilo-server
       '@anaconda-agentic-desktop/plugin-kilo-ui':
         specifier: link:../../plugins/kilo-ui
@@ -239,7 +239,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/feature-sdk
       '@anaconda-agentic-desktop/plugin-kilo-server':
-        specifier: workspace:*
+        specifier: link:../../plugins/kilo-server
         version: link:../../plugins/kilo-server
       '@anaconda-agentic-desktop/plugin-kilo-ui':
         specifier: link:../../plugins/kilo-ui

@@ -48,11 +48,6 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 		resolveAsset: createKiloServerResolveAsset({
 			isPackaged: app.isPackaged,
 			packagedResourcesPath: process.resourcesPath,
-			// Vite inlines this at bundle time (see vite.main.config.ts). In
-			// dev, pnpm's injected node_modules copies of the plugin don't
-			// include the fetched CLI, so we resolve the workspace source
-			// directly. Ignored when app.isPackaged is true.
-			devResourceRoot: __KILO_SERVER_DEV_RESOURCE_ROOT__,
 		}),
 	},
 	{

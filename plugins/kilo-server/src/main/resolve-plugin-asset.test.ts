@@ -29,16 +29,16 @@ describe("createKiloServerResolveAsset", () => {
 		expect(resolveAsset("plugin.json")).toBe(path.join(packageRoot, "plugin.json"));
 	});
 
-	it("resolves CLI assets from workspace source when unpackaged (dev mode)", () => {
+	it("resolves CLI assets via the linked plugin package when unpackaged", () => {
+		// With apps/* depending on plugin-kilo-server via `link:` protocol,
+		// require.resolve returns the workspace source path, where fetch-cli
+		// stages the CLI binary.
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
 		});
 
-		// import.meta.dirname for the module under test is `src/main/`, so
-		// the workspace source is at `../../resources/kilo` relative to that.
-		const expected = path.resolve(__dirname, "../../resources/kilo");
-		expect(resolveAsset("resources/kilo")).toBe(expected);
+		expect(resolveAsset("resources/kilo")).toBe(path.join(packageRoot, "resources/kilo"));
 	});
 
 	it("resolves non-CLI assets from the plugin package when unpackaged", () => {

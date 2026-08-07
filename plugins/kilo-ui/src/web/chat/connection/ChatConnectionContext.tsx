@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
+import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
 
 export type ChatConnectionStatus = {
 	isPending: boolean;

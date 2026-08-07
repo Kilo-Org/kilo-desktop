@@ -7,7 +7,7 @@
 	"contributes": {
 		"providers": [{ "component": "WorkspacesFeatureProvider" }],
 		"routes": [{ "path": "/chat", "component": "ChatPage", "title": "Chat" }],
-		"nav": [{ "to": "/chat", "label": "Chat", "icon": "ChatNavIcon" }],
+		"nav": [],
 		"zones": []
 	}
 }

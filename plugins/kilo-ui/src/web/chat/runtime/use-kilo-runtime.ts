@@ -10,6 +10,7 @@ import {
 	type DeferredKiloRuntimeClient,
 } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloRuntimeClient } from "./create-kilo-runtime-client.js";
+import { withPromptVariant } from "./with-prompt-variant.js";
 
 export interface UseKiloRuntimeOptions {
 	/** Resolved connection — builds the client immediately. */
@@ -28,6 +29,8 @@ export interface UseKiloRuntimeOptions {
 		providerID: string;
 		modelID: string;
 	};
+	/** Reasoning effort / OpenCode variant injected into prompt requests. */
+	variant?: string;
 	isSendDisabled?: boolean;
 	onError?: (error: unknown) => void;
 }
@@ -39,6 +42,7 @@ export function useKiloRuntime({
 	initialSessionId,
 	defaultAgent,
 	defaultModel,
+	variant,
 	isSendDisabled,
 	onError,
 }: UseKiloRuntimeOptions): AssistantRuntime {
@@ -46,6 +50,8 @@ export function useKiloRuntime({
 		client: DeferredKiloRuntimeClient;
 		promise: Promise<KiloWorkspaceConnection>;
 	} | null>(null);
+	const variantRef = useRef(variant);
+	variantRef.current = variant;
 
 	if (!clientOption && !connection && connectionPromise) {
 		if (!deferredRef.current) {
@@ -64,7 +70,7 @@ export function useKiloRuntime({
 		deferredRef.current.promise = connectionPromise;
 	}, [clientOption, connection, connectionPromise]);
 
-	const client = useMemo(() => {
+	const baseClient = useMemo(() => {
 		if (clientOption) {
 			return clientOption;
 		}
@@ -84,6 +90,11 @@ export function useKiloRuntime({
 		// Stable token: deferred client identity does not change across retargets.
 		connectionPromise ? "deferred" : connection ? "connection" : "none",
 	]);
+
+	const client = useMemo(
+		() => withPromptVariant(baseClient, () => variantRef.current),
+		[baseClient],
+	);
 
 	return useOpenCodeRuntime({
 		client,

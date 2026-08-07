@@ -19,7 +19,8 @@ import {
 
 import type { KiloWorkspaceConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
-import { ChatConnectionProvider } from "../../ChatConnectionContext.js";
+import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
+import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
 import { Thread } from "./thread.js";
 
@@ -37,6 +38,27 @@ const connection: KiloWorkspaceConnection = {
 	directory: "/tmp/chats/test",
 };
 
+const modelSelection = {
+	model: { providerID: "kilo", modelID: "test-model" },
+	setModel: () => undefined,
+	effort: undefined,
+	setEffort: () => undefined,
+	catalog: {
+		providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
+		models: [
+			{
+				id: "kilo/test-model",
+				name: "Test Model",
+				providerID: "kilo",
+				modelID: "test-model",
+			},
+		],
+		defaults: { kilo: "test-model" },
+	},
+	isCatalogPending: false,
+	isCatalogError: false,
+};
+
 function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadMessageLike[] }) {
 	const runtime = useLocalRuntime(stubChatModel, {
 		...(initialMessages === undefined ? {} : { initialMessages }),
@@ -52,9 +74,11 @@ function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadM
 					connectionPromise: Promise.resolve(connection),
 				}}
 			>
-				<div className="h-[480px]">
-					<Thread />
-				</div>
+				<ChatModelSelectionProvider value={modelSelection}>
+					<div className="h-[480px]">
+						<Thread />
+					</div>
+				</ChatModelSelectionProvider>
 			</ChatConnectionProvider>
 		</AssistantRuntimeProvider>
 	);
@@ -103,6 +127,23 @@ describe("ComposerDraftFooter", () => {
 		await expect.element(screen.getByTestId("kilo-composer-draft-footer")).toBeVisible();
 		await expect.element(screen.getByRole("combobox", { name: "Select workspace" })).toBeVisible();
 		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toBeVisible();
+	});
+
+	it("opens the model selector when the workspace selector was already open", async () => {
+		const { baseElement } = renderThread();
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByRole("combobox", { name: "Select workspace" }).click();
+		await expect.element(screen.getByText("No workspaces yet.")).toBeVisible();
+
+		await screen.getByRole("combobox", { name: "Select model" }).click();
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+
+		await expect.element(screen.getByTestId("kilo-model-selector-content")).toBeVisible();
+		await expect.element(screen.getByPlaceholder("Search models...")).toHaveFocus();
+		await expect.element(screen.getByText("No workspaces yet.")).not.toBeInTheDocument();
 	});
 
 	it("hides the draft footer when the thread has messages", async () => {

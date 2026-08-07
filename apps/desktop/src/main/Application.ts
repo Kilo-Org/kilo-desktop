@@ -1,5 +1,5 @@
 import electronDebug from "electron-debug";
-import { shellEnv } from "shell-env";
+// import { shellEnv } from "shell-env";
 import { nativeTheme, session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
@@ -107,7 +107,7 @@ export class Application {
 			// login-shell env into process.env so GUI-launched builds see env-var
 			// proxies (`shell-env` no-ops on Windows), then patch in-process
 			// http/https/fetch so third-party deps honor corporate/system proxies.
-			Object.assign(process.env, await shellEnv());
+			// Object.assign(process.env, await shellEnv());
 			installProxyAgent();
 
 			this.#disposers.push(this.#security.install(session.defaultSession));

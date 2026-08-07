@@ -82,7 +82,7 @@ describe("useKiloRuntime", () => {
 
 		expect(createDeferredKiloRuntimeClient).toHaveBeenCalledExactlyOnceWith(connectionPromise);
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
-			client: deferredClient,
+			client: expect.objectContaining({ deferred: true }),
 		});
 	});
 
@@ -106,7 +106,7 @@ describe("useKiloRuntime", () => {
 
 		expect(createDeferredKiloRuntimeClient).toHaveBeenCalledOnce();
 		expect(retarget).toHaveBeenCalledExactlyOnceWith(secondPromise);
-		expect(latestInjectedClient()).toBe(deferredClient);
+		expect(latestInjectedClient()).toEqual(expect.objectContaining({ deferred: true }));
 	});
 
 	it("retains the client for equivalent connections and ignores server version changes", () => {

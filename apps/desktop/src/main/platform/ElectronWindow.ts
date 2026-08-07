@@ -36,8 +36,8 @@ export class ElectronWindow {
 		const chrome = chromeFor(this.shouldUseDarkColors());
 		const window = new BrowserWindow({
 			title: app.getName(),
-			width: 960,
-			height: 720,
+			width: 1280,
+			height: 860,
 			minWidth: 720,
 			minHeight: 520,
 			show: false,

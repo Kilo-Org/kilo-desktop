@@ -11,13 +11,15 @@
 		"./lib/*": "./src/lib/*.ts"
 	},
 	"scripts": {
-		"check": "tsc --noEmit -p tsconfig.json"
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run --passWithNoTests"
 	},
 	"peerDependencies": {
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0"
 	},
 	"dependencies": {
+		"@assistant-ui/react": "0.15.4",
 		"@base-ui/react": "^1.6.0",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
@@ -31,6 +33,7 @@
 		"@types/react-dom": "^19.2.3",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
-		"typescript": "catalog:"
+		"typescript": "catalog:",
+		"vitest": "catalog:"
 	}
 }

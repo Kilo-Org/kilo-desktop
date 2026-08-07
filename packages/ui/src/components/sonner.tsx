@@ -1,5 +1,5 @@
 import { useTheme } from "next-themes";
-import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { Toaster as Sonner, toast, type ToasterProps } from "sonner";
 import {
 	CircleCheckIcon,
 	InfoIcon,
@@ -13,7 +13,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
 	return (
 		<Sonner
-			theme={theme as ToasterProps["theme"]}
+			theme={(theme ?? "system") as NonNullable<ToasterProps["theme"]>}
 			className="toaster group"
 			icons={{
 				success: <CircleCheckIcon className="size-4" />,
@@ -40,4 +40,4 @@ const Toaster = ({ ...props }: ToasterProps) => {
 	);
 };
 
-export { Toaster };
+export { Toaster, toast };

@@ -554,6 +554,8 @@ function ModelSelectorSeparator(props: ModelSelectorSeparatorProps) {
 
 export type ModelSelectorItemProps = Omit<ComponentPropsWithoutRef<typeof CommandItem>, "value"> & {
 	model: ModelOption;
+	/** When false, the selected check is omitted so callers can render their own trailing actions. */
+	showCheck?: boolean;
 };
 
 function ModelSelectorItem({
@@ -561,6 +563,7 @@ function ModelSelectorItem({
 	className,
 	children,
 	onSelect,
+	showCheck = true,
 	...props
 }: ModelSelectorItemProps) {
 	const { value, setValue, setOpen } = useModelSelectorContext();
@@ -578,7 +581,8 @@ function ModelSelectorItem({
 				onSelect?.(selectedValue);
 			}}
 			className={cn(
-				"relative items-start gap-2 rounded-lg py-2 ps-3 pe-9 [&_svg:not([class*='size-'])]:size-3.5",
+				// Hide CommandItem's built-in check (opacity-0 still reserves layout space).
+				"items-start gap-2 rounded-lg py-2 ps-3 pe-3 [&>svg:last-child]:hidden [&_svg:not([class*='size-'])]:size-3.5",
 				className,
 			)}
 			{...props}
@@ -586,7 +590,7 @@ function ModelSelectorItem({
 			{children ?? (
 				<>
 					{model.icon && <ModelIcon className="mt-[3px]">{model.icon}</ModelIcon>}
-					<span className="flex min-w-0 flex-col">
+					<span className="flex min-w-0 flex-1 flex-col">
 						<span className="truncate font-medium">{model.name}</span>
 						{model.description && (
 							<span className="text-muted-foreground truncate text-xs">{model.description}</span>
@@ -594,11 +598,11 @@ function ModelSelectorItem({
 					</span>
 				</>
 			)}
-			{isSelected && (
-				<span className="absolute end-3 top-2.5 flex size-4 items-center justify-center">
+			{showCheck && isSelected ? (
+				<span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
 					<CheckIcon className="size-4" />
 				</span>
-			)}
+			) : null}
 		</CommandItem>
 	);
 }

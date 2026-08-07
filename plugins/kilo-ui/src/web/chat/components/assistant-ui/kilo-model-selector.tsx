@@ -1,7 +1,7 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { StarIcon } from "lucide-react";
+import { CheckIcon, StarIcon } from "lucide-react";
 import { motion } from "motion/react";
 import {
 	useMemo,
@@ -47,6 +47,7 @@ import {
 	ModelSelectorSearch,
 	ModelSelectorTrigger,
 	ModelSelectorValue,
+	useModelSelectorContext,
 } from "./model-selector.js";
 
 type RailSelection = "favorites" | (string & {});
@@ -505,10 +506,14 @@ const CatalogModelItem: FC<{
 	isFavorite: boolean;
 	onToggleFavorite: () => void;
 }> = ({ model, isFavorite, onToggleFavorite }) => {
+	const { value } = useModelSelectorContext();
+	const isSelected = value === model.id;
+
 	return (
 		<ModelSelectorItem
 			model={model}
-			className="group/model-item rounded-md py-2 pe-10"
+			showCheck={false}
+			className="group/model-item rounded-md py-2"
 			data-qa-id={`kilo-model-option-${model.id}`}
 		>
 			<span className="mt-0.5 shrink-0 [&_svg]:size-3.5">
@@ -525,42 +530,51 @@ const CatalogModelItem: FC<{
 					<span className="text-muted-foreground truncate text-xs">{model.description}</span>
 				) : null}
 			</span>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<Button
-							type="button"
-							size="icon-xs"
-							variant="ghost"
-							className={cn(
-								"text-muted-foreground/70 absolute end-8 top-2 shrink-0 opacity-64 transition-[color,opacity] hover:text-foreground hover:opacity-100 group-hover/model-item:opacity-100",
-								isFavorite && "text-foreground opacity-100",
-							)}
-							aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-							data-qa-id={`kilo-model-favorite-${model.id}`}
-							onClick={(event: MouseEvent<HTMLButtonElement>) => {
-								event.preventDefault();
-								event.stopPropagation();
-								onToggleFavorite();
-							}}
-							onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
-								if (isListNavigationKey(event.key)) {
-									return;
-								}
-								event.stopPropagation();
-							}}
-							onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
-								event.stopPropagation();
-							}}
-						>
-							<StarIcon className={cn("size-3.5", isFavorite && "fill-current text-yellow-500")} />
-						</Button>
-					}
-				/>
-				<TooltipContent side="top">
-					{isFavorite ? "Remove from favorites" : "Add to favorites"}
-				</TooltipContent>
-			</Tooltip>
+			<span className="mt-0.5 flex shrink-0 items-center gap-0.5">
+				<Tooltip>
+					<TooltipTrigger
+						render={
+							<Button
+								type="button"
+								size="icon-xs"
+								variant="ghost"
+								className={cn(
+									"text-muted-foreground/70 shrink-0 opacity-64 transition-[color,opacity] hover:text-foreground hover:opacity-100 group-hover/model-item:opacity-100",
+									isFavorite && "text-foreground opacity-100",
+								)}
+								aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+								data-qa-id={`kilo-model-favorite-${model.id}`}
+								onClick={(event: MouseEvent<HTMLButtonElement>) => {
+									event.preventDefault();
+									event.stopPropagation();
+									onToggleFavorite();
+								}}
+								onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+									if (isListNavigationKey(event.key)) {
+										return;
+									}
+									event.stopPropagation();
+								}}
+								onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+									event.stopPropagation();
+								}}
+							>
+								<StarIcon
+									className={cn("size-3.5", isFavorite && "fill-current text-yellow-500")}
+								/>
+							</Button>
+						}
+					/>
+					<TooltipContent side="top">
+						{isFavorite ? "Remove from favorites" : "Add to favorites"}
+					</TooltipContent>
+				</Tooltip>
+				{isSelected ? (
+					<span className="flex size-6 items-center justify-center">
+						<CheckIcon className="size-3.5" />
+					</span>
+				) : null}
+			</span>
 		</ModelSelectorItem>
 	);
 };

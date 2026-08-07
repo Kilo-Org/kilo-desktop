@@ -113,12 +113,19 @@ export function registerKiloServer(
 
 	const server = createServer((status) => mainSdk.events.emit("server-status-changed", status));
 
-	// Sequence: (1) detect fuse, (2) seed OR remove-managed-entry synchronously
-	// with kilo.jsonc, (3) then ensure kilo serve starts. The seed is cheap
-	// (one mkdir + one atomic write) and gating startup on it eliminates the
-	// first-boot race where kilo serve reads the config before the rename
-	// lands. A seed failure never blocks startup.
-	void (async () => {
+	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
+	//
+	// (1) detect fuse, (2) seed OR remove-managed-entry against kilo.jsonc,
+	// (3) then start kilo serve. The seed is cheap (one mkdir + two atomic
+	// writes) and gating startup on it eliminates the first-boot race where
+	// kilo serve reads the config before the rename lands. A seed failure
+	// never blocks startup.
+	//
+	// The seed promise is shared: EVERY caller that reaches `ensureRunning`
+	// (mainRegister here, the `getConnection` capability, `server.restart`)
+	// awaits the same promise, so a renderer that calls `getConnection` in
+	// the seed window cannot bypass the ordering and race the config write.
+	const seedComplete = (async () => {
 		try {
 			const enabled = await runAsNodeEnabled();
 			await seedMcpConfig(runtimeDirectory, enabled);
@@ -127,21 +134,33 @@ export function registerKiloServer(
 				`WebMCP relay seed failed: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
-		// The manager records and emits startup failures; keep app initialization alive so a later
-		// connection request can retry without producing an unhandled rejection here.
-		void server.ensureRunning().catch(() => undefined);
 	})();
+
+	async function ensureRunningAfterSeed(): Promise<KiloServerConnection> {
+		await seedComplete;
+		return server.ensureRunning();
+	}
+
+	// Kick off the initial start-up after the seed. The manager records and
+	// emits startup failures; keep app initialization alive so a later
+	// connection request can retry without producing an unhandled rejection.
+	void ensureRunningAfterSeed().catch(() => undefined);
 
 	const connectionService = {
 		getConnection: async ({ directory }) => {
-			const connection = await server.ensureRunning();
+			const connection = await ensureRunningAfterSeed();
 			return { ...connection, directory };
 		},
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {
 		"server.getConnection": connectionService.getConnection,
-		"server.restart": async () => server.restart(),
+		"server.restart": async () => {
+			// Restart may run long after boot, but wait defensively in case it
+			// races the very first seed on fast machines.
+			await seedComplete;
+			return server.restart();
+		},
 		"server.status": async () => server.status,
 	};
 

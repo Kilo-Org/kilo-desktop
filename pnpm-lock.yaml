@@ -103,8 +103,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/feature-sdk
       '@anaconda-agentic-desktop/plugin-kilo-server':
-        specifier: workspace:*
-        version: file:plugins/kilo-server(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)
+        specifier: link:../../plugins/kilo-server
+        version: link:../../plugins/kilo-server
       '@anaconda-agentic-desktop/plugin-kilo-ui':
         specifier: link:../../plugins/kilo-ui
         version: link:../../plugins/kilo-ui
@@ -239,7 +239,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/feature-sdk
       '@anaconda-agentic-desktop/plugin-kilo-server':
-        specifier: workspace:*
+        specifier: link:../../plugins/kilo-server
         version: link:../../plugins/kilo-server
       '@anaconda-agentic-desktop/plugin-kilo-ui':
         specifier: link:../../plugins/kilo-ui
@@ -784,9 +784,6 @@ packages:
     resolution: {directory: packages/feature-sdk, type: directory}
     peerDependencies:
       zod: ^4.4.3
-
-  '@anaconda-agentic-desktop/plugin-kilo-server@file:plugins/kilo-server':
-    resolution: {directory: plugins/kilo-server, type: directory}
 
   '@anaconda-agentic-desktop/plugin-todos@file:plugins/todos':
     resolution: {directory: plugins/todos, type: directory}
@@ -7721,19 +7718,6 @@ snapshots:
   '@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3)':
     dependencies:
       zod: 4.4.3
-
-  '@anaconda-agentic-desktop/plugin-kilo-server@file:plugins/kilo-server(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)':
-    dependencies:
-      '@anaconda-agentic-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@mcp-b/webmcp-local-relay': 4.0.0(@cfworker/json-schema@4.1.1)(supports-color@8.1.1)
-      atomically: 2.1.1
-      execa: 9.6.1
-      zod: 4.4.3
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - bufferutil
-      - supports-color
-      - utf-8-validate
 
   '@anaconda-agentic-desktop/plugin-todos@file:plugins/todos(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)':
     dependencies:

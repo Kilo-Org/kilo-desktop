@@ -245,4 +245,72 @@ describe("kilo-server main registration", () => {
 		expect(server.ensureRunning).toHaveBeenCalled();
 		mainSdk.dispose();
 	});
+
+	it("getConnection called during the seed window awaits the seed and does not race ensureRunning", async () => {
+		// Regression: without shared seed sequencing, a renderer that calls
+		// getConnection during the seed window (mounted chat UI, etc.) can
+		// trigger ensureRunning() before the config write lands, reopening the
+		// exact race the awaited seed was designed to close.
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const order: string[] = [];
+		let releaseSeed!: () => void;
+		const seedGate = new Promise<void>((resolve) => {
+			releaseSeed = resolve;
+		});
+		const seedMcpConfig = vi.fn(async (_runtimeDirectory: string, _enabled: boolean) => {
+			order.push("seed-start");
+			await seedGate;
+			order.push("seed-end");
+			return {
+				kind: "written" as const,
+				reason: "created" as const,
+				entry: {
+					type: "local" as const,
+					command: ["/exe", "/entry"] as [string, string],
+					environment: { ELECTRON_RUN_AS_NODE: "1" },
+					enabled: true as const,
+				},
+			};
+		});
+		server.ensureRunning = vi.fn(async () => {
+			order.push("ensure-running");
+			return {
+				baseUrl: "http://127.0.0.1:4321",
+				username: "kilo",
+				password: "secret",
+				version: "7.4.20",
+			};
+		});
+
+		registerKiloServer(mainSdk, {
+			createServer: () => server,
+			seedMcpConfig,
+			runAsNodeEnabled: async () => true,
+		});
+
+		// Renderer calls getConnection while the seed is still gated.
+		const capability =
+			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
+		expect(capability).toBeDefined();
+		const inflight = capability!.getConnection({ directory: "/proj" });
+
+		// Give microtasks a chance: seed has started, but ensureRunning MUST
+		// not have run yet — the capability call must wait on the seed.
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		expect(order).toEqual(["seed-start"]);
+
+		releaseSeed();
+		await expect(inflight).resolves.toMatchObject({ directory: "/proj" });
+		// The initial mainRegister IIFE and the getConnection capability each
+		// call ensureRunning after the seed. Assert the invariant we care
+		// about — no ensure-running before seed-end — rather than an exact
+		// count.
+		expect(order[0]).toBe("seed-start");
+		const seedEndIndex = order.indexOf("seed-end");
+		expect(seedEndIndex).toBeGreaterThan(0);
+		expect(order.slice(0, seedEndIndex + 1)).not.toContain("ensure-running");
+		expect(order.slice(seedEndIndex + 1).every((entry) => entry === "ensure-running")).toBe(true);
+		mainSdk.dispose();
+	});
 });

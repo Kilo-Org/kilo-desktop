@@ -267,6 +267,27 @@ function applyModifications(
 }
 
 /**
+ * Safely wraps `applyModifications` — `jsonc-parser`'s `modify()` throws for a
+ * handful of unusual existing shapes (e.g. `"mcp": null`, `"mcp": "invalid"`,
+ * or numeric where an object path was expected). Treat those as
+ * "unparseable-ish" — refuse to touch the file so we never clobber user data,
+ * and satisfy the module's "never throws for expected conditions" contract.
+ */
+function tryApplyModifications(
+	text: string,
+	modifications: readonly { path: (string | number)[]; value: unknown }[],
+): { ok: true; text: string } | { ok: false; reason: string } {
+	try {
+		return { ok: true, text: applyModifications(text, modifications) };
+	} catch (error) {
+		return {
+			ok: false,
+			reason: `jsonc modify() failed: ${error instanceof Error ? error.message : String(error)}`,
+		};
+	}
+}
+
+/**
  * Merge (or remove) our managed entry into `kilo.jsonc`, tracking ownership
  * in a sidecar file that Kilo does not open.
  *
@@ -319,10 +340,18 @@ export async function seedKiloMcpConfig(options: SeedKiloMcpConfigOptions): Prom
 			);
 			return { kind: "skipped", reason: "unmanaged-entry" };
 		}
-		const nextText = applyModifications(text, [
+		// Removal write order: config first, then prune the sidecar. If we
+		// crash between the two, next boot sees managed=true + currentEntry
+		// undefined and hits the "nothing-to-remove" prune path above —
+		// self-healing.
+		const removed = tryApplyModifications(text, [
 			{ path: ["mcp", MCP_ENTRY_NAME], value: undefined },
 		]);
-		await atomicWriteFile(filePath, nextText, { encoding: "utf8" });
+		if (!removed.ok) {
+			logger.warn(`Refusing to touch ${filePath}: ${removed.reason}.`);
+			return { kind: "skipped-error", reason: removed.reason };
+		}
+		await atomicWriteFile(filePath, removed.text, { encoding: "utf8" });
 		await writeSidecar(sidecarPath, {
 			version: SIDECAR_SCHEMA_VERSION,
 			managed: sidecar.managed.filter((name) => name !== MCP_ENTRY_NAME),
@@ -353,14 +382,26 @@ export async function seedKiloMcpConfig(options: SeedKiloMcpConfigOptions): Prom
 		return { kind: "skipped", reason: "up-to-date" };
 	}
 
-	const nextText = applyModifications(text, [
+	// Compute the next config text BEFORE any write so a `modify()` throw
+	// (e.g. `"mcp": null` in the existing file) surfaces cleanly with the
+	// existing file untouched and no half-updated sidecar left behind.
+	const nextConfig = tryApplyModifications(text, [
 		// jsonc-parser's `modify` creates missing parent objects along the way,
 		// so we can write `mcp.<name>` even if `mcp` did not exist.
 		{ path: ["mcp", MCP_ENTRY_NAME], value: nextEntry },
 	]);
-	await atomicWriteFile(filePath, nextText, { encoding: "utf8" });
+	if (!nextConfig.ok) {
+		logger.warn(`Refusing to touch ${filePath}: ${nextConfig.reason}.`);
+		return { kind: "skipped-error", reason: nextConfig.reason };
+	}
+
+	// Add-path write order: sidecar FIRST, then config. If we crash between
+	// the two, next boot sees managed=true + a stale/missing entry and
+	// re-writes the config — self-healing. Reversing this ordering (config
+	// first) would strand the entry as "unmanaged-entry" forever.
 	const nextManaged = Array.from(new Set([...sidecar.managed, MCP_ENTRY_NAME]));
 	await writeSidecar(sidecarPath, { version: SIDECAR_SCHEMA_VERSION, managed: nextManaged });
+	await atomicWriteFile(filePath, nextConfig.text, { encoding: "utf8" });
 
 	const reason: "created" | "updated" = existing.kind === "absent" ? "created" : "updated";
 	logger.info(

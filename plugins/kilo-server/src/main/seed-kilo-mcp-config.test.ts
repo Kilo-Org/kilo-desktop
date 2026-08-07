@@ -338,4 +338,87 @@ describe("seedKiloMcpConfig", () => {
 		const sidecar = await readFile(path.join(deepDir, MANAGED_SIDECAR_FILENAME), "utf8");
 		expect(JSON.parse(sidecar).managed).toEqual([MCP_ENTRY_NAME]);
 	});
+
+	it("recovers when a prior seed crashed after writing the sidecar but before writing kilo.jsonc", async () => {
+		// This is the crash window the new write ordering (sidecar first,
+		// config second) is designed to survive. Simulate the intermediate
+		// state and verify the next boot self-heals — i.e. sees the sidecar
+		// marker, treats the entry as ours, and writes the missing config.
+		// The old (config-first) ordering would strand the crash state
+		// forever: config-with-no-marker was treated as "unmanaged".
+		await writeFile(
+			sidecarFile,
+			`${JSON.stringify({ version: 1, managed: [MCP_ENTRY_NAME] }, undefined, 2)}\n`,
+		);
+		// No kilo.jsonc yet.
+
+		const outcome = await seedKiloMcpConfig({
+			configDirectory: configDir,
+			appExecutablePath: APP_EXE,
+			resolveRelay: fakeResolveRelay,
+		});
+
+		expect(outcome).toMatchObject({ kind: "written" });
+		const config = await readConfig();
+		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
+	});
+
+	it("recovers when a prior seed crashed after writing a stale config but before updating the sidecar version", async () => {
+		// Also covered by the "recomputes absolute paths on every boot" case,
+		// but with an explicit crash-window framing. Sidecar says we own the
+		// entry; kilo.jsonc has an older path than the current process.
+		// The seed must overwrite the entry to match the new paths.
+		const staleEntry = {
+			type: "local",
+			command: ["/old/exe", "/old/relay.js"],
+			environment: { ELECTRON_RUN_AS_NODE: "1" },
+			enabled: true,
+		};
+		await writeFile(
+			configFile,
+			`${JSON.stringify({ mcp: { [MCP_ENTRY_NAME]: staleEntry } }, undefined, 2)}\n`,
+		);
+		await writeFile(
+			sidecarFile,
+			`${JSON.stringify({ version: 1, managed: [MCP_ENTRY_NAME] }, undefined, 2)}\n`,
+		);
+
+		const outcome = await seedKiloMcpConfig({
+			configDirectory: configDir,
+			appExecutablePath: APP_EXE,
+			resolveRelay: fakeResolveRelay,
+		});
+
+		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
+		const config = await readConfig();
+		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
+	});
+
+	it("refuses to write when jsonc-parser's modify() throws (e.g. mcp is a non-object value)", async () => {
+		// A user with `"mcp": null` (or any non-object at `mcp`) hits an
+		// exception path in `modify()` when we try to write `mcp["<name>"]`.
+		// The module's contract is "never throws for expected conditions", so
+		// this must surface as `skipped-error` — never a partial write.
+		await writeFile(
+			configFile,
+			`{
+  "mcp": null
+}
+`,
+		);
+		const before = await readFile(configFile, "utf8");
+
+		const outcome = await seedKiloMcpConfig({
+			configDirectory: configDir,
+			appExecutablePath: APP_EXE,
+			resolveRelay: fakeResolveRelay,
+		});
+
+		expect(outcome.kind).toBe("skipped-error");
+		if (outcome.kind === "skipped-error") {
+			expect(outcome.reason).toMatch(/modify\(\)/);
+		}
+		expect(await readFile(configFile, "utf8")).toBe(before);
+		await expect(readFile(sidecarFile, "utf8")).rejects.toThrow(/ENOENT/);
+	});
 });

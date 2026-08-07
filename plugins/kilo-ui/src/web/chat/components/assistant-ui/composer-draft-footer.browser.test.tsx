@@ -19,8 +19,8 @@ import {
 
 import type { KiloWorkspaceConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
-import { ChatConnectionProvider } from "../../ChatConnectionContext.js";
-import { ChatModelSelectionProvider } from "../../ChatModelSelectionContext.js";
+import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
+import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
 import { Thread } from "./thread.js";
 

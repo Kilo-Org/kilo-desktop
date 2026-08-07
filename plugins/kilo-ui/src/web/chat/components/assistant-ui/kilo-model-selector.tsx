@@ -25,17 +25,17 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
-import { useChatModelSelection } from "../../ChatModelSelectionContext.js";
+import { useChatModelSelection } from "../../model-selection/ChatModelSelectionContext.js";
 import {
 	modelRefToId,
 	parseModelId,
 	type KiloCatalogModel,
 	type KiloProviderGroup,
-} from "../../model-catalog.js";
-import { sortModelsWithFavoritesFirst } from "../../model-favorites.js";
-import { filterModelsBySearchQuery } from "../../model-search.js";
-import { ProviderIcon } from "../../provider-icon.js";
-import { useModelFavorites } from "../../use-model-favorites.js";
+} from "../../model-selection/model-catalog.js";
+import { sortModelsWithFavoritesFirst } from "../../model-selection/model-favorites.js";
+import { filterModelsBySearchQuery } from "../../model-selection/model-search.js";
+import { ProviderIcon } from "../../model-selection/provider-icon.js";
+import { useModelFavorites } from "../../model-selection/use-model-favorites.js";
 import {
 	ModelSelector,
 	ModelSelectorContent,

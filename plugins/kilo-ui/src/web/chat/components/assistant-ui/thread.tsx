@@ -64,7 +64,7 @@ import {
 	type PropsWithChildren,
 } from "react";
 
-import { useChatConnection } from "../../ChatConnectionContext.js";
+import { useChatConnection } from "../../connection/ChatConnectionContext.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 

@@ -65,12 +65,12 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 
 	useEffect(() => {
 		if (!query.isSuccess) return;
-		if (activeWorkspaceId && workspaces.some((workspace) => workspace.id === activeWorkspaceId)) {
-			return;
-		}
-		// Avoid selecting from stale data while a create/delete refetch is pending.
+		// null means unscoped — do not auto-pick a workspace.
+		if (!activeWorkspaceId) return;
+		if (workspaces.some((workspace) => workspace.id === activeWorkspaceId)) return;
+		// Avoid clearing from stale data while a create/delete refetch is pending.
 		if (query.isFetching) return;
-		setActiveWorkspaceId(workspaces[0]?.id ?? null);
+		setActiveWorkspaceId(null);
 	}, [activeWorkspaceId, query.isFetching, query.isSuccess, workspaces]);
 
 	useEffect(() => {

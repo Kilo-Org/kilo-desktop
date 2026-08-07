@@ -31,6 +31,7 @@ import {
 	SidebarMenuItem,
 	SidebarProvider,
 } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
 import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 type AppSidebarLayoutProps = {
@@ -81,12 +82,18 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 	// The OAuth flow leaves the app (system browser), so there is no useful
 	// in-app pending state to show; the button simply unmounts once the session
 	// becomes authenticated (and stays put on failure so the user can retry).
-	const handleLogin = (): void => {
-		void sdk.auth.login();
+	const handleLogin = async (): Promise<void> => {
+		const next = await sdk.auth.login();
+		if (next.status === "error") {
+			toast.error("Sign-in failed", { description: next.reason });
+		}
 	};
 
-	const handleLogout = (): void => {
-		void sdk.auth.logout();
+	const handleLogout = async (): Promise<void> => {
+		const next = await sdk.auth.logout();
+		if (next.status === "error") {
+			toast.error("Sign-out failed", { description: next.reason });
+		}
 	};
 
 	return (
@@ -146,7 +153,11 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 											</DropdownMenuGroup>
 											<DropdownMenuSeparator />
 											<DropdownMenuGroup>
-												<DropdownMenuItem onClick={handleLogout}>
+												<DropdownMenuItem
+													onClick={() => {
+														void handleLogout();
+													}}
+												>
 													<LogOutIcon />
 													Log out
 												</DropdownMenuItem>
@@ -171,7 +182,9 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 						</Button>
 						{session.status !== "authenticated" && (
 							<Button
-								onClick={handleLogin}
+								onClick={() => {
+									void handleLogin();
+								}}
 								aria-label="Log in"
 								className="[-webkit-app-region:no-drag]"
 							>

@@ -1,11 +1,14 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
 import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
-import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
+import {
+	createDeferredKiloRuntimeClient,
+	type DeferredKiloRuntimeClient,
+} from "./create-deferred-kilo-runtime-client.js";
 import { createKiloRuntimeClient } from "./create-kilo-runtime-client.js";
 
 export interface UseKiloRuntimeOptions {
@@ -14,6 +17,7 @@ export interface UseKiloRuntimeOptions {
 	/**
 	 * Connection that may still be starting. Builds a stable deferred client so
 	 * the composer can mount before Kilo is ready; SDK calls wait on the promise.
+	 * Retargets in place when the promise identity changes (workspace switch).
 	 */
 	connectionPromise?: Promise<KiloWorkspaceConnection>;
 	/** Pre-built client (tests). Takes precedence over connection options. */
@@ -38,6 +42,28 @@ export function useKiloRuntime({
 	isSendDisabled,
 	onError,
 }: UseKiloRuntimeOptions): AssistantRuntime {
+	const deferredRef = useRef<{
+		client: DeferredKiloRuntimeClient;
+		promise: Promise<KiloWorkspaceConnection>;
+	} | null>(null);
+
+	if (!clientOption && !connection && connectionPromise) {
+		if (!deferredRef.current) {
+			deferredRef.current = {
+				client: createDeferredKiloRuntimeClient(connectionPromise),
+				promise: connectionPromise,
+			};
+		}
+	}
+
+	useEffect(() => {
+		if (clientOption || connection || !connectionPromise || !deferredRef.current) return;
+		if (deferredRef.current.promise === connectionPromise) return;
+
+		deferredRef.current.client.retarget(connectionPromise);
+		deferredRef.current.promise = connectionPromise;
+	}, [clientOption, connection, connectionPromise]);
+
 	const client = useMemo(() => {
 		if (clientOption) {
 			return clientOption;
@@ -45,8 +71,8 @@ export function useKiloRuntime({
 		if (connection) {
 			return createKiloRuntimeClient(connection);
 		}
-		if (connectionPromise) {
-			return createDeferredKiloRuntimeClient(connectionPromise);
+		if (deferredRef.current) {
+			return deferredRef.current.client;
 		}
 		throw new Error("useKiloRuntime requires connection, connectionPromise, or client");
 	}, [
@@ -55,7 +81,8 @@ export function useKiloRuntime({
 		connection?.directory,
 		connection?.username,
 		connection?.password,
-		connectionPromise,
+		// Stable token: deferred client identity does not change across retargets.
+		connectionPromise ? "deferred" : connection ? "connection" : "none",
 	]);
 
 	return useOpenCodeRuntime({

@@ -96,7 +96,21 @@ describe("WorkspacesFeatureProvider", () => {
 		expect(remove).toHaveBeenCalledWith({ id: workspace.id });
 	});
 
+	it("keeps active workspace null when workspaces exist (unscoped)", async () => {
+		renderProvider({ list: async () => [workspace] });
+
+		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+	});
+
+	it("clears an invalid stored workspace id to null", async () => {
+		localStorage.setItem("kilo-ui.active-workspace", "missing-workspace");
+		renderProvider({ list: async () => [workspace] });
+
+		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+	});
+
 	it("does not reactivate a deleted workspace while its list refetch is pending", async () => {
+		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
 		let resolveRefetch!: (workspaces: Workspace[]) => void;
 		const refetch = new Promise<Workspace[]>((resolve) => {
 			resolveRefetch = resolve;
@@ -120,6 +134,7 @@ describe("WorkspacesFeatureProvider", () => {
 	});
 
 	it("shows the failure when deleting a workspace rejects", async () => {
+		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
 		const remove = vi.fn().mockRejectedValue(new Error("Workspace could not be deleted."));
 		renderProvider({ list: async () => [workspace], remove });
 

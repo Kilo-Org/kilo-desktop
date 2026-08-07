@@ -182,7 +182,7 @@ control it and want zero end-user configuration.
 
 The interim ships `@mcp-b/webmcp-local-relay` inside the packaged app,
 seeds an `mcp["anaconda-desktop-relay"]` entry into the app-owned
-`kilo.json`, and spawns the relay by running Anaconda Desktop's own
+`kilo.jsonc`, and spawns the relay by running Anaconda Desktop's own
 executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 
 ### Target topology

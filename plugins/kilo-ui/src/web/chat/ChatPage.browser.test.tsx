@@ -37,6 +37,14 @@ vi.mock("./runtime/use-kilo-runtime.js", () => ({
 	useKiloRuntime: vi.fn(() => ({})),
 }));
 
+vi.mock("./model-selection/use-kilo-model-catalog.js", () => ({
+	useKiloModelCatalog: vi.fn(() => ({
+		data: undefined,
+		isPending: false,
+		isError: false,
+	})),
+}));
+
 const threadMount = vi.hoisted(() => ({ nextId: 0 }));
 
 vi.mock("./components/assistant-ui/thread.js", async () => {
@@ -228,7 +236,11 @@ describe("ChatPage", () => {
 		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
 		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
-		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		const connectionInput = getConnection.mock.calls[0]![0];
+		const connectionQueryKey = [sdk.featureId, "chat.getConnection", connectionInput] as const;
+		await vi.waitFor(() =>
+			expect(queryClient.getQueryState(connectionQueryKey)?.fetchStatus).toBe("idle"),
+		);
 
 		directory = "/projects/workspace-1-new-primary";
 		sdk.events.emit("workspace-updated", {
@@ -241,7 +253,10 @@ describe("ChatPage", () => {
 		});
 
 		await vi.waitFor(() =>
-			expect(invalidateQueries).toHaveBeenCalledWith(expect.objectContaining({ exact: true })),
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: connectionQueryKey,
+				exact: true,
+			}),
 		);
 		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledTimes(2));
 		await vi.waitFor(async () => {

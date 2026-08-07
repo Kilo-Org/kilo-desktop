@@ -166,7 +166,293 @@ Result: **no third-party code fetched at runtime, works offline, verified at bui
 
 ---
 
-## 7. Follow-ups
+## 7. Interim: default `kilo serve` bridge
+
+> **Interim.** This section documents an interim mechanism that lets the
+> bundled `kilo serve` see the app's WebMCP tools out of the box. The
+> longer-term plan — a native `type: "webmcp"` MCP transport in Kilo Code
+> that removes the subprocess and the fuse regression — is tracked in
+> [anaconda/agentic-desktop#102](https://github.com/anaconda/agentic-desktop/issues/102).
+
+External MCP clients (Claude Desktop, Cursor, `mcp-inspector`) spawn
+`@mcp-b/webmcp-local-relay` themselves as an stdio MCP subprocess (their
+config points at `npx @mcp-b/webmcp-local-relay@latest` or a locally
+installed copy). The bundled `kilo serve` is the odd one out — we ship and
+control it and want zero end-user configuration.
+
+The interim ships `@mcp-b/webmcp-local-relay` inside the packaged app,
+seeds an `mcp["anaconda-desktop-relay"]` entry into the app-owned
+`kilo.json`, and spawns the relay by running Anaconda Desktop's own
+executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
+
+### Target topology
+
+```
+┌───────────────────────────── Electron main process ────────────────────────────────┐
+│                                                                                    │
+│  kilo-server plugin                                                                │
+│                                                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
+│  │ 1. mainRegister() — awaited seed step (idempotent, sidecar-tracked)         │   │
+│  │                                                                             │   │
+│  │    defaultRunAsNodeEnabled(process.execPath)  ──► reads @electron/fuses    │   │
+│  │                                                    → true / false           │   │
+│  │                                                                             │   │
+│  │    resolveWebMcpRelayEntry()  ───►  ${app}/resources/app.asar.unpacked/     │   │
+│  │                                       node_modules/@mcp-b/webmcp-local-     │   │
+│  │                                       relay/dist/cli.mjs                    │   │
+│  │                                                                             │   │
+│  │    seedKiloMcpConfig(${runtime}/config/kilo/, {                             │   │
+│  │      // written to kilo.jsonc (Kilo's canonical file, JSONC-tolerant)      │   │
+│  │      mcp: {                                                                 │   │
+│  │        "anaconda-desktop-relay": {                                          │   │
+│  │          type: "local",                       ◄── Kilo's McpLocalConfig    │   │
+│  │          command: [process.execPath, <relay entry>],                        │   │
+│  │          environment: { ELECTRON_RUN_AS_NODE: "1" },                        │   │
+│  │          enabled: true                                                      │   │
+│  │        }                                                                    │   │
+│  │      }                                                                      │   │
+│  │      // Ownership marker written to a sidecar (see below); Kilo's           │   │
+│  │      // top-level Config schema is additionalProperties:false, so nothing  │   │
+│  │      // that is not part of Kilo's schema may live inside kilo.jsonc.      │   │
+│  │    })                                                                       │   │
+│  │                                                                             │   │
+│  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-managed.json           │   │
+│  │      { "version": 1, "managed": ["anaconda-desktop-relay"] }                │   │
+│  │                                                                             │   │
+│  │    When RunAsNode is disabled (downgrade / rollback), seed instead REMOVES │   │
+│  │    the managed entry and prunes the sidecar.                               │   │
+│  └─────────────────────────────────────────────────────────────────────────────┘   │
+│                       │                                                            │
+│                       ▼                                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
+│  │ 2. KiloServerManager.ensureRunning()  ─►  spawn `kilo serve`                │   │
+│  │                                              │                              │   │
+│  │                                              ▼                              │   │
+│  │                                    reads kilo.jsonc (JSONC-tolerant)        │   │
+│  │                                    (Kilo never opens the sidecar)           │   │
+│  │                                              │                              │   │
+│  │                                              ▼                              │   │
+│  │                                    for each mcp entry: spawn as MCP child   │   │
+│  └──────────────────────────────────────────────┼──────────────────────────────┘   │
+│                                                 │                                  │
+│  ┌──────────────────────────────────────────────▼──────────────────────────────┐   │
+│  │ 3. spawn(process.execPath, [<relay entry>],                                 │   │
+│  │          env={ ELECTRON_RUN_AS_NODE: "1", ... })                            │   │
+│  │                                                                             │   │
+│  │      → Electron runs in headless Node mode, executes relay.js               │   │
+│  │      → Relay listens WS on 127.0.0.1:9333 AND speaks MCP over stdio         │   │
+│  │        with its parent (kilo serve)                                         │   │
+│  └─────────────────────────────────────────────────────────────────────────────┘   │
+│                                        │                                           │
+│                                        │ stdio MCP                                 │
+│                                        ▼                                           │
+│                            ┌────────────────────────┐                              │
+│                            │  kilo serve (child)    │                              │
+│                            │  sees `anaconda-desktop-│                             │
+│                            │  relay` as an MCP      │                              │
+│                            │  server with N tools   │                              │
+│                            └────────────┬───────────┘                              │
+│                                         │                                          │
+└─────────────────────────────────────────┼──────────────────────────────────────────┘
+                                          │ REST + SSE
+                                          ▼
+┌─────────────────────────── Renderer (app://) ─────────────────────────────────────┐
+│                                                                                   │
+│    plugin.sdk.tools.register({ exposeToModelContext: true })                      │
+│              │                                                                    │
+│              ▼                                                                    │
+│    ToolRegistry ──► installWebMcp ──► document.modelContext                       │
+│                                             │                                     │
+│                                             ▼                                     │
+│    <iframe /webmcp/widget.html>   ── ws://127.0.0.1:9333 ──►  relay (above)       │
+│                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Three new pieces beyond §1's diagram:
+
+- **Seed step** in `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts` writes
+  an `mcp` block into the app-owned `kilo.jsonc` before `KiloServerManager#start`
+  runs. Idempotent, JSONC-preserving (`jsonc-parser`), atomic (`atomically`).
+  When the runtime fuse detection reports `RunAsNode` off, the same call
+  **removes** any managed entry it previously wrote and prunes the sidecar,
+  so downgrade / rollback / fuse re-hardening self-heals.
+- **Ownership sidecar** at `${runtime}/config/kilo/.anaconda-desktop-managed.json`
+  tracks which MCP entry names we own. Kilo never opens this file — Kilo's
+  top-level `Config` schema is `additionalProperties: false`, so any marker
+  stored inside `kilo.jsonc` would fail validation and stop `kilo serve` from
+  starting. Missing sidecar (deleted by user, corrupt, or absent) = "we own
+  nothing" = escape hatch.
+- **Bundled relay entry** — the same `@mcp-b/webmcp-local-relay@4.0.0` package
+  that `apps/web/scripts/sync-webmcp-assets.mjs` reads for its browser assets
+  is now also unpacked from asar (see `apps/desktop/forge.config.ts`) so its
+  `bin/cli.mjs` has a real filesystem path, and it is launched via
+  `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. The sync script asserts at
+  build time that `apps/web`, `plugins/kilo-server`, and the resolved
+  installed package all pin the exact same version.
+
+### Boot sequence (cold start)
+
+```
+Time ─►
+
+ t0   Electron ready
+       │
+ t1    plugins/kilo-server mainRegister() runs
+       │  ├─ defaultRunAsNodeEnabled()        (reads fuses off process.execPath)
+       │  ├─ resolveWebMcpRelayEntry()        (fs check, logs+skips if missing)
+       │  └─ await seedKiloMcpConfig()        (JSONC merge + sidecar write)
+       │       │
+       │       ├─ RunAsNode enabled → seed managed entry + record in sidecar
+       │       └─ RunAsNode disabled → remove any managed entry + prune sidecar
+       │
+ t2    KiloServerManager.ensureRunning()      (only after t1 completes)
+       │  └─ spawn kilo serve
+       │
+ t3    kilo serve boots
+       │  ├─ reads XDG_CONFIG_HOME/kilo/kilo.jsonc
+       │  └─ sees mcp["anaconda-desktop-relay"]
+       │
+ t4    kilo serve spawns the relay subprocess
+       │  command = process.execPath          (Anaconda Desktop binary)
+       │  args    = [relay.js]
+       │  env.ELECTRON_RUN_AS_NODE = "1"     ← makes Electron behave as node
+       │
+ t5    relay.js binds ws://127.0.0.1:9333
+       │  and holds stdio open for MCP framing with kilo serve
+       │
+ t6    Renderer boots, installWebMcp() runs
+       │  └─ injects embed.js → widget iframe scans 9333–9348
+       │     └─ finds the relay from t5, opens WS, exchanges handshake
+       │
+ t7    Widget publishes the current ToolRegistry snapshot over WS
+       │  Relay forwards the tool list over stdio to kilo serve
+       │
+ t8    Kilo shows the tools under `anaconda-desktop-relay` in its MCP list
+       READY
+```
+
+The seed is **awaited** before `ensureRunning`. `kilo serve` cannot read the
+config file before the atomic rename lands.
+
+Key ordering guarantee: the relay is a **child of `kilo serve`**, not of the
+shell. If Kilo restarts (`KiloServerManager.restart()`), Kilo tears down and
+re-spawns the relay for us — no extra lifecycle wiring in `kilo-server`.
+
+### Runtime — a Kilo agent calls a plugin tool
+
+```
+Kilo agent LLM
+   │  "call todos_list()"
+   ▼
+kilo serve  ── stdio JSON-RPC ─►  relay.js
+                                     │
+                                     ▼  WS frame
+                          widget.html iframe (renderer)
+                                     │
+                                     ▼  postMessage (in-page)
+                          document.modelContext.callTool("todos_list")
+                                     │
+                                     ▼
+                          installWebMcp handler
+                                     │  ToolRegistry.invoke("todos", "list", …)
+                                     ▼
+                          plugin todos web handler
+                                     │  sdk.invoke("list")
+                                     ▼
+                          IPC feature:invoke → main handler → SQLite
+                                     │
+                                     ▼  result rides all the way back
+                                (reverse path)
+```
+
+All hops except stdio↔WS already exist in this repo (§1). The stdio↔WS hop is
+what the bundled relay adds.
+
+### Config-file merge invariants
+
+```
+Before seeding (user's kilo.jsonc, if any):    After seeding:
+
+  kilo.jsonc                                     kilo.jsonc
+  ──────────                                     ──────────
+{                                              {
+  // Kilo global config.                         // Kilo global config.
+  "$schema": "https://app.kilo.ai/config.json",  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {                                       "mcp": {
+    // user's own MCP servers                      // user's own MCP servers
+    "my-custom": {                                 "my-custom": {                    ← untouched
+      "type": "local",                               "type": "local",
+      "command": ["python", "-m", "my_mcp"]          "command": ["python", "-m", "my_mcp"]
+    }                                              },
+  }                                                "anaconda-desktop-relay": {       ← added
+}                                                    "type": "local",
+                                                     "command": [
+                                                       "/Applications/Anaconda…/MacOS/Anaconda Agentic Desktop",
+                                                       "/…/app.asar.unpacked/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs"
+                                                     ],
+                                                     "environment": { "ELECTRON_RUN_AS_NODE": "1" },
+                                                     "enabled": true
+                                                   }
+                                                 }
+                                               }
+
+                                                 .anaconda-desktop-managed.json   ← sidecar (new)
+                                                 ──────────────────────────────
+                                               {
+                                                 "version": 1,
+                                                 "managed": ["anaconda-desktop-relay"]
+                                               }
+```
+
+Rules:
+
+1. **Only** `mcp["anaconda-desktop-relay"]` is written inside `kilo.jsonc`.
+   Every other top-level key, every sibling MCP entry, and every JSONC
+   comment / formatting quirk is preserved by `jsonc-parser`'s `modify()`
+   API. Ownership tracking never leaks into `kilo.jsonc` because Kilo's
+   top-level `Config` schema rejects unknown keys.
+2. Overwrite only if the entry's name is listed in the sidecar's
+   `managed` array. If the user deleted the sidecar or removed the entry
+   from the list, we **do not resurrect** the managed entry — that is the
+   escape hatch.
+3. Writes are atomic (via `atomically`).
+4. Absolute paths are recomputed on every boot so app upgrades /
+   relocations self-heal.
+5. If the existing `kilo.jsonc` is unparseable (invalid JSONC, or top-level
+   not an object), we **refuse to write** and return `skipped-error` —
+   never clobbering user data. The sidecar is never touched in that case.
+6. When the sidecar's `managed` list becomes empty (last managed entry
+   removed), the sidecar file itself is deleted to keep the config
+   directory tidy.
+
+### Security cost of the interim
+
+The interim requires `FuseV1Options.RunAsNode: true` in
+`apps/desktop/forge.config.ts` so the packaged executable honors
+`ELECTRON_RUN_AS_NODE=1`. This is a hardening regression against the specific
+class of attacks where an adversary that has local shell execution but not
+native-binary drop can turn our signed binary into a scripting engine.
+
+Mitigating factors:
+
+- Every other hardening fuse (`EnableNodeOptionsEnvironmentVariable: false`,
+  `EnableEmbeddedAsarIntegrityValidation: true`, `OnlyLoadAppFromAsar: true`,
+  `EnableCookieEncryption: true`) stays on.
+- `kilo serve` already spawns arbitrary user-approved MCP subprocesses under
+  our code-signing identity, which meaningfully weakens the fuse's guarantee
+  for our threat model regardless.
+- If a future build ships with `RunAsNode: false` (either intentionally as the
+  #102 cleanup or accidentally), the seed detects the fuse state at boot and
+  **removes** its previously-written managed entry, so users are not stranded
+  with a bogus `command` pointing at a binary that no longer runs as Node.
+
+The fuse flips back to `false` once #102 lands.
+
+---
+
+## 8. Follow-ups
 
 - Split `exposeToModelContext` (or add a peer flag) so a plugin can expose a tool to an in-page assistant runtime without opting into the loopback relay.
 - Manifest-driven declarative tool registration (Option B from issue #74) once a plugin has a reason to advertise tools without loading its web module.

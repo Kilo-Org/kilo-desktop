@@ -275,6 +275,11 @@ export class NotebookRelayService {
 		connection.onFrame((frame) => {
 			if (ws.readyState === ws.OPEN) ws.send(frame);
 		});
+		// Deliberately `disconnected` and not `progress`, even though the supervisor
+		// may already be restarting: the kernel is genuinely gone and nteract resets
+		// runtime state on this event. The amber banner it renders is accurate here,
+		// unlike on the pre-connection path above, where the same banner described a
+		// daemon that was merely still starting.
 		connection.onClose(() => {
 			sendControl(ws, { type: "disconnected" });
 			ws.close(1011, "daemon socket closed");

@@ -1,1 +1,1 @@
-export * from "./model-selection/model-search.js";
+export { filterModelsBySearchQuery } from "./model-selection/model-search.js";

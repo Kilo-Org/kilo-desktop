@@ -43,7 +43,6 @@ const payload: KiloProviderListPayload = {
 		openai: "gpt-5",
 	},
 	connected: ["anthropic"],
-	failed: ["openai"],
 };
 
 describe("model-catalog", () => {

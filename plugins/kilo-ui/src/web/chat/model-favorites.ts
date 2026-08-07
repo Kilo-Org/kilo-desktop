@@ -1,1 +1,1 @@
-export * from "./model-selection/model-favorites.js";
+export { sortModelsWithFavoritesFirst } from "./model-selection/model-favorites.js";

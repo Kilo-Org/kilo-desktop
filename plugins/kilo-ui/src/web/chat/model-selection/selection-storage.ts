@@ -1,23 +1,17 @@
-import { modelRefToId, type KiloModelCatalog, type KiloModelRef } from "./model-catalog.js";
+import {
+	isKiloModelRef,
+	modelRefToId,
+	type KiloModelCatalog,
+	type KiloModelRef,
+} from "./model-catalog.js";
 
 /** Versioned key — bump the suffix if the stored shape changes. */
 export const MODEL_SELECTION_STORAGE_KEY = "kilo-ui.model-selection:v1";
 
-export type StoredModelSelection = {
+type StoredModelSelection = {
 	model: KiloModelRef;
 	effort?: string;
 };
-
-function isModelRef(value: unknown): value is KiloModelRef {
-	return (
-		!!value &&
-		typeof value === "object" &&
-		typeof (value as KiloModelRef).providerID === "string" &&
-		typeof (value as KiloModelRef).modelID === "string" &&
-		(value as KiloModelRef).providerID.length > 0 &&
-		(value as KiloModelRef).modelID.length > 0
-	);
-}
 
 export function readModelSelection(
 	storage: Storage | undefined = globalThis.localStorage,
@@ -34,7 +28,7 @@ export function readModelSelection(
 		if (
 			!parsed ||
 			typeof parsed !== "object" ||
-			!isModelRef((parsed as StoredModelSelection).model)
+			!isKiloModelRef((parsed as StoredModelSelection).model)
 		) {
 			return undefined;
 		}

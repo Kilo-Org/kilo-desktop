@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { KiloModelCatalog, KiloModelRef } from "./model-catalog.js";
 
-export type ChatModelSelectionStatus = {
+type ChatModelSelectionStatus = {
 	model: KiloModelRef | undefined;
 	setModel: (model: KiloModelRef) => void;
 	/** Sticky reasoning effort / OpenCode variant id. */

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeProviderIconId, resolveProviderIconId } from "./provider-icon-id.js";
+import { resolveProviderIconId } from "./provider-icon-id.js";
 
 describe("resolveProviderIconId", () => {
 	it("normalizes casing and whitespace", () => {
-		expect(normalizeProviderIconId("  Anthropic ")).toBe("anthropic");
+		expect(resolveProviderIconId("  Anthropic ")).toBe("anthropic");
 	});
 
 	it("maps kilocode / models.dev aliases to lobehub keys", () => {

@@ -1,19 +1,20 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+
+import type { KiloModelRef } from "./model-catalog.js";
 
 import {
 	favoriteKeySet,
 	readModelFavorites,
 	toggleModelFavorite,
 	writeModelFavorites,
-	type ModelFavorite,
 } from "./model-favorites.js";
 
 export function useModelFavorites() {
-	const [favorites, setFavorites] = useState<ModelFavorite[]>(() => readModelFavorites());
+	const [favorites, setFavorites] = useState<KiloModelRef[]>(() => readModelFavorites());
 
-	const favoriteIds = favoriteKeySet(favorites);
+	const favoriteIds = useMemo(() => favoriteKeySet(favorites), [favorites]);
 
-	const toggleFavorite = useCallback((target: ModelFavorite) => {
+	const toggleFavorite = useCallback((target: KiloModelRef) => {
 		setFavorites((current) => {
 			const next = toggleModelFavorite(current, target);
 			writeModelFavorites(next);
@@ -22,7 +23,6 @@ export function useModelFavorites() {
 	}, []);
 
 	return {
-		favorites,
 		favoriteIds,
 		toggleFavorite,
 		hasFavorites: favorites.length > 0,

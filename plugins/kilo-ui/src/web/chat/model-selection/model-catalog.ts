@@ -9,6 +9,17 @@ export type KiloModelRef = {
 	modelID: string;
 };
 
+export function isKiloModelRef(value: unknown): value is KiloModelRef {
+	return (
+		!!value &&
+		typeof value === "object" &&
+		typeof (value as KiloModelRef).providerID === "string" &&
+		typeof (value as KiloModelRef).modelID === "string" &&
+		(value as KiloModelRef).providerID.length > 0 &&
+		(value as KiloModelRef).modelID.length > 0
+	);
+}
+
 export type KiloProviderGroup = {
 	id: string;
 	name: string;
@@ -34,17 +45,13 @@ type KiloReasoningOption = {
 };
 
 /** Provider model entry from `client.provider.list()` (fields we read). */
-export type KiloProviderListModel = {
+type KiloProviderListModel = {
 	id: string;
 	name: string;
 	providerID: string;
 	/** OpenCode-style named variants (often reasoning levels). */
 	variants?: Record<string, unknown>;
-	reasoning?: boolean;
 	reasoning_options?: ReadonlyArray<KiloReasoningOption>;
-	capabilities?: {
-		reasoning?: boolean;
-	};
 };
 
 /** Provider list payload from `client.provider.list()`. */
@@ -56,7 +63,6 @@ export type KiloProviderListPayload = {
 	}>;
 	default: Record<string, string>;
 	connected: ReadonlyArray<string>;
-	failed?: ReadonlyArray<string>;
 };
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -69,7 +75,7 @@ const EFFORT_LABELS: Record<string, string> = {
 	minimal: "Minimal",
 };
 
-export function formatEffortLabel(id: string): string {
+function formatEffortLabel(id: string): string {
 	return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 }
 
@@ -77,7 +83,7 @@ export function formatEffortLabel(id: string): string {
  * Resolve reasoning effort levels for a provider model.
  * Prefers OpenCode `variants` keys; falls back to `reasoning_options` effort values.
  */
-export function effortsFromProviderModel(
+function effortsFromProviderModel(
 	model: KiloProviderListModel,
 ): readonly ModelSelectorEffortOption[] | undefined {
 	const variantIds = model.variants ? Object.keys(model.variants) : [];
@@ -107,7 +113,7 @@ export function parseModelId(id: string): KiloModelRef | null {
 }
 
 /** Kilo's built-in OAuth gateway — keep first in the provider rail (below favorites). */
-export function isKiloGatewayProvider(provider: { id: string; name: string }): boolean {
+function isKiloGatewayProvider(provider: { id: string; name: string }): boolean {
 	return provider.id === "kilo" || /^kilo\s*gateway$/i.test(provider.name.trim());
 }
 

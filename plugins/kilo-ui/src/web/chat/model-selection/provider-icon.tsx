@@ -121,11 +121,7 @@ const PROVIDER_ICONS: Record<string, ProviderIconEntry> = {
 	zenmux: { mono: ZenMuxMono },
 };
 
-export type ProviderIconVariant = "mono" | "color";
-
-export function hasProviderIcon(provider: string): boolean {
-	return resolveProviderIconId(provider) in PROVIDER_ICONS;
-}
+type ProviderIconVariant = "mono" | "color";
 
 function initialsFromLabel(label: string): string {
 	const parts = label.trim().split(/\s+/).filter(Boolean);
@@ -157,7 +153,7 @@ function resolveIcon(
 	}
 }
 
-export type ProviderIconProps = {
+type ProviderIconProps = {
 	/** Provider id (e.g. `anthropic`, `amazon-bedrock`, `kilo`). */
 	provider: string;
 	/**

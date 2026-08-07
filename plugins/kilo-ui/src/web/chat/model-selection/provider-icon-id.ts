@@ -26,7 +26,7 @@ const PROVIDER_ICON_ALIASES: Record<string, string> = {
 	grok: "grok",
 };
 
-export function normalizeProviderIconId(provider: string): string {
+function normalizeProviderIconId(provider: string): string {
 	return provider.trim().toLowerCase();
 }
 

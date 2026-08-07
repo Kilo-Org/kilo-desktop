@@ -1,1 +1,4 @@
-export * from "./model-selection/ChatModelSelectionContext.js";
+export {
+	ChatModelSelectionProvider,
+	useChatModelSelection,
+} from "./model-selection/ChatModelSelectionContext.js";

@@ -1,1 +1,1 @@
-export * from "./model-selection/provider-icon.js";
+export { ProviderIcon } from "./model-selection/provider-icon.js";

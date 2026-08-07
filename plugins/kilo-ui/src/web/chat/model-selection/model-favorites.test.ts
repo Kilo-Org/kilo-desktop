@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	favoriteKey,
 	favoriteKeySet,
 	readModelFavorites,
 	sortModelsWithFavoritesFirst,
@@ -60,7 +59,6 @@ describe("model-favorites", () => {
 		const target = { providerID: "anthropic", modelID: "claude-sonnet" };
 		const added = toggleModelFavorite([], target);
 		expect(added).toEqual([target]);
-		expect(favoriteKey(target)).toBe("anthropic/claude-sonnet");
 		expect(toggleModelFavorite(added, target)).toEqual([]);
 	});
 

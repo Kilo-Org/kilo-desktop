@@ -6,7 +6,7 @@ import {
 	readModelSelection,
 	resolveStoredModel,
 	writeModelSelection,
-} from "./model-selection.js";
+} from "./selection-storage.js";
 
 function memoryStorage(initial: Record<string, string> = {}): Storage {
 	const store = { ...initial };
@@ -47,7 +47,7 @@ const catalog: KiloModelCatalog = {
 	defaults: { anthropic: "claude-sonnet" },
 };
 
-describe("model-selection", () => {
+describe("selection-storage", () => {
 	it("round-trips model and effort through storage", () => {
 		const storage = memoryStorage();
 		const selection = {

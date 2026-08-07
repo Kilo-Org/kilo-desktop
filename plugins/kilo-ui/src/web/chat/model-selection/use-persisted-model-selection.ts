@@ -1,12 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { pickDefaultModel, type KiloModelCatalog, type KiloModelRef } from "./model-catalog.js";
 import {
 	readModelSelection,
 	resolveStoredModel,
 	writeModelSelection,
-	type StoredModelSelection,
-} from "./model-selection.js";
+} from "./selection-storage.js";
 
 type SelectionState = {
 	modelOverride: KiloModelRef | undefined;
@@ -21,10 +20,6 @@ function selectionFromStorage(): SelectionState {
 	};
 }
 
-function persist(selection: StoredModelSelection): void {
-	writeModelSelection(selection);
-}
-
 /**
  * Selected model + sticky effort, restored from localStorage across refreshes.
  * Falls back to the catalog default when nothing is stored or the stored model
@@ -37,43 +32,32 @@ export function usePersistedModelSelection(catalog: KiloModelCatalog | undefined
 
 	const setModel = useCallback((next: KiloModelRef) => {
 		setSelection((current) => {
-			const nextState: SelectionState = {
-				modelOverride: next,
-				effort: current.effort,
-			};
-			persist({
+			writeModelSelection({
 				model: next,
-				...(nextState.effort !== undefined ? { effort: nextState.effort } : {}),
+				...(current.effort !== undefined ? { effort: current.effort } : {}),
 			});
-			return nextState;
+			return { ...current, modelOverride: next };
 		});
 	}, []);
 
 	const setEffort = useCallback(
 		(next: string) => {
 			setSelection((current) => {
-				const nextState: SelectionState = {
-					modelOverride: current.modelOverride,
-					effort: next,
-				};
 				const modelToStore =
 					resolveStoredModel(catalog, current.modelOverride) ?? pickDefaultModel(catalog);
 				if (modelToStore) {
-					persist({ model: modelToStore, effort: next });
+					writeModelSelection({ model: modelToStore, effort: next });
 				}
-				return nextState;
+				return { ...current, effort: next };
 			});
 		},
 		[catalog],
 	);
 
-	return useMemo(
-		() => ({
-			model,
-			setModel,
-			effort: selection.effort,
-			setEffort,
-		}),
-		[model, selection.effort, setEffort, setModel],
-	);
+	return {
+		model,
+		setModel,
+		effort: selection.effort,
+		setEffort,
+	};
 }

@@ -1,1 +1,1 @@
-export * from "./model-selection/use-model-favorites.js";
+export { useModelFavorites } from "./model-selection/use-model-favorites.js";

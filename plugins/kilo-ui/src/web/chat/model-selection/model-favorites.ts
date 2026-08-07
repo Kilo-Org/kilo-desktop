@@ -1,17 +1,11 @@
-import { modelRefToId, type KiloModelRef } from "./model-catalog.js";
+import { isKiloModelRef, modelRefToId, type KiloModelRef } from "./model-catalog.js";
 
 /** Versioned key — bump the suffix if the stored shape changes. */
 export const MODEL_FAVORITES_STORAGE_KEY = "kilo-ui.model-favorites:v1";
 
-export type ModelFavorite = KiloModelRef;
-
-export function favoriteKey(favorite: ModelFavorite): string {
-	return modelRefToId(favorite);
-}
-
 export function readModelFavorites(
 	storage: Storage | undefined = globalThis.localStorage,
-): ModelFavorite[] {
+): KiloModelRef[] {
 	if (!storage) {
 		return [];
 	}
@@ -24,19 +18,12 @@ export function readModelFavorites(
 		if (!Array.isArray(parsed)) {
 			return [];
 		}
-		const favorites: ModelFavorite[] = [];
+		const favorites: KiloModelRef[] = [];
 		for (const entry of parsed) {
-			if (
-				entry &&
-				typeof entry === "object" &&
-				typeof (entry as ModelFavorite).providerID === "string" &&
-				typeof (entry as ModelFavorite).modelID === "string" &&
-				(entry as ModelFavorite).providerID.length > 0 &&
-				(entry as ModelFavorite).modelID.length > 0
-			) {
+			if (isKiloModelRef(entry)) {
 				favorites.push({
-					providerID: (entry as ModelFavorite).providerID,
-					modelID: (entry as ModelFavorite).modelID,
+					providerID: entry.providerID,
+					modelID: entry.modelID,
 				});
 			}
 		}
@@ -47,7 +34,7 @@ export function readModelFavorites(
 }
 
 export function writeModelFavorites(
-	favorites: readonly ModelFavorite[],
+	favorites: readonly KiloModelRef[],
 	storage: Storage | undefined = globalThis.localStorage,
 ): void {
 	if (!storage) {
@@ -61,19 +48,19 @@ export function writeModelFavorites(
 }
 
 export function toggleModelFavorite(
-	favorites: readonly ModelFavorite[],
-	target: ModelFavorite,
-): ModelFavorite[] {
-	const key = favoriteKey(target);
-	const index = favorites.findIndex((favorite) => favoriteKey(favorite) === key);
+	favorites: readonly KiloModelRef[],
+	target: KiloModelRef,
+): KiloModelRef[] {
+	const key = modelRefToId(target);
+	const index = favorites.findIndex((favorite) => modelRefToId(favorite) === key);
 	if (index >= 0) {
 		return favorites.filter((_, i) => i !== index);
 	}
 	return [...favorites, target];
 }
 
-export function favoriteKeySet(favorites: readonly ModelFavorite[]): Set<string> {
-	return new Set(favorites.map(favoriteKey));
+export function favoriteKeySet(favorites: readonly KiloModelRef[]): Set<string> {
+	return new Set(favorites.map(modelRefToId));
 }
 
 /** Favorites first (stable), then the rest in original order. */

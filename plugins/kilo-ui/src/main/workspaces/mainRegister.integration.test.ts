@@ -141,4 +141,38 @@ describe("kilo-ui mainRegister", () => {
 		expect(getConnection).toHaveBeenCalledWith({ directory: expectedDirectory });
 		expect(fs.statSync(expectedDirectory).isDirectory()).toBe(true);
 	});
+
+	it("scopes chat connections to a workspace primary folder", async () => {
+		const { mainSdk, project, getConnection, exposeConnectionService } = boot();
+		exposeConnectionService();
+
+		const created = (await mainSdk.invoke("create", {
+			folders: [{ path: project, isPrimary: true }],
+		})) as { id: string; folders: Array<{ path: string; isPrimary: boolean }> };
+		const primary = created.folders.find((folder) => folder.isPrimary);
+		expect(primary).toBeDefined();
+
+		await expect(
+			mainSdk.invoke("chat.getConnection", { chatId: CHAT_ID, workspaceId: created.id }),
+		).resolves.toEqual({
+			...SERVER_CONNECTION,
+			directory: primary!.path,
+		});
+		expect(getConnection).toHaveBeenCalledWith({ directory: primary!.path });
+	});
+
+	it("rejects chat connections for a missing workspace", async () => {
+		const { mainSdk, exposeConnectionService } = boot();
+		exposeConnectionService();
+
+		await expect(
+			mainSdk.invoke("chat.getConnection", {
+				chatId: CHAT_ID,
+				workspaceId: "missing-workspace",
+			}),
+		).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "Workspace not found.",
+		});
+	});
 });

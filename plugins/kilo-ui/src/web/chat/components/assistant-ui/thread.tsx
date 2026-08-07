@@ -5,6 +5,8 @@ import {
 	ComposerAttachments,
 	UserMessageAttachments,
 } from "./attachment.js";
+import { ComposerDraftFooter } from "./composer-draft-footer.js";
+import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
 import { MarkdownText } from "./markdown-text.js";
 import {
@@ -88,31 +90,29 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
-// Startup exposes a loading placeholder thread; treat it as a new chat so
+// Startup exposes a loading placeholder thread; treat it as a draft so
 // the composer mounts centered. Loads after startup keep the docked layout.
-const isNewChatView = (s: AssistantState) =>
+const isDraftView = (s: AssistantState) =>
 	s.thread.messages.length === 0 && (!s.thread.isLoading || s.threads.isLoading);
 
 export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
-	const isEmpty = useAuiState(isNewChatView);
+	const isDraft = useAuiState(isDraftView);
 
 	return (
 		<ThreadComponentsContext.Provider value={components}>
-			<ThreadRoot isEmpty={isEmpty} />
+			<ThreadRoot isDraft={isDraft} />
 		</ThreadComponentsContext.Provider>
 	);
 };
 
-const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
-	const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
+const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
+	const { Welcome = DraftWelcomeHeadline } = useContext(ThreadComponentsContext);
 
 	return (
 		<ThreadPrimitive.Root
-			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col"
+			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))]"
 			style={{
 				["--thread-max-width" as string]: "44rem",
-				["--composer-bg" as string]:
-					"color-mix(in oklab, var(--color-muted) 30%, var(--color-background))",
 				["--composer-radius" as string]: "1.5rem",
 				["--composer-padding" as string]: "8px",
 			}}
@@ -126,7 +126,7 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 				<div
 					className={cn(
 						"mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
-						isEmpty && "justify-center",
+						isDraft && "justify-center",
 					)}
 				>
 					<div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
@@ -136,28 +136,31 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
 							"aui-thread-viewport-footer bg-muted flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
-							!isEmpty && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
+							!isDraft && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
 						)}
 					>
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
 						<div className="relative flex w-full flex-col">
-							<AuiIf condition={isNewChatView}>
+							<AuiIf condition={isDraftView}>
 								<Welcome />
 							</AuiIf>
 							<div className="relative">
-								{isEmpty ? (
+								{isDraft ? (
 									<div
 										aria-hidden="true"
-										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/20 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[260px] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[140px] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
 									/>
 								) : null}
-								<div className="relative z-10">
-									<Composer />
+								<div className="relative z-10 flex flex-col">
+									<div className="relative z-10">
+										<Composer />
+									</div>
+									{isDraft ? <ComposerDraftFooter /> : null}
 								</div>
 							</div>
 						</div>
-						<AuiIf condition={isNewChatView}>
+						<AuiIf condition={isDraftView}>
 							<ThreadSuggestions />
 						</AuiIf>
 					</ThreadPrimitive.ViewportFooter>
@@ -191,16 +194,6 @@ const ThreadScrollToBottom: FC = () => {
 		>
 			<ArrowDownIcon />
 		</ThreadPrimitive.ScrollToBottom>
-	);
-};
-
-const ThreadWelcome: FC = () => {
-	return (
-		<div className="aui-thread-welcome-root relative z-10 mb-6 flex flex-col items-center px-4 text-center">
-			<h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-semibold duration-200">
-				How can I help you today?
-			</h1>
-		</div>
 	);
 };
 
@@ -241,6 +234,7 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC = () => {
 	const aui = useAui();
+	const isDraft = useAuiState(isDraftView);
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
@@ -289,15 +283,18 @@ const Composer: FC = () => {
 				render={
 					<div
 						data-slot="aui_composer-shell"
-						className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none"
+						className={cn(
+							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none",
+							isDraft && "border-b-0 dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]",
+						)}
 					/>
 				}
 			>
 				<ComposerAttachments />
 				<ComposerPrimitive.Input
 					placeholder="Send a message..."
-					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
-					rows={1}
+					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
+					minRows={2}
 					autoFocus
 					enterKeyHint="send"
 					aria-label="Message input"

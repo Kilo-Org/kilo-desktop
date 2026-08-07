@@ -8,6 +8,8 @@ import {
 
 export const kiloChatConnectionInputSchema = z.object({
 	chatId: z.uuid(),
+	/** When set, connect to the workspace primary folder; when absent, unscoped chat dir. */
+	workspaceId: z.string().min(1).optional(),
 });
 
 export const kiloWorkspaceConnectionSchema = z.object({

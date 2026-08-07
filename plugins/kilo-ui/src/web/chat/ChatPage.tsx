@@ -7,6 +7,7 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { sdkQueryOptions, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 
 import type { KiloUiChatService, KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
+import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { ChatConnectionProvider } from "./ChatConnectionContext.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
@@ -31,8 +32,8 @@ function ChatThread({
 
 /**
  * Full-page chat surface contributed by kilo-ui (`/plugins/chat`).
- * Ensures a directory for the unscoped chat under `{userData}/chats/<chatId>/`, then connects
- * via kilo-server with that directory.
+ * Scopes the Kilo directory from the active workspace (primary folder), or an
+ * unscoped per-chat directory under `{userData}/chats/<chatId>/` when none is selected.
  *
  * Mounts the composer immediately. Connection may still be resolving (Kilo
  * starting); the composer waits on first send before clearing the draft.
@@ -40,8 +41,15 @@ function ChatThread({
 export function ChatPage() {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const queryClient = useQueryClient();
+	const { activeWorkspaceId } = useWorkspacesFeature();
 	const [chatId] = useState(() => crypto.randomUUID());
-	const connectionInput = useMemo(() => ({ chatId }), [chatId]);
+	const connectionInput = useMemo(
+		() => ({
+			chatId,
+			...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
+		}),
+		[chatId, activeWorkspaceId],
+	);
 	const connection = useSdkQuery(sdk, "chat.getConnection", connectionInput);
 
 	// Recreate when the query recovers after an error (refetch / restart). A single

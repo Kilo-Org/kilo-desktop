@@ -74,7 +74,9 @@ describe("useKiloRuntime", () => {
 
 	it("injects a deferred client when given a connection promise", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const deferredClient = { deferred: true };
+		const deferredClient = { deferred: true, retarget: vi.fn() };
+
+		vi.mocked(createDeferredKiloRuntimeClient).mockReturnValue(deferredClient as never);
 
 		renderHook(() => useKiloRuntime({ connectionPromise }));
 
@@ -82,6 +84,29 @@ describe("useKiloRuntime", () => {
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			client: deferredClient,
 		});
+	});
+
+	it("retargets the deferred client when the connection promise changes", () => {
+		const firstPromise = Promise.resolve(connection);
+		const secondPromise = Promise.resolve({
+			...connection,
+			directory: "/workspaces/other",
+		});
+		const retarget = vi.fn();
+		const deferredClient = { deferred: true, retarget };
+		vi.mocked(createDeferredKiloRuntimeClient).mockReturnValue(deferredClient as never);
+
+		const { rerender } = renderHook(
+			({ promise }: { promise: Promise<KiloWorkspaceConnection> }) =>
+				useKiloRuntime({ connectionPromise: promise }),
+			{ initialProps: { promise: firstPromise } },
+		);
+
+		rerender({ promise: secondPromise });
+
+		expect(createDeferredKiloRuntimeClient).toHaveBeenCalledOnce();
+		expect(retarget).toHaveBeenCalledExactlyOnceWith(secondPromise);
+		expect(latestInjectedClient()).toBe(deferredClient);
 	});
 
 	it("retains the client for equivalent connections and ignores server version changes", () => {

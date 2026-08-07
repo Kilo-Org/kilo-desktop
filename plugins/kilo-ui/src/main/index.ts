@@ -56,13 +56,26 @@ export function mainRegister(mainSdk: MainSdk): void {
 	} satisfies WorkspaceCapabilityService;
 
 	const chatApi: KiloUiChatService = {
-		"chat.getConnection": async ({ chatId }) => {
+		"chat.getConnection": async ({ chatId, workspaceId }) => {
 			const connectionService =
 				mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
 			if (!connectionService) {
 				throw new FeatureError("Kilo Server is unavailable.", "BUSINESS");
 			}
-			const directory = await ensureUnscopedChatDirectory(mainSdk.storageDir, chatId);
+			let directory: string;
+			if (workspaceId) {
+				const workspace = service.get(workspaceId);
+				if (!workspace) {
+					throw new FeatureError("Workspace not found.", "NOT_FOUND");
+				}
+				const primary = workspace.folders.find((folder) => folder.isPrimary);
+				if (!primary) {
+					throw new FeatureError("Workspace has no primary folder.", "BUSINESS");
+				}
+				directory = primary.path;
+			} else {
+				directory = await ensureUnscopedChatDirectory(mainSdk.storageDir, chatId);
+			}
 			return connectionService.getConnection({ directory });
 		},
 	};

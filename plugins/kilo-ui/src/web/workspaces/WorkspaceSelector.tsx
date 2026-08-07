@@ -1,6 +1,7 @@
 import {
 	ChevronDownIcon,
 	FolderIcon,
+	FolderXIcon,
 	MoreHorizontalIcon,
 	PencilIcon,
 	PlusIcon,
@@ -33,6 +34,7 @@ import {
 import { useWorkspacesFeature } from "./WorkspacesFeatureContext";
 
 const NO_COMMAND_SELECTION = "__no-workspace-command-selection__";
+const UNSCOPED_COMMAND_VALUE = "dont-work-in-a-workspace";
 
 // Workspace items carry their name as a keyword so search matches names, never the uuid value.
 function filterWorkspaceItems(value: string, search: string, keywords?: string[]): number {
@@ -56,6 +58,7 @@ export function WorkspaceSelector() {
 	const [commandValue, setCommandValue] = useState(NO_COMMAND_SELECTION);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+	const isUnscoped = activeWorkspaceId === null;
 	const stop = (event: MouseEvent | KeyboardEvent) => event.stopPropagation();
 
 	const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -64,6 +67,12 @@ export function WorkspaceSelector() {
 			setOpen(true);
 		}
 	};
+
+	const triggerLabel = (() => {
+		if (active) return active.name;
+		if (isLoading) return "Loading workspaces…";
+		return "Select workspace";
+	})();
 
 	return (
 		<Popover
@@ -90,9 +99,7 @@ export function WorkspaceSelector() {
 				}
 			>
 				<FolderIcon data-icon="inline-start" />
-				<span className="truncate">
-					{active?.name ?? (isLoading ? "Loading workspaces…" : "Select workspace")}
-				</span>
+				<span className="truncate">{triggerLabel}</span>
 				<ChevronDownIcon data-icon="inline-end" className="opacity-60" />
 			</PopoverTrigger>
 			<PopoverContent
@@ -201,6 +208,19 @@ export function WorkspaceSelector() {
 						>
 							<PlusIcon />
 							Create workspace
+						</CommandItem>
+						<CommandItem
+							data-qa-id="workspace-unscoped-command"
+							value={UNSCOPED_COMMAND_VALUE}
+							keywords={["Don't work in a workspace", "unscoped"]}
+							onSelect={() => {
+								setActiveWorkspaceId(null);
+								setOpen(false);
+							}}
+							data-checked={isUnscoped}
+						>
+							<FolderXIcon />
+							Don't work in a workspace
 						</CommandItem>
 					</CommandGroup>
 				</Command>

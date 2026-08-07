@@ -100,6 +100,40 @@ describe("WorkspaceSelector", () => {
 		await userEvent.keyboard("{Escape}");
 	});
 
+	it("selects Don't work in a workspace as unscoped without changing the trigger label", async () => {
+		renderSelector({
+			showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, paths: ["/tmp/Project"] }),
+		});
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		const unscoped = page.getByTestId("workspace-unscoped-command").element();
+		expect(unscoped).toHaveAttribute("data-checked", "true");
+		await expect
+			.element(page.getByRole("combobox", { name: "Select workspace" }))
+			.toHaveTextContent("Select workspace");
+
+		await page.getByText("Create workspace", { exact: true }).click();
+		await page.getByRole("button", { name: /Drop folders/ }).click();
+		await page.getByRole("button", { name: "Create workspace" }).click();
+		await expect
+			.element(page.getByRole("combobox", { name: "Select workspace" }))
+			.toHaveTextContent("Project");
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		await page.getByTestId("workspace-unscoped-command").click();
+		await expect
+			.element(page.getByRole("combobox", { name: "Select workspace" }))
+			.toHaveTextContent("Select workspace");
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		expect(page.getByTestId("workspace-unscoped-command").element()).toHaveAttribute(
+			"data-checked",
+			"true",
+		);
+		const projectOption = page.getByRole("option", { name: /Project/ }).element();
+		expect(projectOption).toHaveAttribute("data-checked", "false");
+	});
+
 	it("filters workspaces by name when searching", async () => {
 		renderSelector({
 			showOpenDialog: vi

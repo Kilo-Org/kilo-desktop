@@ -95,4 +95,27 @@ describe("createDeferredKiloRuntimeClient", () => {
 			process.off("unhandledRejection", onUnhandled);
 		}
 	});
+
+	it("retargets to a new connection without changing client identity", async () => {
+		const create = vi.fn(async () => ({ data: { id: "session-2" } }));
+		vi.mocked(createKiloRuntimeClient).mockReturnValue({ session: { create } } as never);
+
+		const first = deferred<typeof connection>();
+		const client = createDeferredKiloRuntimeClient(first.promise);
+		const retargeted = {
+			...connection,
+			directory: "/workspaces/other",
+		};
+		const second = Promise.resolve(retargeted);
+		client.retarget(second);
+
+		expect(client.retarget).toEqual(expect.any(Function));
+
+		const pending = client.session.create({}, { throwOnError: true });
+		await expect(pending).resolves.toEqual({ data: { id: "session-2" } });
+		expect(createKiloRuntimeClient).toHaveBeenCalledExactlyOnceWith(retargeted);
+		expect(create).toHaveBeenCalledOnce();
+		// Original promise left unresolved — must not affect the retargeted client.
+		expect(first.promise).toBeInstanceOf(Promise);
+	});
 });

@@ -29,12 +29,24 @@ describe("createKiloServerResolveAsset", () => {
 		expect(resolveAsset("plugin.json")).toBe(path.join(packageRoot, "plugin.json"));
 	});
 
-	it("resolves all assets from the plugin package when unpackaged", () => {
+	it("resolves CLI assets from workspace source when unpackaged (dev mode)", () => {
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
 		});
 
-		expect(resolveAsset("resources/kilo")).toBe(path.join(packageRoot, "resources/kilo"));
+		// import.meta.dirname for the module under test is `src/main/`, so
+		// the workspace source is at `../../resources/kilo` relative to that.
+		const expected = path.resolve(__dirname, "../../resources/kilo");
+		expect(resolveAsset("resources/kilo")).toBe(expected);
+	});
+
+	it("resolves non-CLI assets from the plugin package when unpackaged", () => {
+		const resolveAsset = createKiloServerResolveAsset({
+			isPackaged: false,
+			packagedResourcesPath: "/unused",
+		});
+
+		expect(resolveAsset("plugin.json")).toBe(path.join(packageRoot, "plugin.json"));
 	});
 });

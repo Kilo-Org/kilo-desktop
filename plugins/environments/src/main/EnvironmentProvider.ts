@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 
-import type { MainSdk, SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 /**
  * Context passed to `EnvironmentProvider.boot`. Providers run any one-time,

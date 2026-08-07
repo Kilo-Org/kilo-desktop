@@ -170,8 +170,10 @@ export class Application {
 							onBeforeFeatureBoot: (featureId: string) => reporter.reportFeature(featureId),
 							// Fine-grained line features push from inside mainRegister
 							// via mainSdk.boot.reportProgress (e.g. "Staging Miniconda…").
-							onFeatureProgress: (_featureId: string, message: string) =>
-								reporter.report("features", message),
+							// The reporter preserves the feature id in the log while
+							// keeping the user-facing splash message clean.
+							onFeatureProgress: (featureId: string, message: string) =>
+								reporter.reportFeatureProgress(featureId, message),
 						}
 					: {}),
 			}),

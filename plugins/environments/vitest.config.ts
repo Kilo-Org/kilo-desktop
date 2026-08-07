@@ -12,9 +12,8 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 const coverage = {
 	...createCoverageConfig([
-		// Barrels — no behaviour of their own.
+		// Renderer barrel — no behaviour of its own.
 		"src/web/index.ts",
-		"src/main/index.ts",
 		"src/test/**",
 	]),
 	include: ["src/**"],

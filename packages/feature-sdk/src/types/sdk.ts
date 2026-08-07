@@ -683,6 +683,13 @@ export interface MainSdkBoot {
 	 * Delivered to the host's boot-progress channel (e.g. a splash window);
 	 * silently dropped once `bootFeatures` has finished so features cannot
 	 * accidentally push UI updates after the app has moved on.
+	 *
+	 * `mainRegister` itself is synchronous, so only messages emitted inline
+	 * (before `mainRegister` returns) are guaranteed to be delivered. A
+	 * Promise chained off `mainRegister` resolves after `bootFeatures` has
+	 * already closed the boot window, and its `reportProgress` calls will
+	 * no-op — until `bootFeatures` gains an async boot phase, keep
+	 * long-running staging progress inline or accept the loss.
 	 */
 	reportProgress(message: string): void;
 }

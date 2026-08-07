@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -8,14 +7,24 @@ import { createKiloServerResolveAsset } from "./resolve-plugin-asset.js";
 
 describe("createKiloServerResolveAsset", () => {
 	const require = createRequire(import.meta.url);
-	const packageRoot = realpathSync(
-		path.dirname(require.resolve("@anaconda-agentic-desktop/plugin-kilo-server/plugin.json")),
+	const packageRoot = path.dirname(
+		require.resolve("@anaconda-agentic-desktop/plugin-kilo-server/plugin.json"),
 	);
 
 	it("resolves packaged CLI assets from Electron resourcesPath", () => {
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: true,
 			packagedResourcesPath: "/App/Contents/Resources",
+		});
+
+		expect(resolveAsset("resources/kilo")).toBe(path.join("/App/Contents/Resources", "kilo"));
+	});
+
+	it("packaged mode ignores devResourceRoot", () => {
+		const resolveAsset = createKiloServerResolveAsset({
+			isPackaged: true,
+			packagedResourcesPath: "/App/Contents/Resources",
+			devResourceRoot: "/workspace/plugins/kilo-server/resources/kilo",
 		});
 
 		expect(resolveAsset("resources/kilo")).toBe(path.join("/App/Contents/Resources", "kilo"));
@@ -30,14 +39,23 @@ describe("createKiloServerResolveAsset", () => {
 		expect(resolveAsset("plugin.json")).toBe(path.join(packageRoot, "plugin.json"));
 	});
 
-	it("resolves CLI assets from workspace source when unpackaged (dev mode)", () => {
+	it("resolves CLI assets from devResourceRoot when unpackaged (dev mode)", () => {
+		const devResourceRoot = "/workspace/plugins/kilo-server/resources/kilo";
+		const resolveAsset = createKiloServerResolveAsset({
+			isPackaged: false,
+			packagedResourcesPath: "/unused",
+			devResourceRoot,
+		});
+
+		expect(resolveAsset("resources/kilo")).toBe(devResourceRoot);
+	});
+
+	it("falls back to package resolution for CLI when devResourceRoot is absent", () => {
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
 		});
 
-		// In dev mode, require.resolve follows the workspace symlink to the
-		// plugin source tree, and realpathSync guarantees the real path.
 		expect(resolveAsset("resources/kilo")).toBe(path.join(packageRoot, "resources/kilo"));
 	});
 
@@ -45,6 +63,7 @@ describe("createKiloServerResolveAsset", () => {
 		const resolveAsset = createKiloServerResolveAsset({
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
+			devResourceRoot: "/workspace/plugins/kilo-server/resources/kilo",
 		});
 
 		expect(resolveAsset("plugin.json")).toBe(path.join(packageRoot, "plugin.json"));

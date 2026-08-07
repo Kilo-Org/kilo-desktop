@@ -8,6 +8,7 @@ import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import { Label } from "@anaconda-agentic-desktop/ui/components/label";
+import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
 
 export function TodoList() {
 	const sdk = useSdk<TodoService>("todos");
@@ -78,7 +79,16 @@ export function TodoList() {
 								<Checkbox
 									checked={todo.completed}
 									disabled={toggleTodo.isPending}
-									onCheckedChange={() => toggleTodo.mutate({ id: todo.id })}
+									onCheckedChange={() =>
+										toggleTodo.mutate(
+											{ id: todo.id },
+											{
+												onSuccess: (updated) => {
+													if (updated.completed) toast.success("Nice job!");
+												},
+											},
+										)
+									}
 								/>
 								<span className={todo.completed ? "text-muted-foreground line-through" : undefined}>
 									{todo.title}

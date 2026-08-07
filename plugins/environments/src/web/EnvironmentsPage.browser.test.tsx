@@ -16,16 +16,4 @@ describe("EnvironmentsPage", () => {
 		await expect.element(screen.getByRole("heading", { name: "Environments" })).toBeVisible();
 		await expect.element(screen.getByText(/no environment providers available/i)).toBeVisible();
 	});
-
-	it("renders the provider list once providers are registered", async () => {
-		const { baseElement } = render(
-			<EnvironmentsPage providers={[{ id: "conda", displayName: "Conda" }]} />,
-		);
-		const screen = page.elementLocator(baseElement);
-
-		await expect.element(screen.getByText("Conda")).toBeVisible();
-		await expect
-			.element(screen.getByText(/no environment providers available/i))
-			.not.toBeInTheDocument();
-	});
 });

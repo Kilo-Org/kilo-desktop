@@ -141,7 +141,7 @@ function WorkspacePickerRoot({
 					align={contentAlign}
 					side="bottom"
 					sideOffset={6}
-					collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
+					collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
 					className="w-64 gap-0 p-0"
 					onKeyDown={(event) => {
 						if (event.key === "Escape") setOpen(false);

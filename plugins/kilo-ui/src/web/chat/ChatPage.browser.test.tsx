@@ -23,6 +23,7 @@ import {
 import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvider.js";
 import { ChatConnectionProvider, useChatConnection } from "./ChatConnectionContext.js";
 import { ChatPage } from "./ChatPage.js";
+import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 
 vi.mock("@assistant-ui/react", async (importOriginal) => {
 	const actual = await importOriginal<typeof AssistantUiReact>();
@@ -89,15 +90,17 @@ function renderChatPage(options?: {
 	const system = createFakeFeatureSystem({
 		sdks: { "kilo-ui": kiloUi },
 	});
-	return render(
+	const queryClient = testClient();
+	const result = render(
 		<SdkProvider system={system}>
-			<QueryClientProvider client={testClient()}>
+			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
 					<ChatPage />
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
+	return { ...result, queryClient, sdk: kiloUi };
 }
 
 afterEach(() => {
@@ -156,7 +159,9 @@ describe("ChatPage", () => {
 	});
 
 	it("requests an unscoped chat connection when no workspace is selected", async () => {
-		const getConnection = vi.fn(async () => connection);
+		const getConnection = vi.fn(
+			async (_input: Parameters<KiloUiChatService["chat.getConnection"]>[0]) => connection,
+		);
 		const { baseElement } = renderChatPage({ getConnection });
 		const screen = page.elementLocator(baseElement);
 
@@ -193,6 +198,42 @@ describe("ChatPage", () => {
 					workspaceId: workspace.id,
 				}),
 			);
+		});
+	});
+
+	it("refreshes the chat connection when workspace folders change", async () => {
+		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
+		let directory = workspace.folders[0]!.path;
+		const getConnection = vi.fn(
+			async (_input: Parameters<KiloUiChatService["chat.getConnection"]>[0]) => ({
+				...connection,
+				directory,
+			}),
+		);
+		const { queryClient, sdk } = renderChatPage({ getConnection, workspaces: [workspace] });
+		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+		directory = "/projects/workspace-1-new-primary";
+		sdk.events.emit("workspace-updated", {
+			before: workspace,
+			after: {
+				...workspace,
+				folders: [{ ...workspace.folders[0]!, path: directory }],
+				updatedAt: 2,
+			},
+		});
+
+		await vi.waitFor(() =>
+			expect(invalidateQueries).toHaveBeenCalledWith(expect.objectContaining({ exact: true })),
+		);
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledTimes(2));
+		await vi.waitFor(async () => {
+			const runtimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+			expect(runtimeOptions).toBeDefined();
+			await expect(runtimeOptions!.connectionPromise).resolves.toMatchObject({ directory });
 		});
 	});
 });

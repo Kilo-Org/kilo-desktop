@@ -66,7 +66,10 @@ function renderThread(
 		shell?: Partial<SDK["shell"]>;
 	} = {},
 ) {
-	const sdk = createFakeSdk({ featureId: "kilo-ui", shell: options.shell });
+	const sdk = createFakeSdk({
+		featureId: "kilo-ui",
+		...(options.shell === undefined ? {} : { shell: options.shell }),
+	});
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
 	kiloUiBrowserRegister(mainSdk);
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
@@ -76,7 +79,11 @@ function renderThread(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ThreadHarness initialMessages={options.initialMessages} />
+					<ThreadHarness
+						{...(options.initialMessages === undefined
+							? {}
+							: { initialMessages: options.initialMessages })}
+					/>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,

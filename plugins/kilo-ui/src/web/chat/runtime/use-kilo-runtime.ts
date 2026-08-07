@@ -1,6 +1,6 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
 import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
@@ -53,11 +53,16 @@ export function useKiloRuntime({
 				client: createDeferredKiloRuntimeClient(connectionPromise),
 				promise: connectionPromise,
 			};
-		} else if (deferredRef.current.promise !== connectionPromise) {
-			deferredRef.current.client.retarget(connectionPromise);
-			deferredRef.current.promise = connectionPromise;
 		}
 	}
+
+	useEffect(() => {
+		if (clientOption || connection || !connectionPromise || !deferredRef.current) return;
+		if (deferredRef.current.promise === connectionPromise) return;
+
+		deferredRef.current.client.retarget(connectionPromise);
+		deferredRef.current.promise = connectionPromise;
+	}, [clientOption, connection, connectionPromise]);
 
 	const client = useMemo(() => {
 		if (clientOption) {

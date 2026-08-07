@@ -105,6 +105,9 @@ importers:
       '@anaconda-agentic-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/plugin-environments':
+        specifier: workspace:*
+        version: link:../../plugins/environments
       '@anaconda-agentic-desktop/plugin-kilo-server':
         specifier: link:../../plugins/kilo-server
         version: link:../../plugins/kilo-server
@@ -119,7 +122,7 @@ importers:
         version: 7.10.6
       '@launchdarkly/node-client-sdk':
         specifier: ^4.0.0
-        version: 4.0.0
+        version: 4.0.1
       '@vscode/proxy-agent':
         specifier: ^0.44.0
         version: 0.44.0(supports-color@8.1.1)
@@ -247,6 +250,9 @@ importers:
       '@anaconda-agentic-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/plugin-environments':
+        specifier: workspace:*
+        version: link:../../plugins/environments
       '@anaconda-agentic-desktop/plugin-kilo-server':
         specifier: link:../../plugins/kilo-server
         version: link:../../plugins/kilo-server
@@ -507,7 +513,7 @@ importers:
         version: 1.27.0(react@19.2.8)
       sonner:
         specifier: ^2.0.7
-        version: 2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 2.0.8(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -527,6 +533,85 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  plugins/environments:
+    dependencies:
+      '@anaconda-agentic-desktop/feature-sdk':
+        specifier: workspace:*
+        version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/sdk-react':
+        specifier: workspace:*
+        version: link:../../packages/sdk-react
+      '@anaconda-agentic-desktop/ui':
+        specifier: workspace:*
+        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@tanstack/react-query':
+        specifier: ^5.101.4
+        version: 5.101.4(react@19.2.8)
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@anaconda-agentic-desktop/e2e':
+        specifier: workspace:*
+        version: link:../../e2e
+      '@anaconda-agentic-desktop/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@anaconda/playwright-utils':
+        specifier: 1.17.1
+        version: 1.17.1(@playwright/test@1.61.1)(jiti@2.7.0)(supports-color@8.1.1)
+      '@playwright/test':
+        specifier: 1.61.1
+        version: 1.61.1
+      '@tailwindcss/vite':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.4
+        version: 6.0.4(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@vitest/browser':
+        specifier: 5.0.0-beta.7
+        version: 5.0.0-beta.7(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-beta.7)
+      '@vitest/browser-playwright':
+        specifier: 5.0.0-beta.7
+        version: 5.0.0-beta.7(playwright@1.61.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-beta.7)
+      '@vitest/coverage-v8':
+        specifier: 5.0.0-beta.7
+        version: 5.0.0-beta.7(@vitest/browser@5.0.0-beta.7)(vitest@5.0.0-beta.7)
+      playwright:
+        specifier: 1.61.1
+        version: 1.61.1
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
       vitest:
         specifier: 'catalog:'
         version: 5.0.0-beta.7(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-beta.7)(@vitest/coverage-v8@5.0.0-beta.7)(@vitest/ui@5.0.0-beta.7)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -1948,14 +2033,14 @@ packages:
   '@kilocode/sdk@7.4.20':
     resolution: {integrity: sha512-Dl1gBNAtZ3z8FWl4+Q08d7iP+mr8Rg2tqqn6kU9NJLlhuVtKUlp6PyIXqutam2zn+hu5xdRfbHwNauy4yHufmw==}
 
-  '@launchdarkly/js-client-sdk-common@1.30.1':
-    resolution: {integrity: sha512-Mhx5kSHGIUY/VOvCYDh79wy3PS7LsTaIjJkwVPxOuj079XvJDCULC2ks2R3RINs259Ln1KRg17ks2CCrllfG8Q==}
+  '@launchdarkly/js-client-sdk-common@1.30.2':
+    resolution: {integrity: sha512-qpO5gSNX5WbqM03LMCKxOh8dR7Rl1iPxcsXXY//XUNlVbZ1YLrJfqVkSrOYfZHxO8PQMSPa/GFwNWSCwfapjPw==}
 
   '@launchdarkly/js-sdk-common@2.25.2':
     resolution: {integrity: sha512-l/OJiIGnLS6Qt6J/Lc3KgUXL4vAES5wsxIgNZcw3yCUbDEuTyVR9Qya9Aqy1klg2kF1VsHiY2wvaKimlIZK7+g==}
 
-  '@launchdarkly/node-client-sdk@4.0.0':
-    resolution: {integrity: sha512-S6WEshuKAEy7veoor7vi8YEk9JelJuMCh56JmJ6FG5jNHi6sjPC0keAu+gZpJipJfUDoY38DHWZrsrLeuaAPgA==}
+  '@launchdarkly/node-client-sdk@4.0.1':
+    resolution: {integrity: sha512-BZgXfrqWX6YTWGyOA4vTl1OyIFKgW56E1Bi7MJjIy/IiKZApHDeSZKhUOA4omhsAHkNvqDS830wlgQ9LrPMMTw==}
     engines: {node: '>=20'}
 
   '@lobehub/icons@5.15.0':
@@ -7035,11 +7120,15 @@ packages:
     resolution: {integrity: sha512-LJhUYUvItdQ0LkJTmPeaEObWXAqFyfmP85x0tch/ez9cahmhlBBLbIqDFnvBnUJGagb0JbIQrkBs1wJ+yRYpEw==}
     engines: {node: '>= 10.0.0', npm: '>= 3.0.0'}
 
-  sonner@2.0.7:
-    resolution: {integrity: sha512-W6ZN4p58k8aDKA4XPcx2hpIQXBRAgyiWVkYhT7CvK6D3iAu7xjvVyhQHg2/iaKJZ1XVJ4r7XuwGL+WGEK37i9w==}
+  sonner@2.0.8:
+    resolution: {integrity: sha512-UM/ByIoFra8yzV75n1o0Puu0bw5U/9UNnDacrJNspekBewIfsQ3D6ez1nvlWpt7aTsO6rujQtifBpycwIivqlg==}
     peerDependencies:
+      '@types/react': ^18.0.0 || ^19.0.0
       react: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
       react-dom: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -7891,7 +7980,7 @@ snapshots:
       lucide-react: 1.27.0(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
-      sonner: 2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      sonner: 2.0.8(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       tailwind-merge: 3.6.0
     transitivePeerDependencies:
       - '@date-fns/tz'
@@ -9214,15 +9303,15 @@ snapshots:
     dependencies:
       cross-spawn: 7.0.6
 
-  '@launchdarkly/js-client-sdk-common@1.30.1':
+  '@launchdarkly/js-client-sdk-common@1.30.2':
     dependencies:
       '@launchdarkly/js-sdk-common': 2.25.2
 
   '@launchdarkly/js-sdk-common@2.25.2': {}
 
-  '@launchdarkly/node-client-sdk@4.0.0':
+  '@launchdarkly/node-client-sdk@4.0.1':
     dependencies:
-      '@launchdarkly/js-client-sdk-common': 1.30.1
+      '@launchdarkly/js-client-sdk-common': 1.30.2
       launchdarkly-eventsource: 2.2.0
 
   '@lobehub/icons@5.15.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)':
@@ -14698,10 +14787,12 @@ snapshots:
       ip-address: 10.3.1
       smart-buffer: 4.2.0
 
-  sonner@2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  sonner@2.0.8(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
+    optionalDependencies:
+      '@types/react': 19.2.17
 
   source-map-js@1.2.1: {}
 

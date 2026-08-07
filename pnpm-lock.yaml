@@ -106,11 +106,11 @@ importers:
         specifier: workspace:*
         version: link:../../plugins/kilo-server
       '@anaconda-agentic-desktop/plugin-kilo-ui':
-        specifier: workspace:*
-        version: file:plugins/kilo-ui(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@anaconda-agentic-desktop/ui@file:packages/ui(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@tanstack/react-query@5.101.4(react@19.2.8))(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)(tailwindcss@4.3.3)(use-sync-external-store@1.6.0(react@19.2.8))(zod@4.4.3)
+        specifier: link:../../plugins/kilo-ui
+        version: link:../../plugins/kilo-ui
       '@anaconda-agentic-desktop/plugin-todos':
         specifier: workspace:*
-        version: link:../../plugins/todos
+        version: file:plugins/todos(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)
       '@github/keytar':
         specifier: ^7.10.6
         version: 7.10.6
@@ -767,27 +767,8 @@ packages:
     peerDependencies:
       zod: ^4.4.3
 
-  '@anaconda-agentic-desktop/plugin-kilo-ui@file:plugins/kilo-ui':
-    resolution: {directory: plugins/kilo-ui, type: directory}
-    peerDependencies:
-      '@anaconda-agentic-desktop/feature-sdk': ^0.1.0
-      '@anaconda-agentic-desktop/sdk-react': ^0.1.0
-      '@anaconda-agentic-desktop/ui': ^0.1.0
-      '@tanstack/react-query': ^5.101.4
-      react: ^19.0.0
-      react-dom: ^19.0.0
-      zod: ^4.0.0
-    peerDependenciesMeta:
-      '@anaconda-agentic-desktop/sdk-react':
-        optional: true
-      '@anaconda-agentic-desktop/ui':
-        optional: true
-      '@tanstack/react-query':
-        optional: true
-      react:
-        optional: true
-      react-dom:
-        optional: true
+  '@anaconda-agentic-desktop/plugin-todos@file:plugins/todos':
+    resolution: {directory: plugins/todos, type: directory}
 
   '@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react':
     resolution: {directory: packages/sdk-react, type: directory}
@@ -1952,9 +1933,6 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
-
-  '@opencode-ai/sdk@file:plugins/kilo-ui/opencode-sdk-compat':
-    resolution: {directory: plugins/kilo-ui/opencode-sdk-compat, type: directory}
 
   '@oxc-project/types@0.139.0':
     resolution: {integrity: sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw==}
@@ -7676,35 +7654,22 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  '@anaconda-agentic-desktop/plugin-kilo-ui@file:plugins/kilo-ui(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@anaconda-agentic-desktop/ui@file:packages/ui(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@tanstack/react-query@5.101.4(react@19.2.8))(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)(tailwindcss@4.3.3)(use-sync-external-store@1.6.0(react@19.2.8))(zod@4.4.3)':
+  '@anaconda-agentic-desktop/plugin-todos@file:plugins/todos(@types/better-sqlite3@7.6.13)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)':
     dependencies:
       '@anaconda-agentic-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
-      '@assistant-ui/react-markdown': 0.14.8(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)
-      '@assistant-ui/react-opencode': 0.2.17(patch_hash=14a1e5db7d36fccc2716cf05530fab1bb06c44a637627022a60ead429dc36598)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
-      '@kilocode/sdk': 7.4.20
-      '@opencode-ai/sdk': file:plugins/kilo-ui/opencode-sdk-compat
-      better-sqlite3: 13.0.1
-      class-variance-authority: 0.7.1
-      drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.1)
-      lucide-react: 1.27.0(react@19.2.8)
-      motion: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      remark-gfm: 4.0.1(supports-color@8.1.1)
-      tw-shimmer: 0.4.12(tailwindcss@4.3.3)
-      zod: 4.4.3
-      zustand: 5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
-    optionalDependencies:
       '@anaconda-agentic-desktop/sdk-react': file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
       '@anaconda-agentic-desktop/ui': file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tanstack/react-query': 5.101.4(react@19.2.8)
+      better-sqlite3: 13.0.1
+      drizzle-orm: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.1)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
+      zod: 4.4.3
     transitivePeerDependencies:
-      - '@assistant-ui/tap'
       - '@aws-sdk/client-rds-data'
       - '@cloudflare/workers-types'
+      - '@date-fns/tz'
       - '@electric-sql/pglite'
-      - '@emotion/is-prop-valid'
       - '@libsql/client'
       - '@libsql/client-wasm'
       - '@neondatabase/serverless'
@@ -7721,24 +7686,18 @@ snapshots:
       - '@upstash/redis'
       - '@vercel/postgres'
       - '@xata.io/client'
-      - assistant-cloud
       - bun-types
+      - date-fns
       - expo-sqlite
       - gel
-      - immer
-      - ioredis
       - knex
       - kysely
       - mysql2
       - pg
       - postgres
       - prisma
-      - redis
       - sql.js
       - sqlite3
-      - supports-color
-      - tailwindcss
-      - use-sync-external-store
 
   '@anaconda-agentic-desktop/sdk-react@file:packages/sdk-react(@anaconda-agentic-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)':
     dependencies:
@@ -7747,7 +7706,6 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
       zod: 4.4.3
-    optional: true
 
   '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
@@ -9087,10 +9045,6 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
-
-  '@opencode-ai/sdk@file:plugins/kilo-ui/opencode-sdk-compat':
-    dependencies:
-      '@kilocode/sdk': 7.4.20
 
   '@oxc-project/types@0.139.0': {}
 

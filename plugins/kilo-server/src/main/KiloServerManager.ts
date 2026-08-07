@@ -4,7 +4,6 @@ import type { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
-import path from "node:path";
 import { promisify } from "node:util";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
@@ -208,9 +207,9 @@ export class KiloServerManager {
 		const authHeader = `Basic ${Buffer.from(`kilo:${password}`).toString("base64")}`;
 		let child: KiloChildProcess | undefined;
 		try {
-			const directories = await this.#prepareRuntimeDirectories();
+			await this.#ensureRuntimeDirectory();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
-			const environment = this.#createEnvironment(password, directories);
+			const environment = this.#createEnvironment(password);
 			const args = [
 				"serve",
 				"--hostname=127.0.0.1",
@@ -259,40 +258,22 @@ export class KiloServerManager {
 		}
 	}
 
-	async #prepareRuntimeDirectories(): Promise<{
-		config: string;
-		data: string;
-		cache: string;
-		state: string;
-	}> {
-		const directories = {
-			config: path.join(this.#options.runtimeDirectory, "config"),
-			data: path.join(this.#options.runtimeDirectory, "data"),
-			cache: path.join(this.#options.runtimeDirectory, "cache"),
-			state: path.join(this.#options.runtimeDirectory, "state"),
-		};
-		await Promise.all(
-			[this.#options.runtimeDirectory, ...Object.values(directories)].map((directory) =>
-				mkdir(directory, { recursive: true }),
-			),
-		);
-		return directories;
+	/**
+	 * Ensures a stable cwd for the child process. Does not override XDG roots —
+	 * config/data/cache/state use the same global paths as Kilo CLI and the VS Code extension
+	 * (`~/.config/kilo`, `~/.local/share/kilo`, etc.).
+	 */
+	async #ensureRuntimeDirectory(): Promise<void> {
+		await mkdir(this.#options.runtimeDirectory, { recursive: true });
 	}
 
-	#createEnvironment(
-		password: string,
-		directories: { config: string; data: string; cache: string; state: string },
-	): NodeJS.ProcessEnv {
+	#createEnvironment(password: string): NodeJS.ProcessEnv {
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
-			XDG_CONFIG_HOME: directories.config,
-			XDG_DATA_HOME: directories.data,
-			XDG_CACHE_HOME: directories.cache,
-			XDG_STATE_HOME: directories.state,
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
 		};

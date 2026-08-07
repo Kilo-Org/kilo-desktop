@@ -148,8 +148,9 @@ export type UserInfoAttribute = z.infer<typeof userInfoAttributeSchema>;
 
 /**
  * Fetches the OIDC userinfo passport attributes with the API key as bearer token.
- * Any failure (network, 401/403, non-OK, unparseable) resolves to an empty list
- * rather than throwing.
+ * Any failure (network, 401/403, non-OK, unparseable) throws so callers can
+ * distinguish a transient failure from a genuinely-empty passport. Only a
+ * success response whose passport has no attributes yields an empty list.
  */
 export async function getUserInfo(
 	domain: string,
@@ -157,25 +158,18 @@ export async function getUserInfo(
 	fetchImpl: OAuthFetch,
 	userAgent: string,
 ): Promise<UserInfoAttribute[]> {
-	let response: Response;
-	try {
-		response = await fetchImpl(`https://${domain}/api/auth/userinfo`, {
-			method: "GET",
-			headers: {
-				Authorization: `Bearer ${apiKey}`,
-				"User-Agent": userAgent,
-			},
-		});
-	} catch {
-		return [];
+	const response = await fetchImpl(`https://${domain}/api/auth/userinfo`, {
+		method: "GET",
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			"User-Agent": userAgent,
+		},
+	});
+
+	if (!response.ok) {
+		throw new Error(`userinfo request failed (${response.status})`);
 	}
 
-	if (!response.ok) return [];
-
-	try {
-		const payload = userInfoResponseSchema.parse(await response.json());
-		return payload.passport?.attributes ?? [];
-	} catch {
-		return [];
-	}
+	const payload = userInfoResponseSchema.parse(await response.json());
+	return payload.passport?.attributes ?? [];
 }

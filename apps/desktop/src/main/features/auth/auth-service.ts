@@ -91,15 +91,22 @@ export class AuthSessionService {
 	readonly #userAgent: string;
 	readonly #logger: AuthLogger;
 
-	/** Memoized userinfo attributes; cache cleared whenever the session changes. */
+	/**
+	 * Memoized userinfo attributes; cache cleared whenever the session changes.
+	 * A rejected fetch is evicted rather than cached so a transient failure does
+	 * not stick for the rest of the session — the next call retries.
+	 */
 	readonly #userInfo = memoize(async (): Promise<UserInfoAttribute[]> => {
 		const apiKey = await this.getApiKey();
 		if (!apiKey) return [];
 		try {
 			const site = await this.#resolveSite(this.#configLoader);
 			return await this.#userInfoAction(site.domain, apiKey, this.#fetch, this.#userAgent);
-		} catch {
-			return [];
+		} catch (cause) {
+			// Do not cache a transient failure: evict this rejected entry so the
+			// next getUserInfo()/getSubscription() retries once connectivity returns.
+			this.#userInfo.cache.delete?.(undefined);
+			throw cause;
 		}
 	});
 
@@ -150,7 +157,9 @@ export class AuthSessionService {
 
 	/**
 	 * OIDC userinfo passport attributes for the current session, memoized until
-	 * the session changes. Empty list when anonymous or on any failure.
+	 * the session changes. Empty list when anonymous or when the passport is
+	 * genuinely empty. Rejects on a transient fetch failure (not cached), so a
+	 * subsequent call retries.
 	 */
 	async getUserInfo(): Promise<UserInfoAttribute[]> {
 		return this.#userInfo();
@@ -160,6 +169,7 @@ export class AuthSessionService {
 	 * The resolved primary subscription tier for the current session. Single
 	 * shared entry point for consumers (feature flags, telemetry) so the tier is
 	 * derived once from userinfo attributes rather than duplicated per consumer.
+	 * Propagates a userinfo fetch rejection; consumers guard with `.catch`.
 	 */
 	async getSubscription(): Promise<UserSubscription> {
 		return primarySubscriptionFromAttributes(await this.getUserInfo());

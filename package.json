@@ -15,7 +15,6 @@
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env ANACONDA_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @anaconda-agentic-desktop/desktop start\"",
 		"format": "oxfmt --no-error-on-unmatched-pattern",
 		"format:check": "oxfmt --check",
-		"fetch:kilo": "tsx scripts/fetch-kilo.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"make": "pnpm --filter @anaconda-agentic-desktop/desktop run make",
@@ -43,7 +42,9 @@
 		]
 	},
 	"devDependencies": {
-		"@anaconda-agentic-desktop/plugin-kilo-code": "workspace:*",
+		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
+		"@anaconda-agentic-desktop/ui": "workspace:*",
 		"@opencode-ai/sdk": "workspace:*",
 		"@types/node": "^24.13.3",
 		"@vitest/coverage-v8": "5.0.0-beta.7",

@@ -1,0 +1,13 @@
+{
+	"id": "kilo-server",
+	"displayName": "Kilo Server",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"providers": [],
+		"routes": [],
+		"nav": [],
+		"zones": []
+	}
+}

@@ -160,7 +160,7 @@ Thumbs.db
 apps/desktop/.data/
 # WebMCP relay assets are synced from @mcp-b/webmcp-local-relay at build time
 apps/web/public/webmcp/
-plugins/kilo-code/resources/kilo/
+plugins/kilo-server/resources/kilo/
 build/
 release/
 playwright-report/

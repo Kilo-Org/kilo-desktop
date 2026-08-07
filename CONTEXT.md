@@ -21,7 +21,8 @@ packages/
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
 plugins/          Bundled plugins — self-contained workspace packages
 ├── todos/        @anaconda-agentic-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
-└── workspaces/   @anaconda-agentic-desktop/plugin-workspaces Workspace management and persistence
+├── kilo-server/  @anaconda-agentic-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
+└── kilo-ui/      @anaconda-agentic-desktop/plugin-kilo-ui Chat UI and workspace management
 ```
 
 ## Key architectural decisions
@@ -146,7 +147,7 @@ Three tiers decide where a dependency lives:
 - Expected handler failures throw `FeatureError` (never plain `Error` — its message gets scrubbed at the IPC boundary)
 - Each feature owns its own SQLite file if it persists data
 
-The kilo-code integration can therefore subscribe to workspace changes and resolve workspace capabilities directly in main. It does not need a renderer relay, renderer-resolved channel inputs, correctness-critical cross-feature caches, or polling for main-originated session changes.
+The kilo-ui plugin can therefore resolve kilo-server capabilities directly in main. Its renderer invokes only kilo-ui channels; it does not acquire kilo-server's SDK identity or perform cross-feature invokes. Capability lookup stays lazy so missing or later-activated providers fail gracefully without activation-order coupling.
 
 See [docs/TESTING.md](./docs/TESTING.md) for the full tier taxonomy and how to run each suite.
 

@@ -1,0 +1,13 @@
+{
+	"id": "kilo-ui",
+	"displayName": "Kilo UI",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"providers": [{ "component": "WorkspacesFeatureProvider" }],
+		"routes": [{ "path": "/chat", "component": "ChatPage", "title": "Chat" }],
+		"nav": [{ "to": "/chat", "label": "Chat", "icon": "ChatNavIcon" }],
+		"zones": []
+	}
+}

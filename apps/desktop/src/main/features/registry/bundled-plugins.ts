@@ -1,6 +1,5 @@
 import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
 import { app } from "electron";
-import path from "node:path";
 
 /**
  * Bundled workspace plugins — main-process side (Decision #17).
@@ -27,36 +26,29 @@ import path from "node:path";
  *    seed data, ...).
  */
 
-import kiloCodeManifest from "@anaconda-agentic-desktop/plugin-kilo-code/plugin.json" with { type: "json" };
-import * as kiloCodeMain from "@anaconda-agentic-desktop/plugin-kilo-code/main";
+import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
+import * as kiloServerMain from "@anaconda-agentic-desktop/plugin-kilo-server/main";
+import { createKiloServerResolveAsset } from "@anaconda-agentic-desktop/plugin-kilo-server/packaged-assets";
+import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
+import * as kiloUiMain from "@anaconda-agentic-desktop/plugin-kilo-ui/main";
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
-import workspacesManifest from "@anaconda-agentic-desktop/plugin-workspaces/plugin.json" with { type: "json" };
-import * as workspacesMain from "@anaconda-agentic-desktop/plugin-workspaces/main";
 
 import { bundledPluginAssetResolver } from "./bundled-plugin-assets.js";
 
-const resolveKiloCodePackageAsset = bundledPluginAssetResolver(
-	"@anaconda-agentic-desktop/plugin-kilo-code",
-);
-
-function resolveKiloCodeAsset(subpath: string): string {
-	if (app.isPackaged && subpath === "resources/kilo") {
-		return path.join(process.resourcesPath, "kilo");
-	}
-	return resolveKiloCodePackageAsset(subpath);
-}
-
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{
-		manifest: workspacesManifest,
-		module: workspacesMain,
-		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-workspaces"),
+		manifest: kiloUiManifest,
+		module: kiloUiMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-kilo-ui"),
 	},
 	{
-		manifest: kiloCodeManifest,
-		module: kiloCodeMain,
-		resolveAsset: resolveKiloCodeAsset,
+		manifest: kiloServerManifest,
+		module: kiloServerMain,
+		resolveAsset: createKiloServerResolveAsset({
+			isPackaged: app.isPackaged,
+			packagedResourcesPath: process.resourcesPath,
+		}),
 	},
 	{
 		manifest: todosManifest,

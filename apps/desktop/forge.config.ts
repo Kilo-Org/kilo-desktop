@@ -90,7 +90,7 @@ const config: ForgeConfig = {
 		extraResource: [
 			path.join(packageRoot, "assets/icon.png"),
 			// Native plugin payloads must stay outside ASAR so the shell can execute them.
-			path.join(workspaceRoot, "plugins/kilo-code/resources/kilo"),
+			path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
 		],
 		icon: appIcon,
 		name: identity.productName,

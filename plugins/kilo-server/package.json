@@ -1,0 +1,32 @@
+{
+	"name": "@anaconda-agentic-desktop/plugin-kilo-server",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Kilo CLI packaging and server lifecycle",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./cli-distribution": "./src/main/cli-distribution/index.ts",
+		"./packaged-assets": "./src/main/resolve-plugin-asset.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"fetch-cli": "tsx scripts/fetch-cli.ts",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"execa": "^9.6.0",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@types/node": "^24.13.3",
+		"typescript": "catalog:",
+		"tsx": "^4.23.1",
+		"vitest": "catalog:"
+	}
+}

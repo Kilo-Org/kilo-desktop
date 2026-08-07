@@ -150,7 +150,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 								{isDraft ? (
 									<div
 										aria-hidden="true"
-										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[260px] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[140px] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
 									/>
 								) : null}
 								<div className="relative z-10 flex flex-col">
@@ -294,8 +294,8 @@ const Composer: FC = () => {
 				<ComposerAttachments />
 				<ComposerPrimitive.Input
 					placeholder="Send a message..."
-					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
-					rows={1}
+					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
+					minRows={2}
 					autoFocus
 					enterKeyHint="send"
 					aria-label="Message input"

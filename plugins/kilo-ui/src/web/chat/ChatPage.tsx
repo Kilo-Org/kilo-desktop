@@ -1,9 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 
-import { sdkQueryOptions, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import {
+	sdkQueryKey,
+	sdkQueryOptions,
+	useSdk,
+	useSdkQuery,
+} from "@anaconda-agentic-desktop/sdk-react";
 
 import type { KiloUiChatService, KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
@@ -91,10 +96,21 @@ export function ChatPage() {
 	);
 	const connection = useSdkQuery(sdk, "chat.getConnection", connectionInput);
 
-	// Recreate when the query recovers after an error (refetch / restart). A single
-	// ensureQueryData promise permanently rejects and would block sends forever.
+	useEffect(
+		() =>
+			sdk.events.on("kilo-ui.workspace-updated", () => {
+				void queryClient.invalidateQueries({
+					queryKey: sdkQueryKey(sdk, "chat.getConnection", connectionInput),
+					exact: true,
+				});
+			}),
+		[connectionInput, queryClient, sdk],
+	);
+
+	// Recreate when the query recovers after an error (refetch / restart). A cached
+	// rejected promise would otherwise block sends forever.
 	const connectionPromise = useMemo(() => {
-		if (connection.data) {
+		if (connection.data && !connection.isFetching) {
 			return Promise.resolve(connection.data);
 		}
 		if (connection.isError && !connection.isFetching) {
@@ -106,7 +122,7 @@ export function ChatPage() {
 			void rejected.catch(() => undefined);
 			return rejected;
 		}
-		const promise = queryClient.ensureQueryData(
+		const promise = queryClient.fetchQuery(
 			sdkQueryOptions(sdk, "chat.getConnection", connectionInput),
 		);
 		void promise.catch(() => undefined);

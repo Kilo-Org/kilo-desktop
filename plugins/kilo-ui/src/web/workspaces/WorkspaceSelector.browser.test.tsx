@@ -39,6 +39,22 @@ afterEach(() => {
 });
 
 describe("WorkspaceSelector", () => {
+	it("moves the workspace popover above the trigger when there is not enough room below", async () => {
+		renderSelector();
+		const trigger = page.getByRole("combobox", { name: "Select workspace" }).element();
+		trigger.style.position = "fixed";
+		trigger.style.bottom = "0";
+		trigger.style.left = "0";
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+
+		await waitFor(() => {
+			expect(
+				document.querySelector('[data-slot="popover-content"]')?.parentElement?.dataset.side,
+			).toBe("top");
+		});
+	});
+
 	it("creates an unnamed workspace through the native folder delegate", async () => {
 		const { sdk } = renderSelector({
 			showOpenDialog: vi

@@ -1,4 +1,3 @@
-import { useTheme } from "next-themes";
 import { Toaster as Sonner, toast, type ToasterProps } from "sonner";
 import {
 	CircleCheckIcon,
@@ -8,12 +7,15 @@ import {
 	Loader2Icon,
 } from "lucide-react";
 
-const Toaster = ({ ...props }: ToasterProps) => {
-	const { theme = "system" } = useTheme();
-
+/**
+ * Toast host. Theme-agnostic: the consuming app passes `theme` (e.g. from its
+ * own color-scheme context) so the shared UI package stays decoupled from any
+ * particular theming provider. Defaults to `"system"` when not provided.
+ */
+const Toaster = ({ theme = "system", ...props }: ToasterProps) => {
 	return (
 		<Sonner
-			theme={(theme ?? "system") as NonNullable<ToasterProps["theme"]>}
+			theme={theme}
 			className="toaster group"
 			icons={{
 				success: <CircleCheckIcon className="size-4" />,

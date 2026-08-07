@@ -2,14 +2,19 @@ import { Toaster } from "@anaconda-agentic-desktop/ui/components/sonner";
 import { Outlet } from "@tanstack/react-router";
 
 import { AppSidebarLayout } from "@/components/layout/AppSidebarLayout";
-import { ThemeProvider } from "@/platform/theme/ThemeProvider";
+import { ThemeProvider, useColorScheme } from "@/platform/theme/ThemeProvider";
+
+function ThemedToaster() {
+	const { resolved } = useColorScheme();
+	return <Toaster theme={resolved} />;
+}
 
 export function App() {
 	return (
 		<ThemeProvider>
 			<AppSidebarLayout>
 				<Outlet />
-				<Toaster />
+				<ThemedToaster />
 			</AppSidebarLayout>
 		</ThemeProvider>
 	);

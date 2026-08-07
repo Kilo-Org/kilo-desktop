@@ -16,6 +16,7 @@ import {
 } from "react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
 import {
 	Tooltip,
 	TooltipContent,
@@ -199,12 +200,25 @@ export const KiloModelSelector: FC = () => {
 				variant="ghost"
 				size="sm"
 				disabled={disabled}
-				className="max-w-48 min-w-0 shrink"
+				className="shrink-0"
 				data-qa-id="kilo-model-selector-trigger"
-				aria-label="Select model"
+				aria-label={isCatalogPending ? "Loading models" : "Select model"}
+				aria-busy={isCatalogPending || undefined}
 			>
 				<ModelSelectorValue
-					placeholder={isCatalogPending ? "Loading models…" : "Select model"}
+					placeholder={
+						isCatalogPending ? (
+							<>
+								<span className="flex min-w-0 items-center gap-2" aria-hidden>
+									<Skeleton className="bg-muted-foreground/25 size-3.5 shrink-0 rounded-sm" />
+									<Skeleton className="bg-muted-foreground/25 h-3 w-24" />
+								</span>
+								<span className="sr-only">Loading models…</span>
+							</>
+						) : (
+							"Select model"
+						)
+					}
 					showEffort
 				/>
 			</ModelSelectorTrigger>
@@ -245,7 +259,7 @@ export const KiloModelSelector: FC = () => {
 					scrollToHighlightedRef.current(next.id);
 				}}
 			>
-				<div className="flex max-h-86 overflow-hidden">
+				<div className="flex max-h-64 overflow-hidden">
 					{showSidebar ? (
 						<ProviderRail
 							providers={providers}
@@ -329,7 +343,7 @@ const VirtualizedCatalogList: FC<{
 	const virtualItems = virtualizer.getVirtualItems();
 
 	return (
-		<ModelSelectorList ref={listRef} className="max-h-72 px-1 py-1">
+		<ModelSelectorList ref={listRef} className="scroll-fade max-h-52 px-1 py-1">
 			{models.length === 0 ? <ModelSelectorEmpty>{emptyLabel}</ModelSelectorEmpty> : null}
 			{models.length > 0 ? (
 				<div

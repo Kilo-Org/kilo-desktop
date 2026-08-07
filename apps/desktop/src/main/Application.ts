@@ -14,6 +14,7 @@ import {
 import { FEATURES } from "./features/registry/features.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
+import { createFeatureFlagHandlers, FeatureFlagService } from "./features/feature-flag/index.js";
 import { createFsHandlers } from "./features/fs/handlers.js";
 import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
@@ -59,6 +60,7 @@ export class Application {
 	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
+	#featureFlags: FeatureFlagService | undefined;
 	#isShuttingDown = false;
 
 	async start(): Promise<void> {
@@ -114,8 +116,10 @@ export class Application {
 
 			reporter.report("features", "Preparing features\u2026");
 			this.#registerIpc(preferences, reporter);
-			restoreNativeThemeFromPreferences(preferences);
 			this.#registerPushEvents();
+			// initialize() swallows its own errors, so it can't fail the boot.
+			await this.#featureFlags?.initialize();
+			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
 			// half-initialized main window without security/IPC/handlers.
@@ -165,6 +169,11 @@ export class Application {
 			}),
 		);
 
+		this.#featureFlags = FeatureFlagService.create({
+			auth: this.#auth,
+			appVersion: this.#app.metadata.appVersion,
+		});
+
 		const handlers = {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#windows, preferences),
@@ -172,6 +181,7 @@ export class Application {
 			...createNotificationsHandlers(this.#notifications),
 			...createFsHandlers(this.#scopedFs),
 			...createFeatureHandlers(),
+			...createFeatureFlagHandlers(this.#featureFlags),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(
 			handlers,
@@ -180,6 +190,7 @@ export class Application {
 			),
 		);
 		this.#disposers.push(() => this.#ipcServer.dispose());
+		this.#disposers.push(() => this.#featureFlags?.dispose());
 	}
 
 	#registerPushEvents(): void {
@@ -189,6 +200,9 @@ export class Application {
 			}),
 			() => this.#auth.dispose(),
 		);
+		this.#featureFlags?.on("change", (flags) => {
+			this.#windows.broadcast("feature-flag:changed", flags);
+		});
 	}
 
 	#dispose(): void {

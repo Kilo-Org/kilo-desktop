@@ -49,5 +49,9 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			logout: () => invoke("auth:logout"),
 			onChanged: (listener) => bridge.on("auth:changed", listener),
 		},
+		featureFlags: {
+			getAllFlags: () => invoke("feature-flag:get-all"),
+			onChanged: (listener) => bridge.on("feature-flag:changed", listener),
+		},
 	};
 }

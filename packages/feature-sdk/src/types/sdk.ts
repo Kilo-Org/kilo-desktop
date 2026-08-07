@@ -81,6 +81,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	readonly notifications: SdkNotifications;
 	readonly theme: SdkTheme;
 	readonly auth: SdkAuth;
+	readonly featureFlags: SdkFeatureFlags;
 	readonly shell: SdkShell;
 	readonly fs: SdkFs;
 
@@ -339,6 +340,30 @@ export interface SdkTheme {
 	subscribe(fn: (theme: "dark" | "light") => void): () => void;
 	/** Read the current effective theme without subscribing. */
 	peek(): "dark" | "light";
+}
+
+/** Map of feature-flag keys to their evaluated values. */
+export type FeatureFlagMap = Record<string, unknown>;
+
+/**
+ * Feature flags, shell-owned. The delegate keeps a synchronous cache of the
+ * flag map: `subscribe` fires immediately with the current cache and `peek`
+ * reads it without subscribing (`{}` until the host's first resolve lands).
+ * `getAllFlags` still queries the host directly.
+ *
+ * @example
+ * const unsub = sdk.featureFlags.subscribe((flags) => render(flags));
+ */
+export interface SdkFeatureFlags {
+	/** Read the full flag map from the host. */
+	getAllFlags(): Promise<FeatureFlagMap>;
+	/**
+	 * Subscribe to flag changes. Fires synchronously with the current cached
+	 * map and again on every host change. Returns an unsubscribe function.
+	 */
+	subscribe(fn: (flags: FeatureFlagMap) => void): () => void;
+	/** Read the current cached flag map without subscribing (`{}` until first resolve). */
+	peek(): FeatureFlagMap;
 }
 
 export interface DirectoryOpenDialogOptions {

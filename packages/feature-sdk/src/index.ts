@@ -14,6 +14,8 @@ export type {
 	SdkAuth,
 	AuthUser,
 	AuthSession,
+	SdkFeatureFlags,
+	FeatureFlagMap,
 	SdkShell,
 	SdkFs,
 	ShellFsDelegate,

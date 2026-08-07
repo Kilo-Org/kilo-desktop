@@ -1948,15 +1948,6 @@ packages:
   '@kilocode/sdk@7.4.20':
     resolution: {integrity: sha512-Dl1gBNAtZ3z8FWl4+Q08d7iP+mr8Rg2tqqn6kU9NJLlhuVtKUlp6PyIXqutam2zn+hu5xdRfbHwNauy4yHufmw==}
 
-<<<<<<< HEAD
-  '@lobehub/icons@5.15.0':
-    resolution: {integrity: sha512-+Zca8eBEeogivK9cyOh37TUYCJiISo2EisKNElIFP+mS9P5dUX2e9HxEs9V4h2Z446VXyC/Gp2i86mI/pjJlxg==}
-    peerDependencies:
-      '@lobehub/ui': ^5.0.0
-      antd: ^6.1.1
-      react: ^19.0.0
-      react-dom: ^19.0.0
-=======
   '@launchdarkly/js-client-sdk-common@1.30.1':
     resolution: {integrity: sha512-Mhx5kSHGIUY/VOvCYDh79wy3PS7LsTaIjJkwVPxOuj079XvJDCULC2ks2R3RINs259Ln1KRg17ks2CCrllfG8Q==}
 
@@ -1966,7 +1957,14 @@ packages:
   '@launchdarkly/node-client-sdk@4.0.0':
     resolution: {integrity: sha512-S6WEshuKAEy7veoor7vi8YEk9JelJuMCh56JmJ6FG5jNHi6sjPC0keAu+gZpJipJfUDoY38DHWZrsrLeuaAPgA==}
     engines: {node: '>=20'}
->>>>>>> a5cd88e4 (feat: LaunchDarkly feature-flag service (main process))
+
+  '@lobehub/icons@5.15.0':
+    resolution: {integrity: sha512-+Zca8eBEeogivK9cyOh37TUYCJiISo2EisKNElIFP+mS9P5dUX2e9HxEs9V4h2Z446VXyC/Gp2i86mI/pjJlxg==}
+    peerDependencies:
+      '@lobehub/ui': ^5.0.0
+      antd: ^6.1.1
+      react: ^19.0.0
+      react-dom: ^19.0.0
 
   '@malept/cross-spawn-promise@1.1.1':
     resolution: {integrity: sha512-RTBGWL5FWQcg9orDOCcp4LvItNzUPcyEU9bwaeJX0rJ1IQxzucC48Y0/sQLp/g6t99IQgAlGIaesJS+gTn7tVQ==}
@@ -9216,6 +9214,17 @@ snapshots:
     dependencies:
       cross-spawn: 7.0.6
 
+  '@launchdarkly/js-client-sdk-common@1.30.1':
+    dependencies:
+      '@launchdarkly/js-sdk-common': 2.25.2
+
+  '@launchdarkly/js-sdk-common@2.25.2': {}
+
+  '@launchdarkly/node-client-sdk@4.0.0':
+    dependencies:
+      '@launchdarkly/js-client-sdk-common': 1.30.1
+      launchdarkly-eventsource: 2.2.0
+
   '@lobehub/icons@5.15.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)':
     dependencies:
       antd-style: 4.1.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@8.1.1)
@@ -9227,17 +9236,6 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - supports-color
-
-  '@launchdarkly/js-client-sdk-common@1.30.1':
-    dependencies:
-      '@launchdarkly/js-sdk-common': 2.25.2
-
-  '@launchdarkly/js-sdk-common@2.25.2': {}
-
-  '@launchdarkly/node-client-sdk@4.0.0':
-    dependencies:
-      '@launchdarkly/js-client-sdk-common': 1.30.1
-      launchdarkly-eventsource: 2.2.0
 
   '@malept/cross-spawn-promise@1.1.1':
     dependencies:

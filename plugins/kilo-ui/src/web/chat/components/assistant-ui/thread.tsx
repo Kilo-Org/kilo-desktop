@@ -6,6 +6,7 @@ import {
 	UserMessageAttachments,
 } from "./attachment.js";
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
+import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
 import { MarkdownText } from "./markdown-text.js";
 import {
@@ -105,7 +106,7 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 };
 
 const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
-	const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
+	const { Welcome = DraftWelcomeHeadline } = useContext(ThreadComponentsContext);
 
 	return (
 		<ThreadPrimitive.Root
@@ -193,16 +194,6 @@ const ThreadScrollToBottom: FC = () => {
 		>
 			<ArrowDownIcon />
 		</ThreadPrimitive.ScrollToBottom>
-	);
-};
-
-const ThreadWelcome: FC = () => {
-	return (
-		<div className="aui-thread-welcome-root relative z-10 mb-6 flex flex-col items-center px-4 text-center">
-			<h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-semibold duration-200">
-				How can I help you today?
-			</h1>
-		</div>
 	);
 };
 

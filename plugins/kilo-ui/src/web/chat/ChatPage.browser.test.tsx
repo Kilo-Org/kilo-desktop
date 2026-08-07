@@ -171,7 +171,8 @@ describe("ChatPage", () => {
 				),
 			}),
 		);
-		expect(getConnection.mock.calls[0]?.[0]).not.toHaveProperty("workspaceId");
+		const firstCallArgs = getConnection.mock.calls.at(0)?.at(0);
+		expect(firstCallArgs).not.toHaveProperty("workspaceId");
 	});
 
 	it("requests a workspace-scoped chat connection when a workspace is active", async () => {

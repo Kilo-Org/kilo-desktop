@@ -20,6 +20,7 @@ import {
 import type { KiloWorkspaceConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
 import { ChatConnectionProvider } from "../../ChatConnectionContext.js";
+import { ChatModelSelectionProvider } from "../../ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
 import { Thread } from "./thread.js";
 
@@ -37,6 +38,20 @@ const connection: KiloWorkspaceConnection = {
 	directory: "/tmp/chats/test",
 };
 
+const emptyModelSelection = {
+	model: undefined,
+	setModel: () => undefined,
+	effort: undefined,
+	setEffort: () => undefined,
+	catalog: {
+		providers: [],
+		models: [],
+		defaults: {},
+	},
+	isCatalogPending: false,
+	isCatalogError: false,
+};
+
 function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadMessageLike[] }) {
 	const runtime = useLocalRuntime(stubChatModel, {
 		...(initialMessages === undefined ? {} : { initialMessages }),
@@ -52,9 +67,11 @@ function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadM
 					connectionPromise: Promise.resolve(connection),
 				}}
 			>
-				<div className="h-[480px]">
-					<Thread />
-				</div>
+				<ChatModelSelectionProvider value={emptyModelSelection}>
+					<div className="h-[480px]">
+						<Thread />
+					</div>
+				</ChatModelSelectionProvider>
 			</ChatConnectionProvider>
 		</AssistantRuntimeProvider>
 	);
@@ -66,7 +83,10 @@ function renderThread(
 		shell?: Partial<SDK["shell"]>;
 	} = {},
 ) {
-	const sdk = createFakeSdk({ featureId: "kilo-ui", shell: options.shell });
+	const sdk = createFakeSdk({
+		featureId: "kilo-ui",
+		...(options.shell === undefined ? {} : { shell: options.shell }),
+	});
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
 	kiloUiBrowserRegister(mainSdk);
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
@@ -76,7 +96,11 @@ function renderThread(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ThreadHarness initialMessages={options.initialMessages} />
+					<ThreadHarness
+						{...(options.initialMessages === undefined
+							? {}
+							: { initialMessages: options.initialMessages })}
+					/>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,

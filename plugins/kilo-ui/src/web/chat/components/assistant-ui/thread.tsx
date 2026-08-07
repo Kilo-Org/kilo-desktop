@@ -8,6 +8,7 @@ import {
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
+import { KiloModelSelector } from "./kilo-model-selector.js";
 import { MarkdownText } from "./markdown-text.js";
 import {
 	Reasoning,
@@ -320,7 +321,10 @@ const ComposerAction: FC<{
 
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
-			<ComposerAddAttachment />
+			<div className="flex min-w-0 items-center gap-1">
+				<ComposerAddAttachment />
+				<KiloModelSelector />
+			</div>
 			<div className="flex items-center gap-1.5">
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>

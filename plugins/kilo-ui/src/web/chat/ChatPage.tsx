@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageSquareIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
@@ -9,24 +8,64 @@ import { sdkQueryOptions, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/
 import type { KiloUiChatService, KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { ChatConnectionProvider } from "./ChatConnectionContext.js";
+import { ChatModelSelectionProvider } from "./ChatModelSelectionContext.js";
+import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { Thread } from "./components/assistant-ui/thread.js";
+import { modelRefToId } from "./model-catalog.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
-
-/** Nav icon for the kilo-ui chat route (plugin.json `nav[].icon`). */
-export const ChatNavIcon = MessageSquareIcon;
+import { useKiloModelCatalog } from "./use-kilo-model-catalog.js";
+import { usePersistedModelSelection } from "./use-persisted-model-selection.js";
 
 function ChatThread({
 	connectionPromise,
+	catalogScopeKey,
 }: {
 	connectionPromise: Promise<KiloWorkspaceConnection>;
+	catalogScopeKey: string;
 }) {
-	const runtime = useKiloRuntime({ connectionPromise });
+	const catalogQuery = useKiloModelCatalog(connectionPromise, catalogScopeKey);
+	const { model, setModel, effort, setEffort } = usePersistedModelSelection(catalogQuery.data);
+	const activeEffort = resolveModelEffort(
+		catalogQuery.data?.models ?? [],
+		model ? modelRefToId(model) : undefined,
+		effort,
+	);
+
+	const runtime = useKiloRuntime({
+		connectionPromise,
+		...(model ? { defaultModel: model } : {}),
+		...(activeEffort === undefined ? {} : { variant: activeEffort }),
+	});
+
+	const modelSelection = useMemo(
+		() => ({
+			model,
+			setModel,
+			effort,
+			setEffort,
+			catalog: catalogQuery.data,
+			isCatalogPending: catalogQuery.isPending,
+			isCatalogError: catalogQuery.isError,
+		}),
+		[
+			catalogQuery.data,
+			catalogQuery.isError,
+			catalogQuery.isPending,
+			effort,
+			model,
+			setEffort,
+			setModel,
+		],
+	);
+
 	return (
-		<AssistantRuntimeProvider runtime={runtime}>
-			<div className="flex h-full min-h-0 flex-col" data-qa-id="kilo-chat-thread">
-				<Thread />
-			</div>
-		</AssistantRuntimeProvider>
+		<ChatModelSelectionProvider value={modelSelection}>
+			<AssistantRuntimeProvider runtime={runtime}>
+				<div className="flex h-full min-h-0 flex-col" data-qa-id="kilo-chat-thread">
+					<Thread />
+				</div>
+			</AssistantRuntimeProvider>
+		</ChatModelSelectionProvider>
 	);
 }
 
@@ -97,7 +136,11 @@ export function ChatPage() {
 					{connection.error instanceof Error ? connection.error.message : String(connection.error)}
 				</p>
 			) : null}
-			<ChatThread connectionPromise={connectionPromise} />
+			<ChatThread
+				key={connection.data?.directory ?? `chat:${chatId}`}
+				connectionPromise={connectionPromise}
+				catalogScopeKey={connection.data?.directory ?? `chat:${chatId}`}
+			/>
 		</ChatConnectionProvider>
 	);
 }

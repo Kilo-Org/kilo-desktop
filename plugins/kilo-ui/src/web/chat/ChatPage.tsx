@@ -144,6 +144,13 @@ export function ChatPage() {
 		connectionPromise,
 	};
 
+	// Prefer the resolved directory; while a workspace-scoped connection is still
+	// loading, key by workspace id so we do not briefly fall back to the unscoped
+	// chat id (which would thrash the model catalog query).
+	const catalogScopeKey =
+		connection.data?.directory ??
+		(activeWorkspaceId ? `workspace:${activeWorkspaceId}` : `chat:${chatId}`);
+
 	return (
 		<ChatConnectionProvider status={connectionStatus}>
 			{connection.isError ? (
@@ -152,11 +159,8 @@ export function ChatPage() {
 					{connection.error instanceof Error ? connection.error.message : String(connection.error)}
 				</p>
 			) : null}
-			<ChatThread
-				key={connection.data?.directory ?? `chat:${chatId}`}
-				connectionPromise={connectionPromise}
-				catalogScopeKey={connection.data?.directory ?? `chat:${chatId}`}
-			/>
+			{/* Keep ChatThread mounted across workspace switches; deferred client retargets in place. */}
+			<ChatThread connectionPromise={connectionPromise} catalogScopeKey={catalogScopeKey} />
 		</ChatConnectionProvider>
 	);
 }

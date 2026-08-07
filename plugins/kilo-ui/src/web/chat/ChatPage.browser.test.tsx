@@ -37,9 +37,21 @@ vi.mock("./runtime/use-kilo-runtime.js", () => ({
 	useKiloRuntime: vi.fn(() => ({})),
 }));
 
-vi.mock("./components/assistant-ui/thread.js", () => ({
-	Thread: () => <div data-qa-id="kilo-chat-thread-mock">Thread</div>,
-}));
+const threadMount = vi.hoisted(() => ({ nextId: 0 }));
+
+vi.mock("./components/assistant-ui/thread.js", async () => {
+	const { useState } = await import("react");
+	return {
+		Thread: function ThreadMock() {
+			const [instanceId] = useState(() => String(++threadMount.nextId));
+			return (
+				<div data-qa-id="kilo-chat-thread-mock" data-thread-instance={instanceId}>
+					Thread
+				</div>
+			);
+		},
+	};
+});
 
 const connection: KiloWorkspaceConnection = {
 	baseUrl: "http://127.0.0.1:4321",
@@ -106,6 +118,7 @@ function renderChatPage(options?: {
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
+	threadMount.nextId = 0;
 	vi.clearAllMocks();
 });
 
@@ -236,5 +249,65 @@ describe("ChatPage", () => {
 			expect(runtimeOptions).toBeDefined();
 			await expect(runtimeOptions!.connectionPromise).resolves.toMatchObject({ directory });
 		});
+	});
+
+	it("keeps the chat thread mounted when the active workspace changes", async () => {
+		const otherWorkspace: Workspace = {
+			...workspace,
+			id: "workspace-2",
+			name: "Workspace 2",
+			folders: [
+				{
+					id: "folder-2",
+					path: "/projects/workspace-2",
+					isPrimary: true,
+					position: 0,
+				},
+			],
+		};
+		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
+		const getConnection = vi.fn(
+			async (input: Parameters<KiloUiChatService["chat.getConnection"]>[0]) => ({
+				...connection,
+				directory:
+					input.workspaceId === otherWorkspace.id
+						? otherWorkspace.folders[0]!.path
+						: workspace.folders[0]!.path,
+			}),
+		);
+		const { baseElement, sdk } = renderChatPage({
+			getConnection,
+			workspaces: [workspace, otherWorkspace],
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await vi.waitFor(() =>
+			expect(getConnection).toHaveBeenCalledWith(
+				expect.objectContaining({ workspaceId: workspace.id }),
+			),
+		);
+
+		const threadBefore = baseElement.querySelector("[data-qa-id='kilo-chat-thread-mock']");
+		const instanceBefore = threadBefore?.getAttribute("data-thread-instance");
+		expect(instanceBefore).toBeTruthy();
+
+		sdk.state.register<string | null>("active-workspace", workspace.id).set(otherWorkspace.id);
+
+		await vi.waitFor(() =>
+			expect(getConnection).toHaveBeenCalledWith(
+				expect.objectContaining({ workspaceId: otherWorkspace.id }),
+			),
+		);
+		await vi.waitFor(async () => {
+			const runtimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+			expect(runtimeOptions).toBeDefined();
+			await expect(runtimeOptions!.connectionPromise).resolves.toMatchObject({
+				directory: otherWorkspace.folders[0]!.path,
+			});
+		});
+
+		const threadAfter = baseElement.querySelector("[data-qa-id='kilo-chat-thread-mock']");
+		expect(threadAfter?.getAttribute("data-thread-instance")).toBe(instanceBefore);
 	});
 });

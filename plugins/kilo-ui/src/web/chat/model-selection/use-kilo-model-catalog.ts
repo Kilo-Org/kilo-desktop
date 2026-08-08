@@ -1,29 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
 
-import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import {
 	buildCatalogFromProviderList,
 	type KiloModelCatalog,
 	type KiloProviderListPayload,
 } from "./model-catalog.js";
-import { createKiloRuntimeClient } from "../runtime/create-kilo-runtime-client.js";
+import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
 
-async function fetchModelCatalog(connection: KiloWorkspaceConnection): Promise<KiloModelCatalog> {
-	const client = createKiloRuntimeClient(connection);
+async function fetchModelCatalog(connection: KiloGlobalConnection): Promise<KiloModelCatalog> {
+	const client = createKiloDirectoryClient(connection, connection.globalDirectory);
 	const { data } = await client.provider.list({}, { throwOnError: true });
 	return buildCatalogFromProviderList(data as KiloProviderListPayload);
 }
 
-export function useKiloModelCatalog(connection: KiloWorkspaceConnection | undefined) {
+export function useKiloModelCatalog(connection: KiloGlobalConnection | undefined) {
 	return useQuery({
-		queryKey: [
-			"kilo-ui",
-			"provider.list",
-			connection?.baseUrl,
-			connection?.directory,
-			connection?.username,
-			connection?.version,
-		],
+		queryKey: ["kilo-ui", "provider.list"],
 		queryFn: () => {
 			if (!connection) {
 				throw new Error("Cannot fetch the model catalog before Kilo is connected");
@@ -32,6 +25,10 @@ export function useKiloModelCatalog(connection: KiloWorkspaceConnection | undefi
 		},
 		enabled: connection !== undefined,
 		retry: false,
-		staleTime: 60_000,
+		staleTime: Number.POSITIVE_INFINITY,
+		gcTime: Number.POSITIVE_INFINITY,
+		refetchOnMount: false,
+		refetchOnReconnect: false,
+		refetchOnWindowFocus: false,
 	});
 }

@@ -17,7 +17,7 @@ import {
 	createFakeSdk,
 } from "@anaconda-agentic-desktop/testing";
 
-import type { KiloWorkspaceConnection } from "../../../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
 import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
@@ -30,12 +30,12 @@ const stubChatModel: ChatModelAdapter = {
 	},
 };
 
-const connection: KiloWorkspaceConnection = {
+const connection: KiloGlobalConnection = {
 	baseUrl: "http://127.0.0.1:4321",
 	username: "kilo",
 	password: "secret",
 	version: "7.4.20",
-	directory: "/tmp/chats/test",
+	globalDirectory: "/tmp/kilo-runtime",
 };
 
 const modelSelection = {

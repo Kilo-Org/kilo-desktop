@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { KiloUiChatService, KiloWorkspaceConnection } from "../contracts/chat/schemas.js";
+import type { KiloGlobalConnection, KiloUiChatService } from "../contracts/chat/schemas.js";
 import type {
 	WorkspaceCapabilityService,
 	WorkspacesService,
@@ -11,11 +11,11 @@ import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
-import { ensureUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
+import { createUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
 
 type KiloServerCapabilities = {
 	connectionService: {
-		getConnection(input: { directory: string }): Promise<KiloWorkspaceConnection>;
+		getConnection(): Promise<KiloGlobalConnection>;
 	};
 };
 
@@ -56,13 +56,15 @@ export function mainRegister(mainSdk: MainSdk): void {
 	} satisfies WorkspaceCapabilityService;
 
 	const chatApi: KiloUiChatService = {
-		"chat.getConnection": async ({ chatId, workspaceId }) => {
+		"chat.getConnection": async () => {
 			const connectionService =
 				mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
 			if (!connectionService) {
 				throw new FeatureError("Kilo Server is unavailable.", "BUSINESS");
 			}
-			let directory: string;
+			return connectionService.getConnection();
+		},
+		"chat.prepareSession": async ({ workspaceId }) => {
 			if (workspaceId) {
 				const workspace = service.get(workspaceId);
 				if (!workspace) {
@@ -72,11 +74,9 @@ export function mainRegister(mainSdk: MainSdk): void {
 				if (!primary) {
 					throw new FeatureError("Workspace has no primary folder.", "BUSINESS");
 				}
-				directory = primary.path;
-			} else {
-				directory = await ensureUnscopedChatDirectory(mainSdk.storageDir, chatId);
+				return { directory: primary.path };
 			}
-			return connectionService.getConnection({ directory });
+			return { directory: await createUnscopedChatDirectory(mainSdk.storageDir) };
 		},
 	};
 

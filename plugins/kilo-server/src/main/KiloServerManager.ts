@@ -237,7 +237,14 @@ export class KiloServerManager {
 				);
 			}
 
-			const connection = { baseUrl, username: "kilo", password, version, pid: child.pid };
+			const connection = {
+				baseUrl,
+				username: "kilo",
+				password,
+				version,
+				globalDirectory: this.#options.runtimeDirectory,
+				pid: child.pid,
+			};
 			this.#connection = connection;
 			this.#setStatus({ status: "ready", baseUrl, version });
 			this.#options.logger.info(`Ready at ${baseUrl} (version ${version}).`);
@@ -447,6 +454,7 @@ export class KiloServerManager {
 			username: connection.username,
 			password: connection.password,
 			version: connection.version,
+			globalDirectory: connection.globalDirectory,
 		};
 	}
 }

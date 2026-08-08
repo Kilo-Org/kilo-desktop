@@ -1,16 +1,15 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 
-import {
-	sdkQueryKey,
-	sdkQueryOptions,
-	useSdk,
-	useSdkQuery,
-} from "@anaconda-agentic-desktop/sdk-react";
+import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
-import type { KiloUiChatService, KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
+import type {
+	KiloGlobalConnection,
+	KiloSessionPreparation,
+	KiloUiChatService,
+} from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
@@ -25,10 +24,14 @@ const CHAT_ROUTE_PATH = "/plugins/chat";
 function ChatRuntimeTree({
 	connectionPromise,
 	catalogConnection,
+	prepareSession,
+	onRuntimeError,
 	children,
 }: {
-	connectionPromise: Promise<KiloWorkspaceConnection>;
-	catalogConnection: KiloWorkspaceConnection | undefined;
+	connectionPromise: Promise<KiloGlobalConnection>;
+	catalogConnection: KiloGlobalConnection | undefined;
+	prepareSession: () => Promise<KiloSessionPreparation>;
+	onRuntimeError: (error: unknown) => void;
 	children: ReactNode;
 }) {
 	const sdk = useSdk("kilo-ui");
@@ -54,9 +57,11 @@ function ChatRuntimeTree({
 
 	const runtime = useKiloRuntime({
 		connectionPromise,
+		prepareSession,
 		...(model ? { defaultModel: model } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
+		onError: onRuntimeError,
 	});
 
 	const modelSelection = useMemo(
@@ -95,29 +100,20 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const queryClient = useQueryClient();
 	const { activeWorkspaceId } = useWorkspacesFeature();
-	const [chatId] = useState(() => crypto.randomUUID());
-	const connectionInput = useMemo(
-		() => ({
-			chatId,
-			...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
-		}),
-		[chatId, activeWorkspaceId],
-	);
-	const connection = useSdkQuery(sdk, "chat.getConnection", connectionInput);
-
-	useEffect(
+	const connectionOptions = useMemo(
 		() =>
-			sdk.events.on("kilo-ui.workspace-updated", () => {
-				void queryClient.invalidateQueries({
-					queryKey: sdkQueryKey(sdk, "chat.getConnection", connectionInput),
-					exact: true,
-				});
-			}),
-		[connectionInput, queryClient, sdk],
+			({
+				...sdkQueryOptions(sdk, "chat.getConnection"),
+				retry: false,
+				staleTime: Number.POSITIVE_INFINITY,
+				gcTime: Number.POSITIVE_INFINITY,
+				refetchOnMount: false,
+				refetchOnReconnect: false,
+				refetchOnWindowFocus: false,
+			}) as const,
+		[sdk],
 	);
-
-	// Recreate when the query recovers after an error (refetch / restart). A cached
-	// rejected promise would otherwise block sends forever.
+	const connection = useQuery(connectionOptions);
 	const connectionPromise = useMemo(() => {
 		if (connection.data && !connection.isFetching) {
 			return Promise.resolve(connection.data);
@@ -127,24 +123,38 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 				connection.error instanceof Error
 					? connection.error
 					: new Error(String(connection.error ?? "Could not connect to Kilo"));
-			const rejected = Promise.reject(error);
+			const rejected = Promise.reject<KiloGlobalConnection>(error);
 			void rejected.catch(() => undefined);
 			return rejected;
 		}
-		const promise = queryClient.fetchQuery(
-			sdkQueryOptions(sdk, "chat.getConnection", connectionInput),
-		);
-		void promise.catch(() => undefined);
-		return promise;
+		const pending = queryClient.fetchQuery(connectionOptions);
+		void pending.catch(() => undefined);
+		return pending;
 	}, [
 		connection.data,
+		connection.error,
 		connection.errorUpdatedAt,
 		connection.isError,
 		connection.isFetching,
-		connectionInput,
+		connectionOptions,
 		queryClient,
-		sdk,
 	]);
+	const refreshConnection = useCallback(() => {
+		void queryClient.invalidateQueries({
+			queryKey: connectionOptions.queryKey,
+			exact: true,
+		});
+	}, [connectionOptions.queryKey, queryClient]);
+
+	const activeWorkspaceIdRef = useRef(activeWorkspaceId);
+	activeWorkspaceIdRef.current = activeWorkspaceId;
+	const prepareSession = useMemo(
+		() => () =>
+			sdk.client["chat.prepareSession"]({
+				...(activeWorkspaceIdRef.current ? { workspaceId: activeWorkspaceIdRef.current } : {}),
+			}),
+		[sdk],
+	);
 
 	const connectionStatus = {
 		isPending: connection.isPending,
@@ -155,8 +165,12 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 
 	return (
 		<ChatConnectionProvider status={connectionStatus}>
-			{/* Keep runtime mounted across workspace switches; deferred client retargets in place. */}
-			<ChatRuntimeTree connectionPromise={connectionPromise} catalogConnection={connection.data}>
+			<ChatRuntimeTree
+				connectionPromise={connectionPromise}
+				catalogConnection={connection.data}
+				prepareSession={prepareSession}
+				onRuntimeError={refreshConnection}
+			>
 				{children}
 			</ChatRuntimeTree>
 		</ChatConnectionProvider>

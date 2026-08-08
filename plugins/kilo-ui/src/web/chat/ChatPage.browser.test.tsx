@@ -13,7 +13,7 @@ import type * as AssistantUiReact from "@assistant-ui/react";
 import {
 	kiloUiChatContract,
 	type KiloUiChatService,
-	type KiloWorkspaceConnection,
+	type KiloGlobalConnection,
 } from "../../contracts/chat/schemas.js";
 import {
 	workspacesContract,
@@ -62,12 +62,12 @@ vi.mock("./components/assistant-ui/thread.js", async () => {
 	};
 });
 
-const connection: KiloWorkspaceConnection = {
+const connection: KiloGlobalConnection = {
 	baseUrl: "http://127.0.0.1:4321",
 	username: "kilo",
 	password: "secret",
 	version: "7.4.20",
-	directory: "/tmp/chats/test",
+	globalDirectory: "/tmp/kilo-runtime",
 };
 
 const workspace: Workspace = {
@@ -91,9 +91,11 @@ function testClient(): QueryClient {
 
 function renderChatPage(options?: {
 	getConnection?: KiloUiChatService["chat.getConnection"];
+	prepareSession?: KiloUiChatService["chat.prepareSession"];
 	workspaces?: Workspace[];
 }) {
 	const getConnection = options?.getConnection ?? (async () => connection);
+	const prepareSession = options?.prepareSession ?? (async () => ({ directory: "/tmp/chat" }));
 	const workspaces = options?.workspaces ?? [];
 
 	const kiloUi = createFakeSdk({
@@ -106,6 +108,7 @@ function renderChatPage(options?: {
 			update: async () => workspace,
 			remove: async () => ({ deleted: true }),
 			"chat.getConnection": getConnection,
+			"chat.prepareSession": prepareSession,
 		} satisfies Partial<WorkspacesService & KiloUiChatService>,
 	});
 	const system = createFakeFeatureSystem({
@@ -159,7 +162,7 @@ describe("chat connection context", () => {
 describe("ChatPage", () => {
 	it("renders the thread while the connection is still pending", async () => {
 		const { baseElement } = renderChatPage({
-			getConnection: () => new Promise<KiloWorkspaceConnection>(() => undefined),
+			getConnection: () => new Promise<KiloGlobalConnection>(() => undefined),
 		});
 		const screen = page.elementLocator(baseElement);
 
@@ -182,94 +185,48 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
 	});
 
-	it("requests an unscoped chat connection when no workspace is selected", async () => {
-		const getConnection = vi.fn(
-			async (_input: Parameters<KiloUiChatService["chat.getConnection"]>[0]) => connection,
-		);
-		const { baseElement } = renderChatPage({ getConnection });
-		const screen = page.elementLocator(baseElement);
-
-		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
-		await vi.waitFor(() => {
-			expect(getConnection).toHaveBeenCalled();
-		});
-		expect(getConnection).toHaveBeenCalledWith(
-			expect.objectContaining({
-				chatId: expect.stringMatching(
-					/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-				),
-			}),
-		);
-		const firstCallArgs = getConnection.mock.calls.at(0)?.at(0);
-		expect(firstCallArgs).not.toHaveProperty("workspaceId");
-	});
-
-	it("requests a workspace-scoped chat connection when a workspace is active", async () => {
-		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
-		const getConnection = vi.fn(async () => ({
+	it("refreshes the global connection after a runtime request fails", async () => {
+		const refreshedConnection = {
 			...connection,
-			directory: workspace.folders[0]!.path,
-		}));
-		const { baseElement } = renderChatPage({
-			getConnection,
-			workspaces: [workspace],
-		});
-		const screen = page.elementLocator(baseElement);
-
-		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
-		await vi.waitFor(() => {
-			expect(getConnection).toHaveBeenCalledWith(
-				expect.objectContaining({
-					workspaceId: workspace.id,
-				}),
-			);
-		});
-	});
-
-	it("refreshes the chat connection when workspace folders change", async () => {
-		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
-		let directory = workspace.folders[0]!.path;
-		const getConnection = vi.fn(
-			async (_input: Parameters<KiloUiChatService["chat.getConnection"]>[0]) => ({
-				...connection,
-				directory,
-			}),
-		);
-		const { queryClient, sdk } = renderChatPage({ getConnection, workspaces: [workspace] });
-		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+			baseUrl: "http://127.0.0.1:5432",
+			password: "refreshed-secret",
+		};
+		const getConnection = vi
+			.fn<KiloUiChatService["chat.getConnection"]>()
+			.mockResolvedValueOnce(connection)
+			.mockResolvedValueOnce(refreshedConnection);
+		renderChatPage({ getConnection });
 
 		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
-		const connectionInput = getConnection.mock.calls[0]![0];
-		const connectionQueryKey = [sdk.featureId, "chat.getConnection", connectionInput] as const;
-		await vi.waitFor(() =>
-			expect(queryClient.getQueryState(connectionQueryKey)?.fetchStatus).toBe("idle"),
-		);
+		const initialRuntimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+		expect(initialRuntimeOptions?.onError).toEqual(expect.any(Function));
+		await expect(initialRuntimeOptions!.connectionPromise).resolves.toEqual(connection);
 
-		directory = "/projects/workspace-1-new-primary";
-		sdk.events.emit("workspace-updated", {
-			before: workspace,
-			after: {
-				...workspace,
-				folders: [{ ...workspace.folders[0]!, path: directory }],
-				updatedAt: 2,
-			},
-		});
+		initialRuntimeOptions!.onError!(new Error("Unauthorized"));
 
-		await vi.waitFor(() =>
-			expect(invalidateQueries).toHaveBeenCalledWith({
-				queryKey: connectionQueryKey,
-				exact: true,
-			}),
-		);
 		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledTimes(2));
-		await vi.waitFor(async () => {
-			const runtimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
-			expect(runtimeOptions).toBeDefined();
-			await expect(runtimeOptions!.connectionPromise).resolves.toMatchObject({ directory });
+		await vi.waitFor(() => {
+			const refreshedPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+			expect(refreshedPromise).not.toBe(initialRuntimeOptions!.connectionPromise);
 		});
+		await expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).resolves.toEqual(
+			refreshedConnection,
+		);
 	});
 
-	it("keeps the chat thread mounted when the active workspace changes", async () => {
+	it("requests one global connection without preparing a session", async () => {
+		const getConnection = vi.fn(async () => connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/tmp/chat" }));
+		const { baseElement } = renderChatPage({ getConnection, prepareSession });
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		expect(getConnection).toHaveBeenCalledWith(undefined);
+		expect(prepareSession).not.toHaveBeenCalled();
+	});
+
+	it("uses the latest workspace only when the runtime prepares a new session", async () => {
 		const otherWorkspace: Workspace = {
 			...workspace,
 			id: "workspace-2",
@@ -284,27 +241,23 @@ describe("ChatPage", () => {
 			],
 		};
 		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
-		const getConnection = vi.fn(
-			async (input: Parameters<KiloUiChatService["chat.getConnection"]>[0]) => ({
-				...connection,
-				directory:
-					input.workspaceId === otherWorkspace.id
-						? otherWorkspace.folders[0]!.path
-						: workspace.folders[0]!.path,
-			}),
-		);
+		const getConnection = vi.fn(async () => connection);
+		const prepareSession = vi.fn(async ({ workspaceId }: { workspaceId?: string | undefined }) => ({
+			directory: workspaceId ? `/projects/${workspaceId}` : "/tmp/chat",
+		}));
 		const { baseElement, sdk } = renderChatPage({
 			getConnection,
+			prepareSession,
 			workspaces: [workspace, otherWorkspace],
 		});
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
-		await vi.waitFor(() =>
-			expect(getConnection).toHaveBeenCalledWith(
-				expect.objectContaining({ workspaceId: workspace.id }),
-			),
-		);
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		const runtimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+		expect(runtimeOptions?.prepareSession).toEqual(expect.any(Function));
+		await runtimeOptions!.prepareSession!();
+		expect(prepareSession).toHaveBeenLastCalledWith({ workspaceId: workspace.id });
 
 		const threadBefore = baseElement.querySelector("[data-qa-id='kilo-chat-thread-mock']");
 		const instanceBefore = threadBefore?.getAttribute("data-thread-instance");
@@ -313,17 +266,13 @@ describe("ChatPage", () => {
 		sdk.state.register<string | null>("active-workspace", workspace.id).set(otherWorkspace.id);
 
 		await vi.waitFor(() =>
-			expect(getConnection).toHaveBeenCalledWith(
-				expect.objectContaining({ workspaceId: otherWorkspace.id }),
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].prepareSession).toBe(
+				runtimeOptions!.prepareSession,
 			),
 		);
-		await vi.waitFor(async () => {
-			const runtimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
-			expect(runtimeOptions).toBeDefined();
-			await expect(runtimeOptions!.connectionPromise).resolves.toMatchObject({
-				directory: otherWorkspace.folders[0]!.path,
-			});
-		});
+		await runtimeOptions!.prepareSession!();
+		expect(prepareSession).toHaveBeenLastCalledWith({ workspaceId: otherWorkspace.id });
+		expect(getConnection).toHaveBeenCalledOnce();
 
 		const threadAfter = baseElement.querySelector("[data-qa-id='kilo-chat-thread-mock']");
 		expect(threadAfter?.getAttribute("data-thread-instance")).toBe(instanceBefore);

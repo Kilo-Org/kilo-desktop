@@ -1,5 +1,115 @@
+diff --git a/dist/OpenCodeEventSource.d.ts b/dist/OpenCodeEventSource.d.ts
+index 92cb6ad5c196dd3fbbff8123779f78902c596d33..fb090d07c058cb41a513dbcb4e9cccfa088e27cb 100644
+--- a/dist/OpenCodeEventSource.d.ts
++++ b/dist/OpenCodeEventSource.d.ts
+@@ -2,6 +2,12 @@ import { OpenCodeServerEvent } from "./types.js";
+ import { OpencodeClient } from "@opencode-ai/sdk/v2/client";
+ //#region src/OpenCodeEventSource.d.ts
+ type Listener = (event: OpenCodeServerEvent) => void;
++type OpenCodeEventSubscriber = (options: {
++  signal: AbortSignal;
++  sseMaxRetryAttempts: number;
++}) => Promise<{
++  stream: AsyncIterable<unknown>;
++}>;
+ declare const STREAM_RECONNECTED_EVENT_TYPE = "stream.reconnected";
+ declare class OpenCodeEventSource {
+   private readonly listeners;
+@@ -13,7 +19,9 @@ declare class OpenCodeEventSource {
+   private nextReconnectDelayMs;
+   private hadConnection;
+   private readonly client;
+-  constructor(client: OpencodeClient);
++  private readonly subscribeToEvents;
++  private readonly onEvent;
++  constructor(client: OpencodeClient, subscribeToEvents?: OpenCodeEventSubscriber, onEvent?: (event: OpenCodeServerEvent) => void);
+   subscribe(listener: Listener): () => void;
+   dispose(): void;
+   private emit;
+@@ -22,5 +30,5 @@ declare class OpenCodeEventSource {
+   private run;
+ }
+ //#endregion
+-export { OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE };
++export { type OpenCodeEventSubscriber, OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE };
+ //# sourceMappingURL=OpenCodeEventSource.d.ts.map
+diff --git a/dist/OpenCodeEventSource.js b/dist/OpenCodeEventSource.js
+index 83999a844ee6224522f040e2281fe2f43be8641a..853bddf651eaa2209d3c52dfa2d5406a650a2b9c 100644
+--- a/dist/OpenCodeEventSource.js
++++ b/dist/OpenCodeEventSource.js
+@@ -20,6 +20,7 @@ const normalizeEventPayload = (event) => {
+ 	return {
+ 		type: candidate.type,
+ 		properties: candidate.properties,
++		directory: typeof outer.directory === "string" ? outer.directory : void 0,
+ 		sessionId: extractSessionId(candidate.type, candidate.properties),
+ 		raw: event
+ 	};
+@@ -35,8 +36,12 @@ var OpenCodeEventSource = class {
+ 	nextReconnectDelayMs = this.reconnectDelayMs;
+ 	hadConnection = false;
+ 	client;
+-	constructor(client) {
++	subscribeToEvents;
++	onEvent;
++	constructor(client, subscribeToEvents, onEvent) {
+ 		this.client = client;
++		this.subscribeToEvents = subscribeToEvents ?? ((options) => this.client.event.subscribe(void 0, options));
++		this.onEvent = onEvent;
+ 	}
+ 	subscribe(listener) {
+ 		this.listeners.add(listener);
+@@ -79,7 +84,7 @@ var OpenCodeEventSource = class {
+ 			let failedToConnect = true;
+ 			let reconnectDelayMs = this.reconnectDelayMs;
+ 			try {
+-				const subscription = await this.client.event.subscribe(void 0, {
++				const subscription = await this.subscribeToEvents({
+ 					signal: abortController.signal,
+ 					sseMaxRetryAttempts: 1
+ 				});
+@@ -96,6 +101,7 @@ var OpenCodeEventSource = class {
+ 					if (abortController.signal.aborted || this.stopped) return;
+ 					const normalized = normalizeEventPayload(event);
+ 					if (!normalized) continue;
++					this.onEvent?.(normalized);
+ 					this.emit(normalized);
+ 				}
+ 				if (abortController.signal.aborted || this.stopped) return;
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index e97bb56c8e35b317dd2f110c82bac096db44148b..b4ce506c2b1a698b01584a5f98041a619f669a9c 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -1,5 +1,5 @@
+-import { AssistantMessage, Event, FilePart, GlobalSession, Message, MessageWithParts, Model, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, OpencodeClient, OpencodeClientConfig, Part, PendingUserMessage, PermissionRequest, Provider, QuestionAnswer, QuestionRequest, ReasoningPart, Session, SessionStatus, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "./types.js";
+-import { OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource.js";
++import { AssistantMessage, Event, FilePart, GlobalSession, Message, MessageWithParts, Model, OpenCodeEventSourceLike, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeBackend, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeSessionRef, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, OpencodeClient, OpencodeClientConfig, Part, PendingUserMessage, PermissionRequest, Provider, QuestionAnswer, QuestionRequest, ReasoningPart, Session, SessionStatus, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "./types.js";
++import { OpenCodeEventSource, OpenCodeEventSubscriber, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource.js";
+ import { OpenCodeThreadController } from "./OpenCodeThreadController.js";
+ import { useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeThreadState } from "./hooks.js";
+ import { useOpenCodeRuntime } from "./useOpenCodeRuntime.js";
+@@ -8,4 +8,4 @@ import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming.js";
+ import { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState.js";
+ import { projectOpenCodeThreadMessages } from "./openCodeMessageProjection.js";
+ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+-export { type AssistantMessage, type Event, type FilePart, type GlobalSession, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeLoadState, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
+\ No newline at end of file
++export { type AssistantMessage, type Event, type FilePart, type GlobalSession, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeEventSourceLike, type OpenCodeEventSubscriber, type OpenCodeLoadState, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeBackend, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeSessionRef, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
+diff --git a/dist/openCodeThreadListAdapter.d.ts b/dist/openCodeThreadListAdapter.d.ts
+index 6cb1ef5a91e3800801ee38ed6c79d944cb0eb755..c1021cb2ec61ff0543216ccd76b8186779ba9ca7 100644
+--- a/dist/openCodeThreadListAdapter.d.ts
++++ b/dist/openCodeThreadListAdapter.d.ts
+@@ -1,6 +1,6 @@
+-import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
++import { OpenCodeRuntimeBackend } from "./types.js";
+ //#region src/openCodeThreadListAdapter.d.ts
+-declare const createOpenCodeThreadListAdapter: (client: ReturnType<typeof createOpencodeClient>) => {
++declare const createOpenCodeThreadListAdapter: (backend: OpenCodeRuntimeBackend) => {
+   list: () => Promise<{
+     threads: {
+       status: "archived" | "regular";
 diff --git a/dist/openCodeThreadListAdapter.js b/dist/openCodeThreadListAdapter.js
-index 31bbfc1f7371c516365258552117aa6a7e394543..bd5ffe59c310b9f8937831a21587efc72c63e49e 100644
+index 31bbfc1f7371c516365258552117aa6a7e394543..f0c874470a498d9d6362da193515803f37baed49 100644
 --- a/dist/openCodeThreadListAdapter.js
 +++ b/dist/openCodeThreadListAdapter.js
 @@ -1,3 +1,4 @@
@@ -7,16 +117,64 @@ index 31bbfc1f7371c516365258552117aa6a7e394543..bd5ffe59c310b9f8937831a21587efc7
  import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions.js";
  import "@opencode-ai/sdk/v2/client";
  //#region src/openCodeThreadListAdapter.ts
-@@ -10,6 +11,8 @@ const mapThreadMetadata = (session) => ({
+@@ -10,57 +11,74 @@ const mapThreadMetadata = (session) => ({
  	externalId: session.id,
  	title: session.title
  });
+-const createOpenCodeThreadListAdapter = (client) => ({
 +/** OpenCode's default title before an AI-generated name is applied. */
 +const isPlaceholderTitle = (title) => !title || /^New session\b/i.test(title);
- const createOpenCodeThreadListAdapter = (client) => ({
++const createOpenCodeThreadListAdapter = (backend) => ({
  	list: async () => {
- 		const response = await client.experimental.session.list({
-@@ -53,10 +56,21 @@ const createOpenCodeThreadListAdapter = (client) => ({
+-		const response = await client.experimental.session.list({
++		const response = await backend.globalClient.experimental.session.list({
+ 			roots: true,
+ 			archived: true
+ 		}, OPEN_CODE_REQUEST_OPTIONS);
+ 		const sessions = /* @__PURE__ */ new Map();
+ 		for (const session of response.data ?? []) {
+ 			if (session.parentID) continue;
++			backend.getSessionClient({ id: session.id, directory: session.directory });
+ 			sessions.set(session.id, session);
+ 		}
+ 		return { threads: [...sessions.values()].map(mapThreadMetadata) };
+ 	},
+ 	rename: async (remoteId, newTitle) => {
+-		await client.session.update({
++		await backend.getSessionClient({ id: remoteId }).session.update({
+ 			sessionID: remoteId,
+ 			title: newTitle
+ 		}, OPEN_CODE_REQUEST_OPTIONS);
+ 	},
+ 	archive: async (remoteId) => {
+-		await client.session.update({
++		await backend.getSessionClient({ id: remoteId }).session.update({
+ 			sessionID: remoteId,
+ 			time: { archived: Date.now() }
+ 		}, OPEN_CODE_REQUEST_OPTIONS);
+ 	},
+ 	unarchive: async (remoteId) => {
+-		await client.session.update({
++		await backend.getSessionClient({ id: remoteId }).session.update({
+ 			sessionID: remoteId,
+ 			time: { archived: null }
+ 		}, OPEN_CODE_REQUEST_OPTIONS);
+ 	},
+ 	delete: async (remoteId) => {
+-		await client.session.delete({ sessionID: remoteId }, OPEN_CODE_REQUEST_OPTIONS);
++		await backend.getSessionClient({ id: remoteId }).session.delete({ sessionID: remoteId }, OPEN_CODE_REQUEST_OPTIONS);
+ 	},
+ 	initialize: async () => {
+-		const response = await client.session.create({}, OPEN_CODE_REQUEST_OPTIONS);
+-		if (!response.data?.id) throw new Error("Failed to create OpenCode session");
++		const session = await backend.initializeSession();
++		if (!session.id) throw new Error("Failed to create OpenCode session");
++		backend.getSessionClient(session);
+ 		return {
+-			remoteId: response.data.id,
+-			externalId: response.data.id
++			remoteId: session.id,
++			externalId: session.id
  		};
  	},
  	generateTitle: async (remoteId) => {
@@ -24,6 +182,7 @@ index 31bbfc1f7371c516365258552117aa6a7e394543..bd5ffe59c310b9f8937831a21587efc7
 -		return new ReadableStream({ start(controller) {
 -			controller.close();
 -		} });
++		const client = backend.getSessionClient({ id: remoteId });
 +		const readTitle = async () => {
 +			const response = await client.session.get({ sessionID: remoteId }, OPEN_CODE_REQUEST_OPTIONS);
 +			return response.data?.title?.trim() ?? "";
@@ -41,13 +200,70 @@ index 31bbfc1f7371c516365258552117aa6a7e394543..bd5ffe59c310b9f8937831a21587efc7
 +		});
  	},
  	fetch: async (threadId) => {
- 		const response = await client.session.get({ sessionID: threadId }, OPEN_CODE_REQUEST_OPTIONS);
+-		const response = await client.session.get({ sessionID: threadId }, OPEN_CODE_REQUEST_OPTIONS);
++		const response = await backend.getSessionClient({ id: threadId }).session.get({ sessionID: threadId }, OPEN_CODE_REQUEST_OPTIONS);
+ 		if (!response.data?.id) throw new Error("OpenCode session not found");
++		backend.getSessionClient({ id: response.data.id, directory: response.data.directory });
+ 		return mapThreadMetadata(response.data);
+ 	}
+ });
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+index 20262e54e37b2c694e6caecab2638b54af58045a..a58ef63bf50df4533e061b725504dc3f889c4e71 100644
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -116,6 +116,20 @@ type OpenCodeUserMessageOptions = {
+   agent?: string | undefined;
+   noReply?: boolean | undefined;
+ };
++type OpenCodeSessionRef = {
++  id: string;
++  directory?: string | undefined;
++};
++type OpenCodeEventSourceLike = {
++  subscribe(listener: (event: OpenCodeServerEvent) => void): () => void;
++  dispose(): void;
++};
++type OpenCodeRuntimeBackend = {
++  globalClient: OpencodeClient$1;
++  getSessionClient(ref: OpenCodeSessionRef): OpencodeClient$1;
++  initializeSession(): Promise<OpenCodeSessionRef>;
++  createEventSource(): OpenCodeEventSourceLike;
++};
+ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+   /**
+    * Called whenever the active thread's canonical (remote) ID changes, so the
+@@ -127,6 +141,7 @@ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+    */
+   onThreadIdChange?: ((threadId: string | undefined) => void) | undefined;
+   client?: OpencodeClient$1;
++  backend?: OpenCodeRuntimeBackend | undefined;
+   baseUrl?: string | undefined;
+   initialSessionId?: string | undefined;
+   defaultModel?: {
+@@ -162,6 +177,7 @@ type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
+ type OpenCodeServerEvent = {
+   type: string;
+   sessionId: string | undefined;
++  directory?: string | undefined;
+   raw: unknown;
+   properties: Record<string, unknown>;
+ };
+@@ -270,5 +286,5 @@ type OpenCodePartPayload = {
+ };
+ type OpenCodeProjectedThreadMessage = ThreadMessageLike$1;
+ //#endregion
+-export { type AppendMessage, type AssistantMessage, type Event, type EventMessagePartDelta, type FilePart, type GlobalSession, type Message, MessageWithParts, type Model, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ThreadMessageLike, type ThreadUserMessagePart, type ToolPart, type ToolState, type UserMessage };
++export { type AppendMessage, type AssistantMessage, type Event, type EventMessagePartDelta, type FilePart, type GlobalSession, type Message, MessageWithParts, type Model, OpenCodeEventSourceLike, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeBackend, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeSessionRef, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ThreadMessageLike, type ThreadUserMessagePart, type ToolPart, type ToolState, type UserMessage };
+ //# sourceMappingURL=types.d.ts.map
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee3c701b03 100644
+index d795d5799d059d01327a3edbcd998fdbeeae317c..d3ffc08cf16d3e58ef1a453cc9fefb087f695d4b 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
-@@ -8,8 +8,8 @@ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection.js"
+@@ -6,17 +6,18 @@ import { openCodeExtras } from "./openCodeExtras.js";
+ import { toOpenCodePermissionResponse } from "./openCodePermissionApproval.js";
+ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection.js";
  import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter.js";
++import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions.js";
  import { useOpenCodeControllerState } from "./useOpenCodeControllerState.js";
  import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming.js";
 -import { useEffect, useEffectEvent, useMemo } from "react";
@@ -56,8 +272,30 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee
 +import { ExportedMessageRepository, pickExternalStoreSharedOptions, useAui, useAuiState, useExternalStoreRuntime, useRemoteThreadListRuntime } from "@assistant-ui/react";
  import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
  //#region src/useOpenCodeRuntime.ts
- const createRegistry = (client) => {
-@@ -52,10 +52,26 @@ const NOOP_CONTROLLER = {
+-const createRegistry = (client) => {
++const createRegistry = (backend) => {
+ 	let eventSource = null;
+ 	const controllers = /* @__PURE__ */ new Map();
+ 	const getEventSource = () => {
+-		eventSource ??= new OpenCodeEventSource(client);
++		eventSource ??= backend.createEventSource();
+ 		return eventSource;
+ 	};
+ 	return {
+@@ -29,10 +30,10 @@ const createRegistry = (client) => {
+ 		}
+ 	};
+ };
+-const getController = (registry, client, sessionId) => {
++const getController = (registry, backend, sessionId) => {
+ 	const existing = registry.controllers.get(sessionId);
+ 	if (existing) return existing;
+-	const controller = new OpenCodeThreadController(client, registry.getEventSource, sessionId);
++	const controller = new OpenCodeThreadController(backend.getSessionClient({ id: sessionId }), registry.getEventSource, sessionId);
+ 	registry.controllers.set(sessionId, controller);
+ 	return controller;
+ };
+@@ -52,10 +53,26 @@ const NOOP_CONTROLLER = {
  	replyToQuestion: async () => {},
  	rejectQuestion: async () => {}
  };
@@ -85,7 +323,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee
  	const onLoadError = useEffectEvent((error) => {
  		options.onError?.(error);
  	});
-@@ -63,6 +79,15 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -63,6 +80,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		if (controller === NOOP_CONTROLLER) return;
  		controller.load().catch(onLoadError);
  	}, [controller]);
@@ -95,13 +333,14 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee
 +	useEffect(() => {
 +		if (listStatus === "new") return;
 +		if (isPlaceholderTitle(sessionTitle)) return;
++		if (!isPlaceholderTitle(listTitle ?? "")) return;
 +		if (listTitle === sessionTitle) return;
 +		aui.threadListItem.rename(sessionTitle);
 +	}, [aui, listStatus, listTitle, sessionTitle]);
  	const messageTiming = useOpenCodeStreamingTiming(state, isOpenCodeStateRunning(state));
  	const messageRepository = useMemo(() => projectOpenCodeThreadRepository(state, messageTiming), [state, messageTiming]);
  	const extras = useMemo(() => openCodeExtras.provide({
-@@ -88,15 +113,7 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -88,15 +115,7 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		...options.adapters && { adapters: options.adapters },
  		onNew: async (message) => {
  			try {
@@ -118,17 +357,20 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee
  			} catch (error) {
  				options.onError?.(error);
  				throw error;
-@@ -134,14 +151,53 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -133,23 +152,72 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+ 		}
  	});
  };
- const useRuntimeHook = (client, registry, options) => {
+-const useRuntimeHook = (client, registry, options) => {
++const useRuntimeHook = (backend, registry, options) => {
 +	const aui = useAui();
  	const sessionId = useAuiState((state) => state.threadListItem.externalId ?? state.threadListItem.remoteId);
+-	const controller = sessionId ? getController(registry, client, sessionId) : NOOP_CONTROLLER;
 +	const threadStatus = useAuiState((state) => state.threadListItem.status);
 +	const initializationRef = useRef(void 0);
 +	const scheduledRestorationsRef = useRef(/* @__PURE__ */ new WeakSet());
 +	const initializeController = () => {
-+		initializationRef.current ??= aui.threadListItem.initialize().then(({ externalId, remoteId }) => getController(registry, client, externalId ?? remoteId)).catch((error) => {
++		initializationRef.current ??= aui.threadListItem.initialize().then(({ externalId, remoteId }) => getController(registry, backend, externalId ?? remoteId)).catch((error) => {
 +			initializationRef.current = void 0;
 +			throw error;
 +		});
@@ -141,7 +383,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee
 +		const attachmentIds = new Set(aui.composer.getState().attachments.map(({ id }) => id));
 +		for (const attachment of message.attachments ?? []) if (!attachmentIds.has(attachment.id)) await aui.composer.addAttachment(attachment);
 +	};
- 	const controller = sessionId ? getController(registry, client, sessionId) : NOOP_CONTROLLER;
++	const controller = sessionId ? getController(registry, backend, sessionId) : NOOP_CONTROLLER;
  	const threadRuntime = useOpenCodeThreadRuntime(controller, options);
  	const fallbackRuntime = useExternalStoreRuntime({
 -		isDisabled: true,
@@ -175,8 +417,330 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..4601283757d6198dc33f8e3e622461ee
  	});
  	if (!sessionId) return fallbackRuntime;
  	return threadRuntime;
+ };
+ const useOpenCodeRuntime = (options = {}) => {
+ 	const baseUrl = options.baseUrl ?? "http://localhost:4096";
+-	const client = useMemo(() => options.client ?? createOpencodeClient({ baseUrl }), [baseUrl, options.client]);
+-	const registry = useMemo(() => createRegistry(client), [client]);
++	const client = useMemo(() => options.backend?.globalClient ?? options.client ?? createOpencodeClient({ baseUrl }), [baseUrl, options.backend, options.client]);
++	const backend = useMemo(() => options.backend ?? {
++		globalClient: client,
++		getSessionClient: () => client,
++		initializeSession: async () => {
++			const response = await client.session.create({}, OPEN_CODE_REQUEST_OPTIONS);
++			if (!response.data?.id) throw new Error("Failed to create OpenCode session");
++			return { id: response.data.id, directory: response.data.directory };
++		},
++		createEventSource: () => new OpenCodeEventSource(client)
++	}, [client, options.backend]);
++	const registry = useMemo(() => createRegistry(backend), [backend]);
+ 	useEffect(() => {
+ 		return () => {
+ 			registry.dispose();
+@@ -157,10 +225,10 @@ const useOpenCodeRuntime = (options = {}) => {
+ 	}, [registry]);
+ 	return useRemoteThreadListRuntime({
+ 		allowNesting: true,
+-		adapter: useMemo(() => createOpenCodeThreadListAdapter(client), [client]),
++		adapter: useMemo(() => createOpenCodeThreadListAdapter(backend), [backend]),
+ 		initialThreadId: options.initialSessionId,
+ 		onThreadIdChange: options.onThreadIdChange,
+-		runtimeHook: () => useRuntimeHook(client, registry, options)
++		runtimeHook: () => useRuntimeHook(backend, registry, options)
+ 	});
+ };
+ //#endregion
+diff --git a/src/OpenCodeEventSource.ts b/src/OpenCodeEventSource.ts
+index 4acaaa7b21bf048f9e10320e26d006da2bab91fd..857633231e7dfa679065c1612665a04e3e0dd44c 100644
+--- a/src/OpenCodeEventSource.ts
++++ b/src/OpenCodeEventSource.ts
+@@ -3,6 +3,11 @@ import type { OpenCodeServerEvent } from "./types";
+ 
+ type Listener = (event: OpenCodeServerEvent) => void;
+ 
++export type OpenCodeEventSubscriber = (options: {
++  signal: AbortSignal;
++  sseMaxRetryAttempts: number;
++}) => Promise<{ stream: AsyncIterable<unknown> }>;
++
+ const asRecord = (value: unknown): Record<string, unknown> | null => {
+   return typeof value === "object" && value !== null
+     ? (value as Record<string, unknown>)
+@@ -59,6 +64,7 @@ const normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {
+   const normalized = {
+     type: candidate.type,
+     properties: candidate.properties as Record<string, unknown>,
++    directory: typeof outer.directory === "string" ? outer.directory : undefined,
+     sessionId: extractSessionId(
+       candidate.type,
+       candidate.properties as Record<string, unknown>,
+@@ -82,9 +88,19 @@ export class OpenCodeEventSource {
+   private hadConnection = false;
+ 
+   private readonly client: OpencodeClient;
++  private readonly subscribeToEvents: OpenCodeEventSubscriber;
++  private readonly onEvent: ((event: OpenCodeServerEvent) => void) | undefined;
+ 
+-  constructor(client: OpencodeClient) {
++  constructor(
++    client: OpencodeClient,
++    subscribeToEvents?: OpenCodeEventSubscriber,
++    onEvent?: (event: OpenCodeServerEvent) => void,
++  ) {
+     this.client = client;
++    this.subscribeToEvents =
++      subscribeToEvents ??
++      ((options) => this.client.event.subscribe(undefined, options));
++    this.onEvent = onEvent;
+   }
+ 
+   public subscribe(listener: Listener) {
+@@ -142,7 +158,7 @@ export class OpenCodeEventSource {
+       let reconnectDelayMs = this.reconnectDelayMs;
+ 
+       try {
+-        const subscription = await this.client.event.subscribe(undefined, {
++        const subscription = await this.subscribeToEvents({
+           signal: abortController.signal,
+           sseMaxRetryAttempts: 1,
+         });
+@@ -166,6 +182,7 @@ export class OpenCodeEventSource {
+ 
+           const normalized = normalizeEventPayload(event);
+           if (!normalized) continue;
++          this.onEvent?.(normalized);
+           this.emit(normalized);
+         }
+         if (abortController.signal.aborted || this.stopped) {
+diff --git a/src/index.ts b/src/index.ts
+index 4ac43be38eb0337ed7fe9408ebd8ad6a0c2cb380..a2c9d2c083e8eb4a4139b42e59d7b444b52ab410 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -19,6 +19,7 @@ export { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
+ export {
+   OpenCodeEventSource,
+   STREAM_RECONNECTED_EVENT_TYPE,
++  type OpenCodeEventSubscriber,
+ } from "./OpenCodeEventSource";
+ export { OpenCodeThreadController } from "./OpenCodeThreadController";
+ export {
+@@ -30,6 +31,7 @@ export { projectOpenCodeThreadMessages } from "./openCodeMessageProjection";
+ export type {
+   MessageWithParts,
+   OpenCodeLoadState,
++  OpenCodeEventSourceLike,
+   OpenCodePartPayload,
+   OpenCodePermissionRequest,
+   OpenCodePermissionResponse,
+@@ -37,9 +39,11 @@ export type {
+   OpenCodeQuestionRequest,
+   OpenCodeRunState,
+   OpenCodeRuntime,
++  OpenCodeRuntimeBackend,
+   OpenCodeRuntimeExtras,
+   OpenCodeRuntimeOptions,
+   OpenCodeServerEvent,
++  OpenCodeSessionRef,
+   OpenCodeServerMessage,
+   OpenCodeStateEvent,
+   OpenCodeThreadControllerLike,
+diff --git a/src/openCodeThreadListAdapter.ts b/src/openCodeThreadListAdapter.ts
+index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a963f9fd9db 100644
+--- a/src/openCodeThreadListAdapter.ts
++++ b/src/openCodeThreadListAdapter.ts
+@@ -1,8 +1,9 @@
+ import {
+-  createOpencodeClient,
+   type GlobalSession,
+ } from "@opencode-ai/sdk/v2/client";
++import { createAssistantStream } from "assistant-stream";
+ import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions";
++import type { OpenCodeRuntimeBackend } from "./types";
+ 
+ const isArchivedSession = (session: Pick<GlobalSession, "time">) => {
+   return typeof session.time.archived === "number";
+@@ -21,11 +22,15 @@ const mapThreadMetadata = (session: {
+   title: session.title,
+ });
+ 
++/** OpenCode's default title before an AI-generated name is applied. */
++const isPlaceholderTitle = (title: string) =>
++  !title || /^New session\b/i.test(title);
++
+ export const createOpenCodeThreadListAdapter = (
+-  client: ReturnType<typeof createOpencodeClient>,
++  backend: OpenCodeRuntimeBackend,
+ ) => ({
+   list: async () => {
+-    const response = await client.experimental.session.list(
++    const response = await backend.globalClient.experimental.session.list(
+       {
+         roots: true,
+         archived: true,
+@@ -36,6 +41,7 @@ export const createOpenCodeThreadListAdapter = (
+ 
+     for (const session of response.data ?? []) {
+       if (session.parentID) continue;
++      backend.getSessionClient({ id: session.id, directory: session.directory });
+       sessions.set(session.id, session);
+     }
+ 
+@@ -44,7 +50,7 @@ export const createOpenCodeThreadListAdapter = (
+     };
+   },
+   rename: async (remoteId: string, newTitle: string) => {
+-    await client.session.update(
++    await backend.getSessionClient({ id: remoteId }).session.update(
+       {
+         sessionID: remoteId,
+         title: newTitle,
+@@ -53,7 +59,7 @@ export const createOpenCodeThreadListAdapter = (
+     );
+   },
+   archive: async (remoteId: string) => {
+-    await client.session.update(
++    await backend.getSessionClient({ id: remoteId }).session.update(
+       {
+         sessionID: remoteId,
+         time: { archived: Date.now() },
+@@ -62,7 +68,7 @@ export const createOpenCodeThreadListAdapter = (
+     );
+   },
+   unarchive: async (remoteId: string) => {
+-    await client.session.update(
++    await backend.getSessionClient({ id: remoteId }).session.update(
+       {
+         sessionID: remoteId,
+         // The SDK models archived timestamps as numbers, but OpenCode uses
+@@ -73,7 +79,7 @@ export const createOpenCodeThreadListAdapter = (
+     );
+   },
+   delete: async (remoteId: string) => {
+-    await client.session.delete(
++    await backend.getSessionClient({ id: remoteId }).session.delete(
+       {
+         sessionID: remoteId,
+       },
+@@ -81,32 +87,36 @@ export const createOpenCodeThreadListAdapter = (
+     );
+   },
+   initialize: async () => {
+-    const response = await client.session.create({}, OPEN_CODE_REQUEST_OPTIONS);
+-    if (!response.data?.id) {
++    const session = await backend.initializeSession();
++    if (!session.id) {
+       throw new Error("Failed to create OpenCode session");
+     }
++    backend.getSessionClient(session);
+     return {
+-      remoteId: response.data.id,
+-      externalId: response.data.id,
++      remoteId: session.id,
++      externalId: session.id,
+     };
+   },
+   generateTitle: async (remoteId: string) => {
+-    await client.session.summarize(
+-      {
+-        sessionID: remoteId,
+-      },
+-      OPEN_CODE_REQUEST_OPTIONS,
+-    );
+-    // Title updates arrive through the OpenCode event stream, so this
+-    // placeholder stream only satisfies the remote thread list contract.
+-    return new ReadableStream({
+-      start(controller) {
+-        controller.close();
+-      },
+-    }) as never;
++    const client = backend.getSessionClient({ id: remoteId });
++    const readTitle = async () => {
++      const response = await client.session.get(
++        { sessionID: remoteId },
++        OPEN_CODE_REQUEST_OPTIONS,
++      );
++      return response.data?.title?.trim() ?? "";
++    };
++    let title = await readTitle();
++    for (let attempt = 0; attempt < 40 && isPlaceholderTitle(title); attempt++) {
++      await new Promise((resolve) => setTimeout(resolve, 250));
++      title = await readTitle();
++    }
++    return createAssistantStream((controller) => {
++      if (title) controller.appendText(title);
++    });
+   },
+   fetch: async (threadId: string) => {
+-    const response = await client.session.get(
++    const response = await backend.getSessionClient({ id: threadId }).session.get(
+       {
+         sessionID: threadId,
+       },
+@@ -115,6 +125,10 @@ export const createOpenCodeThreadListAdapter = (
+     if (!response.data?.id) {
+       throw new Error("OpenCode session not found");
+     }
++    backend.getSessionClient({
++      id: response.data.id,
++      directory: (response.data as GlobalSession).directory,
++    });
+     return mapThreadMetadata(response.data as GlobalSession);
+   },
+ });
+diff --git a/src/types.ts b/src/types.ts
+index a87d8907c1ee6b12de5deeda8554ac0342a094a3..dfcbaa6bb395fb74a34d10d9abc7770df9461c3c 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -11,6 +11,7 @@ import type {
+   ThreadUserMessagePart,
+ } from "@assistant-ui/react";
+ import type {
++  GlobalSession,
+   Message,
+   OpencodeClient,
+   Part,
+@@ -183,6 +184,23 @@ export type OpenCodeUserMessageOptions = {
+   noReply?: boolean | undefined;
+ };
+ 
++export type OpenCodeSessionRef = {
++  id: string;
++  directory?: string | undefined;
++};
++
++export type OpenCodeEventSourceLike = {
++  subscribe(listener: (event: OpenCodeServerEvent) => void): () => void;
++  dispose(): void;
++};
++
++export type OpenCodeRuntimeBackend = {
++  globalClient: OpencodeClient;
++  getSessionClient(ref: OpenCodeSessionRef): OpencodeClient;
++  initializeSession(): Promise<OpenCodeSessionRef>;
++  createEventSource(): OpenCodeEventSourceLike;
++};
++
+ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+   /**
+    * Called whenever the active thread's canonical (remote) ID changes, so the
+@@ -194,6 +212,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+    */
+   onThreadIdChange?: ((threadId: string | undefined) => void) | undefined;
+   client?: OpencodeClient;
++  backend?: OpenCodeRuntimeBackend | undefined;
+   baseUrl?: string | undefined;
+   initialSessionId?: string | undefined;
+   defaultModel?:
+@@ -243,6 +262,7 @@ export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
+ export type OpenCodeServerEvent = {
+   type: string;
+   sessionId: string | undefined;
++  directory?: string | undefined;
+   raw: unknown;
+   properties: Record<string, unknown>;
+ };
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca929173123eb1b 100644
+index 66a324b9fd650a6d396ea30064377a07e49218a7..154cbd61baf8745c84c8f2452586f45b3c518a25 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -187,16 +751,66 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
    useAuiState,
    useExternalStoreRuntime,
    useRemoteThreadListRuntime,
-@@ -13,7 +14,7 @@ import type {
+@@ -13,8 +14,9 @@ import type {
    ThreadMessage,
  } from "@assistant-ui/react";
  import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 -import { useEffect, useEffectEvent, useMemo } from "react";
 +import { useEffect, useEffectEvent, useMemo, useRef } from "react";
  import type {
++  OpenCodeRuntimeBackend,
    OpenCodeRuntimeOptions,
    OpenCodeThreadControllerLike,
-@@ -95,9 +96,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
+   OpenCodeThreadState,
+@@ -26,23 +28,26 @@ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection";
+ import { EMPTY_OPENCODE_THREAD_STATE } from "./openCodeThreadState";
+ import { openCodeExtras } from "./openCodeExtras";
+ import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter";
++import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions";
+ import { useOpenCodeControllerState } from "./useOpenCodeControllerState";
+ import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
+ 
+ type OpenCodeControllerRegistry = {
+-  getEventSource(): OpenCodeEventSource;
++  getEventSource(): ReturnType<OpenCodeRuntimeBackend["createEventSource"]>;
+   controllers: Map<string, OpenCodeThreadController>;
+   dispose(): void;
+ };
+ 
+ const createRegistry = (
+-  client: ReturnType<typeof createOpencodeClient>,
++  backend: OpenCodeRuntimeBackend,
+ ): OpenCodeControllerRegistry => {
+-  let eventSource: OpenCodeEventSource | null = null;
++  let eventSource: ReturnType<
++    OpenCodeRuntimeBackend["createEventSource"]
++  > | null = null;
+   const controllers = new Map<string, OpenCodeThreadController>();
+ 
+   const getEventSource = () => {
+-    eventSource ??= new OpenCodeEventSource(client);
++    eventSource ??= backend.createEventSource();
+     return eventSource;
+   };
+ 
+@@ -63,14 +68,14 @@ const createRegistry = (
+ 
+ const getController = (
+   registry: OpenCodeControllerRegistry,
+-  client: ReturnType<typeof createOpencodeClient>,
++  backend: OpenCodeRuntimeBackend,
+   sessionId: string,
+ ) => {
+   const existing = registry.controllers.get(sessionId);
+   if (existing) return existing;
+ 
+   const controller = new OpenCodeThreadController(
+-    client,
++    backend.getSessionClient({ id: sessionId }),
+     registry.getEventSource,
+     sessionId,
+   );
+@@ -95,9 +100,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
    rejectQuestion: async () => {},
  };
  
@@ -206,7 +820,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
  const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.runState.type === "streaming" ||
    state.runState.type === "cancelling" ||
-@@ -105,11 +103,35 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+@@ -105,11 +107,35 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.sessionStatus?.type === "busy" ||
    state.sessionStatus?.type === "retry";
  
@@ -242,7 +856,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
    const onLoadError = useEffectEvent((error: unknown) => {
      options.onError?.(error);
    });
-@@ -119,6 +141,16 @@ const useOpenCodeThreadRuntime = (
+@@ -119,6 +145,17 @@ const useOpenCodeThreadRuntime = (
      void controller.load().catch(onLoadError);
    }, [controller]);
  
@@ -252,6 +866,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
 +  useEffect(() => {
 +    if (listStatus === "new") return;
 +    if (isPlaceholderTitle(sessionTitle)) return;
++    if (!isPlaceholderTitle(listTitle ?? "")) return;
 +    if (listTitle === sessionTitle) return;
 +    aui.threadListItem.rename(sessionTitle);
 +  }, [aui, listStatus, listTitle, sessionTitle]);
@@ -259,7 +874,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
    const isRunning = isOpenCodeStateRunning(state);
  
    const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
-@@ -163,15 +195,7 @@ const useOpenCodeThreadRuntime = (
+@@ -163,15 +200,7 @@ const useOpenCodeThreadRuntime = (
      ...(options.adapters && { adapters: options.adapters }),
      onNew: async (message: AppendMessage) => {
        try {
@@ -276,7 +891,12 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
        } catch (error) {
          options.onError?.(error);
          throw error;
-@@ -219,9 +243,53 @@ const useRuntimeHook = (
+@@ -215,25 +244,90 @@ const useOpenCodeThreadRuntime = (
+ };
+ 
+ const useRuntimeHook = (
+-  client: ReturnType<typeof createOpencodeClient>,
++  backend: OpenCodeRuntimeBackend,
    registry: OpenCodeControllerRegistry,
    options: OpenCodeRuntimeOptions,
  ) => {
@@ -294,7 +914,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
 +    initializationRef.current ??= aui.threadListItem
 +      .initialize()
 +      .then(({ externalId, remoteId }) =>
-+        getController(registry, client, externalId ?? remoteId),
++        getController(registry, backend, externalId ?? remoteId),
 +      )
 +      .catch((error: unknown) => {
 +        initializationRef.current = undefined;
@@ -329,8 +949,10 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
 +  };
  
    const controller = sessionId
-     ? getController(registry, client, sessionId)
-@@ -230,10 +298,31 @@ const useRuntimeHook = (
+-    ? getController(registry, client, sessionId)
++    ? getController(registry, backend, sessionId)
+     : NOOP_CONTROLLER;
+ 
    const threadRuntime = useOpenCodeThreadRuntime(controller, options);
  
    const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
@@ -365,3 +987,61 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..28043e924f5caabe9d15f32d1ca92917
    });
  
    if (!sessionId) return fallbackRuntime;
+@@ -245,10 +339,35 @@ export const useOpenCodeRuntime = (
+ ): AssistantRuntime => {
+   const baseUrl = options.baseUrl ?? "http://localhost:4096";
+   const client = useMemo(
+-    () => options.client ?? createOpencodeClient({ baseUrl }),
+-    [baseUrl, options.client],
++    () =>
++      options.backend?.globalClient ??
++      options.client ??
++      createOpencodeClient({ baseUrl }),
++    [baseUrl, options.backend, options.client],
++  );
++  const backend = useMemo<OpenCodeRuntimeBackend>(
++    () =>
++      options.backend ?? {
++        globalClient: client,
++        getSessionClient: () => client,
++        initializeSession: async () => {
++          const response = await client.session.create(
++            {},
++            OPEN_CODE_REQUEST_OPTIONS,
++          );
++          if (!response.data?.id) {
++            throw new Error("Failed to create OpenCode session");
++          }
++          return {
++            id: response.data.id,
++            directory: response.data.directory,
++          };
++        },
++        createEventSource: () => new OpenCodeEventSource(client),
++      },
++    [client, options.backend],
+   );
+-  const registry = useMemo(() => createRegistry(client), [client]);
++  const registry = useMemo(() => createRegistry(backend), [backend]);
+ 
+   useEffect(() => {
+     return () => {
+@@ -257,8 +376,8 @@ export const useOpenCodeRuntime = (
+   }, [registry]);
+ 
+   const adapter = useMemo(
+-    () => createOpenCodeThreadListAdapter(client),
+-    [client],
++    () => createOpenCodeThreadListAdapter(backend),
++    [backend],
+   );
+ 
+   return useRemoteThreadListRuntime({
+@@ -267,6 +386,6 @@ export const useOpenCodeRuntime = (
+     initialThreadId: options.initialSessionId,
+     onThreadIdChange: options.onThreadIdChange,
+     // oxlint-disable-next-line react-hooks/rules-of-hooks -- runtimeHook callback is invoked by useRemoteThreadListRuntime at the appropriate hook position
+-    runtimeHook: () => useRuntimeHook(client, registry, options),
++    runtimeHook: () => useRuntimeHook(backend, registry, options),
+   });
+ };

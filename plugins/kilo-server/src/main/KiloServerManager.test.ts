@@ -91,6 +91,7 @@ describe("KiloServerManager", () => {
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
 			version: "7.4.20",
+			globalDirectory: "/tmp/kilo-test-runtime",
 		});
 		expect(first.password).toMatch(/^[a-f0-9]{64}$/);
 		expect(fetch).toHaveBeenCalledWith(

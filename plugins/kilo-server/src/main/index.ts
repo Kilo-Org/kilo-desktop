@@ -5,7 +5,6 @@ import {
 	type KiloServerService,
 	type KiloServerConnection,
 	type KiloServerStatus,
-	type KiloWorkspaceConnection,
 } from "../contracts/schemas.js";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
@@ -25,7 +24,7 @@ interface RegisterKiloServerOptions {
 
 export type KiloServerCapabilities = {
 	connectionService: {
-		getConnection(input: { directory: string }): Promise<KiloWorkspaceConnection>;
+		getConnection(): Promise<KiloServerConnection>;
 	};
 };
 
@@ -60,10 +59,7 @@ export function registerKiloServer(
 	void server.ensureRunning().catch(() => undefined);
 
 	const connectionService = {
-		getConnection: async ({ directory }) => {
-			const connection = await server.ensureRunning();
-			return { ...connection, directory };
-		},
+		getConnection: async () => server.ensureRunning(),
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {

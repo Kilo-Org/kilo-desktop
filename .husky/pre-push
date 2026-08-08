@@ -1,5 +1,8 @@
-# Mirror the checks from .github/workflows/ci.yml so pushes don't fail in CI
+# Mirror the checks from .github/workflows/ci.yml so pushes don't fail in CI.
+# lint/format stay full (sub-2s; global config changes can affect any file).
+# check/test are scoped to changed packages (+ dependents) for speed; a git
+# fetch keeps origin/main current for tightest scoping. Full suite runs in CI.
 pnpm lint
 pnpm format:check
-pnpm check
-pnpm test
+pnpm check:changed
+pnpm test:changed

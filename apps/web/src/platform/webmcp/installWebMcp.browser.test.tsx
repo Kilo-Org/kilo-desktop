@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import type { ModelContextTesting } from "@mcp-b/webmcp-types";
 
-import { installWebMcp } from "./installWebMcp";
+import { installWebMcp, nudgeRelayWidget } from "./installWebMcp";
 
 // installWebMcp is a renderer-lifetime singleton (module-level `installed` flag),
 // so every test in this file shares one install over one fake feature system.
@@ -156,5 +156,34 @@ describe("installWebMcp", () => {
 		expect(embed?.getAttribute("data-relay-host")).toBe("127.0.0.1");
 		expect(embed?.getAttribute("data-relay-port")).toBe("9345");
 		expect(embed?.getAttribute("data-relay-id")).toBe("anaconda-agentic-desktop");
+	});
+
+	it("nudges the relay widget with webmcp.connect (boot-order race guard)", async () => {
+		// kilo serve boots MCP servers lazily, so the relay can bind AFTER the
+		// widget's finite discovery ladder went dormant. The nudge posts
+		// webmcp.connect into the widget iframe to force re-discovery; the
+		// widget treats it as a no-op when already connected.
+		const iframe = document.createElement("iframe");
+		iframe.setAttribute("data-webmcp-relay", "1");
+		iframe.srcdoc = "<!doctype html><html><body></body></html>";
+		document.body.append(iframe);
+		await new Promise((resolve) => iframe.addEventListener("load", resolve, { once: true }));
+
+		const received: unknown[] = [];
+		iframe.contentWindow?.addEventListener("message", (event) => received.push(event.data));
+
+		nudgeRelayWidget();
+
+		await expect
+			.poll(() =>
+				received.some(
+					(message) =>
+						typeof message === "object" &&
+						message !== null &&
+						(message as { type?: string }).type === "webmcp.connect",
+				),
+			)
+			.toBe(true);
+		iframe.remove();
 	});
 });

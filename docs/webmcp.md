@@ -470,6 +470,16 @@ relay then promotes itself to server mode on the freed port and the widget's
 reconnect ladder finds it. A per-process id would leave the zombie holding
 the port indefinitely.
 
+**Boot-order race + reconnect nudge.** `kilo serve` boots its MCP servers
+lazily, so the relay can bind 9345 ~30–60s AFTER the widget's finite
+discovery ladder (initial scan → 10s/20s/30s retries → dormant with 120s
+re-probes) has gone quiet — leaving a multi-minute "relay up, widget
+dormant" dead zone in which Kilo truthfully reports zero WebMCP tools.
+`installWebMcp` therefore posts a `webmcp.connect` nudge into the widget
+iframe every 15 seconds; the widget treats it as a no-op when connected and
+as an immediate re-discovery when dormant/disconnected, bounding the dead
+zone to ≤15s after the relay comes up.
+
 Failure modes that remain (accepted for the interim):
 
 - Two instances of the app (e.g. dev + packaged) share one relay on 9345:

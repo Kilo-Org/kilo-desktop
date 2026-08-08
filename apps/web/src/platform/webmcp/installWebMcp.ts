@@ -137,6 +137,7 @@ export function installWebMcp(system: FeatureSystem): void {
 	registry.subscribe(sync);
 	sync();
 	injectRelayEmbed();
+	startRelayReconnectNudge();
 }
 
 /** Namespaced MCP tool name: `featureId_name`, sanitized to `[A-Za-z0-9_]`. */
@@ -188,4 +189,36 @@ function injectRelayEmbed(): void {
 		console.warn("[webmcp] Failed to load relay embed script; external tool relay is disabled.");
 	});
 	document.head.append(script);
+}
+
+/** How often the widget is nudged to retry relay discovery while disconnected. */
+const RELAY_RECONNECT_NUDGE_MS = 15_000;
+
+/**
+ * Single-shot wake-up for the relay widget. Exported for tests.
+ *
+ * The widget accepts `webmcp.connect` from the host page origin and treats it
+ * as: connected or mid-discovery → no-op; dormant or idle-disconnected →
+ * immediate re-discovery (the pinned 9345 endpoint is the first probe).
+ */
+export function nudgeRelayWidget(): void {
+	const frame = document.querySelector<HTMLIFrameElement>("iframe[data-webmcp-relay]");
+	frame?.contentWindow?.postMessage({ type: "webmcp.connect" }, window.location.origin);
+}
+
+/**
+ * Periodically wakes the relay widget so it retries discovery.
+ *
+ * Closes the boot-order race between the renderer and the relay: `kilo serve`
+ * boots its MCP servers lazily, so the relay can bind its port ~30-60s AFTER
+ * the widget's finite discovery ladder (initial scan → 10s/20s/30s retries →
+ * dormant with 120s re-probes) has gone quiet. Measured on a dev machine the
+ * resulting "relay up, widget dormant" dead zone lasted minutes, during which
+ * Kilo truthfully reports zero WebMCP tools.
+ *
+ * A 15s cadence bounds the dead zone regardless of how the relay's lifecycle
+ * drifts (lazy boot, orphan-takeover blip, EPIPE restart).
+ */
+function startRelayReconnectNudge(): void {
+	setInterval(nudgeRelayWidget, RELAY_RECONNECT_NUDGE_MS);
 }

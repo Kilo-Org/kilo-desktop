@@ -427,6 +427,58 @@ Rules:
    removed), the sidecar file itself is deleted to keep the config
    directory tidy.
 
+### Split-brain: why the relay identity is pinned
+
+The 9333–9348 loopback range is a **shared, unauthenticated rendezvous** used
+by every WebMCP relay on the machine — Claude Desktop MCP configs, ad-hoc
+`npx @mcp-b/webmcp-local-relay` runs, other apps. Live inspection of a dev
+machine found three orphaned npx relays (one weeks old) plus Claude Desktop's
+WebMCP server, one of which owned port 9333.
+
+Without identity pinning, two independent pairings race against that zoo:
+
+- The **widget** scans `127.0.0.1`+`[::1]` × 9333–9348 and pairs with the
+  FIRST relay that answers — often a foreign or orphaned relay on 9333.
+- **Kilo's relay** (ours) binds the first free port, or silently joins a
+  compatible foreign relay in client mode.
+
+When the two land on different relays, the system splits: the widget
+publishes tools into relay X while Kilo reads relay Y with **zero
+producers**. Symptoms: "No WebMCP tools available" while the todo UI works
+fine; tools that vanish after a renderer reload (the re-scan landed
+elsewhere); machine-dependent, launch-order-dependent flakiness — and our
+tools silently registering into a _foreign_ relay, where any MCP client
+attached to it can call them.
+
+Both halves are therefore pinned to each other:
+
+- Seeded relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
+  (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` in
+  `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts`). Fixed-port mode
+  refuses to chain to a non-relay owner; 9345 is far from the 9333 default
+  foreign relays use, still inside the CSP-allowed range.
+- Embed attributes: `data-relay-port="9345" data-relay-id="anaconda-agentic-desktop"`
+  (`apps/web/src/platform/webmcp/installWebMcp.ts`). The widget rejects any
+  relay whose `server-hello` carries a different relay id and keeps
+  scanning until it finds ours.
+
+The relay id is deliberately **stable** (not per-process): an orphaned relay
+from a previous run (kilo does not reap MCP subprocesses on shutdown —
+verified empirically) must still accept our widget's hello, so that its
+first stdio notification to its dead parent EPIPE-terminates it; the live
+relay then promotes itself to server mode on the freed port and the widget's
+reconnect ladder finds it. A per-process id would leave the zombie holding
+the port indefinitely.
+
+Failure modes that remain (accepted for the interim):
+
+- Two instances of the app (e.g. dev + packaged) share one relay on 9345:
+  both widgets publish into whichever instance's relay won the port, and
+  both kilos see the union of tools (tab-suffix disambiguation applies).
+- A non-relay process squatting exactly on 9345 puts the relay into a loud
+  error state in Kilo's MCP UI (fixed-port mode throws) rather than a
+  silent split-brain.
+
 ### Security cost of the interim
 
 The interim requires `FuseV1Options.RunAsNode: true` in

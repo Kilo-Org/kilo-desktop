@@ -5,6 +5,21 @@ import { initializeWebMCPPolyfill } from "@mcp-b/webmcp-polyfill";
 
 /** Loopback host the relay daemon binds to. The relay only accepts local connections. */
 const RELAY_HOST = "127.0.0.1";
+/**
+ * Identity-pinned rendezvous — MUST stay in sync with the seeded relay args in
+ * `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts` (`WEBMCP_RELAY_PORT`,
+ * `WEBMCP_RELAY_ID`).
+ *
+ * The 9333–9348 loopback range is shared by every WebMCP relay on the machine
+ * (Claude Desktop configs, npx relays, other apps). Without the id pin, the
+ * widget pairs with the FIRST relay that answers its scan — often a foreign or
+ * orphaned relay on 9333 — while kilo's own relay sits elsewhere with zero
+ * producers ("tools disappeared" split-brain; see docs/webmcp.md §7). With the
+ * pin, the widget rejects any relay whose server-hello carries a different
+ * relay id, and the port hint makes the first probe hit our relay directly.
+ */
+const RELAY_PORT = "9345";
+const RELAY_ID = "anaconda-agentic-desktop";
 /** Path (relative to the app origin) of the self-hosted relay bootstrap script. */
 const EMBED_SCRIPT_PATH = "webmcp/embed.js";
 const EMPTY_INPUT_SCHEMA: InputSchema = { type: "object", properties: {} };
@@ -167,6 +182,8 @@ function injectRelayEmbed(): void {
 	script.async = true;
 	script.dataset.webmcpEmbed = "1";
 	script.setAttribute("data-relay-host", RELAY_HOST);
+	script.setAttribute("data-relay-port", RELAY_PORT);
+	script.setAttribute("data-relay-id", RELAY_ID);
 	script.addEventListener("error", () => {
 		console.warn("[webmcp] Failed to load relay embed script; external tool relay is disabled.");
 	});

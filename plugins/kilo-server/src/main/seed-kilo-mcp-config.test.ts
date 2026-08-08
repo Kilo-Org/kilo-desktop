@@ -8,6 +8,9 @@ import {
 	KILO_CONFIG_FILENAME,
 	MANAGED_SIDECAR_FILENAME,
 	MCP_ENTRY_NAME,
+	WEBMCP_RELAY_ID,
+	WEBMCP_RELAY_LABEL,
+	WEBMCP_RELAY_PORT,
 	seedKiloMcpConfig,
 	type SeededMcpEntry,
 } from "./seed-kilo-mcp-config.js";
@@ -18,9 +21,19 @@ const RELAY_ENTRY = "/opt/app.asar.unpacked/node_modules/@mcp-b/webmcp-local-rel
 const RELAY_VERSION = "4.0.0";
 const fakeResolveRelay = () => ({ entry: RELAY_ENTRY, version: RELAY_VERSION });
 
+// Identity-pinned rendezvous args (split-brain fix; see docs/webmcp.md §7).
+const RELAY_ARGS = [
+	"--port",
+	String(WEBMCP_RELAY_PORT),
+	"--relay-id",
+	WEBMCP_RELAY_ID,
+	"--label",
+	WEBMCP_RELAY_LABEL,
+] as const;
+
 const EXPECTED_ENTRY: SeededMcpEntry = {
 	type: "local",
-	command: [APP_EXE, RELAY_ENTRY],
+	command: [APP_EXE, RELAY_ENTRY, ...RELAY_ARGS],
 	environment: { ELECTRON_RUN_AS_NODE: "1" },
 	enabled: true,
 };
@@ -101,6 +114,28 @@ describe("seedKiloMcpConfig", () => {
 		expect(entry).not.toHaveProperty("managedBy");
 		expect(entry).not.toHaveProperty("args");
 		expect(entry).not.toHaveProperty("env");
+	});
+
+	it("pins the relay identity and port (split-brain guard, docs/webmcp.md §7)", async () => {
+		await seedKiloMcpConfig({
+			configDirectory: configDir,
+			appExecutablePath: APP_EXE,
+			resolveRelay: fakeResolveRelay,
+		});
+		const config = await readConfig();
+		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME] as {
+			command: string[];
+		};
+		// Without these args the widget can pair with a foreign/orphaned relay
+		// on 9333 while kilo's own relay sits elsewhere with zero producers.
+		expect(entry.command).toContain("--relay-id");
+		expect(entry.command[entry.command.indexOf("--relay-id") + 1]).toBe(WEBMCP_RELAY_ID);
+		expect(entry.command).toContain("--port");
+		expect(entry.command[entry.command.indexOf("--port") + 1]).toBe(String(WEBMCP_RELAY_PORT));
+		// Port must stay inside the CSP-allowed loopback WS range (9333-9348),
+		// see apps/desktop/src/main/platform/ElectronProtocol.ts RELAY_WS_SOURCES.
+		expect(WEBMCP_RELAY_PORT).toBeGreaterThanOrEqual(9333);
+		expect(WEBMCP_RELAY_PORT).toBeLessThanOrEqual(9348);
 	});
 
 	it("is idempotent: a second run returns 'up-to-date' and does not touch the files", async () => {
@@ -202,7 +237,7 @@ describe("seedKiloMcpConfig", () => {
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 		const config = await readConfig();
 		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME];
-		expect(entry).toMatchObject({ type: "local", command: [NEW_EXE, NEW_ENTRY] });
+		expect(entry).toMatchObject({ type: "local", command: [NEW_EXE, NEW_ENTRY, ...RELAY_ARGS] });
 	});
 
 	it("skips seeding when the user replaces our entry with an unmanaged one (sidecar gone)", async () => {

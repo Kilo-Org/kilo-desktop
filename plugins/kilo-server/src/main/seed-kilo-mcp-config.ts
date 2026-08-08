@@ -51,6 +51,30 @@ export const KILO_CONFIG_FILENAME = "kilo.jsonc";
 export const MANAGED_SIDECAR_FILENAME = ".anaconda-desktop-managed.json";
 const SIDECAR_SCHEMA_VERSION = 1;
 
+/**
+ * Identity-pinned rendezvous (see docs/webmcp.md §7 "Split-brain").
+ *
+ * The 9333–9348 loopback range is a shared, unauthenticated rendezvous used
+ * by EVERY WebMCP relay on the machine (Claude Desktop configs, npx relays,
+ * other apps). Without pinning, our widget pairs with the first relay that
+ * answers (often a foreign/orphaned one on 9333) while kilo's own relay sits
+ * elsewhere with zero producers — a split-brain where tools "disappear"
+ * depending on which foreign process owns 9333 at scan time.
+ *
+ * - `--port 9345`: fixed-port mode. Far from the 9333 default foreign relays
+ *   use, still inside the CSP-allowed 9333–9348 range. In fixed-port mode
+ *   the relay refuses to silently chain to a non-relay owner.
+ * - `--relay-id`: the widget (see `apps/web/src/platform/webmcp/installWebMcp.ts`,
+ *   which must embed the SAME id) rejects any relay whose server-hello
+ *   carries a different id, so foreign relays are invisible to our widget.
+ *   The id is deliberately STABLE (not per-process): an orphaned relay from a
+ *   previous run must still accept our widget's hello so that its dead stdio
+ *   EPIPE-terminates it, letting the live relay take over the port.
+ */
+export const WEBMCP_RELAY_PORT = 9345;
+export const WEBMCP_RELAY_ID = "anaconda-agentic-desktop";
+export const WEBMCP_RELAY_LABEL = "Anaconda Agentic Desktop";
+
 export interface SeededMcpEntry {
 	readonly type: "local";
 	readonly command: readonly [string, ...string[]];
@@ -186,7 +210,16 @@ async function readExistingConfig(
 function buildEntry(appExecutablePath: string, relayEntry: string): SeededMcpEntry {
 	return {
 		type: "local",
-		command: [appExecutablePath, relayEntry],
+		command: [
+			appExecutablePath,
+			relayEntry,
+			"--port",
+			String(WEBMCP_RELAY_PORT),
+			"--relay-id",
+			WEBMCP_RELAY_ID,
+			"--label",
+			WEBMCP_RELAY_LABEL,
+		],
 		environment: { ELECTRON_RUN_AS_NODE: "1" },
 		enabled: true,
 	};

@@ -144,4 +144,17 @@ describe("installWebMcp", () => {
 		expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/sanitizes to MCP name/));
 		warnSpy.mockRestore();
 	});
+
+	it("pins the relay identity and port on the embed script (split-brain guard)", () => {
+		// 9333-9348 is a shared rendezvous range used by every WebMCP relay on
+		// the machine (Claude Desktop, npx relays, ...). Without the id/port pin
+		// the widget can pair with a foreign relay while kilo's own relay has
+		// zero producers — tools silently vanish. Values MUST match the seeded
+		// relay args in plugins/kilo-server/src/main/seed-kilo-mcp-config.ts.
+		const embed = document.querySelector<HTMLScriptElement>("script[data-webmcp-embed]");
+		expect(embed).not.toBeNull();
+		expect(embed?.getAttribute("data-relay-host")).toBe("127.0.0.1");
+		expect(embed?.getAttribute("data-relay-port")).toBe("9345");
+		expect(embed?.getAttribute("data-relay-id")).toBe("anaconda-agentic-desktop");
+	});
 });

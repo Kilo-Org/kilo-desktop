@@ -19,7 +19,7 @@
 // not committed (see .gitignore), so they always match the installed package version.
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { copyFile, mkdir, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -94,6 +94,30 @@ for (const [asset, expected] of Object.entries(EXPECTED_SHA256)) {
 				`The installed @mcp-b/webmcp-local-relay asset changed. Review the new asset, ` +
 				`then update EXPECTED_SHA256 in ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}.`,
 		);
+	}
+	if (asset === "widget.html") {
+		// PATCH: raise the widget's per-endpoint discovery timeout (1200ms in
+		// upstream 4.0.0) to 10s. The timeout only bounds a REAL handshake in
+		// flight — dead ports fail fast via `error` events regardless — but in
+		// dev mode the renderer's main thread can stall for >1.2s (Vite/React
+		// long tasks), starving the hidden iframe's message delivery. Measured
+		// on a dev machine: node→relay handshake 1-6ms, widget-frame→relay
+		// 2308ms — every probe of the LIVE relay was aborted mid-handshake and
+		// the widget never connected, on any machine with >1.2s renderer
+		// stalls. The CSP hashes the widget's inline script per served
+		// document (see ElectronProtocol getInlineScriptHashes), so the patch
+		// does not break script-src.
+		const original = await readFile(source, "utf8");
+		const marker = "l=setTimeout(()=>{a(null)},1200)";
+		if (!original.includes(marker)) {
+			throw new Error(
+				`[webmcp] widget.html discovery-timeout marker not found; upstream changed. ` +
+					`Re-verify the patch in ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}.`,
+			);
+		}
+		const patched = original.replace(marker, "l=setTimeout(()=>{a(null)},10000)");
+		await writeFile(path.join(publicDir, asset), patched);
+		continue;
 	}
 	await copyFile(source, path.join(publicDir, asset));
 }

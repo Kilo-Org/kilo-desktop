@@ -4,25 +4,35 @@ import { FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@elec
 
 import {
 	kiloServerContract,
+	type KiloServerCapabilityService,
 	type KiloServerService,
 	type KiloServerConnection,
 	type KiloServerStatus,
 } from "../contracts/schemas.js";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import { ContributedEnvManager } from "./ContributedEnvManager.js";
+import { KiloConfigManager } from "./KiloConfigManager.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
 import { resolveKiloInstallation } from "./installation.js";
 import { seedKiloMcpConfig, type SeedOutcome } from "./seed-kilo-mcp-config.js";
 
+export { ContributedEnvManager } from "./ContributedEnvManager.js";
+
 export interface KiloServerController {
 	readonly status: KiloServerStatus;
+	readonly isRunning: boolean;
 	ensureRunning(): Promise<KiloServerConnection>;
 	restart(): Promise<KiloServerConnection>;
 	dispose(): void;
 }
 
 interface RegisterKiloServerOptions {
-	createServer?: (onStatusChange: (status: KiloServerStatus) => void) => KiloServerController;
+	createServer?: (
+		onStatusChange: (status: KiloServerStatus) => void,
+		contributedEnv: ContributedEnvManager,
+	) => KiloServerController;
+	createConfigManager?: (configHome: string) => KiloConfigManager;
 	/**
 	 * Interim WebMCP↔Kilo bridge (see anaconda/agentic-desktop#102).
 	 * Injected in tests; production defaults call the real seed.
@@ -44,11 +54,13 @@ export type KiloServerCapabilities = {
 	connectionService: {
 		getConnection(): Promise<KiloServerConnection>;
 	};
+	kiloService: KiloServerCapabilityService;
 };
 
 export function createKiloServerManagerOptions(
 	mainSdk: MainSdk,
 	onStatusChange: (status: KiloServerStatus) => void,
+	contributedEnv: ContributedEnvManager,
 	resolveInstallation: typeof resolveKiloInstallation = resolveKiloInstallation,
 ): KiloServerManagerOptions {
 	return {
@@ -62,6 +74,7 @@ export function createKiloServerManagerOptions(
 		fetch: mainSdk.net.fetch,
 		logger: mainSdk.logger,
 		onStatusChange,
+		contributedEnv,
 	};
 }
 
@@ -82,6 +95,39 @@ async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boole
 	}
 }
 
+/**
+ * Default debounce delay (ms) before restarting the server after env changes.
+ * Allows multiple rapid contributions to coalesce into a single restart.
+ */
+const ENV_RESTART_DEBOUNCE_MS = 300;
+
+/**
+ * Notify the running Kilo server to reload its configuration by posting
+ * to `/global/dispose`. This causes Kilo to re-read kilo.jsonc on the next
+ * request without a full process restart.
+ *
+ * Silently ignores failures (server may not be running yet).
+ */
+async function reloadServerConfig(
+	server: KiloServerController,
+	fetchFn: typeof fetch,
+	logger: MainSdk["logger"],
+): Promise<void> {
+	try {
+		const connection = await server.ensureRunning();
+		const authHeader = `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`;
+		const response = await fetchFn(`${connection.baseUrl}/global/dispose`, {
+			method: "POST",
+			headers: { Authorization: authHeader },
+		});
+		if (!response.ok) {
+			logger.warn(`Config reload returned HTTP ${response.status}.`);
+		}
+	} catch {
+		// Server may not be running — config will be picked up on next start.
+	}
+}
+
 export function registerKiloServer(
 	mainSdk: MainSdk,
 	options: RegisterKiloServerOptions = {},
@@ -91,10 +137,29 @@ export function registerKiloServer(
 	const runAsNodeEnabled =
 		options.runAsNodeEnabled ?? (() => defaultRunAsNodeEnabled(appExecutablePath));
 
+	let restartTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function handleEnvChange(): void {
+		// Auto-restart on contribution change, only when server is running.
+		// Debounce to coalesce rapid changes into a single restart.
+		if (!server.isRunning) return;
+		clearTimeout(restartTimer);
+		restartTimer = setTimeout(() => {
+			if (!server.isRunning) return;
+			server.restart().catch((error) => {
+				mainSdk.logger.warn(
+					`Failed to restart Kilo server after env change: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
+		}, ENV_RESTART_DEBOUNCE_MS);
+	}
+
+	const contributedEnv = new ContributedEnvManager(handleEnvChange, mainSdk.logger);
+
 	const createServer =
 		options.createServer ??
-		((onStatusChange: (status: KiloServerStatus) => void) =>
-			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange)));
+		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
+			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Seed the
 	// managed `mcp` entry before `kilo serve` boots so its first read of
@@ -112,7 +177,10 @@ export function registerKiloServer(
 				logger: mainSdk.logger,
 			}));
 
-	const server = createServer((status) => mainSdk.events.emit("server-status-changed", status));
+	const server = createServer(
+		(status) => mainSdk.events.emit("server-status-changed", status),
+		contributedEnv,
+	);
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
 	//
@@ -147,6 +215,11 @@ export function registerKiloServer(
 	// connection request can retry without producing an unhandled rejection.
 	void ensureRunningAfterSeed().catch(() => undefined);
 
+	const configHome = path.join(mainSdk.storageDir, "runtime", "config");
+	const createConfigManager =
+		options.createConfigManager ?? ((ch: string) => new KiloConfigManager({ configHome: ch }));
+	const configManager = createConfigManager(configHome);
+
 	const connectionService = {
 		// Route through ensureRunningAfterSeed so getConnection callers
 		// (renderer mount + `server.getConnection` RPC) wait on the WebMCP
@@ -165,11 +238,42 @@ export function registerKiloServer(
 			return server.restart();
 		},
 		"server.status": async () => server.status,
+		"mcps.list": async () => configManager.list(),
+		"mcps.save": async ({ scope: _scope, id, transport, enabled }) => {
+			await configManager.save(id, transport, enabled);
+			await reloadServerConfig(server, mainSdk.net.fetch, mainSdk.logger);
+			return { ok: true as const };
+		},
+		"mcps.remove": async ({ scope: _scope, id }) => {
+			await configManager.remove(id);
+			await reloadServerConfig(server, mainSdk.net.fetch, mainSdk.logger);
+			return { ok: true as const };
+		},
+		"mcps.setEnabled": async ({ scope: _scope, id, enabled }) => {
+			await configManager.setEnabled(id, enabled);
+			await reloadServerConfig(server, mainSdk.net.fetch, mainSdk.logger);
+			return { ok: true as const };
+		},
+	};
+
+	const kiloService: KiloServerCapabilityService = {
+		serverEnv: {
+			contribute: contributedEnv.contribute.bind(contributedEnv),
+		},
+		restartServer: async () => {
+			// Wait on the seed for the same reason as `server.restart`.
+			await seedComplete;
+			await server.restart();
+		},
 	};
 
 	mainSdk.plugins.expose("connectionService", connectionService);
+	mainSdk.plugins.expose("kiloService", kiloService);
 	mainSdk.channels(kiloServerContract).handleAll(service);
-	mainSdk.onDispose(() => server.dispose());
+	mainSdk.onDispose(() => {
+		clearTimeout(restartTimer);
+		server.dispose();
+	});
 }
 
 export function mainRegister(mainSdk: MainSdk): void {

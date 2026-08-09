@@ -11,6 +11,7 @@ import { execa } from "execa";
 
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
+import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
@@ -57,6 +58,7 @@ export interface KiloServerManagerOptions {
 	readonly allowVersionMismatch?: boolean;
 	readonly corsOrigins?: readonly string[];
 	readonly environment?: NodeJS.ProcessEnv;
+	readonly contributedEnv?: ContributedEnvManager;
 	readonly platform?: NodeJS.Platform;
 	readonly fetch: typeof fetch;
 	readonly spawn?: (
@@ -137,6 +139,7 @@ export class KiloServerManager {
 		>
 	> &
 		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory" | "stateDirectory">;
+	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	#status: KiloServerStatus = { status: "stopped" };
 	#child: KiloChildProcess | undefined;
@@ -173,10 +176,15 @@ export class KiloServerManager {
 			healthRetryDelayMs: options.healthRetryDelayMs ?? 250,
 			shutdownTimeoutMs: options.shutdownTimeoutMs ?? 5_000,
 		};
+		this.#contributedEnv = options.contributedEnv;
 	}
 
 	get status(): KiloServerStatus {
 		return structuredClone(this.#status);
+	}
+
+	get isRunning(): boolean {
+		return this.#connection !== undefined;
 	}
 
 	ensureRunning(): Promise<KiloServerConnection> {
@@ -287,6 +295,7 @@ export class KiloServerManager {
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
+			...(this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : undefined),
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",

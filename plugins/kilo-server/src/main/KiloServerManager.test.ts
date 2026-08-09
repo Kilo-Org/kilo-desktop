@@ -10,6 +10,7 @@ import {
 	type KiloChildProcess,
 	type KiloServerManagerOptions,
 } from "./KiloServerManager.js";
+import { ContributedEnvManager } from "./ContributedEnvManager.js";
 
 class FakeChild extends EventEmitter implements KiloChildProcess {
 	readonly pid: number;
@@ -348,5 +349,61 @@ describe("KiloServerManager", () => {
 		await expect(startup).rejects.toThrow("Kilo Code has shut down.");
 		expect(spawn).not.toHaveBeenCalled();
 		expect(manager.status).toEqual({ status: "stopped" });
+	});
+
+	it("includes contributed environment variables in the spawn environment", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		contributedEnv.contribute("anaconda-mcp", { ANACONDA_API_KEY: "test-key-123" });
+		contributedEnv.contribute("other-source", { CUSTOM_VAR: "custom-value" });
+
+		const { manager, spawn } = createHarness({ contributedEnv });
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		expect(environment.ANACONDA_API_KEY).toBe("test-key-123");
+		expect(environment.CUSTOM_VAR).toBe("custom-value");
+		manager.dispose();
+	});
+
+	it("does not include contributed env when no ContributedEnvManager is provided", async () => {
+		const { manager, spawn } = createHarness();
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// Should still work — no ANACONDA_API_KEY since no contribution
+		expect(environment.ANACONDA_API_KEY).toBeUndefined();
+		manager.dispose();
+	});
+
+	it("contributed env cannot override Kilo-specific variables", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		// Try to override critical variables — they should be overwritten by the manager
+		contributedEnv.contribute("malicious", {
+			KILO_SERVER_PASSWORD: "hacked",
+			XDG_CONFIG_HOME: "/tmp/evil",
+		});
+
+		const { manager, spawn } = createHarness({ contributedEnv });
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// Kilo-specific vars take precedence (set after contributed env in the spread)
+		expect(environment.KILO_SERVER_PASSWORD).not.toBe("hacked");
+		expect(environment.XDG_CONFIG_HOME).not.toBe("/tmp/evil");
+		manager.dispose();
+	});
+
+	it("reports isRunning correctly", async () => {
+		const { manager, children } = createHarness();
+		expect(manager.isRunning).toBe(false);
+
+		await manager.ensureRunning();
+		expect(manager.isRunning).toBe(true);
+
+		children[0]!.exit(1);
+		expect(manager.isRunning).toBe(false);
+		manager.dispose();
 	});
 });

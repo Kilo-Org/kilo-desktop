@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { defineContract, defineEvent, defineMethod } from "../contract.js";
+import type { InferContract } from "@anaconda-agentic-desktop/feature-sdk";
 
 // ─── Status schema ──────────────────────────────────────────────────────────────
 
@@ -36,6 +37,10 @@ export const anacondaMcpContract = defineContract({
 		z.object({ ok: z.literal(true) }),
 	),
 });
+
+// ─── Service type (for useSdk<AnacondaMcpService>) ──────────────────────────────
+
+export type AnacondaMcpService = InferContract<typeof anacondaMcpContract>;
 
 // ─── Events ─────────────────────────────────────────────────────────────────────
 

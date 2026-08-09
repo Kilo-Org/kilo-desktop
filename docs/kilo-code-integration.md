@@ -537,6 +537,9 @@ Four sub-panels:
    - Default model picker (writes `model` to global config).
 2. **Custom agents** — table of agents from both scopes (global `~/.config/kilo/agents/*.md`, per-workspace `.kilo/agents/*.md`): name, scope, source path. Create/edit in a markdown editor pane (frontmatter: description, model, permissions); save writes the file and triggers a server reload (verify the server's config-reload API in Phase 7 — `POST /global/dispose` forces lazy re-boot of directory instances as a coarse fallback; last resort is restarting the single server). Delete removes the file.
 3. **Custom MCPs** — table of configured servers (`mcp` key): name, transport (stdio command / remote URL), scope, enabled toggle, status (from the server's MCP status). Add/edit form supports stdio (`command`, `args`, `env`) and remote (`url`, `headers`) with env-var indirection for secrets (`{env:VAR}` — only honored in trusted/global config, per Kilo docs; call this out in the UI copy). Writes merge into the scope's config without clobbering other keys.
+
+   > **Note:** The `anaconda-remote` MCP entry is managed automatically by the `anaconda-mcp` feature (`apps/desktop/src/main/features/anaconda-mcp/`). It is written via `mcps.save` with the `{env:ANACONDA_API_KEY}` template and should not be edited manually by the user. If the Custom MCPs UI displays it, mark it as read-only or annotate it as "Managed by Anaconda Desktop".
+
 4. **Custom skills** — table of skills (global `~/.kilo/skills/*/`, project `.kilo/skills/*/`): name, scope, description (from `SKILL.md` frontmatter). Create = scaffold a `SKILL.md` folder; edit = file editor; delete removes the folder.
 
 ### 9.2 Kilo Marketplace sub-panel

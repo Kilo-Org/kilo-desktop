@@ -19,9 +19,18 @@ import { browserRegister as anacondaMcpBrowserRegister } from "./anaconda-mcp/in
  * browser-safe fakes.
  */
 
+/** No-op main register for browser-only features that only provide browserRegister. */
+function noopMainRegister(): void {
+	/* browser mode — main is unavailable */
+}
+
 /** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
 const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
-	{ id: "anaconda-mcp", browserRegister: anacondaMcpBrowserRegister },
+	{
+		id: "anaconda-mcp",
+		mainRegister: noopMainRegister,
+		browserRegister: anacondaMcpBrowserRegister,
+	},
 ];
 
 /**

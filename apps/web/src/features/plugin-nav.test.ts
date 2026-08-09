@@ -74,13 +74,7 @@ describe("buildPluginNav", () => {
 });
 
 describe("PLUGIN_NAV", () => {
-	it("contains the bundled todos nav entry under the /plugins namespace", () => {
-		const todos = PLUGIN_NAV.find((entry) => entry.to === "/plugins/todos");
-		expect(todos).toBeDefined();
-		expect(todos?.pluginId).toBe("todos");
-		expect(todos?.label).toBe("Todo List");
-		expect(todos?.icon).toBe("TodoNavIcon");
-		expect(todos?.iconComponent).toBeDefined();
-		expect(todos?.navQaId).toBe("nav-todos");
+	it("is empty — the bundled plugins contribute no sidebar nav entries", () => {
+		expect(PLUGIN_NAV).toEqual([]);
 	});
 });

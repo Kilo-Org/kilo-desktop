@@ -38,6 +38,8 @@ export function createKiloServerManagerOptions(
 			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
 		}),
 		runtimeDirectory: path.join(mainSdk.storageDir, "runtime"),
+		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
+		stateDirectory: mainSdk.storageDir,
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
 		fetch: mainSdk.net.fetch,
 		logger: mainSdk.logger,

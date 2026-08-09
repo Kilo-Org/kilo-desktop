@@ -117,7 +117,7 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 		expect(PLUGIN_ZONE_CONTRIBUTIONS.find((c) => c.pluginId === "todos")).toBeUndefined();
 	});
 
-	it("includes kilo-ui ThreadList in the sidebar zone", () => {
+	it("includes kilo-ui SessionList in the sidebar zone", () => {
 		const contribution = PLUGIN_ZONE_CONTRIBUTIONS.find(
 			(c) => c.pluginId === "kilo-ui" && c.zone === "sidebar",
 		);

@@ -57,6 +57,7 @@ describe("kilo-server main registration", () => {
 			logger,
 			onStatusChange,
 			runtimeDirectory: path.join("/plugin-data/kilo-server", "runtime"),
+			stateDirectory: "/plugin-data/kilo-server",
 		});
 		mainSdk.dispose();
 	});

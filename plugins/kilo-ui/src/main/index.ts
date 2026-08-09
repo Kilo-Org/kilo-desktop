@@ -74,7 +74,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 				if (!primary) {
 					throw new FeatureError("Workspace has no primary folder.", "BUSINESS");
 				}
-				return { directory: primary.path };
+				return { directory: primary.path, workspaceId };
 			}
 			return { directory: await createUnscopedChatDirectory(mainSdk.storageDir) };
 		},

@@ -18,6 +18,11 @@ import { modelRefToId } from "./model-selection/model-catalog.js";
 import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
 import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
+import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
+import {
+	createSessionActivityStore,
+	type SessionActivityStore,
+} from "./session-activity/session-activity-store.js";
 
 const CHAT_ROUTE_PATH = "/plugins/chat";
 
@@ -26,12 +31,14 @@ function ChatRuntimeTree({
 	catalogConnection,
 	prepareSession,
 	onRuntimeError,
+	sessionActivity,
 	children,
 }: {
 	connectionPromise: Promise<KiloGlobalConnection>;
 	catalogConnection: KiloGlobalConnection | undefined;
 	prepareSession: () => Promise<KiloSessionPreparation>;
 	onRuntimeError: (error: unknown) => void;
+	sessionActivity: SessionActivityStore;
 	children: ReactNode;
 }) {
 	const sdk = useSdk("kilo-ui");
@@ -46,13 +53,15 @@ function ChatRuntimeTree({
 	);
 
 	const onThreadIdChange = useMemo(
-		() => () => {
+		() => (threadId?: string) => {
+			sessionActivity.getState().setOpenSession(threadId ?? null);
+			if (threadId) sessionActivity.getState().markVisited(threadId);
 			const path = sdkRef.current.location.peek().path;
 			if (path !== CHAT_ROUTE_PATH && !path.startsWith(`${CHAT_ROUTE_PATH}/`)) {
 				sdkRef.current.navigate(CHAT_ROUTE_PATH);
 			}
 		},
-		[],
+		[sessionActivity],
 	);
 
 	const runtime = useKiloRuntime({
@@ -62,6 +71,7 @@ function ChatRuntimeTree({
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
 		onError: onRuntimeError,
+		sessionActivity,
 	});
 
 	const modelSelection = useMemo(
@@ -94,7 +104,7 @@ function ChatRuntimeTree({
 
 /**
  * App-lifetime chat runtime: connection, model selection, and a single
- * `AssistantRuntimeProvider` shared by the shell sidebar ThreadList and ChatPage.
+ * `AssistantRuntimeProvider` shared by the shell sidebar SessionList and ChatPage.
  */
 export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
@@ -163,16 +173,21 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connectionPromise,
 	};
 
+	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
+
 	return (
 		<ChatConnectionProvider status={connectionStatus}>
-			<ChatRuntimeTree
-				connectionPromise={connectionPromise}
-				catalogConnection={connection.data}
-				prepareSession={prepareSession}
-				onRuntimeError={refreshConnection}
-			>
-				{children}
-			</ChatRuntimeTree>
+			<SessionActivityProvider store={sessionActivity}>
+				<ChatRuntimeTree
+					connectionPromise={connectionPromise}
+					catalogConnection={connection.data}
+					prepareSession={prepareSession}
+					onRuntimeError={refreshConnection}
+					sessionActivity={sessionActivity}
+				>
+					{children}
+				</ChatRuntimeTree>
+			</SessionActivityProvider>
 		</ChatConnectionProvider>
 	);
 }

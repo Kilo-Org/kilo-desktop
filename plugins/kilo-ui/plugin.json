@@ -14,7 +14,7 @@
 		"zones": [
 			{
 				"zone": "sidebar",
-				"component": "ThreadList",
+				"component": "SessionList",
 				"label": "Chats",
 				"priority": 10
 			}

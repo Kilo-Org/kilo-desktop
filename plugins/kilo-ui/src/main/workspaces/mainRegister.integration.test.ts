@@ -148,7 +148,7 @@ describe("kilo-ui mainRegister", () => {
 
 		await expect(
 			mainSdk.invoke("chat.prepareSession", { workspaceId: created.id }),
-		).resolves.toEqual({ directory: primary!.path });
+		).resolves.toEqual({ directory: primary!.path, workspaceId: created.id });
 	});
 
 	it("creates unique unscoped session directories only when prepared", async () => {

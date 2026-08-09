@@ -20,6 +20,7 @@ export const kiloGlobalConnectionSchema = z.object({
 
 export const kiloSessionPreparationSchema = z.object({
 	directory: z.string().min(1),
+	workspaceId: z.string().min(1).optional(),
 });
 
 export type KiloGlobalConnection = z.infer<typeof kiloGlobalConnectionSchema>;

@@ -8,6 +8,7 @@ import type {
 	KiloGlobalConnection,
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
+import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { withPromptVariant } from "./with-prompt-variant.js";
 
@@ -29,6 +30,8 @@ export interface UseKiloRuntimeOptions {
 	variant?: string;
 	isSendDisabled?: boolean;
 	onError?: (error: unknown) => void;
+	/** Shared session-activity store tapped into the runtime's SSE stream. */
+	sessionActivity?: SessionActivityStore;
 }
 
 export function useKiloRuntime({
@@ -43,6 +46,7 @@ export function useKiloRuntime({
 	variant,
 	isSendDisabled,
 	onError,
+	sessionActivity,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	const variantRef = useRef(variant);
 	variantRef.current = variant;
@@ -63,8 +67,9 @@ export function useKiloRuntime({
 			connectionPromise,
 			prepareSession,
 			getVariant: () => variantRef.current,
+			...(sessionActivity ? { sessionActivity } : {}),
 		});
-	}, [backendOption, client, connectionPromise, prepareSession]);
+	}, [backendOption, client, connectionPromise, prepareSession, sessionActivity]);
 
 	return useOpenCodeRuntime({
 		...(backend ? { backend } : {}),

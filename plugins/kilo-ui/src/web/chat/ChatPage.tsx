@@ -4,7 +4,7 @@ import { useChatConnection } from "./connection/ChatConnectionContext.js";
 /**
  * Full-page chat surface contributed by kilo-ui (`/plugins/chat`).
  * Connection and `AssistantRuntimeProvider` live in `ChatFeatureProvider`
- * so the shell sidebar ThreadList shares the same runtime.
+ * so the shell sidebar SessionList shares the same runtime.
  */
 export function ChatPage() {
 	const connection = useChatConnection();

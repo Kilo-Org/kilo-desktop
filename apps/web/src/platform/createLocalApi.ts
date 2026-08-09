@@ -5,7 +5,7 @@ import { createElectronLocalApi } from "./electronLocalApi";
 
 /**
  * Prefer the Electron preload bridge when present; otherwise use the browser adapter.
- * Matches the t3code host-detection pattern (bridge presence, not protocol sniffing).
+ * Detects the host by bridge presence, not protocol sniffing.
  */
 export function createLocalApi(): LocalApi {
 	const bridge = globalThis.window?.desktopApi;

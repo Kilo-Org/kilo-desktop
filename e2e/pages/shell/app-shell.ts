@@ -1,5 +1,4 @@
 import {
-	click,
 	expectElementToBeVisible,
 	expectPageToHaveTitle,
 	getLocatorByTestId,
@@ -8,17 +7,12 @@ import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 export class AppShellPage {
 	private readonly sidebar = () => getLocatorByTestId("app-sidebar");
-	private readonly navItem = (id: string) => getLocatorByTestId(`nav-${id}`);
 
 	async verifyShellIsLoaded(): Promise<void> {
 		await expectElementToBeVisible(this.sidebar(), "App shell sidebar should be visible on boot");
 		await expectPageToHaveTitle(/Anaconda Agentic Desktop/, {
 			message: "App shell should set the Anaconda Agentic Desktop page title",
 		});
-	}
-
-	async navigateToFeature(featureId: string): Promise<void> {
-		await click(this.navItem(featureId));
 	}
 
 	async verifyCustomProtocolBoot(): Promise<void> {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
+import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 
@@ -36,12 +37,20 @@ describe("createKiloRuntimeBackend", () => {
 					directory: "/workspace/a",
 					title: "A",
 					time: { created: 1, updated: 1 },
+					metadata: { anaconda: {} },
 				},
 				{
 					id: "session-b",
 					directory: "/workspace/b",
 					title: "B",
 					time: { created: 2, updated: 2 },
+					metadata: { anaconda: { workspaceId: "ws-1" } },
+				},
+				{
+					id: "session-cli",
+					directory: "/elsewhere",
+					title: "CLI",
+					time: { created: 3, updated: 3 },
 				},
 			],
 		}));
@@ -67,6 +76,12 @@ describe("createKiloRuntimeBackend", () => {
 		expect(createKiloDirectoryClient).toHaveBeenNthCalledWith(1, connection, "/workspace/a");
 		expect(createKiloDirectoryClient).toHaveBeenNthCalledWith(2, connection, "/workspace/b");
 		expect(get).toHaveBeenCalledTimes(2);
+
+		const listed = await backend.globalClient.experimental.session.list(
+			{ roots: true, archived: true },
+			{ throwOnError: true },
+		);
+		expect(listed.data?.map((session) => session.id)).toEqual(["session-a", "session-b"]);
 	});
 
 	it("creates a session only after preparation and keeps its directory immutable", async () => {
@@ -88,10 +103,77 @@ describe("createKiloRuntimeBackend", () => {
 		});
 		expect(prepareSession).toHaveBeenCalledOnce();
 		expect(createKiloDirectoryClient).toHaveBeenCalledWith(connection, "/workspace/selected");
-		expect(create).toHaveBeenCalledOnce();
+		expect(create).toHaveBeenCalledWith({ metadata: { anaconda: {} } }, { throwOnError: true });
 
 		backend.getSessionClient({ id: "session-new" });
 		expect(createKiloDirectoryClient).toHaveBeenCalledOnce();
+	});
+
+	it("stamps workspace id inside nested anaconda metadata", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/selected",
+			workspaceId: "ws-1",
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-ws" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => undefined,
+		});
+
+		await expect(backend.initializeSession()).resolves.toEqual({
+			id: "session-ws",
+			directory: "/workspace/selected",
+		});
+		expect(create).toHaveBeenCalledWith(
+			{ metadata: { anaconda: { workspaceId: "ws-1" } } },
+			{ throwOnError: true },
+		);
+	});
+
+	it("hydrates session timestamps into the activity store at startup", async () => {
+		const list = vi.fn(async () => ({
+			data: [
+				{
+					id: "session-settled",
+					directory: "/workspace/settled",
+					title: "Settled",
+					time: { created: 10, updated: 20, archived: 30 },
+					metadata: { anaconda: {} },
+				},
+				{
+					id: "session-cli",
+					directory: "/cli",
+					title: "CLI",
+					time: { created: 11, updated: 21 },
+				},
+			],
+		}));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({
+			experimental: { session: { list } },
+			permission: { list: vi.fn(async () => ({ data: [] })) },
+			question: { list: vi.fn(async () => ({ data: [] })) },
+			session: { status: vi.fn(async () => ({ data: {} })) },
+		} as never);
+		const store = createSessionActivityStore({ storage: null });
+
+		createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+			getVariant: () => undefined,
+			sessionActivity: store,
+		});
+
+		await vi.waitFor(() => {
+			expect(store.getState().sessions["session-settled"]).toMatchObject({
+				directory: "/workspace/settled",
+				createdAt: 10,
+				updatedAt: 20,
+			});
+		});
+		expect(store.getState().sessions["session-cli"]).toBeUndefined();
 	});
 
 	it("subscribes through the global event endpoint", async () => {

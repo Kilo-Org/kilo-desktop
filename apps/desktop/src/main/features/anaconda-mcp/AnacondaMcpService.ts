@@ -1,7 +1,7 @@
 import type { AnacondaMcpStatus } from "@anaconda-agentic-desktop/contracts";
 import type { AuthMainCapability } from "@anaconda-agentic-desktop/contracts";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
-import type { KiloCodeCapabilities } from "@anaconda-agentic-desktop/plugin-kilo-code/contracts";
+import type { KiloServerCapabilities } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
 
 /** Default Anaconda Remote MCP URL. Override via settings. */
 export const DEFAULT_MCP_URL = "https://mcp.anaconda.com/mcp";
@@ -60,14 +60,14 @@ export class AnacondaMcpService {
 
 		// 1. If disabled, tear down everything.
 		if (!settings.enabled) {
-			const kilo = sdk.plugins.get<KiloCodeCapabilities>("kilo-code");
+			const kilo = sdk.plugins.get<KiloServerCapabilities>("kilo-server");
 			await this.#teardown(kilo);
 			this.#setStatus({ state: "disabled" });
 			return;
 		}
 
-		// 2. Resolve kilo-code capability.
-		const kilo = sdk.plugins.get<KiloCodeCapabilities>("kilo-code");
+		// 2. Resolve kilo-server capability.
+		const kilo = sdk.plugins.get<KiloServerCapabilities>("kilo-server");
 		if (!kilo) {
 			await this.#teardown(null);
 			this.#setStatus({ state: "waiting-for-kilo" });
@@ -109,13 +109,13 @@ export class AnacondaMcpService {
 	 * Called on disable, logout, or feature teardown.
 	 */
 	async dispose(): Promise<void> {
-		const kilo = this.#deps.sdk.plugins.get<KiloCodeCapabilities>("kilo-code");
+		const kilo = this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server");
 		await this.#teardown(kilo);
 	}
 
 	// ─── Private ────────────────────────────────────────────────────────────────
 
-	async #ensureMcpConfig(kilo: KiloCodeCapabilities, url: string): Promise<void> {
+	async #ensureMcpConfig(kilo: KiloServerCapabilities, url: string): Promise<void> {
 		// Skip if already configured with the same URL.
 		if (this.#mcpConfigured && this.#lastConfiguredUrl === url) return;
 
@@ -139,7 +139,7 @@ export class AnacondaMcpService {
 		this.#lastConfiguredUrl = url;
 	}
 
-	#ensureEnvContribution(kilo: KiloCodeCapabilities, apiKey: string): void {
+	#ensureEnvContribution(kilo: KiloServerCapabilities, apiKey: string): void {
 		// Skip if the key hasn't changed.
 		if (this.#lastApiKey === apiKey) return;
 
@@ -151,7 +151,7 @@ export class AnacondaMcpService {
 		this.#lastApiKey = apiKey;
 	}
 
-	async #teardown(kilo?: KiloCodeCapabilities | null): Promise<void> {
+	async #teardown(kilo?: KiloServerCapabilities | null): Promise<void> {
 		// Remove env contribution.
 		if (this.#envDisposer) {
 			this.#envDisposer();

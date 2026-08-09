@@ -293,9 +293,35 @@ export class KiloServerManager {
 	}
 
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
+		// Reserved keys that contributors cannot override, protecting
+		// server auth, isolation, and identity.
+		const RESERVED_KEYS = new Set([
+			"KILO_SERVER_PASSWORD",
+			"KILO_PARENT_PID",
+			"KILO_ENABLE_QUESTION_TOOL",
+			"KILO_TREE_SITTER_WASM_DIR",
+			"XDG_CONFIG_HOME",
+			"XDG_DATA_HOME",
+			"XDG_CACHE_HOME",
+			"XDG_STATE_HOME",
+			"NO_PROXY",
+			"no_proxy",
+			"NODE_OPTIONS",
+			"ELECTRON_RUN_AS_NODE",
+		]);
+		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
+		const sanitizedContributed: Record<string, string> = {};
+		for (const [key, value] of Object.entries(contributed)) {
+			if (RESERVED_KEYS.has(key)) {
+				this.#options.logger.warn(`Contributed env key "${key}" is reserved and will be ignored.`);
+				continue;
+			}
+			sanitizedContributed[key] = value;
+		}
+
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
-			...(this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : undefined),
+			...sanitizedContributed,
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",

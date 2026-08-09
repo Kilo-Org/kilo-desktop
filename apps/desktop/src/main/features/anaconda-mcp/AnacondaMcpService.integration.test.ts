@@ -5,7 +5,7 @@ import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 import { AnacondaMcpService, DEFAULT_MCP_URL, MCP_ENV_VAR, MCP_ID } from "./AnacondaMcpService.js";
 
 import type { AnacondaMcpServiceOptions } from "./AnacondaMcpService.js";
-import type { McpTransport } from "@anaconda-agentic-desktop/plugin-kilo-code/contracts";
+import type { McpTransport } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
 
 /** Silences the scoped logger so expected failures don't spam test output. */
 const silentLogger = { info() {}, warn() {}, error() {} };
@@ -41,9 +41,9 @@ function createTestHarness(overrides?: {
 		return () => {};
 	});
 
-	// Stub kilo-code capability
+	// Stub kilo-server capability
 	if (overrides?.withKilo !== false) {
-		const kiloSdk = createMainSdk("kilo-code");
+		const kiloSdk = createMainSdk("kilo-server");
 		kiloSdk.plugins.expose("kiloService", {
 			serverEnv: { contribute: envContribute },
 			restartServer: async () => {},
@@ -99,7 +99,7 @@ describe("AnacondaMcpService", () => {
 		expect(saveMcp).not.toHaveBeenCalled();
 	});
 
-	it("enters waiting-for-kilo when kilo-code capability is unavailable", async () => {
+	it("enters waiting-for-kilo when kilo-server capability is unavailable", async () => {
 		const { service } = createTestHarness({ apiKey: "key", withKilo: false });
 
 		await service.reconcile();
@@ -175,7 +175,7 @@ describe("AnacondaMcpService", () => {
 		const removeMcp = vi.fn(async () => {});
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
 		(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
-		const kiloSdk = createMainSdk("kilo-code");
+		const kiloSdk = createMainSdk("kilo-server");
 		kiloSdk.plugins.expose("kiloService", {
 			serverEnv: { contribute: () => envDisposer },
 			restartServer: async () => {},
@@ -234,7 +234,7 @@ describe("AnacondaMcpService", () => {
 		let callCount = 0;
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
 		(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
-		const kiloSdk = createMainSdk("kilo-code");
+		const kiloSdk = createMainSdk("kilo-server");
 		const saveMcp = vi.fn(async () => {});
 		kiloSdk.plugins.expose("kiloService", {
 			serverEnv: {

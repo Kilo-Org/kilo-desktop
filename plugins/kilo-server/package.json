@@ -8,6 +8,7 @@
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/schemas.ts",
 		"./cli-distribution": "./src/main/cli-distribution/index.ts",
 		"./packaged-assets": "./src/main/resolve-plugin-asset.ts"
 	},

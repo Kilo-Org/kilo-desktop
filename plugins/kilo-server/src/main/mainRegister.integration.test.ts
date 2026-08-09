@@ -6,10 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
-import type {
-	KiloServerConnection,
-	KiloServerStatus,
-} from "../contracts/schemas.js";
+import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
 import {
 	ContributedEnvManager,
 	createKiloServerManagerOptions,

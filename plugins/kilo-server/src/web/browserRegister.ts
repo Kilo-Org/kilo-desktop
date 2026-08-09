@@ -14,6 +14,10 @@ export function kiloServerBrowserRegister(mainSdk: MainSdk): void {
 			status: "unavailable",
 			message: "Kilo Server requires the desktop app.",
 		}),
+		"mcps.list": async () => [],
+		"mcps.save": async () => unavailable(),
+		"mcps.remove": async () => unavailable(),
+		"mcps.setEnabled": async () => unavailable(),
 	};
 	mainSdk.channels(kiloServerContract).handleAll(service);
 }

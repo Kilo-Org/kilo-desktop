@@ -163,20 +163,6 @@ export class AuthSessionService {
 	}
 
 	/**
-	 * The persisted Anaconda API key, which also acts as the access token for
-	 * downstream requests. `null` when absent or unavailable; never throws.
-	 */
-	async getApiKey(): Promise<string | null> {
-		try {
-			const site = await this.#resolveSite(this.#configLoader);
-			const keyring = await this.#loadKeyring(site);
-			return await keyring.getApiKey();
-		} catch {
-			return null;
-		}
-	}
-
-	/**
 	 * OIDC userinfo passport attributes for the current session, memoized until
 	 * the session changes. Empty list when anonymous or when the passport is
 	 * genuinely empty. Rejects on a transient fetch failure (not cached), so a

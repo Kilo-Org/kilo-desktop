@@ -12,6 +12,7 @@ import {
 	createFeatureMessageHandlers,
 } from "./features/registry/feature-registry.js";
 import { FEATURES } from "./features/registry/features.js";
+import { registerAuthCapability } from "./features/auth/auth-capability-bridge.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createFeatureFlagHandlers, FeatureFlagService } from "./features/feature-flag/index.js";
@@ -186,6 +187,10 @@ export class Application {
 			auth: this.#auth,
 			appVersion: this.#app.metadata.appVersion,
 		});
+
+		// Expose the auth service's getApiKey as a main-side plugin capability
+		// so features/plugins can resolve it via mainSdk.plugins.get("auth").
+		this.#disposers.push(registerAuthCapability(this.#auth));
 
 		const handlers = {
 			...createShellHandlers(this.#shell),

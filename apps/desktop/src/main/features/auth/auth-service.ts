@@ -80,6 +80,7 @@ export class AuthSessionService {
 	#session: AuthSession = ANONYMOUS;
 	#resolved = false;
 	#inFlight: Promise<AuthSession> | undefined;
+	#lastApiKey: string | null = null;
 	readonly #listeners = new Set<(session: AuthSession) => void>();
 
 	readonly #fetch: OAuthFetch;
@@ -132,6 +133,21 @@ export class AuthSessionService {
 	/** Current cached session without triggering resolution. */
 	peek(): AuthSession {
 		return this.#session;
+	}
+
+	/**
+	 * Retrieve the currently stored API key from the keyring.
+	 * Returns `null` when there is no key or the keyring is unavailable.
+	 * This method is main-process-only; the key never crosses to the renderer.
+	 */
+	async getApiKey(): Promise<string | null> {
+		try {
+			const site = await this.#resolveSite(this.#configLoader);
+			const keyring = await this.#loadKeyring(site);
+			return await keyring.getApiKey();
+		} catch {
+			return null;
+		}
 	}
 
 	/** Resolve lazily; subsequent calls return the cached value. */
@@ -268,7 +284,7 @@ export class AuthSessionService {
 		}
 
 		this.#resolved = true;
-		this.#commit(ANONYMOUS);
+		this.#commit(ANONYMOUS, null);
 		return ANONYMOUS;
 	}
 
@@ -293,18 +309,18 @@ export class AuthSessionService {
 	}
 
 	async #doResolve(): Promise<AuthSession> {
-		const next = await this.#computeSession();
+		const { session: next, apiKey } = await this.#computeSession();
 		this.#resolved = true;
-		this.#commit(next);
+		this.#commit(next, apiKey);
 		return next;
 	}
 
-	async #computeSession(): Promise<AuthSession> {
+	async #computeSession(): Promise<{ session: AuthSession; apiKey: string | null }> {
 		let site: ResolvedSite;
 		try {
 			site = await this.#resolveSite(this.#configLoader);
 		} catch (cause) {
-			return { status: "error", reason: errorReason(cause) };
+			return { session: { status: "error", reason: errorReason(cause) }, apiKey: null };
 		}
 
 		let apiKey: string | null;
@@ -313,12 +329,12 @@ export class AuthSessionService {
 			apiKey = await keyring.getApiKey();
 		} catch {
 			// Keyring unavailable → treat as no session rather than crashing.
-			return ANONYMOUS;
+			return { session: ANONYMOUS, apiKey: null };
 		}
 
-		if (!apiKey) return ANONYMOUS;
+		if (!apiKey) return { session: ANONYMOUS, apiKey: null };
 
-		return this.#fetchSession(site, apiKey);
+		return { session: await this.#fetchSession(site, apiKey), apiKey };
 	}
 
 	async #fetchSession(site: ResolvedSite, apiKey: string): Promise<AuthSession> {
@@ -350,11 +366,16 @@ export class AuthSessionService {
 		}
 	}
 
-	#commit(next: AuthSession): void {
-		const changed = !isEqual(this.#session, next);
+	#commit(next: AuthSession, apiKey?: string | null): void {
+		const sessionChanged = !isEqual(this.#session, next);
+		const keyChanged = apiKey !== undefined && apiKey !== this.#lastApiKey;
+		if (apiKey !== undefined) this.#lastApiKey = apiKey;
 		this.#session = next;
-		if (changed) {
-			this.#passport.cache.clear?.();
+		if (sessionChanged || keyChanged) {
+			// Clear the passport (userinfo) cache only when the session
+			// identity itself changed — a bare key rotation preserves the
+			// user, so cached passport attributes are still valid.
+			if (sessionChanged) this.#passport.cache.clear?.();
 			for (const listener of this.#listeners) listener(next);
 		}
 	}

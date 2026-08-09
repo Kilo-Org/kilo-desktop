@@ -116,6 +116,17 @@ function delay(durationMs: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
+/** Compare two flat env records for equality (same keys, same values). */
+function envRecordsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+	const aKeys = Object.keys(a);
+	const bKeys = Object.keys(b);
+	if (aKeys.length !== bKeys.length) return false;
+	for (const key of aKeys) {
+		if (a[key] !== b[key]) return false;
+	}
+	return true;
+}
+
 export class KiloServerManager {
 	readonly #options: Required<
 		Pick<
@@ -146,6 +157,14 @@ export class KiloServerManager {
 	#connection: (KiloServerConnection & { pid: number }) | undefined;
 	#startPromise: Promise<KiloServerConnection> | undefined;
 	#disposed = false;
+	/**
+	 * Snapshot of the sanitized contributed env used at the last spawn.
+	 * Used by `contributedEnvChangedSinceSpawn()` to skip no-op restarts
+	 * when a contribution turns out to already be reflected in the running
+	 * child (e.g. a contribution that arrived during boot and was captured
+	 * by `#createEnvironment` before the spawn completed).
+	 */
+	#lastSpawnedContributedEnv: Record<string, string> = {};
 
 	constructor(options: KiloServerManagerOptions) {
 		this.#options = {
@@ -185,6 +204,22 @@ export class KiloServerManager {
 
 	get isRunning(): boolean {
 		return this.#connection !== undefined;
+	}
+
+	/**
+	 * True when the currently-merged contributed env differs from the snapshot
+	 * captured at the last spawn. Callers debouncing restarts on env changes
+	 * can use this to skip no-op restarts — e.g. when a contribution arrived
+	 * during boot and was already captured in the initial spawn env.
+	 *
+	 * Returns true when the server has never spawned (nothing to compare
+	 * against yet); the caller can then decide to spawn instead of restart.
+	 */
+	contributedEnvChangedSinceSpawn(): boolean {
+		if (!this.#contributedEnv) return false;
+		if (this.#connection === undefined && this.#startPromise === undefined) return true;
+		const current = this.#sanitizeContributedEnv(this.#contributedEnv.getMergedEnv());
+		return !envRecordsEqual(current, this.#lastSpawnedContributedEnv);
 	}
 
 	ensureRunning(): Promise<KiloServerConnection> {
@@ -292,35 +327,45 @@ export class KiloServerManager {
 		]);
 	}
 
-	#createEnvironment(password: string): NodeJS.ProcessEnv {
-		// Reserved keys that contributors cannot override, protecting
-		// server auth, isolation, and identity. Compared case-insensitively
-		// because Windows treats env variable names as case-insensitive
-		// (libuv's make_program_env deduplicates by case-fold compare).
-		const RESERVED_KEYS_UPPER = new Set([
-			"KILO_SERVER_PASSWORD",
-			"KILO_PARENT_PID",
-			"KILO_ENABLE_QUESTION_TOOL",
-			"KILO_TREE_SITTER_WASM_DIR",
-			"XDG_CONFIG_HOME",
-			"XDG_DATA_HOME",
-			"XDG_CACHE_HOME",
-			"XDG_STATE_HOME",
-			"NO_PROXY",
-			"NODE_OPTIONS",
-			"ELECTRON_RUN_AS_NODE",
-		]);
-		const isReserved = (key: string): boolean => RESERVED_KEYS_UPPER.has(key.toUpperCase());
+	/** Reserved env keys contributors cannot override. Compared case-insensitively. */
+	static readonly #RESERVED_KEYS_UPPER = new Set([
+		"KILO_SERVER_PASSWORD",
+		"KILO_PARENT_PID",
+		"KILO_ENABLE_QUESTION_TOOL",
+		"KILO_TREE_SITTER_WASM_DIR",
+		"XDG_CONFIG_HOME",
+		"XDG_DATA_HOME",
+		"XDG_CACHE_HOME",
+		"XDG_STATE_HOME",
+		"NO_PROXY",
+		"NODE_OPTIONS",
+		"ELECTRON_RUN_AS_NODE",
+	]);
 
-		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
-		const sanitizedContributed: Record<string, string> = {};
+	/**
+	 * Filter contributed env by reserved keys (case-insensitive because Windows
+	 * treats env var names case-insensitively at the CreateProcess/libuv layer).
+	 * Also used by `contributedEnvChangedSinceSpawn` to compare against the
+	 * snapshot taken at spawn time.
+	 */
+	#sanitizeContributedEnv(contributed: Record<string, string>): Record<string, string> {
+		const sanitized: Record<string, string> = {};
 		for (const [key, value] of Object.entries(contributed)) {
-			if (isReserved(key)) {
+			if (KiloServerManager.#RESERVED_KEYS_UPPER.has(key.toUpperCase())) {
 				this.#options.logger.warn(`Contributed env key "${key}" is reserved and will be ignored.`);
 				continue;
 			}
-			sanitizedContributed[key] = value;
+			sanitized[key] = value;
 		}
+		return sanitized;
+	}
+
+	#createEnvironment(password: string): NodeJS.ProcessEnv {
+		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
+		const sanitizedContributed = this.#sanitizeContributedEnv(contributed);
+		// Snapshot for drift detection; a subsequent env change that matches
+		// this snapshot won't trigger a restart.
+		this.#lastSpawnedContributedEnv = { ...sanitizedContributed };
 
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,

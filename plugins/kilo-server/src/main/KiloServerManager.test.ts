@@ -434,4 +434,24 @@ describe("KiloServerManager", () => {
 		expect(manager.isRunning).toBe(false);
 		manager.dispose();
 	});
+
+	it("contributedEnvChangedSinceSpawn tracks drift from the last spawn", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		const { manager } = createHarness({ contributedEnv });
+
+		// No spawn yet — always "changed" so callers know they need to spawn.
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(true);
+
+		// Contribute BEFORE spawn, then spawn — env should match the snapshot.
+		contributedEnv.contribute("plugin-a", { FOO: "bar" });
+		await manager.ensureRunning();
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(false);
+
+		// New contribution after spawn — drift detected.
+		contributedEnv.contribute("plugin-b", { BAZ: "qux" });
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(true);
+
+		manager.dispose();
+	});
 });

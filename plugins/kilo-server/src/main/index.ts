@@ -22,6 +22,12 @@ export { ContributedEnvManager } from "./ContributedEnvManager.js";
 export interface KiloServerController {
 	readonly status: KiloServerStatus;
 	readonly isRunning: boolean;
+	/**
+	 * True when the currently-merged contributed env differs from the snapshot
+	 * captured at the last spawn. Consumers should skip a restart when this
+	 * is false — the running child already reflects the current contributions.
+	 */
+	contributedEnvChangedSinceSpawn(): boolean;
 	ensureRunning(): Promise<KiloServerConnection>;
 	restart(): Promise<KiloServerConnection>;
 	dispose(): void;
@@ -143,25 +149,26 @@ export function registerKiloServer(
 
 	function handleEnvChange(): void {
 		// Debounce to coalesce rapid contributions into a single restart.
-		// We always schedule the restart (even when the server isn't yet running),
-		// because a contribution can race the initial spawn — a spawn that started
-		// before the contribution has stale env and must be restarted once ready.
-		// The debounced callback waits for ensureRunning() to settle the current
-		// spawn, then restarts to pick up the new env.
 		clearTimeout(restartTimer);
 		restartTimer = setTimeout(() => {
 			if (disposed) return;
-			void server
-				.ensureRunning()
-				.then(() => {
-					if (disposed) return;
-					return server.restart();
-				})
-				.catch((error) => {
-					mainSdk.logger.warn(
-						`Failed to restart Kilo server after env change: ${error instanceof Error ? error.message : String(error)}`,
-					);
-				});
+			// If the server hasn't spawned yet, there's nothing to restart —
+			// the next `ensureRunning()` (typically from the renderer's first
+			// `server.getConnection`) will spawn with the current contributions
+			// already applied. This is the common path on cold boot: features
+			// contribute env before the renderer requests the server, so we
+			// never need to restart.
+			if (!server.isRunning) return;
+			// Server is running. Only restart if the env used at spawn actually
+			// differs from what's now contributed — prevents a redundant restart
+			// (and the ensuing renderer disconnect) when a contribution happened
+			// to be captured by the same spawn that's already running.
+			if (!server.contributedEnvChangedSinceSpawn()) return;
+			server.restart().catch((error) => {
+				mainSdk.logger.warn(
+					`Failed to restart Kilo server after env change: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
 		}, ENV_RESTART_DEBOUNCE_MS);
 	}
 
@@ -221,15 +228,20 @@ export function registerKiloServer(
 		return server.ensureRunning();
 	}
 
-	// Kick off the initial start-up after the seed. The manager records and
-	// emits startup failures; keep app initialization alive so a later
-	// connection request can retry without producing an unhandled rejection.
-	void ensureRunningAfterSeed().catch(() => undefined);
+	// NOTE: no eager `ensureRunning()`. The server spawns lazily on the
+	// first `server.getConnection` request (typically from the renderer
+	// when it mounts the Kilo UI). The seed still runs in the background
+	// via `seedComplete`, so by the time a consumer awaits
+	// `ensureRunningAfterSeed`, the seed is usually already done. Lazy
+	// spawn ensures env contributions from other features are captured
+	// in the initial spawn env — avoiding an immediate restart that
+	// would break the renderer's cached connection URL.
 
 	const configHome = path.join(mainSdk.storageDir, "runtime", "config");
 	const createConfigManager =
 		options.createConfigManager ?? ((ch: string) => new KiloConfigManager({ configHome: ch }));
 	const configManager = createConfigManager(configHome);
+
 
 	const connectionService = {
 		// Route through ensureRunningAfterSeed so getConnection callers

@@ -29,6 +29,7 @@ function fakeServer() {
 	return {
 		status: { status: "stopped" } as KiloServerStatus,
 		isRunning: false as boolean,
+		contributedEnvChangedSinceSpawn: vi.fn(() => true),
 		ensureRunning: vi.fn(async () => connection),
 		restart: vi.fn(async () => connection),
 		dispose: vi.fn(),
@@ -82,9 +83,11 @@ describe("kilo-server main registration", () => {
 			seedMcpConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			runAsNodeEnabled: async () => true,
 		});
-		// Seed is awaited before ensureRunning; give the microtask queue a tick.
+		// Lazy spawn: no ensureRunning call until a consumer requests the
+		// connection. The seed still runs in the background — give it a tick
+		// to complete before we assert.
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(server.ensureRunning).toHaveBeenCalledOnce();
+		expect(server.ensureRunning).not.toHaveBeenCalled();
 
 		const connectionService =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
@@ -100,7 +103,8 @@ describe("kilo-server main registration", () => {
 			version: "7.4.20",
 			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
-		expect(server.ensureRunning).toHaveBeenCalledTimes(3);
+		// Two consumer calls above, each triggers one ensureRunning.
+		expect(server.ensureRunning).toHaveBeenCalledTimes(2);
 		mainSdk.dispose();
 		expect(server.dispose).toHaveBeenCalledOnce();
 	});
@@ -119,8 +123,9 @@ describe("kilo-server main registration", () => {
 			seedMcpConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			runAsNodeEnabled: async () => true,
 		});
+		// Lazy spawn: no ensureRunning until a consumer requests the connection.
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(server.ensureRunning).toHaveBeenCalledOnce();
+		expect(server.ensureRunning).not.toHaveBeenCalled();
 
 		publishStatus?.({ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.20" });
 		expect(listener).toHaveBeenCalledWith({
@@ -375,28 +380,46 @@ describe("kilo-server main registration", () => {
 		expect(consumer.plugins.get<KiloServerCapabilities>("kilo-server")).toBeNull();
 	});
 
-	it("schedules a restart when env changes during startup so the new env is picked up", async () => {
+	it("does not restart when env changes while the server is not running (lazy spawn picks them up)", async () => {
 		vi.useFakeTimers();
 		try {
 			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 			const server = fakeServer();
-			// Server not yet running when contribution lands (race with initial spawn).
 			server.isRunning = false;
 			registerKiloServer(mainSdk, { createServer: () => server });
-			server.restart.mockClear();
-			server.ensureRunning.mockClear();
 
 			const consumer = createMainSdk("anaconda-mcp");
 			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
 			capability!.kiloService.serverEnv.contribute("anaconda-mcp", { KEY: "value" });
 
-			// Debounced callback waits for ensureRunning() to settle, then restarts —
-			// this guarantees the contributed env is present in the running server
-			// even if the contribution arrived between spawn start and ready.
-			await vi.advanceTimersByTimeAsync(350);
-			await Promise.resolve();
-			expect(server.ensureRunning).toHaveBeenCalled();
-			expect(server.restart).toHaveBeenCalledOnce();
+			// Lazy-spawn semantics: contributions before the server starts don't
+			// trigger a restart — the next `ensureRunning()` will pick them up.
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
+			expect(server.ensureRunning).not.toHaveBeenCalled();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("skips restart when the running server's env matches current contributions", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			// Env is already reflected in the running child — no restart needed.
+			server.contributedEnvChangedSinceSpawn = vi.fn(() => false);
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("anaconda-mcp", { KEY: "value" });
+
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
 			mainSdk.dispose();
 		} finally {
 			vi.useRealTimers();

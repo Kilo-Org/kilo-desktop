@@ -1,9 +1,6 @@
 /** Nested under Kilo session `metadata` for every session this app creates. */
 export const ANACONDA_METADATA_KEY = "anaconda";
 
-/** @deprecated Flat key from earlier builds; still read for hydration. */
-export const WORKSPACE_ID_METADATA_KEY = "anaconda.workspaceId";
-
 export type AnacondaSessionMetadata = {
 	workspaceId?: string;
 };
@@ -71,17 +68,13 @@ export function readAnacondaSessionMetadata(
 	return asRecord(asRecord(metadata)?.[ANACONDA_METADATA_KEY]) ?? undefined;
 }
 
-/** True when this app created the session (nested `anaconda` or legacy flat workspace key). */
+/** True when this app created the session (nested `anaconda` metadata). */
 export function hasAnacondaSessionMetadata(metadata: unknown): boolean {
-	if (readAnacondaSessionMetadata(metadata) !== undefined) return true;
-	return asString(asRecord(metadata)?.[WORKSPACE_ID_METADATA_KEY]) !== undefined;
+	return readAnacondaSessionMetadata(metadata) !== undefined;
 }
 
 export function readWorkspaceIdFromMetadata(metadata: unknown): string | undefined {
-	const nested = readAnacondaSessionMetadata(metadata);
-	const fromNested = asString(nested?.workspaceId);
-	if (fromNested) return fromNested;
-	return asString(asRecord(metadata)?.[WORKSPACE_ID_METADATA_KEY]);
+	return asString(readAnacondaSessionMetadata(metadata)?.workspaceId);
 }
 
 export type SessionActivityPatch = Partial<
@@ -162,6 +155,37 @@ function removePendingId(
 			...state.sessions,
 			[sessionId]: { ...existing, [key]: existing[key].filter((pendingId) => pendingId !== id) },
 		},
+	};
+}
+
+/**
+ * Applies a status from startup/reconnect hydration without stamping `completedAt`
+ * (the finish time was not observed while disconnected).
+ */
+export function applyHydratedSessionStatus(
+	session: SessionActivity | undefined,
+	statusType: string,
+	now: number,
+): SessionActivity | null {
+	const status = asStatusType(statusType);
+	if (!status) return null;
+
+	const wasWorking = isWorkingStatus(session?.status);
+
+	if (status === "idle") {
+		// Reconcile a stale local working state without inventing a completion time.
+		if (!session || !wasWorking) return null;
+		return { ...session, status: "idle", workingSince: undefined };
+	}
+
+	if (session && session.status === status && wasWorking) return null;
+	const base = session ?? createEmptySessionActivity();
+	// Sessions already busy at hydration count from app load — the true
+	// start time is only observable via the event stream.
+	return {
+		...base,
+		status,
+		workingSince: wasWorking ? base.workingSince : now,
 	};
 }
 

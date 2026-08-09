@@ -101,7 +101,7 @@ export const SessionList: FC = () => {
 	);
 };
 
-export const SessionListRoot: FC<ComponentPropsWithoutRef<typeof ThreadListPrimitive.Root>> = ({
+const SessionListRoot: FC<ComponentPropsWithoutRef<typeof ThreadListPrimitive.Root>> = ({
 	className,
 	...props
 }) => {
@@ -114,7 +114,7 @@ export const SessionListRoot: FC<ComponentPropsWithoutRef<typeof ThreadListPrimi
 	);
 };
 
-export const SessionListNewChat: FC<
+const SessionListNewChat: FC<
 	ComponentPropsWithoutRef<typeof Button> & { labelClassName?: string }
 > = ({ className, labelClassName, children, ...props }) => {
 	return (
@@ -145,7 +145,7 @@ export const SessionListNewChat: FC<
 	);
 };
 
-export const SessionListSearch: FC<
+const SessionListSearch: FC<
 	Omit<ComponentPropsWithoutRef<typeof Input>, "value" | "onChange"> & {
 		value: string;
 		onValueChange: (value: string) => void;
@@ -174,7 +174,7 @@ export const SessionListSearch: FC<
 	);
 };
 
-export const SessionListItems: FC<{ searchQuery?: string }> = ({ searchQuery = "" }) => {
+const SessionListItems: FC<{ searchQuery?: string }> = ({ searchQuery = "" }) => {
 	return (
 		<div data-slot="aui_thread-list-items" className="flex flex-col gap-0.5">
 			<AuiIf condition={(s) => s.threads.isLoading}>
@@ -469,7 +469,7 @@ function useRenameState(): {
 	};
 }
 
-export const SessionCardRow: FC = () => {
+const SessionCardRow: FC = () => {
 	const aui = useAui();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const isRunning = useAuiState((s) => s.threadListItem.isRunning);
@@ -568,7 +568,7 @@ export const SessionCardRow: FC = () => {
 	);
 };
 
-export const SettledSessionRow: FC = () => {
+const SettledSessionRow: FC = () => {
 	const aui = useAui();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);

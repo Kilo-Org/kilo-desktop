@@ -5,11 +5,7 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 
 import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
-import type {
-	KiloGlobalConnection,
-	KiloSessionPreparation,
-	KiloUiChatService,
-} from "../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection, KiloUiChatService } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
@@ -19,88 +15,9 @@ import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js
 import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
-import {
-	createSessionActivityStore,
-	type SessionActivityStore,
-} from "./session-activity/session-activity-store.js";
+import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 
 const CHAT_ROUTE_PATH = "/plugins/chat";
-
-function ChatRuntimeTree({
-	connectionPromise,
-	catalogConnection,
-	prepareSession,
-	onRuntimeError,
-	sessionActivity,
-	children,
-}: {
-	connectionPromise: Promise<KiloGlobalConnection>;
-	catalogConnection: KiloGlobalConnection | undefined;
-	prepareSession: () => Promise<KiloSessionPreparation>;
-	onRuntimeError: (error: unknown) => void;
-	sessionActivity: SessionActivityStore;
-	children: ReactNode;
-}) {
-	const sdk = useSdk("kilo-ui");
-	const sdkRef = useRef(sdk);
-	sdkRef.current = sdk;
-	const catalogQuery = useKiloModelCatalog(catalogConnection);
-	const { model, setModel, effort, setEffort } = usePersistedModelSelection(catalogQuery.data);
-	const activeEffort = resolveModelEffort(
-		catalogQuery.data?.models ?? [],
-		model ? modelRefToId(model) : undefined,
-		effort,
-	);
-
-	const onThreadIdChange = useMemo(
-		() => (threadId?: string) => {
-			sessionActivity.getState().setOpenSession(threadId ?? null);
-			if (threadId) sessionActivity.getState().markVisited(threadId);
-			const path = sdkRef.current.location.peek().path;
-			if (path !== CHAT_ROUTE_PATH && !path.startsWith(`${CHAT_ROUTE_PATH}/`)) {
-				sdkRef.current.navigate(CHAT_ROUTE_PATH);
-			}
-		},
-		[sessionActivity],
-	);
-
-	const runtime = useKiloRuntime({
-		connectionPromise,
-		prepareSession,
-		...(model ? { defaultModel: model } : {}),
-		...(activeEffort === undefined ? {} : { variant: activeEffort }),
-		onThreadIdChange,
-		onError: onRuntimeError,
-		sessionActivity,
-	});
-
-	const modelSelection = useMemo(
-		() => ({
-			model,
-			setModel,
-			effort,
-			setEffort,
-			catalog: catalogQuery.data,
-			isCatalogPending: catalogQuery.isPending,
-			isCatalogError: catalogQuery.isError,
-		}),
-		[
-			catalogQuery.data,
-			catalogQuery.isError,
-			catalogQuery.isPending,
-			effort,
-			model,
-			setEffort,
-			setModel,
-		],
-	);
-
-	return (
-		<ChatModelSelectionProvider value={modelSelection}>
-			<AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
-		</ChatModelSelectionProvider>
-	);
-}
 
 /**
  * App-lifetime chat runtime: connection, model selection, and a single
@@ -166,6 +83,59 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		[sdk],
 	);
 
+	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
+
+	const catalogQuery = useKiloModelCatalog(connection.data);
+	const { model, setModel, effort, setEffort } = usePersistedModelSelection(catalogQuery.data);
+	const activeEffort = resolveModelEffort(
+		catalogQuery.data?.models ?? [],
+		model ? modelRefToId(model) : undefined,
+		effort,
+	);
+
+	const onThreadIdChange = useMemo(
+		() => (threadId?: string) => {
+			sessionActivity.getState().setOpenSession(threadId ?? null);
+			if (threadId) sessionActivity.getState().markVisited(threadId);
+			const path = sdk.location.peek().path;
+			if (path !== CHAT_ROUTE_PATH && !path.startsWith(`${CHAT_ROUTE_PATH}/`)) {
+				sdk.navigate(CHAT_ROUTE_PATH);
+			}
+		},
+		[sdk, sessionActivity],
+	);
+
+	const runtime = useKiloRuntime({
+		connectionPromise,
+		prepareSession,
+		...(model ? { defaultModel: model } : {}),
+		...(activeEffort === undefined ? {} : { variant: activeEffort }),
+		onThreadIdChange,
+		onError: refreshConnection,
+		sessionActivity,
+	});
+
+	const modelSelection = useMemo(
+		() => ({
+			model,
+			setModel,
+			effort,
+			setEffort,
+			catalog: catalogQuery.data,
+			isCatalogPending: catalogQuery.isPending,
+			isCatalogError: catalogQuery.isError,
+		}),
+		[
+			catalogQuery.data,
+			catalogQuery.isError,
+			catalogQuery.isPending,
+			effort,
+			model,
+			setEffort,
+			setModel,
+		],
+	);
+
 	const connectionStatus = {
 		isPending: connection.isPending,
 		isError: connection.isError,
@@ -173,20 +143,12 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connectionPromise,
 	};
 
-	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
-
 	return (
 		<ChatConnectionProvider status={connectionStatus}>
 			<SessionActivityProvider store={sessionActivity}>
-				<ChatRuntimeTree
-					connectionPromise={connectionPromise}
-					catalogConnection={connection.data}
-					prepareSession={prepareSession}
-					onRuntimeError={refreshConnection}
-					sessionActivity={sessionActivity}
-				>
-					{children}
-				</ChatRuntimeTree>
+				<ChatModelSelectionProvider value={modelSelection}>
+					<AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
+				</ChatModelSelectionProvider>
 			</SessionActivityProvider>
 		</ChatConnectionProvider>
 	);

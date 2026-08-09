@@ -1,26 +1,20 @@
 import { createStore } from "zustand/vanilla";
 
 import {
+	applyHydratedSessionStatus,
 	applySessionActivityEvent,
 	applySessionPatch,
 	createEmptySessionActivity,
 	EMPTY_SESSION_ACTIVITY_STATE,
-	isWorkingStatus,
 	type SessionActivity,
 	type SessionActivityEvent,
+	type SessionActivityPatch,
 	type SessionActivityState,
-	type SessionStatusType,
 } from "./session-activity-logic.js";
 
 export const LAST_VISITED_STORAGE_KEY = "kilo-ui:thread-last-visited:v1";
 
-export type SessionSummaryInput = {
-	id: string;
-	directory?: string | undefined;
-	workspaceId?: string | undefined;
-	createdAt?: number | undefined;
-	updatedAt?: number | undefined;
-};
+export type SessionSummaryInput = { id: string } & SessionActivityPatch;
 
 export type PendingRequestInput = Iterable<{ id: string; sessionID: string }>;
 
@@ -166,31 +160,10 @@ export function createSessionActivityStore(options?: {
 			set((state) => {
 				let sessions: Record<string, SessionActivity> = state.sessions;
 				for (const [sessionId, status] of Object.entries(statuses)) {
-					const type: SessionStatusType | undefined =
-						status.type === "busy" || status.type === "retry" || status.type === "idle"
-							? status.type
-							: undefined;
-					if (!type) continue;
-					const existing = sessions[sessionId];
-					const wasWorking = isWorkingStatus(existing?.status);
-					if (type === "idle") {
-						// Reconcile a stale local working state without stamping a completion:
-						// the work ended while we were not listening, so the timestamp is unknown.
-						if (!existing || !wasWorking) continue;
-						if (sessions === state.sessions) sessions = { ...sessions };
-						sessions[sessionId] = { ...existing, status: "idle", workingSince: undefined };
-						continue;
-					}
-					if (existing && existing.status === type && wasWorking) continue;
-					const base = existing ?? createEmptySessionActivity();
+					const next = applyHydratedSessionStatus(sessions[sessionId], status.type, timestamp);
+					if (!next) continue;
 					if (sessions === state.sessions) sessions = { ...sessions };
-					// Sessions already busy at hydration count from app load — the true
-					// start time is only observable via the event stream.
-					sessions[sessionId] = {
-						...base,
-						status: type,
-						workingSince: wasWorking ? base.workingSince : timestamp,
-					};
+					sessions[sessionId] = next;
 				}
 				return sessions === state.sessions ? state : { ...state, sessions };
 			});

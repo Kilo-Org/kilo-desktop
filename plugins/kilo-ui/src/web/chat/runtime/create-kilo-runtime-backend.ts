@@ -15,7 +15,7 @@ import type {
 import { hydrateSessionActivity } from "../session-activity/hydrate-session-activity.js";
 import {
 	buildAnacondaSessionMetadata,
-	readWorkspaceIdFromMetadata,
+	readSessionInfoPatch,
 } from "../session-activity/session-activity-logic.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
@@ -75,10 +75,11 @@ export function createKiloRuntimeBackend({
 				sessionActivity?.getState().hydrateSessions(
 					sessions.map((session) => ({
 						id: session.id,
-						directory: session.directory,
-						createdAt: session.time.created,
-						updatedAt: session.time.updated,
-						workspaceId: readWorkspaceIdFromMetadata(session.metadata),
+						...readSessionInfoPatch({
+							directory: session.directory,
+							time: session.time,
+							metadata: session.metadata,
+						}),
 					})),
 				);
 				for (const session of sessions) {

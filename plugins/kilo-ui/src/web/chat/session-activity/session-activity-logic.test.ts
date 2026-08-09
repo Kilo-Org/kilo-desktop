@@ -18,7 +18,6 @@ import {
 	readSessionInfoPatch,
 	readWorkspaceIdFromMetadata,
 	resolveSessionLocationLabel,
-	WORKSPACE_ID_METADATA_KEY,
 	type SessionActivity,
 	type SessionActivityState,
 } from "./session-activity-logic.js";
@@ -331,13 +330,10 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		});
 	});
 
-	it("reads workspace id from nested anaconda metadata and legacy flat keys", () => {
+	it("reads workspace id from nested anaconda metadata", () => {
 		expect(
 			readWorkspaceIdFromMetadata({ [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" }, other: "x" }),
 		).toBe("ws-1");
-		expect(readWorkspaceIdFromMetadata({ [WORKSPACE_ID_METADATA_KEY]: "ws-legacy" })).toBe(
-			"ws-legacy",
-		);
 		expect(readAnacondaSessionMetadata({ [ANACONDA_METADATA_KEY]: {} })).toEqual({});
 		expect(readWorkspaceIdFromMetadata({ other: "x" })).toBeUndefined();
 		expect(readWorkspaceIdFromMetadata(undefined)).toBeUndefined();
@@ -349,7 +345,7 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		expect(hasAnacondaSessionMetadata({ [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } })).toBe(
 			true,
 		);
-		expect(hasAnacondaSessionMetadata({ [WORKSPACE_ID_METADATA_KEY]: "ws-legacy" })).toBe(true);
+		expect(hasAnacondaSessionMetadata({ "anaconda.workspaceId": "ws-legacy" })).toBe(false);
 		expect(hasAnacondaSessionMetadata({ other: "x" })).toBe(false);
 		expect(hasAnacondaSessionMetadata(undefined)).toBe(false);
 	});

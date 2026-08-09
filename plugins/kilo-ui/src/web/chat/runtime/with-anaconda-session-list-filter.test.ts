@@ -29,7 +29,6 @@ describe("withAnacondaSessionListFilter", () => {
 			data: [
 				{ id: "owned", metadata: { anaconda: {} } },
 				{ id: "workspace", metadata: { anaconda: { workspaceId: "ws-1" } } },
-				{ id: "legacy", metadata: { "anaconda.workspaceId": "ws-legacy" } },
 			],
 			meta: { ok: true },
 		});

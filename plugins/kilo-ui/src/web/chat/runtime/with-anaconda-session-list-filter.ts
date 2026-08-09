@@ -7,47 +7,19 @@ import { hasAnacondaSessionMetadata } from "../session-activity/session-activity
  * so the thread-list adapter (and activity hydration) ignore Kilo CLI sessions.
  */
 export function withAnacondaSessionListFilter(client: KiloClient): KiloClient {
-	return new Proxy(client as object, {
-		get(target, prop, receiver) {
-			const value = Reflect.get(target, prop, receiver);
-			if (prop !== "experimental") return value;
-			if (value === null || (typeof value !== "object" && typeof value !== "function")) {
-				return value;
-			}
-			return new Proxy(value as object, {
-				get(experimentalTarget, experimentalProp, experimentalReceiver) {
-					const experimentalValue = Reflect.get(
-						experimentalTarget,
-						experimentalProp,
-						experimentalReceiver,
-					);
-					if (experimentalProp !== "session") return experimentalValue;
-					if (
-						experimentalValue === null ||
-						(typeof experimentalValue !== "object" && typeof experimentalValue !== "function")
-					) {
-						return experimentalValue;
-					}
-					return new Proxy(experimentalValue as object, {
-						get(sessionTarget, sessionProp, sessionReceiver) {
-							const sessionValue = Reflect.get(sessionTarget, sessionProp, sessionReceiver);
-							if (sessionProp !== "list" || typeof sessionValue !== "function") {
-								return sessionValue;
-							}
-							return async (...args: unknown[]) => {
-								const response = (await Reflect.apply(sessionValue, sessionTarget, args)) as {
-									data?: Array<{ metadata?: unknown }> | undefined;
-								};
-								const data = response.data ?? [];
-								return {
-									...response,
-									data: data.filter((session) => hasAnacondaSessionMetadata(session.metadata)),
-								};
-							};
-						},
-					});
-				},
-			});
-		},
-	}) as KiloClient;
+	const session = client.experimental?.session;
+	if (!session || typeof session.list !== "function") {
+		return client;
+	}
+
+	const list = session.list.bind(session);
+	session.list = (async (...args: Parameters<typeof list>) => {
+		const response = await list(...args);
+		const data = response.data ?? [];
+		return {
+			...response,
+			data: data.filter((row) => hasAnacondaSessionMetadata(row.metadata)),
+		};
+	}) as typeof session.list;
+	return client;
 }

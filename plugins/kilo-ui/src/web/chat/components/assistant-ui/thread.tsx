@@ -91,10 +91,11 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
-// Empty threads stay in draft layout (centered composer). Do not leave draft
-// while `thread.isLoading` alone is true — lazy session init loads an empty
-// thread and that used to dock the composer for a flash before messages arrive.
-const isDraftView = (s: AssistantState) => s.thread.messages.length === 0;
+// Empty threads stay in draft layout (centered composer). Require status
+// "new" too — after lazy session init the list item flips to regular before
+// messages project, and treating that as draft docks→centers→docks again.
+const isDraftView = (s: AssistantState) =>
+	s.thread.messages.length === 0 && s.threadListItem.status === "new";
 
 export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	const isDraft = useAuiState(isDraftView);

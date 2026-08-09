@@ -213,7 +213,7 @@ describe("SessionList", () => {
 		});
 
 		await expect.element(screen.getByTestId("session-list-attention-toggle")).toBeVisible();
-		await expect.element(screen.getByText("Approval")).toBeVisible();
+		await expect.element(screen.getByText("Requires Approval")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 	});
 
@@ -235,7 +235,7 @@ describe("SessionList", () => {
 		});
 
 		await expect.element(screen.getByTestId("session-list-attention-toggle")).toBeVisible();
-		await expect.element(screen.getByText("Input")).toBeVisible();
+		await expect.element(screen.getByText("Requires Input")).toBeVisible();
 	});
 
 	it("settles a quiet session and un-settles it back", async () => {

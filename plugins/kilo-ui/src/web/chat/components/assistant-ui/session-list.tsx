@@ -383,10 +383,10 @@ const rowStateLabels: Record<
 	Exclude<SessionRowState, null>,
 	{ label: string; className: string }
 > = {
-	approval: { label: "Approval", className: "text-amber-700 dark:text-amber-300" },
-	input: { label: "Input", className: "text-indigo-600 dark:text-indigo-300" },
+	approval: { label: "Requires Approval", className: "text-amber-600 dark:text-amber-400" },
+	input: { label: "Requires Input", className: "text-amber-600 dark:text-amber-400" },
 	working: { label: "Working", className: "text-sky-600 dark:text-sky-400" },
-	done: { label: "Done", className: "text-emerald-700 dark:text-emerald-300" },
+	done: { label: "Done", className: "text-green-800 dark:text-green-400" },
 };
 
 function useNow(intervalMs: number): number {

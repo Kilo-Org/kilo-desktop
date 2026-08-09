@@ -128,6 +128,15 @@ export interface KiloServerCapabilityService extends Record<string, unknown> {
 	 * Useful after environment or config changes that require a full respawn.
 	 */
 	restartServer(): Promise<void>;
+	/**
+	 * Save an MCP server entry to the global config and reload.
+	 * The entry is written to kilo.json under the `mcp` key.
+	 */
+	saveMcp(input: { id: string; transport: McpTransport; enabled: boolean }): Promise<void>;
+	/**
+	 * Remove an MCP server entry from the global config and reload.
+	 */
+	removeMcp(input: { id: string }): Promise<void>;
 }
 
 /**

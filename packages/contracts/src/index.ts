@@ -1,5 +1,6 @@
 export * from "./contract.js";
 export * from "./desktop-api.js";
+export * from "./features/anaconda-mcp.js";
 export * from "./features/auth.js";
 export * from "./features/auth-capability.js";
 export * from "./features/feature-flag.js";

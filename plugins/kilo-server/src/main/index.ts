@@ -266,6 +266,14 @@ export function registerKiloServer(
 			await seedComplete;
 			await server.restart();
 		},
+		saveMcp: async ({ id, transport, enabled }) => {
+			await configManager.save(id, transport, enabled);
+			await reloadServerConfig(server, mainSdk.net.fetch, mainSdk.logger);
+		},
+		removeMcp: async ({ id }) => {
+			await configManager.remove(id);
+			await reloadServerConfig(server, mainSdk.net.fetch, mainSdk.logger);
+		},
 	};
 
 	mainSdk.plugins.expose("connectionService", connectionService);

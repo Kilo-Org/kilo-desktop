@@ -7,9 +7,12 @@ import {
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
+import { mainRegister as anacondaMcpMainRegister } from "../anaconda-mcp/index.js";
 
 /** Built-in features developed inside apps/ (three-location pattern). */
-const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [];
+const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [
+	{ id: "anaconda-mcp", mainRegister: anacondaMcpMainRegister },
+];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validate the

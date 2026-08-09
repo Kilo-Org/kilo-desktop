@@ -113,6 +113,7 @@ async function reloadServerConfig(
 	fetchFn: typeof fetch,
 	logger: MainSdk["logger"],
 ): Promise<void> {
+	if (!server.isRunning) return;
 	try {
 		const connection = await server.ensureRunning();
 		const authHeader = `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`;

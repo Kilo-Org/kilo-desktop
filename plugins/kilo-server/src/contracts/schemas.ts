@@ -131,8 +131,17 @@ export interface KiloServerCapabilityService extends Record<string, unknown> {
 	/**
 	 * Save an MCP server entry to the global config and reload.
 	 * The entry is written to kilo.json under the `mcp` key.
+	 *
+	 * When `managedBy` is provided, the entry is tagged so future versions
+	 * can identify and clean up entries owned by a feature. Recommended for
+	 * automatic entries (e.g. `"anaconda-desktop"`).
 	 */
-	saveMcp(input: { id: string; transport: McpTransport; enabled: boolean }): Promise<void>;
+	saveMcp(input: {
+		id: string;
+		transport: McpTransport;
+		enabled: boolean;
+		managedBy?: string;
+	}): Promise<void>;
 	/**
 	 * Remove an MCP server entry from the global config and reload.
 	 */

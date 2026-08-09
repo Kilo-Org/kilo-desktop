@@ -144,12 +144,13 @@ describe("KiloConfigManager", () => {
 			expect(result[0]!.id).toBe("valid");
 		});
 
-		it("recovers from malformed JSON by returning empty list", async () => {
+		it("refuses to read malformed JSON and moves it to a backup file", async () => {
 			await mkdir(path.dirname(configPath), { recursive: true });
 			const { writeFile } = await import("node:fs/promises");
 			await writeFile(configPath, "this is not json{{{", "utf-8");
-			const result = await configManager.list();
-			expect(result).toEqual([]);
+			await expect(configManager.list()).rejects.toThrow(/not valid JSON/);
+			// The corrupt file should be moved aside so subsequent reads start fresh.
+			expect(existsSync(configPath)).toBe(false);
 		});
 	});
 
@@ -284,6 +285,27 @@ describe("KiloConfigManager", () => {
 			expect("args" in content.mcp["simple-stdio"]).toBe(false);
 			expect("env" in content.mcp["simple-stdio"]).toBe(false);
 		});
+
+		it("writes a _managedBy owner marker when provided", async () => {
+			await configManager.save(
+				"anaconda-remote",
+				{ type: "remote", url: "https://mcp.anaconda.com/mcp" },
+				true,
+				"anaconda-desktop",
+			);
+			const content = JSON.parse(await readFile(configPath, "utf-8"));
+			expect(content.mcp["anaconda-remote"]._managedBy).toBe("anaconda-desktop");
+		});
+
+		it("omits _managedBy when no owner is provided", async () => {
+			await configManager.save(
+				"user-added",
+				{ type: "remote", url: "https://user.example.com" },
+				true,
+			);
+			const content = JSON.parse(await readFile(configPath, "utf-8"));
+			expect("_managedBy" in content.mcp["user-added"]).toBe(false);
+		});
 	});
 
 	describe("remove", () => {
@@ -346,17 +368,17 @@ describe("KiloConfigManager", () => {
 			expect(content.mcp["my-server"].enabled).toBe(true);
 		});
 
-		it("throws when the entry does not exist", async () => {
-			await writeConfigFile(configPath, { mcp: {} });
-			await expect(configManager.setEnabled("missing", true)).rejects.toThrow(
-				'MCP server "missing" not found in config.',
-			);
+		it("is a no-op when the entry does not exist", async () => {
+			await writeConfigFile(configPath, { mcp: {}, customKey: "preserved" });
+			await expect(configManager.setEnabled("missing", true)).resolves.toBeUndefined();
+			// The config file should not have been rewritten (customKey preserved as-is).
+			const content = JSON.parse(await readFile(configPath, "utf-8"));
+			expect(content.customKey).toBe("preserved");
 		});
 
-		it("throws when no config file exists", async () => {
-			await expect(configManager.setEnabled("missing", true)).rejects.toThrow(
-				'MCP server "missing" not found in config.',
-			);
+		it("is a no-op when no config file exists", async () => {
+			await expect(configManager.setEnabled("missing", true)).resolves.toBeUndefined();
+			expect(existsSync(configPath)).toBe(false);
 		});
 
 		it("preserves all other fields of the entry", async () => {

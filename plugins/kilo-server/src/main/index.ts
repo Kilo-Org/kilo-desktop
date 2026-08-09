@@ -139,19 +139,29 @@ export function registerKiloServer(
 		options.runAsNodeEnabled ?? (() => defaultRunAsNodeEnabled(appExecutablePath));
 
 	let restartTimer: ReturnType<typeof setTimeout> | undefined;
+	let disposed = false;
 
 	function handleEnvChange(): void {
-		// Auto-restart on contribution change, only when server is running.
-		// Debounce to coalesce rapid changes into a single restart.
-		if (!server.isRunning) return;
+		// Debounce to coalesce rapid contributions into a single restart.
+		// We always schedule the restart (even when the server isn't yet running),
+		// because a contribution can race the initial spawn — a spawn that started
+		// before the contribution has stale env and must be restarted once ready.
+		// The debounced callback waits for ensureRunning() to settle the current
+		// spawn, then restarts to pick up the new env.
 		clearTimeout(restartTimer);
 		restartTimer = setTimeout(() => {
-			if (!server.isRunning) return;
-			server.restart().catch((error) => {
-				mainSdk.logger.warn(
-					`Failed to restart Kilo server after env change: ${error instanceof Error ? error.message : String(error)}`,
-				);
-			});
+			if (disposed) return;
+			void server
+				.ensureRunning()
+				.then(() => {
+					if (disposed) return;
+					return server.restart();
+				})
+				.catch((error) => {
+					mainSdk.logger.warn(
+						`Failed to restart Kilo server after env change: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				});
 		}, ENV_RESTART_DEBOUNCE_MS);
 	}
 
@@ -266,8 +276,8 @@ export function registerKiloServer(
 			await seedComplete;
 			await server.restart();
 		},
-		saveMcp: async ({ id, transport, enabled }) => {
-			await configManager.save(id, transport, enabled);
+		saveMcp: async ({ id, transport, enabled, managedBy }) => {
+			await configManager.save(id, transport, enabled, managedBy);
 			await reloadServerConfig(server, mainSdk.net.fetch, mainSdk.logger);
 		},
 		removeMcp: async ({ id }) => {
@@ -280,6 +290,7 @@ export function registerKiloServer(
 	mainSdk.plugins.expose("kiloService", kiloService);
 	mainSdk.channels(kiloServerContract).handleAll(service);
 	mainSdk.onDispose(() => {
+		disposed = true;
 		clearTimeout(restartTimer);
 		server.dispose();
 	});

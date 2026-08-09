@@ -375,21 +375,28 @@ describe("kilo-server main registration", () => {
 		expect(consumer.plugins.get<KiloServerCapabilities>("kilo-server")).toBeNull();
 	});
 
-	it("does not trigger restart when server is not running and env changes", async () => {
+	it("schedules a restart when env changes during startup so the new env is picked up", async () => {
 		vi.useFakeTimers();
 		try {
 			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 			const server = fakeServer();
+			// Server not yet running when contribution lands (race with initial spawn).
 			server.isRunning = false;
 			registerKiloServer(mainSdk, { createServer: () => server });
 			server.restart.mockClear();
+			server.ensureRunning.mockClear();
 
 			const consumer = createMainSdk("anaconda-mcp");
 			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
 			capability!.kiloService.serverEnv.contribute("anaconda-mcp", { KEY: "value" });
 
-			await vi.advanceTimersByTimeAsync(500);
-			expect(server.restart).not.toHaveBeenCalled();
+			// Debounced callback waits for ensureRunning() to settle, then restarts —
+			// this guarantees the contributed env is present in the running server
+			// even if the contribution arrived between spawn start and ready.
+			await vi.advanceTimersByTimeAsync(350);
+			await Promise.resolve();
+			expect(server.ensureRunning).toHaveBeenCalled();
+			expect(server.restart).toHaveBeenCalledOnce();
 			mainSdk.dispose();
 		} finally {
 			vi.useRealTimers();
@@ -629,13 +636,13 @@ describe("kilo-server MCP config management", () => {
 		mainSdk.dispose();
 	});
 
-	it("mcps.setEnabled throws for a non-existent entry", async () => {
+	it("mcps.setEnabled is a no-op for a non-existent entry", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		registerWithConfig(mainSdk);
 
 		await expect(
 			mainSdk.invoke("mcps.setEnabled", { scope: "global", id: "missing", enabled: true }),
-		).rejects.toThrow();
+		).resolves.toEqual({ ok: true });
 		mainSdk.dispose();
 	});
 

@@ -294,8 +294,10 @@ export class KiloServerManager {
 
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
 		// Reserved keys that contributors cannot override, protecting
-		// server auth, isolation, and identity.
-		const RESERVED_KEYS = new Set([
+		// server auth, isolation, and identity. Compared case-insensitively
+		// because Windows treats env variable names as case-insensitive
+		// (libuv's make_program_env deduplicates by case-fold compare).
+		const RESERVED_KEYS_UPPER = new Set([
 			"KILO_SERVER_PASSWORD",
 			"KILO_PARENT_PID",
 			"KILO_ENABLE_QUESTION_TOOL",
@@ -305,14 +307,15 @@ export class KiloServerManager {
 			"XDG_CACHE_HOME",
 			"XDG_STATE_HOME",
 			"NO_PROXY",
-			"no_proxy",
 			"NODE_OPTIONS",
 			"ELECTRON_RUN_AS_NODE",
 		]);
+		const isReserved = (key: string): boolean => RESERVED_KEYS_UPPER.has(key.toUpperCase());
+
 		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
 		const sanitizedContributed: Record<string, string> = {};
 		for (const [key, value] of Object.entries(contributed)) {
-			if (RESERVED_KEYS.has(key)) {
+			if (isReserved(key)) {
 				this.#options.logger.warn(`Contributed env key "${key}" is reserved and will be ignored.`);
 				continue;
 			}
@@ -331,12 +334,22 @@ export class KiloServerManager {
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
 		};
-		delete environment.NODE_OPTIONS;
-		delete environment.ELECTRON_RUN_AS_NODE;
-		if (this.#options.platform === "linux") delete environment.LD_PRELOAD;
+		// Case-insensitive scrub of dangerous keys, in case any case-variant
+		// survived the spread from process.env.
+		for (const name of Object.keys(environment)) {
+			const upper = name.toUpperCase();
+			if (upper === "NODE_OPTIONS" || upper === "ELECTRON_RUN_AS_NODE") {
+				delete environment[name];
+			}
+		}
+		if (this.#options.platform === "linux") {
+			for (const name of Object.keys(environment)) {
+				if (name.toUpperCase() === "LD_PRELOAD") delete environment[name];
+			}
+		}
 		if (this.#options.platform === "darwin") {
 			for (const name of Object.keys(environment)) {
-				if (name.startsWith("DYLD_")) delete environment[name];
+				if (name.toUpperCase().startsWith("DYLD_")) delete environment[name];
 			}
 		}
 		return environment;

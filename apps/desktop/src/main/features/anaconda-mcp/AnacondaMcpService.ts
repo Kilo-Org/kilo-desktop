@@ -40,6 +40,8 @@ export class AnacondaMcpService {
 	#mcpConfigured = false;
 	#lastConfiguredUrl: string | null = null;
 	#lastApiKey: string | null = null;
+	#reconciling = false;
+	#reconcilePending = false;
 	readonly #deps: AnacondaMcpServiceDeps;
 
 	constructor(deps: AnacondaMcpServiceDeps) {
@@ -52,9 +54,32 @@ export class AnacondaMcpService {
 
 	/**
 	 * Reconcile the desired state against the current state.
-	 * Called on boot, auth.changed, and settings changes.
+	 * Called on boot, auth.changed, kilo-server ready, and settings changes.
+	 *
+	 * Serialized: concurrent callers see the running reconcile complete, then
+	 * exactly one additional reconcile runs to pick up the latest state.
+	 * Prevents interleaved awaits from producing a state that disagrees with
+	 * the latest desired settings.
 	 */
 	async reconcile(): Promise<void> {
+		if (this.#reconciling) {
+			// A reconcile is already running — mark that a subsequent one is needed
+			// so we don't lose the trigger, then let the in-flight run handle it.
+			this.#reconcilePending = true;
+			return;
+		}
+		this.#reconciling = true;
+		try {
+			do {
+				this.#reconcilePending = false;
+				await this.#doReconcile();
+			} while (this.#reconcilePending);
+		} finally {
+			this.#reconciling = false;
+		}
+	}
+
+	async #doReconcile(): Promise<void> {
 		const { sdk, getSettings } = this.#deps;
 		const settings = getSettings();
 
@@ -134,6 +159,7 @@ export class AnacondaMcpService {
 				headers: { Authorization: headerValue },
 			},
 			enabled: true,
+			managedBy: "anaconda-desktop",
 		});
 		this.#mcpConfigured = true;
 		this.#lastConfiguredUrl = url;

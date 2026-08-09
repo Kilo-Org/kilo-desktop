@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, rename, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import type { McpServerInfo, McpTransport } from "../contracts/schemas.js";
@@ -6,6 +6,11 @@ import type { McpServerInfo, McpTransport } from "../contracts/schemas.js";
 /**
  * The shape of a single MCP entry as stored in kilo.json.
  * This maps the internal `McpServerInfo` to Kilo's native config format.
+ *
+ * `_managedBy` is an owner marker: entries with this field are managed
+ * automatically by an Anaconda Desktop feature and should not be treated
+ * as user-authored config. Unknown-to-Kilo keys are preserved on read
+ * so they survive our own read-modify-write cycles.
  */
 interface KiloMcpConfigEntry {
 	type: string;
@@ -15,6 +20,7 @@ interface KiloMcpConfigEntry {
 	args?: string[];
 	env?: Record<string, string>;
 	enabled?: boolean;
+	_managedBy?: string;
 }
 
 /** The relevant subset of kilo.json we read and write. */
@@ -65,11 +71,22 @@ export class KiloConfigManager {
 		return entries;
 	}
 
-	/** Save or update an MCP entry. Merges without clobbering unrelated keys. */
-	async save(id: string, transport: McpTransport, enabled: boolean): Promise<void> {
+	/**
+	 * Save or update an MCP entry. Merges without clobbering unrelated keys.
+	 *
+	 * @param managedBy Optional owner tag written as `_managedBy`. Use for
+	 * entries managed automatically by a feature (e.g. `"anaconda-desktop"`)
+	 * so future versions can identify and clean up stale entries after downgrade.
+	 */
+	async save(
+		id: string,
+		transport: McpTransport,
+		enabled: boolean,
+		managedBy?: string,
+	): Promise<void> {
 		const config = await this.#readConfig();
 		if (!config.mcp) config.mcp = {};
-		config.mcp[id] = this.#transportToEntry(transport, enabled);
+		config.mcp[id] = this.#transportToEntry(transport, enabled, managedBy);
 		await this.#writeConfig(config);
 	}
 
@@ -81,13 +98,11 @@ export class KiloConfigManager {
 		await this.#writeConfig(config);
 	}
 
-	/** Set the enabled state of an existing MCP entry. Throws if entry not found. */
+	/** Set the enabled state of an existing MCP entry. No-op if entry not found. */
 	async setEnabled(id: string, enabled: boolean): Promise<void> {
 		const config = await this.#readConfig();
 		const entry = config.mcp?.[id];
-		if (!entry) {
-			throw new Error(`MCP server "${id}" not found in config.`);
-		}
+		if (!entry) return;
 		entry.enabled = enabled;
 		await this.#writeConfig(config);
 	}
@@ -104,9 +119,17 @@ export class KiloConfigManager {
 			if (isNodeError(error) && error.code === "ENOENT") {
 				return {};
 			}
-			// If the file is malformed JSON, start fresh rather than crash
+			// Malformed JSON: refuse to overwrite the user's config file — a subsequent
+			// write on {} would clobber every unrelated top-level key. Move the corrupt
+			// file aside (best-effort) and surface the error so callers can report it.
 			if (error instanceof SyntaxError) {
-				return {};
+				const backupPath = `${this.#configPath}.corrupt-${Date.now()}`;
+				await rename(this.#configPath, backupPath).catch(() => undefined);
+				throw new Error(
+					`Kilo config file at "${this.#configPath}" is not valid JSON; moved to "${backupPath}". ` +
+						"Refusing to overwrite to prevent data loss.",
+					{ cause: error },
+				);
 			}
 			throw error;
 		}
@@ -119,7 +142,11 @@ export class KiloConfigManager {
 		await writeFile(this.#configPath, content, "utf-8");
 	}
 
-	#transportToEntry(transport: McpTransport, enabled: boolean): KiloMcpConfigEntry {
+	#transportToEntry(
+		transport: McpTransport,
+		enabled: boolean,
+		managedBy?: string,
+	): KiloMcpConfigEntry {
 		if (transport.type === "remote") {
 			const entry: KiloMcpConfigEntry = {
 				type: "remote",
@@ -129,6 +156,7 @@ export class KiloConfigManager {
 			if (transport.headers && Object.keys(transport.headers).length > 0) {
 				entry.headers = transport.headers;
 			}
+			if (managedBy) entry._managedBy = managedBy;
 			return entry;
 		}
 		const entry: KiloMcpConfigEntry = {
@@ -142,6 +170,7 @@ export class KiloConfigManager {
 		if (transport.env && Object.keys(transport.env).length > 0) {
 			entry.env = transport.env;
 		}
+		if (managedBy) entry._managedBy = managedBy;
 		return entry;
 	}
 

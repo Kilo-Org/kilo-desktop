@@ -2,6 +2,7 @@ import { anacondaMcpContract } from "@anaconda-agentic-desktop/contracts";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { AnacondaMcpService, type AnacondaMcpServiceOptions } from "./AnacondaMcpService.js";
+import { SettingsStore } from "./SettingsStore.js";
 
 /** Default settings when no persisted config exists. */
 const DEFAULT_SETTINGS: AnacondaMcpServiceOptions = {
@@ -12,58 +13,76 @@ const DEFAULT_SETTINGS: AnacondaMcpServiceOptions = {
 /**
  * Main-side registration for the anaconda-mcp feature.
  *
- * Wires up the reconciliation state machine, subscribes to auth changes,
- * and registers the contract channel handlers.
+ * Wires up the reconciliation state machine, subscribes to auth and
+ * kilo-server events, and registers the contract channel handlers.
+ * Settings are persisted to `<storageDir>/settings.json` so a user's
+ * disable choice survives across restarts.
  */
 export function mainRegister(mainSdk: MainSdk): void {
-	// ─── Settings (in-memory for v1; persisted store is a follow-up) ─────────
-	let settings: AnacondaMcpServiceOptions = { ...DEFAULT_SETTINGS };
-
-	// ─── Service ────────────────────────────────────────────────────────────────
-	const service = new AnacondaMcpService({
-		sdk: mainSdk,
-		getSettings: () => settings,
-		setSettings: (patch) => {
-			settings = { ...settings, ...patch };
-		},
-	});
-
-	// ─── Initial reconciliation ─────────────────────────────────────────────────
-	// Kick off the first reconcile. It will end up in waiting-for-auth or
-	// waiting-for-kilo if dependencies aren't ready yet.
-	void service.reconcile().catch((error) => {
-		mainSdk.logger.warn(
-			`anaconda-mcp: initial reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
+	// Async initialization: load persisted settings, then wire everything up.
+	void (async () => {
+		const settingsStore = await SettingsStore.load(
+			mainSdk.storageDir,
+			DEFAULT_SETTINGS,
+			mainSdk.logger,
 		);
-	});
 
-	// ─── React to auth changes ──────────────────────────────────────────────────
-	mainSdk.events.on("auth.changed", () => {
-		void service.reconcile().catch((error) => {
-			mainSdk.logger.warn(
-				`anaconda-mcp: reconcile on auth change failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
+		const service = new AnacondaMcpService({
+			sdk: mainSdk,
+			getSettings: () => settingsStore.get(),
+			setSettings: (patch) => {
+				void settingsStore.set(patch);
+			},
 		});
-	});
 
-	// ─── Contract handlers ──────────────────────────────────────────────────────
-	mainSdk.channels(anacondaMcpContract).handleAll({
-		"status.get": async () => service.status,
-		"settings.get": async () => settings,
-		"settings.set": async (input) => {
-			if (input.enabled !== undefined) settings.enabled = input.enabled;
-			if (input.urlOverride !== undefined) settings.urlOverride = input.urlOverride;
+		const scheduleReconcile = (source: string): void => {
 			void service.reconcile().catch((error) => {
 				mainSdk.logger.warn(
-					`anaconda-mcp: reconcile on settings change failed: ${error instanceof Error ? error.message : String(error)}`,
+					`anaconda-mcp: reconcile on ${source} failed: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
 				);
 			});
-			return { ok: true as const };
-		},
-	});
+		};
 
-	// ─── Teardown ───────────────────────────────────────────────────────────────
-	mainSdk.onDispose(() => {
-		void service.dispose();
+		// Initial reconciliation.
+		scheduleReconcile("boot");
+
+		// React to auth changes (login/logout/key rotation).
+		mainSdk.events.on("auth.changed", () => scheduleReconcile("auth-change"));
+
+		// React to kilo-server becoming available/ready. Without this, if the
+		// anaconda-mcp feature boots before kilo-server exposes its capability,
+		// the state machine gets stuck at `waiting-for-kilo` until an unrelated
+		// event fires. On every `ready` transition we retry reconciliation so
+		// the MCP config is applied promptly after login+kilo boot.
+		mainSdk.events.on("kilo-server.server-status-changed", (status: unknown) => {
+			if (
+				status !== null &&
+				typeof status === "object" &&
+				(status as { status?: unknown }).status === "ready"
+			) {
+				scheduleReconcile("kilo-ready");
+			}
+		});
+
+		// Contract handlers.
+		mainSdk.channels(anacondaMcpContract).handleAll({
+			"status.get": async () => service.status,
+			"settings.get": async () => settingsStore.get(),
+			"settings.set": async (input) => {
+				await settingsStore.set(input);
+				scheduleReconcile("settings-change");
+				return { ok: true as const };
+			},
+		});
+
+		mainSdk.onDispose(() => {
+			void service.dispose();
+		});
+	})().catch((error) => {
+		mainSdk.logger.error(
+			`anaconda-mcp: initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	});
 }

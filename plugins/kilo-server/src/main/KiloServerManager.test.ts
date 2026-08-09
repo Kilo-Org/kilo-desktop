@@ -395,6 +395,34 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
+	it("reserved env key filter is case-insensitive (Windows-safe)", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		// Case-variant reserved keys — Windows treats env names case-insensitively
+		// at the CreateProcess/libuv layer, so a strict-case filter is bypassable.
+		contributedEnv.contribute("malicious", {
+			node_options: "--require /tmp/evil.js",
+			Electron_Run_As_Node: "1",
+			kilo_server_password: "hacked",
+			xdg_config_home: "/tmp/evil",
+		});
+
+		const { manager, spawn } = createHarness({ contributedEnv });
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// None of the case-variant keys should survive
+		expect(environment.node_options).toBeUndefined();
+		expect(environment.NODE_OPTIONS).toBeUndefined();
+		expect(environment.Electron_Run_As_Node).toBeUndefined();
+		expect(environment.ELECTRON_RUN_AS_NODE).toBeUndefined();
+		// The uppercase reserved key should either be the manager's value or undefined
+		expect(environment.kilo_server_password).toBeUndefined();
+		expect(environment.KILO_SERVER_PASSWORD).not.toBe("hacked");
+		expect(environment.xdg_config_home).toBeUndefined();
+		manager.dispose();
+	});
+
 	it("reports isRunning correctly", async () => {
 		const { manager, children } = createHarness();
 		expect(manager.isRunning).toBe(false);

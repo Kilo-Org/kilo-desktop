@@ -72,11 +72,10 @@ export function AnacondaMcpSettings() {
 	const [showAdvanced, setShowAdvanced] = useState(false);
 	const [urlInput, setUrlInput] = useState("");
 
-	// Sync URL input with current settings
+	// Sync URL input with current settings. Uses `?? ""` so a null override
+	// (default or explicit clear) resets the input rather than leaving stale text.
 	useEffect(() => {
-		if (settingsQuery.data?.urlOverride) {
-			setUrlInput(settingsQuery.data.urlOverride);
-		}
+		setUrlInput(settingsQuery.data?.urlOverride ?? "");
 	}, [settingsQuery.data?.urlOverride]);
 
 	// Invalidate queries on status-changed event

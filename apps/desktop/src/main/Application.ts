@@ -115,7 +115,7 @@ export class Application {
 			this.#disposers.push(this.#security.install(session.defaultSession));
 
 			reporter.report("features", "Preparing features\u2026");
-			this.#registerIpc(preferences, reporter);
+			await this.#registerIpc(preferences, reporter);
 			this.#registerPushEvents();
 			// initialize() swallows its own errors, so it can't fail the boot.
 			await this.#featureFlags?.initialize();
@@ -152,13 +152,16 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(preferences: PreferencesStore, reporter?: BootProgressReporter): void {
+	async #registerIpc(
+		preferences: PreferencesStore,
+		reporter?: BootProgressReporter,
+	): Promise<void> {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// Each feature persists only under its own storage directory
 		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
 		// runs each feature's onDispose callbacks (DB close, etc.) on shutdown.
 		this.#disposers.push(
-			bootFeatures(FEATURES, {
+			await bootFeatures(FEATURES, {
 				storageRoot: this.#app.getPath("userData"),
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
 				createLogger,

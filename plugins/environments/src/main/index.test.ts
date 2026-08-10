@@ -1,39 +1,136 @@
-import { describe, expect, it, vi } from "vitest";
+// oxlint-disable no-explicit-any -- execa mocks require dynamic casts
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { mainRegister } from "./index.js";
 
-/**
- * The manifest (`plugin.json`) points at `./src/main/index.ts` for the
- * plugin's main-side entry. Sub-issue 1 ships an empty scaffold that only
- * instantiates {@link ProviderRegistry}; sub-issue 4 wires the conda
- * provider through this same entry. Guarding it at test time keeps a
- * broken import chain, a thrown constructor, or an accidental async
- * `mainRegister` visible in the coverage gate rather than at app boot.
- */
+vi.mock("execa", () => ({
+	execa: vi.fn(),
+}));
+
+vi.mock("./providers/conda/staging/artifacts.js", () => ({
+	getMinicondaInstaller: vi.fn(),
+}));
+
+vi.mock("./providers/conda/staging/detectSystemConda.js", () => ({
+	detectSystemConda: vi.fn(),
+}));
+
+import { getMinicondaInstaller } from "./providers/conda/staging/artifacts.js";
+import { detectSystemConda } from "./providers/conda/staging/detectSystemConda.js";
+
+const mockedGetInstaller = vi.mocked(getMinicondaInstaller);
+const mockedDetectSystem = vi.mocked(detectSystemConda);
+
+function sha256(buf: Buffer): string {
+	return createHash("sha256").update(buf).digest("hex");
+}
+
 describe("environments plugin main entry", () => {
-	it("registers without throwing against a fake main SDK", () => {
-		const mainSdk = createFakeMainSdk({ featureId: "environments" });
-		expect(() => mainRegister(mainSdk)).not.toThrow();
+	const directories: string[] = [];
+
+	afterEach(() => {
+		for (const dir of directories.splice(0)) {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
-	it("returns synchronously — mainRegister must not be async in this slice", () => {
-		const mainSdk = createFakeMainSdk({ featureId: "environments" });
-		// A returned Promise would silently defer registry setup past the
-		// shell's boot window. Guarding here means the moment a future slice
-		// makes mainRegister async, this test fails and forces the async
-		// boot coordination to be addressed explicitly.
-		expect(mainRegister(mainSdk)).toBeUndefined();
+	function setupFakeStaging() {
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "env-main-test-"));
+		directories.push(storageDir);
+
+		mockedGetInstaller.mockReturnValue({
+			target: "darwin-arm64",
+			platform: "darwin",
+			arch: "arm64",
+			installerUrl: "https://repo.anaconda.com/miniconda/Miniconda3-test.sh",
+			installerSha256: sha256(Buffer.from("fake")),
+			condaBinRelPath: "bin/conda",
+		});
+
+		// Default: system conda detected (avoids bundled path touching real $HOME)
+		mockedDetectSystem.mockResolvedValue({
+			condaBinPath: "/usr/local/bin/conda",
+			version: "25.3.1",
+		});
+
+		return { storageDir };
+	}
+
+	it("returns a Promise (async mainRegister for provider boot)", async () => {
+		const { storageDir } = setupFakeStaging();
+		const mainSdk = createFakeMainSdk({
+			featureId: "environments",
+			storageDir,
+		});
+		const result = mainRegister(mainSdk);
+		expect(result).toBeInstanceOf(Promise);
+		await result;
 	});
 
-	it("does not push boot progress messages in the empty scaffold", () => {
+	it("boots the conda provider and writes staged.json on success", async () => {
+		const { storageDir } = setupFakeStaging();
 		const reportBootProgress = vi.fn();
-		const mainSdk = createFakeMainSdk({ featureId: "environments", reportBootProgress });
-		mainRegister(mainSdk);
-		// v1 has nothing to stage; providers landing in sub-issue 4 will
-		// emit their own progress. Asserting silence here catches an
-		// accidental progress call slipping into the scaffold.
-		expect(reportBootProgress).not.toHaveBeenCalled();
+		const mainSdk = createFakeMainSdk({
+			featureId: "environments",
+			storageDir,
+			reportBootProgress,
+		});
+
+		await mainRegister(mainSdk);
+
+		const manifest = JSON.parse(
+			fs.readFileSync(path.join(storageDir, "providers", "conda", "staged.json"), "utf8"),
+		);
+		expect(manifest.type).toBe("system");
+		expect(manifest.condaBinPath).toBe("/usr/local/bin/conda");
+		expect(manifest.target).toBe("darwin-arm64");
+	});
+
+	it("delivers boot progress messages during staging", async () => {
+		const { storageDir } = setupFakeStaging();
+		const reportBootProgress = vi.fn();
+		const mainSdk = createFakeMainSdk({
+			featureId: "environments",
+			storageDir,
+			reportBootProgress,
+		});
+
+		await mainRegister(mainSdk);
+
+		const messages = reportBootProgress.mock.calls.map((call: unknown[]) => call[0] as string);
+		expect(messages).toContain("[1/3] Checking for existing conda\u2026");
+		expect(messages).toContain("Using existing conda installation.");
+	});
+
+	it("propagates boot failures (staging errors)", async () => {
+		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "env-main-fail-"));
+		directories.push(storageDir);
+
+		mockedGetInstaller.mockReturnValue({
+			target: "darwin-arm64",
+			platform: "darwin",
+			arch: "arm64",
+			installerUrl: "https://repo.anaconda.com/miniconda/Miniconda3-test.sh",
+			installerSha256: sha256(Buffer.from("fake")),
+			condaBinRelPath: "bin/conda",
+		});
+
+		// No system conda, and fetch fails
+		mockedDetectSystem.mockResolvedValue(null);
+		const fetch = vi.fn().mockRejectedValue(new Error("offline"));
+		const mainSdk = createFakeMainSdk({
+			featureId: "environments",
+			storageDir,
+			fetch: fetch as unknown as typeof globalThis.fetch,
+		});
+
+		await expect(mainRegister(mainSdk)).rejects.toThrow("offline");
 	});
 });

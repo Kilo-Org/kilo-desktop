@@ -1,24 +1,30 @@
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { ProviderRegistry } from "./ProviderRegistry.js";
+import { CondaProvider } from "./providers/conda/index.js";
 
 /**
  * Main-process registration for the `environments` plugin.
  *
- * v1 scaffold (sub-issue 1): instantiate the {@link ProviderRegistry} and
- * leave it empty. Later slices add the conda provider inside
- * `src/main/providers/conda/` and call `registry.register(new CondaProvider())`
- * here; adding a future provider (uv, pip, …) is one line + one subdirectory.
- *
- * Cross-cutting infrastructure (JobQueue, read cache, event bus) also
- * hangs off `mainRegister` in later slices — see sub-issues 5 – 9 of the
- * delivery plan.
+ * Boots registered providers sequentially (staging is one-time, first-launch
+ * work), then binds their handlers. Async so the shell can await staging
+ * and deliver progress to the splash throughout.
  */
-export function mainRegister(mainSdk: MainSdk): void {
+export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	const registry = new ProviderRegistry();
+	registry.register(new CondaProvider());
 
-	// No providers registered in this slice — the renderer's provider tab
-	// strip renders an "unavailable" empty state until sub-issue 4 wires the
-	// conda provider in.
+	for (const provider of registry.list()) {
+		if (provider.boot) {
+			await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+		}
+	}
+
+	// Handlers are registered AFTER all providers have booted so they never
+	// serve requests against a not-yet-staged conda binary.
+	for (const provider of registry.list()) {
+		provider.registerHandlers({ mainSdk });
+	}
+
 	mainSdk.logger.info(`boot: ${registry.list().length} provider(s) registered`);
 }

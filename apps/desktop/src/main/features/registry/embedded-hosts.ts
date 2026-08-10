@@ -1,8 +1,14 @@
 import type { EmbeddedWebHost } from "../../platform/ElectronProtocol.js";
+import { createLogger } from "../../platform/logger.js";
 import { featureRouter } from "./feature-registry.js";
 import { FEATURES } from "./features.js";
 
 const CAPABILITY_NAME = "embeddedWebHost";
+
+/** Structural so tests can pass a no-op instead of initializing `electron-log`. */
+export interface EmbeddedHostsLogger {
+	warn(message: string): void;
+}
 
 function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
 	if (typeof value !== "object" || value === null) return false;
@@ -21,7 +27,9 @@ function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
  * Must be called per request rather than once at registration: features boot
  * after `protocol.register`, so an early call sees nothing.
  */
-export function collectEmbeddedHosts(): readonly EmbeddedWebHost[] {
+export function collectEmbeddedHosts(
+	logger: EmbeddedHostsLogger = createLogger("embedded-hosts"),
+): readonly EmbeddedWebHost[] {
 	const hosts: EmbeddedWebHost[] = [];
 	for (const feature of FEATURES) {
 		const capability = featureRouter.capabilityRegistry.get(feature.id)?.[CAPABILITY_NAME];
@@ -29,9 +37,7 @@ export function collectEmbeddedHosts(): readonly EmbeddedWebHost[] {
 		// Skip rather than throw: one malformed contribution must not take down the
 		// protocol handler, which serves the whole app.
 		if (!isEmbeddedWebHost(capability)) {
-			console.warn(
-				`[EmbeddedHosts] Feature "${feature.id}" exposed a malformed ${CAPABILITY_NAME} — ignoring.`,
-			);
+			logger.warn(`Feature "${feature.id}" exposed a malformed ${CAPABILITY_NAME} — ignoring.`);
 			continue;
 		}
 		hosts.push(capability);

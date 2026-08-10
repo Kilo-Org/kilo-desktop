@@ -266,6 +266,35 @@ describe("NotebookRelayService upgrade authorization", () => {
 		const ws = openSocket(`${websocket_url}?token=${token}`, "http://evil.example");
 		await expect(new Promise((_, reject) => ws.once("error", reject))).rejects.toThrow(/401/);
 	});
+
+	it("survives a client that sends a malformed WebSocket frame", async () => {
+		// `ws` reports a protocol violation as 'error' on the WebSocket. Unlistened,
+		// that is an unhandled EventEmitter 'error' and takes down the main process,
+		// so one bad frame from the renderer would kill the whole app.
+		const { relay } = await startRelay();
+		const { websocket_url, token } = await relay.config();
+		const socket = net.createConnection(relay.port, "127.0.0.1");
+		await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+		socket.on("error", () => {});
+		const upgraded = new Promise<void>((resolve) => {
+			socket.on("data", (chunk: Buffer) => {
+				if (chunk.toString("utf8").includes("101")) resolve();
+			});
+		});
+		socket.write(
+			`GET ${RELAY_WS_PATH}?token=${token} HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
+				"Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+				"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+		);
+		await upgraded;
+		// RSV1 set with no extension negotiated, which the receiver must reject.
+		socket.write(Buffer.from([0xc1, 0x80, 0x00, 0x00, 0x00, 0x00]));
+
+		// The relay must still serve; an unhandled 'error' fails the run outright.
+		const ws = openSocket(`${websocket_url}?token=${token}`);
+		expect((await nextControlMessage(ws)).type).toBe("ready");
+		socket.destroy();
+	});
 });
 
 describe("NotebookRelayService frame bridging", () => {

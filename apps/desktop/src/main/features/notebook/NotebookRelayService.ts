@@ -137,6 +137,13 @@ export class NotebookRelayService {
 		const wss = new WebSocketServer({ noServer: true });
 
 		server.on("upgrade", (req, socket: Socket, head) => {
+			// An unlistened 'error' on a raw socket is fatal to the whole main process.
+			// The 401 write below is synchronous and so hard to lose a race with, but
+			// this socket outlives the handler on the handshake path — cheap insurance
+			// against a class of bug whose blast radius is the entire app.
+			socket.on("error", (error: Error) => {
+				this.#logger.warn(`[notebook] relay upgrade socket error: ${error.message}`);
+			});
 			const url = new URL(req.url ?? "/", `http://${LOOPBACK_HOST}`);
 			if (url.pathname !== RELAY_WS_PATH || !this.#isAuthorized(req, url)) {
 				socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
@@ -147,6 +154,11 @@ export class NotebookRelayService {
 		});
 
 		wss.on("connection", (ws, req) => {
+			// `ws` re-emits underlying socket errors (ECONNRESET on a reload, say) as
+			// 'error' on the WebSocket; unlistened, that takes down the main process.
+			ws.on("error", (error: Error) => {
+				this.#logger.warn(`[notebook] relay connection error: ${error.message}`);
+			});
 			void this.#bridge(ws, new URL(req.url ?? "/", `http://${LOOPBACK_HOST}`));
 		});
 

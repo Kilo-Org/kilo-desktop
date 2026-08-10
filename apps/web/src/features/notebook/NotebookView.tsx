@@ -92,6 +92,12 @@ export function NotebookView() {
 				</div>
 			</div>
 			{frameSrc ? (
+				// Deliberately no `sandbox` attribute. The isolation boundary here is the
+				// separate protocol origin plus its CSP, not the sandbox: nteract needs
+				// same-origin privileges for the loopback relay WebSocket and storage, and
+				// `sandbox="allow-scripts allow-same-origin"` is a documented no-op — a frame
+				// granted both can reach up and clear its own sandbox attribute. Adding one
+				// would either break the notebook or buy nothing.
 				<iframe
 					src={frameSrc}
 					title="nteract notebook"

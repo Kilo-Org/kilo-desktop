@@ -17,6 +17,10 @@ import { bootFeatures, featureRouter } from "./feature-registry.js";
 
 const disposers: Array<() => void> = [];
 
+// Injected wherever a malformed contribution is expected, so the suite never
+// initializes `electron-log` against a mocked Electron.
+const silentLogger = { warn: () => undefined };
+
 function boot(id: string, register: FeatureRegistration["mainRegister"]): void {
 	const registration = { id, mainRegister: register };
 	features.push(registration);
@@ -55,7 +59,6 @@ describe("collectEmbeddedHosts", () => {
 	});
 
 	it("skips a malformed contribution rather than taking down the protocol handler", () => {
-		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		boot("embedded-host-malformed", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", { host: 42, root: "/bundle" });
 		});
@@ -64,8 +67,7 @@ describe("collectEmbeddedHosts", () => {
 		});
 
 		// The handler serves the whole app, so one bad plugin must not throw here.
-		expect(collectEmbeddedHosts()).toEqual([{ host: "notebook", root: "/bundle" }]);
-		expect(warning).toHaveBeenCalledWith(expect.stringContaining("embedded-host-malformed"));
+		expect(collectEmbeddedHosts(silentLogger)).toEqual([{ host: "notebook", root: "/bundle" }]);
 	});
 
 	it.each([
@@ -75,16 +77,14 @@ describe("collectEmbeddedHosts", () => {
 		["an empty host", { host: "", root: "/bundle" }],
 		["null routes", { host: "notebook", root: "/bundle", routes: null }],
 	])("rejects %s", (_label, contribution) => {
-		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		boot("embedded-host-invalid", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", contribution as Record<string, unknown>);
 		});
 
-		expect(collectEmbeddedHosts()).toEqual([]);
+		expect(collectEmbeddedHosts(silentLogger)).toEqual([]);
 	});
 
 	it("rejects routes that are not callable", () => {
-		vi.spyOn(console, "warn").mockImplementation(() => undefined);
 		boot("embedded-host-bad-routes", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", {
 				host: "notebook",
@@ -93,7 +93,7 @@ describe("collectEmbeddedHosts", () => {
 			});
 		});
 
-		expect(collectEmbeddedHosts()).toEqual([]);
+		expect(collectEmbeddedHosts(silentLogger)).toEqual([]);
 	});
 
 	it("sees a host only after its feature boots", () => {

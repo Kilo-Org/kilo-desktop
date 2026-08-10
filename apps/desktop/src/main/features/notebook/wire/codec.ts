@@ -65,6 +65,11 @@ function formatBytes(bytes: readonly number[]): string {
  * Length-prefixes an untyped payload — the framing used by the handshake JSON
  * and by the `pool` / `settings_sync` channels, which predate typed frames.
  */
+/**
+ * Length-prefixes an untyped payload. Callers pass JSON, which `#shiftFrame`
+ * relies on to tell untyped frames from typed ones — see the note there before
+ * encoding a non-JSON payload through this.
+ */
 export function encodeFrame(payload: Buffer | string): Buffer {
 	const body = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, "utf8");
 	if (body.length > MAX_FRAME_SIZE) {
@@ -210,6 +215,14 @@ export class LengthPrefixedFrames {
 
 		// The type byte arrives with the body, so the per-type cap can only be
 		// applied once at least one byte past the prefix is buffered.
+		//
+		// This reader also carries untyped frames (the handshake JSON and the
+		// `pool`/`settings_sync` channels), which have no type byte — the first
+		// body byte there is payload. Reading it as a discriminator is safe only
+		// because every untyped payload is JSON and so starts with `{` (0x7b),
+		// outside the FrameType range, leaving `isKnownFrameType` false. Keep that
+		// invariant: an untyped payload whose first byte fell in 0x00–0x0a would
+		// have an unrelated per-type cap applied and could be wrongly rejected.
 		if (this.#buffer.length > LENGTH_PREFIX_BYTE_LENGTH) {
 			const frameType = this.#buffer.readUInt8(LENGTH_PREFIX_BYTE_LENGTH);
 			const bodyLength = length - 1;

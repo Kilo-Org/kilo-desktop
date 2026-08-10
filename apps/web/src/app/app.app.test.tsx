@@ -45,7 +45,7 @@ describe("AppProviders (app-level)", () => {
 
 		await expect.element(screen.getByTestId("app-sidebar")).toBeVisible();
 
-		// The bundled plugins contribute no sidebar nav entries — navigate via the router.
+		// Todos is not in the sidebar nav — navigate via the router.
 		window.location.hash = "#/plugins/todos";
 		await expect.element(screen.getByTestId("plugin-page-heading")).toBeVisible();
 		// Todos is Electron-only — browser mode renders an explicit unavailable state.

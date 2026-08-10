@@ -552,7 +552,7 @@ describe("kilo-server MCP config management", () => {
 			id: "anaconda-remote",
 			transport: {
 				type: "remote",
-				url: "https://mcp.anaconda.com/mcp",
+				url: "https://anaconda.cloud/api/mcp",
 				headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
 			},
 			enabled: true,
@@ -564,7 +564,7 @@ describe("kilo-server MCP config management", () => {
 		const content = JSON.parse(await readFile(configPath, "utf-8"));
 		expect(content.mcp["anaconda-remote"]).toEqual({
 			type: "remote",
-			url: "https://mcp.anaconda.com/mcp",
+			url: "https://anaconda.cloud/api/mcp",
 			headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
 			enabled: true,
 		});
@@ -749,7 +749,7 @@ describe("kilo-server MCP config management", () => {
 			id: "anaconda-remote",
 			transport: {
 				type: "remote",
-				url: "https://mcp.anaconda.com/mcp",
+				url: "https://anaconda.cloud/api/mcp",
 				headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
 			},
 			enabled: true,

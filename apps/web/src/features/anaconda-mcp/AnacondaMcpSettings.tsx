@@ -169,7 +169,7 @@ export function AnacondaMcpSettings() {
 							id="anaconda-mcp-url"
 							data-qa-id="anaconda-mcp-url-input"
 							type="url"
-							placeholder="https://mcp.anaconda.com/mcp"
+							placeholder="https://anaconda.cloud/api/mcp"
 							value={urlInput}
 							onChange={(event) => setUrlInput(event.target.value)}
 						/>

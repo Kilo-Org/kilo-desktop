@@ -4,7 +4,7 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 import type { KiloServerCapabilities } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
 
 /** Default Anaconda Remote MCP URL. Override via settings. */
-export const DEFAULT_MCP_URL = "https://mcp.anaconda.com/mcp";
+export const DEFAULT_MCP_URL = "https://anaconda.cloud/api/mcp";
 
 /** Stable MCP server ID written to kilo.json. */
 export const MCP_ID = "anaconda-remote";

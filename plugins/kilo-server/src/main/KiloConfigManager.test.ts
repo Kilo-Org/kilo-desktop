@@ -43,7 +43,7 @@ describe("KiloConfigManager", () => {
 				mcp: {
 					"anaconda-remote": {
 						type: "remote",
-						url: "https://mcp.anaconda.com/mcp",
+						url: "https://anaconda.cloud/api/mcp",
 						headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
 						enabled: true,
 					},
@@ -56,7 +56,7 @@ describe("KiloConfigManager", () => {
 					scope: "global",
 					transport: {
 						type: "remote",
-						url: "https://mcp.anaconda.com/mcp",
+						url: "https://anaconda.cloud/api/mcp",
 						headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
 					},
 					enabled: true,
@@ -160,7 +160,7 @@ describe("KiloConfigManager", () => {
 				"anaconda-remote",
 				{
 					type: "remote",
-					url: "https://mcp.anaconda.com/mcp",
+					url: "https://anaconda.cloud/api/mcp",
 					headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
 				},
 				true,
@@ -170,7 +170,7 @@ describe("KiloConfigManager", () => {
 			const content = JSON.parse(await readFile(configPath, "utf-8"));
 			expect(content.mcp["anaconda-remote"]).toEqual({
 				type: "remote",
-				url: "https://mcp.anaconda.com/mcp",
+				url: "https://anaconda.cloud/api/mcp",
 				headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
 				enabled: true,
 			});
@@ -289,7 +289,7 @@ describe("KiloConfigManager", () => {
 		it("writes a _managedBy owner marker when provided", async () => {
 			await configManager.save(
 				"anaconda-remote",
-				{ type: "remote", url: "https://mcp.anaconda.com/mcp" },
+				{ type: "remote", url: "https://anaconda.cloud/api/mcp" },
 				true,
 				"anaconda-desktop",
 			);
@@ -439,7 +439,7 @@ describe("KiloConfigManager", () => {
 		it("writes new entries to kilo.jsonc (Kilo's default) when neither file exists", async () => {
 			await configManager.save(
 				"anaconda-remote",
-				{ type: "remote", url: "https://mcp.anaconda.com/mcp" },
+				{ type: "remote", url: "https://anaconda.cloud/api/mcp" },
 				true,
 			);
 
@@ -454,7 +454,7 @@ describe("KiloConfigManager", () => {
 
 			await configManager.save(
 				"anaconda-remote",
-				{ type: "remote", url: "https://mcp.anaconda.com/mcp" },
+				{ type: "remote", url: "https://anaconda.cloud/api/mcp" },
 				true,
 			);
 

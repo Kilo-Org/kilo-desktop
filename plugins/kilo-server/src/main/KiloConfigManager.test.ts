@@ -19,7 +19,7 @@ describe("KiloConfigManager", () => {
 		);
 		await mkdir(tempDir, { recursive: true });
 		configManager = new KiloConfigManager({ configHome: tempDir });
-		configPath = path.join(tempDir, "kilo", "kilo.json");
+		configPath = path.join(tempDir, "kilo", "kilo.jsonc");
 	});
 
 	afterEach(async () => {
@@ -405,9 +405,118 @@ describe("KiloConfigManager", () => {
 		});
 	});
 
-	describe("configPath", () => {
-		it("exposes the resolved config path", () => {
-			expect(configManager.configPath).toBe(path.join(tempDir, "kilo", "kilo.json"));
+	describe("configDir", () => {
+		it("exposes the config directory", () => {
+			expect(configManager.configDir).toBe(path.join(tempDir, "kilo"));
+		});
+	});
+
+	describe("file resolution (kilo.jsonc vs kilo.json)", () => {
+		const jsoncPath = () => path.join(tempDir, "kilo", "kilo.jsonc");
+		const jsonPath = () => path.join(tempDir, "kilo", "kilo.json");
+
+		it("prefers kilo.jsonc when both files exist", async () => {
+			await writeConfigFile(jsoncPath(), {
+				mcp: { "from-jsonc": { type: "remote", url: "https://jsonc.example.com" } },
+			});
+			await writeConfigFile(jsonPath(), {
+				mcp: { "from-json": { type: "remote", url: "https://json.example.com" } },
+			});
+
+			const entries = await configManager.list();
+			expect(entries.map((e) => e.id)).toEqual(["from-jsonc"]);
+		});
+
+		it("falls back to kilo.json when only kilo.json exists", async () => {
+			await writeConfigFile(jsonPath(), {
+				mcp: { legacy: { type: "remote", url: "https://legacy.example.com" } },
+			});
+
+			const entries = await configManager.list();
+			expect(entries.map((e) => e.id)).toEqual(["legacy"]);
+		});
+
+		it("writes new entries to kilo.jsonc (Kilo's default) when neither file exists", async () => {
+			await configManager.save(
+				"anaconda-remote",
+				{ type: "remote", url: "https://mcp.anaconda.com/mcp" },
+				true,
+			);
+
+			expect(existsSync(jsoncPath())).toBe(true);
+			expect(existsSync(jsonPath())).toBe(false);
+		});
+
+		it("writes updates to whichever file was read (kilo.json when only .json exists)", async () => {
+			await writeConfigFile(jsonPath(), {
+				mcp: { existing: { type: "remote", url: "https://a.example.com" } },
+			});
+
+			await configManager.save(
+				"anaconda-remote",
+				{ type: "remote", url: "https://mcp.anaconda.com/mcp" },
+				true,
+			);
+
+			// Update went to kilo.json, not a new kilo.jsonc.
+			expect(existsSync(jsoncPath())).toBe(false);
+			expect(existsSync(jsonPath())).toBe(true);
+			const content = JSON.parse(await readFile(jsonPath(), "utf-8"));
+			expect(Object.keys(content.mcp).sort()).toEqual(["anaconda-remote", "existing"]);
+		});
+	});
+
+	describe("JSONC comment tolerance", () => {
+		it("reads a kilo.jsonc with // line comments", async () => {
+			const jsoncPath = path.join(tempDir, "kilo", "kilo.jsonc");
+			await mkdir(path.dirname(jsoncPath), { recursive: true });
+			const { writeFile } = await import("node:fs/promises");
+			await writeFile(
+				jsoncPath,
+				`{
+  // The Anaconda Remote MCP is auto-managed
+  "mcp": {
+    "sesame": { "type": "stdio", "command": "sesame" } // local dev tool
+  }
+}`,
+				"utf-8",
+			);
+
+			const entries = await configManager.list();
+			expect(entries.map((e) => e.id)).toEqual(["sesame"]);
+		});
+
+		it("reads a kilo.jsonc with /* block */ comments", async () => {
+			const jsoncPath = path.join(tempDir, "kilo", "kilo.jsonc");
+			await mkdir(path.dirname(jsoncPath), { recursive: true });
+			const { writeFile } = await import("node:fs/promises");
+			await writeFile(
+				jsoncPath,
+				`{
+  /* Global MCP servers.
+     Managed by the user; do not edit while Kilo is running. */
+  "mcp": { "electron-driver": { "type": "stdio", "command": "npx electron-driver" } }
+}`,
+				"utf-8",
+			);
+
+			const entries = await configManager.list();
+			expect(entries.map((e) => e.id)).toEqual(["electron-driver"]);
+		});
+
+		it("does not treat // inside strings as a comment", async () => {
+			const jsoncPath = path.join(tempDir, "kilo", "kilo.jsonc");
+			await mkdir(path.dirname(jsoncPath), { recursive: true });
+			const { writeFile } = await import("node:fs/promises");
+			await writeFile(
+				jsoncPath,
+				`{ "mcp": { "s": { "type": "remote", "url": "https://a.example.com//path" } } }`,
+				"utf-8",
+			);
+
+			const entries = await configManager.list();
+			expect(entries[0]).toBeDefined();
+			expect((entries[0]!.transport as { url: string }).url).toBe("https://a.example.com//path");
 		});
 	});
 });

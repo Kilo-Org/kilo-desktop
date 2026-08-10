@@ -560,7 +560,7 @@ describe("kilo-server MCP config management", () => {
 		expect(result).toEqual({ ok: true });
 
 		// Verify the file was written
-		const configPath = path.join(tempDir, "kilo", "kilo.json");
+		const configPath = path.join(tempDir, "kilo", "kilo.jsonc");
 		const content = JSON.parse(await readFile(configPath, "utf-8"));
 		expect(content.mcp["anaconda-remote"]).toEqual({
 			type: "remote",
@@ -722,7 +722,7 @@ describe("kilo-server MCP config management", () => {
 		registerWithConfig(mainSdk);
 
 		// Write a config with an unrelated key
-		const configPath = path.join(tempDir, "kilo", "kilo.json");
+		const configPath = path.join(tempDir, "kilo", "kilo.jsonc");
 		await mkdir(path.dirname(configPath), { recursive: true });
 		await writeFile(configPath, JSON.stringify({ customSetting: "keep-me", mcp: {} }), "utf-8");
 
@@ -756,7 +756,7 @@ describe("kilo-server MCP config management", () => {
 		});
 
 		// Read the raw file and verify the template is preserved verbatim
-		const configPath = path.join(tempDir, "kilo", "kilo.json");
+		const configPath = path.join(tempDir, "kilo", "kilo.jsonc");
 		const raw = await readFile(configPath, "utf-8");
 		expect(raw).toContain("{env:ANACONDA_API_KEY}");
 		// The header value should be the template, not a resolved key

@@ -101,8 +101,6 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 				<Sidebar collapsible="none" className="h-svh border-none" data-qa-id="app-sidebar">
 					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
 					<SidebarContent>
-						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-						<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
 						<SidebarGroup className="pt-0">
 							<SidebarMenu>
 								{navEntries.map((entry) => (
@@ -110,6 +108,8 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 								))}
 							</SidebarMenu>
 						</SidebarGroup>
+						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
+						<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
 					</SidebarContent>
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-3">

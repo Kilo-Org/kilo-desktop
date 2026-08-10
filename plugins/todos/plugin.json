@@ -5,6 +5,7 @@
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
 	"contributes": {
-		"routes": [{ "path": "/todos", "component": "TodoList", "title": "Todo List" }]
+		"routes": [{ "path": "/todos", "component": "TodoList", "title": "Todo List" }],
+		"nav": [{ "to": "/todos", "label": "Todo List", "icon": "TodoNavIcon" }]
 	}
 }

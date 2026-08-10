@@ -166,6 +166,7 @@ export function applyHydratedSessionStatus(
 	session: SessionActivity | undefined,
 	statusType: string,
 	now: number,
+	options?: { skipBusyIfCompleted?: boolean },
 ): SessionActivity | null {
 	const status = asStatusType(statusType);
 	if (!status) return null;
@@ -178,8 +179,11 @@ export function applyHydratedSessionStatus(
 		return { ...session, status: "idle", workingSince: undefined };
 	}
 
-	// A live completion is fresher than a concurrently in-flight status snapshot.
-	if (session?.completedAt !== undefined) return null;
+	// When a live completion raced this hydrate, keep the observed idle/done state.
+	// Clean reconnects omit the flag so a later genuine busy turn can hydrate.
+	if (options?.skipBusyIfCompleted && session?.completedAt !== undefined && !wasWorking) {
+		return null;
+	}
 
 	if (session && session.status === status && wasWorking) return null;
 	const base = session ?? createEmptySessionActivity();
@@ -189,6 +193,7 @@ export function applyHydratedSessionStatus(
 		...base,
 		status,
 		workingSince: wasWorking ? base.workingSince : now,
+		completedAt: undefined,
 	};
 }
 
@@ -204,13 +209,21 @@ function applySessionStatus(
 	if (status !== "idle") {
 		// workingSince survives busy<->retry flips; only the idle->working edge stamps it.
 		const workingSince = wasWorking ? existing?.workingSince : now;
-		if (existing && existing.status === status && existing.workingSince === workingSince) {
+		if (
+			existing &&
+			existing.status === status &&
+			existing.workingSince === workingSince &&
+			existing.completedAt === undefined
+		) {
 			return null;
 		}
 		const base = existing ?? createEmptySessionActivity();
 		return {
 			...state,
-			sessions: { ...state.sessions, [sessionId]: { ...base, status, workingSince } },
+			sessions: {
+				...state.sessions,
+				[sessionId]: { ...base, status, workingSince, completedAt: undefined },
+			},
 		};
 	}
 

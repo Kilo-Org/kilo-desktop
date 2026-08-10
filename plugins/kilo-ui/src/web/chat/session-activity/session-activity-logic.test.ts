@@ -368,17 +368,34 @@ describe("applyHydratedSessionStatus", () => {
 			...createEmptySessionActivity(),
 			status: "busy",
 			workingSince: NOW,
+			completedAt: undefined,
 		});
 	});
 
-	it("does not flip a completed session back to busy", () => {
+	it("skips busy only when a live completion raced hydration", () => {
 		const completed: SessionActivity = {
 			...createEmptySessionActivity(),
 			status: "idle",
 			completedAt: NOW,
 		};
-		expect(applyHydratedSessionStatus(completed, "busy", NOW + 1)).toBeNull();
+		expect(
+			applyHydratedSessionStatus(completed, "busy", NOW + 1, { skipBusyIfCompleted: true }),
+		).toBeNull();
 		expect(deriveSessionRowState(completed, NOW - 1)).toBe("done");
+	});
+
+	it("clears completedAt when a clean hydrate marks the session busy again", () => {
+		const completed: SessionActivity = {
+			...createEmptySessionActivity(),
+			status: "idle",
+			completedAt: NOW,
+		};
+		expect(applyHydratedSessionStatus(completed, "busy", NOW + 1)).toEqual({
+			...completed,
+			status: "busy",
+			workingSince: NOW + 1,
+			completedAt: undefined,
+		});
 	});
 });
 

@@ -26,10 +26,13 @@ export type SessionActivityStoreState = SessionActivityState & {
 	hydratePendingRequests: (input: {
 		permissions?: PendingRequestInput;
 		questions?: PendingRequestInput;
-		/** Epoch captured before the hydration fetch; when stale, union instead of replace. */
+		/** Epoch captured before the hydration fetch; when stale, merge instead of replace. */
 		sinceEpoch?: number;
 	}) => void;
-	hydrateStatuses: (statuses: Readonly<Record<string, { type: string }>>) => void;
+	hydrateStatuses: (
+		statuses: Readonly<Record<string, { type: string }>>,
+		sinceEpoch?: number,
+	) => void;
 	markVisited: (sessionId: string, at?: number) => void;
 	setOpenSession: (sessionId: string | null) => void;
 };
@@ -77,15 +80,42 @@ function groupIdsBySession(requests: PendingRequestInput): Map<string, string[]>
 const idsEqual = (a: readonly string[], b: readonly string[]): boolean =>
 	a.length === b.length && a.every((value, index) => value === b[index]);
 
-const unionIds = (snapshot: readonly string[], local: readonly string[]): string[] => {
-	if (local.length === 0) return [...snapshot];
-	if (snapshot.length === 0) return [...local];
-	const merged = [...snapshot];
-	for (const id of local) {
-		if (!merged.includes(id)) merged.push(id);
+/** Merge snapshot + local, omitting ids a live reply already cleared during the fetch. */
+const mergePendingIds = (
+	snapshot: readonly string[],
+	local: readonly string[],
+	cleared: ReadonlySet<string>,
+): string[] => {
+	const merged = new Set(local);
+	for (const id of snapshot) {
+		if (!cleared.has(id)) merged.add(id);
 	}
-	return merged;
+	return [...merged];
 };
+
+function collectClearedIds(
+	prev: SessionActivityState,
+	next: SessionActivityState,
+	key: "pendingPermissionIds" | "pendingQuestionIds",
+	into: Set<string>,
+) {
+	for (const [sessionId, session] of Object.entries(prev.sessions)) {
+		const nextIds = next.sessions[sessionId]?.[key] ?? [];
+		for (const id of session[key]) {
+			if (!nextIds.includes(id)) into.add(id);
+		}
+	}
+}
+
+function forgetClearedIds(
+	next: SessionActivityState,
+	key: "pendingPermissionIds" | "pendingQuestionIds",
+	cleared: Set<string>,
+) {
+	for (const session of Object.values(next.sessions)) {
+		for (const id of session[key]) cleared.delete(id);
+	}
+}
 
 export function createSessionActivityStore(options?: {
 	storage?: StorageLike | null;
@@ -93,6 +123,8 @@ export function createSessionActivityStore(options?: {
 }) {
 	const storage = resolveStorage(options?.storage);
 	const now = options?.now ?? Date.now;
+	const clearedPermissionIds = new Set<string>();
+	const clearedQuestionIds = new Set<string>();
 
 	const persistLastVisited = (lastVisitedAtBySessionId: Readonly<Record<string, number>>) => {
 		if (!storage) return;
@@ -112,6 +144,10 @@ export function createSessionActivityStore(options?: {
 			const prev = get();
 			const next = applySessionActivityEvent(prev, event, now());
 			if (!next) return;
+			collectClearedIds(prev, next, "pendingPermissionIds", clearedPermissionIds);
+			collectClearedIds(prev, next, "pendingQuestionIds", clearedQuestionIds);
+			forgetClearedIds(next, "pendingPermissionIds", clearedPermissionIds);
+			forgetClearedIds(next, "pendingQuestionIds", clearedQuestionIds);
 			if (next.lastVisitedAtBySessionId !== prev.lastVisitedAtBySessionId) {
 				persistLastVisited(next.lastVisitedAtBySessionId);
 			}
@@ -140,6 +176,10 @@ export function createSessionActivityStore(options?: {
 			set((state) => {
 				const liveEventsDuringFetch =
 					sinceEpoch !== undefined && state.activityEpoch !== sinceEpoch;
+				if (!liveEventsDuringFetch) {
+					clearedPermissionIds.clear();
+					clearedQuestionIds.clear();
+				}
 				const sessionIds = new Set([
 					...(permissionIdsBySession?.keys() ?? []),
 					...(questionIdsBySession?.keys() ?? []),
@@ -165,13 +205,21 @@ export function createSessionActivityStore(options?: {
 						snapshotPermissions === undefined
 							? (existing?.pendingPermissionIds ?? [])
 							: liveEventsDuringFetch
-								? unionIds(snapshotPermissions, existing?.pendingPermissionIds ?? [])
+								? mergePendingIds(
+										snapshotPermissions,
+										existing?.pendingPermissionIds ?? [],
+										clearedPermissionIds,
+									)
 								: snapshotPermissions;
 					const pendingQuestionIds =
 						snapshotQuestions === undefined
 							? (existing?.pendingQuestionIds ?? [])
 							: liveEventsDuringFetch
-								? unionIds(snapshotQuestions, existing?.pendingQuestionIds ?? [])
+								? mergePendingIds(
+										snapshotQuestions,
+										existing?.pendingQuestionIds ?? [],
+										clearedQuestionIds,
+									)
 								: snapshotQuestions;
 					if (
 						existing &&
@@ -191,12 +239,15 @@ export function createSessionActivityStore(options?: {
 			});
 		},
 
-		hydrateStatuses: (statuses) => {
+		hydrateStatuses: (statuses, sinceEpoch) => {
 			const timestamp = now();
+			const skipBusyIfCompleted = sinceEpoch !== undefined && get().activityEpoch !== sinceEpoch;
 			set((state) => {
 				let sessions: Record<string, SessionActivity> = state.sessions;
 				for (const [sessionId, status] of Object.entries(statuses)) {
-					const next = applyHydratedSessionStatus(sessions[sessionId], status.type, timestamp);
+					const next = applyHydratedSessionStatus(sessions[sessionId], status.type, timestamp, {
+						skipBusyIfCompleted,
+					});
 					if (!next) continue;
 					if (sessions === state.sessions) sessions = { ...sessions };
 					sessions[sessionId] = next;

@@ -39,6 +39,6 @@ export async function hydrateSessionActivity(
 		sinceEpoch,
 	});
 	if (statuses?.data) {
-		store.getState().hydrateStatuses(statuses.data);
+		store.getState().hydrateStatuses(statuses.data, sinceEpoch);
 	}
 }

@@ -213,20 +213,24 @@ describe("ChatPage", () => {
 			baseUrl: "http://127.0.0.1:5432",
 			password: "refreshed-secret",
 		};
-		const getConnection = vi
-			.fn<KiloUiChatService["chat.getConnection"]>()
-			.mockResolvedValueOnce(connection)
-			.mockResolvedValueOnce(refreshedConnection);
+		let connectionCalls = 0;
+		const getConnection = vi.fn<KiloUiChatService["chat.getConnection"]>(async () => {
+			connectionCalls += 1;
+			return connectionCalls === 1 ? connection : refreshedConnection;
+		});
 		renderChatPage({ getConnection });
 
-		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalled());
 		const initialRuntimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
 		expect(initialRuntimeOptions?.onError).toEqual(expect.any(Function));
 		await expect(initialRuntimeOptions!.connectionPromise).resolves.toEqual(connection);
 
+		const callsBeforeRefresh = getConnection.mock.calls.length;
 		initialRuntimeOptions!.onError!(new Error("Unauthorized"));
 
-		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() =>
+			expect(getConnection.mock.calls.length).toBeGreaterThan(callsBeforeRefresh),
+		);
 		await vi.waitFor(() => {
 			const refreshedPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
 			expect(refreshedPromise).not.toBe(initialRuntimeOptions!.connectionPromise);

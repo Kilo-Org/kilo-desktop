@@ -42,24 +42,32 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const connection = useQuery(connectionOptions);
 	// One deferred covers the cold-start pending→ready transition so the promise
 	// identity (and thus useKiloRuntime's backend / OpenCode SSE) stays fixed.
-	// After the first settle, a new dataUpdatedAt always gets Promise.resolve.
+	// After the first settle, a new cache entry (dataUpdatedAt and/or data ref)
+	// gets Promise.resolve. Comparing both avoids same-millisecond dataUpdatedAt
+	// collisions that would otherwise keep a stale resolved promise after refresh.
 	const heldConnectionPromiseRef = useRef<{
 		promise: Promise<KiloGlobalConnection>;
 		resolve?: (value: KiloGlobalConnection) => void;
 		reject?: (reason: unknown) => void;
+		data?: KiloGlobalConnection;
 		dataUpdatedAt: number | null;
 		errorUpdatedAt?: number;
 	} | null>(null);
 	const connectionPromise = useMemo(() => {
 		if (connection.data && !connection.isFetching) {
 			const held = heldConnectionPromiseRef.current;
-			if (held && held.dataUpdatedAt === connection.dataUpdatedAt) {
+			if (
+				held &&
+				held.dataUpdatedAt === connection.dataUpdatedAt &&
+				held.data === connection.data
+			) {
 				return held.promise;
 			}
 			if (held?.resolve && held.dataUpdatedAt === null) {
 				held.resolve(connection.data);
 				heldConnectionPromiseRef.current = {
 					promise: held.promise,
+					data: connection.data,
 					dataUpdatedAt: connection.dataUpdatedAt,
 				};
 				return held.promise;
@@ -67,6 +75,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			const resolved = Promise.resolve(connection.data);
 			heldConnectionPromiseRef.current = {
 				promise: resolved,
+				data: connection.data,
 				dataUpdatedAt: connection.dataUpdatedAt,
 			};
 			return resolved;

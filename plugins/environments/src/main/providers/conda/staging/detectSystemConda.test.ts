@@ -44,7 +44,7 @@ describe("detectSystemConda", () => {
 			// oxlint-disable-next-line no-explicit-any
 		}) as any);
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).toEqual({
 			condaBinPath: "/usr/local/bin/conda",
@@ -59,7 +59,7 @@ describe("detectSystemConda", () => {
 		}) as any);
 		mockedAccess.mockRejectedValue(new Error("ENOENT"));
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).toBeNull();
 	});
@@ -79,7 +79,7 @@ describe("detectSystemConda", () => {
 			// oxlint-disable-next-line no-explicit-any
 		}) as any);
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).toBeNull();
 	});
@@ -93,7 +93,7 @@ describe("detectSystemConda", () => {
 			// oxlint-disable-next-line no-explicit-any
 		}) as any);
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).toBeNull();
 	});
@@ -113,7 +113,7 @@ describe("detectSystemConda", () => {
 			// oxlint-disable-next-line no-explicit-any
 		}) as any);
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).toEqual({
 			condaBinPath: "/opt/conda/bin/conda",
@@ -166,7 +166,7 @@ describe("detectSystemConda", () => {
 		// First well-known path check succeeds
 		mockedAccess.mockResolvedValueOnce(undefined);
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).not.toBeNull();
 		expect(result!.version).toBe("24.5.0");
@@ -187,7 +187,7 @@ describe("detectSystemConda", () => {
 			// oxlint-disable-next-line no-explicit-any
 		}) as any);
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).toBeNull();
 	});
@@ -201,7 +201,7 @@ describe("detectSystemConda", () => {
 			// oxlint-disable-next-line no-explicit-any
 		}) as any);
 
-		const result = await detectSystemConda({ logger: noopLogger() });
+		const result = await detectSystemConda({ logger: noopLogger(), platform: "darwin" });
 
 		expect(result).toBeNull();
 	});

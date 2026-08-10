@@ -48,7 +48,6 @@ import {
 	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
-	PencilIcon,
 	RefreshCwIcon,
 	SquareIcon,
 } from "lucide-react";
@@ -186,9 +185,7 @@ const ThreadMessage: FC = () => {
 	const { AssistantMessage: AssistantMessageComponent = AssistantMessage } =
 		useContext(ThreadComponentsContext);
 	const role = useAuiState((s) => s.message.role);
-	const isEditing = useAuiState((s) => s.message.composer.isEditing);
 
-	if (isEditing) return <EditComposer />;
 	if (role === "user") return <UserMessage />;
 	return <AssistantMessageComponent />;
 };
@@ -616,11 +613,8 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content peer border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
 					<MessagePrimitive.Parts />
-				</div>
-				<div className="aui-user-action-bar-wrapper absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden rtl:translate-x-full">
-					<UserActionBar />
 				</div>
 			</div>
 
@@ -628,48 +622,6 @@ const UserMessage: FC = () => {
 				data-slot="aui_user-branch-picker"
 				className="col-span-full col-start-1 row-start-3 -me-1 justify-end"
 			/>
-		</MessagePrimitive.Root>
-	);
-};
-
-const UserActionBar: FC = () => {
-	return (
-		<ActionBarPrimitive.Root
-			hideWhenRunning
-			autohide="not-last"
-			className="aui-user-action-bar-root flex flex-col items-end"
-		>
-			<ActionBarPrimitive.Edit
-				render={<TooltipIconButton tooltip="Edit" className="aui-user-action-edit" />}
-			>
-				<PencilIcon />
-			</ActionBarPrimitive.Edit>
-		</ActionBarPrimitive.Root>
-	);
-};
-
-const EditComposer: FC = () => {
-	return (
-		<MessagePrimitive.Root
-			data-slot="aui_edit-composer-wrapper"
-			className="flex flex-col px-2 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
-		>
-			<ComposerPrimitive.Root className="aui-edit-composer-root chat-composer-glass border-border/60 dark:border-muted-foreground/15 ms-auto flex w-full max-w-[85%] flex-col rounded-(--composer-radius) border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none">
-				<ComposerPrimitive.Input
-					className="aui-edit-composer-input text-foreground min-h-14 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base outline-none"
-					autoFocus
-				/>
-				<div className="aui-edit-composer-footer mx-2.5 mb-2.5 flex items-center gap-1.5 self-end">
-					<ComposerPrimitive.Cancel
-						render={<Button variant="ghost" size="sm" className="h-8 rounded-full px-3.5" />}
-					>
-						Cancel
-					</ComposerPrimitive.Cancel>
-					<ComposerPrimitive.Send render={<Button size="sm" className="h-8 rounded-full px-3.5" />}>
-						Update
-					</ComposerPrimitive.Send>
-				</div>
-			</ComposerPrimitive.Root>
 		</MessagePrimitive.Root>
 	);
 };

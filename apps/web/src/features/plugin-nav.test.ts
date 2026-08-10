@@ -74,7 +74,23 @@ describe("buildPluginNav", () => {
 });
 
 describe("PLUGIN_NAV", () => {
-	it("is empty — the bundled plugins contribute no sidebar nav entries", () => {
-		expect(PLUGIN_NAV).toEqual([]);
+	it("contains the bundled todos nav entry under the /plugins namespace", () => {
+		const todos = PLUGIN_NAV.find((entry) => entry.to === "/plugins/todos");
+		expect(todos).toBeDefined();
+		expect(todos?.pluginId).toBe("todos");
+		expect(todos?.label).toBe("Todo List");
+		expect(todos?.icon).toBe("TodoNavIcon");
+		expect(todos?.iconComponent).toBeDefined();
+		expect(todos?.navQaId).toBe("nav-todos");
+	});
+
+	it("contains the bundled environments nav entry under the /plugins namespace", () => {
+		const environments = PLUGIN_NAV.find((entry) => entry.to === "/plugins/environments");
+		expect(environments).toBeDefined();
+		expect(environments?.pluginId).toBe("environments");
+		expect(environments?.label).toBe("Environments");
+		expect(environments?.icon).toBe("EnvironmentsNavIcon");
+		expect(environments?.iconComponent).toBeDefined();
+		expect(environments?.navQaId).toBe("nav-environments");
 	});
 });

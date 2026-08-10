@@ -1,5 +1,5 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
-import { useOpenCodeRuntime, type OpenCodeRuntimeBackend } from "@assistant-ui/react-opencode";
+import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import { useMemo, useRef } from "react";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
@@ -15,8 +15,7 @@ import { withPromptVariant, type PromptModelRef } from "./with-prompt-variant.js
 export interface UseKiloRuntimeOptions {
 	connectionPromise?: Promise<KiloGlobalConnection>;
 	prepareSession?: () => Promise<KiloSessionPreparation>;
-	/** Pre-built backend/client injection for focused tests. */
-	backend?: OpenCodeRuntimeBackend;
+	/** Pre-built client injection for focused tests. */
 	client?: KiloClient;
 	initialSessionId?: string;
 	/** Fires when the active remote thread id changes (OpenCode session switch). */
@@ -34,7 +33,6 @@ export interface UseKiloRuntimeOptions {
 export function useKiloRuntime({
 	connectionPromise,
 	prepareSession,
-	backend: backendOption,
 	client: clientOption,
 	initialSessionId,
 	onThreadIdChange,
@@ -68,12 +66,9 @@ export function useKiloRuntime({
 		[clientOption, promptGetters],
 	);
 	const backend = useMemo(() => {
-		if (backendOption) return backendOption;
 		if (client) return undefined;
 		if (!connectionPromise || !prepareSession) {
-			throw new Error(
-				"useKiloRuntime requires a backend, client, or connectionPromise with prepareSession",
-			);
+			throw new Error("useKiloRuntime requires a client, or connectionPromise with prepareSession");
 		}
 		return createKiloRuntimeBackend({
 			connectionPromise,
@@ -81,7 +76,7 @@ export function useKiloRuntime({
 			...promptGetters,
 			...(sessionActivity ? { sessionActivity } : {}),
 		});
-	}, [backendOption, client, connectionPromise, prepareSession, promptGetters, sessionActivity]);
+	}, [client, connectionPromise, prepareSession, promptGetters, sessionActivity]);
 
 	return useOpenCodeRuntime({
 		...(backend ? { backend } : {}),

@@ -193,26 +193,52 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
 	});
 
+	it("keeps the same connectionPromise identity while the connection resolves", async () => {
+		let resolveConnection!: (value: KiloGlobalConnection) => void;
+		const getConnection = vi.fn(
+			() =>
+				new Promise<KiloGlobalConnection>((resolve) => {
+					resolveConnection = resolve;
+				}),
+		);
+		renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		const pendingPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+		expect(pendingPromise).toBeDefined();
+
+		resolveConnection(connection);
+		await expect(pendingPromise).resolves.toEqual(connection);
+
+		await vi.waitFor(() => {
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).toBe(pendingPromise);
+		});
+	});
+
 	it("refreshes the global connection after a runtime request fails", async () => {
 		const refreshedConnection = {
 			...connection,
 			baseUrl: "http://127.0.0.1:5432",
 			password: "refreshed-secret",
 		};
-		const getConnection = vi
-			.fn<KiloUiChatService["chat.getConnection"]>()
-			.mockResolvedValueOnce(connection)
-			.mockResolvedValueOnce(refreshedConnection);
+		let connectionCalls = 0;
+		const getConnection = vi.fn<KiloUiChatService["chat.getConnection"]>(async () => {
+			connectionCalls += 1;
+			return connectionCalls === 1 ? connection : refreshedConnection;
+		});
 		renderChatPage({ getConnection });
 
-		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalled());
 		const initialRuntimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
 		expect(initialRuntimeOptions?.onError).toEqual(expect.any(Function));
 		await expect(initialRuntimeOptions!.connectionPromise).resolves.toEqual(connection);
 
+		const callsBeforeRefresh = getConnection.mock.calls.length;
 		initialRuntimeOptions!.onError!(new Error("Unauthorized"));
 
-		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() =>
+			expect(getConnection.mock.calls.length).toBeGreaterThan(callsBeforeRefresh),
+		);
 		await vi.waitFor(() => {
 			const refreshedPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
 			expect(refreshedPromise).not.toBe(initialRuntimeOptions!.connectionPromise);

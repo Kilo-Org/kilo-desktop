@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { deriveSessionRowState } from "./session-activity-logic.js";
 import { createSessionActivityStore, LAST_VISITED_STORAGE_KEY } from "./session-activity-store.js";
 
 const NOW = 1_700_000_000_000;
@@ -89,11 +90,51 @@ describe("createSessionActivityStore", () => {
 		store.getState().hydratePendingRequests({
 			permissions: [{ id: "perm-2", sessionID: "ses-2" }],
 			questions: [{ id: "q-1", sessionID: "ses-1" }],
+			sinceEpoch: store.getState().activityEpoch,
 		});
 
 		expect(store.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual([]);
 		expect(store.getState().sessions["ses-1"]?.pendingQuestionIds).toEqual(["q-1"]);
 		expect(store.getState().sessions["ses-2"]?.pendingPermissionIds).toEqual(["perm-2"]);
+	});
+
+	it("unions pending ids when live events race a stale hydration snapshot", () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		const sinceEpoch = store.getState().activityEpoch;
+		store.getState().applyEvent({
+			type: "permission.asked",
+			properties: { id: "perm-live", sessionID: "ses-1" },
+		});
+
+		store.getState().hydratePendingRequests({
+			permissions: [{ id: "perm-snapshot", sessionID: "ses-2" }],
+			questions: [],
+			sinceEpoch,
+		});
+
+		expect(store.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual(["perm-live"]);
+		expect(store.getState().sessions["ses-2"]?.pendingPermissionIds).toEqual(["perm-snapshot"]);
+	});
+
+	it("does not resurrect a permission a live reply cleared during hydration", () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		store.getState().applyEvent({
+			type: "permission.asked",
+			properties: { id: "perm-1", sessionID: "ses-1" },
+		});
+		const sinceEpoch = store.getState().activityEpoch;
+		store.getState().applyEvent({
+			type: "permission.replied",
+			properties: { requestID: "perm-1", sessionID: "ses-1" },
+		});
+
+		store.getState().hydratePendingRequests({
+			permissions: [{ id: "perm-1", sessionID: "ses-1" }],
+			questions: [],
+			sinceEpoch,
+		});
+
+		expect(store.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual([]);
 	});
 
 	it("hydrates statuses, stamping workingSince for busy sessions", () => {
@@ -135,6 +176,69 @@ describe("createSessionActivityStore", () => {
 		});
 		// No completion is stamped: the finish time was not observed.
 		expect(store.getState().sessions["ses-1"]?.completedAt).toBeUndefined();
+	});
+
+	it("does not resurrect busy from a stale hydration after a live completion", () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		const sinceEpoch = store.getState().activityEpoch;
+		store.getState().applyEvent({
+			type: "session.status",
+			properties: { sessionID: "ses-1", status: { type: "busy" } },
+		});
+		store.getState().applyEvent({
+			type: "session.status",
+			properties: { sessionID: "ses-1", status: { type: "idle" } },
+		});
+
+		store.getState().hydrateStatuses({ "ses-1": { type: "busy" } }, sinceEpoch);
+
+		expect(store.getState().sessions["ses-1"]).toMatchObject({
+			status: "idle",
+			completedAt: NOW,
+			workingSince: undefined,
+		});
+		expect(deriveSessionRowState(store.getState().sessions["ses-1"], NOW - 1)).toBe("done");
+	});
+
+	it("allows a clean reconnect to hydrate busy after a prior completion", () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		store.getState().applyEvent({
+			type: "session.status",
+			properties: { sessionID: "ses-1", status: { type: "busy" } },
+		});
+		store.getState().applyEvent({
+			type: "session.status",
+			properties: { sessionID: "ses-1", status: { type: "idle" } },
+		});
+
+		store.getState().hydrateStatuses({ "ses-1": { type: "busy" } });
+
+		expect(store.getState().sessions["ses-1"]).toMatchObject({
+			status: "busy",
+			workingSince: NOW,
+			completedAt: undefined,
+		});
+	});
+
+	it("clears completedAt when a live busy event starts a new turn", () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		store.getState().applyEvent({
+			type: "session.status",
+			properties: { sessionID: "ses-1", status: { type: "busy" } },
+		});
+		store.getState().applyEvent({
+			type: "session.status",
+			properties: { sessionID: "ses-1", status: { type: "idle" } },
+		});
+		store.getState().applyEvent({
+			type: "session.status",
+			properties: { sessionID: "ses-1", status: { type: "busy" } },
+		});
+
+		expect(store.getState().sessions["ses-1"]).toMatchObject({
+			status: "busy",
+			completedAt: undefined,
+		});
 	});
 
 	it("tolerates broken storage", () => {

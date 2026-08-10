@@ -25,16 +25,20 @@ export async function hydrateSessionActivity(
 	client: SessionActivityHydrationClient,
 	store: SessionActivityStore,
 ): Promise<void> {
+	// Capture before the network round-trip so a live ask/reply during the fetch
+	// can force a union merge instead of a stale snapshot replace.
+	const sinceEpoch = store.getState().activityEpoch;
 	const [permissions, questions, statuses] = await Promise.all([
 		client.permission.list().catch(() => undefined),
 		client.question.list().catch(() => undefined),
 		client.session.status().catch(() => undefined),
 	]);
 	store.getState().hydratePendingRequests({
-		permissions: permissions?.data ?? [],
-		questions: questions?.data ?? [],
+		...(permissions ? { permissions: permissions.data ?? [] } : {}),
+		...(questions ? { questions: questions.data ?? [] } : {}),
+		sinceEpoch,
 	});
 	if (statuses?.data) {
-		store.getState().hydrateStatuses(statuses.data);
+		store.getState().hydrateStatuses(statuses.data, sinceEpoch);
 	}
 }

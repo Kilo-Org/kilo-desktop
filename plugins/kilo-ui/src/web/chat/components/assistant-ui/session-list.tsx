@@ -10,6 +10,7 @@ import {
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import {
 	AuiIf,
 	ThreadListItemPrimitive,
@@ -33,6 +34,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import {
 	useEffect,
+	useCallback,
 	useMemo,
 	useRef,
 	useState,
@@ -41,6 +43,7 @@ import {
 } from "react";
 
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
+import { navigateToChat } from "../../chat-navigation.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
 import {
 	deriveSessionRowState,
@@ -103,33 +106,25 @@ export const SessionList: FC = () => {
 
 	return (
 		<div data-qa-id="kilo-thread-list">
-			<SessionListRoot>
+			<ThreadListPrimitive.Root data-slot="aui_thread-list-root" className="flex flex-col gap-0.5">
 				<SessionListNewChat />
 				{hasThreads && <SessionListSearch value={search} onValueChange={setSearch} />}
 				<SessionListItems searchQuery={hasThreads ? search : ""} />
-			</SessionListRoot>
+			</ThreadListPrimitive.Root>
 		</div>
 	);
 };
 
-const SessionListRoot: FC<ComponentPropsWithoutRef<typeof ThreadListPrimitive.Root>> = ({
-	className,
-	...props
-}) => {
-	return (
-		<ThreadListPrimitive.Root
-			data-slot="aui_thread-list-root"
-			className={cn("flex flex-col gap-0.5", className)}
-			{...props}
-		/>
-	);
-};
+function useNavigateToChat(): () => void {
+	const sdk = useSdk("kilo-ui");
+	return useCallback(() => navigateToChat(sdk), [sdk]);
+}
 
-const SessionListNewChat: FC<
-	ComponentPropsWithoutRef<typeof Button> & { labelClassName?: string }
-> = ({ className, labelClassName, children, ...props }) => {
+const SessionListNewChat: FC = () => {
+	const navigate = useNavigateToChat();
 	return (
 		<ThreadListPrimitive.New
+			onClick={navigate}
 			render={
 				<Button
 					variant="ghost"
@@ -138,30 +133,22 @@ const SessionListNewChat: FC<
 						"h-8 w-full justify-start gap-2 p-2 text-sm font-normal data-active:font-medium [&_svg]:size-4 [&_svg]:shrink-0",
 						sidebarNavItemClassName,
 						sidebarNavRadiusClassName,
-						className,
 					)}
-					{...props}
 				/>
 			}
 		>
-			{children ?? (
-				<>
-					<PlusIcon data-slot="aui_thread-list-new-icon" />
-					<span data-slot="aui_thread-list-new-label" className={cn("truncate", labelClassName)}>
-						New Chat
-					</span>
-				</>
-			)}
+			<PlusIcon data-slot="aui_thread-list-new-icon" />
+			<span data-slot="aui_thread-list-new-label" className="truncate">
+				New Chat
+			</span>
 		</ThreadListPrimitive.New>
 	);
 };
 
-const SessionListSearch: FC<
-	Omit<ComponentPropsWithoutRef<typeof Input>, "value" | "onChange"> & {
-		value: string;
-		onValueChange: (value: string) => void;
-	}
-> = ({ className, value, onValueChange, ...props }) => {
+const SessionListSearch: FC<{
+	value: string;
+	onValueChange: (value: string) => void;
+}> = ({ value, onValueChange }) => {
 	return (
 		<div data-slot="aui_thread-list-search" className="relative py-1">
 			<SearchIcon
@@ -180,15 +167,13 @@ const SessionListSearch: FC<
 					"focus-visible:border-0 focus-visible:ring-0",
 					sidebarSurfaceIdleClassName,
 					sidebarNavRadiusClassName,
-					className,
 				)}
-				{...props}
 			/>
 		</div>
 	);
 };
 
-const SessionListItems: FC<{ searchQuery?: string }> = ({ searchQuery = "" }) => {
+const SessionListItems: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 	return (
 		<div data-slot="aui_thread-list-items" className="flex flex-col gap-0.5">
 			<AuiIf condition={(s) => s.threads.isLoading}>
@@ -235,9 +220,9 @@ const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 
 	const partition = useMemo(() => {
 		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
-		const toEntry = (id: string) => {
+		const toEntry = (id: string, sourceIndex: number) => {
 			const item = itemsById.get(id);
-			return { id, remoteId: item?.remoteId, title: item?.title };
+			return { id, remoteId: item?.remoteId, title: item?.title, sourceIndex };
 		};
 		const matchesQuery = (entry: { title?: string | undefined }) =>
 			!query || (entry.title || "New Chat").toLowerCase().includes(query);
@@ -403,12 +388,36 @@ const rowStateLabels: Record<
 	done: { label: "Done", className: "text-green-800 dark:text-green-400" },
 };
 
+/** One shared interval per tick rate so every row doesn't open its own timer. */
+const nowListeners = new Map<number, Set<(now: number) => void>>();
+const nowIntervals = new Map<number, ReturnType<typeof setInterval>>();
+
+function subscribeSharedNow(intervalMs: number, listener: (now: number) => void): () => void {
+	let listeners = nowListeners.get(intervalMs);
+	if (!listeners) {
+		listeners = new Set();
+		nowListeners.set(intervalMs, listeners);
+		nowIntervals.set(
+			intervalMs,
+			setInterval(() => {
+				const now = Date.now();
+				for (const notify of listeners!) notify(now);
+			}, intervalMs),
+		);
+	}
+	listeners.add(listener);
+	return () => {
+		listeners!.delete(listener);
+		if (listeners!.size > 0) return;
+		clearInterval(nowIntervals.get(intervalMs)!);
+		nowListeners.delete(intervalMs);
+		nowIntervals.delete(intervalMs);
+	};
+}
+
 function useNow(intervalMs: number): number {
 	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const interval = setInterval(() => setNow(Date.now()), intervalMs);
-		return () => clearInterval(interval);
-	}, [intervalMs]);
+	useEffect(() => subscribeSharedNow(intervalMs, setNow), [intervalMs]);
 	return now;
 }
 
@@ -485,8 +494,8 @@ function useRenameState(): {
 
 const SessionCardRow: FC = () => {
 	const aui = useAui();
+	const navigate = useNavigateToChat();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
-	const isRunning = useAuiState((s) => s.threadListItem.isRunning);
 	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
 	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
 	const lastVisitedAt = useSessionActivity((s) =>
@@ -495,7 +504,7 @@ const SessionCardRow: FC = () => {
 	const { workspaces } = useWorkspacesFeature();
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
 
-	const rowState = deriveSessionRowState(activity, lastVisitedAt) ?? (isRunning ? "working" : null);
+	const rowState = deriveSessionRowState(activity, lastVisitedAt);
 	const canSettle = rowState === null || rowState === "done";
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
 
@@ -522,6 +531,7 @@ const SessionCardRow: FC = () => {
 			) : (
 				<ThreadListItemPrimitive.Trigger
 					ref={triggerRef}
+					onClick={navigate}
 					data-slot="aui_session-list-item-trigger"
 					className="block w-full px-2.5 py-2 text-left focus-visible:outline-none"
 				>
@@ -582,6 +592,7 @@ const SessionCardRow: FC = () => {
 
 const SettledSessionRow: FC = () => {
 	const aui = useAui();
+	const navigate = useNavigateToChat();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
 	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
@@ -607,6 +618,7 @@ const SettledSessionRow: FC = () => {
 					data-slot="aui_session-list-settled-trigger"
 					className="flex h-full min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none"
 					onClick={() => {
+						navigate();
 						void aui.threadListItem.switchTo({ unarchive: false });
 					}}
 				>

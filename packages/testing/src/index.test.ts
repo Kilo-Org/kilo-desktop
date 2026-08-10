@@ -93,6 +93,20 @@ describe("createFakeMainSdk", () => {
 		expect(fetch).toHaveBeenCalledWith("https://example.test");
 	});
 
+	it("boot.reportProgress forwards to the injected reporter", () => {
+		const reportBootProgress = vi.fn();
+		const mainSdk = createFakeMainSdk({ featureId: "todos", reportBootProgress });
+
+		mainSdk.boot.reportProgress("Staging…");
+
+		expect(reportBootProgress).toHaveBeenCalledWith("Staging…");
+	});
+
+	it("boot.reportProgress defaults to a silent no-op", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+		expect(() => mainSdk.boot.reportProgress("nobody listens")).not.toThrow();
+	});
+
 	it("dispose runs onDispose callbacks in reverse order and clears handlers", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos" });
 		const order: string[] = [];

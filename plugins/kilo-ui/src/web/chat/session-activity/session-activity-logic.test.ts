@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	ANACONDA_METADATA_KEY,
+	applyHydratedSessionStatus,
 	applySessionActivityEvent,
 	applySessionPatch,
 	buildAnacondaSessionMetadata,
@@ -361,6 +362,43 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 	});
 });
 
+describe("applyHydratedSessionStatus", () => {
+	it("stamps workingSince for a newly observed busy session", () => {
+		expect(applyHydratedSessionStatus(undefined, "busy", NOW)).toEqual({
+			...createEmptySessionActivity(),
+			status: "busy",
+			workingSince: NOW,
+			completedAt: undefined,
+		});
+	});
+
+	it("skips busy only when a live completion raced hydration", () => {
+		const completed: SessionActivity = {
+			...createEmptySessionActivity(),
+			status: "idle",
+			completedAt: NOW,
+		};
+		expect(
+			applyHydratedSessionStatus(completed, "busy", NOW + 1, { skipBusyIfCompleted: true }),
+		).toBeNull();
+		expect(deriveSessionRowState(completed, NOW - 1)).toBe("done");
+	});
+
+	it("clears completedAt when a clean hydrate marks the session busy again", () => {
+		const completed: SessionActivity = {
+			...createEmptySessionActivity(),
+			status: "idle",
+			completedAt: NOW,
+		};
+		expect(applyHydratedSessionStatus(completed, "busy", NOW + 1)).toEqual({
+			...completed,
+			status: "busy",
+			workingSince: NOW + 1,
+			completedAt: undefined,
+		});
+	});
+});
+
 describe("needsAttention", () => {
 	it("requires a pending permission or question", () => {
 		expect(needsAttention(undefined)).toBe(false);
@@ -537,5 +575,16 @@ describe("partitionSidebarThreads", () => {
 		});
 
 		expect(partition.sessions).toEqual([1, 0, 2]);
+	});
+
+	it("preserves source indices after callers filter entries", () => {
+		const partition = partitionSidebarThreads({
+			regular: [{ id: "local-2", remoteId: "ses-2", sourceIndex: 4 }],
+			archived: [{ id: "local-3", remoteId: "ses-3", sourceIndex: 7 }],
+			activityBySessionId: {},
+		});
+
+		expect(partition.sessions).toEqual([4]);
+		expect(partition.settled).toEqual([7]);
 	});
 });

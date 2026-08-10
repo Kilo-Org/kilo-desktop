@@ -28,6 +28,22 @@ describe("FeatureRouter", () => {
 		expect(fetch).toHaveBeenCalledWith("https://example.test");
 	});
 
+	it("forwards mainSdk.boot.reportProgress to the injected reporter", () => {
+		const reportBootProgress = vi.fn();
+		const mainSdk = new FeatureRouter().createMainSdk("my-feature", { reportBootProgress });
+
+		mainSdk.boot.reportProgress("Staging conda…");
+		mainSdk.boot.reportProgress("Ready.");
+
+		expect(reportBootProgress).toHaveBeenNthCalledWith(1, "Staging conda…");
+		expect(reportBootProgress).toHaveBeenNthCalledWith(2, "Ready.");
+	});
+
+	it("mainSdk.boot.reportProgress is a silent no-op without a reporter", () => {
+		const mainSdk = new FeatureRouter().createMainSdk("my-feature");
+		expect(() => mainSdk.boot.reportProgress("nobody listens")).not.toThrow();
+	});
+
 	it("mainSdk.events stamps namespaces, delivers locally, and relays once", () => {
 		const relay = vi.fn();
 		const router = new FeatureRouter();

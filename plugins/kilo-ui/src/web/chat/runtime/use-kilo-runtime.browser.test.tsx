@@ -1,10 +1,11 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useOpenCodeRuntime, type OpenCodeRuntimeBackend } from "@assistant-ui/react-opencode";
+import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
+import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
@@ -99,18 +100,41 @@ describe("useKiloRuntime", () => {
 		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
 	});
 
-	it("accepts injected backends and clients for focused tests", () => {
-		const backend = { globalClient: {} } as OpenCodeRuntimeBackend;
+	it("accepts an injected client for focused tests", () => {
 		const client = { session: {} } as KiloClient;
 
-		const { rerender } = renderHook(
-			({ injectedBackend }: { injectedBackend: OpenCodeRuntimeBackend | undefined }) =>
-				useKiloRuntime(injectedBackend ? { backend: injectedBackend } : { client }),
-			{ initialProps: { injectedBackend: backend as OpenCodeRuntimeBackend | undefined } },
-		);
-		expect(useOpenCodeRuntime).toHaveBeenLastCalledWith({ backend });
+		renderHook(() => useKiloRuntime({ client }));
 
-		rerender({ injectedBackend: undefined });
-		expect(useOpenCodeRuntime).toHaveBeenLastCalledWith({ client: expect.anything() });
+		expect(createKiloRuntimeBackend).not.toHaveBeenCalled();
+		expect(useOpenCodeRuntime).toHaveBeenCalledWith({ client: expect.anything() });
+	});
+
+	it("forwards sessionActivity into the backend", () => {
+		const connectionPromise = Promise.resolve(connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const sessionActivity = createSessionActivityStore({ storage: null });
+
+		renderHook(() =>
+			useKiloRuntime({
+				connectionPromise,
+				prepareSession,
+				sessionActivity,
+			}),
+		);
+
+		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
+			connectionPromise,
+			prepareSession,
+			getVariant: expect.any(Function),
+			getAgent: expect.any(Function),
+			getModel: expect.any(Function),
+			sessionActivity,
+		});
+	});
+
+	it("throws when neither a client nor connectionPromise with prepareSession is provided", () => {
+		expect(() => renderHook(() => useKiloRuntime({}))).toThrow(
+			"useKiloRuntime requires a client, or connectionPromise with prepareSession",
+		);
 	});
 });

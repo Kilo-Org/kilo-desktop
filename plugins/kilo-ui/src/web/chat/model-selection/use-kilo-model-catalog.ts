@@ -16,7 +16,7 @@ async function fetchModelCatalog(connection: KiloGlobalConnection): Promise<Kilo
 
 export function useKiloModelCatalog(connection: KiloGlobalConnection | undefined) {
 	return useQuery({
-		queryKey: ["kilo-ui", "provider.list"],
+		queryKey: ["kilo-ui", "provider.list", connection?.baseUrl, connection?.version],
 		queryFn: () => {
 			if (!connection) {
 				throw new Error("Cannot fetch the model catalog before Kilo is connected");

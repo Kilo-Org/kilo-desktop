@@ -17,10 +17,10 @@ export function SessionActivityProvider({
 	);
 }
 
-export function useSessionActivityStore(): SessionActivityStore {
+function useSessionActivityStore(): SessionActivityStore {
 	const store = useContext(SessionActivityContext);
 	if (!store) {
-		throw new Error("useSessionActivityStore requires SessionActivityProvider");
+		throw new Error("useSessionActivity requires SessionActivityProvider");
 	}
 	return store;
 }

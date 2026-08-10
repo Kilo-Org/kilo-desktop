@@ -31,6 +31,7 @@
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@anaconda-agentic-desktop/plugin-environments": "workspace:*",
 		"@anaconda-agentic-desktop/plugin-kilo-server": "link:../../plugins/kilo-server",
 		"@anaconda-agentic-desktop/plugin-kilo-ui": "link:../../plugins/kilo-ui",
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",

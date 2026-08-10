@@ -21,10 +21,12 @@ const disposers: Array<() => void> = [];
 // initializes `electron-log` against a mocked Electron.
 const silentLogger = { warn: () => undefined };
 
-function boot(id: string, register: FeatureRegistration["mainRegister"]): void {
+async function boot(id: string, register: FeatureRegistration["mainRegister"]): Promise<void> {
 	const registration = { id, mainRegister: register };
 	features.push(registration);
-	disposers.push(bootFeatures([registration]));
+	// `bootFeatures` is async (it awaits async mainRegister), so the disposer has
+	// to be awaited out of the promise rather than pushed as one.
+	disposers.push(await bootFeatures([registration]));
 }
 
 afterEach(() => {
@@ -34,35 +36,35 @@ afterEach(() => {
 });
 
 describe("collectEmbeddedHosts", () => {
-	it("collects a contributed host and ignores features that expose nothing", () => {
+	it("collects a contributed host and ignores features that expose nothing", async () => {
 		const config = async () => ({ token: "t" });
-		boot("embedded-host-notebook", (sdk) => {
+		await boot("embedded-host-notebook", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", {
 				host: "notebook",
 				root: "/bundle",
 				routes: { "/__nteract_dev_relay/config": config },
 			});
 		});
-		boot("embedded-host-silent", () => {});
+		await boot("embedded-host-silent", () => {});
 
 		expect(collectEmbeddedHosts()).toEqual([
 			{ host: "notebook", root: "/bundle", routes: { "/__nteract_dev_relay/config": config } },
 		]);
 	});
 
-	it("accepts a host that ships no bundle, since that is an expected build", () => {
-		boot("embedded-host-rootless", (sdk) => {
+	it("accepts a host that ships no bundle, since that is an expected build", async () => {
+		await boot("embedded-host-rootless", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: undefined });
 		});
 
 		expect(collectEmbeddedHosts()).toEqual([{ host: "notebook", root: undefined }]);
 	});
 
-	it("skips a malformed contribution rather than taking down the protocol handler", () => {
-		boot("embedded-host-malformed", (sdk) => {
+	it("skips a malformed contribution rather than taking down the protocol handler", async () => {
+		await boot("embedded-host-malformed", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", { host: 42, root: "/bundle" });
 		});
-		boot("embedded-host-valid", (sdk) => {
+		await boot("embedded-host-valid", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: "/bundle" });
 		});
 
@@ -76,16 +78,16 @@ describe("collectEmbeddedHosts", () => {
 		["a non-string root", { host: "notebook", root: 7 }],
 		["an empty host", { host: "", root: "/bundle" }],
 		["null routes", { host: "notebook", root: "/bundle", routes: null }],
-	])("rejects %s", (_label, contribution) => {
-		boot("embedded-host-invalid", (sdk) => {
+	])("rejects %s", async (_label, contribution) => {
+		await boot("embedded-host-invalid", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", contribution as Record<string, unknown>);
 		});
 
 		expect(collectEmbeddedHosts(silentLogger)).toEqual([]);
 	});
 
-	it("rejects routes that are not callable", () => {
-		boot("embedded-host-bad-routes", (sdk) => {
+	it("rejects routes that are not callable", async () => {
+		await boot("embedded-host-bad-routes", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", {
 				host: "notebook",
 				root: "/bundle",
@@ -96,17 +98,17 @@ describe("collectEmbeddedHosts", () => {
 		expect(collectEmbeddedHosts(silentLogger)).toEqual([]);
 	});
 
-	it("sees a host only after its feature boots", () => {
+	it("sees a host only after its feature boots", async () => {
 		// Mirrors the ordering that makes this a thunk: protocol.register runs first.
 		expect(collectEmbeddedHosts()).toEqual([]);
-		boot("embedded-host-late", (sdk) => {
+		await boot("embedded-host-late", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: "/bundle" });
 		});
 		expect(collectEmbeddedHosts()).toHaveLength(1);
 	});
 
-	it("drops a host once its feature is destroyed", () => {
-		boot("embedded-host-transient", (sdk) => {
+	it("drops a host once its feature is destroyed", async () => {
+		await boot("embedded-host-transient", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: "/bundle" });
 		});
 		expect(collectEmbeddedHosts()).toHaveLength(1);

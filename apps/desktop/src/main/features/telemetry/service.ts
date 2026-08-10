@@ -35,27 +35,30 @@ export interface TelemetryServiceOptions {
 	preferences: TelemetryPreferences;
 	appVersion: string;
 	logger?: TelemetryLogger;
-	now?: () => number;
 }
 
 const ANONYMOUS_IDENTITY: TelemetryIdentity = { isEmployee: false };
 
 /** Reads telemetry endpoint/config from `import.meta.env.VITE_ANACONDA_LOGGING_*`. */
 function telemetryConfigFromEnv(serviceId: string, serviceVersion: string): TelemetryConfig {
-	const env = import.meta.env;
-	const exportInterval = Number.parseInt(env.VITE_ANACONDA_LOGGING_EXPORT_INTERVAL_MS ?? "", 10);
-	return {
-		serviceId,
-		serviceVersion,
-		...(env.VITE_ANACONDA_LOGGING_AUTH_URL ? { authUrl: env.VITE_ANACONDA_LOGGING_AUTH_URL } : {}),
-		...(env.VITE_ANACONDA_LOGGING_NON_AUTH_URL
-			? { nonAuthUrl: env.VITE_ANACONDA_LOGGING_NON_AUTH_URL }
-			: {}),
-		...(Number.isFinite(exportInterval) ? { exportIntervalMs: exportInterval } : {}),
-		...(env.VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE
-			? { environmentAttribute: env.VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE }
-			: {}),
-	};
+	const {
+		VITE_ANACONDA_LOGGING_AUTH_URL,
+		VITE_ANACONDA_LOGGING_NON_AUTH_URL,
+		VITE_ANACONDA_LOGGING_EXPORT_INTERVAL_MS,
+		VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE,
+	} = import.meta.env;
+
+	const config: TelemetryConfig = { serviceId, serviceVersion };
+	if (VITE_ANACONDA_LOGGING_AUTH_URL) config.authUrl = VITE_ANACONDA_LOGGING_AUTH_URL;
+	if (VITE_ANACONDA_LOGGING_NON_AUTH_URL) config.nonAuthUrl = VITE_ANACONDA_LOGGING_NON_AUTH_URL;
+
+	const exportInterval = Number.parseInt(VITE_ANACONDA_LOGGING_EXPORT_INTERVAL_MS ?? "", 10);
+	if (Number.isFinite(exportInterval)) config.exportIntervalMs = exportInterval;
+
+	if (VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE) {
+		config.environmentAttribute = VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE;
+	}
+	return config;
 }
 
 /**
@@ -67,7 +70,7 @@ function telemetryConfigFromEnv(serviceId: string, serviceVersion: string): Tele
 export async function deriveTelemetryIdentity(
 	auth: TelemetryAuth,
 	anonymize: AnonymizeOption,
-	now: () => number,
+	logger: TelemetryLogger = createLogger("telemetry"),
 ): Promise<TelemetryIdentity> {
 	if (anonymize === "always") return ANONYMOUS_IDENTITY;
 
@@ -81,14 +84,15 @@ export async function deriveTelemetryIdentity(
 
 	const identity: TelemetryIdentity = {
 		isEmployee: isAnacondaEmployee(session.user.email),
-		cohortId: calculatePeriodId(now()),
+		cohortId: calculatePeriodId(),
 	};
 	if (session.user.userId !== undefined) identity.userId = session.user.userId;
 
 	try {
 		identity.subscription = primarySubscriptionFromAttributes(await auth.getUserInfo());
-	} catch {
+	} catch (cause) {
 		// Subscription is non-critical; omit it on failure.
+		logger.warn("telemetry: failed to resolve subscription", cause);
 	}
 
 	return identity;
@@ -106,7 +110,6 @@ export class TelemetryService {
 	readonly #preferences: TelemetryPreferences;
 	readonly #logger: TelemetryLogger;
 	readonly #appVersion: string;
-	readonly #now: () => number;
 
 	constructor(options: TelemetryServiceOptions) {
 		this.#provider = options.provider;
@@ -114,7 +117,6 @@ export class TelemetryService {
 		this.#preferences = options.preferences;
 		this.#logger = options.logger ?? createLogger("telemetry");
 		this.#appVersion = options.appVersion;
-		this.#now = options.now ?? Date.now;
 	}
 
 	/** Assemble the telemetry stack: auth → OTEL provider → service. */
@@ -135,7 +137,7 @@ export class TelemetryService {
 		await this.track({
 			event: "DESKTOP_INITIALIZED",
 			data: {
-				timestamp: this.#now(),
+				timestamp: Date.now(),
 				version: this.#appVersion,
 				platform: process.platform,
 			},
@@ -147,7 +149,7 @@ export class TelemetryService {
 			if (!this.#preferences.allowDataCollection) return;
 
 			const anonymize: AnonymizeOption = input.options?.anonymize ?? "never";
-			const identity = await deriveTelemetryIdentity(this.#auth, anonymize, this.#now);
+			const identity = await deriveTelemetryIdentity(this.#auth, anonymize, this.#logger);
 
 			const entry: TelemetryEntry = {
 				event: input.event as TelemetryEvent,

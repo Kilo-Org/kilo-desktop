@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TelemetryService, deriveTelemetryIdentity, type TelemetryPreferences } from "./service.js";
 import type { TelemetryAuth, TelemetryProvider } from "./types.js";
@@ -55,7 +55,6 @@ function service(options: {
 	auth?: TelemetryAuth;
 	preferences?: TelemetryPreferences;
 	appVersion?: string;
-	now?: () => number;
 }): TelemetryService {
 	return new TelemetryService({
 		provider: options.provider,
@@ -63,11 +62,14 @@ function service(options: {
 		preferences: options.preferences ?? preferences(),
 		logger: silentLogger,
 		appVersion: options.appVersion ?? "0.0.0",
-		now: options.now ?? (() => 0),
 	});
 }
 
 describe("TelemetryService", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it("drops events when data collection is disabled", async () => {
 		const provider = fakeProvider();
 		await service({ provider, preferences: preferences({ allowDataCollection: false }) }).track({
@@ -79,6 +81,7 @@ describe("TelemetryService", () => {
 	});
 
 	it("assembles an entry with resolved identity and forwards it", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(0);
 		const provider = fakeProvider();
 		const auth = fakeAuth({
 			getSession: async () => ({
@@ -160,7 +163,13 @@ describe("TelemetryService", () => {
 });
 
 describe("deriveTelemetryIdentity", () => {
-	const now = () => 0;
+	beforeEach(() => {
+		vi.spyOn(Date, "now").mockReturnValue(0);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
 
 	it("resolves identity for an authenticated anaconda employee with a subscription", async () => {
 		const auth = fakeAuth({
@@ -171,7 +180,7 @@ describe("deriveTelemetryIdentity", () => {
 			getUserInfo: async () => [{ id: "business_subscription.org", group: "subscriptions" }],
 		});
 
-		expect(await deriveTelemetryIdentity(auth, "never", now)).toEqual({
+		expect(await deriveTelemetryIdentity(auth, "never")).toEqual({
 			userId: "u1",
 			isEmployee: true,
 			cohortId: 0,
@@ -187,7 +196,7 @@ describe("deriveTelemetryIdentity", () => {
 			}),
 		});
 
-		expect(await deriveTelemetryIdentity(auth, "never", now)).toEqual({
+		expect(await deriveTelemetryIdentity(auth, "never")).toEqual({
 			userId: "u2",
 			isEmployee: false,
 			cohortId: 0,
@@ -205,12 +214,12 @@ describe("deriveTelemetryIdentity", () => {
 			getUserInfo,
 		});
 
-		expect(await deriveTelemetryIdentity(auth, "always", now)).toEqual({ isEmployee: false });
+		expect(await deriveTelemetryIdentity(auth, "always")).toEqual({ isEmployee: false });
 		expect(getUserInfo).not.toHaveBeenCalled();
 	});
 
 	it("returns the anonymous identity for an anonymous session", async () => {
-		expect(await deriveTelemetryIdentity(fakeAuth(), "never", now)).toEqual({ isEmployee: false });
+		expect(await deriveTelemetryIdentity(fakeAuth(), "never")).toEqual({ isEmployee: false });
 	});
 
 	it("omits subscription when getUserInfo throws (never throws)", async () => {
@@ -224,7 +233,7 @@ describe("deriveTelemetryIdentity", () => {
 			},
 		});
 
-		const identity = await deriveTelemetryIdentity(auth, "never", now);
+		const identity = await deriveTelemetryIdentity(auth, "never", silentLogger);
 		expect(identity.subscription).toBeUndefined();
 		expect(identity.userId).toBe("u1");
 	});
@@ -236,7 +245,7 @@ describe("deriveTelemetryIdentity", () => {
 			},
 		});
 
-		expect(await deriveTelemetryIdentity(auth, "never", now)).toEqual({ isEmployee: false });
+		expect(await deriveTelemetryIdentity(auth, "never")).toEqual({ isEmployee: false });
 	});
 
 	it("treats a user without an email as a non-employee", async () => {
@@ -244,7 +253,7 @@ describe("deriveTelemetryIdentity", () => {
 			getSession: async () => ({ status: "authenticated", user: { userId: "u3" } }),
 		});
 
-		const identity = await deriveTelemetryIdentity(auth, "never", now);
+		const identity = await deriveTelemetryIdentity(auth, "never");
 		expect(identity.isEmployee).toBe(false);
 		expect(identity.userId).toBe("u3");
 	});

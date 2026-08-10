@@ -49,9 +49,6 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 	#machineHash: string | undefined;
 	#stopOnChanged: (() => void) | undefined;
 
-	/** Lazily created on the first `track` so concurrent sends share one init. */
-	#initOnce: (() => Promise<void>) | undefined;
-
 	constructor(options: AnacondaOtelProviderOptions) {
 		this.#auth = options.auth;
 		this.#config = options.config;
@@ -63,11 +60,32 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 		});
 	}
 
+	/**
+	 * Single-flighted lazy init: concurrent first sends share one run and the
+	 * first caller's `entry` seeds the resource attributes. On failure the promise
+	 * is forgotten (so a later `track` retries) and `#otelState` stays
+	 * `uninitialized` because the state assignment happens after the `await`.
+	 */
+	#initialize = singleFlight(async (entry: TelemetryEntry): Promise<void> => {
+		const apiKey = (await this.#auth.getApiKey()) ?? undefined;
+		this.#lastApiKey = apiKey;
+		this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
+
+		const url = this.#getUrl(apiKey);
+		const config = new Configuration(url, apiKey);
+		if (this.#config.exportIntervalMs !== undefined) {
+			config.setLoggingExportIntervalMs(this.#config.exportIntervalMs);
+		}
+		config.setDebugState(false);
+
+		await this.#buildResourceAttributes(entry);
+		initializeTelemetry(config, this.#resources, ["logging"]);
+	});
+
 	async track(entry: TelemetryEntry): Promise<void> {
 		try {
 			if (this.#otelState === "uninitialized") {
-				this.#initOnce ??= singleFlight(() => this.#initializeOtel(entry));
-				await this.#initOnce();
+				await this.#initialize(entry);
 				this.#otelState = entry.userId ? "initialized-with-user" : "initialized-no-user";
 				this.#logger.info(`OTEL initialized to state '${this.#otelState}'`);
 			} else if (this.#otelState === "initialized-no-user") {
@@ -109,22 +127,6 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 		this.#lastApiKey = key;
 		this.#logger.info("OTEL API key changed, will re-initialize connection");
 		return true;
-	}
-
-	async #initializeOtel(entry: TelemetryEntry): Promise<void> {
-		const apiKey = (await this.#auth.getApiKey()) ?? undefined;
-		this.#lastApiKey = apiKey;
-		this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
-
-		const url = this.#getUrl(apiKey);
-		const config = new Configuration(url, apiKey);
-		if (this.#config.exportIntervalMs !== undefined) {
-			config.setLoggingExportIntervalMs(this.#config.exportIntervalMs);
-		}
-		config.setDebugState(false);
-
-		await this.#buildResourceAttributes(entry);
-		initializeTelemetry(config, this.#resources, ["logging"]);
 	}
 
 	async #reInitializeOtel(entry: TelemetryEntry): Promise<void> {

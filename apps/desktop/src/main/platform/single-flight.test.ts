@@ -40,6 +40,23 @@ describe("singleFlight", () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
+	it("runs once with the first caller's args and resolves all concurrent callers to that value", async () => {
+		const gate = deferred<string>();
+		const run = vi.fn((label: string) => gate.promise.then((value) => `${label}:${value}`));
+		const wrapped = singleFlight(run);
+
+		const a = wrapped("first");
+		const b = wrapped("second");
+
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(run).toHaveBeenCalledWith("first");
+		expect(a).toBe(b);
+
+		gate.resolve("done");
+		await expect(a).resolves.toBe("first:done");
+		await expect(b).resolves.toBe("first:done");
+	});
+
 	it("forgets the in-flight promise after a rejection so a retry runs again", async () => {
 		const run = vi
 			.fn<() => Promise<string>>()

@@ -407,9 +407,9 @@ describe("stageConda", () => {
 		await stageConda(harness.ctx);
 
 		const messages = harness.reportProgress.mock.calls.map((call: unknown[]) => call[0] as string);
-		expect(messages[0]).toBe("Checking for existing conda installation\u2026");
-		expect(messages).toContain("Downloading Miniconda installer\u2026");
-		expect(messages).toContain("Installing Miniconda\u2026");
+		expect(messages[0]).toBe("[1/3] Checking for existing conda\u2026");
+		expect(messages).toContain("[1/3] Downloading Miniconda\u2026");
+		expect(messages).toContain("[2/3] Installing Miniconda\u2026");
 		expect(messages[messages.length - 1]).toBe("Conda base ready.");
 	});
 

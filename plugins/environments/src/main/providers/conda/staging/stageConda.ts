@@ -158,6 +158,7 @@ async function ensureInstallerCached(
 	ctx: StagingContext,
 	artifact: MinicondaInstallerArtifact,
 	condaRoot: string,
+	stepPrefix: string,
 ): Promise<string> {
 	const dir = installerCacheDir(condaRoot);
 	await mkdir(dir, { recursive: true });
@@ -175,7 +176,7 @@ async function ensureInstallerCached(
 		// File doesn't exist or is unreadable — proceed with download.
 	}
 
-	ctx.reportProgress("Downloading Miniconda installer\u2026");
+	ctx.reportProgress(`${stepPrefix} Downloading Miniconda\u2026`);
 	ctx.logger.info(`Downloading installer from ${artifact.installerUrl}`);
 
 	let response: Response;
@@ -202,12 +203,30 @@ async function ensureInstallerCached(
 		);
 	}
 
+	const totalBytes = Number(response.headers.get("content-length") || 0);
+	let receivedBytes = 0;
+	let lastReportedPercent = -1;
+
 	const tempPath = path.join(dir, `.downloading-${Date.now()}-${basename}`);
 	try {
 		const hash = createHash("sha256");
 		const fileStream = createWriteStream(tempPath);
 		const nodeReadable = Readable.fromWeb(response.body as unknown as NodeWebReadableStream);
-		nodeReadable.on("data", (chunk: Buffer) => hash.update(chunk));
+		nodeReadable.on("data", (chunk: Buffer) => {
+			hash.update(chunk);
+			receivedBytes += chunk.length;
+			if (totalBytes > 0) {
+				const percent = Math.floor((receivedBytes / totalBytes) * 100);
+				if (percent >= lastReportedPercent + 5) {
+					lastReportedPercent = percent;
+					const receivedMB = (receivedBytes / 1024 / 1024).toFixed(0);
+					const totalMB = (totalBytes / 1024 / 1024).toFixed(0);
+					ctx.reportProgress(
+						`${stepPrefix} Downloading Miniconda\u2026 ${receivedMB} / ${totalMB} MB`,
+					);
+				}
+			}
+		});
 		await pipeline(nodeReadable, fileStream);
 
 		const digest = hash.digest("hex");
@@ -226,13 +245,28 @@ async function ensureInstallerCached(
 	}
 }
 
+/**
+ * Map raw Miniconda installer output lines to user-friendly step labels.
+ * Returns null for lines that should not trigger a progress update.
+ */
+function mapInstallerPhase(line: string, stepPrefix: string): string | null {
+	if (line.startsWith("Unpacking")) return `${stepPrefix} Unpacking Miniconda\u2026`;
+	if (line.startsWith("Installing base environment"))
+		return `${stepPrefix} Installing packages\u2026`;
+	if (line.startsWith("Preparing transaction")) return `${stepPrefix} Preparing environment\u2026`;
+	if (line.startsWith("Executing transaction"))
+		return `${stepPrefix} Finalizing installation\u2026`;
+	return null;
+}
+
 async function runInstaller(
 	ctx: StagingContext,
 	installerPath: string,
 	stagingPrefix: string,
 	artifact: MinicondaInstallerArtifact,
+	stepPrefix: string,
 ): Promise<void> {
-	ctx.reportProgress("Installing Miniconda\u2026");
+	ctx.reportProgress(`${stepPrefix} Installing Miniconda\u2026`);
 	ctx.logger.info(`Running installer into ${stagingPrefix}`);
 
 	const isWindows = (ctx.platform ?? process.platform) === "win32";
@@ -241,11 +275,19 @@ async function runInstaller(
 		? ["/InstallationType=JustMe", "/RegisterPython=0", "/AddToPath=0", "/S", `/D=${stagingPrefix}`]
 		: [installerPath, "-b", "-p", stagingPrefix];
 
+	let lastPhase = "";
 	try {
 		const subprocess = execa(command, args, { all: true });
 		subprocess.all?.on("data", (chunk: Buffer) => {
-			const line = chunk.toString().trim();
-			if (line) ctx.reportProgress(line);
+			for (const line of chunk.toString().split("\n")) {
+				const trimmed = line.trim();
+				if (!trimmed) continue;
+				const phase = mapInstallerPhase(trimmed, stepPrefix);
+				if (phase && phase !== lastPhase) {
+					lastPhase = phase;
+					ctx.reportProgress(phase);
+				}
+			}
 		});
 		await subprocess;
 	} catch (error) {
@@ -351,7 +393,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 
 	// 2. Try system conda detection (skip when forced)
 	if (!forceBundled) {
-		ctx.reportProgress("Checking for existing conda installation\u2026");
+		ctx.reportProgress("[1/3] Checking for existing conda\u2026");
 		const systemConda = await detectSystemConda({ logger: ctx.logger, platform });
 		if (systemConda) {
 			ctx.reportProgress("Using existing conda installation.");
@@ -373,7 +415,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	ctx.logger.info("[conda-staging] Strategy: BUNDLED — downloading Miniconda installer.");
 	await mkdir(condaRoot, { recursive: true });
 
-	const installerPath = await ensureInstallerCached(ctx, artifact, condaRoot);
+	const installerPath = await ensureInstallerCached(ctx, artifact, condaRoot, "[1/3]");
 
 	const stagingPrefix = path.join(condaRoot, `.staging-${Date.now()}`);
 	// Do NOT mkdir the staging prefix — the Miniconda installer requires
@@ -381,7 +423,8 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	// Only ensure the parent (condaRoot) exists.
 
 	try {
-		await runInstaller(ctx, installerPath, stagingPrefix, artifact);
+		await runInstaller(ctx, installerPath, stagingPrefix, artifact, "[2/3]");
+		ctx.reportProgress("[3/3] Finalizing\u2026");
 		await replaceStaging(prefixPath(condaRoot), stagingPrefix);
 	} finally {
 		await rm(stagingPrefix, { recursive: true, force: true });

@@ -105,7 +105,7 @@ describe("environments plugin main entry", () => {
 		await mainRegister(mainSdk);
 
 		const messages = reportBootProgress.mock.calls.map((call: unknown[]) => call[0] as string);
-		expect(messages).toContain("Checking for existing conda installation\u2026");
+		expect(messages).toContain("[1/3] Checking for existing conda\u2026");
 		expect(messages).toContain("Using existing conda installation.");
 	});
 

@@ -114,4 +114,38 @@ describe("BootProgressReporter", () => {
 		expect(badListener).toHaveBeenCalledOnce();
 		expect(goodListener).toHaveBeenCalledOnce();
 	});
+
+	it("reportFeatureProgress() preserves the feature id in the log line but keeps the splash message clean", () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never;
+		const reporter = new BootProgressReporter(logger);
+		const listener = vi.fn();
+		reporter.onProgress(listener);
+
+		reporter.reportFeatureProgress("environments", "Staging Miniconda…");
+
+		expect(reporter.phase).toBe("features");
+		expect(reporter.message).toBe("Staging Miniconda…");
+		expect((logger as { info: ReturnType<typeof vi.fn> }).info).toHaveBeenCalledWith(
+			"[features/environments] Staging Miniconda…",
+		);
+		expect(listener).toHaveBeenCalledWith({
+			phase: "features",
+			message: "Staging Miniconda…",
+		});
+	});
+
+	it("reportFeatureProgress() isolates listener errors like report()", () => {
+		const reporter = new BootProgressReporter(noopLogger);
+		const badListener = vi.fn(() => {
+			throw new Error("listener failure");
+		});
+		const goodListener = vi.fn();
+		reporter.onProgress(badListener);
+		reporter.onProgress(goodListener);
+
+		reporter.reportFeatureProgress("environments", "Staging…");
+
+		expect(badListener).toHaveBeenCalledOnce();
+		expect(goodListener).toHaveBeenCalledOnce();
+	});
 });

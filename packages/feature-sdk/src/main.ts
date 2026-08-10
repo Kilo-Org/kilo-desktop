@@ -1,6 +1,7 @@
 // Main-process entry — exported from "@anaconda-agentic-desktop/feature-sdk/main"
 export type {
 	MainSdk,
+	MainSdkBoot,
 	MainSdkFetch,
 	MainSdkLogger,
 	MainSdkNet,

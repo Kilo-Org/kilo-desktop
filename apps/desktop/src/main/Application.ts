@@ -164,7 +164,17 @@ export class Application {
 				createLogger,
 				fetch: this.#http.fetch,
 				...(reporter
-					? { onBeforeFeatureBoot: (featureId: string) => reporter.reportFeature(featureId) }
+					? {
+							// Coarse "Preparing <id>…" line the shell writes once
+							// before each feature's mainRegister runs.
+							onBeforeFeatureBoot: (featureId: string) => reporter.reportFeature(featureId),
+							// Fine-grained line features push from inside mainRegister
+							// via mainSdk.boot.reportProgress (e.g. "Staging Miniconda…").
+							// The reporter preserves the feature id in the log while
+							// keeping the user-facing splash message clean.
+							onFeatureProgress: (featureId: string, message: string) =>
+								reporter.reportFeatureProgress(featureId, message),
+						}
 					: {}),
 			}),
 		);

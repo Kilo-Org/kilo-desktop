@@ -368,14 +368,6 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	if (streamCollapsed && !active) return null;
 
-	if (kind === "tools" && group.indices.length === 1) {
-		return (
-			<ActivitySubgroupContext.Provider value={subgroupContext}>
-				{children}
-			</ActivitySubgroupContext.Provider>
-		);
-	}
-
 	// Question tools are answered in the composer Questionnaire — the subgroup
 	// label is the only message-stream chrome (Asking / Asked …). While the
 	// stream row is collapsed, the parent ActivityGroup owns the ask icon.

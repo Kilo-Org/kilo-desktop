@@ -1,15 +1,24 @@
 import { createKiloClient, type KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 
-export function createKiloRuntimeClient(connection: KiloWorkspaceConnection): KiloClient {
+function connectionOptions(connection: KiloGlobalConnection) {
 	const authorization = globalThis.btoa(`${connection.username}:${connection.password}`);
-
-	return createKiloClient({
+	return {
 		baseUrl: connection.baseUrl,
-		directory: connection.directory,
 		headers: {
 			Authorization: `Basic ${authorization}`,
 		},
-	});
+	};
+}
+
+export function createKiloGlobalClient(connection: KiloGlobalConnection): KiloClient {
+	return createKiloClient(connectionOptions(connection));
+}
+
+export function createKiloDirectoryClient(
+	connection: KiloGlobalConnection,
+	directory: string,
+): KiloClient {
+	return createKiloClient({ ...connectionOptions(connection), directory });
 }

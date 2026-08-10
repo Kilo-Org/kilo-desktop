@@ -5,9 +5,19 @@
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
 	"contributes": {
-		"providers": [{ "component": "WorkspacesFeatureProvider" }],
+		"providers": [
+			{ "component": "WorkspacesFeatureProvider", "priority": 20 },
+			{ "component": "ChatFeatureProvider", "priority": 10 }
+		],
 		"routes": [{ "path": "/chat", "component": "ChatPage", "title": "Chat" }],
 		"nav": [],
-		"zones": []
+		"zones": [
+			{
+				"zone": "sidebar",
+				"component": "SessionList",
+				"label": "Chats",
+				"priority": 10
+			}
+		]
 	}
 }

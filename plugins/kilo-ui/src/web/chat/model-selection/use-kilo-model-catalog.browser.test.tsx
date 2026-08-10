@@ -3,25 +3,25 @@ import { cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import type { KiloProviderListPayload } from "./model-catalog.js";
-import { createKiloRuntimeClient } from "../runtime/create-kilo-runtime-client.js";
+import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
 import { useKiloModelCatalog } from "./use-kilo-model-catalog.js";
 
 const providerList = vi.hoisted(() => vi.fn());
 
 vi.mock("../runtime/create-kilo-runtime-client.js", () => ({
-	createKiloRuntimeClient: vi.fn(() => ({
+	createKiloDirectoryClient: vi.fn(() => ({
 		provider: { list: providerList },
 	})),
 }));
 
-const connection: KiloWorkspaceConnection = {
+const connection: KiloGlobalConnection = {
 	baseUrl: "http://127.0.0.1:4096",
 	username: "kilo-user",
 	password: "kilo-password",
 	version: "7.4.20",
-	directory: "/workspaces/kilo",
+	globalDirectory: "/kilo/runtime",
 };
 
 const payload: KiloProviderListPayload = {
@@ -57,7 +57,7 @@ afterEach(() => {
 describe("useKiloModelCatalog", () => {
 	it("waits for a resolved connection and fetches the catalog once", async () => {
 		providerList.mockResolvedValue({ data: payload });
-		type Props = { connection: KiloWorkspaceConnection | undefined };
+		type Props = { connection: KiloGlobalConnection | undefined };
 		const { result, rerender } = renderHook(
 			({ connection: currentConnection }: Props) => useKiloModelCatalog(currentConnection),
 			{
@@ -67,12 +67,22 @@ describe("useKiloModelCatalog", () => {
 		);
 
 		expect(result.current.fetchStatus).toBe("idle");
-		expect(createKiloRuntimeClient).not.toHaveBeenCalled();
+		expect(createKiloDirectoryClient).not.toHaveBeenCalled();
 
 		rerender({ connection });
 		await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(createKiloRuntimeClient).toHaveBeenCalledExactlyOnceWith(connection);
+		expect(createKiloDirectoryClient).toHaveBeenCalledExactlyOnceWith(
+			connection,
+			connection.globalDirectory,
+		);
 		expect(providerList).toHaveBeenCalledOnce();
+
+		rerender({ connection: { ...connection, globalDirectory: "/other" } });
+		await Promise.resolve();
+		expect(providerList).toHaveBeenCalledOnce();
+
+		rerender({ connection: { ...connection, baseUrl: "http://127.0.0.1:5096" } });
+		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(2));
 	});
 });

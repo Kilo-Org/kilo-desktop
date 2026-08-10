@@ -88,7 +88,7 @@ function nextHighlightIndex(
 
 /**
  * Composer model picker: assistant-ui ModelSelector compound API with a
- * t3code-style provider rail (favorites + providers) and searchable list.
+ * provider rail (favorites + providers) and searchable list.
  */
 export const KiloModelSelector: FC = () => {
 	const { model, setModel, effort, setEffort, catalog, isCatalogPending, isCatalogError } =

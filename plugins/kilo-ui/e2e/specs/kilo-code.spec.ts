@@ -6,6 +6,11 @@ test.describe("Kilo Code @smoke", () => {
 		workspaceFolder,
 	}) => {
 		await kiloCodePage.createWorkspace(workspaceFolder.path, workspaceFolder.name);
-		await kiloCodePage.verifyAuthenticatedServerTransport(workspaceFolder.name);
+		await kiloCodePage.verifyAuthenticatedServerTransport();
+		await kiloCodePage.verifyWorkspaceFirstSend(workspaceFolder.name, workspaceFolder.path);
+	});
+
+	test("creates unique persistent sessions on unscoped first sends", async ({ kiloCodePage }) => {
+		await kiloCodePage.verifyUnscopedFirstSends();
 	});
 });

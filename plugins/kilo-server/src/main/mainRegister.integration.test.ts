@@ -20,6 +20,7 @@ function fakeServer() {
 		username: "kilo",
 		password: "secret",
 		version: "7.4.20",
+		globalDirectory: "/plugin-data/kilo-server/runtime",
 	};
 	return {
 		status: { status: "stopped" },
@@ -56,6 +57,7 @@ describe("kilo-server main registration", () => {
 			logger,
 			onStatusChange,
 			runtimeDirectory: path.join("/plugin-data/kilo-server", "runtime"),
+			stateDirectory: "/plugin-data/kilo-server",
 		});
 		mainSdk.dispose();
 	});
@@ -69,18 +71,16 @@ describe("kilo-server main registration", () => {
 		const connectionService =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
 		expect(connectionService).toBeDefined();
-		await expect(
-			connectionService!.getConnection({ directory: "/projects/capability" }),
-		).resolves.toMatchObject({ directory: "/projects/capability" });
+		await expect(connectionService!.getConnection()).resolves.toMatchObject({
+			globalDirectory: "/plugin-data/kilo-server/runtime",
+		});
 
-		await expect(
-			mainSdk.invoke("server.getConnection", { directory: "/projects/current" }),
-		).resolves.toEqual({
+		await expect(mainSdk.invoke("server.getConnection")).resolves.toEqual({
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
 			password: "secret",
 			version: "7.4.20",
-			directory: "/projects/current",
+			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
 		expect(server.ensureRunning).toHaveBeenCalledTimes(3);
 		mainSdk.dispose();

@@ -61,6 +61,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 			treeSitterWasmDirectory: "/vendor/tree-sitter",
 		},
 		runtimeDirectory: "/tmp/kilo-test-runtime",
+		stateDirectory: "/tmp/kilo-test-state",
 		environment: { PATH: "/bin", NODE_OPTIONS: "--inspect", LD_PRELOAD: "bad.so" },
 		platform: "linux",
 		spawn,
@@ -91,6 +92,7 @@ describe("KiloServerManager", () => {
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
 			version: "7.4.20",
+			globalDirectory: "/tmp/kilo-test-runtime",
 		});
 		expect(first.password).toMatch(/^[a-f0-9]{64}$/);
 		expect(fetch).toHaveBeenCalledWith(
@@ -143,15 +145,37 @@ describe("KiloServerManager", () => {
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: "/vendor/tree-sitter",
-			// Inherit the host XDG roots so config/auth/sessions match Kilo CLI / VS Code.
+			// Inherit host config/data/cache so auth/sessions match Kilo CLI / VS Code.
 			XDG_CONFIG_HOME: "/custom/config",
 			XDG_DATA_HOME: "/custom/data",
 			XDG_CACHE_HOME: "/custom/cache",
+			// Explicit host XDG_STATE_HOME wins over the app-local state directory.
 			XDG_STATE_HOME: "/custom/state",
 			NO_PROXY: "127.0.0.1,localhost",
 		});
 		expect(options.env.NODE_OPTIONS).toBeUndefined();
 		expect(options.env.LD_PRELOAD).toBeUndefined();
+		manager.dispose();
+	});
+
+	it("defaults XDG_STATE_HOME to the app-local state directory", async () => {
+		const { manager, spawn } = createHarness({
+			environment: {
+				PATH: "/bin",
+				XDG_CONFIG_HOME: "/custom/config",
+				XDG_DATA_HOME: "/custom/data",
+				XDG_CACHE_HOME: "/custom/cache",
+			},
+		});
+		await manager.ensureRunning();
+		const [, , options] = spawn.mock.calls[0]!;
+
+		expect(options.env).toMatchObject({
+			XDG_CONFIG_HOME: "/custom/config",
+			XDG_DATA_HOME: "/custom/data",
+			XDG_CACHE_HOME: "/custom/cache",
+			XDG_STATE_HOME: "/tmp/kilo-test-state",
+		});
 		manager.dispose();
 	});
 
@@ -303,6 +327,7 @@ describe("KiloServerManager", () => {
 		const manager = new KiloServerManager({
 			installation: { executablePath: "/kilo", treeSitterWasmDirectory: "/tree" },
 			runtimeDirectory: "/tmp/kilo-timeout",
+			stateDirectory: "/tmp/kilo-timeout-state",
 			spawn: () => child,
 			startupTimeoutMs: 1,
 			shutdownTimeoutMs: 1,

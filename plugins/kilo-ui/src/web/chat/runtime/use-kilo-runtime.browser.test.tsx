@@ -2,149 +2,94 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
-import { KiloClient } from "@kilocode/sdk/v2/client";
+import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
-import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
+import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
+import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
+import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
 vi.mock("@assistant-ui/react-opencode", () => ({
 	useOpenCodeRuntime: vi.fn(() => ({ source: "kilo-test-runtime" })),
 }));
 
-vi.mock("./create-deferred-kilo-runtime-client.js", () => ({
-	createDeferredKiloRuntimeClient: vi.fn(() => ({ deferred: true })),
+vi.mock("./create-kilo-runtime-backend.js", () => ({
+	createKiloRuntimeBackend: vi.fn(() => ({ globalClient: {} })),
 }));
 
-const connection: KiloWorkspaceConnection = {
+const connection: KiloGlobalConnection = {
 	baseUrl: "http://127.0.0.1:4096",
 	username: "kilo-user",
 	password: "kilo-password",
 	version: "7.4.20",
-	directory: "/workspaces/kilo",
+	globalDirectory: "/kilo/runtime",
 };
-
-function latestInjectedClient() {
-	const lastCall = vi.mocked(useOpenCodeRuntime).mock.lastCall;
-	if (!lastCall) {
-		throw new Error("Expected useOpenCodeRuntime to have been called");
-	}
-	const [options] = lastCall;
-	if (!options) {
-		throw new Error("Expected useOpenCodeRuntime options");
-	}
-	return options.client;
-}
 
 describe("useKiloRuntime", () => {
 	afterEach(() => {
 		vi.clearAllMocks();
 	});
 
-	it("injects a Kilo client and forwards runtime options", () => {
+	it("creates one backend and forwards runtime options", () => {
+		const connectionPromise = Promise.resolve(connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
 		const onError = vi.fn();
 
 		renderHook(() =>
 			useKiloRuntime({
-				connection,
-				initialSessionId: "session-1",
-				defaultAgent: "build",
-				defaultModel: {
-					providerID: "anthropic",
-					modelID: "claude-sonnet",
-				},
-				isSendDisabled: true,
+				connectionPromise,
+				prepareSession,
+				defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
 				onError,
 			}),
 		);
 
-		expect(useOpenCodeRuntime).toHaveBeenCalledOnce();
+		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
+		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
+			connectionPromise,
+			prepareSession,
+			getVariant: expect.any(Function),
+		});
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
-			client: expect.any(KiloClient),
-			initialSessionId: "session-1",
-			defaultAgent: "build",
-			defaultModel: {
-				providerID: "anthropic",
-				modelID: "claude-sonnet",
-			},
-			isSendDisabled: true,
+			backend: expect.objectContaining({ globalClient: {} }),
+			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
 			onError,
 		});
 	});
 
-	it("injects a deferred client when given a connection promise", () => {
+	it("accepts an injected client for focused tests", () => {
+		const client = { session: {} } as KiloClient;
+
+		renderHook(() => useKiloRuntime({ client }));
+
+		expect(createKiloRuntimeBackend).not.toHaveBeenCalled();
+		expect(useOpenCodeRuntime).toHaveBeenCalledWith({ client: expect.anything() });
+	});
+
+	it("forwards sessionActivity into the backend", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const deferredClient = { deferred: true, retarget: vi.fn() };
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const sessionActivity = createSessionActivityStore({ storage: null });
 
-		vi.mocked(createDeferredKiloRuntimeClient).mockReturnValue(deferredClient as never);
+		renderHook(() =>
+			useKiloRuntime({
+				connectionPromise,
+				prepareSession,
+				sessionActivity,
+			}),
+		);
 
-		renderHook(() => useKiloRuntime({ connectionPromise }));
-
-		expect(createDeferredKiloRuntimeClient).toHaveBeenCalledExactlyOnceWith(connectionPromise);
-		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
-			client: expect.objectContaining({ deferred: true }),
+		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
+			connectionPromise,
+			prepareSession,
+			getVariant: expect.any(Function),
+			sessionActivity,
 		});
 	});
 
-	it("retargets the deferred client when the connection promise changes", () => {
-		const firstPromise = Promise.resolve(connection);
-		const secondPromise = Promise.resolve({
-			...connection,
-			directory: "/workspaces/other",
-		});
-		const retarget = vi.fn();
-		const deferredClient = { deferred: true, retarget };
-		vi.mocked(createDeferredKiloRuntimeClient).mockReturnValue(deferredClient as never);
-
-		const { rerender } = renderHook(
-			({ promise }: { promise: Promise<KiloWorkspaceConnection> }) =>
-				useKiloRuntime({ connectionPromise: promise }),
-			{ initialProps: { promise: firstPromise } },
+	it("throws when neither a client nor connectionPromise with prepareSession is provided", () => {
+		expect(() => renderHook(() => useKiloRuntime({}))).toThrow(
+			"useKiloRuntime requires a client, or connectionPromise with prepareSession",
 		);
-
-		rerender({ promise: secondPromise });
-
-		expect(createDeferredKiloRuntimeClient).toHaveBeenCalledOnce();
-		expect(retarget).toHaveBeenCalledExactlyOnceWith(secondPromise);
-		expect(latestInjectedClient()).toEqual(expect.objectContaining({ deferred: true }));
-	});
-
-	it("retains the client for equivalent connections and ignores server version changes", () => {
-		const { rerender } = renderHook(
-			({ currentConnection }: { currentConnection: KiloWorkspaceConnection }) =>
-				useKiloRuntime({ connection: currentConnection }),
-			{ initialProps: { currentConnection: connection } },
-		);
-		const initialClient = latestInjectedClient();
-
-		rerender({
-			currentConnection: {
-				...connection,
-				version: "7.4.21",
-			},
-		});
-
-		const nextClient = latestInjectedClient();
-		expect(nextClient).toBe(initialClient);
-	});
-
-	it.each([
-		["base URL", { baseUrl: "http://127.0.0.1:5096" }],
-		["directory", { directory: "/workspaces/another" }],
-		["username", { username: "another-user" }],
-		["password", { password: "another-password" }],
-	])("recreates the client when the %s changes", (_, change) => {
-		const { rerender } = renderHook(
-			({ currentConnection }: { currentConnection: KiloWorkspaceConnection }) =>
-				useKiloRuntime({ connection: currentConnection }),
-			{ initialProps: { currentConnection: connection } },
-		);
-		const initialClient = latestInjectedClient();
-
-		rerender({ currentConnection: { ...connection, ...change } });
-
-		const nextClient = latestInjectedClient();
-		expect(nextClient).toBeInstanceOf(KiloClient);
-		expect(nextClient).not.toBe(initialClient);
 	});
 });

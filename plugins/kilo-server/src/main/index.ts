@@ -5,7 +5,6 @@ import {
 	type KiloServerService,
 	type KiloServerConnection,
 	type KiloServerStatus,
-	type KiloWorkspaceConnection,
 } from "../contracts/schemas.js";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
@@ -25,7 +24,7 @@ interface RegisterKiloServerOptions {
 
 export type KiloServerCapabilities = {
 	connectionService: {
-		getConnection(input: { directory: string }): Promise<KiloWorkspaceConnection>;
+		getConnection(): Promise<KiloServerConnection>;
 	};
 };
 
@@ -39,6 +38,8 @@ export function createKiloServerManagerOptions(
 			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
 		}),
 		runtimeDirectory: path.join(mainSdk.storageDir, "runtime"),
+		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
+		stateDirectory: mainSdk.storageDir,
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
 		fetch: mainSdk.net.fetch,
 		logger: mainSdk.logger,
@@ -60,10 +61,7 @@ export function registerKiloServer(
 	void server.ensureRunning().catch(() => undefined);
 
 	const connectionService = {
-		getConnection: async ({ directory }) => {
-			const connection = await server.ensureRunning();
-			return { ...connection, directory };
-		},
+		getConnection: async () => server.ensureRunning(),
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {

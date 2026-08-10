@@ -47,6 +47,12 @@ export interface KiloLogger {
 export interface KiloServerManagerOptions {
 	readonly installation: KiloInstallation;
 	readonly runtimeDirectory: string;
+	/**
+	 * App-local XDG state root (Electron plugin storage). Config/data/cache stay on
+	 * the shared host XDG paths so auth and sessions match Kilo CLI / VS Code.
+	 * Honors an existing `XDG_STATE_HOME` in `environment` when present.
+	 */
+	readonly stateDirectory: string;
 	readonly expectedVersion?: string;
 	readonly allowVersionMismatch?: boolean;
 	readonly corsOrigins?: readonly string[];
@@ -130,7 +136,7 @@ export class KiloServerManager {
 			| "shutdownTimeoutMs"
 		>
 	> &
-		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory">;
+		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory" | "stateDirectory">;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	#status: KiloServerStatus = { status: "stopped" };
 	#child: KiloChildProcess | undefined;
@@ -142,6 +148,7 @@ export class KiloServerManager {
 		this.#options = {
 			installation: options.installation,
 			runtimeDirectory: options.runtimeDirectory,
+			stateDirectory: options.stateDirectory,
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
 			corsOrigins: options.corsOrigins ?? DEFAULT_CORS_ORIGINS,
@@ -237,7 +244,14 @@ export class KiloServerManager {
 				);
 			}
 
-			const connection = { baseUrl, username: "kilo", password, version, pid: child.pid };
+			const connection = {
+				baseUrl,
+				username: "kilo",
+				password,
+				version,
+				globalDirectory: this.#options.runtimeDirectory,
+				pid: child.pid,
+			};
 			this.#connection = connection;
 			this.#setStatus({ status: "ready", baseUrl, version });
 			this.#options.logger.info(`Ready at ${baseUrl} (version ${version}).`);
@@ -259,12 +273,15 @@ export class KiloServerManager {
 	}
 
 	/**
-	 * Ensures a stable cwd for the child process. Does not override XDG roots —
-	 * config/data/cache/state use the same global paths as Kilo CLI and the VS Code extension
+	 * Ensures a stable cwd and app-local state root. Config/data/cache still use the
+	 * shared host XDG paths so auth and sessions match Kilo CLI / VS Code
 	 * (`~/.config/kilo`, `~/.local/share/kilo`, etc.).
 	 */
 	async #ensureRuntimeDirectory(): Promise<void> {
-		await mkdir(this.#options.runtimeDirectory, { recursive: true });
+		await Promise.all([
+			mkdir(this.#options.runtimeDirectory, { recursive: true }),
+			mkdir(this.#options.stateDirectory, { recursive: true }),
+		]);
 	}
 
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
@@ -274,6 +291,8 @@ export class KiloServerManager {
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
+			// Match OpenCode desktop: isolate state under Electron storage, keep shared data.
+			XDG_STATE_HOME: this.#options.environment.XDG_STATE_HOME ?? this.#options.stateDirectory,
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
 		};
@@ -447,6 +466,7 @@ export class KiloServerManager {
 			username: connection.username,
 			password: connection.password,
 			version: connection.version,
+			globalDirectory: connection.globalDirectory,
 		};
 	}
 }

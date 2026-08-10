@@ -91,10 +91,11 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
-// Startup exposes a loading placeholder thread; treat it as a draft so
-// the composer mounts centered. Loads after startup keep the docked layout.
+// Empty threads stay in draft layout (centered composer). Require status
+// "new" too — after lazy session init the list item flips to regular before
+// messages project, and treating that as draft docks→centers→docks again.
 const isDraftView = (s: AssistantState) =>
-	s.thread.messages.length === 0 && (!s.thread.isLoading || s.threads.isLoading);
+	s.thread.messages.length === 0 && s.threadListItem.status === "new";
 
 export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	const isDraft = useAuiState(isDraftView);

@@ -24,6 +24,12 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 	const app = await electron.launch({
 		executablePath: packagedExecutable(),
 		args: [`--user-data-dir=${userDataDir}`],
+		env: {
+			...process.env,
+			// Skip conda staging in e2e — prevents 150 MB downloads and multi-second
+			// detection delays. E2e specs that test conda ops stub it separately.
+			ANACONDA_SKIP_CONDA_STAGING: "1",
+		},
 	});
 	return { app, userDataDir };
 }

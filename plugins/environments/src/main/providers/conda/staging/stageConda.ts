@@ -358,6 +358,14 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	const artifact = getMinicondaInstaller(platform, arch);
 	const condaRoot = resolveCondaFilesRoot(ctx.condaFilesRoot);
 
+	// Skip staging entirely in e2e / test contexts. Returns a placeholder
+	// result so downstream code doesn't crash, but no conda is actually
+	// available. E2e tests that exercise conda ops stub it separately.
+	if (process.env.ANACONDA_SKIP_CONDA_STAGING === "1") {
+		ctx.logger.info("[conda-staging] ANACONDA_SKIP_CONDA_STAGING=1 — skipping entirely.");
+		return { condaBinPath: "", strategy: "system" };
+	}
+
 	ctx.logger.info(
 		`[conda-staging] Starting — target: ${artifact.target}, storageDir: ${ctx.storageDir}`,
 	);

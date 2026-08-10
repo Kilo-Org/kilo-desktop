@@ -96,6 +96,15 @@ describe("jobProgressEventSchema", () => {
 		expect(jobProgressEventSchema.safeParse({ ...base, status: "failed" }).success).toBe(false);
 	});
 
+	it("rejects a failed event whose error code is outside the frozen vocabulary", () => {
+		const evt = {
+			...base,
+			status: "failed",
+			error: { code: "SOMETHING_ELSE", message: "nope" },
+		};
+		expect(jobProgressEventSchema.safeParse(evt).success).toBe(false);
+	});
+
 	it("rejects an unknown status so drift in the state machine surfaces at the boundary", () => {
 		expect(jobProgressEventSchema.safeParse({ ...base, status: "in-progress" }).success).toBe(
 			false,

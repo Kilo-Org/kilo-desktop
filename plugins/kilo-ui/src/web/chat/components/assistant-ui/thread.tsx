@@ -8,18 +8,15 @@ import {
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
+import { KiloAgentSelector } from "./kilo-agent-selector.js";
 import { KiloModelSelector } from "./kilo-model-selector.js";
 import { MarkdownText } from "./markdown-text.js";
-import {
-	Reasoning,
-	ReasoningContent,
-	ReasoningRoot,
-	ReasoningText,
-	ReasoningTrigger,
-} from "./reasoning.js";
-import { ToolFallback } from "./tool-fallback.js";
-import { ToolGroupContent, ToolGroupRoot, ToolGroupTrigger } from "./tool-group.js";
+import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
+import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
+import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
+import { FallbackTool } from "../tools/opencode-tools.js";
+import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
@@ -30,7 +27,7 @@ import {
 	BranchPickerPrimitive,
 	ComposerPrimitive,
 	ErrorPrimitive,
-	groupPartByType,
+	getMcpAppFromToolPart,
 	MessagePrimitive,
 	SuggestionPrimitive,
 	ThreadPrimitive,
@@ -61,7 +58,6 @@ import {
 	type ComponentType,
 	type FC,
 	type FormEvent,
-	type PropsWithChildren,
 } from "react";
 
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
@@ -70,17 +66,13 @@ export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
 /**
  * Optional component overrides for the thread. `AssistantMessage` and
- * `Welcome` replace whole sections; the remaining slots override how the
- * assistant message renders tool calls and part groups. Tool UIs registered
- * by name (toolkit `render`, `useAssistantDataUI`) take precedence over
- * `ToolFallback`.
+ * `Welcome` replace whole sections; `ToolFallback` overrides unknown tool
+ * renders. Named toolkit renders take precedence over `ToolFallback`.
  */
 export type ThreadComponents = {
 	AssistantMessage?: ComponentType | undefined;
 	Welcome?: ComponentType | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
-	ToolGroup?: ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>> | undefined;
-	ReasoningGroup?: ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>> | undefined;
 };
 
 export type ThreadProps = {
@@ -137,7 +129,8 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
-							"aui-thread-viewport-footer bg-muted flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+							/* Transparent so sticky docked composer glass can blur scrolled messages. */
+							"aui-thread-viewport-footer flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
 							!isDraft && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
 						)}
 					>
@@ -286,8 +279,10 @@ const Composer: FC = () => {
 					<div
 						data-slot="aui_composer-shell"
 						className={cn(
-							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none",
-							isDraft && "border-b-0 dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]",
+							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+							isDraft
+								? "border-b-0 bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]"
+								: "chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
 						)}
 					/>
 				}
@@ -324,9 +319,10 @@ const ComposerAction: FC<{
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
 			<div className="flex min-w-0 items-center gap-1">
 				<ComposerAddAttachment />
-				<KiloModelSelector />
+				<KiloAgentSelector />
 			</div>
 			<div className="flex items-center gap-1.5">
+				<KiloModelSelector />
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>
 						<ComposerPrimitive.Dictate
@@ -442,11 +438,8 @@ const MessageError: FC = () => {
 };
 
 const AssistantMessage: FC = () => {
-	const {
-		ToolFallback: ToolFallbackComponent = ToolFallback,
-		ToolGroup,
-		ReasoningGroup,
-	} = useContext(ThreadComponentsContext);
+	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
+		useContext(ThreadComponentsContext);
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -463,41 +456,41 @@ const AssistantMessage: FC = () => {
 				className="text-foreground px-2 leading-relaxed wrap-break-word"
 			>
 				<MessagePrimitive.GroupedParts
-					groupBy={groupPartByType({
-						reasoning: ["group-chainOfThought", "group-reasoning"],
-						"tool-call": ["group-chainOfThought", "group-tool"],
-						"standalone-tool-call": [],
-					})}
+					groupBy={(part, context) => {
+						if (part.type === "reasoning") {
+							return ["group-activity", "group-thinking"] as const;
+						}
+						if (part.type === "tool-call") {
+							if (getMcpAppFromToolPart(part)) return [];
+							if (context.toolUIs?.[part.toolName]?.[0]?.standalone) return [];
+							return ["group-activity", getGroupKeyForTool(part.toolName)] as const;
+						}
+						// Hidden step markers stay in the activity run so they don't fragment groups.
+						if (part.type === "data" && isHiddenOpenCodeDataPart(part.name)) {
+							return ["group-activity"] as const;
+						}
+						return [];
+					}}
 				>
 					{({ part, children }) => {
 						switch (part.type) {
-							case "group-chainOfThought":
-								return <div data-slot="aui_chain-of-thought">{children}</div>;
-							case "group-tool":
-								if (ToolGroup) {
-									return <ToolGroup group={part}>{children}</ToolGroup>;
-								}
+							case "group-activity":
+								return <ActivityGroup group={part}>{children}</ActivityGroup>;
+							case "group-thinking":
+							case "group-editing":
+							case "group-writing":
+							case "group-reading":
+							case "group-searching":
+							case "group-web":
+							case "group-terminal":
+							case "group-planning":
+							case "group-tools": {
+								const kind = activityKindFromGroupKey(part.type);
+								if (!kind) return null;
 								return (
-									<ToolGroupRoot variant="ghost">
-										<ToolGroupTrigger
-											count={part.indices.length}
-											active={part.status.type === "running"}
-										/>
-										<ToolGroupContent>{children}</ToolGroupContent>
-									</ToolGroupRoot>
-								);
-							case "group-reasoning": {
-								if (ReasoningGroup) {
-									return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
-								}
-								const running = part.status.type === "running";
-								return (
-									<ReasoningRoot streaming={running}>
-										<ReasoningTrigger active={running} />
-										<ReasoningContent aria-busy={running}>
-											<ReasoningText>{children}</ReasoningText>
-										</ReasoningContent>
-									</ReasoningRoot>
+									<ActivitySubgroup kind={kind} group={part}>
+										{children}
+									</ActivitySubgroup>
 								);
 							}
 							case "text":
@@ -518,8 +511,22 @@ const AssistantMessage: FC = () => {
 										{"●"}
 									</span>
 								);
-							default:
+							default: {
+								if (
+									typeof part.type === "string" &&
+									part.type.startsWith("group-mcp-") &&
+									"indices" in part
+								) {
+									const kind = activityKindFromGroupKey(part.type);
+									if (!kind) return null;
+									return (
+										<ActivitySubgroup kind={kind} group={part}>
+											{children}
+										</ActivitySubgroup>
+									);
+								}
 								return null;
+							}
 						}
 					}}
 				</MessagePrimitive.GroupedParts>
@@ -629,7 +636,7 @@ const EditComposer: FC = () => {
 			data-slot="aui_edit-composer-wrapper"
 			className="flex flex-col px-2 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
 		>
-			<ComposerPrimitive.Root className="aui-edit-composer-root border-border/60 dark:border-muted-foreground/15 ms-auto flex w-full max-w-[85%] flex-col rounded-(--composer-radius) border bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-none">
+			<ComposerPrimitive.Root className="aui-edit-composer-root chat-composer-glass border-border/60 dark:border-muted-foreground/15 ms-auto flex w-full max-w-[85%] flex-col rounded-(--composer-radius) border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none">
 				<ComposerPrimitive.Input
 					className="aui-edit-composer-input text-foreground min-h-14 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base outline-none"
 					autoFocus

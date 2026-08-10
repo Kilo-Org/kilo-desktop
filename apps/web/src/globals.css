@@ -23,7 +23,69 @@
 	}
 	html {
 		@apply font-sans;
+		scrollbar-width: thin;
+		scrollbar-color: var(--app-scrollbar-thumb) transparent;
 	}
+}
+
+/* Thin overlay scrollbar */
+::-webkit-scrollbar {
+	width: var(--app-scrollbar-width);
+	height: var(--app-scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--app-scrollbar-thumb);
+	border-radius: 3px;
+	transition: background-color 160ms ease-out;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--app-scrollbar-thumb-hover);
+}
+
+/* Frosted glass surfaces (composer). Recipe matches t3code: translucent
+   surface tint + blur + slight saturate. Surface tint keeps the previous
+   muted composer fill so light/dark contrast is unchanged. */
+.chat-composer-glass {
+	--composer-glass-surface: var(--muted);
+	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+[data-theme="dark"] .chat-composer-glass {
+	--composer-glass-surface: color-mix(in oklab, var(--muted) 30%, var(--background));
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+	.chat-composer-glass {
+		background: var(--composer-glass-surface);
+	}
+}
+
+/* App chrome over native window materials. Tint lives on `html` (also in
+   criticalThemeStyle) so reload first-paint matches the loaded shell.
+   `.app-shell-glass` stays a semantic marker; no second fill. */
+html {
+	--shell-glass-surface: var(--sidebar);
+	background: color-mix(
+		in srgb,
+		var(--shell-glass-surface) var(--shell-glass-opacity),
+		transparent
+	);
+}
+
+html[data-theme="dark"] {
+	--shell-glass-surface: color-mix(in oklab, var(--sidebar) 84%, black);
+}
+
+.app-shell-glass {
+	background: transparent;
 }
 
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));

@@ -97,8 +97,12 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 	return (
 		<TooltipProvider>
-			<SidebarProvider className="bg-sidebar h-svh min-h-0 overflow-hidden">
-				<Sidebar collapsible="none" className="h-svh border-none" data-qa-id="app-sidebar">
+			<SidebarProvider className="app-shell-glass h-svh min-h-0 overflow-hidden">
+				<Sidebar
+					collapsible="none"
+					className="h-svh border-none bg-transparent!"
+					data-qa-id="app-sidebar"
+				>
 					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
 					<SidebarContent>
 						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
@@ -121,7 +125,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 												<SidebarMenuButton
 													aria-label={`Account menu for ${accountName}`}
 													size="lg"
-													className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+													className="data-open:bg-foreground/5 data-open:text-sidebar-accent-foreground"
 												/>
 											}
 										>

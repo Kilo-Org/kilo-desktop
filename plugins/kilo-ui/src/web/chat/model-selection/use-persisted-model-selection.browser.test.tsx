@@ -20,8 +20,27 @@ const alternateModel: KiloModelRef = {
 const catalog: KiloModelCatalog = {
 	providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
 	models: [
-		{ id: "anthropic/claude-sonnet", name: "Claude Sonnet", ...defaultModel },
-		{ id: "anthropic/claude-opus", name: "Claude Opus", ...alternateModel },
+		{
+			id: "anthropic/claude-sonnet",
+			name: "Claude Sonnet",
+			...defaultModel,
+			efforts: [
+				{ id: "low", name: "Low" },
+				{ id: "medium", name: "Med" },
+				{ id: "high", name: "High" },
+			],
+		},
+		{
+			id: "anthropic/claude-opus",
+			name: "Claude Opus",
+			...alternateModel,
+			efforts: [
+				{ id: "low", name: "Low" },
+				{ id: "medium", name: "Med" },
+				{ id: "high", name: "High" },
+				{ id: "max", name: "Max" },
+			],
+		},
 	],
 	defaults: { anthropic: "claude-sonnet" },
 };
@@ -38,16 +57,28 @@ describe("usePersistedModelSelection", () => {
 
 		expect(result.current.model).toEqual(defaultModel);
 		expect(result.current.effort).toBe("high");
+		expect(result.current.name).toBe("Claude Sonnet");
 
 		act(() => result.current.setModel(alternateModel));
 
 		expect(result.current.model).toEqual(alternateModel);
-		expect(readModelSelection()).toEqual({ model: alternateModel, effort: "high" });
+		expect(result.current.name).toBe("Claude Opus");
+		expect(readModelSelection()).toEqual({
+			model: alternateModel,
+			name: "Claude Opus",
+			effort: "high",
+			efforts: [
+				{ id: "low", name: "Low" },
+				{ id: "medium", name: "Med" },
+				{ id: "high", name: "High" },
+				{ id: "max", name: "Max" },
+			],
+		});
 
 		act(() => result.current.setEffort("max"));
 
 		expect(result.current.effort).toBe("max");
-		expect(readModelSelection()).toEqual({ model: alternateModel, effort: "max" });
+		expect(readModelSelection()?.effort).toBe("max");
 	});
 
 	it("falls back to the catalog default and persists effort against that model", () => {
@@ -59,10 +90,29 @@ describe("usePersistedModelSelection", () => {
 
 		act(() => result.current.setEffort("medium"));
 
-		expect(readModelSelection()).toEqual({ model: defaultModel, effort: "medium" });
+		expect(readModelSelection()).toMatchObject({
+			model: defaultModel,
+			name: "Claude Sonnet",
+			effort: "medium",
+		});
 	});
 
-	it("keeps effort in memory when no catalog model is available", () => {
+	it("surfaces the stored model, name, and effort before the catalog loads", () => {
+		writeModelSelection({
+			model: defaultModel,
+			name: "Claude Sonnet",
+			effort: "high",
+			efforts: [{ id: "high", name: "High" }],
+		});
+		const { result } = renderHook(() => usePersistedModelSelection(undefined));
+
+		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.name).toBe("Claude Sonnet");
+		expect(result.current.effort).toBe("high");
+		expect(result.current.efforts).toEqual([{ id: "high", name: "High" }]);
+	});
+
+	it("keeps effort in memory when nothing is stored and the catalog is missing", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(undefined));
 
 		expect(result.current.model).toBeUndefined();

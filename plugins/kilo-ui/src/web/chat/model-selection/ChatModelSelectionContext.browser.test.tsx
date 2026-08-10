@@ -13,6 +13,8 @@ describe("useChatModelSelection", () => {
 			setModel: vi.fn(),
 			effort: undefined,
 			setEffort: vi.fn(),
+			name: undefined,
+			efforts: undefined,
 			catalog: undefined,
 			isCatalogPending: false,
 			isCatalogError: false,

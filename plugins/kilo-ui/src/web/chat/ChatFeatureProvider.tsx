@@ -1,13 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, DataRenderers, Tools, useAui } from "@assistant-ui/react";
 
 import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
+import { OpenCodeDataPart } from "./components/tools/opencode-data-part.js";
+import toolkit from "./components/tools/toolkit.js";
+import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
+import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
+import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
 import { modelRefToId } from "./model-selection/model-catalog.js";
@@ -86,15 +91,26 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
 
 	const catalogQuery = useKiloModelCatalog(connection.data);
-	const { model, setModel, effort, setEffort } = usePersistedModelSelection(catalogQuery.data);
+	const { model, setModel, name, effort, efforts, setEffort } = usePersistedModelSelection(
+		catalogQuery.data,
+	);
 	const activeEffort = resolveModelEffort(
 		catalogQuery.data?.models ?? [],
 		model ? modelRefToId(model) : undefined,
 		effort,
 	);
 
+	const agentCatalogQuery = useKiloAgentCatalog(connection.data);
+	const { agent, setAgent, resetAgent } = useAgentSelection();
+	const resetAgentRef = useRef(resetAgent);
+	resetAgentRef.current = resetAgent;
+
 	const onThreadIdChange = useMemo(
 		() => (threadId?: string) => {
+			// New/draft threads always start on Code — never carry the previous session's agent.
+			if (!threadId) {
+				resetAgentRef.current();
+			}
 			sessionActivity.getState().setOpenSession(threadId ?? null);
 			if (threadId) sessionActivity.getState().markVisited(threadId);
 			const path = sdk.location.peek().path;
@@ -108,6 +124,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const runtime = useKiloRuntime({
 		connectionPromise,
 		prepareSession,
+		defaultAgent: agent,
 		...(model ? { defaultModel: model } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
@@ -115,12 +132,21 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		sessionActivity,
 	});
 
+	const aui = useAui({
+		dataRenderers: DataRenderers(),
+		tools: Tools({ toolkit }),
+	});
+
+	useEffect(() => aui.dataRenderers.setFallbackDataUI(OpenCodeDataPart), [aui]);
+
 	const modelSelection = useMemo(
 		() => ({
 			model,
 			setModel,
 			effort,
 			setEffort,
+			name,
+			efforts,
 			catalog: catalogQuery.data,
 			isCatalogPending: catalogQuery.isPending,
 			isCatalogError: catalogQuery.isError,
@@ -130,9 +156,28 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			catalogQuery.isError,
 			catalogQuery.isPending,
 			effort,
+			efforts,
 			model,
+			name,
 			setEffort,
 			setModel,
+		],
+	);
+
+	const agentSelection = useMemo(
+		() => ({
+			agent,
+			setAgent,
+			catalog: agentCatalogQuery.data,
+			isCatalogPending: agentCatalogQuery.isPending,
+			isCatalogError: agentCatalogQuery.isError,
+		}),
+		[
+			agent,
+			agentCatalogQuery.data,
+			agentCatalogQuery.isError,
+			agentCatalogQuery.isPending,
+			setAgent,
 		],
 	);
 
@@ -146,9 +191,13 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	return (
 		<ChatConnectionProvider status={connectionStatus}>
 			<SessionActivityProvider store={sessionActivity}>
-				<ChatModelSelectionProvider value={modelSelection}>
-					<AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
-				</ChatModelSelectionProvider>
+				<ChatAgentSelectionProvider value={agentSelection}>
+					<ChatModelSelectionProvider value={modelSelection}>
+						<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+							{children}
+						</AssistantRuntimeProvider>
+					</ChatModelSelectionProvider>
+				</ChatAgentSelectionProvider>
 			</SessionActivityProvider>
 		</ChatConnectionProvider>
 	);

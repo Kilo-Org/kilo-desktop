@@ -1,0 +1,20 @@
+import { AskQuestionInline, withOpenCodeToolInteractions } from "./opencode-tool-interactions.js";
+import { ApplyPatchDiff } from "./tool-ui-apply-patch.js";
+import { BashTerminal } from "./tool-ui-bash.js";
+import { EditDiff } from "./tool-ui-edit.js";
+import { ToolCallFallback } from "./tool-ui-inline.js";
+import { GlobActivity, GrepActivity, ReadActivity } from "./tool-ui-read-search.js";
+import { WebFetchActivity, WebSearchActivity } from "./tool-ui-web.js";
+import { WriteDiff } from "./tool-ui-write.js";
+
+export const ReadTool = withOpenCodeToolInteractions(ReadActivity);
+export const EditTool = withOpenCodeToolInteractions(EditDiff);
+export const WriteTool = withOpenCodeToolInteractions(WriteDiff);
+export const BashTool = withOpenCodeToolInteractions(BashTerminal);
+export const GrepTool = withOpenCodeToolInteractions(GrepActivity);
+export const GlobTool = withOpenCodeToolInteractions(GlobActivity);
+export const WebSearchTool = withOpenCodeToolInteractions(WebSearchActivity);
+export const WebFetchTool = withOpenCodeToolInteractions(WebFetchActivity);
+export const ApplyPatchTool = withOpenCodeToolInteractions(ApplyPatchDiff);
+export const AskQuestionTool = withOpenCodeToolInteractions(AskQuestionInline);
+export const FallbackTool = withOpenCodeToolInteractions(ToolCallFallback);

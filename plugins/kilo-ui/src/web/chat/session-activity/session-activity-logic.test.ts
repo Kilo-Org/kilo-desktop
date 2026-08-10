@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	ANACONDA_METADATA_KEY,
+	applyHydratedSessionStatus,
 	applySessionActivityEvent,
 	applySessionPatch,
 	buildAnacondaSessionMetadata,
@@ -358,6 +359,26 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 				metadata: { [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } },
 			}),
 		).toEqual({ directory: "/repo", createdAt: 1, updatedAt: 2, workspaceId: "ws-1" });
+	});
+});
+
+describe("applyHydratedSessionStatus", () => {
+	it("stamps workingSince for a newly observed busy session", () => {
+		expect(applyHydratedSessionStatus(undefined, "busy", NOW)).toEqual({
+			...createEmptySessionActivity(),
+			status: "busy",
+			workingSince: NOW,
+		});
+	});
+
+	it("does not flip a completed session back to busy", () => {
+		const completed: SessionActivity = {
+			...createEmptySessionActivity(),
+			status: "idle",
+			completedAt: NOW,
+		};
+		expect(applyHydratedSessionStatus(completed, "busy", NOW + 1)).toBeNull();
+		expect(deriveSessionRowState(completed, NOW - 1)).toBe("done");
 	});
 });
 

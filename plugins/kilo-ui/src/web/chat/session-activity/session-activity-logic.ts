@@ -178,6 +178,9 @@ export function applyHydratedSessionStatus(
 		return { ...session, status: "idle", workingSince: undefined };
 	}
 
+	// A live completion is fresher than a concurrently in-flight status snapshot.
+	if (session?.completedAt !== undefined) return null;
+
 	if (session && session.status === status && wasWorking) return null;
 	const base = session ?? createEmptySessionActivity();
 	// Sessions already busy at hydration count from app load — the true

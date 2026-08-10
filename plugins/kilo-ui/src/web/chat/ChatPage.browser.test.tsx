@@ -185,6 +185,28 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
 	});
 
+	it("keeps the same connectionPromise identity while the connection resolves", async () => {
+		let resolveConnection!: (value: KiloGlobalConnection) => void;
+		const getConnection = vi.fn(
+			() =>
+				new Promise<KiloGlobalConnection>((resolve) => {
+					resolveConnection = resolve;
+				}),
+		);
+		renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		const pendingPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+		expect(pendingPromise).toBeDefined();
+
+		resolveConnection(connection);
+		await expect(pendingPromise).resolves.toEqual(connection);
+
+		await vi.waitFor(() => {
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).toBe(pendingPromise);
+		});
+	});
+
 	it("refreshes the global connection after a runtime request fails", async () => {
 		const refreshedConnection = {
 			...connection,

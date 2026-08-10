@@ -19,11 +19,15 @@ export type SessionSummaryInput = { id: string } & SessionActivityPatch;
 export type PendingRequestInput = Iterable<{ id: string; sessionID: string }>;
 
 export type SessionActivityStoreState = SessionActivityState & {
+	/** Bumps when a live SSE event mutates activity; used to detect hydrate races. */
+	activityEpoch: number;
 	applyEvent: (event: SessionActivityEvent) => void;
 	hydrateSessions: (sessions: Iterable<SessionSummaryInput>) => void;
 	hydratePendingRequests: (input: {
 		permissions?: PendingRequestInput;
 		questions?: PendingRequestInput;
+		/** Epoch captured before the hydration fetch; when stale, union instead of replace. */
+		sinceEpoch?: number;
 	}) => void;
 	hydrateStatuses: (statuses: Readonly<Record<string, { type: string }>>) => void;
 	markVisited: (sessionId: string, at?: number) => void;
@@ -73,6 +77,16 @@ function groupIdsBySession(requests: PendingRequestInput): Map<string, string[]>
 const idsEqual = (a: readonly string[], b: readonly string[]): boolean =>
 	a.length === b.length && a.every((value, index) => value === b[index]);
 
+const unionIds = (snapshot: readonly string[], local: readonly string[]): string[] => {
+	if (local.length === 0) return [...snapshot];
+	if (snapshot.length === 0) return [...local];
+	const merged = [...snapshot];
+	for (const id of local) {
+		if (!merged.includes(id)) merged.push(id);
+	}
+	return merged;
+};
+
 export function createSessionActivityStore(options?: {
 	storage?: StorageLike | null;
 	now?: () => number;
@@ -91,6 +105,7 @@ export function createSessionActivityStore(options?: {
 
 	return createStore<SessionActivityStoreState>()((set, get) => ({
 		...EMPTY_SESSION_ACTIVITY_STATE,
+		activityEpoch: 0,
 		lastVisitedAtBySessionId: loadLastVisited(storage),
 
 		applyEvent: (event) => {
@@ -100,7 +115,7 @@ export function createSessionActivityStore(options?: {
 			if (next.lastVisitedAtBySessionId !== prev.lastVisitedAtBySessionId) {
 				persistLastVisited(next.lastVisitedAtBySessionId);
 			}
-			set(next);
+			set({ ...next, activityEpoch: prev.activityEpoch + 1 });
 		},
 
 		hydrateSessions: (summaries) => {
@@ -119,10 +134,12 @@ export function createSessionActivityStore(options?: {
 			});
 		},
 
-		hydratePendingRequests: ({ permissions, questions }) => {
+		hydratePendingRequests: ({ permissions, questions, sinceEpoch }) => {
 			const permissionIdsBySession = permissions ? groupIdsBySession(permissions) : undefined;
 			const questionIdsBySession = questions ? groupIdsBySession(questions) : undefined;
 			set((state) => {
+				const liveEventsDuringFetch =
+					sinceEpoch !== undefined && state.activityEpoch !== sinceEpoch;
 				const sessionIds = new Set([
 					...(permissionIdsBySession?.keys() ?? []),
 					...(questionIdsBySession?.keys() ?? []),
@@ -138,12 +155,24 @@ export function createSessionActivityStore(options?: {
 				let sessions: Record<string, SessionActivity> = state.sessions;
 				for (const sessionId of sessionIds) {
 					const existing = sessions[sessionId];
-					const pendingPermissionIds = permissionIdsBySession
+					const snapshotPermissions = permissionIdsBySession
 						? (permissionIdsBySession.get(sessionId) ?? [])
-						: (existing?.pendingPermissionIds ?? []);
-					const pendingQuestionIds = questionIdsBySession
+						: undefined;
+					const snapshotQuestions = questionIdsBySession
 						? (questionIdsBySession.get(sessionId) ?? [])
-						: (existing?.pendingQuestionIds ?? []);
+						: undefined;
+					const pendingPermissionIds =
+						snapshotPermissions === undefined
+							? (existing?.pendingPermissionIds ?? [])
+							: liveEventsDuringFetch
+								? unionIds(snapshotPermissions, existing?.pendingPermissionIds ?? [])
+								: snapshotPermissions;
+					const pendingQuestionIds =
+						snapshotQuestions === undefined
+							? (existing?.pendingQuestionIds ?? [])
+							: liveEventsDuringFetch
+								? unionIds(snapshotQuestions, existing?.pendingQuestionIds ?? [])
+								: snapshotQuestions;
 					if (
 						existing &&
 						idsEqual(existing.pendingPermissionIds, pendingPermissionIds) &&

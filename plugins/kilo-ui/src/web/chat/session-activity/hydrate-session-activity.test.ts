@@ -93,4 +93,31 @@ describe("hydrateSessionActivity", () => {
 		expect(store.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual(["perm-1"]);
 		expect(store.getState().sessions["ses-1"]?.pendingQuestionIds).toEqual([]);
 	});
+
+	it("keeps a live ask that races an empty hydration snapshot", async () => {
+		const store = createSessionActivityStore({ storage: null });
+		let resolvePermissions!: (value: { data: { id: string; sessionID: string }[] }) => void;
+		const client = {
+			permission: {
+				list: vi.fn(
+					() =>
+						new Promise<{ data: { id: string; sessionID: string }[] }>((resolve) => {
+							resolvePermissions = resolve;
+						}),
+				),
+			},
+			question: { list: vi.fn(async () => ({ data: [] })) },
+			session: { status: vi.fn(async () => ({})) },
+		};
+
+		const hydration = hydrateSessionActivity(client, store);
+		store.getState().applyEvent({
+			type: "permission.asked",
+			properties: { id: "perm-live", sessionID: "ses-1" },
+		});
+		resolvePermissions({ data: [] });
+		await hydration;
+
+		expect(store.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual(["perm-live"]);
+	});
 });

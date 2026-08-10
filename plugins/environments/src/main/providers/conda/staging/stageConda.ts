@@ -319,22 +319,28 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 		ctx.logger.info("[conda-staging] No staged.json found — first run.");
 	}
 
-	// 2. Try system conda detection
-	ctx.reportProgress("Checking for existing conda installation\u2026");
-	const systemConda = await detectSystemConda({ logger: ctx.logger, platform });
-	if (systemConda) {
-		ctx.reportProgress("Using existing conda installation.");
-		const systemManifest: StagedManifestSystem = {
-			type: "system",
-			condaBinPath: systemConda.condaBinPath,
-			condaVersion: systemConda.version,
-			target: artifact.target,
-		};
-		await writeManifest(ctx.storageDir, systemManifest);
-		ctx.logger.info(
-			`[conda-staging] Strategy: SYSTEM — ${systemConda.version} at ${systemConda.condaBinPath}`,
-		);
-		return { condaBinPath: systemConda.condaBinPath, strategy: "system" };
+	// 2. Try system conda detection (skip if forced bundled via env var)
+	const forceBundled = process.env.ANACONDA_FORCE_BUNDLED_CONDA === "1";
+	if (forceBundled) {
+		ctx.logger.info("[conda-staging] ANACONDA_FORCE_BUNDLED_CONDA=1 — skipping system detection.");
+	}
+	if (!forceBundled) {
+		ctx.reportProgress("Checking for existing conda installation\u2026");
+		const systemConda = await detectSystemConda({ logger: ctx.logger, platform });
+		if (systemConda) {
+			ctx.reportProgress("Using existing conda installation.");
+			const systemManifest: StagedManifestSystem = {
+				type: "system",
+				condaBinPath: systemConda.condaBinPath,
+				condaVersion: systemConda.version,
+				target: artifact.target,
+			};
+			await writeManifest(ctx.storageDir, systemManifest);
+			ctx.logger.info(
+				`[conda-staging] Strategy: SYSTEM — ${systemConda.version} at ${systemConda.condaBinPath}`,
+			);
+			return { condaBinPath: systemConda.condaBinPath, strategy: "system" };
+		}
 	}
 
 	// 3. Fall back to bundled Miniconda install

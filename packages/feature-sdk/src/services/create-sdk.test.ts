@@ -391,4 +391,39 @@ describe("createSdk", () => {
 			warn.mockRestore();
 		}
 	});
+
+	it("sdk.telemetry.track tags events with the calling feature id", async () => {
+		const services = makeServices();
+		const track = vi.fn(async () => {});
+		services.shellDelegates.telemetry.track = track;
+		const sdk = createSdk("todos", services);
+
+		await sdk.telemetry.track({ event: "PAGE_VISIT", data: { path: "/x" } });
+
+		expect(track).toHaveBeenCalledWith({
+			event: "PAGE_VISIT",
+			data: { featureId: "todos", path: "/x" },
+		});
+	});
+
+	it("sdk.telemetry.track lets an explicit data.featureId win", async () => {
+		const services = makeServices();
+		const track = vi.fn(async () => {});
+		services.shellDelegates.telemetry.track = track;
+		const sdk = createSdk("todos", services);
+
+		await sdk.telemetry.track({ event: "PAGE_VISIT", data: { featureId: "override" } });
+
+		expect(track).toHaveBeenCalledWith({
+			event: "PAGE_VISIT",
+			data: { featureId: "override" },
+		});
+	});
+
+	it("sdk.telemetry.track rejects after destroy", async () => {
+		const services = makeServices();
+		const sdk = createSdk("todos", services);
+		sdk.destroy();
+		await expect(sdk.telemetry.track({ event: "PAGE_VISIT" })).rejects.toThrow(/destroyed/);
+	});
 });

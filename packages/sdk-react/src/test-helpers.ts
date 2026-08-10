@@ -15,6 +15,7 @@ export function createTestShellDelegates(): ShellDelegates {
 			show: async () => ({ delivered: true }),
 			setBadge: async () => ({ delivered: true }),
 		},
+		telemetry: { track: async () => {} },
 		theme: {
 			subscribe(fn) {
 				fn("light");

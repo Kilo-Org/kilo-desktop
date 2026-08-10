@@ -11,6 +11,7 @@ import { execa } from "execa";
 import type { MainSdkFetch, MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { getMinicondaInstaller, type MinicondaInstallerArtifact } from "./artifacts.js";
+import { detectSystemConda } from "./detectSystemConda.js";
 import { StagingError } from "./errors.js";
 
 export interface StagingContext {
@@ -22,10 +23,40 @@ export interface StagingContext {
 	readonly arch?: NodeJS.Architecture;
 }
 
-interface StagedManifest {
+export interface StagingResult {
+	/** Absolute path to the resolved conda binary. */
+	readonly condaBinPath: string;
+	/** Whether the conda installation is system-provided or bundled by the plugin. */
+	readonly strategy: "system" | "bundled";
+}
+
+// ─── Staged manifest ─────────────────────────────────────────────────────────
+
+interface StagedManifestSystem {
+	readonly type: "system";
+	readonly condaBinPath: string;
+	readonly condaVersion: string;
+	readonly target: string;
+}
+
+interface StagedManifestBundled {
+	readonly type: "bundled";
 	readonly installerSha256: string;
 	readonly target: string;
 }
+
+/**
+ * Legacy format (pre-system-detection) — treated as "bundled".
+ */
+interface StagedManifestLegacy {
+	readonly installerSha256: string;
+	readonly target: string;
+	readonly type?: undefined;
+}
+
+type StagedManifest = StagedManifestSystem | StagedManifestBundled | StagedManifestLegacy;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function providerRoot(storageDir: string): string {
 	return path.join(storageDir, "providers", "conda");
@@ -45,32 +76,60 @@ function cacheDir(storageDir: string): string {
 
 /**
  * Normalize a relative path stored with Windows backslashes to the current
- * OS path separator. Allows `condaBinRelPath: "Scripts\\conda.exe"` to work
- * correctly on all platforms.
+ * OS path separator.
  */
 function normalizeRelPath(relPath: string): string {
 	return relPath.replace(/[\\/]/g, path.sep);
 }
 
-async function isAlreadyStaged(
-	storageDir: string,
-	artifact: MinicondaInstallerArtifact,
-): Promise<boolean> {
+// ─── Idempotency checks ──────────────────────────────────────────────────────
+
+async function readManifest(storageDir: string): Promise<StagedManifest | null> {
 	try {
 		const raw = await readFile(manifestPath(storageDir), "utf8");
-		const manifest = JSON.parse(raw) as StagedManifest;
-		if (
-			manifest.installerSha256 !== artifact.installerSha256 ||
-			manifest.target !== artifact.target
-		) {
-			return false;
-		}
-		await access(path.join(prefixPath(storageDir), normalizeRelPath(artifact.condaBinRelPath)));
-		return true;
+		return JSON.parse(raw) as StagedManifest;
 	} catch {
-		return false;
+		return null;
 	}
 }
+
+async function checkSystemManifest(
+	manifest: StagedManifestSystem,
+	logger: MainSdkLogger,
+): Promise<StagingResult | null> {
+	try {
+		await access(manifest.condaBinPath);
+		logger.info(`System conda still available at ${manifest.condaBinPath} — skipping staging.`);
+		return { condaBinPath: manifest.condaBinPath, strategy: "system" };
+	} catch {
+		logger.info("Previously detected system conda is no longer accessible — will re-stage.");
+		return null;
+	}
+}
+
+async function checkBundledManifest(
+	manifest: StagedManifestBundled | StagedManifestLegacy,
+	storageDir: string,
+	artifact: MinicondaInstallerArtifact,
+	logger: MainSdkLogger,
+): Promise<StagingResult | null> {
+	if (
+		manifest.installerSha256 !== artifact.installerSha256 ||
+		manifest.target !== artifact.target
+	) {
+		return null;
+	}
+	const binPath = path.join(prefixPath(storageDir), normalizeRelPath(artifact.condaBinRelPath));
+	try {
+		await access(binPath);
+		logger.info("Bundled conda base already staged — skipping.");
+		return { condaBinPath: binPath, strategy: "bundled" };
+	} catch {
+		return null;
+	}
+}
+
+// ─── Download + install ──────────────────────────────────────────────────────
 
 async function computeFileSha256(filePath: string): Promise<string> {
 	const hash = createHash("sha256");
@@ -210,25 +269,64 @@ async function replaceStaging(targetDir: string, stagedDir: string): Promise<voi
 	await rm(backup, { recursive: true, force: true }).catch(() => {});
 }
 
-/**
- * Stage a Miniconda installation into the plugin's scoped prefix.
- *
- * Idempotent: short-circuits if `staged.json` matches the current artifact
- * and the conda binary exists. Otherwise downloads the installer (cached),
- * verifies its SHA256, runs the silent install into a temp prefix, and
- * atomically swaps it into place.
- */
-export async function stageConda(ctx: StagingContext): Promise<void> {
-	const artifact = getMinicondaInstaller(
-		ctx.platform ?? process.platform,
-		ctx.arch ?? process.arch,
-	);
+async function writeManifest(storageDir: string, manifest: StagedManifest): Promise<void> {
+	await mkdir(providerRoot(storageDir), { recursive: true });
+	await writeFile(manifestPath(storageDir), `${JSON.stringify(manifest, null, "\t")}\n`);
+}
 
-	if (await isAlreadyStaged(ctx.storageDir, artifact)) {
-		ctx.logger.info("Conda base already staged — skipping.");
-		return;
+// ─── Main entry ──────────────────────────────────────────────────────────────
+
+/**
+ * Stage a conda installation for the plugin.
+ *
+ * Strategy (tried in order):
+ * 1. **Idempotency check** — if `staged.json` exists and the conda binary is
+ *    still accessible, short-circuit immediately.
+ * 2. **System detection** — search for a compatible conda (>= 24.0) on PATH
+ *    and in well-known locations. If found, record it in `staged.json` as
+ *    `type: "system"` and skip the download entirely.
+ * 3. **Bundled install** — download the pinned Miniconda installer, verify
+ *    its SHA256, run the silent install into a scoped prefix, and record it
+ *    in `staged.json` as `type: "bundled"`.
+ *
+ * Returns the resolved conda binary path so downstream consumers
+ * (CondaService) can invoke it.
+ */
+export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
+	const platform = ctx.platform ?? process.platform;
+	const arch = ctx.arch ?? process.arch;
+	const artifact = getMinicondaInstaller(platform, arch);
+
+	// 1. Check existing manifest
+	const manifest = await readManifest(ctx.storageDir);
+	if (manifest) {
+		if (manifest.type === "system") {
+			const result = await checkSystemManifest(manifest, ctx.logger);
+			if (result) return result;
+		} else {
+			const result = await checkBundledManifest(manifest, ctx.storageDir, artifact, ctx.logger);
+			if (result) return result;
+		}
 	}
 
+	// 2. Try system conda detection
+	ctx.reportProgress("Checking for existing conda installation\u2026");
+	const systemConda = await detectSystemConda({ logger: ctx.logger, platform });
+	if (systemConda) {
+		ctx.reportProgress("Using existing conda installation.");
+		const systemManifest: StagedManifestSystem = {
+			type: "system",
+			condaBinPath: systemConda.condaBinPath,
+			condaVersion: systemConda.version,
+			target: artifact.target,
+		};
+		await writeManifest(ctx.storageDir, systemManifest);
+		ctx.logger.info(`Staged system conda ${systemConda.version} at ${systemConda.condaBinPath}`);
+		return { condaBinPath: systemConda.condaBinPath, strategy: "system" };
+	}
+
+	// 3. Fall back to bundled Miniconda install
+	ctx.logger.info("No compatible system conda found — falling back to bundled Miniconda.");
 	const root = providerRoot(ctx.storageDir);
 	await mkdir(root, { recursive: true });
 
@@ -244,18 +342,18 @@ export async function stageConda(ctx: StagingContext): Promise<void> {
 		await rm(stagingPrefix, { recursive: true, force: true });
 	}
 
-	await writeFile(
-		manifestPath(ctx.storageDir),
-		`${JSON.stringify(
-			{
-				installerSha256: artifact.installerSha256,
-				target: artifact.target,
-			} satisfies StagedManifest,
-			null,
-			"\t",
-		)}\n`,
-	);
+	const bundledManifest: StagedManifestBundled = {
+		type: "bundled",
+		installerSha256: artifact.installerSha256,
+		target: artifact.target,
+	};
+	await writeManifest(ctx.storageDir, bundledManifest);
 
+	const condaBinPath = path.join(
+		prefixPath(ctx.storageDir),
+		normalizeRelPath(artifact.condaBinRelPath),
+	);
 	ctx.reportProgress("Conda base ready.");
 	ctx.logger.info("Conda staging complete.");
+	return { condaBinPath, strategy: "bundled" };
 }

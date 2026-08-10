@@ -538,4 +538,15 @@ describe("partitionSidebarThreads", () => {
 
 		expect(partition.sessions).toEqual([1, 0, 2]);
 	});
+
+	it("preserves source indices after callers filter entries", () => {
+		const partition = partitionSidebarThreads({
+			regular: [{ id: "local-2", remoteId: "ses-2", sourceIndex: 4 }],
+			archived: [{ id: "local-3", remoteId: "ses-3", sourceIndex: 7 }],
+			activityBySessionId: {},
+		});
+
+		expect(partition.sessions).toEqual([4]);
+		expect(partition.settled).toEqual([7]);
+	});
 });

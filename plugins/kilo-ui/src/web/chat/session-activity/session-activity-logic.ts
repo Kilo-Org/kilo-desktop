@@ -379,6 +379,7 @@ export function resolveSessionLocationLabel(
 type SidebarThreadEntry = {
 	id: string;
 	remoteId?: string | undefined;
+	sourceIndex?: number | undefined;
 };
 
 /**
@@ -400,7 +401,8 @@ export function partitionSidebarThreads(args: {
 	const sessions: { index: number; createdAt: number }[] = [];
 	const settled: { index: number; updatedAt: number }[] = [];
 
-	args.regular.forEach((entry, index) => {
+	args.regular.forEach((entry, position) => {
+		const index = entry.sourceIndex ?? position;
 		const activity = entry.remoteId ? args.activityBySessionId[entry.remoteId] : undefined;
 		if (needsAttention(activity)) {
 			attention.push({ index, archived: false, updatedAt: activity?.updatedAt ?? 0 });
@@ -409,7 +411,8 @@ export function partitionSidebarThreads(args: {
 		}
 	});
 
-	args.archived.forEach((entry, index) => {
+	args.archived.forEach((entry, position) => {
+		const index = entry.sourceIndex ?? position;
 		const activity = entry.remoteId ? args.activityBySessionId[entry.remoteId] : undefined;
 		if (needsAttention(activity)) {
 			attention.push({ index, archived: true, updatedAt: activity?.updatedAt ?? 0 });

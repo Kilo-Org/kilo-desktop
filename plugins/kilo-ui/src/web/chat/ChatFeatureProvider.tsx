@@ -7,6 +7,7 @@ import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
+import { navigateToChat } from "./chat-navigation.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
@@ -16,8 +17,6 @@ import { usePersistedModelSelection } from "./model-selection/use-persisted-mode
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
-
-const CHAT_ROUTE_PATH = "/plugins/chat";
 
 /**
  * App-lifetime chat runtime: connection, model selection, and a single
@@ -97,10 +96,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		() => (threadId?: string) => {
 			sessionActivity.getState().setOpenSession(threadId ?? null);
 			if (threadId) sessionActivity.getState().markVisited(threadId);
-			const path = sdk.location.peek().path;
-			if (path !== CHAT_ROUTE_PATH && !path.startsWith(`${CHAT_ROUTE_PATH}/`)) {
-				sdk.navigate(CHAT_ROUTE_PATH);
-			}
+			navigateToChat(sdk);
 		},
 		[sdk, sessionActivity],
 	);

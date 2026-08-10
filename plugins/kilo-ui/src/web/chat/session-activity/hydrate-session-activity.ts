@@ -31,8 +31,8 @@ export async function hydrateSessionActivity(
 		client.session.status().catch(() => undefined),
 	]);
 	store.getState().hydratePendingRequests({
-		permissions: permissions?.data ?? [],
-		questions: questions?.data ?? [],
+		...(permissions ? { permissions: permissions.data ?? [] } : {}),
+		...(questions ? { questions: questions.data ?? [] } : {}),
 	});
 	if (statuses?.data) {
 		store.getState().hydrateStatuses(statuses.data);

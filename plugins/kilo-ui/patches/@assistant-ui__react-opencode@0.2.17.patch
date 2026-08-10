@@ -240,7 +240,7 @@ index 20262e54e37b2c694e6caecab2638b54af58045a..7beb4f39f89ddc3508817e5d89210c03
  //# sourceMappingURL=types.d.ts.map
 \ No newline at end of file
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c5833097fedab51 100644
+index d795d5799d059d01327a3edbcd998fdbeeae317c..48fc031ddb2953eae6aec19ec5a417b9b201ed91 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
 @@ -6,17 +6,18 @@ import { openCodeExtras } from "./openCodeExtras.js";
@@ -279,7 +279,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c583309
  	registry.controllers.set(sessionId, controller);
  	return controller;
  };
-@@ -52,10 +53,42 @@ const NOOP_CONTROLLER = {
+@@ -52,10 +53,48 @@ const NOOP_CONTROLLER = {
  	replyToQuestion: async () => {},
  	rejectQuestion: async () => {}
  };
@@ -308,9 +308,15 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c583309
 +	// (flattening into content drops the attachments array).
 +	...message.attachments != null && message.attachments.length > 0 && { attachments: message.attachments }
 +});
-+// Survives RemoteThreadList remounting the runtime hook when initialize()
-+// assigns a remote session id (React state would otherwise reset to []).
-+let stickyOptimisticMessages = [];
++const optimisticMessagesByRegistry = /* @__PURE__ */ new WeakMap();
++const getOptimisticMessagesByThreadId = (registry) => {
++	let messagesByThreadId = optimisticMessagesByRegistry.get(registry);
++	if (!messagesByThreadId) {
++		messagesByThreadId = /* @__PURE__ */ new Map();
++		optimisticMessagesByRegistry.set(registry, messagesByThreadId);
++	}
++	return messagesByThreadId;
++};
 +const liveThreadHasUserMessage = (state) => {
 +	if (Object.keys(state.pendingUserMessages).length > 0) return true;
 +	return state.messageOrder.some((messageId) => state.messagesById[messageId]?.info?.role === "user");
@@ -324,7 +330,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c583309
  	const onLoadError = useEffectEvent((error) => {
  		options.onError?.(error);
  	});
-@@ -63,7 +96,18 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -63,7 +102,18 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		if (controller === NOOP_CONTROLLER) return;
  		controller.load().catch(onLoadError);
  	}, [controller]);
@@ -344,7 +350,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c583309
  	const messageRepository = useMemo(() => projectOpenCodeThreadRepository(state, messageTiming), [state, messageTiming]);
  	const extras = useMemo(() => openCodeExtras.provide({
  		session: state.session,
-@@ -79,24 +123,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -79,24 +129,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		replyToQuestion: (questionId, answers) => controller.replyToQuestion(questionId, answers),
  		rejectQuestion: (questionId) => controller.rejectQuestion(questionId)
  	}), [controller, state]);
@@ -372,7 +378,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c583309
  			} catch (error) {
  				options.onError?.(error);
  				throw error;
-@@ -131,25 +167,114 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -131,25 +173,116 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  				throw error;
  			}
  		}
@@ -400,17 +406,19 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c583309
 -	});
 -	if (!sessionId) return fallbackRuntime;
 -	return threadRuntime;
++	const localThreadId = useAuiState((state) => state.threadListItem.id);
 +	const threadStatus = useAuiState((state) => state.threadListItem.status);
 +	const initializationRef = useRef(void 0);
 +	const scheduledRestorationsRef = useRef(/* @__PURE__ */ new WeakSet());
 +	const optimisticIdRef = useRef(0);
-+	// Remount after initialize() still has a sessionId — rehydrate sticky
-+	// optimistics so draft layout does not flash empty between docks.
-+	const [optimisticMessages, setOptimisticMessagesState] = useState(() => sessionId ? stickyOptimisticMessages : []);
++	const optimisticMessagesByThreadId = getOptimisticMessagesByThreadId(registry);
++	// Retain this thread's optimistic messages across initialize() remounts.
++	const [optimisticMessages, setOptimisticMessagesState] = useState(() => optimisticMessagesByThreadId.get(localThreadId) ?? []);
 +	const setOptimisticMessages = (updater) => {
 +		setOptimisticMessagesState((previous) => {
 +			const next = typeof updater === "function" ? updater(previous) : updater;
-+			stickyOptimisticMessages = next;
++			if (next.length === 0) optimisticMessagesByThreadId.delete(localThreadId);
++			else optimisticMessagesByThreadId.set(localThreadId, next);
 +			return next;
 +		});
 +	};
@@ -501,7 +509,7 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..83eeb169293831880e11bde64c583309
  	useEffect(() => {
  		return () => {
  			registry.dispose();
-@@ -157,10 +282,10 @@ const useOpenCodeRuntime = (options = {}) => {
+@@ -157,10 +290,10 @@ const useOpenCodeRuntime = (options = {}) => {
  	}, [registry]);
  	return useRemoteThreadListRuntime({
  		allowNesting: true,
@@ -787,7 +795,7 @@ index a87d8907c1ee6b12de5deeda8554ac0342a094a3..dfcbaa6bb395fb74a34d10d9abc7770d
    properties: Record<string, unknown>;
  };
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916e5c22ae8 100644
+index 66a324b9fd650a6d396ea30064377a07e49218a7..d5fb6b6240f9457dfaa78c62ce57b51516e3c317 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -872,7 +880,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
  const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.runState.type === "streaming" ||
    state.runState.type === "cancelling" ||
-@@ -105,11 +109,61 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+@@ -105,11 +109,71 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.sessionStatus?.type === "busy" ||
    state.sessionStatus?.type === "retry";
  
@@ -913,9 +921,19 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
 +    : {}),
 +});
 +
-+// Survives RemoteThreadList remounting the runtime hook when initialize()
-+// assigns a remote session id (React state would otherwise reset to []).
-+let stickyOptimisticMessages: readonly ThreadMessageLike[] = [];
++const optimisticMessagesByRegistry = new WeakMap<
++  OpenCodeControllerRegistry,
++  Map<string, readonly ThreadMessageLike[]>
++>();
++
++const getOptimisticMessagesByThreadId = (registry: OpenCodeControllerRegistry) => {
++  let messagesByThreadId = optimisticMessagesByRegistry.get(registry);
++  if (!messagesByThreadId) {
++    messagesByThreadId = new Map();
++    optimisticMessagesByRegistry.set(registry, messagesByThreadId);
++  }
++  return messagesByThreadId;
++};
 +
 +const liveThreadHasUserMessage = (state: OpenCodeThreadState): boolean => {
 +  if (Object.keys(state.pendingUserMessages).length > 0) return true;
@@ -936,7 +954,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
    const onLoadError = useEffectEvent((error: unknown) => {
      options.onError?.(error);
    });
-@@ -119,6 +173,17 @@ const useOpenCodeThreadRuntime = (
+@@ -119,6 +183,17 @@ const useOpenCodeThreadRuntime = (
      void controller.load().catch(onLoadError);
    }, [controller]);
  
@@ -954,7 +972,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
    const isRunning = isOpenCodeStateRunning(state);
  
    const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
-@@ -154,90 +219,200 @@ const useOpenCodeThreadRuntime = (
+@@ -154,90 +229,205 @@ const useOpenCodeThreadRuntime = (
      [controller, state],
    );
  
@@ -1083,17 +1101,18 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
    const sessionId = useAuiState(
      (state) => state.threadListItem.externalId ?? state.threadListItem.remoteId,
    );
++  const localThreadId = useAuiState((state) => state.threadListItem.id);
 +  const threadStatus = useAuiState((state) => state.threadListItem.status);
 +  const initializationRef = useRef<
 +    Promise<OpenCodeThreadControllerLike> | undefined
 +  >(undefined);
 +  const scheduledRestorationsRef = useRef(new WeakSet<AppendMessage>());
 +  const optimisticIdRef = useRef(0);
-+  // Remount after initialize() still has a sessionId — rehydrate sticky
-+  // optimistics so draft layout does not flash empty between docks.
++  const optimisticMessagesByThreadId = getOptimisticMessagesByThreadId(registry);
++  // Retain this thread's optimistic messages across initialize() remounts.
 +  const [optimisticMessages, setOptimisticMessagesState] = useState<
 +    readonly ThreadMessageLike[]
-+  >(() => (sessionId ? stickyOptimisticMessages : []));
++  >(() => optimisticMessagesByThreadId.get(localThreadId) ?? []);
 +  const setOptimisticMessages = (
 +    updater:
 +      | readonly ThreadMessageLike[]
@@ -1101,7 +1120,11 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
 +  ) => {
 +    setOptimisticMessagesState((previous) => {
 +      const next = typeof updater === "function" ? updater(previous) : updater;
-+      stickyOptimisticMessages = next;
++      if (next.length === 0) {
++        optimisticMessagesByThreadId.delete(localThreadId);
++      } else {
++        optimisticMessagesByThreadId.set(localThreadId, next);
++      }
 +      return next;
 +    });
 +  };
@@ -1164,9 +1187,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
 +    () => ExportedMessageRepository.fromArray(optimisticMessages),
 +    [optimisticMessages],
 +  );
- 
--  if (!sessionId) return fallbackRuntime;
--  return threadRuntime;
++
 +  useEffect(() => {
 +    if (!liveHasUserMessage || optimisticMessages.length === 0) return;
 +    setOptimisticMessages([]);
@@ -1213,7 +1234,10 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
 +    }),
 +    [optimisticRepository, options, threadStatus],
 +  );
+-
 +
+-  if (!sessionId) return fallbackRuntime;
+-  return threadRuntime;
 +  // One runtime whose store CONTENT switches. Alternating runtime instances
 +  // remount the thread and break remote-thread-list main binding (see react-pi).
 +  // Stay on the optimistic store until the live controller has the user message.
@@ -1223,7 +1247,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
  };
  
  export const useOpenCodeRuntime = (
-@@ -245,10 +420,35 @@ export const useOpenCodeRuntime = (
+@@ -245,10 +435,35 @@ export const useOpenCodeRuntime = (
  ): AssistantRuntime => {
    const baseUrl = options.baseUrl ?? "http://localhost:4096";
    const client = useMemo(
@@ -1262,7 +1286,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
  
    useEffect(() => {
      return () => {
-@@ -257,8 +457,8 @@ export const useOpenCodeRuntime = (
+@@ -257,8 +472,8 @@ export const useOpenCodeRuntime = (
    }, [registry]);
  
    const adapter = useMemo(
@@ -1273,7 +1297,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..33b1d4b7356020b7ace31380b0a6b916
    );
  
    return useRemoteThreadListRuntime({
-@@ -267,6 +467,6 @@ export const useOpenCodeRuntime = (
+@@ -267,6 +482,6 @@ export const useOpenCodeRuntime = (
      initialThreadId: options.initialSessionId,
      onThreadIdChange: options.onThreadIdChange,
      // oxlint-disable-next-line react-hooks/rules-of-hooks -- runtimeHook callback is invoked by useRemoteThreadListRuntime at the appropriate hook position

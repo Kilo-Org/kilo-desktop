@@ -22,8 +22,8 @@ export type SessionActivityStoreState = SessionActivityState & {
 	applyEvent: (event: SessionActivityEvent) => void;
 	hydrateSessions: (sessions: Iterable<SessionSummaryInput>) => void;
 	hydratePendingRequests: (input: {
-		permissions: PendingRequestInput;
-		questions: PendingRequestInput;
+		permissions?: PendingRequestInput;
+		questions?: PendingRequestInput;
 	}) => void;
 	hydrateStatuses: (statuses: Readonly<Record<string, { type: string }>>) => void;
 	markVisited: (sessionId: string, at?: number) => void;
@@ -120,23 +120,30 @@ export function createSessionActivityStore(options?: {
 		},
 
 		hydratePendingRequests: ({ permissions, questions }) => {
-			const permissionIdsBySession = groupIdsBySession(permissions);
-			const questionIdsBySession = groupIdsBySession(questions);
+			const permissionIdsBySession = permissions ? groupIdsBySession(permissions) : undefined;
+			const questionIdsBySession = questions ? groupIdsBySession(questions) : undefined;
 			set((state) => {
 				const sessionIds = new Set([
-					...permissionIdsBySession.keys(),
-					...questionIdsBySession.keys(),
+					...(permissionIdsBySession?.keys() ?? []),
+					...(questionIdsBySession?.keys() ?? []),
 				]);
 				for (const [id, session] of Object.entries(state.sessions)) {
-					if (session.pendingPermissionIds.length > 0 || session.pendingQuestionIds.length > 0) {
+					if (
+						(permissionIdsBySession && session.pendingPermissionIds.length > 0) ||
+						(questionIdsBySession && session.pendingQuestionIds.length > 0)
+					) {
 						sessionIds.add(id);
 					}
 				}
 				let sessions: Record<string, SessionActivity> = state.sessions;
 				for (const sessionId of sessionIds) {
-					const pendingPermissionIds = permissionIdsBySession.get(sessionId) ?? [];
-					const pendingQuestionIds = questionIdsBySession.get(sessionId) ?? [];
 					const existing = sessions[sessionId];
+					const pendingPermissionIds = permissionIdsBySession
+						? (permissionIdsBySession.get(sessionId) ?? [])
+						: (existing?.pendingPermissionIds ?? []);
+					const pendingQuestionIds = questionIdsBySession
+						? (questionIdsBySession.get(sessionId) ?? [])
+						: (existing?.pendingQuestionIds ?? []);
 					if (
 						existing &&
 						idsEqual(existing.pendingPermissionIds, pendingPermissionIds) &&

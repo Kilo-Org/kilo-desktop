@@ -32,9 +32,11 @@ function createFakeClient(
 	const session = {
 		id: "session-1",
 		title: "New session",
+		directory: "/workspace",
 		time: { created: Date.now(), updated: Date.now() },
 	};
 	const create = vi.fn(createSession);
+	const list = vi.fn(async () => ({ data: [] as (typeof session)[] }));
 	const promptAsync = vi.fn(async () => ({ data: undefined }));
 	const get = vi.fn(async ({ sessionID }: { sessionID: string }) => ({
 		data: { ...session, id: sessionID },
@@ -55,7 +57,7 @@ function createFakeClient(
 	const client = {
 		experimental: {
 			session: {
-				list: vi.fn(async () => ({ data: [] })),
+				list,
 			},
 		},
 		session: {
@@ -68,7 +70,7 @@ function createFakeClient(
 		event: { subscribe: eventSubscribe },
 	} as unknown as KiloClient;
 
-	return { client, create, promptAsync };
+	return { client, create, list, promptAsync };
 }
 
 function RuntimeState() {
@@ -206,6 +208,47 @@ describe("patched OpenCode lazy session initialization", () => {
 		await expect
 			.element(screen.getByTestId("last-user-text"))
 			.toHaveTextContent("Show me immediately");
+	});
+
+	it("does not show a provisional thread's optimistic message in another thread", async () => {
+		const creation = deferred<SessionCreateResult>();
+		const fake = createFakeClient(() => creation.promise);
+		fake.list.mockResolvedValue({
+			data: [
+				{
+					id: "existing-session",
+					title: "Existing session",
+					directory: "/workspace",
+					time: { created: Date.now(), updated: Date.now() },
+				},
+			],
+		});
+		let runtime: ReturnType<typeof useOpenCodeRuntime> | undefined;
+		const { baseElement } = renderRuntime({
+			client: fake.client,
+			onRuntime: (value) => {
+				runtime = value;
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await waitFor(() => expect(runtime).toBeDefined());
+		await runtime!.threads.getLoadThreadsPromise();
+		expect(runtime!.threads.getState().threadIds).toContain("existing-session");
+
+		await screen.getByRole("textbox", { name: "Message" }).fill("Only in the draft thread");
+		await screen.getByRole("button", { name: "Send" }).click();
+		await expect
+			.element(screen.getByTestId("last-user-text"))
+			.toHaveTextContent("Only in the draft thread");
+
+		await runtime!.threads.switchToThread("existing-session");
+
+		await expect
+			.element(screen.getByTestId("remote-session-id"))
+			.toHaveTextContent("existing-session");
+		await expect.element(screen.getByTestId("user-message-count")).toHaveTextContent("0");
+		await expect.element(screen.getByTestId("last-user-text")).toBeEmptyDOMElement();
 	});
 
 	it("keeps attachments on the optimistic user bubble before session creation resolves", async () => {

@@ -6,8 +6,11 @@ import {
 	type RemoteThreadListAdapter,
 } from "@assistant-ui/react";
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
+
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import {
 	WorkspacesContext,
@@ -113,9 +116,11 @@ const workspacesValue: WorkspacesContextValue = {
 function SessionListHarness({
 	adapter,
 	store,
+	system,
 }: {
 	adapter: SeededThreadListAdapter;
 	store: ReturnType<typeof createSessionActivityStore>;
+	system: ReturnType<typeof createFakeFeatureSystem>;
 }) {
 	const runtime = useRemoteThreadListRuntime({
 		adapter,
@@ -123,13 +128,15 @@ function SessionListHarness({
 	});
 
 	return (
-		<AssistantRuntimeProvider runtime={runtime}>
-			<SessionActivityProvider store={store}>
-				<WorkspacesContext.Provider value={workspacesValue}>
-					<SessionList />
-				</WorkspacesContext.Provider>
-			</SessionActivityProvider>
-		</AssistantRuntimeProvider>
+		<SdkProvider system={system}>
+			<AssistantRuntimeProvider runtime={runtime}>
+				<SessionActivityProvider store={store}>
+					<WorkspacesContext.Provider value={workspacesValue}>
+						<SessionList />
+					</WorkspacesContext.Provider>
+				</SessionActivityProvider>
+			</AssistantRuntimeProvider>
+		</SdkProvider>
 	);
 }
 
@@ -141,6 +148,9 @@ function renderSessionList({
 	hydrate?: (store: ReturnType<typeof createSessionActivityStore>) => void;
 }) {
 	const adapter = new SeededThreadListAdapter(threads);
+	const navigate = vi.fn();
+	const sdk = createFakeSdk({ featureId: "kilo-ui", navigation: { navigate } });
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const store = createSessionActivityStore({ storage: null });
 	store.getState().hydrateSessions(
 		threads.map((thread, index) => ({
@@ -151,8 +161,8 @@ function renderSessionList({
 		})),
 	);
 	hydrate?.(store);
-	const result = render(<SessionListHarness adapter={adapter} store={store} />);
-	return { adapter, store, screen: page.elementLocator(result.baseElement), ...result };
+	const result = render(<SessionListHarness adapter={adapter} store={store} system={system} />);
+	return { adapter, navigate, store, screen: page.elementLocator(result.baseElement), ...result };
 }
 
 afterEach(() => {
@@ -162,7 +172,7 @@ afterEach(() => {
 
 describe("SessionList", () => {
 	it("keeps the new-chat selectors and behavior", async () => {
-		const { baseElement, screen } = renderSessionList({ threads: [] });
+		const { baseElement, navigate, screen } = renderSessionList({ threads: [] });
 
 		await expect.element(page.getByTestId("kilo-thread-list")).toBeVisible();
 		const newChat = screen.getByRole("button", { name: "New Chat" });
@@ -172,6 +182,29 @@ describe("SessionList", () => {
 
 		await newChat.click();
 		await expect.element(newChat).toHaveAttribute("aria-current", "true");
+		expect(navigate).toHaveBeenCalledTimes(1);
+		expect(navigate).toHaveBeenLastCalledWith("/plugins/chat", undefined);
+
+		await newChat.click();
+		expect(navigate).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps original thread indices when filtering by title", async () => {
+		const { adapter, screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+		});
+
+		await screen.getByRole("searchbox", { name: "Search threads" }).fill("Add tests");
+
+		await expect.element(screen.getByText("Add tests")).toBeVisible();
+		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
+		const card = screen.getByRole("listitem").filter({ hasText: "Add tests" });
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Settle thread" }).click();
+		expect(adapter.archiveCalls).toEqual(["ses-2"]);
 	});
 
 	it("renders session cards and the settled shelf", async () => {

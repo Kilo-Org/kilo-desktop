@@ -10,6 +10,7 @@ import {
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import {
 	AuiIf,
 	ThreadListItemPrimitive,
@@ -33,6 +34,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import {
 	useEffect,
+	useCallback,
 	useMemo,
 	useRef,
 	useState,
@@ -41,6 +43,7 @@ import {
 } from "react";
 
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
+import { navigateToChat } from "../../chat-navigation.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
 import {
 	deriveSessionRowState,
@@ -101,9 +104,16 @@ export const SessionList: FC = () => {
 	);
 };
 
+function useNavigateToChat(): () => void {
+	const sdk = useSdk("kilo-ui");
+	return useCallback(() => navigateToChat(sdk), [sdk]);
+}
+
 const SessionListNewChat: FC = () => {
+	const navigate = useNavigateToChat();
 	return (
 		<ThreadListPrimitive.New
+			onClick={navigate}
 			render={
 				<Button
 					variant="ghost"
@@ -196,9 +206,9 @@ const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 
 	const partition = useMemo(() => {
 		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
-		const toEntry = (id: string) => {
+		const toEntry = (id: string, sourceIndex: number) => {
 			const item = itemsById.get(id);
-			return { id, remoteId: item?.remoteId, title: item?.title };
+			return { id, remoteId: item?.remoteId, title: item?.title, sourceIndex };
 		};
 		const matchesQuery = (entry: { title?: string | undefined }) =>
 			!query || (entry.title || "New Chat").toLowerCase().includes(query);
@@ -470,6 +480,7 @@ function useRenameState(): {
 
 const SessionCardRow: FC = () => {
 	const aui = useAui();
+	const navigate = useNavigateToChat();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
 	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
@@ -508,6 +519,7 @@ const SessionCardRow: FC = () => {
 			) : (
 				<ThreadListItemPrimitive.Trigger
 					ref={triggerRef}
+					onClick={navigate}
 					data-slot="aui_session-list-item-trigger"
 					className="block w-full px-2.5 py-2 text-left focus-visible:outline-none"
 				>
@@ -568,6 +580,7 @@ const SessionCardRow: FC = () => {
 
 const SettledSessionRow: FC = () => {
 	const aui = useAui();
+	const navigate = useNavigateToChat();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
 	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
@@ -595,6 +608,7 @@ const SettledSessionRow: FC = () => {
 					data-slot="aui_session-list-settled-trigger"
 					className="flex h-full min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none"
 					onClick={() => {
+						navigate();
 						void aui.threadListItem.switchTo({ unarchive: false });
 					}}
 				>

@@ -15,6 +15,11 @@ export type UserSubscription = ValueOf<typeof SUBSCRIPTION_TIERS>;
 
 export const FREE_SUBSCRIPTION: UserSubscription = SUBSCRIPTION_TIERS.free;
 
+/** True when the email's domain is `anaconda.com` (case-insensitive). */
+export function isAnacondaEmployee(email?: string): boolean {
+	return email?.split("@")[1]?.toLowerCase() === "anaconda.com";
+}
+
 const SUBSCRIPTION_SET = new Set<string>(Object.values(SUBSCRIPTION_TIERS));
 
 /**

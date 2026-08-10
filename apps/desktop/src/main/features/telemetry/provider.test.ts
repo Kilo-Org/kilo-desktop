@@ -1,8 +1,69 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AnacondaOtelProvider, type OtelFns } from "./provider.js";
-import type { TelemetryAuthAdapter, TelemetryConfig, TelemetryEntry } from "./types.js";
+import { AnacondaOtelProvider } from "./provider.js";
+import type { TelemetryConfig, TelemetryEntry, TelemetryProviderAuth } from "./types.js";
 
+const otel = vi.hoisted(() => {
+	const configs: Array<{ url: URL; token: string | undefined }> = [];
+	const sendEventCalls: Array<{
+		eventName: string;
+		payload: unknown;
+		attributes: Record<string, unknown>;
+	}> = [];
+	return {
+		configs,
+		sendEventCalls,
+		setLoggingExportIntervalMs: vi.fn(),
+		setAttributes: vi.fn(),
+		sendEvent: vi.fn(() => true),
+		initializeTelemetry: vi.fn(() => true),
+		changeSignalConnection: vi.fn(async () => true),
+	};
+});
+
+vi.mock("anaconda-opentelemetry", () => {
+	class Configuration {
+		constructor(
+			public url: URL,
+			public token?: string,
+		) {
+			otel.configs.push({ url, token });
+		}
+		setLoggingExportIntervalMs(...args: unknown[]) {
+			otel.setLoggingExportIntervalMs(...args);
+			return this;
+		}
+		setDebugState() {
+			return this;
+		}
+	}
+	class ResourceAttributes {
+		constructor(
+			public serviceName: string,
+			public serviceVersion: string,
+		) {}
+		setAttributes(attrs: Record<string, unknown>) {
+			otel.setAttributes(attrs);
+			return this;
+		}
+	}
+	return {
+		initializeTelemetry: otel.initializeTelemetry,
+		sendEvent: (args: {
+			eventName: string;
+			payload: unknown;
+			attributes: Record<string, unknown>;
+		}) => {
+			otel.sendEventCalls.push(args);
+			return otel.sendEvent();
+		},
+		changeSignalConnection: otel.changeSignalConnection,
+		Configuration,
+		ResourceAttributes,
+	};
+});
+
+const { configs, sendEventCalls } = otel;
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
 const baseConfig: TelemetryConfig = {
@@ -14,65 +75,11 @@ const baseConfig: TelemetryConfig = {
 	serviceVersion: "1.2.3",
 };
 
-interface OtelSpy {
-	otel: OtelFns;
-	sendEvent: ReturnType<typeof vi.fn>;
-	setAttributes: ReturnType<typeof vi.fn>;
-	configs: Array<{ url: URL; token: string | undefined }>;
-}
-
-function createOtelSpy(sendOk = true): OtelSpy {
-	const configs: OtelSpy["configs"] = [];
-	const setAttributes = vi.fn();
-
-	class FakeConfiguration {
-		constructor(
-			public url: URL,
-			public token?: string,
-		) {
-			configs.push({ url, token });
-		}
-		setLoggingExportIntervalMs() {
-			return this;
-		}
-		setDebugState() {
-			return this;
-		}
-	}
-
-	class FakeResourceAttributes {
-		constructor(
-			public serviceName: string,
-			public serviceVersion: string,
-		) {}
-		setAttributes(attrs: Record<string, unknown>) {
-			setAttributes(attrs);
-			return this;
-		}
-	}
-
-	const sendEvent = vi.fn(() => sendOk);
-
-	return {
-		otel: {
-			initializeTelemetry: vi.fn(() => true),
-			sendEvent: sendEvent as unknown as OtelFns["sendEvent"],
-			changeSignalConnection: vi.fn(async () => true),
-			Configuration: FakeConfiguration as unknown as OtelFns["Configuration"],
-			ResourceAttributes: FakeResourceAttributes as unknown as OtelFns["ResourceAttributes"],
-		},
-		sendEvent,
-		setAttributes,
-		configs,
-	};
-}
-
-function fakeAuth(overrides: Partial<TelemetryAuthAdapter> = {}): TelemetryAuthAdapter & {
+function fakeAuth(overrides: Partial<TelemetryProviderAuth> = {}): TelemetryProviderAuth & {
 	emitChange: () => void;
 } {
 	const listeners = new Set<() => void>();
 	return {
-		getIdentity: overrides.getIdentity ?? (async () => ({ isEmployee: false })),
 		getApiKey: overrides.getApiKey ?? (async () => null),
 		onChanged:
 			overrides.onChanged ??
@@ -96,54 +103,51 @@ function entry(overrides: Partial<TelemetryEntry> = {}): TelemetryEntry {
 	};
 }
 
-function provider(spy: OtelSpy, auth: TelemetryAuthAdapter, readMachineId?: () => Promise<string>) {
-	return new AnacondaOtelProvider({
-		auth,
-		config: baseConfig,
-		logger: silentLogger,
-		otel: spy.otel,
-		readMachineId: readMachineId ?? (async () => "raw-machine-id"),
-	});
+function provider(auth: TelemetryProviderAuth, config: TelemetryConfig = baseConfig) {
+	return new AnacondaOtelProvider({ auth, config, logger: silentLogger });
 }
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	configs.length = 0;
+	sendEventCalls.length = 0;
+	otel.sendEvent.mockReturnValue(true);
+	otel.initializeTelemetry.mockReturnValue(true);
+});
 
 describe("AnacondaOtelProvider", () => {
 	it("lazily initializes once under concurrent sends", async () => {
-		const spy = createOtelSpy();
-		const p = provider(spy, fakeAuth());
+		const p = provider(fakeAuth());
 
-		await Promise.all([p.send(entry()), p.send(entry()), p.send(entry())]);
+		await Promise.all([p.track(entry()), p.track(entry()), p.track(entry())]);
 
-		expect(spy.otel.initializeTelemetry).toHaveBeenCalledTimes(1);
-		expect(spy.sendEvent).toHaveBeenCalledTimes(3);
+		expect(otel.initializeTelemetry).toHaveBeenCalledTimes(1);
+		expect(sendEventCalls).toHaveLength(3);
 	});
 
 	it("selects the anonymous endpoint when there is no api key", async () => {
-		const spy = createOtelSpy();
-		await provider(spy, fakeAuth({ getApiKey: async () => null })).send(entry());
+		await provider(fakeAuth({ getApiKey: async () => null })).track(entry());
 
-		expect(spy.configs[0]?.url.href).toBe("https://public.example.com/v1/logs");
-		expect(spy.configs[0]?.token).toBeUndefined();
+		expect(configs[0]?.url.href).toBe("https://public.example.com/v1/logs");
+		expect(configs[0]?.token).toBeUndefined();
 	});
 
 	it("selects the authenticated endpoint when an api key is present", async () => {
-		const spy = createOtelSpy();
-		await provider(spy, fakeAuth({ getApiKey: async () => "api-key" })).send(entry());
+		await provider(fakeAuth({ getApiKey: async () => "api-key" })).track(entry());
 
-		expect(spy.configs[0]?.url.href).toBe("https://metrics.example.com/v1/logs");
-		expect(spy.configs[0]?.token).toBe("api-key");
+		expect(configs[0]?.url.href).toBe("https://metrics.example.com/v1/logs");
+		expect(configs[0]?.token).toBe("api-key");
 	});
 
 	it("re-initializes the connection when the api key changes", async () => {
-		const spy = createOtelSpy();
 		let token: string | null = null;
-		const auth = fakeAuth({ getApiKey: async () => token });
-		const p = provider(spy, auth);
+		const p = provider(fakeAuth({ getApiKey: async () => token }));
 
-		await p.send(entry()); // anonymous init
+		await p.track(entry());
 		token = "api-key";
-		await p.send(entry({ userId: "u1" })); // key changed → re-init
+		await p.track(entry({ userId: "u1" }));
 
-		expect(spy.otel.changeSignalConnection).toHaveBeenCalledWith(
+		expect(otel.changeSignalConnection).toHaveBeenCalledWith(
 			"logging",
 			expect.objectContaining({
 				endpoint: expect.any(URL),
@@ -154,8 +158,7 @@ describe("AnacondaOtelProvider", () => {
 	});
 
 	it("includes identity + install attributes on the OTEL resource", async () => {
-		const spy = createOtelSpy();
-		await provider(spy, fakeAuth({ getApiKey: async () => "api-key" })).send(
+		await provider(fakeAuth({ getApiKey: async () => "api-key" })).track(
 			entry({
 				userId: "u1",
 				isEmployee: true,
@@ -164,7 +167,7 @@ describe("AnacondaOtelProvider", () => {
 			}),
 		);
 
-		expect(spy.setAttributes.mock.calls[0]?.[0]).toMatchObject({
+		expect(otel.setAttributes.mock.calls[0]?.[0]).toMatchObject({
 			userId: "u1",
 			installationId: "install-1",
 			environment: "test",
@@ -179,119 +182,84 @@ describe("AnacondaOtelProvider", () => {
 		});
 	});
 
-	it("falls back to a hostname-based hash when the machine-id read rejects", async () => {
-		const spy = createOtelSpy();
-		await provider(spy, fakeAuth(), async () => {
-			throw new Error("blocked");
-		}).send(entry());
+	it("passes subscription, cohortId, and is_anaconda_employee as event attributes", async () => {
+		await provider(fakeAuth()).track(
+			entry({ isEmployee: true, cohortId: 42, subscription: "business_subscription" }),
+		);
 
-		const machineId = spy.setAttributes.mock.calls[0]?.[0].parameters.machineId;
-		expect(machineId).toMatch(/^[0-9a-f]{64}$/);
+		expect(sendEventCalls[0]).toMatchObject({
+			eventName: "DESKTOP_INITIALIZED",
+			attributes: {
+				subscription: "business_subscription",
+				cohortId: 42,
+				is_anaconda_employee: true,
+			},
+		});
 	});
 
-	it("never throws when send fails; logs instead", async () => {
-		const spy = createOtelSpy(false);
-		const errorLogger = { ...silentLogger, error: vi.fn() };
-		const p = new AnacondaOtelProvider({
-			auth: fakeAuth(),
-			config: baseConfig,
-			logger: errorLogger,
-			otel: spy.otel,
-			readMachineId: async () => "raw",
-		});
+	it("omits absent identity fields from the event attributes", async () => {
+		await provider(fakeAuth()).track(entry());
 
-		await expect(p.send(entry())).resolves.toBeUndefined();
-		expect(errorLogger.error).toHaveBeenCalled();
+		expect(sendEventCalls[0]?.attributes).toEqual({});
+	});
+
+	it("never throws when send fails; resolves instead", async () => {
+		otel.sendEvent.mockReturnValue(false);
+		await expect(provider(fakeAuth()).track(entry())).resolves.toBeUndefined();
 	});
 
 	it("never throws when initialization rejects", async () => {
-		const spy = createOtelSpy();
-		spy.otel.initializeTelemetry = vi.fn(() => {
+		otel.initializeTelemetry.mockImplementation(() => {
 			throw new Error("init boom");
-		}) as unknown as OtelFns["initializeTelemetry"];
-		const errorLogger = { ...silentLogger, error: vi.fn() };
-
-		const p = new AnacondaOtelProvider({
-			auth: fakeAuth(),
-			config: baseConfig,
-			logger: errorLogger,
-			otel: spy.otel,
-			readMachineId: async () => "raw",
 		});
-
-		await expect(p.send(entry())).resolves.toBeUndefined();
-		expect(errorLogger.error).toHaveBeenCalled();
+		await expect(provider(fakeAuth()).track(entry())).resolves.toBeUndefined();
 	});
 
 	it("stops listening to auth changes on dispose", async () => {
-		const spy = createOtelSpy();
 		const auth = fakeAuth();
-		const p = provider(spy, auth);
+		const p = provider(auth);
 
 		await p.dispose();
 		auth.emitChange();
 
-		await p.send(entry());
-		expect(spy.otel.changeSignalConnection).not.toHaveBeenCalled();
+		await p.track(entry());
+		expect(otel.changeSignalConnection).not.toHaveBeenCalled();
 	});
 
 	it("falls back to localhost when no endpoints are configured", async () => {
-		const spy = createOtelSpy();
 		const warn = vi.fn();
 		const p = new AnacondaOtelProvider({
 			auth: fakeAuth(),
 			config: { serviceId: "svc", serviceVersion: "1.0.0" },
 			logger: { ...silentLogger, warn },
-			otel: spy.otel,
-			readMachineId: async () => "raw",
 		});
 
-		await p.send(entry());
+		await p.track(entry());
 
-		expect(spy.configs[0]?.url.href).toBe("http://localhost:4318/v1/logs");
+		expect(configs[0]?.url.href).toBe("http://localhost:4318/v1/logs");
 		expect(warn).toHaveBeenCalled();
 	});
 
 	it("skips the export-interval config when it is unset", async () => {
-		const spy = createOtelSpy();
-		const setLoggingExportIntervalMs = vi.fn();
-
-		class Config {
-			constructor(
-				public url: URL,
-				public token?: string,
-			) {
-				spy.configs.push({ url, token });
-			}
-			setLoggingExportIntervalMs = setLoggingExportIntervalMs;
-			setDebugState() {
-				return this;
-			}
-		}
-		const otel = { ...spy.otel, Configuration: Config as unknown as OtelFns["Configuration"] };
 		const p = new AnacondaOtelProvider({
 			auth: fakeAuth(),
 			config: { serviceId: "svc", serviceVersion: "1.0.0", nonAuthUrl: "https://x.test/v1/logs" },
 			logger: silentLogger,
-			otel,
-			readMachineId: async () => "raw",
 		});
 
-		await p.send(entry());
-		expect(setLoggingExportIntervalMs).not.toHaveBeenCalled();
+		await p.track(entry());
+		expect(otel.setLoggingExportIntervalMs).not.toHaveBeenCalled();
 	});
 
 	it("re-initializes to the no-user state after losing the user", async () => {
-		const spy = createOtelSpy();
 		let token: string | null = "api-key";
-		const auth = fakeAuth({ getApiKey: async () => token });
-		const p = provider(spy, auth);
+		const p = provider(fakeAuth({ getApiKey: async () => token }));
 
-		await p.send(entry({ userId: "u1" }));
+		await p.track(entry({ userId: "u1" }));
 		token = null;
-		await p.send(entry());
+		await p.track(entry());
 
-		expect(spy.otel.changeSignalConnection).toHaveBeenCalledWith(
+		expect(otel.changeSignalConnection).toHaveBeenCalledWith(
 			"logging",
 			expect.not.objectContaining({ userId: expect.anything() }),
 		);

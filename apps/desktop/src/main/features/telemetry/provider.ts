@@ -1,9 +1,9 @@
 import {
-	changeSignalConnection as realChangeSignalConnection,
-	Configuration as RealConfiguration,
-	initializeTelemetry as realInitializeTelemetry,
-	ResourceAttributes as RealResourceAttributes,
-	sendEvent as realSendEvent,
+	changeSignalConnection,
+	Configuration,
+	initializeTelemetry,
+	ResourceAttributes,
+	sendEvent,
 	type AttrMap,
 } from "anaconda-opentelemetry";
 import { platform, version } from "node:os";
@@ -12,11 +12,11 @@ import { createLogger } from "../../platform/logger.js";
 import { singleFlight } from "../../platform/single-flight.js";
 import { hashHostname, hashMachineId, hostnameId, readMachineIdFromOs } from "./utils.js";
 import type {
-	TelemetryAuthAdapter,
 	TelemetryConfig,
 	TelemetryEntry,
 	TelemetryLogger,
 	TelemetryProvider,
+	TelemetryProviderAuth,
 } from "./types.js";
 
 const SIGNAL_FALLBACK_URL = "http://localhost:4318/v1/logs";
@@ -24,29 +24,10 @@ const ANONYMOUS_USER_ID = "<anonymous-user>";
 
 type OTelState = "uninitialized" | "initialized-no-user" | "initialized-with-user";
 
-/** The subset of `anaconda-opentelemetry` the provider uses — injectable for tests. */
-export interface OtelFns {
-	initializeTelemetry: typeof realInitializeTelemetry;
-	sendEvent: typeof realSendEvent;
-	changeSignalConnection: typeof realChangeSignalConnection;
-	Configuration: typeof RealConfiguration;
-	ResourceAttributes: typeof RealResourceAttributes;
-}
-
-const defaultOtelFns: OtelFns = {
-	initializeTelemetry: realInitializeTelemetry,
-	sendEvent: realSendEvent,
-	changeSignalConnection: realChangeSignalConnection,
-	Configuration: RealConfiguration,
-	ResourceAttributes: RealResourceAttributes,
-};
-
 export interface AnacondaOtelProviderOptions {
-	auth: TelemetryAuthAdapter;
+	auth: TelemetryProviderAuth;
 	config: TelemetryConfig;
 	logger?: TelemetryLogger;
-	otel?: OtelFns;
-	readMachineId?: () => Promise<string>;
 }
 
 /**
@@ -57,49 +38,36 @@ export interface AnacondaOtelProviderOptions {
  * and re-init on API-key change.
  */
 export class AnacondaOtelProvider implements TelemetryProvider {
-	readonly #auth: TelemetryAuthAdapter;
+	readonly #auth: TelemetryProviderAuth;
 	readonly #config: TelemetryConfig;
 	readonly #logger: TelemetryLogger;
-	readonly #otel: OtelFns;
-	readonly #readMachineId: () => Promise<string>;
-	readonly #resources: InstanceType<OtelFns["ResourceAttributes"]>;
+	readonly #resources: ResourceAttributes;
 
 	#otelState: OTelState = "uninitialized";
 	#needToReinitialize = false;
 	#lastApiKey: string | undefined;
 	#machineHash: string | undefined;
-	readonly #ensureInitialized: (entry: TelemetryEntry) => Promise<void>;
 	#stopOnChanged: (() => void) | undefined;
+
+	/** Lazily created on the first `track` so concurrent sends share one init. */
+	#initOnce: (() => Promise<void>) | undefined;
 
 	constructor(options: AnacondaOtelProviderOptions) {
 		this.#auth = options.auth;
 		this.#config = options.config;
 		this.#logger = options.logger ?? createLogger("telemetry");
-		this.#otel = options.otel ?? defaultOtelFns;
-		this.#readMachineId = options.readMachineId ?? readMachineIdFromOs;
-		this.#resources = new this.#otel.ResourceAttributes(
-			this.#config.serviceId,
-			this.#config.serviceVersion,
-		);
-
-		let firstEntry: TelemetryEntry | undefined;
-		const runInit = singleFlight(async () => {
-			if (firstEntry) await this.#initializeOtel(firstEntry);
-		});
-		this.#ensureInitialized = (entry) => {
-			firstEntry = entry;
-			return runInit();
-		};
+		this.#resources = new ResourceAttributes(this.#config.serviceId, this.#config.serviceVersion);
 
 		this.#stopOnChanged = this.#auth.onChanged(() => {
 			this.#needToReinitialize = true;
 		});
 	}
 
-	async send(entry: TelemetryEntry): Promise<void> {
+	async track(entry: TelemetryEntry): Promise<void> {
 		try {
 			if (this.#otelState === "uninitialized") {
-				await this.#ensureInitialized(entry);
+				this.#initOnce ??= singleFlight(() => this.#initializeOtel(entry));
+				await this.#initOnce();
 				this.#otelState = entry.userId ? "initialized-with-user" : "initialized-no-user";
 				this.#logger.info(`OTEL initialized to state '${this.#otelState}'`);
 			} else if (this.#otelState === "initialized-no-user") {
@@ -114,11 +82,12 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 				this.#needToReinitialize = false;
 			}
 
-			const ok = this.#otel.sendEvent({
-				eventName: entry.event,
-				payload: entry.data,
-				attributes: {},
-			});
+			const attributes: AttrMap = {};
+			if (entry.subscription) attributes.subscription = entry.subscription;
+			if (entry.cohortId !== undefined) attributes.cohortId = entry.cohortId;
+			if (entry.isEmployee) attributes.is_anaconda_employee = true;
+
+			const ok = sendEvent({ eventName: entry.event, payload: entry.data, attributes });
 			if (!ok) {
 				this.#logger.error(`OTEL failed to send telemetry event '${entry.event}'`);
 			} else {
@@ -148,14 +117,14 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 		this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
 
 		const url = this.#getUrl(apiKey);
-		const config = new this.#otel.Configuration(url, apiKey);
+		const config = new Configuration(url, apiKey);
 		if (this.#config.exportIntervalMs !== undefined) {
 			config.setLoggingExportIntervalMs(this.#config.exportIntervalMs);
 		}
 		config.setDebugState(false);
 
 		await this.#buildResourceAttributes(entry);
-		this.#otel.initializeTelemetry(config, this.#resources, ["logging"]);
+		initializeTelemetry(config, this.#resources, ["logging"]);
 	}
 
 	async #reInitializeOtel(entry: TelemetryEntry): Promise<void> {
@@ -166,7 +135,7 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 
 		const url = this.#getUrl(this.#lastApiKey);
 		await this.#buildResourceAttributes(entry);
-		await this.#otel.changeSignalConnection("logging", {
+		await changeSignalConnection("logging", {
 			endpoint: url,
 			...(this.#lastApiKey ? { authToken: this.#lastApiKey } : {}),
 			...(entry.userId ? { userId: entry.userId } : {}),
@@ -209,7 +178,7 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 
 	async #getMachineHash(): Promise<string> {
 		if (this.#machineHash === undefined) {
-			const raw = await this.#readMachineId().catch(() => hostnameId());
+			const raw = await readMachineIdFromOs().catch(() => hostnameId());
 			this.#machineHash = hashMachineId(raw);
 		}
 		return this.#machineHash;

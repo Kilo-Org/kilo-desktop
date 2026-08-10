@@ -8,6 +8,7 @@ interface ImportMetaEnv {
 	readonly VITE_ANACONDA_LOGGING_NON_AUTH_URL?: string;
 	readonly VITE_ANACONDA_LOGGING_EXPORT_INTERVAL_MS?: string;
 	readonly VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE?: string;
+	readonly VITE_ANACONDA_LOGGING_APP_ID?: string;
 }
 
 interface ImportMeta {

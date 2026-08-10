@@ -7,7 +7,7 @@ import type {
 	FeatureFlagOrganizationContext,
 	FeatureFlagProvider,
 } from "./types.js";
-import { FREE_SUBSCRIPTION } from "../auth/utils.js";
+import { FREE_SUBSCRIPTION, isAnacondaEmployee } from "../auth/utils.js";
 
 export const ANONYMOUS_CONTEXT: FeatureFlagContext = { isEmployee: false };
 
@@ -26,8 +26,7 @@ export async function deriveContext(auth: AuthSessionService): Promise<FeatureFl
 	if (session.status !== "authenticated") return ANONYMOUS_CONTEXT;
 
 	const { user } = session;
-	const isEmployee = user.email?.split("@")[1]?.toLowerCase() === "anaconda.com";
-
+	const isEmployee = isAnacondaEmployee(user.email);
 	const context: FeatureFlagContext = { isEmployee, subscription };
 	if (user.userId !== undefined) context.userId = user.userId;
 	if (user.email !== undefined) context.email = user.email;

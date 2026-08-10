@@ -5,7 +5,7 @@ export {
 } from "./service.js";
 export { createTelemetryHandlers } from "./handlers.js";
 export type {
-	TelemetryAuthAdapter,
+	TelemetryAuth,
 	TelemetryConfig,
 	TelemetryEntry,
 	TelemetryIdentity,

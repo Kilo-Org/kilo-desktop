@@ -138,6 +138,9 @@ export function AnacondaMcpSettings() {
 				</Label>
 				<p className="text-muted-foreground mt-1 ml-7 text-xs">
 					When enabled, Anaconda tools are automatically available in Kilo chats while logged in.
+					Anaconda Desktop manages the <code>anaconda-remote</code> entry in{" "}
+					<code>~/.config/kilo/kilo.jsonc</code>; editing or deleting it there will be reverted on
+					the next launch. Use this toggle to opt out.
 				</p>
 			</div>
 

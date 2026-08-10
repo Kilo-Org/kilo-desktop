@@ -31,8 +31,38 @@ export interface AnacondaMcpServiceDeps {
  * change) it computes the desired state, diffs against the current effective
  * state, and applies the minimum set of mutations.
  *
- * Security invariant: the raw API key NEVER appears in the payload written
- * to kilo.json — only the `{env:ANACONDA_API_KEY}` template is used.
+ * Two independent side effects per successful reconcile:
+ *
+ * 1. Write the MCP entry to `~/.config/kilo/kilo.jsonc` (shared with Kilo CLI
+ *    and VS Code extension per PR #107), tagged with `_managedBy` so future
+ *    versions can identify and clean up managed entries. The `Authorization`
+ *    header is stored as a `{env:ANACONDA_API_KEY}` template — the raw key
+ *    never lands on disk.
+ *
+ * 2. Contribute `ANACONDA_API_KEY` to the kilo-server spawn environment via
+ *    `serverEnv.contribute`. Kilo resolves the header template against this
+ *    env at request time.
+ *
+ * On disable / logout: config entry removed and env contribution disposed.
+ *
+ * ## Ownership: Desktop-managed, not user-edited
+ *
+ * The `anaconda-remote` entry is a *managed projection* — the Desktop app
+ * is the source of truth for its shape. On every reconcile after boot,
+ * `#ensureMcpConfig` checks in-memory state (`#mcpConfigured`), which
+ * resets to `false` when the process starts, so the entry is unconditionally
+ * re-written on first reconcile of each session. This means:
+ *
+ *   - Hand-deleting the entry from `kilo.jsonc` → **re-added on next launch**
+ *   - Hand-editing the URL or headers → **overwritten on next launch**
+ *   - Setting `"enabled": false` in the file → **flipped back to `true`**
+ *
+ * The `_managedBy: "anaconda-desktop"` marker on the entry signals this to
+ * anyone reading the file. The intended user-facing opt-out is the
+ * "Enable Anaconda MCP" toggle in the settings panel, which persists to
+ * `${storageDir}/settings.json` and gates the entire reconcile. To use a
+ * different URL, use the URL override in the settings panel — it flows
+ * through `getSettings()` and drives the `saveMcp` call.
  */
 export class AnacondaMcpService {
 	#status: AnacondaMcpStatus = { state: "waiting-for-auth" };

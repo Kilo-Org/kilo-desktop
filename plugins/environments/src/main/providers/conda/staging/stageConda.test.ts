@@ -139,6 +139,39 @@ describe("stageConda", () => {
 		}) as any);
 	}
 
+	function mockExecaWithInstallerOutput(_harness: TestHarness): void {
+		mockedExeca.mockImplementation(((_cmd: string, args: string[]) => {
+			const pIdx = args.indexOf("-p");
+			const prefix = pIdx >= 0 ? args[pIdx + 1] : args[args.length - 1]?.replace("/D=", "");
+			if (prefix) {
+				const condaBin = path.join(prefix, "bin", "conda");
+				fs.mkdirSync(path.dirname(condaBin), { recursive: true });
+				fs.writeFileSync(condaBin, "#!/bin/bash\n");
+				fs.chmodSync(condaBin, 0o755);
+			}
+			const fakeProcess = Promise.resolve({ exitCode: 0 }) as any;
+			// Emit realistic installer output lines
+			const output = [
+				"PREFIX=/tmp/staging\n",
+				"Unpacking bootstrapper...\n",
+				"Unpacking payload...\n",
+				"Installing base environment...\n",
+				"Preparing transaction: ...working...\n",
+				"done\n",
+				"Executing transaction: ...working...\n",
+				"done\n",
+				"installation finished.\n",
+			].join("");
+			fakeProcess.all = new Readable({
+				read() {
+					this.push(Buffer.from(output));
+					this.push(null);
+				},
+			});
+			return fakeProcess;
+		}) as any);
+	}
+
 	// ─── System conda detection ──────────────────────────────────────────
 
 	it("uses system conda when detected and skips download", async () => {
@@ -234,6 +267,42 @@ describe("stageConda", () => {
 		);
 		expect(manifest.type).toBe("bundled");
 		expect(manifest.installerSha256).toBe(harness.installerSha256);
+	});
+
+	it("ANACONDA_FORCE_BUNDLED_CONDA=1 skips idempotency and system detection", async () => {
+		const harness = track(createHarness());
+
+		// Pre-write a system manifest that would normally short-circuit
+		const manifestDir = path.join(harness.storageDir, "providers", "conda");
+		fs.mkdirSync(manifestDir, { recursive: true });
+		const fakeBin = path.join(harness.storageDir, "fake-conda");
+		fs.writeFileSync(fakeBin, "#!/bin/bash\n", { mode: 0o755 });
+		fs.writeFileSync(
+			path.join(manifestDir, "staged.json"),
+			JSON.stringify({
+				type: "system",
+				condaBinPath: fakeBin,
+				condaVersion: "25.0.0",
+				target: "darwin-arm64",
+			}),
+		);
+
+		// Force bundled — should ignore manifest and skip detection
+		const originalEnv = process.env.ANACONDA_FORCE_BUNDLED_CONDA;
+		process.env.ANACONDA_FORCE_BUNDLED_CONDA = "1";
+		try {
+			harness.fetch.mockResolvedValue(createFakeResponse(harness.installerContent));
+			mockExecaCreatingBinary(harness);
+
+			const result = await stageConda(harness.ctx);
+
+			expect(result.strategy).toBe("bundled");
+			expect(mockedDetectSystem).not.toHaveBeenCalled();
+			expect(harness.fetch).toHaveBeenCalledOnce();
+		} finally {
+			if (originalEnv === undefined) delete process.env.ANACONDA_FORCE_BUNDLED_CONDA;
+			else process.env.ANACONDA_FORCE_BUNDLED_CONDA = originalEnv;
+		}
 	});
 
 	// ─── Bundled install path ────────────────────────────────────────────
@@ -402,7 +471,7 @@ describe("stageConda", () => {
 	it("reports progress in the expected order for bundled install", async () => {
 		const harness = track(createHarness());
 		harness.fetch.mockResolvedValue(createFakeResponse(harness.installerContent));
-		mockExecaCreatingBinary(harness);
+		mockExecaWithInstallerOutput(harness);
 
 		await stageConda(harness.ctx);
 
@@ -410,6 +479,11 @@ describe("stageConda", () => {
 		expect(messages[0]).toBe("[1/3] Checking for existing conda\u2026");
 		expect(messages).toContain("[1/3] Downloading Miniconda\u2026");
 		expect(messages).toContain("[2/3] Installing Miniconda\u2026");
+		expect(messages).toContain("[2/3] Unpacking Miniconda\u2026");
+		expect(messages).toContain("[2/3] Installing packages\u2026");
+		expect(messages).toContain("[2/3] Preparing environment\u2026");
+		expect(messages).toContain("[2/3] Finalizing installation\u2026");
+		expect(messages).toContain("[3/3] Finalizing\u2026");
 		expect(messages[messages.length - 1]).toBe("Conda base ready.");
 	});
 

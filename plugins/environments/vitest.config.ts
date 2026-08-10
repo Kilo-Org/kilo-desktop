@@ -15,6 +15,9 @@ const coverage = {
 		// Renderer barrel — no behaviour of its own.
 		"src/web/index.ts",
 		"src/test/**",
+		// CondaProvider stub — only boot() has logic; registerHandlers/registerTools
+		// and webComponents are placeholders until sub-issue 4.
+		"src/main/providers/conda/index.ts",
 	]),
 	include: ["src/**"],
 };

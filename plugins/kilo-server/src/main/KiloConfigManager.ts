@@ -34,9 +34,6 @@ export interface KiloConfigManagerOptions {
 	readonly configHome: string;
 }
 
-/** Config file basenames Kilo recognizes, in resolution order. */
-const CONFIG_FILENAMES = ["kilo.jsonc", "kilo.json"] as const;
-
 /** The extension to use when creating a new file (matches Kilo's own default). */
 const DEFAULT_NEW_FILENAME = "kilo.jsonc";
 
@@ -163,18 +160,80 @@ export class KiloConfigManager {
 	/**
 	 * Find the config file Kilo would read. Prefers `kilo.jsonc`, falls
 	 * back to `kilo.json`. Returns `null` if neither exists.
+	 *
+	 * Also cleans up a stray `kilo.json` we may have created in an earlier
+	 * version of this class (before it preferred `.jsonc`): Kilo loads
+	 * both files and deep-merges them, so a leftover `kilo.json` containing
+	 * only our own managed entries would shadow the user's `kilo.jsonc`.
+	 * If we detect that pattern — `kilo.json` exists alongside `kilo.jsonc`,
+	 * and every MCP entry in `kilo.json` carries our `_managedBy` marker —
+	 * we move it aside as `kilo.json.stray-<ts>`.
 	 */
 	async #findExistingConfig(): Promise<string | null> {
-		for (const name of CONFIG_FILENAMES) {
-			const candidate = path.join(this.#configDir, name);
-			try {
-				const s = await stat(candidate);
-				if (s.isFile()) return candidate;
-			} catch {
-				// missing — try next
+		const jsoncPath = path.join(this.#configDir, "kilo.jsonc");
+		const jsonPath = path.join(this.#configDir, "kilo.json");
+		const [jsoncStat, jsonStat] = await Promise.all([
+			stat(jsoncPath).catch(() => null),
+			stat(jsonPath).catch(() => null),
+		]);
+		const jsoncExists = jsoncStat?.isFile() ?? false;
+		const jsonExists = jsonStat?.isFile() ?? false;
+
+		if (jsoncExists && jsonExists) {
+			await this.#maybeRemoveStrayJson(jsonPath);
+			return jsoncPath;
+		}
+		if (jsoncExists) return jsoncPath;
+		if (jsonExists) return jsonPath;
+		return null;
+	}
+
+	/**
+	 * If `kilo.json` at the given path contains only entries we authored
+	 * (`mcp.<id>._managedBy === "anaconda-desktop"` on every MCP entry, and
+	 * no top-level keys other than `$schema` and `mcp`), rename it aside so
+	 * it stops shadowing the real `kilo.jsonc`. If the file has any
+	 * user-authored content, leave it alone — Kilo will still see both.
+	 */
+	async #maybeRemoveStrayJson(jsonPath: string): Promise<void> {
+		let raw: string;
+		try {
+			raw = await readFile(jsonPath, "utf-8");
+		} catch {
+			return;
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(stripJsoncComments(raw));
+		} catch {
+			// Malformed — don't touch it.
+			return;
+		}
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
+		const record = parsed as Record<string, unknown>;
+
+		// Only $schema and mcp allowed at the top level for us to consider this "ours".
+		const OURS_TOP_LEVEL = new Set(["$schema", "mcp"]);
+		for (const key of Object.keys(record)) {
+			if (!OURS_TOP_LEVEL.has(key)) return;
+		}
+
+		const mcp = record.mcp;
+		if (!mcp || typeof mcp !== "object" || Array.isArray(mcp)) return;
+		const entries = Object.values(mcp as Record<string, unknown>);
+		if (entries.length === 0) return;
+		for (const entry of entries) {
+			if (
+				typeof entry !== "object" ||
+				entry === null ||
+				(entry as { _managedBy?: unknown })._managedBy !== "anaconda-desktop"
+			) {
+				return;
 			}
 		}
-		return null;
+
+		// Every MCP entry is ours — safe to move aside.
+		await rename(jsonPath, `${jsonPath}.stray-${Date.now()}`).catch(() => undefined);
 	}
 
 	async #writeConfig(targetPath: string, config: KiloConfigFile): Promise<void> {

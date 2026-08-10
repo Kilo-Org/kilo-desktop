@@ -464,6 +464,72 @@ describe("KiloConfigManager", () => {
 			const content = JSON.parse(await readFile(jsonPath(), "utf-8"));
 			expect(Object.keys(content.mcp).sort()).toEqual(["anaconda-remote", "existing"]);
 		});
+
+		it("moves a stray kilo.json aside when kilo.jsonc also exists and every entry is ours", async () => {
+			// Simulate the pre-fix state: our old code wrote a bare kilo.json
+			// containing only managed entries alongside the user's kilo.jsonc.
+			await writeConfigFile(jsoncPath(), {
+				mcp: { sesame: { type: "stdio", command: "sesame" } },
+			});
+			await writeConfigFile(jsonPath(), {
+				$schema: "https://app.kilo.ai/config.json",
+				mcp: {
+					"anaconda-remote": {
+						type: "remote",
+						url: "https://x",
+						enabled: true,
+						_managedBy: "anaconda-desktop",
+					},
+				},
+			});
+
+			// Any read triggers cleanup.
+			const entries = await configManager.list();
+
+			expect(existsSync(jsonPath())).toBe(false);
+			expect(existsSync(jsoncPath())).toBe(true);
+			// User's entries in kilo.jsonc are what's visible now.
+			expect(entries.map((e) => e.id)).toEqual(["sesame"]);
+			// The stray file is preserved as a backup for post-mortem.
+			const dirEntries = await (await import("node:fs/promises")).readdir(path.dirname(jsonPath()));
+			expect(dirEntries.some((n) => n.startsWith("kilo.json.stray-"))).toBe(true);
+		});
+
+		it("does NOT touch kilo.json when it has any user-authored content", async () => {
+			await writeConfigFile(jsoncPath(), {
+				mcp: { sesame: { type: "stdio", command: "sesame" } },
+			});
+			// kilo.json has a user's own MCP (no _managedBy marker).
+			await writeConfigFile(jsonPath(), {
+				mcp: {
+					"user-mcp": { type: "remote", url: "https://user.example.com" },
+				},
+			});
+
+			await configManager.list();
+
+			expect(existsSync(jsonPath())).toBe(true);
+			expect(existsSync(jsoncPath())).toBe(true);
+		});
+
+		it("does NOT touch kilo.json when it has top-level keys other than mcp/$schema", async () => {
+			await writeConfigFile(jsoncPath(), { mcp: {} });
+			// kilo.json has a "provider" key — user config, not ours.
+			await writeConfigFile(jsonPath(), {
+				provider: { foo: { npm: "example" } },
+				mcp: {
+					"anaconda-remote": {
+						type: "remote",
+						url: "https://x",
+						_managedBy: "anaconda-desktop",
+					},
+				},
+			});
+
+			await configManager.list();
+
+			expect(existsSync(jsonPath())).toBe(true);
+		});
 	});
 
 	describe("JSONC comment tolerance", () => {

@@ -305,6 +305,23 @@ describe("stageConda", () => {
 		}
 	});
 
+	it("ANACONDA_SKIP_CONDA_STAGING=1 returns strategy 'skipped' with empty path", async () => {
+		const harness = track(createHarness());
+		const originalEnv = process.env.ANACONDA_SKIP_CONDA_STAGING;
+		process.env.ANACONDA_SKIP_CONDA_STAGING = "1";
+		try {
+			const result = await stageConda(harness.ctx);
+
+			expect(result).toEqual({ condaBinPath: "", strategy: "skipped" });
+			expect(mockedDetectSystem).not.toHaveBeenCalled();
+			expect(harness.fetch).not.toHaveBeenCalled();
+			expect(mockedExeca).not.toHaveBeenCalled();
+		} finally {
+			if (originalEnv === undefined) delete process.env.ANACONDA_SKIP_CONDA_STAGING;
+			else process.env.ANACONDA_SKIP_CONDA_STAGING = originalEnv;
+		}
+	});
+
 	// ─── Bundled install path ────────────────────────────────────────────
 
 	it("downloads installer, verifies SHA, installs, and writes staged.json", async () => {

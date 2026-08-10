@@ -121,10 +121,7 @@ export async function bootFeatures(
 				: {}),
 		});
 		try {
-			const result = feature.mainRegister(mainSdk);
-			if (result && typeof result.then === "function") {
-				await result;
-			}
+			await feature.mainRegister(mainSdk);
 			bootedFeatureIds.add(feature.id);
 			booted.push(feature.id);
 		} catch (error) {

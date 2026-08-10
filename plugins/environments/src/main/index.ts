@@ -20,6 +20,8 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 		}
 	}
 
+	// Handlers are registered AFTER all providers have booted so they never
+	// serve requests against a not-yet-staged conda binary.
 	for (const provider of registry.list()) {
 		provider.registerHandlers({ mainSdk });
 	}

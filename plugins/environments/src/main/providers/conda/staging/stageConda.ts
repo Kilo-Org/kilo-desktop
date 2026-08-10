@@ -29,10 +29,10 @@ export interface StagingContext {
 }
 
 export interface StagingResult {
-	/** Absolute path to the resolved conda binary. */
+	/** Absolute path to the resolved conda binary. Empty when `strategy` is `"skipped"`. */
 	readonly condaBinPath: string;
-	/** Whether the conda installation is system-provided or bundled by the plugin. */
-	readonly strategy: "system" | "bundled";
+	/** How the conda installation was resolved. */
+	readonly strategy: "system" | "bundled" | "skipped";
 }
 
 // ─── Staged manifest ─────────────────────────────────────────────────────────
@@ -363,7 +363,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	// available. E2e tests that exercise conda ops stub it separately.
 	if (process.env.ANACONDA_SKIP_CONDA_STAGING === "1") {
 		ctx.logger.info("[conda-staging] ANACONDA_SKIP_CONDA_STAGING=1 — skipping entirely.");
-		return { condaBinPath: "", strategy: "system" };
+		return { condaBinPath: "", strategy: "skipped" };
 	}
 
 	ctx.logger.info(

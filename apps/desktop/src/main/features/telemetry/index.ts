@@ -4,10 +4,4 @@ export {
 	type TelemetryPreferences,
 } from "./service.js";
 export { createTelemetryHandlers } from "./handlers.js";
-export type {
-	TelemetryAuth,
-	TelemetryConfig,
-	TelemetryEntry,
-	TelemetryIdentity,
-	TelemetryProvider,
-} from "./types.js";
+export type { TelemetryAuth, TelemetryConfig, TelemetryEntry, TelemetryProvider } from "./types.js";

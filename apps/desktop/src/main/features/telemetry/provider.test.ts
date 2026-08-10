@@ -264,4 +264,25 @@ describe("AnacondaOtelProvider", () => {
 			expect.not.objectContaining({ userId: expect.anything() }),
 		);
 	});
+
+	it("does not re-initialize on a repeated anonymous send", async () => {
+		const p = provider(fakeAuth({ getApiKey: async () => null }));
+
+		await p.track(entry());
+		await p.track(entry());
+
+		expect(otel.initializeTelemetry).toHaveBeenCalledTimes(1);
+		expect(otel.changeSignalConnection).not.toHaveBeenCalled();
+	});
+
+	it("re-initializes after an auth onChanged event even if identity is unchanged", async () => {
+		const auth = fakeAuth({ getApiKey: async () => null });
+		const p = provider(auth);
+
+		await p.track(entry());
+		auth.emitChange();
+		await p.track(entry());
+
+		expect(otel.changeSignalConnection).toHaveBeenCalledTimes(1);
+	});
 });

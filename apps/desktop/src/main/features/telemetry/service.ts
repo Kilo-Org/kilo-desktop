@@ -9,7 +9,6 @@ import type {
 	TelemetryAuth,
 	TelemetryConfig,
 	TelemetryEntry,
-	TelemetryEvent,
 	TelemetryIdentity,
 	TelemetryLogger,
 	TelemetryProvider,
@@ -72,6 +71,8 @@ export async function deriveTelemetryIdentity(
 	anonymize: AnonymizeOption,
 	logger: TelemetryLogger = createLogger("telemetry"),
 ): Promise<TelemetryIdentity> {
+	// NOTE: "if-not-logged-in" currently behaves identically to "never"; it will
+	// diverge when we implement not establishing/refreshing a session for it.
 	if (anonymize === "always") return ANONYMOUS_IDENTITY;
 
 	let session: AuthSession;
@@ -152,14 +153,11 @@ export class TelemetryService {
 			const identity = await deriveTelemetryIdentity(this.#auth, anonymize, this.#logger);
 
 			const entry: TelemetryEntry = {
-				event: input.event as TelemetryEvent,
-				data: { ...input.data },
+				...identity,
+				event: input.event,
+				data: input.data,
 				installationId: this.#preferences.getInstallationId(),
-				isEmployee: identity.isEmployee,
 			};
-			if (identity.userId !== undefined) entry.userId = identity.userId;
-			if (identity.cohortId !== undefined) entry.cohortId = identity.cohortId;
-			if (identity.subscription !== undefined) entry.subscription = identity.subscription;
 
 			await this.#provider.track(entry);
 		} catch (cause) {

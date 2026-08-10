@@ -6,6 +6,7 @@ import {
 	sendEvent,
 	type AttrMap,
 } from "anaconda-opentelemetry";
+import isEqual from "lodash/isEqual.js";
 import { platform, version } from "node:os";
 
 import { createLogger } from "../../platform/logger.js";
@@ -20,9 +21,21 @@ import type {
 } from "./types.js";
 
 const SIGNAL_FALLBACK_URL = "http://localhost:4318/v1/logs";
-const ANONYMOUS_USER_ID = "<anonymous-user>";
 
-type OTelState = "uninitialized" | "initialized-no-user" | "initialized-with-user";
+/** Effective OTEL connection identity; re-init happens only when this changes. */
+interface Connection {
+	apiKey: string | undefined;
+	userId: string | undefined;
+}
+
+/** Identity-derived OTEL attributes shared by event payloads and the resource. */
+function identityAttributes(entry: TelemetryEntry): AttrMap {
+	const attrs: AttrMap = {};
+	if (entry.subscription) attrs.subscription = entry.subscription;
+	if (entry.cohortId !== undefined) attrs.cohortId = entry.cohortId;
+	if (entry.isEmployee) attrs.is_anaconda_employee = true;
+	return attrs;
+}
 
 export interface AnacondaOtelProviderOptions {
 	auth: TelemetryProviderAuth;
@@ -33,9 +46,10 @@ export interface AnacondaOtelProviderOptions {
 /**
  * OTEL-specific telemetry provider and sole importer of `anaconda-opentelemetry`.
  * Preserves the correctness-critical parts of the ported anaconda-desktop
- * service: single-flight lazy init, the
- * `uninitialized`/`initialized-no-user`/`initialized-with-user` state machine,
- * and re-init on API-key change.
+ * service: single-flight lazy init and re-init on connection change. The
+ * connection is re-initialized only when the effective identity
+ * (`{ apiKey, userId }`) changes or an auth `onChanged` event fired — repeated
+ * sends with an unchanged identity reuse the existing connection.
  */
 export class AnacondaOtelProvider implements TelemetryProvider {
 	readonly #auth: TelemetryProviderAuth;
@@ -43,9 +57,8 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 	readonly #logger: TelemetryLogger;
 	readonly #resources: ResourceAttributes;
 
-	#otelState: OTelState = "uninitialized";
-	#needToReinitialize = false;
-	#lastApiKey: string | undefined;
+	#lastConnection: Connection | undefined;
+	#authChanged = false;
 	#machineHash: string | undefined;
 	#stopOnChanged: (() => void) | undefined;
 
@@ -56,56 +69,50 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 		this.#resources = new ResourceAttributes(this.#config.serviceId, this.#config.serviceVersion);
 
 		this.#stopOnChanged = this.#auth.onChanged(() => {
-			this.#needToReinitialize = true;
+			this.#authChanged = true;
 		});
 	}
 
 	/**
 	 * Single-flighted lazy init: concurrent first sends share one run and the
 	 * first caller's `entry` seeds the resource attributes. On failure the promise
-	 * is forgotten (so a later `track` retries) and `#otelState` stays
-	 * `uninitialized` because the state assignment happens after the `await`.
+	 * is forgotten (so a later `track` retries) and `#lastConnection` stays
+	 * `undefined` because that assignment happens in `track` after the `await`.
 	 */
-	#initialize = singleFlight(async (entry: TelemetryEntry): Promise<void> => {
-		const apiKey = (await this.#auth.getApiKey()) ?? undefined;
-		this.#lastApiKey = apiKey;
-		this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
+	#initialize = singleFlight(
+		async (entry: TelemetryEntry, apiKey: string | undefined): Promise<void> => {
+			this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
 
-		const url = this.#getUrl(apiKey);
-		const config = new Configuration(url, apiKey);
-		if (this.#config.exportIntervalMs !== undefined) {
-			config.setLoggingExportIntervalMs(this.#config.exportIntervalMs);
-		}
-		config.setDebugState(false);
+			const url = this.#getUrl(apiKey);
+			const config = new Configuration(url, apiKey);
+			if (this.#config.exportIntervalMs !== undefined) {
+				config.setLoggingExportIntervalMs(this.#config.exportIntervalMs);
+			}
+			config.setDebugState(false);
 
-		await this.#buildResourceAttributes(entry);
-		initializeTelemetry(config, this.#resources, ["logging"]);
-	});
+			await this.#buildResourceAttributes(entry);
+			initializeTelemetry(config, this.#resources, ["logging"]);
+		},
+	);
 
 	async track(entry: TelemetryEntry): Promise<void> {
 		try {
-			if (this.#otelState === "uninitialized") {
-				await this.#initialize(entry);
-				this.#otelState = entry.userId ? "initialized-with-user" : "initialized-no-user";
-				this.#logger.info(`OTEL initialized to state '${this.#otelState}'`);
-			} else if (this.#otelState === "initialized-no-user") {
-				this.#needToReinitialize = true;
+			const apiKey = (await this.#auth.getApiKey()) ?? undefined;
+			const next: Connection = { apiKey, userId: entry.userId };
+
+			if (this.#lastConnection === undefined) {
+				await this.#initialize(entry, apiKey);
+			} else if (this.#authChanged || !isEqual(this.#lastConnection, next)) {
+				await this.#reInitialize(entry, apiKey);
 			}
+			this.#lastConnection = next;
+			this.#authChanged = false;
 
-			// Order matters: probe first so a change is captured even when a re-init
-			// was already queued.
-			this.#needToReinitialize = (await this.#checkForNewApiKey()) || this.#needToReinitialize;
-			if (this.#needToReinitialize) {
-				await this.#reInitializeOtel(entry);
-				this.#needToReinitialize = false;
-			}
-
-			const attributes: AttrMap = {};
-			if (entry.subscription) attributes.subscription = entry.subscription;
-			if (entry.cohortId !== undefined) attributes.cohortId = entry.cohortId;
-			if (entry.isEmployee) attributes.is_anaconda_employee = true;
-
-			const ok = sendEvent({ eventName: entry.event, payload: entry.data, attributes });
+			const ok = sendEvent({
+				eventName: entry.event,
+				payload: entry.data,
+				attributes: identityAttributes(entry),
+			});
 			if (!ok) {
 				this.#logger.error(`OTEL failed to send telemetry event '${entry.event}'`);
 			} else {
@@ -121,28 +128,15 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 		this.#stopOnChanged = undefined;
 	}
 
-	async #checkForNewApiKey(): Promise<boolean> {
-		const key = (await this.#auth.getApiKey()) ?? undefined;
-		if (key === this.#lastApiKey) return false;
-		this.#lastApiKey = key;
-		this.#logger.info("OTEL API key changed, will re-initialize connection");
-		return true;
-	}
-
-	async #reInitializeOtel(entry: TelemetryEntry): Promise<void> {
-		this.#otelState =
-			!entry.userId || entry.userId === ANONYMOUS_USER_ID
-				? "initialized-no-user"
-				: "initialized-with-user";
-
-		const url = this.#getUrl(this.#lastApiKey);
+	async #reInitialize(entry: TelemetryEntry, apiKey: string | undefined): Promise<void> {
+		const url = this.#getUrl(apiKey);
 		await this.#buildResourceAttributes(entry);
 		await changeSignalConnection("logging", {
 			endpoint: url,
-			...(this.#lastApiKey ? { authToken: this.#lastApiKey } : {}),
+			...(apiKey ? { authToken: apiKey } : {}),
 			...(entry.userId ? { userId: entry.userId } : {}),
 		});
-		this.#logger.debug(`OTEL re-initialized to state '${this.#otelState}' (${url.href})`);
+		this.#logger.debug(`OTEL re-initialized connection (${url.href})`);
 	}
 
 	#getUrl(token: string | undefined): URL {
@@ -160,10 +154,8 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 		const parameters: AttrMap = {
 			machineId: await this.#getMachineHash(),
 			service_id: this.#config.serviceId,
+			...identityAttributes(entry),
 		};
-		if (entry.cohortId !== undefined) parameters.cohortId = entry.cohortId;
-		if (entry.isEmployee) parameters.is_anaconda_employee = true;
-		if (entry.subscription) parameters.subscription = entry.subscription;
 
 		this.#resources.setAttributes({
 			osType: platform(),

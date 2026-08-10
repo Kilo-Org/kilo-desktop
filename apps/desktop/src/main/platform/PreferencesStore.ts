@@ -46,10 +46,11 @@ export class PreferencesStore {
 	 * single install without identifying the user.
 	 */
 	getInstallationId(): string {
-		const existing = this.#store.get("installationId");
-		if (typeof existing !== "string" || existing.length === 0) {
-			this.#store.set("installationId", crypto.randomUUID());
+		let id = this.#store.get("installationId");
+		if (typeof id !== "string" || id.length === 0) {
+			id = crypto.randomUUID();
+			this.#store.set("installationId", id);
 		}
-		return this.#store.get("installationId") as string;
+		return id;
 	}
 }

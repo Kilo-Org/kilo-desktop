@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 
 import {
@@ -37,6 +38,14 @@ export default defineConfig({
 		react(),
 		tailwindcss(),
 		injectThemeBootstrap(),
+		sentryVitePlugin({
+			authToken: process.env.SENTRY_AUTH_TOKEN,
+			org: "anaconda-nq",
+			project: "agentic-desktop",
+			...(process.env.SENTRY_AUTH_TOKEN && {
+				sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
+			}),
+		}),
 	],
 	resolve: {
 		alias: {
@@ -58,6 +67,7 @@ export default defineConfig({
 		},
 	},
 	build: {
+		sourcemap: true,
 		outDir: "dist",
 		emptyOutDir: true,
 	},

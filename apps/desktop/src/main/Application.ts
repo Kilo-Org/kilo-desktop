@@ -41,6 +41,8 @@ import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { SplashWindow } from "./platform/SplashWindow.js";
 import { configureUpdater } from "./platform/Updater.js";
+import { flushSentry } from "./platform/sentry.js";
+import * as Sentry from "@sentry/electron/main";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
 export class Application {
@@ -79,6 +81,7 @@ export class Application {
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
+			this.#app.on("before-quit", () => void flushSentry()),
 			this.#app.on("before-quit", () => this.#dispose()),
 		);
 
@@ -118,12 +121,15 @@ export class Application {
 			this.#disposers.push(this.#security.install(session.defaultSession));
 
 			reporter.report("features", "Preparing features\u2026");
+			Sentry.addBreadcrumb({ category: "app.boot", message: "Booting features" });
 			await this.#registerIpc(preferences, reporter);
+			Sentry.addBreadcrumb({ category: "app.boot", message: "Features booted" });
 			this.#registerPushEvents();
 			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
 			// half-initialized main window without security/IPC/handlers.
+			Sentry.captureException(error, { tags: { phase: "boot" } });
 			reporter.complete();
 			await splash.close();
 			this.#app.quit();

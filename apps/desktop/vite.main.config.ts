@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { builtinModules } from "node:module";
 
 import { defineConfig, loadEnv } from "vite";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -10,6 +11,7 @@ import {
 	requireViteEnvironmentVariable,
 } from "./config/build-environment.js";
 import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
+import appInfo from "./package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +22,22 @@ export default defineConfig(({ command }) => {
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
 	return {
+		plugins: [
+			sentryVitePlugin({
+				authToken: process.env.SENTRY_AUTH_TOKEN,
+				org: "anaconda-nq",
+				project: "agentic-desktop",
+				release: {
+					name: `${appInfo.name}@${appInfo.version}`,
+					deploy: {
+						env: process.env.APP_MODE ?? environment,
+					},
+				},
+				...(process.env.SENTRY_AUTH_TOKEN && {
+					sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
+				}),
+			}),
+		],
 		define: {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_CHANNEL: JSON.stringify(channel),
@@ -35,6 +53,7 @@ export default defineConfig(({ command }) => {
 			mainFields: ["module", "jsnext:main", "jsnext"],
 		},
 		build: {
+			sourcemap: true,
 			lib: {
 				entry: "src/main/main.ts",
 				formats: ["es"],
@@ -57,6 +76,7 @@ export default defineConfig(({ command }) => {
 					// runtime. Keep it external so Electron requires it from
 					// node_modules (shipped via `pnpm deploy --prod`).
 					"@launchdarkly/node-client-sdk",
+					"@sentry/electron",
 					"electron-store",
 					"electron-log",
 					"electron-squirrel-startup",

@@ -68,39 +68,66 @@ function wellKnownCondaPaths(platform: NodeJS.Platform): string[] {
 	];
 }
 
-async function findCondaOnPath(platform: NodeJS.Platform): Promise<string | null> {
+async function findCondaOnPath(
+	platform: NodeJS.Platform,
+	logger: MainSdkLogger,
+): Promise<string | null> {
 	try {
 		const cmd = platform === "win32" ? "where" : "which";
+		logger.info(`[conda-detect] Running '${cmd} conda' to search PATH…`);
 		const { stdout } = await execa(cmd, ["conda"], { reject: false });
 		const resolved = stdout.trim().split("\n")[0]?.trim();
-		if (resolved) return resolved;
+		if (resolved) {
+			logger.info(`[conda-detect] PATH search found: ${resolved}`);
+			return resolved;
+		}
+		logger.info("[conda-detect] PATH search returned empty.");
 	} catch {
-		// `which`/`where` not available or failed
+		logger.info("[conda-detect] PATH search command failed or unavailable.");
 	}
 	return null;
 }
 
-async function findCondaInWellKnownPaths(platform: NodeJS.Platform): Promise<string | null> {
-	for (const candidate of wellKnownCondaPaths(platform)) {
+async function findCondaInWellKnownPaths(
+	platform: NodeJS.Platform,
+	logger: MainSdkLogger,
+): Promise<string | null> {
+	const candidates = wellKnownCondaPaths(platform);
+	logger.info(`[conda-detect] Checking ${candidates.length} well-known paths…`);
+	for (const candidate of candidates) {
 		try {
 			await access(candidate, constants.X_OK);
+			logger.info(`[conda-detect] Found at well-known path: ${candidate}`);
 			return candidate;
 		} catch {
 			// Not found at this location
 		}
 	}
+	logger.info("[conda-detect] No conda found in well-known paths.");
 	return null;
 }
 
-async function getCondaVersion(condaBinPath: string): Promise<string | null> {
+async function getCondaVersion(
+	condaBinPath: string,
+	logger: MainSdkLogger,
+): Promise<string | null> {
 	try {
+		logger.info(`[conda-detect] Running '${condaBinPath} info --json'…`);
 		const { stdout } = await execa(condaBinPath, ["info", "--json"], {
 			timeout: 10_000,
 			reject: false,
 		});
 		const info = JSON.parse(stdout) as CondaInfoJson;
+		if (info.conda_version) {
+			logger.info(
+				`[conda-detect] Reported version: ${info.conda_version}, root_prefix: ${info.root_prefix ?? "unknown"}`,
+			);
+		}
 		return info.conda_version ?? null;
-	} catch {
+	} catch (error) {
+		logger.info(
+			`[conda-detect] 'conda info --json' failed: ${error instanceof Error ? error.message : String(error)}`,
+		);
 		return null;
 	}
 }
@@ -124,35 +151,36 @@ export async function detectSystemConda(
 	options: DetectSystemCondaOptions,
 ): Promise<SystemCondaInfo | null> {
 	const platform = options.platform ?? process.platform;
+	const { logger } = options;
+
+	logger.info("[conda-detect] Starting system conda detection…");
 
 	// Try PATH first
-	let condaBinPath = await findCondaOnPath(platform);
+	let condaBinPath = await findCondaOnPath(platform, logger);
 
 	// Fall back to well-known locations
 	if (!condaBinPath) {
-		condaBinPath = await findCondaInWellKnownPaths(platform);
+		condaBinPath = await findCondaInWellKnownPaths(platform, logger);
 	}
 
 	if (!condaBinPath) {
-		options.logger.info("No system conda found on PATH or in well-known locations.");
+		logger.info("[conda-detect] No system conda found.");
 		return null;
 	}
 
-	options.logger.info(`Found conda candidate at ${condaBinPath}`);
-
-	const version = await getCondaVersion(condaBinPath);
+	const version = await getCondaVersion(condaBinPath, logger);
 	if (!version) {
-		options.logger.info("System conda did not respond to 'conda info --json' — skipping.");
+		logger.info("[conda-detect] System conda did not respond to 'conda info --json' — skipping.");
 		return null;
 	}
 
 	if (!isVersionCompatible(version)) {
-		options.logger.info(
-			`System conda version ${version} is below minimum ${MIN_CONDA_VERSION.join(".")} — skipping.`,
+		logger.info(
+			`[conda-detect] Version ${version} is below minimum ${MIN_CONDA_VERSION.join(".")} — skipping.`,
 		);
 		return null;
 	}
 
-	options.logger.info(`System conda ${version} at ${condaBinPath} is compatible.`);
+	logger.info(`[conda-detect] ✓ Compatible system conda ${version} at ${condaBinPath}`);
 	return { condaBinPath, version };
 }

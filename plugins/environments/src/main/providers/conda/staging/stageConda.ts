@@ -297,9 +297,16 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	const arch = ctx.arch ?? process.arch;
 	const artifact = getMinicondaInstaller(platform, arch);
 
+	ctx.logger.info(
+		`[conda-staging] Starting — target: ${artifact.target}, storageDir: ${ctx.storageDir}`,
+	);
+
 	// 1. Check existing manifest
 	const manifest = await readManifest(ctx.storageDir);
 	if (manifest) {
+		ctx.logger.info(
+			`[conda-staging] Found staged.json (type: ${manifest.type ?? "bundled (legacy)"})`,
+		);
 		if (manifest.type === "system") {
 			const result = await checkSystemManifest(manifest, ctx.logger);
 			if (result) return result;
@@ -307,6 +314,9 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 			const result = await checkBundledManifest(manifest, ctx.storageDir, artifact, ctx.logger);
 			if (result) return result;
 		}
+		ctx.logger.info("[conda-staging] Existing manifest invalid — re-staging.");
+	} else {
+		ctx.logger.info("[conda-staging] No staged.json found — first run.");
 	}
 
 	// 2. Try system conda detection
@@ -321,12 +331,14 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 			target: artifact.target,
 		};
 		await writeManifest(ctx.storageDir, systemManifest);
-		ctx.logger.info(`Staged system conda ${systemConda.version} at ${systemConda.condaBinPath}`);
+		ctx.logger.info(
+			`[conda-staging] Strategy: SYSTEM — ${systemConda.version} at ${systemConda.condaBinPath}`,
+		);
 		return { condaBinPath: systemConda.condaBinPath, strategy: "system" };
 	}
 
 	// 3. Fall back to bundled Miniconda install
-	ctx.logger.info("No compatible system conda found — falling back to bundled Miniconda.");
+	ctx.logger.info("[conda-staging] Strategy: BUNDLED — downloading Miniconda installer.");
 	const root = providerRoot(ctx.storageDir);
 	await mkdir(root, { recursive: true });
 

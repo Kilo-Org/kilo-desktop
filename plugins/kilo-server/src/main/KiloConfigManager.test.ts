@@ -585,6 +585,62 @@ describe("KiloConfigManager", () => {
 			expect((entries[0]!.transport as { url: string }).url).toBe("https://a.example.com//path");
 		});
 	});
+
+	// Regression: PR #116 review — CRITICAL (proto pollution) + WARNING
+	// (unhandled TypeError on null entry). The RPC schema rejects reserved
+	// ids at the boundary; this class is also called from other main-side
+	// plugins via the kiloService capability, so it validates too.
+	describe("hostile input", () => {
+		it("refuses to write an entry under __proto__ (prototype pollution guard)", async () => {
+			await expect(
+				configManager.save("__proto__", { type: "remote", url: "https://evil.example.com" }, true),
+			).rejects.toThrow(/reserved JavaScript property name/i);
+			// And the prototype chain must be untouched.
+			expect((Object.prototype as { polluted?: unknown }).polluted).toBeUndefined();
+		});
+
+		it("refuses constructor and prototype ids too", async () => {
+			await expect(
+				configManager.save("constructor", { type: "remote", url: "https://x.example" }, true),
+			).rejects.toThrow(/reserved/i);
+			await expect(
+				configManager.save("prototype", { type: "remote", url: "https://x.example" }, true),
+			).rejects.toThrow(/reserved/i);
+		});
+
+		it("silently drops null / non-object mcp entries during list() instead of throwing", async () => {
+			// A user hand-edits kilo.jsonc and ends up with `"foo": null` or
+			// `"foo": "some string"` under mcp. Before the fix this crashed
+			// with a TypeError inside #entryToTransport.
+			await writeConfigFile(configPath, {
+				mcp: {
+					real: { type: "remote", url: "https://ok.example.com", enabled: true },
+					bogusNull: null,
+					bogusString: "not-an-object",
+					bogusArray: [1, 2, 3],
+				},
+			});
+			const entries = await configManager.list();
+			expect(entries.map((entry) => entry.id)).toEqual(["real"]);
+		});
+
+		it("silently drops reserved-name keys during list() (defense in depth)", async () => {
+			// If a corrupt file somehow contains a reserved key, we do NOT
+			// materialize it as an MCP entry the UI would then round-trip.
+			// __proto__ under mcp does NOT pollute Object.prototype for
+			// entries created via JSON.parse (it becomes a normal own
+			// property because JSON.parse ignores __proto__), but the id is
+			// still reserved on our end.
+			await writeConfigFile(configPath, {
+				mcp: {
+					real: { type: "remote", url: "https://ok.example.com", enabled: true },
+					__proto__: { type: "remote", url: "https://evil.example.com" },
+				},
+			});
+			const entries = await configManager.list();
+			expect(entries.map((entry) => entry.id)).toEqual(["real"]);
+		});
+	});
 });
 
 async function writeConfigFile(filePath: string, content: Record<string, unknown>): Promise<void> {

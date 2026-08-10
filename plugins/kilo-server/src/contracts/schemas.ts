@@ -58,11 +58,33 @@ export const mcpTransportSchema = z.discriminatedUnion("type", [
 	mcpStdioTransportSchema,
 ]);
 
-/** MCP server ID: alphanumeric, hyphens, underscores, dots, and slashes. */
+/**
+ * MCP server ID: alphanumeric, hyphens, underscores, dots, and slashes.
+ *
+ * Rejects `__proto__`, `constructor`, and `prototype` because ids flow into
+ * bracket-assignment on plain JSON objects (`config.mcp[id] = entry` in
+ * `KiloConfigManager`). Bracket-writing `__proto__` on an object created by
+ * `JSON.parse` invokes the Object.prototype `__proto__` setter and mutates
+ * the object's prototype (real prototype pollution). Constructor and
+ * prototype are not exploitable through the same sink but sit in the same
+ * "dangerous property name" bucket and are cheap to reject.
+ *
+ * A 255-char ceiling caps DoS via ridiculous ids (Kilo also chokes on huge
+ * keys downstream).
+ */
+const RESERVED_PROPERTY_NAMES: ReadonlySet<string> = new Set([
+	"__proto__",
+	"constructor",
+	"prototype",
+]);
 const mcpIdSchema = z
 	.string()
 	.min(1)
-	.regex(/^[\w][\w\-./]*$/);
+	.max(255)
+	.regex(/^[\w][\w\-./]*$/)
+	.refine((value) => !RESERVED_PROPERTY_NAMES.has(value), {
+		message: "MCP id must not be a reserved property name (__proto__, constructor, prototype)",
+	});
 
 export const mcpServerInfoSchema = z.object({
 	id: mcpIdSchema,

@@ -423,6 +423,52 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
+	// Regression: PR #116 review — WARNING KiloServerManager.ts:334. The
+	// original reserved list was a fixed narrow set that missed PATH, dynamic
+	// linker vars, and any new KILO_*/XDG_* key. Now: exact list for high-
+	// value single keys, PLUS prefix families (KILO_, XDG_, DYLD_, LD_) so
+	// e.g. `DYLD_INSERT_LIBRARIES` (code injection on macOS) and
+	// `LD_PRELOAD` (same on Linux) cannot land in the child env.
+	it("reserved env keys cover PATH and dynamic-linker families", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		contributedEnv.contribute("malicious", {
+			PATH: "/tmp/evil:/tmp/hijack",
+			DYLD_INSERT_LIBRARIES: "/tmp/evil.dylib",
+			DYLD_FALLBACK_LIBRARY_PATH: "/tmp/evil",
+			LD_PRELOAD: "/tmp/evil.so",
+			LD_LIBRARY_PATH: "/tmp/evil",
+			// The prefix guard MUST also reject a future KILO_* / XDG_* var
+			// we haven't enumerated yet.
+			KILO_FUTURE_KNOB: "attacker-controlled",
+			XDG_FUTURE_KNOB: "attacker-controlled",
+		});
+
+		const { manager, spawn } = createHarness({
+			contributedEnv,
+			environment: { PATH: "/usr/bin:/bin", HOME: "/home/user" } as NodeJS.ProcessEnv,
+			logger,
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// PATH must remain the inherited value, not the attacker's.
+		expect(environment.PATH).toBe("/usr/bin:/bin");
+		// Dynamic linker shim variables must not survive at all — the
+		// process-level scrub in `#createEnvironment` also removes them
+		// from the inherited env for good measure.
+		expect(environment.DYLD_INSERT_LIBRARIES).toBeUndefined();
+		expect(environment.DYLD_FALLBACK_LIBRARY_PATH).toBeUndefined();
+		expect(environment.LD_PRELOAD).toBeUndefined();
+		expect(environment.LD_LIBRARY_PATH).toBeUndefined();
+		// Future KILO_/XDG_ additions are reserved by prefix.
+		expect(environment.KILO_FUTURE_KNOB).toBeUndefined();
+		expect(environment.XDG_FUTURE_KNOB).toBeUndefined();
+		// The malicious contributor should have been warned about each one.
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('"PATH" is reserved'));
+		manager.dispose();
+	});
+
 	it("reports isRunning correctly", async () => {
 		const { manager, children } = createHarness();
 		expect(manager.isRunning).toBe(false);

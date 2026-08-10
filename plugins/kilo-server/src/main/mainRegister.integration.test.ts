@@ -29,6 +29,7 @@ function fakeServer() {
 	return {
 		status: { status: "stopped" } as KiloServerStatus,
 		isRunning: false as boolean,
+		isStarting: false as boolean,
 		contributedEnvChangedSinceSpawn: vi.fn(() => true),
 		ensureRunning: vi.fn(async () => connection),
 		restart: vi.fn(async () => connection),
@@ -501,6 +502,70 @@ describe("kilo-server main registration", () => {
 			expect(warnSpy).toHaveBeenCalledWith(
 				expect.stringContaining("Failed to restart Kilo server after env change"),
 			);
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// Regression: PR #116 review — WARNING kilo-server/index.ts:138. When a
+	// contribution arrived while a spawn was in flight (isRunning=false,
+	// isStarting=true), the old handler early-returned on !isRunning and
+	// the drift was never re-checked afterward, so the running child was
+	// stuck with a stale env until an unrelated contribution triggered
+	// another debounce cycle. Fix: await the in-flight spawn, THEN check.
+	it("restarts when a contribution arrives mid-spawn (before isRunning flips)", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			// Simulate a spawn in flight: not yet running, but starting, and
+			// the current env DOES differ from the (empty) snapshot.
+			server.isRunning = false;
+			server.isStarting = true;
+			server.contributedEnvChangedSinceSpawn = vi.fn(() => true);
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("late-source", { KEY: "value" });
+
+			// Advance past the debounce; the handler awaits ensureRunning
+			// (mocked to resolve immediately) then checks drift.
+			await vi.advanceTimersByTimeAsync(350);
+			// Simulate the spawn completing between debounce fire and the
+			// drift check: flip isRunning to true so restart proceeds.
+			server.isRunning = true;
+			server.isStarting = false;
+			await vi.advanceTimersByTimeAsync(10);
+
+			expect(server.ensureRunning).toHaveBeenCalled();
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("no-ops on env change when the server has never spawned and is not starting", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = false;
+			server.isStarting = false;
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("cold", { KEY: "value" });
+
+			await vi.advanceTimersByTimeAsync(350);
+			// Cold boot: the next ensureRunning() will pick up current env.
+			expect(server.restart).not.toHaveBeenCalled();
+			expect(server.ensureRunning).not.toHaveBeenCalled();
 			mainSdk.dispose();
 		} finally {
 			vi.useRealTimers();

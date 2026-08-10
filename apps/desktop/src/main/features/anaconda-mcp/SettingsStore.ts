@@ -76,6 +76,13 @@ export class SettingsStore {
 	/**
 	 * Merge a partial update into settings and persist.
 	 * Returns the new settings snapshot after the write completes.
+	 *
+	 * Rejects when the on-disk write fails so the caller (contract handler,
+	 * UI) can surface the error instead of the user believing their change
+	 * was saved. The internal write chain (`#writeInFlight`) keeps a
+	 * swallow-then-log fallback so a single failure does not poison
+	 * subsequent `set()` calls — but each caller's returned promise still
+	 * reflects the outcome of its own write attempt.
 	 */
 	async set(patch: {
 		enabled?: boolean | undefined;
@@ -90,23 +97,24 @@ export class SettingsStore {
 		this.#current = next;
 		this.#pendingWrite = next;
 		// Chain writes so at most one is in flight; later calls collapse into the latest.
-		this.#writeInFlight = this.#writeInFlight.then(async () => {
+		const writeAttempt = this.#writeInFlight.then(async () => {
 			const toWrite = this.#pendingWrite;
 			if (!toWrite) return;
 			this.#pendingWrite = undefined;
-			try {
-				await mkdir(path.dirname(this.#path), { recursive: true });
-				await writeFile(this.#path, JSON.stringify(toWrite, null, "\t") + "\n", "utf-8");
-			} catch (error: unknown) {
-				this.#logger.warn(
-					`anaconda-mcp: failed to persist settings: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-			}
+			await mkdir(path.dirname(this.#path), { recursive: true });
+			await writeFile(this.#path, JSON.stringify(toWrite, null, "\t") + "\n", "utf-8");
 		});
-		// Await the chain so callers can rely on the write having completed.
-		await this.#writeInFlight;
+		// Keep the chain healthy so a rejection here does not poison later
+		// `set()` calls. The rejection is still surfaced to THIS caller via
+		// the `await` below.
+		this.#writeInFlight = writeAttempt.catch((error: unknown) => {
+			this.#logger.warn(
+				`anaconda-mcp: failed to persist settings: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		});
+		await writeAttempt;
 		return { ...next };
 	}
 }

@@ -207,6 +207,18 @@ export class KiloServerManager {
 	}
 
 	/**
+	 * True while `ensureRunning()` has an in-flight spawn but the child is
+	 * not yet ready. Distinct from `isRunning` (which flips true only after
+	 * the health check passes). Used by `handleEnvChange` to decide whether
+	 * to await an in-flight spawn before evaluating drift — otherwise a
+	 * contribution that arrived mid-spawn is missed until an unrelated
+	 * contribution triggers a fresh restart.
+	 */
+	get isStarting(): boolean {
+		return this.#startPromise !== undefined;
+	}
+
+	/**
 	 * True when the currently-merged contributed env differs from the snapshot
 	 * captured at the last spawn. Callers debouncing restarts on env changes
 	 * can use this to skip no-op restarts — e.g. when a contribution arrived
@@ -327,20 +339,42 @@ export class KiloServerManager {
 		]);
 	}
 
-	/** Reserved env keys contributors cannot override. Compared case-insensitively. */
-	static readonly #RESERVED_KEYS_UPPER = new Set([
-		"KILO_SERVER_PASSWORD",
-		"KILO_PARENT_PID",
-		"KILO_ENABLE_QUESTION_TOOL",
-		"KILO_TREE_SITTER_WASM_DIR",
-		"XDG_CONFIG_HOME",
-		"XDG_DATA_HOME",
-		"XDG_CACHE_HOME",
-		"XDG_STATE_HOME",
+	/**
+	 * Reserved env keys contributors cannot override. Compared case-insensitively
+	 * (Windows treats env var names case-insensitively at the CreateProcess /
+	 * libuv layer, and macOS/Linux tools sometimes ship UPPER-and lower- variants
+	 * in the same environment — sanitize both).
+	 *
+	 * The list is split into exact-match and prefix-match tiers:
+	 *
+	 * - **Exact:** individual keys with security or protocol semantics. Includes
+	 *   process-search hijacks (`PATH`), dynamic-linker shim variables
+	 *   (`LD_LIBRARY_PATH`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`) that could
+	 *   inject arbitrary code into the child, proxy bypasses (`NO_PROXY`), Node
+	 *   runtime hooks (`NODE_OPTIONS`), Electron-as-Node (`ELECTRON_RUN_AS_NODE`),
+	 *   and Kilo's per-launch identity (`KILO_SERVER_PASSWORD`, `KILO_PARENT_PID`)
+	 *   plus its resource pointers (`KILO_TREE_SITTER_WASM_DIR`).
+	 *
+	 * - **Prefix:** whole namespaces we reserve to Kilo (`KILO_`) and the XDG
+	 *   spec (`XDG_`), plus the macOS dynamic linker family (`DYLD_`) and Linux
+	 *   loader-preload family (`LD_`). Reserving prefixes prevents a contributor
+	 *   from shipping a future variant we haven't enumerated (e.g.
+	 *   `DYLD_FALLBACK_LIBRARY_PATH`, a new `KILO_*` knob).
+	 */
+	static readonly #RESERVED_EXACT_UPPER = new Set([
+		"PATH",
 		"NO_PROXY",
 		"NODE_OPTIONS",
 		"ELECTRON_RUN_AS_NODE",
 	]);
+
+	static readonly #RESERVED_PREFIXES_UPPER = ["KILO_", "XDG_", "DYLD_", "LD_"] as const;
+
+	static #isReservedEnvKey(key: string): boolean {
+		const upper = key.toUpperCase();
+		if (KiloServerManager.#RESERVED_EXACT_UPPER.has(upper)) return true;
+		return KiloServerManager.#RESERVED_PREFIXES_UPPER.some((prefix) => upper.startsWith(prefix));
+	}
 
 	/**
 	 * Filter contributed env by reserved keys (case-insensitive because Windows
@@ -351,7 +385,7 @@ export class KiloServerManager {
 	#sanitizeContributedEnv(contributed: Record<string, string>): Record<string, string> {
 		const sanitized: Record<string, string> = {};
 		for (const [key, value] of Object.entries(contributed)) {
-			if (KiloServerManager.#RESERVED_KEYS_UPPER.has(key.toUpperCase())) {
+			if (KiloServerManager.#isReservedEnvKey(key)) {
 				this.#options.logger.warn(`Contributed env key "${key}" is reserved and will be ignored.`);
 				continue;
 			}

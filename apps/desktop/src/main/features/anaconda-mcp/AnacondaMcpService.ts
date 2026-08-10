@@ -2,6 +2,7 @@ import type { AnacondaMcpStatus } from "@anaconda-agentic-desktop/contracts";
 import type { AuthMainCapability } from "@anaconda-agentic-desktop/contracts";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 import type { KiloServerCapabilities } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
+import isEqual from "lodash/isEqual.js";
 
 /** Default Anaconda Remote MCP URL. Override via settings. */
 export const DEFAULT_MCP_URL = "https://anaconda.cloud/api/mcp";
@@ -72,6 +73,7 @@ export class AnacondaMcpService {
 	#lastApiKey: string | null = null;
 	#reconciling = false;
 	#reconcilePending = false;
+	#disposed = false;
 	readonly #deps: AnacondaMcpServiceDeps;
 
 	constructor(deps: AnacondaMcpServiceDeps) {
@@ -88,8 +90,16 @@ export class AnacondaMcpService {
 	 *
 	 * Serialized: concurrent callers see the running reconcile complete, then
 	 * exactly one additional reconcile runs to pick up the latest state.
+<<<<<<< HEAD
 	 * Prevents interleaved awaits from producing a state that disagrees with
 	 * the latest desired settings.
+=======
+	 *
+	 * When `dispose()` is called mid-reconcile, the outer loop notices the
+	 * `#disposed` flag on the next iteration and performs teardown instead of
+	 * a normal reconcile — so dispose never races the state machine that owns
+	 * `#envDisposer`, `#mcpConfigured`, and status transitions.
+>>>>>>> bb3443b (fix(anaconda-mcp,kilo-server): address kilo-code-bot CRITICAL + all 8 WARNINGs)
 	 */
 	async reconcile(): Promise<void> {
 		if (this.#reconciling) {
@@ -102,6 +112,11 @@ export class AnacondaMcpService {
 		try {
 			do {
 				this.#reconcilePending = false;
+				if (this.#disposed) {
+					await this.#teardown(this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server"));
+					this.#setStatus({ state: "disabled" });
+					return;
+				}
 				await this.#doReconcile();
 			} while (this.#reconcilePending);
 		} finally {
@@ -160,12 +175,21 @@ export class AnacondaMcpService {
 	}
 
 	/**
+<<<<<<< HEAD
 	 * Clean up all external state (env contribution + MCP config).
 	 * Called on disable, logout, or feature teardown.
+=======
+	 * Clean up on plugin dispose. Serializes through the reconcile loop so a
+	 * concurrent reconcile can't re-populate `#envDisposer` or `#mcpConfigured`
+	 * after teardown has cleared them.
+>>>>>>> bb3443b (fix(anaconda-mcp,kilo-server): address kilo-code-bot CRITICAL + all 8 WARNINGs)
 	 */
 	async dispose(): Promise<void> {
-		const kilo = this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server");
-		await this.#teardown(kilo);
+		this.#disposed = true;
+		// Route through reconcile() so the disposed branch runs under the
+		// same lock that guards #doReconcile(). If a reconcile is already
+		// in flight, we queue as the pending run and it picks up the flag.
+		await this.reconcile();
 	}
 
 	// ─── Private ────────────────────────────────────────────────────────────────
@@ -229,9 +253,14 @@ export class AnacondaMcpService {
 
 	#setStatus(next: AnacondaMcpStatus): void {
 		const prev = this.#status;
+		// Full structural equality: catches state changes, url changes on
+		// `connected`, reason changes on `error`, and any future variant
+		// field. The prior hand-rolled state+url comparison missed
+		// `error` → `error` transitions with a different `reason`, so a
+		// UI subscribed to status events never learned the failure mode
+		// changed. `isEqual` handles nested payloads uniformly.
+		if (isEqual(prev, next)) return;
 		this.#status = next;
-		if (prev.state !== next.state || ("url" in prev && "url" in next && prev.url !== next.url)) {
-			this.#deps.sdk.events.emit("status-changed", next);
-		}
+		this.#deps.sdk.events.emit("status-changed", next);
 	}
 }

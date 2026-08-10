@@ -78,7 +78,15 @@ export function mainRegister(mainSdk: MainSdk): void {
 		});
 
 		mainSdk.onDispose(() => {
-			void service.dispose();
+			// `onDispose` is a synchronous callback in the SDK; we can only
+			// kick off the async teardown. Capture any rejection here so it
+			// hits the logger instead of Node's unhandled-rejection warning
+			// — the sdk logger's scope tags anaconda-mcp automatically.
+			service.dispose().catch((error: unknown) => {
+				mainSdk.logger.warn(
+					`dispose failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
 		});
 	})().catch((error) => {
 		mainSdk.logger.error(

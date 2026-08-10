@@ -159,4 +159,31 @@ describe("ContributedEnvManager", () => {
 			expect(manager.size).toBe(1);
 		});
 	});
+
+	// Regression: PR #116 review — WARNING ContributedEnvManager.ts:54.
+	// The doc-and-log said "last-write-wins" but Map iteration is INSERTION
+	// order; a source re-contributing after another source's first
+	// contribution would still lose because its slot was allocated earlier.
+	// Fix: delete-then-set on every contribute() so the entry moves to the
+	// tail of iteration order.
+	describe("last-write-wins (recency)", () => {
+		it("gives the last CONTRIBUTOR the winning value when the same key overlaps", () => {
+			const { manager } = createHarness();
+			manager.contribute("first", { SHARED: "from-first" });
+			manager.contribute("second", { SHARED: "from-second" });
+			expect(manager.getMergedEnv().SHARED).toBe("from-second");
+		});
+
+		it("gives an older source the winning value if it re-contributes AFTER a competing source", () => {
+			// Before the fix, re-contributing from "first" moved the value in
+			// the Map slot but not the iteration position, so "second" (a
+			// later Map insertion) still won at merge time — the opposite of
+			// last-write-wins.
+			const { manager } = createHarness();
+			manager.contribute("first", { SHARED: "v1" });
+			manager.contribute("second", { SHARED: "from-second" });
+			manager.contribute("first", { SHARED: "v2-from-first" });
+			expect(manager.getMergedEnv().SHARED).toBe("v2-from-first");
+		});
+	});
 });

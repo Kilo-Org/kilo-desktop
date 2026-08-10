@@ -275,4 +275,150 @@ describe("AnacondaMcpService", () => {
 		// Previous env was disposed
 		expect(envDisposer).toHaveBeenCalledTimes(1);
 	});
+<<<<<<< HEAD
+=======
+
+	it("re-saves the MCP entry when the URL override changes", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
+		(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
+
+		const saveMcp = vi.fn(
+			async (_input: {
+				id: string;
+				transport: unknown;
+				enabled: boolean;
+				managedBy?: string;
+			}) => {},
+		);
+		const removeMcp = vi.fn(async (_input: { id: string }) => {});
+		const kiloSdk = createMainSdk("kilo-server");
+		kiloSdk.plugins.expose("kiloService", {
+			serverEnv: {
+				contribute: () => () => {},
+			},
+			restartServer: async () => {},
+			saveMcp,
+			removeMcp,
+		});
+
+		const authSdk = createMainSdk("auth");
+		authSdk.plugins.expose("auth", { getApiKey: async () => "key" });
+
+		let urlOverride: string | null = null;
+		const svc = new AnacondaMcpService({
+			sdk: mainSdk,
+			getSettings: () => ({ enabled: true, urlOverride }),
+			setSettings: () => {},
+		});
+
+		await svc.reconcile();
+		expect(saveMcp).toHaveBeenCalledTimes(1);
+		expect(saveMcp.mock.calls[0]![0]).toMatchObject({
+			transport: expect.objectContaining({ url: DEFAULT_MCP_URL }),
+		});
+
+		urlOverride = "https://staging.mcp.dev/mcp";
+		await svc.reconcile();
+		expect(saveMcp).toHaveBeenCalledTimes(2);
+		expect(saveMcp.mock.calls[1]![0]).toMatchObject({
+			transport: expect.objectContaining({ url: "https://staging.mcp.dev/mcp" }),
+		});
+	});
+
+	it("enters error state when saveMcp throws", async () => {
+		const { service, saveMcp } = createTestHarness({
+			apiKey: "key",
+			saveMcpImpl: async () => {
+				throw new Error("filesystem full");
+			},
+		});
+
+		await service.reconcile();
+
+		expect(service.status).toEqual({ state: "error", reason: "filesystem full" });
+		expect(saveMcp).toHaveBeenCalled();
+	});
+
+	// Regression: PR #116 review — WARNING AnacondaMcpService.ts:233. The
+	// hand-rolled `state/url` comparison in `#setStatus` did not fire an
+	// event when the state stayed `error` but `reason` changed. A UI
+	// subscribed to `status-changed` would keep showing the first failure
+	// mode even after a different one replaced it.
+	it("emits status-changed on error->error transitions with a different reason", async () => {
+		let attempts = 0;
+		const { service, mainSdk } = createTestHarness({
+			apiKey: "key",
+			saveMcpImpl: async () => {
+				attempts += 1;
+				throw new Error(attempts === 1 ? "filesystem full" : "network timeout");
+			},
+		});
+		const seen: unknown[] = [];
+		mainSdk.events.on("anaconda-mcp.status-changed", (payload: unknown) => seen.push(payload));
+
+		await service.reconcile();
+		expect(service.status).toEqual({ state: "error", reason: "filesystem full" });
+
+		await service.reconcile();
+		expect(service.status).toEqual({ state: "error", reason: "network timeout" });
+
+		// Both error transitions must have been observable.
+		const errorEmits = seen.filter((payload) => (payload as { state?: string }).state === "error");
+		expect(errorEmits).toEqual([
+			{ state: "error", reason: "filesystem full" },
+			{ state: "error", reason: "network timeout" },
+		]);
+	});
+
+	// Regression: PR #116 review — WARNING AnacondaMcpService.ts:163. Before
+	// the fix, `dispose()` called `#teardown()` directly outside the reconcile
+	// lock, so a concurrent reconcile could re-populate the state machine
+	// AFTER dispose thought it had torn down.
+	it("dispose() serializes with an in-flight reconcile (no torn state)", async () => {
+		let saveMcpResolve!: () => void;
+		const saveMcpGate = new Promise<void>((resolve) => {
+			saveMcpResolve = resolve;
+		});
+		const { service, envDisposer, envContribute, removeMcp } = createTestHarness({
+			apiKey: "key",
+			saveMcpImpl: async () => {
+				await saveMcpGate;
+			},
+		});
+
+		// Kick off a reconcile that will pause inside `saveMcp`.
+		const inflight = service.reconcile();
+		// While reconcile is inside saveMcp, request disposal. If dispose
+		// bypassed the lock, it would run #teardown() (no-op — nothing set
+		// yet) and return; then reconcile would resume, contribute env and
+		// mark configured, and we'd leak the env contribution + config entry.
+		const disposing = service.dispose();
+
+		// Release saveMcp so the paused reconcile can proceed.
+		saveMcpResolve();
+		await inflight;
+		await disposing;
+
+		// After dispose, teardown MUST have removed the config entry AND
+		// disposed the env contribution — no ghost state left behind.
+		expect(removeMcp).toHaveBeenCalledWith({ id: MCP_ID });
+		expect(envContribute).toHaveBeenCalledTimes(1);
+		expect(envDisposer).toHaveBeenCalledTimes(1);
+		expect(service.status).toEqual({ state: "disabled" });
+	});
+
+	it("dispose() from idle also tears down and emits disabled", async () => {
+		const { service, mainSdk, envDisposer } = createTestHarness({ apiKey: "key" });
+		const seen: unknown[] = [];
+		mainSdk.events.on("anaconda-mcp.status-changed", (payload: unknown) => seen.push(payload));
+
+		await service.reconcile();
+		expect(service.status.state).toBe("connected");
+
+		await service.dispose();
+		expect(service.status).toEqual({ state: "disabled" });
+		expect(envDisposer).toHaveBeenCalledTimes(1);
+		expect((seen[seen.length - 1] as { state?: string }).state).toBe("disabled");
+	});
+>>>>>>> bb3443b (fix(anaconda-mcp,kilo-server): address kilo-code-bot CRITICAL + all 8 WARNINGs)
 });

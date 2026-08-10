@@ -23,6 +23,14 @@ export interface KiloServerController {
 	readonly status: KiloServerStatus;
 	readonly isRunning: boolean;
 	/**
+	 * True while a spawn is in flight but the child is not yet health-checked.
+	 * Distinct from `isRunning`; the env-change debouncer awaits an in-flight
+	 * spawn before evaluating drift to avoid missing a contribution that
+	 * arrives after `#createEnvironment` snapshotted but before the child is
+	 * ready.
+	 */
+	readonly isStarting: boolean;
+	/**
 	 * True when the currently-merged contributed env differs from the snapshot
 	 * captured at the last spawn. Consumers should skip a restart when this
 	 * is false — the running child already reflects the current contributions.
@@ -150,19 +158,24 @@ export function registerKiloServer(
 	function handleEnvChange(): void {
 		// Debounce to coalesce rapid contributions into a single restart.
 		clearTimeout(restartTimer);
-		restartTimer = setTimeout(() => {
+		restartTimer = setTimeout(async () => {
 			if (disposed) return;
-			// If the server hasn't spawned yet, there's nothing to restart —
-			// the next `ensureRunning()` (typically from the renderer's first
-			// `server.getConnection`) will spawn with the current contributions
-			// already applied. This is the common path on cold boot: features
-			// contribute env before the renderer requests the server, so we
-			// never need to restart.
-			if (!server.isRunning) return;
-			// Server is running. Only restart if the env used at spawn actually
-			// differs from what's now contributed — prevents a redundant restart
-			// (and the ensuing renderer disconnect) when a contribution happened
-			// to be captured by the same spawn that's already running.
+			// If neither running nor starting, nothing to do — the first
+			// `ensureRunning()` will snapshot the (now-current) contributions
+			// during its own spawn. Cold-boot path.
+			if (!server.isRunning && !server.isStarting) return;
+			// If a spawn is in flight, WAIT for it to finish before deciding.
+			// Otherwise a contribution arriving mid-spawn (after
+			// `#createEnvironment` snapshotted but before `#connection` was
+			// set) would be missed here: `isRunning` was false, we early-
+			// returned, and no future event would recheck. Bug flagged in
+			// PR #116 review as WARNING kilo-server/index.ts:138.
+			if (server.isStarting) {
+				await server.ensureRunning().catch(() => undefined);
+				if (disposed) return;
+			}
+			// Server is (now) running. Skip if the env used at spawn already
+			// reflects the current contributions.
 			if (!server.contributedEnvChangedSinceSpawn()) return;
 			server.restart().catch((error) => {
 				mainSdk.logger.warn(

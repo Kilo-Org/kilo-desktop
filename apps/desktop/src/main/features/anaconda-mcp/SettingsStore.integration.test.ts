@@ -84,4 +84,41 @@ describe("SettingsStore", () => {
 		const parsed = JSON.parse(raw);
 		expect(parsed).toEqual({ enabled: false, urlOverride: "https://c.example.com" });
 	});
+
+	// Regression: PR #116 review — WARNING SettingsStore.ts:100. The old
+	// `set()` swallowed persistence failures and always resolved, so a
+	// contract handler / UI would report success even when nothing hit disk.
+	// Now `set()` rejects on failure so the caller can surface the error.
+	it("rejects set() when the on-disk write fails", async () => {
+		// Point the store at a path that becomes unwritable (parent is a file).
+		const parent = path.join(tempDir, "settings-parent");
+		await writeFile(parent, "not a directory", "utf-8");
+		const doomedDir = path.join(parent, "settings-child");
+		// The store persists to `<storageDir>/settings.json`, so pointing
+		// storageDir into `parent/settings-child/` fails at mkdir/writeFile
+		// because `parent` is a regular file.
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const store = await SettingsStore.load(doomedDir, { ...DEFAULTS }, logger);
+		await expect(store.set({ enabled: false })).rejects.toThrow();
+		// The warning path still fires so operators see the failure.
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("failed to persist"));
+	});
+
+	it("a later successful set() runs even after a prior set() rejected", async () => {
+		// The chain must not be poisoned by a failed write.
+		const parent = path.join(tempDir, "poisoned-parent");
+		await writeFile(parent, "not a directory", "utf-8");
+		const doomedDir = path.join(parent, "child");
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const store = await SettingsStore.load(doomedDir, { ...DEFAULTS }, logger);
+		await expect(store.set({ enabled: false })).rejects.toThrow();
+
+		// Fix the filesystem (remove the file, create the dir), then retry.
+		await rm(parent);
+		await mkdir(doomedDir, { recursive: true });
+		await expect(store.set({ enabled: false })).resolves.toEqual({
+			enabled: false,
+			urlOverride: null,
+		});
+	});
 });

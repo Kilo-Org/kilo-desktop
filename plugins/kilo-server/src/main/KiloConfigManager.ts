@@ -70,6 +70,13 @@ export class KiloConfigManager {
 		const mcpSection = config.mcp ?? {};
 		const entries: McpServerInfo[] = [];
 		for (const [id, entry] of Object.entries(mcpSection)) {
+			// `null`, non-objects, arrays, and reserved-name keys are silently
+			// dropped: `mcp` is a Record<string, KiloMcpConfigEntry> in Kilo's
+			// schema, but users hand-edit `kilo.jsonc` and hand-written JSON
+			// can produce `"foo": null` or `"foo": "string"`, which would
+			// otherwise throw a TypeError when we probe `entry.type` below.
+			if (!isPlainObjectEntry(entry)) continue;
+			if (KiloConfigManager.#RESERVED_PROPERTY_NAMES.has(id)) continue;
 			const transport = this.#entryToTransport(entry);
 			if (transport) {
 				entries.push({
@@ -81,6 +88,25 @@ export class KiloConfigManager {
 			}
 		}
 		return entries;
+	}
+
+	/** Reserved property names that MUST NOT reach a plain-object mcp bag. */
+	static readonly #RESERVED_PROPERTY_NAMES: ReadonlySet<string> = new Set([
+		"__proto__",
+		"constructor",
+		"prototype",
+	]);
+
+	/**
+	 * Refuse to write an entry under a reserved property name. The contract
+	 * schema already rejects these ids at the RPC boundary, but this class is
+	 * also called from other main-side plugins via the `kiloService.saveMcp`
+	 * capability — defense in depth against a caller that skipped validation.
+	 */
+	#assertSafeId(id: string): void {
+		if (KiloConfigManager.#RESERVED_PROPERTY_NAMES.has(id)) {
+			throw new Error(`MCP id "${id}" is a reserved JavaScript property name; refusing to write.`);
+		}
 	}
 
 	/**
@@ -96,6 +122,7 @@ export class KiloConfigManager {
 		enabled: boolean,
 		managedBy?: string,
 	): Promise<void> {
+		this.#assertSafeId(id);
 		const { config, targetPath } = await this.#readConfigWithPath();
 		if (!config.mcp) config.mcp = {};
 		config.mcp[id] = this.#transportToEntry(transport, enabled, managedBy);
@@ -104,6 +131,7 @@ export class KiloConfigManager {
 
 	/** Remove an MCP entry by id. No-op if the entry does not exist. */
 	async remove(id: string): Promise<void> {
+		this.#assertSafeId(id);
 		const { config, targetPath } = await this.#readConfigWithPath();
 		if (!config.mcp?.[id]) return;
 		delete config.mcp[id];
@@ -112,6 +140,7 @@ export class KiloConfigManager {
 
 	/** Set the enabled state of an existing MCP entry. No-op if not found. */
 	async setEnabled(id: string, enabled: boolean): Promise<void> {
+		this.#assertSafeId(id);
 		const { config, targetPath } = await this.#readConfigWithPath();
 		const entry = config.mcp?.[id];
 		if (!entry) return;
@@ -292,6 +321,16 @@ export class KiloConfigManager {
 		}
 		return null;
 	}
+}
+
+/**
+ * True for objects that could plausibly be an MCP entry: plain non-array
+ * objects, ignoring `null` and primitives. Guards `#entryToTransport` from
+ * unhandled TypeErrors when a hand-edited `kilo.jsonc` contains e.g.
+ * `"mcp": { "foo": null }` or `"mcp": { "foo": "bar" }`.
+ */
+function isPlainObjectEntry(value: unknown): value is KiloMcpConfigEntry {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

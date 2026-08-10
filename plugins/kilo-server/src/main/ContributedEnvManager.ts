@@ -23,9 +23,18 @@ export class ContributedEnvManager {
 	 * Register environment variables from a named source.
 	 * Overwrites any previous contribution from the same source.
 	 * Returns a disposer that removes the contribution and triggers onChange.
+	 *
+	 * The Map is re-inserted (delete-then-set) on every call so iteration
+	 * order in `getMergedEnv` reflects *recency* rather than first-ever
+	 * insertion. This is the invariant callers rely on for the documented
+	 * last-write-wins semantics: a source that re-contributes now must
+	 * override a stale key from a source that contributed earlier, even
+	 * though the earlier source's Map slot was allocated first.
 	 */
 	contribute(sourceId: string, env: Record<string, string>): () => void {
 		const previous = this.#contributions.get(sourceId);
+		// Re-insert to move to the tail of the iteration order (recency).
+		this.#contributions.delete(sourceId);
 		this.#contributions.set(sourceId, env);
 
 		if (!this.#envEqual(previous, env)) {

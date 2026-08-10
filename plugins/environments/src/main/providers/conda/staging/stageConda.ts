@@ -301,29 +301,36 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 		`[conda-staging] Starting — target: ${artifact.target}, storageDir: ${ctx.storageDir}`,
 	);
 
-	// 1. Check existing manifest
-	const manifest = await readManifest(ctx.storageDir);
-	if (manifest) {
-		ctx.logger.info(
-			`[conda-staging] Found staged.json (type: ${manifest.type ?? "bundled (legacy)"})`,
-		);
-		if (manifest.type === "system") {
-			const result = await checkSystemManifest(manifest, ctx.logger);
-			if (result) return result;
-		} else {
-			const result = await checkBundledManifest(manifest, ctx.storageDir, artifact, ctx.logger);
-			if (result) return result;
-		}
-		ctx.logger.info("[conda-staging] Existing manifest invalid — re-staging.");
-	} else {
-		ctx.logger.info("[conda-staging] No staged.json found — first run.");
-	}
-
-	// 2. Try system conda detection (skip if forced bundled via env var)
+	// Environment variable override: skip both idempotency and system detection,
+	// forcing a fresh bundled Miniconda install.
 	const forceBundled = process.env.ANACONDA_FORCE_BUNDLED_CONDA === "1";
 	if (forceBundled) {
-		ctx.logger.info("[conda-staging] ANACONDA_FORCE_BUNDLED_CONDA=1 — skipping system detection.");
+		ctx.logger.info(
+			"[conda-staging] ANACONDA_FORCE_BUNDLED_CONDA=1 — forcing bundled install (skipping idempotency + system detection).",
+		);
 	}
+
+	// 1. Check existing manifest (skip when forced)
+	if (!forceBundled) {
+		const manifest = await readManifest(ctx.storageDir);
+		if (manifest) {
+			ctx.logger.info(
+				`[conda-staging] Found staged.json (type: ${manifest.type ?? "bundled (legacy)"})`,
+			);
+			if (manifest.type === "system") {
+				const result = await checkSystemManifest(manifest, ctx.logger);
+				if (result) return result;
+			} else {
+				const result = await checkBundledManifest(manifest, ctx.storageDir, artifact, ctx.logger);
+				if (result) return result;
+			}
+			ctx.logger.info("[conda-staging] Existing manifest invalid — re-staging.");
+		} else {
+			ctx.logger.info("[conda-staging] No staged.json found — first run.");
+		}
+	}
+
+	// 2. Try system conda detection (skip when forced)
 	if (!forceBundled) {
 		ctx.reportProgress("Checking for existing conda installation\u2026");
 		const systemConda = await detectSystemConda({ logger: ctx.logger, platform });

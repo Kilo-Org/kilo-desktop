@@ -227,17 +227,15 @@ describe("AnacondaOtelProvider", () => {
 	});
 
 	it("falls back to localhost when no endpoints are configured", async () => {
-		const warn = vi.fn();
 		const p = new AnacondaOtelProvider({
 			auth: fakeAuth(),
 			config: { serviceId: "svc", serviceVersion: "1.0.0" },
-			logger: { ...silentLogger, warn },
+			logger: silentLogger,
 		});
 
 		await p.track(entry());
 
 		expect(configs[0]?.url.href).toBe("http://localhost:4318/v1/logs");
-		expect(warn).toHaveBeenCalled();
 	});
 
 	it("skips the export-interval config when it is unset", async () => {

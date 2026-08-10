@@ -64,11 +64,6 @@
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
 
-	/* Composer frosted glass (fixed; not user-tunable) */
-	--glass-blur: 12px;
-	--glass-opacity: 80%;
-	--glass-saturation: 1.14;
-
 	/* Outer shell tint over Electron vibrancy (no CSS blur — OS materials do that).
 	   Opacity values must stay in sync with shellGlassOpacity in theme-tokens.ts
 	   (critical first-paint CSS). */
@@ -122,10 +117,6 @@
 	/* Scrollbar — same mix recipe; --border already switches for dark */
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 70%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
-
-	/* Composer frosted glass — slightly heavier blur, less saturation in dark */
-	--glass-blur: 16px;
-	--glass-saturation: 1.08;
 
 	/* Outer shell — mid tint: vibrancy readable without washing out chrome.
 	   Keep in sync with shellGlassOpacity.dark in theme-tokens.ts. */

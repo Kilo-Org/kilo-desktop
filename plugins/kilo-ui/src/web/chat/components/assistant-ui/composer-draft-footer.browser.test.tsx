@@ -19,6 +19,7 @@ import {
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
+import { OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";
 import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelectionContext.js";
 import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
@@ -66,16 +67,9 @@ const agentSelection = {
 	agent: "code",
 	setAgent: () => undefined,
 	catalog: {
-		agents: [
-			{
-				name: "code",
-				displayName: "Code",
-			},
-			{
-				name: "plan",
-				displayName: "Plan",
-			},
-		],
+		agents: OPTIMISTIC_AGENT_CATALOG.agents.filter(
+			(entry) => entry.name === "code" || entry.name === "plan",
+		),
 	},
 	isCatalogPending: false,
 	isCatalogError: false,

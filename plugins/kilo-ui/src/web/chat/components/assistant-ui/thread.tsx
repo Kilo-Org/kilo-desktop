@@ -114,9 +114,31 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	);
 };
 
-const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
+const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const { Welcome = DraftWelcomeHeadline } = useContext(ThreadComponentsContext);
 
+	return (
+		<div className="relative flex w-full flex-col">
+			{isDraft ? <Welcome /> : null}
+			<div className="relative">
+				{isDraft ? (
+					<div
+						aria-hidden="true"
+						className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+					/>
+				) : null}
+				<div className="relative z-10 flex flex-col">
+					<div className="relative z-10">
+						<ThreadComposerSlot />
+					</div>
+					{isDraft ? <ComposerDraftFooter /> : null}
+				</div>
+			</div>
+		</div>
+	);
+};
+
+const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
 			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))]"
@@ -144,35 +166,24 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
-							/* Transparent so sticky docked composer glass can blur scrolled messages. */
-							"aui-thread-viewport-footer flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+							/* Transparent so sticky glass can blur scrolled messages behind the shell. */
+							"aui-thread-viewport-footer relative flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
 							!isDraft && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
 						)}
 					>
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
-						<div className="relative flex w-full flex-col">
-							<AuiIf condition={isDraftView}>
-								<Welcome />
-							</AuiIf>
-							<div className="relative">
-								{isDraft ? (
-									<div
-										aria-hidden="true"
-										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
-									/>
-								) : null}
-								<div className="relative z-10 flex flex-col">
-									<div className="relative z-10">
-										<ThreadComposerSlot />
-									</div>
-									{isDraft ? <ComposerDraftFooter /> : null}
-								</div>
-							</div>
+						<div className="relative">
+							<ThreadComposerBlock isDraft={isDraft} />
+							{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
+							{!isDraft ? (
+								<div
+									aria-hidden
+									className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
+								/>
+							) : null}
 						</div>
-						<AuiIf condition={isDraftView}>
-							<ThreadSuggestions />
-						</AuiIf>
+						{isDraft ? <ThreadSuggestions /> : null}
 					</ThreadPrimitive.ViewportFooter>
 				</div>
 			</ThreadPrimitive.Viewport>

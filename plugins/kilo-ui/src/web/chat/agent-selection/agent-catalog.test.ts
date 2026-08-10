@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Agent } from "@kilocode/sdk/v2/client";
+import { BugIcon, HammerIcon, ListTodoIcon, MessageCircleQuestionIcon } from "lucide-react";
 
 import { buildAgentCatalog, findCatalogAgent, OPTIMISTIC_AGENT_CATALOG } from "./agent-catalog.js";
 
@@ -24,10 +25,10 @@ describe("agent-catalog", () => {
 		]);
 
 		expect(catalog.agents).toEqual([
-			{ name: "code", displayName: "Code" },
-			{ name: "plan", displayName: "Plan", color: "#f97316" },
-			{ name: "ask", displayName: "Ask", color: "#22c55e" },
-			{ name: "debug", displayName: "Debug", color: "#ef4444" },
+			{ name: "code", displayName: "Code", icon: HammerIcon },
+			{ name: "plan", displayName: "Plan", color: "#f97316", icon: ListTodoIcon },
+			{ name: "ask", displayName: "Ask", color: "#22c55e", icon: MessageCircleQuestionIcon },
+			{ name: "debug", displayName: "Debug", color: "#ef4444", icon: BugIcon },
 		]);
 	});
 

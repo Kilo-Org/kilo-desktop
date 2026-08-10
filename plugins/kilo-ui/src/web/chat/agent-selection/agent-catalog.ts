@@ -1,9 +1,17 @@
 import type { Agent } from "@kilocode/sdk/v2/client";
+import {
+	BugIcon,
+	HammerIcon,
+	ListTodoIcon,
+	MessageCircleQuestionIcon,
+	type LucideIcon,
+} from "lucide-react";
 
 /** Agent fields the switcher renders from `client.app.agents()`. */
 export type KiloCatalogAgent = {
 	name: string;
 	displayName: string;
+	icon: LucideIcon;
 	color?: string;
 };
 
@@ -15,10 +23,10 @@ export type KiloAgentCatalog = {
 export const DEFAULT_AGENT = "code";
 
 const SWITCHER_AGENTS = [
-	{ name: "code", displayName: "Code" },
-	{ name: "plan", displayName: "Plan", color: "#f97316" },
-	{ name: "ask", displayName: "Ask", color: "#22c55e" },
-	{ name: "debug", displayName: "Debug", color: "#ef4444" },
+	{ name: "code", displayName: "Code", icon: HammerIcon },
+	{ name: "plan", displayName: "Plan", color: "#f97316", icon: ListTodoIcon },
+	{ name: "ask", displayName: "Ask", color: "#22c55e", icon: MessageCircleQuestionIcon },
+	{ name: "debug", displayName: "Debug", color: "#ef4444", icon: BugIcon },
 ] as const satisfies readonly KiloCatalogAgent[];
 
 /**
@@ -52,11 +60,7 @@ export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
 	);
 
 	return {
-		agents: SWITCHER_AGENTS.filter((agent) => available.has(agent.name)).map((agent) => ({
-			name: agent.name,
-			displayName: agent.displayName,
-			...("color" in agent && agent.color !== undefined ? { color: agent.color } : {}),
-		})),
+		agents: SWITCHER_AGENTS.filter((agent) => available.has(agent.name)),
 	};
 }
 

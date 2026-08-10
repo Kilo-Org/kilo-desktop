@@ -48,26 +48,6 @@
 	background: var(--app-scrollbar-thumb-hover);
 }
 
-/* Frosted glass surfaces (composer). Recipe matches t3code: translucent
-   surface tint + blur + slight saturate. Surface tint keeps the previous
-   muted composer fill so light/dark contrast is unchanged. */
-.chat-composer-glass {
-	--composer-glass-surface: var(--muted);
-	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-}
-
-[data-theme="dark"] .chat-composer-glass {
-	--composer-glass-surface: color-mix(in oklab, var(--muted) 30%, var(--background));
-}
-
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-	.chat-composer-glass {
-		background: var(--composer-glass-surface);
-	}
-}
-
 /* App chrome over native window materials. Tint lives on `html` (also in
    criticalThemeStyle) so reload first-paint matches the loaded shell.
    `.app-shell-glass` stays a semantic marker; no second fill. */

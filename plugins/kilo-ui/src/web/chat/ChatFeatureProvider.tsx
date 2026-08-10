@@ -23,6 +23,8 @@ import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 
+import "./composer-glass.css";
+
 /**
  * App-lifetime chat runtime: connection, model selection, and a single
  * `AssistantRuntimeProvider` shared by the shell sidebar SessionList and ChatPage.

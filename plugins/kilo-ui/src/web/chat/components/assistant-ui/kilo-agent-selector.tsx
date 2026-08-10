@@ -59,7 +59,7 @@ export const KiloAgentSelector: FC = () => {
 					<span
 						className={cn("flex min-w-0 items-center gap-2", !accent && "dark:text-foreground/90")}
 					>
-						<AgentIcon name={selected.name} size={14} />
+						<AgentIcon icon={selected.icon} size={14} />
 						<span className="font-medium whitespace-nowrap">{selected.displayName}</span>
 					</span>
 				) : (
@@ -81,7 +81,7 @@ export const KiloAgentSelector: FC = () => {
 							data-qa-id={`kilo-agent-selector-item-${entry.name}`}
 							className="gap-2"
 						>
-							<AgentIcon name={entry.name} color={entry.color} size={14} />
+							<AgentIcon icon={entry.icon} color={entry.color} size={14} />
 							<span className="truncate font-medium">{entry.displayName}</span>
 						</DropdownMenuRadioItem>
 					))}

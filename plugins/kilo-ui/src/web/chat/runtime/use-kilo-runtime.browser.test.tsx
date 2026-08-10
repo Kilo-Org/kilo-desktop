@@ -5,6 +5,7 @@ import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
+import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
@@ -63,5 +64,32 @@ describe("useKiloRuntime", () => {
 
 		expect(createKiloRuntimeBackend).not.toHaveBeenCalled();
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({ client: expect.anything() });
+	});
+
+	it("forwards sessionActivity into the backend", () => {
+		const connectionPromise = Promise.resolve(connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const sessionActivity = createSessionActivityStore({ storage: null });
+
+		renderHook(() =>
+			useKiloRuntime({
+				connectionPromise,
+				prepareSession,
+				sessionActivity,
+			}),
+		);
+
+		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
+			connectionPromise,
+			prepareSession,
+			getVariant: expect.any(Function),
+			sessionActivity,
+		});
+	});
+
+	it("throws when neither a client nor connectionPromise with prepareSession is provided", () => {
+		expect(() => renderHook(() => useKiloRuntime({}))).toThrow(
+			"useKiloRuntime requires a client, or connectionPromise with prepareSession",
+		);
 	});
 });

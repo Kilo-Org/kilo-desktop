@@ -376,7 +376,9 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	const installerPath = await ensureInstallerCached(ctx, artifact, condaRoot);
 
 	const stagingPrefix = path.join(condaRoot, `.staging-${Date.now()}`);
-	await mkdir(stagingPrefix, { recursive: true });
+	// Do NOT mkdir the staging prefix — the Miniconda installer requires
+	// the target directory to not exist (it creates it via -p / /D=).
+	// Only ensure the parent (condaRoot) exists.
 
 	try {
 		await runInstaller(ctx, installerPath, stagingPrefix, artifact);

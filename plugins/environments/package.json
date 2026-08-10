@@ -19,6 +19,7 @@
 		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
 		"@anaconda-agentic-desktop/ui": "workspace:*",
 		"@tanstack/react-query": "^5.101.4",
+		"execa": "^9.6.0",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"zod": "catalog:"

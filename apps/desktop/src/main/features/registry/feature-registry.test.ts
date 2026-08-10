@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("feature registration", () => {
-	it("wires feature options, skips duplicate boots, and disposes successful registrations", () => {
+	it("wires feature options, skips duplicate boots, and disposes successful registrations", async () => {
 		const storageRoot = mkdtempSync(path.join(tmpdir(), "feature-registry-"));
 		directories.push(storageRoot);
 		const relay = vi.fn();
@@ -50,8 +50,8 @@ describe("feature registration", () => {
 		};
 
 		const options = { emitEvent: relay, storageRoot, createLogger, fetch };
-		const dispose = bootFeatures([registration], options);
-		const duplicateDispose = bootFeatures([registration], options);
+		const dispose = await bootFeatures([registration], options);
+		const duplicateDispose = await bootFeatures([registration], options);
 
 		expect(relay).toHaveBeenCalledWith({
 			featureId,
@@ -69,13 +69,13 @@ describe("feature registration", () => {
 		expect(disposed).toHaveBeenCalledOnce();
 	});
 
-	it("rolls back failed registrations and allows a later retry", () => {
+	it("rolls back failed registrations and allows a later retry", async () => {
 		const featureId = "registry-rollback-test";
 		const disposed = vi.fn();
 		const error = new Error("registration failed");
 		const logging = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-		const failedDispose = bootFeatures([
+		const failedDispose = await bootFeatures([
 			{
 				id: featureId,
 				mainRegister(mainSdk) {
@@ -93,17 +93,17 @@ describe("feature registration", () => {
 		failedDispose();
 
 		const registered = vi.fn();
-		const retryDispose = bootFeatures([{ id: featureId, mainRegister: registered }]);
+		const retryDispose = await bootFeatures([{ id: featureId, mainRegister: registered }]);
 		expect(registered).toHaveBeenCalledOnce();
 		retryDispose();
 	});
 
-	it("invokes onBeforeFeatureBoot callback for each feature before mainRegister", () => {
+	it("invokes onBeforeFeatureBoot callback for each feature before mainRegister", async () => {
 		const featureId = "registry-progress-test";
 		const progress = vi.fn();
 		const registerOrder: string[] = [];
 
-		const dispose = bootFeatures(
+		const dispose = await bootFeatures(
 			[
 				{
 					id: featureId,
@@ -125,12 +125,12 @@ describe("feature registration", () => {
 		dispose();
 	});
 
-	it("routes mainSdk.boot.reportProgress to onFeatureProgress during boot and no-ops after", () => {
+	it("routes mainSdk.boot.reportProgress to onFeatureProgress during boot and no-ops after", async () => {
 		const featureId = "registry-boot-progress-test";
 		const onFeatureProgress = vi.fn();
 		let capturedSdk: MainSdk | undefined;
 
-		const dispose = bootFeatures(
+		const dispose = await bootFeatures(
 			[
 				{
 					id: featureId,
@@ -152,6 +152,56 @@ describe("feature registration", () => {
 		expect(onFeatureProgress).toHaveBeenCalledTimes(2);
 
 		dispose();
+	});
+
+	it("awaits async mainRegister and delivers progress throughout", async () => {
+		const featureId = "registry-async-boot-test";
+		const onFeatureProgress = vi.fn();
+
+		const dispose = await bootFeatures(
+			[
+				{
+					id: featureId,
+					async mainRegister(mainSdk) {
+						mainSdk.boot.reportProgress("Starting async boot…");
+						await new Promise((resolve) => setTimeout(resolve, 10));
+						mainSdk.boot.reportProgress("Async boot done.");
+					},
+				},
+			],
+			{ onFeatureProgress },
+		);
+
+		expect(onFeatureProgress).toHaveBeenNthCalledWith(1, featureId, "Starting async boot…");
+		expect(onFeatureProgress).toHaveBeenNthCalledWith(2, featureId, "Async boot done.");
+		dispose();
+	});
+
+	it("rolls back async mainRegister that rejects", async () => {
+		const featureId = "registry-async-rollback-test";
+		const logging = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		const dispose = await bootFeatures([
+			{
+				id: featureId,
+				async mainRegister() {
+					await new Promise((resolve) => setTimeout(resolve, 5));
+					throw new Error("async boot failed");
+				},
+			},
+		]);
+
+		expect(logging).toHaveBeenCalledWith(
+			expect.stringContaining(`mainRegister failed for "${featureId}"`),
+			expect.any(Error),
+		);
+		dispose();
+
+		// Feature can be retried after async failure
+		const registered = vi.fn();
+		const retryDispose = await bootFeatures([{ id: featureId, mainRegister: registered }]);
+		expect(registered).toHaveBeenCalledOnce();
+		retryDispose();
 	});
 });
 
@@ -221,7 +271,7 @@ describe("feature invoke bridge", () => {
 			run: defineMethod(z.enum(["success", "expected", "unexpected"]), z.string()),
 		} as const;
 		const unexpected = new Error("unexpected");
-		const dispose = bootFeatures([
+		const dispose = await bootFeatures([
 			{
 				id: featureId,
 				mainRegister(mainSdk) {

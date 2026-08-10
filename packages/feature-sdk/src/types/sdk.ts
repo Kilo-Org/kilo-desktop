@@ -794,8 +794,13 @@ export interface FeatureRegistration {
 	/**
 	 * Main-process handler registration. Runs in Electron main.
 	 * May use Node APIs (SQLite, fs, ...).
+	 *
+	 * May return a Promise for features that need async boot work (e.g.
+	 * staging a runtime). `bootFeatures` awaits the returned Promise before
+	 * moving to the next feature, keeping boot progress delivery alive
+	 * throughout the async phase.
 	 */
-	mainRegister(mainSdk: MainSdk): void;
+	mainRegister(mainSdk: MainSdk): void | Promise<void>;
 	/**
 	 * Browser-mode registration. Standalone browser mode has no main process;
 	 * features WITHOUT this are skipped in browser mode (with a warning) —

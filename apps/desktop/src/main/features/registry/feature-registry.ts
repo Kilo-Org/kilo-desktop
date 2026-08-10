@@ -69,11 +69,15 @@ export interface BootFeaturesOptions {
  * that throws is rolled back (its partial handlers and disposables removed).
  * Returns a disposer that tears down all features booted by this call —
  * running their onDispose callbacks (DB close, etc.).
+ *
+ * Supports async mainRegister: if a feature returns a Promise, it is awaited
+ * before moving to the next feature. Boot progress delivery remains active
+ * throughout the async phase.
  */
-export function bootFeatures(
+export async function bootFeatures(
 	features: readonly FeatureRegistration[],
 	options?: BootFeaturesOptions,
-): () => void {
+): Promise<() => void> {
 	const storageRoot = options?.storageRoot;
 	const onFeatureProgress = options?.onFeatureProgress;
 	// One flag per bootFeatures call — flipping it after the loop turns every
@@ -117,7 +121,10 @@ export function bootFeatures(
 				: {}),
 		});
 		try {
-			feature.mainRegister(mainSdk);
+			const result = feature.mainRegister(mainSdk);
+			if (result && typeof result.then === "function") {
+				await result;
+			}
 			bootedFeatureIds.add(feature.id);
 			booted.push(feature.id);
 		} catch (error) {

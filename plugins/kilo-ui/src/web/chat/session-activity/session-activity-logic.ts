@@ -5,7 +5,7 @@ export type AnacondaSessionMetadata = {
 	workspaceId?: string;
 };
 
-export type SessionStatusType = "busy" | "retry" | "idle";
+type SessionStatusType = "busy" | "retry" | "idle";
 
 export type SessionActivity = {
 	directory?: string | undefined;
@@ -111,7 +111,7 @@ export function applySessionPatch(
 	return next === session ? null : next;
 }
 
-export function isWorkingStatus(status: SessionStatusType | undefined): boolean {
+function isWorkingStatus(status: SessionStatusType | undefined): boolean {
 	return status === "busy" || status === "retry";
 }
 
@@ -376,15 +376,9 @@ export function resolveSessionLocationLabel(
 	return "Session";
 }
 
-export type SidebarThreadEntry = {
+type SidebarThreadEntry = {
 	id: string;
 	remoteId?: string | undefined;
-};
-
-export type SidebarPartition = {
-	attention: { index: number; archived: boolean }[];
-	sessions: number[];
-	settled: number[];
 };
 
 /**
@@ -397,7 +391,11 @@ export function partitionSidebarThreads(args: {
 	regular: readonly SidebarThreadEntry[];
 	archived: readonly SidebarThreadEntry[];
 	activityBySessionId: Readonly<Record<string, SessionActivity>>;
-}): SidebarPartition {
+}): {
+	attention: { index: number; archived: boolean }[];
+	sessions: number[];
+	settled: number[];
+} {
 	const attention: { index: number; archived: boolean; updatedAt: number }[] = [];
 	const sessions: { index: number; createdAt: number }[] = [];
 	const settled: { index: number; updatedAt: number }[] = [];

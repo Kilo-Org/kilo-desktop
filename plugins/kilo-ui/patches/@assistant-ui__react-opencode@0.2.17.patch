@@ -110,21 +110,14 @@ index 6cb1ef5a91e3800801ee38ed6c79d944cb0eb755..b09087e020b93ffe5929b41bfeb46ab5
      threads: {
        status: "archived" | "regular";
 diff --git a/dist/openCodeThreadListAdapter.js b/dist/openCodeThreadListAdapter.js
-index 31bbfc1f7371c516365258552117aa6a7e394543..839593c079454b74afaa5d3a30c2e7516d410aca 100644
+index 31bbfc1f7371c516365258552117aa6a7e394543..22c15f56cff0367415d337c32f0d0e5412ef0898 100644
 --- a/dist/openCodeThreadListAdapter.js
 +++ b/dist/openCodeThreadListAdapter.js
-@@ -1,3 +1,4 @@
-+import { createAssistantStream } from "assistant-stream";
- import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions.js";
- import "@opencode-ai/sdk/v2/client";
- //#region src/openCodeThreadListAdapter.ts
-@@ -10,57 +11,74 @@ const mapThreadMetadata = (session) => ({
+@@ -10,57 +10,59 @@ const mapThreadMetadata = (session) => ({
  	externalId: session.id,
  	title: session.title
  });
 -const createOpenCodeThreadListAdapter = (client) => ({
-+/** OpenCode's default title before an AI-generated name is applied. */
-+const isPlaceholderTitle = (title) => !title || /^New session\b/i.test(title);
 +const createOpenCodeThreadListAdapter = (backend) => ({
  	list: async () => {
 -		const response = await client.experimental.session.list({
@@ -178,28 +171,17 @@ index 31bbfc1f7371c516365258552117aa6a7e394543..839593c079454b74afaa5d3a30c2e751
 +			externalId: session.id
  		};
  	},
- 	generateTitle: async (remoteId) => {
+-	generateTitle: async (remoteId) => {
 -		await client.session.summarize({ sessionID: remoteId }, OPEN_CODE_REQUEST_OPTIONS);
 -		return new ReadableStream({ start(controller) {
 -			controller.close();
 -		} });
-+		const client = backend.getSessionClient({ id: remoteId });
-+		const readTitle = async () => {
-+			const response = await client.session.get({ sessionID: remoteId }, OPEN_CODE_REQUEST_OPTIONS);
-+			return response.data?.title?.trim() ?? "";
-+		};
-+		// OpenCode auto-titles in parallel with the agent run (not via summarize).
-+		// Poll briefly so the remote thread list receives text parts — empty
-+		// streams never update the sidebar.
-+		let title = await readTitle();
-+		for (let attempt = 0; attempt < 40 && isPlaceholderTitle(title); attempt++) {
-+			await new Promise((resolve) => setTimeout(resolve, 250));
-+			title = await readTitle();
-+		}
-+		return createAssistantStream((controller) => {
-+			if (title) controller.appendText(title);
-+		});
- 	},
+-	},
++	// Titles are mirrored from session.title via useOpenCodeThreadRuntime —
++	// return an empty stream so RemoteThreadList's generateTitle path is a no-op.
++	generateTitle: async () => new ReadableStream({ start(controller) {
++		controller.close();
++	} }),
  	fetch: async (threadId) => {
 -		const response = await client.session.get({ sessionID: threadId }, OPEN_CODE_REQUEST_OPTIONS);
 +		const response = await backend.getSessionClient({ id: threadId }).session.get({ sessionID: threadId }, OPEN_CODE_REQUEST_OPTIONS);
@@ -627,28 +609,22 @@ index 4ac43be38eb0337ed7fe9408ebd8ad6a0c2cb380..a2c9d2c083e8eb4a4139b42e59d7b444
    OpenCodeStateEvent,
    OpenCodeThreadControllerLike,
 diff --git a/src/openCodeThreadListAdapter.ts b/src/openCodeThreadListAdapter.ts
-index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a963f9fd9db 100644
+index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..838c0cae2b1f8a3d3a6957a02539977ee47aa948 100644
 --- a/src/openCodeThreadListAdapter.ts
 +++ b/src/openCodeThreadListAdapter.ts
-@@ -1,8 +1,9 @@
+@@ -1,8 +1,8 @@
  import {
 -  createOpencodeClient,
    type GlobalSession,
  } from "@opencode-ai/sdk/v2/client";
-+import { createAssistantStream } from "assistant-stream";
  import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions";
 +import type { OpenCodeRuntimeBackend } from "./types";
  
  const isArchivedSession = (session: Pick<GlobalSession, "time">) => {
    return typeof session.time.archived === "number";
-@@ -21,11 +22,15 @@ const mapThreadMetadata = (session: {
-   title: session.title,
+@@ -22,10 +22,10 @@ const mapThreadMetadata = (session: {
  });
  
-+/** OpenCode's default title before an AI-generated name is applied. */
-+const isPlaceholderTitle = (title: string) =>
-+  !title || /^New session\b/i.test(title);
-+
  export const createOpenCodeThreadListAdapter = (
 -  client: ReturnType<typeof createOpencodeClient>,
 +  backend: OpenCodeRuntimeBackend,
@@ -659,7 +635,7 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
        {
          roots: true,
          archived: true,
-@@ -36,6 +41,7 @@ export const createOpenCodeThreadListAdapter = (
+@@ -36,6 +36,7 @@ export const createOpenCodeThreadListAdapter = (
  
      for (const session of response.data ?? []) {
        if (session.parentID) continue;
@@ -667,7 +643,7 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
        sessions.set(session.id, session);
      }
  
-@@ -44,7 +50,7 @@ export const createOpenCodeThreadListAdapter = (
+@@ -44,7 +45,7 @@ export const createOpenCodeThreadListAdapter = (
      };
    },
    rename: async (remoteId: string, newTitle: string) => {
@@ -676,7 +652,7 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
        {
          sessionID: remoteId,
          title: newTitle,
-@@ -53,7 +59,7 @@ export const createOpenCodeThreadListAdapter = (
+@@ -53,7 +54,7 @@ export const createOpenCodeThreadListAdapter = (
      );
    },
    archive: async (remoteId: string) => {
@@ -685,7 +661,7 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
        {
          sessionID: remoteId,
          time: { archived: Date.now() },
-@@ -62,7 +68,7 @@ export const createOpenCodeThreadListAdapter = (
+@@ -62,7 +63,7 @@ export const createOpenCodeThreadListAdapter = (
      );
    },
    unarchive: async (remoteId: string) => {
@@ -694,7 +670,7 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
        {
          sessionID: remoteId,
          // The SDK models archived timestamps as numbers, but OpenCode uses
-@@ -73,7 +79,7 @@ export const createOpenCodeThreadListAdapter = (
+@@ -73,7 +74,7 @@ export const createOpenCodeThreadListAdapter = (
      );
    },
    delete: async (remoteId: string) => {
@@ -703,7 +679,7 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
        {
          sessionID: remoteId,
        },
-@@ -81,32 +87,36 @@ export const createOpenCodeThreadListAdapter = (
+@@ -81,32 +82,26 @@ export const createOpenCodeThreadListAdapter = (
      );
    },
    initialize: async () => {
@@ -721,7 +697,7 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
 +      externalId: session.id,
      };
    },
-   generateTitle: async (remoteId: string) => {
+-  generateTitle: async (remoteId: string) => {
 -    await client.session.summarize(
 -      {
 -        sessionID: remoteId,
@@ -731,34 +707,23 @@ index b1ea661e1842d5a0059f8da90bf6e443fd6bdd58..d4a199a8b026713b49b49d3d350d6a96
 -    // Title updates arrive through the OpenCode event stream, so this
 -    // placeholder stream only satisfies the remote thread list contract.
 -    return new ReadableStream({
--      start(controller) {
--        controller.close();
--      },
++  // Titles are mirrored from session.title via useOpenCodeThreadRuntime —
++  // return an empty stream so RemoteThreadList's generateTitle path is a no-op.
++  generateTitle: async () =>
++    new ReadableStream({
+       start(controller) {
+         controller.close();
+       },
 -    }) as never;
-+    const client = backend.getSessionClient({ id: remoteId });
-+    const readTitle = async () => {
-+      const response = await client.session.get(
-+        { sessionID: remoteId },
-+        OPEN_CODE_REQUEST_OPTIONS,
-+      );
-+      return response.data?.title?.trim() ?? "";
-+    };
-+    let title = await readTitle();
-+    for (let attempt = 0; attempt < 40 && isPlaceholderTitle(title); attempt++) {
-+      await new Promise((resolve) => setTimeout(resolve, 250));
-+      title = await readTitle();
-+    }
-+    return createAssistantStream((controller) => {
-+      if (title) controller.appendText(title);
-+    });
-   },
+-  },
++    }),
    fetch: async (threadId: string) => {
 -    const response = await client.session.get(
 +    const response = await backend.getSessionClient({ id: threadId }).session.get(
        {
          sessionID: threadId,
        },
-@@ -115,6 +125,10 @@ export const createOpenCodeThreadListAdapter = (
+@@ -115,6 +110,10 @@ export const createOpenCodeThreadListAdapter = (
      if (!response.data?.id) {
        throw new Error("OpenCode session not found");
      }

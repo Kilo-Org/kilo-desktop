@@ -1,7 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useOpenCodeRuntime, type OpenCodeRuntimeBackend } from "@assistant-ui/react-opencode";
+import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
@@ -56,18 +56,12 @@ describe("useKiloRuntime", () => {
 		});
 	});
 
-	it("accepts injected backends and clients for focused tests", () => {
-		const backend = { globalClient: {} } as OpenCodeRuntimeBackend;
+	it("accepts an injected client for focused tests", () => {
 		const client = { session: {} } as KiloClient;
 
-		const { rerender } = renderHook(
-			({ injectedBackend }: { injectedBackend: OpenCodeRuntimeBackend | undefined }) =>
-				useKiloRuntime(injectedBackend ? { backend: injectedBackend } : { client }),
-			{ initialProps: { injectedBackend: backend as OpenCodeRuntimeBackend | undefined } },
-		);
-		expect(useOpenCodeRuntime).toHaveBeenLastCalledWith({ backend });
+		renderHook(() => useKiloRuntime({ client }));
 
-		rerender({ injectedBackend: undefined });
-		expect(useOpenCodeRuntime).toHaveBeenLastCalledWith({ client: expect.anything() });
+		expect(createKiloRuntimeBackend).not.toHaveBeenCalled();
+		expect(useOpenCodeRuntime).toHaveBeenCalledWith({ client: expect.anything() });
 	});
 });

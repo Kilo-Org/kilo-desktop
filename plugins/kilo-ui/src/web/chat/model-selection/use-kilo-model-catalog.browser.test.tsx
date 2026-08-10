@@ -81,5 +81,8 @@ describe("useKiloModelCatalog", () => {
 		rerender({ connection: { ...connection, globalDirectory: "/other" } });
 		await Promise.resolve();
 		expect(providerList).toHaveBeenCalledOnce();
+
+		rerender({ connection: { ...connection, baseUrl: "http://127.0.0.1:5096" } });
+		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(2));
 	});
 });

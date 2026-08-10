@@ -51,8 +51,22 @@ function createHandlers(
 	};
 }
 
-function renderSettings(handlers: Handlers) {
-	const sdk = createFakeSdk({ featureId: "anaconda-mcp", channels: anacondaMcpContract, handlers });
+function renderSettings(handlers: Handlers, options: { flagEnabled?: boolean } = {}) {
+	const flagEnabled = options.flagEnabled ?? true;
+	const flags: Record<string, unknown> = { "remote-anaconda-mcp": flagEnabled };
+	const sdk = createFakeSdk({
+		featureId: "anaconda-mcp",
+		channels: anacondaMcpContract,
+		handlers,
+		featureFlags: {
+			getAllFlags: async () => flags,
+			subscribe: (fn) => {
+				fn(flags);
+				return () => {};
+			},
+			peek: () => flags,
+		},
+	});
 	const system = createFakeFeatureSystem({ sdks: { "anaconda-mcp": sdk } });
 	return render(
 		<SdkProvider system={system}>
@@ -200,5 +214,29 @@ describe("AnacondaMcpSettings", () => {
 		await screen.getByTestId("anaconda-mcp-url-clear").click();
 
 		expect(lastSet).toEqual({ urlOverride: null });
+	});
+	describe("feature flag gate (remote-anaconda-mcp)", () => {
+		it("renders the not-available message when the flag is off", async () => {
+			const { baseElement } = renderSettings(createHandlers(), { flagEnabled: false });
+			const screen = page.elementLocator(baseElement);
+
+			const root = screen.getByTestId("anaconda-mcp-settings");
+			await expect.element(root).toHaveAttribute("data-state", "flag-off");
+
+			// None of the interactive controls should render in flag-off state.
+			await expect.element(screen.getByTestId("anaconda-mcp-toggle")).not.toBeInTheDocument();
+			await expect.element(screen.getByTestId("anaconda-mcp-status-chip")).not.toBeInTheDocument();
+			await expect
+				.element(screen.getByTestId("anaconda-mcp-advanced-toggle"))
+				.not.toBeInTheDocument();
+		});
+
+		it("renders the normal panel when the flag is on", async () => {
+			const { baseElement } = renderSettings(createHandlers(), { flagEnabled: true });
+			const screen = page.elementLocator(baseElement);
+
+			await expect.element(screen.getByTestId("anaconda-mcp-toggle")).toBeVisible();
+			await expect.element(screen.getByTestId("anaconda-mcp-status-chip")).toBeVisible();
+		});
 	});
 });

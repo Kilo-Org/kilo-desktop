@@ -66,6 +66,11 @@ export function mainRegister(mainSdk: MainSdk): void {
 			}
 		});
 
+		// React to feature-flag toggles. The reconcile itself reads the current
+		// value; this listener only needs to trigger a re-run when *any* flag
+		// changes so a live toggle takes effect without a restart.
+		mainSdk.events.on("feature-flag.changed", () => scheduleReconcile("feature-flag-change"));
+
 		// Contract handlers.
 		mainSdk.channels(anacondaMcpContract).handleAll({
 			"status.get": async () => service.status,

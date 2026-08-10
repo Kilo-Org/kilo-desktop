@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import type { AnacondaMcpService, AnacondaMcpStatus } from "@anaconda-agentic-desktop/contracts";
 import {
 	sdkQueryKey,
+	useFeatureFlag,
 	useSdk,
 	useSdkMutation,
 	useSdkQuery,
@@ -16,6 +17,13 @@ import { Label } from "@anaconda-agentic-desktop/ui/components/label";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 
 // ─── Status chip styling ────────────────────────────────────────────────────────
+
+/**
+ * LaunchDarkly feature-flag key that gates this panel and the underlying
+ * reconciliation. Kept in sync with `FEATURE_FLAG_KEY` in
+ * `apps/desktop/src/main/features/anaconda-mcp/AnacondaMcpService.ts`.
+ */
+const FEATURE_FLAG_KEY = "remote-anaconda-mcp";
 
 const STATUS_STYLES: Record<AnacondaMcpStatus["state"], { label: string; className: string }> = {
 	connected: {
@@ -60,6 +68,7 @@ function StatusChip({ status }: { status: AnacondaMcpStatus }) {
 // ─── Main component ─────────────────────────────────────────────────────────────
 
 export function AnacondaMcpSettings() {
+	const featureEnabled = useFeatureFlag<boolean>(FEATURE_FLAG_KEY, false);
 	const sdk = useSdk<AnacondaMcpService>("anaconda-mcp");
 	const queryClient = useQueryClient();
 
@@ -103,6 +112,22 @@ export function AnacondaMcpSettings() {
 	function handleUrlClear() {
 		setUrlInput("");
 		setSettings.mutate({ urlOverride: null });
+	}
+
+	if (!featureEnabled) {
+		return (
+			<div
+				className="mx-auto max-w-xl px-5 py-8"
+				data-qa-id="anaconda-mcp-settings"
+				data-state="flag-off"
+			>
+				<h1 className="text-2xl font-semibold tracking-tight">Anaconda MCP</h1>
+				<p className="text-muted-foreground mt-1 text-sm">
+					This feature is not enabled for your account. Contact your Anaconda administrator or try
+					again later.
+				</p>
+			</div>
+		);
 	}
 
 	return (

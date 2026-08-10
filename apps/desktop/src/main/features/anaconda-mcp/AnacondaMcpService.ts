@@ -1,5 +1,8 @@
 import type { AnacondaMcpStatus } from "@anaconda-agentic-desktop/contracts";
-import type { AuthMainCapability } from "@anaconda-agentic-desktop/contracts";
+import type {
+	AuthMainCapability,
+	FeatureFlagMainCapability,
+} from "@anaconda-agentic-desktop/contracts";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 import type { KiloServerCapabilities } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
 import isEqual from "lodash/isEqual.js";
@@ -12,6 +15,18 @@ export const MCP_ID = "anaconda-remote";
 
 /** Env var name that Kilo expands in the `{env:VAR}` header template. */
 export const MCP_ENV_VAR = "ANACONDA_API_KEY";
+
+/** Owner tag written into the MCP entry so future versions can identify managed entries. */
+export const MANAGED_BY = "anaconda-desktop";
+
+/**
+ * LaunchDarkly feature-flag key. When this evaluates to `false` (the default,
+ * used when the flag is missing, the provider errors, or the user is not in
+ * an enabled cohort) the feature is fully off: no MCP entry is written and
+ * no env is contributed. Toggling the flag on at runtime triggers a reconcile
+ * via the `feature-flag.changed` event.
+ */
+export const FEATURE_FLAG_KEY = "remote-anaconda-mcp";
 
 export interface AnacondaMcpServiceOptions {
 	/** Whether the feature is enabled by the user. Default true. */
@@ -90,16 +105,11 @@ export class AnacondaMcpService {
 	 *
 	 * Serialized: concurrent callers see the running reconcile complete, then
 	 * exactly one additional reconcile runs to pick up the latest state.
-<<<<<<< HEAD
-	 * Prevents interleaved awaits from producing a state that disagrees with
-	 * the latest desired settings.
-=======
 	 *
 	 * When `dispose()` is called mid-reconcile, the outer loop notices the
 	 * `#disposed` flag on the next iteration and performs teardown instead of
 	 * a normal reconcile — so dispose never races the state machine that owns
 	 * `#envDisposer`, `#mcpConfigured`, and status transitions.
->>>>>>> bb3443b (fix(anaconda-mcp,kilo-server): address kilo-code-bot CRITICAL + all 8 WARNINGs)
 	 */
 	async reconcile(): Promise<void> {
 		if (this.#reconciling) {
@@ -128,7 +138,21 @@ export class AnacondaMcpService {
 		const { sdk, getSettings } = this.#deps;
 		const settings = getSettings();
 
-		// 1. If disabled, tear down everything.
+		// 0. Feature flag gate. When the flag is off (the default) we behave
+		//    exactly like a user-disabled feature: tear down any prior state
+		//    and stay in `disabled`. The flag re-check happens on every
+		//    reconcile, and mainRegister subscribes to `feature-flag.changed`
+		//    so a live toggle flips the feature on/off without a restart.
+		const featureFlag = sdk.plugins.get<FeatureFlagMainCapability>("feature-flag");
+		const flagEnabled = featureFlag?.featureFlag.getFlag<boolean>(FEATURE_FLAG_KEY, false) ?? false;
+		if (!flagEnabled) {
+			const kilo = sdk.plugins.get<KiloServerCapabilities>("kilo-server");
+			await this.#teardown(kilo);
+			this.#setStatus({ state: "disabled" });
+			return;
+		}
+
+		// 1. If the user turned it off in the settings panel, tear down.
 		if (!settings.enabled) {
 			const kilo = sdk.plugins.get<KiloServerCapabilities>("kilo-server");
 			await this.#teardown(kilo);
@@ -175,14 +199,9 @@ export class AnacondaMcpService {
 	}
 
 	/**
-<<<<<<< HEAD
-	 * Clean up all external state (env contribution + MCP config).
-	 * Called on disable, logout, or feature teardown.
-=======
 	 * Clean up on plugin dispose. Serializes through the reconcile loop so a
 	 * concurrent reconcile can't re-populate `#envDisposer` or `#mcpConfigured`
 	 * after teardown has cleared them.
->>>>>>> bb3443b (fix(anaconda-mcp,kilo-server): address kilo-code-bot CRITICAL + all 8 WARNINGs)
 	 */
 	async dispose(): Promise<void> {
 		this.#disposed = true;

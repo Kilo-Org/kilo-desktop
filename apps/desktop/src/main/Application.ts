@@ -16,6 +16,7 @@ import { registerAuthCapability } from "./features/auth/auth-capability-bridge.j
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createFeatureFlagHandlers, FeatureFlagService } from "./features/feature-flag/index.js";
+import { registerFeatureFlagCapability } from "./features/feature-flag/feature-flag-capability-bridge.js";
 import { createFsHandlers } from "./features/fs/handlers.js";
 import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
@@ -191,6 +192,11 @@ export class Application {
 		// Expose the auth service's getApiKey as a main-side plugin capability
 		// so features/plugins can resolve it via mainSdk.plugins.get("auth").
 		this.#disposers.push(registerAuthCapability(this.#auth));
+
+		// Expose the feature-flag service so features/plugins can gate behavior
+		// on flags. Flag changes are relayed to the feature event bus as
+		// `feature-flag.changed`.
+		this.#disposers.push(registerFeatureFlagCapability(this.#featureFlags));
 
 		const handlers = {
 			...createShellHandlers(this.#shell),

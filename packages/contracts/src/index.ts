@@ -4,6 +4,7 @@ export * from "./features/anaconda-mcp.js";
 export * from "./features/auth.js";
 export * from "./features/auth-capability.js";
 export * from "./features/feature-flag.js";
+export * from "./features/feature-flag-capability.js";
 export * from "./features/feature-invoke.js";
 export * from "./features/feature-event.js";
 export * from "./features/fs.js";

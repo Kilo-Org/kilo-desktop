@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
-import { AnacondaMcpService, DEFAULT_MCP_URL, MCP_ENV_VAR, MCP_ID } from "./AnacondaMcpService.js";
+import {
+	AnacondaMcpService,
+	DEFAULT_MCP_URL,
+	FEATURE_FLAG_KEY,
+	MANAGED_BY,
+	MCP_ENV_VAR,
+	MCP_ID,
+} from "./AnacondaMcpService.js";
 
 import type { AnacondaMcpServiceOptions } from "./AnacondaMcpService.js";
 import type { McpTransport } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
@@ -24,9 +31,24 @@ function createTestHarness(overrides?: {
 	settings?: Partial<AnacondaMcpServiceOptions>;
 	apiKey?: string | null;
 	withKilo?: boolean;
-	saveMcpImpl?: () => Promise<void>;
-	removeMcpImpl?: () => Promise<void>;
-}) {
+	saveMcpImpl?: (input: {
+		id: string;
+		transport: unknown;
+		enabled: boolean;
+		managedBy?: string;
+	}) => Promise<void>;
+	/**
+	 * Feature-flag value returned by the fake feature-flag capability.
+	 * Defaults to `true` so existing tests exercise the "connected" path
+	 * without each having to opt in. Set to `false` to test the gate.
+	 * Set to `null` to omit the capability entirely (simulates a build
+	 * where the flag service is unavailable — the service should still
+	 * default to off).
+	 */
+	featureFlagEnabled?: boolean | null;
+}
+
+function createTestHarness(overrides?: HarnessOverrides) {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
 	(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
 
@@ -59,7 +81,16 @@ function createTestHarness(overrides?: {
 		getApiKey: async () => apiKey,
 	});
 
-	// Settings
+	const featureFlagEnabled = overrides?.featureFlagEnabled;
+	const getFlag = vi.fn(<T>(_key: string, _defaultValue: T): T => {
+		if (featureFlagEnabled === undefined) return true as unknown as T; // default: on
+		return featureFlagEnabled as unknown as T;
+	});
+	if (featureFlagEnabled !== null) {
+		const flagSdk = createMainSdk("feature-flag");
+		flagSdk.plugins.expose("featureFlag", { getFlag });
+	}
+
 	let settings: AnacondaMcpServiceOptions = {
 		enabled: true,
 		urlOverride: null,
@@ -80,6 +111,8 @@ function createTestHarness(overrides?: {
 		saveMcp,
 		removeMcp,
 		envContribute,
+		envDisposer,
+		getFlag,
 		get settings() {
 			return settings;
 		},
@@ -252,6 +285,11 @@ describe("AnacondaMcpService", () => {
 		const authSdk = createMainSdk("auth");
 		authSdk.plugins.expose("auth", { getApiKey: async () => apiKey });
 
+		const flagSdk = createMainSdk("feature-flag");
+		flagSdk.plugins.expose("featureFlag", {
+			getFlag: <T>(_key: string, _defaultValue: T): T => true as unknown as T,
+		});
+
 		const svc = new AnacondaMcpService({
 			sdk: mainSdk,
 			getSettings: () => ({ enabled: true, urlOverride: null }),
@@ -275,8 +313,6 @@ describe("AnacondaMcpService", () => {
 		// Previous env was disposed
 		expect(envDisposer).toHaveBeenCalledTimes(1);
 	});
-<<<<<<< HEAD
-=======
 
 	it("re-saves the MCP entry when the URL override changes", async () => {
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
@@ -303,6 +339,11 @@ describe("AnacondaMcpService", () => {
 
 		const authSdk = createMainSdk("auth");
 		authSdk.plugins.expose("auth", { getApiKey: async () => "key" });
+
+		const flagSdk = createMainSdk("feature-flag");
+		flagSdk.plugins.expose("featureFlag", {
+			getFlag: <T>(_key: string, _defaultValue: T): T => true as unknown as T,
+		});
 
 		let urlOverride: string | null = null;
 		const svc = new AnacondaMcpService({
@@ -420,5 +461,87 @@ describe("AnacondaMcpService", () => {
 		expect(envDisposer).toHaveBeenCalledTimes(1);
 		expect((seen[seen.length - 1] as { state?: string }).state).toBe("disabled");
 	});
->>>>>>> bb3443b (fix(anaconda-mcp,kilo-server): address kilo-code-bot CRITICAL + all 8 WARNINGs)
+=======
+	describe("feature flag gate (remote-anaconda-mcp)", () => {
+		it("stays disabled when the flag is off, even with valid auth and kilo-server", async () => {
+			const { service, saveMcp, envContribute, removeMcp } = createTestHarness({
+				apiKey: "sk-real",
+				featureFlagEnabled: false,
+			});
+
+			await service.reconcile();
+
+			expect(service.status).toEqual({ state: "disabled" });
+			expect(saveMcp).not.toHaveBeenCalled();
+			expect(envContribute).not.toHaveBeenCalled();
+			// No entry was ever written, so there is nothing to remove either.
+			expect(removeMcp).not.toHaveBeenCalled();
+		});
+
+		it("defaults to OFF when the feature-flag capability is unavailable", async () => {
+			// Simulates a build where the flag service failed to register.
+			const { service, saveMcp } = createTestHarness({
+				apiKey: "sk-real",
+				featureFlagEnabled: null,
+			});
+
+			await service.reconcile();
+
+			expect(service.status).toEqual({ state: "disabled" });
+			expect(saveMcp).not.toHaveBeenCalled();
+		});
+
+		it("evaluates the flag under the well-known key with a false default", async () => {
+			const { service, getFlag } = createTestHarness({
+				apiKey: "sk-real",
+				featureFlagEnabled: true,
+			});
+
+			await service.reconcile();
+
+			expect(getFlag).toHaveBeenCalledWith(FEATURE_FLAG_KEY, false);
+			expect(service.status.state).toBe("connected");
+		});
+
+		it("tears down when the flag flips from on to off between reconciles", async () => {
+			// Start with the flag on: connect and write config.
+			const harness = createTestHarness({
+				apiKey: "sk-real",
+				featureFlagEnabled: true,
+			});
+			await harness.service.reconcile();
+			expect(harness.service.status.state).toBe("connected");
+			expect(harness.saveMcp).toHaveBeenCalledTimes(1);
+
+			// Flip the flag off and reconcile — should behave like a full opt-out.
+			harness.getFlag.mockImplementation(
+				<T>(_key: string, _defaultValue: T): T => false as unknown as T,
+			);
+			await harness.service.reconcile();
+
+			expect(harness.service.status).toEqual({ state: "disabled" });
+			expect(harness.removeMcp).toHaveBeenCalledWith({ id: MCP_ID });
+			expect(harness.envDisposer).toHaveBeenCalledTimes(1);
+		});
+
+		it("connects when the flag flips from off to on between reconciles", async () => {
+			// Start with the flag off.
+			const harness = createTestHarness({
+				apiKey: "sk-real",
+				featureFlagEnabled: false,
+			});
+			await harness.service.reconcile();
+			expect(harness.service.status).toEqual({ state: "disabled" });
+			expect(harness.saveMcp).not.toHaveBeenCalled();
+
+			// Flip on and reconcile.
+			harness.getFlag.mockImplementation(
+				<T>(_key: string, _defaultValue: T): T => true as unknown as T,
+			);
+			await harness.service.reconcile();
+
+			expect(harness.service.status).toEqual({ state: "connected", url: DEFAULT_MCP_URL });
+			expect(harness.saveMcp).toHaveBeenCalledTimes(1);
+		});
+	});
 });

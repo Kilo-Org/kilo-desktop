@@ -1,113 +1,83 @@
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import {
 	type OpenCodeQuestionRequest,
 	type QuestionAnswer,
 	useOpenCodeRuntimeExtras,
 } from "@assistant-ui/react-opencode";
-import {
-	AlertCircleIcon,
-	CheckCircle2Icon,
-	CircleHelpIcon,
-	LoaderIcon,
-	XCircleIcon,
-} from "lucide-react";
+import { AlertCircleIcon, LoaderIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
-import { Label } from "@anaconda-agentic-desktop/ui/components/label";
-import { Textarea } from "@anaconda-agentic-desktop/ui/components/textarea";
+import {
+	Questionnaire,
+	QuestionnaireChoice,
+	QuestionnaireChoiceDescription,
+	QuestionnaireChoices,
+	QuestionnaireError,
+	QuestionnaireInput,
+	QuestionnaireItem,
+	QuestionnaireNext,
+	QuestionnairePrevious,
+	QuestionnaireProgress,
+	QuestionnaireSubmit,
+	QuestionnaireTitle,
+} from "@anaconda-agentic-desktop/ui/components/questionnaire";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
-import {
-	Badge,
-	Card,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from "./interaction-chrome.js";
+const questionName = (index: number) => `question-${index}`;
 
-type PendingQuestionState = {
-	selectedLabels: string[];
-	customAnswer: string;
-};
-
-const buildEmptyQuestionState = (request: OpenCodeQuestionRequest): PendingQuestionState[] =>
-	request.questions.map(() => ({
-		selectedLabels: [],
-		customAnswer: "",
+const buildQuestionnaireItems = (request: OpenCodeQuestionRequest) =>
+	request.questions.map((question, index) => ({
+		name: questionName(index),
+		required: true as const,
+		choices: question.options.map((option) => ({ value: option.label })),
 	}));
 
-const encodeQuestionAnswers = (
+const encodeAnswersFromFormData = (
 	request: OpenCodeQuestionRequest,
-	formState: PendingQuestionState[],
+	formData: FormData,
 ): QuestionAnswer[] =>
 	request.questions.map((question, index) => {
-		const current = formState[index];
-		if (!current) return [];
+		const name = questionName(index);
+		const rawValues = question.multiple ? formData.getAll(name) : [formData.get(name)];
+		const optionLabels = new Set(question.options.map((option) => option.label));
 
-		const answers = [...current.selectedLabels];
-		const customValue = current.customAnswer.trim();
-		const customAllowed = question.custom !== false;
-
-		if (customAllowed && customValue) {
-			answers.push(`Other: ${customValue}`);
-		}
-
-		return answers;
+		return rawValues.flatMap((value) => {
+			if (typeof value !== "string") return [];
+			const trimmed = value.trim();
+			if (!trimmed) return [];
+			return [optionLabels.has(trimmed) ? trimmed : `Other: ${trimmed}`];
+		});
 	});
 
-export const getQuestionSummary = (request?: OpenCodeQuestionRequest) => {
-	if (!request || request.questions.length === 0) return "Waiting for input";
-	if (request.questions.length === 1) {
-		return request.questions[0]?.header || "1 question";
-	}
-	return `${request.questions.length} questions`;
-};
-
-export const OpenCodeQuestionCard = ({
+export const OpenCodeQuestionQuestionnaire = ({
 	request,
-	state,
-	answers,
 }: {
 	request: OpenCodeQuestionRequest;
-	state: "pending" | "answered" | "rejected";
-	answers?: readonly QuestionAnswer[];
 }) => {
 	const { replyToQuestion, rejectQuestion } = useOpenCodeRuntimeExtras();
-	const [formState, setFormState] = useState(() => buildEmptyQuestionState(request));
 	const [submissionState, setSubmissionState] = useState<"reply" | "reject" | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const isPending = state === "pending";
 
-	const encodedAnswers = useMemo(
-		() => encodeQuestionAnswers(request, formState),
-		[formState, request],
-	);
+	const items = useMemo(() => buildQuestionnaireItems(request), [request]);
 
-	const canSubmit = isPending && encodedAnswers.every((answer) => answer.length > 0);
+	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		if (submissionState !== null) return;
 
-	const updateQuestionState = (
-		index: number,
-		updater: (current: PendingQuestionState) => PendingQuestionState,
-	) => {
-		setFormState((current) =>
-			current.map((item, itemIndex) => (itemIndex === index ? updater(item) : item)),
-		);
-	};
+		const answers = encodeAnswersFromFormData(request, new FormData(event.currentTarget));
+		if (answers.some((answer) => answer.length === 0)) return;
 
-	const submitAnswers = async () => {
-		if (!canSubmit) return;
 		setSubmissionState("reply");
 		setError(null);
 
-		try {
-			await replyToQuestion(request.id, encodedAnswers);
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to submit answers.");
-			setSubmissionState(null);
-		}
+		void (async () => {
+			try {
+				await replyToQuestion(request.id, answers);
+			} catch (err) {
+				setError(err instanceof Error ? err.message : "Failed to submit answers.");
+				setSubmissionState(null);
+			}
+		})();
 	};
 
 	const rejectRequest = async () => {
@@ -122,196 +92,95 @@ export const OpenCodeQuestionCard = ({
 		}
 	};
 
-	return (
-		<Card className="gap-4 py-4">
-			<CardHeader className="px-4">
-				<div className="flex items-start gap-3">
-					<div
-						className={cn(
-							"rounded-md p-2",
-							isPending
-								? "bg-sky-500/10 text-sky-700"
-								: state === "rejected"
-									? "bg-muted text-muted-foreground"
-									: "bg-emerald-500/10 text-emerald-700",
-						)}
-					>
-						{isPending ? (
-							<CircleHelpIcon className="size-4" />
-						) : state === "rejected" ? (
-							<XCircleIcon className="size-4" />
-						) : (
-							<CheckCircle2Icon className="size-4" />
-						)}
-					</div>
-					<div className="min-w-0 flex-1">
-						<CardTitle className="text-sm">
-							{isPending
-								? "Answer required"
-								: state === "rejected"
-									? "Question dismissed"
-									: "Answers submitted"}
-						</CardTitle>
-						<CardDescription className="mt-1 text-xs">
-							{getQuestionSummary(request)}
-						</CardDescription>
-					</div>
-					<Badge variant={isPending ? "secondary" : "outline"}>
-						{request.questions.length === 1 ? "1 prompt" : `${request.questions.length} prompts`}
-					</Badge>
-				</div>
-			</CardHeader>
+	const isBusy = submissionState !== null;
 
-			<CardContent className="space-y-4 px-4">
+	return (
+		<div
+			data-slot="aui_composer-shell"
+			data-qa-id="kilo-question-questionnaire"
+			className={cn(
+				"border-border/60 dark:border-muted-foreground/15 chat-composer-glass flex w-full flex-col gap-4 rounded-(--composer-radius) border p-4 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
+			)}
+		>
+			<Questionnaire
+				items={items}
+				onSubmit={handleSubmit}
+				className="gap-4"
+				aria-label="Agent questions"
+			>
+				<QuestionnaireProgress />
 				{request.questions.map((question, index) => {
-					const current = formState[index] ?? {
-						selectedLabels: [],
-						customAnswer: "",
-					};
-					const answeredValues = answers?.[index] ?? [];
+					const name = questionName(index);
 					const customAllowed = question.custom !== false;
+					const hasChoices = question.options.length > 0;
 
 					return (
-						<section key={`${request.id}-${index}`} className="space-y-3">
-							<div className="space-y-1">
-								<p className="text-sm font-medium">{question.header}</p>
-								<p className="text-muted-foreground text-xs">{question.question}</p>
-							</div>
-
-							{isPending ? (
-								<>
-									{question.options.length > 0 ? (
-										question.multiple ? (
-											<div className="space-y-2">
-												{question.options.map((option) => {
-													const checked = current.selectedLabels.includes(option.label);
-													const optionId = `${request.id}-${index}-${option.label}`;
-
-													return (
-														<div
-															key={option.label}
-															className="flex items-start gap-3 rounded-lg border p-3 text-sm"
-														>
-															<Checkbox
-																id={optionId}
-																checked={checked}
-																onCheckedChange={(nextChecked) => {
-																	updateQuestionState(index, (item) => ({
-																		...item,
-																		selectedLabels:
-																			nextChecked === true
-																				? [...item.selectedLabels, option.label]
-																				: item.selectedLabels.filter(
-																						(label) => label !== option.label,
-																					),
-																	}));
-																}}
-															/>
-															<div className="space-y-1">
-																<Label htmlFor={optionId} className="text-sm font-medium">
-																	{option.label}
-																</Label>
-																<p className="text-muted-foreground text-xs">
-																	{option.description}
-																</p>
-															</div>
-														</div>
-													);
-												})}
-											</div>
-										) : (
-											<div className="flex flex-wrap gap-2">
-												{question.options.map((option) => {
-													const selected = current.selectedLabels.includes(option.label);
-
-													return (
-														<Button
-															key={option.label}
-															type="button"
-															size="sm"
-															variant={selected ? "default" : "outline"}
-															onClick={() => {
-																updateQuestionState(index, (item) => ({
-																	...item,
-																	selectedLabels: [option.label],
-																	customAnswer: "",
-																}));
-															}}
-														>
-															{option.label}
-														</Button>
-													);
-												})}
-											</div>
-										)
-									) : null}
-
-									{customAllowed ? (
-										<div className="space-y-2">
-											<Label htmlFor={`${request.id}-${index}-custom`}>Other</Label>
-											<Textarea
-												id={`${request.id}-${index}-custom`}
-												value={current.customAnswer}
-												onChange={(event) => {
-													const nextValue = event.target.value;
-													updateQuestionState(index, (item) => ({
-														...item,
-														customAnswer: nextValue,
-														selectedLabels:
-															question.multiple || nextValue.trim().length === 0
-																? item.selectedLabels
-																: [],
-													}));
-												}}
-												placeholder="Add your answer"
-												rows={3}
-											/>
-										</div>
-									) : null}
-								</>
-							) : state === "rejected" ? (
-								<p className="text-muted-foreground text-xs">No answer was submitted.</p>
-							) : (
-								<div className="flex flex-wrap gap-2">
-									{answeredValues.map((answer) => (
-										<Badge key={answer} variant="outline">
-											{answer}
-										</Badge>
+						<QuestionnaireItem
+							key={name}
+							name={name}
+							required
+							multiple={question.multiple === true}
+						>
+							<QuestionnaireTitle>{question.question}</QuestionnaireTitle>
+							{hasChoices || customAllowed ? (
+								<QuestionnaireChoices>
+									{question.options.map((option) => (
+										<QuestionnaireChoice key={option.label} value={option.label}>
+											<span className="font-medium">{option.label}</span>
+											{option.description ? (
+												<QuestionnaireChoiceDescription>
+													{option.description}
+												</QuestionnaireChoiceDescription>
+											) : null}
+										</QuestionnaireChoice>
 									))}
-								</div>
-							)}
-						</section>
+									{customAllowed ? (
+										<QuestionnaireInput
+											aria-label="Other answer"
+											placeholder="Type another answer…"
+											disabled={isBusy}
+										/>
+									) : null}
+								</QuestionnaireChoices>
+							) : null}
+							<QuestionnaireError />
+						</QuestionnaireItem>
 					);
 				})}
-			</CardContent>
-
-			{isPending ? (
-				<CardFooter className="flex flex-wrap gap-2 px-4">
-					<Button
-						size="sm"
-						onClick={() => void submitAnswers()}
-						disabled={!canSubmit || submissionState !== null}
-					>
-						{submissionState === "reply" ? <LoaderIcon className="size-4 animate-spin" /> : null}
-						Submit answers
-					</Button>
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={() => void rejectRequest()}
-						disabled={submissionState !== null}
-					>
-						{submissionState === "reject" ? <LoaderIcon className="size-4 animate-spin" /> : null}
-						Dismiss
-					</Button>
+				<div className="flex flex-col gap-2">
+					<div className="flex items-center justify-between gap-2">
+						<div className="flex items-center gap-2">
+							<Button
+								type="button"
+								variant="ghost"
+								onClick={() => void rejectRequest()}
+								disabled={isBusy}
+							>
+								{submissionState === "reject" ? (
+									<LoaderIcon className="animate-spin" data-icon="inline-start" />
+								) : null}
+								Dismiss
+							</Button>
+							<QuestionnairePrevious disabled={isBusy} />
+						</div>
+						<div className="flex items-center gap-2">
+							<QuestionnaireNext disabled={isBusy} />
+							<QuestionnaireSubmit disabled={isBusy}>
+								{submissionState === "reply" ? (
+									<LoaderIcon className="animate-spin" data-icon="inline-start" />
+								) : null}
+								Submit
+							</QuestionnaireSubmit>
+						</div>
+					</div>
 					{error ? (
-						<div className="text-destructive flex w-full items-center gap-2 text-xs">
-							<AlertCircleIcon className="size-3.5" />
-							<span>{error}</span>
+						<div className="text-destructive flex min-w-0 items-center gap-2 text-xs">
+							<AlertCircleIcon className="size-3.5 shrink-0" />
+							<span className="truncate">{error}</span>
 						</div>
 					) : null}
-				</CardFooter>
-			) : null}
-		</Card>
+				</div>
+			</Questionnaire>
+		</div>
 	);
 };

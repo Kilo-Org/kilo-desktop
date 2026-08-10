@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
 	BookOpenIcon,
 	BrainIcon,
+	CircleHelpIcon,
 	FilePenIcon,
 	FilePlusIcon,
 	GlobeIcon,
@@ -10,7 +11,7 @@ import {
 	TerminalIcon,
 	WrenchIcon,
 } from "lucide-react";
-import { basename, getPatchInfo, str } from "./tool-ui-shared.js";
+import { basename, getPatchInfo, str, truncate } from "./tool-ui-shared.js";
 
 /**
  * Tool grouping for the activity view. Categories mirror the built-in tool
@@ -26,7 +27,8 @@ export type ToolCategory =
 	| "searching"
 	| "web"
 	| "terminal"
-	| "planning";
+	| "planning"
+	| "asking";
 
 /** Dynamic subgroup for an MCP server, e.g. `mcp:atlassian`. */
 export type McpActivityKind = `mcp:${string}`;
@@ -53,10 +55,17 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	todowrite: "planning",
 	todoread: "planning",
 	plan_exit: "planning",
+	question: "asking",
+	ask_question: "asking",
+	request_user_input: "asking",
+	requestuserinput: "asking",
 };
 
 export const getToolCategory = (toolName: string): ToolCategory | undefined =>
 	TOOL_CATEGORY_BY_NAME[toolName.toLowerCase()];
+
+export const isAskQuestionTool = (toolName: string): boolean =>
+	getToolCategory(toolName) === "asking";
 
 /**
  * OpenCode/Kilo MCP tools are named `{server}_{toolName}`. Built-in tools with
@@ -114,7 +123,8 @@ export const activityKindFromGroupKey = (groupKey: string): ActivityKind | undef
 		rest === "searching" ||
 		rest === "web" ||
 		rest === "terminal" ||
-		rest === "planning"
+		rest === "planning" ||
+		rest === "asking"
 	) {
 		return rest;
 	}
@@ -128,6 +138,7 @@ export const activityKindFromGroupKey = (groupKey: string): ActivityKind | undef
 export type ActivityPart = {
 	type: string;
 	toolName?: string | undefined;
+	toolCallId?: string | undefined;
 	args?: unknown;
 	status?: { type: string } | undefined;
 };
@@ -144,6 +155,33 @@ export const getActivityKind = (part: ActivityPart): ActivityKind | undefined =>
 		return "tools";
 	}
 	return undefined;
+};
+
+export const getPartToolCallId = (part: ActivityPart): string | undefined =>
+	typeof part.toolCallId === "string" ? part.toolCallId : undefined;
+
+/** True when any asking part in `indices` matches a pending question tool call. */
+export const indicesHavePendingAsk = (
+	parts: readonly ActivityPart[],
+	indices: readonly number[],
+	pendingCallIds: ReadonlySet<string>,
+): boolean => {
+	if (pendingCallIds.size === 0) return false;
+	for (const index of indices) {
+		const part = parts[index];
+		if (!part || getActivityKind(part) !== "asking") continue;
+		const callId = getPartToolCallId(part);
+		if (callId && pendingCallIds.has(callId)) return true;
+	}
+	return false;
+};
+
+/** Index of the last asking tool part in the message, or -1. */
+export const lastAskingPartIndex = (parts: readonly ActivityPart[]): number => {
+	for (let i = parts.length - 1; i >= 0; i--) {
+		if (getActivityKind(parts[i]!) === "asking") return i;
+	}
+	return -1;
 };
 
 export type ActivitySegment = {
@@ -194,6 +232,8 @@ export type KindStats = {
 	files: number;
 	/** Basename of the touched file, when the group touched exactly one. */
 	file?: string | undefined;
+	/** Short question prompt for asking subgroups. */
+	question?: string | undefined;
 };
 
 type KindMeta = {
@@ -279,6 +319,15 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 		circleClassName:
 			"border-rose-600/40 bg-rose-100 text-rose-600 dark:border-rose-400/40 dark:bg-rose-950 dark:text-rose-400",
 	},
+	asking: {
+		icon: CircleHelpIcon,
+		label: "Question",
+		liveLabel: () => "Asking",
+		doneLabel: ({ question, count }) =>
+			question ? `Asked ${question}` : `Asked ${plural(count, "question")}`,
+		circleClassName:
+			"border-sky-600/40 bg-sky-100 text-sky-600 dark:border-sky-400/40 dark:bg-sky-950 dark:text-sky-400",
+	},
 	tools: {
 		icon: WrenchIcon,
 		label: "Tools",
@@ -329,15 +378,57 @@ const uniqueFiles = (parts: readonly ActivityPart[], indices: readonly number[])
 	return [...files];
 };
 
+const questionSummaryFromArgs = (args: unknown): string | undefined => {
+	if (!args || typeof args !== "object") return undefined;
+	const record = args as Record<string, unknown>;
+	const fromQuestionInfo = (value: unknown): string | undefined => {
+		if (!value || typeof value !== "object") return undefined;
+		const info = value as Record<string, unknown>;
+		const question = str(info.question);
+		if (question) return truncate(question, 72);
+		const header = str(info.header);
+		if (header) return truncate(header, 72);
+		return undefined;
+	};
+
+	if (Array.isArray(record.questions) && record.questions.length > 0) {
+		const first = fromQuestionInfo(record.questions[0]);
+		if (first) return first;
+		if (record.questions.length > 1) return `${record.questions.length} questions`;
+	}
+
+	return (
+		fromQuestionInfo(record) ?? (str(record.prompt) ? truncate(str(record.prompt), 48) : undefined)
+	);
+};
+
+/** Prefer the first concrete question prompt in the segment. */
+export const getPartQuestionSummary = (part: ActivityPart): string | undefined => {
+	if (part.type !== "tool-call" || !part.toolName || !isAskQuestionTool(part.toolName)) {
+		return undefined;
+	}
+	return questionSummaryFromArgs(part.args);
+};
+
 export const getSegmentStats = (
 	parts: readonly ActivityPart[],
 	segment: ActivitySegment,
 ): KindStats => {
 	const files = uniqueFiles(parts, segment.indices);
+	let question: string | undefined;
+	if (segment.kind === "asking") {
+		for (const index of segment.indices) {
+			const part = parts[index];
+			if (!part) continue;
+			question = getPartQuestionSummary(part);
+			if (question) break;
+		}
+	}
 	return {
 		count: segment.indices.length,
 		files: files.length,
 		file: files.length === 1 ? basename(files[0]!) : undefined,
+		question,
 	};
 };
 

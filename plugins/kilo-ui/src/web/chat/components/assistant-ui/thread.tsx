@@ -15,6 +15,7 @@ import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
 import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
+import { OpenCodeQuestionQuestionnaire } from "../tools/opencode-question-card.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -35,6 +36,7 @@ import {
 	useAui,
 	useAuiState,
 } from "@assistant-ui/react";
+import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
@@ -53,6 +55,7 @@ import {
 import {
 	createContext,
 	useContext,
+	useMemo,
 	useRef,
 	useState,
 	type ComponentType,
@@ -82,6 +85,20 @@ export type ThreadProps = {
 const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
+
+const ThreadComposerSlot: FC = () => {
+	const pendingQuestions = useOpenCodeQuestions();
+	const activeQuestion = useMemo(() => {
+		if (pendingQuestions.length === 0) return null;
+		return [...pendingQuestions].toSorted((a, b) => a.askedAt - b.askedAt)[0] ?? null;
+	}, [pendingQuestions]);
+
+	if (activeQuestion) {
+		return <OpenCodeQuestionQuestionnaire request={activeQuestion} />;
+	}
+
+	return <Composer />;
+};
 
 // Empty threads stay in draft layout (centered composer). Require status
 // "new" too — after lazy session init the list item flips to regular before
@@ -149,7 +166,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 								) : null}
 								<div className="relative z-10 flex flex-col">
 									<div className="relative z-10">
-										<Composer />
+										<ThreadComposerSlot />
 									</div>
 									{isDraft ? <ComposerDraftFooter /> : null}
 								</div>
@@ -484,6 +501,7 @@ const AssistantMessage: FC = () => {
 							case "group-web":
 							case "group-terminal":
 							case "group-planning":
+							case "group-asking":
 							case "group-tools": {
 								const kind = activityKindFromGroupKey(part.type);
 								if (!kind) return null;

@@ -13,6 +13,11 @@ import {
 	WriteTool,
 } from "./opencode-tools.js";
 
+const askQuestionTool = {
+	type: "backend" as const,
+	render: AskQuestionTool,
+};
+
 /**
  * Render-only toolkit for Kilo/OpenCode backend tools. Execution stays on the
  * server; assistant-ui only supplies per-tool UI. Avoid `externalTool()` —
@@ -34,7 +39,8 @@ export default defineToolkit({
 	webFetch: { type: "backend", render: WebFetchTool },
 	webfetch: { type: "backend", render: WebFetchTool },
 	apply_patch: { type: "backend", render: ApplyPatchTool },
-	ask_question: { type: "backend", render: AskQuestionTool },
-	request_user_input: { type: "backend", render: AskQuestionTool },
-	requestUserInput: { type: "backend", render: AskQuestionTool },
+	question: askQuestionTool,
+	ask_question: askQuestionTool,
+	request_user_input: askQuestionTool,
+	requestUserInput: askQuestionTool,
 });

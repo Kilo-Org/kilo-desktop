@@ -9,6 +9,7 @@ import {
 	type PropsWithChildren,
 } from "react";
 import { useAuiState, useScrollLock } from "@assistant-ui/react";
+import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from "lucide-react";
 
 import {
@@ -27,11 +28,41 @@ import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
 	getKindMeta,
 	getSegmentStats,
+	indicesHavePendingAsk,
+	lastAskingPartIndex,
 	summarizeActivity,
 	type ActivityIconItem,
 	type ActivityKind,
+	type ActivityPart,
 	type ActivitySegment,
 } from "./tool-categories.js";
+
+const pendingAskCallIds = (
+	questions: readonly { tool?: { callID?: string } | undefined }[],
+): Set<string> => {
+	const ids = new Set<string>();
+	for (const question of questions) {
+		const callId = question.tool?.callID;
+		if (typeof callId === "string") ids.add(callId);
+	}
+	return ids;
+};
+
+/** Whether these indices own the in-flight questionnaire (not a prior ask). */
+const ownsPendingAsk = (
+	parts: readonly ActivityPart[],
+	indices: readonly number[],
+	pendingQuestions: readonly { tool?: { callID?: string } | undefined }[],
+	messageRequiresAction: boolean,
+): boolean => {
+	if (pendingQuestions.length === 0) return false;
+	const callIds = pendingAskCallIds(pendingQuestions);
+	if (callIds.size > 0) return indicesHavePendingAsk(parts, indices, callIds);
+	// Questions without callIDs: only the message's last ask while awaiting input.
+	if (!messageRequiresAction) return false;
+	const lastAsk = lastAskingPartIndex(parts);
+	return lastAsk >= 0 && indices.includes(lastAsk);
+};
 
 const ANIMATION_DURATION = 200;
 const MAX_VISIBLE_ICONS = 5;
@@ -132,8 +163,19 @@ export const useActivitySubgroup = (): ActivitySubgroupContextValue | null =>
 
 const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
 	const parts = useAuiState((s) => s.message.parts);
-	const messageRunning = useAuiState((s) => s.message.status?.type === "running");
+	const messageStatusType = useAuiState((s) => s.message.status?.type);
+	const pendingQuestions = useOpenCodeQuestions();
 	const summary = useMemo(() => summarizeActivity(parts, group.indices), [parts, group.indices]);
+	const hasPendingAsk = useMemo(
+		() =>
+			ownsPendingAsk(
+				parts,
+				group.indices,
+				pendingQuestions,
+				messageStatusType === "requires-action",
+			),
+		[parts, group.indices, pendingQuestions, messageStatusType],
+	);
 
 	const [open, setOpen] = useState(false);
 	const [streamExpanded, setStreamExpanded] = useState(false);
@@ -168,10 +210,23 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		);
 	}
 
-	const streaming = messageRunning || summary.requiresAction;
+	// Only the activity group that owns the in-flight questionnaire should look
+	// "live". Message-level requires-action alone would spin every prior Asking.
+	const streaming = messageStatusType === "running" || summary.requiresAction || hasPendingAsk;
 	const activeSegment = [...summary.segments]
 		.reverse()
-		.find((segment) => segment.running || segment.requiresAction);
+		.find(
+			(segment) =>
+				segment.running || segment.requiresAction || (hasPendingAsk && segment.kind === "asking"),
+		);
+	const activeLoading = Boolean(
+		activeSegment?.running ||
+		activeSegment?.requiresAction ||
+		(hasPendingAsk && activeSegment?.kind === "asking"),
+	);
+
+	const askOnly =
+		summary.segments.length > 0 && summary.segments.every((segment) => segment.kind === "asking");
 
 	if (streaming && !streamExpanded) {
 		const label = activeSegment
@@ -181,8 +236,27 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		const stackItems = summary.iconItems.map((item, index) => ({
 			...item,
 			colored: index === activeIndex,
-			loading: index === activeIndex && Boolean(activeSegment?.running),
+			loading: index === activeIndex && activeLoading,
 		}));
+		const headerClassName =
+			"text-muted-foreground flex items-center gap-2 py-1 text-sm transition-colors";
+		const header = (
+			<>
+				<ActivityIconStack items={stackItems} className="-space-x-1" />
+				<span className="font-medium">
+					<ActivityLabel label={label} shimmer={activeLoading} />
+				</span>
+			</>
+		);
+		// Ask-only groups answer in the composer Questionnaire — no nested tool
+		// chrome to expand, so don't pretend this row is collapsible.
+		if (askOnly) {
+			return (
+				<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+					<div className={headerClassName}>{header}</div>
+				</div>
+			);
+		}
 		return (
 			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
 				<button
@@ -191,17 +265,22 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 						setStreamExpanded(true);
 						setOpen(true);
 					}}
-					className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
+					className={cn(headerClassName, "hover:text-foreground")}
 				>
-					<ActivityIconStack items={stackItems} className="-space-x-1" />
-					<span className="font-medium">
-						<ActivityLabel label={label} shimmer={Boolean(activeSegment?.running)} />
-					</span>
+					{header}
 					<ChevronDownIcon className="size-3.5 shrink-0" />
 				</button>
 				<ActivityStreamContext.Provider value={true}>
 					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
 				</ActivityStreamContext.Provider>
+			</div>
+		);
+	}
+
+	if (askOnly) {
+		return (
+			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+				{children}
 			</div>
 		);
 	}
@@ -250,6 +329,8 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	children,
 }) => {
 	const parts = useAuiState((s) => s.message.parts);
+	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
+	const pendingQuestions = useOpenCodeQuestions();
 	const segment = useMemo<ActivitySegment>(() => {
 		const indices = [...group.indices];
 		let running = false;
@@ -261,9 +342,15 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		}
 		return { kind, indices, running, requiresAction };
 	}, [parts, group.indices, kind]);
+	const hasPendingAsk = useMemo(
+		() =>
+			kind === "asking" &&
+			ownsPendingAsk(parts, group.indices, pendingQuestions, messageRequiresAction),
+		[kind, parts, group.indices, pendingQuestions, messageRequiresAction],
+	);
 
 	const [toggled, setToggled] = useState<boolean | null>(null);
-	const open = segment.requiresAction || (toggled ?? segment.running);
+	const open = segment.requiresAction || hasPendingAsk || (toggled ?? segment.running);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
@@ -277,7 +364,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		[kind, group.indices.length],
 	);
 
-	const active = segment.running || segment.requiresAction;
+	const active = segment.running || segment.requiresAction || hasPendingAsk;
 
 	if (streamCollapsed && !active) return null;
 
@@ -285,6 +372,34 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
 				{children}
+			</ActivitySubgroupContext.Provider>
+		);
+	}
+
+	// Question tools are answered in the composer Questionnaire — the subgroup
+	// label is the only message-stream chrome (Asking / Asked …). While the
+	// stream row is collapsed, the parent ActivityGroup owns the ask icon.
+	if (kind === "asking") {
+		if (streamCollapsed) return null;
+		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
+		return (
+			<ActivitySubgroupContext.Provider value={subgroupContext}>
+				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
+					<ActivityIconStack
+						items={[
+							{
+								icon: meta.icon,
+								label: meta.label,
+								className: meta.circleClassName,
+								colored: active,
+								loading: active,
+							},
+						]}
+					/>
+					<span className="font-medium">
+						<ActivityLabel label={label} shimmer={active} />
+					</span>
+				</div>
 			</ActivitySubgroupContext.Provider>
 		);
 	}
@@ -304,7 +419,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		);
 	}
 
-	const label = segment.running ? meta.liveLabel(stats) : meta.doneLabel(stats);
+	const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
 
 	return (
 		<ActivitySubgroupContext.Provider value={subgroupContext}>

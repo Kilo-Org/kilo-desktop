@@ -1,4 +1,4 @@
-import { AskQuestionInline, withOpenCodeToolInteractions } from "./opencode-tool-interactions.js";
+import { AskQuestionTool, withOpenCodeToolInteractions } from "./opencode-tool-interactions.js";
 import { ApplyPatchDiff } from "./tool-ui-apply-patch.js";
 import { BashTerminal } from "./tool-ui-bash.js";
 import { EditDiff } from "./tool-ui-edit.js";
@@ -16,5 +16,5 @@ export const GlobTool = withOpenCodeToolInteractions(GlobActivity);
 export const WebSearchTool = withOpenCodeToolInteractions(WebSearchActivity);
 export const WebFetchTool = withOpenCodeToolInteractions(WebFetchActivity);
 export const ApplyPatchTool = withOpenCodeToolInteractions(ApplyPatchDiff);
-export const AskQuestionTool = withOpenCodeToolInteractions(AskQuestionInline);
+export { AskQuestionTool };
 export const FallbackTool = withOpenCodeToolInteractions(ToolCallFallback);

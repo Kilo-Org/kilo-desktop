@@ -8,6 +8,9 @@ import {
 	getGroupKeyForTool,
 	getKindMeta,
 	getMcpServerFromToolName,
+	getSegmentStats,
+	indicesHavePendingAsk,
+	lastAskingPartIndex,
 	summarizeActivity,
 	type ActivityPart,
 } from "./tool-categories.js";
@@ -23,12 +26,72 @@ describe("getMcpServerFromToolName", () => {
 		expect(getMcpServerFromToolName("apply_patch")).toBeUndefined();
 		expect(getMcpServerFromToolName("notebook_edit")).toBeUndefined();
 		expect(getMcpServerFromToolName("codebase_search")).toBeUndefined();
+		expect(getMcpServerFromToolName("ask_question")).toBeUndefined();
+		expect(getMcpServerFromToolName("request_user_input")).toBeUndefined();
 	});
 
 	it("ignores names without a server_tool shape", () => {
 		expect(getMcpServerFromToolName("read")).toBeUndefined();
 		expect(getMcpServerFromToolName("_orphan")).toBeUndefined();
 		expect(getMcpServerFromToolName("atlassian_")).toBeUndefined();
+	});
+});
+
+describe("asking activity grouping", () => {
+	it("maps question tools into the asking subgroup", () => {
+		expect(getGroupKeyForTool("question")).toBe("group-asking");
+		expect(getGroupKeyForTool("ask_question")).toBe("group-asking");
+		expect(getGroupKeyForTool("request_user_input")).toBe("group-asking");
+		expect(activityKindFromGroupKey("group-asking")).toBe("asking");
+	});
+
+	it("labels live and completed question states", () => {
+		expect(getKindMeta("asking").liveLabel({ count: 1, files: 0 })).toBe("Asking");
+		expect(getKindMeta("asking").doneLabel({ count: 1, files: 0, question: "Next task" })).toBe(
+			"Asked Next task",
+		);
+		expect(getKindMeta("asking").doneLabel({ count: 2, files: 0 })).toBe("Asked 2 questions");
+	});
+
+	it("pulls the question prompt into segment stats", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "question",
+				args: {
+					questions: [{ header: "Next task", question: "What would you like to work on next?" }],
+				},
+				status: { type: "complete" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "asking",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.question).toBe("What would you like to work on next?");
+	});
+
+	it("matches only the pending ask tool call, not prior asks", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "question",
+				toolCallId: "call-old",
+				status: { type: "complete" },
+			},
+			{ type: "text" },
+			{
+				type: "tool-call",
+				toolName: "question",
+				toolCallId: "call-new",
+				status: { type: "complete" },
+			},
+		];
+		expect(indicesHavePendingAsk(parts, [0], new Set(["call-new"]))).toBe(false);
+		expect(indicesHavePendingAsk(parts, [2], new Set(["call-new"]))).toBe(true);
+		expect(lastAskingPartIndex(parts)).toBe(2);
 	});
 });
 

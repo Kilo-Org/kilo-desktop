@@ -246,8 +246,8 @@ Read out of the Rust source rather than assumed; each of these shaped the design
   `--socket` flag over this env var.
 - **`RUNTIMED_CACHE_NAMESPACE` is not read by any Rust code** — only by nteract's
   TS/Vite files. `RUNT_BUILD_CHANNEL` is compile-time only; setting either at
-  runtime does nothing. Our `socket-path.ts` honors both, which is harmless but
-  should not be mistaken for a way to relocate a spawned daemon.
+  runtime does nothing. Our `socket-path.ts` therefore ignores the namespace
+  variable outright; use the `--socket` flag to relocate a spawned daemon.
 - **No idle auto-shutdown.** It runs until told to stop.
 - **Graceful shutdown is Unix-only.** SIGTERM/SIGINT → `trigger_shutdown()`
   (`main.rs:787-817`), which drains rooms and unlinks the socket

@@ -88,10 +88,10 @@ describe("resolveDaemonSocketPath", () => {
 		expect(resolveDaemonSocketPath({ env: {}, ...MAC })).toContain("/runt-nightly/");
 	});
 
-	it("lets RUNTIMED_CACHE_NAMESPACE override the channel default", () => {
-		expect(
-			resolveDaemonSocketPath({ env: { RUNTIMED_CACHE_NAMESPACE: "custom-ns" }, ...MAC }),
-		).toContain("/custom-ns/");
+	it("ignores RUNTIMED_CACHE_NAMESPACE, which the daemon itself does not read", () => {
+		// Honoring it would point us at a socket the daemon never binds.
+		const env: Record<string, string> = { RUNTIMED_CACHE_NAMESPACE: "custom-ns" };
+		expect(resolveDaemonSocketPath({ env, ...MAC })).toContain("/runt-nightly/");
 	});
 
 	it("ignores dev mode without a workspace path", () => {

@@ -22,7 +22,6 @@ import path from "node:path";
  */
 export interface SocketPathEnvironment {
 	readonly RUNTIMED_SOCKET_PATH?: string | undefined;
-	readonly RUNTIMED_CACHE_NAMESPACE?: string | undefined;
 	readonly RUNTIMED_DEV?: string | undefined;
 	readonly RUNTIMED_WORKSPACE_PATH?: string | undefined;
 	readonly RUNT_BUILD_CHANNEL?: string | undefined;
@@ -87,8 +86,10 @@ export function resolveDaemonSocketPath(options: ResolveSocketPathOptions = {}):
 		return `\\\\.\\pipe\\${daemonBinaryBasename(channel)}${suffix}`;
 	}
 
-	const namespace = env.RUNTIMED_CACHE_NAMESPACE ?? cacheNamespace(channel);
-	const base = path.join(cacheDir(env, platform, homedir), namespace);
+	// Deliberately not overridable by `RUNTIMED_CACHE_NAMESPACE`: the daemon's Rust
+	// never reads that variable, so honoring it here would compute a socket path
+	// nothing is listening on. Relocating a daemon needs the `--socket` flag.
+	const base = path.join(cacheDir(env, platform, homedir), cacheNamespace(channel));
 	if (devMode && workspacePath) {
 		return path.join(base, "worktrees", worktreeHash(workspacePath), "runtimed.sock");
 	}

@@ -116,15 +116,16 @@ expressing it.
 nteract is Anaconda-owned, so this is a same-company change rather than an
 upstream negotiation — but the blast radius, not the review gate, is the cost.
 
-## Separate bug, worth fixing regardless
+## Separate bug — fixed
 
-Our `socket-path.ts` reads `RUNTIMED_CACHE_NAMESPACE`. **The nteract Rust never
-reads it.** Repo-wide it appears only in
+Our `socket-path.ts` used to read `RUNTIMED_CACHE_NAMESPACE`. **The nteract Rust
+never reads it.** Repo-wide it appears only in
 `apps/notebook/vite-plugin-browser-relay.ts:122` and a slide deck.
 
-So our TS honors an override the daemon ignores: set it and we compute a socket
-path nothing is listening on. Either drop the variable or get Rust to honor it —
-but don't leave the divergence.
+So our TS honored an override the daemon ignores: setting it computed a socket
+path nothing was listening on. **Resolved by dropping the variable** — the
+namespace now always follows the build channel, and a test pins that it is
+ignored. Relocating a spawned daemon needs the `--socket` flag instead.
 
 ## Options
 
@@ -144,8 +145,7 @@ fallback either way — (a) is not a prerequisite for shipping something honest.
 
 ## Suggested order
 
-1. Fix the `RUNTIMED_CACHE_NAMESPACE` divergence. Small, independent, no design
-   needed.
+1. ~~Fix the `RUNTIMED_CACHE_NAMESPACE` divergence.~~ Done — variable dropped.
 2. Reword `incompatible` and `failed` in `daemonAbsenceMessage`. `failed`'s "no
    daemon binary is bundled with this build" is developer-facing too.
 3. Audit `daemon_base_dir()` callers: which need per-instance isolation, which

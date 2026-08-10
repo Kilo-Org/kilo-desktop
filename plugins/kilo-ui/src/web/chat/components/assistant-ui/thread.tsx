@@ -11,6 +11,7 @@ import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
 import { KiloAgentSelector } from "./kilo-agent-selector.js";
 import { KiloModelSelector } from "./kilo-model-selector.js";
 import { MarkdownText } from "./markdown-text.js";
+import { MessageCopyButton } from "./message-copy-button.js";
 import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
@@ -40,10 +41,8 @@ import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
-	CheckIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
-	CopyIcon,
 	DownloadIcon,
 	Loader2Icon,
 	MicIcon,
@@ -566,14 +565,7 @@ const AssistantActionBar: FC = () => {
 			autohide="not-last"
 			className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
 		>
-			<ActionBarPrimitive.Copy render={<TooltipIconButton tooltip="Copy" />}>
-				<AuiIf condition={(s) => s.message.isCopied}>
-					<CheckIcon className="animate-in zoom-in-50 fade-in duration-200 ease-out" />
-				</AuiIf>
-				<AuiIf condition={(s) => !s.message.isCopied}>
-					<CopyIcon className="animate-in zoom-in-75 fade-in duration-150" />
-				</AuiIf>
-			</ActionBarPrimitive.Copy>
+			<MessageCopyButton />
 			<ActionBarPrimitive.Reload render={<TooltipIconButton tooltip="Refresh" />}>
 				<RefreshCwIcon />
 			</ActionBarPrimitive.Reload>

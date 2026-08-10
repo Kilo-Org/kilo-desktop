@@ -89,6 +89,7 @@ function createHarness(overrides?: Partial<StagingContext>): TestHarness {
 		reportProgress,
 		platform: platform as NodeJS.Platform,
 		arch: arch as NodeJS.Architecture,
+		condaFilesRoot: storageDir,
 		...overrides,
 	};
 
@@ -264,14 +265,15 @@ describe("stageConda", () => {
 	it("short-circuits when bundled staged.json matches and binary exists", async () => {
 		const harness = track(createHarness());
 
-		// Pre-stage: write staged.json and the binary
-		const condaRoot = path.join(harness.storageDir, "providers", "conda");
-		const prefix = path.join(condaRoot, "prefix");
+		// Pre-stage: write staged.json in storageDir and binary in condaFilesRoot
+		const manifestDir = path.join(harness.storageDir, "providers", "conda");
+		fs.mkdirSync(manifestDir, { recursive: true });
+		const prefix = path.join(harness.storageDir, "prefix");
 		const binDir = path.join(prefix, "bin");
 		fs.mkdirSync(binDir, { recursive: true });
 		fs.writeFileSync(path.join(binDir, "conda"), "#!/bin/bash\n", { mode: 0o755 });
 		fs.writeFileSync(
-			path.join(condaRoot, "staged.json"),
+			path.join(manifestDir, "staged.json"),
 			JSON.stringify({
 				type: "bundled",
 				installerSha256: harness.installerSha256,
@@ -291,13 +293,14 @@ describe("stageConda", () => {
 		const harness = track(createHarness());
 
 		// Pre-stage with a different SHA
-		const condaRoot = path.join(harness.storageDir, "providers", "conda");
-		const prefix = path.join(condaRoot, "prefix");
+		const manifestDir = path.join(harness.storageDir, "providers", "conda");
+		fs.mkdirSync(manifestDir, { recursive: true });
+		const prefix = path.join(harness.storageDir, "prefix");
 		const binDir = path.join(prefix, "bin");
 		fs.mkdirSync(binDir, { recursive: true });
 		fs.writeFileSync(path.join(binDir, "conda"), "#!/bin/bash\n", { mode: 0o755 });
 		fs.writeFileSync(
-			path.join(condaRoot, "staged.json"),
+			path.join(manifestDir, "staged.json"),
 			JSON.stringify({ type: "bundled", installerSha256: "stale-sha", target: "darwin-arm64" }),
 		);
 

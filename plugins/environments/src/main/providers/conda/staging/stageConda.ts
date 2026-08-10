@@ -21,6 +21,11 @@ export interface StagingContext {
 	readonly reportProgress: (message: string) => void;
 	readonly platform?: NodeJS.Platform;
 	readonly arch?: NodeJS.Architecture;
+	/**
+	 * Override the space-free root for conda files (prefix, installer cache).
+	 * Defaults to `~/.anaconda-agentic-desktop/conda`. Tests inject a temp dir.
+	 */
+	readonly condaFilesRoot?: string;
 }
 
 export interface StagingResult {
@@ -58,20 +63,31 @@ type StagedManifest = StagedManifestSystem | StagedManifestBundled | StagedManif
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function providerRoot(storageDir: string): string {
-	return path.join(storageDir, "providers", "conda");
+/**
+ * Space-free root for conda files (prefix, staging temp, installer cache).
+ * The Miniconda .sh installer refuses paths with spaces, and macOS's
+ * `~/Library/Application Support/` contains one. We use a dot-directory
+ * under $HOME which is guaranteed space-free on all platforms.
+ * `staged.json` (our own JSON) stays in `storageDir` since only our code
+ * reads it.
+ */
+function resolveCondaFilesRoot(override?: string): string {
+	if (override) return override;
+	const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+	return path.join(home, ".anaconda-agentic-desktop", "conda");
 }
 
-function prefixPath(storageDir: string): string {
-	return path.join(providerRoot(storageDir), "prefix");
+function prefixPath(condaRoot: string): string {
+	return path.join(condaRoot, "prefix");
 }
 
 function manifestPath(storageDir: string): string {
-	return path.join(providerRoot(storageDir), "staged.json");
+	const root = path.join(storageDir, "providers", "conda");
+	return path.join(root, "staged.json");
 }
 
-function cacheDir(storageDir: string): string {
-	return path.join(providerRoot(storageDir), "installer-cache");
+function installerCacheDir(condaRoot: string): string {
+	return path.join(condaRoot, "installer-cache");
 }
 
 /**
@@ -109,7 +125,7 @@ async function checkSystemManifest(
 
 async function checkBundledManifest(
 	manifest: StagedManifestBundled | StagedManifestLegacy,
-	storageDir: string,
+	condaRoot: string,
 	artifact: MinicondaInstallerArtifact,
 	logger: MainSdkLogger,
 ): Promise<StagingResult | null> {
@@ -119,7 +135,7 @@ async function checkBundledManifest(
 	) {
 		return null;
 	}
-	const binPath = path.join(prefixPath(storageDir), normalizeRelPath(artifact.condaBinRelPath));
+	const binPath = path.join(prefixPath(condaRoot), normalizeRelPath(artifact.condaBinRelPath));
 	try {
 		await access(binPath);
 		logger.info("Bundled conda base already staged — skipping.");
@@ -141,8 +157,9 @@ async function computeFileSha256(filePath: string): Promise<string> {
 async function ensureInstallerCached(
 	ctx: StagingContext,
 	artifact: MinicondaInstallerArtifact,
+	condaRoot: string,
 ): Promise<string> {
-	const dir = cacheDir(ctx.storageDir);
+	const dir = installerCacheDir(condaRoot);
 	await mkdir(dir, { recursive: true });
 
 	const basename = path.basename(new URL(artifact.installerUrl).pathname);
@@ -270,7 +287,8 @@ async function replaceStaging(targetDir: string, stagedDir: string): Promise<voi
 }
 
 async function writeManifest(storageDir: string, manifest: StagedManifest): Promise<void> {
-	await mkdir(providerRoot(storageDir), { recursive: true });
+	const dir = path.dirname(manifestPath(storageDir));
+	await mkdir(dir, { recursive: true });
 	await writeFile(manifestPath(storageDir), `${JSON.stringify(manifest, null, "\t")}\n`);
 }
 
@@ -296,6 +314,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	const platform = ctx.platform ?? process.platform;
 	const arch = ctx.arch ?? process.arch;
 	const artifact = getMinicondaInstaller(platform, arch);
+	const condaRoot = resolveCondaFilesRoot(ctx.condaFilesRoot);
 
 	ctx.logger.info(
 		`[conda-staging] Starting — target: ${artifact.target}, storageDir: ${ctx.storageDir}`,
@@ -321,7 +340,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 				const result = await checkSystemManifest(manifest, ctx.logger);
 				if (result) return result;
 			} else {
-				const result = await checkBundledManifest(manifest, ctx.storageDir, artifact, ctx.logger);
+				const result = await checkBundledManifest(manifest, condaRoot, artifact, ctx.logger);
 				if (result) return result;
 			}
 			ctx.logger.info("[conda-staging] Existing manifest invalid — re-staging.");
@@ -352,17 +371,16 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 
 	// 3. Fall back to bundled Miniconda install
 	ctx.logger.info("[conda-staging] Strategy: BUNDLED — downloading Miniconda installer.");
-	const root = providerRoot(ctx.storageDir);
-	await mkdir(root, { recursive: true });
+	await mkdir(condaRoot, { recursive: true });
 
-	const installerPath = await ensureInstallerCached(ctx, artifact);
+	const installerPath = await ensureInstallerCached(ctx, artifact, condaRoot);
 
-	const stagingPrefix = path.join(root, `.staging-${Date.now()}`);
+	const stagingPrefix = path.join(condaRoot, `.staging-${Date.now()}`);
 	await mkdir(stagingPrefix, { recursive: true });
 
 	try {
 		await runInstaller(ctx, installerPath, stagingPrefix, artifact);
-		await replaceStaging(prefixPath(ctx.storageDir), stagingPrefix);
+		await replaceStaging(prefixPath(condaRoot), stagingPrefix);
 	} finally {
 		await rm(stagingPrefix, { recursive: true, force: true });
 	}
@@ -374,10 +392,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	};
 	await writeManifest(ctx.storageDir, bundledManifest);
 
-	const condaBinPath = path.join(
-		prefixPath(ctx.storageDir),
-		normalizeRelPath(artifact.condaBinRelPath),
-	);
+	const condaBinPath = path.join(prefixPath(condaRoot), normalizeRelPath(artifact.condaBinRelPath));
 	ctx.reportProgress("Conda base ready.");
 	ctx.logger.info("Conda staging complete.");
 	return { condaBinPath, strategy: "bundled" };

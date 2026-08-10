@@ -1,6 +1,6 @@
 # Notebook embedding — decisions and the options not taken
 
-Companion to [notebook-embedding-handoff.md](./notebook-embedding-handoff.md). That doc tracks
+Companion to [embedding-handoff.md](./embedding-handoff.md). That doc tracks
 _what is built_; this one records _why it is shaped this way_, including options that were
 considered and rejected, so a later reader does not have to re-derive the tradeoffs.
 

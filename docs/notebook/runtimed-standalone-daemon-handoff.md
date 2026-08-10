@@ -1,13 +1,13 @@
 # Handoff: publish standalone `runtimed` assets
 
-Next step for the notebook feature. **Supersedes `handoff-wheel.md`** — the wheel
+Next step for the notebook feature. **Supersedes `runtimed-wheel-handoff.md`** — the wheel
 route is dead, proven by extraction, not code reading. See [Why not the
 wheel](#why-not-the-wheel-settled-empirically). Decision made: **publish
 standalone per-platform daemon assets** (option 1 of 3).
 
 ## The finding that changed the plan
 
-`handoff-wheel.md` bet on `runtimed` arriving inside the Python wheel. It does
+`runtimed-wheel-handoff.md` bet on `runtimed` arriving inside the Python wheel. It does
 not.
 
 **All four published wheels contain no daemon binary.** Verified against real
@@ -59,7 +59,7 @@ inverts the handoff's biggest risk.
 
 So routing a Python-free binary through Python packaging buys nothing and costs
 per-target ABI/platform tag selection (`cp39-abi3`) plus an unusable 11 MB
-extension module. `handoff-wheel.md`'s reasons to prefer the wheel — "no new
+extension module. `runtimed-wheel-handoff.md`'s reasons to prefer the wheel — "no new
 release surface" and better notarization ergonomics — do not survive: the wheel
 needs an upstream fix anyway (so there _is_ new surface), and see below on
 notarization.

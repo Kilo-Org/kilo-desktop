@@ -2,7 +2,7 @@
 
 Status: **partially built.** Steps 1, 3, 4, 5 and 6 have landed; the original "hard blocker" is resolved. The notebook renders and executes Python in a packaged build. Steps 8 (blob resolver) and 9 (a spec that executes a cell) remain. See [What has landed](#what-has-landed) before acting on anything below — two of this doc's original recommendations were inverted by what we found while building.
 
-> **Sections 3 and 4 below are superseded.** They plan a same-origin `/notebook/` path; the chosen design serves the bundle from a separate protocol **host**, which removes the Vite `base` patch, the directory-index fallback, and the test inversion they call for. Follow [notebook-protocol-csp-handoff.md](./notebook-protocol-csp-handoff.md) instead, with the rationale in [notebook-embedding-decisions.md](./notebook-embedding-decisions.md). Read sections 3 and 4 only for the constraints they record.
+> **Sections 3 and 4 below are superseded.** They plan a same-origin `/notebook/` path; the chosen design serves the bundle from a separate protocol **host**, which removes the Vite `base` patch, the directory-index fallback, and the test inversion they call for. Follow [protocol-csp-handoff.md](./protocol-csp-handoff.md) instead, with the rationale in [embedding-decisions.md](./embedding-decisions.md). Read sections 3 and 4 only for the constraints they record.
 
 Goal: ship nteract's notebook UI inside the packaged agentic-desktop app, installed with it, with real Python execution and no dev server.
 
@@ -17,6 +17,42 @@ Goal: ship nteract's notebook UI inside the packaged agentic-desktop app, instal
 | Transport to the UI                                      | **done, different design** | `NotebookRelayService.ts` — see below                                |
 
 **We do not need `ElectronHost` to render.** `NotebookRelayService` serves nteract's stock `createBrowserHost()` a config endpoint plus a loopback WebSocket carrying typed frames. The browser host is _not_ dev-only — it ships in nteract's production bundle and is selected whenever `__TAURI_INTERNALS__` is absent, which is our case. That makes step 2 an optimization rather than a gate, and removes this doc's "single biggest schedule risk" from the critical path.
+
+### The main-process transport, file by file
+
+`apps/desktop/src/main/features/notebook/`. Adds `ws` to `apps/desktop/package.json`.
+
+| File                      | Role                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `wire/constants.ts`       | Vendored `MAGIC`, `PROTOCOL_VERSION` (4), frame types, per-type size caps                         |
+| `wire/codec.ts`           | `LengthPrefixedFrames`, preamble/frame encode, typed-frame encode/decode                          |
+| `socket-path.ts`          | Daemon socket / Windows named-pipe resolution, dev vs production namespaces                       |
+| `RuntimedService.ts`      | `node:net` daemon client: `connectNotebook`, `queryDaemonInfo`. Electron-free per the oxlint rule |
+| `NotebookRelayService.ts` | Loopback HTTP+WebSocket server replacing nteract's dev-only Vite relay                            |
+| `DaemonProcessService.ts` | Spawns and supervises the bundled daemon; restart with capped backoff                             |
+| `daemon-version.ts`       | Commit-hash pinning — a skewed daemon is refused, not used                                        |
+
+Two upstream bugs were found and fixed in our port rather than inherited:
+
+- Frames arriving before a consumer attaches were silently dropped upstream. The window is real: the relay awaits `queryDaemonInfo` (a separate socket round-trip) between reading the bootstrap and attaching `pipeTo`, so a dropped Automerge sync frame would desync the document. Our `LengthPrefixedFrames` buffers instead.
+- `RUNTIMED_SOCKET_PATH` panics if its parent directory does not exist; `socket-path.ts` accounts for this.
+
+Also worth knowing: the relay accepts our custom-protocol `Origin` explicitly, because nteract's own relay treats it as cross-origin and refuses it. Authorization is a constant-time token check; the loopback port alone is not a security boundary.
+
+### Re-verifying the transport against a live daemon
+
+Start by reading `NotebookRelayService.ts` — its header comment states the two hardcoded-path constraints that shape the whole design.
+
+```bash
+# A daemon must be running (nteract's own dev daemon is fine):
+ps aux | grep '[r]untimed'
+find ~/Library/Caches/runt* -name runtimed.sock
+
+# Full gate (needs GH_PACKAGE_TOKEN — see step 6):
+pnpm check && pnpm lint && pnpm format:check && pnpm test
+```
+
+A scratch script that constructs `RuntimedService({ socketPath })` → `NotebookRelayService({ runtimed, allowedOrigin })` → `relay.config()` → a `ws` client sending the custom-protocol `Origin` should receive a `ready` control frame within a second or two. That is the whole contract; if it holds, the transport is fine and any failure is in the layers above.
 
 ### Two original recommendations are now wrong
 
@@ -63,14 +99,20 @@ nteract has already reserved space for us: `packages/notebook-host/src/types.ts:
 
 As built (the relay path):
 
+The relay approach removes the preload/MessagePort/`ElectronHost` layers entirely — nteract's **stock, unmodified** browser host is the client:
+
 ```
 agentic-desktop renderer (anaconda-agentic-desktop://app)
   └─ notebook surface (iframe or WebContentsView) → nteract's built SPA, served from our protocol
-       └─ nteract's stock createBrowserHost() implements NotebookHost
-            └─ loopback ws://127.0.0.1:<port>/notebook-relay  (+ /__nteract_dev_relay/config)
-                 └─ main: NotebookRelayService → RuntimedService — node:net socket/named pipe
-                      └─ runtimed (bundled sidecar) → Jupyter ZMQ → Python kernel
+       └─ createBrowserHost()  ← stock nteract, unmodified
+            ├─ fetch  http://127.0.0.1:<port>/__nteract_dev_relay/config   (CONFIG_PATH)
+            └─ ws://127.0.0.1:<port>/notebook-relay?token=…                (RELAY_WS_PATH)
+                 └─ main: NotebookRelayService  ── token + Origin check
+                      └─ main: RuntimedService — node:net socket/named pipe
+                           └─ runtimed (bundled sidecar) → Jupyter ZMQ → Python kernel
 ```
+
+This supersedes the original `ElectronHost` → `window.electronHost` → MessagePort chain, and with it the preload contextBridge work — the contextBridge allowlist has no MessagePort pattern and `invoke` cannot transfer a port, which is now moot.
 
 Originally planned, still possible later — trades the loopback socket for IPC, and needs an upstream `ElectronHost`:
 
@@ -181,7 +223,7 @@ Worth a legal review before committing, not after.
 
 Both original gating questions are answered: standalone binaries exist (PR #4125), and `ElectronHost` turned out not to be needed. Done: frame client + codec tests, sidecar spawn/supervise/dispose, commit-hash pinning, and the loopback relay (which replaced the MessagePort-through-preload plan, so the contextBridge allowlist gap no longer matters).
 
-Steps 3 and 4 are now **done** as well — see [notebook-protocol-csp-handoff.md](./notebook-protocol-csp-handoff.md). The notebook renders and executes Python in a packaged `.app`, and `@smoke` is 6/6 both with the daemon and bundle staged and without (the latter is what CI runs). Neither is staged in CI, so an e2e assertion about either must be gated on its presence — see that doc's Step F notes.
+Steps 3 and 4 are now **done** as well — see [protocol-csp-handoff.md](./protocol-csp-handoff.md). The notebook renders and executes Python in a packaged `.app`, and `@smoke` is 6/6 both with the daemon and bundle staged and without (the latter is what CI runs). Neither is staged in CI, so an e2e assertion about either must be gated on its presence — see that doc's Step F notes.
 
 Remaining, in order:
 

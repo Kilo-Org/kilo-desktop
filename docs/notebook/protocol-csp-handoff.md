@@ -23,10 +23,10 @@ Corrections to this plan's own text, found while implementing it:
 
 Read first, in order:
 
-1. [notebook-embedding-decisions.md](./notebook-embedding-decisions.md) — the six decisions (D1–D6)
+1. [embedding-decisions.md](./embedding-decisions.md) — the six decisions (D1–D6)
    this plan implements, each with the option that was rejected and why. **Do not re-litigate these
    without reading it**; two of them invert what the older handoff plans.
-2. [notebook-embedding-handoff.md](./notebook-embedding-handoff.md) — overall state. Note its
+2. [embedding-handoff.md](./embedding-handoff.md) — overall state. Note its
    sections 3 and 4 are the work described here, and its plan for those two sections is
    **superseded** by D1 (see "What changed vs. the old plan" below).
 

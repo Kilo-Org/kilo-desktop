@@ -1,9 +1,9 @@
 # Embed the nteract notebook in agentic-desktop — scoping brief
 
 Intended as the basis for a JIRA epic. Deliberately free of file paths and line numbers;
-implementation detail lives in `notebook-embedding-handoff.md`,
-`notebook-protocol-csp-handoff.md`, and `handoff-standalone-daemon.md`. Decisions and
-their alternatives are in `notebook-decisions-for-review.md`.
+implementation detail lives in `embedding-handoff.md`,
+`protocol-csp-handoff.md`, and `runtimed-standalone-daemon-handoff.md`. Decisions and
+their alternatives are in `decisions-for-review.md`.
 
 ## Goal
 

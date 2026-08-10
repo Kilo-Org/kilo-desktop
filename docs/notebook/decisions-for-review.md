@@ -6,8 +6,8 @@ Two halves. **Part 1** is calls already made where a real alternative existed �
 them, they are all still reversible at modest cost. **Part 2** is genuinely open, and
 three of those need someone other than the implementer to decide.
 
-Depth on any item lives in the source docs: `notebook-embedding-decisions.md` (D1–D6),
-`notebook-protocol-csp-handoff.md`, `handoff-standalone-daemon.md`,
+Depth on any item lives in the source docs: `embedding-decisions.md` (D1–D6),
+`protocol-csp-handoff.md`, `runtimed-standalone-daemon-handoff.md`,
 `runtimed-private-instance-handoff.md`.
 
 ---

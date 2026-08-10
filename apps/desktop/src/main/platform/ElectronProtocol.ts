@@ -62,7 +62,7 @@ export function getDesktopUrl(isDevelopment: boolean): string {
  * A distinct host — not a path under `app` — is what makes this a distinct
  * origin, which is what earns the separate CSP below plus a storage partition
  * and no IPC trust (`isTrustedRendererUrl` matches `app` only). See
- * docs/notebook-embedding-decisions.md, D1.
+ * docs/notebook/embedding-decisions.md, D1.
  */
 export interface EmbeddedWebHost {
 	/** Host component on the desktop scheme, e.g. `notebook`. */
@@ -138,7 +138,7 @@ export function createContentSecurityPolicy(
  * Policy for an embedded third-party bundle. Deliberately looser than the app's
  * own — and deliberately written here rather than declared by the feature that
  * contributes the bundle, so the party being constrained is not the party
- * choosing the constraint (docs/notebook-embedding-decisions.md, D2).
+ * choosing the constraint (docs/notebook/embedding-decisions.md, D2).
  *
  * What the extra grants buy, none of which the app origin gains:
  * - `'wasm-unsafe-eval'`: the notebook bundle instantiates a wasm module.

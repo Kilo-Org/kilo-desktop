@@ -1,7 +1,7 @@
 # Running our own `runtimed`, or sharing the user's — handoff
 
 Status: **investigation.** Nothing built. This supersedes one recommendation in
-`notebook-embedding-handoff.md` §5 and reframes a user-facing failure mode.
+`embedding-handoff.md` §5 and reframes a user-facing failure mode.
 
 Scope: whether agentic-desktop should spawn a private `runtimed` daemon or attach
 to whatever daemon is already running, and what each costs. Independent of §3/§4
@@ -22,7 +22,7 @@ Three of the five terminal states are "not our process": `external`,
 
 ## The handoff doc's advice does not work
 
-`notebook-embedding-handoff.md` §5 recommends "a private instance with an
+`embedding-handoff.md` §5 recommends "a private instance with an
 explicit `RUNTIMED_SOCKET_PATH` under our own app-support dir."
 
 **The lock is not keyed on the socket.** The single-instance guard is an `flock`

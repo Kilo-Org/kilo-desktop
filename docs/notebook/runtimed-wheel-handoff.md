@@ -1,7 +1,7 @@
 # Handoff: source `runtimed` from the Python wheel
 
 > **SUPERSEDED — do not follow this plan.** See
-> `handoff-standalone-daemon.md`. The premise below is false: the published
+> `runtimed-standalone-daemon-handoff.md`. The premise below is false: the published
 > wheels contain **no** `runtimed` binary (`_bin/` holds only `.gitkeep` on all
 > four platforms) because `python/runtimed/.gitignore` makes maturin drop the
 > daemon CI stages there. Verified by extracting real release assets. The daemon

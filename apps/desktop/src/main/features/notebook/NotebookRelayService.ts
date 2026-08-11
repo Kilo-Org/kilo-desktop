@@ -4,7 +4,12 @@ import type { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
-import type { NotebookHandshake, RuntimedLogger, RuntimedService } from "./RuntimedService.js";
+import type {
+	NotebookConnection,
+	NotebookHandshake,
+	RuntimedLogger,
+	RuntimedService,
+} from "./RuntimedService.js";
 
 /**
  * Loopback relay that lets nteract's stock `createBrowserHost()` talk to the
@@ -200,8 +205,16 @@ export class NotebookRelayService {
 	}
 
 	async #bridge(ws: WebSocket, url: URL): Promise<void> {
+		let connection: NotebookConnection | undefined;
+		let rendererClosed = false;
+		ws.once("close", () => {
+			rendererClosed = true;
+			connection?.close();
+		});
+
 		if (this.#checkDaemon) {
 			const state = await this.#checkDaemon();
+			if (rendererClosed) return;
 			if (state.status === "unavailable") {
 				this.#logger.warn(`[notebook] daemon unavailable: ${state.reason}`);
 				sendControl(ws, {
@@ -217,7 +230,6 @@ export class NotebookRelayService {
 			}
 		}
 
-		let connection;
 		try {
 			connection = await this.#runtimed.connectNotebook(this.#handshakeFor(url));
 		} catch (error) {
@@ -232,6 +244,10 @@ export class NotebookRelayService {
 				},
 			});
 			ws.close(1011, "daemon unavailable");
+			return;
+		}
+		if (rendererClosed || ws.readyState !== ws.OPEN) {
+			connection.close();
 			return;
 		}
 
@@ -282,7 +298,6 @@ export class NotebookRelayService {
 			const frame = toBuffer(data);
 			if (frame) connection.send(frame);
 		});
-		ws.on("close", () => connection.close());
 	}
 }
 

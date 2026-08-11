@@ -42,12 +42,15 @@ function daemonInfoFrame(): Buffer {
 class FakeDaemon {
 	readonly #server: net.Server;
 	readonly #sockets: net.Socket[] = [];
+	readonly #delayNotebookBootstrap: boolean;
+	readonly #pendingNotebookBootstraps: net.Socket[] = [];
 	#port = 0;
 	notebookSockets: net.Socket[] = [];
 	handshakes: unknown[] = [];
 	frames: Buffer[] = [];
 
-	constructor() {
+	constructor(options: { delayNotebookBootstrap?: boolean } = {}) {
+		this.#delayNotebookBootstrap = options.delayNotebookBootstrap ?? false;
 		this.#server = net.createServer((socket) => {
 			this.#sockets.push(socket);
 			socket.on("error", () => {});
@@ -76,7 +79,8 @@ class FakeDaemon {
 						channel = handshake.channel ?? "notebook";
 						if (channel !== "pool") {
 							this.notebookSockets.push(socket);
-							socket.write(bootstrapFrame());
+							if (this.#delayNotebookBootstrap) this.#pendingNotebookBootstraps.push(socket);
+							else socket.write(bootstrapFrame());
 						}
 						continue;
 					}
@@ -100,6 +104,12 @@ class FakeDaemon {
 
 	connect = (): net.Socket => net.createConnection(this.#port, "127.0.0.1");
 
+	releaseNotebookBootstraps(): void {
+		for (const socket of this.#pendingNotebookBootstraps.splice(0)) {
+			if (!socket.destroyed) socket.write(bootstrapFrame());
+		}
+	}
+
 	async close(): Promise<void> {
 		for (const socket of this.#sockets) socket.destroy();
 		await new Promise<void>((resolve) => this.#server.close(() => resolve()));
@@ -111,13 +121,20 @@ const relays: NotebookRelayService[] = [];
 const sockets: WebSocket[] = [];
 
 async function startRelay(
-	options: { allowedOrigin?: string; checkDaemon?: () => Promise<DaemonAvailability> } = {},
+	options: {
+		allowedOrigin?: string;
+		checkDaemon?: () => Promise<DaemonAvailability>;
+		delayNotebookBootstrap?: boolean;
+	} = {},
 ): Promise<{ relay: NotebookRelayService; daemon: FakeDaemon }> {
-	const daemon = new FakeDaemon();
+	const { delayNotebookBootstrap, ...relayOptions } = options;
+	const daemon = new FakeDaemon(
+		delayNotebookBootstrap === undefined ? {} : { delayNotebookBootstrap },
+	);
 	await daemon.listen();
 	daemons.push(daemon);
 	const runtimed = new RuntimedService({ socketPath: "unused", connect: daemon.connect });
-	const relay = new NotebookRelayService({ runtimed, ...options });
+	const relay = new NotebookRelayService({ runtimed, ...relayOptions });
 	relays.push(relay);
 	return { relay, daemon };
 }
@@ -430,6 +447,21 @@ describe("NotebookRelayService external daemon", () => {
 		releaseDaemon();
 		await vi.waitFor(() => expect(messages.some((m) => m.type === "ready")).toBe(true));
 		expect(notebookHandshakes()).toHaveLength(1);
+	});
+
+	it("closes the daemon connection when the renderer exits during its handshake", async () => {
+		const { relay, daemon } = await startRelay({ delayNotebookBootstrap: true });
+		const { websocket_url, token } = await relay.config();
+		const ws = openSocket(`${websocket_url}?token=${token}`);
+		await new Promise<void>((resolve) => ws.once("open", resolve));
+		await vi.waitFor(() => expect(daemon.notebookSockets).toHaveLength(1));
+		const socket = daemon.notebookSockets[0];
+
+		ws.close();
+		await new Promise<void>((resolve) => ws.once("close", () => resolve()));
+		daemon.releaseNotebookBootstraps();
+
+		await vi.waitFor(() => expect(socket?.destroyed).toBe(true));
 	});
 
 	it("reports the missing prerequisite as unavailable without dialing", async () => {

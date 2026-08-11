@@ -1,5 +1,9 @@
 # Handoff: publish standalone `runtimed` assets
 
+> **Superseded:** Agentic Desktop now attaches to the user's externally installed singleton and
+> does not package, install, spawn, or supervise a daemon. This file is retained only as the
+> investigation record.
+
 Next step for the notebook feature. **Supersedes `runtimed-wheel-handoff.md`** — the wheel
 route is dead, proven by extraction, not code reading. See [Why not the
 wheel](#why-not-the-wheel-settled-empirically). Decision made: **publish

@@ -7,13 +7,10 @@ import {
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 import { test } from "@playwright/test";
 
-import { packagedDaemonExists } from "../../../utils/paths.js";
-
 /**
  * Asserts the surface renders, frames the notebook protocol host, and that the
- * feature's `status` channel answers from the packaged binary — including that a
- * daemon is actually reachable, which is what proves the bundled sidecar spawned
- * rather than merely shipping.
+ * feature's `status` channel answers from the packaged binary. A live-daemon
+ * assertion is opt-in because the app never ships or starts runtimed itself.
  */
 
 /** Shape of `window.desktopApi.invoke` — see apps/desktop/src/preload/preload.ts. */
@@ -30,7 +27,7 @@ type NotebookStatusResult =
 			ok: true;
 			value: {
 				relayPort: number;
-				process: { status: string; reason?: string };
+				availability: { status: string; reason?: string };
 				daemon: { version: string } | null;
 			};
 	  }
@@ -99,28 +96,15 @@ export class NotebookPage {
 	}
 
 	/**
-	 * Asserts the bundled sidecar is actually reachable, not merely shipped.
-	 *
-	 * `running` means we spawned it; `external` means one was already listening —
-	 * both are successes, and which one occurs depends on whether the developer or
-	 * CI machine happens to run an nteract daemon of the same channel, since they
-	 * share a singleton lock. `failed` is the regression this guards: an
-	 * unstageable binary, a spawn error, or a daemon that never binds.
-	 *
-	 * A non-null `daemon` is asserted too, because `process.status` alone would
-	 * pass if the socket accepted but the handshake never completed.
-	 *
-	 * Skipped when the build staged no daemon — the CI configuration, since
-	 * `RUNTIMED_BINARY` is opt-in. Asserting there would fail every CI run for a
-	 * build that is behaving exactly as designed. The skip is annotated rather
-	 * than silent, so a run that covers less than it appears to says so.
+	 * Asserts an externally bootstrapped singleton is reachable. Ordinary package
+	 * smoke does not require one; set `RUNTIMED_E2E_EXTERNAL=1` in the environment
+	 * that started runtimed to exercise the real attach path.
 	 */
 	async verifyDaemonIsReachable(): Promise<void> {
-		if (!packagedDaemonExists()) {
+		if (process.env["RUNTIMED_E2E_EXTERNAL"] !== "1") {
 			test.info().annotations.push({
 				type: "skipped-assertion",
-				description:
-					"daemon reachability unchecked: this build staged no runtimed (set RUNTIMED_BINARY)",
+				description: "external runtimed reachability unchecked (set RUNTIMED_E2E_EXTERNAL=1)",
 			});
 			return;
 		}
@@ -138,11 +122,11 @@ export class NotebookPage {
 		if (!result.ok) {
 			throw new Error(`Expected notebook:status to succeed, got error "${result.error.message}"`);
 		}
-		const { process: daemonProcess, daemon } = result.value;
-		if (daemonProcess.status !== "running" && daemonProcess.status !== "external") {
+		const { availability, daemon } = result.value;
+		if (availability.status !== "available") {
 			throw new Error(
-				`Expected the bundled daemon to be running or already external, got "${daemonProcess.status}"` +
-					(daemonProcess.reason ? ` (${daemonProcess.reason})` : ""),
+				`Expected the external daemon to be available, got "${availability.status}"` +
+					(availability.reason ? ` (${availability.reason})` : ""),
 			);
 		}
 		if (!daemon?.version) {

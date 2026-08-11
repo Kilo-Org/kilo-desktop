@@ -1,5 +1,9 @@
 # Embed the nteract notebook in agentic-desktop — scoping brief
 
+> **Runtime update:** daemon packaging, signing, and supervision below are superseded. Agentic
+> Desktop attaches to the user's externally installed singleton; another product workstream owns
+> installation for the initial demo and beta.
+
 Intended as the basis for a JIRA epic. Deliberately free of file paths and line numbers;
 implementation detail lives in `embedding-handoff.md`,
 `protocol-csp-handoff.md`, and `runtimed-standalone-daemon-handoff.md`. Decisions and

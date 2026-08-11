@@ -281,6 +281,8 @@ describe("ElectronProtocol", () => {
 
 		expect(response.status).toBe(404);
 		expect(fetch).not.toHaveBeenCalled();
+	});
+
 	it("matches an embedded host exactly", () => {
 		const hosts: EmbeddedWebHost[] = [{ host: "notebook", root: "/bundle" }];
 		expect(findEmbeddedHost(hosts, "notebook")).toBe(hosts[0]);

@@ -8,30 +8,26 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { getDesktopOrigin } from "../../platform/ElectronProtocol.js";
 import { createLogger } from "../../platform/logger.js";
-import { DaemonProcessService } from "./DaemonProcessService.js";
-import { resolveDaemonBinaryPath } from "./daemon-binary-path.js";
-import { readBundledDaemonVersion } from "./daemon-version.js";
 import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
 import { CONFIG_PATH, NotebookRelayService } from "./NotebookRelayService.js";
 import { RuntimedService, type RuntimedLogger } from "./RuntimedService.js";
+import type { BuildChannel } from "./socket-path.js";
+
+export const RUNTIMED_PREREQUISITE_MESSAGE =
+	"The nteract runtime service is not running. Install or start nteract, then retry.";
 
 export interface NotebookFeatureOptions {
 	/** Selects which custom-protocol origin the relay accepts. Defaults to `!app.isPackaged`. */
 	readonly isDevelopment?: boolean;
 	readonly socketPath?: string;
+	/** Selects the installed singleton. Defaults to nightly for the initial demo. */
+	readonly runtimeChannel?: BuildChannel;
 	readonly logger?: RuntimedLogger;
 	/** Test seam for injecting a fake daemon socket factory. */
 	readonly connect?: (socketPath: string) => net.Socket;
 	/**
-	 * Overrides where the sidecar is found. Returning undefined leaves the
-	 * feature spawn-free, attaching only to an already-running daemon — which is
-	 * what tests outside a real Electron process need, since the default reads
-	 * `app.getAppPath()`.
-	 */
-	readonly resolveDaemonBinary?: () => string | undefined;
-	/**
 	 * Overrides where the nteract bundle is found, for the same reason as
-	 * `resolveDaemonBinary`: the default reads `app.getAppPath()`.
+	 * the default reads `app.getAppPath()`.
 	 */
 	readonly resolveBundleRoot?: () => string | undefined;
 }
@@ -41,17 +37,10 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 	const logger = options.logger ?? createLogger("notebook");
 	const runtimed = new RuntimedService({
 		...(options.socketPath ? { socketPath: options.socketPath } : {}),
+		...(options.runtimeChannel ? { channel: options.runtimeChannel } : {}),
 		logger,
 		...(options.connect ? { connect: options.connect } : {}),
 	});
-	const resolveBinary =
-		options.resolveDaemonBinary ??
-		(() =>
-			resolveDaemonBinaryPath({
-				isPackaged: app.isPackaged,
-				resourcesPath: process.resourcesPath,
-				appPath: app.getAppPath(),
-			}));
 	const resolveBundleRoot =
 		options.resolveBundleRoot ??
 		(() =>
@@ -60,51 +49,31 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 				resourcesPath: process.resourcesPath,
 				appPath: app.getAppPath(),
 			}));
-	const binaryPath = resolveBinary();
-	const daemonProcess = new DaemonProcessService({
-		binaryPath,
-		probe: () => runtimed.isListening(),
-		runningVersion: async () => (await runtimed.queryDaemonInfo())?.version,
-		bundledVersion: binaryPath ? () => readBundledDaemonVersion(binaryPath) : async () => undefined,
-		logger,
-	});
+	const checkDaemon = async () =>
+		(await runtimed.isListening())
+			? ({ status: "available" } as const)
+			: ({ status: "unavailable", reason: RUNTIMED_PREREQUISITE_MESSAGE } as const);
 	const relay = new NotebookRelayService({
 		runtimed,
 		// The WebSocket is opened by nteract's document, which we serve from the
 		// notebook host — not the app host. Pointing this at `app` 401s every
 		// upgrade, and the view reports that as an unavailable daemon.
 		allowedOrigin: getDesktopOrigin(isDevelopment, NOTEBOOK_HOST),
-		// nteract dials as soon as it has the config, which for a cold start is
-		// well before the sidecar binds. Without this the relay only ever saw
-		// ENOENT and reported a terminal failure for a daemon that was still coming
-		// up — the `status` channel awaited the supervisor, but nteract never calls it.
-		ensureDaemon: () => daemonProcess.ensureRunning(),
+		checkDaemon,
 		logger,
 	});
 
 	const api: NotebookService = {
-		// Starting the relay and the daemon here rather than at boot keeps the
-		// loopback port unbound and the sidecar unspawned until something actually
-		// opens a notebook.
+		// Starting the relay here rather than at boot keeps the loopback port
+		// unbound until something opens the notebook surface.
 		status: async () => {
 			const relayPort = await relay.start();
-			const process_ = await daemonProcess.ensureRunning();
-			// A commit-skewed daemon is reachable but unusable, so it must not be
-			// reported as a working daemon — the view would otherwise show a healthy
-			// version string for a connection that will corrupt on first frame.
-			const daemon = process_.status === "incompatible" ? null : await runtimed.queryDaemonInfo();
+			const daemon = await runtimed.queryDaemonInfo();
 			return {
 				relayPort,
-				process: {
-					status: process_.status,
-					...("reason" in process_ ? { reason: process_.reason } : {}),
-					...(process_.status === "incompatible"
-						? {
-								runningVersion: process_.runningVersion,
-								bundledVersion: process_.bundledVersion,
-							}
-						: {}),
-				},
+				availability: daemon
+					? { status: "available" as const }
+					: { status: "unavailable" as const, reason: RUNTIMED_PREREQUISITE_MESSAGE },
 				daemon: daemon
 					? {
 							version: daemon.version,
@@ -128,7 +97,6 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		routes: { [CONFIG_PATH]: () => relay.config() },
 	});
 	mainSdk.onDispose(() => {
-		void daemonProcess.dispose();
 		void relay.dispose();
 	});
 }

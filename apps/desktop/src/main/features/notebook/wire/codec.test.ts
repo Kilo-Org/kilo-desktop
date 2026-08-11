@@ -35,10 +35,10 @@ describe("preamble", () => {
 		expect(() => assertProtocolVersion(preamble)).toThrow(/0xc0 0xde 0x01 0xac/);
 	});
 
-	it("rejects a version mismatch and names the commit-equality requirement", () => {
+	it("rejects a version mismatch and names the protocol requirement", () => {
 		const preamble = Buffer.from([0xc0, 0xde, 0x01, 0xac, 3]);
 		expect(() => assertProtocolVersion(preamble)).toThrow(/daemon speaks v3/);
-		expect(() => assertProtocolVersion(preamble)).toThrow(/same commit/);
+		expect(() => assertProtocolVersion(preamble)).toThrow(/supports this protocol/);
 	});
 
 	it("rejects a truncated preamble rather than reading past the end", () => {

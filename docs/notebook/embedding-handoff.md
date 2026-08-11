@@ -1,10 +1,15 @@
 # Embedding the nteract notebook in Electron — handoff
 
+> **Runtime update:** daemon staging, spawning, supervision, and exact-revision admission described
+> below are superseded. Agentic Desktop attaches to the user's externally installed singleton and
+> negotiates compatibility by protocol number and semantic capabilities.
+
 Status: **partially built.** Steps 1, 3, 4, 5 and 6 have landed; the original "hard blocker" is resolved. The notebook renders and executes Python in a packaged build. Steps 8 (blob resolver) and 9 (a spec that executes a cell) remain. See [What has landed](#what-has-landed) before acting on anything below — two of this doc's original recommendations were inverted by what we found while building.
 
 > **Sections 3 and 4 below are superseded.** They plan a same-origin `/notebook/` path; the chosen design serves the bundle from a separate protocol **host**, which removes the Vite `base` patch, the directory-index fallback, and the test inversion they call for. Follow [protocol-csp-handoff.md](./protocol-csp-handoff.md) instead, with the rationale in [embedding-decisions.md](./embedding-decisions.md). Read sections 3 and 4 only for the constraints they record.
 
-Goal: ship nteract's notebook UI inside the packaged agentic-desktop app, installed with it, with real Python execution and no dev server.
+Goal: ship nteract's notebook UI inside the packaged agentic-desktop app, with real Python execution
+through the externally installed singleton and no dev server.
 
 ## What has landed
 

@@ -8,7 +8,7 @@ import {
 	encodePreamble,
 } from "./wire/codec.js";
 import { FrameType } from "./wire/constants.js";
-import { resolveDaemonSocketPath } from "./socket-path.js";
+import { type BuildChannel, resolveDaemonSocketPath } from "./socket-path.js";
 
 /**
  * Daemon socket client for the `runtimed` typed-frame v4 protocol.
@@ -67,6 +67,8 @@ export interface RuntimedLogger {
 
 export interface RuntimedServiceOptions {
 	readonly socketPath?: string;
+	/** Installed singleton channel. Defaults to nightly for the initial demo. */
+	readonly channel?: BuildChannel;
 	readonly logger?: RuntimedLogger;
 	/** Test seam for injecting a fake socket factory. */
 	readonly connect?: (socketPath: string) => net.Socket;
@@ -92,7 +94,9 @@ export class RuntimedService {
 	readonly #connect: (socketPath: string) => net.Socket;
 
 	constructor(options: RuntimedServiceOptions = {}) {
-		this.#socketPath = options.socketPath ?? resolveDaemonSocketPath();
+		this.#socketPath =
+			options.socketPath ??
+			resolveDaemonSocketPath(options.channel ? { channel: options.channel } : {});
 		this.#logger = options.logger ?? noopLogger;
 		this.#connect = options.connect ?? ((socketPath) => net.createConnection(socketPath));
 	}

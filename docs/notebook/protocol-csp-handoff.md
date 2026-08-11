@@ -1,5 +1,8 @@
 # Handoff: serve nteract's SPA from our protocol + CSP (handoff steps 3 & 4)
 
+> **Runtime update:** references below to a staged daemon are historical. The protocol-host and CSP
+> work remains current; Agentic Desktop now attaches to an externally installed singleton.
+
 Status: **done.** Steps A–F are implemented, the gate is green
 (`pnpm check && pnpm lint && pnpm format:check && pnpm test` — 445 desktop + 102 web tests; desktop
 branch coverage 89.67%, web 81.73%, against an 80% threshold), and the packaged render is verified

@@ -107,14 +107,11 @@ async function boot(options: { withDaemon?: boolean } = {}) {
 	}
 	// isDevelopment is passed explicitly: `app.isPackaged` is unavailable outside
 	// a real Electron process, and the value decides which origin the relay trusts.
-	// Resolving to no binary keeps these tests off the spawn path — they cover the
-	// relay, and DaemonProcessService.test.ts covers supervision. It also avoids
-	// the default resolver's `app.getAppPath()`, unavailable outside Electron —
-	// which is why the bundle root is stubbed out for the same reason.
+	// The bundle root is stubbed because its default reads `app.getAppPath()`,
+	// which is unavailable outside Electron. The daemon itself is always external.
 	mainRegister(mainSdk, {
 		isDevelopment: false,
 		socketPath: "unused",
-		resolveDaemonBinary: () => undefined,
 		resolveBundleRoot: () => undefined,
 		...(connect ? { connect } : {}),
 	});
@@ -127,7 +124,7 @@ describe("notebook mainRegister", () => {
 
 		const status = (await mainSdk.invoke("status")) as {
 			relayPort: number;
-			process: { status: string };
+			availability: { status: string };
 			daemon: { version: string; blobPort: number | null; isDevMode: boolean } | null;
 		};
 
@@ -138,9 +135,7 @@ describe("notebook mainRegister", () => {
 			isDevMode: true,
 			blobPort: 48637,
 		});
-		// A daemon was already listening, so the supervisor attached instead of
-		// spawning — the same path a user's own nteract daemon takes.
-		expect(status.process).toEqual({ status: "external" });
+		expect(status.availability).toEqual({ status: "available" });
 		mainSdk.dispose();
 	});
 
@@ -149,16 +144,14 @@ describe("notebook mainRegister", () => {
 
 		const status = (await mainSdk.invoke("status")) as {
 			relayPort: number;
-			process: { status: string; reason?: string };
+			availability: { status: string; reason?: string };
 			daemon: unknown;
 		};
 
 		expect(status.relayPort).toBeGreaterThan(0);
 		expect(status.daemon).toBeNull();
-		// With nothing listening and no bundled binary, the supervisor explains why
-		// rather than leaving `daemon: null` unexplained.
-		expect(status.process.status).toBe("failed");
-		expect(status.process.reason).toContain("no daemon binary");
+		expect(status.availability.status).toBe("unavailable");
+		expect(status.availability.reason).toContain("Install or start nteract");
 		mainSdk.dispose();
 	});
 
@@ -212,11 +205,7 @@ describe("notebook mainRegister", () => {
 		mainSdk.dispose();
 	});
 
-	it("tells nteract the daemon is starting rather than unavailable", async () => {
-		// nteract fetches the config and dials immediately; it never invokes `status`,
-		// so the relay is the only thing that can make it wait for the supervisor.
-		// Sending `unavailable` here shows a terminal amber banner during a normal
-		// cold start.
+	it("connects nteract to the already-running singleton", async () => {
 		const mainSdk = await boot();
 		const { relayPort } = (await mainSdk.invoke("status")) as { relayPort: number };
 		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"] as {
@@ -234,7 +223,6 @@ describe("notebook mainRegister", () => {
 		});
 
 		await expect.poll(() => messages.some((m) => m.type === "ready")).toBe(true);
-		expect(messages[0]).toEqual({ type: "progress", payload: { status: "starting" } });
 		expect(messages.some((m) => m.type === "unavailable")).toBe(false);
 		mainSdk.dispose();
 	});

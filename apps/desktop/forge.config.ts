@@ -16,7 +16,6 @@ import {
 	getUpdatePublishUrl,
 } from "./config/release.js";
 import { getAppIdentity } from "./config/app-identity.js";
-import { daemonAssetName, daemonChannel, DAEMON_STAGING_DIRECTORY } from "./config/daemon-asset.js";
 import { NOTEBOOK_BUNDLE_STAGING_DIRECTORY } from "./config/notebook-bundle-asset.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
@@ -41,16 +40,7 @@ const appIcon =
 		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, "assets/icon.icon")]
 		: path.join(packageRoot, "assets/icon");
 
-// Staged by the `prepackage` script, which must run before this module is
-// evaluated: `extraResource` is a value, not a hook, so the path has to exist
-// by now. A build with no daemon configured still packages — the app treats an
-// unreachable daemon as an expected state.
-const stagedDaemon = path.join(
-	packageRoot,
-	DAEMON_STAGING_DIRECTORY,
-	daemonAssetName(daemonChannel(process.env)),
-);
-// Same timing constraint as the daemon. `extraResource` on a directory lands it
+// Staged by the `prepackage` script. `extraResource` on a directory lands it
 // as `Contents/Resources/notebook/`, which is where resolveNotebookBundleRoot
 // looks; a build with no bundle configured still packages.
 const stagedNotebookBundle = path.join(packageRoot, NOTEBOOK_BUNDLE_STAGING_DIRECTORY);
@@ -58,7 +48,6 @@ const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
 	path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
-	...(existsSync(stagedDaemon) ? [stagedDaemon] : []),
 	...(existsSync(path.join(stagedNotebookBundle, "index.html")) ? [stagedNotebookBundle] : []),
 ];
 

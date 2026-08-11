@@ -11,7 +11,11 @@ export function notebookBrowserRegister(mainSdk: MainSdk): void {
 	const service: NotebookService = {
 		// `idle` rather than `failed`: nothing was attempted and nothing is broken,
 		// so the view reports a plain absence instead of an error.
-		status: async () => ({ relayPort: 0, process: { status: "idle" }, daemon: null }),
+		status: async () => ({
+			relayPort: 0,
+			availability: { status: "unavailable" },
+			daemon: null,
+		}),
 	};
 	mainSdk.channels(notebookContract).handleAll(service);
 }

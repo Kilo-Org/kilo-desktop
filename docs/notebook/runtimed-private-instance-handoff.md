@@ -1,5 +1,9 @@
 # Running our own `runtimed`, or sharing the user's — handoff
 
+> **Superseded:** a private daemon would split collaborators across runtime authorities. Agentic
+> Desktop attaches to the user's externally installed singleton instead. This file is retained only
+> as the investigation record.
+
 Status: **investigation.** Nothing built. This supersedes one recommendation in
 `embedding-handoff.md` §5 and reframes a user-facing failure mode.
 

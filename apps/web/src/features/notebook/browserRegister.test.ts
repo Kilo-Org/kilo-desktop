@@ -15,7 +15,7 @@ describe("notebookBrowserRegister", () => {
 		// failure to report — just an absence.
 		await expect(mainSdk.invoke("status")).resolves.toEqual({
 			relayPort: 0,
-			process: { status: "idle" },
+			availability: { status: "unavailable" },
 			daemon: null,
 		});
 	});

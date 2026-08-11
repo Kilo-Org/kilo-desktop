@@ -32,7 +32,7 @@ describe("NotebookView", () => {
 	it("reports the daemon version and relay port once status resolves", async () => {
 		renderView(() => ({
 			relayPort: 51234,
-			process: { status: "running" },
+			availability: { status: "available" },
 			daemon: {
 				version: "2.6.3",
 				socketPath: "/tmp/runtimed.sock",
@@ -46,39 +46,12 @@ describe("NotebookView", () => {
 			.toHaveTextContent("Daemon 2.6.3 · relay port 51234");
 	});
 
-	it("distinguishes a missing daemon from an unreachable service", async () => {
-		renderView(() => ({ relayPort: 51234, process: { status: "idle" }, daemon: null }));
-
-		// A null daemon is an expected state — the sidecar may not be running —
-		// so it must not read as a service failure.
-		await expect
-			.element(page.getByTestId("notebook-status"))
-			.toHaveTextContent("Daemon not running.");
-	});
-
-	it("explains why the daemon is absent when the supervisor gave up", async () => {
-		// `daemon: null` alone is ambiguous — no bundled sidecar looks identical to
-		// a crash loop. The supervisor's reason is what distinguishes them.
+	it("explains the external runtime prerequisite when the daemon is absent", async () => {
 		renderView(() => ({
 			relayPort: 51234,
-			process: { status: "failed", reason: "no daemon binary is bundled with this build" },
-			daemon: null,
-		}));
-
-		await expect
-			.element(page.getByTestId("notebook-status"))
-			.toHaveTextContent("Daemon unavailable: no daemon binary is bundled with this build");
-	});
-
-	it("names both versions when another app's daemon holds the socket", async () => {
-		// This is not a transient state and not something the user can wait out, so
-		// the message has to explain the conflict rather than read as "starting".
-		renderView(() => ({
-			relayPort: 51234,
-			process: {
-				status: "incompatible",
-				runningVersion: "2.6.3+aaaaaaa",
-				bundledVersion: "2.6.3+bbbbbbb",
+			availability: {
+				status: "unavailable",
+				reason: "The nteract runtime service is not running. Install or start nteract, then retry.",
 			},
 			daemon: null,
 		}));
@@ -86,20 +59,8 @@ describe("NotebookView", () => {
 		await expect
 			.element(page.getByTestId("notebook-status"))
 			.toHaveTextContent(
-				"A different notebook daemon is already running (2.6.3+aaaaaaa); this app needs 2.6.3+bbbbbbb.",
+				"The nteract runtime service is not running. Install or start nteract, then retry.",
 			);
-	});
-
-	it("reads a restart as progress rather than as an error", async () => {
-		renderView(() => ({
-			relayPort: 51234,
-			process: { status: "restarting" },
-			daemon: null,
-		}));
-
-		await expect
-			.element(page.getByTestId("notebook-status"))
-			.toHaveTextContent("Restarting the notebook daemon…");
 	});
 
 	it("surfaces an unavailable notebook service", async () => {
@@ -130,7 +91,11 @@ describe("NotebookView", () => {
 	});
 
 	it("shows a placeholder while nteract's bundle is not served from our protocol", async () => {
-		renderView(() => ({ relayPort: 51234, process: { status: "idle" }, daemon: null }));
+		renderView(() => ({
+			relayPort: 51234,
+			availability: { status: "unavailable" },
+			daemon: null,
+		}));
 
 		await expect.element(page.getByTestId("notebook-placeholder")).toBeVisible();
 		expect(document.querySelector('[data-qa-id="notebook-frame"]')).toBeNull();
@@ -138,7 +103,11 @@ describe("NotebookView", () => {
 
 	it("frames nteract's dev server when an origin is configured", async () => {
 		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
-		renderView(() => ({ relayPort: 51234, process: { status: "idle" }, daemon: null }));
+		renderView(() => ({
+			relayPort: 51234,
+			availability: { status: "unavailable" },
+			daemon: null,
+		}));
 
 		const frame = document.querySelector('[data-qa-id="notebook-frame"]');
 		// The notebook path travels as a query param, not a route segment.

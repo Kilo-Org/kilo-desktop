@@ -2,8 +2,8 @@ import net from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 
-import type { DaemonState } from "./DaemonProcessService.js";
 import {
+	type DaemonAvailability,
 	CONFIG_PATH,
 	NotebookRelayService,
 	RELAY_WS_PATH,
@@ -111,7 +111,7 @@ const relays: NotebookRelayService[] = [];
 const sockets: WebSocket[] = [];
 
 async function startRelay(
-	options: { allowedOrigin?: string; ensureDaemon?: () => Promise<DaemonState> } = {},
+	options: { allowedOrigin?: string; checkDaemon?: () => Promise<DaemonAvailability> } = {},
 ): Promise<{ relay: NotebookRelayService; daemon: FakeDaemon }> {
 	const daemon = new FakeDaemon();
 	await daemon.listen();
@@ -122,7 +122,7 @@ async function startRelay(
 	return { relay, daemon };
 }
 
-/** Collects control messages in arrival order, since startup now sends several. */
+/** Collects relay control messages in arrival order. */
 function collectControlMessages(ws: WebSocket): Record<string, unknown>[] {
 	const messages: Record<string, unknown>[] = [];
 	ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -404,27 +404,25 @@ describe("NotebookRelayService frame bridging", () => {
 	});
 });
 
-describe("NotebookRelayService daemon startup", () => {
-	it("waits for the supervisor before dialing the daemon socket", async () => {
-		// The regression this guards: nteract dials as soon as it has the config,
-		// seconds before a cold-start sidecar binds. Dialing first turned normal
-		// startup into a terminal "Runtime unavailable" banner.
+describe("NotebookRelayService external daemon", () => {
+	it("waits for the availability check before dialing the daemon socket", async () => {
 		let releaseDaemon: () => void = () => {};
 		const daemonStarted = new Promise<void>((resolve) => {
 			releaseDaemon = resolve;
 		});
 		const { relay, daemon } = await startRelay({
-			ensureDaemon: async () => {
+			checkDaemon: async () => {
 				await daemonStarted;
-				return { status: "running", pid: 1 };
+				return { status: "available" };
 			},
 		});
 		const { websocket_url, token } = await relay.config();
 		const ws = openSocket(`${websocket_url}?token=${token}`);
 		const messages = collectControlMessages(ws);
 
-		// The supervisor is still pending, so nothing may have been dialed yet.
-		await vi.waitFor(() => expect(messages).toHaveLength(1));
+		// The check is still pending, so nothing may have been dialed yet.
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(messages).toHaveLength(0);
 		const notebookHandshakes = () =>
 			daemon.handshakes.filter((h) => (h as { channel?: string }).channel !== "pool");
 		expect(notebookHandshakes()).toHaveLength(0);
@@ -434,27 +432,11 @@ describe("NotebookRelayService daemon startup", () => {
 		expect(notebookHandshakes()).toHaveLength(1);
 	});
 
-	it("reports a starting daemon as progress, not as a terminal failure", async () => {
-		// nteract renders `unavailable` as amber-with-Retry but `progress` as a
-		// spinner, so the control type is what decides whether a cold start looks
-		// broken to the user.
-		const { relay } = await startRelay({
-			ensureDaemon: async () => ({ status: "running", pid: 1 }),
-		});
-		const { websocket_url, token } = await relay.config();
-		const ws = openSocket(`${websocket_url}?token=${token}`);
-		const messages = collectControlMessages(ws);
-
-		await vi.waitFor(() => expect(messages.some((m) => m.type === "ready")).toBe(true));
-		expect(messages[0]).toEqual({ type: "progress", payload: { status: "starting" } });
-		expect(messages.some((m) => m.type === "unavailable")).toBe(false);
-	});
-
-	it("reports a failed supervisor as unavailable without dialing", async () => {
+	it("reports the missing prerequisite as unavailable without dialing", async () => {
 		const { relay, daemon } = await startRelay({
-			ensureDaemon: async () => ({
-				status: "failed",
-				reason: "no daemon binary is bundled with this build",
+			checkDaemon: async () => ({
+				status: "unavailable",
+				reason: "Install or start nteract, then retry.",
 			}),
 		});
 		const { websocket_url, token } = await relay.config();
@@ -466,32 +448,13 @@ describe("NotebookRelayService daemon startup", () => {
 			type: "unavailable",
 			payload: {
 				reason: "daemon_unavailable",
-				message: "no daemon binary is bundled with this build",
+				message: "Install or start nteract, then retry.",
 			},
 		});
-		// A terminal supervisor state means there is nothing to connect to, so the
-		// handshake must not be attempted at all.
+		// An unavailable external daemon must not receive a notebook handshake.
 		expect(daemon.handshakes.some((h) => (h as { channel?: string }).channel !== "pool")).toBe(
 			false,
 		);
-	});
-
-	it("names both versions when another app's daemon holds the socket", async () => {
-		const { relay } = await startRelay({
-			ensureDaemon: async () => ({
-				status: "incompatible",
-				runningVersion: "2.6.3+aaaaaaa",
-				bundledVersion: "2.6.3+bbbbbbb",
-			}),
-		});
-		const { websocket_url, token } = await relay.config();
-		const ws = openSocket(`${websocket_url}?token=${token}`);
-		const messages = collectControlMessages(ws);
-
-		await vi.waitFor(() => expect(messages.some((m) => m.type === "unavailable")).toBe(true));
-		expect(messages.at(-1)).toMatchObject({
-			payload: { message: expect.stringContaining("2.6.3+aaaaaaa") as unknown as string },
-		});
 	});
 });
 

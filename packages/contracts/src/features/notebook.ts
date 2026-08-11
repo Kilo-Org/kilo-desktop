@@ -20,43 +20,21 @@ export const notebookDaemonSchema = z.object({
 });
 export type NotebookDaemon = z.infer<typeof notebookDaemonSchema>;
 
-/**
- * Lifecycle of the daemon *process*, as distinct from its reachability.
- * `external` means a daemon we did not spawn was already listening — expected,
- * since a user may run nteract's own service-installed daemon of the same
- * channel, which owns the singleton lock we would otherwise contend for.
- * `incompatible` is that same case with a commit skew: the app and daemon must
- * be built from the same nteract commit, and we cannot displace a daemon that
- * holds the lock.
- */
-export const notebookProcessSchema = z.object({
-	status: z.enum([
-		"idle",
-		"starting",
-		"external",
-		"incompatible",
-		"running",
-		"restarting",
-		"failed",
-		"stopped",
-	]),
-	/** Present only on `failed`, carrying why we gave up. */
+/** Agentic Desktop attaches to the user-owned singleton; it never owns its process. */
+export const notebookDaemonAvailabilitySchema = z.object({
+	status: z.enum(["available", "unavailable"]),
+	/** Present on `unavailable`, with an actionable runtime prerequisite. */
 	reason: z.string().optional(),
-	/** Present only on `incompatible`, naming the two commits that disagree. */
-	runningVersion: z.string().optional(),
-	bundledVersion: z.string().optional(),
 });
-export type NotebookProcess = z.infer<typeof notebookProcessSchema>;
+export type NotebookDaemonAvailability = z.infer<typeof notebookDaemonAvailabilitySchema>;
 
 /**
- * `daemon` is null whenever the daemon is unreachable — an expected state (it
- * ships as a sidecar that may not be running yet), not an error, so the view
- * can distinguish "no daemon" from "IPC failed". `process` explains *why* it is
- * null: no bundled binary, a failed spawn, or a restart in flight.
+ * `daemon` is null whenever the externally installed singleton is unreachable.
+ * `availability` keeps that expected prerequisite state distinct from IPC failure.
  */
 export const notebookStatusSchema = z.object({
 	relayPort: z.number().int().nonnegative(),
-	process: notebookProcessSchema,
+	availability: notebookDaemonAvailabilitySchema,
 	daemon: notebookDaemonSchema.nullable(),
 });
 export type NotebookStatus = z.infer<typeof notebookStatusSchema>;

@@ -2,6 +2,11 @@
 
 Audience: engineers who did not do the spike. Purpose: a discussion agenda.
 
+> **Update:** sections 1.4–1.6 and any private-daemon discussion are superseded. The integration
+> attaches to the user's externally installed singleton; Agentic Desktop does not distribute or
+> own the daemon. Compatibility is negotiated by protocol number and semantic capabilities, not
+> exact source revision.
+
 Two halves. **Part 1** is calls already made where a real alternative existed — review
 them, they are all still reversible at modest cost. **Part 2** is genuinely open, and
 three of those need someone other than the implementer to decide.

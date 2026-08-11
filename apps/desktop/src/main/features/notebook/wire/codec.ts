@@ -52,7 +52,7 @@ export function assertProtocolVersion(preamble: Buffer): void {
 	if (version !== PROTOCOL_VERSION) {
 		throw new WireProtocolError(
 			`protocol version mismatch: daemon speaks v${version}, this app speaks v${PROTOCOL_VERSION}. ` +
-				"The bundled daemon must be built from the same commit as this app.",
+				"Install a runtimed release that supports this protocol.",
 		);
 	}
 }

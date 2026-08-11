@@ -7,7 +7,8 @@ import path from "node:path";
  * The bundle is a plain directory of static assets (`index.html` plus a
  * content-hashed `assets/` tree) built out of nteract's own repo. Until it is
  * published as a release asset, the source is a local path supplied via
- * `NTERACT_BUNDLE`, mirroring `RUNTIMED_BINARY` for the daemon.
+ * `NTERACT_BUNDLE`. The app stages web assets but attaches to an externally
+ * installed runtimed singleton.
  *
  * Staging has to happen before `forge.config.ts` builds `extraResource`, which
  * it does at module load — hence a `prepackage` script rather than a Forge hook.

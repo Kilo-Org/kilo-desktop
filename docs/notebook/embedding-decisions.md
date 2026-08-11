@@ -106,13 +106,19 @@ This is not a regression and not in scope for the protocol/CSP pair: text output
 markdown work. Closing it means giving the output document its own origin — a third protocol host
 mirroring `nteract-frame://` — which is a natural extension of D1 but a separate piece of work.
 
-## D6. UI bundle version pinning is unsolved
+## D6. The app attaches to the user-owned singleton
 
-The app↔daemon relationship requires commit-hash equality (`daemon-version.ts` enforces it). The
-same is true of the UI bundle against the daemon, and nteract's `dist/` carries **no** version or
-commit marker we can read — no `__APP_VERSION__` define, nothing in `index.html`. A UI bundle from
-a different commit than the staged daemon would fail the same way a skewed daemon does, with no
-check to catch it.
+Chosen: discover the standard `runtimed` endpoint and attach to the daemon already owned by the
+user's nteract installation. Agentic Desktop does not package, install, spawn, stop, upgrade, or
+replace the daemon. If it is absent, the notebook surface reports the prerequisite and offers a
+retry path.
 
-Not fixed here. The cheap fix lives upstream (see `nteract-is-ours-to-change`): emit a version
-marker into the notebook build the way CI stamps `+{git_sha}` into the daemon.
+**Why:** the singleton is the collaboration authority. A user and multiple agents opening the same
+`.ipynb` must join the same live Automerge document and daemon-owned runtime state, rather than
+partitioning work across competing daemons. Runtime installation is a separate product concern and
+is intentionally outside this plugin for the initial integration.
+
+Compatibility belongs to the wire contract: require a supported protocol number and the semantic
+capabilities used by the client. Exact source revisions remain diagnostics, not admission policy.
+Unknown optional capabilities are ignored; a missing required capability fails that feature closed
+without displacing the running daemon.

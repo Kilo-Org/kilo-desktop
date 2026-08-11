@@ -7,10 +7,9 @@
  * These are copied rather than imported: `runtimed` is a `private` workspace
  * package in the nteract repo and is not published (the `runtimed` name on npm
  * is an unrelated stub at 0.0.1). Protocol v4 fails closed with no downgrade
- * path, and the app↔daemon relationship requires commit-hash equality, so the
- * daemon build must be pinned against this copy. `assertProtocolVersion` in
- * ./codec.ts is the runtime guard that turns drift into a clear error instead
- * of a corrupt stream.
+ * path. Compatibility is governed by this protocol number and negotiated
+ * semantic capabilities, not source revision. `assertProtocolVersion` in
+ * ./codec.ts turns an unsupported wire version into a clear error.
  */
 
 export const MAGIC = Object.freeze([0xc0, 0xde, 0x01, 0xac]);

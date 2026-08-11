@@ -52,21 +52,8 @@ function nteractSrc(notebookPath: string): string | undefined {
 	return url.toString();
 }
 
-/**
- * Why no daemon is reachable. A `failed` supervisor carries the reason (no
- * bundled sidecar, a spawn error, an exhausted restart budget); the other states
- * are transient, so they read as progress rather than as an error.
- */
-function daemonAbsenceMessage(process: NotebookStatus["process"]): string {
-	if (process.status === "failed") {
-		return `Daemon unavailable: ${process.reason ?? "the notebook daemon could not be started."}`;
-	}
-	if (process.status === "incompatible") {
-		return `A different notebook daemon is already running (${process.runningVersion ?? "unknown"}); this app needs ${process.bundledVersion ?? "its bundled version"}.`;
-	}
-	if (process.status === "starting") return "Starting the notebook daemon…";
-	if (process.status === "restarting") return "Restarting the notebook daemon…";
-	return "Daemon not running.";
+function daemonAbsenceMessage(availability: NotebookStatus["availability"]): string {
+	return availability.reason ?? "The nteract runtime service is not running.";
 }
 
 export function NotebookView() {
@@ -87,7 +74,7 @@ export function NotebookView() {
 								? "Notebook service unavailable."
 								: daemon
 									? `Daemon ${daemon.version} · relay port ${status.data?.relayPort}`
-									: daemonAbsenceMessage(status.data.process)}
+									: daemonAbsenceMessage(status.data.availability)}
 					</p>
 				</div>
 			</div>

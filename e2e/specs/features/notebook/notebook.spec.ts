@@ -13,9 +13,8 @@ test.describe("Notebook @smoke", () => {
 		// Proves the main-process feature booted and registered `notebook:status`
 		// in the packaged binary.
 		await notebookPage.verifyStatusChannelReportsBoundRelay();
-		// And that the sidecar staged into the bundle actually runs from there.
-		// Only e2e can catch this: `pnpm test` stubs the binary path away, so a
-		// daemon that ships but never spawns looks green at every other tier.
+		// When the environment bootstrapped runtimed explicitly, prove the packaged
+		// app attaches to that same external singleton.
 		await notebookPage.verifyDaemonIsReachable();
 	});
 });

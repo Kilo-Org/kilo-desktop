@@ -26,11 +26,21 @@ export const OpenCodeComposerInteraction = ({ fallback }: { fallback: ReactNode 
 	}, [pendingPermissions, pendingQuestions]);
 
 	if (activeInteraction?.kind === "permission") {
-		return <OpenCodePermissionCard request={activeInteraction.request} />;
+		return (
+			<OpenCodePermissionCard
+				key={activeInteraction.request.id}
+				request={activeInteraction.request}
+			/>
+		);
 	}
 
 	if (activeInteraction?.kind === "question") {
-		return <OpenCodeQuestionQuestionnaire request={activeInteraction.request} />;
+		return (
+			<OpenCodeQuestionQuestionnaire
+				key={activeInteraction.request.id}
+				request={activeInteraction.request}
+			/>
+		);
 	}
 
 	return fallback;

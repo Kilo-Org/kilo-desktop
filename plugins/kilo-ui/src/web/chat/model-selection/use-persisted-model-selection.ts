@@ -55,14 +55,16 @@ export function usePersistedModelSelection(catalog: KiloModelCatalog | undefined
 
 	const resolvedEntry = catalogEntry(catalog, model);
 	const name = resolvedEntry?.name ?? selection.name;
-	const efforts = normalizeStoredEfforts(resolvedEntry?.efforts) ?? selection.efforts;
+	// Only fall back to sticky efforts while the catalog entry is unresolved;
+	// a resolved model with no efforts must clear the previous model's list.
+	const efforts = resolvedEntry ? normalizeStoredEfforts(resolvedEntry.efforts) : selection.efforts;
 
 	const setModel = useCallback(
 		(next: KiloModelRef) => {
 			setSelection((current) => {
 				const entry = catalogEntry(catalog, next);
 				const nextName = entry?.name ?? current.name;
-				const nextEfforts = normalizeStoredEfforts(entry?.efforts) ?? current.efforts;
+				const nextEfforts = entry ? normalizeStoredEfforts(entry.efforts) : current.efforts;
 				writeModelSelection({
 					model: next,
 					...(nextName !== undefined ? { name: nextName } : {}),
@@ -88,7 +90,7 @@ export function usePersistedModelSelection(catalog: KiloModelCatalog | undefined
 				if (modelToStore) {
 					const entry = catalogEntry(catalog, modelToStore);
 					const nextName = entry?.name ?? current.name;
-					const nextEfforts = normalizeStoredEfforts(entry?.efforts) ?? current.efforts;
+					const nextEfforts = entry ? normalizeStoredEfforts(entry.efforts) : current.efforts;
 					writeModelSelection({
 						model: modelToStore,
 						effort: next,

@@ -197,7 +197,7 @@ describe("SessionList", () => {
 			],
 		});
 
-		await screen.getByRole("searchbox", { name: "Search threads" }).fill("Add tests");
+		await screen.getByRole("searchbox", { name: "Search chats" }).fill("Add tests");
 
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();

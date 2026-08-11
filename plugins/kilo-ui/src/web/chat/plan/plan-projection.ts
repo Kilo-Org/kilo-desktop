@@ -124,6 +124,25 @@ const isToolPart = (part: unknown): part is ToolPartLike =>
 
 type GetPlanProjectionOptions = {
 	priorMarkdown?: string;
+	/**
+	 * When true, pending write/edit tools with no path yet are treated as plan
+	 * writes (shows "Writing Plan" before args stream). Must stay false after a
+	 * ready plan exists — otherwise post-approve code writes flash a plan card.
+	 */
+	treatPathlessPendingWritesAsPlan?: boolean;
+};
+
+const hasPlanExitPart = (parts: unknown): boolean => {
+	if (!Array.isArray(parts)) return false;
+	return parts.some((part) => isToolPart(part) && part.tool === "plan_exit");
+};
+
+const hasCompletedPlanExit = (message: MessageLike): boolean => {
+	const parts = message.metadata?.custom?.opencode?.parts;
+	if (!Array.isArray(parts)) return false;
+	return parts.some(
+		(part) => isToolPart(part) && part.tool === "plan_exit" && part.state?.status === "completed",
+	);
 };
 
 /**
@@ -136,14 +155,16 @@ export function getPlanProjectionFromParts(
 ): PlanProjection | undefined {
 	if (!Array.isArray(parts)) return undefined;
 
+	const treatPathlessPendingWritesAsPlan = options?.treatPathlessPendingWritesAsPlan === true;
 	const tools = parts.filter(isToolPart);
 	const writes = tools.filter((part) => {
 		if (part.tool !== "write" && part.tool !== "edit") return false;
 		const path = getToolPath(part);
-		return isPlanFilePath(path) || (!path && isPendingTool(part));
+		return (
+			isPlanFilePath(path) || (treatPathlessPendingWritesAsPlan && !path && isPendingTool(part))
+		);
 	});
 	const exits = tools.filter((part) => part.tool === "plan_exit");
-
 	if (writes.length === 0 && exits.length === 0) return undefined;
 
 	const latestWrite = writes.at(-1);
@@ -240,6 +261,19 @@ export function findPriorPlanMarkdown(messages: readonly MessageLike[], path: st
 type MessageWithId = MessageLike & { id?: string };
 
 /**
+ * Pathless pending writes may be plan drafts only before the first ready plan,
+ * or when this turn already includes plan_exit (refine / plan handoff).
+ */
+function shouldTreatPathlessPendingWritesAsPlan(
+	messages: readonly MessageLike[],
+	index: number,
+	parts: unknown,
+): boolean {
+	const priorHasReadyPlan = messages.slice(0, index).some(hasCompletedPlanExit);
+	return !priorHasReadyPlan || hasPlanExitPart(parts);
+}
+
+/**
  * Project the plan from a single message index, enriching edit-only turns
  * with markdown reconstructed from earlier messages.
  */
@@ -250,12 +284,22 @@ export function getPlanProjectionAtMessageIndex(
 	const message = messages[index];
 	if (!message || message.role === "user") return undefined;
 	const parts = message.metadata?.custom?.opencode?.parts;
-	const base = getPlanProjectionFromParts(parts);
+	const treatPathlessPendingWritesAsPlan = shouldTreatPathlessPendingWritesAsPlan(
+		messages,
+		index,
+		parts,
+	);
+	const base = getPlanProjectionFromParts(parts, { treatPathlessPendingWritesAsPlan });
 	if (!base) return undefined;
 	if (base.markdown) return base;
 	const priorMarkdown = findPriorPlanMarkdown(messages.slice(0, index), base.path);
 	if (!priorMarkdown) return base;
-	return getPlanProjectionFromParts(parts, { priorMarkdown }) ?? base;
+	return (
+		getPlanProjectionFromParts(parts, {
+			priorMarkdown,
+			treatPathlessPendingWritesAsPlan,
+		}) ?? base
+	);
 }
 
 /** Resolve the plan projection for a thread message id (used by PlanAwareToolUI). */

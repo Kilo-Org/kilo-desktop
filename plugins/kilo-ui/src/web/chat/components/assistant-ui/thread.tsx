@@ -20,7 +20,7 @@ import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interact
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
 import {
-	getPlanProjectionFromParts,
+	getPlanProjectionForMessage,
 	shouldExcludeToolCallFromActivityGroup,
 } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
@@ -541,13 +541,11 @@ const MessageError: FC = () => {
 const AssistantMessage: FC = () => {
 	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
 		useContext(ThreadComponentsContext);
-	const opencodeParts = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
+	const messages = useAuiState((s) => s.thread.messages);
+	const messageId = useAuiState((s) => s.message.id);
 	const hiddenPlanCallIds = useMemo(
-		() => getPlanProjectionFromParts(opencodeParts)?.hiddenCallIds,
-		[opencodeParts],
+		() => getPlanProjectionForMessage(messages, messageId)?.hiddenCallIds,
+		[messages, messageId],
 	);
 
 	const ACTION_BAR_PT = "pt-1.5";

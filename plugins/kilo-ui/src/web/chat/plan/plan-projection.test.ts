@@ -97,6 +97,35 @@ describe("getPlanProjectionFromParts", () => {
 		).toBeUndefined();
 	});
 
+	it("ignores pending pathless writes unless opted in", () => {
+		expect(
+			getPlanProjectionFromParts([
+				{
+					type: "tool",
+					tool: "write",
+					callID: "write-pending",
+					state: { status: "running", input: {} },
+				},
+			]),
+		).toBeUndefined();
+	});
+
+	it("can treat pending pathless writes as plan drafts when opted in", () => {
+		const projection = getPlanProjectionFromParts(
+			[
+				{
+					type: "tool",
+					tool: "write",
+					callID: "write-pending",
+					state: { status: "running", input: {} },
+				},
+			],
+			{ treatPathlessPendingWritesAsPlan: true },
+		);
+		expect(projection?.status).toBe("writing");
+		expect(projection?.anchorCallId).toBe("write-pending");
+	});
+
 	it("reports error when plan_exit fails", () => {
 		const projection = getPlanProjectionFromParts([
 			writePart(),
@@ -154,14 +183,17 @@ describe("shouldExcludeToolCallFromActivityGroup", () => {
 	});
 
 	it("excludes projected plan tools even when args have no path yet", () => {
-		const projection = getPlanProjectionFromParts([
-			{
-				type: "tool",
-				tool: "write",
-				callID: "write-pending",
-				state: { status: "running", input: {} },
-			},
-		]);
+		const projection = getPlanProjectionFromParts(
+			[
+				{
+					type: "tool",
+					tool: "write",
+					callID: "write-pending",
+					state: { status: "running", input: {} },
+				},
+			],
+			{ treatPathlessPendingWritesAsPlan: true },
+		);
 		expect(projection?.hiddenCallIds.has("write-pending")).toBe(true);
 		expect(
 			shouldExcludeToolCallFromActivityGroup(
@@ -179,6 +211,64 @@ describe("shouldExcludeToolCallFromActivityGroup", () => {
 });
 
 describe("getPlanProjectionForMessage", () => {
+	it("does not show Writing Plan for pathless writes after a ready plan was approved", () => {
+		const messages = [
+			{
+				id: "msg-plan",
+				role: "assistant",
+				metadata: {
+					custom: { opencode: { parts: [writePart(), exitPart()] } },
+				},
+			},
+			{ id: "msg-approve", role: "user", metadata: {} },
+			{
+				id: "msg-implement",
+				role: "assistant",
+				metadata: {
+					custom: {
+						opencode: {
+							parts: [
+								{
+									type: "tool",
+									tool: "write",
+									callID: "write-impl",
+									state: { status: "running", input: {} },
+								},
+							],
+						},
+					},
+				},
+			},
+		];
+		expect(getPlanProjectionForMessage(messages, "msg-implement")).toBeUndefined();
+	});
+
+	it("still shows Writing Plan for pathless writes before the first ready plan", () => {
+		const messages = [
+			{
+				id: "msg-plan",
+				role: "assistant",
+				metadata: {
+					custom: {
+						opencode: {
+							parts: [
+								{
+									type: "tool",
+									tool: "write",
+									callID: "write-pending",
+									state: { status: "running", input: {} },
+								},
+							],
+						},
+					},
+				},
+			},
+		];
+		const projection = getPlanProjectionForMessage(messages, "msg-plan");
+		expect(projection?.status).toBe("writing");
+		expect(projection?.anchorCallId).toBe("write-pending");
+	});
+
 	it("enriches edit-only follow-ups with markdown from earlier plan writes", () => {
 		const messages = [
 			{

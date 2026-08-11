@@ -82,7 +82,11 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 const config: ForgeConfig = {
 	packagerConfig: {
 		asar: {
-			unpack: "**/node_modules/{better-sqlite3,@github/keytar}/**",
+			// `@mcp-b/webmcp-local-relay` is unpacked so its bin (`dist/cli.mjs`)
+			// has a real filesystem path. Kilo spawns it via `process.execPath` +
+			// `ELECTRON_RUN_AS_NODE=1` (see plugins/kilo-server/src/main/seed-kilo-mcp-config.ts
+			// and the interim tracking issue anaconda/agentic-desktop#102).
+			unpack: "**/node_modules/{better-sqlite3,@github/keytar,@mcp-b/webmcp-local-relay}/**",
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
@@ -207,7 +211,14 @@ const config: ForgeConfig = {
 		}),
 		new FusesPlugin({
 			version: FuseVersion.V1,
-			[FuseV1Options.RunAsNode]: false,
+			// INTERIM (see anaconda/agentic-desktop#102): RunAsNode must be true so
+			// the bundled `@mcp-b/webmcp-local-relay` can be spawned as a stdio MCP
+			// subprocess of `kilo serve` using `process.execPath` +
+			// `ELECTRON_RUN_AS_NODE=1`. The default-hardened value is `false`; the
+			// tracking issue restores it once Kilo Code ships a native `type:
+			// "webmcp"` MCP transport that lets Kilo connect to a main-hosted WS
+			// relay directly, removing the subprocess entirely.
+			[FuseV1Options.RunAsNode]: true,
 			[FuseV1Options.EnableCookieEncryption]: true,
 			[FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
 			// Playwright's electron.launch requires --inspect to work (waits for

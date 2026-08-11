@@ -225,6 +225,61 @@ describe("ElectronProtocol", () => {
 		expect(response.status).toBe(200);
 	});
 
+	it("serves the relay widget for iframe navigations even when Sec-Fetch-Dest is missing (custom scheme)", async () => {
+		// Regression: under our custom scheme, Chromium does not always
+		// populate Sec-Fetch-Dest for iframe navigations. The probe/iframe
+		// distinguisher must fall back to the query-string signal (probe has
+		// none; iframe.src always carries tabId/hostOrigin/... from embed.js).
+		// Without this fallback the iframe load 404s and Kilo sees zero tools.
+		fetch.mockResolvedValue(
+			new Response("<html></html>", {
+				headers: { "Content-Type": "text/html; charset=utf-8" },
+			}),
+		);
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: true,
+			rendererRoot: "/unused",
+			developmentOrigin: "http://localhost:5173",
+		});
+		const protocolHandler = handle.mock.calls.at(-1)?.[1] as (
+			request: Request,
+		) => Promise<Response>;
+
+		const response = await protocolHandler(
+			new Request(
+				"anaconda-agentic-desktop-dev://app/webmcp/widget.html?tabId=abc123&hostOrigin=anaconda-agentic-desktop-dev%3A%2F%2Fapp",
+				// no Sec-Fetch-Dest, no Accept
+			),
+		);
+
+		expect(fetch).toHaveBeenCalledWith(
+			"http://localhost:5173/webmcp/widget.html?tabId=abc123&hostOrigin=anaconda-agentic-desktop-dev%3A%2F%2Fapp",
+			{ method: "GET" },
+		);
+		expect(response.status).toBe(200);
+	});
+
+	it("still returns 404 to the fetch() probe (no query string, no iframe headers)", async () => {
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: true,
+			rendererRoot: "/unused",
+			developmentOrigin: "http://localhost:5173",
+		});
+		const protocolHandler = handle.mock.calls.at(-1)?.[1] as (
+			request: Request,
+		) => Promise<Response>;
+
+		const response = await protocolHandler(
+			new Request("anaconda-agentic-desktop-dev://app/webmcp/widget.html"),
+			// no headers, no query — this is the probe shape
+		);
+
+		expect(response.status).toBe(404);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
 	it("resolves the SPA shell and assets inside the renderer root", async () => {
 		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
 		temporaryDirectories.push(root);

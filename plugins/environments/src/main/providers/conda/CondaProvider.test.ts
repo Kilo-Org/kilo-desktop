@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
+import { JobQueue } from "../../JobQueue.js";
 import { CondaProvider } from "./index.js";
 import * as staging from "./staging/index.js";
 
@@ -37,15 +38,18 @@ describe("CondaProvider", () => {
 	it("registerHandlers throws when called before boot()", () => {
 		const provider = new CondaProvider();
 		const mainSdk = createFakeMainSdk({ featureId: "environments" });
-		expect(() => provider.registerHandlers({ mainSdk })).toThrow(
+		const queue = new JobQueue({ emit: () => {} });
+		expect(() => provider.registerHandlers({ mainSdk, queue })).toThrow(
 			/registerHandlers called before boot/,
 		);
+		queue.dispose();
 		mainSdk.dispose();
 	});
 
 	it("registerHandlers wires conda.envs.list once boot() resolved", async () => {
 		const provider = new CondaProvider();
 		const mainSdk = createFakeMainSdk({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
 		vi.spyOn(staging, "stageConda").mockResolvedValue({
 			condaBinPath: "/opt/conda/bin/conda",
 			strategy: "system",
@@ -53,9 +57,10 @@ describe("CondaProvider", () => {
 		});
 
 		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
-		provider.registerHandlers({ mainSdk });
+		provider.registerHandlers({ mainSdk, queue });
 
 		expect(mainSdk.has("conda.envs.list")).toBe(true);
+		queue.dispose();
 		mainSdk.dispose();
 	});
 

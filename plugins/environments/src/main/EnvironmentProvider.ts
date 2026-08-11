@@ -3,6 +3,8 @@ import type { ComponentType } from "react";
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import type { JobQueue } from "./JobQueue.js";
+
 /**
  * Context passed to `EnvironmentProvider.boot`. Providers run any one-time,
  * expensive setup here (staging a bundled runtime, running migrations, …)
@@ -24,12 +26,21 @@ export interface ProviderBootContext {
 /**
  * Context passed to `EnvironmentProvider.registerHandlers`. Providers use
  * `mainSdk.channels(...)` to bind their provider-namespaced handlers
- * (e.g. `conda.envs.list`); shared infrastructure (JobQueue, cache, event
- * bus) is exposed here too once later slices land it.
+ * (e.g. `conda.envs.list`); the shared {@link JobQueue} serializes
+ * writes per-provider and memoises reads for 5 s (sub-issue 5), so
+ * every provider funnels its mutating handlers through `queue.enqueue`
+ * and its list handlers through `queue.read`.
  */
 export interface ProviderRegisterContext {
 	/** The plugin's shared main-process SDK, scoped to `environments`. */
 	readonly mainSdk: MainSdk;
+	/**
+	 * Shared write-serialization + read-cache primitive. One instance is
+	 * created by `mainRegister` and reused across every provider so all
+	 * conda/uv/… jobs share one event stream and one cache-invalidation
+	 * boundary.
+	 */
+	readonly queue: JobQueue;
 }
 
 /**

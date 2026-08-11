@@ -1,11 +1,19 @@
 import isEqual from "lodash/isEqual.js";
+import memoize from "lodash/memoize.js";
 
 import { Keyring } from "./keyring/keyring.js";
 import { login as oauthLogin, type LoginDependencies } from "./oauth/oauth-flow.js";
 
 import type { AuthSession } from "@anaconda-agentic-desktop/contracts";
 
-import { exchangeForApiKey, passportToUser, whoamiResponseSchema } from "./actions.js";
+import {
+	exchangeForApiKey,
+	getUserInfo,
+	passportToUser,
+	whoamiResponseSchema,
+	type UserInfoAttribute,
+} from "./actions.js";
+import { primarySubscriptionFromAttributes, type UserSubscription } from "./utils.js";
 import { startLoopbackAuthorize, electronFetch } from "./oauth/callback-server.js";
 import {
 	resolveSite,
@@ -43,6 +51,8 @@ export type ApiKeyExchanger = (
 	userAgent: string,
 ) => Promise<string>;
 
+export type UserInfoFetcher = typeof getUserInfo;
+
 export interface AuthSessionServiceOptions {
 	fetch?: OAuthFetch;
 	resolveSite?: SiteResolver;
@@ -51,6 +61,7 @@ export interface AuthSessionServiceOptions {
 	login?: OAuthLogin;
 	createAuthorizeServer?: AuthorizeServerFactory;
 	exchangeForApiKey?: ApiKeyExchanger;
+	getUserInfo?: UserInfoFetcher;
 	userAgent?: string;
 	logger?: AuthLogger;
 }
@@ -76,8 +87,28 @@ export class AuthSessionService {
 	readonly #login: OAuthLogin;
 	readonly #createAuthorizeServer: AuthorizeServerFactory;
 	readonly #exchangeForApiKey: ApiKeyExchanger;
+	readonly #userInfoAction: UserInfoFetcher;
 	readonly #userAgent: string;
 	readonly #logger: AuthLogger;
+
+	/**
+	 * Memoized userinfo attributes; cache cleared whenever the session changes.
+	 * A rejected fetch is evicted rather than cached so a transient failure does
+	 * not stick for the rest of the session — the next call retries.
+	 */
+	readonly #userInfo = memoize(async (): Promise<UserInfoAttribute[]> => {
+		const apiKey = await this.getApiKey();
+		if (!apiKey) return [];
+		try {
+			const site = await this.#resolveSite(this.#configLoader);
+			return await this.#userInfoAction(site.domain, apiKey, this.#fetch, this.#userAgent);
+		} catch (cause) {
+			// Do not cache a transient failure: evict this rejected entry so the
+			// next getUserInfo()/getSubscription() retries once connectivity returns.
+			this.#userInfo.cache.delete?.(undefined);
+			throw cause;
+		}
+	});
 
 	constructor(options: AuthSessionServiceOptions = {}) {
 		this.#fetch = options.fetch ?? electronFetch;
@@ -88,6 +119,7 @@ export class AuthSessionService {
 		this.#createAuthorizeServer =
 			options.createAuthorizeServer ?? ((domain) => startLoopbackAuthorize({ domain }));
 		this.#exchangeForApiKey = options.exchangeForApiKey ?? exchangeForApiKey;
+		this.#userInfoAction = options.getUserInfo ?? getUserInfo;
 		this.#userAgent = options.userAgent ?? "anaconda-agentic-desktop";
 		this.#logger = options.logger ?? defaultLogger;
 	}
@@ -107,6 +139,40 @@ export class AuthSessionService {
 	async refresh(): Promise<AuthSession> {
 		this.#resolved = false;
 		return this.#resolve();
+	}
+
+	/**
+	 * The persisted Anaconda API key, which also acts as the access token for
+	 * downstream requests. `null` when absent or unavailable; never throws.
+	 */
+	async getApiKey(): Promise<string | null> {
+		try {
+			const site = await this.#resolveSite(this.#configLoader);
+			const keyring = await this.#loadKeyring(site);
+			return await keyring.getApiKey();
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * OIDC userinfo passport attributes for the current session, memoized until
+	 * the session changes. Empty list when anonymous or when the passport is
+	 * genuinely empty. Rejects on a transient fetch failure (not cached), so a
+	 * subsequent call retries.
+	 */
+	async getUserInfo(): Promise<UserInfoAttribute[]> {
+		return this.#userInfo();
+	}
+
+	/**
+	 * The resolved primary subscription tier for the current session. Single
+	 * shared entry point for consumers (feature flags, telemetry) so the tier is
+	 * derived once from userinfo attributes rather than duplicated per consumer.
+	 * Propagates a userinfo fetch rejection; consumers guard with `.catch`.
+	 */
+	async getSubscription(): Promise<UserSubscription> {
+		return primarySubscriptionFromAttributes(await this.getUserInfo());
 	}
 
 	/**
@@ -272,7 +338,10 @@ export class AuthSessionService {
 	#commit(next: AuthSession): void {
 		const changed = !isEqual(this.#session, next);
 		this.#session = next;
-		if (changed) for (const listener of this.#listeners) listener(next);
+		if (changed) {
+			this.#userInfo.cache.clear?.();
+			for (const listener of this.#listeners) listener(next);
+		}
 	}
 }
 

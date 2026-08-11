@@ -6,18 +6,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
-import type { KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection, KiloSessionPreparation } from "../../contracts/chat/schemas.js";
 import type { WorkspaceCapabilities } from "../../contracts/workspaces/schemas.js";
 import { mainRegister } from "../index.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../../..");
-const CHAT_ID = "11111111-1111-4111-8111-111111111111";
 const SERVER_CONNECTION = {
 	baseUrl: "http://127.0.0.1:4321",
 	username: "kilo",
 	password: "secret",
 	version: "7.4.20",
-} satisfies Omit<KiloWorkspaceConnection, "directory">;
+	globalDirectory: "/plugin-data/kilo-server/runtime",
+} satisfies KiloGlobalConnection;
 
 describe("kilo-ui mainRegister", () => {
 	const directories: string[] = [];
@@ -51,10 +51,7 @@ describe("kilo-ui mainRegister", () => {
 			featureId: "kilo-server",
 			services: harnessSdk.services,
 		});
-		const getConnection = vi.fn(async ({ directory }: { directory: string }) => ({
-			...SERVER_CONNECTION,
-			directory,
-		}));
+		const getConnection = vi.fn(async () => SERVER_CONNECTION);
 		const exposeConnectionService = () => {
 			kiloServerSdk.plugins.expose("connectionService", { getConnection });
 		};
@@ -125,25 +122,22 @@ describe("kilo-ui mainRegister", () => {
 	});
 
 	it("resolves the kilo-server capability lazily for chat connections", async () => {
-		const { mainSdk, userData, getConnection, exposeConnectionService } = boot();
+		const { mainSdk, storageDir, getConnection, exposeConnectionService } = boot();
+		const chatsDirectory = path.resolve(storageDir, "../..", "chats");
 
-		await expect(mainSdk.invoke("chat.getConnection", { chatId: CHAT_ID })).rejects.toMatchObject({
+		await expect(mainSdk.invoke("chat.getConnection")).rejects.toMatchObject({
 			code: "BUSINESS",
 			message: "Kilo Server is unavailable.",
 		});
 
 		exposeConnectionService();
-		const expectedDirectory = path.join(userData, "chats", CHAT_ID);
-		await expect(mainSdk.invoke("chat.getConnection", { chatId: CHAT_ID })).resolves.toEqual({
-			...SERVER_CONNECTION,
-			directory: expectedDirectory,
-		});
-		expect(getConnection).toHaveBeenCalledWith({ directory: expectedDirectory });
-		expect(fs.statSync(expectedDirectory).isDirectory()).toBe(true);
+		await expect(mainSdk.invoke("chat.getConnection")).resolves.toEqual(SERVER_CONNECTION);
+		expect(getConnection).toHaveBeenCalledWith();
+		expect(fs.existsSync(chatsDirectory)).toBe(false);
 	});
 
-	it("scopes chat connections to a workspace primary folder", async () => {
-		const { mainSdk, project, getConnection, exposeConnectionService } = boot();
+	it("prepares a session in a workspace primary folder", async () => {
+		const { mainSdk, project, exposeConnectionService } = boot();
 		exposeConnectionService();
 
 		const created = (await mainSdk.invoke("create", {
@@ -153,21 +147,28 @@ describe("kilo-ui mainRegister", () => {
 		expect(primary).toBeDefined();
 
 		await expect(
-			mainSdk.invoke("chat.getConnection", { chatId: CHAT_ID, workspaceId: created.id }),
-		).resolves.toEqual({
-			...SERVER_CONNECTION,
-			directory: primary!.path,
-		});
-		expect(getConnection).toHaveBeenCalledWith({ directory: primary!.path });
+			mainSdk.invoke("chat.prepareSession", { workspaceId: created.id }),
+		).resolves.toEqual({ directory: primary!.path, workspaceId: created.id });
 	});
 
-	it("rejects chat connections for a missing workspace", async () => {
+	it("creates unique unscoped session directories only when prepared", async () => {
+		const { mainSdk, storageDir } = boot();
+		const chatsDirectory = path.resolve(storageDir, "../..", "chats");
+		expect(fs.existsSync(chatsDirectory)).toBe(false);
+		const first = (await mainSdk.invoke("chat.prepareSession", {})) as KiloSessionPreparation;
+		const second = (await mainSdk.invoke("chat.prepareSession", {})) as KiloSessionPreparation;
+		expect(first.directory).not.toBe(second.directory);
+		expect(path.dirname(first.directory)).toBe(chatsDirectory);
+		expect(fs.statSync(first.directory).isDirectory()).toBe(true);
+		expect(fs.statSync(second.directory).isDirectory()).toBe(true);
+	});
+
+	it("rejects session preparation for a missing workspace", async () => {
 		const { mainSdk, exposeConnectionService } = boot();
 		exposeConnectionService();
 
 		await expect(
-			mainSdk.invoke("chat.getConnection", {
-				chatId: CHAT_ID,
+			mainSdk.invoke("chat.prepareSession", {
 				workspaceId: "missing-workspace",
 			}),
 		).rejects.toMatchObject({

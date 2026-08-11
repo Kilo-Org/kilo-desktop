@@ -199,6 +199,7 @@ type FakeSdkShellOptions = {
 	notifications?: Partial<SDK["notifications"]>;
 	theme?: Partial<SDK["theme"]>;
 	auth?: Partial<SDK["auth"]>;
+	featureFlags?: Partial<SDK["featureFlags"]>;
 	shell?: Partial<SDK["shell"]>;
 	/**
 	 * Override the fs delegate (featureId-free, like `sdk.fs`). Defaults to a
@@ -267,6 +268,17 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 				logout: async () => ({ status: "anonymous" }),
 			},
 			options.auth,
+		),
+		featureFlags: merge<SDK["featureFlags"]>(
+			{
+				getAllFlags: async () => ({}),
+				subscribe: (fn) => {
+					fn({});
+					return noop;
+				},
+				peek: () => ({}),
+			},
+			options.featureFlags,
 		),
 		shell: merge<SDK["shell"]>(
 			{
@@ -464,6 +476,12 @@ export interface FakeMainSdkOptions {
 	logger?: MainSdkLogger;
 	/** Network fake. Defaults to the current runtime's global fetch. */
 	fetch?: MainSdkFetch;
+	/**
+	 * Receive `mainSdk.boot.reportProgress(msg)` calls. Defaults to a no-op
+	 * (production behaviour after `bootFeatures` returns). Pass a spy to
+	 * assert on progress messages emitted from `mainRegister`.
+	 */
+	reportBootProgress?: (message: string) => void;
 	/** Internal shared services; prefer createLinkedFakeSdkPair for linked tests. */
 	services?: SdkFactoryServices;
 }
@@ -492,6 +510,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 						return path.resolve(pluginDir, subpath);
 					},
 				}),
+		...(options?.reportBootProgress ? { reportBootProgress: options.reportBootProgress } : {}),
 	});
 
 	return {
@@ -500,6 +519,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		net: mainSdk.net,
 		events: mainSdk.events,
 		plugins: mainSdk.plugins,
+		boot: mainSdk.boot,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {

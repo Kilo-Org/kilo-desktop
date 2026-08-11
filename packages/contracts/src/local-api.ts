@@ -52,6 +52,10 @@ export interface LocalApi {
 		logout(): Promise<AuthSession>;
 		onChanged(listener: (session: AuthSession) => void): () => void;
 	};
+	featureFlags: {
+		getAllFlags(): Promise<Record<string, unknown>>;
+		onChanged(listener: (flags: Record<string, unknown>) => void): () => void;
+	};
 }
 
 /** Thrown by LocalApi adapters; codes match ipcErrorCodes. */

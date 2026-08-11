@@ -6,8 +6,6 @@ import type { Workspace, WorkspaceCapabilities } from "../../contracts/workspace
 import { kiloUiBrowserRegister } from "../browserRegister.js";
 
 describe("kiloUiBrowserRegister", () => {
-	const CHAT_ID = "11111111-1111-4111-8111-111111111111";
-
 	function boot() {
 		const sdk = createFakeMainSdk({ featureId: "kilo-ui" });
 		kiloUiBrowserRegister(sdk);
@@ -107,7 +105,11 @@ describe("kiloUiBrowserRegister", () => {
 
 	it("reports that chat connections require the desktop app", async () => {
 		const sdk = boot();
-		await expect(sdk.invoke("chat.getConnection", { chatId: CHAT_ID })).rejects.toMatchObject({
+		await expect(sdk.invoke("chat.getConnection")).rejects.toMatchObject({
+			code: "BUSINESS",
+			message: "Kilo Server requires the desktop app.",
+		});
+		await expect(sdk.invoke("chat.prepareSession", {})).rejects.toMatchObject({
 			code: "BUSINESS",
 			message: "Kilo Server requires the desktop app.",
 		});

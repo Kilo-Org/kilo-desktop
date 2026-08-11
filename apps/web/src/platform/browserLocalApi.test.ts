@@ -133,4 +133,14 @@ describe("createBrowserLocalApi", () => {
 		expect(listener).not.toHaveBeenCalled();
 		expect(() => unsubscribe()).not.toThrow();
 	});
+
+	it("resolves feature flags to their defaults with a no-op onChanged", async () => {
+		const api = createBrowserLocalApi();
+		expect(await api.featureFlags.getAllFlags()).toEqual({});
+
+		const listener = vi.fn();
+		const unsubscribe = api.featureFlags.onChanged(listener);
+		expect(listener).not.toHaveBeenCalled();
+		expect(() => unsubscribe()).not.toThrow();
+	});
 });

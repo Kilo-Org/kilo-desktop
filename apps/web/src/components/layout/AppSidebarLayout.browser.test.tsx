@@ -107,8 +107,10 @@ describe("AppSidebarLayout account menu", () => {
 
 		await page.getByRole("button", { name: "Account menu for Ada Lovelace" }).click();
 
-		await expect.element(page.getByText("Ada Lovelace")).toBeVisible();
-		await expect.element(page.getByText("ada@example.com")).toBeVisible();
+		// Name and email render in both the footer trigger and the open menu.
+		const menu = page.getByRole("menu");
+		await expect.element(menu.getByText("Ada Lovelace")).toBeVisible();
+		await expect.element(menu.getByText("ada@example.com")).toBeVisible();
 		await page.getByRole("menuitem", { name: "Log out" }).click();
 
 		expect(logout).toHaveBeenCalledTimes(1);

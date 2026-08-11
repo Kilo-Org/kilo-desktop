@@ -98,6 +98,25 @@ describe("createElectronLocalApi", () => {
 		expect(invoke).toHaveBeenCalledWith("fs:remove", scope);
 	});
 
+	it("forwards feature-flag reads and relays feature-flag:changed", async () => {
+		const invoke = vi.fn(async (channel: string) => {
+			switch (channel) {
+				case "feature-flag:get-all":
+					return { ok: true, value: { "todos.newEditor": true } };
+				default:
+					return { ok: true, value: undefined };
+			}
+		});
+		const on = vi.fn(() => () => undefined);
+		const api = createElectronLocalApi(makeBridge({ invoke: invoke as never, on }));
+
+		await expect(api.featureFlags.getAllFlags()).resolves.toEqual({ "todos.newEditor": true });
+
+		const unsubscribe = api.featureFlags.onChanged(() => undefined);
+		expect(on).toHaveBeenCalledWith("feature-flag:changed", expect.any(Function));
+		unsubscribe();
+	});
+
 	it("throws LocalApiError when the bridge returns ok: false", async () => {
 		const bridge = makeBridge({
 			invoke: vi.fn().mockResolvedValue({

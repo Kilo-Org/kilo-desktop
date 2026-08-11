@@ -70,6 +70,25 @@ export class BootProgressReporter {
 		this.report("features", `Preparing ${displayName}…`);
 	}
 
+	/**
+	 * Report fine-grained progress a specific feature pushed via
+	 * `mainSdk.boot.reportProgress(message)`. The feature id is preserved in
+	 * the log line for triage of a stuck boot; the splash message stays clean
+	 * (features own the user-facing wording).
+	 */
+	reportFeatureProgress(featureId: string, message: string): void {
+		this.#phase = "features";
+		this.#message = message;
+		this.#logger.info(`[features/${featureId}] ${message}`);
+		for (const listener of this.#listeners) {
+			try {
+				listener({ phase: "features", message });
+			} catch {
+				// Listener errors must not abort the boot sequence.
+			}
+		}
+	}
+
 	/** Signal that boot is complete. */
 	complete(): void {
 		this.report("ready", "Ready");

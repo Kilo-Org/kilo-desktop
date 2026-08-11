@@ -20,6 +20,7 @@ function fakeServer() {
 		username: "kilo",
 		password: "secret",
 		version: "7.4.20",
+		globalDirectory: "/plugin-data/kilo-server/runtime",
 	};
 	return {
 		status: { status: "stopped" },
@@ -56,6 +57,7 @@ describe("kilo-server main registration", () => {
 			logger,
 			onStatusChange,
 			runtimeDirectory: path.join("/plugin-data/kilo-server", "runtime"),
+			stateDirectory: "/plugin-data/kilo-server",
 		});
 		mainSdk.dispose();
 	});
@@ -75,18 +77,16 @@ describe("kilo-server main registration", () => {
 		const connectionService =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
 		expect(connectionService).toBeDefined();
-		await expect(
-			connectionService!.getConnection({ directory: "/projects/capability" }),
-		).resolves.toMatchObject({ directory: "/projects/capability" });
+		await expect(connectionService!.getConnection()).resolves.toMatchObject({
+			globalDirectory: "/plugin-data/kilo-server/runtime",
+		});
 
-		await expect(
-			mainSdk.invoke("server.getConnection", { directory: "/projects/current" }),
-		).resolves.toEqual({
+		await expect(mainSdk.invoke("server.getConnection")).resolves.toEqual({
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
 			password: "secret",
 			version: "7.4.20",
-			directory: "/projects/current",
+			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
 		expect(server.ensureRunning).toHaveBeenCalledTimes(3);
 		mainSdk.dispose();
@@ -208,6 +208,7 @@ describe("kilo-server main registration", () => {
 				username: "kilo",
 				password: "secret",
 				version: "7.4.20",
+				globalDirectory: "/plugin-data/kilo-server/runtime",
 			};
 		});
 
@@ -280,6 +281,7 @@ describe("kilo-server main registration", () => {
 				username: "kilo",
 				password: "secret",
 				version: "7.4.20",
+				globalDirectory: "/plugin-data/kilo-server/runtime",
 			};
 		});
 
@@ -293,7 +295,7 @@ describe("kilo-server main registration", () => {
 		const capability =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
 		expect(capability).toBeDefined();
-		const inflight = capability!.getConnection({ directory: "/proj" });
+		const inflight = capability!.getConnection();
 
 		// Give microtasks a chance: seed has started, but ensureRunning MUST
 		// not have run yet — the capability call must wait on the seed.
@@ -301,7 +303,7 @@ describe("kilo-server main registration", () => {
 		expect(order).toEqual(["seed-start"]);
 
 		releaseSeed();
-		await expect(inflight).resolves.toMatchObject({ directory: "/proj" });
+		await expect(inflight).resolves.toMatchObject({ baseUrl: "http://127.0.0.1:4321" });
 		// The initial mainRegister IIFE and the getConnection capability each
 		// call ensureRunning after the seed. Assert the invariant we care
 		// about — no ensure-running before seed-end — rather than an exact

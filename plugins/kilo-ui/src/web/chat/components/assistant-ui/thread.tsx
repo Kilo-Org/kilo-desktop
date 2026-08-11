@@ -8,6 +8,7 @@ import {
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
+import { KiloModelSelector } from "./kilo-model-selector.js";
 import { MarkdownText } from "./markdown-text.js";
 import {
 	Reasoning,
@@ -63,7 +64,7 @@ import {
 	type PropsWithChildren,
 } from "react";
 
-import { useChatConnection } from "../../ChatConnectionContext.js";
+import { useChatConnection } from "../../connection/ChatConnectionContext.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
@@ -90,10 +91,11 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
-// Startup exposes a loading placeholder thread; treat it as a draft so
-// the composer mounts centered. Loads after startup keep the docked layout.
+// Empty threads stay in draft layout (centered composer). Require status
+// "new" too — after lazy session init the list item flips to regular before
+// messages project, and treating that as draft docks→centers→docks again.
 const isDraftView = (s: AssistantState) =>
-	s.thread.messages.length === 0 && (!s.thread.isLoading || s.threads.isLoading);
+	s.thread.messages.length === 0 && s.threadListItem.status === "new";
 
 export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	const isDraft = useAuiState(isDraftView);
@@ -320,7 +322,10 @@ const ComposerAction: FC<{
 
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
-			<ComposerAddAttachment />
+			<div className="flex min-w-0 items-center gap-1">
+				<ComposerAddAttachment />
+				<KiloModelSelector />
+			</div>
 			<div className="flex items-center gap-1.5">
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>

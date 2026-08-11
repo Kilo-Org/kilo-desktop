@@ -3,6 +3,7 @@ import { createFeatureSystem, type FeatureSystem } from "@anaconda-agentic-deskt
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
 import type {
 	FeatureEvent,
+	FeatureFlagMap,
 	FeatureRegistration,
 	SdkNavigation,
 	ShellDelegates,
@@ -80,6 +81,56 @@ function createAuthDelegate(api: LocalApi): ShellDelegates["auth"] {
 	};
 }
 
+function createFeatureFlagsDelegate(api: LocalApi): ShellDelegates["featureFlags"] {
+	// Mirror createAuthDelegate: keep a synchronous cache so useSyncExternalStore
+	// can read via peek(). The host resolves the map asynchronously; seed `{}`,
+	// kick off one lazy resolve, and push host changes to subscribers.
+	let flags: FeatureFlagMap = {};
+	const subscribers = new Set<(flags: FeatureFlagMap) => void>();
+	let started = false;
+	let stopOnChanged: (() => void) | undefined;
+
+	const update = (next: FeatureFlagMap): void => {
+		flags = next;
+		for (const fn of subscribers) fn(next);
+	};
+
+	const start = (): void => {
+		if (started) return;
+		started = true;
+		void api.featureFlags.getAllFlags().then(update, () => {
+			// Host absent (browser mode) or resolve failed; keep the empty cache.
+		});
+		stopOnChanged = api.featureFlags.onChanged(update);
+	};
+
+	// Symmetric with `subscribers`: tear down the upstream subscription once the
+	// last delegate subscriber leaves, allowing a later subscribe to re-start it.
+	const stop = (): void => {
+		started = false;
+		stopOnChanged?.();
+		stopOnChanged = undefined;
+	};
+
+	return {
+		async getAllFlags() {
+			const next = await api.featureFlags.getAllFlags();
+			update(next);
+			return next;
+		},
+		subscribe(fn) {
+			subscribers.add(fn);
+			fn(flags);
+			start();
+			return () => {
+				subscribers.delete(fn);
+				if (subscribers.size === 0) stop();
+			};
+		},
+		peek: () => flags,
+	};
+}
+
 export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation): ShellDelegates {
 	return {
 		notifications: {
@@ -94,6 +145,7 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 			peek: getColorSchemeSnapshot,
 		},
 		auth: createAuthDelegate(api),
+		featureFlags: createFeatureFlagsDelegate(api),
 		shell: {
 			canPickDirectories: api.shell.canPickDirectories,
 			openExternal: (url) => api.shell.openExternal({ url }),

@@ -4,7 +4,6 @@ import type { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
-import path from "node:path";
 import { promisify } from "node:util";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
@@ -48,6 +47,12 @@ export interface KiloLogger {
 export interface KiloServerManagerOptions {
 	readonly installation: KiloInstallation;
 	readonly runtimeDirectory: string;
+	/**
+	 * App-local XDG state root (Electron plugin storage). Config/data/cache stay on
+	 * the shared host XDG paths so auth and sessions match Kilo CLI / VS Code.
+	 * Honors an existing `XDG_STATE_HOME` in `environment` when present.
+	 */
+	readonly stateDirectory: string;
 	readonly expectedVersion?: string;
 	readonly allowVersionMismatch?: boolean;
 	readonly corsOrigins?: readonly string[];
@@ -131,7 +136,7 @@ export class KiloServerManager {
 			| "shutdownTimeoutMs"
 		>
 	> &
-		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory">;
+		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory" | "stateDirectory">;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	#status: KiloServerStatus = { status: "stopped" };
 	#child: KiloChildProcess | undefined;
@@ -143,6 +148,7 @@ export class KiloServerManager {
 		this.#options = {
 			installation: options.installation,
 			runtimeDirectory: options.runtimeDirectory,
+			stateDirectory: options.stateDirectory,
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
 			corsOrigins: options.corsOrigins ?? DEFAULT_CORS_ORIGINS,
@@ -208,9 +214,9 @@ export class KiloServerManager {
 		const authHeader = `Basic ${Buffer.from(`kilo:${password}`).toString("base64")}`;
 		let child: KiloChildProcess | undefined;
 		try {
-			const directories = await this.#prepareRuntimeDirectories();
+			await this.#ensureRuntimeDirectory();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
-			const environment = this.#createEnvironment(password, directories);
+			const environment = this.#createEnvironment(password);
 			const args = [
 				"serve",
 				"--hostname=127.0.0.1",
@@ -238,7 +244,14 @@ export class KiloServerManager {
 				);
 			}
 
-			const connection = { baseUrl, username: "kilo", password, version, pid: child.pid };
+			const connection = {
+				baseUrl,
+				username: "kilo",
+				password,
+				version,
+				globalDirectory: this.#options.runtimeDirectory,
+				pid: child.pid,
+			};
 			this.#connection = connection;
 			this.#setStatus({ status: "ready", baseUrl, version });
 			this.#options.logger.info(`Ready at ${baseUrl} (version ${version}).`);
@@ -259,40 +272,27 @@ export class KiloServerManager {
 		}
 	}
 
-	async #prepareRuntimeDirectories(): Promise<{
-		config: string;
-		data: string;
-		cache: string;
-		state: string;
-	}> {
-		const directories = {
-			config: path.join(this.#options.runtimeDirectory, "config"),
-			data: path.join(this.#options.runtimeDirectory, "data"),
-			cache: path.join(this.#options.runtimeDirectory, "cache"),
-			state: path.join(this.#options.runtimeDirectory, "state"),
-		};
-		await Promise.all(
-			[this.#options.runtimeDirectory, ...Object.values(directories)].map((directory) =>
-				mkdir(directory, { recursive: true }),
-			),
-		);
-		return directories;
+	/**
+	 * Ensures a stable cwd and app-local state root. Config/data/cache still use the
+	 * shared host XDG paths so auth and sessions match Kilo CLI / VS Code
+	 * (`~/.config/kilo`, `~/.local/share/kilo`, etc.).
+	 */
+	async #ensureRuntimeDirectory(): Promise<void> {
+		await Promise.all([
+			mkdir(this.#options.runtimeDirectory, { recursive: true }),
+			mkdir(this.#options.stateDirectory, { recursive: true }),
+		]);
 	}
 
-	#createEnvironment(
-		password: string,
-		directories: { config: string; data: string; cache: string; state: string },
-	): NodeJS.ProcessEnv {
+	#createEnvironment(password: string): NodeJS.ProcessEnv {
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
-			XDG_CONFIG_HOME: directories.config,
-			XDG_DATA_HOME: directories.data,
-			XDG_CACHE_HOME: directories.cache,
-			XDG_STATE_HOME: directories.state,
+			// Match OpenCode desktop: isolate state under Electron storage, keep shared data.
+			XDG_STATE_HOME: this.#options.environment.XDG_STATE_HOME ?? this.#options.stateDirectory,
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
 		};
@@ -466,6 +466,7 @@ export class KiloServerManager {
 			username: connection.username,
 			password: connection.password,
 			version: connection.version,
+			globalDirectory: connection.globalDirectory,
 		};
 	}
 }

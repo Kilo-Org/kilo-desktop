@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
 import { z } from "zod";
 
 import { defineMethod, FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";

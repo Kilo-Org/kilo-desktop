@@ -5,6 +5,7 @@ const { isTrustedIpcSender } = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({ ipcMain: {} }));
+vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
 vi.mock("./ElectronSecurity.js", () => ({ isTrustedIpcSender }));
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";

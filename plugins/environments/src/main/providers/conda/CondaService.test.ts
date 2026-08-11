@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
@@ -175,12 +177,14 @@ describe("CondaService.list", () => {
 		expect(args).toEqual(["env", "list", "--json"]);
 		// Isolation must anchor at the plugin-scoped root — NOT the conda
 		// binary's own install root, which for a system conda would be the
-		// user's personal install.
+		// user's personal install. Expected paths are built with path.join
+		// so the assertion holds on Windows (backslash separators) too.
+		const root = "/home/user/.anaconda-agentic-desktop/conda";
 		expect(options).toMatchObject({
 			env: {
-				CONDA_ENVS_PATH: "/home/user/.anaconda-agentic-desktop/conda/envs",
-				CONDA_PKGS_DIRS: "/home/user/.anaconda-agentic-desktop/conda/pkgs",
-				CONDARC: "/home/user/.anaconda-agentic-desktop/conda/.condarc",
+				CONDA_ENVS_PATH: path.join(root, "envs"),
+				CONDA_PKGS_DIRS: path.join(root, "pkgs"),
+				CONDARC: path.join(root, ".condarc"),
 			},
 		});
 	});

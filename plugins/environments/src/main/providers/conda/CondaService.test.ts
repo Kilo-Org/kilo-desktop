@@ -43,16 +43,24 @@ function makeExecaError(overrides: Partial<FakeExecaError> = {}): FakeExecaError
 }
 
 describe("parseEnvList", () => {
-	it("labels the first entry as the base env with empty name", () => {
+	it("names envs under an envs/ directory and leaves the base unnamed regardless of order", () => {
+		// conda returns `envs` sorted alphabetically — the base prefix is
+		// NOT guaranteed to come first.
 		const envs = parseEnvList(
 			JSON.stringify({
-				envs: ["/opt/conda", "/opt/conda/envs/data-science", "/opt/conda/envs/ml"],
+				envs: [
+					"/opt/conda/envs/data-science",
+					"/opt/conda",
+					"/opt/conda/envs/ml",
+					"/custom/location/path-env",
+				],
 			}),
 		);
 		expect(envs).toEqual([
-			{ name: "", prefix: "/opt/conda" },
 			{ name: "data-science", prefix: "/opt/conda/envs/data-science" },
+			{ name: "", prefix: "/opt/conda" },
 			{ name: "ml", prefix: "/opt/conda/envs/ml" },
+			{ name: "", prefix: "/custom/location/path-env" },
 		]);
 	});
 
@@ -142,13 +150,14 @@ describe("mapCondaError", () => {
 });
 
 describe("CondaService.list", () => {
-	it("invokes conda env list --json with isolation env vars and returns parsed envs", async () => {
+	it("invokes conda env list --json with plugin-scoped isolation env vars and returns parsed envs", async () => {
 		const stdout = JSON.stringify({
 			envs: ["/opt/conda", "/opt/conda/envs/dev"],
 		});
 		const execute = fakeExeca({ stdout });
 		const service = new CondaService({
 			condaBinPath: "/opt/conda/bin/conda",
+			condaFilesRoot: "/home/user/.anaconda-agentic-desktop/conda",
 			logger: silentLogger,
 			// oxlint-disable-next-line no-explicit-any -- execa mock uses a narrowed shape
 			execute: execute as any,
@@ -164,19 +173,23 @@ describe("CondaService.list", () => {
 		const [bin, args, options] = (execute as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
 		expect(bin).toBe("/opt/conda/bin/conda");
 		expect(args).toEqual(["env", "list", "--json"]);
+		// Isolation must anchor at the plugin-scoped root — NOT the conda
+		// binary's own install root, which for a system conda would be the
+		// user's personal install.
 		expect(options).toMatchObject({
 			env: {
-				CONDA_ENVS_PATH: "/opt/conda/envs",
-				CONDA_PKGS_DIRS: "/opt/conda/pkgs",
-				CONDARC: "/opt/conda/.condarc",
+				CONDA_ENVS_PATH: "/home/user/.anaconda-agentic-desktop/conda/envs",
+				CONDA_PKGS_DIRS: "/home/user/.anaconda-agentic-desktop/conda/pkgs",
+				CONDARC: "/home/user/.anaconda-agentic-desktop/conda/.condarc",
 			},
 		});
 	});
 
-	it("forwards the AbortSignal to execa", async () => {
+	it("forwards the AbortSignal to execa as cancelSignal (execa v9 option name)", async () => {
 		const execute = fakeExeca({ stdout: JSON.stringify({ envs: [] }) });
 		const service = new CondaService({
 			condaBinPath: "/opt/conda/bin/conda",
+			condaFilesRoot: "/tmp/conda-root",
 			logger: silentLogger,
 			// oxlint-disable-next-line no-explicit-any
 			execute: execute as any,
@@ -186,12 +199,16 @@ describe("CondaService.list", () => {
 		await service.list({ signal: controller.signal });
 
 		const [, , options] = (execute as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
-		expect((options as { signal?: AbortSignal }).signal).toBe(controller.signal);
+		// execa v9 renamed `signal` to `cancelSignal` — passing `signal`
+		// makes execa throw a validation error instead of cancelling.
+		expect((options as { cancelSignal?: AbortSignal }).cancelSignal).toBe(controller.signal);
+		expect("signal" in (options as object)).toBe(false);
 	});
 
 	it("throws PROVIDER_NOT_READY when no condaBinPath was staged", async () => {
 		const service = new CondaService({
 			condaBinPath: "",
+			condaFilesRoot: "/tmp/conda-root",
 			logger: silentLogger,
 		});
 		await expect(service.list()).rejects.toBeInstanceOf(FeatureError);
@@ -203,6 +220,7 @@ describe("CondaService.list", () => {
 		});
 		const service = new CondaService({
 			condaBinPath: "/opt/conda/bin/conda",
+			condaFilesRoot: "/tmp/conda-root",
 			logger: silentLogger,
 			// oxlint-disable-next-line no-explicit-any
 			execute: execute as any,
@@ -220,6 +238,7 @@ describe("CondaService unimplemented ops", () => {
 	function makeService(): CondaService {
 		return new CondaService({
 			condaBinPath: "/opt/conda/bin/conda",
+			condaFilesRoot: "/tmp/conda-root",
 			logger: silentLogger,
 		});
 	}

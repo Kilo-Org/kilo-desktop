@@ -48,7 +48,7 @@ export class CondaProvider implements EnvironmentProvider {
 	#service: CondaService | undefined;
 
 	async boot(ctx: ProviderBootContext): Promise<void> {
-		const { condaBinPath } = await stageConda({
+		const { condaBinPath, condaFilesRoot } = await stageConda({
 			storageDir: ctx.mainSdk.storageDir,
 			fetch: ctx.mainSdk.net.fetch,
 			logger: ctx.logger,
@@ -56,6 +56,7 @@ export class CondaProvider implements EnvironmentProvider {
 		});
 		this.#service = new CondaService({
 			condaBinPath,
+			condaFilesRoot,
 			logger: ctx.logger,
 		});
 	}

@@ -33,6 +33,14 @@ export interface StagingResult {
 	readonly condaBinPath: string;
 	/** How the conda installation was resolved. */
 	readonly strategy: "system" | "bundled" | "skipped";
+	/**
+	 * Plugin-scoped, space-free root for conda working state (envs, package
+	 * cache, condarc). Independent of which conda binary executes so
+	 * isolation holds for the system-conda strategy too, and a sibling of
+	 * the staged `prefix/` so re-staging (which swap-replaces the prefix)
+	 * never destroys user-created environments.
+	 */
+	readonly condaFilesRoot: string;
 }
 
 // ─── Staged manifest ─────────────────────────────────────────────────────────
@@ -111,12 +119,17 @@ async function readManifest(storageDir: string): Promise<StagedManifest | null> 
 
 async function checkSystemManifest(
 	manifest: StagedManifestSystem,
+	condaRoot: string,
 	logger: MainSdkLogger,
 ): Promise<StagingResult | null> {
 	try {
 		await access(manifest.condaBinPath);
 		logger.info(`System conda still available at ${manifest.condaBinPath} — skipping staging.`);
-		return { condaBinPath: manifest.condaBinPath, strategy: "system" };
+		return {
+			condaBinPath: manifest.condaBinPath,
+			strategy: "system",
+			condaFilesRoot: condaRoot,
+		};
 	} catch {
 		logger.info("Previously detected system conda is no longer accessible — will re-stage.");
 		return null;
@@ -139,7 +152,7 @@ async function checkBundledManifest(
 	try {
 		await access(binPath);
 		logger.info("Bundled conda base already staged — skipping.");
-		return { condaBinPath: binPath, strategy: "bundled" };
+		return { condaBinPath: binPath, strategy: "bundled", condaFilesRoot: condaRoot };
 	} catch {
 		return null;
 	}
@@ -363,7 +376,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	// available. E2e tests that exercise conda ops stub it separately.
 	if (process.env.ANACONDA_SKIP_CONDA_STAGING === "1") {
 		ctx.logger.info("[conda-staging] ANACONDA_SKIP_CONDA_STAGING=1 — skipping entirely.");
-		return { condaBinPath: "", strategy: "skipped" };
+		return { condaBinPath: "", strategy: "skipped", condaFilesRoot: condaRoot };
 	}
 
 	ctx.logger.info(
@@ -387,7 +400,7 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 				`[conda-staging] Found staged.json (type: ${manifest.type ?? "bundled (legacy)"})`,
 			);
 			if (manifest.type === "system") {
-				const result = await checkSystemManifest(manifest, ctx.logger);
+				const result = await checkSystemManifest(manifest, condaRoot, ctx.logger);
 				if (result) return result;
 			} else {
 				const result = await checkBundledManifest(manifest, condaRoot, artifact, ctx.logger);
@@ -415,7 +428,11 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 			ctx.logger.info(
 				`[conda-staging] Strategy: SYSTEM — ${systemConda.version} at ${systemConda.condaBinPath}`,
 			);
-			return { condaBinPath: systemConda.condaBinPath, strategy: "system" };
+			return {
+				condaBinPath: systemConda.condaBinPath,
+				strategy: "system",
+				condaFilesRoot: condaRoot,
+			};
 		}
 	}
 
@@ -448,5 +465,5 @@ export async function stageConda(ctx: StagingContext): Promise<StagingResult> {
 	const condaBinPath = path.join(prefixPath(condaRoot), normalizeRelPath(artifact.condaBinRelPath));
 	ctx.reportProgress("Conda base ready.");
 	ctx.logger.info("Conda staging complete.");
-	return { condaBinPath, strategy: "bundled" };
+	return { condaBinPath, strategy: "bundled", condaFilesRoot: condaRoot };
 }

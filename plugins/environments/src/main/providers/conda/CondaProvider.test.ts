@@ -49,6 +49,7 @@ describe("CondaProvider", () => {
 		vi.spyOn(staging, "stageConda").mockResolvedValue({
 			condaBinPath: "/opt/conda/bin/conda",
 			strategy: "system",
+			condaFilesRoot: "/tmp/conda-root",
 		});
 
 		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });

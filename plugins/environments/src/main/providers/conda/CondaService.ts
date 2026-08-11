@@ -37,6 +37,13 @@ import type { CondaBackend, CondaCallContext } from "./CondaBackend.js";
 export interface CondaServiceOptions {
 	/** Absolute path to the resolved `conda` executable (from `stageConda`). */
 	readonly condaBinPath: string;
+	/**
+	 * Plugin-scoped root for conda working state (from `stageConda`).
+	 * Isolation env vars anchor here — never at the conda binary's own
+	 * install root, which for the system-conda strategy would point at
+	 * the user's personal envs and package cache.
+	 */
+	readonly condaFilesRoot: string;
 	/** Feature-scoped logger for diagnostics. */
 	readonly logger: MainSdkLogger;
 	/**
@@ -51,13 +58,16 @@ export interface CondaServiceOptions {
  * staged `conda` binary via `execa`.
  *
  * Isolation strategy (per delivery plan "Isolation" decision):
- * - `CONDA_ENVS_PATH` → `<prefix>/envs`
- * - `CONDA_PKGS_DIRS` → `<prefix>/pkgs`
- * - `CONDARC` → `<prefix>/.condarc` (created lazily by later slices; conda
- *   tolerates a missing file)
+ * - `CONDA_ENVS_PATH` → `<condaFilesRoot>/envs`
+ * - `CONDA_PKGS_DIRS` → `<condaFilesRoot>/pkgs`
+ * - `CONDARC` → `<condaFilesRoot>/.condarc` (created lazily by later
+ *   slices; conda tolerates a missing file)
  *
- * These vars scope every op to the plugin's staged base and hide the
- * user's own `~/.condarc` and global envs.
+ * The isolation root is plugin-scoped and independent of which conda
+ * binary executes, so the user's own `~/.condarc` and envs stay
+ * invisible for both the bundled and system-conda strategies — and
+ * re-staging the bundled prefix (a swap-replace) can never destroy
+ * user-created environments living beside it.
  *
  * Sub-issue 4 ships **only `list`** — every write op throws
  * `PROVIDER_NOT_READY` with the "not yet implemented" detail. Sub-issues
@@ -66,11 +76,13 @@ export interface CondaServiceOptions {
  */
 export class CondaService implements CondaBackend {
 	readonly #condaBinPath: string;
+	readonly #condaFilesRoot: string;
 	readonly #logger: MainSdkLogger;
 	readonly #execute: typeof execa;
 
 	constructor(options: CondaServiceOptions) {
 		this.#condaBinPath = options.condaBinPath;
+		this.#condaFilesRoot = options.condaFilesRoot;
 		this.#logger = options.logger;
 		this.#execute = options.execute ?? execa;
 	}
@@ -121,31 +133,19 @@ export class CondaService implements CondaBackend {
 		return notImplemented("conda.channels.remove");
 	}
 
-	/**
-	 * Prefix scoped to the staged conda base — the directory containing the
-	 * `conda` binary's parent (`<prefix>/bin/conda` on posix,
-	 * `<prefix>/Scripts/conda.exe` on Windows). We anchor isolation env
-	 * vars at this prefix so operations never touch the user's own envs or
-	 * package caches.
-	 */
-	get #prefix(): string {
-		// Walk up one level for `bin/` (posix) or `Scripts/` (Windows).
-		return path.dirname(path.dirname(this.#condaBinPath));
-	}
-
 	async #runConda(args: readonly string[], ctx?: CondaCallContext): Promise<string> {
-		const prefix = this.#prefix;
+		const root = this.#condaFilesRoot;
 		const env = {
-			CONDA_ENVS_PATH: path.join(prefix, "envs"),
-			CONDA_PKGS_DIRS: path.join(prefix, "pkgs"),
-			CONDARC: path.join(prefix, ".condarc"),
+			CONDA_ENVS_PATH: path.join(root, "envs"),
+			CONDA_PKGS_DIRS: path.join(root, "pkgs"),
+			CONDARC: path.join(root, ".condarc"),
 		};
 		try {
 			const result = await this.#execute(this.#condaBinPath, args as string[], {
 				env,
-				signal: ctx?.signal,
-				// Node's default is 1 MB; a full `conda list` can exceed that.
-				maxBuffer: 64 * 1024 * 1024,
+				// execa v9 renamed `signal` to `cancelSignal`; passing `signal`
+				// throws a validation error instead of cancelling.
+				...(ctx?.signal ? { cancelSignal: ctx.signal } : {}),
 			});
 			return result.stdout;
 		} catch (error) {
@@ -236,10 +236,14 @@ function isExecaError(value: unknown): value is ExecaError {
 
 /**
  * Parse `conda env list --json` output into the schema shape the contract
- * declares. `conda` returns `{ envs: ["<prefix>", ...] }` where the base
- * env is first and the rest are named prefixes; we surface the env name by
- * extracting the last path segment (base has no name and is returned as an
- * empty string).
+ * declares. `conda` returns `{ envs: ["<prefix>", ...] }` sorted
+ * alphabetically — the base prefix is NOT guaranteed to come first, so
+ * position must not be used to identify it.
+ *
+ * Naming follows conda's own display rule: an environment has a name only
+ * when it lives directly under an `envs/` directory (an entry of
+ * `envs_dirs`); the base prefix and path-based envs (`-p /some/dir`)
+ * surface with an empty name.
  */
 export function parseEnvList(stdout: string): CondaEnv[] {
 	let parsed: unknown;
@@ -259,14 +263,11 @@ export function parseEnvList(stdout: string): CondaEnv[] {
 		throw featureError("PROVIDER_NOT_READY", "conda env list output missing `envs` array.");
 	}
 	const rawEnvs = (parsed as { envs: unknown[] }).envs;
-	const basePrefix = typeof rawEnvs[0] === "string" ? rawEnvs[0] : undefined;
 	return rawEnvs
 		.filter((entry): entry is string => typeof entry === "string")
 		.map((prefix) => {
-			// The first entry is conda's base — surface it with an empty name
-			// so the schema matches conda's own output (base envs list as
-			// `""` in `conda env list --json`).
-			const name = prefix === basePrefix ? "" : path.basename(prefix);
+			const isNamed = path.basename(path.dirname(prefix)) === "envs";
+			const name = isNamed ? path.basename(prefix) : "";
 			return condaEnvSchema.parse({ name, prefix });
 		});
 }

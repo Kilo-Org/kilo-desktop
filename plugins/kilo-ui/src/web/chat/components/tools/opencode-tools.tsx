@@ -1,4 +1,6 @@
-import { AskQuestionTool, withOpenCodeToolInteractions } from "./opencode-tool-interactions.js";
+import { memo } from "react";
+import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
+
 import { ApplyPatchDiff } from "./tool-ui-apply-patch.js";
 import { BashTerminal } from "./tool-ui-bash.js";
 import { EditDiff } from "./tool-ui-edit.js";
@@ -7,14 +9,20 @@ import { GlobActivity, GrepActivity, ReadActivity } from "./tool-ui-read-search.
 import { WebFetchActivity, WebSearchActivity } from "./tool-ui-web.js";
 import { WriteDiff } from "./tool-ui-write.js";
 
-export const ReadTool = withOpenCodeToolInteractions(ReadActivity);
-export const EditTool = withOpenCodeToolInteractions(EditDiff);
-export const WriteTool = withOpenCodeToolInteractions(WriteDiff);
-export const BashTool = withOpenCodeToolInteractions(BashTerminal);
-export const GrepTool = withOpenCodeToolInteractions(GrepActivity);
-export const GlobTool = withOpenCodeToolInteractions(GlobActivity);
-export const WebSearchTool = withOpenCodeToolInteractions(WebSearchActivity);
-export const WebFetchTool = withOpenCodeToolInteractions(WebFetchActivity);
-export const ApplyPatchTool = withOpenCodeToolInteractions(ApplyPatchDiff);
-export { AskQuestionTool };
-export const FallbackTool = withOpenCodeToolInteractions(ToolCallFallback);
+export const ReadTool = ReadActivity;
+export const EditTool = EditDiff;
+export const WriteTool = WriteDiff;
+export const BashTool = BashTerminal;
+export const GrepTool = GrepActivity;
+export const GlobTool = GlobActivity;
+export const WebSearchTool = WebSearchActivity;
+export const WebFetchTool = WebFetchActivity;
+export const ApplyPatchTool = ApplyPatchDiff;
+export const FallbackTool = ToolCallFallback;
+
+/**
+ * Question tools surface as an activity subgroup ("Asking" / "Asked …").
+ * The Questionnaire replaces the composer while pending — no tool-call chrome.
+ */
+export const AskQuestionTool: ToolCallMessagePartComponent = memo(() => null);
+AskQuestionTool.displayName = "AskQuestionTool";

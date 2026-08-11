@@ -4,7 +4,7 @@ import {
 	type OpenCodePermissionResponse,
 	useOpenCodeRuntimeExtras,
 } from "@assistant-ui/react-opencode";
-import { CheckCircle2Icon, LoaderIcon, ShieldAlertIcon, XCircleIcon } from "lucide-react";
+import { AlertCircleIcon, LoaderIcon, ShieldAlertIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 
@@ -18,30 +18,7 @@ import {
 	CardTitle,
 } from "./interaction-chrome.js";
 
-const formatPermissionReply = (reply: OpenCodePermissionResponse) => {
-	switch (reply) {
-		case "always":
-			return "Always allow";
-		case "once":
-			return "Allowed once";
-		case "reject":
-			return "Rejected";
-		default: {
-			const _exhaustive: never = reply;
-			return _exhaustive;
-		}
-	}
-};
-
-export const OpenCodePermissionCard = ({
-	request,
-	state,
-	reply,
-}: {
-	request: OpenCodePermissionRequest;
-	state: "pending" | "resolved";
-	reply?: OpenCodePermissionResponse;
-}) => {
+export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissionRequest }) => {
 	const { replyToPermission } = useOpenCodeRuntimeExtras();
 	const [submittingReply, setSubmittingReply] = useState<OpenCodePermissionResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -58,86 +35,93 @@ export const OpenCodePermissionCard = ({
 		}
 	};
 
-	const isPending = state === "pending";
+	const permissionLabel = request.toolName ?? request.permission;
 
 	return (
-		<Card className="gap-4 py-4">
-			<CardHeader className="px-4">
-				<div className="flex items-start gap-3">
-					<div className="rounded-md bg-amber-500/10 p-2 text-amber-700">
-						{isPending ? (
-							<ShieldAlertIcon className="size-4" />
-						) : reply === "reject" ? (
-							<XCircleIcon className="size-4" />
-						) : (
-							<CheckCircle2Icon className="size-4" />
-						)}
+		<Card>
+			<CardHeader className="gap-4">
+				<div className="flex min-h-[1lh] items-center justify-between gap-3">
+					<div className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs font-medium">
+						<ShieldAlertIcon className="size-3.5 text-amber-700 dark:text-amber-500" />
+						<span className="truncate">Permission request</span>
 					</div>
-					<div className="min-w-0 flex-1">
-						<CardTitle className="text-sm">
-							{isPending ? "Approval required" : formatPermissionReply(reply!)}
-						</CardTitle>
-						<CardDescription className="mt-1 text-xs">
-							{request.title ??
-								`OpenCode requested approval for ${request.toolName ?? request.permission}.`}
-						</CardDescription>
-					</div>
-					<Badge variant={isPending ? "secondary" : "outline"}>
-						{request.toolName ?? request.permission}
+					<Badge variant="outline" className="text-muted-foreground shrink-0">
+						{permissionLabel}
 					</Badge>
+				</div>
+				<div className="space-y-1.5">
+					<CardTitle className="text-base leading-snug font-medium text-pretty">
+						{request.title ?? `Allow ${permissionLabel}?`}
+					</CardTitle>
+					<CardDescription className="text-sm text-pretty">
+						The agent is requesting permission to use {permissionLabel}.
+					</CardDescription>
 				</div>
 			</CardHeader>
 
 			{(request.patterns.length > 0 || request.toolInput !== undefined) && (
-				<CardContent className="space-y-3 px-4">
+				<CardContent className="grid min-w-0 gap-2">
 					{request.patterns.length > 0 ? (
-						<div className="flex flex-wrap gap-2">
+						<div className="grid min-w-0 gap-2">
 							{request.patterns.map((pattern) => (
-								<Badge key={pattern} variant="outline" className="font-mono">
-									{pattern}
-								</Badge>
+								<div
+									key={pattern}
+									className="border-input dark:bg-input/20 min-w-0 rounded-lg border bg-transparent px-3 py-2.5 text-sm"
+								>
+									<code className="block truncate font-mono">{pattern}</code>
+								</div>
 							))}
 						</div>
 					) : null}
 					{request.toolInput !== undefined ? (
-						<pre className="bg-muted overflow-x-auto rounded-md p-3 text-xs">
-							{JSON.stringify(request.toolInput, null, 2)}
-						</pre>
+						<div className="border-input dark:bg-input/20 min-w-0 rounded-lg border bg-transparent px-3 py-2.5">
+							<p className="text-muted-foreground mb-2 text-xs font-medium">Tool input</p>
+							<pre className="overflow-x-auto text-xs">
+								{JSON.stringify(request.toolInput, null, 2)}
+							</pre>
+						</div>
 					) : null}
 				</CardContent>
 			)}
 
-			{isPending ? (
-				<CardFooter className="flex flex-wrap gap-2 px-4">
+			<CardFooter className="flex-col gap-2">
+				<div className="flex w-full items-center justify-between gap-2">
 					<Button
-						size="sm"
-						onClick={() => void submitReply("once")}
-						disabled={submittingReply !== null}
-					>
-						{submittingReply === "once" ? <LoaderIcon className="size-4 animate-spin" /> : null}
-						Allow once
-					</Button>
-					<Button
-						size="sm"
-						variant="secondary"
-						onClick={() => void submitReply("always")}
-						disabled={submittingReply !== null}
-					>
-						{submittingReply === "always" ? <LoaderIcon className="size-4 animate-spin" /> : null}
-						Always allow
-					</Button>
-					<Button
-						size="sm"
-						variant="outline"
+						variant="ghost"
 						onClick={() => void submitReply("reject")}
 						disabled={submittingReply !== null}
 					>
-						{submittingReply === "reject" ? <LoaderIcon className="size-4 animate-spin" /> : null}
+						{submittingReply === "reject" ? (
+							<LoaderIcon className="animate-spin" data-icon="inline-start" />
+						) : null}
 						Reject
 					</Button>
-					{error ? <p className="text-destructive w-full text-xs">{error}</p> : null}
-				</CardFooter>
-			) : null}
+					<div className="flex items-center gap-2">
+						<Button
+							variant="outline"
+							onClick={() => void submitReply("always")}
+							disabled={submittingReply !== null}
+						>
+							{submittingReply === "always" ? (
+								<LoaderIcon className="animate-spin" data-icon="inline-start" />
+							) : null}
+							Always allow
+						</Button>
+						<Button onClick={() => void submitReply("once")} disabled={submittingReply !== null}>
+							{submittingReply === "once" ? (
+								<LoaderIcon className="animate-spin" data-icon="inline-start" />
+							) : null}
+							Allow once
+						</Button>
+					</div>
+				</div>
+				{error ? (
+					<div className="text-destructive flex min-w-0 items-center gap-2 text-xs">
+						<AlertCircleIcon className="size-3.5 shrink-0" />
+						<span className="truncate">{error}</span>
+					</div>
+				) : null}
+			</CardFooter>
 		</Card>
 	);
 };

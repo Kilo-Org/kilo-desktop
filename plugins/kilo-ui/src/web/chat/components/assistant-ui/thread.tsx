@@ -16,8 +16,7 @@ import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
 import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
-import { OpenCodeQuestionQuestionnaire } from "../tools/opencode-question-card.js";
-import { OpenCodeUnlinkedPermissionCards } from "../tools/opencode-tool-interactions.js";
+import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -38,7 +37,6 @@ import {
 	useAui,
 	useAuiState,
 } from "@assistant-ui/react";
-import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
@@ -54,7 +52,6 @@ import {
 import {
 	createContext,
 	useContext,
-	useMemo,
 	useRef,
 	useState,
 	type ComponentType,
@@ -86,16 +83,9 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
 const ThreadComposerSlot: FC = () => {
-	const pendingQuestions = useOpenCodeQuestions();
-	const activeQuestion = useMemo(() => {
-		if (pendingQuestions.length === 0) return null;
-		return [...pendingQuestions].toSorted((a, b) => a.askedAt - b.askedAt)[0] ?? null;
-	}, [pendingQuestions]);
-
 	return (
 		<div className="flex flex-col gap-3">
-			<OpenCodeUnlinkedPermissionCards />
-			{activeQuestion ? <OpenCodeQuestionQuestionnaire request={activeQuestion} /> : <Composer />}
+			<OpenCodeComposerInteraction fallback={<Composer />} />
 		</div>
 	);
 };

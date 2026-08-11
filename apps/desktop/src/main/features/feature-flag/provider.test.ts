@@ -47,6 +47,11 @@ const employeeContext: FeatureFlagContext = {
 	userId: "u1",
 	isEmployee: true,
 	subscription: "free_subscription",
+	email: "dev@anaconda.com",
+	username: "ada",
+	firstName: "Ada",
+	lastName: "Lovelace",
+	name: "Ada Lovelace",
 };
 
 function makeProvider(extra: Partial<LaunchDarklyProviderOptions> = {}) {
@@ -118,10 +123,61 @@ describe("LaunchDarklyProvider", () => {
 			kind: "user",
 			key: "u1",
 			anonymous: false,
+			name: "Ada Lovelace",
+			firstName: "Ada",
+			lastName: "Lovelace",
+			email: "dev@anaconda.com",
+			username: "ada",
 			is_anaconda_employee: true,
 			subscription: "free_subscription",
 			app_version: "1.2.3",
 		});
+	});
+
+	it("emits a multi-context with an organization when one is present", async () => {
+		const provider = makeProvider();
+
+		await provider.identify({
+			...employeeContext,
+			organization: { id: "org-1", name: "Acme", role: "admin" },
+		});
+
+		const ldContext = identifySpy.mock.calls[0]?.[0];
+		expect(ldContext).toMatchObject({
+			kind: "multi",
+			user: {
+				key: "u1",
+				anonymous: false,
+				email: "dev@anaconda.com",
+				is_anaconda_employee: true,
+			},
+			organization: {
+				key: "org-1",
+				name: "Acme",
+				role: "admin",
+			},
+		});
+		// The nested user context should not carry its own `kind` field.
+		expect((ldContext as unknown as { user: Record<string, unknown> }).user).not.toHaveProperty(
+			"kind",
+		);
+	});
+
+	it("emits an anonymous single-user context when no userId is set", async () => {
+		const provider = makeProvider();
+
+		await provider.identify({ isEmployee: false });
+
+		const ldContext = identifySpy.mock.calls[0]?.[0];
+		expect(ldContext).toMatchObject({
+			kind: "user",
+			key: "anonymous",
+			anonymous: true,
+			is_anaconda_employee: false,
+			app_version: "1.2.3",
+		});
+		expect(ldContext).not.toHaveProperty("email");
+		expect(ldContext).not.toHaveProperty("name");
 	});
 
 	it("identify() still applies the context when start timed out", async () => {

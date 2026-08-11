@@ -40,5 +40,6 @@ describe("KiloAgentSelector", () => {
 		await screen.getByTestId("kilo-agent-selector-item-plan").click();
 		expect(setAgent).toHaveBeenCalled();
 		expect(setAgent.mock.calls[0]?.[0]).toBe("plan");
+		await expect.element(screen.getByTestId("kilo-agent-selector-content")).not.toBeInTheDocument();
 	});
 });

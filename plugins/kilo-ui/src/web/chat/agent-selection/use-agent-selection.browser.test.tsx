@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { OPTIMISTIC_AGENT_CATALOG } from "./agent-catalog.js";
 import { useAgentSelection } from "./use-agent-selection.js";
 
 afterEach(() => {
@@ -9,7 +10,7 @@ afterEach(() => {
 
 describe("useAgentSelection", () => {
 	it("defaults to Code, keeps overrides in memory, and resets to Code", () => {
-		const { result } = renderHook(() => useAgentSelection());
+		const { result } = renderHook(() => useAgentSelection(undefined));
 
 		expect(result.current.agent).toBe("code");
 
@@ -18,5 +19,26 @@ describe("useAgentSelection", () => {
 
 		act(() => result.current.resetAgent());
 		expect(result.current.agent).toBe("code");
+	});
+
+	it("reconciles an optimistic choice against the resolved catalog", () => {
+		type Props = { resolved: boolean };
+		const { result, rerender } = renderHook(
+			({ resolved }: Props) =>
+				useAgentSelection(
+					resolved
+						? {
+								agents: OPTIMISTIC_AGENT_CATALOG.agents.filter((entry) => entry.name === "plan"),
+							}
+						: undefined,
+				),
+			{ initialProps: { resolved: false } },
+		);
+
+		act(() => result.current.setAgent("debug"));
+		expect(result.current.agent).toBe("debug");
+
+		rerender({ resolved: true });
+		expect(result.current.agent).toBe("plan");
 	});
 });

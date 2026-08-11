@@ -2,16 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import { withPromptVariant } from "./with-prompt-variant.js";
+import { withPromptOptions } from "./with-prompt-options.js";
 
-describe("withPromptVariant", () => {
+describe("withPromptOptions", () => {
 	it("injects variant into promptAsync when unset", async () => {
 		const promptAsync = vi.fn(async () => undefined);
 		const client = {
 			session: { promptAsync, prompt: vi.fn() },
 		} as unknown as KiloClient;
 
-		const wrapped = withPromptVariant(client, { getVariant: () => "high" });
+		const wrapped = withPromptOptions(client, { getVariant: () => "high" });
 		await wrapped.session.promptAsync({
 			sessionID: "s1",
 			parts: [{ type: "text", text: "hi" }],
@@ -31,7 +31,7 @@ describe("withPromptVariant", () => {
 			session: { promptAsync, prompt: vi.fn() },
 		} as unknown as KiloClient;
 
-		const wrapped = withPromptVariant(client, { getVariant: () => "high" });
+		const wrapped = withPromptOptions(client, { getVariant: () => "high" });
 		await wrapped.session.promptAsync({
 			sessionID: "s1",
 			parts: [{ type: "text", text: "hi" }],
@@ -52,7 +52,7 @@ describe("withPromptVariant", () => {
 		} as unknown as KiloClient;
 
 		let agent = "code";
-		const wrapped = withPromptVariant(client, { getAgent: () => agent });
+		const wrapped = withPromptOptions(client, { getAgent: () => agent });
 
 		agent = "plan";
 		await wrapped.session.promptAsync({
@@ -75,7 +75,7 @@ describe("withPromptVariant", () => {
 		} as unknown as KiloClient;
 
 		let model = { providerID: "anthropic", modelID: "claude-sonnet" };
-		const wrapped = withPromptVariant(client, { getModel: () => model });
+		const wrapped = withPromptOptions(client, { getModel: () => model });
 
 		model = { providerID: "openai", modelID: "gpt-5" };
 		await wrapped.session.promptAsync({
@@ -97,7 +97,7 @@ describe("withPromptVariant", () => {
 			session: { promptAsync: vi.fn(), prompt },
 		} as unknown as KiloClient;
 
-		const wrapped = withPromptVariant(client, {
+		const wrapped = withPromptOptions(client, {
 			getAgent: () => "ask",
 			getModel: () => ({ providerID: "kilo", modelID: "auto" }),
 			getVariant: () => "low",

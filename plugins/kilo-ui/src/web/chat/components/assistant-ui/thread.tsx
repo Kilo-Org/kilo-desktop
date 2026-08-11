@@ -17,6 +17,7 @@ import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
 import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
 import { OpenCodeQuestionQuestionnaire } from "../tools/opencode-question-card.js";
+import { OpenCodeUnlinkedPermissionCards } from "../tools/opencode-tool-interactions.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -91,11 +92,12 @@ const ThreadComposerSlot: FC = () => {
 		return [...pendingQuestions].toSorted((a, b) => a.askedAt - b.askedAt)[0] ?? null;
 	}, [pendingQuestions]);
 
-	if (activeQuestion) {
-		return <OpenCodeQuestionQuestionnaire request={activeQuestion} />;
-	}
-
-	return <Composer />;
+	return (
+		<div className="flex flex-col gap-3">
+			<OpenCodeUnlinkedPermissionCards />
+			{activeQuestion ? <OpenCodeQuestionQuestionnaire request={activeQuestion} /> : <Composer />}
+		</div>
+	);
 };
 
 // Empty threads stay in draft layout (centered composer). Require status

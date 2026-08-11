@@ -177,14 +177,14 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		effort,
 	);
 
-	const agentCatalogQuery = useKiloAgentCatalog(connection.data);
-	const { agent, setAgent, resetAgent } = useAgentSelection();
+	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
+	const { agent, setAgent, resetAgent } = useAgentSelection(agentCatalogQuery.data);
 	const resetAgentRef = useRef(resetAgent);
 	resetAgentRef.current = resetAgent;
 
 	const onThreadIdChange = useMemo(
 		() => (threadId?: string) => {
-			// New/draft threads always start on Code — never carry the previous session's agent.
+			// New/draft threads prefer Code and never carry the previous session's agent.
 			if (!threadId) {
 				resetAgentRef.current();
 			}
@@ -198,7 +198,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const runtime = useKiloRuntime({
 		connectionPromise,
 		prepareSession,
-		defaultAgent: agent,
+		...(agent ? { defaultAgent: agent } : {}),
 		...(model ? { defaultModel: model } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,

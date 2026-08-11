@@ -19,7 +19,7 @@ export type PromptOptionGetters = {
  * RemoteThreadList can keep a stale `defaultAgent` / `defaultModel` closed
  * over in `onNew`. Variant only fills in when unset (explicit request wins).
  */
-export function withPromptVariant(client: KiloClient, getters: PromptOptionGetters): KiloClient {
+export function withPromptOptions(client: KiloClient, getters: PromptOptionGetters): KiloClient {
 	const injectPromptOptions = <T extends Record<string, unknown>>(args: T): T => {
 		let next: Record<string, unknown> = args;
 

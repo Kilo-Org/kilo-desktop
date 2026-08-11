@@ -12,8 +12,8 @@ vi.mock("./create-kilo-runtime-client.js", () => ({
 	createKiloGlobalClient: vi.fn(),
 }));
 
-vi.mock("./with-prompt-variant.js", () => ({
-	withPromptVariant: (client: KiloClient) => client,
+vi.mock("./with-prompt-options.js", () => ({
+	withPromptOptions: (client: KiloClient) => client,
 }));
 
 const connection: KiloGlobalConnection = {

@@ -3,6 +3,7 @@ import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import {
 	type OpenCodePermissionRequest,
 	type OpenCodePermissionResponse,
+	useOpenCodePermissions,
 	useOpenCodeThreadState,
 } from "@assistant-ui/react-opencode";
 
@@ -56,6 +57,26 @@ const ToolPermissionStack = ({ toolCallId }: { toolCallId: string }) => {
 					state={permission.state}
 					{...(permission.reply ? { reply: permission.reply } : {})}
 				/>
+			))}
+		</div>
+	);
+};
+
+export const OpenCodeUnlinkedPermissionCards = () => {
+	const { pending } = useOpenCodePermissions();
+	const unlinked = useMemo(
+		() => pending.filter((request) => request.tool?.callID === undefined),
+		[pending],
+	);
+
+	if (unlinked.length === 0) {
+		return null;
+	}
+
+	return (
+		<div className="flex flex-col gap-3" data-qa-id="kilo-unlinked-permission-cards">
+			{unlinked.map((request) => (
+				<OpenCodePermissionCard key={request.id} request={request} state="pending" />
 			))}
 		</div>
 	);

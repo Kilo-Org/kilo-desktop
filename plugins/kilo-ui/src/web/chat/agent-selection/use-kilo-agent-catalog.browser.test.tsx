@@ -24,6 +24,12 @@ const connection: KiloGlobalConnection = {
 	globalDirectory: "/kilo/runtime",
 };
 
+const nextConnection: KiloGlobalConnection = {
+	...connection,
+	baseUrl: "http://127.0.0.1:5096",
+	globalDirectory: "/kilo/next-runtime",
+};
+
 const payload: Agent[] = [
 	{
 		name: "code",
@@ -76,5 +82,29 @@ describe("useKiloAgentCatalog", () => {
 		);
 		expect(agentsList).toHaveBeenCalledOnce();
 		expect(result.current.data?.agents.map((agent) => agent.name)).toEqual(["code"]);
+	});
+
+	it("fetches a fresh catalog when the connection refreshes or changes identity", async () => {
+		agentsList.mockResolvedValue({ data: payload });
+		type Props = { connection: KiloGlobalConnection; connectionUpdatedAt: number };
+		const { result, rerender } = renderHook(
+			({ connection: currentConnection, connectionUpdatedAt }: Props) =>
+				useKiloAgentCatalog(currentConnection, connectionUpdatedAt),
+			{
+				initialProps: { connection, connectionUpdatedAt: 1 },
+				wrapper: createWrapper(),
+			},
+		);
+
+		await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
+		rerender({ connection, connectionUpdatedAt: 2 });
+		await vi.waitFor(() => expect(agentsList).toHaveBeenCalledTimes(2));
+		rerender({ connection: nextConnection, connectionUpdatedAt: 3 });
+		await vi.waitFor(() => expect(agentsList).toHaveBeenCalledTimes(3));
+
+		expect(createKiloDirectoryClient).toHaveBeenLastCalledWith(
+			nextConnection,
+			nextConnection.globalDirectory,
+		);
 	});
 });

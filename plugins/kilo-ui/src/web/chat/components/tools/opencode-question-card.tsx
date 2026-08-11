@@ -32,20 +32,19 @@ const buildQuestionnaireItems = (request: OpenCodeQuestionRequest) =>
 		choices: question.options.map((option) => ({ value: option.label })),
 	}));
 
-const encodeAnswersFromFormData = (
+export const encodeAnswersFromFormData = (
 	request: OpenCodeQuestionRequest,
 	formData: FormData,
 ): QuestionAnswer[] =>
 	request.questions.map((question, index) => {
 		const name = questionName(index);
 		const rawValues = question.multiple ? formData.getAll(name) : [formData.get(name)];
-		const optionLabels = new Set(question.options.map((option) => option.label));
 
 		return rawValues.flatMap((value) => {
 			if (typeof value !== "string") return [];
 			const trimmed = value.trim();
 			if (!trimmed) return [];
-			return [optionLabels.has(trimmed) ? trimmed : `Other: ${trimmed}`];
+			return [trimmed];
 		});
 	});
 

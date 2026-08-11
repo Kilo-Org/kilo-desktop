@@ -3,7 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { KiloAgentCatalog } from "./agent-catalog.js";
 
 type ChatAgentSelectionStatus = {
-	agent: string;
+	agent: string | undefined;
 	setAgent: (agent: string) => void;
 	catalog: KiloAgentCatalog | undefined;
 	isCatalogPending: boolean;

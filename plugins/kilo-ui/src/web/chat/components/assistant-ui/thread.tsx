@@ -16,12 +16,11 @@ import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
 import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
-import { OpenCodeQuestionQuestionnaire } from "../tools/opencode-question-card.js";
+import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
 import {
 	getPlanProjectionFromParts,
-	isPlanFollowupRequest,
 	shouldExcludeToolCallFromActivityGroup,
 } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
@@ -43,7 +42,6 @@ import {
 	useAui,
 	useAuiState,
 } from "@assistant-ui/react";
-import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
@@ -92,20 +90,11 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
 const ThreadComposerSlot: FC = () => {
-	const pendingQuestions = useOpenCodeQuestions();
-	const activeQuestion = useMemo(() => {
-		const visibleQuestions = pendingQuestions.filter(
-			(question) => !isPlanFollowupRequest(question),
-		);
-		if (visibleQuestions.length === 0) return null;
-		return [...visibleQuestions].toSorted((a, b) => a.askedAt - b.askedAt)[0] ?? null;
-	}, [pendingQuestions]);
-
-	if (activeQuestion) {
-		return <OpenCodeQuestionQuestionnaire request={activeQuestion} />;
-	}
-
-	return <Composer />;
+	return (
+		<div className="flex flex-col gap-3">
+			<OpenCodeComposerInteraction fallback={<Composer />} />
+		</div>
+	);
 };
 
 // Empty threads stay in draft layout (centered composer). Require status

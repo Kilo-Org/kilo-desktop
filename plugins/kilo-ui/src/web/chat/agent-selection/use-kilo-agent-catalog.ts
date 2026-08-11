@@ -11,9 +11,19 @@ async function fetchAgentCatalog(connection: KiloGlobalConnection): Promise<Kilo
 	return buildAgentCatalog(data as Agent[]);
 }
 
-export function useKiloAgentCatalog(connection: KiloGlobalConnection | undefined) {
+export function useKiloAgentCatalog(
+	connection: KiloGlobalConnection | undefined,
+	connectionUpdatedAt = 0,
+) {
 	return useQuery({
-		queryKey: ["kilo-ui", "app.agents"],
+		queryKey: [
+			"kilo-ui",
+			"app.agents",
+			connection?.baseUrl,
+			connection?.version,
+			connection?.globalDirectory,
+			connectionUpdatedAt,
+		],
 		queryFn: () => {
 			if (!connection) {
 				throw new Error("Cannot fetch agents before Kilo is connected");

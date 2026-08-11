@@ -78,6 +78,7 @@ export const KiloAgentSelector: FC = () => {
 						<DropdownMenuRadioItem
 							key={entry.name}
 							value={entry.name}
+							closeOnClick
 							data-qa-id={`kilo-agent-selector-item-${entry.name}`}
 							className="gap-2"
 						>

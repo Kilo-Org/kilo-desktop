@@ -21,7 +21,7 @@ import type { SessionActivityStore } from "../session-activity/session-activity-
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 import { withAnacondaSessionListFilter } from "./with-anaconda-session-list-filter.js";
-import { withPromptVariant, type PromptOptionGetters } from "./with-prompt-variant.js";
+import { withPromptOptions, type PromptOptionGetters } from "./with-prompt-options.js";
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;
 
@@ -67,7 +67,7 @@ export function createKiloRuntimeBackend({
 		if (existing) return existing;
 		const client = createDeferredKiloRuntimeClient(
 			connectionPromise.then((connection) =>
-				withPromptVariant(createKiloDirectoryClient(connection, directory), promptGetters),
+				withPromptOptions(createKiloDirectoryClient(connection, directory), promptGetters),
 			),
 		);
 		clientsByDirectory.set(directory, client);

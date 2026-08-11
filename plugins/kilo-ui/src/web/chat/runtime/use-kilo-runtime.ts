@@ -10,7 +10,7 @@ import type {
 } from "../../../contracts/chat/schemas.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
-import { withPromptVariant, type PromptModelRef } from "./with-prompt-variant.js";
+import { withPromptOptions, type PromptModelRef } from "./with-prompt-options.js";
 
 export interface UseKiloRuntimeOptions {
 	connectionPromise?: Promise<KiloGlobalConnection>;
@@ -62,7 +62,7 @@ export function useKiloRuntime({
 	);
 
 	const client = useMemo(
-		() => (clientOption ? withPromptVariant(clientOption, promptGetters) : undefined),
+		() => (clientOption ? withPromptOptions(clientOption, promptGetters) : undefined),
 		[clientOption, promptGetters],
 	);
 	const backend = useMemo(() => {

@@ -8,8 +8,6 @@ import {
 	type IpcEventChannel,
 	type IpcEventPayload,
 	type ThemeChromeColors,
-	TRANSPARENT_WINDOW_BACKGROUND,
-	usesSystemWindowMaterial,
 	windowBackgroundFor,
 } from "@anaconda-agentic-desktop/contracts";
 
@@ -133,7 +131,7 @@ export class ElectronWindow {
 			window.setBackgroundColor(background);
 			if (process.platform !== "darwin") {
 				window.setTitleBarOverlay({
-					color: usesSystemWindowMaterial() ? TRANSPARENT_WINDOW_BACKGROUND : chrome.background,
+					color: chrome.background,
 					symbolColor: chrome.foreground,
 				});
 			}
@@ -171,7 +169,7 @@ function titleBarOptions(chrome: ThemeChromeColors): BrowserWindowConstructorOpt
 		titleBarStyle: "hidden",
 		titleBarOverlay: {
 			height: TITLEBAR_HEIGHT,
-			color: usesSystemWindowMaterial() ? TRANSPARENT_WINDOW_BACKGROUND : chrome.background,
+			color: chrome.background,
 			symbolColor: chrome.foreground,
 		},
 	};

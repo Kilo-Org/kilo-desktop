@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BellIcon, LogOutIcon, UserIcon } from "lucide-react";
+import { LogOutIcon, UserIcon } from "lucide-react";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
@@ -97,8 +97,12 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 	return (
 		<TooltipProvider>
-			<SidebarProvider className="bg-sidebar h-svh min-h-0 overflow-hidden">
-				<Sidebar collapsible="none" className="h-svh border-none" data-qa-id="app-sidebar">
+			<SidebarProvider className="app-shell-glass h-svh min-h-0 overflow-hidden">
+				<Sidebar
+					collapsible="none"
+					className="h-svh border-none bg-transparent!"
+					data-qa-id="app-sidebar"
+				>
 					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
 					<SidebarContent>
 						<SidebarGroup className="pt-0">
@@ -121,7 +125,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 												<SidebarMenuButton
 													aria-label={`Account menu for ${accountName}`}
 													size="lg"
-													className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+													className="data-open:bg-foreground/5 data-open:text-sidebar-accent-foreground"
 												/>
 											}
 										>
@@ -176,14 +180,6 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 				<SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent pr-3 pb-3">
 					<header className="flex h-14 items-center justify-end gap-2 pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
-						<Button
-							variant="ghost"
-							size="icon"
-							aria-label="Notifications"
-							className="[-webkit-app-region:no-drag]"
-						>
-							<BellIcon />
-						</Button>
 						{session.status !== "authenticated" && (
 							<Button
 								onClick={() => {

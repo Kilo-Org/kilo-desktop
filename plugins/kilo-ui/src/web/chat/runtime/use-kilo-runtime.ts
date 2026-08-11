@@ -10,7 +10,7 @@ import type {
 } from "../../../contracts/chat/schemas.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
-import { withPromptVariant } from "./with-prompt-variant.js";
+import { withPromptOptions, type PromptModelRef } from "./with-prompt-options.js";
 
 export interface UseKiloRuntimeOptions {
 	connectionPromise?: Promise<KiloGlobalConnection>;
@@ -21,10 +21,7 @@ export interface UseKiloRuntimeOptions {
 	/** Fires when the active remote thread id changes (OpenCode session switch). */
 	onThreadIdChange?: (threadId: string | undefined) => void;
 	defaultAgent?: string;
-	defaultModel?: {
-		providerID: string;
-		modelID: string;
-	};
+	defaultModel?: PromptModelRef;
 	/** Reasoning effort / OpenCode variant injected into prompt requests. */
 	variant?: string;
 	isSendDisabled?: boolean;
@@ -46,12 +43,27 @@ export function useKiloRuntime({
 	onError,
 	sessionActivity,
 }: UseKiloRuntimeOptions): AssistantRuntime {
+	// Refs so prompt injection always sees the latest composer selection even when
+	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
 	const variantRef = useRef(variant);
 	variantRef.current = variant;
+	const agentRef = useRef(defaultAgent);
+	agentRef.current = defaultAgent;
+	const modelRef = useRef(defaultModel);
+	modelRef.current = defaultModel;
+
+	const promptGetters = useMemo(
+		() => ({
+			getVariant: () => variantRef.current,
+			getAgent: () => agentRef.current,
+			getModel: () => modelRef.current,
+		}),
+		[],
+	);
 
 	const client = useMemo(
-		() => (clientOption ? withPromptVariant(clientOption, () => variantRef.current) : undefined),
-		[clientOption],
+		() => (clientOption ? withPromptOptions(clientOption, promptGetters) : undefined),
+		[clientOption, promptGetters],
 	);
 	const backend = useMemo(() => {
 		if (client) return undefined;
@@ -61,10 +73,10 @@ export function useKiloRuntime({
 		return createKiloRuntimeBackend({
 			connectionPromise,
 			prepareSession,
-			getVariant: () => variantRef.current,
+			...promptGetters,
 			...(sessionActivity ? { sessionActivity } : {}),
 		});
-	}, [client, connectionPromise, prepareSession, sessionActivity]);
+	}, [client, connectionPromise, prepareSession, promptGetters, sessionActivity]);
 
 	return useOpenCodeRuntime({
 		...(backend ? { backend } : {}),

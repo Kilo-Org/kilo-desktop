@@ -46,6 +46,14 @@ vi.mock("./model-selection/use-kilo-model-catalog.js", () => ({
 	})),
 }));
 
+vi.mock("./agent-selection/use-kilo-agent-catalog.js", () => ({
+	useKiloAgentCatalog: vi.fn(() => ({
+		data: undefined,
+		isPending: false,
+		isError: false,
+	})),
+}));
+
 const threadMount = vi.hoisted(() => ({ nextId: 0 }));
 
 vi.mock("./components/assistant-ui/thread.js", async () => {

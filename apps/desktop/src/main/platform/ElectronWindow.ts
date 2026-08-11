@@ -8,6 +8,7 @@ import {
 	type IpcEventChannel,
 	type IpcEventPayload,
 	type ThemeChromeColors,
+	windowBackgroundFor,
 } from "@anaconda-agentic-desktop/contracts";
 
 import { getDesktopUrl } from "./ElectronProtocol.js";
@@ -41,7 +42,8 @@ export class ElectronWindow {
 			minWidth: 720,
 			minHeight: 520,
 			show: false,
-			backgroundColor: chrome.background,
+			backgroundColor: windowBackgroundFor(this.shouldUseDarkColors()),
+			...systemMaterialOptions(),
 			...(process.platform === "linux" ? { icon: linuxWindowIcon() } : {}),
 			...titleBarOptions(chrome),
 			...input.options,
@@ -124,8 +126,9 @@ export class ElectronWindow {
 	/** Repaints native chrome to match the renderer-owned theme (pushed via `theme:sync`). */
 	applyColorScheme(shouldUseDarkColors: boolean): void {
 		const chrome = chromeFor(shouldUseDarkColors);
+		const background = windowBackgroundFor(shouldUseDarkColors);
 		for (const window of this.liveWindows) {
-			window.setBackgroundColor(chrome.background);
+			window.setBackgroundColor(background);
 			if (process.platform !== "darwin") {
 				window.setTitleBarOverlay({
 					color: chrome.background,
@@ -139,6 +142,16 @@ export class ElectronWindow {
 		for (const window of this.liveWindows) window.destroy();
 		this.#mainWindow = undefined;
 	}
+}
+
+function systemMaterialOptions(): BrowserWindowConstructorOptions {
+	if (process.platform === "darwin") {
+		return {
+			vibrancy: "under-window",
+			visualEffectState: "active",
+		};
+	}
+	return {};
 }
 
 function titleBarOptions(chrome: ThemeChromeColors): BrowserWindowConstructorOptions {

@@ -30,12 +30,14 @@ import {
 	modelRefToId,
 	parseModelId,
 	type KiloCatalogModel,
+	type KiloModelRef,
 	type KiloProviderGroup,
 } from "../../model-selection/model-catalog.js";
 import { sortModelsWithFavoritesFirst } from "../../model-selection/model-favorites.js";
 import { filterModelsBySearchQuery } from "../../model-selection/model-search.js";
 import { ProviderIcon } from "../../model-selection/provider-icon.js";
 import { useModelFavorites } from "../../model-selection/use-model-favorites.js";
+import { effortsForOptimisticTrigger } from "../../model-selection/selection-storage.js";
 import {
 	ModelSelector,
 	ModelSelectorContent,
@@ -48,6 +50,7 @@ import {
 	ModelSelectorTrigger,
 	ModelSelectorValue,
 	useModelSelectorContext,
+	type ModelSelectorEffortOption,
 } from "./model-selector.js";
 
 type RailSelection = "favorites" | (string & {});
@@ -55,6 +58,25 @@ type RailSelection = "favorites" | (string & {});
 /** Approximate row height for name + description + padding; measureElement corrects drift. */
 const MODEL_ROW_ESTIMATE_PX = 52;
 const MODEL_LIST_OVERSCAN = 12;
+
+/** Trigger-only row from localStorage while `provider.list` is still in flight. */
+function optimisticTriggerModel(
+	ref: KiloModelRef,
+	meta: {
+		name: string | undefined;
+		effort: string | undefined;
+		efforts: readonly ModelSelectorEffortOption[] | undefined;
+	},
+): KiloCatalogModel {
+	const efforts = effortsForOptimisticTrigger(meta.effort, meta.efforts);
+	return {
+		id: modelRefToId(ref),
+		name: meta.name ?? ref.modelID,
+		providerID: ref.providerID,
+		modelID: ref.modelID,
+		...(efforts ? { efforts } : {}),
+	};
+}
 
 function nextHighlightIndex(
 	length: number,
@@ -91,8 +113,17 @@ function nextHighlightIndex(
  * provider rail (favorites + providers) and searchable list.
  */
 export const KiloModelSelector: FC = () => {
-	const { model, setModel, effort, setEffort, catalog, isCatalogPending, isCatalogError } =
-		useChatModelSelection();
+	const {
+		model,
+		setModel,
+		effort,
+		setEffort,
+		name,
+		efforts,
+		catalog,
+		isCatalogPending,
+		isCatalogError,
+	} = useChatModelSelection();
 	const { favoriteIds, toggleFavorite, hasFavorites } = useModelFavorites();
 	const [railSelection, setRailSelection] = useState<RailSelection | undefined>(undefined);
 	const [searchQuery, setSearchQuery] = useState("");
@@ -150,6 +181,22 @@ export const KiloModelSelector: FC = () => {
 	// ModelSelectorValue reads `selectedModel.icon` for the trigger — attach an icon
 	// only for the selected row so we don't rebuild JSX for the whole catalog.
 	const modelsForSelector = useMemo(() => {
+		if (models.length === 0 && isCatalogPending && model) {
+			const optimistic = optimisticTriggerModel(model, { name, effort, efforts });
+			return [
+				{
+					...optimistic,
+					icon: (
+						<ProviderIcon
+							provider={optimistic.providerID}
+							variant="color"
+							size={14}
+							fallbackLabel={optimistic.providerID}
+						/>
+					),
+				},
+			];
+		}
 		if (!selectedId) {
 			return models;
 		}
@@ -171,10 +218,11 @@ export const KiloModelSelector: FC = () => {
 			),
 		};
 		return next;
-	}, [models, selectedId]);
+	}, [effort, efforts, isCatalogPending, model, models, name, selectedId]);
 
-	const showSidebar = !isSearching && providers.length > 0;
-	const disabled = isCatalogPending || isCatalogError || models.length === 0;
+	const showSidebar = isCatalogPending || (!isSearching && providers.length > 0);
+	const disabled = isCatalogError || (!isCatalogPending && models.length === 0);
+	const showLoadingPlaceholder = isCatalogPending && !model;
 
 	return (
 		<ModelSelectorRoot
@@ -203,12 +251,12 @@ export const KiloModelSelector: FC = () => {
 				disabled={disabled}
 				className="shrink-0"
 				data-qa-id="kilo-model-selector-trigger"
-				aria-label={isCatalogPending ? "Loading models" : "Select model"}
+				aria-label={showLoadingPlaceholder ? "Loading models" : "Select model"}
 				aria-busy={isCatalogPending || undefined}
 			>
 				<ModelSelectorValue
 					placeholder={
-						isCatalogPending ? (
+						showLoadingPlaceholder ? (
 							<>
 								<span className="flex min-w-0 items-center gap-2" aria-hidden>
 									<Skeleton className="bg-muted-foreground/25 size-3.5 shrink-0 rounded-sm" />
@@ -227,7 +275,7 @@ export const KiloModelSelector: FC = () => {
 				searchable
 				shouldFilter={false}
 				align="start"
-				className="w-[min(100vw,22.5rem)] max-w-[90vw] p-0"
+				className="w-[min(100vw,22.5rem)] max-w-[min(100vw,22.5rem)] min-w-0 p-0"
 				data-qa-id="kilo-model-selector-content"
 				{...(commandValue !== undefined ? { commandValue } : {})}
 				onCommandValueChange={(next) => {
@@ -260,8 +308,18 @@ export const KiloModelSelector: FC = () => {
 					scrollToHighlightedRef.current(next.id);
 				}}
 			>
-				<div className="flex max-h-64 overflow-hidden">
-					{showSidebar ? (
+				<div
+					className="flex max-h-64 w-full min-w-0 overflow-hidden"
+					{...(isCatalogPending
+						? {
+								"data-qa-id": "kilo-model-selector-loading",
+								"aria-busy": true as const,
+								"aria-label": "Loading models",
+							}
+						: {})}
+				>
+					{isCatalogPending ? <ProviderRailSkeleton /> : null}
+					{!isCatalogPending && showSidebar ? (
 						<ProviderRail
 							providers={providers}
 							selectedRail={activeRail}
@@ -285,32 +343,95 @@ export const KiloModelSelector: FC = () => {
 											setSearchQuery(next);
 											setHighlightId(undefined);
 										}}
+										disabled={isCatalogPending}
 										className="h-full text-sm leading-none"
 									/>
 								</div>
 							</div>
 						</div>
-						<VirtualizedCatalogList
-							models={visibleModels}
-							favoriteIds={favoriteIds}
-							emptyLabel={
-								activeRail === "favorites" && !isSearching
-									? "No favorite models yet."
-									: "No models found."
-							}
-							scrollToHighlightedRef={scrollToHighlightedRef}
-							onToggleFavorite={(entry) => {
-								toggleFavorite({
-									providerID: entry.providerID,
-									modelID: entry.modelID,
-								});
-							}}
-						/>
+						{isCatalogPending ? (
+							<>
+								<span className="sr-only">Loading models…</span>
+								<ModelListSkeleton />
+							</>
+						) : (
+							<VirtualizedCatalogList
+								models={visibleModels}
+								favoriteIds={favoriteIds}
+								emptyLabel={
+									activeRail === "favorites" && !isSearching
+										? "No favorite models yet."
+										: "No models found."
+								}
+								scrollToHighlightedRef={scrollToHighlightedRef}
+								onToggleFavorite={(entry) => {
+									toggleFavorite({
+										providerID: entry.providerID,
+										modelID: entry.modelID,
+									});
+								}}
+							/>
+						)}
 					</div>
 				</div>
-				<ModelSelectorEffort data-qa-id="kilo-model-selector-effort" />
+				{isCatalogPending ? null : <ModelSelectorEffort data-qa-id="kilo-model-selector-effort" />}
 			</ModelSelectorContent>
 		</ModelSelectorRoot>
+	);
+};
+
+const MODEL_CATALOG_SKELETON_ROWS = 5;
+const MODEL_CATALOG_SKELETON_RAIL_SLOTS = 4;
+const MODEL_LIST_SKELETON_NAME_WIDTHS = ["7.5rem", "9rem", "6.5rem", "8.25rem", "7rem"] as const;
+const MODEL_LIST_SKELETON_DESC_WIDTHS = [
+	"5.5rem",
+	"6.25rem",
+	"4.75rem",
+	"5.75rem",
+	"5rem",
+] as const;
+
+const ProviderRailSkeleton: FC = () => {
+	return (
+		<div className="bg-muted/30 w-11 shrink-0" aria-hidden>
+			<div className="relative flex min-h-full flex-col gap-1 p-1">
+				<div className="bg-foreground/5 flex aspect-square w-full items-center justify-center rounded-md">
+					<Skeleton className="bg-muted-foreground/25 size-5 rounded-sm" />
+				</div>
+				<div className="border-border/70 border-b" />
+				{Array.from({ length: MODEL_CATALOG_SKELETON_RAIL_SLOTS }, (_, index) => (
+					<div
+						key={index}
+						className="flex aspect-square w-full items-center justify-center rounded-md"
+					>
+						<Skeleton className="bg-muted-foreground/25 size-5 rounded-sm" />
+					</div>
+				))}
+			</div>
+		</div>
+	);
+};
+
+const ModelListSkeleton: FC = () => {
+	return (
+		<div className="scroll-fade max-h-52 space-y-0.5 overflow-hidden px-1 py-1" aria-hidden>
+			{Array.from({ length: MODEL_CATALOG_SKELETON_ROWS }, (_, index) => (
+				<div key={index} className="flex items-start gap-2 rounded-md px-2 py-2">
+					<Skeleton className="bg-muted-foreground/25 mt-0.5 size-3.5 shrink-0 rounded-sm" />
+					<span className="flex min-w-0 flex-1 flex-col gap-1.5">
+						<Skeleton
+							className="bg-muted-foreground/25 h-3.5"
+							style={{ width: MODEL_LIST_SKELETON_NAME_WIDTHS[index] }}
+						/>
+						<Skeleton
+							className="bg-muted-foreground/20 h-3"
+							style={{ width: MODEL_LIST_SKELETON_DESC_WIDTHS[index] }}
+						/>
+					</span>
+					<Skeleton className="bg-muted-foreground/20 mt-0.5 size-3.5 shrink-0 rounded-sm" />
+				</div>
+			))}
+		</div>
 	);
 };
 

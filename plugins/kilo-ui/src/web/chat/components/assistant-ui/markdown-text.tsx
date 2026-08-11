@@ -13,6 +13,7 @@ import { type FC, memo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "./tooltip-icon-button.js";
+import { useShellCopyText } from "./use-shell-copy-text.js";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 const MarkdownTextImpl = () => {
@@ -29,7 +30,8 @@ const MarkdownTextImpl = () => {
 export const MarkdownText = memo(MarkdownTextImpl);
 
 const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
-	const { isCopied, copyToClipboard } = useCopyToClipboard();
+	const copyText = useShellCopyText();
+	const { isCopied, copyToClipboard } = useCopyToClipboard(copyText);
 	const onCopy = () => {
 		if (!code || isCopied) return;
 		copyToClipboard(code);
@@ -48,19 +50,16 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
 	);
 };
 
-const useCopyToClipboard = ({
-	copiedDuration = 3000,
-}: {
-	copiedDuration?: number;
-} = {}) => {
+const useCopyToClipboard = (
+	writeText: (value: string) => Promise<void>,
+	{ copiedDuration = 3000 }: { copiedDuration?: number } = {},
+) => {
 	const [isCopied, setIsCopied] = useState<boolean>(false);
 
 	const copyToClipboard = (value: string) => {
-		if (!value || typeof navigator === "undefined" || !navigator.clipboard) {
-			return;
-		}
+		if (!value) return;
 
-		navigator.clipboard.writeText(value).then(
+		void writeText(value).then(
 			() => {
 				setIsCopied(true);
 				setTimeout(() => setIsCopied(false), copiedDuration);
@@ -175,7 +174,7 @@ const defaultComponents = memoizeMarkdownComponents({
 	th: ({ className, ...props }) => (
 		<th
 			className={cn(
-				"aui-md-th bg-muted px-3 py-1.5 text-start font-medium first:rounded-ss-lg last:rounded-se-lg [[align=center]]:text-center [[align=right]]:text-right",
+				"aui-md-th bg-foreground/10 px-3 py-1.5 text-start font-medium first:rounded-ss-lg last:rounded-se-lg [[align=center]]:text-center [[align=right]]:text-right",
 				className,
 			)}
 			{...props}

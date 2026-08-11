@@ -71,7 +71,9 @@ describe("AppSidebarLayout login button", () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
 		// Give the async auth delegate a tick to resolve to authenticated.
-		await expect.element(page.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Account menu for ada" }))
+			.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Log in" })).not.toBeInTheDocument();
 	});
 

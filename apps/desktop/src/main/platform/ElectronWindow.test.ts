@@ -2,12 +2,18 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { themeChromeColors } from "@anaconda-agentic-desktop/contracts";
+import {
+	themeChromeColors,
+	TRANSPARENT_WINDOW_BACKGROUND,
+} from "@anaconda-agentic-desktop/contracts";
 
 const { createdWindows, electronApp } = vi.hoisted(() => {
 	interface FakeWindow {
 		options: {
 			backgroundColor?: string;
+			backgroundMaterial?: string;
+			vibrancy?: string;
+			visualEffectState?: string;
 			icon?: string;
 			titleBarOverlay?: { color: string; symbolColor: string; height: number };
 		};
@@ -94,17 +100,30 @@ describe("ElectronWindow theme chrome", () => {
 		Object.defineProperty(process, "platform", { value: originalPlatform });
 	});
 
-	it("paints the initial background and title bar from the cached scheme", () => {
+	it("paints the initial Windows background and title bar from the cached scheme", () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
 		const windows = new ElectronWindow(createShell() as never, () => true);
 
 		windows.create({ isDevelopment: false });
 
 		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.dark.background);
+		expect(createdWindows[0]?.options.backgroundMaterial).toBeUndefined();
 		expect(createdWindows[0]?.options.titleBarOverlay).toMatchObject({
 			color: themeChromeColors.dark.background,
 			symbolColor: themeChromeColors.dark.foreground,
 		});
+	});
+
+	it("enables macOS vibrancy with a transparent window background", () => {
+		Object.defineProperty(process, "platform", { value: "darwin" });
+		const windows = new ElectronWindow(createShell() as never, () => false);
+
+		windows.create({ isDevelopment: false });
+
+		expect(createdWindows[0]?.options.backgroundColor).toBe(TRANSPARENT_WINDOW_BACKGROUND);
+		expect(createdWindows[0]?.options.vibrancy).toBe("under-window");
+		expect(createdWindows[0]?.options.visualEffectState).toBe("active");
+		expect(createdWindows[0]?.options.titleBarOverlay).toBeUndefined();
 	});
 
 	it("uses a platform-native path for the unpackaged Linux icon", () => {
@@ -113,6 +132,7 @@ describe("ElectronWindow theme chrome", () => {
 
 		windows.create({ isDevelopment: false });
 
+		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.light.background);
 		expect(createdWindows[0]?.options.icon).toBe(
 			path.join(electronApp.getAppPath(), "assets/icon.png"),
 		);
@@ -133,7 +153,7 @@ describe("ElectronWindow theme chrome", () => {
 		});
 	});
 
-	it("leaves the macOS title bar native while repainting the window background", () => {
+	it("leaves the macOS title bar native while keeping the vibrancy background transparent", () => {
 		Object.defineProperty(process, "platform", { value: "darwin" });
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
@@ -141,8 +161,23 @@ describe("ElectronWindow theme chrome", () => {
 
 		windows.applyColorScheme(true);
 
-		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.dark.background);
+		expect(window?.setBackgroundColor).toHaveBeenCalledWith(TRANSPARENT_WINDOW_BACKGROUND);
 		expect(window?.setTitleBarOverlay).not.toHaveBeenCalled();
+	});
+
+	it("repaints an opaque Linux window background when the scheme changes", () => {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		const window = createdWindows[0];
+
+		windows.applyColorScheme(true);
+
+		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.dark.background);
+		expect(window?.setTitleBarOverlay).toHaveBeenCalledWith({
+			color: themeChromeColors.dark.background,
+			symbolColor: themeChromeColors.dark.foreground,
+		});
 	});
 
 	it("manages window lifecycle and routes untrusted URLs through the shell", () => {

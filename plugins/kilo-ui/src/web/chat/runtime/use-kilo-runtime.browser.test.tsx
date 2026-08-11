@@ -49,12 +49,55 @@ describe("useKiloRuntime", () => {
 			connectionPromise,
 			prepareSession,
 			getVariant: expect.any(Function),
+			getAgent: expect.any(Function),
+			getModel: expect.any(Function),
 		});
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			backend: expect.objectContaining({ globalClient: {} }),
 			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
 			onError,
 		});
+	});
+
+	it("forwards live agent and model getters that track selection changes", () => {
+		const connectionPromise = Promise.resolve(connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+
+		const { rerender } = renderHook(
+			({ agent, model }: { agent: string; model: { providerID: string; modelID: string } }) =>
+				useKiloRuntime({
+					connectionPromise,
+					prepareSession,
+					defaultAgent: agent,
+					defaultModel: model,
+				}),
+			{
+				initialProps: {
+					agent: "code",
+					model: { providerID: "anthropic", modelID: "claude-sonnet" },
+				},
+			},
+		);
+
+		const backendArgs = vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0];
+		expect(backendArgs?.getAgent?.()).toBe("code");
+		expect(backendArgs?.getModel?.()).toEqual({
+			providerID: "anthropic",
+			modelID: "claude-sonnet",
+		});
+
+		rerender({
+			agent: "plan",
+			model: { providerID: "openai", modelID: "gpt-5" },
+		});
+
+		expect(backendArgs?.getAgent?.()).toBe("plan");
+		expect(backendArgs?.getModel?.()).toEqual({
+			providerID: "openai",
+			modelID: "gpt-5",
+		});
+		// Backend is created once; getters read refs so selection stays live.
+		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
 	});
 
 	it("accepts an injected client for focused tests", () => {
@@ -83,6 +126,8 @@ describe("useKiloRuntime", () => {
 			connectionPromise,
 			prepareSession,
 			getVariant: expect.any(Function),
+			getAgent: expect.any(Function),
+			getModel: expect.any(Function),
 			sessionActivity,
 		});
 	});

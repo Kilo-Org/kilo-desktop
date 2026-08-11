@@ -19,6 +19,8 @@ import {
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
+import { OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";
+import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelectionContext.js";
 import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
@@ -43,6 +45,8 @@ const modelSelection = {
 	setModel: () => undefined,
 	effort: undefined,
 	setEffort: () => undefined,
+	name: "Test Model",
+	efforts: undefined,
 	catalog: {
 		providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
 		models: [
@@ -54,6 +58,18 @@ const modelSelection = {
 			},
 		],
 		defaults: { kilo: "test-model" },
+	},
+	isCatalogPending: false,
+	isCatalogError: false,
+};
+
+const agentSelection = {
+	agent: "code",
+	setAgent: () => undefined,
+	catalog: {
+		agents: OPTIMISTIC_AGENT_CATALOG.agents.filter(
+			(entry) => entry.name === "code" || entry.name === "plan",
+		),
 	},
 	isCatalogPending: false,
 	isCatalogError: false,
@@ -74,11 +90,13 @@ function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadM
 					connectionPromise: Promise.resolve(connection),
 				}}
 			>
-				<ChatModelSelectionProvider value={modelSelection}>
-					<div className="h-[480px]">
-						<Thread />
-					</div>
-				</ChatModelSelectionProvider>
+				<ChatAgentSelectionProvider value={agentSelection}>
+					<ChatModelSelectionProvider value={modelSelection}>
+						<div className="h-[480px]">
+							<Thread />
+						</div>
+					</ChatModelSelectionProvider>
+				</ChatAgentSelectionProvider>
 			</ChatConnectionProvider>
 		</AssistantRuntimeProvider>
 	);
@@ -126,6 +144,7 @@ describe("ComposerDraftFooter", () => {
 
 		await expect.element(screen.getByTestId("kilo-composer-draft-footer")).toBeVisible();
 		await expect.element(screen.getByRole("combobox", { name: "Select workspace" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Select agent" })).toBeVisible();
 		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toBeVisible();
 	});
 

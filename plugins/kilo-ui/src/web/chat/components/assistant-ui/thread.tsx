@@ -8,18 +8,17 @@ import {
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
+import { KiloAgentSelector } from "./kilo-agent-selector.js";
 import { KiloModelSelector } from "./kilo-model-selector.js";
 import { MarkdownText } from "./markdown-text.js";
-import {
-	Reasoning,
-	ReasoningContent,
-	ReasoningRoot,
-	ReasoningText,
-	ReasoningTrigger,
-} from "./reasoning.js";
-import { ToolFallback } from "./tool-fallback.js";
-import { ToolGroupContent, ToolGroupRoot, ToolGroupTrigger } from "./tool-group.js";
+import { MessageCopyButton } from "./message-copy-button.js";
+import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
+import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
+import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
+import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
+import { FallbackTool } from "../tools/opencode-tools.js";
+import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
@@ -30,7 +29,7 @@ import {
 	BranchPickerPrimitive,
 	ComposerPrimitive,
 	ErrorPrimitive,
-	groupPartByType,
+	getMcpAppFromToolPart,
 	MessagePrimitive,
 	SuggestionPrimitive,
 	ThreadPrimitive,
@@ -41,15 +40,12 @@ import {
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
-	CheckIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
-	CopyIcon,
 	DownloadIcon,
 	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
-	PencilIcon,
 	RefreshCwIcon,
 	SquareIcon,
 } from "lucide-react";
@@ -61,7 +57,6 @@ import {
 	type ComponentType,
 	type FC,
 	type FormEvent,
-	type PropsWithChildren,
 } from "react";
 
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
@@ -70,17 +65,13 @@ export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
 /**
  * Optional component overrides for the thread. `AssistantMessage` and
- * `Welcome` replace whole sections; the remaining slots override how the
- * assistant message renders tool calls and part groups. Tool UIs registered
- * by name (toolkit `render`, `useAssistantDataUI`) take precedence over
- * `ToolFallback`.
+ * `Welcome` replace whole sections; `ToolFallback` overrides unknown tool
+ * renders. Named toolkit renders take precedence over `ToolFallback`.
  */
 export type ThreadComponents = {
 	AssistantMessage?: ComponentType | undefined;
 	Welcome?: ComponentType | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
-	ToolGroup?: ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>> | undefined;
-	ReasoningGroup?: ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>> | undefined;
 };
 
 export type ThreadProps = {
@@ -90,6 +81,14 @@ export type ThreadProps = {
 const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
+
+const ThreadComposerSlot: FC = () => {
+	return (
+		<div className="flex flex-col gap-3">
+			<OpenCodeComposerInteraction fallback={<Composer />} />
+		</div>
+	);
+};
 
 // Empty threads stay in draft layout (centered composer). Require status
 // "new" too — after lazy session init the list item flips to regular before
@@ -107,9 +106,31 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	);
 };
 
-const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
+const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const { Welcome = DraftWelcomeHeadline } = useContext(ThreadComponentsContext);
 
+	return (
+		<div className="relative flex w-full flex-col">
+			{isDraft ? <Welcome /> : null}
+			<div className="relative">
+				{isDraft ? (
+					<div
+						aria-hidden="true"
+						className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+					/>
+				) : null}
+				<div className="relative z-10 flex flex-col">
+					<div className="relative z-10">
+						<ThreadComposerSlot />
+					</div>
+					{isDraft ? <ComposerDraftFooter /> : null}
+				</div>
+			</div>
+		</div>
+	);
+};
+
+const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
 			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))]"
@@ -137,34 +158,24 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
-							"aui-thread-viewport-footer bg-muted flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+							/* Transparent so sticky glass can blur scrolled messages behind the shell. */
+							"aui-thread-viewport-footer relative flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
 							!isDraft && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
 						)}
 					>
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
-						<div className="relative flex w-full flex-col">
-							<AuiIf condition={isDraftView}>
-								<Welcome />
-							</AuiIf>
-							<div className="relative">
-								{isDraft ? (
-									<div
-										aria-hidden="true"
-										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
-									/>
-								) : null}
-								<div className="relative z-10 flex flex-col">
-									<div className="relative z-10">
-										<Composer />
-									</div>
-									{isDraft ? <ComposerDraftFooter /> : null}
-								</div>
-							</div>
+						<div className="relative">
+							<ThreadComposerBlock isDraft={isDraft} />
+							{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
+							{!isDraft ? (
+								<div
+									aria-hidden
+									className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
+								/>
+							) : null}
 						</div>
-						<AuiIf condition={isDraftView}>
-							<ThreadSuggestions />
-						</AuiIf>
+						{isDraft ? <ThreadSuggestions /> : null}
 					</ThreadPrimitive.ViewportFooter>
 				</div>
 			</ThreadPrimitive.Viewport>
@@ -176,9 +187,7 @@ const ThreadMessage: FC = () => {
 	const { AssistantMessage: AssistantMessageComponent = AssistantMessage } =
 		useContext(ThreadComponentsContext);
 	const role = useAuiState((s) => s.message.role);
-	const isEditing = useAuiState((s) => s.message.composer.isEditing);
 
-	if (isEditing) return <EditComposer />;
 	if (role === "user") return <UserMessage />;
 	return <AssistantMessageComponent />;
 };
@@ -286,8 +295,10 @@ const Composer: FC = () => {
 					<div
 						data-slot="aui_composer-shell"
 						className={cn(
-							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none",
-							isDraft && "border-b-0 dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]",
+							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+							isDraft
+								? "border-b-0 bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]"
+								: "chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
 						)}
 					/>
 				}
@@ -324,9 +335,10 @@ const ComposerAction: FC<{
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
 			<div className="flex min-w-0 items-center gap-1">
 				<ComposerAddAttachment />
-				<KiloModelSelector />
+				<KiloAgentSelector />
 			</div>
 			<div className="flex items-center gap-1.5">
+				<KiloModelSelector />
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>
 						<ComposerPrimitive.Dictate
@@ -442,11 +454,8 @@ const MessageError: FC = () => {
 };
 
 const AssistantMessage: FC = () => {
-	const {
-		ToolFallback: ToolFallbackComponent = ToolFallback,
-		ToolGroup,
-		ReasoningGroup,
-	} = useContext(ThreadComponentsContext);
+	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
+		useContext(ThreadComponentsContext);
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -463,41 +472,42 @@ const AssistantMessage: FC = () => {
 				className="text-foreground px-2 leading-relaxed wrap-break-word"
 			>
 				<MessagePrimitive.GroupedParts
-					groupBy={groupPartByType({
-						reasoning: ["group-chainOfThought", "group-reasoning"],
-						"tool-call": ["group-chainOfThought", "group-tool"],
-						"standalone-tool-call": [],
-					})}
+					groupBy={(part, context) => {
+						if (part.type === "reasoning") {
+							return ["group-activity", "group-thinking"] as const;
+						}
+						if (part.type === "tool-call") {
+							if (getMcpAppFromToolPart(part)) return [];
+							if (context.toolUIs?.[part.toolName]?.[0]?.standalone) return [];
+							return ["group-activity", getGroupKeyForTool(part.toolName)] as const;
+						}
+						// Hidden step markers stay in the activity run so they don't fragment groups.
+						if (part.type === "data" && isHiddenOpenCodeDataPart(part.name)) {
+							return ["group-activity"] as const;
+						}
+						return [];
+					}}
 				>
 					{({ part, children }) => {
 						switch (part.type) {
-							case "group-chainOfThought":
-								return <div data-slot="aui_chain-of-thought">{children}</div>;
-							case "group-tool":
-								if (ToolGroup) {
-									return <ToolGroup group={part}>{children}</ToolGroup>;
-								}
+							case "group-activity":
+								return <ActivityGroup group={part}>{children}</ActivityGroup>;
+							case "group-thinking":
+							case "group-editing":
+							case "group-writing":
+							case "group-reading":
+							case "group-searching":
+							case "group-web":
+							case "group-terminal":
+							case "group-planning":
+							case "group-asking":
+							case "group-tools": {
+								const kind = activityKindFromGroupKey(part.type);
+								if (!kind) return null;
 								return (
-									<ToolGroupRoot variant="ghost">
-										<ToolGroupTrigger
-											count={part.indices.length}
-											active={part.status.type === "running"}
-										/>
-										<ToolGroupContent>{children}</ToolGroupContent>
-									</ToolGroupRoot>
-								);
-							case "group-reasoning": {
-								if (ReasoningGroup) {
-									return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
-								}
-								const running = part.status.type === "running";
-								return (
-									<ReasoningRoot streaming={running}>
-										<ReasoningTrigger active={running} />
-										<ReasoningContent aria-busy={running}>
-											<ReasoningText>{children}</ReasoningText>
-										</ReasoningContent>
-									</ReasoningRoot>
+									<ActivitySubgroup kind={kind} group={part}>
+										{children}
+									</ActivitySubgroup>
 								);
 							}
 							case "text":
@@ -518,8 +528,22 @@ const AssistantMessage: FC = () => {
 										{"●"}
 									</span>
 								);
-							default:
+							default: {
+								if (
+									typeof part.type === "string" &&
+									part.type.startsWith("group-mcp-") &&
+									"indices" in part
+								) {
+									const kind = activityKindFromGroupKey(part.type);
+									if (!kind) return null;
+									return (
+										<ActivitySubgroup kind={kind} group={part}>
+											{children}
+										</ActivitySubgroup>
+									);
+								}
 								return null;
+							}
 						}
 					}}
 				</MessagePrimitive.GroupedParts>
@@ -544,14 +568,7 @@ const AssistantActionBar: FC = () => {
 			autohide="not-last"
 			className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
 		>
-			<ActionBarPrimitive.Copy render={<TooltipIconButton tooltip="Copy" />}>
-				<AuiIf condition={(s) => s.message.isCopied}>
-					<CheckIcon className="animate-in zoom-in-50 fade-in duration-200 ease-out" />
-				</AuiIf>
-				<AuiIf condition={(s) => !s.message.isCopied}>
-					<CopyIcon className="animate-in zoom-in-75 fade-in duration-150" />
-				</AuiIf>
-			</ActionBarPrimitive.Copy>
+			<MessageCopyButton />
 			<ActionBarPrimitive.Reload render={<TooltipIconButton tooltip="Refresh" />}>
 				<RefreshCwIcon />
 			</ActionBarPrimitive.Reload>
@@ -591,11 +608,8 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content peer border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
 					<MessagePrimitive.Parts />
-				</div>
-				<div className="aui-user-action-bar-wrapper absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden rtl:translate-x-full">
-					<UserActionBar />
 				</div>
 			</div>
 
@@ -603,48 +617,6 @@ const UserMessage: FC = () => {
 				data-slot="aui_user-branch-picker"
 				className="col-span-full col-start-1 row-start-3 -me-1 justify-end"
 			/>
-		</MessagePrimitive.Root>
-	);
-};
-
-const UserActionBar: FC = () => {
-	return (
-		<ActionBarPrimitive.Root
-			hideWhenRunning
-			autohide="not-last"
-			className="aui-user-action-bar-root flex flex-col items-end"
-		>
-			<ActionBarPrimitive.Edit
-				render={<TooltipIconButton tooltip="Edit" className="aui-user-action-edit" />}
-			>
-				<PencilIcon />
-			</ActionBarPrimitive.Edit>
-		</ActionBarPrimitive.Root>
-	);
-};
-
-const EditComposer: FC = () => {
-	return (
-		<MessagePrimitive.Root
-			data-slot="aui_edit-composer-wrapper"
-			className="flex flex-col px-2 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
-		>
-			<ComposerPrimitive.Root className="aui-edit-composer-root border-border/60 dark:border-muted-foreground/15 ms-auto flex w-full max-w-[85%] flex-col rounded-(--composer-radius) border bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-none">
-				<ComposerPrimitive.Input
-					className="aui-edit-composer-input text-foreground min-h-14 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base outline-none"
-					autoFocus
-				/>
-				<div className="aui-edit-composer-footer mx-2.5 mb-2.5 flex items-center gap-1.5 self-end">
-					<ComposerPrimitive.Cancel
-						render={<Button variant="ghost" size="sm" className="h-8 rounded-full px-3.5" />}
-					>
-						Cancel
-					</ComposerPrimitive.Cancel>
-					<ComposerPrimitive.Send render={<Button size="sm" className="h-8 rounded-full px-3.5" />}>
-						Update
-					</ComposerPrimitive.Send>
-				</div>
-			</ComposerPrimitive.Root>
 		</MessagePrimitive.Root>
 	);
 };

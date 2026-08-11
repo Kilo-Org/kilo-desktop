@@ -54,9 +54,20 @@ import {
 	type SessionRowState,
 } from "../../session-activity/session-activity-logic.js";
 
-/** Match SidebarMenuButton / plugin nav item chrome in the app shell sidebar. */
-const sidebarNavItemClassName =
-	"text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground has-focus-visible:bg-sidebar-accent has-data-[state=open]:bg-sidebar-accent rounded-md transition-colors";
+/**
+ * Shared glass surface states for New Chat, Search, and session rows.
+ * Idle is clear; hover/focus and selected use the same translucent washes.
+ */
+const sidebarSurfaceIdleClassName =
+	"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
+const sidebarSurfaceActiveClassName =
+	"bg-foreground/8 text-sidebar-foreground font-medium transition-colors hover:bg-foreground/8 focus-visible:bg-foreground/8";
+
+/** Soft glass chrome for sidebar buttons (New Chat). */
+const sidebarNavItemClassName = cn(
+	sidebarSurfaceIdleClassName,
+	"rounded-md hover:text-sidebar-accent-foreground data-active:bg-foreground/8 data-active:text-sidebar-accent-foreground data-active:font-medium data-active:hover:bg-foreground/8 has-focus-visible:bg-foreground/5 has-data-[state=open]:bg-foreground/5",
+);
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -148,10 +159,13 @@ const SessionListSearch: FC<{
 				type="search"
 				value={value}
 				onChange={(event) => onValueChange(event.target.value)}
-				aria-label="Search threads"
-				placeholder="Search threads"
+				aria-label="Search chats"
+				placeholder="Search chats"
 				className={cn(
-					"bg-sidebar-accent text-sidebar-accent-foreground h-8 w-full border-0 ps-8 text-sm shadow-none dark:bg-sidebar-accent focus-visible:border-0 focus-visible:ring-0",
+					"h-8 w-full border-0 ps-8 text-sm shadow-none",
+					"dark:bg-transparent",
+					"focus-visible:border-0 focus-visible:ring-0",
+					sidebarSurfaceIdleClassName,
 					sidebarNavRadiusClassName,
 				)}
 			/>
@@ -499,9 +513,7 @@ const SessionCardRow: FC = () => {
 			data-slot="aui_session-list-item"
 			className={cn(
 				"group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none",
-				isActive
-					? "bg-sidebar-accent text-sidebar-foreground font-medium"
-					: "bg-transparent text-sidebar-foreground hover:bg-sidebar-accent/60",
+				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
 			)}
 		>
 			{isRenaming ? (
@@ -591,9 +603,7 @@ const SettledSessionRow: FC = () => {
 			data-slot="aui_session-list-settled-item"
 			className={cn(
 				"group/sidebar-row relative flex h-7 w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-2.5 text-left outline-none select-none",
-				isActive
-					? "bg-sidebar-accent text-sidebar-foreground font-medium"
-					: "bg-transparent text-sidebar-foreground hover:bg-sidebar-accent/60",
+				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
 			)}
 		>
 			{isRenaming ? (

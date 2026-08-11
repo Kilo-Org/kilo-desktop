@@ -21,14 +21,13 @@ import type { SessionActivityStore } from "../session-activity/session-activity-
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 import { withAnacondaSessionListFilter } from "./with-anaconda-session-list-filter.js";
-import { withPromptVariant } from "./with-prompt-variant.js";
+import { withPromptOptions, type PromptOptionGetters } from "./with-prompt-options.js";
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;
 
-export interface CreateKiloRuntimeBackendOptions {
+export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	connectionPromise: Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
-	getVariant(): string | undefined;
 	sessionActivity?: SessionActivityStore;
 }
 
@@ -36,6 +35,8 @@ export function createKiloRuntimeBackend({
 	connectionPromise,
 	prepareSession,
 	getVariant,
+	getAgent,
+	getModel,
 	sessionActivity,
 }: CreateKiloRuntimeBackendOptions): OpenCodeRuntimeBackend {
 	const directoriesBySessionId = new Map<string, string>();
@@ -55,12 +56,18 @@ export function createKiloRuntimeBackend({
 		sessionActivity?.getState().hydrateSessions([{ id: ref.id, directory: ref.directory }]);
 	};
 
+	const promptGetters: PromptOptionGetters = {
+		...(getVariant ? { getVariant } : {}),
+		...(getAgent ? { getAgent } : {}),
+		...(getModel ? { getModel } : {}),
+	};
+
 	const directoryClient = (directory: string) => {
 		const existing = clientsByDirectory.get(directory);
 		if (existing) return existing;
 		const client = createDeferredKiloRuntimeClient(
 			connectionPromise.then((connection) =>
-				withPromptVariant(createKiloDirectoryClient(connection, directory), getVariant),
+				withPromptOptions(createKiloDirectoryClient(connection, directory), promptGetters),
 			),
 		);
 		clientsByDirectory.set(directory, client);

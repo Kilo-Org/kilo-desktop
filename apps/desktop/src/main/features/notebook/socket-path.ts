@@ -44,11 +44,12 @@ export function daemonBinaryBasename(channel: BuildChannel): string {
 
 function cacheDir(env: SocketPathEnvironment, platform: NodeJS.Platform, homedir: string): string {
 	if (env.XDG_CACHE_HOME) return env.XDG_CACHE_HOME;
-	if (platform === "darwin") return path.join(homedir, "Library", "Caches");
+	const targetPath = platform === "win32" ? path.win32 : path.posix;
+	if (platform === "darwin") return targetPath.join(homedir, "Library", "Caches");
 	if (platform === "win32") {
-		return env.LOCALAPPDATA ?? path.join(homedir, "AppData", "Local");
+		return env.LOCALAPPDATA ?? targetPath.join(homedir, "AppData", "Local");
 	}
-	return path.join(homedir, ".cache");
+	return targetPath.join(homedir, ".cache");
 }
 
 export function resolveDaemonSocketPath(options: ResolveSocketPathOptions = {}): string {
@@ -70,5 +71,9 @@ export function resolveDaemonSocketPath(options: ResolveSocketPathOptions = {}):
 	// Deliberately not overridable by `RUNTIMED_CACHE_NAMESPACE`: the daemon's Rust
 	// never reads that variable, so honoring it here would compute a socket path
 	// nothing is listening on. Relocating a daemon needs the `--socket` flag.
-	return path.join(cacheDir(env, platform, homedir), cacheNamespace(channel), "runtimed.sock");
+	return path.posix.join(
+		cacheDir(env, platform, homedir),
+		cacheNamespace(channel),
+		"runtimed.sock",
+	);
 }

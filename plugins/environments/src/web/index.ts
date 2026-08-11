@@ -6,19 +6,26 @@
  * mounts it when `/environments` is visited. `EnvironmentsNavIcon` is the
  * sidebar icon.
  *
- * `webRegister` runs in both Electron and browser mode (see
- * {@link FeatureRegistration.webRegister}). It is intentionally empty in
- * the sub-issue 1 scaffold; per-provider WebMCP tool registrations
- * (`conda.envs.list`, `conda.packages.install`, …) land alongside their
- * handlers in sub-issues 4 – 9 by delegating to
- * `providers/<id>/tools.registerTools(sdk)`.
+ * `webRegister` runs in both Electron and browser modes and dispatches to
+ * each provider's tool-registration helper. Sub-issue 4 wires conda's
+ * tools (`conda.envs.list`) — later slices add the mutating tools (create,
+ * install, channels, jobs.cancel) without editing this file directly; the
+ * per-provider `registerCondaTools` helper stays the extension point.
+ *
+ * Browser mode: tool calls that route through `sdk.invoke` require the
+ * matching main-side handler to exist. This plugin's `mainRegister` is
+ * Electron-only (spawns `conda` via `execa`), so tools registered here
+ * will reject in standalone browser mode — the same failure mode as the
+ * todos plugin (Decision #7). The tools are still registered so that MCP
+ * introspection sees a consistent surface across modes.
  */
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+
+import { registerCondaTools } from "../main/providers/conda/tools.js";
 
 export { EnvironmentsPage } from "./EnvironmentsPage.js";
 export { EnvironmentsNavIcon } from "./EnvironmentsNavIcon.js";
 
-export function webRegister(_sdk: SDK): void {
-	// Intentionally empty — per-provider tool registrations follow in later
-	// slices via `providers/<id>/tools.ts`.
+export function webRegister(sdk: SDK): void {
+	registerCondaTools(sdk);
 }

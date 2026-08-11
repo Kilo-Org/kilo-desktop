@@ -145,6 +145,8 @@ export interface ResolvedPluginRoute {
 	path: string;
 	/** Optional human-readable page title (browser-mode unavailable state). */
 	title?: string | undefined;
+	/** Optional host-owned sidecar surface requested by the route. */
+	sidecar?: string | undefined;
 	/** The resolved page component export (a React component to the shell). */
 	component: unknown;
 	/**
@@ -405,6 +407,7 @@ function resolveContributions(
 			pluginId: manifest.id,
 			path: resolvedPath,
 			title: route.title,
+			sidecar: route.sidecar,
 			component,
 			browserSafe,
 		});

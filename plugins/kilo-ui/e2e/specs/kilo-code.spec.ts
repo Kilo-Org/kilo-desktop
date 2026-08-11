@@ -5,6 +5,7 @@ test.describe("Kilo Code @smoke", () => {
 		kiloCodePage,
 		workspaceFolder,
 	}) => {
+		await kiloCodePage.verifyNotebookSidecar();
 		await kiloCodePage.createWorkspace(workspaceFolder.path, workspaceFolder.name);
 		await kiloCodePage.verifyAuthenticatedServerTransport();
 		await kiloCodePage.verifyWorkspaceFirstSend(workspaceFolder.name, workspaceFolder.path);

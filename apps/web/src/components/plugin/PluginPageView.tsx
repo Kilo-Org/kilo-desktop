@@ -1,5 +1,7 @@
 import { PLUGIN_ROUTE_NAMESPACE } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ComponentType } from "react";
 
+import { BUILT_IN_SIDECARS, type PluginSidecarProps } from "@/features/built-in-sidecars";
 import { PLUGIN_PAGES, findPluginPage, type PluginPage } from "@/features/plugin-pages";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 
@@ -12,6 +14,8 @@ type PluginPageViewProps = {
 	pages?: readonly PluginPage[];
 	/** Injectable for tests; defaults to Electron bridge detection. */
 	desktopAvailable?: boolean;
+	/** Injectable for tests; defaults to the host's built-in companion surfaces. */
+	sidecars?: Readonly<Record<string, ComponentType<PluginSidecarProps>>>;
 };
 
 /**
@@ -26,6 +30,7 @@ export function PluginPageView({
 	search,
 	pages = PLUGIN_PAGES,
 	desktopAvailable = isDesktopBridgeAvailable(),
+	sidecars = BUILT_IN_SIDECARS,
 }: PluginPageViewProps) {
 	const path = `${PLUGIN_ROUTE_NAMESPACE}/${splat ?? ""}`;
 	const page = findPluginPage(pages, path);
@@ -60,5 +65,20 @@ export function PluginPageView({
 	}
 
 	const Page = page.component;
-	return <Page path={page.path} search={search} />;
+	const Sidecar = page.sidecar ? sidecars[page.sidecar] : undefined;
+	if (!Sidecar) return <Page path={page.path} search={search} />;
+
+	return (
+		<div className="flex h-full min-h-0 min-w-0" data-qa-id="plugin-page-with-sidecar">
+			<div className="min-h-0 min-w-0 flex-1">
+				<Page path={page.path} search={search} />
+			</div>
+			<aside
+				className="border-border flex min-h-0 min-w-96 flex-[0_1_42%] border-l"
+				data-qa-id={`plugin-sidecar-${page.sidecar}`}
+			>
+				<Sidecar search={search} />
+			</aside>
+		</div>
+	);
 }

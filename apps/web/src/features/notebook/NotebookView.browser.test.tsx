@@ -7,9 +7,12 @@ import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-deskto
 
 import { AppProviders } from "@/app/AppProviders";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-import { NotebookView, notebookOriginFrom } from "./NotebookView";
+import { NotebookView, notebookOriginFrom, type NotebookViewProps } from "./NotebookView";
 
-function renderView(status: () => NotebookStatus | Promise<NotebookStatus>) {
+function renderView(
+	status: () => NotebookStatus | Promise<NotebookStatus>,
+	viewProps: NotebookViewProps = {},
+) {
 	const sdk = createFakeSdk({
 		featureId: "notebook",
 		channels: notebookContract,
@@ -18,7 +21,7 @@ function renderView(status: () => NotebookStatus | Promise<NotebookStatus>) {
 	const system = createFakeFeatureSystem({ sdks: { notebook: sdk } });
 	return render(
 		<AppProviders localApi={createBrowserLocalApi()} system={system}>
-			<NotebookView />
+			<NotebookView {...viewProps} />
 		</AppProviders>,
 	);
 }
@@ -115,5 +118,22 @@ describe("NotebookView", () => {
 			"http://localhost:8737/?path=%2Ftmp%2Fad-nb-python.ipynb",
 		);
 		expect(document.querySelector('[data-qa-id="notebook-placeholder"]')).toBeNull();
+	});
+
+	it("uses the agent route's notebook path in sidecar mode", async () => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
+		renderView(
+			() => ({
+				relayPort: 51234,
+				availability: { status: "available" },
+				daemon: null,
+			}),
+			{ notebookPath: "/project/analysis.ipynb", variant: "sidecar" },
+		);
+
+		await expect.element(page.getByTestId("notebook-title")).toHaveTextContent("analysis.ipynb");
+		expect(document.querySelector('[data-qa-id="notebook-frame"]')?.getAttribute("src")).toBe(
+			"http://localhost:8737/?path=%2Fproject%2Fanalysis.ipynb",
+		);
 	});
 });

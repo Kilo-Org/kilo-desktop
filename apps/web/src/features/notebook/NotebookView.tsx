@@ -56,17 +56,32 @@ function daemonAbsenceMessage(availability: NotebookStatus["availability"]): str
 	return availability.reason ?? "The nteract runtime service is not running.";
 }
 
-export function NotebookView() {
+export interface NotebookViewProps {
+	readonly notebookPath?: string;
+	readonly variant?: "page" | "sidecar";
+}
+
+function notebookLabel(notebookPath: string): string {
+	return notebookPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "Notebook";
+}
+
+export function NotebookView({
+	notebookPath = DEFAULT_NOTEBOOK_PATH,
+	variant = "page",
+}: NotebookViewProps = {}) {
 	const sdk = useSdk<NotebookService>("notebook");
 	const status = useSdkQuery(sdk, "status");
 	const daemon = status.data?.daemon;
-	const frameSrc = nteractSrc(DEFAULT_NOTEBOOK_PATH);
+	const frameSrc = nteractSrc(notebookPath);
+	const title = variant === "sidecar" ? notebookLabel(notebookPath) : "Notebook";
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
 			<div className="border-border flex items-center gap-3 border-b px-4 py-2">
 				<div className="min-w-0 flex-1">
-					<h1 className="text-sm font-medium">Notebook</h1>
+					<h1 className="truncate text-sm font-medium" data-qa-id="notebook-title">
+						{title}
+					</h1>
 					<p className="text-muted-foreground truncate text-xs" data-qa-id="notebook-status">
 						{status.isLoading
 							? "Connecting…"

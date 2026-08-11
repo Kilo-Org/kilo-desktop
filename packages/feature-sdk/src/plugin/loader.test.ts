@@ -228,7 +228,7 @@ describe("contribution resolution", () => {
 	const routedManifest = {
 		...manifest,
 		contributes: {
-			routes: [{ path: "/ping", component: "PingPage", title: "Ping" }],
+			routes: [{ path: "/ping", component: "PingPage", title: "Ping", sidecar: "notebook" }],
 			nav: [{ to: "/ping", label: "Ping", icon: "activity", priority: 5 }],
 			zones: [{ zone: "status-bar", component: "PingStatus", priority: 3 }],
 		},
@@ -246,6 +246,7 @@ describe("contribution resolution", () => {
 				pluginId: "ping",
 				path: "/plugins/ping",
 				title: "Ping",
+				sidecar: "notebook",
 				component: PingPage,
 				browserSafe: true,
 			},

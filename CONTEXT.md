@@ -39,7 +39,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`, `home-composer-leading-action`, `header-leading`, `header-trailing`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
 - `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
 - `sdk.commands` — command palette entries
-- `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
+- `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages, optional named host sidecars, and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)
 - `mainSdk.logger` / `mainSdk.net.fetch` — main-process shell delegates. Electron supplies a feature-scoped `electron-log` sink and `net.fetch`; browser/test environments provide runtime implementations or explicit fakes. Plugins never import Electron or shell logging modules directly.
 

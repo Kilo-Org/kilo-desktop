@@ -10,7 +10,7 @@ const validManifest = {
 	web: "./src/web/index.ts",
 	contributes: {
 		providers: [{ component: "TodosProvider", priority: 10 }],
-		routes: [{ path: "/todos", component: "TodoList", title: "Todo List" }],
+		routes: [{ path: "/todos", component: "TodoList", title: "Todo List", sidecar: "notebook" }],
 		nav: [{ to: "/todos", label: "Todos", icon: "list-checks" }],
 		zones: [{ zone: "status-bar", component: "TodosStatusBarItem" }],
 	},
@@ -22,7 +22,7 @@ describe("pluginManifestSchema", () => {
 		expect(manifest.id).toBe("todos");
 		expect(manifest.contributes.providers).toEqual([{ component: "TodosProvider", priority: 10 }]);
 		expect(manifest.contributes.routes).toEqual([
-			{ path: "/todos", component: "TodoList", title: "Todo List" },
+			{ path: "/todos", component: "TodoList", title: "Todo List", sidecar: "notebook" },
 		]);
 		expect(manifest.contributes.nav).toEqual([
 			{ to: "/todos", label: "Todos", icon: "list-checks" },
@@ -113,6 +113,14 @@ describe("pluginManifestSchema", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
 			contributes: { routes: [{ path: "/todos", title: "Todos" }] },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects an empty sidecar name", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: { routes: [{ path: "/todos", component: "TodoList", sidecar: "" }] },
 		});
 		expect(result.success).toBe(false);
 	});

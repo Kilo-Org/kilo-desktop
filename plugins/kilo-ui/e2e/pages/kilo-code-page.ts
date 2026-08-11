@@ -1,5 +1,10 @@
 import { realpath } from "node:fs/promises";
 
+import {
+	expectElementToBeVisible,
+	expectElementToContainAttribute,
+	getLocatorByTestId,
+} from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect } from "@playwright/test";
 
@@ -17,6 +22,24 @@ type KiloSession = {
 };
 
 export class KiloCodePage {
+	async verifyNotebookSidecar(): Promise<void> {
+		const notebookPath = "/tmp/kilo-sidecar.ipynb";
+		await getPage().evaluate((path) => {
+			globalThis.location.hash = `#/plugins/chat?notebookPath=${encodeURIComponent(path)}`;
+		}, notebookPath);
+
+		await expectElementToBeVisible(
+			getLocatorByTestId("plugin-sidecar-notebook"),
+			"Kilo chat should mount the notebook companion in the host sidecar",
+		);
+		await expectElementToContainAttribute(
+			getLocatorByTestId("notebook-frame"),
+			"src",
+			/%2Ftmp%2Fkilo-sidecar\.ipynb/,
+			{ message: "Notebook sidecar should forward the agent route's notebookPath" },
+		);
+	}
+
 	async createWorkspace(folderPath: string, name: string): Promise<void> {
 		await getPage().evaluate(
 			async ({ folderPath, name }) => {

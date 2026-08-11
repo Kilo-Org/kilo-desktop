@@ -9,7 +9,9 @@
 			{ "component": "WorkspacesFeatureProvider", "priority": 20 },
 			{ "component": "ChatFeatureProvider", "priority": 10 }
 		],
-		"routes": [{ "path": "/chat", "component": "ChatPage", "title": "Chat" }],
+		"routes": [
+			{ "path": "/chat", "component": "ChatPage", "title": "Chat", "sidecar": "notebook" }
+		],
 		"nav": [],
 		"zones": [
 			{

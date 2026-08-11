@@ -122,3 +122,20 @@ Compatibility belongs to the wire contract: require a supported protocol number 
 capabilities used by the client. Exact source revisions remain diagnostics, not admission policy.
 Unknown optional capabilities are ignored; a missing required capability fails that feature closed
 without displacing the running daemon.
+
+## D7. Agent pages request host-owned sidecars by name
+
+Chosen: a plugin route may declare an optional `sidecar` name. The shell resolves that name against
+its built-in sidecar registry and mounts the companion beside the plugin page. Kilo's chat route
+requests `"notebook"`; neither Kilo nor the notebook feature imports the other's source.
+
+The route search parameter `notebookPath` selects the file shown in the sidecar. When absent, the
+demo notebook path is used. This keeps file selection in the agent-navigation contract while the
+notebook surface remains a host-owned capability with its own origin and transport.
+
+Unknown sidecar names degrade to the full-width plugin page. That lets independently versioned
+plugins request a newer host surface without breaking older hosts.
+
+For this internal first pass, route manifests are bundled and trusted. Before externally installed
+plugins may request the notebook sidecar, the host must add an explicit capability grant and path
+policy so an untrusted plugin cannot use route search state to open arbitrary local notebooks.

@@ -48,6 +48,8 @@ export const pluginRouteSchema = z.strictObject({
 	component: z.string().min(1),
 	/** Optional human-readable page title (used for the browser-mode unavailable state). */
 	title: z.string().min(1).optional(),
+	/** Optional host-owned sidecar surface to mount beside this page. */
+	sidecar: z.string().min(1).optional(),
 });
 export type PluginRoute = z.infer<typeof pluginRouteSchema>;
 

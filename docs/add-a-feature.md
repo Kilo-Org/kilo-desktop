@@ -27,6 +27,16 @@ A feature ships two halves that communicate only through the SDK:
   `nav` (sidebar entries), and `zones` (plugin-lifetime zone registrations). No shell
   edits. The imperative `sdk.contribute` remains for conditional widgets.
 
+### Reporting boot progress
+
+If `mainRegister` does non-trivial setup work (staging a bundled runtime, running
+migrations against a large database), call
+`mainSdk.boot.reportProgress("Preparing …")` to surface a message to the host
+while the shell is still starting up. The hook is delivered to the boot-progress
+reporter the shell wires into `bootFeatures` (`onFeatureProgress`) and becomes a
+silent no-op once boot completes, so a slow async task that finishes late cannot
+push stale updates into shell UI. Features that never call it are unaffected.
+
 ## Follow these instead
 
 | Resource                                                                            | Use it for                                                              |

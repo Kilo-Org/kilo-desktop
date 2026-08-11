@@ -11,10 +11,7 @@ export const kiloServerConnectionSchema = z.object({
 	username: z.string().min(1),
 	password: z.string().min(1),
 	version: z.string().min(1),
-});
-
-export const kiloWorkspaceConnectionSchema = kiloServerConnectionSchema.extend({
-	directory: z.string().min(1),
+	globalDirectory: z.string().min(1),
 });
 
 export const kiloServerStatusSchema = z.discriminatedUnion("status", [
@@ -30,18 +27,10 @@ export const kiloServerStatusSchema = z.discriminatedUnion("status", [
 ]);
 
 export type KiloServerConnection = z.infer<typeof kiloServerConnectionSchema>;
-export type KiloWorkspaceConnection = z.infer<typeof kiloWorkspaceConnectionSchema>;
 export type KiloServerStatus = z.infer<typeof kiloServerStatusSchema>;
 
-/** Connection request: absolute working directory for the Kilo session. */
-export const kiloGetConnectionInputSchema = z.object({
-	directory: z.string().min(1),
-});
-
-export type KiloGetConnectionInput = z.infer<typeof kiloGetConnectionInputSchema>;
-
 export const kiloServerContract = defineContract({
-	"server.getConnection": defineMethod(kiloGetConnectionInputSchema, kiloWorkspaceConnectionSchema),
+	"server.getConnection": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.restart": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.status": defineMethod(z.undefined(), kiloServerStatusSchema),
 });

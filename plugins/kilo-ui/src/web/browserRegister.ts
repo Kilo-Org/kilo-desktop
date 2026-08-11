@@ -124,6 +124,9 @@ function registerChatBrowser(mainSdk: MainSdk): void {
 		"chat.getConnection": async () => {
 			throw new FeatureError("Kilo Server requires the desktop app.", "BUSINESS");
 		},
+		"chat.prepareSession": async () => {
+			throw new FeatureError("Kilo Server requires the desktop app.", "BUSINESS");
+		},
 	};
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 }

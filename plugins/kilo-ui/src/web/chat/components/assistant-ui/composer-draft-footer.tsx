@@ -5,7 +5,7 @@ import type { FC } from "react";
 import { WorkspaceSelector } from "../../../workspaces/WorkspaceSelector.js";
 
 /**
- * Draft/empty-chat context strip under the composer (t3code BranchToolbar pattern).
+ * Draft/empty-chat context strip under the composer.
  * Narrower than the composer shell and tucked beneath it. Left: workspace selector;
  * right stays empty for now.
  */

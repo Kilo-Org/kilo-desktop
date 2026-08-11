@@ -1,12 +1,13 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BellIcon, LogOutIcon, UserIcon } from "lucide-react";
+import { LogOutIcon, UserIcon } from "lucide-react";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { PLUGIN_NAV, type PluginNavEntry } from "@/features/plugin-nav";
+import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -30,9 +31,28 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
+	SidebarTrigger,
+	useSidebar,
 } from "@anaconda-agentic-desktop/ui/components/sidebar";
 import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
-import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+
+/** Clears macOS traffic lights (x:16 + three lights) so the toggle sits just to their right. */
+const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "90px";
+const DEFAULT_SIDEBAR_TOGGLE_LEFT = "0.75rem";
+
+function resolveSidebarToggleLeft(): string {
+	if (!isDesktopBridgeAvailable()) return DEFAULT_SIDEBAR_TOGGLE_LEFT;
+	const platform = navigator.platform ?? "";
+	if (/Mac|iPhone|iPad/i.test(platform)) return MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT;
+	return DEFAULT_SIDEBAR_TOGGLE_LEFT;
+}
 
 type AppSidebarLayoutProps = {
 	children: ReactNode;
@@ -56,13 +76,84 @@ function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: s
 				isActive={pathname === entry.to}
 				tooltip={entry.label}
 				render={<Link to="/plugins/$" params={{ _splat: entry.splat }} />}
-				className="size-8!"
 				data-qa-id={entry.navQaId}
 			>
 				<Icon />
 				<span>{entry.label}</span>
 			</SidebarMenuButton>
 		</SidebarMenuItem>
+	);
+}
+
+/**
+ * Fixed shell titlebar. The nav toggle is absolutely pinned after the traffic
+ * lights so it never moves when the sidebar opens/closes. Header contributions
+ * shift to track the inset; the toggle does not. Must be a `.drag-region` so
+ * Electron `no-drag` on the toggle punches a clickable hole.
+ */
+function ShellTitlebar({
+	session,
+	onLogin,
+}: {
+	session: ReturnType<typeof useAuthSession>;
+	onLogin: () => void;
+}) {
+	const { open } = useSidebar();
+	const label = open ? "Hide navigation" : "Show navigation";
+
+	return (
+		<header className="drag-region fixed inset-x-0 top-0 z-50 flex h-12 items-center pr-[calc(0.75rem+env(titlebar-area-width,0px))]">
+			<div
+				className="absolute top-0 flex h-12 items-center"
+				style={{ left: "var(--shell-sidebar-toggle-left)" }}
+			>
+				<Tooltip>
+					<TooltipTrigger
+						render={
+							<SidebarTrigger
+								aria-label="Toggle navigation"
+								aria-pressed={open}
+								data-qa-id="sidebar-nav-toggle"
+								className="[-webkit-app-region:no-drag]"
+							/>
+						}
+					/>
+					<TooltipContent side="bottom">{label}</TooltipContent>
+				</Tooltip>
+			</div>
+
+			<div
+				className={cn(
+					"flex min-w-0 flex-1 items-center gap-2 transition-[padding-left] duration-200 ease-linear",
+					// Match sidebar gap timing so header chrome doesn't snap ahead of content.
+					open ? "pl-[var(--sidebar-width)]" : "pl-[calc(var(--shell-sidebar-toggle-left)+2.5rem)]",
+				)}
+			>
+				{/* Leading header contributions (e.g. chat session breadcrumb) */}
+				<ZoneOutlet zone="header-leading" className="flex min-w-0 flex-1 items-center gap-1" />
+				<div className="flex shrink-0 items-center justify-end gap-2">
+					{/* Trailing header contributions (e.g. chat right-panel toggle) */}
+					<ZoneOutlet zone="header-trailing" className="flex items-center gap-1" />
+					{session.status !== "authenticated" && (
+						<Button onClick={onLogin} aria-label="Log in">
+							Log in
+						</Button>
+					)}
+				</div>
+			</div>
+		</header>
+	);
+}
+
+function ShellInset({ children }: { children: ReactNode }) {
+	return (
+		// Keep overflow off SidebarInset — Electron ignores drag regions inside
+		// overflow:hidden ancestors, which would break titlebar dragging.
+		// Left gutter only when the nav is collapsed (peer state), transitioned with
+		// the sidebar gap so we never leave a permanent gap beside an open sidebar.
+		<SidebarInset className="min-h-0 min-w-0 bg-transparent pr-3 pb-3 transition-[padding-left] duration-200 ease-linear peer-data-[state=collapsed]:pl-3">
+			{children}
+		</SidebarInset>
 	);
 }
 
@@ -78,6 +169,9 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 				"Anaconda user"
 			: "";
 	const accountEmail = session.status === "authenticated" ? session.user.email?.trim() : undefined;
+	const sidebarProviderStyle = {
+		"--shell-sidebar-toggle-left": resolveSidebarToggleLeft(),
+	} as CSSProperties;
 
 	// The OAuth flow leaves the app (system browser), so there is no useful
 	// in-app pending state to show; the button simply unmounts once the session
@@ -98,13 +192,14 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 	return (
 		<TooltipProvider>
-			<SidebarProvider
-				defaultOpen={false}
-				className="bg-sidebar h-svh min-h-0 overflow-hidden"
-				style={{ "--sidebar-width": "3rem" } as CSSProperties}
-			>
-				<Sidebar collapsible="none" className="h-svh border-none" data-qa-id="app-sidebar">
-					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
+			<SidebarProvider className="app-shell-glass h-svh min-h-0" style={sidebarProviderStyle}>
+				<Sidebar
+					collapsible="offcanvas"
+					className="h-svh border-none bg-transparent! group-data-[side=left]:border-none [&_[data-sidebar=sidebar]]:bg-transparent"
+					data-qa-id="app-sidebar"
+				>
+					{/* Flow spacer under the fixed ShellTitlebar */}
+					<SidebarHeader className="h-12 shrink-0 p-0" />
 					<SidebarContent>
 						<SidebarGroup className="pt-0">
 							<SidebarMenu>
@@ -114,7 +209,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 							</SidebarMenu>
 						</SidebarGroup>
 						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-						<ZoneOutlet zone="sidebar" className="flex flex-col items-center gap-2 px-2" />
+						<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
 					</SidebarContent>
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-3">
@@ -125,13 +220,22 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 											render={
 												<SidebarMenuButton
 													aria-label={`Account menu for ${accountName}`}
-													className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground size-8! p-0!"
+													size="lg"
+													className="data-open:bg-foreground/5 data-open:text-sidebar-accent-foreground"
 												/>
 											}
 										>
 											<Avatar className="size-8">
 												<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
 											</Avatar>
+											<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+												<span className="truncate font-medium">{accountName}</span>
+												{accountEmail && (
+													<span className="text-muted-foreground truncate text-xs">
+														{accountEmail}
+													</span>
+												)}
+											</div>
 										</DropdownMenuTrigger>
 										<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
 											<DropdownMenuGroup>
@@ -170,29 +274,19 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 					)}
 				</Sidebar>
 
-				<SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent pr-3 pb-3">
-					<header className="flex h-14 items-center justify-end gap-2 pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
-						<Button
-							variant="ghost"
-							size="icon"
-							aria-label="Notifications"
-							className="[-webkit-app-region:no-drag]"
-						>
-							<BellIcon />
-						</Button>
-						{session.status !== "authenticated" && (
-							<Button
-								onClick={() => {
-									void handleLogin();
-								}}
-								aria-label="Log in"
-								className="[-webkit-app-region:no-drag]"
-							>
-								Log in
-							</Button>
-						)}
-					</header>
-					<div className="bg-muted border-border flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-md border">
+				<ShellTitlebar
+					session={session}
+					onLogin={() => {
+						void handleLogin();
+					}}
+				/>
+
+				{/* Keep overflow off SidebarInset — Electron ignores drag regions inside
+				    overflow:hidden ancestors, which would break titlebar dragging. */}
+				<ShellInset>
+					{/* Flow spacer under the fixed ShellTitlebar */}
+					<div className="h-12 shrink-0" aria-hidden />
+					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-transparent">
 						{children}
 					</div>
 					{/* Status-bar contributions registered via sdk.contribute("status-bar", ...) */}
@@ -200,7 +294,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 						zone="status-bar"
 						className="text-muted-foreground flex h-6 shrink-0 items-center justify-end gap-3 px-2 pt-1 text-xs"
 					/>
-				</SidebarInset>
+				</ShellInset>
 			</SidebarProvider>
 		</TooltipProvider>
 	);

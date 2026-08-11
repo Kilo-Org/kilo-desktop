@@ -6,10 +6,10 @@ export type ResolvedColorScheme = "light" | "dark";
 export const THEME_STORAGE_KEY = "theme:v1";
 
 /**
- * Hex paint tokens for first paint / native chrome.
+ * Hex paint tokens for native chrome (Linux window background, splash, title-bar symbols).
  * Equivalents of `--storm-100` / `--storm-900` / `--storm-50`
- * (apps/web/.../color-primitives.css) — Electron and the critical HTML style
- * cannot use oklch.
+ * (apps/web/.../color-primitives.css) — Electron cannot use oklch here.
+ * macOS uses a transparent window over vibrancy instead.
  */
 export const themeChromeColors = {
 	light: { background: "#f3f5f8", foreground: "#1a1a1a" },
@@ -17,6 +17,24 @@ export const themeChromeColors = {
 } as const;
 
 export type ThemeChromeColors = (typeof themeChromeColors)[keyof typeof themeChromeColors];
+
+/** Transparent paint so macOS vibrancy / Windows mica can show through the webview. */
+export const TRANSPARENT_WINDOW_BACKGROUND = "#00000000";
+
+/**
+ * First-paint / html shell tint opacities — keep in sync with
+ * `--shell-glass-opacity` in apps/web/.../tokens.css.
+ */
+export const shellGlassOpacity = {
+	light: 64,
+	dark: 74,
+} as const;
+
+/**
+ * Dark shell surface hex: `#141820` mixed 84% toward black — keep in sync with
+ * `html[data-theme="dark"]` / `.app-shell-glass` in apps/web globals.css.
+ */
+export const shellGlassDarkSurface = "#11141b";
 
 export function resolveShouldUseDarkColors(source: ThemeSource, systemDark: boolean): boolean {
 	if (source === "system") return systemDark;
@@ -31,10 +49,35 @@ export function chromeFor(shouldUseDarkColors: boolean): ThemeChromeColors {
 	return shouldUseDarkColors ? themeChromeColors.dark : themeChromeColors.light;
 }
 
-/** Critical first-paint CSS — injected into index.html by the Vite plugin. */
+/**
+ * Platforms where the OS draws a frosted material behind the window.
+ * Elsewhere Electron paints an opaque chrome color under a transparent page.
+ */
+export function usesSystemWindowMaterial(platform: NodeJS.Platform = process.platform): boolean {
+	return platform === "darwin";
+}
+
+export function windowBackgroundFor(
+	shouldUseDarkColors: boolean,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	if (usesSystemWindowMaterial(platform)) return TRANSPARENT_WINDOW_BACKGROUND;
+	return chromeFor(shouldUseDarkColors).background;
+}
+
+/**
+ * Critical first-paint CSS — injected into index.html by the Vite plugin.
+ * Matches the loaded shell glass tint so CMD+R / cold start don't flash a
+ * different base color before React mounts. Tint only `html` — painting
+ * `body` too would stack two translucent layers and look too opaque.
+ */
 export function criticalThemeStyle(): string {
-	const { light, dark } = themeChromeColors;
-	return `html{background:${light.background}}html[data-theme="dark"]{background:${dark.background}}`;
+	const { light } = themeChromeColors;
+	return [
+		`html{background:color-mix(in srgb,${light.background} ${shellGlassOpacity.light}%,transparent)}`,
+		`html[data-theme="dark"]{background:color-mix(in srgb,${shellGlassDarkSurface} ${shellGlassOpacity.dark}%,transparent)}`,
+		"body{background:transparent}",
+	].join("");
 }
 
 /**

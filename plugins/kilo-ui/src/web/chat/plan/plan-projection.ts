@@ -1,0 +1,309 @@
+import type { Part, ToolPart } from "@assistant-ui/react-opencode";
+
+import { isPlanFilePath, normalizePlanPath, pathsMatch } from "./plan-paths.js";
+
+export type PlanStatus = "writing" | "ready" | "error";
+
+export type PlanProjection = {
+	status: PlanStatus;
+	path: string;
+	markdown: string;
+	error?: string;
+	anchorCallId: string;
+	hiddenCallIds: ReadonlySet<string>;
+};
+
+export type PlanThreadSource = {
+	messageOrder: readonly string[];
+	messagesById: Readonly<
+		Record<
+			string,
+			| {
+					info: { role: string; agent?: string | undefined } | undefined;
+					parts: readonly Part[];
+			  }
+			| undefined
+		>
+	>;
+};
+
+export type PlanThreadProjection = {
+	byMessageId: ReadonlyMap<string, PlanProjection>;
+	byAnchorCallId: ReadonlyMap<string, PlanProjection>;
+	newest: PlanProjection | undefined;
+};
+
+const getString = (
+	value: Record<string, unknown> | null | undefined,
+	keys: readonly string[],
+): string => {
+	if (!value) return "";
+	for (const key of keys) {
+		const candidate = value[key];
+		if (typeof candidate === "string" && candidate.length > 0) return candidate;
+	}
+	return "";
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+
+const getToolPath = (part: ToolPart): string => {
+	const input = part.state.input;
+	const directPath = getString(input, ["filePath", "filepath", "path", "file_path", "file"]);
+	if (directPath) return normalizePlanPath(directPath);
+
+	const nested = getString(asRecord(input.metadata), ["plan", "path"]);
+	if (nested) return normalizePlanPath(nested);
+
+	const stateMetadata = "metadata" in part.state ? part.state.metadata : undefined;
+	return normalizePlanPath(getString(stateMetadata, ["plan", "path"]));
+};
+
+const getDirectPlanMarkdown = (part: ToolPart): string =>
+	getString(part.state.input, ["content", "contents", "text", "markdown"]);
+
+const getEditOldString = (part: ToolPart): string =>
+	getString(part.state.input, ["oldString", "old_string", "oldText", "old_text"]);
+
+const getEditNewString = (part: ToolPart): string | undefined => {
+	for (const key of ["newString", "new_string", "newText", "new_text"] as const) {
+		const candidate = part.state.input[key];
+		if (typeof candidate === "string") return candidate;
+	}
+	return undefined;
+};
+
+const replaceFirst = (source: string, search: string, replacement: string): string => {
+	if (!search) return source;
+	const index = source.indexOf(search);
+	if (index < 0) return source;
+	return `${source.slice(0, index)}${replacement}${source.slice(index + search.length)}`;
+};
+
+export function resolvePlanMarkdownFromWrites(
+	writes: readonly ToolPart[],
+	priorMarkdown = "",
+): string {
+	let markdown = priorMarkdown;
+	for (const part of writes) {
+		const direct = getDirectPlanMarkdown(part);
+		if (direct) {
+			markdown = direct;
+			continue;
+		}
+		if (part.tool !== "edit") continue;
+		const oldString = getEditOldString(part);
+		if (!markdown || !oldString) continue;
+		const newString = getEditNewString(part);
+		if (newString === undefined) continue;
+		markdown = replaceFirst(markdown, oldString, newString);
+	}
+	return markdown;
+}
+
+const getToolError = (part: ToolPart): string =>
+	part.state.status === "error" && part.state.error
+		? part.state.error
+		: "Kilo could not complete the plan.";
+
+const isPendingTool = (part: ToolPart): boolean =>
+	part.state.status !== "completed" && part.state.status !== "error";
+
+const isToolPart = (part: Part): part is ToolPart => part.type === "tool";
+
+type GetPlanProjectionOptions = {
+	priorMarkdown?: string;
+	/** Plan-agent writes belong to the plan even when project instructions choose another path. */
+	treatWritesAsPlan?: boolean;
+	/** Treat a pending write/edit with no streamed path as the initial plan draft. */
+	treatPathlessPendingWritesAsPlan?: boolean;
+};
+
+const hasPlanExitPart = (parts: readonly Part[]): boolean =>
+	parts.some((part) => isToolPart(part) && part.tool === "plan_exit");
+
+const hasCompletedPlanExit = (parts: readonly Part[]): boolean =>
+	parts.some(
+		(part) => isToolPart(part) && part.tool === "plan_exit" && part.state.status === "completed",
+	);
+
+export function getPlanProjectionFromParts(
+	parts: readonly Part[],
+	options?: GetPlanProjectionOptions,
+): PlanProjection | undefined {
+	const treatWritesAsPlan = options?.treatWritesAsPlan === true;
+	const treatPathlessPendingWritesAsPlan = options?.treatPathlessPendingWritesAsPlan === true;
+	const tools = parts.filter(isToolPart);
+	const writes = tools.filter((part) => {
+		if (part.tool !== "write" && part.tool !== "edit") return false;
+		const path = getToolPath(part);
+		return (
+			treatWritesAsPlan ||
+			isPlanFilePath(path) ||
+			(treatPathlessPendingWritesAsPlan && !path && isPendingTool(part))
+		);
+	});
+	const exits = tools.filter((part) => part.tool === "plan_exit");
+	if (writes.length === 0 && exits.length === 0) return undefined;
+
+	const latestWrite = writes.at(-1);
+	const writePath = latestWrite ? getToolPath(latestWrite) : "";
+	const latestExit = exits.findLast((part) => {
+		const exitPath = getToolPath(part);
+		return !writePath || !exitPath || pathsMatch(writePath, exitPath);
+	});
+	const anchor = latestWrite ?? latestExit;
+	if (!anchor) return undefined;
+
+	const path = writePath || (latestExit ? getToolPath(latestExit) : "");
+	const markdown = resolvePlanMarkdownFromWrites(writes, options?.priorMarkdown ?? "");
+	const failedTool = [latestWrite, latestExit].find(
+		(part): part is ToolPart => part?.state.status === "error",
+	);
+	const missingCompletedPayload = latestExit?.state.status === "completed" && !path && !markdown;
+
+	let status: PlanStatus = "writing";
+	let error: string | undefined;
+	if (failedTool) {
+		status = "error";
+		error = getToolError(failedTool);
+	} else if (missingCompletedPayload) {
+		status = "error";
+		error = "Kilo completed the plan handoff without a plan path or markdown.";
+	} else if (latestExit?.state.status === "completed") {
+		status = "ready";
+	}
+
+	const hiddenCallIds = new Set([...writes, ...exits].map((part) => part.callID));
+	return {
+		status,
+		path,
+		markdown,
+		anchorCallId: anchor.callID,
+		hiddenCallIds,
+		...(error ? { error } : {}),
+	};
+}
+
+export type ActivityGroupExclusionPart = {
+	toolName?: string | undefined;
+	toolCallId?: string | undefined;
+	args?: unknown;
+};
+
+export function shouldExcludeToolCallFromActivityGroup(
+	part: ActivityGroupExclusionPart,
+	options?: { hiddenPlanCallIds?: ReadonlySet<string> | undefined },
+): boolean {
+	if (part.toolCallId && options?.hiddenPlanCallIds?.has(part.toolCallId)) return true;
+	if (part.toolName === "plan_exit") return true;
+	if (part.toolName !== "write" && part.toolName !== "edit") return false;
+	const args = asRecord(part.args);
+	if (!args) return false;
+	return isPlanFilePath(getString(args, ["filePath", "filepath", "path", "file_path", "file"]));
+}
+
+const findPriorMarkdown = (
+	documents: readonly { path: string; markdown: string }[],
+	path: string,
+): string => {
+	if (!path) return "";
+	for (let index = documents.length - 1; index >= 0; index -= 1) {
+		const document = documents[index];
+		if (document && pathsMatch(document.path, path)) return document.markdown;
+	}
+	return "";
+};
+
+const planThreadProjectionCache = new WeakMap<PlanThreadSource, PlanThreadProjection>();
+
+const isPlanningAgent = (agent: string | undefined): boolean => {
+	const normalized = agent?.toLowerCase();
+	return normalized === "plan" || normalized === "architect";
+};
+
+/** Project canonical OpenCode messages once per immutable thread-state object. */
+export function projectPlanThread(source: PlanThreadSource): PlanThreadProjection {
+	const cached = planThreadProjectionCache.get(source);
+	if (cached) return cached;
+
+	const byMessageId = new Map<string, PlanProjection>();
+	const byAnchorCallId = new Map<string, PlanProjection>();
+	const documents: Array<{ path: string; markdown: string }> = [];
+	let newest: PlanProjection | undefined;
+	let priorHasCompletedPlanExit = false;
+	let assistantRun:
+		| {
+				messageId: string;
+				parts: Part[];
+				planningAgent: boolean;
+		  }
+		| undefined;
+
+	const projectAssistantRun = () => {
+		if (!assistantRun) return;
+		const { messageId, parts, planningAgent } = assistantRun;
+		const hasPlanExit = hasPlanExitPart(parts);
+		const options = {
+			treatWritesAsPlan: planningAgent || hasPlanExit,
+			treatPathlessPendingWritesAsPlan: !priorHasCompletedPlanExit || hasPlanExit,
+		};
+		const initial = getPlanProjectionFromParts(parts, options);
+		if (initial) {
+			const priorMarkdown = findPriorMarkdown(documents, initial.path);
+			const projection = priorMarkdown
+				? (getPlanProjectionFromParts(parts, { ...options, priorMarkdown }) ?? initial)
+				: initial;
+			byMessageId.set(messageId, projection);
+			byAnchorCallId.set(projection.anchorCallId, projection);
+			newest = projection;
+			if (projection.path && projection.markdown) {
+				documents.push({ path: projection.path, markdown: projection.markdown });
+			}
+		}
+		if (hasCompletedPlanExit(parts)) priorHasCompletedPlanExit = true;
+		assistantRun = undefined;
+	};
+
+	for (const messageId of source.messageOrder) {
+		const message = source.messagesById[messageId];
+		if (!message || message.info?.role !== "assistant") {
+			projectAssistantRun();
+			continue;
+		}
+		if (assistantRun) {
+			assistantRun.messageId = messageId;
+			assistantRun.parts.push(...message.parts);
+			assistantRun.planningAgent ||= isPlanningAgent(message.info.agent);
+		} else {
+			assistantRun = {
+				messageId,
+				parts: [...message.parts],
+				planningAgent: isPlanningAgent(message.info.agent),
+			};
+		}
+	}
+	projectAssistantRun();
+
+	const result = { byMessageId, byAnchorCallId, newest };
+	planThreadProjectionCache.set(source, result);
+	return result;
+}
+
+export const getPlanProjectionForMessage = (
+	thread: PlanThreadProjection,
+	messageId: string,
+): PlanProjection | undefined => thread.byMessageId.get(messageId);
+
+export const findNewestPlanProjection = (
+	thread: PlanThreadProjection,
+): PlanProjection | undefined => thread.newest;
+
+export const findPlanProjectionByAnchorCallId = (
+	thread: PlanThreadProjection,
+	anchorCallId: string,
+): PlanProjection | undefined => thread.byAnchorCallId.get(anchorCallId);
+
+export const isCurrentPlanVersion = (thread: PlanThreadProjection, anchorCallId: string): boolean =>
+	!thread.newest || thread.newest.anchorCallId === anchorCallId;

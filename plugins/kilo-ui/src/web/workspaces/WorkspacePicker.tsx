@@ -1,4 +1,5 @@
 import {
+	CheckIcon,
 	FolderIcon,
 	FolderXIcon,
 	MoreHorizontalIcon,
@@ -10,7 +11,6 @@ import {
 	cloneElement,
 	createContext,
 	use,
-	useRef,
 	useState,
 	type KeyboardEvent,
 	type MouseEvent,
@@ -46,6 +46,9 @@ import { useWorkspacesFeature } from "./WorkspacesFeatureContext";
 const NO_COMMAND_SELECTION = "__no-workspace-command-selection__";
 const UNSCOPED_COMMAND_VALUE = "dont-work-in-a-workspace";
 
+/** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
+const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
+
 type PopoverAlign = "start" | "center" | "end";
 
 // Workspace items carry their name as a keyword so search matches names, never the uuid value.
@@ -55,10 +58,7 @@ function filterWorkspaceItems(value: string, search: string, keywords?: string[]
 	return terms.some((term) => term.toLowerCase().includes(query)) ? 1 : 0;
 }
 
-export function getWorkspaceTriggerLabel(
-	active: Workspace | undefined,
-	isLoading: boolean,
-): string {
+function getWorkspaceTriggerLabel(active: Workspace | undefined, isLoading: boolean): string {
 	if (active) return active.name;
 	if (isLoading) return "Loading workspaces…";
 	return "Select workspace";
@@ -67,7 +67,6 @@ export function getWorkspaceTriggerLabel(
 type WorkspacePickerContextValue = {
 	open: boolean;
 	setOpen: (open: boolean) => void;
-	triggerRef: { current: HTMLButtonElement | null };
 	onTriggerKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
 	active: Workspace | undefined;
 	isLoading: boolean;
@@ -76,15 +75,15 @@ type WorkspacePickerContextValue = {
 
 const WorkspacePickerContext = createContext<WorkspacePickerContextValue | null>(null);
 
-function useWorkspacePicker(): WorkspacePickerContextValue {
+export function useWorkspacePicker(): WorkspacePickerContextValue {
 	const value = use(WorkspacePickerContext);
 	if (!value) {
-		throw new Error("WorkspacePicker components must be used within WorkspacePicker.Root.");
+		throw new Error("WorkspacePicker components must be used within WorkspacePickerRoot.");
 	}
 	return value;
 }
 
-function WorkspacePickerRoot({
+export function WorkspacePickerRoot({
 	children,
 	contentAlign = "start",
 }: {
@@ -103,7 +102,6 @@ function WorkspacePickerRoot({
 	} = useWorkspacesFeature();
 	const [open, setOpen] = useState(false);
 	const [commandValue, setCommandValue] = useState(NO_COMMAND_SELECTION);
-	const triggerRef = useRef<HTMLButtonElement>(null);
 	const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
 	const isUnscoped = activeWorkspaceId === null;
 	const stop = (event: MouseEvent | KeyboardEvent) => event.stopPropagation();
@@ -121,7 +119,6 @@ function WorkspacePickerRoot({
 			value={{
 				open,
 				setOpen,
-				triggerRef,
 				onTriggerKeyDown,
 				active,
 				isLoading,
@@ -133,7 +130,6 @@ function WorkspacePickerRoot({
 				onOpenChange={(nextOpen) => {
 					if (nextOpen) setCommandValue(NO_COMMAND_SELECTION);
 					setOpen(nextOpen);
-					if (!nextOpen) requestAnimationFrame(() => triggerRef.current?.focus());
 				}}
 			>
 				{children}
@@ -169,66 +165,76 @@ function WorkspacePickerRoot({
 								{!isLoading && !isUnavailable && workspaces.length === 0 ? (
 									<div className="text-muted-foreground px-2 py-3 text-sm">No workspaces yet.</div>
 								) : null}
-								{workspaces.map((workspace) => (
-									<CommandItem
-										key={workspace.id}
-										value={workspace.id}
-										keywords={[workspace.name]}
-										onSelect={() => {
-											setActiveWorkspaceId(workspace.id);
-											setOpen(false);
-										}}
-										className="pr-1"
-										data-checked={activeWorkspaceId === workspace.id}
-									>
-										<FolderIcon />
-										<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
-										<DropdownMenu>
-											<DropdownMenuTrigger
-												render={
-													<Button
-														type="button"
-														variant="ghost"
-														size="icon-xs"
-														className="opacity-0 group-hover/command-item:opacity-100 group-data-[selected=true]/command-item:opacity-100 focus-visible:opacity-100"
-														aria-label={`Workspace actions for ${workspace.name}`}
+								{workspaces.map((workspace) => {
+									const isSelected = activeWorkspaceId === workspace.id;
+									return (
+										<CommandItem
+											key={workspace.id}
+											value={workspace.id}
+											keywords={[workspace.name]}
+											onSelect={() => {
+												setActiveWorkspaceId(workspace.id);
+												setOpen(false);
+											}}
+											className={HIDE_BUILTIN_CHECK}
+											data-checked={isSelected}
+										>
+											<FolderIcon />
+											<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+											<span className="flex shrink-0 items-center gap-0.5">
+												<DropdownMenu>
+													<DropdownMenuTrigger
+														render={
+															<Button
+																type="button"
+																variant="ghost"
+																size="icon-xs"
+																className="opacity-0 group-hover/command-item:opacity-100 group-data-[selected=true]/command-item:opacity-100 focus-visible:opacity-100"
+																aria-label={`Workspace actions for ${workspace.name}`}
+																onPointerDown={stop}
+																onKeyDown={stop}
+																onClick={stop}
+															/>
+														}
+													>
+														<MoreHorizontalIcon />
+													</DropdownMenuTrigger>
+													<DropdownMenuContent
+														align="end"
 														onPointerDown={stop}
 														onKeyDown={stop}
 														onClick={stop}
-													/>
-												}
-											>
-												<MoreHorizontalIcon />
-											</DropdownMenuTrigger>
-											<DropdownMenuContent
-												align="end"
-												onPointerDown={stop}
-												onKeyDown={stop}
-												onClick={stop}
-											>
-												<DropdownMenuItem
-													onClick={() => {
-														setOpen(false);
-														openEdit(workspace);
-													}}
-												>
-													<PencilIcon />
-													Edit
-												</DropdownMenuItem>
-												<DropdownMenuItem
-													variant="destructive"
-													onClick={() => {
-														setOpen(false);
-														openDelete(workspace);
-													}}
-												>
-													<Trash2Icon />
-													Delete
-												</DropdownMenuItem>
-											</DropdownMenuContent>
-										</DropdownMenu>
-									</CommandItem>
-								))}
+													>
+														<DropdownMenuItem
+															onClick={() => {
+																setOpen(false);
+																openEdit(workspace);
+															}}
+														>
+															<PencilIcon />
+															Edit
+														</DropdownMenuItem>
+														<DropdownMenuItem
+															variant="destructive"
+															onClick={() => {
+																setOpen(false);
+																openDelete(workspace);
+															}}
+														>
+															<Trash2Icon />
+															Delete
+														</DropdownMenuItem>
+													</DropdownMenuContent>
+												</DropdownMenu>
+												{isSelected ? (
+													<span className="flex size-6 items-center justify-center">
+														<CheckIcon className="size-3.5" />
+													</span>
+												) : null}
+											</span>
+										</CommandItem>
+									);
+								})}
 							</CommandGroup>
 						</CommandList>
 						<CommandSeparator />
@@ -236,6 +242,7 @@ function WorkspacePickerRoot({
 							<CommandItem
 								data-qa-id="workspace-create-command"
 								value="create-workspace"
+								className={HIDE_BUILTIN_CHECK}
 								onSelect={() => {
 									setOpen(false);
 									openCreate();
@@ -248,6 +255,7 @@ function WorkspacePickerRoot({
 								data-qa-id="workspace-unscoped-command"
 								value={UNSCOPED_COMMAND_VALUE}
 								keywords={["Don't work in a workspace", "unscoped"]}
+								className={HIDE_BUILTIN_CHECK}
 								onSelect={() => {
 									setActiveWorkspaceId(null);
 									setOpen(false);
@@ -255,7 +263,12 @@ function WorkspacePickerRoot({
 								data-checked={isUnscoped}
 							>
 								<FolderXIcon />
-								Don't work in a workspace
+								<span className="min-w-0 flex-1 truncate">Don't work in a workspace</span>
+								{isUnscoped ? (
+									<span className="flex size-6 shrink-0 items-center justify-center">
+										<CheckIcon className="size-3.5" />
+									</span>
+								) : null}
 							</CommandItem>
 						</CommandGroup>
 					</Command>
@@ -273,7 +286,7 @@ type TriggerRenderProps = {
 	onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
 };
 
-function WorkspacePickerTrigger({
+export function WorkspacePickerTrigger({
 	children,
 	render,
 	"aria-label": ariaLabel = "Select workspace",
@@ -282,11 +295,10 @@ function WorkspacePickerTrigger({
 	render: ReactElement<TriggerRenderProps>;
 	"aria-label"?: string;
 }) {
-	const { open, triggerRef, onTriggerKeyDown } = useWorkspacePicker();
+	const { open, onTriggerKeyDown } = useWorkspacePicker();
 	const existingKeyDown = render.props.onKeyDown;
 
 	const trigger = cloneElement(render, {
-		ref: triggerRef,
 		role: "combobox",
 		"aria-expanded": open,
 		"aria-label": ariaLabel,
@@ -298,9 +310,3 @@ function WorkspacePickerTrigger({
 
 	return <PopoverTrigger render={trigger}>{children}</PopoverTrigger>;
 }
-
-export const WorkspacePicker = {
-	Root: WorkspacePickerRoot,
-	Trigger: WorkspacePickerTrigger,
-	usePicker: useWorkspacePicker,
-};

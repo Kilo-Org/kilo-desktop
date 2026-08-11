@@ -1,5 +1,5 @@
 import electronDebug from "electron-debug";
-import { shellEnv } from "shell-env";
+// import { shellEnv } from "shell-env";
 import { nativeTheme, session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
@@ -14,6 +14,7 @@ import {
 import { FEATURES } from "./features/registry/features.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
+import { createFeatureFlagHandlers, FeatureFlagService } from "./features/feature-flag/index.js";
 import { createFsHandlers } from "./features/fs/handlers.js";
 import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
@@ -59,6 +60,7 @@ export class Application {
 	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
+	#featureFlags: FeatureFlagService | undefined;
 	#isShuttingDown = false;
 
 	async start(): Promise<void> {
@@ -107,15 +109,17 @@ export class Application {
 			// login-shell env into process.env so GUI-launched builds see env-var
 			// proxies (`shell-env` no-ops on Windows), then patch in-process
 			// http/https/fetch so third-party deps honor corporate/system proxies.
-			Object.assign(process.env, await shellEnv());
+			// Object.assign(process.env, await shellEnv());
 			installProxyAgent();
 
 			this.#disposers.push(this.#security.install(session.defaultSession));
 
 			reporter.report("features", "Preparing features\u2026");
-			this.#registerIpc(preferences, reporter);
-			restoreNativeThemeFromPreferences(preferences);
+			await this.#registerIpc(preferences, reporter);
 			this.#registerPushEvents();
+			// initialize() swallows its own errors, so it can't fail the boot.
+			await this.#featureFlags?.initialize();
+			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
 			// half-initialized main window without security/IPC/handlers.
@@ -148,22 +152,40 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
-	#registerIpc(preferences: PreferencesStore, reporter?: BootProgressReporter): void {
+	async #registerIpc(
+		preferences: PreferencesStore,
+		reporter?: BootProgressReporter,
+	): Promise<void> {
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// Each feature persists only under its own storage directory
 		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
 		// runs each feature's onDispose callbacks (DB close, etc.) on shutdown.
 		this.#disposers.push(
-			bootFeatures(FEATURES, {
+			await bootFeatures(FEATURES, {
 				storageRoot: this.#app.getPath("userData"),
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
 				createLogger,
 				fetch: this.#http.fetch,
 				...(reporter
-					? { onBeforeFeatureBoot: (featureId: string) => reporter.reportFeature(featureId) }
+					? {
+							// Coarse "Preparing <id>…" line the shell writes once
+							// before each feature's mainRegister runs.
+							onBeforeFeatureBoot: (featureId: string) => reporter.reportFeature(featureId),
+							// Fine-grained line features push from inside mainRegister
+							// via mainSdk.boot.reportProgress (e.g. "Staging Miniconda…").
+							// The reporter preserves the feature id in the log while
+							// keeping the user-facing splash message clean.
+							onFeatureProgress: (featureId: string, message: string) =>
+								reporter.reportFeatureProgress(featureId, message),
+						}
 					: {}),
 			}),
 		);
+
+		this.#featureFlags = FeatureFlagService.create({
+			auth: this.#auth,
+			appVersion: this.#app.metadata.appVersion,
+		});
 
 		const handlers = {
 			...createShellHandlers(this.#shell),
@@ -172,6 +194,7 @@ export class Application {
 			...createNotificationsHandlers(this.#notifications),
 			...createFsHandlers(this.#scopedFs),
 			...createFeatureHandlers(),
+			...createFeatureFlagHandlers(this.#featureFlags),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(
 			handlers,
@@ -180,6 +203,7 @@ export class Application {
 			),
 		);
 		this.#disposers.push(() => this.#ipcServer.dispose());
+		this.#disposers.push(() => this.#featureFlags?.dispose());
 	}
 
 	#registerPushEvents(): void {
@@ -189,6 +213,9 @@ export class Application {
 			}),
 			() => this.#auth.dispose(),
 		);
+		this.#featureFlags?.on("change", (flags) => {
+			this.#windows.broadcast("feature-flag:changed", flags);
+		});
 	}
 
 	#dispose(): void {

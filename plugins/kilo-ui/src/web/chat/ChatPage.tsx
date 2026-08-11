@@ -1,119 +1,334 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { MessageSquareIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
-
+import { useAuiState } from "@assistant-ui/react";
+import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import {
-	sdkQueryKey,
-	sdkQueryOptions,
-	useSdk,
-	useSdkQuery,
-} from "@anaconda-agentic-desktop/sdk-react";
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type PointerEvent as ReactPointerEvent,
+} from "react";
 
-import type { KiloUiChatService, KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
-import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
-import { ChatConnectionProvider } from "./ChatConnectionContext.js";
+import { HEADER_LEADING_ZONE, HEADER_TRAILING_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+
+import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { Thread } from "./components/assistant-ui/thread.js";
-import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
+import { useChatConnection } from "./connection/ChatConnectionContext.js";
+import { ChatRightPanelHeaderToggle } from "./right-panel/ChatRightPanelHeaderToggle.js";
+import { RightPanelTabContent } from "./right-panel/right-panel-tab-registry.js";
+import { RightPanelTabs } from "./right-panel/RightPanelTabs.js";
+import {
+	resolveRightPanelSessionKey,
+	selectActiveRightPanelTab,
+	selectSessionRightPanelState,
+	useRightPanelStore,
+	type RightPanelTab,
+	type RightPanelTabKind,
+} from "./right-panel/right-panel-store.js";
 
-/** Nav icon for the kilo-ui chat route (plugin.json `nav[].icon`). */
-export const ChatNavIcon = MessageSquareIcon;
+const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
+const PANEL_DEFAULT_WIDTH = 420;
+const PANEL_MIN_WIDTH = 280;
+const PANEL_MAX_WIDTH_FRACTION = 0.5;
+const PANEL_GAP_PX = 12; // matches w-3 gutter
 
-function ChatThread({
-	connectionPromise,
-}: {
-	connectionPromise: Promise<KiloWorkspaceConnection>;
-}) {
-	const runtime = useKiloRuntime({ connectionPromise });
-	return (
-		<AssistantRuntimeProvider runtime={runtime}>
-			<div className="flex h-full min-h-0 flex-col" data-qa-id="kilo-chat-thread">
-				<Thread />
-			</div>
-		</AssistantRuntimeProvider>
-	);
+const panelSpring = {
+	type: "spring" as const,
+	stiffness: 420,
+	damping: 36,
+	mass: 0.85,
+};
+
+function readStoredPanelWidth(): number {
+	try {
+		const raw = localStorage.getItem(PANEL_WIDTH_STORAGE_KEY);
+		const parsed = raw == null ? NaN : Number(raw);
+		return Number.isFinite(parsed) ? parsed : PANEL_DEFAULT_WIDTH;
+	} catch {
+		return PANEL_DEFAULT_WIDTH;
+	}
+}
+
+function writeStoredPanelWidth(width: number): void {
+	try {
+		localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(Math.round(width)));
+	} catch {
+		// Ignore quota / private-mode failures.
+	}
 }
 
 /**
  * Full-page chat surface contributed by kilo-ui (`/plugins/chat`).
- * Scopes the Kilo directory from the active workspace (primary folder), or an
- * unscoped per-chat directory under `{userData}/chats/<chatId>/` when none is selected.
- *
- * Mounts the composer immediately. Connection may still be resolving (Kilo
- * starting); the composer waits on first send before clearing the draft.
+ * Connection and `AssistantRuntimeProvider` live in `ChatFeatureProvider`
+ * so the shell sidebar SessionList shares the same runtime.
  */
 export function ChatPage() {
-	const sdk = useSdk<KiloUiChatService>("kilo-ui");
-	const queryClient = useQueryClient();
-	const { activeWorkspaceId } = useWorkspacesFeature();
-	const [chatId] = useState(() => crypto.randomUUID());
-	const connectionInput = useMemo(
-		() => ({
-			chatId,
-			...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
-		}),
-		[chatId, activeWorkspaceId],
-	);
-	const connection = useSdkQuery(sdk, "chat.getConnection", connectionInput);
+	const sdk = useSdk("kilo-ui");
+	const connection = useChatConnection();
+	const reduceMotion = useReducedMotion();
+	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
+	const localThreadId = useAuiState((s) => s.threadListItem.id);
+	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
+	const maximizeSessionId = localThreadId?.trim() ? localThreadId : sessionId;
 
-	useEffect(
-		() =>
-			sdk.events.on("kilo-ui.workspace-updated", () => {
-				void queryClient.invalidateQueries({
-					queryKey: sdkQueryKey(sdk, "chat.getConnection", connectionInput),
-					exact: true,
-				});
-			}),
-		[connectionInput, queryClient, sdk],
+	const panelState = useRightPanelStore((state) =>
+		selectSessionRightPanelState(state.bySessionId, sessionId),
 	);
+	const activeTab = useRightPanelStore((state) =>
+		selectActiveRightPanelTab(state.bySessionId, sessionId),
+	);
+	const openTab = useRightPanelStore((state) => state.openTab);
+	const activateTab = useRightPanelStore((state) => state.activateTab);
+	const closeTab = useRightPanelStore((state) => state.closeTab);
+	const moveSessionState = useRightPanelStore((state) => state.moveSessionState);
 
-	// Recreate when the query recovers after an error (refetch / restart). A cached
-	// rejected promise would otherwise block sends forever.
-	const connectionPromise = useMemo(() => {
-		if (connection.data && !connection.isFetching) {
-			return Promise.resolve(connection.data);
+	const containerRef = useRef<HTMLDivElement>(null);
+	const hasInitializedPanelWidth = useRef(false);
+	const prevPanelOpenRef = useRef(panelState.isOpen);
+	const previousSessionIdRef = useRef(sessionId);
+	const [panelWidth, setPanelWidth] = useState(readStoredPanelWidth);
+	const [isResizing, setIsResizing] = useState(false);
+	const [panelMounted, setPanelMounted] = useState(panelState.isOpen);
+	const [maximizedBySession, setMaximizedBySession] = useState<Record<string, boolean>>({});
+	const panelOpen = panelState.isOpen;
+	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
+
+	const panelSlotWidth = useMotionValue(0);
+
+	// Page-scoped shell contributions: breadcrumb + panel toggle live in the app
+	// header only while the chat route is mounted.
+	useEffect(() => {
+		const removeBreadcrumb = sdk.contribute(HEADER_LEADING_ZONE, {
+			component: ChatSessionBreadcrumb,
+			label: "Chat session breadcrumb",
+			priority: 10,
+		});
+		const removeToggle = sdk.contribute(HEADER_TRAILING_ZONE, {
+			component: ChatRightPanelHeaderToggle,
+			label: "Chat right panel toggle",
+			priority: 10,
+		});
+		return () => {
+			removeBreadcrumb();
+			removeToggle();
+		};
+	}, [sdk]);
+
+	useLayoutEffect(() => {
+		if (!remoteId?.trim() || !localThreadId?.trim() || remoteId === localThreadId) return;
+		moveSessionState(localThreadId, remoteId);
+	}, [localThreadId, moveSessionState, remoteId]);
+
+	const sessionChanged = sessionId !== previousSessionIdRef.current;
+
+	// Closing the panel clears maximize for this session.
+	useEffect(() => {
+		if (panelOpen) return;
+		setMaximizedBySession((prev) => {
+			if (!prev[maximizeSessionId]) return prev;
+			const { [maximizeSessionId]: _removed, ...rest } = prev;
+			return rest;
+		});
+	}, [maximizeSessionId, panelOpen]);
+
+	const clampPanelWidth = useCallback((value: number) => {
+		const containerWidth = containerRef.current?.clientWidth ?? 1280;
+		const maxWidth = Math.floor(containerWidth * PANEL_MAX_WIDTH_FRACTION);
+		return Math.max(PANEL_MIN_WIDTH, Math.min(maxWidth, value));
+	}, []);
+
+	useEffect(() => {
+		setPanelWidth((current) => clampPanelWidth(current));
+	}, [clampPanelWidth, panelOpen]);
+
+	const openWidth = panelWidth + PANEL_GAP_PX;
+	const targetPanelWidth = panelOpen ? openWidth : 0;
+
+	// Only the open/close toggle springs. Maximize, resize, and session changes snap.
+	useEffect(() => {
+		const openChanged = prevPanelOpenRef.current !== panelOpen;
+		prevPanelOpenRef.current = panelOpen;
+		previousSessionIdRef.current = sessionId;
+
+		if (panelOpen) {
+			setPanelMounted(true);
 		}
-		if (connection.isError && !connection.isFetching) {
-			const error =
-				connection.error instanceof Error
-					? connection.error
-					: new Error(String(connection.error ?? "Could not connect to Kilo"));
-			const rejected = Promise.reject(error);
-			void rejected.catch(() => undefined);
-			return rejected;
+
+		if (!hasInitializedPanelWidth.current) {
+			hasInitializedPanelWidth.current = true;
+			panelSlotWidth.set(targetPanelWidth);
+			if (!panelOpen) setPanelMounted(false);
+			return;
 		}
-		const promise = queryClient.fetchQuery(
-			sdkQueryOptions(sdk, "chat.getConnection", connectionInput),
+
+		if (sessionChanged) {
+			panelSlotWidth.set(targetPanelWidth);
+			setPanelMounted(panelOpen);
+			return;
+		}
+
+		const shouldSpring = openChanged && !reduceMotion && !isResizing;
+		const controls = animate(
+			panelSlotWidth,
+			targetPanelWidth,
+			shouldSpring ? panelSpring : { duration: 0 },
 		);
-		void promise.catch(() => undefined);
-		return promise;
+		void controls.then(() => {
+			if (!panelOpen) setPanelMounted(false);
+		});
+		return () => controls.stop();
 	}, [
-		connection.data,
-		connection.errorUpdatedAt,
-		connection.isError,
-		connection.isFetching,
-		connectionInput,
-		queryClient,
-		sdk,
+		panelSlotWidth,
+		targetPanelWidth,
+		panelOpen,
+		sessionChanged,
+		sessionId,
+		reduceMotion,
+		isResizing,
 	]);
 
-	const connectionStatus = {
-		isPending: connection.isPending,
-		isError: connection.isError,
-		error: connection.error instanceof Error ? connection.error : null,
-		connectionPromise,
-	};
+	const toggleMaximized = useCallback(() => {
+		setMaximizedBySession((prev) => ({
+			...prev,
+			[maximizeSessionId]: !prev[maximizeSessionId],
+		}));
+	}, [maximizeSessionId]);
+
+	const handleActivate = useCallback(
+		(tab: RightPanelTab) => {
+			activateTab(sessionId, tab.id);
+		},
+		[activateTab, sessionId],
+	);
+
+	const handleCloseTab = useCallback(
+		(tab: RightPanelTab) => {
+			closeTab(sessionId, tab.id);
+		},
+		[closeTab, sessionId],
+	);
+
+	const handleAddTab = useCallback(
+		(kind: RightPanelTabKind) => {
+			openTab(sessionId, kind);
+		},
+		[openTab, sessionId],
+	);
+
+	const handleResizePointerDown = useCallback(
+		(event: ReactPointerEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			const handle = event.currentTarget;
+			const startX = event.clientX;
+			const startWidth = panelWidth;
+			handle.setPointerCapture(event.pointerId);
+			setIsResizing(true);
+
+			const onMove = (moveEvent: PointerEvent) => {
+				const delta = startX - moveEvent.clientX;
+				const next = clampPanelWidth(startWidth + delta);
+				setPanelWidth(next);
+				panelSlotWidth.set(next + PANEL_GAP_PX);
+			};
+			const onUp = (upEvent: PointerEvent) => {
+				handle.releasePointerCapture(upEvent.pointerId);
+				handle.removeEventListener("pointermove", onMove);
+				handle.removeEventListener("pointerup", onUp);
+				handle.removeEventListener("pointercancel", onUp);
+				setIsResizing(false);
+				setPanelWidth((current) => {
+					const next = clampPanelWidth(current);
+					writeStoredPanelWidth(next);
+					panelSlotWidth.set(next + PANEL_GAP_PX);
+					return next;
+				});
+			};
+
+			handle.addEventListener("pointermove", onMove);
+			handle.addEventListener("pointerup", onUp);
+			handle.addEventListener("pointercancel", onUp);
+		},
+		[clampPanelWidth, panelWidth, panelSlotWidth],
+	);
+
+	const panel = (
+		<RightPanelTabs
+			maximized={maximized}
+			onToggleMaximized={toggleMaximized}
+			tabs={panelState.tabs}
+			activeTabId={panelOpen ? panelState.activeTabId : null}
+			onActivate={handleActivate}
+			onCloseTab={handleCloseTab}
+			onAddTab={handleAddTab}
+		>
+			{activeTab ? <RightPanelTabContent tab={activeTab} /> : null}
+		</RightPanelTabs>
+	);
 
 	return (
-		<ChatConnectionProvider status={connectionStatus}>
+		<>
 			{connection.isError ? (
 				<p className="text-destructive px-6 pt-4 text-sm" role="alert" data-qa-id="kilo-chat-error">
 					Could not connect to Kilo:{" "}
 					{connection.error instanceof Error ? connection.error.message : String(connection.error)}
 				</p>
 			) : null}
-			<ChatThread connectionPromise={connectionPromise} />
-		</ChatConnectionProvider>
+			<div
+				ref={containerRef}
+				className="relative flex h-full min-h-0 overflow-hidden"
+				data-qa-id="kilo-chat-page"
+			>
+				{/*
+				  Chat column is flex-1 so it tracks shell layout (left-nav open/close) in the
+				  same frame as the CSS width transition. Pixel widths derived from
+				  ResizeObserver lagged that transition and made the right edge jump.
+				*/}
+				<div
+					className={cn(
+						"min-h-0 min-w-0 overflow-hidden",
+						maximized && panelOpen ? "pointer-events-none w-0" : "flex-1",
+					)}
+				>
+					<div
+						className="bg-muted border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border"
+						data-qa-id="kilo-chat-thread"
+						data-chat-column-maximized-away={maximized && panelOpen ? "true" : "false"}
+					>
+						<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+							<Thread />
+						</div>
+					</div>
+				</div>
+
+				<motion.div
+					className={cn(
+						"h-full min-w-0 overflow-hidden",
+						maximized && panelOpen ? "min-w-0 flex-1" : "shrink-0",
+					)}
+					{...(maximized && panelOpen ? {} : { style: { width: panelSlotWidth } })}
+				>
+					{panelMounted ? (
+						<div
+							className={cn("flex h-full", maximized ? "w-full" : "shrink-0")}
+							style={maximized ? undefined : { width: openWidth }}
+						>
+							{maximized ? null : (
+								<div
+									role="separator"
+									aria-orientation="vertical"
+									aria-label="Resize right panel"
+									data-qa-id="chat-right-panel-resize"
+									className="w-3 shrink-0 cursor-col-resize touch-none bg-transparent"
+									onPointerDown={handleResizePointerDown}
+								/>
+							)}
+							<div className="h-full min-w-0 flex-1 overflow-hidden">{panel}</div>
+						</div>
+					) : null}
+				</motion.div>
+			</div>
+		</>
 	);
 }

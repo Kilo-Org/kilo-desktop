@@ -1,41 +1,11 @@
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
-import { createKiloRuntimeClient } from "./create-kilo-runtime-client.js";
-
-export type DeferredKiloRuntimeClient = KiloClient & {
-	/** Replace the pending/resolved connection without changing client identity. */
-	retarget(connectionPromise: Promise<KiloWorkspaceConnection>): void;
-};
-
-/**
- * Stable Kilo client that waits for `connectionPromise` before forwarding
- * any nested SDK calls. Identity stays fixed for the page lifetime so
- * OpenCode's registry/adapter memos do not thrash when the server becomes ready
- * or when the directory target is retargeted (workspace ↔ unscoped).
- */
-export function createDeferredKiloRuntimeClient(
-	connectionPromise: Promise<KiloWorkspaceConnection>,
-): DeferredKiloRuntimeClient {
-	const state = {
-		ready: connectionPromise.then(createKiloRuntimeClient),
-	};
+export function createDeferredKiloRuntimeClient(clientPromise: Promise<KiloClient>): KiloClient {
+	const ready = clientPromise;
 	// Callers still observe rejections via await; attach a handler so a rejected
-	// connection does not become an unhandled rejection when the client is unused.
-	void state.ready.catch(() => undefined);
-
-	const retarget = (nextPromise: Promise<KiloWorkspaceConnection>) => {
-		state.ready = nextPromise.then(createKiloRuntimeClient);
-		void state.ready.catch(() => undefined);
-	};
-
-	const proxy = createAwaitingProxy(() => state.ready);
-	return new Proxy(proxy, {
-		get(target, prop, receiver) {
-			if (prop === "retarget") return retarget;
-			return Reflect.get(target, prop, receiver);
-		},
-	}) as DeferredKiloRuntimeClient;
+	// client does not become an unhandled rejection when it is unused.
+	void ready.catch(() => undefined);
+	return createAwaitingProxy(() => ready) as KiloClient;
 }
 
 function createAwaitingProxy(

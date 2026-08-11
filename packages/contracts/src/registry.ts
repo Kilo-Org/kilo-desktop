@@ -1,5 +1,6 @@
 import { authEvents, authMethods } from "./features/auth.js";
 import { featureEvents, featureMessages } from "./features/feature-event.js";
+import { featureFlagEvents, featureFlagMethods } from "./features/feature-flag.js";
 import { featureMethods } from "./features/feature-invoke.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
@@ -31,8 +32,9 @@ assertNoDuplicateChannels(
 	featureMethods,
 	notificationsMethods,
 	fsMethods,
+	featureFlagMethods,
 );
-assertNoDuplicateChannels(featureEvents, authEvents);
+assertNoDuplicateChannels(featureEvents, authEvents, featureFlagEvents);
 assertNoDuplicateChannels(featureMessages);
 
 export const ipcMethods = {
@@ -42,8 +44,9 @@ export const ipcMethods = {
 	...featureMethods,
 	...notificationsMethods,
 	...fsMethods,
+	...featureFlagMethods,
 };
-export const ipcEvents = { ...authEvents, ...featureEvents };
+export const ipcEvents = { ...authEvents, ...featureEvents, ...featureFlagEvents };
 // feature:event is intentionally duplex: the same validated envelope is a
 // renderer-to-main message and a main-to-renderer event.
 export const ipcMessages = { ...featureMessages };

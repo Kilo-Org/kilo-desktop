@@ -12,7 +12,9 @@
 	}
 
 	body {
-		@apply bg-background text-foreground font-sans;
+		/* Transparent so Electron vibrancy / mica (or the native window
+		   backgroundColor on Linux) can show through the app shell. */
+		@apply text-foreground bg-transparent font-sans;
 	}
 
 	button {

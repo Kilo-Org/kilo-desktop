@@ -71,7 +71,9 @@ describe("AppSidebarLayout login button", () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
 		// Give the async auth delegate a tick to resolve to authenticated.
-		await expect.element(page.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Account menu for ada" }))
+			.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Log in" })).not.toBeInTheDocument();
 	});
 
@@ -82,6 +84,27 @@ describe("AppSidebarLayout login button", () => {
 		await page.getByRole("button", { name: "Log in" }).click();
 
 		expect(login).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("AppSidebarLayout nav toggle", () => {
+	afterEach(cleanup);
+
+	it("toggles the left nav open and closed", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		await expect
+			.element(page.getByRole("button", { name: "Toggle navigation" }))
+			.toBeInTheDocument();
+
+		const sidebar = () => baseElement.querySelector('[data-slot="sidebar"]');
+		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
+
+		await page.getByRole("button", { name: "Toggle navigation" }).click();
+		expect(sidebar()?.getAttribute("data-state")).toBe("collapsed");
+
+		await page.getByRole("button", { name: "Toggle navigation" }).click();
+		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
 	});
 });
 
@@ -107,8 +130,10 @@ describe("AppSidebarLayout account menu", () => {
 
 		await page.getByRole("button", { name: "Account menu for Ada Lovelace" }).click();
 
-		await expect.element(page.getByText("Ada Lovelace")).toBeVisible();
-		await expect.element(page.getByText("ada@example.com")).toBeVisible();
+		// Name and email render in both the footer trigger and the open menu.
+		const menu = page.getByRole("menu");
+		await expect.element(menu.getByText("Ada Lovelace")).toBeVisible();
+		await expect.element(menu.getByText("ada@example.com")).toBeVisible();
 		await page.getByRole("menuitem", { name: "Log out" }).click();
 
 		expect(logout).toHaveBeenCalledTimes(1);

@@ -56,6 +56,13 @@ export interface CreateMainSdkOptions {
 	 * `resolvePluginAsset` then throws.
 	 */
 	resolvePluginAsset?: (subpath: string) => string;
+	/**
+	 * Receive boot-time progress messages from this feature's `mainRegister`.
+	 * The caller (typically `bootFeatures`) is responsible for gating this to
+	 * the boot window and dropping it when boot completes — the SDK never
+	 * checks a lifecycle flag of its own.
+	 */
+	reportBootProgress?: (message: string) => void;
 }
 
 function createConsoleLogger(featureId: string): MainSdkLogger {
@@ -190,12 +197,23 @@ export class FeatureRouter {
 				this.capabilityRegistry.get(targetFeatureId) as T | null,
 		};
 
+		const reportBootProgress = options?.reportBootProgress;
+		const boot: MainSdk["boot"] = {
+			reportProgress: (message: string) => {
+				// Absent reporter (built-in features, tests that don't opt in) or a
+				// caller-gated no-op after boot completes both fall through silently
+				// — the SDK never owns the "still booting?" flag.
+				reportBootProgress?.(message);
+			},
+		};
+
 		return {
 			featureId,
 			logger,
 			net: { fetch: fetchImpl },
 			events,
 			plugins,
+			boot,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(

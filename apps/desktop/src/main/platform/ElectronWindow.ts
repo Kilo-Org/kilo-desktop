@@ -8,14 +8,15 @@ import {
 	type IpcEventChannel,
 	type IpcEventPayload,
 	type ThemeChromeColors,
+	windowBackgroundFor,
 } from "@anaconda-agentic-desktop/contracts";
 
 import { getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
 
-/** Matches the app header band (p-3 + 32px control). */
-const TITLEBAR_HEIGHT = 56;
+/** Matches the app header band (`h-12` = 48px). */
+const TITLEBAR_HEIGHT = 48;
 const TRAFFIC_LIGHT_SIZE = 14;
 
 export class ElectronWindow {
@@ -36,12 +37,13 @@ export class ElectronWindow {
 		const chrome = chromeFor(this.shouldUseDarkColors());
 		const window = new BrowserWindow({
 			title: app.getName(),
-			width: 960,
-			height: 720,
+			width: 1280,
+			height: 860,
 			minWidth: 720,
 			minHeight: 520,
 			show: false,
-			backgroundColor: chrome.background,
+			backgroundColor: windowBackgroundFor(this.shouldUseDarkColors()),
+			...systemMaterialOptions(),
 			...(process.platform === "linux" ? { icon: linuxWindowIcon() } : {}),
 			...titleBarOptions(chrome),
 			...input.options,
@@ -124,8 +126,9 @@ export class ElectronWindow {
 	/** Repaints native chrome to match the renderer-owned theme (pushed via `theme:sync`). */
 	applyColorScheme(shouldUseDarkColors: boolean): void {
 		const chrome = chromeFor(shouldUseDarkColors);
+		const background = windowBackgroundFor(shouldUseDarkColors);
 		for (const window of this.liveWindows) {
-			window.setBackgroundColor(chrome.background);
+			window.setBackgroundColor(background);
 			if (process.platform !== "darwin") {
 				window.setTitleBarOverlay({
 					color: chrome.background,
@@ -139,6 +142,16 @@ export class ElectronWindow {
 		for (const window of this.liveWindows) window.destroy();
 		this.#mainWindow = undefined;
 	}
+}
+
+function systemMaterialOptions(): BrowserWindowConstructorOptions {
+	if (process.platform === "darwin") {
+		return {
+			vibrancy: "under-window",
+			visualEffectState: "active",
+		};
+	}
+	return {};
 }
 
 function titleBarOptions(chrome: ThemeChromeColors): BrowserWindowConstructorOptions {

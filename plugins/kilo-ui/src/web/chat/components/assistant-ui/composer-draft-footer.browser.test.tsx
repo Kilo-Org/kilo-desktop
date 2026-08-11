@@ -17,9 +17,12 @@ import {
 	createFakeSdk,
 } from "@anaconda-agentic-desktop/testing";
 
-import type { KiloWorkspaceConnection } from "../../../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
-import { ChatConnectionProvider } from "../../ChatConnectionContext.js";
+import { OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";
+import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelectionContext.js";
+import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
+import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
 import { Thread } from "./thread.js";
 
@@ -29,12 +32,47 @@ const stubChatModel: ChatModelAdapter = {
 	},
 };
 
-const connection: KiloWorkspaceConnection = {
+const connection: KiloGlobalConnection = {
 	baseUrl: "http://127.0.0.1:4321",
 	username: "kilo",
 	password: "secret",
 	version: "7.4.20",
-	directory: "/tmp/chats/test",
+	globalDirectory: "/tmp/kilo-runtime",
+};
+
+const modelSelection = {
+	model: { providerID: "kilo", modelID: "test-model" },
+	setModel: () => undefined,
+	effort: undefined,
+	setEffort: () => undefined,
+	name: "Test Model",
+	efforts: undefined,
+	catalog: {
+		providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
+		models: [
+			{
+				id: "kilo/test-model",
+				name: "Test Model",
+				providerID: "kilo",
+				modelID: "test-model",
+			},
+		],
+		defaults: { kilo: "test-model" },
+	},
+	isCatalogPending: false,
+	isCatalogError: false,
+};
+
+const agentSelection = {
+	agent: "code",
+	setAgent: () => undefined,
+	catalog: {
+		agents: OPTIMISTIC_AGENT_CATALOG.agents.filter(
+			(entry) => entry.name === "code" || entry.name === "plan",
+		),
+	},
+	isCatalogPending: false,
+	isCatalogError: false,
 };
 
 function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadMessageLike[] }) {
@@ -52,9 +90,13 @@ function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadM
 					connectionPromise: Promise.resolve(connection),
 				}}
 			>
-				<div className="h-[480px]">
-					<Thread />
-				</div>
+				<ChatAgentSelectionProvider value={agentSelection}>
+					<ChatModelSelectionProvider value={modelSelection}>
+						<div className="h-[480px]">
+							<Thread />
+						</div>
+					</ChatModelSelectionProvider>
+				</ChatAgentSelectionProvider>
 			</ChatConnectionProvider>
 		</AssistantRuntimeProvider>
 	);
@@ -102,7 +144,25 @@ describe("ComposerDraftFooter", () => {
 
 		await expect.element(screen.getByTestId("kilo-composer-draft-footer")).toBeVisible();
 		await expect.element(screen.getByRole("combobox", { name: "Select workspace" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Select agent" })).toBeVisible();
 		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toBeVisible();
+	});
+
+	it("opens the model selector when the workspace selector was already open", async () => {
+		const { baseElement } = renderThread();
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByRole("combobox", { name: "Select workspace" }).click();
+		await expect.element(screen.getByText("No workspaces yet.")).toBeVisible();
+
+		await screen.getByRole("combobox", { name: "Select model" }).click();
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+
+		await expect.element(screen.getByTestId("kilo-model-selector-content")).toBeVisible();
+		await expect.element(screen.getByPlaceholder("Search models...")).toHaveFocus();
+		await expect.element(screen.getByText("No workspaces yet.")).not.toBeInTheDocument();
 	});
 
 	it("hides the draft footer when the thread has messages", async () => {

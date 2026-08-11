@@ -8,17 +8,22 @@ import {
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
+import { KiloAgentSelector } from "./kilo-agent-selector.js";
+import { KiloModelSelector } from "./kilo-model-selector.js";
 import { MarkdownText } from "./markdown-text.js";
-import {
-	Reasoning,
-	ReasoningContent,
-	ReasoningRoot,
-	ReasoningText,
-	ReasoningTrigger,
-} from "./reasoning.js";
-import { ToolFallback } from "./tool-fallback.js";
-import { ToolGroupContent, ToolGroupRoot, ToolGroupTrigger } from "./tool-group.js";
+import { MessageCopyButton } from "./message-copy-button.js";
+import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
+import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
+import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
+import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
+import { FallbackTool } from "../tools/opencode-tools.js";
+import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
+import {
+	getPlanProjectionForMessage,
+	shouldExcludeToolCallFromActivityGroup,
+} from "../../plan/index.js";
+import { useApprovePlan } from "../../plan/use-approve-plan.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
@@ -29,7 +34,7 @@ import {
 	BranchPickerPrimitive,
 	ComposerPrimitive,
 	ErrorPrimitive,
-	groupPartByType,
+	getMcpAppFromToolPart,
 	MessagePrimitive,
 	SuggestionPrimitive,
 	ThreadPrimitive,
@@ -40,15 +45,12 @@ import {
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
-	CheckIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
-	CopyIcon,
 	DownloadIcon,
 	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
-	PencilIcon,
 	RefreshCwIcon,
 	SquareIcon,
 } from "lucide-react";
@@ -60,26 +62,23 @@ import {
 	type ComponentType,
 	type FC,
 	type FormEvent,
-	type PropsWithChildren,
+	type KeyboardEvent,
 } from "react";
 
-import { useChatConnection } from "../../ChatConnectionContext.js";
+import { useChatConnection } from "../../connection/ChatConnectionContext.js";
+import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
 /**
  * Optional component overrides for the thread. `AssistantMessage` and
- * `Welcome` replace whole sections; the remaining slots override how the
- * assistant message renders tool calls and part groups. Tool UIs registered
- * by name (toolkit `render`, `useAssistantDataUI`) take precedence over
- * `ToolFallback`.
+ * `Welcome` replace whole sections; `ToolFallback` overrides unknown tool
+ * renders. Named toolkit renders take precedence over `ToolFallback`.
  */
 export type ThreadComponents = {
 	AssistantMessage?: ComponentType | undefined;
 	Welcome?: ComponentType | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
-	ToolGroup?: ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>> | undefined;
-	ReasoningGroup?: ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>> | undefined;
 };
 
 export type ThreadProps = {
@@ -90,10 +89,19 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
-// Startup exposes a loading placeholder thread; treat it as a draft so
-// the composer mounts centered. Loads after startup keep the docked layout.
+const ThreadComposerSlot: FC = () => {
+	return (
+		<div className="flex flex-col gap-3">
+			<OpenCodeComposerInteraction fallback={<Composer />} />
+		</div>
+	);
+};
+
+// Empty threads stay in draft layout (centered composer). Require status
+// "new" too — after lazy session init the list item flips to regular before
+// messages project, and treating that as draft docks→centers→docks again.
 const isDraftView = (s: AssistantState) =>
-	s.thread.messages.length === 0 && (!s.thread.isLoading || s.threads.isLoading);
+	s.thread.messages.length === 0 && s.threadListItem.status === "new";
 
 export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	const isDraft = useAuiState(isDraftView);
@@ -105,9 +113,34 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	);
 };
 
-const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
+const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const { Welcome = DraftWelcomeHeadline } = useContext(ThreadComponentsContext);
 
+	return (
+		<div className="relative flex w-full flex-col">
+			{isDraft ? <Welcome /> : null}
+			{/* Glow is absolutely positioned so it does not expand layout width; horizontal
+			    bleed is clipped by the thread viewport (`overflow-x-hidden`), not a tight
+			    local overflow box that cuts the blur into a hard rectangle. */}
+			<div className="relative">
+				{isDraft ? (
+					<div
+						aria-hidden="true"
+						className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+					/>
+				) : null}
+				<div className="relative z-10 flex flex-col">
+					<div className="relative z-10">
+						<ThreadComposerSlot />
+					</div>
+					{isDraft ? <ComposerDraftFooter /> : null}
+				</div>
+			</div>
+		</div>
+	);
+};
+
+const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
 			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))]"
@@ -121,7 +154,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				turnAnchor="bottom"
 				autoScroll
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 flex-col overflow-x-auto overflow-y-auto scroll-smooth"
+				className="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
 				<div
 					className={cn(
@@ -135,34 +168,24 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
-							"aui-thread-viewport-footer bg-muted flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+							/* Transparent so sticky glass can blur scrolled messages behind the shell. */
+							"aui-thread-viewport-footer relative flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
 							!isDraft && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
 						)}
 					>
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
-						<div className="relative flex w-full flex-col">
-							<AuiIf condition={isDraftView}>
-								<Welcome />
-							</AuiIf>
-							<div className="relative">
-								{isDraft ? (
-									<div
-										aria-hidden="true"
-										className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
-									/>
-								) : null}
-								<div className="relative z-10 flex flex-col">
-									<div className="relative z-10">
-										<Composer />
-									</div>
-									{isDraft ? <ComposerDraftFooter /> : null}
-								</div>
-							</div>
+						<div className="relative">
+							<ThreadComposerBlock isDraft={isDraft} />
+							{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
+							{!isDraft ? (
+								<div
+									aria-hidden
+									className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
+								/>
+							) : null}
 						</div>
-						<AuiIf condition={isDraftView}>
-							<ThreadSuggestions />
-						</AuiIf>
+						{isDraft ? <ThreadSuggestions /> : null}
 					</ThreadPrimitive.ViewportFooter>
 				</div>
 			</ThreadPrimitive.Viewport>
@@ -174,9 +197,7 @@ const ThreadMessage: FC = () => {
 	const { AssistantMessage: AssistantMessageComponent = AssistantMessage } =
 		useContext(ThreadComponentsContext);
 	const role = useAuiState((s) => s.message.role);
-	const isEditing = useAuiState((s) => s.message.composer.isEditing);
 
-	if (isEditing) return <EditComposer />;
 	if (role === "user") return <UserMessage />;
 	return <AssistantMessageComponent />;
 };
@@ -235,9 +256,13 @@ const ThreadSuggestionItem: FC = () => {
 const Composer: FC = () => {
 	const aui = useAui();
 	const isDraft = useAuiState(isDraftView);
+	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
+	const { refine, submitting, canReply } = useApprovePlan();
+
+	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
 
 	const sendWhenConnected = () => {
 		if (isConnectingRef.current) {
@@ -263,7 +288,19 @@ const Composer: FC = () => {
 		})();
 	};
 
+	const handlePlanRefineSubmit = () => {
+		if (isComposerEmpty) return;
+		refine();
+	};
+
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+		// Plan follow-up keeps the thread running, so ComposerInput ignores Enter.
+		// Route submit to Refine instead of composer.send().
+		if (showPlanFollowupActions) {
+			event.preventDefault();
+			handlePlanRefineSubmit();
+			return;
+		}
 		// When Kilo is still starting, wait before composer.send() so the draft
 		// stays visible and the send button can show a spinner. preventDefault
 		// skips ComposerPrimitive.Root's built-in send handler (Enter key).
@@ -272,6 +309,14 @@ const Composer: FC = () => {
 		}
 		event.preventDefault();
 		sendWhenConnected();
+	};
+
+	const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+		if (!showPlanFollowupActions) return;
+		// ComposerInput returns early while isRunning — intercept before that.
+		event.preventDefault();
+		handlePlanRefineSubmit();
 	};
 
 	return (
@@ -284,8 +329,10 @@ const Composer: FC = () => {
 					<div
 						data-slot="aui_composer-shell"
 						className={cn(
-							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none",
-							isDraft && "border-b-0 dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]",
+							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+							isDraft
+								? "border-b-0 bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]"
+								: "chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
 						)}
 					/>
 				}
@@ -299,11 +346,15 @@ const Composer: FC = () => {
 					enterKeyHint="send"
 					aria-label="Message input"
 					disabled={isConnecting}
+					onKeyDown={handleInputKeyDown}
 				/>
 				<ComposerAction
 					isConnecting={isConnecting}
 					isConnectionPending={isPending}
 					onSendWhenConnected={sendWhenConnected}
+					showPlanFollowupActions={showPlanFollowupActions}
+					planActionPending={submitting}
+					onRefine={refine}
 				/>
 			</ComposerPrimitive.AttachmentDropzone>
 		</ComposerPrimitive.Root>
@@ -314,14 +365,29 @@ const ComposerAction: FC<{
 	isConnecting: boolean;
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
-}> = ({ isConnecting, isConnectionPending, onSendWhenConnected }) => {
+	showPlanFollowupActions: boolean;
+	planActionPending: boolean;
+	onRefine: () => void;
+}> = ({
+	isConnecting,
+	isConnectionPending,
+	onSendWhenConnected,
+	showPlanFollowupActions,
+	planActionPending,
+	onRefine,
+}) => {
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const canSend = useAuiState((s) => s.composer.canSend);
+	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
-			<ComposerAddAttachment />
+			<div className="flex min-w-0 items-center gap-1">
+				<ComposerAddAttachment />
+				<KiloAgentSelector />
+			</div>
 			<div className="flex items-center gap-1.5">
+				<KiloModelSelector />
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>
 						<ComposerPrimitive.Dictate
@@ -389,7 +455,21 @@ const ComposerAction: FC<{
 						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
 					</TooltipIconButton>
 				) : null}
-				{!isConnecting && !isRunning && !isConnectionPending ? (
+				{showPlanFollowupActions ? (
+					<Button
+						type="button"
+						size="sm"
+						className="h-7 rounded-full px-3"
+						disabled={isComposerEmpty || planActionPending}
+						data-qa-id="kilo-composer-refine"
+						aria-label="Refine plan"
+						onClick={() => onRefine()}
+					>
+						{planActionPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
+						Refine
+					</Button>
+				) : null}
+				{!showPlanFollowupActions && !isConnecting && !isRunning && !isConnectionPending ? (
 					<ComposerPrimitive.Send
 						render={
 							<TooltipIconButton
@@ -406,7 +486,7 @@ const ComposerAction: FC<{
 						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
 					</ComposerPrimitive.Send>
 				) : null}
-				{!isConnecting && isRunning ? (
+				{!showPlanFollowupActions && !isConnecting && isRunning ? (
 					<ComposerPrimitive.Cancel
 						render={
 							<Button
@@ -437,11 +517,11 @@ const MessageError: FC = () => {
 };
 
 const AssistantMessage: FC = () => {
-	const {
-		ToolFallback: ToolFallbackComponent = ToolFallback,
-		ToolGroup,
-		ReasoningGroup,
-	} = useContext(ThreadComponentsContext);
+	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
+		useContext(ThreadComponentsContext);
+	const messageId = useAuiState((s) => s.message.id);
+	const planThread = usePlanThreadProjection();
+	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -458,41 +538,49 @@ const AssistantMessage: FC = () => {
 				className="text-foreground px-2 leading-relaxed wrap-break-word"
 			>
 				<MessagePrimitive.GroupedParts
-					groupBy={groupPartByType({
-						reasoning: ["group-chainOfThought", "group-reasoning"],
-						"tool-call": ["group-chainOfThought", "group-tool"],
-						"standalone-tool-call": [],
-					})}
+					groupBy={(part, context) => {
+						if (part.type === "reasoning") {
+							return ["group-activity", "group-thinking"] as const;
+						}
+						if (part.type === "tool-call") {
+							if (getMcpAppFromToolPart(part)) return [];
+							if (context.toolUIs?.[part.toolName]?.[0]?.standalone) return [];
+							if (
+								shouldExcludeToolCallFromActivityGroup(part, {
+									hiddenPlanCallIds,
+								})
+							) {
+								return [];
+							}
+							return ["group-activity", getGroupKeyForTool(part.toolName)] as const;
+						}
+						// Hidden step markers stay in the activity run so they don't fragment groups.
+						if (part.type === "data" && isHiddenOpenCodeDataPart(part.name)) {
+							return ["group-activity"] as const;
+						}
+						return [];
+					}}
 				>
 					{({ part, children }) => {
 						switch (part.type) {
-							case "group-chainOfThought":
-								return <div data-slot="aui_chain-of-thought">{children}</div>;
-							case "group-tool":
-								if (ToolGroup) {
-									return <ToolGroup group={part}>{children}</ToolGroup>;
-								}
+							case "group-activity":
+								return <ActivityGroup group={part}>{children}</ActivityGroup>;
+							case "group-thinking":
+							case "group-editing":
+							case "group-writing":
+							case "group-reading":
+							case "group-searching":
+							case "group-web":
+							case "group-terminal":
+							case "group-planning":
+							case "group-asking":
+							case "group-tools": {
+								const kind = activityKindFromGroupKey(part.type);
+								if (!kind) return null;
 								return (
-									<ToolGroupRoot variant="ghost">
-										<ToolGroupTrigger
-											count={part.indices.length}
-											active={part.status.type === "running"}
-										/>
-										<ToolGroupContent>{children}</ToolGroupContent>
-									</ToolGroupRoot>
-								);
-							case "group-reasoning": {
-								if (ReasoningGroup) {
-									return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
-								}
-								const running = part.status.type === "running";
-								return (
-									<ReasoningRoot streaming={running}>
-										<ReasoningTrigger active={running} />
-										<ReasoningContent aria-busy={running}>
-											<ReasoningText>{children}</ReasoningText>
-										</ReasoningContent>
-									</ReasoningRoot>
+									<ActivitySubgroup kind={kind} group={part}>
+										{children}
+									</ActivitySubgroup>
 								);
 							}
 							case "text":
@@ -513,8 +601,22 @@ const AssistantMessage: FC = () => {
 										{"●"}
 									</span>
 								);
-							default:
+							default: {
+								if (
+									typeof part.type === "string" &&
+									part.type.startsWith("group-mcp-") &&
+									"indices" in part
+								) {
+									const kind = activityKindFromGroupKey(part.type);
+									if (!kind) return null;
+									return (
+										<ActivitySubgroup kind={kind} group={part}>
+											{children}
+										</ActivitySubgroup>
+									);
+								}
 								return null;
+							}
 						}
 					}}
 				</MessagePrimitive.GroupedParts>
@@ -539,14 +641,7 @@ const AssistantActionBar: FC = () => {
 			autohide="not-last"
 			className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
 		>
-			<ActionBarPrimitive.Copy render={<TooltipIconButton tooltip="Copy" />}>
-				<AuiIf condition={(s) => s.message.isCopied}>
-					<CheckIcon className="animate-in zoom-in-50 fade-in duration-200 ease-out" />
-				</AuiIf>
-				<AuiIf condition={(s) => !s.message.isCopied}>
-					<CopyIcon className="animate-in zoom-in-75 fade-in duration-150" />
-				</AuiIf>
-			</ActionBarPrimitive.Copy>
+			<MessageCopyButton />
 			<ActionBarPrimitive.Reload render={<TooltipIconButton tooltip="Refresh" />}>
 				<RefreshCwIcon />
 			</ActionBarPrimitive.Reload>
@@ -586,11 +681,8 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content peer border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
 					<MessagePrimitive.Parts />
-				</div>
-				<div className="aui-user-action-bar-wrapper absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden rtl:translate-x-full">
-					<UserActionBar />
 				</div>
 			</div>
 
@@ -598,48 +690,6 @@ const UserMessage: FC = () => {
 				data-slot="aui_user-branch-picker"
 				className="col-span-full col-start-1 row-start-3 -me-1 justify-end"
 			/>
-		</MessagePrimitive.Root>
-	);
-};
-
-const UserActionBar: FC = () => {
-	return (
-		<ActionBarPrimitive.Root
-			hideWhenRunning
-			autohide="not-last"
-			className="aui-user-action-bar-root flex flex-col items-end"
-		>
-			<ActionBarPrimitive.Edit
-				render={<TooltipIconButton tooltip="Edit" className="aui-user-action-edit" />}
-			>
-				<PencilIcon />
-			</ActionBarPrimitive.Edit>
-		</ActionBarPrimitive.Root>
-	);
-};
-
-const EditComposer: FC = () => {
-	return (
-		<MessagePrimitive.Root
-			data-slot="aui_edit-composer-wrapper"
-			className="flex flex-col px-2 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
-		>
-			<ComposerPrimitive.Root className="aui-edit-composer-root border-border/60 dark:border-muted-foreground/15 ms-auto flex w-full max-w-[85%] flex-col rounded-(--composer-radius) border bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-none">
-				<ComposerPrimitive.Input
-					className="aui-edit-composer-input text-foreground min-h-14 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base outline-none"
-					autoFocus
-				/>
-				<div className="aui-edit-composer-footer mx-2.5 mb-2.5 flex items-center gap-1.5 self-end">
-					<ComposerPrimitive.Cancel
-						render={<Button variant="ghost" size="sm" className="h-8 rounded-full px-3.5" />}
-					>
-						Cancel
-					</ComposerPrimitive.Cancel>
-					<ComposerPrimitive.Send render={<Button size="sm" className="h-8 rounded-full px-3.5" />}>
-						Update
-					</ComposerPrimitive.Send>
-				</div>
-			</ComposerPrimitive.Root>
 		</MessagePrimitive.Root>
 	);
 };

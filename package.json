@@ -10,6 +10,7 @@
 	},
 	"scripts": {
 		"check": "pnpm -r --if-present check",
+		"check:changed": "pnpm --filter \"...[origin/main]\" --filter \"!anaconda-agentic-desktop\" -r --if-present check",
 		"dev": "pnpm dev:desktop",
 		"dev:web": "pnpm --filter @anaconda-agentic-desktop/web dev",
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env ANACONDA_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @anaconda-agentic-desktop/desktop start\"",
@@ -25,6 +26,7 @@
 		"start": "pnpm dev:desktop",
 		"prepare": "husky",
 		"test": "pnpm -r --if-present test",
+		"test:changed": "pnpm --filter \"...[origin/main]\" --filter \"!anaconda-agentic-desktop\" -r --if-present test",
 		"test:web": "pnpm --filter @anaconda-agentic-desktop/web test",
 		"test:desktop": "pnpm --filter @anaconda-agentic-desktop/desktop test",
 		"test:contracts": "pnpm --filter @anaconda-agentic-desktop/contracts test",

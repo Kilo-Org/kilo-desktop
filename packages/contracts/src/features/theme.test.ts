@@ -10,6 +10,11 @@ import {
 	themeSourceSchema,
 	themeBootstrapScript,
 	themeChromeColors,
+	TRANSPARENT_WINDOW_BACKGROUND,
+	shellGlassDarkSurface,
+	shellGlassOpacity,
+	usesSystemWindowMaterial,
+	windowBackgroundFor,
 } from "./theme.js";
 
 describe("theme contracts", () => {
@@ -28,10 +33,21 @@ describe("theme contracts", () => {
 		expect(chromeFor(true)).toEqual(themeChromeColors.dark);
 	});
 
+	it("uses transparent window paint on platforms with system materials", () => {
+		expect(usesSystemWindowMaterial("darwin")).toBe(true);
+		expect(usesSystemWindowMaterial("win32")).toBe(false);
+		expect(usesSystemWindowMaterial("linux")).toBe(false);
+		expect(windowBackgroundFor(true, "darwin")).toBe(TRANSPARENT_WINDOW_BACKGROUND);
+		expect(windowBackgroundFor(false, "win32")).toBe(themeChromeColors.light.background);
+		expect(windowBackgroundFor(true, "linux")).toBe(themeChromeColors.dark.background);
+	});
+
 	it("builds critical CSS and bootstrap script from the shared tokens", () => {
 		const css = criticalThemeStyle();
 		expect(css).toContain(themeChromeColors.light.background);
-		expect(css).toContain(themeChromeColors.dark.background);
+		expect(css).toContain(shellGlassDarkSurface);
+		expect(css).toContain(` ${shellGlassOpacity.light}%,`);
+		expect(css).toContain(` ${shellGlassOpacity.dark}%,`);
 		expect(css).toContain('html[data-theme="dark"]');
 
 		const script = themeBootstrapScript();

@@ -31,7 +31,7 @@
 	--sidebar-foreground: var(--storm-900);
 	--sidebar-ring: var(--blue-600);
 	--sidebar-border: var(--storm-300);
-	--sidebar-accent: var(--storm-300);
+	--sidebar-accent: var(--storm-200);
 	--sidebar-accent-foreground: var(--storm-700);
 	--sidebar-primary: var(--storm-950);
 	--sidebar-primary-foreground: var(--storm-50);
@@ -58,6 +58,16 @@
 
 	/* Radius */
 	--radius: 0.625rem; /* 10px */
+
+	/* Scrollbar */
+	--app-scrollbar-width: 6px;
+	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
+	--app-scrollbar-thumb-hover: var(--border);
+
+	/* Outer shell tint over Electron vibrancy (no CSS blur — OS materials do that).
+	   Opacity values must stay in sync with shellGlassOpacity in theme-tokens.ts
+	   (critical first-paint CSS). */
+	--shell-glass-opacity: 64%;
 }
 
 [data-theme="dark"] {
@@ -103,4 +113,12 @@
 	--warning: var(--yellow-700);
 	--warning-foreground: var(--neutral-900);
 	--warning-border: var(--yellow-700);
+
+	/* Scrollbar — same mix recipe; --border already switches for dark */
+	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 70%, transparent);
+	--app-scrollbar-thumb-hover: var(--border);
+
+	/* Outer shell — mid tint: vibrancy readable without washing out chrome.
+	   Keep in sync with shellGlassOpacity.dark in theme-tokens.ts. */
+	--shell-glass-opacity: 74%;
 }

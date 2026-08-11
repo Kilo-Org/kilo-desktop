@@ -1,21 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createKiloRuntimeClient } from "./create-kilo-runtime-client.js";
+import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 
 const connection = {
 	baseUrl: "http://127.0.0.1:4096",
 	username: "kilo-user",
 	password: "kilo-password",
 	version: "7.4.20",
-	directory: "/workspaces/kilo project",
+	globalDirectory: "/kilo/runtime",
 };
 
-describe("createKiloRuntimeClient", () => {
+describe("Kilo runtime clients", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
-	it("scopes authenticated REST and SSE requests to the workspace directory", async () => {
+	it("keeps global requests authenticated and directory-unscoped", async () => {
 		const requests: Request[] = [];
 		const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
 			const request = input instanceof Request ? input : new Request(input, init);
@@ -33,9 +33,9 @@ describe("createKiloRuntimeClient", () => {
 		});
 		vi.stubGlobal("fetch", fetch);
 
-		const client = createKiloRuntimeClient(connection);
+		const client = createKiloGlobalClient(connection);
 		await client.global.health();
-		const { stream } = await client.event.subscribe();
+		const { stream } = await client.global.event();
 		await stream.next();
 
 		expect(requests).toHaveLength(2);
@@ -43,8 +43,28 @@ describe("createKiloRuntimeClient", () => {
 			expect(request.headers.get("authorization")).toBe(
 				`Basic ${globalThis.btoa("kilo-user:kilo-password")}`,
 			);
-			expect(new URL(request.url).searchParams.get("directory")).toBe(connection.directory);
+			expect(new URL(request.url).searchParams.has("directory")).toBe(false);
 			expect(request.headers.has("x-kilo-directory")).toBe(false);
 		}
+	});
+
+	it("scopes directory clients without changing authentication", async () => {
+		const requests: Request[] = [];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof globalThis.fetch>(async (input, init) => {
+				requests.push(input instanceof Request ? input : new Request(input, init));
+				return Response.json({ healthy: true, version: "7.4.20" });
+			}),
+		);
+
+		const directory = "/workspaces/kilo project";
+		await createKiloDirectoryClient(connection, directory).global.health();
+
+		expect(requests).toHaveLength(1);
+		expect(new URL(requests[0]!.url).searchParams.get("directory")).toBe(directory);
+		expect(requests[0]!.headers.get("authorization")).toBe(
+			`Basic ${globalThis.btoa("kilo-user:kilo-password")}`,
+		);
 	});
 });

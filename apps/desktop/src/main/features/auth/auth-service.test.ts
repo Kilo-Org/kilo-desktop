@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { OAuthFetch } from "./types.js";
 import type { ResolvedSite } from "./config/site.js";
-import { AuthSessionService, type UserInfoFetcher } from "./auth-service.js";
+import { AuthSessionService, type UserPassportFetcher } from "./auth-service.js";
 import { FREE_SUBSCRIPTION, SUBSCRIPTION_TIERS } from "./utils.js";
 
 const site: ResolvedSite = { domain: "anaconda.test", client_id: "test-client" };
@@ -430,54 +430,77 @@ describe("AuthSessionService", () => {
 
 	describe("userinfo caching", () => {
 		const businessAttributes = [{ id: "business_subscription.org-1", group: "subscriptions" }];
+		const businessOrganizations = [{ id: "org-1", name: "Acme", role: "admin" }];
+		const businessPassport = {
+			user_id: "u1",
+			attributes: businessAttributes,
+			organizations: businessOrganizations,
+		};
 
-		function serviceWith(getUserInfo: UserInfoFetcher) {
+		function serviceWith(getUserPassport: UserPassportFetcher) {
 			return new AuthSessionService({
 				resolveSite: async () => site,
 				loadKeyring: fakeKeyring("api-key"),
 				fetch: vi.fn(),
-				getUserInfo,
+				getUserPassport,
 				logger: silentLogger,
 			});
 		}
 
 		it("does not cache a failure and retries on the next call", async () => {
-			const getUserInfo = vi
-				.fn<UserInfoFetcher>()
+			const getUserPassport = vi
+				.fn<UserPassportFetcher>()
 				.mockRejectedValueOnce(new Error("offline"))
-				.mockResolvedValueOnce(businessAttributes);
-			const service = serviceWith(getUserInfo);
+				.mockResolvedValueOnce(businessPassport);
+			const service = serviceWith(getUserPassport);
 
 			await expect(service.getUserInfo()).rejects.toThrow("offline");
 			await expect(service.getUserInfo()).resolves.toEqual(businessAttributes);
-			expect(getUserInfo).toHaveBeenCalledTimes(2);
+			expect(getUserPassport).toHaveBeenCalledTimes(2);
 		});
 
 		it("caches a successful result", async () => {
-			const getUserInfo = vi.fn<UserInfoFetcher>(async () => businessAttributes);
-			const service = serviceWith(getUserInfo);
+			const getUserPassport = vi.fn<UserPassportFetcher>(async () => businessPassport);
+			const service = serviceWith(getUserPassport);
 
 			await expect(service.getUserInfo()).resolves.toEqual(businessAttributes);
 			await expect(service.getUserInfo()).resolves.toEqual(businessAttributes);
-			expect(getUserInfo).toHaveBeenCalledTimes(1);
+			expect(getUserPassport).toHaveBeenCalledTimes(1);
+		});
+
+		it("shares the passport cache across getUserInfo, getOrganizations, and getSubscription", async () => {
+			const getUserPassport = vi.fn<UserPassportFetcher>(async () => businessPassport);
+			const service = serviceWith(getUserPassport);
+
+			await expect(service.getUserInfo()).resolves.toEqual(businessAttributes);
+			await expect(service.getOrganizations()).resolves.toEqual(businessOrganizations);
+			await expect(service.getSubscription()).resolves.toBe(SUBSCRIPTION_TIERS.business);
+			expect(getUserPassport).toHaveBeenCalledTimes(1);
+		});
+
+		it("returns an empty organization list when the passport has none", async () => {
+			const getUserPassport = vi.fn<UserPassportFetcher>(async () => ({ user_id: "u1" }));
+			const service = serviceWith(getUserPassport);
+
+			await expect(service.getOrganizations()).resolves.toEqual([]);
 		});
 
 		it("does not stick free-tier after a transient getSubscription failure", async () => {
-			const getUserInfo = vi
-				.fn<UserInfoFetcher>()
+			const getUserPassport = vi
+				.fn<UserPassportFetcher>()
 				.mockRejectedValueOnce(new Error("offline"))
-				.mockResolvedValueOnce(businessAttributes);
-			const service = serviceWith(getUserInfo);
+				.mockResolvedValueOnce(businessPassport);
+			const service = serviceWith(getUserPassport);
 
 			const first = await service.getSubscription().catch(() => FREE_SUBSCRIPTION);
 			expect(first).toBe(FREE_SUBSCRIPTION);
 
 			await expect(service.getSubscription()).resolves.toBe(SUBSCRIPTION_TIERS.business);
-			expect(getUserInfo).toHaveBeenCalledTimes(2);
+			expect(getUserPassport).toHaveBeenCalledTimes(2);
 		});
 
 		it("re-resolves userinfo after a session change clears the cache", async () => {
-			const getUserInfo = vi.fn<UserInfoFetcher>(async () => businessAttributes);
+			const getUserPassport = vi.fn<UserPassportFetcher>(async () => businessPassport);
 			const renamedBody = {
 				passport: {
 					user_id: "u1",
@@ -492,7 +515,7 @@ describe("AuthSessionService", () => {
 				resolveSite: async () => site,
 				loadKeyring: fakeKeyring("api-key"),
 				fetch,
-				getUserInfo,
+				getUserPassport,
 				logger: silentLogger,
 			});
 
@@ -501,7 +524,7 @@ describe("AuthSessionService", () => {
 			await service.refresh();
 			await service.getUserInfo();
 
-			expect(getUserInfo).toHaveBeenCalledTimes(2);
+			expect(getUserPassport).toHaveBeenCalledTimes(2);
 		});
 	});
 });

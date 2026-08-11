@@ -3,6 +3,7 @@ import {
 	createClient,
 	type LDClient,
 	type LDContext,
+	type LDContextCommon,
 	type LDLogger,
 } from "@launchdarkly/node-client-sdk";
 
@@ -10,6 +11,7 @@ import { createLogger, type Logger } from "../../platform/logger.js";
 import type {
 	FeatureFlagEvents,
 	FeatureFlagContext,
+	FeatureFlagOrganizationContext,
 	FeatureFlagProvider,
 	StartStatus,
 } from "./types.js";
@@ -55,14 +57,49 @@ export class LaunchDarklyProvider
 		});
 	}
 
+	/**
+	 * Projects the internal context onto a LaunchDarkly context. When the user
+	 * belongs to an organization we emit a multi-context — one `user` and one
+	 * `organization` kind — so flag rules can target either dimension
+	 * independently (per LaunchDarkly's contexts model). Without an org we
+	 * emit a single-kind user context.
+	 */
 	#toLdContext(ctx: FeatureFlagContext): LDContext {
+		const user = this.#toUserContext(ctx);
+
+		if (!ctx.organization) {
+			return { kind: "user", ...user };
+		}
+
 		return {
-			kind: "user",
+			kind: "multi",
+			user,
+			organization: this.#toOrganizationContext(ctx.organization),
+		};
+	}
+
+	#toUserContext(ctx: FeatureFlagContext): LDContextCommon {
+		// LaunchDarkly's built-in user attributes (`name`, `email`, `firstName`,
+		// `lastName`) match its documented segment builder; the rest are custom.
+		return {
 			key: ctx.userId ?? "anonymous",
 			anonymous: !ctx.userId,
+			...(ctx.name !== undefined ? { name: ctx.name } : {}),
+			...(ctx.firstName !== undefined ? { firstName: ctx.firstName } : {}),
+			...(ctx.lastName !== undefined ? { lastName: ctx.lastName } : {}),
+			...(ctx.email !== undefined ? { email: ctx.email } : {}),
+			...(ctx.username !== undefined ? { username: ctx.username } : {}),
 			is_anaconda_employee: ctx.isEmployee,
-			subscription: ctx.subscription,
+			...(ctx.subscription !== undefined ? { subscription: ctx.subscription } : {}),
 			app_version: this.#appVersion,
+		};
+	}
+
+	#toOrganizationContext(org: FeatureFlagOrganizationContext): LDContextCommon {
+		return {
+			key: org.id,
+			...(org.name !== undefined ? { name: org.name } : {}),
+			...(org.role !== undefined ? { role: org.role } : {}),
 		};
 	}
 
@@ -101,6 +138,7 @@ export class LaunchDarklyProvider
 		// swallowing a slow/offline failure still leaves the derived context in
 		// place for the SDK to evaluate once it reconnects. start() must run first.
 		await this.start();
+		this.#logger.info(`LaunchDarkly identify: ${describeContext(context)}`);
 		try {
 			await this.#client.identify(this.#toLdContext(context));
 		} catch (cause) {
@@ -115,4 +153,29 @@ export class LaunchDarklyProvider
 		this.removeAllListeners();
 		await this.#client.close();
 	}
+}
+
+/**
+ * Human-readable one-liner for identify logging. Email is masked so the log
+ * confirms it was included without persisting the address to log files.
+ */
+function describeContext(ctx: FeatureFlagContext): string {
+	const parts: string[] = [`userId=${ctx.userId ?? "anonymous"}`, `employee=${ctx.isEmployee}`];
+	if (ctx.subscription) parts.push(`subscription=${ctx.subscription}`);
+	if (ctx.email) parts.push(`email=${maskEmail(ctx.email)}`);
+	if (ctx.username) parts.push(`username=${ctx.username}`);
+	if (ctx.name) parts.push(`name="${ctx.name}"`);
+	if (ctx.organization) {
+		parts.push(
+			`org=${ctx.organization.id}${ctx.organization.name ? ` (${ctx.organization.name})` : ""}`,
+		);
+	}
+	return parts.join(" ");
+}
+
+function maskEmail(email: string): string {
+	const [local, domain] = email.split("@");
+	if (!local || !domain) return "***";
+	const head = local.slice(0, 1);
+	return `${head}***@${domain}`;
 }

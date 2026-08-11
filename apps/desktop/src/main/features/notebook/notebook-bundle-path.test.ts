@@ -25,7 +25,7 @@ describe("resolveNotebookBundleRoot", () => {
 
 	it("reads the staged bundle from the package root when unpackaged", () => {
 		expect(resolveNotebookBundleRoot({ ...UNPACKAGED, exists: () => true })).toBe(
-			"/repo/apps/desktop/build/notebook",
+			path.join(UNPACKAGED.appPath, "build", "notebook"),
 		);
 	});
 

@@ -1,5 +1,5 @@
 import { useAuiState } from "@assistant-ui/react";
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
+import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import {
 	useCallback,
 	useEffect,
@@ -89,7 +89,6 @@ export function ChatPage() {
 	const prevPanelOpenRef = useRef(panelState.isOpen);
 	const previousSessionIdRef = useRef(sessionId);
 	const [panelWidth, setPanelWidth] = useState(readStoredPanelWidth);
-	const [frameWidth, setFrameWidth] = useState(0);
 	const [isResizing, setIsResizing] = useState(false);
 	const [panelMounted, setPanelMounted] = useState(panelState.isOpen);
 	const [maximizedBySession, setMaximizedBySession] = useState<Record<string, boolean>>({});
@@ -97,10 +96,6 @@ export function ChatPage() {
 	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
 
 	const panelSlotWidth = useMotionValue(0);
-	const frameWidthMotion = useMotionValue(0);
-	const chatWidth = useTransform([panelSlotWidth, frameWidthMotion], ([panel, frame]) =>
-		Math.max(0, (frame as number) - (panel as number)),
-	);
 
 	// Page-scoped shell contributions: breadcrumb + panel toggle live in the app
 	// header only while the chat route is mounted.
@@ -144,25 +139,11 @@ export function ChatPage() {
 		return Math.max(PANEL_MIN_WIDTH, Math.min(maxWidth, value));
 	}, []);
 
-	useLayoutEffect(() => {
-		const el = containerRef.current;
-		if (!el) return;
-		const update = () => {
-			const width = el.clientWidth;
-			setFrameWidth(width);
-			frameWidthMotion.set(width);
-		};
-		update();
-		const observer = new ResizeObserver(update);
-		observer.observe(el);
-		return () => observer.disconnect();
-	}, [frameWidthMotion]);
-
 	useEffect(() => {
 		setPanelWidth((current) => clampPanelWidth(current));
 	}, [clampPanelWidth, panelOpen]);
 
-	const openWidth = maximized && frameWidth > 0 ? frameWidth : panelWidth + PANEL_GAP_PX;
+	const openWidth = panelWidth + PANEL_GAP_PX;
 	const targetPanelWidth = panelOpen ? openWidth : 0;
 
 	// Only the open/close toggle springs. Maximize, resize, and session changes snap.
@@ -299,13 +280,16 @@ export function ChatPage() {
 				className="relative flex h-full min-h-0 overflow-hidden"
 				data-qa-id="kilo-chat-page"
 			>
-				<motion.div
+				{/*
+				  Chat column is flex-1 so it tracks shell layout (left-nav open/close) in the
+				  same frame as the CSS width transition. Pixel widths derived from
+				  ResizeObserver lagged that transition and made the right edge jump.
+				*/}
+				<div
 					className={cn(
 						"min-h-0 min-w-0 overflow-hidden",
-						frameWidth <= 0 && "flex-1",
-						maximized && panelOpen && "pointer-events-none",
+						maximized && panelOpen ? "pointer-events-none w-0" : "flex-1",
 					)}
-					{...(frameWidth > 0 ? { style: { width: chatWidth } } : {})}
 				>
 					<div
 						className="bg-muted border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border"
@@ -316,14 +300,20 @@ export function ChatPage() {
 							<Thread />
 						</div>
 					</div>
-				</motion.div>
+				</div>
 
 				<motion.div
-					className="h-full min-w-0 shrink-0 overflow-hidden"
-					style={{ width: panelSlotWidth }}
+					className={cn(
+						"h-full min-w-0 overflow-hidden",
+						maximized && panelOpen ? "min-w-0 flex-1" : "shrink-0",
+					)}
+					style={maximized && panelOpen ? undefined : { width: panelSlotWidth }}
 				>
 					{panelMounted ? (
-						<div className="flex h-full shrink-0" style={{ width: openWidth }}>
+						<div
+							className={cn("flex h-full", maximized ? "w-full" : "shrink-0")}
+							style={maximized ? undefined : { width: openWidth }}
+						>
 							{maximized ? null : (
 								<div
 									role="separator"

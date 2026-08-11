@@ -124,8 +124,8 @@ function ShellTitlebar({
 
 			<div
 				className={cn(
-					"flex min-w-0 flex-1 items-center gap-2",
-					// No transition — only the sidebar panel animates; chrome jumps with state.
+					"flex min-w-0 flex-1 items-center gap-2 transition-[padding-left] duration-200 ease-linear",
+					// Match sidebar gap timing so header chrome doesn't snap ahead of content.
 					open ? "pl-[var(--sidebar-width)]" : "pl-[calc(var(--shell-sidebar-toggle-left)+2.5rem)]",
 				)}
 			>
@@ -146,18 +146,12 @@ function ShellTitlebar({
 }
 
 function ShellInset({ children }: { children: ReactNode }) {
-	const { open } = useSidebar();
-
 	return (
 		// Keep overflow off SidebarInset — Electron ignores drag regions inside
 		// overflow:hidden ancestors, which would break titlebar dragging.
-		<SidebarInset
-			className={cn(
-				"min-h-0 min-w-0 bg-transparent pr-3 pb-3",
-				// Match the right gutter when the sidebar is offcanvas-hidden.
-				!open && "pl-3",
-			)}
-		>
+		// Left gutter only when the nav is collapsed (peer state), transitioned with
+		// the sidebar gap so we never leave a permanent gap beside an open sidebar.
+		<SidebarInset className="min-h-0 min-w-0 bg-transparent pr-3 pb-3 transition-[padding-left] duration-200 ease-linear peer-data-[state=collapsed]:pl-3">
 			{children}
 		</SidebarInset>
 	);

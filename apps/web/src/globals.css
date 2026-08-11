@@ -68,6 +68,17 @@ html[data-theme="dark"] {
 	background: transparent;
 }
 
+/* Electron titlebar drag. Keep the region on an ancestor that is NOT inside
+   `overflow: hidden` / `transform` / `filter` — those break hit-testing.
+   Interactive descendants opt out so buttons stay clickable. */
+.drag-region {
+	-webkit-app-region: drag;
+}
+
+.drag-region :is(button, a, input, textarea, select, [role="button"]) {
+	-webkit-app-region: no-drag;
+}
+
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));

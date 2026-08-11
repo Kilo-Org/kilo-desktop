@@ -87,6 +87,27 @@ describe("AppSidebarLayout login button", () => {
 	});
 });
 
+describe("AppSidebarLayout nav toggle", () => {
+	afterEach(cleanup);
+
+	it("toggles the left nav open and closed", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		await expect
+			.element(page.getByRole("button", { name: "Toggle navigation" }))
+			.toBeInTheDocument();
+
+		const sidebar = () => baseElement.querySelector('[data-slot="sidebar"]');
+		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
+
+		await page.getByRole("button", { name: "Toggle navigation" }).click();
+		expect(sidebar()?.getAttribute("data-state")).toBe("collapsed");
+
+		await page.getByRole("button", { name: "Toggle navigation" }).click();
+		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
+	});
+});
+
 describe("AppSidebarLayout account menu", () => {
 	afterEach(cleanup);
 

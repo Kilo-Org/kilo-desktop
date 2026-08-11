@@ -7,6 +7,7 @@ import { page } from "vitest/browser";
 import { SdkProvider, useFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 import {
 	FeatureError,
+	HEADER_LEADING_ZONE,
 	HEADER_TRAILING_ZONE,
 	type Contribution,
 } from "@anaconda-agentic-desktop/feature-sdk";
@@ -31,24 +32,30 @@ import { ChatPage } from "./ChatPage.js";
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 
-/** Stand-in for the shell `header-trailing` ZoneOutlet so page contributions render. */
-function HeaderTrailingOutlet() {
+/** Stand-in for a shell ZoneOutlet so page contributions render in tests. */
+function ZoneOutletStandIn({
+	zone,
+	qaId,
+}: {
+	zone: typeof HEADER_LEADING_ZONE | typeof HEADER_TRAILING_ZONE;
+	qaId: string;
+}) {
 	const registry = useFeatureSystem().services.contributionRegistry;
 	const [contributions, setContributions] = useState<readonly Contribution[]>(() =>
-		registry.getForZone(HEADER_TRAILING_ZONE),
+		registry.getForZone(zone),
 	);
 
 	useEffect(() => {
-		setContributions(registry.getForZone(HEADER_TRAILING_ZONE));
+		setContributions(registry.getForZone(zone));
 		return registry.onChange(() => {
-			setContributions(registry.getForZone(HEADER_TRAILING_ZONE));
+			setContributions(registry.getForZone(zone));
 		});
-	}, [registry]);
+	}, [registry, zone]);
 
 	if (contributions.length === 0) return null;
 
 	return (
-		<div data-qa-id="zone-header-trailing">
+		<div data-qa-id={qaId}>
 			{contributions.map((contribution, index) => {
 				if (typeof contribution.component !== "function") return null;
 				const Component = contribution.component as ComponentType;
@@ -57,6 +64,15 @@ function HeaderTrailingOutlet() {
 				);
 			})}
 		</div>
+	);
+}
+
+function HeaderOutlets() {
+	return (
+		<>
+			<ZoneOutletStandIn zone={HEADER_LEADING_ZONE} qaId="zone-header-leading" />
+			<ZoneOutletStandIn zone={HEADER_TRAILING_ZONE} qaId="zone-header-trailing" />
+		</>
 	);
 }
 
@@ -167,7 +183,7 @@ function renderChatPage(options?: {
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
 					<ChatFeatureProvider>
-						<HeaderTrailingOutlet />
+						<HeaderOutlets />
 						<ChatPage />
 					</ChatFeatureProvider>
 				</WorkspacesFeatureProvider>

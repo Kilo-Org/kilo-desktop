@@ -9,10 +9,11 @@ import {
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { HEADER_TRAILING_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
+import { HEADER_LEADING_ZONE, HEADER_TRAILING_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
+import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatRightPanelHeaderToggle } from "./right-panel/ChatRightPanelHeaderToggle.js";
@@ -101,14 +102,23 @@ export function ChatPage() {
 		Math.max(0, (frame as number) - (panel as number)),
 	);
 
-	// Page-scoped shell contribution: toggle lives in the app header only while
-	// the chat route is mounted.
+	// Page-scoped shell contributions: breadcrumb + panel toggle live in the app
+	// header only while the chat route is mounted.
 	useEffect(() => {
-		return sdk.contribute(HEADER_TRAILING_ZONE, {
+		const removeBreadcrumb = sdk.contribute(HEADER_LEADING_ZONE, {
+			component: ChatSessionBreadcrumb,
+			label: "Chat session breadcrumb",
+			priority: 10,
+		});
+		const removeToggle = sdk.contribute(HEADER_TRAILING_ZONE, {
 			component: ChatRightPanelHeaderToggle,
 			label: "Chat right panel toggle",
 			priority: 10,
 		});
+		return () => {
+			removeBreadcrumb();
+			removeToggle();
+		};
 	}, [sdk]);
 
 	useLayoutEffect(() => {

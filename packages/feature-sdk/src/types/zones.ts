@@ -12,6 +12,7 @@ export const SHELL_ZONES = [
 	"status-bar",
 	"dashboard",
 	"home-composer-leading-action",
+	"header-leading",
 	"header-trailing",
 ] as const;
 
@@ -26,6 +27,8 @@ export const STATUS_BAR_ZONE = "status-bar" satisfies ShellZone;
 export const DASHBOARD_ZONE = "dashboard" satisfies ShellZone;
 /** Leading action area inside the home page composer. */
 export const HOME_COMPOSER_LEADING_ACTION_ZONE = "home-composer-leading-action" satisfies ShellZone;
+/** Leading content on the left of the app top header (e.g. breadcrumbs). */
+export const HEADER_LEADING_ZONE = "header-leading" satisfies ShellZone;
 /** Trailing actions on the right of the app top header. */
 export const HEADER_TRAILING_ZONE = "header-trailing" satisfies ShellZone;
 

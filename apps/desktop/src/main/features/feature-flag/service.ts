@@ -65,6 +65,11 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 			logger.warn(
 				"No LaunchDarkly client-side ID configured (VITE_LAUNCHDARKLY_CLIENT_SIDE_ID); flags will resolve to defaults.",
 			);
+		} else {
+			// Fingerprint (not the whole ID) so we can confirm which LD env the
+			// app booted against without leaking the credential to log files.
+			const fingerprint = `${clientSideId.slice(0, 4)}…${clientSideId.slice(-4)}`;
+			logger.info(`LaunchDarkly client-side ID configured (${fingerprint}).`);
 		}
 
 		const provider = new LaunchDarklyProvider({

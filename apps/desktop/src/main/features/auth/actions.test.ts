@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { OAuthFetch } from "./types.js";
-import { exchangeForApiKey, getUserInfo, passportToUser, whoamiResponseSchema } from "./actions.js";
+import {
+	exchangeForApiKey,
+	getUserPassport,
+	passportToUser,
+	whoamiResponseSchema,
+} from "./actions.js";
 
 const DOMAIN = "anaconda.test";
 const TOKEN = "access-token";
@@ -150,17 +155,17 @@ describe("passport", () => {
 	});
 });
 
-describe("getUserInfo", () => {
+describe("getUserPassport", () => {
 	it("throws when the fetch rejects (offline)", async () => {
 		const fetch = vi.fn<OAuthFetch>().mockRejectedValue(new Error("offline"));
 
-		await expect(getUserInfo(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow("offline");
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow("offline");
 	});
 
 	it("throws with the status when the response is not OK", async () => {
 		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({ detail: "boom" }, 500));
 
-		await expect(getUserInfo(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow(
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow(
 			"userinfo request failed (500)",
 		);
 	});
@@ -170,22 +175,30 @@ describe("getUserInfo", () => {
 			jsonResponse({ passport: { attributes: [{ id: 1 }] } }, 200),
 		);
 
-		await expect(getUserInfo(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow();
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow();
 	});
 
-	it("returns an empty list when the passport has no attributes", async () => {
-		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({ passport: { user_id: "u" } }, 200));
+	it("returns an empty passport when the body omits it", async () => {
+		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({}, 200));
 
-		await expect(getUserInfo(DOMAIN, TOKEN, fetch, USER_AGENT)).resolves.toEqual([]);
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).resolves.toEqual({});
 	});
 
-	it("returns the parsed attributes on a well-formed response", async () => {
-		const attributes = [{ id: "attr-1", group: "subscription", data: { tier: "pro" } }];
-		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({ passport: { attributes } }, 200));
+	it("returns the parsed passport (attributes + organizations) on success", async () => {
+		const passport = {
+			user_id: "u1",
+			profile: { username: "ada", email: "ada@example.com" },
+			organizations: [
+				{ id: "org-1", name: "Acme", role: "admin" },
+				{ id: "org-2", name: "Umbrella" },
+			],
+			attributes: [{ id: "business_subscription.org-1", group: "subscriptions" }],
+		};
+		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({ passport }, 200));
 
-		const result = await getUserInfo(DOMAIN, TOKEN, fetch, USER_AGENT);
+		const result = await getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT);
 
-		expect(result).toEqual(attributes);
+		expect(result).toEqual(passport);
 		expect(fetch).toHaveBeenCalledWith(
 			`https://${DOMAIN}/api/auth/userinfo`,
 			expect.objectContaining({

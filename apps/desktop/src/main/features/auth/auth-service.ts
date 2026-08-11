@@ -8,10 +8,12 @@ import type { AuthSession } from "@anaconda-agentic-desktop/contracts";
 
 import {
 	exchangeForApiKey,
-	getUserInfo,
+	getUserPassport,
 	passportToUser,
 	whoamiResponseSchema,
 	type UserInfoAttribute,
+	type UserInfoOrganization,
+	type UserInfoPassport,
 } from "./actions.js";
 import { primarySubscriptionFromAttributes, type UserSubscription } from "./utils.js";
 import { startLoopbackAuthorize, electronFetch } from "./oauth/callback-server.js";
@@ -51,7 +53,7 @@ export type ApiKeyExchanger = (
 	userAgent: string,
 ) => Promise<string>;
 
-export type UserInfoFetcher = typeof getUserInfo;
+export type UserPassportFetcher = typeof getUserPassport;
 
 export interface AuthSessionServiceOptions {
 	fetch?: OAuthFetch;
@@ -61,7 +63,7 @@ export interface AuthSessionServiceOptions {
 	login?: OAuthLogin;
 	createAuthorizeServer?: AuthorizeServerFactory;
 	exchangeForApiKey?: ApiKeyExchanger;
-	getUserInfo?: UserInfoFetcher;
+	getUserPassport?: UserPassportFetcher;
 	userAgent?: string;
 	logger?: AuthLogger;
 }
@@ -87,25 +89,28 @@ export class AuthSessionService {
 	readonly #login: OAuthLogin;
 	readonly #createAuthorizeServer: AuthorizeServerFactory;
 	readonly #exchangeForApiKey: ApiKeyExchanger;
-	readonly #userInfoAction: UserInfoFetcher;
+	readonly #userPassportAction: UserPassportFetcher;
 	readonly #userAgent: string;
 	readonly #logger: AuthLogger;
 
 	/**
-	 * Memoized userinfo attributes; cache cleared whenever the session changes.
+	 * Memoized userinfo passport; cache cleared whenever the session changes.
 	 * A rejected fetch is evicted rather than cached so a transient failure does
-	 * not stick for the rest of the session — the next call retries.
+	 * not stick for the rest of the session — the next call retries. All
+	 * passport-derived accessors (`getUserInfo`, `getOrganizations`,
+	 * `getSubscription`) share this single cache entry.
 	 */
-	readonly #userInfo = memoize(async (): Promise<UserInfoAttribute[]> => {
+	readonly #passport = memoize(async (): Promise<UserInfoPassport> => {
 		const apiKey = await this.getApiKey();
-		if (!apiKey) return [];
+		if (!apiKey) return {};
 		try {
 			const site = await this.#resolveSite(this.#configLoader);
-			return await this.#userInfoAction(site.domain, apiKey, this.#fetch, this.#userAgent);
+			return await this.#userPassportAction(site.domain, apiKey, this.#fetch, this.#userAgent);
 		} catch (cause) {
 			// Do not cache a transient failure: evict this rejected entry so the
-			// next getUserInfo()/getSubscription() retries once connectivity returns.
-			this.#userInfo.cache.delete?.(undefined);
+			// next getUserInfo()/getSubscription()/getOrganizations() retries once
+			// connectivity returns.
+			this.#passport.cache.delete?.(undefined);
 			throw cause;
 		}
 	});
@@ -119,7 +124,7 @@ export class AuthSessionService {
 		this.#createAuthorizeServer =
 			options.createAuthorizeServer ?? ((domain) => startLoopbackAuthorize({ domain }));
 		this.#exchangeForApiKey = options.exchangeForApiKey ?? exchangeForApiKey;
-		this.#userInfoAction = options.getUserInfo ?? getUserInfo;
+		this.#userPassportAction = options.getUserPassport ?? getUserPassport;
 		this.#userAgent = options.userAgent ?? "anaconda-agentic-desktop";
 		this.#logger = options.logger ?? defaultLogger;
 	}
@@ -162,7 +167,17 @@ export class AuthSessionService {
 	 * subsequent call retries.
 	 */
 	async getUserInfo(): Promise<UserInfoAttribute[]> {
-		return this.#userInfo();
+		return (await this.#passport()).attributes ?? [];
+	}
+
+	/**
+	 * Organizations the authenticated user belongs to. Empty list when anonymous
+	 * or when the passport carries no organizations. Shares the memoized
+	 * passport cache with `getUserInfo`/`getSubscription`; propagates a
+	 * transient fetch rejection.
+	 */
+	async getOrganizations(): Promise<UserInfoOrganization[]> {
+		return (await this.#passport()).organizations ?? [];
 	}
 
 	/**
@@ -339,7 +354,7 @@ export class AuthSessionService {
 		const changed = !isEqual(this.#session, next);
 		this.#session = next;
 		if (changed) {
-			this.#userInfo.cache.clear?.();
+			this.#passport.cache.clear?.();
 			for (const listener of this.#listeners) listener(next);
 		}
 	}

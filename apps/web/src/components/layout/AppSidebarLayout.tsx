@@ -180,6 +180,11 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 				<SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent pr-3 pb-3">
 					<header className="flex h-14 items-center justify-end gap-2 pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
+						{/* Trailing header contributions (e.g. chat right-panel toggle) */}
+						<ZoneOutlet
+							zone="header-trailing"
+							className="flex items-center gap-1 [-webkit-app-region:no-drag]"
+						/>
 						{session.status !== "authenticated" && (
 							<Button
 								onClick={() => {
@@ -192,7 +197,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 							</Button>
 						)}
 					</header>
-					<div className="bg-muted border-border flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-md border">
+					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-transparent">
 						{children}
 					</div>
 					{/* Status-bar contributions registered via sdk.contribute("status-bar", ...) */}

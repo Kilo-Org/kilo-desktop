@@ -36,6 +36,7 @@ class SeededThreadListAdapter implements RemoteThreadListAdapter {
 	readonly archiveCalls: string[] = [];
 	readonly unarchiveCalls: string[] = [];
 	readonly renameCalls: { remoteId: string; title: string }[] = [];
+	readonly deleteCalls: string[] = [];
 	private readonly records: Required<SeededThread>[];
 
 	constructor(threads: SeededThread[]) {
@@ -68,6 +69,7 @@ class SeededThreadListAdapter implements RemoteThreadListAdapter {
 	}
 
 	delete(remoteId: string) {
+		this.deleteCalls.push(remoteId);
 		const index = this.records.findIndex((entry) => entry.remoteId === remoteId);
 		if (index >= 0) this.records.splice(index, 1);
 		return Promise.resolve();
@@ -197,7 +199,7 @@ describe("SessionList", () => {
 			],
 		});
 
-		await screen.getByRole("searchbox", { name: "Search threads" }).fill("Add tests");
+		await screen.getByRole("searchbox", { name: "Search chats" }).fill("Add tests");
 
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
@@ -361,5 +363,24 @@ describe("SessionList", () => {
 
 		await expect.element(screen.getByText("Renamed session")).toBeVisible();
 		expect(adapter.renameCalls).toEqual([{ remoteId: "ses-1", title: "Renamed session" }]);
+	});
+
+	it("deletes a session without crashing during the exit animation", async () => {
+		const { adapter, screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Keep me" },
+				{ remoteId: "ses-2", title: "Delete me" },
+			],
+		});
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Delete me" });
+		await expect.element(card).toBeVisible();
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await page.getByRole("menuitem", { name: "Delete" }).click();
+
+		await expect.element(screen.getByText("Delete me")).not.toBeInTheDocument();
+		await expect.element(screen.getByText("Keep me")).toBeVisible();
+		expect(adapter.deleteCalls).toEqual(["ses-2"]);
 	});
 });

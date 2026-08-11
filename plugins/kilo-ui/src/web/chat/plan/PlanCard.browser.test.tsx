@@ -1,0 +1,314 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
+
+import type * as AssistantUiReact from "@assistant-ui/react";
+
+import { ChatAgentSelectionProvider } from "../agent-selection/ChatAgentSelectionContext.js";
+import { ChatConnectionProvider } from "../connection/ChatConnectionContext.js";
+import { useRightPanelStore } from "../right-panel/right-panel-store.js";
+import { PlanCard } from "./PlanCard.js";
+import type { PlanProjection } from "./plan-projection.js";
+import { resetPlanApprovalUiState } from "./use-approve-plan.js";
+
+const replyToQuestion = vi.fn().mockResolvedValue(undefined);
+const setAgent = vi.fn();
+const append = vi.fn();
+
+const threadMessages: unknown[] = [];
+
+vi.mock("@assistant-ui/react", async (importOriginal) => {
+	const actual = await importOriginal<typeof AssistantUiReact>();
+	return {
+		...actual,
+		useAuiState: (
+			selector: (state: {
+				threadListItem: { remoteId: string };
+				thread: {
+					messages: unknown[];
+					extras: {
+						replyToQuestion: typeof replyToQuestion;
+						rejectQuestion: ReturnType<typeof vi.fn>;
+						replyToPermission: ReturnType<typeof vi.fn>;
+					};
+				};
+			}) => unknown,
+		) =>
+			selector({
+				threadListItem: { remoteId: "session-plan" },
+				thread: {
+					messages: threadMessages,
+					extras: {
+						replyToQuestion,
+						rejectQuestion: vi.fn(),
+						replyToPermission: vi.fn(),
+					},
+				},
+			}),
+		useAui: () => ({
+			thread: { append },
+			composer: {
+				getState: () => ({ text: "", isEmpty: true }),
+				setText: vi.fn(),
+				send: vi.fn(),
+			},
+		}),
+	};
+});
+
+vi.mock("@assistant-ui/react-opencode", () => ({
+	useOpenCodeQuestions: () => [
+		{
+			id: "q-plan",
+			sessionID: "session-plan",
+			askedAt: 1,
+			questions: [
+				{
+					question: "Ready to implement?",
+					header: "Implement",
+					options: [
+						{ label: "Start new session" },
+						{ label: "Continue here" },
+						{ label: "Keep refining" },
+					],
+				},
+			],
+		},
+	],
+}));
+
+vi.mock("../runtime/create-kilo-runtime-client.js", () => ({
+	createKiloDirectoryClient: vi.fn(() => ({
+		file: {
+			read: vi.fn().mockResolvedValue({
+				data: {
+					content: "# Loaded from file\n\n- recovered step",
+				},
+			}),
+		},
+	})),
+}));
+
+function renderPlanCard(projection: PlanProjection) {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+	});
+
+	const wrapper = ({ children }: { children: ReactNode }) => (
+		<QueryClientProvider client={queryClient}>
+			<ChatConnectionProvider
+				status={{
+					isPending: false,
+					isError: false,
+					error: null,
+					connectionPromise: Promise.resolve({
+						baseUrl: "http://127.0.0.1:4096",
+						username: "kilo",
+						password: "kilo",
+						version: "1.0.0",
+						globalDirectory: "/kilo",
+					}),
+				}}
+			>
+				<ChatAgentSelectionProvider
+					value={{
+						agent: "plan",
+						setAgent,
+						catalog: undefined,
+						isCatalogPending: false,
+						isCatalogError: false,
+					}}
+				>
+					{children}
+				</ChatAgentSelectionProvider>
+			</ChatConnectionProvider>
+		</QueryClientProvider>
+	);
+
+	return render(<PlanCard projection={projection} />, { wrapper });
+}
+
+afterEach(() => {
+	cleanup();
+	threadMessages.length = 0;
+	useRightPanelStore.setState({ bySessionId: {} });
+	resetPlanApprovalUiState();
+	vi.clearAllMocks();
+});
+
+describe("PlanCard", () => {
+	it("shows Writing Plan while the plan file is being written", async () => {
+		const { baseElement } = renderPlanCard({
+			status: "writing",
+			path: ".kilo/plans/ship.md",
+			markdown: "# Ship\n\n- step",
+			anchorCallId: "write-1",
+			hiddenCallIds: new Set(["write-1"]),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-plan-card")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-writing")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-writing")).toHaveTextContent("Writing Plan");
+		await expect.element(screen.getByTestId("kilo-plan-approve")).not.toBeInTheDocument();
+	});
+
+	it("shows a ready card with View Plan and Approve", async () => {
+		const { baseElement } = renderPlanCard({
+			status: "ready",
+			path: ".kilo/plans/ship.md",
+			markdown: "# Ship it\n\n- step 1\n- step 2\n- step 3",
+			anchorCallId: "write-1",
+			hiddenCallIds: new Set(["write-1", "exit-1"]),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByTestId("kilo-plan-card"))
+			.toHaveAttribute("data-plan-status", "ready");
+		await expect.element(screen.getByText("Ship it")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-preview")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-view")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-approve")).toBeVisible();
+	});
+
+	it("loads plan preview from disk when follow-up edits omit full markdown", async () => {
+		const { baseElement } = renderPlanCard({
+			status: "ready",
+			path: ".kilo/plans/ship.md",
+			markdown: "",
+			anchorCallId: "edit-1",
+			hiddenCallIds: new Set(["edit-1", "exit-2"]),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-plan-loading")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-preview")).toBeVisible();
+		await expect.element(screen.getByText("Loaded from file")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-approve")).toBeVisible();
+	});
+
+	it("opens the plan right-panel tab from View Plan with this card's anchor", async () => {
+		const { baseElement } = renderPlanCard({
+			status: "ready",
+			path: ".kilo/plans/ship.md",
+			markdown: "# Ship it\n\n- step 1",
+			anchorCallId: "write-1",
+			hiddenCallIds: new Set(["write-1", "exit-1"]),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("kilo-plan-view").click();
+
+		const state = useRightPanelStore.getState().bySessionId["session-plan"];
+		expect(state?.isOpen).toBe(true);
+		expect(state?.activeTabId).toBe("plan");
+		expect(state?.tabs).toEqual([{ id: "plan", kind: "plan" }]);
+		expect(state?.planAnchorCallId).toBe("write-1");
+	});
+
+	it("hides Approve on a superseded plan card after refinement", async () => {
+		threadMessages.push(
+			{
+				role: "assistant",
+				metadata: {
+					custom: {
+						opencode: {
+							parts: [
+								{
+									type: "tool",
+									tool: "write",
+									callID: "write-1",
+									state: {
+										status: "completed",
+										input: {
+											filePath: ".kilo/plans/ship.md",
+											content: "# Ship it\n\n- step 1",
+										},
+									},
+								},
+								{
+									type: "tool",
+									tool: "plan_exit",
+									callID: "exit-1",
+									state: {
+										status: "completed",
+										input: {},
+										metadata: { plan: ".kilo/plans/ship.md" },
+									},
+								},
+							],
+						},
+					},
+				},
+			},
+			{ role: "user", metadata: {} },
+			{
+				role: "assistant",
+				metadata: {
+					custom: {
+						opencode: {
+							parts: [
+								{
+									type: "tool",
+									tool: "edit",
+									callID: "edit-2",
+									state: {
+										status: "completed",
+										input: {
+											filePath: ".kilo/plans/ship.md",
+											oldString: "# Ship it",
+											newString: "# Ship it faster",
+										},
+									},
+								},
+								{
+									type: "tool",
+									tool: "plan_exit",
+									callID: "exit-2",
+									state: {
+										status: "completed",
+										input: {},
+										metadata: { plan: ".kilo/plans/ship.md" },
+									},
+								},
+							],
+						},
+					},
+				},
+			},
+		);
+
+		const { baseElement } = renderPlanCard({
+			status: "ready",
+			path: ".kilo/plans/ship.md",
+			markdown: "# Ship it\n\n- step 1",
+			anchorCallId: "write-1",
+			hiddenCallIds: new Set(["write-1", "exit-1"]),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-plan-view")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-plan-approve")).not.toBeInTheDocument();
+	});
+
+	it("answers Continue here and switches to the code agent on Approve", async () => {
+		const { baseElement } = renderPlanCard({
+			status: "ready",
+			path: ".kilo/plans/ship.md",
+			markdown: "# Ship it\n\n- step 1",
+			anchorCallId: "write-1",
+			hiddenCallIds: new Set(["write-1", "exit-1"]),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("kilo-plan-approve").click();
+
+		await vi.waitFor(() => expect(replyToQuestion).toHaveBeenCalledOnce());
+		expect(setAgent).toHaveBeenCalledWith("code");
+		expect(replyToQuestion).toHaveBeenCalledWith("q-plan", [["Continue here"]]);
+		await expect.element(screen.getByTestId("kilo-plan-approved")).toBeVisible();
+	});
+});

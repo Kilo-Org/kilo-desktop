@@ -21,7 +21,7 @@ const MarkdownTextImpl = () => {
 		<MarkdownTextPrimitive
 			remarkPlugins={[remarkGfm]}
 			className="aui-md"
-			components={defaultComponents}
+			components={markdownComponents}
 			defer
 		/>
 	);
@@ -71,7 +71,8 @@ const useCopyToClipboard = (
 	return { isCopied, copyToClipboard };
 };
 
-const defaultComponents = memoizeMarkdownComponents({
+/** Shared markdown element map used by chat `MarkdownText` and plan markdown. */
+export const markdownComponents = memoizeMarkdownComponents({
 	h1: ({ className, ...props }) => (
 		<h1
 			className={cn(

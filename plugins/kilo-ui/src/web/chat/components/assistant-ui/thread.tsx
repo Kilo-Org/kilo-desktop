@@ -19,6 +19,12 @@ import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
 import { OpenCodeQuestionQuestionnaire } from "../tools/opencode-question-card.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
+import {
+	getPlanProjectionFromParts,
+	isPlanFollowupRequest,
+	shouldExcludeToolCallFromActivityGroup,
+} from "../../plan/index.js";
+import { useApprovePlan } from "../../plan/use-approve-plan.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
@@ -59,6 +65,7 @@ import {
 	type ComponentType,
 	type FC,
 	type FormEvent,
+	type KeyboardEvent,
 } from "react";
 
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
@@ -87,8 +94,11 @@ const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS
 const ThreadComposerSlot: FC = () => {
 	const pendingQuestions = useOpenCodeQuestions();
 	const activeQuestion = useMemo(() => {
-		if (pendingQuestions.length === 0) return null;
-		return [...pendingQuestions].toSorted((a, b) => a.askedAt - b.askedAt)[0] ?? null;
+		const visibleQuestions = pendingQuestions.filter(
+			(question) => !isPlanFollowupRequest(question),
+		);
+		if (visibleQuestions.length === 0) return null;
+		return [...visibleQuestions].toSorted((a, b) => a.askedAt - b.askedAt)[0] ?? null;
 	}, [pendingQuestions]);
 
 	if (activeQuestion) {
@@ -120,6 +130,9 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<div className="relative flex w-full flex-col">
 			{isDraft ? <Welcome /> : null}
+			{/* Glow is absolutely positioned so it does not expand layout width; horizontal
+			    bleed is clipped by the thread viewport (`overflow-x-hidden`), not a tight
+			    local overflow box that cuts the blur into a hard rectangle. */}
 			<div className="relative">
 				{isDraft ? (
 					<div
@@ -152,7 +165,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				turnAnchor="bottom"
 				autoScroll
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 flex-col overflow-x-auto overflow-y-auto scroll-smooth"
+				className="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
 				<div
 					className={cn(
@@ -254,9 +267,13 @@ const ThreadSuggestionItem: FC = () => {
 const Composer: FC = () => {
 	const aui = useAui();
 	const isDraft = useAuiState(isDraftView);
+	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
+	const { approve, refine, submitting, canReply } = useApprovePlan();
+
+	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
 
 	const sendWhenConnected = () => {
 		if (isConnectingRef.current) {
@@ -282,7 +299,26 @@ const Composer: FC = () => {
 		})();
 	};
 
+	const submitPlanFollowup = (mode: "build" | "refine") => {
+		if (mode === "build") {
+			approve();
+			return;
+		}
+		refine();
+	};
+
+	const handlePlanFollowupSubmit = () => {
+		submitPlanFollowup(isComposerEmpty ? "build" : "refine");
+	};
+
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+		// Plan follow-up keeps the thread running, so ComposerInput ignores Enter.
+		// Route submit to Approve/Refine instead of composer.send().
+		if (showPlanFollowupActions) {
+			event.preventDefault();
+			handlePlanFollowupSubmit();
+			return;
+		}
 		// When Kilo is still starting, wait before composer.send() so the draft
 		// stays visible and the send button can show a spinner. preventDefault
 		// skips ComposerPrimitive.Root's built-in send handler (Enter key).
@@ -291,6 +327,14 @@ const Composer: FC = () => {
 		}
 		event.preventDefault();
 		sendWhenConnected();
+	};
+
+	const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+		if (!showPlanFollowupActions) return;
+		// ComposerInput returns early while isRunning — intercept before that.
+		event.preventDefault();
+		handlePlanFollowupSubmit();
 	};
 
 	return (
@@ -320,11 +364,15 @@ const Composer: FC = () => {
 					enterKeyHint="send"
 					aria-label="Message input"
 					disabled={isConnecting}
+					onKeyDown={handleInputKeyDown}
 				/>
 				<ComposerAction
 					isConnecting={isConnecting}
 					isConnectionPending={isPending}
 					onSendWhenConnected={sendWhenConnected}
+					showPlanFollowupActions={showPlanFollowupActions}
+					planActionPending={submitting}
+					onPlanFollowup={submitPlanFollowup}
 				/>
 			</ComposerPrimitive.AttachmentDropzone>
 		</ComposerPrimitive.Root>
@@ -335,9 +383,20 @@ const ComposerAction: FC<{
 	isConnecting: boolean;
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
-}> = ({ isConnecting, isConnectionPending, onSendWhenConnected }) => {
+	showPlanFollowupActions: boolean;
+	planActionPending: boolean;
+	onPlanFollowup: (mode: "build" | "refine") => void;
+}> = ({
+	isConnecting,
+	isConnectionPending,
+	onSendWhenConnected,
+	showPlanFollowupActions,
+	planActionPending,
+	onPlanFollowup,
+}) => {
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const canSend = useAuiState((s) => s.composer.canSend);
+	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
@@ -414,7 +473,36 @@ const ComposerAction: FC<{
 						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
 					</TooltipIconButton>
 				) : null}
-				{!isConnecting && !isRunning && !isConnectionPending ? (
+				{showPlanFollowupActions ? (
+					isComposerEmpty ? (
+						<Button
+							type="button"
+							size="sm"
+							className="h-7 rounded-full px-3"
+							disabled={planActionPending}
+							data-qa-id="kilo-composer-approve"
+							aria-label="Approve plan"
+							onClick={() => onPlanFollowup("build")}
+						>
+							{planActionPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
+							Approve
+						</Button>
+					) : (
+						<Button
+							type="button"
+							size="sm"
+							className="h-7 rounded-full px-3"
+							disabled={planActionPending}
+							data-qa-id="kilo-composer-refine"
+							aria-label="Refine plan"
+							onClick={() => onPlanFollowup("refine")}
+						>
+							{planActionPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
+							Refine
+						</Button>
+					)
+				) : null}
+				{!showPlanFollowupActions && !isConnecting && !isRunning && !isConnectionPending ? (
 					<ComposerPrimitive.Send
 						render={
 							<TooltipIconButton
@@ -431,7 +519,7 @@ const ComposerAction: FC<{
 						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
 					</ComposerPrimitive.Send>
 				) : null}
-				{!isConnecting && isRunning ? (
+				{!showPlanFollowupActions && !isConnecting && isRunning ? (
 					<ComposerPrimitive.Cancel
 						render={
 							<Button
@@ -464,6 +552,14 @@ const MessageError: FC = () => {
 const AssistantMessage: FC = () => {
 	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
 		useContext(ThreadComponentsContext);
+	const opencodeParts = useAuiState((s) => {
+		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
+		return custom?.opencode?.parts;
+	});
+	const hiddenPlanCallIds = useMemo(
+		() => getPlanProjectionFromParts(opencodeParts)?.hiddenCallIds,
+		[opencodeParts],
+	);
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -487,6 +583,13 @@ const AssistantMessage: FC = () => {
 						if (part.type === "tool-call") {
 							if (getMcpAppFromToolPart(part)) return [];
 							if (context.toolUIs?.[part.toolName]?.[0]?.standalone) return [];
+							if (
+								shouldExcludeToolCallFromActivityGroup(part, {
+									hiddenPlanCallIds,
+								})
+							) {
+								return [];
+							}
 							return ["group-activity", getGroupKeyForTool(part.toolName)] as const;
 						}
 						// Hidden step markers stay in the activity run so they don't fragment groups.

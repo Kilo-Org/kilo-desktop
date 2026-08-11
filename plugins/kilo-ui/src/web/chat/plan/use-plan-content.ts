@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useChatConnection } from "../connection/ChatConnectionContext.js";
 import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
+import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras.js";
 import type { PlanProjection } from "./plan-projection.js";
 
 export type PlanContentState = {
@@ -16,15 +17,17 @@ export type PlanContentState = {
  */
 export function usePlanContent(projection: PlanProjection): PlanContentState {
 	const { connectionPromise, isPending: isConnectionPending } = useChatConnection();
+	const session = useOptionalOpenCodeRuntimeExtras()?.session;
+	const sessionDirectory = session?.directory;
 	const needsFile = Boolean(projection.path) && !projection.markdown;
 
 	const contentQuery = useQuery({
-		queryKey: ["kilo-ui", "plan-content", projection.path],
-		enabled: needsFile && !isConnectionPending,
+		queryKey: ["kilo-ui", "plan-content", session?.id, sessionDirectory, projection.path],
+		enabled: needsFile && !isConnectionPending && Boolean(sessionDirectory),
 		queryFn: async () => {
-			if (!projection.path) return "";
+			if (!projection.path || !sessionDirectory) return "";
 			const connection = await connectionPromise;
-			const client = createKiloDirectoryClient(connection, connection.globalDirectory);
+			const client = createKiloDirectoryClient(connection, sessionDirectory);
 			const { data } = await client.file.read({ path: projection.path });
 			return typeof data?.content === "string" ? data.content : "";
 		},
@@ -34,7 +37,7 @@ export function usePlanContent(projection: PlanProjection): PlanContentState {
 	const markdown = projection.markdown || contentQuery.data || "";
 	return {
 		markdown,
-		isLoading: needsFile && (isConnectionPending || contentQuery.isPending),
+		isLoading: needsFile && (isConnectionPending || !sessionDirectory || contentQuery.isPending),
 		isError: needsFile && contentQuery.isError && !markdown,
 	};
 }

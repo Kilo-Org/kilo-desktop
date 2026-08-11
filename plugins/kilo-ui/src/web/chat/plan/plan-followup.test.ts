@@ -50,6 +50,21 @@ describe("isPlanFollowupRequest", () => {
 			}),
 		).toBe(true);
 	});
+
+	it("does not treat a generic Implement header as a plan follow-up", () => {
+		expect(
+			isPlanFollowupRequest({
+				id: "q",
+				questions: [
+					{
+						question: "Which implementation should I use?",
+						header: "Implement",
+						options: [{ label: "Option A" }, { label: "Option B" }],
+					},
+				],
+			}),
+		).toBe(false);
+	});
 });
 
 describe("findPlanFollowupRequest", () => {

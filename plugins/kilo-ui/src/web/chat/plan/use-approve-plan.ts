@@ -31,15 +31,22 @@ export function resetPlanApprovalUiState(): void {
 	usePlanApprovalUiStore.setState({ approvedKeys: {} });
 }
 
-function approvalKey(planFollowupId: string | undefined): string {
-	return planFollowupId?.trim() ? planFollowupId : "fallback";
+export function resolvePlanApprovalKey(
+	planFollowupId: string | undefined,
+	fallbackApprovalScope?: string,
+): string | undefined {
+	const questionId = planFollowupId?.trim();
+	if (questionId) return `question:${questionId}`;
+	const fallbackScope = fallbackApprovalScope?.trim();
+	if (fallbackScope) return `fallback:${fallbackScope}`;
+	return undefined;
 }
 
 /**
  * Approve (implement) or refine the pending plan follow-up.
  * Falls back to a prompt append when no OpenCode question/reply API is available.
  */
-export function useApprovePlan() {
+export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 	const aui = useAui();
 	const { setAgent } = useChatAgentSelection();
 	const pendingQuestions = useOpenCodeQuestions();
@@ -48,8 +55,10 @@ export function useApprovePlan() {
 	const [error, setError] = useState<string | null>(null);
 
 	const planFollowup = findPlanFollowupRequest(pendingQuestions);
-	const key = approvalKey(planFollowup?.id);
-	const approved = usePlanApprovalUiStore((state) => Boolean(state.approvedKeys[key]));
+	const key = resolvePlanApprovalKey(planFollowup?.id, options?.fallbackApprovalScope);
+	const approved = usePlanApprovalUiStore((state) =>
+		key ? Boolean(state.approvedKeys[key]) : false,
+	);
 	const markApproved = usePlanApprovalUiStore((state) => state.markApproved);
 
 	const canReply = Boolean(planFollowup && replyToQuestion);
@@ -67,7 +76,7 @@ export function useApprovePlan() {
 				} else {
 					aui.thread.append(PLAN_IMPLEMENT_FALLBACK_PROMPT);
 				}
-				markApproved(key);
+				if (key) markApproved(key);
 			} catch (caught) {
 				setError(caught instanceof Error ? caught.message : "Failed to approve the plan.");
 			} finally {

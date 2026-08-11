@@ -168,12 +168,11 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
 
 	const catalogQuery = useKiloModelCatalog(connection.data);
-	const { model, setModel, name, effort, efforts, setEffort } = usePersistedModelSelection(
-		catalogQuery.data,
-	);
+	const { model, validatedModel, setModel, name, effort, efforts, setEffort } =
+		usePersistedModelSelection(catalogQuery.data);
 	const activeEffort = resolveModelEffort(
 		catalogQuery.data?.models ?? [],
-		model ? modelRefToId(model) : undefined,
+		validatedModel ? modelRefToId(validatedModel) : undefined,
 		effort,
 	);
 
@@ -199,7 +198,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connectionPromise,
 		prepareSession,
 		...(agent ? { defaultAgent: agent } : {}),
-		...(model ? { defaultModel: model } : {}),
+		...(validatedModel ? { defaultModel: validatedModel } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
 		onError: refreshConnection,

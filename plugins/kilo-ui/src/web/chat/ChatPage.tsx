@@ -68,7 +68,9 @@ export function ChatPage() {
 	const connection = useChatConnection();
 	const reduceMotion = useReducedMotion();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
-	const sessionId = resolveRightPanelSessionKey(remoteId);
+	const localThreadId = useAuiState((s) => s.threadListItem.id);
+	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
+	const maximizeSessionId = localThreadId?.trim() ? localThreadId : sessionId;
 
 	const panelState = useRightPanelStore((state) =>
 		selectSessionRightPanelState(state.bySessionId, sessionId),
@@ -79,18 +81,19 @@ export function ChatPage() {
 	const openTab = useRightPanelStore((state) => state.openTab);
 	const activateTab = useRightPanelStore((state) => state.activateTab);
 	const closeTab = useRightPanelStore((state) => state.closeTab);
+	const moveSessionState = useRightPanelStore((state) => state.moveSessionState);
 
 	const containerRef = useRef<HTMLDivElement>(null);
 	const hasInitializedPanelWidth = useRef(false);
 	const prevPanelOpenRef = useRef(panelState.isOpen);
+	const previousSessionIdRef = useRef(sessionId);
 	const [panelWidth, setPanelWidth] = useState(readStoredPanelWidth);
 	const [frameWidth, setFrameWidth] = useState(0);
 	const [isResizing, setIsResizing] = useState(false);
 	const [panelMounted, setPanelMounted] = useState(panelState.isOpen);
 	const [maximizedBySession, setMaximizedBySession] = useState<Record<string, boolean>>({});
-	const [trackedSessionId, setTrackedSessionId] = useState(sessionId);
-	const maximized = maximizedBySession[sessionId] === true;
 	const panelOpen = panelState.isOpen;
+	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
 
 	const panelSlotWidth = useMotionValue(0);
 	const frameWidthMotion = useMotionValue(0);
@@ -108,19 +111,22 @@ export function ChatPage() {
 		});
 	}, [sdk]);
 
-	const sessionChanged = sessionId !== trackedSessionId;
-	if (sessionChanged) {
-		setTrackedSessionId(sessionId);
-	}
+	useLayoutEffect(() => {
+		if (!remoteId?.trim() || !localThreadId?.trim() || remoteId === localThreadId) return;
+		moveSessionState(localThreadId, remoteId);
+	}, [localThreadId, moveSessionState, remoteId]);
+
+	const sessionChanged = sessionId !== previousSessionIdRef.current;
 
 	// Closing the panel clears maximize for this session.
-	if (!panelOpen && maximized) {
+	useEffect(() => {
+		if (panelOpen) return;
 		setMaximizedBySession((prev) => {
-			if (!prev[sessionId]) return prev;
-			const { [sessionId]: _removed, ...rest } = prev;
+			if (!prev[maximizeSessionId]) return prev;
+			const { [maximizeSessionId]: _removed, ...rest } = prev;
 			return rest;
 		});
-	}
+	}, [maximizeSessionId, panelOpen]);
 
 	const clampPanelWidth = useCallback((value: number) => {
 		const containerWidth = containerRef.current?.clientWidth ?? 1280;
@@ -153,6 +159,7 @@ export function ChatPage() {
 	useEffect(() => {
 		const openChanged = prevPanelOpenRef.current !== panelOpen;
 		prevPanelOpenRef.current = panelOpen;
+		previousSessionIdRef.current = sessionId;
 
 		if (panelOpen) {
 			setPanelMounted(true);
@@ -181,14 +188,22 @@ export function ChatPage() {
 			if (!panelOpen) setPanelMounted(false);
 		});
 		return () => controls.stop();
-	}, [panelSlotWidth, targetPanelWidth, panelOpen, sessionChanged, reduceMotion, isResizing]);
+	}, [
+		panelSlotWidth,
+		targetPanelWidth,
+		panelOpen,
+		sessionChanged,
+		sessionId,
+		reduceMotion,
+		isResizing,
+	]);
 
 	const toggleMaximized = useCallback(() => {
 		setMaximizedBySession((prev) => ({
 			...prev,
-			[sessionId]: !prev[sessionId],
+			[maximizeSessionId]: !prev[maximizeSessionId],
 		}));
-	}, [sessionId]);
+	}, [maximizeSessionId]);
 
 	const handleActivate = useCallback(
 		(tab: RightPanelTab) => {

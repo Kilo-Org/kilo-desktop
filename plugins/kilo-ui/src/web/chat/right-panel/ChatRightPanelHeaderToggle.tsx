@@ -15,7 +15,8 @@ import {
  */
 export const ChatRightPanelHeaderToggle: FC = () => {
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
-	const sessionId = resolveRightPanelSessionKey(remoteId);
+	const localThreadId = useAuiState((s) => s.threadListItem.id);
+	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
 	const open = useRightPanelStore(
 		(state) => selectSessionRightPanelState(state.bySessionId, sessionId).isOpen,
 	);

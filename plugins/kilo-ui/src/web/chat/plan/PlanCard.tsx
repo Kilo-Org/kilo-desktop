@@ -36,10 +36,18 @@ type PlanCardProps = {
 
 export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
+	const localThreadId = useAuiState((s) => s.threadListItem.id);
 	const messages = useAuiState((s) => s.thread.messages as readonly PlanMessageLike[]);
-	const sessionId = resolveRightPanelSessionKey(remoteId);
+	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
 	const openPlan = useRightPanelStore((state) => state.openPlan);
-	const { approve, submitting, approved, error: actionError } = useApprovePlan();
+	const {
+		approve,
+		submitting,
+		approved,
+		error: actionError,
+	} = useApprovePlan({
+		fallbackApprovalScope: `${sessionId}:${projection.anchorCallId}`,
+	});
 	const {
 		markdown,
 		isLoading: isContentLoading,

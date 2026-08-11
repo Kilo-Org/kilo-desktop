@@ -57,6 +57,7 @@ export type OpenPlanOptions = {
 
 interface RightPanelStoreState {
 	bySessionId: Record<string, SessionRightPanelState>;
+	moveSessionState: (sourceSessionId: string, targetSessionId: string) => void;
 	openTab: (sessionId: string, kind: RightPanelTabKind) => void;
 	openPlan: (sessionId: string, options?: OpenPlanOptions) => void;
 	activateTab: (sessionId: string, tabId: string) => void;
@@ -126,6 +127,19 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 	persist(
 		(set) => ({
 			bySessionId: {},
+			moveSessionState: (sourceSessionId, targetSessionId) =>
+				set((state) => {
+					if (sourceSessionId === targetSessionId) return state;
+					const source = state.bySessionId[sourceSessionId];
+					if (!source) return state;
+					const { [sourceSessionId]: _removed, ...remaining } = state.bySessionId;
+					return {
+						bySessionId: {
+							...remaining,
+							[targetSessionId]: remaining[targetSessionId] ?? source,
+						},
+					};
+				}),
 			openTab: (sessionId, kind) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
@@ -237,6 +251,11 @@ export function selectActiveRightPanelTab(
 	return state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
 }
 
-export function resolveRightPanelSessionKey(remoteId: string | undefined): string {
-	return remoteId?.trim() ? remoteId : DRAFT_RIGHT_PANEL_SESSION_KEY;
+export function resolveRightPanelSessionKey(
+	remoteId: string | undefined,
+	localId?: string | undefined,
+): string {
+	if (remoteId?.trim()) return remoteId;
+	if (localId?.trim()) return localId;
+	return DRAFT_RIGHT_PANEL_SESSION_KEY;
 }

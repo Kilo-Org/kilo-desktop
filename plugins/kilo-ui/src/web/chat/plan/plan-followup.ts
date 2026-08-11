@@ -19,8 +19,6 @@ type QuestionRequestLike = {
 
 export function isPlanFollowupQuestion(question: QuestionLike): boolean {
 	if (question.questionKey === "plan.followup.question") return true;
-	if (question.question === PLAN_FOLLOWUP_QUESTION) return true;
-	if (question.header === PLAN_FOLLOWUP_HEADER) return true;
 
 	const labels = new Set(
 		(question.options ?? [])
@@ -28,7 +26,10 @@ export function isPlanFollowupQuestion(question: QuestionLike): boolean {
 			.filter((label): label is string => Boolean(label)),
 	);
 	return (
-		labels.has(PLAN_FOLLOWUP_ANSWER_CONTINUE) && labels.has(PLAN_FOLLOWUP_ANSWER_KEEP_REFINING)
+		question.question === PLAN_FOLLOWUP_QUESTION &&
+		question.header === PLAN_FOLLOWUP_HEADER &&
+		labels.has(PLAN_FOLLOWUP_ANSWER_CONTINUE) &&
+		labels.has(PLAN_FOLLOWUP_ANSWER_KEEP_REFINING)
 	);
 }
 

@@ -22,7 +22,8 @@ import {
 export const PlanTab: FC = () => {
 	const messages = useAuiState((s) => s.thread.messages as readonly PlanMessageLike[]);
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
-	const sessionId = resolveRightPanelSessionKey(remoteId);
+	const localThreadId = useAuiState((s) => s.threadListItem.id);
+	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
 	const planAnchorCallId = useRightPanelStore(
 		(state) => selectSessionRightPanelState(state.bySessionId, sessionId).planAnchorCallId,
 	);
@@ -49,14 +50,17 @@ export const PlanTab: FC = () => {
 		);
 	}
 
-	return <PlanTabContent projection={projection} messages={messages} />;
+	return <PlanTabContent projection={projection} messages={messages} sessionId={sessionId} />;
 };
 
 const PlanTabContent: FC<{
 	projection: PlanProjection;
 	messages: readonly PlanMessageLike[];
-}> = ({ projection, messages }) => {
-	const { approve, submitting, approved } = useApprovePlan();
+	sessionId: string;
+}> = ({ projection, messages, sessionId }) => {
+	const { approve, submitting, approved } = useApprovePlan({
+		fallbackApprovalScope: `${sessionId}:${projection.anchorCallId}`,
+	});
 	const { markdown, isLoading, isError } = usePlanContent(projection);
 
 	const title = proposedPlanTitle(markdown) ?? "Plan";

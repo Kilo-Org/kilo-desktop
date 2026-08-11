@@ -16,6 +16,17 @@ import { resetPlanApprovalUiState } from "./use-approve-plan.js";
 const replyToQuestion = vi.fn().mockResolvedValue(undefined);
 const setAgent = vi.fn();
 const append = vi.fn();
+const createKiloDirectoryClient = vi.hoisted(() =>
+	vi.fn(() => ({
+		file: {
+			read: vi.fn().mockResolvedValue({
+				data: {
+					content: "# Loaded from file\n\n- recovered step",
+				},
+			}),
+		},
+	})),
+);
 
 const threadMessages: unknown[] = [];
 
@@ -29,6 +40,7 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 				thread: {
 					messages: unknown[];
 					extras: {
+						session: { id: string; directory: string };
 						replyToQuestion: typeof replyToQuestion;
 						rejectQuestion: ReturnType<typeof vi.fn>;
 						replyToPermission: ReturnType<typeof vi.fn>;
@@ -41,6 +53,7 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 				thread: {
 					messages: threadMessages,
 					extras: {
+						session: { id: "session-plan", directory: "/workspace" },
 						replyToQuestion,
 						rejectQuestion: vi.fn(),
 						replyToPermission: vi.fn(),
@@ -80,15 +93,7 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 }));
 
 vi.mock("../runtime/create-kilo-runtime-client.js", () => ({
-	createKiloDirectoryClient: vi.fn(() => ({
-		file: {
-			read: vi.fn().mockResolvedValue({
-				data: {
-					content: "# Loaded from file\n\n- recovered step",
-				},
-			}),
-		},
-	})),
+	createKiloDirectoryClient,
 }));
 
 function renderPlanCard(projection: PlanProjection) {
@@ -188,6 +193,10 @@ describe("PlanCard", () => {
 		await expect.element(screen.getByTestId("kilo-plan-preview")).toBeVisible();
 		await expect.element(screen.getByText("Loaded from file")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-plan-approve")).toBeVisible();
+		expect(createKiloDirectoryClient).toHaveBeenCalledWith(
+			expect.objectContaining({ baseUrl: "http://127.0.0.1:4096" }),
+			"/workspace",
+		);
 	});
 
 	it("opens the plan right-panel tab from View Plan with this card's anchor", async () => {

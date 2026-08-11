@@ -25,6 +25,11 @@ describe("resolveRightPanelSessionKey", () => {
 	it("uses the remote id when present", () => {
 		expect(resolveRightPanelSessionKey("abc")).toBe("abc");
 	});
+
+	it("uses the stable local id before a remote session exists", () => {
+		expect(resolveRightPanelSessionKey(undefined, "local-1")).toBe("local-1");
+		expect(resolveRightPanelSessionKey("remote-1", "local-1")).toBe("remote-1");
+	});
 });
 
 describe("right-panel-store", () => {
@@ -123,6 +128,22 @@ describe("right-panel-store", () => {
 			activeTabId: null,
 			tabs: [],
 			planAnchorCallId: null,
+		});
+	});
+
+	it("moves draft state from the local thread id to the assigned remote id", () => {
+		useRightPanelStore.getState().openPlan("local-1", { anchorCallId: "write-1" });
+
+		useRightPanelStore.getState().moveSessionState("local-1", "session-1");
+
+		expect(useRightPanelStore.getState().bySessionId["local-1"]).toBeUndefined();
+		expect(
+			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, "session-1"),
+		).toEqual({
+			isOpen: true,
+			activeTabId: "plan",
+			tabs: [{ id: "plan", kind: "plan" }],
+			planAnchorCallId: "write-1",
 		});
 	});
 });

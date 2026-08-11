@@ -280,7 +280,7 @@ export function ChatPage() {
 						frameWidth <= 0 && "flex-1",
 						maximized && panelOpen && "pointer-events-none",
 					)}
-					style={frameWidth > 0 ? { width: chatWidth } : undefined}
+					{...(frameWidth > 0 ? { style: { width: chatWidth } } : {})}
 				>
 					<div
 						className="bg-muted border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border"

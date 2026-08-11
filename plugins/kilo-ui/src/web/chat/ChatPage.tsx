@@ -307,7 +307,7 @@ export function ChatPage() {
 						"h-full min-w-0 overflow-hidden",
 						maximized && panelOpen ? "min-w-0 flex-1" : "shrink-0",
 					)}
-					style={maximized && panelOpen ? undefined : { width: panelSlotWidth }}
+					{...(maximized && panelOpen ? {} : { style: { width: panelSlotWidth } })}
 				>
 					{panelMounted ? (
 						<div

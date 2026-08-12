@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
+
 import { FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { AuthSessionService } from "./auth-service.js";

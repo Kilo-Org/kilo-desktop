@@ -1,3 +1,4 @@
+import { motion, useTransform } from "motion/react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { LogOutIcon, UserIcon } from "lucide-react";
@@ -41,7 +42,6 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 /** Clears macOS traffic lights (x:16 + three lights) so the toggle sits just to their right. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "90px";
@@ -98,8 +98,13 @@ function ShellTitlebar({
 	session: ReturnType<typeof useAuthSession>;
 	onLogin: () => void;
 }) {
-	const { open } = useSidebar();
+	const { open, progress } = useSidebar();
 	const label = open ? "Hide navigation" : "Show navigation";
+	const paddingLeft = useTransform(
+		progress,
+		(value) =>
+			`calc((var(--shell-sidebar-toggle-left) + 2.5rem) * ${1 - value} + var(--sidebar-width) * ${value})`,
+	);
 
 	return (
 		<header className="drag-region fixed inset-x-0 top-0 z-50 flex h-12 items-center pr-[calc(0.75rem+env(titlebar-area-width,0px))]">
@@ -122,13 +127,7 @@ function ShellTitlebar({
 				</Tooltip>
 			</div>
 
-			<div
-				className={cn(
-					"flex min-w-0 flex-1 items-center gap-2 transition-[padding-left] duration-200 ease-linear",
-					// Match sidebar gap timing so header chrome doesn't snap ahead of content.
-					open ? "pl-[var(--sidebar-width)]" : "pl-[calc(var(--shell-sidebar-toggle-left)+2.5rem)]",
-				)}
-			>
+			<motion.div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft }}>
 				{/* Leading header contributions (e.g. chat session breadcrumb) */}
 				<ZoneOutlet zone="header-leading" className="flex min-w-0 flex-1 items-center gap-1" />
 				<div className="flex shrink-0 items-center justify-end gap-2">
@@ -140,7 +139,7 @@ function ShellTitlebar({
 						</Button>
 					)}
 				</div>
-			</div>
+			</motion.div>
 		</header>
 	);
 }
@@ -149,11 +148,7 @@ function ShellInset({ children }: { children: ReactNode }) {
 	return (
 		// Keep overflow off SidebarInset — Electron ignores drag regions inside
 		// overflow:hidden ancestors, which would break titlebar dragging.
-		// Left gutter only when the nav is collapsed (peer state), transitioned with
-		// the sidebar gap so we never leave a permanent gap beside an open sidebar.
-		<SidebarInset className="min-h-0 min-w-0 bg-transparent pr-3 pb-3 transition-[padding-left] duration-200 ease-linear peer-data-[state=collapsed]:pl-3">
-			{children}
-		</SidebarInset>
+		<SidebarInset className="min-h-0 min-w-0 bg-transparent pr-3 pb-3">{children}</SidebarInset>
 	);
 }
 

@@ -8,7 +8,7 @@ export const NTERACT_RELEASE = {
 /** Temporary source pin until the Electron adapter is included in a stable release. */
 export const NTERACT_NOTEBOOK_SOURCE = {
 	tag: "quod/electron-notebook-host",
-	commit: "e3429e9ae01951e55fb9a286da5e75f39fef9936",
+	commit: "f3bbe36e5e4bd1803ba22c4f2d81f297d3ace6e3",
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 

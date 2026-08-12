@@ -19,5 +19,3 @@ export const featurePortPayload = z.object({
 export const featurePorts = {
 	"feature:port": defineEvent(featurePortPayload),
 } as const;
-
-export type FeaturePortPayload = z.output<typeof featurePortPayload>;

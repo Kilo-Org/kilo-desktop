@@ -339,7 +339,12 @@ export class FeatureRouter {
 			);
 		}
 
-		const closePort = () => port.close();
+		let portClosed = false;
+		const closePort = () => {
+			if (portClosed) return;
+			portClosed = true;
+			port.close();
+		};
 		this.disposables.get(featureId)!.push(closePort);
 		try {
 			await entry.handler(port, parsedArgs);

@@ -86,6 +86,29 @@ describe("FeatureRouter", () => {
 		});
 	});
 
+	it("closes a port once when feature teardown races a rejecting setup", async () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("notebook");
+		const close = vi.fn();
+		const port = { close } as never;
+		let rejectSetup!: (error: Error) => void;
+		mainSdk.ports.handle(
+			"host",
+			z.undefined(),
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					rejectSetup = reject;
+				}),
+		);
+		const connecting = router.connectPort("notebook", "host", port);
+
+		router.destroyFeature("notebook");
+		rejectSetup(new Error("setup interrupted"));
+
+		await expect(connecting).rejects.toThrow("setup interrupted");
+		expect(close).toHaveBeenCalledOnce();
+	});
+
 	it("mainSdk.events stamps namespaces, delivers locally, and relays once", () => {
 		const relay = vi.fn();
 		const router = new FeatureRouter();

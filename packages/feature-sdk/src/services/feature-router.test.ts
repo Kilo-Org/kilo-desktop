@@ -55,11 +55,14 @@ describe("FeatureRouter", () => {
 			start: vi.fn(),
 			close: vi.fn(),
 		} as never;
-		mainSdk.ports.handle("host", handler);
+		mainSdk.ports.handle("host", z.object({ notebookId: z.string() }), handler);
 
 		await router.connectPort("notebook", "host", port, { notebookId: "nb-1" });
 
 		expect(handler).toHaveBeenCalledWith(port, { notebookId: "nb-1" });
+		await expect(
+			router.connectPort("notebook", "host", port, { notebookId: 42 }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
 		await expect(router.connectPort("notebook", "missing", port)).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});
@@ -71,9 +74,12 @@ describe("FeatureRouter", () => {
 	it("removes port handlers during feature teardown", async () => {
 		const router = new FeatureRouter();
 		const mainSdk = router.createMainSdk("notebook");
-		const port = {} as never;
-		mainSdk.ports.handle("host", vi.fn());
+		const close = vi.fn();
+		const port = { close } as never;
+		mainSdk.ports.handle("host", z.undefined(), vi.fn());
+		await router.connectPort("notebook", "host", port);
 		router.destroyFeature("notebook");
+		expect(close).toHaveBeenCalledOnce();
 
 		await expect(router.connectPort("notebook", "host", port)).rejects.toMatchObject({
 			code: "NOT_FOUND",

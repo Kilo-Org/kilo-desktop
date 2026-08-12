@@ -116,7 +116,7 @@ exposing `ipcRenderer`, a listening socket, or an underlying native endpoint.
 
 ```ts
 // mainRegister
-mainSdk.ports.handle("runtime", (port, args) => {
+mainSdk.ports.handle("runtime", z.object({ notebookId: z.string() }), (port, args) => {
 	attachAuthorizedRuntime(port, args);
 });
 
@@ -125,9 +125,11 @@ const port = sdk.ports.open<MessagePort>("runtime", { notebookId });
 iframe.contentWindow?.postMessage({ type: "connect" }, iframeOrigin, [port]);
 ```
 
-The routing envelope is schema-validated and accepted only from the trusted
-top-level renderer. The channel is feature-scoped by the SDK. A rejected,
-unknown, or failed main handler causes the shell to close the transferred port.
+The routing envelope and feature-declared argument schema are validated and
+accepted only from the trusted top-level renderer. The channel is feature-scoped
+by the SDK. A rejected, unknown, or failed main handler causes the shell to close
+the transferred port. An accepted port is also closed automatically when the
+feature unloads.
 This primitive is Electron-only for now; browser mode throws an explicit
 unsupported-host error.
 

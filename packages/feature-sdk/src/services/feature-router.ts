@@ -18,7 +18,10 @@ import { emitFeatureEvent, EventBus, type FeatureEvent } from "./event-bus.js";
 
 type Handler = (args: unknown) => unknown | Promise<unknown>;
 type FeatureDisposer = () => unknown;
-type PortHandler = (port: HostMessagePort, args: unknown) => void | Promise<void>;
+interface PortHandlerEntry {
+	argsSchema: SchemaLike;
+	handler: (port: HostMessagePort, args: unknown) => void | Promise<void>;
+}
 
 interface HandlerEntry {
 	inputSchema: SchemaLike;
@@ -107,7 +110,7 @@ function createConsoleLogger(featureId: string): MainSdkLogger {
 export class FeatureRouter {
 	private handlers = new Map<string, Map<string, HandlerEntry>>();
 	private disposables = new Map<string, FeatureDisposer[]>();
-	private portHandlers = new Map<string, Map<string, PortHandler>>();
+	private portHandlers = new Map<string, Map<string, PortHandlerEntry>>();
 	private readonly fallback: InvokeFallback | undefined;
 	readonly eventBus: EventBus;
 	readonly capabilityRegistry: CapabilityRegistry;
@@ -219,14 +222,17 @@ export class FeatureRouter {
 			},
 		};
 		const ports: MainSdk["ports"] = {
-			handle: (channel, handler) => {
+			handle: (channel, argsSchema, handler) => {
 				const registeredPorts = this.portHandlers.get(featureId)!;
 				if (registeredPorts.has(channel)) {
 					console.warn(
 						`[FeatureRouter] Port handler for "${featureId}:${channel}" registered twice — replacing.`,
 					);
 				}
-				registeredPorts.set(channel, handler);
+				registeredPorts.set(channel, {
+					argsSchema,
+					handler: handler as PortHandlerEntry["handler"],
+				});
 			},
 		};
 
@@ -313,14 +319,36 @@ export class FeatureRouter {
 		port: HostMessagePort,
 		args?: unknown,
 	): Promise<void> {
-		const handler = this.portHandlers.get(featureId)?.get(channel);
-		if (!handler) {
+		const entry = this.portHandlers.get(featureId)?.get(channel);
+		if (!entry) {
 			throw new FeatureError(
 				`No port handler for channel "${channel}" in feature "${featureId}".`,
 				"NOT_FOUND",
 			);
 		}
-		await handler(port, args);
+
+		let parsedArgs: unknown;
+		try {
+			parsedArgs = entry.argsSchema.parse(args);
+		} catch (error) {
+			throw new FeatureError(
+				`Invalid input for port "${featureId}:${channel}": ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				"VALIDATION",
+			);
+		}
+
+		const closePort = () => port.close();
+		this.disposables.get(featureId)!.push(closePort);
+		try {
+			await entry.handler(port, parsedArgs);
+		} catch (error) {
+			const disposables = this.disposables.get(featureId);
+			const index = disposables?.indexOf(closePort) ?? -1;
+			if (index >= 0) disposables!.splice(index, 1);
+			throw error;
+		}
 	}
 
 	/**

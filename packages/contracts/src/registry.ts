@@ -38,6 +38,19 @@ assertNoDuplicateChannels(
 assertNoDuplicateChannels(featureEvents, authEvents, featureFlagEvents);
 assertNoDuplicateChannels(featureMessages);
 assertNoDuplicateChannels(featurePorts);
+assertNoDuplicateChannels(featurePorts, {
+	...shellMethods,
+	...themeMethods,
+	...authMethods,
+	...featureMethods,
+	...notificationsMethods,
+	...fsMethods,
+	...featureFlagMethods,
+	...authEvents,
+	...featureEvents,
+	...featureFlagEvents,
+	...featureMessages,
+});
 
 export const ipcMethods = {
 	...shellMethods,

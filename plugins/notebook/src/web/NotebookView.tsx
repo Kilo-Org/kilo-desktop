@@ -18,6 +18,19 @@ import { NOTEBOOK_HOST } from "../contracts/schemas.js";
  */
 const DESKTOP_SCHEME_PREFIX = "anaconda-agentic-desktop";
 
+/** Legacy right-panel ids were `notebook.notebook:<uuid>`; runt expects a bare UUID. */
+const LEGACY_NOTEBOOK_ID_PREFIX = "notebook.notebook:";
+
+/**
+ * Right-panel `instanceId` → daemon `notebook_id`. Strips the legacy
+ * `notebook.notebook:` prefix so the iframe and nteract MCP share one room.
+ */
+export function notebookIdFromInstanceId(instanceId: string): string {
+	return instanceId.startsWith(LEGACY_NOTEBOOK_ID_PREFIX)
+		? instanceId.slice(LEGACY_NOTEBOOK_ID_PREFIX.length)
+		: instanceId;
+}
+
 /**
  * The renderer cannot read `app.isPackaged`, so it cannot derive the scheme —
  * but it does not need to: its own origin already carries the right one, and
@@ -44,7 +57,7 @@ export function nteractSrc(instanceId: string): string | undefined {
 		(import.meta.env["VITE_NTERACT_ORIGIN"] as string | undefined);
 	if (!origin) return undefined;
 	const url = new URL(origin);
-	url.searchParams.set("notebook_id", instanceId);
+	url.searchParams.set("notebook_id", notebookIdFromInstanceId(instanceId));
 	return url.toString();
 }
 

@@ -29,6 +29,15 @@ export const kiloServerStatusSchema = z.discriminatedUnion("status", [
 export type KiloServerConnection = z.infer<typeof kiloServerConnectionSchema>;
 export type KiloServerStatus = z.infer<typeof kiloServerStatusSchema>;
 
+/**
+ * Partial Kilo config injected into the spawned server via `KILO_CONFIG_CONTENT`.
+ * Overlays are mcp-only for now — widening requires matching Kilo's mergeConfig
+ * semantics for other top-level sections.
+ */
+export interface KiloConfigOverlay {
+	readonly mcp?: Readonly<Record<string, unknown>>;
+}
+
 export const kiloServerContract = defineContract({
 	"server.getConnection": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.restart": defineMethod(z.undefined(), kiloServerConnectionSchema),

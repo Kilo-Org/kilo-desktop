@@ -197,6 +197,58 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
+	it("injects getConfigOverlay into KILO_CONFIG_CONTENT at spawn", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { PATH: "/bin" },
+			getConfigOverlay: () => ({
+				mcp: {
+					"anaconda-desktop-relay": {
+						type: "local",
+						command: ["/exe", "/relay"],
+						enabled: true,
+					},
+				},
+			}),
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(JSON.parse(environment.KILO_CONFIG_CONTENT!)).toEqual({
+			mcp: {
+				"anaconda-desktop-relay": {
+					type: "local",
+					command: ["/exe", "/relay"],
+					enabled: true,
+				},
+			},
+		});
+		manager.dispose();
+	});
+
+	it("merges getConfigOverlay over inherited KILO_CONFIG_CONTENT", async () => {
+		const { manager, spawn } = createHarness({
+			environment: {
+				PATH: "/bin",
+				KILO_CONFIG_CONTENT: JSON.stringify({
+					mcp: { existing: { type: "local", command: ["a"], enabled: true } },
+					model: "keep-me",
+				}),
+			},
+			getConfigOverlay: () => ({
+				mcp: { relay: { type: "local", command: ["b"], enabled: true } },
+			}),
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(JSON.parse(environment.KILO_CONFIG_CONTENT!)).toEqual({
+			model: "keep-me",
+			mcp: {
+				existing: { type: "local", command: ["a"], enabled: true },
+				relay: { type: "local", command: ["b"], enabled: true },
+			},
+		});
+		manager.dispose();
+	});
+
 	it("rejects a foreign server that does not accept the per-launch credentials", async () => {
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const { manager, statuses } = createHarness({

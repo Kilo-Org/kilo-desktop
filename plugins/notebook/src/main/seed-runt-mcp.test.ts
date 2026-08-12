@@ -20,7 +20,7 @@ describe("buildRuntMcpEntry", () => {
 });
 
 describe("registerRuntMcpSeed", () => {
-	it("registers a managed seed that writes the runt MCP entry", async () => {
+	it("registers a managed seed that contributes the runt MCP overlay entry", async () => {
 		const seedEntry = vi.fn(async () => ({ kind: "written" as const, reason: "created" as const }));
 		const registerSeed = vi.fn((seed: () => Promise<void>) => {
 			void seed();

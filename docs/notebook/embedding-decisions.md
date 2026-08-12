@@ -132,8 +132,10 @@ Kilo owns the add menu, creates a unique tab instance for every add action, pers
 per chat session, and passes `{ sessionId, instanceId, title }` into the plugin component. Neither
 plugin imports the other's source.
 
-Each notebook instance is an ephemeral scratch document. The stable tab `instanceId` is passed to
-nteract as `notebook_id`, which uses the existing `create_notebook` handshake with no path. Closing
+Each notebook instance is an ephemeral scratch document. The stable tab `instanceId` is a bare
+UUID passed to nteract as `notebook_id` (via the existing `create_notebook` handshake with no
+path). Prefixing the contribution definition id (e.g. `notebook.notebook:<uuid>`) breaks
+interoperability with nteract / runt MCP tools, which look up the bare UUID. Closing
 a tab removes only Kilo's UI metadata; it does not create, save, restore, select, or delete an
 `.ipynb` file.
 

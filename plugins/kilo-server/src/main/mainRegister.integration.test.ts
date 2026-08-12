@@ -14,6 +14,14 @@ import {
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
 
+/** Avoid spawning a real Electron relay under unit/integration tests. */
+function stubRelaySupervisor() {
+	return {
+		start: vi.fn(async () => true),
+		dispose: vi.fn(),
+	};
+}
+
 function fakeServer() {
 	const connection: KiloServerConnection = {
 		baseUrl: "http://127.0.0.1:4321",
@@ -273,6 +281,75 @@ describe("kilo-server main registration", () => {
 		mainSdk.dispose();
 	});
 
+	it("contributes plugin seedEntry into KILO_CONFIG_CONTENT overlay (not the dead runtime file)", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		let getConfigOverlay: (() => { mcp?: Record<string, unknown> } | undefined) | undefined;
+		let releaseSeed!: () => void;
+		const seedGate = new Promise<void>((resolve) => {
+			releaseSeed = resolve;
+		});
+
+		const runtEntry = {
+			type: "local" as const,
+			command: ["/opt/runt-nightly", "mcp", "--socket", "/tmp/runtimed.sock", "--no-show"] as [
+				string,
+				string,
+				string,
+				string,
+				string,
+			],
+			enabled: true as const,
+		};
+
+		registerKiloServer(mainSdk, {
+			createServer: (_onStatusChange, hooks) => {
+				getConfigOverlay = hooks.getConfigOverlay;
+				return server;
+			},
+			seedMcpConfig: async () => {
+				await seedGate;
+				return {
+					kind: "written",
+					reason: "created",
+					entry: {
+						type: "local",
+						command: ["/exe", "/relay"],
+						environment: { ELECTRON_RUN_AS_NODE: "1" },
+						enabled: true,
+					},
+				};
+			},
+			runAsNodeEnabled: async () => true,
+		});
+
+		const managedMcp =
+			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.managedMcpService;
+		expect(managedMcp).toBeDefined();
+		managedMcp!.registerSeed(async () => {
+			await managedMcp!.seedEntry({
+				name: "runt",
+				entry: runtEntry,
+				label: "notebook runt MCP",
+			});
+		});
+
+		releaseSeed();
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		expect(getConfigOverlay).toBeDefined();
+		expect(getConfigOverlay!()).toEqual({
+			mcp: {
+				"anaconda-desktop-relay": {
+					type: "local",
+					command: ["test"],
+					enabled: true,
+				},
+				runt: runtEntry,
+			},
+		});
+		mainSdk.dispose();
+	});
+
 	it("still starts Kilo when the seed step fails (interim, see #102)", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
@@ -288,6 +365,49 @@ describe("kilo-server main registration", () => {
 
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		expect(server.ensureRunning).toHaveBeenCalled();
+		mainSdk.dispose();
+	});
+
+	it("starts the WebMCP rendezvous after a successful seed even before getConnection", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const supervisor = stubRelaySupervisor();
+
+		registerKiloServer(mainSdk, {
+			createServer: () => server,
+			seedMcpConfig: async () => ({
+				kind: "written",
+				reason: "created",
+				entry: {
+					type: "local",
+					command: ["/exe", "/entry"],
+					environment: { ELECTRON_RUN_AS_NODE: "1" },
+					enabled: true,
+				},
+			}),
+			createWebMcpRelaySupervisor: () => supervisor,
+			runAsNodeEnabled: async () => true,
+		});
+
+		await vi.waitFor(() => expect(supervisor.start).toHaveBeenCalledOnce());
+		mainSdk.dispose();
+		expect(supervisor.dispose).toHaveBeenCalledOnce();
+	});
+
+	it("skips the WebMCP rendezvous when the seed did not leave a relay entry", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const supervisor = stubRelaySupervisor();
+
+		registerKiloServer(mainSdk, {
+			createServer: () => server,
+			seedMcpConfig: async () => ({ kind: "removed", reason: "fuse-off" }),
+			createWebMcpRelaySupervisor: () => supervisor,
+			runAsNodeEnabled: async () => false,
+		});
+
+		await mainSdk.invoke("server.getConnection");
+		expect(supervisor.start).not.toHaveBeenCalled();
 		mainSdk.dispose();
 	});
 

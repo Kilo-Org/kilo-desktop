@@ -140,8 +140,30 @@ describe("buildNotebookUi", () => {
 		// Cheap path: inject CSS into the existing stage; no tool invocations.
 		expect(options.run).not.toHaveBeenCalled();
 		expect(await readFile(path.join(options.destinationDirectory, "index.html"), "utf8")).toContain(
-			AGENTIC_EMBED_CHROME_STYLE_ATTR,
+			AGENTIC_EMBED_CHROME_CSS,
 		);
+		await expect(validateStagedNotebookBundle(options.destinationDirectory)).resolves.toBeTruthy();
+	});
+
+	it("patches staged index.html when embed chrome CSS is outdated", async () => {
+		const root = await temporaryDirectory();
+		const options = {
+			cacheDirectory: path.join(root, "cache"),
+			destinationDirectory: path.join(root, "build/notebook"),
+			run: fakeRunner(),
+		};
+		await buildNotebookUi(options);
+		const indexPath = path.join(options.destinationDirectory, "index.html");
+		const staleHtml = (await readFile(indexPath, "utf8")).replace(
+			AGENTIC_EMBED_CHROME_CSS,
+			"old-embed-chrome{}",
+		);
+		await writeFile(indexPath, staleHtml);
+		options.run.mockClear();
+
+		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
+		expect(options.run).not.toHaveBeenCalled();
+		expect(await readFile(indexPath, "utf8")).toContain(AGENTIC_EMBED_CHROME_CSS);
 		await expect(validateStagedNotebookBundle(options.destinationDirectory)).resolves.toBeTruthy();
 	});
 
@@ -236,6 +258,14 @@ describe("injectAgenticEmbedChromeHtml", () => {
 			`<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>${AGENTIC_EMBED_CHROME_CSS}</style></head>`,
 		);
 		expect(injectAgenticEmbedChromeHtml(once)).toBe(once);
+	});
+
+	it("refreshes outdated embed chrome CSS in place", () => {
+		const stale = `<html><head><style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>old{}</style></head><body></body></html>`;
+		const refreshed = injectAgenticEmbedChromeHtml(stale);
+		expect(refreshed).toContain(AGENTIC_EMBED_CHROME_CSS);
+		expect(refreshed).not.toContain("old{}");
+		expect(injectAgenticEmbedChromeHtml(refreshed)).toBe(refreshed);
 	});
 
 	it("rejects HTML without a head close tag", () => {

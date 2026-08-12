@@ -6,7 +6,7 @@ import { NotebookView, notebookOriginFrom, type NotebookViewProps } from "./Note
 
 const DEFAULT_PROPS: NotebookViewProps = {
 	sessionId: "session-1",
-	instanceId: "notebook.notebook:instance-1",
+	instanceId: "instance-1",
 	title: "Notebook 1",
 };
 
@@ -52,18 +52,25 @@ describe("NotebookView", () => {
 		expect(document.querySelector('[data-qa-id="notebook-title"]')).toBeNull();
 		expect(document.querySelector('[data-qa-id="notebook-status"]')).toBeNull();
 		// The stable tab instance id becomes nteract's ephemeral notebook id.
-		expect(frame?.getAttribute("src")).toBe(
-			"http://localhost:8737/?notebook_id=notebook.notebook%3Ainstance-1",
-		);
+		expect(frame?.getAttribute("src")).toBe("http://localhost:8737/?notebook_id=instance-1");
 		expect(document.querySelector('[data-qa-id="notebook-placeholder"]')).toBeNull();
 	});
 
 	it("uses distinct right-panel instance ids for distinct scratch notebooks", () => {
 		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
-		renderView({ instanceId: "notebook.notebook:instance-2", title: "Notebook 2" });
+		renderView({ instanceId: "instance-2", title: "Notebook 2" });
 
 		expect(document.querySelector('[data-qa-id="notebook-frame"]')?.getAttribute("src")).toBe(
-			"http://localhost:8737/?notebook_id=notebook.notebook%3Ainstance-2",
+			"http://localhost:8737/?notebook_id=instance-2",
+		);
+	});
+
+	it("strips a legacy notebook.notebook: prefix before framing nteract", () => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
+		renderView({ instanceId: "notebook.notebook:legacy-uuid" });
+
+		expect(document.querySelector('[data-qa-id="notebook-frame"]')?.getAttribute("src")).toBe(
+			"http://localhost:8737/?notebook_id=legacy-uuid",
 		);
 	});
 });

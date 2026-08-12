@@ -102,8 +102,12 @@ export function createContributedTab(
 				.filter((tab) => tab.definitionId === definition.id)
 				.map((tab) => tab.ordinal ?? 0),
 		) + 1;
+	// Bare id — for notebook tabs this value is nteract/runt's `notebook_id`.
+	// Do not prefix with `definition.id`: runtined rooms keyed as
+	// `notebook.notebook:<uuid>` are invisible to nteract MCP tools that look
+	// up the bare UUID (daemon: "not resident … refusing (gone)").
 	return {
-		instanceId: `${definition.id}:${createId()}`,
+		instanceId: createId(),
 		definitionId: definition.id,
 		title: `${definition.title} ${String(ordinal)}`,
 		ordinal,

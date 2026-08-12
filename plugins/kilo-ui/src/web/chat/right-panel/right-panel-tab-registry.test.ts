@@ -45,13 +45,13 @@ describe("right-panel-tab-registry", () => {
 		const second = createContributedTab([first], definition!, () => "two");
 
 		expect(first).toEqual({
-			instanceId: "notebook.notebook:one",
+			instanceId: "one",
 			definitionId: "notebook.notebook",
 			title: "Notebook 1",
 			ordinal: 1,
 		});
 		expect(second).toEqual({
-			instanceId: "notebook.notebook:two",
+			instanceId: "two",
 			definitionId: "notebook.notebook",
 			title: "Notebook 2",
 			ordinal: 2,

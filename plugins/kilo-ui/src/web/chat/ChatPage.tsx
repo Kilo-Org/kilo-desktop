@@ -16,6 +16,7 @@ import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
+import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
 import { ChatRightPanelHeaderToggle } from "./right-panel/ChatRightPanelHeaderToggle.js";
 import {
 	RightPanelTabContent,
@@ -117,6 +118,16 @@ export function ChatPage() {
 			removeToggle();
 		};
 	}, [sdk]);
+
+	// WebMCP tools resolve "current session" from this focused key.
+	useEffect(() => {
+		chatRightPanelCapability.setFocusedSessionId(sessionId);
+		return () => {
+			if (chatRightPanelCapability.getFocusedSessionId() === sessionId) {
+				chatRightPanelCapability.setFocusedSessionId(null);
+			}
+		};
+	}, [sessionId]);
 
 	useLayoutEffect(() => {
 		if (!remoteId?.trim() || !localThreadId?.trim() || remoteId === localThreadId) return;

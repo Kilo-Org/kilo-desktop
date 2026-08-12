@@ -50,8 +50,8 @@ export function buildRuntMcpEntry(
 
 /**
  * Registers a managed `mcp["runt"]` seed with kilo-server so `kilo serve`
- * sees `runt mcp` before it boots. No-ops when the CLI is not staged for
- * this platform or kilo-server is inactive.
+ * sees `runt mcp` via `KILO_CONFIG_CONTENT` before it boots. No-ops when the
+ * CLI is not staged for this platform or kilo-server is inactive.
  */
 export function registerRuntMcpSeed(mainSdk: MainSdk, options: SeedRuntMcpOptions): void {
 	const logger = options.logger ?? mainSdk.logger;

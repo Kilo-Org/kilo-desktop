@@ -26,8 +26,16 @@ export const AGENTIC_EMBED_CHROME_STYLE_ATTR = "data-agentic-embed-chrome";
 /**
  * Host-side chrome overrides for the embedded notebook SPA. nteract has no
  * embed flag to hide the rail; we own the staged bytes, so we inject CSS.
+ *
+ * `--background` matches chat `bg-muted` (storm-50 / storm-850) so the iframe
+ * page shares the same surface as the surrounding thread.
  */
-export const AGENTIC_EMBED_CHROME_CSS = '[data-testid="notebook-rail"]{display:none!important}';
+export const AGENTIC_EMBED_CHROME_CSS = [
+	":root,.light{--background:oklch(0.985 0 0)}",
+	".dark,[data-theme=dark]{--background:oklch(0.243 0.015 261.655)}",
+	"@media (prefers-color-scheme:dark){:root:not(.light){--background:oklch(0.243 0.015 261.655)}}",
+	'[data-testid="notebook-rail"]{display:none!important}',
+].join("");
 
 interface NotebookBuildFile {
 	readonly path: string;
@@ -175,14 +183,20 @@ export async function validateNotebookBuildOutput(directory: string): Promise<vo
 	}
 }
 
-/** Pure HTML transform: inject (or keep) the embed-chrome style before `</head>`. */
+const AGENTIC_EMBED_CHROME_STYLE_TAG = `<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>${AGENTIC_EMBED_CHROME_CSS}</style>`;
+const AGENTIC_EMBED_CHROME_STYLE_RE = new RegExp(
+	`<style\\s+${AGENTIC_EMBED_CHROME_STYLE_ATTR}>[\\s\\S]*?</style>`,
+);
+
+/** Pure HTML transform: inject or refresh the embed-chrome style before `</head>`. */
 export function injectAgenticEmbedChromeHtml(html: string): string {
-	if (html.includes(AGENTIC_EMBED_CHROME_STYLE_ATTR)) return html;
+	if (html.includes(AGENTIC_EMBED_CHROME_STYLE_ATTR)) {
+		return html.replace(AGENTIC_EMBED_CHROME_STYLE_RE, AGENTIC_EMBED_CHROME_STYLE_TAG);
+	}
 	if (!html.includes("</head>")) {
 		throw new Error("notebook index.html has no </head> to inject embed chrome CSS");
 	}
-	const style = `<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>${AGENTIC_EMBED_CHROME_CSS}</style>`;
-	return html.replace("</head>", `${style}</head>`);
+	return html.replace("</head>", `${AGENTIC_EMBED_CHROME_STYLE_TAG}</head>`);
 }
 
 async function applyAgenticEmbedChrome(directory: string): Promise<void> {
@@ -217,7 +231,7 @@ export async function validateStagedNotebookBundle(
 ): Promise<NotebookBuildManifest> {
 	await validateNotebookBuildOutput(directory);
 	const indexHtml = await readFile(path.join(directory, "index.html"), "utf8");
-	if (!indexHtml.includes(AGENTIC_EMBED_CHROME_STYLE_ATTR)) {
+	if (!indexHtml.includes(AGENTIC_EMBED_CHROME_STYLE_TAG)) {
 		throw new Error("staged notebook index.html is missing agentic embed chrome CSS");
 	}
 	const manifest = JSON.parse(
@@ -267,15 +281,17 @@ async function currentBundleIsValid(destinationDirectory: string): Promise<boole
 }
 
 /**
- * When a prior stage is otherwise sound but predates embed-chrome CSS, inject
- * and re-hash `index.html` only — avoid a full upstream rebuild for a style tag.
+ * When a prior stage is otherwise sound but missing or outdated embed-chrome
+ * CSS, refresh and re-hash `index.html` only — avoid a full upstream rebuild
+ * for a style tag.
  */
 async function tryPatchEmbedChrome(directory: string): Promise<boolean> {
 	try {
 		const indexPath = path.join(directory, "index.html");
 		const html = await readFile(indexPath, "utf8");
-		if (html.includes(AGENTIC_EMBED_CHROME_STYLE_ATTR)) return false;
-		await applyAgenticEmbedChrome(directory);
+		const nextHtml = injectAgenticEmbedChromeHtml(html);
+		if (nextHtml === html) return false;
+		await writeFile(indexPath, nextHtml);
 		const manifestPath = path.join(directory, NOTEBOOK_BUILD_MANIFEST);
 		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as NotebookBuildManifest;
 		const indexBytes = await readFile(indexPath);

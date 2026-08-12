@@ -19,6 +19,10 @@ import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelection
 import { modelRefToId } from "./model-selection/model-catalog.js";
 import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
 import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
+import {
+	chatRightPanelCapability,
+	type ChatRightPanelCapabilities,
+} from "./right-panel/chat-right-panel-capability.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
@@ -33,6 +37,11 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const queryClient = useQueryClient();
 	const { activeWorkspaceId } = useWorkspacesFeature();
+
+	useEffect(() => {
+		if (sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel) return;
+		sdk.plugins.expose("chatRightPanel", chatRightPanelCapability);
+	}, [sdk]);
 	const connectionOptions = useMemo(
 		() =>
 			({

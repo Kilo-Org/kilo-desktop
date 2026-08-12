@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import type { KiloConfigOverlay } from "../contracts/schemas.js";
 import type { KiloLogger } from "./KiloServerManager.js";
 import {
 	seedManagedMcpEntry,
@@ -11,11 +12,11 @@ import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
 /**
  * Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
  *
- * Seeds an `mcp["anaconda-desktop-relay"]` entry into the app-owned
- * `kilo.jsonc` so that `kilo serve` spawns the bundled WebMCP local-relay as
- * a stdio MCP subprocess and exposes every renderer-registered tool
- * (`sdk.tools` with `exposeToModelContext: true`) to Kilo's agents with zero
- * end-user configuration.
+ * Builds the `mcp["anaconda-desktop-relay"]` overlay injected via
+ * `KILO_CONFIG_CONTENT` at `kilo serve` spawn. Kilo shares host XDG
+ * (`~/.config/kilo`); writing into the app-owned runtime `kilo.jsonc` is no
+ * longer read by the child — the overlay keeps the relay scoped to the
+ * Desktop-spawned server without touching the user's shared config.
  */
 
 export {
@@ -51,17 +52,34 @@ export const WEBMCP_RELAY_PORT = 9345;
 export const WEBMCP_RELAY_ID = "anaconda-agentic-desktop";
 export const WEBMCP_RELAY_LABEL = "Anaconda Agentic Desktop";
 
-export interface SeedKiloMcpConfigOptions {
-	/**
-	 * Directory the seeded config file lives in — the same
-	 * `XDG_CONFIG_HOME/kilo` that `KiloServerManager` passes to `kilo serve`.
-	 */
-	readonly configDirectory: string;
+export interface BuildWebMcpRelayOverlayOptions {
 	/**
 	 * Anaconda Desktop's own executable path (`app.getPath("exe")`). Kilo
 	 * spawns this with `ELECTRON_RUN_AS_NODE=1`; requires the `RunAsNode`
 	 * fuse to be `true` (see `forge.config.ts`).
 	 */
+	readonly appExecutablePath: string;
+	/** Optional logger; defaults to a no-op. */
+	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
+	/** Test hook — production callers omit this. */
+	readonly resolveRelay?: () => { entry: string; version: string };
+}
+
+export type WebMcpRelayOverlayResult =
+	| {
+			readonly kind: "ok";
+			readonly overlay: KiloConfigOverlay;
+			readonly entry: SeededMcpEntry;
+			readonly version: string;
+	  }
+	| { readonly kind: "skipped-error"; readonly reason: string };
+
+export interface SeedKiloMcpConfigOptions {
+	/**
+	 * Directory used only to clean leftover pre-shared-XDG file seeds under
+	 * the app-owned runtime path. Live injection uses {@link buildWebMcpRelayOverlay}.
+	 */
+	readonly configDirectory: string;
 	readonly appExecutablePath: string;
 	/**
 	 * When `false` we do not add the entry; if a previously-managed entry is
@@ -69,40 +87,78 @@ export interface SeedKiloMcpConfigOptions {
 	 * `true`; callers wire this to the `RunAsNode` fuse state at boot.
 	 */
 	readonly enabled?: boolean;
-	/** Optional logger; defaults to a no-op. */
 	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
-	/** Test hook — production callers omit this. */
 	readonly resolveRelay?: () => { entry: string; version: string };
+}
+
+/**
+ * Argv shared by the main-owned rendezvous supervisor and kilo's MCP overlay
+ * child. When kilo connects the overlay entry it spawns a second process that
+ * joins the live `:9345` server in client mode and proxies tools over stdio.
+ */
+export function buildWebMcpRelayArgv(
+	relayEntry: string,
+	options?: {
+		readonly port?: number;
+		readonly relayId?: string;
+		readonly label?: string;
+	},
+): string[] {
+	return [
+		relayEntry,
+		"--port",
+		String(options?.port ?? WEBMCP_RELAY_PORT),
+		"--relay-id",
+		options?.relayId ?? WEBMCP_RELAY_ID,
+		"--label",
+		options?.label ?? WEBMCP_RELAY_LABEL,
+	];
 }
 
 function buildEntry(appExecutablePath: string, relayEntry: string): SeededMcpEntry {
 	return {
 		type: "local",
-		command: [
-			appExecutablePath,
-			relayEntry,
-			"--port",
-			String(WEBMCP_RELAY_PORT),
-			"--relay-id",
-			WEBMCP_RELAY_ID,
-			"--label",
-			WEBMCP_RELAY_LABEL,
-		],
+		command: [appExecutablePath, ...buildWebMcpRelayArgv(relayEntry)],
 		environment: { ELECTRON_RUN_AS_NODE: "1" },
 		enabled: true,
 	};
 }
 
 /**
- * Merge (or remove) the WebMCP relay managed entry into `kilo.jsonc`.
- *
- * Returns a structured `SeedOutcome`. Never throws for expected conditions
- * (missing file, empty file, unmanaged user entry, unparseable existing
- * file, unresolvable relay); surfaces unexpected I/O failures to the caller.
+ * Resolve the bundled relay CLI and build the MCP overlay payload injected
+ * via `KILO_CONFIG_CONTENT`. Never throws for expected conditions (missing
+ * relay package); returns `skipped-error` so the bridge stays optional.
+ */
+export function buildWebMcpRelayOverlay(
+	options: BuildWebMcpRelayOverlayOptions,
+): WebMcpRelayOverlayResult {
+	const logger = options.logger ?? { info() {}, warn() {}, error() {} };
+	const resolveRelay = options.resolveRelay ?? resolveWebMcpRelayEntry;
+
+	let relay: { entry: string; version: string };
+	try {
+		relay = resolveRelay();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		logger.warn(`Skipping WebMCP relay overlay: ${message}`);
+		return { kind: "skipped-error", reason: message };
+	}
+
+	const entry = buildEntry(options.appExecutablePath, relay.entry);
+	return {
+		kind: "ok",
+		entry,
+		version: relay.version,
+		overlay: { mcp: { [MCP_ENTRY_NAME]: entry } },
+	};
+}
+
+/**
+ * Removes a leftover file-based managed entry from the pre-shared-XDG
+ * app-owned `kilo.jsonc`. Live injection uses {@link buildWebMcpRelayOverlay}.
  */
 export async function seedKiloMcpConfig(options: SeedKiloMcpConfigOptions): Promise<SeedOutcome> {
 	const logger = options.logger ?? { info() {}, warn() {}, error() {} };
-	const resolveRelay = options.resolveRelay ?? resolveWebMcpRelayEntry;
 	const enabled = options.enabled ?? true;
 
 	if (!enabled) {
@@ -119,27 +175,33 @@ export async function seedKiloMcpConfig(options: SeedKiloMcpConfigOptions): Prom
 		return outcome;
 	}
 
-	let relay: { entry: string; version: string };
-	try {
-		relay = resolveRelay();
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		logger.warn(`Skipping WebMCP seed: ${message}`);
-		return { kind: "skipped-error", reason: message };
+	// Prefer overlay injection; still prune any stale file entry so the
+	// orphaned runtime/config/kilo copy does not confuse debugging.
+	const overlay = buildWebMcpRelayOverlay({
+		appExecutablePath: options.appExecutablePath,
+		logger,
+		...(options.resolveRelay !== undefined ? { resolveRelay: options.resolveRelay } : {}),
+	});
+	if (overlay.kind !== "ok") {
+		return { kind: "skipped-error", reason: overlay.reason };
 	}
 
-	const outcome = await seedManagedMcpEntry({
+	await seedManagedMcpEntry({
 		configDirectory: options.configDirectory,
 		name: MCP_ENTRY_NAME,
-		entry: buildEntry(options.appExecutablePath, relay.entry),
-		enabled: true,
+		enabled: false,
 		logger,
-		label: `WebMCP relay (@mcp-b/webmcp-local-relay@${relay.version})`,
+		label: "WebMCP relay (stale file seed)",
 	});
-	return outcome;
+
+	return {
+		kind: "written",
+		reason: "created",
+		entry: overlay.entry,
+	};
 }
 
-/** Config directory under the kilo-server runtime root. */
+/** Config directory under the kilo-server runtime root (stale-file cleanup only). */
 export function kiloMcpConfigDirectory(runtimeDirectory: string): string {
 	return path.join(runtimeDirectory, "config", "kilo");
 }

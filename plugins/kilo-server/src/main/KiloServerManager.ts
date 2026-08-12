@@ -9,7 +9,11 @@ import { promisify } from "node:util";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { execa } from "execa";
 
-import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
+import type {
+	KiloConfigOverlay,
+	KiloServerConnection,
+	KiloServerStatus,
+} from "../contracts/schemas.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 
 const execFile = promisify(execFileCallback);
@@ -57,6 +61,14 @@ export interface KiloServerManagerOptions {
 	readonly allowVersionMismatch?: boolean;
 	readonly corsOrigins?: readonly string[];
 	readonly environment?: NodeJS.ProcessEnv;
+	/**
+	 * Optional mcp overlay merged into `KILO_CONFIG_CONTENT` at spawn time.
+	 * Read on every spawn so callers can contribute after async setup (fuse
+	 * detection, relay resolve) and still land in the first `kilo serve` env.
+	 * Needed because kilo shares host XDG (`~/.config/kilo`) — writing an
+	 * app-owned runtime `kilo.jsonc` is no longer read by the child.
+	 */
+	readonly getConfigOverlay?: () => KiloConfigOverlay | undefined;
 	readonly platform?: NodeJS.Platform;
 	readonly fetch: typeof fetch;
 	readonly spawn?: (
@@ -114,6 +126,39 @@ function delay(durationMs: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
+/**
+ * Compose `KILO_CONFIG_CONTENT`: contributed mcp overlay merged over any
+ * inherited env value. Returns `undefined` when there is nothing to inject.
+ */
+export function composeConfigContent(
+	inherited: string | undefined,
+	overlay: KiloConfigOverlay | undefined,
+): string | undefined {
+	if (overlay === undefined) return inherited;
+	let base: Record<string, unknown> = {};
+	if (inherited) {
+		try {
+			const parsed: unknown = JSON.parse(inherited);
+			if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+				base = parsed as Record<string, unknown>;
+			}
+		} catch {
+			// Malformed inherited content: the overlay alone is still valid.
+		}
+	}
+	const baseMcp = base.mcp;
+	const merged: Record<string, unknown> = { ...base };
+	if (overlay.mcp !== undefined || baseMcp !== undefined) {
+		const mcp: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+		if (baseMcp !== null && typeof baseMcp === "object" && !Array.isArray(baseMcp)) {
+			Object.assign(mcp, baseMcp);
+		}
+		if (overlay.mcp !== undefined) Object.assign(mcp, overlay.mcp);
+		merged.mcp = mcp;
+	}
+	return JSON.stringify(merged);
+}
+
 export class KiloServerManager {
 	readonly #options: Required<
 		Pick<
@@ -136,7 +181,10 @@ export class KiloServerManager {
 			| "shutdownTimeoutMs"
 		>
 	> &
-		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory" | "stateDirectory">;
+		Pick<
+			KiloServerManagerOptions,
+			"installation" | "runtimeDirectory" | "stateDirectory" | "getConfigOverlay"
+		>;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	#status: KiloServerStatus = { status: "stopped" };
 	#child: KiloChildProcess | undefined;
@@ -149,6 +197,9 @@ export class KiloServerManager {
 			installation: options.installation,
 			runtimeDirectory: options.runtimeDirectory,
 			stateDirectory: options.stateDirectory,
+			...(options.getConfigOverlay !== undefined
+				? { getConfigOverlay: options.getConfigOverlay }
+				: {}),
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
 			corsOrigins: options.corsOrigins ?? DEFAULT_CORS_ORIGINS,
@@ -285,8 +336,13 @@ export class KiloServerManager {
 	}
 
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
+		const configContent = composeConfigContent(
+			this.#options.environment.KILO_CONFIG_CONTENT,
+			this.#options.getConfigOverlay?.(),
+		);
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
+			...(configContent !== undefined ? { KILO_CONFIG_CONTENT: configContent } : {}),
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",

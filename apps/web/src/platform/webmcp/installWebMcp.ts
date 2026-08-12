@@ -209,15 +209,10 @@ export function nudgeRelayWidget(): void {
 /**
  * Periodically wakes the relay widget so it retries discovery.
  *
- * Closes the boot-order race between the renderer and the relay: `kilo serve`
- * boots its MCP servers lazily, so the relay can bind its port ~30-60s AFTER
- * the widget's finite discovery ladder (initial scan → 10s/20s/30s retries →
- * dormant with 120s re-probes) has gone quiet. Measured on a dev machine the
- * resulting "relay up, widget dormant" dead zone lasted minutes, during which
- * Kilo truthfully reports zero WebMCP tools.
- *
- * A 15s cadence bounds the dead zone regardless of how the relay's lifecycle
- * drifts (lazy boot, orphan-takeover blip, EPIPE restart).
+ * Secondary guard: Desktop main owns the `:9345` rendezvous
+ * (`WebMcpRelaySupervisor`). Residual dead zones remain when the renderer
+ * probes before the rendezvous is listening, or after orphan-takeover / EPIPE
+ * restarts. A 15s cadence bounds those gaps.
  */
 function startRelayReconnectNudge(): void {
 	setInterval(nudgeRelayWidget, RELAY_RECONNECT_NUDGE_MS);

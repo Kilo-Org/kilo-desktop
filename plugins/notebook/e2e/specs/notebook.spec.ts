@@ -7,7 +7,9 @@ test.describe("Notebook @smoke", () => {
 		await notebookPage.openKiloChat();
 		await notebookPage.addTwoNotebooks();
 		await notebookPage.verifyDistinctProtocolFramesAndSwitching();
+		await notebookPage.verifyBundledResources();
 		await notebookPage.verifyStatusChannelReportsBoundRelay();
 		await notebookPage.verifyDaemonIsReachable();
+		await notebookPage.executeCellAndVerifyOutput();
 	});
 });

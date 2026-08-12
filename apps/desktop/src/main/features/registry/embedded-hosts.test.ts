@@ -15,7 +15,7 @@ vi.mock("./features.js", () => ({
 import { collectEmbeddedHosts } from "./embedded-hosts.js";
 import { bootFeatures, featureRouter } from "./feature-registry.js";
 
-const disposers: Array<() => void> = [];
+const disposers: Array<() => Promise<void>> = [];
 
 // Injected wherever a malformed contribution is expected, so the suite never
 // initializes `electron-log` against a mocked Electron.
@@ -29,8 +29,8 @@ async function boot(id: string, register: FeatureRegistration["mainRegister"]): 
 	disposers.push(await bootFeatures([registration]));
 }
 
-afterEach(() => {
-	for (const dispose of disposers.splice(0)) dispose();
+afterEach(async () => {
+	for (const dispose of disposers.splice(0)) await dispose();
 	features.splice(0);
 	vi.restoreAllMocks();
 });

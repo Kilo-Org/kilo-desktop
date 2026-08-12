@@ -15,11 +15,24 @@ describe("createNotebookResolveAsset", () => {
 		);
 	});
 
+	it("maps a platform daemon beneath packaged resources", () => {
+		const resolveAsset = createNotebookResolveAsset({
+			isPackaged: true,
+			packagedResourcesPath: "/Apps/Agentic.app/Contents/Resources",
+		});
+		expect(resolveAsset("resources/runtimed/darwin-arm64/runtimed-nightly")).toBe(
+			path.join("/Apps/Agentic.app/Contents/Resources", "runtimed/darwin-arm64/runtimed-nightly"),
+		);
+	});
+
 	it("resolves development assets from the plugin package", () => {
 		const resolveAsset = createNotebookResolveAsset({
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
 		});
 		expect(resolveAsset("build/notebook")).toContain("/plugins/notebook/build/notebook");
+		expect(resolveAsset("resources/runtimed/linux-x64/runtimed-nightly")).toContain(
+			"/plugins/notebook/resources/runtimed/linux-x64/runtimed-nightly",
+		);
 	});
 });

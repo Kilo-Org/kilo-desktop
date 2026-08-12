@@ -1,5 +1,12 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import { getPage } from "@anaconda/playwright-utils/page-utils";
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+
+import { packagedResourcesDirectory } from "@anaconda-agentic-desktop/e2e";
+
+import { getRuntimedArtifact } from "../../src/main/distribution/artifacts.js";
 
 type DesktopBridge = {
 	invoke?: (
@@ -83,16 +90,61 @@ export class NotebookPage {
 	}
 
 	async verifyDaemonIsReachable(): Promise<void> {
-		if (process.env["RUNTIMED_E2E_EXTERNAL"] !== "1") {
-			test.info().annotations.push({
-				type: "skipped-assertion",
-				description: "external runtimed reachability unchecked (set RUNTIMED_E2E_EXTERNAL=1)",
-			});
-			return;
-		}
 		const result = await this.#status();
 		if (!result.ok) throw new Error(result.error.message);
 		expect(result.value.availability.status).toBe("available");
 		expect(result.value.daemon?.version).toBeTruthy();
+	}
+
+	async verifyBundledResources(): Promise<void> {
+		const resources = packagedResourcesDirectory();
+		const artifact = getRuntimedArtifact();
+		expect(existsSync(path.join(resources, "notebook", "index.html"))).toBe(true);
+		expect(existsSync(path.join(resources, "runtimed", artifact.target, artifact.executable))).toBe(
+			true,
+		);
+	}
+
+	async executeCellAndVerifyOutput(): Promise<void> {
+		const notebook = getPage().frameLocator('[data-qa-id="notebook-frame"]');
+		await expect(notebook.locator('[data-testid="notebook-toolbar"]')).toBeVisible({
+			timeout: 30_000,
+		});
+		await expect(notebook.locator("[data-notebook-synced]")).toHaveAttribute(
+			"data-notebook-synced",
+			"true",
+			{ timeout: 30_000 },
+		);
+		await expect(notebook.locator('[data-testid="kernel-status"]')).toHaveAttribute(
+			"data-kernel-status",
+			"idle",
+			{ timeout: 120_000 },
+		);
+
+		const codeCells = notebook.locator('[data-cell-type="code"]');
+		if ((await codeCells.count()) === 0) {
+			await notebook.locator('[data-testid="add-code-cell-button"]').click();
+		}
+		await expect(codeCells).toHaveCount(1);
+		const codeCell = codeCells;
+		await expect(codeCell).toBeVisible();
+		await codeCell.locator('.cm-content[contenteditable="true"]').evaluate((node, source) => {
+			const editor = (
+				node as HTMLElement & {
+					cmTile?: {
+						view?: {
+							state: { doc: { length: number } };
+							dispatch: (transaction: unknown) => void;
+						};
+					};
+				}
+			).cmTile?.view;
+			if (!editor) throw new Error("CodeMirror view was not attached to the notebook cell");
+			editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: source } });
+		}, "sum(range(101))");
+		await codeCell.locator('[data-testid="execute-button"]').click();
+		await expect(codeCell.locator('[data-slot="ansi-output"]')).toContainText("5050", {
+			timeout: 60_000,
+		});
 	}
 }

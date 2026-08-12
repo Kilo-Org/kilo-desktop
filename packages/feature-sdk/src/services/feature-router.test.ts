@@ -303,4 +303,28 @@ describe("FeatureRouter", () => {
 			warn.mockRestore();
 		}
 	});
+
+	it("awaits async disposers sequentially in reverse registration order", async () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("notebook");
+		mainSdk.channels(testChannels).handle("list", () => []);
+		const order: string[] = [];
+		let release!: () => void;
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		mainSdk.onDispose(() => order.push("first"));
+		mainSdk.onDispose(async () => {
+			order.push("second:start");
+			await blocked;
+			order.push("second:end");
+		});
+
+		const disposed = router.destroyFeatureAsync("notebook");
+		expect(router.has("notebook", "list")).toBe(false);
+		expect(order).toEqual(["second:start"]);
+		release();
+		await disposed;
+		expect(order).toEqual(["second:start", "second:end", "first"]);
+	});
 });

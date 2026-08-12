@@ -786,7 +786,8 @@ export interface MainSdk {
 	 */
 	channels<C extends ChannelMap>(channels: C): ChannelHandlers<C>;
 	/** Cleanup registration — runs when the shell tears the feature down (shutdown, unload). */
-	onDispose(fn: () => void): void;
+	/** Register cleanup that may be asynchronous during host-owned feature teardown. */
+	onDispose(fn: () => unknown): void;
 }
 
 // ─── Feature registration ────────────────────────────────────────────────────

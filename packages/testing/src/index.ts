@@ -466,6 +466,8 @@ export type FakeMainSdk = MainSdk & {
 	has(channel: string): boolean;
 	/** Tear the feature down like the shell does on unload/shutdown. */
 	dispose(): void;
+	/** Tear the feature down and await asynchronous cleanup. */
+	disposeAsync(): Promise<void>;
 };
 
 export interface FakeMainSdkOptions {
@@ -531,6 +533,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		invoke: (channel, args) => router.invoke(featureId, channel, args),
 		has: (channel) => router.has(featureId, channel),
 		dispose: () => router.destroyFeature(featureId),
+		disposeAsync: () => router.destroyFeatureAsync(featureId),
 	};
 }
 

@@ -1,0 +1,16 @@
+name: Build pinned notebook UI
+description: Build and validate the platform-independent nteract notebook bundle.
+
+runs:
+  using: composite
+  steps:
+    - name: Install nteract build prerequisites
+      shell: bash
+      run: |
+        rustup toolchain install 1.94.0 --profile minimal
+        rustup default 1.94.0
+        cargo install wasm-pack --version 0.15.0 --locked
+
+    - name: Build pinned notebook UI
+      shell: bash
+      run: pnpm notebook:build-ui

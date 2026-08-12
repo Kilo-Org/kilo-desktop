@@ -77,7 +77,7 @@ export interface BootFeaturesOptions {
 export async function bootFeatures(
 	features: readonly FeatureRegistration[],
 	options?: BootFeaturesOptions,
-): Promise<() => void> {
+): Promise<() => Promise<void>> {
 	const storageRoot = options?.storageRoot;
 	const onFeatureProgress = options?.onFeatureProgress;
 	// One flag per bootFeatures call — flipping it after the loop turns every
@@ -127,13 +127,13 @@ export async function bootFeatures(
 		} catch (error) {
 			console.error(`[FeatureRegistry] mainRegister failed for "${feature.id}":`, error);
 			// Roll back partial registration so the feature is not half-alive.
-			featureRouter.destroyFeature(feature.id);
+			await featureRouter.destroyFeatureAsync(feature.id);
 		}
 	}
 	bootWindowOpen = false;
-	return () => {
+	return async () => {
 		for (const id of booted.reverse()) {
-			featureRouter.destroyFeature(id);
+			await featureRouter.destroyFeatureAsync(id);
 			bootedFeatureIds.delete(id);
 		}
 	};

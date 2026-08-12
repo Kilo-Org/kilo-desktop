@@ -24,6 +24,7 @@ import {
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
 import { BootProgressReporter } from "./platform/BootProgressReporter.js";
+import { AwaitedShutdownBarrier } from "./platform/AwaitedShutdownBarrier.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronNotifications } from "./platform/ElectronNotifications.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
@@ -60,9 +61,15 @@ export class Application {
 	// After restoreNativeThemeFromPreferences, nativeTheme is the chrome signal.
 	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
 	readonly #ipcServer = new IpcServer();
-	readonly #disposers: Array<() => void> = [];
+	readonly #logger = createLogger("application");
+	readonly #disposers: Array<() => void | Promise<void>> = [];
+	readonly #shutdown = new AwaitedShutdownBarrier({
+		dispose: () => this.#dispose(),
+		quit: () => this.#app.quit(),
+		logger: this.#logger,
+	});
 	#featureFlags: FeatureFlagService | undefined;
-	#isShuttingDown = false;
+	#disposePromise: Promise<void> | undefined;
 
 	async start(): Promise<void> {
 		const identity = getAppIdentity(
@@ -77,7 +84,9 @@ export class Application {
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
-			this.#app.on("before-quit", () => this.#dispose()),
+			this.#app.on("before-quit", (event: { preventDefault(): void }) => {
+				void this.#shutdown.handleBeforeQuit(event);
+			}),
 		);
 
 		await this.#app.whenReady();
@@ -220,10 +229,23 @@ export class Application {
 		});
 	}
 
-	#dispose(): void {
-		if (this.#isShuttingDown) return;
-		this.#isShuttingDown = true;
-		for (const dispose of this.#disposers.splice(0).reverse()) dispose();
-		this.#protocol.dispose();
+	#dispose(): Promise<void> {
+		this.#disposePromise ??= this.#disposeOnce();
+		return this.#disposePromise;
+	}
+
+	async #disposeOnce(): Promise<void> {
+		for (const dispose of this.#disposers.splice(0).reverse()) {
+			try {
+				await dispose();
+			} catch (error) {
+				this.#logger.error("shutdown disposer failed", error);
+			}
+		}
+		try {
+			this.#protocol.dispose();
+		} catch (error) {
+			this.#logger.error("protocol shutdown failed", error);
+		}
 	}
 }

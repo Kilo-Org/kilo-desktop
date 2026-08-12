@@ -19,6 +19,7 @@
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"make": "pnpm --filter @anaconda-agentic-desktop/desktop run make",
+		"notebook:build-ui": "pnpm --filter @anaconda-agentic-desktop/plugin-notebook run build-ui",
 		"package": "pnpm --filter @anaconda-agentic-desktop/desktop run package",
 		"package:e2e": "pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e",
 		"postinstall": "node -e \"if (process.platform !== 'win32') require('node:fs').chmodSync('node_modules/@electron-forge/cli/dist/electron-forge.js', 0o755)\"",

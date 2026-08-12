@@ -180,7 +180,9 @@ export class NotebookRelayService {
 
 	async dispose(): Promise<void> {
 		const server = this.#server;
-		this.#wss?.close();
+		const wss = this.#wss;
+		for (const client of wss?.clients ?? []) client.terminate();
+		wss?.close();
 		this.#wss = undefined;
 		this.#server = undefined;
 		this.#port = 0;

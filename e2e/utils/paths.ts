@@ -16,6 +16,13 @@ const packageDirectory = path.join(
 	`${identity.productName}-${process.platform}-${process.arch}`,
 );
 
+/** Electron Resources directory in the platform-specific packaged layout. */
+export function packagedResourcesDirectory(): string {
+	return process.platform === "darwin"
+		? path.join(packageDirectory, `${identity.productName}.app/Contents/Resources`)
+		: path.join(packageDirectory, "resources");
+}
+
 /** Packaged Electron binary produced by `electron-forge package`. */
 export function packagedExecutable(): string {
 	switch (process.platform) {

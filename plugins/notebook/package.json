@@ -12,8 +12,11 @@
 		"./packaged-assets": "./src/main/resolve-plugin-asset.ts"
 	},
 	"scripts": {
+		"build-ui": "node --env-file-if-exists=.env.local --import tsx scripts/build-notebook-ui.ts",
 		"check": "tsc --noEmit -p tsconfig.json",
-		"stage-bundle": "node --env-file-if-exists=.env.local --import tsx scripts/stage-notebook-bundle.ts",
+		"fetch-runtimed": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-runtimed.ts",
+		"prepare-assets": "pnpm run fetch-runtimed && pnpm run build-ui",
+		"stage-bundle": "pnpm run build-ui",
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
@@ -61,6 +64,7 @@
 		"@vitest/browser": "5.0.0-beta.7",
 		"@vitest/browser-playwright": "5.0.0-beta.7",
 		"@vitest/coverage-v8": "5.0.0-beta.7",
+		"execa": "^9.6.0",
 		"playwright": "1.61.1",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",

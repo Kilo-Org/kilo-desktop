@@ -11,6 +11,7 @@ import { CapabilityRegistry } from "./capability-registry.js";
 import { emitFeatureEvent, EventBus, type FeatureEvent } from "./event-bus.js";
 
 type Handler = (args: unknown) => unknown | Promise<unknown>;
+type FeatureDisposer = () => unknown;
 
 interface HandlerEntry {
 	inputSchema: SchemaLike;
@@ -98,7 +99,7 @@ function createConsoleLogger(featureId: string): MainSdkLogger {
  */
 export class FeatureRouter {
 	private handlers = new Map<string, Map<string, HandlerEntry>>();
-	private disposables = new Map<string, Array<() => void>>();
+	private disposables = new Map<string, FeatureDisposer[]>();
 	private readonly fallback: InvokeFallback | undefined;
 	readonly eventBus: EventBus;
 	readonly capabilityRegistry: CapabilityRegistry;
@@ -235,7 +236,7 @@ export class FeatureRouter {
 				return resolvePluginAsset(subpath);
 			},
 			channels,
-			onDispose: (fn: () => void) => {
+			onDispose: (fn: () => unknown) => {
 				this.disposables.get(featureId)!.push(fn);
 			},
 		};
@@ -290,21 +291,38 @@ export class FeatureRouter {
 	}
 
 	/**
-	 * Destroy a feature: run its disposables and remove all handlers.
-	 * Shell-owned — called on feature/plugin unload or app shutdown.
+	 * Destroy a feature synchronously. Promise-returning cleanup continues in
+	 * the background; Electron shutdown uses destroyFeatureAsync instead.
 	 */
 	destroyFeature(featureId: string): void {
-		const disposables = this.disposables.get(featureId);
-		if (disposables) {
-			for (const fn of [...disposables].reverse()) {
-				try {
-					fn();
-				} catch (error) {
-					console.warn(`[FeatureRouter] Dispose callback for "${featureId}" threw:`, error);
-				}
+		for (const fn of this.#takeDisposables(featureId)) {
+			try {
+				void Promise.resolve(fn()).catch((error: unknown) => this.#warnDispose(featureId, error));
+			} catch (error) {
+				this.#warnDispose(featureId, error);
 			}
 		}
+	}
+
+	/** Destroy a feature and await each disposer in reverse registration order. */
+	async destroyFeatureAsync(featureId: string): Promise<void> {
+		for (const fn of this.#takeDisposables(featureId)) {
+			try {
+				await fn();
+			} catch (error) {
+				this.#warnDispose(featureId, error);
+			}
+		}
+	}
+
+	#takeDisposables(featureId: string): FeatureDisposer[] {
+		const disposables = [...(this.disposables.get(featureId) ?? [])].reverse();
 		this.handlers.delete(featureId);
 		this.disposables.delete(featureId);
+		return disposables;
+	}
+
+	#warnDispose(featureId: string, error: unknown): void {
+		console.warn(`[FeatureRouter] Dispose callback for "${featureId}" threw:`, error);
 	}
 }

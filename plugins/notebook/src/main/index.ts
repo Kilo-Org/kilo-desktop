@@ -1,15 +1,16 @@
+import type { ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import type net from "node:net";
 
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { notebookContract, NOTEBOOK_HOST, type NotebookService } from "../contracts/schemas.js";
+import { DaemonProcessService, daemonUnavailableReason } from "./DaemonProcessService.js";
+import { getRuntimedArtifact } from "./distribution/artifacts.js";
 import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
 import { CONFIG_PATH, NotebookRelayService } from "./NotebookRelayService.js";
 import { RuntimedService, type RuntimedLogger } from "./RuntimedService.js";
 import type { BuildChannel } from "./socket-path.js";
-
-export const RUNTIMED_PREREQUISITE_MESSAGE =
-	"The nteract runtime service is not running. Install or start nteract, then retry.";
 
 export interface NotebookFeatureOptions {
 	readonly socketPath?: string;
@@ -19,6 +20,20 @@ export interface NotebookFeatureOptions {
 	/** Test seam for injecting a fake daemon socket factory. */
 	readonly connect?: (socketPath: string) => net.Socket;
 	readonly resolveBundleRoot?: () => string | undefined;
+	readonly resolveDaemonBinary?: () => string | undefined;
+	readonly spawnProcess?: (binaryPath: string) => ChildProcess;
+	readonly daemonOptions?: Partial<
+		Pick<
+			ConstructorParameters<typeof DaemonProcessService>[0],
+			| "sleep"
+			| "now"
+			| "readyTimeoutMs"
+			| "pollIntervalMs"
+			| "shutdownGraceMs"
+			| "maxRestartAttempts"
+			| "stableUptimeMs"
+		>
+	>;
 }
 
 export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions = {}): void {
@@ -32,10 +47,29 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 	const resolveBundleRoot =
 		options.resolveBundleRoot ??
 		(() => resolveNotebookBundleRoot({ candidate: mainSdk.resolvePluginAsset("build/notebook") }));
-	const checkDaemon = async () =>
-		(await runtimed.isListening())
+	const resolveDaemonBinary =
+		options.resolveDaemonBinary ??
+		(() => {
+			const artifact = getRuntimedArtifact();
+			const candidate = mainSdk.resolvePluginAsset(
+				`resources/runtimed/${artifact.target}/${artifact.executable}`,
+			);
+			return existsSync(candidate) ? candidate : undefined;
+		});
+	const daemonBinary = resolveDaemonBinary();
+	const daemonProcess = new DaemonProcessService({
+		...(daemonBinary ? { binaryPath: daemonBinary } : {}),
+		probe: () => runtimed.isListening(),
+		logger,
+		...(options.spawnProcess ? { spawnProcess: options.spawnProcess } : {}),
+		...options.daemonOptions,
+	});
+	const checkDaemon = async () => {
+		const state = await daemonProcess.ensureRunning();
+		return state.status === "running" || state.status === "external"
 			? ({ status: "available" } as const)
-			: ({ status: "unavailable", reason: RUNTIMED_PREREQUISITE_MESSAGE } as const);
+			: ({ status: "unavailable", reason: daemonUnavailableReason(state) } as const);
+	};
 	const relay = new NotebookRelayService({
 		runtimed,
 		// The WebSocket is opened by nteract's document, which we serve from the
@@ -50,12 +84,18 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		// unbound until something opens the notebook surface.
 		status: async () => {
 			const relayPort = await relay.start();
+			const availability = await checkDaemon();
 			const daemon = await runtimed.queryDaemonInfo();
 			return {
 				relayPort,
 				availability: daemon
 					? { status: "available" as const }
-					: { status: "unavailable" as const, reason: RUNTIMED_PREREQUISITE_MESSAGE },
+					: availability.status === "unavailable"
+						? availability
+						: {
+								status: "unavailable" as const,
+								reason: "The notebook service started but did not return daemon information.",
+							},
 				daemon: daemon
 					? {
 							version: daemon.version,
@@ -78,7 +118,8 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		root: resolveBundleRoot(),
 		routes: { [CONFIG_PATH]: ({ origin }: { origin: string }) => relay.config(origin) },
 	});
-	mainSdk.onDispose(() => {
-		void relay.dispose();
+	mainSdk.onDispose(async () => {
+		await relay.dispose();
+		await daemonProcess.dispose();
 	});
 }

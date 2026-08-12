@@ -1,3 +1,5 @@
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import net from "node:net";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -110,12 +112,53 @@ async function boot(options: { withDaemon?: boolean } = {}) {
 	mainRegister(mainSdk, {
 		socketPath: "unused",
 		resolveBundleRoot: () => undefined,
+		resolveDaemonBinary: () => undefined,
 		...(connect ? { connect } : {}),
 	});
 	return mainSdk;
 }
 
 describe("notebook mainRegister", () => {
+	it("starts the bundled daemon on status and stops the owned child during async disposal", async () => {
+		const daemon = new FakeDaemon();
+		await daemon.listen();
+		daemons.push(daemon);
+		let spawned = false;
+		const child = Object.assign(new EventEmitter(), {
+			pid: 812,
+			exitCode: null as number | null,
+			signalCode: null as NodeJS.Signals | null,
+			kill: (signal: NodeJS.Signals) => {
+				child.signalCode = signal;
+				child.emit("exit", null, signal);
+				return true;
+			},
+		});
+		const mainSdk = createFakeMainSdk({ featureId: "notebook" });
+		mainRegister(mainSdk, {
+			socketPath: "unused",
+			resolveBundleRoot: () => undefined,
+			resolveDaemonBinary: () => "/bundle/runtimed-nightly",
+			connect: () =>
+				spawned ? daemon.connect() : net.createConnection({ host: "127.0.0.1", port: 1 }),
+			spawnProcess: () => {
+				spawned = true;
+				return child as unknown as ChildProcess;
+			},
+		});
+
+		const status = (await mainSdk.invoke("status")) as {
+			availability: { status: string };
+			daemon: { version: string } | null;
+		};
+		expect(status.availability).toEqual({ status: "available" });
+		expect(status.daemon?.version).toBe("2.6.3");
+		expect(spawned).toBe(true);
+
+		await mainSdk.disposeAsync();
+		expect(child.signalCode).toBe("SIGTERM");
+	});
+
 	it("reports the relay port and daemon details through the status channel", async () => {
 		const mainSdk = await boot();
 
@@ -133,7 +176,7 @@ describe("notebook mainRegister", () => {
 			blobPort: 48637,
 		});
 		expect(status.availability).toEqual({ status: "available" });
-		mainSdk.dispose();
+		await mainSdk.disposeAsync();
 	});
 
 	it("reports a null daemon rather than failing when the daemon is unreachable", async () => {
@@ -148,8 +191,8 @@ describe("notebook mainRegister", () => {
 		expect(status.relayPort).toBeGreaterThan(0);
 		expect(status.daemon).toBeNull();
 		expect(status.availability.status).toBe("unavailable");
-		expect(status.availability.reason).toContain("Install or start nteract");
-		mainSdk.dispose();
+		expect(status.availability.reason).toContain("bundled notebook service executable is missing");
+		await mainSdk.disposeAsync();
 	});
 
 	it("contributes the notebook bundle host with the relay config on its own origin", async () => {
@@ -174,7 +217,7 @@ describe("notebook mainRegister", () => {
 		// Fetching the config is what starts the relay, so serving assets alone
 		// leaves the loopback port unbound.
 		expect(config?.websocket_url).toContain(RELAY_WS_PATH);
-		mainSdk.dispose();
+		await mainSdk.disposeAsync();
 	});
 
 	it("accepts a websocket from the notebook origin, not the app origin", async () => {
@@ -206,7 +249,7 @@ describe("notebook mainRegister", () => {
 		await expect(new Promise((_resolve, reject) => rejected.once("error", reject))).rejects.toThrow(
 			/401/,
 		);
-		mainSdk.dispose();
+		await mainSdk.disposeAsync();
 	});
 
 	it("connects nteract to the already-running singleton", async () => {
@@ -230,7 +273,7 @@ describe("notebook mainRegister", () => {
 
 		await expect.poll(() => messages.some((m) => m.type === "ready")).toBe(true);
 		expect(messages.some((m) => m.type === "unavailable")).toBe(false);
-		mainSdk.dispose();
+		await mainSdk.disposeAsync();
 	});
 
 	it("serves the relay websocket at the started port and closes it on disposal", async () => {
@@ -244,8 +287,7 @@ describe("notebook mainRegister", () => {
 			new Promise((_resolve, reject) => unauthorized.once("error", reject)),
 		).rejects.toThrow(/401/);
 
-		mainSdk.dispose();
-		// Disposal is fire-and-forget inside onDispose, so wait for the close.
+		await mainSdk.disposeAsync();
 		await expect
 			.poll(async () => {
 				const probe = new WebSocket(`ws://127.0.0.1:${relayPort}${RELAY_WS_PATH}`);

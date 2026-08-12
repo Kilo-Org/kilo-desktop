@@ -19,6 +19,7 @@ import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
+import { getRuntimedArtifact } from "../../plugins/notebook/src/main/distribution/artifacts.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -39,15 +40,34 @@ const appIcon =
 		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, "assets/icon.icon")]
 		: path.join(packageRoot, "assets/icon");
 
-// Staged by the `prepackage` script. `extraResource` on a directory lands it
-// as `Contents/Resources/notebook/`, which is where resolveNotebookBundleRoot
-// looks; a build with no bundle configured still packages.
+// Staged by prepare:build. Both payloads are mandatory: Forge must never
+// silently produce a package whose notebook feature cannot start.
 const stagedNotebookBundle = path.join(workspaceRoot, "plugins/notebook/build/notebook");
+const stagedRuntimed = path.join(workspaceRoot, "plugins/notebook/resources/runtimed");
+const runtimedArtifact = getRuntimedArtifact();
+const stagedRuntimedBinary = path.join(
+	stagedRuntimed,
+	runtimedArtifact.target,
+	runtimedArtifact.executable,
+);
+for (const requiredAsset of [
+	path.join(stagedNotebookBundle, "index.html"),
+	path.join(stagedNotebookBundle, "agentic-notebook-build.json"),
+	stagedRuntimedBinary,
+	path.join(stagedRuntimed, runtimedArtifact.target, "staged.json"),
+]) {
+	if (!existsSync(requiredAsset)) {
+		throw new Error(
+			`Notebook build asset is missing: ${requiredAsset}. Run pnpm prepare:notebook.`,
+		);
+	}
+}
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
 	path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
-	...(existsSync(path.join(stagedNotebookBundle, "index.html")) ? [stagedNotebookBundle] : []),
+	stagedRuntimed,
+	stagedNotebookBundle,
 ];
 
 function updateFeed(platform: string, arch: string): string | undefined {

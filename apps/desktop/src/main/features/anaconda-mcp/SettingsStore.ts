@@ -1,50 +1,54 @@
-import Store from "electron-store";
+import type { KvStore, MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type { AnacondaMcpServiceOptions } from "./AnacondaMcpService.js";
 
-const SETTINGS_FILENAME = "settings";
-
-interface PersistedSettings {
+interface PersistedSettings extends Record<string, unknown> {
 	enabled: boolean;
 	urlOverride: string | null;
 }
 
 const DEFAULTS: PersistedSettings = { enabled: true, urlOverride: null };
 
+const SETTINGS_NAMESPACE = "settings";
+
 /**
- * File-backed store for anaconda-mcp settings, persisted to
- * `<storageDir>/settings.json` via `electron-store` (atomic writes, retries).
+ * Thin domain adapter around `mainSdk.storage.kv` for anaconda-mcp settings.
  *
- * `set()` is synchronous and throws when the on-disk write fails, so contract
- * handlers surface persistence failures to the UI instead of reporting a
- * save that silently reverts on the next restart. A malformed settings file
- * is cleared back to defaults (`clearInvalidConfig`), matching the previous
- * "unreadable file falls back to defaults" behavior.
+ * File-backed persistence (atomic writes, corrupt-file recovery, defaults for
+ * missing keys) is delegated to the shell's KV capability so the feature
+ * doesn't re-implement electron-store plumbing. This class only owns two
+ * things the KV can't:
+ *
+ * - **Wrong-typed value normalisation.** A file with `{ enabled: "yes",
+ *   urlOverride: 42 }` reads back as defaults rather than propagating the
+ *   type-lie up the stack. Corrupt JSON already resets to defaults inside
+ *   the KV; this handles the finer-grained "individual key has a bogus
+ *   value" case that predates the KV migration.
+ * - **Nullable `urlOverride` semantics.** `set({ urlOverride: null })` must
+ *   persist `null` explicitly (the "no override" idiom), so the adapter
+ *   forwards `null` untouched rather than letting a `??` coalesce it away.
  */
 export class SettingsStore {
-	readonly #store: Store<PersistedSettings>;
+	readonly #store: KvStore<PersistedSettings>;
 	readonly #defaults: PersistedSettings;
 
-	constructor(storageDir: string, defaults: PersistedSettings = DEFAULTS) {
+	constructor(sdk: MainSdk, defaults: PersistedSettings = DEFAULTS) {
 		this.#defaults = defaults;
-		this.#store = new Store<PersistedSettings>({
-			cwd: storageDir,
-			name: SETTINGS_FILENAME,
+		this.#store = sdk.storage.kv<PersistedSettings>({
+			namespace: SETTINGS_NAMESPACE,
 			defaults,
-			clearInvalidConfig: true,
 		});
 	}
 
 	get(): AnacondaMcpServiceOptions {
-		const enabled = this.#store.get("enabled");
-		const urlOverride = this.#store.get("urlOverride");
+		const snapshot = this.#store.snapshot();
 		return {
-			enabled: typeof enabled === "boolean" ? enabled : this.#defaults.enabled,
+			enabled: typeof snapshot.enabled === "boolean" ? snapshot.enabled : this.#defaults.enabled,
 			// `null` is a legitimate persisted value ("no override") — only
 			// wrong-typed values fall back to the injected default.
 			urlOverride:
-				urlOverride === null || typeof urlOverride === "string"
-					? urlOverride
+				snapshot.urlOverride === null || typeof snapshot.urlOverride === "string"
+					? snapshot.urlOverride
 					: this.#defaults.urlOverride,
 		};
 	}

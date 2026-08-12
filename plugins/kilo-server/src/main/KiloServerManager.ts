@@ -6,7 +6,8 @@ import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { createObservableValue, FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { ObservableValue } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { execa } from "execa";
 import isEqual from "lodash/isEqual.js";
 
@@ -166,6 +167,23 @@ function composeConfigContent(
 	return JSON.stringify(merged);
 }
 
+/**
+ * Owns the lifecycle of the packaged `kilo serve` child process: spawn, wait
+ * for the stdout handshake + `/global/health` probe, expose the connection to
+ * consumers, and tear the child down cleanly on `dispose()`. Restarts are
+ * serialized so a rapid restart storm coalesces into one graceful stop + one
+ * fresh spawn, matching the "one server per Desktop process" invariant.
+ *
+ * **Status emission contract.** `#setStatus` flows through an
+ * `ObservableValue<KiloServerStatus>` gated by `isEqual`, so callers observe
+ * exactly one `onStatusChange` per REAL transition. That means
+ * structurally-identical consecutive writes are intentionally not re-emitted
+ * — most visibly `stopped → stopped` on `dispose()` when the manager was
+ * never started, and `error → error` when a mid-startup failure runs the
+ * "stopped" branch after `dispose()` already emitted it. Subscribers that
+ * need a periodic resync must use a separate signal (the boot progress
+ * channel or an explicit refresh IPC), not the status event stream.
+ */
 export class KiloServerManager {
 	readonly #options: Required<
 		Pick<
@@ -191,7 +209,7 @@ export class KiloServerManager {
 		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory" | "stateDirectory">;
 	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
-	#status: KiloServerStatus = { status: "stopped" };
+	readonly #status: ObservableValue<KiloServerStatus>;
 	#child: KiloChildProcess | undefined;
 	#connection: (KiloServerConnection & { pid: number }) | undefined;
 	#startPromise: Promise<KiloServerConnection> | undefined;
@@ -240,10 +258,23 @@ export class KiloServerManager {
 			shutdownTimeoutMs: options.shutdownTimeoutMs ?? 5_000,
 		};
 		this.#contributedEnv = options.contributedEnv;
+		// Structural equality gates status emission so the caller's
+		// `onStatusChange` doesn't refire when two consecutive transitions
+		// (e.g. rapid `stopped` → `stopped` on dispose paths) carry
+		// structurally identical payloads. The subscribe callback owns the
+		// clone-before-emit so callers can safely mutate what they receive
+		// without corrupting the observable's cached value.
+		this.#status = createObservableValue<KiloServerStatus>(
+			{ status: "stopped" },
+			{ equals: isEqual },
+		);
+		this.#status.subscribe((next) => {
+			this.#options.onStatusChange(structuredClone(next));
+		});
 	}
 
 	get status(): KiloServerStatus {
-		return structuredClone(this.#status);
+		return structuredClone(this.#status.peek());
 	}
 
 	get isRunning(): boolean {
@@ -643,8 +674,10 @@ export class KiloServerManager {
 	}
 
 	#setStatus(status: KiloServerStatus): void {
-		this.#status = status;
-		this.#options.onStatusChange(structuredClone(status));
+		// Emission is subscribed inside the constructor and gated by the
+		// observable's structural equality — same shape callers see today,
+		// minus the duplicate-emission risk the hand-rolled version had.
+		this.#status.set(status);
 	}
 
 	#publicConnection(connection: KiloServerConnection & { pid: number }): KiloServerConnection {

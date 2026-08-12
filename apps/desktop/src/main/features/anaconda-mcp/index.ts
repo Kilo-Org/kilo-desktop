@@ -20,7 +20,7 @@ function isKiloReadyStatus(
  * disable choice survives across restarts.
  */
 export function mainRegister(mainSdk: MainSdk): void {
-	const settingsStore = new SettingsStore(mainSdk.storageDir);
+	const settingsStore = new SettingsStore(mainSdk);
 
 	const service = new AnacondaMcpService({
 		sdk: mainSdk,

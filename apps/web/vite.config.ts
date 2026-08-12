@@ -14,6 +14,7 @@ import {
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
+const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
 
 function injectThemeBootstrap(): Plugin {
 	return {
@@ -42,7 +43,7 @@ export default defineConfig({
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			org: "anaconda-nq",
 			project: "agentic-desktop",
-			...(process.env.SENTRY_AUTH_TOKEN && {
+			...(uploadSourcemaps && {
 				sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
 			}),
 		}),
@@ -67,7 +68,10 @@ export default defineConfig({
 		},
 	},
 	build: {
-		sourcemap: true,
+		// Only emit maps when they will be uploaded and stripped
+		// (filesToDeleteAfterUpload). Without the token, emitting maps would ship
+		// raw `.map` files with no upload and no cleanup.
+		sourcemap: uploadSourcemaps,
 		outDir: "dist",
 		emptyOutDir: true,
 	},

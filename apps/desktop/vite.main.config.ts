@@ -21,6 +21,8 @@ export default defineConfig(({ command }) => {
 	const viteEnvironment = loadEnv(environment, root, "VITE_");
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
+	const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
+
 	return {
 		plugins: [
 			sentryVitePlugin({
@@ -33,7 +35,7 @@ export default defineConfig(({ command }) => {
 						env: process.env.APP_MODE ?? environment,
 					},
 				},
-				...(process.env.SENTRY_AUTH_TOKEN && {
+				...(uploadSourcemaps && {
 					sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
 				}),
 			}),
@@ -53,7 +55,10 @@ export default defineConfig(({ command }) => {
 			mainFields: ["module", "jsnext:main", "jsnext"],
 		},
 		build: {
-			sourcemap: true,
+			// Only emit source maps when they will be uploaded to Sentry and then
+			// stripped from the output (filesToDeleteAfterUpload). Without the token,
+			// emitting maps would ship raw `.map` files in the packaged `.app`.
+			sourcemap: uploadSourcemaps,
 			lib: {
 				entry: "src/main/main.ts",
 				formats: ["es"],

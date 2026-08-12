@@ -67,6 +67,7 @@ export class Application {
 	readonly #disposers: Array<() => void> = [];
 	#featureFlags: FeatureFlagService | undefined;
 	#isShuttingDown = false;
+	#flushedSentry = false;
 
 	async start(): Promise<void> {
 		const identity = getAppIdentity(
@@ -81,8 +82,17 @@ export class Application {
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
-			this.#app.on("before-quit", () => void flushSentry()),
-			this.#app.on("before-quit", () => this.#dispose()),
+			// Electron runs `before-quit` listeners synchronously and then quits, so
+			// a fire-and-forget flush would be cut off. Preempt the first quit, await
+			// the (2s-bounded) Sentry flush and dispose, then re-trigger quit; the
+			// guard lets that second pass through.
+			this.#app.on("before-quit", async (event: Electron.Event) => {
+				if (this.#flushedSentry) return this.#dispose();
+				event.preventDefault();
+				await flushSentry();
+				this.#flushedSentry = true;
+				this.#app.quit();
+			}),
 		);
 
 		await this.#app.whenReady();

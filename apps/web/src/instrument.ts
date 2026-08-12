@@ -1,8 +1,13 @@
-import * as Sentry from "@sentry/electron/renderer";
-import { tanstackRouterBrowserTracingIntegration } from "@sentry/react";
+import { init } from "@sentry/electron/renderer";
+import { tanstackRouterBrowserTracingIntegration, init as reactInit } from "@sentry/react";
 
 import { router } from "@/router";
 
-Sentry.init({
-	integrations: [tanstackRouterBrowserTracingIntegration(router)],
-});
+// All renderer events are sent through the main process so passing dsn,
+// release or environment to renderer init will have no effect.
+init(
+	{
+		integrations: [tanstackRouterBrowserTracingIntegration(router)],
+	},
+	reactInit,
+);

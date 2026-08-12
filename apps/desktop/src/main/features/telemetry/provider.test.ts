@@ -219,10 +219,11 @@ describe("AnacondaOtelProvider", () => {
 		const auth = fakeAuth();
 		const p = provider(auth);
 
+		await p.track(entry());
 		await p.dispose();
 		auth.emitChange();
-
 		await p.track(entry());
+
 		expect(otel.changeSignalConnection).not.toHaveBeenCalled();
 	});
 

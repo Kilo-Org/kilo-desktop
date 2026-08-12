@@ -796,9 +796,10 @@ export interface HostMessagePort {
 }
 
 export interface MainSdkPorts {
-	handle(
+	handle<TArgs>(
 		channel: string,
-		handler: (port: HostMessagePort, args: unknown) => void | Promise<void>,
+		argsSchema: SchemaLike<TArgs>,
+		handler: (port: HostMessagePort, args: TArgs) => void | Promise<void>,
 	): void;
 }
 

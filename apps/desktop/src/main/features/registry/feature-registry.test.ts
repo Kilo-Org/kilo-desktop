@@ -309,7 +309,7 @@ describe("feature port bridge", () => {
 			{
 				id: featureId,
 				mainRegister(mainSdk) {
-					mainSdk.ports.handle("runtime", attached);
+					mainSdk.ports.handle("runtime", z.object({ notebookId: z.string() }), attached);
 				},
 			},
 		]);

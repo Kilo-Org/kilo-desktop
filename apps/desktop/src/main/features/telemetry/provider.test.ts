@@ -273,6 +273,22 @@ describe("AnacondaOtelProvider", () => {
 		expect(otel.changeSignalConnection).not.toHaveBeenCalled();
 	});
 
+	it("re-initializes once under concurrent sends that change the connection", async () => {
+		let token: string | null = null;
+		const p = provider(fakeAuth({ getApiKey: async () => token }));
+
+		await p.track(entry());
+		token = "api-key";
+		await Promise.all([
+			p.track(entry({ userId: "u1" })),
+			p.track(entry({ userId: "u1" })),
+			p.track(entry({ userId: "u1" })),
+		]);
+
+		expect(otel.changeSignalConnection).toHaveBeenCalledTimes(1);
+		expect(sendEventCalls).toHaveLength(4);
+	});
+
 	it("re-initializes after an auth onChanged event even if identity is unchanged", async () => {
 		const auth = fakeAuth({ getApiKey: async () => null });
 		const p = provider(auth);

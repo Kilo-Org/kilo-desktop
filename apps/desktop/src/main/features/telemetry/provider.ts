@@ -73,12 +73,6 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 		});
 	}
 
-	/**
-	 * Single-flighted lazy init: concurrent first sends share one run and the
-	 * first caller's `entry` seeds the resource attributes. On failure the promise
-	 * is forgotten (so a later `track` retries) and `#lastConnection` stays
-	 * `undefined` because that assignment happens in `track` after the `await`.
-	 */
 	#initialize = singleFlight(
 		async (entry: TelemetryEntry, apiKey: string | undefined): Promise<void> => {
 			this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
@@ -92,6 +86,19 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 
 			await this.#buildResourceAttributes(entry);
 			initializeTelemetry(config, this.#resources, ["logging"]);
+		},
+	);
+
+	#reInitialize = singleFlight(
+		async (entry: TelemetryEntry, apiKey: string | undefined): Promise<void> => {
+			const url = this.#getUrl(apiKey);
+			await this.#buildResourceAttributes(entry);
+			await changeSignalConnection("logging", {
+				endpoint: url,
+				...(apiKey ? { authToken: apiKey } : {}),
+				...(entry.userId ? { userId: entry.userId } : {}),
+			});
+			this.#logger.debug(`OTEL re-initialized connection (${url.href})`);
 		},
 	);
 
@@ -126,17 +133,6 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 	async dispose(): Promise<void> {
 		this.#stopOnChanged?.();
 		this.#stopOnChanged = undefined;
-	}
-
-	async #reInitialize(entry: TelemetryEntry, apiKey: string | undefined): Promise<void> {
-		const url = this.#getUrl(apiKey);
-		await this.#buildResourceAttributes(entry);
-		await changeSignalConnection("logging", {
-			endpoint: url,
-			...(apiKey ? { authToken: apiKey } : {}),
-			...(entry.userId ? { userId: entry.userId } : {}),
-		});
-		this.#logger.debug(`OTEL re-initialized connection (${url.href})`);
 	}
 
 	#getUrl(token: string | undefined): URL {

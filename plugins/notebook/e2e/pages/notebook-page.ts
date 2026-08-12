@@ -29,6 +29,10 @@ export class NotebookPage {
 	#firstFrameSrc: string | null = null;
 	#secondFrameSrc: string | null = null;
 
+	#activeFrame() {
+		return getPage().locator('iframe[data-qa-id="notebook-frame"]:visible');
+	}
+
 	async openKiloChat(): Promise<void> {
 		await getPage().waitForURL(/#\/plugins\/chat/);
 		await expect(getPage().getByTestId("kilo-chat-page")).toBeVisible();
@@ -37,13 +41,13 @@ export class NotebookPage {
 	async addTwoNotebooks(): Promise<void> {
 		await getPage().getByTestId("chat-right-panel-toggle").click();
 		await getPage().getByTestId("chat-right-panel-open-notebook-notebook").click();
-		await expect(getPage().getByTestId("notebook-title")).toHaveText("Notebook 1");
-		this.#firstFrameSrc = await getPage().getByTestId("notebook-frame").getAttribute("src");
+		await expect(getPage().getByRole("button", { name: "Notebook 1", exact: true })).toBeVisible();
+		this.#firstFrameSrc = await this.#activeFrame().getAttribute("src");
 
 		await getPage().getByTestId("chat-right-panel-add-tab").click();
 		await getPage().getByTestId("chat-right-panel-add-notebook-notebook").click();
-		await expect(getPage().getByTestId("notebook-title")).toHaveText("Notebook 2");
-		this.#secondFrameSrc = await getPage().getByTestId("notebook-frame").getAttribute("src");
+		await expect(getPage().getByRole("button", { name: "Notebook 2", exact: true })).toBeVisible();
+		this.#secondFrameSrc = await this.#activeFrame().getAttribute("src");
 	}
 
 	async verifyDistinctProtocolFramesAndSwitching(): Promise<void> {
@@ -56,15 +60,9 @@ export class NotebookPage {
 		expect(this.#secondFrameSrc).not.toBe(this.#firstFrameSrc);
 
 		await getPage().getByRole("button", { name: "Notebook 1", exact: true }).click();
-		await expect(getPage().getByTestId("notebook-frame")).toHaveAttribute(
-			"src",
-			this.#firstFrameSrc!,
-		);
+		await expect(this.#activeFrame()).toHaveAttribute("src", this.#firstFrameSrc!);
 		await getPage().getByRole("button", { name: "Notebook 2", exact: true }).click();
-		await expect(getPage().getByTestId("notebook-frame")).toHaveAttribute(
-			"src",
-			this.#secondFrameSrc!,
-		);
+		await expect(this.#activeFrame()).toHaveAttribute("src", this.#secondFrameSrc!);
 	}
 
 	async #status(): Promise<NotebookStatusResult> {
@@ -106,7 +104,7 @@ export class NotebookPage {
 	}
 
 	async executeCellAndVerifyOutput(): Promise<void> {
-		const notebook = getPage().frameLocator('[data-qa-id="notebook-frame"]');
+		const notebook = getPage().frameLocator('iframe[data-qa-id="notebook-frame"]:visible');
 		await expect(notebook.locator('[data-testid="notebook-toolbar"]')).toBeVisible({
 			timeout: 30_000,
 		});
@@ -146,5 +144,43 @@ export class NotebookPage {
 		await expect(codeCell.locator('[data-slot="ansi-output"]')).toContainText("5050", {
 			timeout: 60_000,
 		});
+	}
+
+	async executeIsolatedJavaScriptOutput(): Promise<void> {
+		const notebook = getPage().frameLocator('iframe[data-qa-id="notebook-frame"]:visible');
+		const codeCell = notebook.locator('[data-cell-type="code"]');
+		await codeCell.locator('.cm-content[contenteditable="true"]').evaluate((node, source) => {
+			const editor = (
+				node as HTMLElement & {
+					cmTile?: {
+						view?: {
+							state: { doc: { length: number } };
+							dispatch: (transaction: unknown) => void;
+						};
+					};
+				}
+			).cmTile?.view;
+			if (!editor) throw new Error("CodeMirror view was not attached to the notebook cell");
+			editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: source } });
+		}, `from IPython.display import Javascript\ndisplay(Javascript("element.id='electron-csp-js-output'; element.textContent='isolated JavaScript ran'"))`);
+		await codeCell.locator('[data-testid="execute-button"]').click();
+
+		const isolatedFrame = codeCell.locator('iframe[data-slot="isolated-frame"]');
+		await expect(isolatedFrame).toBeVisible({ timeout: 60_000 });
+		await expect(isolatedFrame).toHaveAttribute("src", /\/output-frame\.html(?:\?|$)/);
+		const sandbox = (await isolatedFrame.getAttribute("sandbox")) ?? "";
+		expect(sandbox.split(/\s+/)).not.toContain("allow-same-origin");
+		await expect(
+			notebook
+				.frameLocator('[data-cell-type="code"] iframe[data-slot="isolated-frame"]')
+				.locator("#electron-csp-js-output"),
+		).toContainText("isolated JavaScript ran", { timeout: 30_000 });
+	}
+
+	async saveCurrentNotebook(savePath: string): Promise<void> {
+		const notebook = getPage().frameLocator('iframe[data-qa-id="notebook-frame"]:visible');
+		const editor = notebook.locator('[data-cell-type="code"] .cm-content[contenteditable="true"]');
+		await editor.press(process.platform === "darwin" ? "Meta+s" : "Control+s");
+		await expect.poll(() => existsSync(savePath), { timeout: 30_000 }).toBe(true);
 	}
 }

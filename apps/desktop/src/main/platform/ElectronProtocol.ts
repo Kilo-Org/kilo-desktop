@@ -182,19 +182,16 @@ export function createEmbeddedContentSecurityPolicy(
 
 /**
  * CSP for nteract's sandboxed rich-output document. It alone receives
- * `unsafe-eval`, which JavaScript visualization renderers need. The document
+ * `unsafe-inline` and `unsafe-eval`, which nteract's JavaScript and visualization
+ * renderers need. The document
  * remains in nteract's separate protocol host and is framed only by that host;
  * the app renderer and the notebook shell retain their stricter policies.
  */
-export function createIsolatedOutputContentSecurityPolicy(
-	embeddedOrigin: string,
-	inlineScriptHashes: readonly string[] = [],
-): string {
-	const trustedInlineScripts = inlineScriptHashes.map((hash) => ` 'sha256-${hash}'`).join("");
+export function createIsolatedOutputContentSecurityPolicy(): string {
 	const loopback = "http://127.0.0.1:*";
 	return [
 		"default-src 'none'",
-		`script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:${trustedInlineScripts}`,
+		"script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
 		"style-src 'self' 'unsafe-inline'",
 		`img-src 'self' data: blob: ${loopback}`,
 		"font-src 'self' data: blob:",
@@ -205,7 +202,10 @@ export function createIsolatedOutputContentSecurityPolicy(
 		"object-src 'none'",
 		"base-uri 'none'",
 		"form-action 'none'",
-		`frame-ancestors ${embeddedOrigin}`,
+		// Deliberately omit frame-ancestors here. Chromium rejects self-framing
+		// custom-scheme documents once the iframe's no-allow-same-origin sandbox
+		// gives it an opaque origin. The sandbox and nteract's exact parent-window
+		// message validation are the security boundary for this code-only document.
 	].join("; ");
 }
 
@@ -373,11 +373,9 @@ export class ElectronProtocol {
 						appPolicyFor(embeddedHosts),
 					);
 				}
-				const embeddedOrigin = getDesktopOrigin(input.isDevelopment, embedded.host);
 				const embeddedPolicy = (inlineScriptHashes: readonly string[]) =>
 					createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes);
-				const isolatedOutputPolicy = (inlineScriptHashes: readonly string[]) =>
-					createIsolatedOutputContentSecurityPolicy(embeddedOrigin, inlineScriptHashes);
+				const isolatedOutputPolicy = () => createIsolatedOutputContentSecurityPolicy();
 				return withSecurityHeaders(
 					await serveEmbeddedHost(embedded, requestUrl),
 					embedded.securityProfiles?.[requestUrl.pathname] === "isolated-output"

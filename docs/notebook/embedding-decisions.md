@@ -90,9 +90,17 @@ transport.
 
 nteract emits `output-frame.html` and the Electron bootstrap supplies its host-served URL. The
 notebook feature declares only that exact path as `isolated-output`; the platform maps the profile
-to a CSP that grants JavaScript visualization renderers `'unsafe-eval'`. The notebook shell does
-not gain that grant, and the app origin remains stricter still. The output iframe keeps nteract's
-opaque-origin sandbox without `allow-same-origin`.
+to a CSP that grants nteract's JavaScript and visualization renderers `'unsafe-inline'` and
+`'unsafe-eval'`. The notebook shell does not gain either script grant, and the app origin remains
+stricter still. The output iframe keeps nteract's opaque-origin sandbox without
+`allow-same-origin`; the response intentionally omits `frame-ancestors` because Chromium rejects
+self-framing custom-scheme documents after that sandbox makes the child origin opaque. nteract's
+exact parent-window validation remains the message boundary.
+
+The output profile deliberately omits inline-script hashes. CSP ignores `'unsafe-inline'` when a
+hash or nonce is present, while nteract's JavaScript output renderer creates inline script elements
+at runtime. Hashes remain required for static inline scripts on the app and notebook-shell
+documents, where arbitrary dynamic output code is not part of the contract.
 
 ## D6. The app attaches to the user-owned singleton
 

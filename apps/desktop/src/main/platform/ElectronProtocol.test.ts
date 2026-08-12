@@ -302,11 +302,13 @@ describe("ElectronProtocol", () => {
 		expect(policy).not.toContain("'unsafe-eval'");
 	});
 
-	it("grants unsafe eval only to the isolated output profile", () => {
-		const policy = createIsolatedOutputContentSecurityPolicy("anaconda-agentic-desktop://notebook");
+	it("grants script execution only to the sandboxed isolated output profile", () => {
+		const policy = createIsolatedOutputContentSecurityPolicy();
 		expect(policy).toContain("'unsafe-eval'");
+		expect(policy).toContain("'unsafe-inline'");
 		expect(policy).toContain("'wasm-unsafe-eval'");
-		expect(policy).toContain("frame-ancestors anaconda-agentic-desktop://notebook");
+		expect(policy).not.toContain("sha256-");
+		expect(policy).not.toContain("frame-ancestors");
 		expect(policy).toContain("object-src 'none'");
 	});
 
@@ -350,10 +352,13 @@ describe("ElectronProtocol", () => {
 			new Request("anaconda-agentic-desktop://notebook/output-frame.html"),
 		);
 		expect(await output.text()).toBe("<html>output</html>");
-		expect(output.headers.get("Content-Security-Policy")).toContain("'unsafe-eval'");
-		expect(output.headers.get("Content-Security-Policy")).toContain(
-			"frame-ancestors anaconda-agentic-desktop://notebook",
-		);
+		const outputPolicy = output.headers.get("Content-Security-Policy") ?? "";
+		const outputScriptPolicy = outputPolicy
+			.split(";")
+			.find((directive) => directive.trimStart().startsWith("script-src"));
+		expect(outputScriptPolicy).toContain("'unsafe-eval'");
+		expect(outputScriptPolicy).toContain("'unsafe-inline'");
+		expect(outputPolicy).not.toContain("frame-ancestors");
 
 		// Streaming wasm compilation rejects any other MIME type.
 		const wasm = await protocolHandler(

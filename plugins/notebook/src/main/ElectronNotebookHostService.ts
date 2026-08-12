@@ -41,6 +41,8 @@ class ReconnectableRelay implements ElectronRelaySession {
 	#closed = false;
 	readonly #frameListeners = new Set<(frame: Uint8Array) => void>();
 	readonly #closeListeners = new Set<() => void>();
+	#pendingFrames: Uint8Array[] = [];
+	#drainingPending = false;
 	#detachFrame: () => void = () => {};
 	#detachClose: () => void = () => {};
 
@@ -60,6 +62,16 @@ class ReconnectableRelay implements ElectronRelaySession {
 
 	onFrame(listener: (frame: Uint8Array) => void): () => void {
 		this.#frameListeners.add(listener);
+		this.#drainingPending = true;
+		try {
+			while (this.#pendingFrames.length > 0) {
+				const pending = this.#pendingFrames;
+				this.#pendingFrames = [];
+				for (const frame of pending) listener(frame);
+			}
+		} finally {
+			this.#drainingPending = false;
+		}
 		return () => this.#frameListeners.delete(listener);
 	}
 
@@ -88,11 +100,16 @@ class ReconnectableRelay implements ElectronRelaySession {
 		this.#detachClose();
 		this.#frameListeners.clear();
 		this.#closeListeners.clear();
+		this.#pendingFrames = [];
 		await this.#current.close();
 	}
 
 	#attach(): void {
 		this.#detachFrame = this.#current.onFrame((frame) => {
+			if (this.#frameListeners.size === 0 || this.#drainingPending) {
+				this.#pendingFrames.push(Uint8Array.from(frame));
+				return;
+			}
 			for (const listener of this.#frameListeners) listener(frame);
 		});
 		this.#detachClose = this.#current.onClose(() => {
@@ -112,9 +129,7 @@ function readyInfo(info: RelayInfo) {
 		notebook_path: info.notebookPath ?? null,
 		...(info.runtime === undefined ? {} : { runtime: info.runtime }),
 		...(info.actorLabel === undefined ? {} : { actor_label: info.actorLabel }),
-		...(info.connectionScope === undefined
-			? {}
-			: { connection_scope: info.connectionScope }),
+		...(info.connectionScope === undefined ? {} : { connection_scope: info.connectionScope }),
 		comments_doc_id: info.commentsDocId ?? null,
 		comments_notebook_ref: info.commentsNotebookRef,
 	};
@@ -151,7 +166,8 @@ export class ElectronNotebookHostService {
 	constructor(options: ElectronNotebookHostServiceOptions) {
 		this.#mainSdk = options.mainSdk;
 		this.#socketPath =
-			options.socketPath ?? resolveDaemonSocketPath({ channel: options.runtimeChannel ?? "nightly" });
+			options.socketPath ??
+			resolveDaemonSocketPath({ channel: options.runtimeChannel ?? "nightly" });
 	}
 
 	get socketPath(): string {
@@ -193,8 +209,9 @@ export class ElectronNotebookHostService {
 				description: args.title,
 			});
 		const relay = new ReconnectableRelay(await createSession());
-		let server: ElectronNotebookHostServer;
+		let server: ElectronNotebookHostServer | null = null;
 		const reconnect = async () => {
+			if (!server) throw new Error("The Electron notebook host is not connected.");
 			server.emit("transport.status", "reconnecting");
 			try {
 				await relay.replace(await createSession());
@@ -205,26 +222,39 @@ export class ElectronNotebookHostService {
 				throw error;
 			}
 		};
-		server = serveElectronNotebookHost({
-			port,
-			relay,
-			handler: this.#handler(() => relay.info, senderId, reconnect),
-		});
-		const unlistenFocus = this.#mainSdk.host?.window.onFocusChange(senderId, (focused) => {
-			server.emit("window.focusChanged", focused);
-		});
-		let cleaned = false;
-		const onClose = () => {
-			if (cleaned) return;
-			cleaned = true;
-			port.off("close", onClose);
-			unlistenFocus?.();
-			this.#servers.delete(server);
-		};
-		this.#servers.set(server, onClose);
-		port.on("close", onClose);
-		server.emit("daemon.ready", readyInfo(relay.info));
-		server.emit("window.focusChanged", this.#mainSdk.host?.window.isFocused(senderId) ?? true);
+		let unlistenFocus: (() => void) | undefined;
+		let onClose: (() => void) | undefined;
+		try {
+			server = serveElectronNotebookHost({
+				port,
+				relay,
+				handler: this.#handler(() => relay.info, senderId, reconnect),
+			});
+			const connectedServer = server;
+			unlistenFocus = this.#mainSdk.host?.window.onFocusChange(senderId, (focused) => {
+				connectedServer.emit("window.focusChanged", focused);
+			});
+			let cleaned = false;
+			onClose = () => {
+				if (cleaned) return;
+				cleaned = true;
+				port.off("close", onClose!);
+				unlistenFocus?.();
+				this.#servers.delete(connectedServer);
+			};
+			this.#servers.set(connectedServer, onClose);
+			port.on("close", onClose);
+			connectedServer.emit("daemon.ready", readyInfo(relay.info));
+			connectedServer.emit(
+				"window.focusChanged",
+				this.#mainSdk.host?.window.isFocused(senderId) ?? true,
+			);
+		} catch (error) {
+			onClose?.();
+			if (server) await server.close();
+			else await relay.close();
+			throw error;
+		}
 	}
 
 	async dispose(): Promise<void> {
@@ -242,32 +272,33 @@ export class ElectronNotebookHostService {
 		const host = this.#mainSdk.host;
 		const invoke = async (method: ElectronHostMethod, params: unknown): Promise<unknown> => {
 			switch (method) {
-			case "daemon.isConnected":
-				return (await queryDaemonInfo({ socketPath: this.#socketPath })) !== null;
-			case "daemon.reconnect":
-				return reconnect();
-			case "relay.prepareSync":
+				case "daemon.isConnected":
+					return (await queryDaemonInfo({ socketPath: this.#socketPath })) !== null;
+				case "daemon.reconnect":
+					return reconnect();
+				case "relay.prepareSync":
 				case "relay.notifySyncReady":
 				case "window.setTheme":
 				case "settings.openWindow":
 				case "settings.setSynced":
 				case "updater.beginUpgrade":
-				return undefined;
-			case "daemon.getInfo": {
-				const info = getInfo();
-				return {
+					return undefined;
+				case "daemon.getInfo": {
+					const info = getInfo();
+					return {
 						version: info.daemonVersion ?? "unknown",
 						socket_path: info.socketPath,
-					is_dev_mode: info.isDevMode,
-				};
-			}
-			case "daemon.getReadyInfo":
-				return readyInfo(getInfo());
-			case "blobs.getPort": {
-				const info = getInfo();
-				if (info.blobPort === undefined) throw new Error("The runtime daemon has no blob server.");
-				return info.blobPort;
-			}
+						is_dev_mode: info.isDevMode,
+					};
+				}
+				case "daemon.getReadyInfo":
+					return readyInfo(getInfo());
+				case "blobs.getPort": {
+					const info = getInfo();
+					if (info.blobPort === undefined)
+						throw new Error("The runtime daemon has no blob server.");
+					return info.blobPort;
+				}
 				case "deps.checkTyposquats":
 					return [];
 				case "notebook.applyPathChanged": {
@@ -282,8 +313,8 @@ export class ElectronNotebookHostService {
 				case "notebook.openInNewWindow":
 				case "notebook.openHostedInNewWindow":
 					throw new Error("Opening a notebook outside its Agentic side panel is unavailable.");
-			case "notebook.cloneToEphemeral":
-				throw new Error("Cloning the sidecar notebook is not supported by this host.");
+				case "notebook.cloneToEphemeral":
+					throw new Error("Cloning the sidecar notebook is not supported by this host.");
 				case "window.getTitle":
 					return host?.window.getTitle(senderId) ?? "Notebook";
 				case "window.setTitle": {
@@ -316,6 +347,10 @@ export class ElectronNotebookHostService {
 					return {};
 				case "settings.rotateInstallId":
 					return randomUUID();
+				default: {
+					const unsupported: never = method;
+					throw new Error(`Unsupported Electron notebook host method: ${String(unsupported)}`);
+				}
 			}
 		};
 		return {

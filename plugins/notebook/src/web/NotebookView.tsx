@@ -103,11 +103,7 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 		if (!frameUrl.protocol.startsWith(DESKTOP_SCHEME_PREFIX)) return;
 		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
 
-		const port = sdk.ports.open<MessagePort>("host", {
-			notebookId: notebookIdFromInstanceId(instanceId),
-			sessionId,
-			title,
-		});
+		let port: MessagePort | null = null;
 		let transferred = false;
 		const onMessage = (event: MessageEvent<unknown>) => {
 			const frameWindow = frameRef.current?.contentWindow;
@@ -121,23 +117,34 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 			) {
 				return;
 			}
-			transferred = true;
-			frameWindow.postMessage(
-				{
-					type: "nteract:electron-host-connect",
-					bootstrap: {
-						protocolVersion: NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
-						outputDocumentUrl: `${frameOrigin}/output-frame.html`,
+			port = sdk.ports.open<MessagePort>("host", {
+				notebookId: notebookIdFromInstanceId(instanceId),
+				sessionId,
+				title,
+			});
+			try {
+				frameWindow.postMessage(
+					{
+						type: "nteract:electron-host-connect",
+						bootstrap: {
+							protocolVersion: NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
+							outputDocumentUrl: `${frameOrigin}/output-frame.html`,
+						},
 					},
-				},
-				frameOrigin,
-				[port],
-			);
+					frameOrigin,
+					[port],
+				);
+				transferred = true;
+			} catch (error) {
+				port.close();
+				port = null;
+				throw error;
+			}
 		};
 		window.addEventListener("message", onMessage);
 		return () => {
 			window.removeEventListener("message", onMessage);
-			if (!transferred) port.close();
+			if (!transferred) port?.close();
 		};
 	}, [frameSrc, instanceId, sdk, sessionId, title]);
 

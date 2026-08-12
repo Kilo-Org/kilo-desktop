@@ -101,6 +101,67 @@ describe("ElectronNotebookHostService", () => {
 		);
 	});
 
+	it("preserves bootstrap frames emitted before the Electron server subscribes", async () => {
+		const first = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
+		const bootstrap = new Uint8Array([0, 1, 2, 3]);
+		first.onFrame = vi.fn((listener) => {
+			listener(bootstrap);
+			return () => undefined;
+		});
+		mocks.createRelay.mockResolvedValueOnce(first);
+		let delivered: Uint8Array | undefined;
+		mocks.serve.mockImplementation(
+			(options: { handler: ElectronNotebookHostHandler; relay: RelaySession }) => {
+				handler = options.handler;
+				options.relay.onFrame((frame) => {
+					delivered = frame;
+				});
+				return server;
+			},
+		);
+
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			42,
+		);
+
+		expect(delivered).toEqual(bootstrap);
+	});
+
+	it("closes the native relay if Electron host setup fails", async () => {
+		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
+		mocks.createRelay.mockResolvedValueOnce(nativeRelay);
+		mocks.serve.mockImplementationOnce(() => {
+			throw new Error("MessagePort setup failed");
+		});
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+
+		await expect(
+			service.connect(
+				port(),
+				{
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					sessionId: "kilo-1",
+					title: "Analysis",
+				},
+				42,
+			),
+		).rejects.toThrow("MessagePort setup failed");
+		expect(nativeRelay.close).toHaveBeenCalledOnce();
+	});
+
 	it("delegates native save dialogs to the sender-owned window", async () => {
 		const saveFile = vi.fn(async () => "/tmp/analysis.ipynb");
 		const mainSdk = createFakeMainSdk({

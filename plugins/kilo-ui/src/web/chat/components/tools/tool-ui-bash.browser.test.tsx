@@ -7,8 +7,8 @@ const runtime = vi.hoisted(() => ({
 	message: {
 		parts: [] as Array<{
 			type: string;
-			toolName: string;
-			args: Record<string, unknown>;
+			toolName?: string;
+			args?: Record<string, unknown>;
 			status: { type: string };
 		}>,
 		status: { type: "running" },
@@ -60,5 +60,45 @@ describe("BashTerminal activity subgroup", () => {
 
 		expect(baseElement.textContent).toContain("Running pnpm test");
 		expect(baseElement.textContent?.match(/pnpm test/g)).toHaveLength(1);
+	});
+});
+
+describe("ActivityGroup single-subgroup unwrap", () => {
+	it("skips the outer tools-used row when the group is one completed tool", () => {
+		const part = bashPart({ type: "complete" });
+		runtime.message.parts = [part];
+		runtime.message.status = { type: "complete" };
+
+		const { baseElement } = render(
+			<ActivityGroup group={{ indices: [0] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="terminal">
+					<BashTerminal {...part} />
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+
+		expect(baseElement.textContent).not.toMatch(/tool used/);
+		expect(baseElement.textContent).not.toContain("Show less");
+		expect(baseElement.textContent).toContain("Ran pnpm test");
+	});
+
+	it("keeps the outer tools-used row when thinking and a tool share the group", () => {
+		const part = bashPart({ type: "complete" });
+		runtime.message.parts = [{ type: "reasoning", status: { type: "complete" } }, part];
+		runtime.message.status = { type: "complete" };
+
+		const { baseElement } = render(
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="thinking">
+					thought
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="terminal">
+					<BashTerminal {...part} />
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+
+		expect(baseElement.textContent).toContain("1 tool used");
+		expect(baseElement.textContent).not.toContain("Ran pnpm test");
 	});
 });

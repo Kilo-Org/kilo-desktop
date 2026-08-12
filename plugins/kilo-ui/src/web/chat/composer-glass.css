@@ -1,6 +1,6 @@
 /* Frosted glass surfaces (composer). Recipe matches t3code: translucent
-   surface tint + blur + slight saturate. Surface tint keeps the previous
-   muted composer fill so light/dark contrast is unchanged. */
+   surface tint + blur + slight saturate. Light uses muted; dark uses the
+   shell surface (`--background` / #16181F). */
 
 :root {
 	--glass-blur: 12px;
@@ -21,11 +21,64 @@
 }
 
 [data-theme="dark"] .chat-composer-glass {
-	--composer-glass-surface: color-mix(in oklab, var(--muted) 30%, var(--background));
+	--composer-glass-surface: var(--background);
 }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
 	.chat-composer-glass {
 		background: var(--composer-glass-surface);
 	}
+}
+
+/* Opaque wedges in the docked composer's rounded-corner cutouts so scrolled
+   messages don't show through the gaps. Masked to the outside of the radius
+   so the glass fill itself stays unchanged. */
+.composer-corner-fill {
+	pointer-events: none;
+	position: absolute;
+	width: var(--composer-radius);
+	height: var(--composer-radius);
+	background-color: var(--muted);
+	-webkit-mask: var(--composer-corner-mask);
+	mask: var(--composer-corner-mask);
+}
+
+.composer-corner-fill-tl {
+	top: 0;
+	left: 0;
+	--composer-corner-mask: radial-gradient(
+		circle at 100% 100%,
+		transparent calc(var(--composer-radius) - 1px),
+		#000 calc(var(--composer-radius) - 1px)
+	);
+}
+
+.composer-corner-fill-tr {
+	top: 0;
+	right: 0;
+	--composer-corner-mask: radial-gradient(
+		circle at 0 100%,
+		transparent calc(var(--composer-radius) - 1px),
+		#000 calc(var(--composer-radius) - 1px)
+	);
+}
+
+.composer-corner-fill-bl {
+	bottom: 0;
+	left: 0;
+	--composer-corner-mask: radial-gradient(
+		circle at 100% 0,
+		transparent calc(var(--composer-radius) - 1px),
+		#000 calc(var(--composer-radius) - 1px)
+	);
+}
+
+.composer-corner-fill-br {
+	bottom: 0;
+	right: 0;
+	--composer-corner-mask: radial-gradient(
+		circle at 0 0,
+		transparent calc(var(--composer-radius) - 1px),
+		#000 calc(var(--composer-radius) - 1px)
+	);
 }

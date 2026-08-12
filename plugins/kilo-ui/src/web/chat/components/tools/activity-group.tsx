@@ -202,7 +202,9 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		return false;
 	});
 
-	if (summary.toolCount === 0) {
+	// One subgroup is already a collapsible (thinking, or a single tool kind).
+	// Wrapping it in "N tools used" would force a second expand for the same row.
+	if (summary.segments.length <= 1) {
 		return (
 			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
 				{children}
@@ -225,9 +227,6 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		(hasPendingAsk && activeSegment?.kind === "asking"),
 	);
 
-	const askOnly =
-		summary.segments.length > 0 && summary.segments.every((segment) => segment.kind === "asking");
-
 	if (streaming && !streamExpanded) {
 		const label = activeSegment
 			? getKindMeta(activeSegment.kind).liveLabel(getSegmentStats(parts, activeSegment))
@@ -238,25 +237,6 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			colored: index === activeIndex,
 			loading: index === activeIndex && activeLoading,
 		}));
-		const headerClassName =
-			"text-muted-foreground flex items-center gap-2 py-1 text-sm transition-colors";
-		const header = (
-			<>
-				<ActivityIconStack items={stackItems} className="-space-x-1" />
-				<span className="font-medium">
-					<ActivityLabel label={label} shimmer={activeLoading} />
-				</span>
-			</>
-		);
-		// Ask-only groups answer in the composer Questionnaire — no nested tool
-		// chrome to expand, so don't pretend this row is collapsible.
-		if (askOnly) {
-			return (
-				<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
-					<div className={headerClassName}>{header}</div>
-				</div>
-			);
-		}
 		return (
 			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
 				<button
@@ -265,22 +245,17 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 						setStreamExpanded(true);
 						setOpen(true);
 					}}
-					className={cn(headerClassName, "hover:text-foreground")}
+					className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
 				>
-					{header}
+					<ActivityIconStack items={stackItems} className="-space-x-1" />
+					<span className="font-medium">
+						<ActivityLabel label={label} shimmer={activeLoading} />
+					</span>
 					<ChevronDownIcon className="size-3.5 shrink-0" />
 				</button>
 				<ActivityStreamContext.Provider value={true}>
 					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
 				</ActivityStreamContext.Provider>
-			</div>
-		);
-	}
-
-	if (askOnly) {
-		return (
-			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
-				{children}
 			</div>
 		);
 	}

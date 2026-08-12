@@ -60,10 +60,6 @@ html {
 	);
 }
 
-html[data-theme="dark"] {
-	--shell-glass-surface: color-mix(in oklab, var(--sidebar) 84%, black);
-}
-
 .app-shell-glass {
 	background: transparent;
 }

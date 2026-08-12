@@ -65,6 +65,11 @@ import {
 	type KeyboardEvent,
 } from "react";
 
+import { useChatAgentSelection } from "../../agent-selection/ChatAgentSelectionContext.js";
+import {
+	cycleCatalogAgent,
+	OPTIMISTIC_AGENT_CATALOG,
+} from "../../agent-selection/agent-catalog.js";
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
 
@@ -113,6 +118,22 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	);
 };
 
+const ComposerDockMask: FC = () => {
+	return (
+		<>
+			{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
+			<div
+				aria-hidden
+				className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
+			/>
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-tl" />
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-tr" />
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-bl" />
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-br" />
+		</>
+	);
+};
+
 const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const { Welcome = DraftWelcomeHeadline } = useContext(ThreadComponentsContext);
 
@@ -143,7 +164,7 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
-			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))]"
+			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:var(--color-background)]"
 			style={{
 				["--thread-max-width" as string]: "44rem",
 				["--composer-radius" as string]: "1.5rem",
@@ -177,13 +198,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						<ThreadFollowupSuggestions />
 						<div className="relative">
 							<ThreadComposerBlock isDraft={isDraft} />
-							{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
-							{!isDraft ? (
-								<div
-									aria-hidden
-									className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
-								/>
-							) : null}
+							{!isDraft ? <ComposerDockMask /> : null}
 						</div>
 						{isDraft ? <ThreadSuggestions /> : null}
 					</ThreadPrimitive.ViewportFooter>
@@ -261,6 +276,7 @@ const Composer: FC = () => {
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
 	const { refine, submitting, canReply } = useApprovePlan();
+	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
 
 	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
 
@@ -312,6 +328,27 @@ const Composer: FC = () => {
 	};
 
 	const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+		if (
+			event.key === "Tab" &&
+			event.shiftKey &&
+			!event.metaKey &&
+			!event.ctrlKey &&
+			!event.altKey &&
+			!event.nativeEvent.isComposing &&
+			!isCatalogError
+		) {
+			event.preventDefault();
+			const next = cycleCatalogAgent(
+				catalog ?? (isCatalogPending ? OPTIMISTIC_AGENT_CATALOG : undefined),
+				agent,
+				1,
+			);
+			if (next && next !== agent) {
+				setAgent(next);
+			}
+			return;
+		}
+
 		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
 		if (!showPlanFollowupActions) return;
 		// ComposerInput returns early while isRunning — intercept before that.

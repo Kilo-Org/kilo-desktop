@@ -23,6 +23,9 @@ describe("createNotebookResolveAsset", () => {
 		expect(resolveAsset("resources/runtimed/darwin-arm64/runtimed-nightly")).toBe(
 			path.join("/Apps/Agentic.app/Contents/Resources", "runtimed/darwin-arm64/runtimed-nightly"),
 		);
+		expect(resolveAsset("resources/runt/darwin-arm64/runt-nightly")).toBe(
+			path.join("/Apps/Agentic.app/Contents/Resources", "runt/darwin-arm64/runt-nightly"),
+		);
 	});
 
 	it("resolves development assets from the plugin package", () => {
@@ -33,6 +36,9 @@ describe("createNotebookResolveAsset", () => {
 		expect(resolveAsset("build/notebook")).toContain("/plugins/notebook/build/notebook");
 		expect(resolveAsset("resources/runtimed/linux-x64/runtimed-nightly")).toContain(
 			"/plugins/notebook/resources/runtimed/linux-x64/runtimed-nightly",
+		);
+		expect(resolveAsset("resources/runt/linux-x64/runt-nightly")).toContain(
+			"/plugins/notebook/resources/runt/linux-x64/runt-nightly",
 		);
 	});
 });

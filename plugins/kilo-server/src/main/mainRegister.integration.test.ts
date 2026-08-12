@@ -80,6 +80,13 @@ describe("kilo-server main registration", () => {
 		await expect(connectionService!.getConnection()).resolves.toMatchObject({
 			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
+		expect(mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.managedMcpService).toEqual(
+			expect.objectContaining({
+				configDirectory: path.join(mainSdk.storageDir, "runtime", "config", "kilo"),
+				registerSeed: expect.any(Function),
+				seedEntry: expect.any(Function),
+			}),
+		);
 
 		await expect(mainSdk.invoke("server.getConnection")).resolves.toEqual({
 			baseUrl: "http://127.0.0.1:4321",
@@ -226,6 +233,43 @@ describe("kilo-server main registration", () => {
 		releaseSeed();
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		expect(order).toEqual(["seed-start", "seed-end", "ensure-running"]);
+		mainSdk.dispose();
+	});
+
+	it("runs plugin-registered managed MCP seeds before ensureRunning", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const order: string[] = [];
+		let releaseSeed!: () => void;
+		const seedGate = new Promise<void>((resolve) => {
+			releaseSeed = resolve;
+		});
+
+		registerKiloServer(mainSdk, {
+			createServer: () => server,
+			seedMcpConfig: async () => {
+				order.push("webmcp-seed");
+				await seedGate;
+				return { kind: "skipped", reason: "up-to-date" };
+			},
+			runAsNodeEnabled: async () => true,
+		});
+
+		const managedMcp =
+			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.managedMcpService;
+		expect(managedMcp).toBeDefined();
+		managedMcp!.registerSeed(async () => {
+			order.push("plugin-seed");
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		expect(order).toEqual(["webmcp-seed"]);
+		expect(server.ensureRunning).not.toHaveBeenCalled();
+
+		releaseSeed();
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		expect(order).toEqual(["webmcp-seed", "plugin-seed"]);
+		expect(server.ensureRunning).toHaveBeenCalledOnce();
 		mainSdk.dispose();
 	});
 

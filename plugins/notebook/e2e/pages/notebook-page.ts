@@ -6,7 +6,7 @@ import { expect } from "@playwright/test";
 
 import { packagedResourcesDirectory } from "@anaconda-agentic-desktop/e2e";
 
-import { getRuntimedArtifact } from "../../src/main/distribution/artifacts.js";
+import { findRuntArtifact, getRuntimedArtifact } from "../../src/main/distribution/artifacts.js";
 
 type DesktopBridge = {
 	invoke?: (
@@ -103,6 +103,10 @@ export class NotebookPage {
 		expect(existsSync(path.join(resources, "runtimed", artifact.target, artifact.executable))).toBe(
 			true,
 		);
+		const runt = findRuntArtifact();
+		if (runt) {
+			expect(existsSync(path.join(resources, "runt", runt.target, runt.executable))).toBe(true);
+		}
 	}
 
 	async executeCellAndVerifyOutput(): Promise<void> {

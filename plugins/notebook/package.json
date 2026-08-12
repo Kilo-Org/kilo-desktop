@@ -15,7 +15,8 @@
 		"build-ui": "node --env-file-if-exists=.env.local --import tsx scripts/build-notebook-ui.ts",
 		"check": "tsc --noEmit -p tsconfig.json",
 		"fetch-runtimed": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-runtimed.ts",
-		"prepare-assets": "pnpm run fetch-runtimed && pnpm run build-ui",
+		"fetch-runt": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-runt.ts",
+		"prepare-assets": "pnpm run fetch-runtimed && pnpm run fetch-runt && pnpm run build-ui",
 		"stage-bundle": "pnpm run build-ui",
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"

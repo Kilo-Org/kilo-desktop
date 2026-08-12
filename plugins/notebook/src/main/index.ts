@@ -10,6 +10,7 @@ import { getRuntimedArtifact } from "./distribution/artifacts.js";
 import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
 import { CONFIG_PATH, NotebookRelayService } from "./NotebookRelayService.js";
 import { RuntimedService, type RuntimedLogger } from "./RuntimedService.js";
+import { registerRuntMcpSeed } from "./seed-runt-mcp.js";
 import type { BuildChannel } from "./socket-path.js";
 
 export interface NotebookFeatureOptions {
@@ -21,6 +22,7 @@ export interface NotebookFeatureOptions {
 	readonly connect?: (socketPath: string) => net.Socket;
 	readonly resolveBundleRoot?: () => string | undefined;
 	readonly resolveDaemonBinary?: () => string | undefined;
+	readonly resolveRuntBinary?: () => string | undefined;
 	readonly spawnProcess?: (binaryPath: string) => ChildProcess;
 	readonly daemonOptions?: Partial<
 		Pick<
@@ -77,6 +79,12 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		// upgrade, and the view reports that as an unavailable daemon.
 		checkDaemon,
 		logger,
+	});
+
+	registerRuntMcpSeed(mainSdk, {
+		socketPath: runtimed.socketPath,
+		logger,
+		...(options.resolveRuntBinary ? { resolveRuntBinary: options.resolveRuntBinary } : {}),
 	});
 
 	const api: NotebookService = {

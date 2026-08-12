@@ -12,7 +12,16 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
 import { resolveKiloInstallation } from "./installation.js";
-import { seedKiloMcpConfig, type SeedOutcome } from "./seed-kilo-mcp-config.js";
+import {
+	kiloMcpConfigDirectory,
+	seedKiloMcpConfig,
+	type SeedOutcome,
+} from "./seed-kilo-mcp-config.js";
+import {
+	seedManagedMcpEntry,
+	type SeededMcpEntry,
+	type SeedManagedMcpEntryOptions,
+} from "./seed-managed-mcp-entry.js";
 
 export interface KiloServerController {
 	readonly status: KiloServerStatus;
@@ -40,10 +49,30 @@ interface RegisterKiloServerOptions {
 	runAsNodeEnabled?: () => Promise<boolean>;
 }
 
+export type ManagedMcpSeedFn = () => Promise<void>;
+
+export type KiloManagedMcpService = {
+	readonly configDirectory: string;
+	/**
+	 * Queue an additional managed-MCP seed that runs before `kilo serve`
+	 * starts. Safe to call from another plugin's `mainRegister` during the
+	 * same boot wave: the WebMCP seed awaits fuse detection first, which
+	 * yields so later plugins can register here before extras run.
+	 *
+	 * Late callers (after the boot seed gate closes) run immediately; kilo
+	 * may need a restart to pick up the new MCP server.
+	 */
+	registerSeed(seed: ManagedMcpSeedFn): void;
+	seedEntry(
+		options: Omit<SeedManagedMcpEntryOptions, "configDirectory" | "logger">,
+	): Promise<SeedOutcome>;
+};
+
 export type KiloServerCapabilities = {
 	connectionService: {
 		getConnection(): Promise<KiloServerConnection>;
 	};
+	managedMcpService: KiloManagedMcpService;
 };
 
 export function createKiloServerManagerOptions(
@@ -87,6 +116,7 @@ export function registerKiloServer(
 	options: RegisterKiloServerOptions = {},
 ): void {
 	const runtimeDirectory = path.join(mainSdk.storageDir, "runtime");
+	const configDirectory = kiloMcpConfigDirectory(runtimeDirectory);
 	const appExecutablePath = options.appExecutablePath ?? process.execPath;
 	const runAsNodeEnabled =
 		options.runAsNodeEnabled ?? (() => defaultRunAsNodeEnabled(appExecutablePath));
@@ -106,21 +136,45 @@ export function registerKiloServer(
 		options.seedMcpConfig ??
 		((directory: string, enabled: boolean) =>
 			seedKiloMcpConfig({
-				configDirectory: path.join(directory, "config", "kilo"),
+				configDirectory: kiloMcpConfigDirectory(directory),
 				appExecutablePath,
 				enabled,
 				logger: mainSdk.logger,
 			}));
+
+	const extraSeeds: ManagedMcpSeedFn[] = [];
+	let extrasClosed = false;
+
+	const managedMcpService: KiloManagedMcpService = {
+		configDirectory,
+		registerSeed(seed) {
+			if (extrasClosed) {
+				void seed().catch((error) => {
+					mainSdk.logger.warn(
+						`Late managed MCP seed failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				});
+				return;
+			}
+			extraSeeds.push(seed);
+		},
+		seedEntry(entryOptions) {
+			return seedManagedMcpEntry({
+				...entryOptions,
+				configDirectory,
+				logger: mainSdk.logger,
+			});
+		},
+	};
 
 	const server = createServer((status) => mainSdk.events.emit("server-status-changed", status));
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
 	//
 	// (1) detect fuse, (2) seed OR remove-managed-entry against kilo.jsonc,
-	// (3) then start kilo serve. The seed is cheap (one mkdir + two atomic
-	// writes) and gating startup on it eliminates the first-boot race where
-	// kilo serve reads the config before the rename lands. A seed failure
-	// never blocks startup.
+	// (3) run any plugin-registered seeds, (4) then start kilo serve. The
+	// first await yields so later plugins' mainRegister can call
+	// registerSeed before extras run. A seed failure never blocks startup.
 	//
 	// The seed promise is shared: EVERY caller that reaches `ensureRunning`
 	// (mainRegister here, the `getConnection` capability, `server.restart`)
@@ -130,7 +184,19 @@ export function registerKiloServer(
 		try {
 			const enabled = await runAsNodeEnabled();
 			await seedMcpConfig(runtimeDirectory, enabled);
+			const registered = extraSeeds.splice(0);
+			extrasClosed = true;
+			for (const seed of registered) {
+				try {
+					await seed();
+				} catch (error) {
+					mainSdk.logger.warn(
+						`Managed MCP seed failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
 		} catch (error) {
+			extrasClosed = true;
 			mainSdk.logger.warn(
 				`WebMCP relay seed failed: ${error instanceof Error ? error.message : String(error)}`,
 			);
@@ -163,6 +229,7 @@ export function registerKiloServer(
 	};
 
 	mainSdk.plugins.expose("connectionService", connectionService);
+	mainSdk.plugins.expose("managedMcpService", managedMcpService);
 	mainSdk.channels(kiloServerContract).handleAll(service);
 	mainSdk.onDispose(() => server.dispose());
 }
@@ -170,3 +237,5 @@ export function registerKiloServer(
 export function mainRegister(mainSdk: MainSdk): void {
 	registerKiloServer(mainSdk);
 }
+
+export type { SeededMcpEntry, SeedOutcome };

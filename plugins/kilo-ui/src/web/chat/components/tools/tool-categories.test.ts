@@ -95,6 +95,46 @@ describe("asking activity grouping", () => {
 	});
 });
 
+describe("terminal activity labels", () => {
+	it("uses the command description for a single terminal tool", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "bash",
+				args: { command: "pnpm test", description: "Run unit tests" },
+				status: { type: "running" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "terminal",
+			indices: [0],
+			running: true,
+			requiresAction: false,
+		});
+
+		expect(stats.commandSummary).toBe("Run unit tests");
+		expect(getKindMeta("terminal").liveLabel(stats)).toBe("Running Run unit tests");
+		expect(getKindMeta("terminal").doneLabel(stats)).toBe("Ran Run unit tests");
+	});
+
+	it("shows the command count for multiple terminal tools", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "bash", args: { command: "pnpm lint" } },
+			{ type: "tool-call", toolName: "bash", args: { command: "pnpm test" } },
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "terminal",
+			indices: [0, 1],
+			running: true,
+			requiresAction: false,
+		});
+
+		expect(stats.commandSummary).toBeUndefined();
+		expect(getKindMeta("terminal").liveLabel(stats)).toBe("Running 2 commands");
+		expect(getKindMeta("terminal").doneLabel(stats)).toBe("Ran 2 commands");
+	});
+});
+
 describe("MCP activity grouping", () => {
 	it("maps consecutive same-server tools into one mcp subgroup key", () => {
 		expect(getGroupKeyForTool("atlassian_getJiraIssue")).toBe("group-mcp-atlassian");

@@ -19,7 +19,7 @@ function fakeServer() {
 		baseUrl: "http://127.0.0.1:4321",
 		username: "kilo",
 		password: "secret",
-		version: "7.4.20",
+		version: "7.4.21",
 		globalDirectory: "/plugin-data/kilo-server/runtime",
 	};
 	return {
@@ -79,7 +79,7 @@ describe("kilo-server main registration", () => {
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
 			password: "secret",
-			version: "7.4.20",
+			version: "7.4.21",
 			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
 		expect(server.ensureRunning).toHaveBeenCalledTimes(3);
@@ -101,14 +101,14 @@ describe("kilo-server main registration", () => {
 		});
 		expect(server.ensureRunning).toHaveBeenCalledOnce();
 
-		publishStatus?.({ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.20" });
+		publishStatus?.({ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.21" });
 		expect(listener).toHaveBeenCalledWith({
 			status: "ready",
 			baseUrl: "http://127.0.0.1:4321",
-			version: "7.4.20",
+			version: "7.4.21",
 		});
 		await expect(mainSdk.invoke("server.status")).resolves.toEqual({ status: "stopped" });
-		await expect(mainSdk.invoke("server.restart")).resolves.toMatchObject({ version: "7.4.20" });
+		await expect(mainSdk.invoke("server.restart")).resolves.toMatchObject({ version: "7.4.21" });
 		mainSdk.dispose();
 	});
 });

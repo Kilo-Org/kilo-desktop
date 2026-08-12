@@ -15,6 +15,14 @@ export const truncate = (value: string, max = 80): string =>
 
 export const str = (value: unknown): string => (typeof value === "string" ? value : "");
 
+export const getCommandSummary = (args: Record<string, unknown> | undefined): string => {
+	const description = str(args?.description).replace(/\s+/g, " ").trim();
+	if (description) return truncate(description);
+
+	const command = str(args?.command).replace(/\s+/g, " ").trim();
+	return truncate(command);
+};
+
 export const basename = (filepath: string): string => {
 	const parts = filepath.split("/").filter(Boolean);
 	return parts[parts.length - 1] ?? filepath;

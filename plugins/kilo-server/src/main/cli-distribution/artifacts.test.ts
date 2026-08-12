@@ -4,7 +4,7 @@ import { getKiloCliArtifact, KILO_CLI_VERSION } from "./artifacts.js";
 
 describe("Kilo CLI distribution artifacts", () => {
 	it("pins the supported native targets and compatibility-first x64 variants", () => {
-		expect(KILO_CLI_VERSION).toBe("7.4.20");
+		expect(KILO_CLI_VERSION).toBe("7.4.21");
 		expect(getKiloCliArtifact("darwin", "arm64")).toMatchObject({
 			target: "darwin-arm64",
 			packageName: "@kilocode/cli-darwin-arm64",

@@ -107,42 +107,27 @@ const getToolError = (part: ToolPart): string =>
 		? part.state.error
 		: "Kilo could not complete the plan.";
 
-const isPendingTool = (part: ToolPart): boolean =>
-	part.state.status !== "completed" && part.state.status !== "error";
-
 const isToolPart = (part: Part): part is ToolPart => part.type === "tool";
 
 type GetPlanProjectionOptions = {
 	priorMarkdown?: string;
 	/** Plan-agent writes belong to the plan even when project instructions choose another path. */
 	treatWritesAsPlan?: boolean;
-	/** Treat a pending write/edit with no streamed path as the initial plan draft. */
-	treatPathlessPendingWritesAsPlan?: boolean;
 };
 
 const hasPlanExitPart = (parts: readonly Part[]): boolean =>
 	parts.some((part) => isToolPart(part) && part.tool === "plan_exit");
-
-const hasCompletedPlanExit = (parts: readonly Part[]): boolean =>
-	parts.some(
-		(part) => isToolPart(part) && part.tool === "plan_exit" && part.state.status === "completed",
-	);
 
 export function getPlanProjectionFromParts(
 	parts: readonly Part[],
 	options?: GetPlanProjectionOptions,
 ): PlanProjection | undefined {
 	const treatWritesAsPlan = options?.treatWritesAsPlan === true;
-	const treatPathlessPendingWritesAsPlan = options?.treatPathlessPendingWritesAsPlan === true;
 	const tools = parts.filter(isToolPart);
 	const writes = tools.filter((part) => {
 		if (part.tool !== "write" && part.tool !== "edit") return false;
 		const path = getToolPath(part);
-		return (
-			treatWritesAsPlan ||
-			isPlanFilePath(path) ||
-			(treatPathlessPendingWritesAsPlan && !path && isPendingTool(part))
-		);
+		return treatWritesAsPlan || isPlanFilePath(path);
 	});
 	const exits = tools.filter((part) => part.tool === "plan_exit");
 	if (writes.length === 0 && exits.length === 0) return undefined;
@@ -232,7 +217,6 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 	const byAnchorCallId = new Map<string, PlanProjection>();
 	const documents: Array<{ path: string; markdown: string }> = [];
 	let newest: PlanProjection | undefined;
-	let priorHasCompletedPlanExit = false;
 	let assistantRun:
 		| {
 				messageId: string;
@@ -247,7 +231,6 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 		const hasPlanExit = hasPlanExitPart(parts);
 		const options = {
 			treatWritesAsPlan: planningAgent || hasPlanExit,
-			treatPathlessPendingWritesAsPlan: !priorHasCompletedPlanExit || hasPlanExit,
 		};
 		const initial = getPlanProjectionFromParts(parts, options);
 		if (initial) {
@@ -262,7 +245,6 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 				documents.push({ path: projection.path, markdown: projection.markdown });
 			}
 		}
-		if (hasCompletedPlanExit(parts)) priorHasCompletedPlanExit = true;
 		assistantRun = undefined;
 	};
 

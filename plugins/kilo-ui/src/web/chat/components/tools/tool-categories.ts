@@ -11,7 +11,7 @@ import {
 	TerminalIcon,
 	WrenchIcon,
 } from "lucide-react";
-import { basename, getPatchInfo, str, truncate } from "./tool-ui-shared.js";
+import { basename, getCommandSummary, getPatchInfo, str, truncate } from "./tool-ui-shared.js";
 
 /**
  * Tool grouping for the activity view. Categories mirror the built-in tool
@@ -234,6 +234,8 @@ export type KindStats = {
 	file?: string | undefined;
 	/** Short question prompt for asking subgroups. */
 	question?: string | undefined;
+	/** Description or abbreviated command for a single terminal tool call. */
+	commandSummary?: string | undefined;
 };
 
 type KindMeta = {
@@ -306,8 +308,10 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 	terminal: {
 		icon: TerminalIcon,
 		label: "Terminal",
-		liveLabel: () => "Running commands",
-		doneLabel: ({ count }) => `Ran ${plural(count, "command")}`,
+		liveLabel: ({ count, commandSummary }) =>
+			commandSummary ? `Running ${commandSummary}` : `Running ${plural(count, "command")}`,
+		doneLabel: ({ count, commandSummary }) =>
+			commandSummary ? `Ran ${commandSummary}` : `Ran ${plural(count, "command")}`,
 		circleClassName:
 			"border-zinc-600/40 bg-zinc-100 text-zinc-600 dark:border-zinc-400/40 dark:bg-zinc-950 dark:text-zinc-400",
 	},
@@ -424,11 +428,16 @@ export const getSegmentStats = (
 			if (question) break;
 		}
 	}
+	const commandSummary =
+		segment.kind === "terminal" && segment.indices.length === 1
+			? getCommandSummary(parts[segment.indices[0]!]?.args as Record<string, unknown> | undefined)
+			: undefined;
 	return {
 		count: segment.indices.length,
 		files: files.length,
 		file: files.length === 1 ? basename(files[0]!) : undefined,
 		question,
+		commandSummary: commandSummary || undefined,
 	};
 };
 

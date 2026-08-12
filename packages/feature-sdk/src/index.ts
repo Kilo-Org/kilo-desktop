@@ -112,6 +112,7 @@ export {
 	pluginRouteSchema,
 	pluginNavEntrySchema,
 	pluginZoneContributionSchema,
+	pluginZoneDeclarationSchema,
 	pluginProviderContributionSchema,
 	pluginContributesSchema,
 	parsePluginManifest,
@@ -119,6 +120,7 @@ export {
 	type PluginRoute,
 	type PluginNavEntry,
 	type PluginZoneContribution,
+	type PluginZoneDeclaration,
 	type PluginProviderContribution,
 	type PluginContributes,
 } from "./plugin/manifest.js";

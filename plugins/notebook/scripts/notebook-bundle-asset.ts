@@ -15,7 +15,7 @@ import path from "node:path";
  */
 
 /**
- * Where the staged bundle waits for the packager, relative to `apps/desktop`.
+ * Where the staged bundle waits for the packager, relative to this plugin.
  * Gitignored build output, not a tracked asset.
  */
 export const NOTEBOOK_BUNDLE_STAGING_DIRECTORY = "build/notebook";

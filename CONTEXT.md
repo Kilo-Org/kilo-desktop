@@ -22,7 +22,8 @@ e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e
 plugins/          Bundled plugins — self-contained workspace packages
 ├── todos/        @anaconda-agentic-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
 ├── kilo-server/  @anaconda-agentic-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
-└── kilo-ui/      @anaconda-agentic-desktop/plugin-kilo-ui Chat UI and workspace management
+├── kilo-ui/      @anaconda-agentic-desktop/plugin-kilo-ui Chat UI and workspace management
+└── notebook/     @anaconda-agentic-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
 ```
 
 ## Key architectural decisions
@@ -36,10 +37,10 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.events` / `mainSdk.events` — symmetric, namespaced, cross-process pub/sub
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
-- `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`, `home-composer-leading-action`, `header-leading`, `header-trailing`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
+- `sdk.contribute` — imperatively register dynamic UI in a stable zone. The shell owns canonical `ShellZone` outlets. Plugin-owned hosts declare zones in `plugin.json`, and other plugins target qualified names through declarative `contributes.zones`; `useSdkContributions(zone)` lets those hosts consume the live priority-ordered registry.
 - `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
 - `sdk.commands` — command palette entries
-- `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages, optional named host sidecars, and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
+- `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)
 - `mainSdk.logger` / `mainSdk.net.fetch` — main-process shell delegates. Electron supplies a feature-scoped `electron-log` sink and `net.fetch`; browser/test environments provide runtime implementations or explicit fakes. Plugins never import Electron or shell logging modules directly.
 
@@ -59,6 +60,8 @@ Main-side cross-feature `invoke` through the shared `FeatureRouter` is intention
 **Storage:** the shell provides a per-feature data directory as `mainSdk.storageDir` (`${userData}/plugins/<id>/`, created lazily). Features that persist open their own SQLite file there (`data.db`) and ship their drizzle migrations inside the feature directory. Nothing shares a shell database.
 
 **Lifecycles:** `useSdk(featureId)` returns a shared per-feature SDK instance that is NOT destroyed on component unmount. `sdk.destroy()` cleans up only what was registered through that instance. Full feature teardown (`teardownFeature`) is shell-owned and happens on feature/plugin unload only.
+
+**Chat right-panel contributions:** `kilo-ui` owns the session-scoped right-panel host and declares the `chat-right-panel-tab` zone in its manifest. Plugins target `kilo-ui/chat-right-panel-tab` through `contributes.zones`; Kilo turns each add action into a distinct persisted tab instance and supplies `{ sessionId, instanceId, title }` to the contributed component. The notebook plugin uses `instanceId` as nteract's `notebook_id`, so multiple ephemeral scratch notebooks can coexist without a filesystem picker or `.ipynb` restoration API. The app shell has no generic route-sidecar layout.
 
 ### FEATURES array (mandatory registration)
 
@@ -123,7 +126,7 @@ Three tiers decide where a dependency lives:
 | **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                             |
 | **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                 |
 | **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                       |
-| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, host-mounted zone widgets, routes, and nav; conditional zone UI uses `sdk.contribute`.                 |
+| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, zone entries, routes, and nav; conditional zone UI uses `sdk.contribute`.                              |
 | **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                       |
 
 ## Conventions

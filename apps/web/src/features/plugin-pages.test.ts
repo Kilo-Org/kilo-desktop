@@ -19,7 +19,7 @@ function makeDiscovery(): PluginDiscovery {
 					web: "./src/web/index.ts",
 					contributes: {
 						routes: [
-							{ path: "/demo", component: "TodosPage", title: "Demo", sidecar: "notebook" },
+							{ path: "/demo", component: "TodosPage", title: "Demo" },
 							{ path: "/demo/stats", component: "StatsPage" },
 						],
 					},
@@ -40,7 +40,6 @@ describe("buildPluginPages", () => {
 				pluginId: "demo",
 				path: "/plugins/demo",
 				title: "Demo",
-				sidecar: "notebook",
 				component: TodosPage,
 				browserSafe: false,
 				splat: "demo",
@@ -49,7 +48,6 @@ describe("buildPluginPages", () => {
 				pluginId: "demo",
 				path: "/plugins/demo/stats",
 				title: undefined,
-				sidecar: undefined,
 				component: StatsPage,
 				browserSafe: false,
 				splat: "demo/stats",
@@ -78,9 +76,8 @@ describe("PLUGIN_PAGES", () => {
 		expect(todos?.browserSafe).toBe(false);
 	});
 
-	it("attaches the notebook sidecar requested by the Kilo chat route", () => {
+	it("contains the Kilo chat route without shell-owned companion UI", () => {
 		const chat = findPluginPage(PLUGIN_PAGES, "/plugins/chat");
 		expect(chat?.pluginId).toBe("kilo-ui");
-		expect(chat?.sidecar).toBe("notebook");
 	});
 });

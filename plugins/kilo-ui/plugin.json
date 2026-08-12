@@ -4,14 +4,13 @@
 	"version": "1.0.0",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
+	"zones": [{ "id": "chat-right-panel-tab" }],
 	"contributes": {
 		"providers": [
 			{ "component": "WorkspacesFeatureProvider", "priority": 20 },
 			{ "component": "ChatFeatureProvider", "priority": 10 }
 		],
-		"routes": [
-			{ "path": "/chat", "component": "ChatPage", "title": "Chat", "sidecar": "notebook" }
-		],
+		"routes": [{ "path": "/chat", "component": "ChatPage", "title": "Chat" }],
 		"nav": [],
 		"zones": [
 			{

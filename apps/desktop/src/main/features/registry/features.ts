@@ -6,13 +6,10 @@ import {
 
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { mainRegister as notebookMainRegister } from "../notebook/index.js";
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 
 /** Built-in features developed inside apps/ (three-location pattern). */
-const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [
-	{ id: "notebook", mainRegister: notebookMainRegister },
-];
+const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validate the

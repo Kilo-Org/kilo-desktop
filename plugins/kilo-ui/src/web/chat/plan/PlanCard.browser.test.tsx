@@ -224,7 +224,9 @@ describe("PlanCard", () => {
 		const state = useRightPanelStore.getState().bySessionId["session-plan"];
 		expect(state?.isOpen).toBe(true);
 		expect(state?.activeTabId).toBe("plan");
-		expect(state?.tabs).toEqual([{ id: "plan", kind: "plan" }]);
+		expect(state?.tabs).toEqual([
+			{ instanceId: "plan", definitionId: "kilo-ui.plan", title: "Plan", ordinal: null },
+		]);
 		expect(state?.planAnchorCallId).toBe("write-1");
 	});
 

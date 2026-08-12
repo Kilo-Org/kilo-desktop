@@ -208,6 +208,7 @@ describe("kilo-server main registration", () => {
 				username: "kilo",
 				password: "secret",
 				version: "7.4.20",
+				globalDirectory: "/tmp/kilo-runtime",
 			};
 		});
 
@@ -280,6 +281,7 @@ describe("kilo-server main registration", () => {
 				username: "kilo",
 				password: "secret",
 				version: "7.4.20",
+				globalDirectory: "/tmp/kilo-runtime",
 			};
 		});
 
@@ -293,7 +295,7 @@ describe("kilo-server main registration", () => {
 		const capability =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
 		expect(capability).toBeDefined();
-		const inflight = capability!.getConnection({ directory: "/proj" });
+		const inflight = capability!.getConnection();
 
 		// Give microtasks a chance: seed has started, but ensureRunning MUST
 		// not have run yet — the capability call must wait on the seed.
@@ -301,7 +303,7 @@ describe("kilo-server main registration", () => {
 		expect(order).toEqual(["seed-start"]);
 
 		releaseSeed();
-		await expect(inflight).resolves.toMatchObject({ directory: "/proj" });
+		await expect(inflight).resolves.toMatchObject({ globalDirectory: "/tmp/kilo-runtime" });
 		// The initial mainRegister IIFE and the getConnection capability each
 		// call ensureRunning after the seed. Assert the invariant we care
 		// about — no ensure-running before seed-end — rather than an exact

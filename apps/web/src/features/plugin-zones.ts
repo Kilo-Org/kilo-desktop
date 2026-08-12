@@ -1,23 +1,26 @@
 import {
 	pluginZoneContributions,
 	type PluginDiscovery,
-	type ShellZone,
 } from "@anaconda-agentic-desktop/feature-sdk";
 import type { FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 
 import { PLUGIN_DISCOVERY } from "./features.js";
 
 /**
- * A persistent zone widget declared in a plugin manifest (`contributes.zones`).
+ * A persistent zone contribution declared in a plugin manifest (`contributes.zones`).
  * Unlike the page-scoped imperative `sdk.contribute`, these are registered at
- * activation for the plugin lifetime and render whenever the shell exposes the
- * target zone. App-lifetime lifecycle behavior belongs in `contributes.providers`.
+ * activation for the plugin lifetime. Shell zones render components directly;
+ * plugin-owned hosts may interpret them as richer definitions. App-lifetime
+ * lifecycle behavior belongs in `contributes.providers`.
  */
 export interface PluginZoneContribution {
 	pluginId: string;
-	zone: ShellZone;
+	id: string;
+	zone: string;
 	label: string;
+	description?: string | undefined;
 	component: unknown;
+	icon?: unknown | undefined;
 	priority: number;
 	/** False for Electron-only plugins — omitted in standalone browser mode. */
 	browserSafe: boolean;
@@ -27,10 +30,12 @@ export interface PluginZoneContribution {
 export function buildPluginZoneContributions(discovery: PluginDiscovery): PluginZoneContribution[] {
 	return pluginZoneContributions(discovery).map((contribution) => ({
 		pluginId: contribution.pluginId,
-		// The loader validated this against the canonical ShellZone ids.
-		zone: contribution.zone as ShellZone,
+		id: contribution.id,
+		zone: contribution.zone,
 		label: contribution.label,
+		...(contribution.description === undefined ? {} : { description: contribution.description }),
 		component: contribution.component,
+		...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
 		priority: contribution.priority,
 		browserSafe: contribution.browserSafe,
 	}));
@@ -42,7 +47,7 @@ type RegisterOptions = {
 };
 
 /**
- * Mount declarative zone contributions into the shell at boot. Registers each
+ * Register declarative zone contributions at boot. Registers each
  * through the owning plugin's cached SDK instance (never torn down on unmount),
  * so the widget persists for the app's lifetime and is cleaned up only on
  * plugin unload. Electron-only widgets are skipped in standalone browser mode
@@ -57,8 +62,11 @@ export function registerPluginZoneContributions(
 	for (const contribution of contributions) {
 		if (!contribution.browserSafe && !desktopAvailable) continue;
 		system.getSdk(contribution.pluginId).contribute(contribution.zone, {
+			id: contribution.id,
 			component: contribution.component,
 			label: contribution.label,
+			...(contribution.description === undefined ? {} : { description: contribution.description }),
+			...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
 			priority: contribution.priority,
 		});
 		registered += 1;
@@ -66,6 +74,6 @@ export function registerPluginZoneContributions(
 	return registered;
 }
 
-/** All persistent zone contributions of the bundled plugins, in registration order. */
+/** All persistent zone contributions of bundled plugins, in registration order. */
 export const PLUGIN_ZONE_CONTRIBUTIONS: readonly PluginZoneContribution[] =
 	buildPluginZoneContributions(PLUGIN_DISCOVERY);

@@ -59,18 +59,16 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	readonly plugins: SdkPlugins;
 
 	/**
-	 * Register a React component in a named shell zone (status bar,
-	 * dashboard, ...). The shell owns where and how zones render.
-	 * Use routes, not contributions, for the feature's main view.
+	 * Register a React component in a named extension zone. The app shell owns
+	 * its canonical zones, while plugins may expose shared plugin-owned zones.
 	 * Returns an unregister function for conditional UI; contributions are
 	 * also cleaned up automatically when this SDK instance is destroyed.
 	 *
-	 * Any string is accepted, but the shell renders only the canonical
-	 * {@link ShellZone} ids — prefer the exported zone constants so a typo
-	 * cannot render nowhere.
+	 * Any string is accepted; prefer exported zone constants for shared outlets
+	 * so a typo cannot silently render nowhere.
 	 *
 	 * @example
-	 * const remove = sdk.contribute("status-bar", { component: TodoBadge, label: "Todos", priority: 10 });
+	 * const remove = sdk.contribute("status-bar", { id: "todos", component: TodoBadge, label: "Todos", priority: 10 });
 	 */
 	contribute(zone: ShellZone | (string & {}), options: ContributionOptions): () => void;
 
@@ -252,19 +250,28 @@ export interface SdkPlugins {
 // ─── Contributions ───────────────────────────────────────────────────────────
 
 export interface ContributionOptions {
+	/** Stable identifier within this feature and zone. */
+	id: string;
 	/** React component to render in the zone. */
 	component: unknown;
 	label: string;
+	/** Optional supporting copy for hosts that present contributions in a picker. */
+	description?: string;
+	/** Optional React icon component; remains unknown so feature-sdk stays React-free. */
+	icon?: unknown;
 	size?: string;
 	/** Higher priority renders first. Default 0. */
 	priority?: number;
 }
 
 export interface Contribution {
+	id: string;
 	featureId: string;
 	zone: string;
 	component: unknown;
 	label: string;
+	description?: string;
+	icon?: unknown;
 	size?: string;
 	priority: number;
 }

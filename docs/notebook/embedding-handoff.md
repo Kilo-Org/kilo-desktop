@@ -3,6 +3,10 @@
 > **Runtime update:** daemon staging, spawning, supervision, and exact-revision admission described
 > below are superseded. Agentic Desktop attaches to the user's externally installed singleton and
 > negotiates compatibility by protocol number and semantic capabilities.
+>
+> **UI/ownership update:** the implementation is now the self-contained `plugins/notebook` package.
+> It contributes multi-instance ephemeral notebooks to each Kilo chat's right panel. References
+> below to the standalone page, app-owned feature directories, or route sidecars are historical.
 
 Status: **partially built.** Steps 1, 3, 4, 5 and 6 have landed; the original "hard blocker" is resolved. The notebook renders and executes Python in a packaged build. Steps 8 (blob resolver) and 9 (a spec that executes a cell) remain. See [What has landed](#what-has-landed) before acting on anything below — two of this doc's original recommendations were inverted by what we found while building.
 

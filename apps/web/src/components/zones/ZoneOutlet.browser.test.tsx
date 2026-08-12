@@ -31,16 +31,19 @@ describe("ZoneOutlet", () => {
 	it("renders contributions priority-ordered and only for its own zone", async () => {
 		const { sdk, system } = makeSystem();
 		sdk.contribute("status-bar", {
+			id: "low",
 			component: () => <span>low priority</span>,
 			label: "Low",
 			priority: 1,
 		});
 		sdk.contribute("status-bar", {
+			id: "high",
 			component: () => <span>high priority</span>,
 			label: "High",
 			priority: 10,
 		});
 		sdk.contribute("dashboard", {
+			id: "other",
 			component: () => <span>other zone</span>,
 			label: "Other",
 		});
@@ -70,6 +73,7 @@ describe("ZoneOutlet", () => {
 		const screen = page.elementLocator(baseElement);
 
 		const remove = sdk.contribute("sidebar", {
+			id: "late",
 			component: () => <span>late arrival</span>,
 			label: "Late",
 		});
@@ -85,8 +89,16 @@ describe("ZoneOutlet", () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			const { sdk, system } = makeSystem();
-			sdk.contribute("status-bar", { component: "not-a-component", label: "Broken" });
-			sdk.contribute("status-bar", { component: () => <span>still works</span>, label: "OK" });
+			sdk.contribute("status-bar", {
+				id: "broken",
+				component: "not-a-component",
+				label: "Broken",
+			});
+			sdk.contribute("status-bar", {
+				id: "ok",
+				component: () => <span>still works</span>,
+				label: "OK",
+			});
 
 			const { baseElement } = render(
 				<SdkProvider system={system}>

@@ -1,0 +1,23 @@
+{
+	"id": "notebook",
+	"displayName": "Notebook",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"providers": [],
+		"routes": [],
+		"nav": [],
+		"zones": [
+			{
+				"zone": "kilo-ui/chat-right-panel-tab",
+				"id": "notebook",
+				"component": "NotebookView",
+				"label": "Notebook",
+				"description": "Create an ephemeral scratch notebook for this chat.",
+				"icon": "NotebookIcon",
+				"priority": 50
+			}
+		]
+	}
+}

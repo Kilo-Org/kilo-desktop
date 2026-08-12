@@ -123,19 +123,20 @@ capabilities used by the client. Exact source revisions remain diagnostics, not 
 Unknown optional capabilities are ignored; a missing required capability fails that feature closed
 without displacing the running daemon.
 
-## D7. Agent pages request host-owned sidecars by name
+## D7. Notebook is a plugin contribution to Kilo's chat right panel
 
-Chosen: a plugin route may declare an optional `sidecar` name. The shell resolves that name against
-its built-in sidecar registry and mounts the companion beside the plugin page. Kilo's chat route
-requests `"notebook"`; neither Kilo nor the notebook feature imports the other's source.
+Chosen: `kilo-ui` declares the `chat-right-panel-tab` zone and reads its live registry through
+`useSdkContributions`. The notebook manifest contributes one stable `notebook` definition to
+`kilo-ui/chat-right-panel-tab` through `contributes.zones`.
+Kilo owns the add menu, creates a unique tab instance for every add action, persists that metadata
+per chat session, and passes `{ sessionId, instanceId, title }` into the plugin component. Neither
+plugin imports the other's source.
 
-The route search parameter `notebookPath` selects the file shown in the sidecar. When absent, the
-demo notebook path is used. This keeps file selection in the agent-navigation contract while the
-notebook surface remains a host-owned capability with its own origin and transport.
+Each notebook instance is an ephemeral scratch document. The stable tab `instanceId` is passed to
+nteract as `notebook_id`, which uses the existing `create_notebook` handshake with no path. Closing
+a tab removes only Kilo's UI metadata; it does not create, save, restore, select, or delete an
+`.ipynb` file.
 
-Unknown sidecar names degrade to the full-width plugin page. That lets independently versioned
-plugins request a newer host surface without breaking older hosts.
-
-For this internal first pass, route manifests are bundled and trusted. Before externally installed
-plugins may request the notebook sidecar, the host must add an explicit capability grant and path
-policy so an untrusted plugin cannot use route search state to open arbitrary local notebooks.
+The old standalone `/notebook` page, route `sidecar` manifest field, built-in sidecar registry, and
+generic split-page layout are removed. If the notebook plugin unloads while persisted tabs exist,
+Kilo renders a closeable unavailable state until the contribution returns.

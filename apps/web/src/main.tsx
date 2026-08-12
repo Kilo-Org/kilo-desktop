@@ -30,7 +30,6 @@ const featureSystem = createAppFeatureSystem(
 registerPluginZoneContributions(featureSystem, PLUGIN_ZONE_CONTRIBUTIONS, {
 	desktopAvailable: isDesktopBridgeAvailable(),
 });
-
 // Publish the ToolRegistry to document.modelContext and start the local relay
 // bridge for external MCP clients. Tools are owned by plugins: each plugin's
 // `webRegister` (invoked by createFeatureSystem) registers its own tools via

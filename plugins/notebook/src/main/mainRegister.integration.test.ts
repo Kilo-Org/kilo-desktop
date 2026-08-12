@@ -105,12 +105,9 @@ async function boot(options: { withDaemon?: boolean } = {}) {
 		daemons.push(daemon);
 		connect = daemon.connect;
 	}
-	// isDevelopment is passed explicitly: `app.isPackaged` is unavailable outside
-	// a real Electron process, and the value decides which origin the relay trusts.
-	// The bundle root is stubbed because its default reads `app.getAppPath()`,
-	// which is unavailable outside Electron. The daemon itself is always external.
+	// The bundle root is stubbed because this integration test does not stage the
+	// plugin's external SPA. The daemon itself is always external.
 	mainRegister(mainSdk, {
-		isDevelopment: false,
 		socketPath: "unused",
 		resolveBundleRoot: () => undefined,
 		...(connect ? { connect } : {}),
@@ -163,12 +160,17 @@ describe("notebook mainRegister", () => {
 		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"] as {
 			host: string;
 			root: string | undefined;
-			routes: Record<string, () => Promise<{ websocket_url: string; token: string }>>;
+			routes: Record<
+				string,
+				(context: { origin: string }) => Promise<{ websocket_url: string; token: string }>
+			>;
 		};
 		expect(capability.host).toBe("notebook");
 		expect(capability.root).toBeUndefined();
 
-		const config = await capability.routes[CONFIG_PATH]?.();
+		const config = await capability.routes[CONFIG_PATH]?.({
+			origin: "anaconda-agentic-desktop://notebook",
+		});
 		// Fetching the config is what starts the relay, so serving assets alone
 		// leaves the loopback port unbound.
 		expect(config?.websocket_url).toContain(RELAY_WS_PATH);
@@ -179,9 +181,11 @@ describe("notebook mainRegister", () => {
 		const mainSdk = await boot();
 		const { relayPort } = (await mainSdk.invoke("status")) as { relayPort: number };
 		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"] as {
-			routes: Record<string, () => Promise<{ token: string }>>;
+			routes: Record<string, (context: { origin: string }) => Promise<{ token: string }>>;
 		};
-		const { token } = await capability.routes[CONFIG_PATH]!();
+		const { token } = await capability.routes[CONFIG_PATH]!({
+			origin: "anaconda-agentic-desktop://notebook",
+		});
 		const url = `ws://127.0.0.1:${relayPort}${RELAY_WS_PATH}?token=${token}`;
 
 		// nteract's document is served from the notebook host, so the relay must
@@ -209,9 +213,11 @@ describe("notebook mainRegister", () => {
 		const mainSdk = await boot();
 		const { relayPort } = (await mainSdk.invoke("status")) as { relayPort: number };
 		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"] as {
-			routes: Record<string, () => Promise<{ token: string }>>;
+			routes: Record<string, (context: { origin: string }) => Promise<{ token: string }>>;
 		};
-		const { token } = await capability.routes[CONFIG_PATH]!();
+		const { token } = await capability.routes[CONFIG_PATH]!({
+			origin: "anaconda-agentic-desktop://notebook",
+		});
 
 		const ws = new WebSocket(`ws://127.0.0.1:${relayPort}${RELAY_WS_PATH}?token=${token}`, {
 			headers: { Origin: "anaconda-agentic-desktop://notebook" },

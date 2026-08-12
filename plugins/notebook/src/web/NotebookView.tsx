@@ -1,6 +1,4 @@
-import { NOTEBOOK_HOST } from "@anaconda-agentic-desktop/contracts";
-import type { NotebookService, NotebookStatus } from "@anaconda-agentic-desktop/contracts";
-import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import { NOTEBOOK_HOST } from "../contracts/schemas.js";
 
 /**
  * nteract's notebook UI is a private workspace app whose execution path needs
@@ -12,8 +10,6 @@ import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
  * frames here. Browser mode has no custom protocol at all, so it still needs
  * `VITE_NTERACT_ORIGIN` pointing at nteract's dev server.
  */
-const DEFAULT_NOTEBOOK_PATH = "/tmp/ad-nb-python.ipynb";
-
 /**
  * Matches both the production and `-dev` desktop schemes. Not imported from
  * main's `ElectronProtocol`, which the web app cannot reach; the prefix is all
@@ -42,57 +38,28 @@ export function notebookOriginFrom(appOrigin: string): string | undefined {
 }
 
 /** Read at render time, not module scope, so tests can drive both branches. */
-function nteractSrc(notebookPath: string): string | undefined {
+export function nteractSrc(instanceId: string): string | undefined {
 	const origin =
 		notebookOriginFrom(window.location.origin) ??
 		(import.meta.env["VITE_NTERACT_ORIGIN"] as string | undefined);
 	if (!origin) return undefined;
 	const url = new URL(origin);
-	url.searchParams.set("path", notebookPath);
+	url.searchParams.set("notebook_id", instanceId);
 	return url.toString();
 }
 
-function daemonAbsenceMessage(availability: NotebookStatus["availability"]): string {
-	return availability.reason ?? "The nteract runtime service is not running.";
-}
-
+/** Context supplied by Kilo's `chat-right-panel-tab` extension point. */
 export interface NotebookViewProps {
-	readonly notebookPath?: string;
-	readonly variant?: "page" | "sidecar";
+	readonly sessionId: string;
+	readonly instanceId: string;
+	readonly title: string;
 }
 
-function notebookLabel(notebookPath: string): string {
-	return notebookPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "Notebook";
-}
-
-export function NotebookView({
-	notebookPath = DEFAULT_NOTEBOOK_PATH,
-	variant = "page",
-}: NotebookViewProps = {}) {
-	const sdk = useSdk<NotebookService>("notebook");
-	const status = useSdkQuery(sdk, "status");
-	const daemon = status.data?.daemon;
-	const frameSrc = nteractSrc(notebookPath);
-	const title = variant === "sidecar" ? notebookLabel(notebookPath) : "Notebook";
+export function NotebookView({ instanceId }: NotebookViewProps) {
+	const frameSrc = nteractSrc(instanceId);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
-			<div className="border-border flex items-center gap-3 border-b px-4 py-2">
-				<div className="min-w-0 flex-1">
-					<h1 className="truncate text-sm font-medium" data-qa-id="notebook-title">
-						{title}
-					</h1>
-					<p className="text-muted-foreground truncate text-xs" data-qa-id="notebook-status">
-						{status.isLoading
-							? "Connecting…"
-							: status.isError || !status.data
-								? "Notebook service unavailable."
-								: daemon
-									? `Daemon ${daemon.version} · relay port ${status.data?.relayPort}`
-									: daemonAbsenceMessage(status.data.availability)}
-					</p>
-				</div>
-			</div>
 			{frameSrc ? (
 				// Deliberately no `sandbox` attribute. The isolation boundary here is the
 				// separate protocol origin plus its CSP, not the sandbox: nteract needs

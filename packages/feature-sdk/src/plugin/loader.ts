@@ -1,6 +1,6 @@
 import { PLUGIN_MANIFEST_FILENAME, pluginManifestSchema, type PluginManifest } from "./manifest.js";
 
-import { isShellZone, SHELL_ZONES } from "../types/zones.js";
+import { SHELL_ZONES } from "../types/zones.js";
 
 import type { FeatureRegistration, MainSdk, SDK } from "../types/sdk.js";
 
@@ -15,6 +15,11 @@ import type { FeatureRegistration, MainSdk, SDK } from "../types/sdk.js";
  * building splat params for its router links.
  */
 export const PLUGIN_ROUTE_NAMESPACE = "/plugins";
+
+/** Build the registry key for a plugin-owned zone. */
+function qualifyPluginZone(pluginId: string, zoneId: string): string {
+	return `${pluginId}/${zoneId}`;
+}
 
 function prefixPluginPath(path: string): string {
 	return `${PLUGIN_ROUTE_NAMESPACE}${path}`;
@@ -124,7 +129,7 @@ export interface DiscoveredPlugin {
 	nav: ResolvedPluginNav[];
 	/**
 	 * `contributes.zones` widgets with their components resolved. Web-entry
-	 * discovery only; entries for non-canonical zones or missing components are
+	 * discovery only; entries for undeclared zones or missing components are
 	 * skipped with an issue.
 	 */
 	zones: ResolvedPluginZoneContribution[];
@@ -145,8 +150,6 @@ export interface ResolvedPluginRoute {
 	path: string;
 	/** Optional human-readable page title (browser-mode unavailable state). */
 	title?: string | undefined;
-	/** Optional host-owned sidecar surface requested by the route. */
-	sidecar?: string | undefined;
 	/** The resolved page component export (a React component to the shell). */
 	component: unknown;
 	/**
@@ -190,17 +193,22 @@ export interface ResolvedPluginNav {
 }
 
 /**
- * A resolved persistent zone widget. The host mounts `component` into `zone`
- * at plugin activation (never page-scoped). `component` stays `unknown` —
- * the shell casts it. `browserSafe` gates mounting in standalone browser mode.
+ * A resolved persistent zone contribution. The shell registers it at plugin
+ * activation; the zone owner decides how to consume `component` and optional
+ * metadata. `browserSafe` gates registration in standalone browser mode.
  */
 export interface ResolvedPluginZoneContribution {
 	pluginId: string;
-	/** Canonical shell zone id. */
+	/** Stable id from the manifest, defaulting to its component export name. */
+	id: string;
+	/** Canonical shell zone or qualified plugin-owned zone. */
 	zone: string;
 	label: string;
+	description?: string | undefined;
 	/** The resolved component export. */
 	component: unknown;
+	/** Optional resolved icon component. */
+	icon?: unknown | undefined;
 	/** Higher renders first within the zone. Default 0. */
 	priority: number;
 	browserSafe: boolean;
@@ -326,6 +334,10 @@ export function discoverPlugins(
 		}
 	}
 
+	if (entry === "web") {
+		validateZoneTargets(plugins, issues);
+	}
+
 	return { plugins, issues };
 }
 
@@ -334,6 +346,26 @@ interface ResolvedContributions {
 	routes: ResolvedPluginRoute[];
 	nav: ResolvedPluginNav[];
 	zones: ResolvedPluginZoneContribution[];
+}
+
+function validateZoneTargets(plugins: DiscoveredPlugin[], issues: PluginDiscoveryIssue[]): void {
+	const declaredZones = new Set<string>(SHELL_ZONES);
+	for (const { manifest } of plugins) {
+		for (const { id } of manifest.zones) {
+			declaredZones.add(qualifyPluginZone(manifest.id, id));
+		}
+	}
+
+	for (const plugin of plugins) {
+		plugin.zones = plugin.zones.filter((contribution) => {
+			if (declaredZones.has(contribution.zone)) return true;
+			issues.push({
+				pluginId: plugin.manifest.id,
+				message: `Plugin "${plugin.manifest.id}" contributes to unknown zone "${contribution.zone}" — target a canonical shell zone or a qualified plugin-owned zone declared by its host; skipping the contribution.`,
+			});
+			return false;
+		});
+	}
 }
 
 /**
@@ -407,7 +439,6 @@ function resolveContributions(
 			pluginId: manifest.id,
 			path: resolvedPath,
 			title: route.title,
-			sidecar: route.sidecar,
 			component,
 			browserSafe,
 		});
@@ -439,16 +470,6 @@ function resolveContributions(
 
 	const zones: ResolvedPluginZoneContribution[] = [];
 	for (const contribution of zoneDecls) {
-		// The shell renders only canonical ShellZone ids — a widget targeting an
-		// unknown zone would silently render nowhere, so skip it with an issue.
-		if (!isShellZone(contribution.zone)) {
-			issues.push({
-				pluginId: manifest.id,
-				message: `Plugin "${manifest.id}" contributes to unknown zone "${contribution.zone}" — shell zones are ${SHELL_ZONES.map((zone) => `"${zone}"`).join(", ")}; skipping the contribution.`,
-			});
-			continue;
-		}
-
 		const component = module[contribution.component];
 		if (typeof component !== "function") {
 			issues.push({
@@ -458,11 +479,26 @@ function resolveContributions(
 			continue;
 		}
 
+		const icon = contribution.icon === undefined ? undefined : module[contribution.icon];
+		const hasRenderableIcon =
+			icon !== undefined &&
+			icon !== null &&
+			(typeof icon === "function" || typeof icon === "object");
+		if (contribution.icon !== undefined && !hasRenderableIcon) {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" zone contribution names icon export "${contribution.icon}" but the web entry does not export a component with that name — using the zone host's fallback icon.`,
+			});
+		}
+
 		zones.push({
 			pluginId: manifest.id,
+			id: contribution.id ?? contribution.component,
 			zone: contribution.zone,
 			label: contribution.label ?? contribution.component,
+			...(contribution.description === undefined ? {} : { description: contribution.description }),
 			component,
+			...(hasRenderableIcon ? { icon } : {}),
 			priority: contribution.priority ?? 0,
 			browserSafe,
 		});
@@ -534,8 +570,8 @@ export function pluginNav(discovery: PluginDiscovery): ResolvedPluginNav[] {
 }
 
 /**
- * All resolved persistent zone widgets across the discovered plugins. The
- * shell mounts these into their zones at activation. Empty for `entry: "main"`.
+ * All resolved persistent zone contributions across the discovered plugins.
+ * The shell registers these at activation. Empty for `entry: "main"`.
  */
 export function pluginZoneContributions(
 	discovery: PluginDiscovery,

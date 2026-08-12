@@ -16,7 +16,6 @@ import {
 	getUpdatePublishUrl,
 } from "./config/release.js";
 import { getAppIdentity } from "./config/app-identity.js";
-import { NOTEBOOK_BUNDLE_STAGING_DIRECTORY } from "./config/notebook-bundle-asset.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
@@ -43,7 +42,7 @@ const appIcon =
 // Staged by the `prepackage` script. `extraResource` on a directory lands it
 // as `Contents/Resources/notebook/`, which is where resolveNotebookBundleRoot
 // looks; a build with no bundle configured still packages.
-const stagedNotebookBundle = path.join(packageRoot, NOTEBOOK_BUNDLE_STAGING_DIRECTORY);
+const stagedNotebookBundle = path.join(workspaceRoot, "plugins/notebook/build/notebook");
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.

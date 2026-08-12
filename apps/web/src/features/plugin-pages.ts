@@ -22,8 +22,6 @@ export interface PluginPage {
 	path: string;
 	/** Optional page title for the browser-mode unavailable state. */
 	title: string | undefined;
-	/** Optional host-owned sidecar surface requested by the plugin route. */
-	sidecar: string | undefined;
 	component: ComponentType<PluginPageProps>;
 	/**
 	 * False for Electron-only plugins (main entry, no browserRegister): in
@@ -44,7 +42,6 @@ export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
 		pluginId: route.pluginId,
 		path: route.path,
 		title: route.title,
-		sidecar: route.sidecar,
 		// The loader verified this export is a function; the shell owns the
 		// React-specific interpretation (feature-sdk stays React-free).
 		component: route.component as ComponentType<PluginPageProps>,

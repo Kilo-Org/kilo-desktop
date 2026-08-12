@@ -1,0 +1,74 @@
+{
+	"name": "@anaconda-agentic-desktop/plugin-notebook",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Ephemeral nteract notebooks contributed to Kilo chat right panels",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/schemas.ts",
+		"./packaged-assets": "./src/main/resolve-plugin-asset.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"stage-bundle": "node --env-file-if-exists=.env.local --import tsx scripts/stage-notebook-bundle.ts",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"lucide-react": "^1.27.0",
+		"ws": "^8.21.2"
+	},
+	"peerDependencies": {
+		"@anaconda-agentic-desktop/feature-sdk": "^0.1.0",
+		"@anaconda-agentic-desktop/sdk-react": "^0.1.0",
+		"@tanstack/react-query": "^5.101.4",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"zod": "^4.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@anaconda-agentic-desktop/sdk-react": {
+			"optional": true
+		},
+		"@tanstack/react-query": {
+			"optional": true
+		},
+		"react": {
+			"optional": true
+		},
+		"react-dom": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@anaconda-agentic-desktop/e2e": "workspace:*",
+		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
+		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@anaconda/playwright-utils": "1.17.1",
+		"@playwright/test": "1.61.1",
+		"@tailwindcss/vite": "^4.3.3",
+		"@tanstack/react-query": "^5.101.4",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@types/ws": "^8.18.1",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.0.0-beta.7",
+		"@vitest/browser-playwright": "5.0.0-beta.7",
+		"@vitest/coverage-v8": "5.0.0-beta.7",
+		"playwright": "1.61.1",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
+		"tsx": "^4.23.1",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

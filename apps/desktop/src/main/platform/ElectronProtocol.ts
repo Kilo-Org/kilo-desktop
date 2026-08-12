@@ -77,7 +77,14 @@ export interface EmbeddedWebHost {
 	 * Needed because nteract's browser host fetches a config path it hardcodes,
 	 * so the endpoint has to appear on the bundle's own origin.
 	 */
-	readonly routes?: Readonly<Record<string, () => Promise<unknown>>>;
+	readonly routes?: Readonly<
+		Record<string, (context: EmbeddedWebHostRouteContext) => Promise<unknown>>
+	>;
+}
+
+export interface EmbeddedWebHostRouteContext {
+	/** Resolved protocol origin of the document making this same-origin request. */
+	readonly origin: string;
 }
 
 export function registerDesktopSchemes(): void {
@@ -286,7 +293,9 @@ function contentTypeFor(filePath: string): string {
  */
 async function serveEmbeddedHost(embedded: EmbeddedWebHost, requestUrl: URL): Promise<Response> {
 	const route = embedded.routes?.[requestUrl.pathname];
-	if (route) return Response.json(await route());
+	if (route) {
+		return Response.json(await route({ origin: `${requestUrl.protocol}//${requestUrl.host}` }));
+	}
 
 	// No bundle in this build — an expected state, not an error.
 	if (!embedded.root) return new Response(null, { status: 404 });

@@ -29,6 +29,10 @@ import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvid
 import { ChatConnectionProvider, useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage } from "./ChatPage.js";
+import {
+	CHAT_RIGHT_PANEL_TAB_EXTENSION,
+	type ChatRightPanelContributionProps,
+} from "./right-panel/right-panel-tab-registry.js";
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 
@@ -73,6 +77,14 @@ function HeaderOutlets() {
 			<ZoneOutletStandIn zone={HEADER_LEADING_ZONE} qaId="zone-header-leading" />
 			<ZoneOutletStandIn zone={HEADER_TRAILING_ZONE} qaId="zone-header-trailing" />
 		</>
+	);
+}
+
+function NotebookPanel({ instanceId, sessionId, title }: ChatRightPanelContributionProps) {
+	return (
+		<div data-qa-id="test-notebook-panel" data-instance-id={instanceId} data-session-id={sessionId}>
+			{title}
+		</div>
 	);
 }
 
@@ -185,6 +197,14 @@ function renderChatPage(options?: {
 	const system = createFakeFeatureSystem({
 		sdks: { "kilo-ui": kiloUi },
 	});
+	const removeNotebookContribution = system
+		.getSdk("notebook")
+		.contribute(CHAT_RIGHT_PANEL_TAB_EXTENSION, {
+			id: "notebook",
+			label: "Notebook",
+			description: "Scratch notebook",
+			component: NotebookPanel,
+		});
 	const queryClient = testClient();
 	const result = render(
 		<SdkProvider system={system}>
@@ -198,7 +218,7 @@ function renderChatPage(options?: {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, queryClient, sdk: kiloUi };
+	return { ...result, queryClient, sdk: kiloUi, removeNotebookContribution };
 }
 
 afterEach(() => {
@@ -339,17 +359,51 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("chat-right-panel-maximize")).toBeVisible();
 	});
 
-	it("adds the placeholder tab from the empty state", async () => {
+	it("adds multiple numbered notebook instances from the live contribution", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
 		await screen.getByTestId("chat-right-panel-toggle").click();
 		await expect.element(screen.getByTestId("chat-right-panel-empty")).toBeVisible();
-		await screen.getByTestId("chat-right-panel-open-placeholder").click();
+		await screen.getByTestId("chat-right-panel-open-notebook-notebook").click();
 
-		await expect.element(screen.getByTestId("chat-right-panel-tab-placeholder")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-placeholder")).toBeVisible();
+		await expect.element(screen.getByTestId("test-notebook-panel")).toHaveTextContent("Notebook 1");
+		const firstNotebook = baseElement.querySelector<HTMLElement>(
+			"[data-qa-id='test-notebook-panel']",
+		);
+		expect(firstNotebook).not.toBeNull();
 		await expect.element(screen.getByTestId("chat-right-panel-empty")).not.toBeInTheDocument();
+
+		await screen.getByTestId("chat-right-panel-add-tab").click();
+		await screen.getByTestId("chat-right-panel-add-notebook-notebook").click();
+		await vi.waitFor(() => {
+			expect(baseElement.querySelectorAll("[data-qa-id='test-notebook-panel']")).toHaveLength(2);
+		});
+		expect(firstNotebook?.isConnected).toBe(true);
+		expect(firstNotebook?.textContent).toContain("Notebook 1");
+		expect(
+			baseElement.querySelector<HTMLElement>(
+				"[data-active='true'] [data-qa-id='test-notebook-panel']",
+			)?.textContent,
+		).toContain("Notebook 2");
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs.map(({ title }) => title)).toEqual(
+			["Notebook 1", "Notebook 2"],
+		);
+	});
+
+	it("keeps an existing tab closeable when its contributing plugin disappears", async () => {
+		const { baseElement, removeNotebookContribution } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-notebook-notebook").click();
+		await expect.element(screen.getByTestId("test-notebook-panel")).toBeVisible();
+
+		removeNotebookContribution();
+		await expect
+			.element(screen.getByTestId("chat-right-panel-contribution-unavailable"))
+			.toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id^='chat-right-panel-close-tab-']")).toBeTruthy();
 	});
 
 	it("shows the plan tab when openPlan is called for the session", async () => {

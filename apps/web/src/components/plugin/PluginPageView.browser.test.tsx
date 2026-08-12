@@ -6,7 +6,6 @@ import type { PluginPageProps } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { PluginPageView } from "./PluginPageView";
 
-import type { PluginSidecarProps } from "@/features/built-in-sidecars";
 import type { PluginPage } from "@/features/plugin-pages";
 
 afterEach(() => {
@@ -21,16 +20,11 @@ function DemoPage({ path, search }: PluginPageProps) {
 	);
 }
 
-function DemoSidecar({ search }: PluginSidecarProps) {
-	return <div data-qa-id="demo-sidecar">sidecar search={JSON.stringify(search)}</div>;
-}
-
 function makePage(overrides: Partial<PluginPage> = {}): PluginPage {
 	return {
 		pluginId: "demo",
 		path: "/plugins/demo",
 		title: "Demo",
-		sidecar: undefined,
 		component: DemoPage,
 		browserSafe: true,
 		splat: "demo",
@@ -98,40 +92,5 @@ describe("PluginPageView", () => {
 		);
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("demo-page")).toBeVisible();
-	});
-
-	it("mounts a route-requested host sidecar beside the plugin page", async () => {
-		const { baseElement } = render(
-			<PluginPageView
-				splat="demo"
-				search={{ notebookPath: "/project/analysis.ipynb" }}
-				pages={[makePage({ sidecar: "demo" })]}
-				desktopAvailable={true}
-				sidecars={{ demo: DemoSidecar }}
-			/>,
-		);
-		const screen = page.elementLocator(baseElement);
-
-		await expect.element(screen.getByTestId("plugin-page-with-sidecar")).toBeVisible();
-		await expect.element(screen.getByTestId("plugin-sidecar-demo")).toBeVisible();
-		await expect
-			.element(screen.getByTestId("demo-sidecar"))
-			.toHaveTextContent('sidecar search={"notebookPath":"/project/analysis.ipynb"}');
-	});
-
-	it("keeps the page full-width when a requested sidecar is not installed", async () => {
-		const { baseElement } = render(
-			<PluginPageView
-				splat="demo"
-				search={{}}
-				pages={[makePage({ sidecar: "missing" })]}
-				desktopAvailable={true}
-				sidecars={{}}
-			/>,
-		);
-		const screen = page.elementLocator(baseElement);
-
-		await expect.element(screen.getByTestId("demo-page")).toBeVisible();
-		expect(screen.getByTestId("plugin-page-with-sidecar").query()).toBeNull();
 	});
 });

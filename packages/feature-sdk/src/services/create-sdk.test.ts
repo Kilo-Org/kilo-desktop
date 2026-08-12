@@ -86,7 +86,7 @@ describe("createSdk", () => {
 		sdk.state.register("items", []);
 		sdk.plugins.expose("svc", { hello: () => "world" });
 		sdk.commands.register({ id: "add", label: "Add", handler: noop });
-		sdk.contribute("status-bar", { component: null, label: "Todos" });
+		sdk.contribute("status-bar", { id: "todos", component: null, label: "Todos" });
 
 		let disposed = false;
 		sdk.onDispose(() => {
@@ -130,7 +130,7 @@ describe("createSdk", () => {
 
 		const sdk = createSdk("todos", services);
 		sdk.state.register("items", ["a"]);
-		sdk.contribute("status-bar", { component: null, label: "Todos" });
+		sdk.contribute("status-bar", { id: "todos", component: null, label: "Todos" });
 
 		teardownFeature("todos", services);
 
@@ -172,7 +172,11 @@ describe("createSdk", () => {
 	it("contribute returns an unregister handle that also drops the disposable", () => {
 		const services = makeServices();
 		const sdk = createSdk("todos", services);
-		const remove = sdk.contribute("status-bar", { component: null, label: "Todos" });
+		const remove = sdk.contribute("status-bar", {
+			id: "todos",
+			component: null,
+			label: "Todos",
+		});
 		expect(services.contributionRegistry.getForZone("status-bar")).toHaveLength(1);
 		remove();
 		expect(services.contributionRegistry.getForZone("status-bar")).toEqual([]);

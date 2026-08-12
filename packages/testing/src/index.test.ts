@@ -384,7 +384,7 @@ describe("createFakeSdk", () => {
 
 		await expect(sdk.invoke("anything")).resolves.toBe("custom");
 		expect(customInvoke).toHaveBeenCalled();
-		sdk.contribute("zone", { component: "X", label: "Label" });
+		sdk.contribute("zone", { id: "label", component: "X", label: "Label" });
 		expect(customContribute).toHaveBeenCalled();
 		expect(sdk.state.peek("x")).toBe(42);
 		sdk.destroy();

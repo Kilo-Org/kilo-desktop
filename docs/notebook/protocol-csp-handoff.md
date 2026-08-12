@@ -2,6 +2,10 @@
 
 > **Runtime update:** references below to a staged daemon are historical. The protocol-host and CSP
 > work remains current; Agentic Desktop now attaches to an externally installed singleton.
+>
+> **UI/ownership update:** notebook code now lives in `plugins/notebook`. Its renderer contributes
+> ephemeral scratch notebooks to Kilo's `chat-right-panel-tab` zone; there is no standalone notebook
+> route or app-wide sidecar. Older file paths and page-flow notes below are implementation history.
 
 Status: **done.** Steps A–F are implemented, the gate is green
 (`pnpm check && pnpm lint && pnpm format:check && pnpm test` — 445 desktop + 102 web tests; desktop
@@ -12,9 +16,8 @@ build configurations — with the daemon and bundle staged, and without, which i
 Corrections to this plan's own text, found while implementing it:
 
 - The gate is **80%** on all four coverage metrics (`vitest.coverage.shared.mjs`), not 90%.
-- `NOTEBOOK_HOST` went in **`packages/contracts`** (`features/notebook.ts`), as Step D anticipated,
-  because the renderer needs it too.
-- Step E's asset logic went in `config/notebook-bundle-asset.ts` with `stage-notebook-bundle.ts` as
+- `NOTEBOOK_HOST` now lives with the plugin's contracts (`plugins/notebook/src/contracts/schemas.ts`).
+- Step E's asset logic now lives under `plugins/notebook/scripts/`, with `stage-notebook-bundle.ts` as
   the thin script, mirroring how `daemon-asset.ts`/`stage-daemon.ts` are split — the plan named only
   the script.
 - `mainRegister` needed a **`resolveBundleRoot` test seam** alongside the existing

@@ -17,15 +17,17 @@ import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatRightPanelHeaderToggle } from "./right-panel/ChatRightPanelHeaderToggle.js";
-import { RightPanelTabContent } from "./right-panel/right-panel-tab-registry.js";
+import {
+	RightPanelTabContent,
+	type RightPanelTabDefinition,
+	useRightPanelTabDefinitions,
+} from "./right-panel/right-panel-tab-registry.js";
 import { RightPanelTabs } from "./right-panel/RightPanelTabs.js";
 import {
 	resolveRightPanelSessionKey,
-	selectActiveRightPanelTab,
 	selectSessionRightPanelState,
 	useRightPanelStore,
 	type RightPanelTab,
-	type RightPanelTabKind,
 } from "./right-panel/right-panel-store.js";
 
 const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
@@ -67,6 +69,7 @@ function writeStoredPanelWidth(width: number): void {
 export function ChatPage() {
 	const sdk = useSdk("kilo-ui");
 	const connection = useChatConnection();
+	const rightPanelDefinitions = useRightPanelTabDefinitions();
 	const reduceMotion = useReducedMotion();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
@@ -75,9 +78,6 @@ export function ChatPage() {
 
 	const panelState = useRightPanelStore((state) =>
 		selectSessionRightPanelState(state.bySessionId, sessionId),
-	);
-	const activeTab = useRightPanelStore((state) =>
-		selectActiveRightPanelTab(state.bySessionId, sessionId),
 	);
 	const openTab = useRightPanelStore((state) => state.openTab);
 	const activateTab = useRightPanelStore((state) => state.activateTab);
@@ -101,11 +101,13 @@ export function ChatPage() {
 	// header only while the chat route is mounted.
 	useEffect(() => {
 		const removeBreadcrumb = sdk.contribute(HEADER_LEADING_ZONE, {
+			id: "chat-session-breadcrumb",
 			component: ChatSessionBreadcrumb,
 			label: "Chat session breadcrumb",
 			priority: 10,
 		});
 		const removeToggle = sdk.contribute(HEADER_TRAILING_ZONE, {
+			id: "chat-right-panel-toggle",
 			component: ChatRightPanelHeaderToggle,
 			label: "Chat right panel toggle",
 			priority: 10,
@@ -198,21 +200,21 @@ export function ChatPage() {
 
 	const handleActivate = useCallback(
 		(tab: RightPanelTab) => {
-			activateTab(sessionId, tab.id);
+			activateTab(sessionId, tab.instanceId);
 		},
 		[activateTab, sessionId],
 	);
 
 	const handleCloseTab = useCallback(
 		(tab: RightPanelTab) => {
-			closeTab(sessionId, tab.id);
+			closeTab(sessionId, tab.instanceId);
 		},
 		[closeTab, sessionId],
 	);
 
 	const handleAddTab = useCallback(
-		(kind: RightPanelTabKind) => {
-			openTab(sessionId, kind);
+		(definition: RightPanelTabDefinition) => {
+			openTab(sessionId, definition);
 		},
 		[openTab, sessionId],
 	);
@@ -258,12 +260,30 @@ export function ChatPage() {
 			maximized={maximized}
 			onToggleMaximized={toggleMaximized}
 			tabs={panelState.tabs}
+			definitions={rightPanelDefinitions}
 			activeTabId={panelOpen ? panelState.activeTabId : null}
 			onActivate={handleActivate}
 			onCloseTab={handleCloseTab}
 			onAddTab={handleAddTab}
 		>
-			{activeTab ? <RightPanelTabContent tab={activeTab} /> : null}
+			{panelState.tabs.map((tab) => {
+				const active = tab.instanceId === panelState.activeTabId;
+				return (
+					<div
+						key={tab.instanceId}
+						hidden={!active}
+						className="min-h-0 flex-1 flex-col data-[active=true]:flex"
+						data-active={active}
+						data-qa-id={`chat-right-panel-content-${tab.instanceId}`}
+					>
+						<RightPanelTabContent
+							tab={tab}
+							sessionId={sessionId}
+							definitions={rightPanelDefinitions}
+						/>
+					</div>
+				);
+			})}
 		</RightPanelTabs>
 	);
 

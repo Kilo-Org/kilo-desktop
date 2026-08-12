@@ -20,6 +20,11 @@ export const PLUGIN_MANIFEST_FILENAME = "plugin.json";
 export const featureIdPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const pluginIdPattern = featureIdPattern;
 
+/** Plugin-owned zone ids use the same stable kebab-case shape. */
+const zoneIdSchema = z
+	.string()
+	.regex(featureIdPattern, 'Zone id must be kebab-case (e.g. "chat-right-panel-tab").');
+
 /** Semver-ish: MAJOR.MINOR.PATCH with optional pre-release / build metadata. */
 const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
@@ -48,8 +53,6 @@ export const pluginRouteSchema = z.strictObject({
 	component: z.string().min(1),
 	/** Optional human-readable page title (used for the browser-mode unavailable state). */
 	title: z.string().min(1).optional(),
-	/** Optional host-owned sidecar surface to mount beside this page. */
-	sidecar: z.string().min(1).optional(),
 });
 export type PluginRoute = z.infer<typeof pluginRouteSchema>;
 
@@ -71,23 +74,35 @@ export const pluginNavEntrySchema = z.strictObject({
 export type PluginNavEntry = z.infer<typeof pluginNavEntrySchema>;
 
 /**
- * A zone widget contribution (`contributes.zones`). The host mounts the named
- * component export into the given shell zone at plugin activation. The
- * registration persists for the plugin lifetime; the component renders while
- * the shell exposes that zone's outlet. Use `contributes.providers` instead
- * for lifecycle work that must stay mounted across every route.
+ * A zone contribution (`contributes.zones`). Canonical shell zones use their
+ * bare id; plugin-owned zones use `<plugin-id>/<zone-id>`. The registration
+ * persists for the plugin lifetime. The zone owner decides whether to mount
+ * components directly or interpret them as definitions for richer UI.
  */
 export const pluginZoneContributionSchema = z.strictObject({
-	/** Canonical shell zone id exported by feature-sdk. */
+	/** Canonical shell zone or qualified plugin-owned zone. */
 	zone: z.string().min(1),
+	/** Stable identifier within this plugin and zone; defaults to `component`. */
+	id: zoneIdSchema.optional(),
 	/** Name of the component export in the plugin's `web` entry module. */
 	component: z.string().min(1),
 	/** Optional label (accessibility / registry key); defaults to the component name. */
 	label: z.string().min(1).optional(),
+	/** Optional supporting copy presented by richer zone hosts. */
+	description: z.string().min(1).optional(),
+	/** Optional component export used as the contribution icon. */
+	icon: z.string().min(1).optional(),
 	/** Higher renders first within the zone. Default 0 — matches `sdk.contribute`. */
 	priority: z.number().int().optional(),
 });
 export type PluginZoneContribution = z.infer<typeof pluginZoneContributionSchema>;
+
+/** A zone owned and rendered by this plugin. */
+export const pluginZoneDeclarationSchema = z.strictObject({
+	/** Stable id within the plugin. Consumers target `<plugin-id>/<id>`. */
+	id: zoneIdSchema,
+});
+export type PluginZoneDeclaration = z.infer<typeof pluginZoneDeclarationSchema>;
 
 /**
  * An app-lifetime React provider contribution (`contributes.providers`). The
@@ -104,10 +119,10 @@ export const pluginProviderContributionSchema = z.strictObject({
 export type PluginProviderContribution = z.infer<typeof pluginProviderContributionSchema>;
 
 /**
- * Everything a plugin adds to the shell, declared statically (B1 / VS Code
- * `contributes` model). `providers`, `routes`, and `zones` name component
- * exports the host resolves and mounts; `nav` is pure data. The imperative
- * `sdk.contribute` remains for dynamic, app-state-dependent contributions.
+ * Everything a plugin adds declaratively (B1 / VS Code `contributes` model).
+ * `providers`, `routes`, and `zones` name component exports the host resolves;
+ * `nav` is pure data. The imperative `sdk.contribute` remains for dynamic,
+ * app-state-dependent contributions.
  */
 export const pluginContributesSchema = z.strictObject({
 	/** App-lifetime provider components, composed inside the shell's SDK/query providers. */
@@ -116,7 +131,7 @@ export const pluginContributesSchema = z.strictObject({
 	routes: z.array(pluginRouteSchema).default([]),
 	/** Primary-navigation (sidebar) entries. */
 	nav: z.array(pluginNavEntrySchema).default([]),
-	/** Persistent zone widgets (zone + component export), host-mounted at activation. */
+	/** Persistent zone contributions, registered at activation. */
 	zones: z.array(pluginZoneContributionSchema).default([]),
 });
 export type PluginContributes = z.infer<typeof pluginContributesSchema>;
@@ -150,8 +165,15 @@ export const pluginManifestSchema = z
 		 * browser-mode support. Omit for headless plugins.
 		 */
 		web: z.string().min(1).optional(),
-		/** Declarative UI contributions (providers, routes, nav, zone widgets). */
-		contributes: pluginContributesSchema.default({ providers: [], routes: [], nav: [], zones: [] }),
+		/** UI zones owned and rendered by this plugin. */
+		zones: z.array(pluginZoneDeclarationSchema).default([]),
+		/** Declarative UI contributions (providers, routes, nav, zone entries). */
+		contributes: pluginContributesSchema.default({
+			providers: [],
+			routes: [],
+			nav: [],
+			zones: [],
+		}),
 	})
 	.refine((manifest) => manifest.main !== undefined || manifest.web !== undefined, {
 		message: "Manifest must declare at least one entry point ('main' or 'web').",
@@ -160,11 +182,11 @@ export const pluginManifestSchema = z
 		(manifest) =>
 			(manifest.contributes.providers.length === 0 &&
 				manifest.contributes.routes.length === 0 &&
-				manifest.contributes.zones.length === 0) ||
+				manifest.contributes.zones.length === 0 &&
+				manifest.zones.length === 0) ||
 			manifest.web !== undefined,
 		{
-			message:
-				"Manifest declares provider/route/zone components but no 'web' entry to resolve them from.",
+			message: "Manifest declares UI components or zones but no 'web' entry to resolve them from.",
 		},
 	);
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;

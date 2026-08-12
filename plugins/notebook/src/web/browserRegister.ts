@@ -1,4 +1,4 @@
-import { notebookContract, type NotebookService } from "@anaconda-agentic-desktop/contracts";
+import { notebookContract, type NotebookService } from "../contracts/schemas.js";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
 /**

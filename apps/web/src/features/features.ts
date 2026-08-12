@@ -6,7 +6,6 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
-import { notebookBrowserRegister } from "./notebook/browserRegister.js";
 
 /**
  * Feature registrations used when the app runs standalone in a browser
@@ -20,13 +19,7 @@ import { notebookBrowserRegister } from "./notebook/browserRegister.js";
  */
 
 /** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
-const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
-	{
-		id: "notebook",
-		mainRegister: notebookBrowserRegister,
-		browserRegister: notebookBrowserRegister,
-	},
-];
+const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validates the

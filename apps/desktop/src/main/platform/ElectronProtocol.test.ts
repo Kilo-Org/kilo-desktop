@@ -313,6 +313,7 @@ describe("ElectronProtocol", () => {
 		await writeFile(path.join(bundleRoot, "assets", "runtimed_bg.wasm"), "\0asm");
 		// Outside the bundle root, so a successful traversal would actually leak it.
 		await writeFile(path.join(enclosing, "secret-sibling"), "no");
+		const configRoute = vi.fn(async () => ({ token: "t" }));
 
 		const adapter = new ElectronProtocol();
 		adapter.register({
@@ -322,7 +323,7 @@ describe("ElectronProtocol", () => {
 				{
 					host: "notebook",
 					root: bundleRoot,
-					routes: { "/__nteract_dev_relay/config": async () => ({ token: "t" }) },
+					routes: { "/__nteract_dev_relay/config": configRoute },
 				},
 			],
 		});
@@ -343,6 +344,9 @@ describe("ElectronProtocol", () => {
 			new Request("anaconda-agentic-desktop://notebook/__nteract_dev_relay/config"),
 		);
 		expect(await config.json()).toEqual({ token: "t" });
+		expect(configRoute).toHaveBeenCalledWith({
+			origin: "anaconda-agentic-desktop://notebook",
+		});
 
 		// The app keeps its strict policy and only learns to frame the sibling host.
 		const appShell = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));

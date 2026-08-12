@@ -1,5 +1,6 @@
-import { NotebookPage } from "../../pages/features/notebook/notebook-page.js";
-import { test as shellTest } from "../shell.js";
+import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
+
+import { NotebookPage } from "./pages/notebook-page.js";
 
 export const test = shellTest.extend<{ notebookPage: NotebookPage }>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring

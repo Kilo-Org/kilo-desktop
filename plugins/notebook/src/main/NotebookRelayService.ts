@@ -91,7 +91,7 @@ export class NotebookRelayService {
 	readonly #runtimed: RuntimedService;
 	readonly #logger: RuntimedLogger;
 	readonly #handshakeFor: (url: URL) => NotebookHandshake;
-	readonly #allowedOrigin: string | undefined;
+	#allowedOrigin: string | undefined;
 	readonly #checkDaemon: (() => Promise<DaemonAvailability>) | undefined;
 	readonly #token = randomBytes(32).toString("base64url");
 
@@ -160,7 +160,8 @@ export class NotebookRelayService {
 	}
 
 	/** The JSON the renderer fetches from `CONFIG_PATH`. */
-	async config(): Promise<RelayConfig> {
+	async config(allowedOrigin?: string): Promise<RelayConfig> {
+		if (allowedOrigin) this.#allowedOrigin = allowedOrigin;
 		const port = await this.start();
 		const daemonInfo = await this.#runtimed.queryDaemonInfo();
 		return {

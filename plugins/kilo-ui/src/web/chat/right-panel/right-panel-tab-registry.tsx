@@ -1,88 +1,149 @@
-import { lazy, Suspense, type ComponentType, type FC } from "react";
-import { LayoutTemplateIcon, ListTodoIcon, type LucideIcon } from "lucide-react";
+import { lazy, Suspense, useMemo, type ComponentType, type FC } from "react";
+import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon, type LucideIcon } from "lucide-react";
 
-const PlaceholderTab = lazy(() =>
-	import("./PlaceholderTab.js").then((module) => ({ default: module.PlaceholderTab })),
-);
+import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
+import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
+
 const PlanTab = lazy(() => import("./PlanTab.js").then((module) => ({ default: module.PlanTab })));
 
-type RightPanelTabDefinitionFields = {
+export const CHAT_RIGHT_PANEL_TAB_EXTENSION = "kilo-ui/chat-right-panel-tab";
+
+/** Context Kilo supplies when it renders a right-panel tab contribution. */
+export interface ChatRightPanelContributionProps {
+	readonly sessionId: string;
+	readonly instanceId: string;
+	readonly title: string;
+}
+
+export const PLAN_TAB_DEFINITION_ID = "kilo-ui.plan";
+
+export interface RightPanelTabDefinition {
+	id: string;
 	title: string;
 	description: string;
 	Icon: LucideIcon;
-	/** Shown in the empty state and the tab-bar add menu. */
 	addable: boolean;
-	Content: ComponentType;
-};
-
-/**
- * Single place to register right-panel tabs.
- * Add an entry here (and create the matching `*Tab` component file).
- */
-export const RIGHT_PANEL_TAB_REGISTRY = {
-	placeholder: {
-		title: "Placeholder",
-		description: "Stub tab for wiring the right panel.",
-		Icon: LayoutTemplateIcon,
-		addable: true,
-		Content: PlaceholderTab,
-	},
-	plan: {
-		title: "Plan",
-		description: "Proposed plan from the plan agent.",
-		Icon: ListTodoIcon,
-		addable: false,
-		Content: PlanTab,
-	},
-} as const satisfies Record<string, RightPanelTabDefinitionFields>;
-
-export type RightPanelTabKind = keyof typeof RIGHT_PANEL_TAB_REGISTRY;
-
-export type RightPanelTabDefinition = RightPanelTabDefinitionFields & {
-	kind: RightPanelTabKind;
-};
-
-export type RightPanelTab = {
-	[K in RightPanelTabKind]: { id: K; kind: K };
-}[RightPanelTabKind];
-
-export const RIGHT_PANEL_TAB_KINDS = Object.keys(RIGHT_PANEL_TAB_REGISTRY) as RightPanelTabKind[];
-
-export const PLAN_TAB_KIND = "plan" satisfies RightPanelTabKind;
-
-export function isRightPanelTabKind(value: string): value is RightPanelTabKind {
-	return Object.hasOwn(RIGHT_PANEL_TAB_REGISTRY, value);
+	Content: ComponentType<ChatRightPanelContributionProps>;
 }
 
-export function createRightPanelTab(kind: RightPanelTabKind): RightPanelTab {
-	return { id: kind, kind } as RightPanelTab;
+export interface RightPanelTab {
+	instanceId: string;
+	definitionId: string;
+	title: string;
+	ordinal: number | null;
+}
+
+const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
+	id: PLAN_TAB_DEFINITION_ID,
+	title: "Plan",
+	description: "Proposed plan from the plan agent.",
+	Icon: ListTodoIcon,
+	addable: false,
+	Content: PlanTab,
+};
+
+function isRenderableComponent(
+	value: unknown,
+): value is ComponentType<ChatRightPanelContributionProps> {
+	return typeof value === "function" || (typeof value === "object" && value !== null);
+}
+
+export function contributionDefinitionId(contribution: Pick<Contribution, "featureId" | "id">) {
+	return `${contribution.featureId}.${contribution.id}`;
+}
+
+export function buildContributedTabDefinitions(
+	contributions: readonly Contribution[],
+): RightPanelTabDefinition[] {
+	return contributions.flatMap((contribution) => {
+		if (!isRenderableComponent(contribution.component)) return [];
+		return [
+			{
+				id: contributionDefinitionId(contribution),
+				title: contribution.label,
+				description:
+					contribution.description ?? `Open another ${contribution.label} for this chat.`,
+				Icon: isRenderableComponent(contribution.icon)
+					? (contribution.icon as LucideIcon)
+					: LayoutTemplateIcon,
+				addable: true,
+				Content: contribution.component,
+			},
+		];
+	});
+}
+
+export function useRightPanelTabDefinitions(): readonly RightPanelTabDefinition[] {
+	const contributions = useSdkContributions(CHAT_RIGHT_PANEL_TAB_EXTENSION);
+	return useMemo(
+		() => [PLAN_TAB_DEFINITION, ...buildContributedTabDefinitions(contributions)],
+		[contributions],
+	);
+}
+
+export function createPlanTab(): RightPanelTab {
+	return {
+		instanceId: "plan",
+		definitionId: PLAN_TAB_DEFINITION_ID,
+		title: "Plan",
+		ordinal: null,
+	};
+}
+
+export function createContributedTab(
+	currentTabs: readonly RightPanelTab[],
+	definition: Pick<RightPanelTabDefinition, "id" | "title">,
+	createId: () => string = () => crypto.randomUUID(),
+): RightPanelTab {
+	const ordinal =
+		Math.max(
+			0,
+			...currentTabs
+				.filter((tab) => tab.definitionId === definition.id)
+				.map((tab) => tab.ordinal ?? 0),
+		) + 1;
+	return {
+		instanceId: `${definition.id}:${createId()}`,
+		definitionId: definition.id,
+		title: `${definition.title} ${String(ordinal)}`,
+		ordinal,
+	};
 }
 
 export function isRightPanelTab(value: unknown): value is RightPanelTab {
 	if (!value || typeof value !== "object") return false;
-	const tab = value as { id?: unknown; kind?: unknown };
+	const tab = value as Partial<RightPanelTab>;
 	return (
-		typeof tab.id === "string" &&
-		typeof tab.kind === "string" &&
-		tab.id === tab.kind &&
-		isRightPanelTabKind(tab.kind)
+		typeof tab.instanceId === "string" &&
+		typeof tab.definitionId === "string" &&
+		typeof tab.title === "string" &&
+		(tab.ordinal === null || (typeof tab.ordinal === "number" && Number.isInteger(tab.ordinal)))
 	);
 }
 
-export function getRightPanelTabDefinition(kind: RightPanelTabKind): RightPanelTabDefinition {
-	return { kind, ...RIGHT_PANEL_TAB_REGISTRY[kind] };
+function MissingContributionTab({ title }: ChatRightPanelContributionProps) {
+	return (
+		<div
+			className="text-muted-foreground flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-6 text-center"
+			data-qa-id="chat-right-panel-contribution-unavailable"
+		>
+			<CircleHelpIcon className="size-6" />
+			<p className="text-foreground text-sm font-medium">{title} is unavailable</p>
+			<p className="text-xs">The plugin that contributed this tab is not currently loaded.</p>
+		</div>
+	);
 }
 
-export const ADDABLE_RIGHT_PANEL_TABS: readonly RightPanelTabDefinition[] =
-	RIGHT_PANEL_TAB_KINDS.map((kind) => getRightPanelTabDefinition(kind)).filter(
-		(definition) => definition.addable,
-	);
-
-export const RightPanelTabContent: FC<{ tab: RightPanelTab }> = ({ tab }) => {
-	const { Content } = getRightPanelTabDefinition(tab.kind);
+export const RightPanelTabContent: FC<{
+	tab: RightPanelTab;
+	sessionId: string;
+	definitions: readonly RightPanelTabDefinition[];
+}> = ({ tab, sessionId, definitions }) => {
+	const definition = definitions.find(({ id }) => id === tab.definitionId);
+	const Content = definition?.Content ?? MissingContributionTab;
 	return (
 		<Suspense fallback={null}>
-			<Content />
+			<Content sessionId={sessionId} instanceId={tab.instanceId} title={tab.title} />
 		</Suspense>
 	);
 };

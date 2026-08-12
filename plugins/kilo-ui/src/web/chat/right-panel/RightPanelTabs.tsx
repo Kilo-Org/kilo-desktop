@@ -5,7 +5,7 @@ import {
 	useRef,
 	type FC,
 } from "react";
-import { PlusIcon, XIcon } from "lucide-react";
+import { CircleHelpIcon, PlusIcon, XIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
@@ -24,39 +24,45 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { RightPanelMaximizeControl } from "./RightPanelControls.js";
-import {
-	ADDABLE_RIGHT_PANEL_TABS,
-	getRightPanelTabDefinition,
-	type RightPanelTab,
-	type RightPanelTabKind,
-} from "./right-panel-tab-registry.js";
+import { type RightPanelTab, type RightPanelTabDefinition } from "./right-panel-tab-registry.js";
 
 type RightPanelTabsProps = {
 	maximized?: boolean;
 	onToggleMaximized?: () => void;
 	tabs: readonly RightPanelTab[];
+	definitions: readonly RightPanelTabDefinition[];
 	activeTabId: string | null;
 	onActivate: (tab: RightPanelTab) => void;
 	onCloseTab: (tab: RightPanelTab) => void;
-	onAddTab: (kind: RightPanelTabKind) => void;
+	onAddTab: (definition: RightPanelTabDefinition) => void;
 	children: ReactNode;
 };
 
-function RightPanelEmptyState({ onAddTab }: { onAddTab: (kind: RightPanelTabKind) => void }) {
+function definitionQaId(definition: RightPanelTabDefinition): string {
+	return definition.id.replaceAll(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function RightPanelEmptyState({
+	definitions,
+	onAddTab,
+}: {
+	definitions: readonly RightPanelTabDefinition[];
+	onAddTab: (definition: RightPanelTabDefinition) => void;
+}) {
 	return (
 		<div
 			className="flex min-h-0 flex-1 items-center justify-center p-4"
 			data-qa-id="chat-right-panel-empty"
 		>
 			<div className="flex w-full max-w-xl flex-col gap-2">
-				{ADDABLE_RIGHT_PANEL_TABS.map((definition) => {
+				{definitions.map((definition) => {
 					const { Icon } = definition;
 					return (
 						<button
-							key={definition.kind}
+							key={definition.id}
 							type="button"
-							onClick={() => onAddTab(definition.kind)}
-							data-qa-id={`chat-right-panel-open-${definition.kind}`}
+							onClick={() => onAddTab(definition)}
+							data-qa-id={`chat-right-panel-open-${definitionQaId(definition)}`}
 							className="bg-card hover:bg-accent/60 border-border/80 hover:border-border flex w-full items-start gap-3 rounded-lg border p-3 text-left transition"
 						>
 							<Icon className="mt-0.5 size-5 shrink-0" />
@@ -78,6 +84,7 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 	maximized = false,
 	onToggleMaximized,
 	tabs,
+	definitions,
 	activeTabId,
 	onActivate,
 	onCloseTab,
@@ -85,6 +92,7 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 	children,
 }) => {
 	const tabListRef = useRef<HTMLDivElement>(null);
+	const addableDefinitions = definitions.filter(({ addable }) => addable);
 
 	useEffect(() => {
 		const activeTab = tabListRef.current?.querySelector<HTMLElement>("[data-active-tab='true']");
@@ -122,15 +130,15 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 					data-qa-id="chat-right-panel-tab-list"
 				>
 					{tabs.map((tab) => {
-						const active = tab.id === activeTabId;
-						const definition = getRightPanelTabDefinition(tab.kind);
-						const { Icon } = definition;
-						const title = definition.title;
+						const active = tab.instanceId === activeTabId;
+						const definition = definitions.find(({ id }) => id === tab.definitionId);
+						const Icon = definition?.Icon ?? CircleHelpIcon;
+						const title = tab.title;
 						return (
 							<div
-								key={tab.id}
+								key={tab.instanceId}
 								data-active-tab={active}
-								data-qa-id={`chat-right-panel-tab-${tab.id}`}
+								data-qa-id={`chat-right-panel-tab-${tab.instanceId}`}
 								onMouseDown={handleTabMouseDown}
 								onAuxClick={(event) => handleTabAuxClick(event, tab)}
 								className={cn(
@@ -163,7 +171,7 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 									type="button"
 									className="text-muted-foreground hover:bg-muted hover:text-foreground ml-1 flex size-4 shrink-0 items-center justify-center rounded-sm"
 									aria-label={`Close ${title}`}
-									data-qa-id={`chat-right-panel-close-tab-${tab.id}`}
+									data-qa-id={`chat-right-panel-close-tab-${tab.instanceId}`}
 									onClick={() => onCloseTab(tab)}
 								>
 									<XIcon className="size-3" />
@@ -171,7 +179,7 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 							</div>
 						);
 					})}
-					{tabs.length > 0 && ADDABLE_RIGHT_PANEL_TABS.length > 0 ? (
+					{tabs.length > 0 && addableDefinitions.length > 0 ? (
 						<DropdownMenu>
 							<DropdownMenuTrigger
 								render={
@@ -189,13 +197,13 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="start" side="bottom" sideOffset={6} className="min-w-44">
 								<DropdownMenuGroup>
-									{ADDABLE_RIGHT_PANEL_TABS.map((definition) => {
+									{addableDefinitions.map((definition) => {
 										const { Icon } = definition;
 										return (
 											<DropdownMenuItem
-												key={definition.kind}
-												onClick={() => onAddTab(definition.kind)}
-												data-qa-id={`chat-right-panel-add-${definition.kind}`}
+												key={definition.id}
+												onClick={() => onAddTab(definition)}
+												data-qa-id={`chat-right-panel-add-${definitionQaId(definition)}`}
 											>
 												<Icon data-icon="inline-start" />
 												{definition.title}
@@ -212,7 +220,11 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 				) : null}
 			</div>
 			<div className="flex min-h-0 flex-1 flex-col" data-qa-id="chat-right-panel-content">
-				{activeTabId === null ? <RightPanelEmptyState onAddTab={onAddTab} /> : children}
+				{activeTabId === null ? (
+					<RightPanelEmptyState definitions={addableDefinitions} onAddTab={onAddTab} />
+				) : (
+					children
+				)}
 			</div>
 		</div>
 	);

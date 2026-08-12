@@ -15,6 +15,11 @@
  * so the plugin can register its own WebMCP tools without any central-file
  * edits. See issue #74 for the plugin-authored-tools rationale.
  *
+ * Feature-flag gate (`todo-feature`): tool registration is bound to the flag
+ * via `sdk.featureFlags.subscribe` so the LLM only sees the tools while the
+ * flag is on. A live toggle flips them on/off without a restart. The UI and
+ * the main-process handlers gate themselves on the same flag.
+ *
  * Electron-only (Decision #7): there is deliberately no `browserRegister` —
  * the backend needs SQLite in the main process, so standalone browser mode
  * skips this plugin with the standard warning and the shell renders an
@@ -29,14 +34,24 @@ import { todosContract } from "../contracts/schemas.js";
 export { TodoList } from "./TodoList.js";
 export { TodoNavIcon } from "./TodoNavIcon.js";
 
-export function webRegister(sdk: SDK): void {
+/**
+ * LaunchDarkly feature-flag key. Kept in sync with `FEATURE_FLAG_KEY` in
+ * `plugins/todos/src/main/index.ts` and `plugins/todos/src/web/TodoList.tsx`.
+ */
+export const FEATURE_FLAG_KEY = "todo-feature";
+
+/**
+ * Register the three todo tools and return a disposer that unregisters them
+ * atomically. Idempotent per call; caller owns the lifecycle.
+ */
+function registerTodoTools(sdk: SDK): () => void {
 	// The contract schemas are the single source of truth for both the JSON
 	// Schema advertised to MCP clients and the boundary validator run before
 	// the handler; the main-process handler re-validates via the same contract.
 	const addInput = todosContract.add.input;
 	const toggleInput = todosContract.toggle.input;
 
-	sdk.tools.register({
+	const unregisterList = sdk.tools.register({
 		name: "list",
 		description: "List all todo items with their id, title, and completed state.",
 		inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -45,7 +60,7 @@ export function webRegister(sdk: SDK): void {
 		handler: () => sdk.invoke("list"),
 	});
 
-	sdk.tools.register({
+	const unregisterAdd = sdk.tools.register({
 		name: "add",
 		description: "Create a new todo item with the given title.",
 		inputSchema: z.toJSONSchema(addInput, { target: "draft-2020-12" }),
@@ -54,12 +69,37 @@ export function webRegister(sdk: SDK): void {
 		handler: (args) => sdk.invoke("add", args),
 	});
 
-	sdk.tools.register({
+	const unregisterToggle = sdk.tools.register({
 		name: "toggle",
 		description: "Toggle the completed state of the todo item with the given id.",
 		inputSchema: z.toJSONSchema(toggleInput, { target: "draft-2020-12" }),
 		validate: toggleInput,
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("toggle", args),
+	});
+
+	return () => {
+		unregisterList();
+		unregisterAdd();
+		unregisterToggle();
+	};
+}
+
+export function webRegister(sdk: SDK): void {
+	// Bind tool registration to the feature flag. `subscribe` fires
+	// synchronously with the current cache (`{}` before flags resolve), so
+	// the first call runs with the flag off; the tools only appear once the
+	// host reports the flag as on. A later toggle reruns this closure and we
+	// install/tear down accordingly, mirroring how anaconda-mcp reconciles
+	// on `feature-flag.changed`.
+	let dispose: (() => void) | null = null;
+	sdk.featureFlags.subscribe((flags) => {
+		const enabled = Boolean(flags[FEATURE_FLAG_KEY] ?? false);
+		if (enabled && !dispose) {
+			dispose = registerTodoTools(sdk);
+		} else if (!enabled && dispose) {
+			dispose();
+			dispose = null;
+		}
 	});
 }

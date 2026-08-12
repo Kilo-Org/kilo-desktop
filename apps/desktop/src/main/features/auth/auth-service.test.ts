@@ -527,4 +527,124 @@ describe("AuthSessionService", () => {
 			expect(getUserPassport).toHaveBeenCalledTimes(2);
 		});
 	});
+
+	describe("getApiKey", () => {
+		it("returns the API key when authenticated", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: fakeKeyring("my-secret-key"),
+				fetch: async () => jsonResponse(whoamiBody),
+			});
+
+			expect(await service.getApiKey()).toBe("my-secret-key");
+		});
+
+		it("returns null when no key is stored", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: fakeKeyring(null),
+				fetch: vi.fn(),
+			});
+
+			expect(await service.getApiKey()).toBeNull();
+		});
+
+		it("returns null when the keyring throws", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: async () => {
+					throw new Error("keyring locked");
+				},
+				fetch: vi.fn(),
+			});
+
+			expect(await service.getApiKey()).toBeNull();
+		});
+
+		it("returns null when site resolution fails", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => {
+					throw new Error("bad config");
+				},
+				loadKeyring: fakeKeyring("api-key"),
+				fetch: vi.fn(),
+			});
+
+			expect(await service.getApiKey()).toBeNull();
+		});
+	});
+
+	describe("key rotation detection", () => {
+		it("fires onChanged when the API key rotates but session identity is unchanged", async () => {
+			let currentKey = "key-v1";
+			const service = new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: async () => ({
+					getApiKey: async () => currentKey,
+					saveToken: async () => {},
+					deleteToken: async () => {},
+					writable: true,
+				}),
+				fetch: async () => jsonResponse(whoamiBody),
+			});
+
+			const listener = vi.fn();
+			service.onChanged(listener);
+
+			// First resolution: anonymous → authenticated (fires)
+			await service.getSession();
+			expect(listener).toHaveBeenCalledTimes(1);
+
+			// Rotate the key (same user identity)
+			currentKey = "key-v2";
+			await service.refresh();
+			// Should fire again because the underlying key changed
+			expect(listener).toHaveBeenCalledTimes(2);
+		});
+
+		it("does not fire onChanged when refresh returns the same key", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: fakeKeyring("stable-key"),
+				fetch: async () => jsonResponse(whoamiBody),
+			});
+
+			const listener = vi.fn();
+			service.onChanged(listener);
+
+			await service.getSession();
+			expect(listener).toHaveBeenCalledTimes(1);
+
+			// Refresh with same key → no change
+			await service.refresh();
+			expect(listener).toHaveBeenCalledTimes(1);
+		});
+
+		it("fires onChanged when key goes from present to null (logout)", async () => {
+			let currentKey: string | null = "api-key";
+			const service = new AuthSessionService({
+				resolveSite: async () => site,
+				loadKeyring: async () => ({
+					getApiKey: async () => currentKey,
+					saveToken: async () => {},
+					deleteToken: async () => {
+						currentKey = null;
+					},
+					writable: true,
+				}),
+				fetch: async () => jsonResponse(whoamiBody),
+				logger: silentLogger,
+			});
+
+			const listener = vi.fn();
+			service.onChanged(listener);
+
+			await service.getSession();
+			expect(listener).toHaveBeenCalledTimes(1);
+
+			await service.logout();
+			// Session changed (authenticated → anonymous) AND key changed
+			expect(listener).toHaveBeenCalledTimes(2);
+		});
+	});
 });

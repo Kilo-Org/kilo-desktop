@@ -60,6 +60,7 @@ describe("createChatRightPanelCapability", () => {
 							ordinal: 1,
 						},
 					],
+					planAnchorCallId: null,
 				},
 			},
 		});

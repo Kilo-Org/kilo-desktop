@@ -206,13 +206,15 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 					{/* Flow spacer under the fixed ShellTitlebar */}
 					<SidebarHeader className="h-12 shrink-0 p-0" />
 					<SidebarContent>
-						<SidebarGroup className="pt-0">
-							<SidebarMenu>
-								{visibleNav.map((entry) => (
-									<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
-								))}
-							</SidebarMenu>
-						</SidebarGroup>
+						{visibleNav.length > 0 ? (
+							<SidebarGroup className="pt-0">
+								<SidebarMenu>
+									{visibleNav.map((entry) => (
+										<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
+									))}
+								</SidebarMenu>
+							</SidebarGroup>
+						) : null}
 						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
 						<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
 					</SidebarContent>

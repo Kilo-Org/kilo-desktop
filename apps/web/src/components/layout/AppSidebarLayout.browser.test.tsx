@@ -106,10 +106,15 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 
 	it("hides a flag-gated plugin nav entry when the flag is off", async () => {
 		renderLayout(
-			fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({ "environments-feature": false })),
+			fakeLocalApi(
+				{ status: "anonymous" },
+				{},
+				apiWithFlags({ "environments-feature": false, "todo-feature": true }),
+			),
 		);
 
-		// Todos declares no featureFlag → always visible.
+		// Todos declares `featureFlag: "todo-feature"` — visible when the
+		// flag map carries a truthy value for that key.
 		await expect.element(page.getByTestId("nav-todos")).toBeInTheDocument();
 		// Environments declares `featureFlag: "environments-feature"` in
 		// plugin.json → hidden when the flag map lacks the truthy value.
@@ -119,15 +124,23 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 	it("hides a flag-gated plugin nav entry when the flag is missing entirely", async () => {
 		renderLayout(fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({})));
 
+		// Both nav entries carry a `featureFlag` now, so an empty flag map
+		// hides them both.
 		await expect.element(page.getByTestId("nav-environments")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("nav-todos")).not.toBeInTheDocument();
 	});
 
 	it("shows the flag-gated plugin nav entry when the flag is on", async () => {
 		renderLayout(
-			fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({ "environments-feature": true })),
+			fakeLocalApi(
+				{ status: "anonymous" },
+				{},
+				apiWithFlags({ "environments-feature": true, "todo-feature": true }),
+			),
 		);
 
 		await expect.element(page.getByTestId("nav-environments")).toBeInTheDocument();
+		await expect.element(page.getByTestId("nav-todos")).toBeInTheDocument();
 	});
 });
 

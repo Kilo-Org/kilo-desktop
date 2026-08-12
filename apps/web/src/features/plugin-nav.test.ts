@@ -112,7 +112,7 @@ describe("PLUGIN_NAV", () => {
 		expect(todos?.icon).toBe("TodoNavIcon");
 		expect(todos?.iconComponent).toBeDefined();
 		expect(todos?.navQaId).toBe("nav-todos");
-		expect(todos?.featureFlag).toBeUndefined();
+		expect(todos?.featureFlag).toBe("todo-feature");
 	});
 
 	it("contains the bundled environments nav entry under the /plugins namespace", () => {

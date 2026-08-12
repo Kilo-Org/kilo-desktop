@@ -6,7 +6,7 @@ import { expect } from "@playwright/test";
 
 import { packagedResourcesDirectory } from "@anaconda-agentic-desktop/e2e";
 
-import { findRuntArtifact, getRuntimedArtifact } from "../../src/main/distribution/artifacts.js";
+import { findRuntArtifact } from "../../src/main/distribution/artifacts.js";
 
 type DesktopBridge = {
 	invoke?: (
@@ -19,7 +19,6 @@ type NotebookStatusResult =
 	| {
 			ok: true;
 			value: {
-				relayPort: number;
 				availability: { status: string; reason?: string };
 				daemon: { version: string } | null;
 			};
@@ -81,12 +80,12 @@ export class NotebookPage {
 		});
 	}
 
-	async verifyStatusChannelReportsBoundRelay(): Promise<void> {
+	async verifyStatusChannelReportsSingleton(): Promise<void> {
 		const result = await this.#status();
 		if (!result.ok) {
 			throw new Error(`Expected notebook:status to succeed, got "${result.error.message}"`);
 		}
-		expect(result.value.relayPort).toBeGreaterThan(0);
+		expect(result.value.availability.status).toBe("available");
 	}
 
 	async verifyDaemonIsReachable(): Promise<void> {
@@ -98,11 +97,8 @@ export class NotebookPage {
 
 	async verifyBundledResources(): Promise<void> {
 		const resources = packagedResourcesDirectory();
-		const artifact = getRuntimedArtifact();
 		expect(existsSync(path.join(resources, "notebook", "index.html"))).toBe(true);
-		expect(existsSync(path.join(resources, "runtimed", artifact.target, artifact.executable))).toBe(
-			true,
-		);
+		expect(existsSync(path.join(resources, "notebook", "output-frame.html"))).toBe(true);
 		const runt = findRuntArtifact();
 		if (runt) {
 			expect(existsSync(path.join(resources, "runt", runt.target, runt.executable))).toBe(true);

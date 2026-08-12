@@ -1,10 +1,14 @@
-import { NOTEBOOK_HOST } from "../contracts/schemas.js";
+import { useEffect, useRef } from "react";
+
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+
+import { NTERACT_ELECTRON_HOST_PROTOCOL_VERSION, NOTEBOOK_HOST } from "../contracts/schemas.js";
 
 /**
  * nteract's notebook UI is a private workspace app whose execution path needs
- * the `runtimed` daemon over a Unix socket. The main process bridges that with a
- * loopback relay (NotebookRelayService) so nteract's stock browser host can
- * reach the daemon from inside Electron.
+ * the `runtimed` daemon over its local transport. Electron transfers one
+ * feature-scoped MessagePort into the frame; the daemon socket is never exposed
+ * to either renderer.
  *
  * In the desktop app the bundle is served from its own protocol host, which
  * frames here. Browser mode has no custom protocol at all, so it still needs
@@ -50,15 +54,35 @@ export function notebookOriginFrom(appOrigin: string): string | undefined {
 	return `${url.protocol}//${NOTEBOOK_HOST}`;
 }
 
+export function appOriginFromLocation(location: Pick<Location, "protocol" | "host">): string {
+	return `${location.protocol}//${location.host}`;
+}
+
 /** Read at render time, not module scope, so tests can drive both branches. */
-export function nteractSrc(instanceId: string): string | undefined {
-	const origin =
-		notebookOriginFrom(window.location.origin) ??
-		(import.meta.env["VITE_NTERACT_ORIGIN"] as string | undefined);
+export function nteractSrcFor(
+	instanceId: string,
+	location: Pick<Location, "protocol" | "host">,
+	developmentOrigin?: string,
+): string | undefined {
+	const appOrigin = appOriginFromLocation(location);
+	const origin = notebookOriginFrom(appOrigin) ?? developmentOrigin;
 	if (!origin) return undefined;
 	const url = new URL(origin);
 	url.searchParams.set("notebook_id", notebookIdFromInstanceId(instanceId));
+	if (url.protocol.startsWith(DESKTOP_SCHEME_PREFIX)) {
+		url.searchParams.set("nteract-host", "electron");
+		url.searchParams.set("nteract-parent-origin", appOrigin);
+	}
 	return url.toString();
+}
+
+/** Read at render time, not module scope, so tests can drive browser configuration. */
+export function nteractSrc(instanceId: string): string | undefined {
+	return nteractSrcFor(
+		instanceId,
+		window.location,
+		import.meta.env["VITE_NTERACT_ORIGIN"] as string | undefined,
+	);
 }
 
 /** Context supplied by Kilo's `chat-right-panel-tab` extension point. */
@@ -68,8 +92,54 @@ export interface NotebookViewProps {
 	readonly title: string;
 }
 
-export function NotebookView({ instanceId }: NotebookViewProps) {
+export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps) {
+	const sdk = useSdk("notebook");
+	const frameRef = useRef<HTMLIFrameElement>(null);
 	const frameSrc = nteractSrc(instanceId);
+
+	useEffect(() => {
+		if (!frameSrc) return;
+		const frameUrl = new URL(frameSrc);
+		if (!frameUrl.protocol.startsWith(DESKTOP_SCHEME_PREFIX)) return;
+		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
+
+		const port = sdk.ports.open<MessagePort>("host", {
+			notebookId: notebookIdFromInstanceId(instanceId),
+			sessionId,
+			title,
+		});
+		let transferred = false;
+		const onMessage = (event: MessageEvent<unknown>) => {
+			const frameWindow = frameRef.current?.contentWindow;
+			if (event.source !== frameWindow || event.origin !== frameOrigin) return;
+			const message = event.data as { type?: unknown; protocolVersion?: unknown } | null;
+			if (
+				message?.type !== "nteract:electron-host-ready" ||
+				message.protocolVersion !== NTERACT_ELECTRON_HOST_PROTOCOL_VERSION ||
+				transferred ||
+				!frameWindow
+			) {
+				return;
+			}
+			transferred = true;
+			frameWindow.postMessage(
+				{
+					type: "nteract:electron-host-connect",
+					bootstrap: {
+						protocolVersion: NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
+						outputDocumentUrl: `${frameOrigin}/output-frame.html`,
+					},
+				},
+				frameOrigin,
+				[port],
+			);
+		};
+		window.addEventListener("message", onMessage);
+		return () => {
+			window.removeEventListener("message", onMessage);
+			if (!transferred) port.close();
+		};
+	}, [frameSrc, instanceId, sdk, sessionId, title]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
@@ -81,6 +151,7 @@ export function NotebookView({ instanceId }: NotebookViewProps) {
 				// granted both can reach up and clear its own sandbox attribute. Adding one
 				// would either break the notebook or buy nothing.
 				<iframe
+					ref={frameRef}
 					src={frameSrc}
 					title="nteract notebook"
 					className="min-h-0 flex-1 border-0"

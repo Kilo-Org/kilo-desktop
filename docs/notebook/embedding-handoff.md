@@ -1,5 +1,9 @@
 # Embedding the nteract notebook in Electron — handoff
 
+> **Transport update:** the loopback-WebSocket relay described below is superseded by nteract's
+> transferred Electron host port. Follow [embedding-decisions.md](./embedding-decisions.md) and the
+> current notebook plugin source for the production path.
+
 > **Runtime update:** daemon staging, spawning, supervision, and exact-revision admission described
 > below are superseded. Agentic Desktop attaches to the user's externally installed singleton and
 > negotiates compatibility by protocol number and semantic capabilities.

@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 const PACKAGED_NOTEBOOK_SUBPATH = "build/notebook";
-const PACKAGED_NATIVE_ROOTS = ["resources/runtimed", "resources/runt"] as const;
+const PACKAGED_NATIVE_ROOTS = ["resources/runt"] as const;
 const require = createRequire(import.meta.url);
 
 function resolvePackageAsset(subpath: string): string {
@@ -40,8 +40,7 @@ export function createNotebookResolveAsset(options: {
 export {
 	findRuntArtifact,
 	getRuntArtifact,
-	getRuntimedArtifact,
+	NTERACT_NOTEBOOK_SOURCE,
 	NTERACT_RELEASE,
 	RUNT_ARTIFACTS,
-	RUNTIMED_ARTIFACTS,
 } from "./distribution/artifacts.js";

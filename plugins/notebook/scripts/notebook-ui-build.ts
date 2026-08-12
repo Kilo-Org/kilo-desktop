@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { execa } from "execa";
 
-import { NTERACT_RELEASE } from "../src/main/distribution/artifacts.js";
+import { NTERACT_NOTEBOOK_SOURCE } from "../src/main/distribution/artifacts.js";
 
 export const NOTEBOOK_BUILD_MANIFEST = "agentic-notebook-build.json";
 export const NTERACT_LICENSE_FILE = "LICENSE.nteract";
@@ -170,6 +170,10 @@ export async function validateNotebookBuildOutput(directory: string): Promise<vo
 	if (!(await readFile(indexPath, "utf8")).includes("/assets/")) {
 		throw new Error("notebook index.html does not reference built /assets/");
 	}
+	const outputFrame = await stat(path.join(directory, "output-frame.html")).catch(() => undefined);
+	if (!outputFrame?.isFile()) {
+		throw new Error("notebook dist has no output-frame.html");
+	}
 	const files = await collectFiles(directory);
 	if (
 		!files.some(
@@ -216,8 +220,8 @@ async function writeBuildManifest(directory: string): Promise<void> {
 	);
 	const manifest: NotebookBuildManifest = {
 		schemaVersion: 1,
-		releaseTag: NTERACT_RELEASE.tag,
-		sourceCommit: NTERACT_RELEASE.commit,
+		releaseTag: NTERACT_NOTEBOOK_SOURCE.tag,
+		sourceCommit: NTERACT_NOTEBOOK_SOURCE.commit,
 		files: records,
 	};
 	await writeFile(
@@ -239,8 +243,8 @@ export async function validateStagedNotebookBundle(
 	) as NotebookBuildManifest;
 	if (
 		manifest.schemaVersion !== 1 ||
-		manifest.releaseTag !== NTERACT_RELEASE.tag ||
-		manifest.sourceCommit !== NTERACT_RELEASE.commit ||
+		manifest.releaseTag !== NTERACT_NOTEBOOK_SOURCE.tag ||
+		manifest.sourceCommit !== NTERACT_NOTEBOOK_SOURCE.commit ||
 		!Array.isArray(manifest.files)
 	) {
 		throw new Error("notebook build manifest does not match the pinned nteract release");
@@ -326,7 +330,7 @@ async function checkoutPinnedSource(
 	} catch {
 		currentCommit = undefined;
 	}
-	if (currentCommit !== NTERACT_RELEASE.commit) {
+	if (currentCommit !== NTERACT_NOTEBOOK_SOURCE.commit) {
 		await rm(checkoutDirectory, { recursive: true, force: true });
 		await mkdir(cacheDirectory, { recursive: true });
 		await run(
@@ -336,23 +340,23 @@ async function checkoutPinnedSource(
 				"--depth",
 				"1",
 				"--branch",
-				NTERACT_RELEASE.tag,
-				NTERACT_RELEASE.repository,
+				NTERACT_NOTEBOOK_SOURCE.tag,
+				NTERACT_NOTEBOOK_SOURCE.repository,
 				checkoutDirectory,
 			],
 			{},
 		);
 	}
 	await run("git", ["lfs", "pull"], { cwd: checkoutDirectory });
-	await run("git", ["merge-base", "--is-ancestor", NTERACT_RELEASE.commit, "HEAD"], {
+	await run("git", ["merge-base", "--is-ancestor", NTERACT_NOTEBOOK_SOURCE.commit, "HEAD"], {
 		cwd: checkoutDirectory,
 	});
-	await run("git", ["merge-base", "--is-ancestor", "HEAD", NTERACT_RELEASE.commit], {
+	await run("git", ["merge-base", "--is-ancestor", "HEAD", NTERACT_NOTEBOOK_SOURCE.commit], {
 		cwd: checkoutDirectory,
 	});
 	await writeFile(
 		path.join(checkoutDirectory, ".agentic-source-commit"),
-		`${NTERACT_RELEASE.commit}\n`,
+		`${NTERACT_NOTEBOOK_SOURCE.commit}\n`,
 	);
 }
 

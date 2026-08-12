@@ -80,6 +80,8 @@ export interface EmbeddedWebHost {
 	readonly routes?: Readonly<
 		Record<string, (context: EmbeddedWebHostRouteContext) => Promise<unknown>>
 	>;
+	/** Platform-owned CSP profiles for exact static document paths. */
+	readonly securityProfiles?: Readonly<Record<string, "isolated-output">>;
 }
 
 export interface EmbeddedWebHostRouteContext {
@@ -149,11 +151,9 @@ export function createContentSecurityPolicy(
  *
  * What the extra grants buy, none of which the app origin gains:
  * - `'wasm-unsafe-eval'`: the notebook bundle instantiates a wasm module.
- * - `ws://127.0.0.1:*`: the loopback relay carrying typed frames to the daemon.
  * - `http://127.0.0.1:*` on connect/img/media: the daemon's blob server binds an
- *   ephemeral port, so an exact port would make this policy a function of the
- *   running sidecar. Tightenable to 'self' once blobs are served from our own
- *   protocol — see D4.
+ *   ephemeral port. Runtime frames themselves use the transferred MessagePort;
+ *   there is no renderer-visible WebSocket endpoint.
  * - `worker-src blob:`: renderer plugins start workers from blob URLs.
  */
 export function createEmbeddedContentSecurityPolicy(
@@ -169,7 +169,7 @@ export function createEmbeddedContentSecurityPolicy(
 		`img-src 'self' data: blob: ${loopback}`,
 		"font-src 'self' data:",
 		`media-src 'self' data: blob: ${loopback}`,
-		`connect-src 'self' ${loopback} ws://127.0.0.1:*`,
+		`connect-src 'self' ${loopback}`,
 		"worker-src 'self' blob:",
 		"object-src 'none'",
 		"base-uri 'none'",
@@ -177,6 +177,35 @@ export function createEmbeddedContentSecurityPolicy(
 		// The child's own header is what decides whether it can be framed, so the
 		// app origin has to be named here — `frame-src` on the parent is not enough.
 		`frame-ancestors ${appOrigin}`,
+	].join("; ");
+}
+
+/**
+ * CSP for nteract's sandboxed rich-output document. It alone receives
+ * `unsafe-eval`, which JavaScript visualization renderers need. The document
+ * remains in nteract's separate protocol host and is framed only by that host;
+ * the app renderer and the notebook shell retain their stricter policies.
+ */
+export function createIsolatedOutputContentSecurityPolicy(
+	embeddedOrigin: string,
+	inlineScriptHashes: readonly string[] = [],
+): string {
+	const trustedInlineScripts = inlineScriptHashes.map((hash) => ` 'sha256-${hash}'`).join("");
+	const loopback = "http://127.0.0.1:*";
+	return [
+		"default-src 'none'",
+		`script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:${trustedInlineScripts}`,
+		"style-src 'self' 'unsafe-inline'",
+		`img-src 'self' data: blob: ${loopback}`,
+		"font-src 'self' data: blob:",
+		`media-src 'self' data: blob: ${loopback}`,
+		`connect-src 'self' ${loopback}`,
+		"worker-src 'self' blob:",
+		"frame-src 'self' data: blob:",
+		"object-src 'none'",
+		"base-uri 'none'",
+		"form-action 'none'",
+		`frame-ancestors ${embeddedOrigin}`,
 	].join("; ");
 }
 
@@ -331,8 +360,6 @@ export class ElectronProtocol {
 			return (inlineScriptHashes: readonly string[]) =>
 				createContentSecurityPolicy(input.developmentOrigin, inlineScriptHashes, frameOrigins);
 		};
-		const embeddedPolicy = (inlineScriptHashes: readonly string[]) =>
-			createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes);
 
 		protocol.handle(scheme, async (request) => {
 			const requestUrl = new URL(request.url);
@@ -346,7 +373,17 @@ export class ElectronProtocol {
 						appPolicyFor(embeddedHosts),
 					);
 				}
-				return withSecurityHeaders(await serveEmbeddedHost(embedded, requestUrl), embeddedPolicy);
+				const embeddedOrigin = getDesktopOrigin(input.isDevelopment, embedded.host);
+				const embeddedPolicy = (inlineScriptHashes: readonly string[]) =>
+					createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes);
+				const isolatedOutputPolicy = (inlineScriptHashes: readonly string[]) =>
+					createIsolatedOutputContentSecurityPolicy(embeddedOrigin, inlineScriptHashes);
+				return withSecurityHeaders(
+					await serveEmbeddedHost(embedded, requestUrl),
+					embedded.securityProfiles?.[requestUrl.pathname] === "isolated-output"
+						? isolatedOutputPolicy
+						: embeddedPolicy,
+				);
 			}
 
 			// Force the relay widget onto its direct same-origin iframe path (see

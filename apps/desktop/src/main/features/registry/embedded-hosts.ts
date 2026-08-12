@@ -15,6 +15,18 @@ function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
 	const candidate = value as Partial<EmbeddedWebHost>;
 	if (typeof candidate.host !== "string" || candidate.host.length === 0) return false;
 	if (candidate.root !== undefined && typeof candidate.root !== "string") return false;
+	if (candidate.securityProfiles !== undefined) {
+		if (typeof candidate.securityProfiles !== "object" || candidate.securityProfiles === null) {
+			return false;
+		}
+		if (
+			!Object.entries(candidate.securityProfiles).every(
+				([route, profile]) => route.startsWith("/") && profile === "isolated-output",
+			)
+		) {
+			return false;
+		}
+	}
 	if (candidate.routes === undefined) return true;
 	if (typeof candidate.routes !== "object" || candidate.routes === null) return false;
 	return Object.values(candidate.routes).every((route) => typeof route === "function");

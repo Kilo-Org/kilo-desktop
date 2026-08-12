@@ -60,6 +60,24 @@ describe("collectEmbeddedHosts", () => {
 		expect(collectEmbeddedHosts()).toEqual([{ host: "notebook", root: undefined }]);
 	});
 
+	it("accepts only platform-defined security profiles on exact absolute paths", async () => {
+		await boot("embedded-host-isolated-output", (sdk) => {
+			sdk.plugins.expose("embeddedWebHost", {
+				host: "notebook",
+				root: "/bundle",
+				securityProfiles: { "/output-frame.html": "isolated-output" },
+			});
+		});
+
+		expect(collectEmbeddedHosts()).toEqual([
+			{
+				host: "notebook",
+				root: "/bundle",
+				securityProfiles: { "/output-frame.html": "isolated-output" },
+			},
+		]);
+	});
+
 	it("skips a malformed contribution rather than taking down the protocol handler", async () => {
 		await boot("embedded-host-malformed", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", { host: 42, root: "/bundle" });
@@ -78,6 +96,14 @@ describe("collectEmbeddedHosts", () => {
 		["a non-string root", { host: "notebook", root: 7 }],
 		["an empty host", { host: "", root: "/bundle" }],
 		["null routes", { host: "notebook", root: "/bundle", routes: null }],
+		[
+			"an unknown security profile",
+			{ host: "notebook", root: "/bundle", securityProfiles: { "/output": "relaxed" } },
+		],
+		[
+			"a relative security profile path",
+			{ host: "notebook", root: "/bundle", securityProfiles: { "output.html": "isolated-output" } },
+		],
 	])("rejects %s", async (_label, contribution) => {
 		await boot("embedded-host-invalid", (sdk) => {
 			sdk.plugins.expose("embeddedWebHost", contribution as Record<string, unknown>);

@@ -15,6 +15,7 @@ import {
  * renderer builds the iframe `src` from it.
  */
 export const NOTEBOOK_HOST = "notebook";
+export const NTERACT_ELECTRON_HOST_PROTOCOL_VERSION = 1;
 
 export const notebookDaemonSchema = z.object({
 	version: z.string(),
@@ -37,7 +38,6 @@ export type NotebookDaemonAvailability = z.infer<typeof notebookDaemonAvailabili
  * `availability` keeps that expected prerequisite state distinct from IPC failure.
  */
 export const notebookStatusSchema = z.object({
-	relayPort: z.number().int().nonnegative(),
 	availability: notebookDaemonAvailabilitySchema,
 	daemon: notebookDaemonSchema.nullable(),
 });

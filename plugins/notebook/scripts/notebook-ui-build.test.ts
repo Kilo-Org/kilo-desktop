@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NTERACT_RELEASE } from "../src/main/distribution/artifacts.js";
+import { NTERACT_NOTEBOOK_SOURCE } from "../src/main/distribution/artifacts.js";
 import {
 	AGENTIC_EMBED_CHROME_CSS,
 	AGENTIC_EMBED_CHROME_STYLE_ATTR,
@@ -38,6 +38,7 @@ async function writeDist(checkoutDirectory: string, includeWasm = true): Promise
 		].join(""),
 	);
 	await writeFile(path.join(dist, "assets/main-abcdef12.js"), "console.log('notebook')");
+	await writeFile(path.join(dist, "output-frame.html"), "<!doctype html><html></html>");
 	if (includeWasm)
 		await writeFile(path.join(dist, "assets/runtimed_wasm_bg-abcdef12.wasm"), "wasm");
 }
@@ -102,8 +103,8 @@ describe("buildNotebookUi", () => {
 		expect(stagedIndex).toContain(AGENTIC_EMBED_CHROME_STYLE_ATTR);
 		expect(stagedIndex).toContain(AGENTIC_EMBED_CHROME_CSS);
 		await expect(validateStagedNotebookBundle(destinationDirectory)).resolves.toMatchObject({
-			releaseTag: NTERACT_RELEASE.tag,
-			sourceCommit: NTERACT_RELEASE.commit,
+			releaseTag: NTERACT_NOTEBOOK_SOURCE.tag,
+			sourceCommit: NTERACT_NOTEBOOK_SOURCE.commit,
 		});
 		expect(run).toHaveBeenCalledWith(
 			"cargo",
@@ -214,7 +215,7 @@ describe("buildNotebookUi", () => {
 			if (
 				args[0] === "git" &&
 				args[1][0] === "merge-base" &&
-				args[1][3] === NTERACT_RELEASE.commit
+				args[1][3] === NTERACT_NOTEBOOK_SOURCE.commit
 			) {
 				throw new Error("not the pinned commit");
 			}
@@ -296,7 +297,7 @@ describe("notebook bundle validation", () => {
 			/does not exactly cover/,
 		);
 		expect(await readFile(path.join(destination, NOTEBOOK_BUILD_MANIFEST), "utf8")).toContain(
-			NTERACT_RELEASE.commit,
+			NTERACT_NOTEBOOK_SOURCE.commit,
 		);
 	});
 

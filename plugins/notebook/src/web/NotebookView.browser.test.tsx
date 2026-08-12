@@ -2,7 +2,16 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { NotebookView, notebookOriginFrom, type NotebookViewProps } from "./NotebookView";
+vi.mock("@anaconda-agentic-desktop/sdk-react", () => ({
+	useSdk: () => ({ ports: { open: vi.fn() } }),
+}));
+
+import {
+	NotebookView,
+	notebookOriginFrom,
+	nteractSrcFor,
+	type NotebookViewProps,
+} from "./NotebookView";
 
 const DEFAULT_PROPS: NotebookViewProps = {
 	sessionId: "session-1",
@@ -35,6 +44,19 @@ describe("NotebookView", () => {
 		expect(notebookOriginFrom("http://localhost:5173")).toBeUndefined();
 		expect(notebookOriginFrom("https://anaconda.com")).toBeUndefined();
 		expect(notebookOriginFrom("not a url")).toBeUndefined();
+	});
+
+	it("selects the Electron host and exact parent origin under the desktop scheme", () => {
+		const src = nteractSrcFor("669d39ec-39d6-4160-815c-b46e170cde8d", {
+			protocol: "anaconda-agentic-desktop:",
+			host: "app",
+		});
+		const url = new URL(src!);
+
+		expect(`${url.protocol}//${url.host}`).toBe("anaconda-agentic-desktop://notebook");
+		expect(url.searchParams.get("notebook_id")).toBe("669d39ec-39d6-4160-815c-b46e170cde8d");
+		expect(url.searchParams.get("nteract-host")).toBe("electron");
+		expect(url.searchParams.get("nteract-parent-origin")).toBe("anaconda-agentic-desktop://app");
 	});
 
 	it("shows a placeholder while nteract's bundle is not served from our protocol", async () => {

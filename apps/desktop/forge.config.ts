@@ -19,10 +19,7 @@ import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
-import {
-	findRuntArtifact,
-	getRuntimedArtifact,
-} from "../../plugins/notebook/src/main/distribution/artifacts.js";
+import { findRuntArtifact } from "../../plugins/notebook/src/main/distribution/artifacts.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -43,24 +40,15 @@ const appIcon =
 		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, "assets/icon.icon")]
 		: path.join(packageRoot, "assets/icon");
 
-// Staged by prepare:build. Daemon + UI payloads are mandatory: Forge must never
-// silently produce a package whose notebook feature cannot start. `runt` is
-// required only on platforms that publish a nightly CLI asset (no Windows yet).
+// Staged by prepare:build. The UI payload is mandatory. Agentic Desktop attaches
+// to the user's installed runtimed singleton and deliberately ships no daemon.
+// `runt` remains a Kilo MCP client and is required only where releases publish it.
 const stagedNotebookBundle = path.join(workspaceRoot, "plugins/notebook/build/notebook");
-const stagedRuntimed = path.join(workspaceRoot, "plugins/notebook/resources/runtimed");
 const stagedRunt = path.join(workspaceRoot, "plugins/notebook/resources/runt");
-const runtimedArtifact = getRuntimedArtifact();
 const runtArtifact = findRuntArtifact();
-const stagedRuntimedBinary = path.join(
-	stagedRuntimed,
-	runtimedArtifact.target,
-	runtimedArtifact.executable,
-);
 const requiredAssets = [
 	path.join(stagedNotebookBundle, "index.html"),
 	path.join(stagedNotebookBundle, "agentic-notebook-build.json"),
-	stagedRuntimedBinary,
-	path.join(stagedRuntimed, runtimedArtifact.target, "staged.json"),
 ];
 if (runtArtifact) {
 	requiredAssets.push(
@@ -79,7 +67,6 @@ const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
 	path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
-	stagedRuntimed,
 	...(runtArtifact ? [stagedRunt] : []),
 	stagedNotebookBundle,
 ];
@@ -132,7 +119,8 @@ const config: ForgeConfig = {
 			// has a real filesystem path. Kilo spawns it via `process.execPath` +
 			// `ELECTRON_RUN_AS_NODE=1` (see plugins/kilo-server/src/main/seed-kilo-mcp-config.ts
 			// and the interim tracking issue anaconda/agentic-desktop#102).
-			unpack: "**/node_modules/{better-sqlite3,@github/keytar,@mcp-b/webmcp-local-relay}/**",
+			unpack:
+				"**/node_modules/{better-sqlite3,@github/keytar,@mcp-b/webmcp-local-relay,@runtimed}/**",
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",

@@ -24,6 +24,7 @@ import { protocol } from "electron";
 import {
 	createContentSecurityPolicy,
 	createEmbeddedContentSecurityPolicy,
+	createIsolatedOutputContentSecurityPolicy,
 	ElectronProtocol,
 	findEmbeddedHost,
 	getDesktopUrl,
@@ -294,11 +295,19 @@ describe("ElectronProtocol", () => {
 	it("grants an embedded bundle only what it needs, and names the app as its framer", () => {
 		const policy = createEmbeddedContentSecurityPolicy("anaconda-agentic-desktop://app");
 		expect(policy).toContain("'wasm-unsafe-eval'");
-		expect(policy).toContain("ws://127.0.0.1:*");
+		expect(policy).not.toContain("ws://127.0.0.1:*");
 		expect(policy).toContain("worker-src 'self' blob:");
 		expect(policy).toContain("frame-ancestors anaconda-agentic-desktop://app");
 		// A wasm grant is not an eval grant; nteract's plot renderers stay blocked (D5).
 		expect(policy).not.toContain("'unsafe-eval'");
+	});
+
+	it("grants unsafe eval only to the isolated output profile", () => {
+		const policy = createIsolatedOutputContentSecurityPolicy("anaconda-agentic-desktop://notebook");
+		expect(policy).toContain("'unsafe-eval'");
+		expect(policy).toContain("'wasm-unsafe-eval'");
+		expect(policy).toContain("frame-ancestors anaconda-agentic-desktop://notebook");
+		expect(policy).toContain("object-src 'none'");
 	});
 
 	it("serves an embedded host from its own root under its own policy", async () => {
@@ -309,6 +318,7 @@ describe("ElectronProtocol", () => {
 		await mkdir(bundleRoot);
 		await writeFile(path.join(appRoot, "index.html"), "<html>app</html>");
 		await writeFile(path.join(bundleRoot, "index.html"), "<html>notebook</html>");
+		await writeFile(path.join(bundleRoot, "output-frame.html"), "<html>output</html>");
 		await mkdir(path.join(bundleRoot, "assets"));
 		await writeFile(path.join(bundleRoot, "assets", "runtimed_bg.wasm"), "\0asm");
 		// Outside the bundle root, so a successful traversal would actually leak it.
@@ -324,6 +334,7 @@ describe("ElectronProtocol", () => {
 					host: "notebook",
 					root: bundleRoot,
 					routes: { "/__nteract_dev_relay/config": configRoute },
+					securityProfiles: { "/output-frame.html": "isolated-output" },
 				},
 			],
 		});
@@ -333,6 +344,16 @@ describe("ElectronProtocol", () => {
 		expect(shell.status).toBe(200);
 		expect(await shell.text()).toBe("<html>notebook</html>");
 		expect(shell.headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
+		expect(shell.headers.get("Content-Security-Policy")).not.toContain("'unsafe-eval'");
+
+		const output = await protocolHandler(
+			new Request("anaconda-agentic-desktop://notebook/output-frame.html"),
+		);
+		expect(await output.text()).toBe("<html>output</html>");
+		expect(output.headers.get("Content-Security-Policy")).toContain("'unsafe-eval'");
+		expect(output.headers.get("Content-Security-Policy")).toContain(
+			"frame-ancestors anaconda-agentic-desktop://notebook",
+		);
 
 		// Streaming wasm compilation rejects any other MIME type.
 		const wasm = await protocolHandler(

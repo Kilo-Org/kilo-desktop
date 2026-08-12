@@ -39,6 +39,7 @@ export default defineConfig(({ command }) => {
 			rollupOptions: {
 				external: [
 					"electron",
+					/^@runtimed\/node(?:\/.*)?$/,
 					"better-sqlite3",
 					"@github/keytar",
 					// LaunchDarkly's Node SDK is CommonJS and lazily `require`s Node

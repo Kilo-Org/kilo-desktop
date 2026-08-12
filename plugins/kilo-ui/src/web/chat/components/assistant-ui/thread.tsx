@@ -25,6 +25,12 @@ import {
 } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
 	ActionBarMorePrimitive,
@@ -682,6 +688,34 @@ const AssistantMessage: FC = () => {
 	);
 };
 
+const AssistantActionMoreTrigger: FC = () => {
+	return (
+		<TooltipProvider>
+			<Tooltip disableHoverablePopup>
+				<TooltipTrigger
+					render={
+						<ActionBarMorePrimitive.Trigger
+							render={
+								<Button
+									variant="ghost"
+									size="icon"
+									className="aui-button-icon data-[state=open]:bg-accent size-6 p-1 active:scale-90"
+								/>
+							}
+						/>
+					}
+				>
+					<MoreHorizontalIcon />
+					<span className="sr-only">More</span>
+				</TooltipTrigger>
+				<TooltipContent side="bottom" className="pointer-events-none">
+					More
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
+};
+
 const AssistantActionBar: FC = () => {
 	return (
 		<ActionBarPrimitive.Root
@@ -691,11 +725,7 @@ const AssistantActionBar: FC = () => {
 		>
 			<MessageCopyButton />
 			<ActionBarMorePrimitive.Root>
-				<ActionBarMorePrimitive.Trigger
-					render={<TooltipIconButton tooltip="More" className="data-[state=open]:bg-accent" />}
-				>
-					<MoreHorizontalIcon />
-				</ActionBarMorePrimitive.Trigger>
+				<AssistantActionMoreTrigger />
 				<ActionBarMorePrimitive.Content
 					side="bottom"
 					align="start"

@@ -1,8 +1,6 @@
 import path from "node:path";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
@@ -14,7 +12,6 @@ import {
 	type KiloServerCapabilities,
 	type KiloServerController,
 } from "./index.js";
-import { KiloConfigManager } from "./KiloConfigManager.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
 
@@ -584,262 +581,93 @@ describe("kilo-server main registration", () => {
 	});
 });
 
-describe("kilo-server MCP config management", () => {
-	let tempDir: string;
-
-	beforeEach(async () => {
-		tempDir = path.join(
-			os.tmpdir(),
-			`kilo-mcp-int-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		await mkdir(tempDir, { recursive: true });
-	});
-
-	afterEach(async () => {
-		await rm(tempDir, { recursive: true, force: true });
-	});
-
-	function registerWithConfig(mainSdk: ReturnType<typeof createLinkedFakeSdkPair>["mainSdk"]) {
+describe("kilo-server config overlay capability", () => {
+	it("exposes configOverlay.contribute for other plugins to inject managed config", () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		server.isRunning = true;
-		const configManager = new KiloConfigManager({ configHome: tempDir });
-		registerKiloServer(mainSdk, {
-			createServer: () => server,
-			createConfigManager: () => configManager,
+		registerKiloServer(mainSdk, { createServer: () => server });
+
+		const consumer = createMainSdk("anaconda-mcp");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		expect(capability).not.toBeNull();
+		expect(typeof capability!.kiloService.configOverlay.contribute).toBe("function");
+
+		const dispose = capability!.kiloService.configOverlay.contribute("anaconda-mcp", {
+			mcp: { "anaconda-remote": { type: "remote", url: "https://example.test/mcp" } },
 		});
-		return { server, configManager };
-	}
-
-	it("mcps.list returns an empty array when no config exists", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		const result = await mainSdk.invoke("mcps.list", undefined);
-		expect(result).toEqual([]);
+		expect(typeof dispose).toBe("function");
+		dispose();
 		mainSdk.dispose();
 	});
 
-	it("mcps.save writes an MCP entry and returns ok", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		const result = await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "anaconda-remote",
-			transport: {
-				type: "remote",
-				url: "https://anaconda.cloud/api/mcp",
-				headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
-			},
-			enabled: true,
-		});
-		expect(result).toEqual({ ok: true });
-
-		// Verify the file was written
-		const configPath = path.join(tempDir, "kilo", "kilo.jsonc");
-		const content = JSON.parse(await readFile(configPath, "utf-8"));
-		expect(content.mcp["anaconda-remote"]).toEqual({
-			type: "remote",
-			url: "https://anaconda.cloud/api/mcp",
-			headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
-			enabled: true,
-		});
-		mainSdk.dispose();
-	});
-
-	it("mcps.save preserves existing entries in the config", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		// Save first entry
-		await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "server-a",
-			transport: { type: "remote", url: "https://a.example.com" },
-			enabled: true,
-		});
-
-		// Save second entry
-		await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "server-b",
-			transport: { type: "stdio", command: "my-server" },
-			enabled: false,
-		});
-
-		const result = (await mainSdk.invoke("mcps.list", undefined)) as { id: string }[];
-		expect(result).toHaveLength(2);
-		expect(result.find((e) => e.id === "server-a")).toBeDefined();
-		expect(result.find((e) => e.id === "server-b")).toBeDefined();
-		mainSdk.dispose();
-	});
-
-	it("mcps.remove removes an existing entry and returns ok", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		// Set up
-		await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "to-remove",
-			transport: { type: "remote", url: "https://remove.me" },
-			enabled: true,
-		});
-		await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "to-keep",
-			transport: { type: "remote", url: "https://keep.me" },
-			enabled: true,
-		});
-
-		// Remove
-		const result = await mainSdk.invoke("mcps.remove", { scope: "global", id: "to-remove" });
-		expect(result).toEqual({ ok: true });
-
-		// Verify
-		const entries = (await mainSdk.invoke("mcps.list", undefined)) as { id: string }[];
-		expect(entries).toHaveLength(1);
-		expect(entries[0]!.id).toBe("to-keep");
-		mainSdk.dispose();
-	});
-
-	it("mcps.remove is a no-op for non-existent entries", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		const result = await mainSdk.invoke("mcps.remove", { scope: "global", id: "non-existent" });
-		expect(result).toEqual({ ok: true });
-		mainSdk.dispose();
-	});
-
-	it("mcps.setEnabled toggles the enabled state of an existing entry", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "my-server",
-			transport: { type: "remote", url: "https://example.com" },
-			enabled: true,
-		});
-
-		// Disable
-		await mainSdk.invoke("mcps.setEnabled", { scope: "global", id: "my-server", enabled: false });
-		let entries = (await mainSdk.invoke("mcps.list", undefined)) as { enabled: boolean }[];
-		expect(entries[0]!.enabled).toBe(false);
-
-		// Re-enable
-		await mainSdk.invoke("mcps.setEnabled", { scope: "global", id: "my-server", enabled: true });
-		entries = (await mainSdk.invoke("mcps.list", undefined)) as { enabled: boolean }[];
-		expect(entries[0]!.enabled).toBe(true);
-		mainSdk.dispose();
-	});
-
-	it("mcps.setEnabled is a no-op for a non-existent entry", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		await expect(
-			mainSdk.invoke("mcps.setEnabled", { scope: "global", id: "missing", enabled: true }),
-		).resolves.toEqual({ ok: true });
-		mainSdk.dispose();
-	});
-
-	it("mcps.save calls reload on the running server", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const { server } = registerWithConfig(mainSdk);
-
-		// Mock the SDK's net.fetch for the /global/dispose call
-		const fetchSpy = vi
-			.spyOn(mainSdk.net, "fetch")
-			.mockResolvedValue(new Response(null, { status: 200 }));
+	it("triggers a debounced restart when a running server's overlay changes", async () => {
+		vi.useFakeTimers();
 		try {
-			await mainSdk.invoke("mcps.save", {
-				scope: "global",
-				id: "test-server",
-				transport: { type: "remote", url: "https://example.com" },
-				enabled: true,
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			registerKiloServer(mainSdk, { createServer: () => server });
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.configOverlay.contribute("anaconda-mcp", {
+				mcp: { "anaconda-remote": { type: "remote", url: "https://example.test/mcp" } },
 			});
 
-			// The server should have been asked to reload
-			expect(server.ensureRunning).toHaveBeenCalled();
-			expect(fetchSpy).toHaveBeenCalledWith(
-				"http://127.0.0.1:4321/global/dispose",
-				expect.objectContaining({ method: "POST" }),
-			);
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
 		} finally {
-			fetchSpy.mockRestore();
+			vi.useRealTimers();
 		}
-		mainSdk.dispose();
 	});
 
-	it("mcps.save does not fail if reload fails (server not ready)", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const { server } = registerWithConfig(mainSdk);
-		server.ensureRunning.mockRejectedValue(new Error("not running"));
+	it("does not restart on overlay contribution before the server has ever spawned", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = false;
+			registerKiloServer(mainSdk, { createServer: () => server });
 
-		// Should not throw even though reload failed
-		const result = await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "test-server",
-			transport: { type: "remote", url: "https://example.com" },
-			enabled: true,
-		});
-		expect(result).toEqual({ ok: true });
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.configOverlay.contribute("anaconda-mcp", {
+				mcp: { "anaconda-remote": { type: "remote", url: "https://example.test/mcp" } },
+			});
 
-		// Config was still written
-		const entries = await mainSdk.invoke("mcps.list", undefined);
-		expect(entries).toHaveLength(1);
-		mainSdk.dispose();
+			// Lazy-spawn semantics: the next ensureRunning() snapshots the overlay.
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
-	it("mcps.save does not clobber unrelated config keys", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
+	it("triggers a restart when an overlay is disposed while the server is running", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			registerKiloServer(mainSdk, { createServer: () => server });
 
-		// Write a config with an unrelated key
-		const configPath = path.join(tempDir, "kilo", "kilo.jsonc");
-		await mkdir(path.dirname(configPath), { recursive: true });
-		await writeFile(configPath, JSON.stringify({ customSetting: "keep-me", mcp: {} }), "utf-8");
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			const dispose = capability!.kiloService.configOverlay.contribute("anaconda-mcp", {
+				mcp: { "anaconda-remote": { type: "remote", url: "https://example.test/mcp" } },
+			});
+			await vi.advanceTimersByTimeAsync(500);
+			server.restart.mockClear();
 
-		await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "new-server",
-			transport: { type: "remote", url: "https://example.com" },
-			enabled: true,
-		});
-
-		const content = JSON.parse(await readFile(configPath, "utf-8"));
-		expect(content.customSetting).toBe("keep-me");
-		expect(content.mcp["new-server"]).toBeDefined();
-		mainSdk.dispose();
-	});
-
-	it("security: config writes use env template strings, never raw secrets", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		registerWithConfig(mainSdk);
-
-		// Simulate writing a config with the {env:VAR} pattern
-		await mainSdk.invoke("mcps.save", {
-			scope: "global",
-			id: "anaconda-remote",
-			transport: {
-				type: "remote",
-				url: "https://anaconda.cloud/api/mcp",
-				headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
-			},
-			enabled: true,
-		});
-
-		// Read the raw file and verify the template is preserved verbatim
-		const configPath = path.join(tempDir, "kilo", "kilo.jsonc");
-		const raw = await readFile(configPath, "utf-8");
-		expect(raw).toContain("{env:ANACONDA_API_KEY}");
-		// The header value should be the template, not a resolved key
-		const content = JSON.parse(raw);
-		expect(content.mcp["anaconda-remote"].headers.Authorization).toBe(
-			"Bearer {env:ANACONDA_API_KEY}",
-		);
-		mainSdk.dispose();
+			dispose();
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

@@ -44,6 +44,24 @@ export type AnacondaMcpService = InferContract<typeof anacondaMcpContract>;
 
 // ─── Events ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Feature id under which anaconda-mcp registers in the FEATURES array. The
+ * SDK namespaces emitted events with this id, so the registration site and
+ * the event constants below must agree — import this constant there.
+ */
+export const ANACONDA_MCP_FEATURE_ID = "anaconda-mcp";
+
+/**
+ * Un-namespaced event name the main-side service emits via
+ * `sdk.events.emit(...)`. The SDK namespaces it with the feature id
+ * automatically (dot separator).
+ */
+export const ANACONDA_MCP_STATUS_CHANGED = "status-changed";
+
+/** Fully-namespaced event name renderers subscribe to via `sdk.events.on(...)`. */
+export const ANACONDA_MCP_STATUS_CHANGED_EVENT =
+	`${ANACONDA_MCP_FEATURE_ID}.${ANACONDA_MCP_STATUS_CHANGED}` as const;
+
 export const anacondaMcpEvents = {
-	"anaconda-mcp:status-changed": defineEvent(anacondaMcpStatusSchema),
+	[ANACONDA_MCP_STATUS_CHANGED_EVENT]: defineEvent(anacondaMcpStatusSchema),
 } as const;

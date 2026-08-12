@@ -42,14 +42,14 @@ describe("registerAuthCapability", () => {
 		const router = new FeatureRouter();
 		// Monkey-patch the module's featureRouter for this test by testing
 		// the registration logic directly on a fresh router.
-		router.capabilityRegistry.expose("auth", "auth", {
+		router.capabilityRegistry.expose("auth", "session", {
 			getApiKey: () => auth.getApiKey(),
 		});
 
 		const cap = router.capabilityRegistry.get("auth") as AuthMainCapability | null;
 		expect(cap).not.toBeNull();
-		expect(cap!.auth).toBeDefined();
-		expect(await cap!.auth.getApiKey()).toBe("test-api-key");
+		expect(cap!.session).toBeDefined();
+		expect(await cap!.session.getApiKey()).toBe("test-api-key");
 	});
 
 	it("exposes getApiKey that returns null when not authenticated", async () => {
@@ -66,12 +66,12 @@ describe("registerAuthCapability", () => {
 		});
 
 		const router = new FeatureRouter();
-		router.capabilityRegistry.expose("auth", "auth", {
+		router.capabilityRegistry.expose("auth", "session", {
 			getApiKey: () => auth.getApiKey(),
 		});
 
 		const cap = router.capabilityRegistry.get("auth") as AuthMainCapability | null;
-		expect(await cap!.auth.getApiKey()).toBeNull();
+		expect(await cap!.session.getApiKey()).toBeNull();
 	});
 
 	it("emits auth.changed on the event bus when session changes", async () => {

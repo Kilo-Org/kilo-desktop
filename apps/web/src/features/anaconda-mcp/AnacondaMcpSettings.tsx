@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import type { AnacondaMcpService, AnacondaMcpStatus } from "@anaconda-agentic-desktop/contracts";
+import { ANACONDA_MCP_STATUS_CHANGED_EVENT } from "@anaconda-agentic-desktop/contracts";
 import {
 	sdkQueryKey,
 	useFeatureFlag,
@@ -89,7 +90,7 @@ export function AnacondaMcpSettings() {
 
 	// Invalidate queries on status-changed event
 	useEffect(() => {
-		const unsubscribe = sdk.events.on("anaconda-mcp.status-changed", () => {
+		const unsubscribe = sdk.events.on(ANACONDA_MCP_STATUS_CHANGED_EVENT, () => {
 			void queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "status.get") });
 		});
 		return unsubscribe;
@@ -156,16 +157,20 @@ export function AnacondaMcpSettings() {
 					<Checkbox
 						data-qa-id="anaconda-mcp-toggle"
 						checked={isEnabled}
-						disabled={setSettings.isPending || settingsQuery.isPending}
+						disabled={setSettings.isPending || settingsQuery.isPending || settingsQuery.isError}
 						onCheckedChange={handleToggle}
 					/>
 					<span className="text-sm">Enable Anaconda MCP</span>
 				</Label>
+				{settingsQuery.isError ? (
+					<p className="text-destructive mt-1 ml-7 text-xs" role="alert">
+						Could not load the saved setting — the toggle is unavailable until it loads.
+					</p>
+				) : null}
 				<p className="text-muted-foreground mt-1 ml-7 text-xs">
 					When enabled, Anaconda tools are automatically available in Kilo chats while logged in.
-					Anaconda Desktop manages the <code>anaconda-remote</code> entry in{" "}
-					<code>~/.config/kilo/kilo.jsonc</code>; editing or deleting it there will be reverted on
-					the next launch. Use this toggle to opt out.
+					Anaconda Desktop provides the <code>anaconda-remote</code> MCP server to its embedded Kilo
+					only — the Kilo CLI and other Kilo installs are not affected. Use this toggle to opt out.
 				</p>
 			</div>
 
@@ -197,7 +202,7 @@ export function AnacondaMcpSettings() {
 							id="anaconda-mcp-url"
 							data-qa-id="anaconda-mcp-url-input"
 							type="url"
-							placeholder="https://anaconda.cloud/api/mcp"
+							placeholder="https://anaconda.com/api/mcp"
 							value={urlInput}
 							onChange={(event) => setUrlInput(event.target.value)}
 						/>

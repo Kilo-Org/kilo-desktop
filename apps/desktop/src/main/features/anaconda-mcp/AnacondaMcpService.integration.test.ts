@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
+import { ANACONDA_MCP_STATUS_CHANGED_EVENT } from "@anaconda-agentic-desktop/contracts";
+
 import {
 	AnacondaMcpService,
+	CONTRIBUTION_SOURCE_ID,
 	DEFAULT_MCP_URL,
 	FEATURE_FLAG_KEY,
 	MCP_ENV_VAR,
@@ -11,27 +14,17 @@ import {
 } from "./AnacondaMcpService.js";
 
 import type { AnacondaMcpServiceOptions } from "./AnacondaMcpService.js";
-import type { McpTransport } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
+import type { KiloConfigOverlay } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
 
 /** Silences the scoped logger so expected failures don't spam test output. */
 const silentLogger = { info() {}, warn() {}, error() {} };
-
-interface SaveMcpInput {
-	id: string;
-	transport: McpTransport;
-	enabled: boolean;
-}
-
-interface RemoveMcpInput {
-	id: string;
-}
 
 function createTestHarness(overrides?: {
 	settings?: Partial<AnacondaMcpServiceOptions>;
 	apiKey?: string | null;
 	withKilo?: boolean;
-	saveMcpImpl?: (input: SaveMcpInput) => Promise<void>;
-	removeMcpImpl?: (input: RemoveMcpInput) => Promise<void>;
+	/** Gate awaited inside the fake auth capability's getApiKey. */
+	getApiKeyGate?: Promise<void>;
 	/**
 	 * Feature-flag value returned by the fake feature-flag capability.
 	 * Defaults to `true` so existing tests exercise the "connected" path
@@ -45,32 +38,33 @@ function createTestHarness(overrides?: {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
 	(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
 
-	// Track calls
-	const saveMcp = vi.fn<(input: SaveMcpInput) => Promise<void>>(
-		overrides?.saveMcpImpl ?? (async () => {}),
-	);
-	const removeMcp = vi.fn<(input: RemoveMcpInput) => Promise<void>>(
-		overrides?.removeMcpImpl ?? (async () => {}),
-	);
+	// Track contributions
 	const envDisposer = vi.fn();
 	const envContribute = vi.fn((_sourceId: string, _env: Record<string, string>) => envDisposer);
+	const overlayDisposer = vi.fn();
+	const overlayContribute = vi.fn(
+		(_sourceId: string, _overlay: KiloConfigOverlay) => overlayDisposer,
+	);
 
 	// Stub kilo-server capability
 	if (overrides?.withKilo !== false) {
 		const kiloSdk = createMainSdk("kilo-server");
 		kiloSdk.plugins.expose("kiloService", {
 			serverEnv: { contribute: envContribute },
+			configOverlay: { contribute: overlayContribute },
 			restartServer: async () => {},
-			saveMcp,
-			removeMcp,
 		});
 	}
 
 	// Stub auth capability
 	const authSdk = createMainSdk("auth");
 	const apiKey = overrides?.apiKey ?? null;
-	authSdk.plugins.expose("auth", {
-		getApiKey: async () => apiKey,
+	const gate = overrides?.getApiKeyGate;
+	authSdk.plugins.expose("session", {
+		getApiKey: async () => {
+			if (gate) await gate;
+			return apiKey;
+		},
 	});
 
 	const featureFlagEnabled = overrides?.featureFlagEnabled;
@@ -92,18 +86,15 @@ function createTestHarness(overrides?: {
 	const service = new AnacondaMcpService({
 		sdk: mainSdk,
 		getSettings: () => settings,
-		setSettings: (patch) => {
-			settings = { ...settings, ...patch };
-		},
 	});
 
 	return {
 		service,
 		mainSdk,
-		saveMcp,
-		removeMcp,
 		envContribute,
 		envDisposer,
+		overlayContribute,
+		overlayDisposer,
 		getFlag,
 		get settings() {
 			return settings;
@@ -114,14 +105,22 @@ function createTestHarness(overrides?: {
 	};
 }
 
+/** Extract the MCP entry object from the latest overlay contribution. */
+function latestOverlayEntry(
+	overlayContribute: ReturnType<typeof createTestHarness>["overlayContribute"],
+): Record<string, unknown> {
+	const overlay = overlayContribute.mock.calls.at(-1)![1];
+	return (overlay.mcp as Record<string, Record<string, unknown>>)[MCP_ID]!;
+}
+
 describe("AnacondaMcpService", () => {
 	it("enters waiting-for-auth when no API key is available", async () => {
-		const { service, saveMcp } = createTestHarness({ apiKey: null });
+		const { service, overlayContribute } = createTestHarness({ apiKey: null });
 
 		await service.reconcile();
 
 		expect(service.status).toEqual({ state: "waiting-for-auth" });
-		expect(saveMcp).not.toHaveBeenCalled();
+		expect(overlayContribute).not.toHaveBeenCalled();
 	});
 
 	it("enters waiting-for-kilo when kilo-server capability is unavailable", async () => {
@@ -133,40 +132,41 @@ describe("AnacondaMcpService", () => {
 	});
 
 	it("enters connected state when auth and kilo are available", async () => {
-		const { service, saveMcp, envContribute } = createTestHarness({
+		const { service, envContribute, overlayContribute } = createTestHarness({
 			apiKey: "my-api-key",
 		});
 
 		await service.reconcile();
 
 		expect(service.status).toEqual({ state: "connected", url: DEFAULT_MCP_URL });
-		expect(saveMcp).toHaveBeenCalledTimes(1);
+		expect(overlayContribute).toHaveBeenCalledTimes(1);
 		expect(envContribute).toHaveBeenCalledTimes(1);
-		expect(envContribute).toHaveBeenCalledWith("anaconda-mcp", {
+		expect(envContribute).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, {
 			[MCP_ENV_VAR]: "my-api-key",
 		});
 	});
 
-	it("uses {env:ANACONDA_API_KEY} template in saveMcp — never a raw key", async () => {
-		const { service, saveMcp } = createTestHarness({
+	it("contributes the MCP entry under the stable id with the {env:VAR} header template — never a raw key", async () => {
+		const { service, overlayContribute } = createTestHarness({
 			apiKey: "super-secret-key-abc123",
 		});
 
 		await service.reconcile();
 
-		const saveCall = saveMcp.mock.calls[0]![0];
-		const transport = saveCall.transport as { headers: Record<string, string> };
-
-		// Assert the raw key does NOT appear anywhere in the payload
-		const payload = JSON.stringify(saveCall);
-		expect(payload).not.toContain("super-secret-key-abc123");
-
-		// Assert the template IS used
-		expect(transport.headers.Authorization).toBe(`Bearer {env:${MCP_ENV_VAR}}`);
+		const overlay = overlayContribute.mock.calls[0]![1];
+		// The raw key must NOT appear anywhere in the overlay payload —
+		// only the template that Kilo resolves against the spawn env.
+		expect(JSON.stringify(overlay)).not.toContain("super-secret-key-abc123");
+		expect(latestOverlayEntry(overlayContribute)).toEqual({
+			type: "remote",
+			url: DEFAULT_MCP_URL,
+			enabled: true,
+			headers: { Authorization: `Bearer {env:${MCP_ENV_VAR}}` },
+		});
 	});
 
 	it("uses the url override when configured", async () => {
-		const { service, saveMcp } = createTestHarness({
+		const { service, overlayContribute } = createTestHarness({
 			apiKey: "key",
 			settings: { urlOverride: "https://custom.mcp.dev/mcp" },
 		});
@@ -177,13 +177,13 @@ describe("AnacondaMcpService", () => {
 			state: "connected",
 			url: "https://custom.mcp.dev/mcp",
 		});
-		const saveCall = saveMcp.mock.calls[0]![0];
-		const transport = saveCall.transport as { url: string };
-		expect(transport.url).toBe("https://custom.mcp.dev/mcp");
+		expect(latestOverlayEntry(overlayContribute)).toMatchObject({
+			url: "https://custom.mcp.dev/mcp",
+		});
 	});
 
 	it("enters disabled state when settings.enabled is false", async () => {
-		const { service, saveMcp, envContribute } = createTestHarness({
+		const { service, envContribute, overlayContribute } = createTestHarness({
 			apiKey: "key",
 			settings: { enabled: false },
 		});
@@ -191,264 +191,86 @@ describe("AnacondaMcpService", () => {
 		await service.reconcile();
 
 		expect(service.status).toEqual({ state: "disabled" });
-		expect(saveMcp).not.toHaveBeenCalled();
+		expect(overlayContribute).not.toHaveBeenCalled();
 		expect(envContribute).not.toHaveBeenCalled();
 	});
 
-	it("tears down MCP config and env on disable after being connected", async () => {
-		const envDisposer = vi.fn();
-		const removeMcp = vi.fn(async () => {});
-		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
-		(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
-		const kiloSdk = createMainSdk("kilo-server");
-		kiloSdk.plugins.expose("kiloService", {
-			serverEnv: { contribute: () => envDisposer },
-			restartServer: async () => {},
-			saveMcp: async () => {},
-			removeMcp,
-		});
-		const authSdk = createMainSdk("auth");
-		authSdk.plugins.expose("auth", { getApiKey: async () => "key" });
+	it("disposes both contributions on disable after being connected", async () => {
+		const harness = createTestHarness({ apiKey: "key" });
 
-		const flagSdk = createMainSdk("feature-flag");
-		flagSdk.plugins.expose("featureFlag", {
-			getFlag: <T>(_key: string, _defaultValue: T): T => true as unknown as T,
-		});
+		await harness.service.reconcile();
+		expect(harness.service.status.state).toBe("connected");
 
-		let enabled = true;
-		const svc = new AnacondaMcpService({
-			sdk: mainSdk,
-			getSettings: () => ({ enabled, urlOverride: null }),
-			setSettings: (patch) => {
-				if (patch.enabled !== undefined) enabled = patch.enabled;
-			},
-		});
+		harness.settings = { enabled: false, urlOverride: null };
+		await harness.service.reconcile();
 
-		await svc.reconcile();
-		expect(svc.status.state).toBe("connected");
-
-		// Disable
-		enabled = false;
-		await svc.reconcile();
-
-		expect(svc.status).toEqual({ state: "disabled" });
-		expect(envDisposer).toHaveBeenCalledTimes(1);
-		expect(removeMcp).toHaveBeenCalledWith({ id: MCP_ID });
+		expect(harness.service.status).toEqual({ state: "disabled" });
+		expect(harness.envDisposer).toHaveBeenCalledTimes(1);
+		expect(harness.overlayDisposer).toHaveBeenCalledTimes(1);
 	});
 
-	it("enters error state when saveMcp fails", async () => {
-		const { service } = createTestHarness({
-			apiKey: "key",
-			saveMcpImpl: async () => {
-				throw new Error("disk full");
-			},
+	it("re-contributes on key rotation and URL change (kilo-server dedupes no-ops)", async () => {
+		const harness = createTestHarness({ apiKey: "key" });
+
+		await harness.service.reconcile();
+		expect(harness.envContribute).toHaveBeenCalledTimes(1);
+		expect(harness.overlayContribute).toHaveBeenCalledTimes(1);
+
+		// URL change flows into the next overlay contribution.
+		harness.settings = { enabled: true, urlOverride: "https://staging.mcp.dev/mcp" };
+		await harness.service.reconcile();
+		expect(latestOverlayEntry(harness.overlayContribute)).toMatchObject({
+			url: "https://staging.mcp.dev/mcp",
 		});
-
-		await service.reconcile();
-
-		expect(service.status).toEqual({ state: "error", reason: "disk full" });
-	});
-
-	it("saves MCP entry with stable ID 'anaconda-remote'", async () => {
-		const { service, saveMcp } = createTestHarness({ apiKey: "key" });
-
-		await service.reconcile();
-
-		const saveCall = saveMcp.mock.calls[0]![0];
-		expect(saveCall.id).toBe(MCP_ID);
-		expect(saveCall.enabled).toBe(true);
-	});
-
-	it("handles key rotation by re-contributing env without re-saving config", async () => {
-		const envDisposer = vi.fn();
-		let callCount = 0;
-		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
-		(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
-		const kiloSdk = createMainSdk("kilo-server");
-		const saveMcp = vi.fn(async () => {});
-		kiloSdk.plugins.expose("kiloService", {
-			serverEnv: {
-				contribute: () => {
-					callCount++;
-					return envDisposer;
-				},
-			},
-			restartServer: async () => {},
-			saveMcp,
-			removeMcp: async () => {},
-		});
-
-		let apiKey = "key-v1";
-		const authSdk = createMainSdk("auth");
-		authSdk.plugins.expose("auth", { getApiKey: async () => apiKey });
-
-		const flagSdk = createMainSdk("feature-flag");
-		flagSdk.plugins.expose("featureFlag", {
-			getFlag: <T>(_key: string, _defaultValue: T): T => true as unknown as T,
-		});
-
-		const svc = new AnacondaMcpService({
-			sdk: mainSdk,
-			getSettings: () => ({ enabled: true, urlOverride: null }),
-			setSettings: () => {},
-		});
-
-		// First reconcile
-		await svc.reconcile();
-		expect(svc.status.state).toBe("connected");
-		expect(saveMcp).toHaveBeenCalledTimes(1);
-		expect(callCount).toBe(1);
-
-		// Key rotation (same URL, same user, different key)
-		apiKey = "key-v2";
-		await svc.reconcile();
-		expect(svc.status.state).toBe("connected");
-		// Config NOT saved again (URL unchanged)
-		expect(saveMcp).toHaveBeenCalledTimes(1);
-		// Env IS re-contributed with new key
-		expect(callCount).toBe(2);
-		// Previous env was disposed
-		expect(envDisposer).toHaveBeenCalledTimes(1);
-	});
-
-	it("re-saves the MCP entry when the URL override changes", async () => {
-		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
-		(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
-
-		const saveMcp = vi.fn(
-			async (_input: {
-				id: string;
-				transport: unknown;
-				enabled: boolean;
-				managedBy?: string;
-			}) => {},
-		);
-		const removeMcp = vi.fn(async (_input: { id: string }) => {});
-		const kiloSdk = createMainSdk("kilo-server");
-		kiloSdk.plugins.expose("kiloService", {
-			serverEnv: {
-				contribute: () => () => {},
-			},
-			restartServer: async () => {},
-			saveMcp,
-			removeMcp,
-		});
-
-		const authSdk = createMainSdk("auth");
-		authSdk.plugins.expose("auth", { getApiKey: async () => "key" });
-
-		const flagSdk = createMainSdk("feature-flag");
-		flagSdk.plugins.expose("featureFlag", {
-			getFlag: <T>(_key: string, _defaultValue: T): T => true as unknown as T,
-		});
-
-		let urlOverride: string | null = null;
-		const svc = new AnacondaMcpService({
-			sdk: mainSdk,
-			getSettings: () => ({ enabled: true, urlOverride }),
-			setSettings: () => {},
-		});
-
-		await svc.reconcile();
-		expect(saveMcp).toHaveBeenCalledTimes(1);
-		expect(saveMcp.mock.calls[0]![0]).toMatchObject({
-			transport: expect.objectContaining({ url: DEFAULT_MCP_URL }),
-		});
-
-		urlOverride = "https://staging.mcp.dev/mcp";
-		await svc.reconcile();
-		expect(saveMcp).toHaveBeenCalledTimes(2);
-		expect(saveMcp.mock.calls[1]![0]).toMatchObject({
-			transport: expect.objectContaining({ url: "https://staging.mcp.dev/mcp" }),
+		expect(harness.service.status).toEqual({
+			state: "connected",
+			url: "https://staging.mcp.dev/mcp",
 		});
 	});
 
-	it("enters error state when saveMcp throws", async () => {
-		const { service, saveMcp } = createTestHarness({
-			apiKey: "key",
-			saveMcpImpl: async () => {
-				throw new Error("filesystem full");
-			},
+	// Regression: PR #116 review — WARNING AnacondaMcpService.ts:206. `dispose()`
+	// could resolve while an in-flight reconcile loop still owned teardown: the
+	// nested `reconcile()` hit the early-return branch and settled immediately,
+	// before the loop re-checked `#disposed` and actually ran `#teardown()`.
+	it("dispose() resolves only after the in-flight loop has torn down", async () => {
+		let releaseAuth!: () => void;
+		const authGate = new Promise<void>((resolve) => {
+			releaseAuth = resolve;
+		});
+		const harness = createTestHarness({ apiKey: "key", getApiKeyGate: authGate });
+
+		// Kick off a reconcile that pauses inside the auth capability.
+		const inflight = harness.service.reconcile();
+		// Request disposal while the loop is paused mid-#doReconcile.
+		let disposed = false;
+		const disposing = harness.service.dispose().then(() => {
+			disposed = true;
 		});
 
-		await service.reconcile();
+		// Give the (buggy) early-return path a chance to settle prematurely.
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(disposed).toBe(false);
 
-		expect(service.status).toEqual({ state: "error", reason: "filesystem full" });
-		expect(saveMcp).toHaveBeenCalled();
-	});
-
-	// Regression: PR #116 review — WARNING AnacondaMcpService.ts:233. The
-	// hand-rolled `state/url` comparison in `#setStatus` did not fire an
-	// event when the state stayed `error` but `reason` changed. A UI
-	// subscribed to `status-changed` would keep showing the first failure
-	// mode even after a different one replaced it.
-	it("emits status-changed on error->error transitions with a different reason", async () => {
-		let attempts = 0;
-		const { service, mainSdk } = createTestHarness({
-			apiKey: "key",
-			saveMcpImpl: async () => {
-				attempts += 1;
-				throw new Error(attempts === 1 ? "filesystem full" : "network timeout");
-			},
-		});
-		const seen: unknown[] = [];
-		mainSdk.events.on("anaconda-mcp.status-changed", (payload: unknown) => seen.push(payload));
-
-		await service.reconcile();
-		expect(service.status).toEqual({ state: "error", reason: "filesystem full" });
-
-		await service.reconcile();
-		expect(service.status).toEqual({ state: "error", reason: "network timeout" });
-
-		// Both error transitions must have been observable.
-		const errorEmits = seen.filter((payload) => (payload as { state?: string }).state === "error");
-		expect(errorEmits).toEqual([
-			{ state: "error", reason: "filesystem full" },
-			{ state: "error", reason: "network timeout" },
-		]);
-	});
-
-	// Regression: PR #116 review — WARNING AnacondaMcpService.ts:163. Before
-	// the fix, `dispose()` called `#teardown()` directly outside the reconcile
-	// lock, so a concurrent reconcile could re-populate the state machine
-	// AFTER dispose thought it had torn down.
-	it("dispose() serializes with an in-flight reconcile (no torn state)", async () => {
-		let saveMcpResolve!: () => void;
-		const saveMcpGate = new Promise<void>((resolve) => {
-			saveMcpResolve = resolve;
-		});
-		const { service, envDisposer, envContribute, removeMcp } = createTestHarness({
-			apiKey: "key",
-			saveMcpImpl: async () => {
-				await saveMcpGate;
-			},
-		});
-
-		// Kick off a reconcile that will pause inside `saveMcp`.
-		const inflight = service.reconcile();
-		// While reconcile is inside saveMcp, request disposal. If dispose
-		// bypassed the lock, it would run #teardown() (no-op — nothing set
-		// yet) and return; then reconcile would resume, contribute env and
-		// mark configured, and we'd leak the env contribution + config entry.
-		const disposing = service.dispose();
-
-		// Release saveMcp so the paused reconcile can proceed.
-		saveMcpResolve();
+		releaseAuth();
 		await inflight;
 		await disposing;
 
-		// After dispose, teardown MUST have removed the config entry AND
-		// disposed the env contribution — no ghost state left behind.
-		expect(removeMcp).toHaveBeenCalledWith({ id: MCP_ID });
-		expect(envContribute).toHaveBeenCalledTimes(1);
-		expect(envDisposer).toHaveBeenCalledTimes(1);
-		expect(service.status).toEqual({ state: "disabled" });
+		// Teardown observed: the loop contributed (reconcile completed its
+		// pass) and then the queued disposed-branch disposed everything.
+		expect(harness.service.status).toEqual({ state: "disabled" });
+		expect(harness.envContribute.mock.calls.length).toBe(harness.envDisposer.mock.calls.length);
+		expect(harness.overlayContribute.mock.calls.length).toBe(
+			harness.overlayDisposer.mock.calls.length,
+		);
 	});
 
 	it("dispose() from idle also tears down and emits disabled", async () => {
-		const { service, mainSdk, envDisposer } = createTestHarness({ apiKey: "key" });
+		const { service, mainSdk, envDisposer, overlayDisposer } = createTestHarness({
+			apiKey: "key",
+		});
 		const seen: unknown[] = [];
-		mainSdk.events.on("anaconda-mcp.status-changed", (payload: unknown) => seen.push(payload));
+		mainSdk.events.on(ANACONDA_MCP_STATUS_CHANGED_EVENT, (payload: unknown) => seen.push(payload));
 
 		await service.reconcile();
 		expect(service.status.state).toBe("connected");
@@ -456,12 +278,91 @@ describe("AnacondaMcpService", () => {
 		await service.dispose();
 		expect(service.status).toEqual({ state: "disabled" });
 		expect(envDisposer).toHaveBeenCalledTimes(1);
+		expect(overlayDisposer).toHaveBeenCalledTimes(1);
 		expect((seen[seen.length - 1] as { state?: string }).state).toBe("disabled");
+	});
+
+	// Regression: PR #116 review — WARNING AnacondaMcpService.ts:233. The
+	// hand-rolled `state/url` comparison in `#setStatus` did not fire an
+	// event when only a non-compared field changed. `isEqual` keeps every
+	// distinct status observable, including future variant fields.
+	it("emits status-changed for every structurally distinct status", async () => {
+		const harness = createTestHarness({ apiKey: "key" });
+		const seen: Array<{ state?: string; url?: string }> = [];
+		harness.mainSdk.events.on(ANACONDA_MCP_STATUS_CHANGED_EVENT, (payload: unknown) =>
+			seen.push(payload as { state?: string; url?: string }),
+		);
+
+		await harness.service.reconcile();
+		// Same status again: no duplicate event.
+		await harness.service.reconcile();
+		harness.settings = { enabled: true, urlOverride: "https://two.test/mcp" };
+		await harness.service.reconcile();
+
+		expect(seen).toEqual([
+			{ state: "connected", url: DEFAULT_MCP_URL },
+			{ state: "connected", url: "https://two.test/mcp" },
+		]);
+	});
+
+	// Regression: local review of PR #116 fixes — a rejection inside
+	// #doReconcile (e.g. keychain failure in getApiKey) exited the loop
+	// before the #reconcilePending re-check, silently dropping a trigger
+	// queued during the failing iteration. Failures now surface as an
+	// `error` status and the loop keeps draining.
+	it("surfaces a reconcile failure as error status and still drains a queued trigger", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
+		(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
+		const kiloSdk = createMainSdk("kilo-server");
+		kiloSdk.plugins.expose("kiloService", {
+			serverEnv: { contribute: () => () => {} },
+			configOverlay: { contribute: () => () => {} },
+			restartServer: async () => {},
+		});
+		let releaseAuth!: () => void;
+		const authGate = new Promise<void>((resolve) => {
+			releaseAuth = resolve;
+		});
+		let failNext = true;
+		const authSdk = createMainSdk("auth");
+		authSdk.plugins.expose("session", {
+			getApiKey: async () => {
+				await authGate;
+				if (failNext) {
+					failNext = false;
+					throw new Error("keychain unavailable");
+				}
+				return "key";
+			},
+		});
+		const flagSdk = createMainSdk("feature-flag");
+		flagSdk.plugins.expose("featureFlag", {
+			getFlag: <T>(_key: string, _defaultValue: T): T => true as unknown as T,
+		});
+		const service = new AnacondaMcpService({
+			sdk: mainSdk,
+			getSettings: () => ({ enabled: true, urlOverride: null }),
+		});
+		const errorStatuses: unknown[] = [];
+		mainSdk.events.on(ANACONDA_MCP_STATUS_CHANGED_EVENT, (payload: unknown) => {
+			if ((payload as { state?: string }).state === "error") errorStatuses.push(payload);
+		});
+
+		// First loop iteration fails; queue a second trigger mid-loop.
+		const first = service.reconcile();
+		const second = service.reconcile(); // queued while #reconciling
+		releaseAuth();
+		await first;
+		await second;
+
+		// The failure was observable, and the queued trigger ran and succeeded.
+		expect(errorStatuses).toEqual([{ state: "error", reason: "keychain unavailable" }]);
+		expect(service.status).toEqual({ state: "connected", url: DEFAULT_MCP_URL });
 	});
 
 	describe("feature flag gate (remote-anaconda-mcp)", () => {
 		it("stays disabled when the flag is off, even with valid auth and kilo-server", async () => {
-			const { service, saveMcp, envContribute, removeMcp } = createTestHarness({
+			const { service, envContribute, overlayContribute } = createTestHarness({
 				apiKey: "sk-real",
 				featureFlagEnabled: false,
 			});
@@ -469,15 +370,13 @@ describe("AnacondaMcpService", () => {
 			await service.reconcile();
 
 			expect(service.status).toEqual({ state: "disabled" });
-			expect(saveMcp).not.toHaveBeenCalled();
+			expect(overlayContribute).not.toHaveBeenCalled();
 			expect(envContribute).not.toHaveBeenCalled();
-			// No entry was ever written, so there is nothing to remove either.
-			expect(removeMcp).not.toHaveBeenCalled();
 		});
 
 		it("defaults to OFF when the feature-flag capability is unavailable", async () => {
 			// Simulates a build where the flag service failed to register.
-			const { service, saveMcp } = createTestHarness({
+			const { service, overlayContribute } = createTestHarness({
 				apiKey: "sk-real",
 				featureFlagEnabled: null,
 			});
@@ -485,7 +384,7 @@ describe("AnacondaMcpService", () => {
 			await service.reconcile();
 
 			expect(service.status).toEqual({ state: "disabled" });
-			expect(saveMcp).not.toHaveBeenCalled();
+			expect(overlayContribute).not.toHaveBeenCalled();
 		});
 
 		it("evaluates the flag under the well-known key with a false default", async () => {
@@ -501,14 +400,13 @@ describe("AnacondaMcpService", () => {
 		});
 
 		it("tears down when the flag flips from on to off between reconciles", async () => {
-			// Start with the flag on: connect and write config.
 			const harness = createTestHarness({
 				apiKey: "sk-real",
 				featureFlagEnabled: true,
 			});
 			await harness.service.reconcile();
 			expect(harness.service.status.state).toBe("connected");
-			expect(harness.saveMcp).toHaveBeenCalledTimes(1);
+			expect(harness.overlayContribute).toHaveBeenCalledTimes(1);
 
 			// Flip the flag off and reconcile — should behave like a full opt-out.
 			harness.getFlag.mockImplementation(
@@ -517,19 +415,18 @@ describe("AnacondaMcpService", () => {
 			await harness.service.reconcile();
 
 			expect(harness.service.status).toEqual({ state: "disabled" });
-			expect(harness.removeMcp).toHaveBeenCalledWith({ id: MCP_ID });
+			expect(harness.overlayDisposer).toHaveBeenCalledTimes(1);
 			expect(harness.envDisposer).toHaveBeenCalledTimes(1);
 		});
 
 		it("connects when the flag flips from off to on between reconciles", async () => {
-			// Start with the flag off.
 			const harness = createTestHarness({
 				apiKey: "sk-real",
 				featureFlagEnabled: false,
 			});
 			await harness.service.reconcile();
 			expect(harness.service.status).toEqual({ state: "disabled" });
-			expect(harness.saveMcp).not.toHaveBeenCalled();
+			expect(harness.overlayContribute).not.toHaveBeenCalled();
 
 			// Flip on and reconcile.
 			harness.getFlag.mockImplementation(
@@ -538,7 +435,7 @@ describe("AnacondaMcpService", () => {
 			await harness.service.reconcile();
 
 			expect(harness.service.status).toEqual({ state: "connected", url: DEFAULT_MCP_URL });
-			expect(harness.saveMcp).toHaveBeenCalledTimes(1);
+			expect(harness.overlayContribute).toHaveBeenCalledTimes(1);
 		});
 	});
 });

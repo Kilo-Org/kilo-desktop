@@ -2,13 +2,9 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SettingsStore } from "./SettingsStore.js";
-
-const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-
-const DEFAULTS = { enabled: true, urlOverride: null } as const;
 
 describe("SettingsStore", () => {
 	let tempDir: string;
@@ -25,8 +21,8 @@ describe("SettingsStore", () => {
 		await rm(tempDir, { recursive: true, force: true });
 	});
 
-	it("returns defaults when no persisted file exists", async () => {
-		const store = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
+	it("returns defaults when no persisted file exists", () => {
+		const store = new SettingsStore(tempDir);
 		expect(store.get()).toEqual({ enabled: true, urlOverride: null });
 	});
 
@@ -36,16 +32,16 @@ describe("SettingsStore", () => {
 			JSON.stringify({ enabled: false, urlOverride: "https://custom.example.com" }),
 			"utf-8",
 		);
-		const store = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
+		const store = new SettingsStore(tempDir);
 		expect(store.get()).toEqual({ enabled: false, urlOverride: "https://custom.example.com" });
 	});
 
-	it("persists enabled=false so a user's disable choice survives restarts", async () => {
-		const store = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
-		await store.set({ enabled: false });
+	it("persists enabled=false so a user's disable choice survives restarts", () => {
+		const store = new SettingsStore(tempDir);
+		store.set({ enabled: false });
 
 		// Simulate a restart by re-loading.
-		const restarted = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
+		const restarted = new SettingsStore(tempDir);
 		expect(restarted.get().enabled).toBe(false);
 	});
 
@@ -55,70 +51,62 @@ describe("SettingsStore", () => {
 			JSON.stringify({ enabled: true, urlOverride: "https://custom.example.com" }),
 			"utf-8",
 		);
-		const store = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
-		await store.set({ urlOverride: null });
+		const store = new SettingsStore(tempDir);
+		store.set({ urlOverride: null });
 
 		expect(store.get().urlOverride).toBeNull();
-		const restarted = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
+		const restarted = new SettingsStore(tempDir);
 		expect(restarted.get().urlOverride).toBeNull();
 	});
 
 	it("falls back to defaults on malformed JSON without crashing", async () => {
 		await writeFile(path.join(tempDir, "settings.json"), "this is not json", "utf-8");
-		const store = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
-		expect(store.get()).toEqual(DEFAULTS);
+		const store = new SettingsStore(tempDir);
+		expect(store.get()).toEqual({ enabled: true, urlOverride: null });
 	});
 
-	it("coalesces rapid writes so the latest state wins", async () => {
-		const store = await SettingsStore.load(tempDir, { ...DEFAULTS }, silentLogger);
-		// Fire multiple updates without awaiting individual promises.
-		void store.set({ enabled: false });
-		void store.set({ urlOverride: "https://a.example.com" });
-		void store.set({ urlOverride: "https://b.example.com" });
-		await store.set({ urlOverride: "https://c.example.com" });
+	it("normalizes wrong-typed persisted values back to defaults", async () => {
+		await writeFile(
+			path.join(tempDir, "settings.json"),
+			JSON.stringify({ enabled: "yes", urlOverride: 42 }),
+			"utf-8",
+		);
+		const store = new SettingsStore(tempDir);
+		expect(store.get()).toEqual({ enabled: true, urlOverride: null });
+	});
 
-		// Give the coalesced write a chance to complete.
-		await new Promise((resolve) => setTimeout(resolve, 10));
+	it("writes are immediately visible on disk (synchronous, atomic)", async () => {
+		const store = new SettingsStore(tempDir);
+		store.set({ enabled: false });
+		store.set({ urlOverride: "https://c.example.com" });
 
 		const raw = await readFile(path.join(tempDir, "settings.json"), "utf-8");
-		const parsed = JSON.parse(raw);
-		expect(parsed).toEqual({ enabled: false, urlOverride: "https://c.example.com" });
+		expect(JSON.parse(raw)).toEqual({ enabled: false, urlOverride: "https://c.example.com" });
 	});
 
-	// Regression: PR #116 review — WARNING SettingsStore.ts:100. The old
-	// `set()` swallowed persistence failures and always resolved, so a
-	// contract handler / UI would report success even when nothing hit disk.
-	// Now `set()` rejects on failure so the caller can surface the error.
-	it("rejects set() when the on-disk write fails", async () => {
-		// Point the store at a path that becomes unwritable (parent is a file).
-		const parent = path.join(tempDir, "settings-parent");
-		await writeFile(parent, "not a directory", "utf-8");
-		const doomedDir = path.join(parent, "settings-child");
-		// The store persists to `<storageDir>/settings.json`, so pointing
-		// storageDir into `parent/settings-child/` fails at mkdir/writeFile
-		// because `parent` is a regular file.
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-		const store = await SettingsStore.load(doomedDir, { ...DEFAULTS }, logger);
-		await expect(store.set({ enabled: false })).rejects.toThrow();
-		// The warning path still fires so operators see the failure.
-		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("failed to persist"));
-	});
+	// Regression: PR #116 review — WARNING SettingsStore.ts. Persistence
+	// failures must not be swallowed: `set()` throws (electron-store's
+	// synchronous write), so a contract handler / UI learns the change was
+	// NOT saved instead of it silently reverting on the next restart.
+	it("set() throws when the on-disk write fails, and recovers once fixed", async () => {
+		const store = new SettingsStore(tempDir);
+		store.set({ enabled: false });
 
-	it("a later successful set() runs even after a prior set() rejected", async () => {
-		// The chain must not be poisoned by a failed write.
-		const parent = path.join(tempDir, "poisoned-parent");
-		await writeFile(parent, "not a directory", "utf-8");
-		const doomedDir = path.join(parent, "child");
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-		const store = await SettingsStore.load(doomedDir, { ...DEFAULTS }, logger);
-		await expect(store.set({ enabled: false })).rejects.toThrow();
+		// Make the backing file's parent unusable: replace the settings file
+		// with a directory so the atomic rename fails.
+		const file = path.join(tempDir, "settings.json");
+		await rm(file);
+		await mkdir(file);
 
-		// Fix the filesystem (remove the file, create the dir), then retry.
-		await rm(parent);
-		await mkdir(doomedDir, { recursive: true });
-		await expect(store.set({ enabled: false })).resolves.toEqual({
-			enabled: false,
-			urlOverride: null,
+		expect(() => store.set({ urlOverride: "https://x.test" })).toThrow();
+
+		// Fix the filesystem, then retry — the store is not poisoned. (The
+		// simulated failure deleted the backing file, so previously persisted
+		// values are gone and `enabled` reads its default again.)
+		await rm(file, { recursive: true });
+		expect(store.set({ urlOverride: "https://x.test" })).toEqual({
+			enabled: true,
+			urlOverride: "https://x.test",
 		});
 	});
 });

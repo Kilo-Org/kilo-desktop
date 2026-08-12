@@ -154,10 +154,43 @@ export class Application {
 		this.#windows.create({ isDevelopment });
 	}
 
+	/**
+	 * Expose main-side plugin capabilities (`mainSdk.plugins.get(...)`).
+	 * Must run before `bootFeatures` — see the call site in `#registerIpc`.
+	 * Returns the created feature-flag service and the registration disposers.
+	 */
+	#registerCapabilities(): { featureFlags: FeatureFlagService; disposers: Array<() => void> } {
+		const featureFlags = FeatureFlagService.create({
+			auth: this.#auth,
+			appVersion: this.#app.metadata.appVersion,
+		});
+
+		return {
+			featureFlags,
+			disposers: [
+				// The auth service's getApiKey, resolved via plugins.get("auth").
+				registerAuthCapability(this.#auth),
+				// The feature-flag service so features/plugins can gate behavior
+				// on flags. Flag changes are relayed to the feature event bus as
+				// `feature-flag.changed`.
+				registerFeatureFlagCapability(featureFlags),
+			],
+		};
+	}
+
 	async #registerIpc(
 		preferences: PreferencesStore,
 		reporter?: BootProgressReporter,
 	): Promise<void> {
+		// Expose main-side plugin capabilities BEFORE booting features:
+		// `bootFeatures` synchronously invokes every feature's `mainRegister`,
+		// and a feature is allowed to resolve capabilities synchronously
+		// during its own boot. Registering afterwards would silently hand
+		// such a feature "unavailable" (flagged twice in PR #116 review).
+		const { featureFlags, disposers: capabilityDisposers } = this.#registerCapabilities();
+		this.#featureFlags = featureFlags;
+		this.#disposers.push(...capabilityDisposers);
+
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// Each feature persists only under its own storage directory
 		// (`${userData}/plugins/<id>` — Decision #20). The returned disposer
@@ -184,20 +217,6 @@ export class Application {
 			}),
 		);
 
-		this.#featureFlags = FeatureFlagService.create({
-			auth: this.#auth,
-			appVersion: this.#app.metadata.appVersion,
-		});
-
-		// Expose the auth service's getApiKey as a main-side plugin capability
-		// so features/plugins can resolve it via mainSdk.plugins.get("auth").
-		this.#disposers.push(registerAuthCapability(this.#auth));
-
-		// Expose the feature-flag service so features/plugins can gate behavior
-		// on flags. Flag changes are relayed to the feature event bus as
-		// `feature-flag.changed`.
-		this.#disposers.push(registerFeatureFlagCapability(this.#featureFlags));
-
 		const handlers = {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#windows, preferences),
@@ -205,7 +224,7 @@ export class Application {
 			...createNotificationsHandlers(this.#notifications),
 			...createFsHandlers(this.#scopedFs),
 			...createFeatureHandlers(),
-			...createFeatureFlagHandlers(this.#featureFlags),
+			...createFeatureFlagHandlers(featureFlags),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(
 			handlers,

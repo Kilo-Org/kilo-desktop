@@ -8,7 +8,7 @@ import type { AuthSessionService } from "./auth-service.js";
  *
  * ```ts
  * const auth = mainSdk.plugins.get<AuthMainCapability>("auth");
- * const apiKey = await auth?.auth.getApiKey();
+ * const apiKey = await auth?.session.getApiKey();
  * ```
  *
  * Also relays session changes to the feature event bus (`auth.changed`) so
@@ -18,9 +18,10 @@ import type { AuthSessionService } from "./auth-service.js";
  * subscription.
  */
 export function registerAuthCapability(auth: AuthSessionService): () => void {
-	// Expose the auth capability under the "auth" feature ID.
-	// The capability name "auth" becomes the property name in the merged result.
-	featureRouter.capabilityRegistry.expose("auth", "auth", {
+	// Expose the auth capability under the "auth" feature ID. The capability
+	// name "session" becomes the property name in the merged result —
+	// consumers read `auth.session.getApiKey()`.
+	featureRouter.capabilityRegistry.expose("auth", "session", {
 		getApiKey: () => auth.getApiKey(),
 	});
 

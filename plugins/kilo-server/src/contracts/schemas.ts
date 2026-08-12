@@ -36,86 +36,27 @@ export const kiloGetConnectionInputSchema = z.object({
 
 export type KiloGetConnectionInput = z.infer<typeof kiloGetConnectionInputSchema>;
 
-// ─── MCP configuration schemas ─────────────────────────────────────────────────
-
-export const mcpScopeSchema = z.enum(["global"]);
-
-export const mcpRemoteTransportSchema = z.object({
-	type: z.literal("remote"),
-	url: z.url(),
-	headers: z.record(z.string(), z.string()).optional(),
-});
-
-export const mcpStdioTransportSchema = z.object({
-	type: z.literal("stdio"),
-	command: z.string().min(1),
-	args: z.array(z.string()).optional(),
-	env: z.record(z.string(), z.string()).optional(),
-});
-
-export const mcpTransportSchema = z.discriminatedUnion("type", [
-	mcpRemoteTransportSchema,
-	mcpStdioTransportSchema,
-]);
+// ─── Config overlay ─────────────────────────────────────────────────────────────
 
 /**
- * MCP server ID: alphanumeric, hyphens, underscores, dots, and slashes.
+ * Partial Kilo config injected into the spawned `kilo serve` process via the
+ * `KILO_CONFIG_CONTENT` env var — Kilo merges it over the on-disk config at
+ * load time. This is how features add managed config (e.g. MCP entries)
+ * without ever writing to the user's shared `~/.config/kilo/kilo.jsonc`:
+ * no lost-update races with Kilo CLI / VS Code, no residue after uninstall,
+ * and the entry is scoped to exactly the server process Desktop spawns.
  *
- * Rejects `__proto__`, `constructor`, and `prototype` because ids flow into
- * bracket-assignment on plain JSON objects (`config.mcp[id] = entry` in
- * `KiloConfigManager`). Bracket-writing `__proto__` on an object created by
- * `JSON.parse` invokes the Object.prototype `__proto__` setter and mutates
- * the object's prototype (real prototype pollution). Constructor and
- * prototype are not exploitable through the same sink but sit in the same
- * "dangerous property name" bucket and are cheap to reject.
- *
- * A 255-char ceiling caps DoS via ridiculous ids (Kilo also chokes on huge
- * keys downstream).
+ * Deliberately restricted to the `mcp` section. Kilo's own `mergeConfig`
+ * (in `@kilocode/sdk`'s server module) has per-section semantics — per-entry
+ * merge for `agent`/`command`/`mcp`/`mode`, concatenation for
+ * `plugin`/`instructions` — that this plugin does not replicate. Widening
+ * this type requires implementing those semantics in
+ * `ContributedEnvManager.getMergedConfigOverlay` and
+ * `composeConfigContent` first.
  */
-const RESERVED_PROPERTY_NAMES: ReadonlySet<string> = new Set([
-	"__proto__",
-	"constructor",
-	"prototype",
-]);
-const mcpIdSchema = z
-	.string()
-	.min(1)
-	.max(255)
-	.regex(/^[\w][\w\-./]*$/)
-	.refine((value) => !RESERVED_PROPERTY_NAMES.has(value), {
-		message: "MCP id must not be a reserved property name (__proto__, constructor, prototype)",
-	});
-
-export const mcpServerInfoSchema = z.object({
-	id: mcpIdSchema,
-	scope: mcpScopeSchema,
-	transport: mcpTransportSchema,
-	enabled: z.boolean(),
-});
-
-export type McpScope = z.infer<typeof mcpScopeSchema>;
-export type McpTransport = z.infer<typeof mcpTransportSchema>;
-export type McpServerInfo = z.infer<typeof mcpServerInfoSchema>;
-
-const mcpSaveInputSchema = z.object({
-	scope: mcpScopeSchema,
-	id: mcpIdSchema,
-	transport: mcpTransportSchema,
-	enabled: z.boolean(),
-});
-
-const mcpRemoveInputSchema = z.object({
-	scope: mcpScopeSchema,
-	id: mcpIdSchema,
-});
-
-const mcpSetEnabledInputSchema = z.object({
-	scope: mcpScopeSchema,
-	id: mcpIdSchema,
-	enabled: z.boolean(),
-});
-
-const okSchema = z.object({ ok: z.literal(true) });
+export interface KiloConfigOverlay {
+	readonly mcp?: Readonly<Record<string, unknown>>;
+}
 
 // ─── Contract ───────────────────────────────────────────────────────────────────
 
@@ -123,10 +64,6 @@ export const kiloServerContract = defineContract({
 	"server.getConnection": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.restart": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.status": defineMethod(z.undefined(), kiloServerStatusSchema),
-	"mcps.list": defineMethod(z.undefined(), z.array(mcpServerInfoSchema)),
-	"mcps.save": defineMethod(mcpSaveInputSchema, okSchema),
-	"mcps.remove": defineMethod(mcpRemoveInputSchema, okSchema),
-	"mcps.setEnabled": defineMethod(mcpSetEnabledInputSchema, okSchema),
 });
 
 export type KiloServerService = InferContract<typeof kiloServerContract>;
@@ -135,9 +72,11 @@ export type KiloServerService = InferContract<typeof kiloServerContract>;
 
 /**
  * The service object exposed by the kilo-server plugin as a main-side capability.
- * Contains methods for env contribution and server restart.
+ * Contains methods for env contribution, config overlay contribution, and
+ * server restart.
  */
-export interface KiloServerCapabilityService extends Record<string, unknown> {
+export interface KiloServerCapabilityService {
+	readonly [key: string]: unknown;
 	readonly serverEnv: {
 		/**
 		 * Contribute environment variables to the Kilo server spawn.
@@ -145,29 +84,22 @@ export interface KiloServerCapabilityService extends Record<string, unknown> {
 		 */
 		contribute(sourceId: string, env: Record<string, string>): () => void;
 	};
+	readonly configOverlay: {
+		/**
+		 * Contribute a partial Kilo config, injected into the spawned server
+		 * via `KILO_CONFIG_CONTENT` (see {@link KiloConfigOverlay}). Overlays
+		 * from multiple sources are merged in recency order (last-write-wins
+		 * per section entry). Re-contributing from the same `sourceId`
+		 * replaces the previous overlay. Returns a disposer that removes the
+		 * contribution; both paths trigger a debounced server restart.
+		 */
+		contribute(sourceId: string, overlay: KiloConfigOverlay): () => void;
+	};
 	/**
 	 * Restart the Kilo server. Resolves when the server is ready again.
 	 * Useful after environment or config changes that require a full respawn.
 	 */
 	restartServer(): Promise<void>;
-	/**
-	 * Save an MCP server entry to the global config and reload.
-	 * The entry is written to kilo.json under the `mcp` key.
-	 *
-	 * When `managedBy` is provided, the entry is tagged so future versions
-	 * can identify and clean up entries owned by a feature. Recommended for
-	 * automatic entries (e.g. `"anaconda-desktop"`).
-	 */
-	saveMcp(input: {
-		id: string;
-		transport: McpTransport;
-		enabled: boolean;
-		managedBy?: string;
-	}): Promise<void>;
-	/**
-	 * Remove an MCP server entry from the global config and reload.
-	 */
-	removeMcp(input: { id: string }): Promise<void>;
 }
 
 /**
@@ -177,9 +109,11 @@ export interface KiloServerCapabilityService extends Record<string, unknown> {
  * ```ts
  * const kilo = mainSdk.plugins.get<KiloServerCapabilities>("kilo-server");
  * kilo?.kiloService.serverEnv.contribute("my-plugin", { MY_VAR: "value" });
+ * kilo?.kiloService.configOverlay.contribute("my-plugin", { mcp: { "my-mcp": { ... } } });
  * await kilo?.kiloService.restartServer();
  * ```
  */
-export interface KiloServerCapabilities extends Record<string, unknown> {
+export interface KiloServerCapabilities {
+	readonly [key: string]: unknown;
 	kiloService: KiloServerCapabilityService;
 }

@@ -8,8 +8,10 @@ import { promisify } from "node:util";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { execa } from "execa";
+import isEqual from "lodash/isEqual.js";
 
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
+import type { KiloConfigOverlay } from "../contracts/schemas.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 
@@ -116,15 +118,52 @@ function delay(durationMs: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
-/** Compare two flat env records for equality (same keys, same values). */
-function envRecordsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
-	const aKeys = Object.keys(a);
-	const bKeys = Object.keys(b);
-	if (aKeys.length !== bKeys.length) return false;
-	for (const key of aKeys) {
-		if (a[key] !== b[key]) return false;
+/**
+ * Compose the `KILO_CONFIG_CONTENT` value for the spawn env: the contributed
+ * overlay merged over any value already present in the inherited environment
+ * (e.g. a developer-set override). Returns `undefined` when there is nothing
+ * to inject, so the variable is only set when it carries content.
+ *
+ * Overlays are `mcp`-only (see `KiloConfigOverlay`), so the merge is simple:
+ * inherited top-level keys pass through untouched and `mcp` entries are
+ * merged per id, overlay entries winning. This is intentionally NOT a full
+ * reimplementation of `mergeConfig` in `@kilocode/sdk` (which also
+ * per-entry-merges `agent`/`command`/`mode` and concatenates
+ * `plugin`/`instructions`) — widening the overlay type requires adopting
+ * those semantics here and in `getMergedConfigOverlay`.
+ *
+ * The `mcp` accumulator is prototype-less: entry ids become object keys, and
+ * a plain `{}` would let a reserved id like `__proto__` mutate the
+ * accumulator's prototype via bracket assignment (see the matching guard in
+ * `ContributedEnvManager.getMergedConfigOverlay`).
+ */
+function composeConfigContent(
+	inherited: string | undefined,
+	overlay: KiloConfigOverlay | undefined,
+): string | undefined {
+	if (overlay === undefined) return inherited;
+	let base: Record<string, unknown> = {};
+	if (inherited) {
+		try {
+			const parsed: unknown = JSON.parse(inherited);
+			if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+				base = parsed as Record<string, unknown>;
+			}
+		} catch {
+			// Malformed inherited content: the overlay alone is still valid.
+		}
 	}
-	return true;
+	const baseMcp = base.mcp;
+	const merged: Record<string, unknown> = { ...base };
+	if (overlay.mcp !== undefined || baseMcp !== undefined) {
+		const mcp: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+		if (baseMcp !== null && typeof baseMcp === "object" && !Array.isArray(baseMcp)) {
+			Object.assign(mcp, baseMcp);
+		}
+		if (overlay.mcp !== undefined) Object.assign(mcp, overlay.mcp);
+		merged.mcp = mcp;
+	}
+	return JSON.stringify(merged);
 }
 
 export class KiloServerManager {
@@ -165,6 +204,11 @@ export class KiloServerManager {
 	 * by `#createEnvironment` before the spawn completed).
 	 */
 	#lastSpawnedContributedEnv: Record<string, string> = {};
+	/**
+	 * `KILO_CONFIG_CONTENT` value (composed inherited + overlay) used at the
+	 * last spawn. Compared alongside `#lastSpawnedContributedEnv` for drift.
+	 */
+	#lastSpawnedConfigContent: string | undefined;
 
 	constructor(options: KiloServerManagerOptions) {
 		this.#options = {
@@ -231,7 +275,8 @@ export class KiloServerManager {
 		if (!this.#contributedEnv) return false;
 		if (this.#connection === undefined && this.#startPromise === undefined) return true;
 		const current = this.#sanitizeContributedEnv(this.#contributedEnv.getMergedEnv());
-		return !envRecordsEqual(current, this.#lastSpawnedContributedEnv);
+		if (!isEqual(current, this.#lastSpawnedContributedEnv)) return true;
+		return this.#composeCurrentConfigContent() !== this.#lastSpawnedConfigContent;
 	}
 
 	ensureRunning(): Promise<KiloServerConnection> {
@@ -394,16 +439,31 @@ export class KiloServerManager {
 		return sanitized;
 	}
 
+	/** Current `KILO_CONFIG_CONTENT` value: inherited env value + merged overlay. */
+	#composeCurrentConfigContent(): string | undefined {
+		return composeConfigContent(
+			this.#options.environment.KILO_CONFIG_CONTENT,
+			this.#contributedEnv?.getMergedConfigOverlay(),
+		);
+	}
+
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
 		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
 		const sanitizedContributed = this.#sanitizeContributedEnv(contributed);
+		const configContent = this.#composeCurrentConfigContent();
 		// Snapshot for drift detection; a subsequent env change that matches
 		// this snapshot won't trigger a restart.
 		this.#lastSpawnedContributedEnv = { ...sanitizedContributed };
+		this.#lastSpawnedConfigContent = configContent;
 
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
 			...sanitizedContributed,
+			// Config overlay channel. Contributors cannot set KILO_* directly
+			// (reserved prefix); overlays flow through the dedicated
+			// `configOverlay.contribute` capability instead and are composed
+			// here, merged over any inherited KILO_CONFIG_CONTENT.
+			...(configContent !== undefined ? { KILO_CONFIG_CONTENT: configContent } : {}),
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",

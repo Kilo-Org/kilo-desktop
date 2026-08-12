@@ -34,7 +34,7 @@ function createHandlers(
 ): Handlers {
 	const status: AnacondaMcpStatus = overrides.status ?? {
 		state: "connected",
-		url: "https://anaconda.cloud/api/mcp",
+		url: "https://anaconda.com/api/mcp",
 	};
 	let settings: AnacondaMcpSettings = overrides.settings ?? { enabled: true, urlOverride: null };
 
@@ -84,7 +84,7 @@ afterEach(() => {
 describe("AnacondaMcpSettings", () => {
 	it("shows connected status chip when connected", async () => {
 		const { baseElement } = renderSettings(
-			createHandlers({ status: { state: "connected", url: "https://anaconda.cloud/api/mcp" } }),
+			createHandlers({ status: { state: "connected", url: "https://anaconda.com/api/mcp" } }),
 		);
 		const screen = page.elementLocator(baseElement);
 

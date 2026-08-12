@@ -501,3 +501,98 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 });
+
+describe("KILO_CONFIG_CONTENT overlay injection", () => {
+	function createOverlayHarness(environment: NodeJS.ProcessEnv = { PATH: "/bin" }) {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		const harness = createHarness({ environment, contributedEnv });
+		return { ...harness, contributedEnv };
+	}
+
+	it("does not set KILO_CONFIG_CONTENT when no overlay is contributed", async () => {
+		const { manager, spawn } = createOverlayHarness();
+		await manager.ensureRunning();
+		const [, , options] = spawn.mock.calls[0]!;
+		expect(options.env.KILO_CONFIG_CONTENT).toBeUndefined();
+		manager.dispose();
+	});
+
+	it("injects the merged overlay as KILO_CONFIG_CONTENT into the spawn env", async () => {
+		const { manager, spawn, contributedEnv } = createOverlayHarness();
+		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
+			mcp: {
+				"anaconda-remote": {
+					type: "remote",
+					url: "https://example.test/mcp",
+					enabled: true,
+					headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
+				},
+			},
+		});
+		await manager.ensureRunning();
+		const [, , options] = spawn.mock.calls[0]!;
+		expect(JSON.parse(options.env.KILO_CONFIG_CONTENT!)).toEqual({
+			mcp: {
+				"anaconda-remote": {
+					type: "remote",
+					url: "https://example.test/mcp",
+					enabled: true,
+					headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
+				},
+			},
+		});
+		manager.dispose();
+	});
+
+	it("merges the overlay over an inherited KILO_CONFIG_CONTENT (per-entry for mcp)", async () => {
+		const inherited = JSON.stringify({
+			theme: "dark",
+			mcp: { "dev-server": { type: "remote", url: "https://dev.test" } },
+		});
+		const { manager, spawn, contributedEnv } = createOverlayHarness({
+			PATH: "/bin",
+			KILO_CONFIG_CONTENT: inherited,
+		});
+		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
+			mcp: { "anaconda-remote": { type: "remote", url: "https://example.test/mcp" } },
+		});
+		await manager.ensureRunning();
+		const [, , options] = spawn.mock.calls[0]!;
+		expect(JSON.parse(options.env.KILO_CONFIG_CONTENT!)).toEqual({
+			theme: "dark",
+			mcp: {
+				"dev-server": { type: "remote", url: "https://dev.test" },
+				"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+			},
+		});
+		manager.dispose();
+	});
+
+	it("passes an inherited KILO_CONFIG_CONTENT through untouched when no overlay exists", async () => {
+		const inherited = JSON.stringify({ theme: "dark" });
+		const { manager, spawn } = createOverlayHarness({
+			PATH: "/bin",
+			KILO_CONFIG_CONTENT: inherited,
+		});
+		await manager.ensureRunning();
+		const [, , options] = spawn.mock.calls[0]!;
+		expect(options.env.KILO_CONFIG_CONTENT).toBe(inherited);
+		manager.dispose();
+	});
+
+	it("detects drift when the overlay changes after spawn", async () => {
+		const { manager, contributedEnv } = createOverlayHarness();
+		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
+			mcp: { "anaconda-remote": { url: "https://one.test" } },
+		});
+		await manager.ensureRunning();
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(false);
+
+		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
+			mcp: { "anaconda-remote": { url: "https://two.test" } },
+		});
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(true);
+		manager.dispose();
+	});
+});

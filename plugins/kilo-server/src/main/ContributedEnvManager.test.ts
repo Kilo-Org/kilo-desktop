@@ -187,3 +187,120 @@ describe("ContributedEnvManager", () => {
 		});
 	});
 });
+
+describe("config overlays", () => {
+	it("returns undefined when no overlay was contributed", () => {
+		const { manager } = createHarness();
+		expect(manager.getMergedConfigOverlay()).toBeUndefined();
+	});
+
+	it("merges mcp entries per id across sources", () => {
+		const { manager } = createHarness();
+		manager.contributeConfigOverlay("a", { mcp: { one: { url: "https://a.test" } } });
+		manager.contributeConfigOverlay("b", { mcp: { two: { url: "https://b.test" } } });
+
+		expect(manager.getMergedConfigOverlay()).toEqual({
+			mcp: {
+				one: { url: "https://a.test" },
+				two: { url: "https://b.test" },
+			},
+		});
+	});
+
+	it("uses last-write-wins for duplicate mcp ids and warns", () => {
+		const { manager, logger } = createHarness();
+		manager.contributeConfigOverlay("a", { mcp: { shared: { url: "https://a.test" } } });
+		manager.contributeConfigOverlay("b", { mcp: { shared: { url: "https://b.test" } } });
+
+		expect(manager.getMergedConfigOverlay()).toEqual({
+			mcp: { shared: { url: "https://b.test" } },
+		});
+		expect(logger.warn).toHaveBeenCalledOnce();
+	});
+
+	it("gives an older source the winning entry if it re-contributes after a competitor", () => {
+		const { manager } = createHarness();
+		manager.contributeConfigOverlay("a", { mcp: { shared: { url: "https://a1.test" } } });
+		manager.contributeConfigOverlay("b", { mcp: { shared: { url: "https://b.test" } } });
+		manager.contributeConfigOverlay("a", { mcp: { shared: { url: "https://a2.test" } } });
+
+		expect(manager.getMergedConfigOverlay()).toEqual({
+			mcp: { shared: { url: "https://a2.test" } },
+		});
+	});
+
+	it("fires onChange only when the overlay actually changes, and on dispose", () => {
+		const { manager, onChange } = createHarness();
+		const overlay = { mcp: { one: { url: "https://a.test" } } };
+		const disposeFirst = manager.contributeConfigOverlay("a", overlay);
+		expect(onChange).toHaveBeenCalledTimes(1);
+
+		// Deep-equal re-contribution is a no-op (new object identity, same content).
+		const disposeSecond = manager.contributeConfigOverlay("a", {
+			mcp: { one: { url: "https://a.test" } },
+		});
+		expect(onChange).toHaveBeenCalledTimes(1);
+
+		// The superseded disposer is inert; the current one removes the overlay.
+		disposeFirst();
+		expect(onChange).toHaveBeenCalledTimes(1);
+		disposeSecond();
+		expect(onChange).toHaveBeenCalledTimes(2);
+		expect(manager.getMergedConfigOverlay()).toBeUndefined();
+	});
+
+	it("ignores overlays without an mcp section in the merged result", () => {
+		const { manager } = createHarness();
+		manager.contributeConfigOverlay("a", {});
+		manager.contributeConfigOverlay("b", { mcp: { one: {} } });
+
+		expect(manager.getMergedConfigOverlay()).toEqual({
+			mcp: { one: {} },
+		});
+	});
+
+	// Regression: PR #116 review CRITICAL — the deleted mcpIdSchema rejected
+	// reserved property names because `mcp[id] = entry` on a plain object
+	// mutates its prototype for id "__proto__". The merge accumulator is now
+	// prototype-less so reserved ids become inert own properties.
+	it("treats __proto__ / constructor / prototype entry ids as plain data (no pollution)", () => {
+		const { manager } = createHarness();
+		manager.contributeConfigOverlay("evil", {
+			mcp: JSON.parse(
+				'{"__proto__":{"polluted":true},"constructor":{"c":1},"prototype":{"p":1}}',
+			) as Record<string, unknown>,
+		});
+
+		const merged = manager.getMergedConfigOverlay()!;
+		const mcp = merged.mcp as Record<string, unknown>;
+		// The entries survive as own keys (kilo receives them as data)...
+		expect(Object.keys(mcp).sort()).toEqual(["__proto__", "constructor", "prototype"]);
+		// ...and nothing was polluted in this process.
+		expect(Object.getPrototypeOf(mcp)).toBeNull();
+		expect({} as { polluted?: boolean }).not.toHaveProperty("polluted");
+	});
+
+	// Regression: contributions are snapshotted at the boundary — a caller
+	// mutating its object after (or between) contribute calls must neither
+	// change the merged output silently nor defeat change detection.
+	it("is immune to caller-side mutation of the contributed overlay", () => {
+		const { manager, onChange } = createHarness();
+		const entry: Record<string, unknown> = { url: "https://one.test" };
+		const overlay = { mcp: { shared: entry } };
+		manager.contributeConfigOverlay("a", overlay);
+		expect(onChange).toHaveBeenCalledTimes(1);
+
+		// Mutating the caller's object does not change the merged output.
+		entry.url = "https://mutated.test";
+		expect(manager.getMergedConfigOverlay()).toEqual({
+			mcp: { shared: { url: "https://one.test" } },
+		});
+
+		// Re-contributing the SAME (now mutated) instance is a real change.
+		manager.contributeConfigOverlay("a", overlay);
+		expect(onChange).toHaveBeenCalledTimes(2);
+		expect(manager.getMergedConfigOverlay()).toEqual({
+			mcp: { shared: { url: "https://mutated.test" } },
+		});
+	});
+});

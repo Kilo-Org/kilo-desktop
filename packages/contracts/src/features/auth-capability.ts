@@ -4,13 +4,13 @@
  * Consumers resolve this via:
  * ```ts
  * const auth = mainSdk.plugins.get<AuthMainCapability>("auth");
- * const apiKey = await auth?.auth.getApiKey();
+ * const apiKey = await auth?.session.getApiKey();
  * ```
  *
  * The raw API key is never exposed to the renderer process.
  */
 export interface AuthMainCapability extends Record<string, unknown> {
-	auth: AuthMainCapabilityService;
+	session: AuthMainCapabilityService;
 }
 
 export interface AuthMainCapabilityService {

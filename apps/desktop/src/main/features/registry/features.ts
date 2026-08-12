@@ -4,6 +4,8 @@ import {
 	reportPluginDiscoveryIssues,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
+import { ANACONDA_MCP_FEATURE_ID } from "@anaconda-agentic-desktop/contracts";
+
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
@@ -11,7 +13,10 @@ import { mainRegister as anacondaMcpMainRegister } from "../anaconda-mcp/index.j
 
 /** Built-in features developed inside apps/ (three-location pattern). */
 const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [
-	{ id: "anaconda-mcp", mainRegister: anacondaMcpMainRegister },
+	// The id constant lives in contracts because the SDK derives event names
+	// from it (`<featureId>.<event>`); renderer subscriptions import the same
+	// constant, so registration and subscription cannot drift apart.
+	{ id: ANACONDA_MCP_FEATURE_ID, mainRegister: anacondaMcpMainRegister },
 ];
 
 /**

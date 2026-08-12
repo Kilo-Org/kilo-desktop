@@ -144,12 +144,12 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
 			{frameSrc ? (
-				// Deliberately no `sandbox` attribute. The isolation boundary here is the
-				// separate protocol origin plus its CSP, not the sandbox: nteract needs
-				// same-origin privileges for the loopback relay WebSocket and storage, and
-				// `sandbox="allow-scripts allow-same-origin"` is a documented no-op — a frame
-				// granted both can reach up and clear its own sandbox attribute. Adding one
-				// would either break the notebook or buy nothing.
+				// Deliberately no `sandbox` attribute. The trusted nteract application is
+				// isolated from the app renderer by its dedicated protocol origin and CSP.
+				// Untrusted notebook output is separately confined in output-frame.html.
+				// Sandboxing this application frame while granting both scripts and its own
+				// origin would add no boundary and would interfere with browser capabilities
+				// the notebook shell legitimately uses.
 				<iframe
 					ref={frameRef}
 					src={frameSrc}

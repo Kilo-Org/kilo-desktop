@@ -67,6 +67,14 @@ const ownsPendingAsk = (
 const ANIMATION_DURATION = 200;
 const MAX_VISIBLE_ICONS = 5;
 
+/** Header is the whole story — expanding would reveal nothing (or a duplicate label). */
+const LABEL_ONLY_ACTIVITY_KINDS: ReadonlySet<ActivityKind> = new Set([
+	"asking",
+	"skill",
+	"reading",
+	"planning",
+]);
+
 type GroupLike = {
 	indices: readonly number[];
 };
@@ -120,17 +128,21 @@ const ActivityIconStack: FC<{
 	);
 };
 
-const ActivityLabel: FC<{ label: string; shimmer?: boolean }> = ({ label, shimmer = false }) => {
-	const split = label.indexOf(" ");
+const ActivityLabel: FC<{
+	label: string;
+	object?: string | undefined;
+	shimmer?: boolean;
+}> = ({ label, object, shimmer = false }) => {
+	const split = object === undefined ? label.indexOf(" ") : -1;
 	const verb = split === -1 ? label : label.slice(0, split);
-	const object = split === -1 ? null : label.slice(split + 1);
+	const rest = object !== undefined ? object : split === -1 ? null : label.slice(split + 1);
 	return (
 		<span className="relative inline-block">
 			{verb}
-			{object !== null ? (
+			{rest ? (
 				<>
 					{" "}
-					<span className="opacity-60">{object}</span>
+					<span className="opacity-60">{rest}</span>
 				</>
 			) : null}
 			{shimmer ? (
@@ -343,12 +355,13 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	if (streamCollapsed && !active) return null;
 
-	// Question tools are answered in the composer Questionnaire — the subgroup
-	// label is the only message-stream chrome (Asking / Asked …). While the
-	// stream row is collapsed, the parent ActivityGroup owns the ask icon.
-	if (kind === "asking") {
+	// Label-only kinds have no nested detail. Multiple items still list under
+	// the header, but the row is not a disclosure. While the stream row is
+	// collapsed, the parent ActivityGroup owns the icon.
+	if (LABEL_ONLY_ACTIVITY_KINDS.has(kind)) {
 		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
+		const showChildren = kind !== "asking" && group.indices.length > 1;
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
 				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
@@ -364,9 +377,18 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						]}
 					/>
 					<span className="font-medium">
-						<ActivityLabel label={label} shimmer={active} />
+						<ActivityLabel
+							label={label}
+							object={kind === "skill" ? (stats.skill ?? "") : undefined}
+							shimmer={active}
+						/>
 					</span>
 				</div>
+				{showChildren ? (
+					<div className="border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3">
+						{children}
+					</div>
+				) : null}
 			</ActivitySubgroupContext.Provider>
 		);
 	}

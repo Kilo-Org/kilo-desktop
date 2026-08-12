@@ -51,7 +51,6 @@ import {
 	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
-	RefreshCwIcon,
 	SquareIcon,
 } from "lucide-react";
 import {
@@ -543,6 +542,25 @@ const ComposerAction: FC<{
 	);
 };
 
+const CONSIDERING_NEXT_STEPS = "Considering next steps";
+
+const AssistantWorkingIndicator: FC = () => (
+	<span
+		data-slot="aui_assistant-message-indicator"
+		className="text-muted-foreground relative inline-block text-sm leading-none"
+		role="status"
+		aria-label={CONSIDERING_NEXT_STEPS}
+	>
+		<span>{CONSIDERING_NEXT_STEPS}</span>
+		<span
+			aria-hidden
+			className="shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none"
+		>
+			{CONSIDERING_NEXT_STEPS}
+		</span>
+	</span>
+);
+
 const MessageError: FC = () => {
 	return (
 		<MessagePrimitive.Error>
@@ -611,6 +629,7 @@ const AssistantMessage: FC = () => {
 							case "group-terminal":
 							case "group-planning":
 							case "group-asking":
+							case "group-skill":
 							case "group-tools": {
 								const kind = activityKindFromGroupKey(part.type);
 								if (!kind) return null;
@@ -629,15 +648,7 @@ const AssistantMessage: FC = () => {
 							case "data":
 								return part.dataRendererUI;
 							case "indicator":
-								return (
-									<span
-										data-slot="aui_assistant-message-indicator"
-										className="animate-pulse font-sans"
-										aria-label="Assistant is working"
-									>
-										{"●"}
-									</span>
-								);
+								return <AssistantWorkingIndicator />;
 							default: {
 								if (
 									typeof part.type === "string" &&
@@ -679,9 +690,6 @@ const AssistantActionBar: FC = () => {
 			className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
 		>
 			<MessageCopyButton />
-			<ActionBarPrimitive.Reload render={<TooltipIconButton tooltip="Refresh" />}>
-				<RefreshCwIcon />
-			</ActionBarPrimitive.Reload>
 			<ActionBarMorePrimitive.Root>
 				<ActionBarMorePrimitive.Trigger
 					render={<TooltipIconButton tooltip="More" className="data-[state=open]:bg-accent" />}

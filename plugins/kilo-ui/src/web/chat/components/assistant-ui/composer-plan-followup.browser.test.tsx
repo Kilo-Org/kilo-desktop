@@ -25,7 +25,6 @@ import { Thread } from "./thread.js";
 import { resetPlanApprovalUiState } from "../../plan/use-approve-plan.js";
 
 const replyToQuestion = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-const setAgent = vi.hoisted(() => vi.fn());
 
 vi.mock("@assistant-ui/react-opencode", async (importOriginal) => {
 	const actual = await importOriginal<typeof AssistantUiReactOpencode>();
@@ -128,7 +127,7 @@ const modelSelection = {
 
 const agentSelection = {
 	agent: "plan",
-	setAgent,
+	setAgent: () => undefined,
 	catalog: {
 		agents: OPTIMISTIC_AGENT_CATALOG.agents.filter(
 			(entry) => entry.name === "code" || entry.name === "plan",
@@ -206,45 +205,40 @@ describe("composer plan follow-up CTAs", () => {
 		},
 	];
 
-	it("shows Approve instead of Stop or the question questionnaire when empty", async () => {
+	it("shows a disabled Refine instead of Stop or the question questionnaire when empty", async () => {
 		const { baseElement } = renderThread(seededMessages);
 		const screen = page.elementLocator(baseElement);
+		const refine = screen.getByTestId("kilo-composer-refine");
 
 		await expect.element(screen.getByTestId("kilo-question-questionnaire")).not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("kilo-composer-approve")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-composer-refine")).not.toBeInTheDocument();
+		await expect.element(refine).toBeVisible();
+		await expect.element(refine).toBeDisabled();
+		await expect.element(screen.getByTestId("kilo-composer-approve")).not.toBeInTheDocument();
 		await expect
 			.element(screen.getByRole("button", { name: "Stop generating" }))
 			.not.toBeInTheDocument();
 	});
 
-	it("switches to Refine when the composer has text", async () => {
+	it("enables Refine when the composer has text", async () => {
 		const { baseElement } = renderThread(seededMessages);
 		const screen = page.elementLocator(baseElement);
 		const input = screen.getByRole("textbox", { name: "Message input" });
+		const refine = screen.getByTestId("kilo-composer-refine");
 
+		await expect.element(refine).toBeDisabled();
 		await input.fill("Tighten step 2");
-		await expect.element(screen.getByTestId("kilo-composer-refine")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-composer-approve")).not.toBeInTheDocument();
-	});
-
-	it("replies Continue here when Approve is clicked", async () => {
-		const { baseElement } = renderThread(seededMessages);
-		const screen = page.elementLocator(baseElement);
-
-		await screen.getByTestId("kilo-composer-approve").click();
-		await vi.waitFor(() => expect(replyToQuestion).toHaveBeenCalledOnce());
-		expect(setAgent).toHaveBeenCalledWith("code");
-		expect(replyToQuestion).toHaveBeenCalledWith("q-plan", [["Continue here"]]);
+		await expect.element(refine).toBeEnabled();
 	});
 
 	it("replies with the draft text when Refine is clicked", async () => {
 		const { baseElement } = renderThread(seededMessages);
 		const screen = page.elementLocator(baseElement);
 		const input = screen.getByRole("textbox", { name: "Message input" });
+		const refine = screen.getByTestId("kilo-composer-refine");
 
 		await input.fill("Tighten step 2");
-		await screen.getByTestId("kilo-composer-refine").click();
+		await expect.element(refine).toBeEnabled();
+		await refine.click();
 		await vi.waitFor(() => expect(replyToQuestion).toHaveBeenCalledOnce());
 		expect(replyToQuestion).toHaveBeenCalledWith("q-plan", [["Tighten step 2"]]);
 	});
@@ -255,7 +249,7 @@ describe("composer plan follow-up CTAs", () => {
 		const input = screen.getByRole("textbox", { name: "Message input" });
 
 		await input.fill("Tighten step 2");
-		await expect.element(screen.getByTestId("kilo-composer-refine")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-composer-refine")).toBeEnabled();
 		await userEvent.type(input, "{Enter}");
 		await vi.waitFor(() => expect(replyToQuestion).toHaveBeenCalledOnce());
 		expect(replyToQuestion).toHaveBeenCalledWith("q-plan", [["Tighten step 2"]]);

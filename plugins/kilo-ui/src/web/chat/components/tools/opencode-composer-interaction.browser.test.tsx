@@ -104,7 +104,7 @@ describe("OpenCodeComposerInteraction", () => {
 		await expect.element(screen.getByText("Run a shell command")).not.toBeInTheDocument();
 	});
 
-	it("leaves plan follow-up questions to the composer Approve/Refine actions", async () => {
+	it("leaves plan follow-up questions to the composer Refine action", async () => {
 		runtime.questions.push({
 			id: "plan-followup-1",
 			sessionID: "session-1",

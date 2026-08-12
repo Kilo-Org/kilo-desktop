@@ -18,7 +18,7 @@ export const OpenCodeComposerInteraction = ({ fallback }: { fallback: ReactNode 
 	const { pending: pendingPermissions } = useOpenCodePermissions();
 	const pendingQuestions = useOpenCodeQuestions();
 	const activeInteraction = useMemo(() => {
-		// Plan follow-ups are answered via Approve/Refine on the composer, not the questionnaire.
+		// Plan follow-ups are answered via Refine on the composer (Approve lives on the plan card/tab).
 		const visibleQuestions = pendingQuestions.filter(
 			(question) => !isPlanFollowupRequest(question),
 		);

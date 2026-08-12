@@ -260,7 +260,7 @@ const Composer: FC = () => {
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
-	const { approve, refine, submitting, canReply } = useApprovePlan();
+	const { refine, submitting, canReply } = useApprovePlan();
 
 	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
 
@@ -288,24 +288,17 @@ const Composer: FC = () => {
 		})();
 	};
 
-	const submitPlanFollowup = (mode: "build" | "refine") => {
-		if (mode === "build") {
-			approve();
-			return;
-		}
+	const handlePlanRefineSubmit = () => {
+		if (isComposerEmpty) return;
 		refine();
-	};
-
-	const handlePlanFollowupSubmit = () => {
-		submitPlanFollowup(isComposerEmpty ? "build" : "refine");
 	};
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		// Plan follow-up keeps the thread running, so ComposerInput ignores Enter.
-		// Route submit to Approve/Refine instead of composer.send().
+		// Route submit to Refine instead of composer.send().
 		if (showPlanFollowupActions) {
 			event.preventDefault();
-			handlePlanFollowupSubmit();
+			handlePlanRefineSubmit();
 			return;
 		}
 		// When Kilo is still starting, wait before composer.send() so the draft
@@ -323,7 +316,7 @@ const Composer: FC = () => {
 		if (!showPlanFollowupActions) return;
 		// ComposerInput returns early while isRunning — intercept before that.
 		event.preventDefault();
-		handlePlanFollowupSubmit();
+		handlePlanRefineSubmit();
 	};
 
 	return (
@@ -361,7 +354,7 @@ const Composer: FC = () => {
 					onSendWhenConnected={sendWhenConnected}
 					showPlanFollowupActions={showPlanFollowupActions}
 					planActionPending={submitting}
-					onPlanFollowup={submitPlanFollowup}
+					onRefine={refine}
 				/>
 			</ComposerPrimitive.AttachmentDropzone>
 		</ComposerPrimitive.Root>
@@ -374,14 +367,14 @@ const ComposerAction: FC<{
 	onSendWhenConnected: () => void;
 	showPlanFollowupActions: boolean;
 	planActionPending: boolean;
-	onPlanFollowup: (mode: "build" | "refine") => void;
+	onRefine: () => void;
 }> = ({
 	isConnecting,
 	isConnectionPending,
 	onSendWhenConnected,
 	showPlanFollowupActions,
 	planActionPending,
-	onPlanFollowup,
+	onRefine,
 }) => {
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const canSend = useAuiState((s) => s.composer.canSend);
@@ -463,33 +456,18 @@ const ComposerAction: FC<{
 					</TooltipIconButton>
 				) : null}
 				{showPlanFollowupActions ? (
-					isComposerEmpty ? (
-						<Button
-							type="button"
-							size="sm"
-							className="h-7 rounded-full px-3"
-							disabled={planActionPending}
-							data-qa-id="kilo-composer-approve"
-							aria-label="Approve plan"
-							onClick={() => onPlanFollowup("build")}
-						>
-							{planActionPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
-							Approve
-						</Button>
-					) : (
-						<Button
-							type="button"
-							size="sm"
-							className="h-7 rounded-full px-3"
-							disabled={planActionPending}
-							data-qa-id="kilo-composer-refine"
-							aria-label="Refine plan"
-							onClick={() => onPlanFollowup("refine")}
-						>
-							{planActionPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
-							Refine
-						</Button>
-					)
+					<Button
+						type="button"
+						size="sm"
+						className="h-7 rounded-full px-3"
+						disabled={isComposerEmpty || planActionPending}
+						data-qa-id="kilo-composer-refine"
+						aria-label="Refine plan"
+						onClick={() => onRefine()}
+					>
+						{planActionPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
+						Refine
+					</Button>
 				) : null}
 				{!showPlanFollowupActions && !isConnecting && !isRunning && !isConnectionPending ? (
 					<ComposerPrimitive.Send

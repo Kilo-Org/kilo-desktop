@@ -10,6 +10,7 @@ import {
 	bootFeatures,
 	createFeatureHandlers,
 	createFeatureMessageHandlers,
+	createFeaturePortHandlers,
 } from "./features/registry/feature-registry.js";
 import { collectEmbeddedHosts } from "./features/registry/embedded-hosts.js";
 import { FEATURES } from "./features/registry/features.js";
@@ -212,6 +213,7 @@ export class Application {
 			createFeatureMessageHandlers((event, senderId) =>
 				this.#windows.broadcast("feature:event", event, senderId),
 			),
+			createFeaturePortHandlers(),
 		);
 		this.#disposers.push(() => this.#ipcServer.dispose());
 		this.#disposers.push(() => this.#featureFlags?.dispose());

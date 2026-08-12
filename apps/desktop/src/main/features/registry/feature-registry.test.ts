@@ -12,6 +12,7 @@ import {
 	bootFeatures,
 	createFeatureHandlers,
 	createFeatureMessageHandlers,
+	createFeaturePortHandlers,
 	featureRouter,
 } from "./feature-registry.js";
 
@@ -319,6 +320,37 @@ describe("feature invoke bridge", () => {
 			await expect(invoke({ featureId, channel: "run", args: "unexpected" })).rejects.toBe(
 				unexpected,
 			);
+		} finally {
+			await dispose();
+		}
+	});
+});
+
+describe("feature port bridge", () => {
+	it("attaches the transferred port to the owning feature handler", async () => {
+		const featureId = "feature-port-bridge-test";
+		const attached = vi.fn();
+		const port = {} as never;
+		const dispose = await bootFeatures([
+			{
+				id: featureId,
+				mainRegister(mainSdk) {
+					mainSdk.ports.handle("runtime", attached);
+				},
+			},
+		]);
+
+		try {
+			await createFeaturePortHandlers()["feature:port"](
+				{
+					type: "anaconda-agentic-desktop:feature-port",
+					featureId,
+					channel: "runtime",
+					args: { notebookId: "nb-1" },
+				},
+				{ senderId: 42, port },
+			);
+			expect(attached).toHaveBeenCalledWith(port, { notebookId: "nb-1" });
 		} finally {
 			await dispose();
 		}

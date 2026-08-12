@@ -127,4 +127,80 @@ describe("IpcServer", () => {
 			error,
 		);
 	});
+
+	it("routes one validated port from a trusted renderer", async () => {
+		const handler = vi.fn();
+		const server = new IpcServer(ipcMain as never);
+		server.register({} as IpcHandlers, undefined, { "feature:port": handler });
+		const listener = listeners.get("feature:port")!;
+		const port = { close: vi.fn() };
+		const payload = {
+			type: "anaconda-agentic-desktop:feature-port",
+			featureId: "notebook",
+			channel: "host",
+			args: { notebookId: "nb-1" },
+		};
+
+		listener({ sender: { id: 7 }, ports: [port] }, payload);
+		await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
+		expect(handler).toHaveBeenCalledWith(payload, { senderId: 7, port });
+		expect(port.close).not.toHaveBeenCalled();
+	});
+
+	it("closes rejected or unhandled transferred ports", async () => {
+		const error = new Error("no handler");
+		const logger = { error: vi.fn() };
+		const handler = vi.fn(() => Promise.reject(error));
+		const server = new IpcServer(ipcMain as never, logger);
+		server.register({} as IpcHandlers, undefined, { "feature:port": handler });
+		const listener = listeners.get("feature:port")!;
+		const payload = {
+			type: "anaconda-agentic-desktop:feature-port",
+			featureId: "notebook",
+			channel: "host",
+		};
+
+		const invalidPort = { close: vi.fn() };
+		listener({ sender: { id: 7 }, ports: [invalidPort] }, { ...payload, featureId: "" });
+		expect(invalidPort.close).toHaveBeenCalledOnce();
+
+		const extraPorts = [{ close: vi.fn() }, { close: vi.fn() }];
+		listener({ sender: { id: 7 }, ports: extraPorts }, payload);
+		expect(extraPorts[0]!.close).toHaveBeenCalledOnce();
+		expect(extraPorts[1]!.close).toHaveBeenCalledOnce();
+
+		const untrustedPort = { close: vi.fn() };
+		isTrustedIpcSender.mockReturnValueOnce(false);
+		listener({ sender: { id: 7 }, ports: [untrustedPort] }, payload);
+		expect(untrustedPort.close).toHaveBeenCalledOnce();
+
+		const failedPort = { close: vi.fn() };
+		listener({ sender: { id: 7 }, ports: [failedPort] }, payload);
+		await vi.waitFor(() => expect(failedPort.close).toHaveBeenCalledOnce());
+		expect(logger.error).toHaveBeenCalledWith("IPC port handler failed for feature:port", error);
+	});
+
+	it("closes the port when a feature port handler throws synchronously", () => {
+		const error = new Error("attach failed");
+		const logger = { error: vi.fn() };
+		const server = new IpcServer(ipcMain as never, logger);
+		server.register({} as IpcHandlers, undefined, {
+			"feature:port": () => {
+				throw error;
+			},
+		});
+		const port = { close: vi.fn() };
+
+		listeners.get("feature:port")!(
+			{ sender: { id: 7 }, ports: [port] },
+			{
+				type: "anaconda-agentic-desktop:feature-port",
+				featureId: "notebook",
+				channel: "host",
+			},
+		);
+
+		expect(port.close).toHaveBeenCalledOnce();
+		expect(logger.error).toHaveBeenCalledWith("IPC port handler failed for feature:port", error);
+	});
 });

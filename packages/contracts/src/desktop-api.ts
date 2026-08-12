@@ -1,11 +1,13 @@
 import type { z } from "zod";
 
-import type { ipcEvents, ipcMessages, ipcMethods } from "./registry.js";
+import type { ipcEvents, ipcMessages, ipcMethods, ipcPorts } from "./registry.js";
+import type { HostMessagePort } from "@anaconda-agentic-desktop/feature-sdk";
 import type { IpcResult } from "./result.js";
 
 export type IpcMethodChannel = keyof typeof ipcMethods;
 export type IpcEventChannel = keyof typeof ipcEvents;
 export type IpcMessageChannel = keyof typeof ipcMessages;
+export type IpcPortChannel = keyof typeof ipcPorts;
 
 export type IpcMethodInput<TChannel extends IpcMethodChannel> = z.input<
 	(typeof ipcMethods)[TChannel]["input"]
@@ -18,6 +20,9 @@ export type IpcEventPayload<TChannel extends IpcEventChannel> = z.output<
 >;
 export type IpcMessagePayload<TChannel extends IpcMessageChannel> = z.input<
 	(typeof ipcMessages)[TChannel]["payload"]
+>;
+export type IpcPortPayload<TChannel extends IpcPortChannel> = z.input<
+	(typeof ipcPorts)[TChannel]["payload"]
 >;
 
 export type InvokeArguments<TChannel extends IpcMethodChannel> =
@@ -58,4 +63,16 @@ export type IpcMessageHandlers = {
 		payload: IpcMessagePayload<TChannel>,
 		context: IpcMessageContext,
 	) => void;
+};
+
+export interface IpcPortContext extends IpcMessageContext {
+	/** The single transferred port. No Electron APIs are exposed to features. */
+	port: HostMessagePort;
+}
+
+export type IpcPortHandlers = {
+	[TChannel in IpcPortChannel]: (
+		payload: IpcPortPayload<TChannel>,
+		context: IpcPortContext,
+	) => void | Promise<void>;
 };

@@ -44,6 +44,42 @@ describe("FeatureRouter", () => {
 		expect(() => mainSdk.boot.reportProgress("nobody listens")).not.toThrow();
 	});
 
+	it("routes transferred ports only to the feature-scoped handler", async () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("notebook");
+		const handler = vi.fn();
+		const port = {
+			postMessage: vi.fn(),
+			on: vi.fn(),
+			off: vi.fn(),
+			start: vi.fn(),
+			close: vi.fn(),
+		} as never;
+		mainSdk.ports.handle("host", handler);
+
+		await router.connectPort("notebook", "host", port, { notebookId: "nb-1" });
+
+		expect(handler).toHaveBeenCalledWith(port, { notebookId: "nb-1" });
+		await expect(router.connectPort("notebook", "missing", port)).rejects.toMatchObject({
+			code: "NOT_FOUND",
+		});
+		await expect(router.connectPort("other", "host", port)).rejects.toMatchObject({
+			code: "NOT_FOUND",
+		});
+	});
+
+	it("removes port handlers during feature teardown", async () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("notebook");
+		const port = {} as never;
+		mainSdk.ports.handle("host", vi.fn());
+		router.destroyFeature("notebook");
+
+		await expect(router.connectPort("notebook", "host", port)).rejects.toMatchObject({
+			code: "NOT_FOUND",
+		});
+	});
+
 	it("mainSdk.events stamps namespaces, delivers locally, and relays once", () => {
 		const relay = vi.fn();
 		const router = new FeatureRouter();

@@ -11,6 +11,7 @@ import type {
 	SdkFs,
 	SdkIntents,
 	SdkLocation,
+	SdkPorts,
 	SdkNavigation,
 	SdkNotifications,
 	SdkPlugins,
@@ -52,6 +53,8 @@ export interface ShellDelegates {
 export interface SdkFactoryServices {
 	/** Optional renderer-to-main transport. Browser mode omits it. */
 	emitEvent?: (event: FeatureEvent) => void;
+	/** Optional renderer-to-main transferable port transport. Electron supplies it. */
+	openPort?: (featureId: string, channel: string, args?: unknown) => unknown;
 	stateBroker: StateBroker;
 	contributionRegistry: ContributionRegistry;
 	commandRegistry: CommandRegistry;
@@ -282,10 +285,21 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	});
 
+	const ports: SdkPorts = {
+		open<TPort>(channel: string, args?: unknown): TPort {
+			assertAlive();
+			if (!services.openPort) {
+				throw new Error("sdk.ports requires a host MessagePort transport.");
+			}
+			return services.openPort(featureId, channel, args) as TPort;
+		},
+	};
+
 	const sdk: SDK = {
 		featureId,
 		invoke,
 		client,
+		ports,
 
 		events,
 		state,

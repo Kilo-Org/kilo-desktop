@@ -236,13 +236,19 @@ describe("kilo-server main registration", () => {
 			runAsNodeEnabled: async () => true,
 		});
 
-		// Give the microtask queue a chance; seed is pending, ensureRunning
-		// must not have run yet.
+		// Give the microtask queue a chance; seed is pending, and lazy spawn
+		// means ensureRunning hasn't run yet either.
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		expect(order).toEqual(["seed-start"]);
+
+		// A consumer requests the connection — this must AWAIT the seed
+		// before it can call ensureRunning.
+		const connectionPromise = mainSdk.invoke("server.getConnection");
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		expect(order).toEqual(["seed-start"]);
 
 		releaseSeed();
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		await connectionPromise;
 		expect(order).toEqual(["seed-start", "seed-end", "ensure-running"]);
 		mainSdk.dispose();
 	});
@@ -260,7 +266,10 @@ describe("kilo-server main registration", () => {
 			runAsNodeEnabled: async () => true,
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		// Lazy spawn: the seed runs on its own, but ensureRunning only fires
+		// on demand. A seed failure must NOT prevent a subsequent
+		// getConnection from spawning the server.
+		await mainSdk.invoke("server.getConnection");
 		expect(server.ensureRunning).toHaveBeenCalled();
 		mainSdk.dispose();
 	});
@@ -331,6 +340,8 @@ describe("kilo-server main registration", () => {
 		expect(seedEndIndex).toBeGreaterThan(0);
 		expect(order.slice(0, seedEndIndex + 1)).not.toContain("ensure-running");
 		expect(order.slice(seedEndIndex + 1).every((entry) => entry === "ensure-running")).toBe(true);
+	});
+
 	it("exposes serverEnv.contribute capability for other plugins to inject env", async () => {
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();

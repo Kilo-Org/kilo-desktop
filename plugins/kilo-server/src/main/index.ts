@@ -255,7 +255,6 @@ export function registerKiloServer(
 		options.createConfigManager ?? ((ch: string) => new KiloConfigManager({ configHome: ch }));
 	const configManager = createConfigManager(configHome);
 
-
 	const connectionService = {
 		// Route through ensureRunningAfterSeed so getConnection callers
 		// (renderer mount + `server.getConnection` RPC) wait on the WebMCP

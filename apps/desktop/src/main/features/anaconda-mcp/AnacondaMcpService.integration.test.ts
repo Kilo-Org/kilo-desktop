@@ -6,7 +6,6 @@ import {
 	AnacondaMcpService,
 	DEFAULT_MCP_URL,
 	FEATURE_FLAG_KEY,
-	MANAGED_BY,
 	MCP_ENV_VAR,
 	MCP_ID,
 } from "./AnacondaMcpService.js";
@@ -31,12 +30,8 @@ function createTestHarness(overrides?: {
 	settings?: Partial<AnacondaMcpServiceOptions>;
 	apiKey?: string | null;
 	withKilo?: boolean;
-	saveMcpImpl?: (input: {
-		id: string;
-		transport: unknown;
-		enabled: boolean;
-		managedBy?: string;
-	}) => Promise<void>;
+	saveMcpImpl?: (input: SaveMcpInput) => Promise<void>;
+	removeMcpImpl?: (input: RemoveMcpInput) => Promise<void>;
 	/**
 	 * Feature-flag value returned by the fake feature-flag capability.
 	 * Defaults to `true` so existing tests exercise the "connected" path
@@ -46,9 +41,7 @@ function createTestHarness(overrides?: {
 	 * default to off).
 	 */
 	featureFlagEnabled?: boolean | null;
-}
-
-function createTestHarness(overrides?: HarnessOverrides) {
+}) {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
 	(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
 
@@ -59,9 +52,8 @@ function createTestHarness(overrides?: HarnessOverrides) {
 	const removeMcp = vi.fn<(input: RemoveMcpInput) => Promise<void>>(
 		overrides?.removeMcpImpl ?? (async () => {}),
 	);
-	const envContribute = vi.fn((_sourceId: string, _env: Record<string, string>) => {
-		return () => {};
-	});
+	const envDisposer = vi.fn();
+	const envContribute = vi.fn((_sourceId: string, _env: Record<string, string>) => envDisposer);
 
 	// Stub kilo-server capability
 	if (overrides?.withKilo !== false) {
@@ -217,6 +209,11 @@ describe("AnacondaMcpService", () => {
 		});
 		const authSdk = createMainSdk("auth");
 		authSdk.plugins.expose("auth", { getApiKey: async () => "key" });
+
+		const flagSdk = createMainSdk("feature-flag");
+		flagSdk.plugins.expose("featureFlag", {
+			getFlag: <T>(_key: string, _defaultValue: T): T => true as unknown as T,
+		});
 
 		let enabled = true;
 		const svc = new AnacondaMcpService({
@@ -461,7 +458,7 @@ describe("AnacondaMcpService", () => {
 		expect(envDisposer).toHaveBeenCalledTimes(1);
 		expect((seen[seen.length - 1] as { state?: string }).state).toBe("disabled");
 	});
-=======
+
 	describe("feature flag gate (remote-anaconda-mcp)", () => {
 		it("stays disabled when the flag is off, even with valid auth and kilo-server", async () => {
 			const { service, saveMcp, envContribute, removeMcp } = createTestHarness({

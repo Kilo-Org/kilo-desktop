@@ -1,172 +1,330 @@
 import { describe, expect, it } from "vitest";
 
+import type { Part, ToolPart } from "@assistant-ui/react-opencode";
+
 import {
 	findNewestPlanProjection,
 	findPlanProjectionByAnchorCallId,
-	findPriorPlanMarkdown,
 	getPlanProjectionForMessage,
 	getPlanProjectionFromParts,
 	isCurrentPlanVersion,
+	projectPlanThread,
 	shouldExcludeToolCallFromActivityGroup,
+	type PlanThreadSource,
 } from "./plan-projection.js";
 
-const writePart = (overrides: Record<string, unknown> = {}) => ({
-	type: "tool",
-	tool: "write",
-	callID: "write-1",
-	state: {
-		status: "completed",
-		input: {
-			filePath: ".kilo/plans/ship.md",
-			content: "# Ship it\n\n- step 1",
+const toolPart = (
+	tool: string,
+	callID: string,
+	state:
+		| { status: "running"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
+		| { status: "completed"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
+		| {
+				status: "error";
+				input: Record<string, unknown>;
+				error: string;
+				metadata?: Record<string, unknown>;
+		  },
+): ToolPart => {
+	const identity = {
+		id: `part-${callID}`,
+		sessionID: "session-1",
+		messageID: "message-1",
+		type: "tool" as const,
+		tool,
+		callID,
+	};
+	if (state.status === "running") {
+		return {
+			...identity,
+			state: {
+				...state,
+				time: { start: 1 },
+			},
+		};
+	}
+	if (state.status === "error") {
+		return {
+			...identity,
+			state: {
+				...state,
+				time: { start: 1, end: 2 },
+			},
+		};
+	}
+	return {
+		...identity,
+		state: {
+			...state,
+			output: "",
+			title: tool,
+			metadata: state.metadata ?? {},
+			time: { start: 1, end: 2 },
 		},
-		...((overrides.state as object) ?? {}),
+	};
+};
+
+const writePart = (
+	callID = "write-1",
+	input: Record<string, unknown> = {
+		filePath: ".kilo/plans/ship.md",
+		content: "# Ship it\n\n- step 1",
 	},
-	...overrides,
+): ToolPart => toolPart("write", callID, { status: "completed", input });
+
+const editPart = (
+	callID = "edit-1",
+	input: Record<string, unknown> = {
+		filePath: ".kilo/plans/ship.md",
+		oldString: "# Ship it",
+		newString: "# Ship it faster",
+	},
+): ToolPart => toolPart("edit", callID, { status: "completed", input });
+
+const exitPart = (
+	callID = "exit-1",
+	status: "completed" | "error" = "completed",
+	plan = ".kilo/plans/ship.md",
+): ToolPart =>
+	status === "error"
+		? toolPart("plan_exit", callID, {
+				status: "error",
+				input: {},
+				error: "Plan file not found",
+			})
+		: toolPart("plan_exit", callID, {
+				status: "completed",
+				input: {},
+				metadata: { plan },
+			});
+
+const threadSource = (
+	messages: readonly {
+		id: string;
+		role: "assistant" | "user";
+		agent?: string;
+		parts?: readonly Part[];
+	}[],
+): PlanThreadSource => ({
+	messageOrder: messages.map((message) => message.id),
+	messagesById: Object.fromEntries(
+		messages.map((message) => [
+			message.id,
+			{
+				info: { role: message.role, ...(message.agent ? { agent: message.agent } : {}) },
+				parts: message.parts ?? [],
+			},
+		]),
+	),
 });
 
-const editPart = (overrides: Record<string, unknown> = {}) => ({
-	type: "tool",
-	tool: "edit",
-	callID: "edit-1",
-	state: {
-		status: "completed",
-		input: {
-			filePath: ".kilo/plans/ship.md",
-			oldString: "# Ship it",
-			newString: "# Ship it faster",
+const refinedPlanSource = (): PlanThreadSource =>
+	threadSource([
+		{ id: "msg-plan", role: "assistant", parts: [writePart(), exitPart()] },
+		{ id: "msg-user", role: "user" },
+		{
+			id: "msg-refine",
+			role: "assistant",
+			parts: [editPart("edit-2"), exitPart("exit-2")],
 		},
-		...((overrides.state as object) ?? {}),
-	},
-	...overrides,
-});
-
-const exitPart = (overrides: Record<string, unknown> = {}) => ({
-	type: "tool",
-	tool: "plan_exit",
-	callID: "exit-1",
-	state: {
-		status: "completed",
-		input: {},
-		metadata: { plan: ".kilo/plans/ship.md" },
-		...((overrides.state as object) ?? {}),
-	},
-	...overrides,
-});
+	]);
 
 describe("getPlanProjectionFromParts", () => {
-	it("returns writing while a plan file write is in progress", () => {
-		const projection = getPlanProjectionFromParts([
-			writePart({
-				state: {
-					status: "running",
-					input: {
-						filePath: ".kilo/plans/ship.md",
-						content: "# Ship",
-					},
-				},
+	it("projects writing, ready, and error states from typed tool parts", () => {
+		const writing = getPlanProjectionFromParts([
+			toolPart("write", "write-running", {
+				status: "running",
+				input: { filePath: ".kilo/plans/ship.md", content: "# Ship" },
 			}),
 		]);
-		expect(projection?.status).toBe("writing");
-		expect(projection?.anchorCallId).toBe("write-1");
-		expect(projection?.hiddenCallIds.has("write-1")).toBe(true);
+		expect(writing?.status).toBe("writing");
+		expect(writing?.anchorCallId).toBe("write-running");
+
+		const ready = getPlanProjectionFromParts([writePart(), exitPart()]);
+		expect(ready?.status).toBe("ready");
+		expect(ready?.markdown).toContain("# Ship it");
+		expect(ready?.hiddenCallIds).toEqual(new Set(["write-1", "exit-1"]));
+
+		const failed = getPlanProjectionFromParts([writePart(), exitPart("exit-error", "error")]);
+		expect(failed?.status).toBe("error");
+		expect(failed?.error).toBe("Plan file not found");
 	});
 
-	it("returns ready after plan_exit completes", () => {
-		const projection = getPlanProjectionFromParts([writePart(), exitPart()]);
-		expect(projection?.status).toBe("ready");
-		expect(projection?.path).toBe(".kilo/plans/ship.md");
-		expect(projection?.markdown).toContain("# Ship it");
-		expect(projection?.anchorCallId).toBe("write-1");
-		expect(projection?.hiddenCallIds.has("exit-1")).toBe(true);
-	});
-
-	it("ignores non-plan writes", () => {
+	it("ignores non-plan and pathless writes unless the initial draft opts in", () => {
 		expect(
-			getPlanProjectionFromParts([
-				{
-					type: "tool",
-					tool: "write",
-					callID: "write-src",
-					state: {
-						status: "completed",
-						input: { filePath: "src/app.ts", content: " cons x = 1" },
-					},
-				},
-			]),
+			getPlanProjectionFromParts([writePart("write-src", { path: "src/app.ts" })]),
 		).toBeUndefined();
-	});
 
-	it("ignores pending pathless writes unless opted in", () => {
+		const pending = toolPart("write", "write-pending", { status: "running", input: {} });
+		expect(getPlanProjectionFromParts([pending])).toBeUndefined();
 		expect(
-			getPlanProjectionFromParts([
-				{
-					type: "tool",
-					tool: "write",
-					callID: "write-pending",
-					state: { status: "running", input: {} },
-				},
-			]),
-		).toBeUndefined();
+			getPlanProjectionFromParts([pending], { treatPathlessPendingWritesAsPlan: true })
+				?.anchorCallId,
+		).toBe("write-pending");
 	});
 
-	it("can treat pending pathless writes as plan drafts when opted in", () => {
-		const projection = getPlanProjectionFromParts(
-			[
-				{
-					type: "tool",
-					tool: "write",
-					callID: "write-pending",
-					state: { status: "running", input: {} },
-				},
-			],
-			{ treatPathlessPendingWritesAsPlan: true },
-		);
-		expect(projection?.status).toBe("writing");
-		expect(projection?.anchorCallId).toBe("write-pending");
-	});
-
-	it("reports error when plan_exit fails", () => {
-		const projection = getPlanProjectionFromParts([
-			writePart(),
-			exitPart({
-				state: {
-					status: "error",
-					error: "Plan file not found",
-					input: {},
-				},
-			}),
-		]);
-		expect(projection?.status).toBe("error");
-		expect(projection?.error).toBe("Plan file not found");
-	});
-
-	it("reconstructs markdown when a follow-up edit patches the plan title", () => {
-		const projection = getPlanProjectionFromParts([writePart(), editPart(), exitPart()]);
-		expect(projection?.status).toBe("ready");
+	it("reconstructs edit-only plan revisions from prior markdown", () => {
+		const projection = getPlanProjectionFromParts([editPart(), exitPart("exit-2")], {
+			priorMarkdown: "# Ship it\n\n- step 1",
+		});
 		expect(projection?.markdown).toBe("# Ship it faster\n\n- step 1");
 		expect(projection?.anchorCallId).toBe("edit-1");
 	});
 
-	it("applies prior markdown when the latest turn only edits the plan file", () => {
-		const projection = getPlanProjectionFromParts([editPart(), exitPart({ callID: "exit-2" })], {
-			priorMarkdown: "# Ship it\n\n- step 1",
-		});
-		expect(projection?.status).toBe("ready");
-		expect(projection?.markdown).toBe("# Ship it faster\n\n- step 1");
-		expect(projection?.path).toBe(".kilo/plans/ship.md");
+	it("keeps prior markdown when an edit streams without replacement text", () => {
+		const projection = getPlanProjectionFromParts(
+			[
+				editPart("edit-incomplete", {
+					filePath: ".kilo/plans/ship.md",
+					oldString: "# Ship it",
+				}),
+			],
+			{ priorMarkdown: "# Ship it\n\n- step 1" },
+		);
+
+		expect(projection?.markdown).toBe("# Ship it\n\n- step 1");
 	});
 
-	it("returns empty markdown for edit-only turns without prior content", () => {
-		const projection = getPlanProjectionFromParts([editPart(), exitPart({ callID: "exit-2" })]);
-		expect(projection?.status).toBe("ready");
-		expect(projection?.markdown).toBe("");
-		expect(projection?.path).toBe(".kilo/plans/ship.md");
+	it("reports a malformed completed handoff without a path or markdown", () => {
+		const projection = getPlanProjectionFromParts([
+			toolPart("plan_exit", "exit-empty", { status: "completed", input: {} }),
+		]);
+
+		expect(projection?.status).toBe("error");
+		expect(projection?.error).toContain("without a plan path or markdown");
+	});
+});
+
+describe("projectPlanThread", () => {
+	it("keeps a plan-agent write projected while its nonstandard path streams", () => {
+		const pending = projectPlanThread(
+			threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					parts: [toolPart("write", "write-plan", { status: "running", input: {} })],
+				},
+			]),
+		);
+		expect(getPlanProjectionForMessage(pending, "msg-plan")?.anchorCallId).toBe("write-plan");
+
+		const writing = projectPlanThread(
+			threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					parts: [
+						toolPart("write", "write-plan", {
+							status: "running",
+							input: {
+								filePath: "1786491776051-random-coffee-break-plan.md",
+								content: "# Random Coffee Break Ritual",
+							},
+						}),
+					],
+				},
+			]),
+		);
+		const writingProjection = getPlanProjectionForMessage(writing, "msg-plan");
+		expect(writingProjection?.status).toBe("writing");
+		expect(writingProjection?.hiddenCallIds).toContain("write-plan");
+
+		const ready = projectPlanThread(
+			threadSource([
+				{
+					id: "msg-write",
+					role: "assistant",
+					agent: "plan",
+					parts: [
+						toolPart("write", "write-plan", {
+							status: "completed",
+							input: {
+								filePath: "1786491776051-random-coffee-break-plan.md",
+								content: "# Random Coffee Break Ritual",
+							},
+						}),
+					],
+				},
+				{
+					id: "msg-exit",
+					role: "assistant",
+					agent: "plan",
+					parts: [exitPart("exit-plan", "completed", "1786491776051-random-coffee-break-plan.md")],
+				},
+			]),
+		);
+		const readyProjection = getPlanProjectionForMessage(ready, "msg-exit");
+		expect(readyProjection?.status).toBe("ready");
+		expect(readyProjection?.anchorCallId).toBe("write-plan");
+		expect(readyProjection?.hiddenCallIds).toEqual(new Set(["write-plan", "exit-plan"]));
+		expect(getPlanProjectionForMessage(ready, "msg-write")).toBeUndefined();
+	});
+
+	it("projects each message once and enriches chained edits in order", () => {
+		const source = threadSource([
+			{ id: "msg-plan", role: "assistant", parts: [writePart(), exitPart()] },
+			{ id: "msg-user-1", role: "user" },
+			{
+				id: "msg-refine-1",
+				role: "assistant",
+				parts: [editPart("edit-a"), exitPart("exit-a")],
+			},
+			{ id: "msg-user-2", role: "user" },
+			{
+				id: "msg-refine-2",
+				role: "assistant",
+				parts: [
+					editPart("edit-b", {
+						filePath: ".kilo/plans/ship.md",
+						oldString: "- step 1",
+						newString: "- step 1\n- step 2",
+					}),
+					exitPart("exit-b"),
+				],
+			},
+		]);
+		const projected = projectPlanThread(source);
+
+		expect(getPlanProjectionForMessage(projected, "msg-refine-2")?.markdown).toBe(
+			"# Ship it faster\n\n- step 1\n- step 2",
+		);
+		expect(findNewestPlanProjection(projected)?.anchorCallId).toBe("edit-b");
+		expect(projectPlanThread(source)).toBe(projected);
+	});
+
+	it("does not classify implementation writes as plans after a completed handoff", () => {
+		const projected = projectPlanThread(
+			threadSource([
+				{ id: "msg-plan", role: "assistant", parts: [writePart(), exitPart()] },
+				{ id: "msg-approve", role: "user" },
+				{
+					id: "msg-implement",
+					role: "assistant",
+					parts: [toolPart("write", "write-impl", { status: "running", input: {} })],
+				},
+			]),
+		);
+		expect(getPlanProjectionForMessage(projected, "msg-implement")).toBeUndefined();
+	});
+
+	it("indexes historical and current plan versions", () => {
+		const projected = projectPlanThread(refinedPlanSource());
+
+		expect(findPlanProjectionByAnchorCallId(projected, "write-1")?.markdown).toBe(
+			"# Ship it\n\n- step 1",
+		);
+		expect(findPlanProjectionByAnchorCallId(projected, "edit-2")?.markdown).toBe(
+			"# Ship it faster\n\n- step 1",
+		);
+		expect(isCurrentPlanVersion(projected, "write-1")).toBe(false);
+		expect(isCurrentPlanVersion(projected, "edit-2")).toBe(true);
 	});
 });
 
 describe("shouldExcludeToolCallFromActivityGroup", () => {
-	it("excludes plan_exit and plan-file writes", () => {
+	it("excludes plan tools by call id, tool name, or plan path", () => {
 		expect(shouldExcludeToolCallFromActivityGroup({ toolName: "plan_exit" })).toBe(true);
 		expect(
 			shouldExcludeToolCallFromActivityGroup({
@@ -175,293 +333,16 @@ describe("shouldExcludeToolCallFromActivityGroup", () => {
 			}),
 		).toBe(true);
 		expect(
+			shouldExcludeToolCallFromActivityGroup(
+				{ toolName: "write", toolCallId: "write-pending", args: {} },
+				{ hiddenPlanCallIds: new Set(["write-pending"]) },
+			),
+		).toBe(true);
+		expect(
 			shouldExcludeToolCallFromActivityGroup({
 				toolName: "write",
 				args: { filePath: "src/a.ts" },
 			}),
 		).toBe(false);
-	});
-
-	it("excludes projected plan tools even when args have no path yet", () => {
-		const projection = getPlanProjectionFromParts(
-			[
-				{
-					type: "tool",
-					tool: "write",
-					callID: "write-pending",
-					state: { status: "running", input: {} },
-				},
-			],
-			{ treatPathlessPendingWritesAsPlan: true },
-		);
-		expect(projection?.hiddenCallIds.has("write-pending")).toBe(true);
-		expect(
-			shouldExcludeToolCallFromActivityGroup(
-				{ toolName: "write", toolCallId: "write-pending", args: {} },
-				{ hiddenPlanCallIds: projection?.hiddenCallIds },
-			),
-		).toBe(true);
-		expect(
-			shouldExcludeToolCallFromActivityGroup(
-				{ toolName: "write", toolCallId: "write-other", args: {} },
-				{ hiddenPlanCallIds: projection?.hiddenCallIds },
-			),
-		).toBe(false);
-	});
-});
-
-describe("getPlanProjectionForMessage", () => {
-	it("does not show Writing Plan for pathless writes after a ready plan was approved", () => {
-		const messages = [
-			{
-				id: "msg-plan",
-				role: "assistant",
-				metadata: {
-					custom: { opencode: { parts: [writePart(), exitPart()] } },
-				},
-			},
-			{ id: "msg-approve", role: "user", metadata: {} },
-			{
-				id: "msg-implement",
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [
-								{
-									type: "tool",
-									tool: "write",
-									callID: "write-impl",
-									state: { status: "running", input: {} },
-								},
-							],
-						},
-					},
-				},
-			},
-		];
-		expect(getPlanProjectionForMessage(messages, "msg-implement")).toBeUndefined();
-	});
-
-	it("still shows Writing Plan for pathless writes before the first ready plan", () => {
-		const messages = [
-			{
-				id: "msg-plan",
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [
-								{
-									type: "tool",
-									tool: "write",
-									callID: "write-pending",
-									state: { status: "running", input: {} },
-								},
-							],
-						},
-					},
-				},
-			},
-		];
-		const projection = getPlanProjectionForMessage(messages, "msg-plan");
-		expect(projection?.status).toBe("writing");
-		expect(projection?.anchorCallId).toBe("write-pending");
-	});
-
-	it("enriches edit-only follow-ups with markdown from earlier plan writes", () => {
-		const messages = [
-			{
-				id: "msg-1",
-				role: "assistant",
-				metadata: {
-					custom: { opencode: { parts: [writePart(), exitPart()] } },
-				},
-			},
-			{ id: "msg-user", role: "user", metadata: {} },
-			{
-				id: "msg-2",
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [editPart({ callID: "edit-2" }), exitPart({ callID: "exit-2" })],
-						},
-					},
-				},
-			},
-		];
-		const projection = getPlanProjectionForMessage(messages, "msg-2");
-		expect(projection?.markdown).toBe("# Ship it faster\n\n- step 1");
-		expect(projection?.status).toBe("ready");
-		expect(projection?.anchorCallId).toBe("edit-2");
-	});
-});
-
-describe("findNewestPlanProjection", () => {
-	it("returns the newest plan even when a user message follows an older plan", () => {
-		const projection = findNewestPlanProjection([
-			{
-				role: "assistant",
-				metadata: {
-					custom: { opencode: { parts: [writePart(), exitPart()] } },
-				},
-			},
-			{ role: "user", metadata: {} },
-			{
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [editPart({ callID: "edit-2" }), exitPart({ callID: "exit-2" })],
-						},
-					},
-				},
-			},
-		]);
-		expect(projection?.anchorCallId).toBe("edit-2");
-		expect(projection?.markdown).toBe("# Ship it faster\n\n- step 1");
-	});
-
-	it("keeps the prior plan when the latest message is a user refine", () => {
-		const projection = findNewestPlanProjection([
-			{
-				role: "assistant",
-				metadata: {
-					custom: { opencode: { parts: [writePart(), exitPart()] } },
-				},
-			},
-			{ role: "user", metadata: {} },
-		]);
-		expect(projection?.anchorCallId).toBe("write-1");
-		expect(projection?.markdown).toContain("# Ship it");
-	});
-});
-
-describe("findPlanProjectionByAnchorCallId", () => {
-	it("returns the historical snapshot for an older plan card after refinement", () => {
-		const messages = [
-			{
-				role: "assistant",
-				metadata: {
-					custom: { opencode: { parts: [writePart(), exitPart()] } },
-				},
-			},
-			{ role: "user", metadata: {} },
-			{
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [editPart({ callID: "edit-2" }), exitPart({ callID: "exit-2" })],
-						},
-					},
-				},
-			},
-		] as const;
-
-		const older = findPlanProjectionByAnchorCallId(messages, "write-1");
-		expect(older?.markdown).toBe("# Ship it\n\n- step 1");
-		expect(older?.anchorCallId).toBe("write-1");
-
-		const newer = findPlanProjectionByAnchorCallId(messages, "edit-2");
-		expect(newer?.markdown).toBe("# Ship it faster\n\n- step 1");
-	});
-});
-
-describe("isCurrentPlanVersion", () => {
-	it("is false for superseded plan anchors", () => {
-		const messages = [
-			{
-				role: "assistant",
-				metadata: {
-					custom: { opencode: { parts: [writePart(), exitPart()] } },
-				},
-			},
-			{ role: "user", metadata: {} },
-			{
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [editPart({ callID: "edit-2" }), exitPart({ callID: "exit-2" })],
-						},
-					},
-				},
-			},
-		] as const;
-
-		expect(isCurrentPlanVersion(messages, "write-1")).toBe(false);
-		expect(isCurrentPlanVersion(messages, "edit-2")).toBe(true);
-	});
-});
-
-describe("findPriorPlanMarkdown", () => {
-	it("returns the latest matching plan markdown before the current turn", () => {
-		expect(
-			findPriorPlanMarkdown(
-				[
-					{
-						role: "assistant",
-						metadata: {
-							custom: { opencode: { parts: [writePart(), exitPart()] } },
-						},
-					},
-					{ role: "user", metadata: {} },
-				],
-				".kilo/plans/ship.md",
-			),
-		).toBe("# Ship it\n\n- step 1");
-	});
-
-	it("applies chained edit follow-ups in order", () => {
-		expect(
-			findPriorPlanMarkdown(
-				[
-					{
-						role: "assistant",
-						metadata: {
-							custom: { opencode: { parts: [writePart(), exitPart()] } },
-						},
-					},
-					{ role: "user", metadata: {} },
-					{
-						role: "assistant",
-						metadata: {
-							custom: {
-								opencode: {
-									parts: [editPart({ callID: "edit-a" }), exitPart({ callID: "exit-a" })],
-								},
-							},
-						},
-					},
-					{ role: "user", metadata: {} },
-					{
-						role: "assistant",
-						metadata: {
-							custom: {
-								opencode: {
-									parts: [
-										editPart({
-											callID: "edit-b",
-											state: {
-												status: "completed",
-												input: {
-													filePath: ".kilo/plans/ship.md",
-													oldString: "- step 1",
-													newString: "- step 1\n- step 2",
-												},
-											},
-										}),
-										exitPart({ callID: "exit-b" }),
-									],
-								},
-							},
-						},
-					},
-				],
-				".kilo/plans/ship.md",
-			),
-		).toBe("# Ship it faster\n\n- step 1\n- step 2");
 	});
 });

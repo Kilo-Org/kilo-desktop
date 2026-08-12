@@ -177,7 +177,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
-	const { agent, setAgent, resetAgent } = useAgentSelection(agentCatalogQuery.data);
+	const { agent, getAgent, setAgent, resetAgent } = useAgentSelection(agentCatalogQuery.data);
 	const resetAgentRef = useRef(resetAgent);
 	resetAgentRef.current = resetAgent;
 
@@ -198,6 +198,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connectionPromise,
 		prepareSession,
 		...(agent ? { defaultAgent: agent } : {}),
+		getAgent,
 		...(validatedModel ? { defaultModel: validatedModel } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,

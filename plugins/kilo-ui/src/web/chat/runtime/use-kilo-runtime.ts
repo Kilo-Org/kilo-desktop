@@ -21,6 +21,8 @@ export interface UseKiloRuntimeOptions {
 	/** Fires when the active remote thread id changes (OpenCode session switch). */
 	onThreadIdChange?: (threadId: string | undefined) => void;
 	defaultAgent?: string;
+	/** Reads the current agent synchronously for prompt dispatch. */
+	getAgent?: () => string | undefined;
 	defaultModel?: PromptModelRef;
 	/** Reasoning effort / OpenCode variant injected into prompt requests. */
 	variant?: string;
@@ -37,6 +39,7 @@ export function useKiloRuntime({
 	initialSessionId,
 	onThreadIdChange,
 	defaultAgent,
+	getAgent,
 	defaultModel,
 	variant,
 	isSendDisabled,
@@ -55,10 +58,10 @@ export function useKiloRuntime({
 	const promptGetters = useMemo(
 		() => ({
 			getVariant: () => variantRef.current,
-			getAgent: () => agentRef.current,
+			getAgent: getAgent ?? (() => agentRef.current),
 			getModel: () => modelRef.current,
 		}),
-		[],
+		[getAgent],
 	);
 
 	const client = useMemo(

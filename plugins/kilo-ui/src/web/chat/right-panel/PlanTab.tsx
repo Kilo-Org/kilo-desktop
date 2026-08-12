@@ -1,18 +1,18 @@
 import { useAuiState } from "@assistant-ui/react";
-import { type FC, useMemo } from "react";
+import { type FC } from "react";
 
 import { ApprovePlanButton } from "../plan/ApprovePlanButton.js";
 import {
 	findNewestPlanProjection,
 	findPlanProjectionByAnchorCallId,
 	isCurrentPlanVersion,
-	type PlanMessageLike,
 	type PlanProjection,
 } from "../plan/plan-projection.js";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "../plan/plan-markdown.js";
 import { PlanMarkdown } from "../plan/PlanMarkdown.js";
 import { useApprovePlan } from "../plan/use-approve-plan.js";
 import { usePlanContent } from "../plan/use-plan-content.js";
+import { usePlanThreadProjection } from "../plan/use-plan-thread-projection.js";
 import {
 	resolveRightPanelSessionKey,
 	selectSessionRightPanelState,
@@ -20,7 +20,7 @@ import {
 } from "./right-panel-store.js";
 
 export const PlanTab: FC = () => {
-	const messages = useAuiState((s) => s.thread.messages as readonly PlanMessageLike[]);
+	const planThread = usePlanThreadProjection();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
 	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
@@ -28,15 +28,15 @@ export const PlanTab: FC = () => {
 		(state) => selectSessionRightPanelState(state.bySessionId, sessionId).planAnchorCallId,
 	);
 
-	const projection = useMemo(() => {
+	const projection = (() => {
 		if (planAnchorCallId) {
 			return (
-				findPlanProjectionByAnchorCallId(messages, planAnchorCallId) ??
-				findNewestPlanProjection(messages)
+				findPlanProjectionByAnchorCallId(planThread, planAnchorCallId) ??
+				findNewestPlanProjection(planThread)
 			);
 		}
-		return findNewestPlanProjection(messages);
-	}, [messages, planAnchorCallId]);
+		return findNewestPlanProjection(planThread);
+	})();
 
 	if (!projection) {
 		return (
@@ -50,14 +50,14 @@ export const PlanTab: FC = () => {
 		);
 	}
 
-	return <PlanTabContent projection={projection} messages={messages} sessionId={sessionId} />;
+	return <PlanTabContent projection={projection} planThread={planThread} sessionId={sessionId} />;
 };
 
 const PlanTabContent: FC<{
 	projection: PlanProjection;
-	messages: readonly PlanMessageLike[];
+	planThread: ReturnType<typeof usePlanThreadProjection>;
 	sessionId: string;
-}> = ({ projection, messages, sessionId }) => {
+}> = ({ projection, planThread, sessionId }) => {
 	const { approve, submitting, approved } = useApprovePlan({
 		fallbackApprovalScope: `${sessionId}:${projection.anchorCallId}`,
 	});
@@ -66,7 +66,7 @@ const PlanTabContent: FC<{
 	const title = proposedPlanTitle(markdown) ?? "Plan";
 	const body = markdown ? stripDisplayedPlanMarkdown(markdown) : "";
 	const canApprove =
-		projection.status === "ready" && isCurrentPlanVersion(messages, projection.anchorCallId);
+		projection.status === "ready" && isCurrentPlanVersion(planThread, projection.anchorCallId);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="chat-right-panel-plan">

@@ -12,14 +12,11 @@ import {
 } from "../right-panel/right-panel-store.js";
 import { ApprovePlanButton } from "./ApprovePlanButton.js";
 import { buildCollapsedProposedPlanPreviewMarkdown, proposedPlanTitle } from "./plan-markdown.js";
-import {
-	isCurrentPlanVersion,
-	type PlanMessageLike,
-	type PlanProjection,
-} from "./plan-projection.js";
+import { isCurrentPlanVersion, type PlanProjection } from "./plan-projection.js";
 import { PlanMarkdown } from "./PlanMarkdown.js";
 import { useApprovePlan } from "./use-approve-plan.js";
 import { usePlanContent } from "./use-plan-content.js";
+import { usePlanThreadProjection } from "./use-plan-thread-projection.js";
 
 const PLAN_AGENT_ACCENT =
 	OPTIMISTIC_AGENT_CATALOG.agents.find((entry) => entry.name === "plan")?.color ?? "#f97316";
@@ -37,7 +34,7 @@ type PlanCardProps = {
 export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
-	const messages = useAuiState((s) => s.thread.messages as readonly PlanMessageLike[]);
+	const planThread = usePlanThreadProjection();
 	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
 	const openPlan = useRightPanelStore((state) => state.openPlan);
 	const {
@@ -66,7 +63,7 @@ export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 	const showError = isError || Boolean(actionError) || isContentError;
 	const showBody = showPreview || showLoading || showError;
 	const writingHeaderOnly = isWriting && !showBody;
-	const canApprove = isReady && isCurrentPlanVersion(messages, projection.anchorCallId);
+	const canApprove = isReady && isCurrentPlanVersion(planThread, projection.anchorCallId);
 
 	const handleViewPlan = () => {
 		openPlan(sessionId, { anchorCallId: projection.anchorCallId });

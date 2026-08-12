@@ -7,7 +7,6 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
 	createRightPanelTab,
-	isRightPanelTab,
 	PLAN_TAB_KIND,
 	type RightPanelTab,
 	type RightPanelTabKind,
@@ -101,28 +100,6 @@ const updateSession = (
 	return { ...bySessionId, [sessionId]: next };
 };
 
-type LegacySessionRightPanelState = Partial<SessionRightPanelState> & {
-	activeSurfaceId?: string | null;
-	surfaces?: unknown[];
-};
-
-function normalizeTabs(tabs: unknown): RightPanelTab[] {
-	if (!Array.isArray(tabs)) return [];
-	return tabs.filter(isRightPanelTab);
-}
-
-function normalizeSessionState(session: LegacySessionRightPanelState): SessionRightPanelState {
-	const tabs = normalizeTabs(session.tabs ?? session.surfaces);
-	const activeTabId = session.activeTabId ?? session.activeSurfaceId ?? null;
-	return {
-		isOpen: session.isOpen ?? false,
-		activeTabId:
-			activeTabId != null && tabs.some((tab) => tab.id === activeTabId) ? activeTabId : null,
-		tabs,
-		planAnchorCallId: session.planAnchorCallId ?? null,
-	};
-}
-
 export const useRightPanelStore = create<RightPanelStoreState>()(
 	persist(
 		(set) => ({
@@ -205,20 +182,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 		}),
 		{
 			name: RIGHT_PANEL_STORAGE_KEY,
-			version: 3,
+			version: 1,
 			storage: createJSONStorage(resolveStorage),
 			partialize: (state) => ({ bySessionId: state.bySessionId }),
-			migrate: (persisted, _version) => {
-				const state = persisted as {
-					bySessionId?: Record<string, LegacySessionRightPanelState>;
-				};
-				const bySessionId = state.bySessionId ?? {};
-				const migrated: Record<string, SessionRightPanelState> = {};
-				for (const [id, session] of Object.entries(bySessionId)) {
-					migrated[id] = normalizeSessionState(session);
-				}
-				return { bySessionId: migrated };
-			},
 		},
 	),
 );
@@ -228,18 +194,7 @@ export function selectSessionRightPanelState(
 	sessionId: string | null | undefined,
 ): SessionRightPanelState {
 	if (!sessionId) return EMPTY_SESSION_RIGHT_PANEL_STATE;
-	const state = bySessionId[sessionId];
-	if (!state) return EMPTY_SESSION_RIGHT_PANEL_STATE;
-	// Persisted v1/v2 sessions may omit planAnchorCallId or still use surface keys.
-	if (
-		state.planAnchorCallId !== undefined &&
-		state.activeTabId !== undefined &&
-		state.tabs !== undefined &&
-		state.tabs.every(isRightPanelTab)
-	) {
-		return state;
-	}
-	return normalizeSessionState(state as LegacySessionRightPanelState);
+	return bySessionId[sessionId] ?? EMPTY_SESSION_RIGHT_PANEL_STATE;
 }
 
 export function selectActiveRightPanelTab(

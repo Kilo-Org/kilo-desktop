@@ -100,6 +100,26 @@ describe("useKiloRuntime", () => {
 		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
 	});
 
+	it("uses an explicit synchronous agent getter for prompt dispatch", () => {
+		const connectionPromise = Promise.resolve(connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		let selectedAgent = "plan";
+
+		renderHook(() =>
+			useKiloRuntime({
+				connectionPromise,
+				prepareSession,
+				defaultAgent: selectedAgent,
+				getAgent: () => selectedAgent,
+			}),
+		);
+
+		const backendArgs = vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0];
+		selectedAgent = "code";
+
+		expect(backendArgs?.getAgent?.()).toBe("code");
+	});
+
 	it("accepts an injected client for focused tests", () => {
 		const client = { session: {} } as KiloClient;
 

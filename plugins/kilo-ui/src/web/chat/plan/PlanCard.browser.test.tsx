@@ -13,6 +13,10 @@ import { PlanCard } from "./PlanCard.js";
 import type { PlanProjection } from "./plan-projection.js";
 import { resetPlanApprovalUiState } from "./use-approve-plan.js";
 
+const planThreadProjectionState = vi.hoisted(() => ({
+	newestAnchorCallId: undefined as string | undefined,
+}));
+
 const replyToQuestion = vi.fn().mockResolvedValue(undefined);
 const setAgent = vi.fn();
 const append = vi.fn();
@@ -28,8 +32,6 @@ const createKiloDirectoryClient = vi.hoisted(() =>
 	})),
 );
 
-const threadMessages: unknown[] = [];
-
 vi.mock("@assistant-ui/react", async (importOriginal) => {
 	const actual = await importOriginal<typeof AssistantUiReact>();
 	return {
@@ -38,7 +40,6 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 			selector: (state: {
 				threadListItem: { remoteId: string };
 				thread: {
-					messages: unknown[];
 					extras: {
 						session: { id: string; directory: string };
 						replyToQuestion: typeof replyToQuestion;
@@ -51,7 +52,6 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 			selector({
 				threadListItem: { remoteId: "session-plan" },
 				thread: {
-					messages: threadMessages,
 					extras: {
 						session: { id: "session-plan", directory: "/workspace" },
 						replyToQuestion,
@@ -90,6 +90,16 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 			],
 		},
 	],
+}));
+
+vi.mock("./use-plan-thread-projection.js", () => ({
+	usePlanThreadProjection: () => ({
+		byMessageId: new Map(),
+		byAnchorCallId: new Map(),
+		newest: planThreadProjectionState.newestAnchorCallId
+			? { anchorCallId: planThreadProjectionState.newestAnchorCallId }
+			: undefined,
+	}),
 }));
 
 vi.mock("../runtime/create-kilo-runtime-client.js", () => ({
@@ -137,7 +147,7 @@ function renderPlanCard(projection: PlanProjection) {
 
 afterEach(() => {
 	cleanup();
-	threadMessages.length = 0;
+	planThreadProjectionState.newestAnchorCallId = undefined;
 	useRightPanelStore.setState({ bySessionId: {} });
 	resetPlanApprovalUiState();
 	vi.clearAllMocks();
@@ -219,76 +229,7 @@ describe("PlanCard", () => {
 	});
 
 	it("hides Approve on a superseded plan card after refinement", async () => {
-		threadMessages.push(
-			{
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [
-								{
-									type: "tool",
-									tool: "write",
-									callID: "write-1",
-									state: {
-										status: "completed",
-										input: {
-											filePath: ".kilo/plans/ship.md",
-											content: "# Ship it\n\n- step 1",
-										},
-									},
-								},
-								{
-									type: "tool",
-									tool: "plan_exit",
-									callID: "exit-1",
-									state: {
-										status: "completed",
-										input: {},
-										metadata: { plan: ".kilo/plans/ship.md" },
-									},
-								},
-							],
-						},
-					},
-				},
-			},
-			{ role: "user", metadata: {} },
-			{
-				role: "assistant",
-				metadata: {
-					custom: {
-						opencode: {
-							parts: [
-								{
-									type: "tool",
-									tool: "edit",
-									callID: "edit-2",
-									state: {
-										status: "completed",
-										input: {
-											filePath: ".kilo/plans/ship.md",
-											oldString: "# Ship it",
-											newString: "# Ship it faster",
-										},
-									},
-								},
-								{
-									type: "tool",
-									tool: "plan_exit",
-									callID: "exit-2",
-									state: {
-										status: "completed",
-										input: {},
-										metadata: { plan: ".kilo/plans/ship.md" },
-									},
-								},
-							],
-						},
-					},
-				},
-			},
-		);
+		planThreadProjectionState.newestAnchorCallId = "edit-2";
 
 		const { baseElement } = renderPlanCard({
 			status: "ready",

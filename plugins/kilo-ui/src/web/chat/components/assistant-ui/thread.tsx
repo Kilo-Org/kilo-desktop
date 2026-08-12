@@ -57,7 +57,6 @@ import {
 import {
 	createContext,
 	useContext,
-	useMemo,
 	useRef,
 	useState,
 	type ComponentType,
@@ -67,6 +66,7 @@ import {
 } from "react";
 
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
+import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
@@ -541,12 +541,9 @@ const MessageError: FC = () => {
 const AssistantMessage: FC = () => {
 	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
 		useContext(ThreadComponentsContext);
-	const messages = useAuiState((s) => s.thread.messages);
 	const messageId = useAuiState((s) => s.message.id);
-	const hiddenPlanCallIds = useMemo(
-		() => getPlanProjectionForMessage(messages, messageId)?.hiddenCallIds,
-		[messages, messageId],
-	);
+	const planThread = usePlanThreadProjection();
+	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.

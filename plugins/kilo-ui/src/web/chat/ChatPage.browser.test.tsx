@@ -93,6 +93,14 @@ vi.mock("./runtime/use-kilo-runtime.js", () => ({
 	useKiloRuntime: vi.fn(() => ({})),
 }));
 
+vi.mock("./plan/use-plan-thread-projection.js", () => ({
+	usePlanThreadProjection: () => ({
+		byMessageId: new Map(),
+		byAnchorCallId: new Map(),
+		newest: undefined,
+	}),
+}));
+
 vi.mock("./model-selection/use-kilo-model-catalog.js", () => ({
 	useKiloModelCatalog: vi.fn(() => ({
 		data: undefined,

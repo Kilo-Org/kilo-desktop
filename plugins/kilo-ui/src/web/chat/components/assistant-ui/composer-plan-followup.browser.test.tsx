@@ -63,6 +63,14 @@ vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
 	}),
 }));
 
+vi.mock("../../plan/use-plan-thread-projection.js", () => ({
+	usePlanThreadProjection: () => ({
+		byMessageId: new Map(),
+		byAnchorCallId: new Map(),
+		newest: undefined,
+	}),
+}));
+
 // After plan_exit the OpenCode session stays busy; CTAs must still replace Stop.
 vi.mock("@assistant-ui/react", async (importOriginal) => {
 	const actual = await importOriginal<typeof AssistantUiReact>();

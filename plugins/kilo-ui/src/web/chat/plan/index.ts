@@ -19,13 +19,14 @@ export {
 export {
 	findNewestPlanProjection,
 	findPlanProjectionByAnchorCallId,
-	findPriorPlanMarkdown,
 	getPlanProjectionForMessage,
 	getPlanProjectionFromParts,
 	isCurrentPlanVersion,
+	projectPlanThread,
 	resolvePlanMarkdownFromWrites,
 	shouldExcludeToolCallFromActivityGroup,
-	type PlanMessageLike,
 	type PlanProjection,
 	type PlanStatus,
+	type PlanThreadProjection,
+	type PlanThreadSource,
 } from "./plan-projection.js";

@@ -4,11 +4,12 @@ import { useAuiState } from "@assistant-ui/react";
 
 import { PlanCard } from "./PlanCard.js";
 import { getPlanProjectionForMessage } from "./plan-projection.js";
+import { usePlanThreadProjection } from "./use-plan-thread-projection.js";
 
 const useMessagePlanProjection = () => {
-	const messages = useAuiState((s) => s.thread.messages);
 	const messageId = useAuiState((s) => s.message.id);
-	return getPlanProjectionForMessage(messages, messageId);
+	const planThread = usePlanThreadProjection();
+	return getPlanProjectionForMessage(planThread, messageId);
 };
 
 /**

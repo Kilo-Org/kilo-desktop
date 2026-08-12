@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer, getPathForFile } = vi.hoisted(() => ({
 	},
 	ipcRenderer: {
 		invoke: vi.fn(),
+		postMessage: vi.fn(),
 		send: vi.fn(),
 		on: vi.fn(),
 		removeListener: vi.fn(),
@@ -23,6 +24,10 @@ describe("preload desktopApi", () => {
 	beforeEach(() => {
 		vi.resetModules();
 		vi.clearAllMocks();
+		vi.stubGlobal("window", {
+			location: { origin: "app://agentic" },
+			addEventListener: vi.fn(),
+		});
 	});
 
 	it("resolves dropped files through the preload-only Electron API", async () => {
@@ -91,5 +96,43 @@ describe("preload desktopApi", () => {
 			"Unknown IPC message channel.",
 		);
 		expect(() => desktopApi.send("feature:event", { featureId: "", name: "x" })).toThrow();
+	});
+
+	it("transfers only one validated same-window, same-origin feature port", async () => {
+		await import("./preload.js");
+		const listener = vi.mocked(window.addEventListener).mock.calls[0]?.[1] as (
+			event: MessageEvent<unknown>,
+		) => void;
+		const port = {} as MessagePort;
+		const payload = {
+			type: "anaconda-agentic-desktop:feature-port",
+			featureId: "notebook",
+			channel: "host",
+			args: { notebookId: "nb-1" },
+		};
+
+		listener({
+			source: window,
+			origin: window.location.origin,
+			data: payload,
+			ports: [port],
+		} as never);
+		expect(ipcRenderer.postMessage).toHaveBeenCalledWith("feature:port", payload, [port]);
+
+		listener({ source: {}, origin: window.location.origin, data: payload, ports: [port] } as never);
+		listener({
+			source: window,
+			origin: "https://evil.test",
+			data: payload,
+			ports: [port],
+		} as never);
+		listener({ source: window, origin: window.location.origin, data: payload, ports: [] } as never);
+		listener({
+			source: window,
+			origin: window.location.origin,
+			data: { ...payload, featureId: "" },
+			ports: [port],
+		} as never);
+		expect(ipcRenderer.postMessage).toHaveBeenCalledOnce();
 	});
 });

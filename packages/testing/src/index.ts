@@ -564,6 +564,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		plugins: mainSdk.plugins,
 		boot: mainSdk.boot,
 		storage: mainSdk.storage,
+		ports: mainSdk.ports,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {

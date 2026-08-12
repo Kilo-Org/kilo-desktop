@@ -106,6 +106,35 @@ feature router, in both Electron and browser mode.
 
 Register handlers with the same contract so input and output are validated on the main side too. Prefer `mainSdk.channels(todosContract).handleAll({ ... })` — it requires a handler for every channel in the map, so a newly added channel cannot be forgotten. `handle(channel, handler)` remains for registering channels one at a time.
 
+### `sdk.ports` / `mainSdk.ports` — transferable streams
+
+Use a feature-scoped port for sustained, bidirectional traffic that does not fit
+request/response `invoke`, such as a native runtime byte stream. The renderer
+gets a DOM `MessagePort`; the main feature receives an Electron-free structural
+port. The shell transfers the channel through its isolated preload without
+exposing `ipcRenderer`, a listening socket, or an underlying native endpoint.
+
+```ts
+// mainRegister
+mainSdk.ports.handle("runtime", (port, args) => {
+	attachAuthorizedRuntime(port, args);
+});
+
+// renderer
+const port = sdk.ports.open<MessagePort>("runtime", { notebookId });
+iframe.contentWindow?.postMessage({ type: "connect" }, iframeOrigin, [port]);
+```
+
+The routing envelope is schema-validated and accepted only from the trusted
+top-level renderer. The channel is feature-scoped by the SDK. A rejected,
+unknown, or failed main handler causes the shell to close the transferred port.
+This primitive is Electron-only for now; browser mode throws an explicit
+unsupported-host error.
+
+**Use when:** a feature needs transferable, long-lived transport with flow
+control. **Don't use for:** ordinary commands, dialogs, or CRUD calls—keep those
+on typed `sdk.client`/`sdk.invoke` methods.
+
 ### `mainSdk.logger` / `mainSdk.net.fetch` — host process services
 
 Main-process features use these delegates instead of importing Electron or shell implementation modules. The Electron host supplies a feature-scoped `electron-log` logger and a fetch implementation backed by `net.fetch`; browser mode uses runtime defaults, and tests can inject structural fakes through `createFakeMainSdk`.
@@ -360,18 +389,18 @@ linkedMainSdk.events.emit("changed", {}); // rendererSdk.events.on("todos.change
 
 Everything below is shell infrastructure. Feature code has no reason to import these.
 
-| Export                 | Role                                                                                                                                                                                            |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `EventBus`             | Namespaced pub/sub shared by renderer SDKs or main SDKs; the shell bridges process-local buses without echoing.                                                                                 |
-| `StateBroker`          | Observable stores backing `sdk.state`. Lazy placeholder resolution; subscribers survive re-registration.                                                                                        |
-| `CapabilityRegistry`   | Named API objects backing `sdk.plugins`.                                                                                                                                                        |
-| `ContributionRegistry` | Zone → contribution mapping backing `sdk.contribute`; `onChange` feeds shell re-renders.                                                                                                        |
-| `CommandRegistry`      | Palette entries backing `sdk.commands`; ids auto-namespaced `featureId.commandId`.                                                                                                              |
-| `FeatureRouter`        | Canonical process-local owner of channel handlers, the event bus, and capabilities. Its optional invoke fallback routes renderer calls through IPC in Electron mode; local handlers always win. |
-| `createSdk`            | Builds a feature-scoped `SDK` facade over the services; tracks instance registrations for `destroy()`.                                                                                          |
-| `teardownFeature`      | Full feature teardown across all services (plugin unload).                                                                                                                                      |
+| Export                 | Role                                                                                                                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EventBus`             | Namespaced pub/sub shared by renderer SDKs or main SDKs; the shell bridges process-local buses without echoing.                                                                                                |
+| `StateBroker`          | Observable stores backing `sdk.state`. Lazy placeholder resolution; subscribers survive re-registration.                                                                                                       |
+| `CapabilityRegistry`   | Named API objects backing `sdk.plugins`.                                                                                                                                                                       |
+| `ContributionRegistry` | Zone → contribution mapping backing `sdk.contribute`; `onChange` feeds shell re-renders.                                                                                                                       |
+| `CommandRegistry`      | Palette entries backing `sdk.commands`; ids auto-namespaced `featureId.commandId`.                                                                                                                             |
+| `FeatureRouter`        | Canonical process-local owner of request handlers, port handlers, the event bus, and capabilities. Its optional invoke fallback routes renderer calls through IPC in Electron mode; local handlers always win. |
+| `createSdk`            | Builds a feature-scoped `SDK` facade over the services; tracks instance registrations for `destroy()`.                                                                                                         |
+| `teardownFeature`      | Full feature teardown across all services (plugin unload).                                                                                                                                                     |
 
 Where the wiring lives:
 
-- **Electron main:** `apps/desktop/src/main/features/registry/feature-registry.ts` — one `FeatureRouter` owns the main-process `EventBus` and `CapabilityRegistry`, boots the FEATURES array, and backs `feature:invoke` plus the `feature:event` push bridge; `FeatureError → BusinessError` translation stays at the IPC boundary.
-- **Renderer:** `packages/sdk-react/src/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and accepts one cohesive Electron transport for invoke + events. In browser mode the transport is omitted, so `browserRegister` MainSdk instances necessarily share the router-owned event bus and capability registry. `FeatureSystem.dispose()` detaches the host transport and tears down the runtime.
+- **Electron main:** `apps/desktop/src/main/features/registry/feature-registry.ts` — one `FeatureRouter` owns the main-process `EventBus` and `CapabilityRegistry`, boots the FEATURES array, and backs `feature:invoke`, `feature:event`, and the transferred `feature:port` bridge; `FeatureError → BusinessError` translation stays at the IPC boundary.
+- **Renderer:** `packages/sdk-react/src/SdkProvider.tsx` — `createFeatureSystem()` builds all services once, caches one SDK per feature, and accepts one cohesive Electron transport for invoke + events + ports. In browser mode the transport is omitted, so `browserRegister` MainSdk instances necessarily share the router-owned event bus and capability registry. `FeatureSystem.dispose()` detaches the host transport and tears down the runtime.

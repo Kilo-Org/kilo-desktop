@@ -4,6 +4,23 @@ import { createSdk, teardownFeature } from "./create-sdk.js";
 import { makeServices, noop, testChannels } from "./test-helpers.js";
 
 describe("createSdk", () => {
+	it("opens feature-scoped ports through the host transport", () => {
+		const port = {} as MessagePort;
+		const openPort = vi.fn(() => port);
+		const services = { ...makeServices(), openPort };
+		const sdk = createSdk("notebook", services);
+
+		expect(sdk.ports.open("host", { notebookId: "nb-1" })).toBe(port);
+		expect(openPort).toHaveBeenCalledWith("notebook", "host", {
+			notebookId: "nb-1",
+		});
+	});
+
+	it("rejects sdk.ports when the host has no transferable transport", () => {
+		const sdk = createSdk("notebook", makeServices());
+		expect(() => sdk.ports.open("host")).toThrow(/host MessagePort transport/);
+	});
+
 	it("returns an SDK with the correct featureId", () => {
 		const sdk = createSdk("todos", makeServices());
 		expect(sdk.featureId).toBe("todos");

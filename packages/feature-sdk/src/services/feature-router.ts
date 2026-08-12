@@ -7,6 +7,7 @@ import type {
 import { FeatureError } from "../errors.js";
 import type {
 	ChannelHandlers,
+	HostMessagePort,
 	KvStore,
 	KvStoreFactory,
 	KvStoreOptions,
@@ -39,6 +40,8 @@ function assertValidKvNamespace(namespace: string): void {
 }
 
 type Handler = (args: unknown) => unknown | Promise<unknown>;
+type FeatureDisposer = () => unknown;
+type PortHandler = (port: HostMessagePort, args: unknown) => void | Promise<void>;
 
 interface HandlerEntry {
 	inputSchema: SchemaLike;
@@ -133,7 +136,8 @@ function createConsoleLogger(featureId: string): MainSdkLogger {
  */
 export class FeatureRouter {
 	private handlers = new Map<string, Map<string, HandlerEntry>>();
-	private disposables = new Map<string, Array<() => void>>();
+	private disposables = new Map<string, FeatureDisposer[]>();
+	private portHandlers = new Map<string, Map<string, PortHandler>>();
 	private readonly fallback: InvokeFallback | undefined;
 	readonly eventBus: EventBus;
 	readonly capabilityRegistry: CapabilityRegistry;
@@ -154,6 +158,9 @@ export class FeatureRouter {
 		}
 		if (!this.disposables.has(featureId)) {
 			this.disposables.set(featureId, []);
+		}
+		if (!this.portHandlers.has(featureId)) {
+			this.portHandlers.set(featureId, new Map());
 		}
 
 		const channels = <C extends ChannelMap>(channelMap: C): ChannelHandlers<C> => {
@@ -242,6 +249,17 @@ export class FeatureRouter {
 				reportBootProgress?.(message);
 			},
 		};
+		const ports: MainSdk["ports"] = {
+			handle: (channel, handler) => {
+				const registeredPorts = this.portHandlers.get(featureId)!;
+				if (registeredPorts.has(channel)) {
+					console.warn(
+						`[FeatureRouter] Port handler for "${featureId}:${channel}" registered twice — replacing.`,
+					);
+				}
+				registeredPorts.set(channel, handler);
+			},
+		};
 
 		// One live KV store per (feature, namespace). Reusing avoids opening two
 		// electron-store handles onto the same file — every read would then race
@@ -280,6 +298,7 @@ export class FeatureRouter {
 			plugins,
 			boot,
 			storage,
+			ports,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(
@@ -348,6 +367,23 @@ export class FeatureRouter {
 		}
 	}
 
+	/** Attach a transferred host port to the feature-scoped main handler. */
+	async connectPort(
+		featureId: string,
+		channel: string,
+		port: HostMessagePort,
+		args?: unknown,
+	): Promise<void> {
+		const handler = this.portHandlers.get(featureId)?.get(channel);
+		if (!handler) {
+			throw new FeatureError(
+				`No port handler for channel "${channel}" in feature "${featureId}".`,
+				"NOT_FOUND",
+			);
+		}
+		await handler(port, args);
+	}
+
 	/**
 	 * Check if a feature has a local handler for a channel.
 	 */
@@ -371,6 +407,7 @@ export class FeatureRouter {
 			}
 		}
 		this.handlers.delete(featureId);
+		this.portHandlers.delete(featureId);
 		this.disposables.delete(featureId);
 	}
 }

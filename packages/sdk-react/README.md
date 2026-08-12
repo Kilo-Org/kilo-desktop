@@ -116,7 +116,7 @@ Trying to use `useSdk` outside `<SdkProvider>` throws — the same rule as any o
 
 ### 3. Two transport modes, one API
 
-The channel side of the SDK (`sdk.invoke`, `useSdkQuery`, `useSdkMutation`) is transport-agnostic. `createFeatureSystem` decides how a channel that isn't handled in-process gets dispatched:
+The channel side of the SDK (`sdk.invoke`, `useSdkQuery`, `useSdkMutation`) is transport-agnostic. `createFeatureSystem` decides how a channel that isn't handled in-process gets dispatched. Electron may additionally supply the `sdk.ports` transport for feature-scoped transferable streams; browser mode reports that primitive as unsupported.
 
 | Host         | `invokeFallback` | `features` | What happens on `sdk.invoke("channel", input)`                                                                                                                          |
 | ------------ | ---------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

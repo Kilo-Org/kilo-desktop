@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import {
+	featurePortPayload,
 	ipcEvents,
 	ipcMessages,
 	ipcMethods,
@@ -11,6 +12,13 @@ import {
 	type IpcMessageChannel,
 	type IpcMessagePayload,
 } from "@anaconda-agentic-desktop/contracts";
+
+window.addEventListener("message", (event: MessageEvent<unknown>) => {
+	if (event.source !== window || event.origin !== window.location.origin) return;
+	const parsed = featurePortPayload.safeParse(event.data);
+	if (!parsed.success || event.ports.length !== 1) return;
+	ipcRenderer.postMessage("feature:port", parsed.data, [event.ports[0]!]);
+});
 
 const invoke = ((channel: IpcMethodChannel, input?: unknown) => {
 	if (!(channel in ipcMethods)) {

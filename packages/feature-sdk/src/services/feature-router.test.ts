@@ -57,9 +57,9 @@ describe("FeatureRouter", () => {
 		} as never;
 		mainSdk.ports.handle("host", z.object({ notebookId: z.string() }), handler);
 
-		await router.connectPort("notebook", "host", port, { notebookId: "nb-1" });
+		await router.connectPort("notebook", "host", port, { notebookId: "nb-1" }, { senderId: 42 });
 
-		expect(handler).toHaveBeenCalledWith(port, { notebookId: "nb-1" });
+		expect(handler).toHaveBeenCalledWith(port, { notebookId: "nb-1" }, { senderId: 42 });
 		await expect(
 			router.connectPort("notebook", "host", port, { notebookId: 42 }),
 		).rejects.toMatchObject({ code: "VALIDATION" });

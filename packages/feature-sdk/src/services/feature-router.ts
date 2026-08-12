@@ -8,8 +8,10 @@ import { FeatureError } from "../errors.js";
 import type {
 	ChannelHandlers,
 	HostMessagePort,
+	HostPortContext,
 	MainSdk,
 	MainSdkFetch,
+	MainSdkHost,
 	MainSdkLogger,
 } from "../types/sdk.js";
 import type { SchemaLike } from "../types/schema.js";
@@ -20,7 +22,7 @@ type Handler = (args: unknown) => unknown | Promise<unknown>;
 type FeatureDisposer = () => unknown;
 interface PortHandlerEntry {
 	argsSchema: SchemaLike;
-	handler: (port: HostMessagePort, args: unknown) => void | Promise<void>;
+	handler: (port: HostMessagePort, args: unknown, context: HostPortContext) => void | Promise<void>;
 }
 
 interface HandlerEntry {
@@ -54,6 +56,8 @@ export interface CreateMainSdkOptions {
 	logger?: MainSdkLogger;
 	/** Host fetch implementation. Defaults to the current runtime's global fetch. */
 	fetch?: MainSdkFetch;
+	/** Narrow shell-owned desktop capabilities. Browser mode omits this. */
+	host?: MainSdkHost;
 	/**
 	 * Resolve (and create, if needed) the feature's storage directory.
 	 * Called lazily on first `mainSdk.storageDir` access and cached.
@@ -244,6 +248,7 @@ export class FeatureRouter {
 			plugins,
 			boot,
 			ports,
+			host: options?.host,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(
@@ -318,6 +323,7 @@ export class FeatureRouter {
 		channel: string,
 		port: HostMessagePort,
 		args?: unknown,
+		context: HostPortContext = { senderId: -1 },
 	): Promise<void> {
 		const entry = this.portHandlers.get(featureId)?.get(channel);
 		if (!entry) {
@@ -347,7 +353,7 @@ export class FeatureRouter {
 		};
 		this.disposables.get(featureId)!.push(closePort);
 		try {
-			await entry.handler(port, parsedArgs);
+			await entry.handler(port, parsedArgs, context);
 		} catch (error) {
 			const disposables = this.disposables.get(featureId);
 			const index = disposables?.indexOf(closePort) ?? -1;

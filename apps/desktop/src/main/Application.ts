@@ -178,6 +178,24 @@ export class Application {
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
 				createLogger,
 				fetch: this.#http.fetch,
+				host: {
+					paths: {
+						defaultSaveDirectory: () => this.#app.getPath("documents"),
+					},
+					dialog: {
+						openFile: (senderId, options) => this.#shell.showOpenFileDialog(senderId, options),
+						saveFile: (senderId, options) => this.#shell.showSaveFileDialog(senderId, options),
+					},
+					externalLinks: {
+						open: (url) => this.#shell.openExternal(url),
+					},
+					window: {
+						getTitle: (senderId) => this.#windows.getTitle(senderId),
+						setTitle: (senderId, title) => this.#windows.setTitle(senderId, title),
+						isFocused: (senderId) => this.#windows.isFocused(senderId),
+						onFocusChange: (senderId, listener) => this.#windows.onFocusChange(senderId, listener),
+					},
+				},
 				...(reporter
 					? {
 							// Coarse "Preparing <id>…" line the shell writes once

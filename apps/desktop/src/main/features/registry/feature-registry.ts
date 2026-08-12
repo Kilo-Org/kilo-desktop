@@ -7,6 +7,7 @@ import {
 	type FeatureEvent,
 	type FeatureRegistration,
 	type MainSdkFetch,
+	type MainSdkHost,
 	type MainSdkLogger,
 } from "@anaconda-agentic-desktop/feature-sdk";
 import type {
@@ -34,6 +35,8 @@ export interface BootFeaturesOptions {
 	createLogger?: (featureId: string) => MainSdkLogger;
 	/** Host networking implementation shared by main-process features. */
 	fetch?: MainSdkFetch;
+	/** Narrow shell-owned desktop capabilities shared with main-process plugins. */
+	host?: MainSdkHost;
 	/**
 	 * Base data path (Electron `app.getPath("userData")`). Each feature gets
 	 * `${storageRoot}/plugins/<id>` as its `mainSdk.storageDir`, created
@@ -96,6 +99,7 @@ export async function bootFeatures(
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
 			...(options?.fetch ? { fetch: options.fetch } : {}),
+			...(options?.host ? { host: options.host } : {}),
 			...(storageRoot === undefined
 				? {}
 				: {
@@ -183,6 +187,8 @@ export function createFeatureHandlers(): Pick<IpcHandlers, "feature:invoke"> {
 export function createFeaturePortHandlers(): Pick<IpcPortHandlers, "feature:port"> {
 	return {
 		"feature:port": (input, context) =>
-			featureRouter.connectPort(input.featureId, input.channel, context.port, input.args),
+			featureRouter.connectPort(input.featureId, input.channel, context.port, input.args, {
+				senderId: context.senderId,
+			}),
 	};
 }

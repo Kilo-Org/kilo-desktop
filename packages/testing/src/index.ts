@@ -478,6 +478,8 @@ export interface FakeMainSdkOptions {
 	logger?: MainSdkLogger;
 	/** Network fake. Defaults to the current runtime's global fetch. */
 	fetch?: MainSdkFetch;
+	/** Optional desktop host capabilities for main-process plugin tests. */
+	host?: MainSdk["host"];
 	/**
 	 * Receive `mainSdk.boot.reportProgress(msg)` calls. Defaults to a no-op
 	 * (production behaviour after `bootFeatures` returns). Pass a spy to
@@ -495,6 +497,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 	const mainSdk = router.createMainSdk(featureId, {
 		logger: options?.logger ?? noopMainSdkLogger,
 		fetch: options?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+		...(options?.host ? { host: options.host } : {}),
 		resolveStorageDir: () => {
 			if (options?.storageDir !== undefined) return options.storageDir;
 			// Node-only, resolved lazily via process.getBuiltinModule so this
@@ -523,6 +526,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		plugins: mainSdk.plugins,
 		boot: mainSdk.boot,
 		ports: mainSdk.ports,
+		host: mainSdk.host,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {

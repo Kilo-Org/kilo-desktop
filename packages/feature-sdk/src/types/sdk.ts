@@ -722,16 +722,48 @@ export interface MainSdkBoot {
 export interface HostMessagePort {
 	postMessage(message: unknown): void;
 	on(event: "message", listener: (event: { data: unknown }) => void): this;
+	on(event: "close", listener: () => void): this;
 	off(event: "message", listener: (event: { data: unknown }) => void): this;
+	off(event: "close", listener: () => void): this;
 	start(): void;
 	close(): void;
+}
+
+export interface HostPortContext {
+	/** Electron webContents id of the trusted renderer that transferred the port. */
+	readonly senderId: number;
+}
+
+export interface MainSdkHostDialogOptions {
+	readonly filters?: readonly { readonly name: string; readonly extensions: readonly string[] }[];
+	readonly defaultPath?: string;
+}
+
+/** Narrow shell-owned desktop capabilities available to main-process plugins. */
+export interface MainSdkHost {
+	readonly paths: {
+		defaultSaveDirectory(): string;
+	};
+	readonly dialog: {
+		openFile(senderId: number, options?: MainSdkHostDialogOptions): Promise<string | null>;
+		saveFile(senderId: number, options?: MainSdkHostDialogOptions): Promise<string | null>;
+	};
+	readonly externalLinks: {
+		open(url: string): Promise<boolean>;
+	};
+	readonly window: {
+		getTitle(senderId: number): string;
+		setTitle(senderId: number, title: string): void;
+		isFocused(senderId: number): boolean;
+		onFocusChange(senderId: number, listener: (focused: boolean) => void): () => void;
+	};
 }
 
 export interface MainSdkPorts {
 	handle<TArgs>(
 		channel: string,
 		argsSchema: SchemaLike<TArgs>,
-		handler: (port: HostMessagePort, args: TArgs) => void | Promise<void>,
+		handler: (port: HostMessagePort, args: TArgs, context: HostPortContext) => void | Promise<void>,
 	): void;
 }
 
@@ -790,6 +822,8 @@ export interface MainSdk {
 	readonly boot: MainSdkBoot;
 	/** Register feature-owned handlers for transferred MessagePorts. */
 	readonly ports: MainSdkPorts;
+	/** Shell-owned desktop capabilities. Absent in browser and headless hosts. */
+	readonly host: MainSdkHost | undefined;
 	/**
 	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
 	 * created lazily on first access. Features persist ONLY here — open your

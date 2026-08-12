@@ -6,7 +6,7 @@ import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
-import { PLUGIN_NAV, type PluginNavEntry } from "@/features/plugin-nav";
+import { PLUGIN_NAV, useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -69,6 +69,11 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const session = useAuthSession();
 	const sdk = useSdk("auth");
+	// Filter nav entries against the current feature-flag map so a plugin
+	// that declares `contributes.nav[].featureFlag` disappears from the
+	// sidebar the instant its flag flips off — without unregistering the
+	// underlying route.
+	const visibleNav = useVisiblePluginNav(navEntries);
 	const initials = session.status === "authenticated" ? getUserInitials(session.user) : "";
 	const accountName =
 		session.status === "authenticated"
@@ -107,7 +112,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 					<SidebarContent>
 						<SidebarGroup className="pt-0">
 							<SidebarMenu>
-								{navEntries.map((entry) => (
+								{visibleNav.map((entry) => (
 									<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
 								))}
 							</SidebarMenu>

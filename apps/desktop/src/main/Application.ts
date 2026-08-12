@@ -119,8 +119,6 @@ export class Application {
 			reporter.report("features", "Preparing features\u2026");
 			await this.#registerIpc(preferences, reporter);
 			this.#registerPushEvents();
-			// initialize() swallows its own errors, so it can't fail the boot.
-			await this.#featureFlags?.initialize();
 			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
@@ -190,6 +188,16 @@ export class Application {
 		const { featureFlags, disposers: capabilityDisposers } = this.#registerCapabilities();
 		this.#featureFlags = featureFlags;
 		this.#disposers.push(...capabilityDisposers);
+
+		// Seed the feature-flag provider BEFORE `bootFeatures` so a feature
+		// that gates its `mainRegister` on a flag reads the actual
+		// LaunchDarkly value at boot, not the pre-init default. `initialize()`
+		// awaits `client.start({ timeout: 5s })` — capped at 5s worst case
+		// when LD is unreachable, and typically <500ms — and swallows its
+		// own errors so it never fails the boot. Features that also need to
+		// react to *runtime* toggles still subscribe to `feature-flag.changed`
+		// (see anaconda-mcp for the reconcile pattern).
+		await featureFlags.initialize();
 
 		// Boot features registered via FEATURES array (plugin-ready pattern).
 		// Each feature persists only under its own storage directory

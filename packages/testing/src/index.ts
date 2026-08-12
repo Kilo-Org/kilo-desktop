@@ -538,19 +538,32 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
  * Create renderer and main SDKs backed by one real EventBus, capability
  * registry, and FeatureRouter. Use this for cross-boundary feature tests that
  * should exercise the browser-mode semantics without hand-wiring services.
+ *
+ * The `main` and `createMainSdk` options let tests configure the initial
+ * pair's mainSdk and per-call additional mainSdks (e.g. `storageDir`,
+ * `reportBootProgress`, `fetch`) without losing the shared services that
+ * make cross-feature capabilities work.
  */
-export function createLinkedFakeSdkPair(options?: { featureId?: string }): {
+export function createLinkedFakeSdkPair(options?: {
+	featureId?: string;
+	/** Extra options forwarded to the initial pair's mainSdk. */
+	main?: Omit<FakeMainSdkOptions, "featureId" | "services">;
+}): {
 	rendererSdk: FakeSdk;
 	mainSdk: FakeMainSdk;
-	createMainSdk(featureId: string): FakeMainSdk;
+	createMainSdk(
+		featureId: string,
+		options?: Omit<FakeMainSdkOptions, "featureId" | "services">,
+	): FakeMainSdk;
 } {
 	const featureId = options?.featureId ?? "test-feature";
 	const services = buildFakeServices({});
 	const rendererSdk = applySdkOverrides(createSdk(featureId, services), services, {});
-	const mainSdk = createFakeMainSdk({ featureId, services });
+	const mainSdk = createFakeMainSdk({ featureId, services, ...options?.main });
 	return {
 		rendererSdk,
 		mainSdk,
-		createMainSdk: (targetFeatureId) => createFakeMainSdk({ featureId: targetFeatureId, services }),
+		createMainSdk: (targetFeatureId, targetOptions) =>
+			createFakeMainSdk({ featureId: targetFeatureId, services, ...targetOptions }),
 	};
 }

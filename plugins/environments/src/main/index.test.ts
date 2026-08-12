@@ -6,9 +6,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import type { FakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
-import { mainRegister } from "./index.js";
+import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
 
 vi.mock("execa", () => ({
 	execa: vi.fn(),
@@ -32,6 +33,43 @@ function sha256(buf: Buffer): string {
 	return createHash("sha256").update(buf).digest("hex");
 }
 
+/**
+ * Build a linked SDK pair and (optionally) expose the shell-side
+ * `feature-flag` capability with a caller-controlled return value. Mirrors
+ * the harness in
+ * `apps/desktop/src/main/features/anaconda-mcp/AnacondaMcpService.integration.test.ts`
+ * so the flag-off path can be exercised.
+ */
+function createSdkWithFlag(options: {
+	featureFlagEnabled: boolean | null;
+	storageDir?: string;
+	reportBootProgress?: (message: string) => void;
+	fetch?: typeof globalThis.fetch;
+}): { mainSdk: FakeMainSdk; getFlag: ReturnType<typeof vi.fn> } {
+	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
+		featureId: "environments",
+		main: {
+			...(options.storageDir !== undefined ? { storageDir: options.storageDir } : {}),
+			...(options.reportBootProgress !== undefined
+				? { reportBootProgress: options.reportBootProgress }
+				: {}),
+			...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
+		},
+	});
+
+	const getFlag = vi.fn(<T>(_key: string, defaultValue: T): T => {
+		if (options.featureFlagEnabled === null) return defaultValue;
+		return options.featureFlagEnabled as unknown as T;
+	});
+
+	if (options.featureFlagEnabled !== null) {
+		const flagSdk = createMainSdk("feature-flag");
+		flagSdk.plugins.expose("featureFlag", { getFlag });
+	}
+
+	return { mainSdk, getFlag };
+}
+
 describe("environments plugin main entry", () => {
 	const directories: string[] = [];
 
@@ -41,7 +79,7 @@ describe("environments plugin main entry", () => {
 		}
 	});
 
-	function setupFakeStaging() {
+	function setupFakeStaging(): { storageDir: string } {
 		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "env-main-test-"));
 		directories.push(storageDir);
 
@@ -65,10 +103,7 @@ describe("environments plugin main entry", () => {
 
 	it("returns a Promise (async mainRegister for provider boot)", async () => {
 		const { storageDir } = setupFakeStaging();
-		const mainSdk = createFakeMainSdk({
-			featureId: "environments",
-			storageDir,
-		});
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true, storageDir });
 		const result = mainRegister(mainSdk);
 		expect(result).toBeInstanceOf(Promise);
 		await result;
@@ -77,8 +112,8 @@ describe("environments plugin main entry", () => {
 	it("boots the conda provider and writes staged.json on success", async () => {
 		const { storageDir } = setupFakeStaging();
 		const reportBootProgress = vi.fn();
-		const mainSdk = createFakeMainSdk({
-			featureId: "environments",
+		const { mainSdk } = createSdkWithFlag({
+			featureFlagEnabled: true,
 			storageDir,
 			reportBootProgress,
 		});
@@ -96,8 +131,8 @@ describe("environments plugin main entry", () => {
 	it("delivers boot progress messages during staging", async () => {
 		const { storageDir } = setupFakeStaging();
 		const reportBootProgress = vi.fn();
-		const mainSdk = createFakeMainSdk({
-			featureId: "environments",
+		const { mainSdk } = createSdkWithFlag({
+			featureFlagEnabled: true,
 			storageDir,
 			reportBootProgress,
 		});
@@ -122,15 +157,46 @@ describe("environments plugin main entry", () => {
 			condaBinRelPath: "bin/conda",
 		});
 
-		// No system conda, and fetch fails
 		mockedDetectSystem.mockResolvedValue(null);
 		const fetch = vi.fn().mockRejectedValue(new Error("offline"));
-		const mainSdk = createFakeMainSdk({
-			featureId: "environments",
+		const { mainSdk } = createSdkWithFlag({
+			featureFlagEnabled: true,
 			storageDir,
 			fetch: fetch as unknown as typeof globalThis.fetch,
 		});
 
 		await expect(mainRegister(mainSdk)).rejects.toThrow("offline");
+	});
+
+	describe("feature-flag gate (environments-feature)", () => {
+		it("skips provider boot and staging when the flag is off", async () => {
+			const { storageDir } = setupFakeStaging();
+			const { mainSdk, getFlag } = createSdkWithFlag({
+				featureFlagEnabled: false,
+				storageDir,
+			});
+
+			await mainRegister(mainSdk);
+
+			expect(mockedDetectSystem).not.toHaveBeenCalled();
+			expect(mockedGetInstaller).not.toHaveBeenCalled();
+			expect(fs.existsSync(path.join(storageDir, "providers", "conda", "staged.json"))).toBe(false);
+			expect(getFlag).toHaveBeenCalledWith(FEATURE_FLAG_KEY, false);
+		});
+
+		it("defaults to OFF when the feature-flag capability is unavailable", async () => {
+			// Guards two paths at once: (1) when the shell hasn't registered
+			// the `feature-flag` capability at all, and (2) when a plain
+			// `createFakeMainSdk` is passed in with no capabilities. Both
+			// resolve `plugins.get("feature-flag")` to `null`, and the gate
+			// must default to OFF rather than fail open.
+			const { storageDir } = setupFakeStaging();
+			const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: null, storageDir });
+
+			await mainRegister(mainSdk);
+
+			expect(mockedDetectSystem).not.toHaveBeenCalled();
+			expect(fs.existsSync(path.join(storageDir, "providers", "conda", "staged.json"))).toBe(false);
+		});
 	});
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
-import { webRegister } from "./index.js";
+import { FEATURE_FLAG_KEY, webRegister } from "./index.js";
 
 /**
  * Tests for the plugin-owned WebMCP tool registration (issue #74). The
@@ -11,16 +11,52 @@ import { webRegister } from "./index.js";
  * verify the same effect: three tools registered under the "todos" feature
  * with external exposure opted in, handlers routing to `sdk.invoke`, and
  * boundary validation running before the handler.
+ *
+ * Additionally covers the LaunchDarkly `todo-feature` gate: no tools appear
+ * until the flag flips on, and tools disappear again when the flag flips off,
+ * so the LLM only sees the tools while the feature is enabled.
  */
-function makeSystem() {
+
+/**
+ * Fake `sdk.featureFlags` that records subscribers so tests can drive
+ * `flag on`/`flag off` transitions and observe how `webRegister` reacts.
+ */
+function makeFlagsHost(initial: boolean) {
+	let flags: Record<string, unknown> = { [FEATURE_FLAG_KEY]: initial };
+	const subscribers = new Set<(flags: Record<string, unknown>) => void>();
+	return {
+		host: {
+			getAllFlags: async () => flags,
+			subscribe: (fn: (flags: Record<string, unknown>) => void) => {
+				subscribers.add(fn);
+				fn(flags);
+				return () => {
+					subscribers.delete(fn);
+				};
+			},
+			peek: () => flags,
+		},
+		setFlag(value: boolean) {
+			flags = { [FEATURE_FLAG_KEY]: value };
+			for (const subscriber of subscribers) subscriber(flags);
+		},
+	};
+}
+
+function makeSystem(options: { flagEnabled?: boolean } = {}) {
 	const invoke = vi.fn().mockResolvedValue([]);
-	const sdk = createFakeSdk({ featureId: "todos", invoke });
+	const flags = makeFlagsHost(options.flagEnabled ?? true);
+	const sdk = createFakeSdk({
+		featureId: "todos",
+		invoke,
+		featureFlags: flags.host,
+	});
 	const system = createFakeFeatureSystem({ sdks: { todos: sdk } });
-	return { system, sdk, invoke };
+	return { system, sdk, invoke, flags };
 }
 
 describe("todos plugin webRegister", () => {
-	it("registers list/add/toggle tools with external exposure opted in", () => {
+	it("registers list/add/toggle tools with external exposure opted in when the flag is on", () => {
 		const { system, sdk } = makeSystem();
 		webRegister(sdk);
 
@@ -62,5 +98,31 @@ describe("todos plugin webRegister", () => {
 		await expect(
 			system.services.toolRegistry.invoke("todos", "add", { title: 42 }),
 		).rejects.toThrow();
+	});
+
+	describe("feature flag gate (todo-feature)", () => {
+		it("registers no tools while the flag is off", () => {
+			const { system, sdk } = makeSystem({ flagEnabled: false });
+			webRegister(sdk);
+
+			expect(system.services.toolRegistry.all()).toEqual([]);
+		});
+
+		it("installs the tools when the flag flips on and removes them when it flips back off", () => {
+			const { system, sdk, flags } = makeSystem({ flagEnabled: false });
+			webRegister(sdk);
+			expect(system.services.toolRegistry.all()).toEqual([]);
+
+			flags.setFlag(true);
+			expect(
+				system.services.toolRegistry
+					.all()
+					.map((tool) => tool.id)
+					.sort(),
+			).toEqual(["todos.add", "todos.list", "todos.toggle"]);
+
+			flags.setFlag(false);
+			expect(system.services.toolRegistry.all()).toEqual([]);
+		});
 	});
 });

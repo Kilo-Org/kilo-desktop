@@ -146,18 +146,27 @@ export type UserInfoResponse = z.infer<typeof userInfoResponseSchema>;
 
 export type UserInfoAttribute = z.infer<typeof userInfoAttributeSchema>;
 
+export type UserInfoOrganization = z.infer<typeof organizationSchema>;
+
 /**
- * Fetches the OIDC userinfo passport attributes with the API key as bearer token.
- * Any failure (network, 401/403, non-OK, unparseable) throws so callers can
- * distinguish a transient failure from a genuinely-empty passport. Only a
- * success response whose passport has no attributes yields an empty list.
+ * Non-nullable parsed userinfo passport. The response's `passport` field is
+ * itself nullish; callers treat a missing passport as an empty object so
+ * every downstream accessor can rely on the same shape.
  */
-export async function getUserInfo(
+export type UserInfoPassport = NonNullable<UserInfoResponse["passport"]>;
+
+/**
+ * Fetches the OIDC userinfo passport with the API key as bearer token. Any
+ * failure (network, 401/403, non-OK, unparseable) throws so callers can
+ * distinguish a transient failure from a genuinely-empty passport. Returns
+ * an empty passport object when the response body has no `passport` field.
+ */
+export async function getUserPassport(
 	domain: string,
 	apiKey: string,
 	fetchImpl: OAuthFetch,
 	userAgent: string,
-): Promise<UserInfoAttribute[]> {
+): Promise<UserInfoPassport> {
 	const response = await fetchImpl(`https://${domain}/api/auth/userinfo`, {
 		method: "GET",
 		headers: {
@@ -171,5 +180,5 @@ export async function getUserInfo(
 	}
 
 	const payload = userInfoResponseSchema.parse(await response.json());
-	return payload.passport?.attributes ?? [];
+	return payload.passport ?? {};
 }

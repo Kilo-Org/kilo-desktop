@@ -8,9 +8,12 @@ import { promisify } from "node:util";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { execa } from "execa";
+import isEqual from "lodash/isEqual.js";
 
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
+import type { KiloConfigOverlay } from "../contracts/schemas.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
+import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
@@ -57,6 +60,7 @@ export interface KiloServerManagerOptions {
 	readonly allowVersionMismatch?: boolean;
 	readonly corsOrigins?: readonly string[];
 	readonly environment?: NodeJS.ProcessEnv;
+	readonly contributedEnv?: ContributedEnvManager;
 	readonly platform?: NodeJS.Platform;
 	readonly fetch: typeof fetch;
 	readonly spawn?: (
@@ -114,6 +118,54 @@ function delay(durationMs: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
+/**
+ * Compose the `KILO_CONFIG_CONTENT` value for the spawn env: the contributed
+ * overlay merged over any value already present in the inherited environment
+ * (e.g. a developer-set override). Returns `undefined` when there is nothing
+ * to inject, so the variable is only set when it carries content.
+ *
+ * Overlays are `mcp`-only (see `KiloConfigOverlay`), so the merge is simple:
+ * inherited top-level keys pass through untouched and `mcp` entries are
+ * merged per id, overlay entries winning. This is intentionally NOT a full
+ * reimplementation of `mergeConfig` in `@kilocode/sdk` (which also
+ * per-entry-merges `agent`/`command`/`mode` and concatenates
+ * `plugin`/`instructions`) — widening the overlay type requires adopting
+ * those semantics here and in `getMergedConfigOverlay`.
+ *
+ * The `mcp` accumulator is prototype-less: entry ids become object keys, and
+ * a plain `{}` would let a reserved id like `__proto__` mutate the
+ * accumulator's prototype via bracket assignment (see the matching guard in
+ * `ContributedEnvManager.getMergedConfigOverlay`).
+ */
+function composeConfigContent(
+	inherited: string | undefined,
+	overlay: KiloConfigOverlay | undefined,
+): string | undefined {
+	if (overlay === undefined) return inherited;
+	let base: Record<string, unknown> = {};
+	if (inherited) {
+		try {
+			const parsed: unknown = JSON.parse(inherited);
+			if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+				base = parsed as Record<string, unknown>;
+			}
+		} catch {
+			// Malformed inherited content: the overlay alone is still valid.
+		}
+	}
+	const baseMcp = base.mcp;
+	const merged: Record<string, unknown> = { ...base };
+	if (overlay.mcp !== undefined || baseMcp !== undefined) {
+		const mcp: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+		if (baseMcp !== null && typeof baseMcp === "object" && !Array.isArray(baseMcp)) {
+			Object.assign(mcp, baseMcp);
+		}
+		if (overlay.mcp !== undefined) Object.assign(mcp, overlay.mcp);
+		merged.mcp = mcp;
+	}
+	return JSON.stringify(merged);
+}
+
 export class KiloServerManager {
 	readonly #options: Required<
 		Pick<
@@ -137,12 +189,26 @@ export class KiloServerManager {
 		>
 	> &
 		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory" | "stateDirectory">;
+	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	#status: KiloServerStatus = { status: "stopped" };
 	#child: KiloChildProcess | undefined;
 	#connection: (KiloServerConnection & { pid: number }) | undefined;
 	#startPromise: Promise<KiloServerConnection> | undefined;
 	#disposed = false;
+	/**
+	 * Snapshot of the sanitized contributed env used at the last spawn.
+	 * Used by `contributedEnvChangedSinceSpawn()` to skip no-op restarts
+	 * when a contribution turns out to already be reflected in the running
+	 * child (e.g. a contribution that arrived during boot and was captured
+	 * by `#createEnvironment` before the spawn completed).
+	 */
+	#lastSpawnedContributedEnv: Record<string, string> = {};
+	/**
+	 * `KILO_CONFIG_CONTENT` value (composed inherited + overlay) used at the
+	 * last spawn. Compared alongside `#lastSpawnedContributedEnv` for drift.
+	 */
+	#lastSpawnedConfigContent: string | undefined;
 
 	constructor(options: KiloServerManagerOptions) {
 		this.#options = {
@@ -173,10 +239,44 @@ export class KiloServerManager {
 			healthRetryDelayMs: options.healthRetryDelayMs ?? 250,
 			shutdownTimeoutMs: options.shutdownTimeoutMs ?? 5_000,
 		};
+		this.#contributedEnv = options.contributedEnv;
 	}
 
 	get status(): KiloServerStatus {
 		return structuredClone(this.#status);
+	}
+
+	get isRunning(): boolean {
+		return this.#connection !== undefined;
+	}
+
+	/**
+	 * True while `ensureRunning()` has an in-flight spawn but the child is
+	 * not yet ready. Distinct from `isRunning` (which flips true only after
+	 * the health check passes). Used by `handleEnvChange` to decide whether
+	 * to await an in-flight spawn before evaluating drift — otherwise a
+	 * contribution that arrived mid-spawn is missed until an unrelated
+	 * contribution triggers a fresh restart.
+	 */
+	get isStarting(): boolean {
+		return this.#startPromise !== undefined;
+	}
+
+	/**
+	 * True when the currently-merged contributed env differs from the snapshot
+	 * captured at the last spawn. Callers debouncing restarts on env changes
+	 * can use this to skip no-op restarts — e.g. when a contribution arrived
+	 * during boot and was already captured in the initial spawn env.
+	 *
+	 * Returns true when the server has never spawned (nothing to compare
+	 * against yet); the caller can then decide to spawn instead of restart.
+	 */
+	contributedEnvChangedSinceSpawn(): boolean {
+		if (!this.#contributedEnv) return false;
+		if (this.#connection === undefined && this.#startPromise === undefined) return true;
+		const current = this.#sanitizeContributedEnv(this.#contributedEnv.getMergedEnv());
+		if (!isEqual(current, this.#lastSpawnedContributedEnv)) return true;
+		return this.#composeCurrentConfigContent() !== this.#lastSpawnedConfigContent;
 	}
 
 	ensureRunning(): Promise<KiloServerConnection> {
@@ -284,9 +384,86 @@ export class KiloServerManager {
 		]);
 	}
 
+	/**
+	 * Reserved env keys contributors cannot override. Compared case-insensitively
+	 * (Windows treats env var names case-insensitively at the CreateProcess /
+	 * libuv layer, and macOS/Linux tools sometimes ship UPPER-and lower- variants
+	 * in the same environment — sanitize both).
+	 *
+	 * The list is split into exact-match and prefix-match tiers:
+	 *
+	 * - **Exact:** individual keys with security or protocol semantics. Includes
+	 *   process-search hijacks (`PATH`), dynamic-linker shim variables
+	 *   (`LD_LIBRARY_PATH`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`) that could
+	 *   inject arbitrary code into the child, proxy bypasses (`NO_PROXY`), Node
+	 *   runtime hooks (`NODE_OPTIONS`), Electron-as-Node (`ELECTRON_RUN_AS_NODE`),
+	 *   and Kilo's per-launch identity (`KILO_SERVER_PASSWORD`, `KILO_PARENT_PID`)
+	 *   plus its resource pointers (`KILO_TREE_SITTER_WASM_DIR`).
+	 *
+	 * - **Prefix:** whole namespaces we reserve to Kilo (`KILO_`) and the XDG
+	 *   spec (`XDG_`), plus the macOS dynamic linker family (`DYLD_`) and Linux
+	 *   loader-preload family (`LD_`). Reserving prefixes prevents a contributor
+	 *   from shipping a future variant we haven't enumerated (e.g.
+	 *   `DYLD_FALLBACK_LIBRARY_PATH`, a new `KILO_*` knob).
+	 */
+	static readonly #RESERVED_EXACT_UPPER = new Set([
+		"PATH",
+		"NO_PROXY",
+		"NODE_OPTIONS",
+		"ELECTRON_RUN_AS_NODE",
+	]);
+
+	static readonly #RESERVED_PREFIXES_UPPER = ["KILO_", "XDG_", "DYLD_", "LD_"] as const;
+
+	static #isReservedEnvKey(key: string): boolean {
+		const upper = key.toUpperCase();
+		if (KiloServerManager.#RESERVED_EXACT_UPPER.has(upper)) return true;
+		return KiloServerManager.#RESERVED_PREFIXES_UPPER.some((prefix) => upper.startsWith(prefix));
+	}
+
+	/**
+	 * Filter contributed env by reserved keys (case-insensitive because Windows
+	 * treats env var names case-insensitively at the CreateProcess/libuv layer).
+	 * Also used by `contributedEnvChangedSinceSpawn` to compare against the
+	 * snapshot taken at spawn time.
+	 */
+	#sanitizeContributedEnv(contributed: Record<string, string>): Record<string, string> {
+		const sanitized: Record<string, string> = {};
+		for (const [key, value] of Object.entries(contributed)) {
+			if (KiloServerManager.#isReservedEnvKey(key)) {
+				this.#options.logger.warn(`Contributed env key "${key}" is reserved and will be ignored.`);
+				continue;
+			}
+			sanitized[key] = value;
+		}
+		return sanitized;
+	}
+
+	/** Current `KILO_CONFIG_CONTENT` value: inherited env value + merged overlay. */
+	#composeCurrentConfigContent(): string | undefined {
+		return composeConfigContent(
+			this.#options.environment.KILO_CONFIG_CONTENT,
+			this.#contributedEnv?.getMergedConfigOverlay(),
+		);
+	}
+
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
+		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
+		const sanitizedContributed = this.#sanitizeContributedEnv(contributed);
+		const configContent = this.#composeCurrentConfigContent();
+		// Snapshot for drift detection; a subsequent env change that matches
+		// this snapshot won't trigger a restart.
+		this.#lastSpawnedContributedEnv = { ...sanitizedContributed };
+		this.#lastSpawnedConfigContent = configContent;
+
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
+			...sanitizedContributed,
+			// Config overlay channel. Contributors cannot set KILO_* directly
+			// (reserved prefix); overlays flow through the dedicated
+			// `configOverlay.contribute` capability instead and are composed
+			// here, merged over any inherited KILO_CONFIG_CONTENT.
+			...(configContent !== undefined ? { KILO_CONFIG_CONTENT: configContent } : {}),
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
@@ -296,12 +473,22 @@ export class KiloServerManager {
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
 		};
-		delete environment.NODE_OPTIONS;
-		delete environment.ELECTRON_RUN_AS_NODE;
-		if (this.#options.platform === "linux") delete environment.LD_PRELOAD;
+		// Case-insensitive scrub of dangerous keys, in case any case-variant
+		// survived the spread from process.env.
+		for (const name of Object.keys(environment)) {
+			const upper = name.toUpperCase();
+			if (upper === "NODE_OPTIONS" || upper === "ELECTRON_RUN_AS_NODE") {
+				delete environment[name];
+			}
+		}
+		if (this.#options.platform === "linux") {
+			for (const name of Object.keys(environment)) {
+				if (name.toUpperCase() === "LD_PRELOAD") delete environment[name];
+			}
+		}
 		if (this.#options.platform === "darwin") {
 			for (const name of Object.keys(environment)) {
-				if (name.startsWith("DYLD_")) delete environment[name];
+				if (name.toUpperCase().startsWith("DYLD_")) delete environment[name];
 			}
 		}
 		return environment;

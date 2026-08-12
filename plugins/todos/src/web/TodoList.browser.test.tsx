@@ -13,6 +13,8 @@ import { TodoList } from "./TodoList";
 
 type TodoHandlers = ChannelHandlerMap<typeof todosContract>;
 
+const FEATURE_FLAG_KEY = "todo-feature";
+
 /** In-memory handlers matching the todos contract, overridable per test. */
 function inMemoryHandlers(seed: readonly Todo[] = []): TodoHandlers {
 	const todos: Todo[] = [...seed];
@@ -39,8 +41,24 @@ function testClient(): QueryClient {
 	return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-function renderTodoList(handlers: Partial<TodoHandlers>) {
-	const sdk = createFakeSdk({ featureId: "todos", channels: todosContract, handlers });
+function renderTodoList(handlers: Partial<TodoHandlers>, options: { flagEnabled?: boolean } = {}) {
+	// The flag defaults to on so existing behavior tests exercise the happy
+	// path without each opting in — mirrors the anaconda-mcp fake pattern.
+	const flagEnabled = options.flagEnabled ?? true;
+	const flags: Record<string, unknown> = { [FEATURE_FLAG_KEY]: flagEnabled };
+	const sdk = createFakeSdk({
+		featureId: "todos",
+		channels: todosContract,
+		handlers,
+		featureFlags: {
+			getAllFlags: async () => flags,
+			subscribe: (fn) => {
+				fn(flags);
+				return () => {};
+			},
+			peek: () => flags,
+		},
+	});
 	const system = createFakeFeatureSystem({ sdks: { todos: sdk } });
 	return render(
 		<SdkProvider system={system}>
@@ -154,5 +172,30 @@ describe("TodoList", () => {
 		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
 		baseElement.querySelector("form")?.requestSubmit();
 		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+	});
+
+	describe("feature flag gate (todo-feature)", () => {
+		it("renders the not-available message when the flag is off", async () => {
+			const { baseElement } = renderTodoList(inMemoryHandlers(), { flagEnabled: false });
+			const screen = page.elementLocator(baseElement);
+
+			const root = screen.getByTestId("todos-page");
+			await expect.element(root).toHaveAttribute("data-state", "flag-off");
+			await expect.element(screen.getByTestId("todos-unavailable")).toBeVisible();
+
+			// None of the interactive controls should render in flag-off state.
+			await expect.element(screen.getByTestId("todo-input")).not.toBeInTheDocument();
+			await expect.element(screen.getByTestId("todo-add")).not.toBeInTheDocument();
+			await expect.element(screen.getByText("No todos yet.")).not.toBeInTheDocument();
+		});
+
+		it("renders the normal panel when the flag is on", async () => {
+			const { baseElement } = renderTodoList(inMemoryHandlers(), { flagEnabled: true });
+			const screen = page.elementLocator(baseElement);
+
+			await expect.element(screen.getByTestId("todo-input")).toBeVisible();
+			await expect.element(screen.getByTestId("todo-add")).toBeVisible();
+			await expect.element(screen.getByTestId("todos-unavailable")).not.toBeInTheDocument();
+		});
 	});
 });

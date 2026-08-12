@@ -330,7 +330,7 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 		doneLabel: ({ question, count }) =>
 			question ? `Asked ${question}` : `Asked ${plural(count, "question")}`,
 		circleClassName:
-			"border-sky-600/40 bg-sky-100 text-sky-600 dark:border-sky-400/40 dark:bg-sky-950 dark:text-sky-400",
+			"border-indigo-600/40 bg-indigo-100 text-indigo-600 dark:border-indigo-400/40 dark:bg-indigo-950 dark:text-indigo-400",
 	},
 	tools: {
 		icon: WrenchIcon,

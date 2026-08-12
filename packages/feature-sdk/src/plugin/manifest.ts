@@ -65,6 +65,16 @@ export const pluginNavEntrySchema = z.strictObject({
 	icon: z.string().min(1).optional(),
 	/** Higher renders first among nav entries. Default 0 — matches `sdk.contribute`. */
 	priority: z.number().int().optional(),
+	/**
+	 * Optional LaunchDarkly feature-flag key that gates the sidebar entry's
+	 * visibility. When set and the flag resolves to `false` (the default,
+	 * used when the flag is missing or the provider errors) the shell omits
+	 * the entry from the sidebar. Routes and other contributions declared by
+	 * the same plugin are unaffected — direct navigation to a plugin route
+	 * still mounts the page, which is expected to render its own flag-aware
+	 * state so users who deep-link do not see a phantom feature.
+	 */
+	featureFlag: z.string().min(1).optional(),
 });
 export type PluginNavEntry = z.infer<typeof pluginNavEntrySchema>;
 

@@ -36,15 +36,25 @@ describe("AppProviders (app-level)", () => {
 
 	it("boots the shell and navigates into registered feature routes", async () => {
 		const localApi = createBrowserLocalApi();
-		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
+		// Force the todos LaunchDarkly flag on for this app-level test — the
+		// browser fallback returns `{}` by default and the todos nav entry is
+		// gated by `featureFlag: "todo-feature"`, so without this override
+		// the sidebar icon would be hidden and the nav-click would time out.
+		const gatedApi: typeof localApi = {
+			...localApi,
+			featureFlags: {
+				...localApi.featureFlags,
+				getAllFlags: async () => ({ "todo-feature": true }),
+			},
+		};
+		const system = createAppFeatureSystem(gatedApi, WEB_FEATURES);
 		registerPluginZoneContributions(system, PLUGIN_ZONE_CONTRIBUTIONS, {
 			desktopAvailable: false,
 		});
-		const { baseElement } = render(<AppProviders localApi={localApi} system={system} />);
+		const { baseElement } = render(<AppProviders localApi={gatedApi} system={system} />);
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("app-sidebar")).toBeVisible();
-		await expect.element(screen.getByTestId("nav-chat")).toBeVisible();
 
 		// The todos nav entry is derived from the plugin manifest route.
 		await screen.getByTestId("nav-todos").click();

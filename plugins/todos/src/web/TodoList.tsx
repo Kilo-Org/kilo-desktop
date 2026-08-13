@@ -1,6 +1,13 @@
 import { type FormEvent, useState } from "react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import { useQuery } from "@tanstack/react-query";
+
+import {
+	sdkQueryOptions,
+	useFeatureFlag,
+	useSdk,
+	useSdkMutation,
+} from "@anaconda-agentic-desktop/sdk-react";
 
 import type { TodoService } from "../contracts/schemas.js";
 
@@ -10,13 +17,42 @@ import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import { Label } from "@anaconda-agentic-desktop/ui/components/label";
 import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
 
+/**
+ * LaunchDarkly feature-flag key that gates this panel, the plugin's tool
+ * registrations, and the main-process contract handlers. Kept in sync with
+ * `FEATURE_FLAG_KEY` in `plugins/todos/src/main/index.ts`.
+ */
+const FEATURE_FLAG_KEY = "todo-feature";
+
 export function TodoList() {
+	const featureEnabled = useFeatureFlag<boolean>(FEATURE_FLAG_KEY, false);
 	const sdk = useSdk<TodoService>("todos");
-	const todos = useSdkQuery(sdk, "list");
+	// Gate the query on the flag so it never fires while the feature is
+	// off. Without this the first render's `peek()` returns `{}`, so the
+	// query goes out, the main handler answers `FEATURE_DISABLED`, and the
+	// error stays cached in TanStack Query — surfacing as a misleading
+	// "Could not load todos: Todos feature is disabled." banner the moment
+	// the flag flips on.
+	const todos = useQuery({ ...sdkQueryOptions(sdk, "list"), enabled: featureEnabled });
 	const addTodo = useSdkMutation(sdk, "add", { invalidates: ["list"] });
 	const toggleTodo = useSdkMutation(sdk, "toggle", { invalidates: ["list"] });
 	const [title, setTitle] = useState("");
 	const mutationError = addTodo.error ?? toggleTodo.error;
+	const showFeatureFlagBanner = useFeatureFlag("test");
+
+	if (!featureEnabled) {
+		return (
+			<div className="mx-auto max-w-xl px-5 py-8" data-qa-id="todos-page" data-state="flag-off">
+				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="todos-heading">
+					Todo List
+				</h1>
+				<p className="text-muted-foreground mt-1 text-sm" data-qa-id="todos-unavailable">
+					This feature is not enabled for your account. Contact your Anaconda administrator or try
+					again later.
+				</p>
+			</div>
+		);
+	}
 
 	function submit(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
@@ -38,6 +74,12 @@ export function TodoList() {
 			<p className="text-muted-foreground mt-1 text-sm">
 				Todos load and update through the feature SDK with TanStack Query.
 			</p>
+
+			{showFeatureFlagBanner ? (
+				<p className="text-primary mt-1 text-sm font-medium" data-qa-id="todos-feature-flag-banner">
+					Now with more feature flags!
+				</p>
+			) : null}
 
 			<form className="my-6 grid gap-2" onSubmit={submit}>
 				<Label htmlFor="new-todo">New todo</Label>

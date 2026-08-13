@@ -1,66 +1,88 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
 import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
-import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
-import { createKiloRuntimeClient } from "./create-kilo-runtime-client.js";
+import type {
+	KiloGlobalConnection,
+	KiloSessionPreparation,
+} from "../../../contracts/chat/schemas.js";
+import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
+import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
+import { withPromptOptions, type PromptModelRef } from "./with-prompt-options.js";
 
 export interface UseKiloRuntimeOptions {
-	/** Resolved connection — builds the client immediately. */
-	connection?: KiloWorkspaceConnection;
-	/**
-	 * Connection that may still be starting. Builds a stable deferred client so
-	 * the composer can mount before Kilo is ready; SDK calls wait on the promise.
-	 */
-	connectionPromise?: Promise<KiloWorkspaceConnection>;
-	/** Pre-built client (tests). Takes precedence over connection options. */
+	connectionPromise?: Promise<KiloGlobalConnection>;
+	prepareSession?: () => Promise<KiloSessionPreparation>;
+	/** Pre-built client injection for focused tests. */
 	client?: KiloClient;
 	initialSessionId?: string;
+	/** Fires when the active remote thread id changes (OpenCode session switch). */
+	onThreadIdChange?: (threadId: string | undefined) => void;
 	defaultAgent?: string;
-	defaultModel?: {
-		providerID: string;
-		modelID: string;
-	};
+	defaultModel?: PromptModelRef;
+	/** Reasoning effort / OpenCode variant injected into prompt requests. */
+	variant?: string;
 	isSendDisabled?: boolean;
 	onError?: (error: unknown) => void;
+	/** Shared session-activity store tapped into the runtime's SSE stream. */
+	sessionActivity?: SessionActivityStore;
 }
 
 export function useKiloRuntime({
-	connection,
 	connectionPromise,
+	prepareSession,
 	client: clientOption,
 	initialSessionId,
+	onThreadIdChange,
 	defaultAgent,
 	defaultModel,
+	variant,
 	isSendDisabled,
 	onError,
+	sessionActivity,
 }: UseKiloRuntimeOptions): AssistantRuntime {
-	const client = useMemo(() => {
-		if (clientOption) {
-			return clientOption;
+	// Refs so prompt injection always sees the latest composer selection even when
+	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
+	const variantRef = useRef(variant);
+	variantRef.current = variant;
+	const agentRef = useRef(defaultAgent);
+	agentRef.current = defaultAgent;
+	const modelRef = useRef(defaultModel);
+	modelRef.current = defaultModel;
+
+	const promptGetters = useMemo(
+		() => ({
+			getVariant: () => variantRef.current,
+			getAgent: () => agentRef.current,
+			getModel: () => modelRef.current,
+		}),
+		[],
+	);
+
+	const client = useMemo(
+		() => (clientOption ? withPromptOptions(clientOption, promptGetters) : undefined),
+		[clientOption, promptGetters],
+	);
+	const backend = useMemo(() => {
+		if (client) return undefined;
+		if (!connectionPromise || !prepareSession) {
+			throw new Error("useKiloRuntime requires a client, or connectionPromise with prepareSession");
 		}
-		if (connection) {
-			return createKiloRuntimeClient(connection);
-		}
-		if (connectionPromise) {
-			return createDeferredKiloRuntimeClient(connectionPromise);
-		}
-		throw new Error("useKiloRuntime requires connection, connectionPromise, or client");
-	}, [
-		clientOption,
-		connection?.baseUrl,
-		connection?.directory,
-		connection?.username,
-		connection?.password,
-		connectionPromise,
-	]);
+		return createKiloRuntimeBackend({
+			connectionPromise,
+			prepareSession,
+			...promptGetters,
+			...(sessionActivity ? { sessionActivity } : {}),
+		});
+	}, [client, connectionPromise, prepareSession, promptGetters, sessionActivity]);
 
 	return useOpenCodeRuntime({
-		client,
+		...(backend ? { backend } : {}),
+		...(client ? { client } : {}),
 		...(initialSessionId === undefined ? {} : { initialSessionId }),
+		...(onThreadIdChange === undefined ? {} : { onThreadIdChange }),
 		...(defaultAgent === undefined ? {} : { defaultAgent }),
 		...(defaultModel === undefined ? {} : { defaultModel }),
 		...(isSendDisabled === undefined ? {} : { isSendDisabled }),

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { discoverPlugins, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { buildPluginNav, PLUGIN_NAV } from "./plugin-nav";
+import { buildPluginNav, filterVisiblePluginNav, PLUGIN_NAV } from "./plugin-nav";
 
 const Page = () => null;
 const DemoNavIcon = () => null;
@@ -20,7 +20,12 @@ function makeDiscovery(): PluginDiscovery {
 						routes: [{ path: "/demo", component: "Page" }],
 						nav: [
 							{ to: "/demo", label: "Demo", icon: "DemoNavIcon", priority: 1 },
-							{ to: "/demo/stats", label: "Stats", priority: 10 },
+							{
+								to: "/demo/stats",
+								label: "Stats",
+								priority: 10,
+								featureFlag: "demo-stats",
+							},
 						],
 					},
 				},
@@ -46,6 +51,7 @@ describe("buildPluginNav", () => {
 				priority: 10,
 				splat: "demo/stats",
 				navQaId: "nav-demo-stats",
+				featureFlag: "demo-stats",
 			},
 			{
 				pluginId: "demo",
@@ -56,6 +62,7 @@ describe("buildPluginNav", () => {
 				priority: 1,
 				splat: "demo",
 				navQaId: "nav-demo",
+				featureFlag: undefined,
 			},
 		]);
 	});
@@ -73,6 +80,29 @@ describe("buildPluginNav", () => {
 	});
 });
 
+describe("filterVisiblePluginNav", () => {
+	const nav = buildPluginNav(makeDiscovery());
+
+	it("keeps entries without a featureFlag regardless of flag map", () => {
+		expect(filterVisiblePluginNav(nav, {}).map((e) => e.label)).toContain("Demo");
+	});
+
+	it("hides entries whose gating flag is missing or falsy", () => {
+		const labels = filterVisiblePluginNav(nav, {}).map((e) => e.label);
+		expect(labels).not.toContain("Stats");
+
+		const labelsExplicitFalse = filterVisiblePluginNav(nav, { "demo-stats": false }).map(
+			(e) => e.label,
+		);
+		expect(labelsExplicitFalse).not.toContain("Stats");
+	});
+
+	it("shows entries whose gating flag is truthy", () => {
+		const labels = filterVisiblePluginNav(nav, { "demo-stats": true }).map((e) => e.label);
+		expect(labels).toContain("Stats");
+	});
+});
+
 describe("PLUGIN_NAV", () => {
 	it("contains the bundled todos nav entry under the /plugins namespace", () => {
 		const todos = PLUGIN_NAV.find((entry) => entry.to === "/plugins/todos");
@@ -82,5 +112,17 @@ describe("PLUGIN_NAV", () => {
 		expect(todos?.icon).toBe("TodoNavIcon");
 		expect(todos?.iconComponent).toBeDefined();
 		expect(todos?.navQaId).toBe("nav-todos");
+		expect(todos?.featureFlag).toBe("todo-feature");
+	});
+
+	it("contains the bundled environments nav entry under the /plugins namespace", () => {
+		const environments = PLUGIN_NAV.find((entry) => entry.to === "/plugins/environments");
+		expect(environments).toBeDefined();
+		expect(environments?.pluginId).toBe("environments");
+		expect(environments?.label).toBe("Environments");
+		expect(environments?.icon).toBe("EnvironmentsNavIcon");
+		expect(environments?.iconComponent).toBeDefined();
+		expect(environments?.navQaId).toBe("nav-environments");
+		expect(environments?.featureFlag).toBe("environments-feature");
 	});
 });

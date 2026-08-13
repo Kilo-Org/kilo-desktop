@@ -15,6 +15,8 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  * plugins are skipped there with the standard warning.
  */
 
+import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
+import * as environmentsWeb from "@anaconda-agentic-desktop/plugin-environments/web";
 import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
 import * as kiloServerWeb from "@anaconda-agentic-desktop/plugin-kilo-server/web";
 import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
@@ -26,4 +28,5 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: kiloUiManifest, module: kiloUiWeb },
 	{ manifest: kiloServerManifest, module: kiloServerWeb },
 	{ manifest: todosManifest, module: todosWeb },
+	{ manifest: environmentsManifest, module: environmentsWeb },
 ];

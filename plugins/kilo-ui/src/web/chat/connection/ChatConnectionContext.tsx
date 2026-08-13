@@ -1,12 +1,12 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { KiloWorkspaceConnection } from "../../contracts/chat/schemas.js";
+import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 
 export type ChatConnectionStatus = {
 	isPending: boolean;
 	isError: boolean;
 	error: Error | null;
-	connectionPromise: Promise<KiloWorkspaceConnection>;
+	connectionPromise: Promise<KiloGlobalConnection>;
 };
 
 const ChatConnectionContext = createContext<ChatConnectionStatus | null>(null);

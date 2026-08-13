@@ -1,0 +1,20 @@
+{
+	"id": "environments",
+	"displayName": "Environments",
+	"version": "0.1.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"routes": [
+			{ "path": "/environments", "component": "EnvironmentsPage", "title": "Environments" }
+		],
+		"nav": [
+			{
+				"to": "/environments",
+				"label": "Environments",
+				"icon": "EnvironmentsNavIcon",
+				"featureFlag": "environments-feature"
+			}
+		]
+	}
+}

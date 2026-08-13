@@ -32,9 +32,11 @@ function createFakeClient(
 	const session = {
 		id: "session-1",
 		title: "New session",
+		directory: "/workspace",
 		time: { created: Date.now(), updated: Date.now() },
 	};
 	const create = vi.fn(createSession);
+	const list = vi.fn(async () => ({ data: [] as (typeof session)[] }));
 	const promptAsync = vi.fn(async () => ({ data: undefined }));
 	const get = vi.fn(async ({ sessionID }: { sessionID: string }) => ({
 		data: { ...session, id: sessionID },
@@ -55,7 +57,7 @@ function createFakeClient(
 	const client = {
 		experimental: {
 			session: {
-				list: vi.fn(async () => ({ data: [] })),
+				list,
 			},
 		},
 		session: {
@@ -68,13 +70,30 @@ function createFakeClient(
 		event: { subscribe: eventSubscribe },
 	} as unknown as KiloClient;
 
-	return { client, create, promptAsync };
+	return { client, create, list, promptAsync };
 }
 
 function RuntimeState() {
 	const aui = useAui();
 	const remoteId = useAuiState((state) => state.threadListItem.remoteId);
 	const attachmentCount = useAuiState((state) => state.composer.attachments.length);
+	const messageCount = useAuiState((state) => state.thread.messages.length);
+	const userMessageCount = useAuiState(
+		(state) => state.thread.messages.filter((message) => message.role === "user").length,
+	);
+	const lastUserText = useAuiState((state) => {
+		const lastUser = state.thread.messages.findLast((message) => message.role === "user");
+		if (!lastUser) return "";
+		return lastUser.content
+			.filter((part) => part.type === "text")
+			.map((part) => part.text)
+			.join("");
+	});
+	const lastUserAttachmentCount = useAuiState((state) => {
+		const lastUser = state.thread.messages.findLast((message) => message.role === "user");
+		if (!lastUser || lastUser.role !== "user") return 0;
+		return lastUser.attachments.length;
+	});
 	return (
 		<>
 			<button
@@ -93,6 +112,10 @@ function RuntimeState() {
 			</button>
 			<output data-qa-id="remote-session-id">{remoteId ?? "none"}</output>
 			<output data-qa-id="attachment-count">{attachmentCount}</output>
+			<output data-qa-id="message-count">{messageCount}</output>
+			<output data-qa-id="user-message-count">{userMessageCount}</output>
+			<output data-qa-id="last-user-text">{lastUserText}</output>
+			<output data-qa-id="last-user-attachment-count">{lastUserAttachmentCount}</output>
 		</>
 	);
 }
@@ -160,6 +183,126 @@ describe("patched OpenCode lazy session initialization", () => {
 		);
 	});
 
+	it("shows an optimistic user bubble before session creation resolves", async () => {
+		const creation = deferred<SessionCreateResult>();
+		const fake = createFakeClient(() => creation.promise);
+		const { baseElement } = renderRuntime({ client: fake.client });
+		const screen = page.elementLocator(baseElement);
+		const input = screen.getByRole("textbox", { name: "Message" });
+
+		await input.fill("Show me immediately");
+		await screen.getByRole("button", { name: "Send" }).click();
+
+		await expect
+			.element(screen.getByTestId("last-user-text"))
+			.toHaveTextContent("Show me immediately");
+		await expect.element(screen.getByTestId("user-message-count")).toHaveTextContent("1");
+		expect(fake.create).toHaveBeenCalledOnce();
+		expect(fake.promptAsync).not.toHaveBeenCalled();
+		await expect.element(screen.getByTestId("remote-session-id")).toHaveTextContent("none");
+
+		creation.resolve({ data: { id: "session-1" } });
+		await waitFor(() => expect(fake.promptAsync).toHaveBeenCalledOnce());
+		await expect.element(screen.getByTestId("remote-session-id")).toHaveTextContent("session-1");
+		await expect.element(screen.getByTestId("user-message-count")).toHaveTextContent("1");
+		await expect
+			.element(screen.getByTestId("last-user-text"))
+			.toHaveTextContent("Show me immediately");
+	});
+
+	it("does not show a provisional thread's optimistic message in another thread", async () => {
+		const creation = deferred<SessionCreateResult>();
+		const fake = createFakeClient(() => creation.promise);
+		fake.list.mockResolvedValue({
+			data: [
+				{
+					id: "existing-session",
+					title: "Existing session",
+					directory: "/workspace",
+					time: { created: Date.now(), updated: Date.now() },
+				},
+			],
+		});
+		let runtime: ReturnType<typeof useOpenCodeRuntime> | undefined;
+		const { baseElement } = renderRuntime({
+			client: fake.client,
+			onRuntime: (value) => {
+				runtime = value;
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await waitFor(() => expect(runtime).toBeDefined());
+		await runtime!.threads.getLoadThreadsPromise();
+		expect(runtime!.threads.getState().threadIds).toContain("existing-session");
+
+		await screen.getByRole("textbox", { name: "Message" }).fill("Only in the draft thread");
+		await screen.getByRole("button", { name: "Send" }).click();
+		await expect
+			.element(screen.getByTestId("last-user-text"))
+			.toHaveTextContent("Only in the draft thread");
+
+		await runtime!.threads.switchToThread("existing-session");
+
+		await expect
+			.element(screen.getByTestId("remote-session-id"))
+			.toHaveTextContent("existing-session");
+		await expect.element(screen.getByTestId("user-message-count")).toHaveTextContent("0");
+		await expect.element(screen.getByTestId("last-user-text")).toBeEmptyDOMElement();
+	});
+
+	it("keeps attachments on the optimistic user bubble before session creation resolves", async () => {
+		const creation = deferred<SessionCreateResult>();
+		const fake = createFakeClient(() => creation.promise);
+		const { baseElement } = renderRuntime({ client: fake.client });
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByRole("textbox", { name: "Message" }).fill("With a file");
+		await screen.getByRole("button", { name: "Add attachment" }).click();
+		await expect.element(screen.getByTestId("attachment-count")).toHaveTextContent("1");
+		await screen.getByRole("button", { name: "Send" }).click();
+
+		await expect.element(screen.getByTestId("last-user-text")).toHaveTextContent("With a file");
+		await expect.element(screen.getByTestId("last-user-attachment-count")).toHaveTextContent("1");
+		await expect.element(screen.getByTestId("user-message-count")).toHaveTextContent("1");
+		expect(fake.promptAsync).not.toHaveBeenCalled();
+
+		creation.resolve({ data: { id: "session-1" } });
+		await waitFor(() => expect(fake.promptAsync).toHaveBeenCalledOnce());
+		await expect.element(screen.getByTestId("last-user-attachment-count")).toHaveTextContent("1");
+		expect(fake.promptAsync).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionID: "session-1",
+				parts: expect.arrayContaining([
+					{ type: "text", text: "With a file" },
+					expect.objectContaining({ type: "text", text: "Remember this attachment" }),
+				]),
+			}),
+			expect.objectContaining({ throwOnError: true }),
+		);
+	});
+
+	it("keeps the optimistic bubble across session-id remount before prompt", async () => {
+		const creation = deferred<SessionCreateResult>();
+		const fake = createFakeClient(() => creation.promise);
+		const { baseElement } = renderRuntime({ client: fake.client });
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByRole("textbox", { name: "Message" }).fill("Stay visible");
+		await screen.getByRole("button", { name: "Send" }).click();
+
+		await expect.element(screen.getByTestId("last-user-text")).toHaveTextContent("Stay visible");
+		await expect.element(screen.getByTestId("user-message-count")).toHaveTextContent("1");
+
+		creation.resolve({ data: { id: "session-1" } });
+		// After remote id assignment the runtime hook remounts; the bubble must
+		// not disappear before promptAsync lands.
+		await expect.element(screen.getByTestId("last-user-text")).toHaveTextContent("Stay visible");
+		await waitFor(() => expect(fake.promptAsync).toHaveBeenCalledOnce());
+		await expect.element(screen.getByTestId("user-message-count")).toHaveTextContent("1");
+		await expect.element(screen.getByTestId("last-user-text")).toHaveTextContent("Stay visible");
+	});
+
 	it("reuses one initialization for rapid provisional appends", async () => {
 		const creation = deferred<SessionCreateResult>();
 		const fake = createFakeClient(() => creation.promise);
@@ -215,9 +358,20 @@ describe("patched OpenCode lazy session initialization", () => {
 		await input.fill("Keep this draft");
 		await screen.getByRole("button", { name: "Add attachment" }).click();
 		await expect.element(screen.getByTestId("attachment-count")).toHaveTextContent("1");
-		await screen.getByRole("button", { name: "Send" }).click();
 
-		await waitFor(() => expect(onError).toHaveBeenCalledWith(creationError));
+		const suppressCreationFailure = (event: PromiseRejectionEvent) => {
+			if (event.reason === creationError) {
+				event.preventDefault();
+			}
+		};
+		window.addEventListener("unhandledrejection", suppressCreationFailure);
+		try {
+			await screen.getByRole("button", { name: "Send" }).click();
+			await waitFor(() => expect(onError).toHaveBeenCalledWith(creationError));
+		} finally {
+			window.removeEventListener("unhandledrejection", suppressCreationFailure);
+		}
+
 		expect(onError).toHaveBeenCalledOnce();
 		await expect.element(input).toHaveValue("Keep this draft");
 		await expect.element(screen.getByTestId("attachment-count")).toHaveTextContent("1");

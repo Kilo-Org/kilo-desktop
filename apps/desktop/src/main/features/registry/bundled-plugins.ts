@@ -26,6 +26,8 @@ import { app } from "electron";
  *    seed data, ...).
  */
 
+import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
+import * as environmentsMain from "@anaconda-agentic-desktop/plugin-environments/main";
 import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
 import * as kiloServerMain from "@anaconda-agentic-desktop/plugin-kilo-server/main";
 import { createKiloServerResolveAsset } from "@anaconda-agentic-desktop/plugin-kilo-server/packaged-assets";
@@ -54,5 +56,10 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 		manifest: todosManifest,
 		module: todosMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-todos"),
+	},
+	{
+		manifest: environmentsManifest,
+		module: environmentsMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-environments"),
 	},
 ];

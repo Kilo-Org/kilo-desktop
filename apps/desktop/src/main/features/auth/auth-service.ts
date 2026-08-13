@@ -1,11 +1,21 @@
 import isEqual from "lodash/isEqual.js";
+import memoize from "lodash/memoize.js";
 
 import { Keyring } from "./keyring/keyring.js";
 import { login as oauthLogin, type LoginDependencies } from "./oauth/oauth-flow.js";
 
 import type { AuthSession } from "@anaconda-agentic-desktop/contracts";
 
-import { exchangeForApiKey, passportToUser, whoamiResponseSchema } from "./actions.js";
+import {
+	exchangeForApiKey,
+	getUserPassport,
+	passportToUser,
+	whoamiResponseSchema,
+	type UserInfoAttribute,
+	type UserInfoOrganization,
+	type UserInfoPassport,
+} from "./actions.js";
+import { primarySubscriptionFromAttributes, type UserSubscription } from "./utils.js";
 import { startLoopbackAuthorize, electronFetch } from "./oauth/callback-server.js";
 import {
 	resolveSite,
@@ -43,6 +53,8 @@ export type ApiKeyExchanger = (
 	userAgent: string,
 ) => Promise<string>;
 
+export type UserPassportFetcher = typeof getUserPassport;
+
 export interface AuthSessionServiceOptions {
 	fetch?: OAuthFetch;
 	resolveSite?: SiteResolver;
@@ -51,6 +63,7 @@ export interface AuthSessionServiceOptions {
 	login?: OAuthLogin;
 	createAuthorizeServer?: AuthorizeServerFactory;
 	exchangeForApiKey?: ApiKeyExchanger;
+	getUserPassport?: UserPassportFetcher;
 	userAgent?: string;
 	logger?: AuthLogger;
 }
@@ -67,6 +80,7 @@ export class AuthSessionService {
 	#session: AuthSession = ANONYMOUS;
 	#resolved = false;
 	#inFlight: Promise<AuthSession> | undefined;
+	#lastApiKey: string | null = null;
 	readonly #listeners = new Set<(session: AuthSession) => void>();
 
 	readonly #fetch: OAuthFetch;
@@ -76,8 +90,31 @@ export class AuthSessionService {
 	readonly #login: OAuthLogin;
 	readonly #createAuthorizeServer: AuthorizeServerFactory;
 	readonly #exchangeForApiKey: ApiKeyExchanger;
+	readonly #userPassportAction: UserPassportFetcher;
 	readonly #userAgent: string;
 	readonly #logger: AuthLogger;
+
+	/**
+	 * Memoized userinfo passport; cache cleared whenever the session changes.
+	 * A rejected fetch is evicted rather than cached so a transient failure does
+	 * not stick for the rest of the session — the next call retries. All
+	 * passport-derived accessors (`getUserInfo`, `getOrganizations`,
+	 * `getSubscription`) share this single cache entry.
+	 */
+	readonly #passport = memoize(async (): Promise<UserInfoPassport> => {
+		const apiKey = await this.getApiKey();
+		if (!apiKey) return {};
+		try {
+			const site = await this.#resolveSite(this.#configLoader);
+			return await this.#userPassportAction(site.domain, apiKey, this.#fetch, this.#userAgent);
+		} catch (cause) {
+			// Do not cache a transient failure: evict this rejected entry so the
+			// next getUserInfo()/getSubscription()/getOrganizations() retries once
+			// connectivity returns.
+			this.#passport.cache.delete?.(undefined);
+			throw cause;
+		}
+	});
 
 	constructor(options: AuthSessionServiceOptions = {}) {
 		this.#fetch = options.fetch ?? electronFetch;
@@ -88,6 +125,7 @@ export class AuthSessionService {
 		this.#createAuthorizeServer =
 			options.createAuthorizeServer ?? ((domain) => startLoopbackAuthorize({ domain }));
 		this.#exchangeForApiKey = options.exchangeForApiKey ?? exchangeForApiKey;
+		this.#userPassportAction = options.getUserPassport ?? getUserPassport;
 		this.#userAgent = options.userAgent ?? "anaconda-agentic-desktop";
 		this.#logger = options.logger ?? defaultLogger;
 	}
@@ -95,6 +133,21 @@ export class AuthSessionService {
 	/** Current cached session without triggering resolution. */
 	peek(): AuthSession {
 		return this.#session;
+	}
+
+	/**
+	 * Retrieve the currently stored API key from the keyring.
+	 * Returns `null` when there is no key or the keyring is unavailable.
+	 * This method is main-process-only; the key never crosses to the renderer.
+	 */
+	async getApiKey(): Promise<string | null> {
+		try {
+			const site = await this.#resolveSite(this.#configLoader);
+			const keyring = await this.#loadKeyring(site);
+			return await keyring.getApiKey();
+		} catch {
+			return null;
+		}
 	}
 
 	/** Resolve lazily; subsequent calls return the cached value. */
@@ -107,6 +160,36 @@ export class AuthSessionService {
 	async refresh(): Promise<AuthSession> {
 		this.#resolved = false;
 		return this.#resolve();
+	}
+
+	/**
+	 * OIDC userinfo passport attributes for the current session, memoized until
+	 * the session changes. Empty list when anonymous or when the passport is
+	 * genuinely empty. Rejects on a transient fetch failure (not cached), so a
+	 * subsequent call retries.
+	 */
+	async getUserInfo(): Promise<UserInfoAttribute[]> {
+		return (await this.#passport()).attributes ?? [];
+	}
+
+	/**
+	 * Organizations the authenticated user belongs to. Empty list when anonymous
+	 * or when the passport carries no organizations. Shares the memoized
+	 * passport cache with `getUserInfo`/`getSubscription`; propagates a
+	 * transient fetch rejection.
+	 */
+	async getOrganizations(): Promise<UserInfoOrganization[]> {
+		return (await this.#passport()).organizations ?? [];
+	}
+
+	/**
+	 * The resolved primary subscription tier for the current session. Single
+	 * shared entry point for consumers (feature flags, telemetry) so the tier is
+	 * derived once from userinfo attributes rather than duplicated per consumer.
+	 * Propagates a userinfo fetch rejection; consumers guard with `.catch`.
+	 */
+	async getSubscription(): Promise<UserSubscription> {
+		return primarySubscriptionFromAttributes(await this.getUserInfo());
 	}
 
 	/**
@@ -187,7 +270,7 @@ export class AuthSessionService {
 		}
 
 		this.#resolved = true;
-		this.#commit(ANONYMOUS);
+		this.#commit(ANONYMOUS, null);
 		return ANONYMOUS;
 	}
 
@@ -212,18 +295,18 @@ export class AuthSessionService {
 	}
 
 	async #doResolve(): Promise<AuthSession> {
-		const next = await this.#computeSession();
+		const { session: next, apiKey } = await this.#computeSession();
 		this.#resolved = true;
-		this.#commit(next);
+		this.#commit(next, apiKey);
 		return next;
 	}
 
-	async #computeSession(): Promise<AuthSession> {
+	async #computeSession(): Promise<{ session: AuthSession; apiKey: string | null }> {
 		let site: ResolvedSite;
 		try {
 			site = await this.#resolveSite(this.#configLoader);
 		} catch (cause) {
-			return { status: "error", reason: errorReason(cause) };
+			return { session: { status: "error", reason: errorReason(cause) }, apiKey: null };
 		}
 
 		let apiKey: string | null;
@@ -232,12 +315,12 @@ export class AuthSessionService {
 			apiKey = await keyring.getApiKey();
 		} catch {
 			// Keyring unavailable → treat as no session rather than crashing.
-			return ANONYMOUS;
+			return { session: ANONYMOUS, apiKey: null };
 		}
 
-		if (!apiKey) return ANONYMOUS;
+		if (!apiKey) return { session: ANONYMOUS, apiKey: null };
 
-		return this.#fetchSession(site, apiKey);
+		return { session: await this.#fetchSession(site, apiKey), apiKey };
 	}
 
 	async #fetchSession(site: ResolvedSite, apiKey: string): Promise<AuthSession> {
@@ -269,10 +352,18 @@ export class AuthSessionService {
 		}
 	}
 
-	#commit(next: AuthSession): void {
-		const changed = !isEqual(this.#session, next);
+	#commit(next: AuthSession, apiKey?: string | null): void {
+		const sessionChanged = !isEqual(this.#session, next);
+		const keyChanged = apiKey !== undefined && apiKey !== this.#lastApiKey;
+		if (apiKey !== undefined) this.#lastApiKey = apiKey;
 		this.#session = next;
-		if (changed) for (const listener of this.#listeners) listener(next);
+		if (sessionChanged || keyChanged) {
+			// Clear the passport (userinfo) cache only when the session
+			// identity itself changed — a bare key rotation preserves the
+			// user, so cached passport attributes are still valid.
+			if (sessionChanged) this.#passport.cache.clear?.();
+			for (const listener of this.#listeners) listener(next);
+		}
 	}
 }
 

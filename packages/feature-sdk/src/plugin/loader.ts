@@ -185,6 +185,13 @@ export interface ResolvedPluginNav {
 	iconComponent?: unknown | undefined;
 	/** Higher renders first. Default 0. */
 	priority: number;
+	/**
+	 * Optional LaunchDarkly feature-flag key gating the entry's visibility.
+	 * When set and the flag resolves to `false` (default when missing or on
+	 * evaluation error) the shell omits the entry from the sidebar. Mirrors
+	 * `pluginNavEntrySchema.featureFlag` — see that field for semantics.
+	 */
+	featureFlag?: string | undefined;
 }
 
 /**
@@ -431,6 +438,7 @@ function resolveContributions(
 			icon: entry.icon,
 			iconComponent,
 			priority: entry.priority ?? 0,
+			...(entry.featureFlag !== undefined ? { featureFlag: entry.featureFlag } : {}),
 		};
 	});
 

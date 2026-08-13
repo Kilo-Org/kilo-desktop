@@ -14,14 +14,7 @@ import log from "electron-log";
  * logger.error("login failed", cause);
  */
 
-// `electron-log` ships error/warn/info/verbose/debug/silly but no `trace`.
-// Add it so scoped loggers structurally satisfy consumers that expect a
-// `trace` level (e.g. `@vscode/proxy-agent`'s `Log` interface).
-log.addLevel("trace", 5);
-
-export type Logger = ReturnType<typeof log.scope> & {
-	trace(...params: unknown[]): void;
-};
+export type Logger = ReturnType<typeof log.scope>;
 
 /**
  * Create a scoped logger (sink) for a subsystem. Uses the shared `electron-log`
@@ -29,5 +22,5 @@ export type Logger = ReturnType<typeof log.scope> & {
  * process — no `initialize()` needed (that only wires the renderer/IPC bridge).
  */
 export function createLogger(scope: string): Logger {
-	return log.scope(scope) as Logger;
+	return log.scope(scope);
 }

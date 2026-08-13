@@ -5,6 +5,21 @@ import { initializeWebMCPPolyfill } from "@mcp-b/webmcp-polyfill";
 
 /** Loopback host the relay daemon binds to. The relay only accepts local connections. */
 const RELAY_HOST = "127.0.0.1";
+/**
+ * Identity-pinned rendezvous — MUST stay in sync with the seeded relay args in
+ * `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts` (`WEBMCP_RELAY_PORT`,
+ * `WEBMCP_RELAY_ID`).
+ *
+ * The 9333–9348 loopback range is shared by every WebMCP relay on the machine
+ * (Claude Desktop configs, npx relays, other apps). Without the id pin, the
+ * widget pairs with the FIRST relay that answers its scan — often a foreign or
+ * orphaned relay on 9333 — while kilo's own relay sits elsewhere with zero
+ * producers ("tools disappeared" split-brain; see docs/webmcp.md §7). With the
+ * pin, the widget rejects any relay whose server-hello carries a different
+ * relay id, and the port hint makes the first probe hit our relay directly.
+ */
+const RELAY_PORT = "9345";
+const RELAY_ID = "anaconda-agentic-desktop";
 /** Path (relative to the app origin) of the self-hosted relay bootstrap script. */
 const EMBED_SCRIPT_PATH = "webmcp/embed.js";
 const EMPTY_INPUT_SCHEMA: InputSchema = { type: "object", properties: {} };
@@ -122,6 +137,7 @@ export function installWebMcp(system: FeatureSystem): void {
 	registry.subscribe(sync);
 	sync();
 	injectRelayEmbed();
+	startRelayReconnectNudge();
 }
 
 /** Namespaced MCP tool name: `featureId_name`, sanitized to `[A-Za-z0-9_]`. */
@@ -167,8 +183,42 @@ function injectRelayEmbed(): void {
 	script.async = true;
 	script.dataset.webmcpEmbed = "1";
 	script.setAttribute("data-relay-host", RELAY_HOST);
+	script.setAttribute("data-relay-port", RELAY_PORT);
+	script.setAttribute("data-relay-id", RELAY_ID);
 	script.addEventListener("error", () => {
 		console.warn("[webmcp] Failed to load relay embed script; external tool relay is disabled.");
 	});
 	document.head.append(script);
+}
+
+/** How often the widget is nudged to retry relay discovery while disconnected. */
+const RELAY_RECONNECT_NUDGE_MS = 15_000;
+
+/**
+ * Single-shot wake-up for the relay widget. Exported for tests.
+ *
+ * The widget accepts `webmcp.connect` from the host page origin and treats it
+ * as: connected or mid-discovery → no-op; dormant or idle-disconnected →
+ * immediate re-discovery (the pinned 9345 endpoint is the first probe).
+ */
+export function nudgeRelayWidget(): void {
+	const frame = document.querySelector<HTMLIFrameElement>("iframe[data-webmcp-relay]");
+	frame?.contentWindow?.postMessage({ type: "webmcp.connect" }, window.location.origin);
+}
+
+/**
+ * Periodically wakes the relay widget so it retries discovery.
+ *
+ * Closes the boot-order race between the renderer and the relay: `kilo serve`
+ * boots its MCP servers lazily, so the relay can bind its port ~30-60s AFTER
+ * the widget's finite discovery ladder (initial scan → 10s/20s/30s retries →
+ * dormant with 120s re-probes) has gone quiet. Measured on a dev machine the
+ * resulting "relay up, widget dormant" dead zone lasted minutes, during which
+ * Kilo truthfully reports zero WebMCP tools.
+ *
+ * A 15s cadence bounds the dead zone regardless of how the relay's lifecycle
+ * drifts (lazy boot, orphan-takeover blip, EPIPE restart).
+ */
+function startRelayReconnectNudge(): void {
+	setInterval(nudgeRelayWidget, RELAY_RECONNECT_NUDGE_MS);
 }

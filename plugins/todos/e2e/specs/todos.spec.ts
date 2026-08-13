@@ -1,13 +1,18 @@
 import { test } from "../fixtures.js";
 
 test.describe("Todos @smoke", () => {
-	test("adds a todo through the SDK-backed todo list", async ({ appShellPage, todosPage }) => {
-		// The nav entry is derived from the plugin manifest route (Slice 3).
-		await appShellPage.navigateToFeature("todos");
-		await todosPage.verifyPageIsLoaded();
-		await todosPage.addTodo("Buy milk");
-		await todosPage.verifyTodoIsListed("Buy milk");
-		await todosPage.completeTodo("Buy milk");
-		await todosPage.verifyTodoIsCompleted("Buy milk");
+	// Todos is behind the `todo-feature` LaunchDarkly flag (default off), and
+	// the manifest declares `featureFlag: "todo-feature"` on the nav entry.
+	// Packaged e2e builds hit LaunchDarkly with an anonymous context that
+	// resolves to the default, so the sidebar entry is hidden entirely —
+	// there is no icon to click. This spec asserts that fail-closed default;
+	// the happy path is covered by the plugin's browser tests, which mock
+	// the flag to on.
+	test("hides the Todos nav entry when the todo-feature flag is off", async ({
+		appShellPage,
+		todosPage,
+	}) => {
+		await appShellPage.verifyShellIsLoaded();
+		await todosPage.verifyNavEntryIsHidden();
 	});
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { authEvents, authMethods } from "./features/auth.js";
 import { featureEvents, featureMessages } from "./features/feature-event.js";
+import { featureFlagEvents, featureFlagMethods } from "./features/feature-flag.js";
 import { featureMethods } from "./features/feature-invoke.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
@@ -17,13 +18,16 @@ describe("IPC registry", () => {
 				Object.keys(authMethods).length +
 				Object.keys(featureMethods).length +
 				Object.keys(notificationsMethods).length +
-				Object.keys(fsMethods).length,
+				Object.keys(fsMethods).length +
+				Object.keys(featureFlagMethods).length,
 		);
 	});
 
 	it("merged event channel count equals the sum of feature parts", () => {
 		expect(Object.keys(ipcEvents)).toHaveLength(
-			Object.keys(authEvents).length + Object.keys(featureEvents).length,
+			Object.keys(authEvents).length +
+				Object.keys(featureEvents).length +
+				Object.keys(featureFlagEvents).length,
 		);
 		expect(Object.keys(ipcMessages)).toHaveLength(Object.keys(featureMessages).length);
 	});

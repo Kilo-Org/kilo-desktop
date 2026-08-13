@@ -16,6 +16,14 @@ Before editing files for a substantial task:
 
 Read [CONTEXT.md](./CONTEXT.md) for architecture, terminology, and conventions.
 
+## Running the app
+
+Start the desktop app in dev with `pn dev` (alias for `pnpm dev` → `dev:desktop`)
+from the workspace root. It boots the Vite web dev server on port 5173 first,
+then launches Electron pointed at it via `ANACONDA_WEB_DEV_SERVER_URL`. Do **not**
+run `electron-forge start` (or the desktop package's `start` script) directly —
+without the web dev server the renderer window loads empty.
+
 ## Local Skills
 
 Project skills live under [`.agents/skills/`](./.agents/skills/).
@@ -37,3 +45,5 @@ Project skills live under [`.agents/skills/`](./.agents/skills/).
 6. **Every feature ships at least one `@smoke` e2e spec** — see `docs/TESTING.md` and `.agents/skills/write-e2e-test/SKILL.md`.
 7. **Use oxlint + oxfmt** — not ESLint/Prettier. Run `pnpm lint` and `pnpm format`.
 8. **Prefer Vitest over e2e** when Electron IPC / the packaged binary is not required — see `.agents/skills/write-vitest/SKILL.md`.
+9. **Strive for self-documenting code** — clear names and small functions over comments. Add comments only for what code cannot express: non-obvious rationale, surprising edge cases, or otherwise ambiguous intent. Do not narrate what the code plainly does.
+10. **Stateful services carry a module-level design comment** — a class that owns a lifecycle or state machine (reconcilers, managers, stores) gets one block comment at the top explaining ownership, invariants, and the "why" of its design (see `AnacondaMcpService.ts` for the shape). Keep it current when behavior changes; it substitutes for the narration rule 9 forbids inline.

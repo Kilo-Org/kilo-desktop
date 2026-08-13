@@ -114,5 +114,14 @@ export function createBrowserLocalApi(): LocalApi {
 				return () => {};
 			},
 		},
+		featureFlags: {
+			// No flag provider in browser mode — every flag falls back to its default.
+			async getAllFlags() {
+				return {};
+			},
+			onChanged() {
+				return () => {};
+			},
+		},
 	};
 }

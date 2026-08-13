@@ -16,6 +16,7 @@ import type {
 } from "@anaconda-agentic-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
+import { createFeatureKvStoreFactory } from "../../platform/featureKvStore.js";
 import { featureStorageDir } from "../../platform/featureStorage.js";
 
 /**
@@ -46,6 +47,21 @@ export interface BootFeaturesOptions {
 	 * without features needing to import any shell internals.
 	 */
 	onBeforeFeatureBoot?: (featureId: string) => void;
+	/**
+	 * Receive `mainSdk.boot.reportProgress(msg)` calls a feature makes while
+	 * `bootFeatures` is running. After `bootFeatures` returns, subsequent
+	 * calls become silent no-ops so async work started during boot cannot
+	 * push stale progress into shell UI. Omitting the callback is fine —
+	 * features that call the hook still see a no-op, they never crash.
+	 *
+	 * Distinct from {@link onBeforeFeatureBoot}: the shell fires
+	 * `onBeforeFeatureBoot(id)` once before each feature's `mainRegister`
+	 * (default "Preparing <id>…" splash line); `onFeatureProgress` is fired
+	 * BY the feature from inside `mainRegister` via
+	 * `mainSdk.boot.reportProgress(message)` for fine-grained messages like
+	 * "Staging Miniconda…".
+	 */
+	onFeatureProgress?: (featureId: string, message: string) => void;
 }
 
 /**
@@ -54,12 +70,21 @@ export interface BootFeaturesOptions {
  * that throws is rolled back (its partial handlers and disposables removed).
  * Returns a disposer that tears down all features booted by this call —
  * running their onDispose callbacks (DB close, etc.).
+ *
+ * Supports async mainRegister: if a feature returns a Promise, it is awaited
+ * before moving to the next feature. Boot progress delivery remains active
+ * throughout the async phase.
  */
-export function bootFeatures(
+export async function bootFeatures(
 	features: readonly FeatureRegistration[],
 	options?: BootFeaturesOptions,
-): () => void {
+): Promise<() => void> {
 	const storageRoot = options?.storageRoot;
+	const onFeatureProgress = options?.onFeatureProgress;
+	// One flag per bootFeatures call — flipping it after the loop turns every
+	// feature's reportProgress into a no-op, even if the feature keeps a
+	// reference to the reporter after mainRegister returned.
+	let bootWindowOpen = true;
 	const booted: string[] = [];
 	for (const feature of features) {
 		if (bootedFeatureIds.has(feature.id)) {
@@ -67,27 +92,46 @@ export function bootFeatures(
 			continue;
 		}
 		options?.onBeforeFeatureBoot?.(feature.id);
+		// Share one resolver between `resolveStorageDir` and the KV factory so
+		// the directory is created lazily at most once per feature, and both
+		// facades observe the same path.
+		const resolveStorageDir =
+			storageRoot === undefined
+				? undefined
+				: (): string => {
+						const dir = featureStorageDir(storageRoot, feature.id);
+						mkdirSync(dir, { recursive: true });
+						return dir;
+					};
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
 			...(options?.fetch ? { fetch: options.fetch } : {}),
-			...(storageRoot === undefined
-				? {}
-				: {
-						resolveStorageDir: () => {
-							const dir = featureStorageDir(storageRoot, feature.id);
-							mkdirSync(dir, { recursive: true });
-							return dir;
-						},
-					}),
+			...(resolveStorageDir
+				? {
+						resolveStorageDir,
+						createKvStore: (kvOptions) =>
+							createFeatureKvStoreFactory(resolveStorageDir())(kvOptions),
+					}
+				: {}),
 			// Plugin registrations from the loader carry a resolveAsset (they know
 			// where their package lives on disk); built-in FEATURES don't and
 			// mainSdk.resolvePluginAsset would throw for them, which is fine —
 			// they ship no assets.
 			...(feature.resolveAsset ? { resolvePluginAsset: feature.resolveAsset } : {}),
+			// Gate reportProgress on this call's boot window so a feature that
+			// captured the reporter cannot push a message after boot has ended.
+			...(onFeatureProgress
+				? {
+						reportBootProgress: (message: string) => {
+							if (!bootWindowOpen) return;
+							onFeatureProgress(feature.id, message);
+						},
+					}
+				: {}),
 		});
 		try {
-			feature.mainRegister(mainSdk);
+			await feature.mainRegister(mainSdk);
 			bootedFeatureIds.add(feature.id);
 			booted.push(feature.id);
 		} catch (error) {
@@ -96,6 +140,7 @@ export function bootFeatures(
 			featureRouter.destroyFeature(feature.id);
 		}
 	}
+	bootWindowOpen = false;
 	return () => {
 		for (const id of booted.reverse()) {
 			featureRouter.destroyFeature(id);

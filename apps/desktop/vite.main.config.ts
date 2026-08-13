@@ -41,6 +41,12 @@ export default defineConfig(({ command }) => {
 					"electron",
 					"better-sqlite3",
 					"@github/keytar",
+					// LaunchDarkly's Node SDK is CommonJS and lazily `require`s Node
+					// built-ins (e.g. `require("url")`); bundling it into the ESM main
+					// bundle turns those into the `__require` shim, which throws at
+					// runtime. Keep it external so Electron requires it from
+					// node_modules (shipped via `pnpm deploy --prod`).
+					"@launchdarkly/node-client-sdk",
 					"electron-store",
 					"electron-log",
 					"electron-squirrel-startup",

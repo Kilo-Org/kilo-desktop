@@ -81,6 +81,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	readonly notifications: SdkNotifications;
 	readonly theme: SdkTheme;
 	readonly auth: SdkAuth;
+	readonly featureFlags: SdkFeatureFlags;
 	readonly shell: SdkShell;
 	readonly fs: SdkFs;
 
@@ -339,6 +340,30 @@ export interface SdkTheme {
 	subscribe(fn: (theme: "dark" | "light") => void): () => void;
 	/** Read the current effective theme without subscribing. */
 	peek(): "dark" | "light";
+}
+
+/** Map of feature-flag keys to their evaluated values. */
+export type FeatureFlagMap = Record<string, unknown>;
+
+/**
+ * Feature flags, shell-owned. The delegate keeps a synchronous cache of the
+ * flag map: `subscribe` fires immediately with the current cache and `peek`
+ * reads it without subscribing (`{}` until the host's first resolve lands).
+ * `getAllFlags` still queries the host directly.
+ *
+ * @example
+ * const unsub = sdk.featureFlags.subscribe((flags) => render(flags));
+ */
+export interface SdkFeatureFlags {
+	/** Read the full flag map from the host. */
+	getAllFlags(): Promise<FeatureFlagMap>;
+	/**
+	 * Subscribe to flag changes. Fires synchronously with the current cached
+	 * map and again on every host change. Returns an unsubscribe function.
+	 */
+	subscribe(fn: (flags: FeatureFlagMap) => void): () => void;
+	/** Read the current cached flag map without subscribing (`{}` until first resolve). */
+	peek(): FeatureFlagMap;
 }
 
 export interface DirectoryOpenDialogOptions {
@@ -625,6 +650,81 @@ export interface DispatchIntent {
 	params?: Record<string, unknown>;
 }
 
+// ─── Storage (per-feature key/value) ─────────────────────────────────────────
+
+/**
+ * A typed, file-backed key/value store scoped to a feature's storage
+ * directory. The shell provides the backing implementation (electron-store on
+ * Electron; in-memory in tests) — features only see this interface.
+ *
+ * Writes are synchronous and atomic where the backend supports it: `set`
+ * returns the new snapshot and throws when persistence fails, so a caller can
+ * surface the failure to the UI instead of silently reverting on the next
+ * restart. Malformed on-disk data falls back to `defaults` (the backend is
+ * responsible for keeping the file recoverable).
+ *
+ * @example
+ * const settings = mainSdk.storage.kv({
+ *   defaults: { enabled: true, urlOverride: null as string | null },
+ * });
+ * settings.get("enabled");      // → true
+ * settings.set({ enabled: false });
+ * settings.snapshot();          // → { enabled: false, urlOverride: null }
+ */
+export interface KvStore<T extends Record<string, unknown>> {
+	/** Return a snapshot of every key, backfilled with defaults for missing/wrong-typed values. */
+	snapshot(): T;
+	/** Read one key. Falls back to the injected default when the persisted value is missing or wrong-typed. */
+	get<K extends keyof T>(key: K): T[K];
+	/**
+	 * Persist a partial update and return the new snapshot.
+	 * Throws when the on-disk write fails.
+	 */
+	set(patch: Partial<T>): T;
+	/** Reset all persisted keys — subsequent reads return `defaults`. */
+	clear(): void;
+}
+
+/**
+ * Options for opening a per-feature key/value store.
+ *
+ * `namespace` selects the file name inside the feature's storage directory
+ * (default `"kv"`, i.e. `<storageDir>/kv.json`). Features that need multiple
+ * unrelated stores pass distinct namespaces; opening the same namespace
+ * twice within a feature returns the same live store.
+ */
+export interface KvStoreOptions<T extends Record<string, unknown>> {
+	defaults: T;
+	namespace?: string;
+}
+
+/**
+ * Per-feature storage services on the main SDK. Currently exposes typed KV
+ * (`storage.kv`) backed by the feature's Decision #20 storage directory —
+ * the same slot that hosts the feature's SQLite `data.db`. Additional
+ * storage primitives (e.g. secret vault) can grow on this interface later
+ * without further churn on `MainSdk`.
+ */
+export interface MainSdkStorage {
+	/**
+	 * Open (or reuse) a typed key/value store scoped to this feature. The
+	 * backing file lives inside the feature's storage directory; nothing is
+	 * shared across features.
+	 */
+	kv<T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T>;
+}
+
+/**
+ * Host-provided factory for a per-feature key/value store. Called lazily on
+ * `mainSdk.storage.kv(...)`. The host binds the feature's storage directory
+ * so the returned store can never write outside it; omit `resolveKvStore`
+ * in environments without persistent storage (browser mode) — calls to
+ * `storage.kv` will then throw.
+ */
+export type KvStoreFactory = <T extends Record<string, unknown>>(
+	options: KvStoreOptions<T>,
+) => KvStore<T>;
+
 // ─── MainSdk (main-process side) ─────────────────────────────────────────────
 
 /** Feature-scoped application logger supplied by the host process. */
@@ -639,6 +739,34 @@ export type MainSdkFetch = typeof globalThis.fetch;
 
 export interface MainSdkNet {
 	fetch: MainSdkFetch;
+}
+
+/**
+ * Boot-time hooks a feature's `mainRegister` may call while the shell is
+ * still starting up. Every hook is a no-op after `bootFeatures` returns so
+ * a stray late call from an async task never mutates shell UI.
+ *
+ * @example
+ * export function mainRegister(mainSdk: MainSdk) {
+ *   mainSdk.boot.reportProgress("Staging conda…");
+ *   // ...long-running staging work...
+ * }
+ */
+export interface MainSdkBoot {
+	/**
+	 * Report a human-readable progress message while this feature is booting.
+	 * Delivered to the host's boot-progress channel (e.g. a splash window);
+	 * silently dropped once `bootFeatures` has finished so features cannot
+	 * accidentally push UI updates after the app has moved on.
+	 *
+	 * `mainRegister` itself is synchronous, so only messages emitted inline
+	 * (before `mainRegister` returns) are guaranteed to be delivered. A
+	 * Promise chained off `mainRegister` resolves after `bootFeatures` has
+	 * already closed the boot window, and its `reportProgress` calls will
+	 * no-op — until `bootFeatures` gains an async boot phase, keep
+	 * long-running staging progress inline or accept the loss.
+	 */
+	reportProgress(message: string): void;
 }
 
 /**
@@ -689,6 +817,12 @@ export interface MainSdk {
 	/** Main-process cross-feature capability exposure and discovery. */
 	readonly plugins: SdkPlugins;
 	/**
+	 * Boot-time hooks. Only meaningful during `mainRegister`; after
+	 * `bootFeatures` returns every hook becomes a no-op so features that
+	 * spawn async work cannot push stale progress updates into shell UI.
+	 */
+	readonly boot: MainSdkBoot;
+	/**
 	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
 	 * created lazily on first access. Features persist ONLY here — open your
 	 * own SQLite file (`data.db`) instead of sharing a shell database.
@@ -696,6 +830,14 @@ export interface MainSdk {
 	 * Node-free features simply never touch it.
 	 */
 	readonly storageDir: string;
+	/**
+	 * Per-feature storage services. Currently exposes typed KV
+	 * (`storage.kv(...)`) backed by the feature's storage directory —
+	 * atomic writes, corrupt-file recovery, and defaults come for free.
+	 * Accessing `storage.kv` in an environment without storage (browser
+	 * mode) throws; features that never call it are unaffected.
+	 */
+	readonly storage: MainSdkStorage;
 	/**
 	 * Resolve a static asset shipped inside this plugin's package to an
 	 * absolute filesystem path (e.g. `mainSdk.resolvePluginAsset("drizzle")`
@@ -735,8 +877,13 @@ export interface FeatureRegistration {
 	/**
 	 * Main-process handler registration. Runs in Electron main.
 	 * May use Node APIs (SQLite, fs, ...).
+	 *
+	 * May return a Promise for features that need async boot work (e.g.
+	 * staging a runtime). `bootFeatures` awaits the returned Promise before
+	 * moving to the next feature, keeping boot progress delivery alive
+	 * throughout the async phase.
 	 */
-	mainRegister(mainSdk: MainSdk): void;
+	mainRegister(mainSdk: MainSdk): void | Promise<void>;
 	/**
 	 * Browser-mode registration. Standalone browser mode has no main process;
 	 * features WITHOUT this are skipped in browser mode (with a warning) —

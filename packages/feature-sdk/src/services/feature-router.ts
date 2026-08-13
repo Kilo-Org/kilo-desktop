@@ -5,10 +5,38 @@ import type {
 	ChannelMap,
 } from "../channel-map.js";
 import { FeatureError } from "../errors.js";
-import type { ChannelHandlers, MainSdk, MainSdkFetch, MainSdkLogger } from "../types/sdk.js";
+import type {
+	ChannelHandlers,
+	KvStore,
+	KvStoreFactory,
+	KvStoreOptions,
+	MainSdk,
+	MainSdkFetch,
+	MainSdkLogger,
+	MainSdkStorage,
+} from "../types/sdk.js";
 import type { SchemaLike } from "../types/schema.js";
 import { CapabilityRegistry } from "./capability-registry.js";
 import { emitFeatureEvent, EventBus, type FeatureEvent } from "./event-bus.js";
+
+/**
+ * Namespace pattern accepted by `mainSdk.storage.kv({ namespace })`. Path
+ * separators and `..` segments would let a caller escape the per-feature
+ * sandbox on disk (see `createFeatureKvStoreFactory` in apps/desktop) or
+ * spoof another feature's cache slot in this router; restricting to
+ * identifier-safe characters removes that class of misuse at the SDK
+ * boundary rather than trusting every plugin.
+ */
+const KV_NAMESPACE_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+function assertValidKvNamespace(namespace: string): void {
+	if (!KV_NAMESPACE_PATTERN.test(namespace)) {
+		throw new Error(
+			`[FeatureRouter] Invalid KV namespace "${namespace}": must match ${KV_NAMESPACE_PATTERN.source}. ` +
+				`Path separators, "..", and empty names would escape the feature's storage sandbox.`,
+		);
+	}
+}
 
 type Handler = (args: unknown) => unknown | Promise<unknown>;
 
@@ -56,6 +84,20 @@ export interface CreateMainSdkOptions {
 	 * `resolvePluginAsset` then throws.
 	 */
 	resolvePluginAsset?: (subpath: string) => string;
+	/**
+	 * Open a typed, feature-scoped key/value store. Backs
+	 * `mainSdk.storage.kv(...)`. The host binds the feature's storage
+	 * directory so the returned store cannot write outside it. Omit in
+	 * environments without persistent storage — `storage.kv` then throws.
+	 */
+	createKvStore?: KvStoreFactory;
+	/**
+	 * Receive boot-time progress messages from this feature's `mainRegister`.
+	 * The caller (typically `bootFeatures`) is responsible for gating this to
+	 * the boot window and dropping it when boot completes — the SDK never
+	 * checks a lifecycle flag of its own.
+	 */
+	reportBootProgress?: (message: string) => void;
 }
 
 function createConsoleLogger(featureId: string): MainSdkLogger {
@@ -149,6 +191,7 @@ export class FeatureRouter {
 
 		const resolveStorageDir = options?.resolveStorageDir;
 		const resolvePluginAsset = options?.resolvePluginAsset;
+		const createKvStore = options?.createKvStore;
 		const logger = options?.logger ?? createConsoleLogger(featureId);
 		const fetchImpl: MainSdkFetch =
 			options?.fetch ?? ((input, init) => globalThis.fetch(input, init));
@@ -190,12 +233,53 @@ export class FeatureRouter {
 				this.capabilityRegistry.get(targetFeatureId) as T | null,
 		};
 
+		const reportBootProgress = options?.reportBootProgress;
+		const boot: MainSdk["boot"] = {
+			reportProgress: (message: string) => {
+				// Absent reporter (built-in features, tests that don't opt in) or a
+				// caller-gated no-op after boot completes both fall through silently
+				// — the SDK never owns the "still booting?" flag.
+				reportBootProgress?.(message);
+			},
+		};
+
+		// One live KV store per (feature, namespace). Reusing avoids opening two
+		// electron-store handles onto the same file — every read would then race
+		// against write-then-rename and could observe partial state — and keeps
+		// snapshot()/set() consistent across call sites within a feature.
+		const kvStores = new Map<string, KvStore<Record<string, unknown>>>();
+		const storage: MainSdkStorage = {
+			kv: <T extends Record<string, unknown>>(kvOptions: KvStoreOptions<T>): KvStore<T> => {
+				if (!createKvStore) {
+					throw new Error(
+						`[FeatureRouter] Feature "${featureId}" has no key/value storage in this ` +
+							`environment (browser mode provides no persistent storage).`,
+					);
+				}
+				const namespace = kvOptions.namespace ?? "kv";
+				// Validate here (not just in the concrete factory) so a
+				// malformed namespace like "../shared" can never poison the
+				// per-namespace cache under a spoofed key — otherwise a
+				// second `kv({ namespace: "../shared" })` call from another
+				// feature would resolve the same cache slot even though the
+				// factory itself would reject the open.
+				assertValidKvNamespace(namespace);
+				const cached = kvStores.get(namespace);
+				if (cached) return cached as KvStore<T>;
+				const store = createKvStore<T>(kvOptions);
+				kvStores.set(namespace, store as KvStore<Record<string, unknown>>);
+				return store;
+			},
+		};
+
 		return {
 			featureId,
 			logger,
 			net: { fetch: fetchImpl },
 			events,
 			plugins,
+			boot,
+			storage,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(

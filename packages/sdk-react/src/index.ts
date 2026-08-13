@@ -22,3 +22,5 @@ export {
 	type SdkMutationConfig,
 	type SdkMutationVariables,
 } from "./useSdkMutation.js";
+
+export { useFeatureFlag } from "./useFeatureFlag.js";

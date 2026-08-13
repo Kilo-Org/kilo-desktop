@@ -13,9 +13,7 @@ describe("kiloServerBrowserRegister", () => {
 			status: "unavailable",
 			message: "Kilo Server requires the desktop app.",
 		});
-		await expect(
-			rendererSdk.invoke("server.getConnection", { directory: "/tmp/project" }),
-		).rejects.toMatchObject({
+		await expect(rendererSdk.invoke("server.getConnection")).rejects.toMatchObject({
 			code: "BUSINESS",
 			message: "Kilo Server requires the desktop app.",
 		});

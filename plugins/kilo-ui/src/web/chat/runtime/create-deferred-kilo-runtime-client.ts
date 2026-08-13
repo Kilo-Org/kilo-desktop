@@ -1,19 +1,9 @@
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { KiloWorkspaceConnection } from "../../../contracts/chat/schemas.js";
-import { createKiloRuntimeClient } from "./create-kilo-runtime-client.js";
-
-/**
- * Stable Kilo client that waits for `connectionPromise` before forwarding
- * any nested SDK calls. Identity stays fixed for the page lifetime so
- * OpenCode's registry/adapter memos do not thrash when the server becomes ready.
- */
-export function createDeferredKiloRuntimeClient(
-	connectionPromise: Promise<KiloWorkspaceConnection>,
-): KiloClient {
-	const ready = connectionPromise.then(createKiloRuntimeClient);
+export function createDeferredKiloRuntimeClient(clientPromise: Promise<KiloClient>): KiloClient {
+	const ready = clientPromise;
 	// Callers still observe rejections via await; attach a handler so a rejected
-	// connection does not become an unhandled rejection when the client is unused.
+	// client does not become an unhandled rejection when it is unused.
 	void ready.catch(() => undefined);
 	return createAwaitingProxy(() => ready) as KiloClient;
 }

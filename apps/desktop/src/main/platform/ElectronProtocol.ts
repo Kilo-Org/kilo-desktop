@@ -139,12 +139,27 @@ function getInlineScriptHashes(document: string): string[] {
 
 /**
  * Distinguishes the relay `embed.js` `fetch()` probe of the widget from a real iframe
- * navigation. `fetch()` sends `Sec-Fetch-Dest: empty`; iframe navigations send an
- * iframe/document destination and an HTML-preferring `Accept`. When the fetch-metadata
- * header is unavailable we fall back to the `Accept` header. Returning 404 to the probe
- * makes `embed.js` use its direct same-origin iframe path instead of a blob iframe.
+ * navigation.
+ *
+ * The primary signal is the presence of a query string: `embed.js` calls
+ * `fetch(widgetUrl)` **without** query parameters, then falls back to
+ * `iframe.src = widgetUrl?tabId=...&hostOrigin=...` (see the upstream
+ * `@mcp-b/webmcp-local-relay` package's `embed.js`, function `R`). Chromium
+ * doesn't always populate `Sec-Fetch-*` or a full `Accept` header for requests
+ * under our custom scheme, so header-only detection previously misidentified
+ * iframe navigations as probes and returned 404 to them — leaving the widget
+ * unloaded and Kilo showing zero WebMCP tools.
+ *
+ * Header signals are still consulted as a fallback for the rare case where
+ * some future embed.js also passes query params on its probe.
+ *
+ * Returning 404 to the probe makes `embed.js` use its direct same-origin
+ * iframe path instead of a blob iframe.
  */
-function isRelayWidgetProbe(request: Request): boolean {
+function isRelayWidgetProbe(request: Request, requestUrl: URL): boolean {
+	// Iframe navigations from embed.js always carry query params
+	// (tabId, hostOrigin, ...). The fetch() probe carries none.
+	if (requestUrl.search) return false;
 	const destination = request.headers.get("Sec-Fetch-Dest");
 	if (destination) return destination === "empty";
 	const accept = request.headers.get("Accept") ?? "";
@@ -194,7 +209,7 @@ export class ElectronProtocol {
 
 			// Force the relay widget onto its direct same-origin iframe path (see
 			// WEBMCP_WIDGET_PATH) by failing the `embed.js` `fetch()` probe.
-			if (requestUrl.pathname === WEBMCP_WIDGET_PATH && isRelayWidgetProbe(request)) {
+			if (requestUrl.pathname === WEBMCP_WIDGET_PATH && isRelayWidgetProbe(request, requestUrl)) {
 				return withSecurityHeaders(new Response(null, { status: 404 }), input.developmentOrigin);
 			}
 

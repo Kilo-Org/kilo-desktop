@@ -18,7 +18,11 @@ import { AppSidebarLayout } from "./AppSidebarLayout";
 
 type AuthOverrides = Partial<LocalApi["auth"]>;
 
-function fakeLocalApi(session: AuthSession, auth: AuthOverrides = {}): LocalApi {
+function fakeLocalApi(
+	session: AuthSession,
+	auth: AuthOverrides = {},
+	overrides: Partial<LocalApi> = {},
+): LocalApi {
 	return {
 		...createBrowserLocalApi(),
 		theme: {
@@ -38,6 +42,16 @@ function fakeLocalApi(session: AuthSession, auth: AuthOverrides = {}): LocalApi 
 			logout: async () => ({ status: "anonymous" }),
 			onChanged: () => () => undefined,
 			...auth,
+		},
+		...overrides,
+	};
+}
+
+function apiWithFlags(flags: Record<string, unknown>): Partial<LocalApi> {
+	return {
+		featureFlags: {
+			getAllFlags: async () => flags,
+			onChanged: () => () => undefined,
 		},
 	};
 }
@@ -71,7 +85,9 @@ describe("AppSidebarLayout login button", () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
 		// Give the async auth delegate a tick to resolve to authenticated.
-		await expect.element(page.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Account menu for ada" }))
+			.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Log in" })).not.toBeInTheDocument();
 	});
 
@@ -82,6 +98,49 @@ describe("AppSidebarLayout login button", () => {
 		await page.getByRole("button", { name: "Log in" }).click();
 
 		expect(login).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("AppSidebarLayout plugin nav flag gating", () => {
+	afterEach(cleanup);
+
+	it("hides a flag-gated plugin nav entry when the flag is off", async () => {
+		renderLayout(
+			fakeLocalApi(
+				{ status: "anonymous" },
+				{},
+				apiWithFlags({ "environments-feature": false, "todo-feature": true }),
+			),
+		);
+
+		// Todos declares `featureFlag: "todo-feature"` — visible when the
+		// flag map carries a truthy value for that key.
+		await expect.element(page.getByTestId("nav-todos")).toBeInTheDocument();
+		// Environments declares `featureFlag: "environments-feature"` in
+		// plugin.json → hidden when the flag map lacks the truthy value.
+		await expect.element(page.getByTestId("nav-environments")).not.toBeInTheDocument();
+	});
+
+	it("hides a flag-gated plugin nav entry when the flag is missing entirely", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({})));
+
+		// Both nav entries carry a `featureFlag` now, so an empty flag map
+		// hides them both.
+		await expect.element(page.getByTestId("nav-environments")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("nav-todos")).not.toBeInTheDocument();
+	});
+
+	it("shows the flag-gated plugin nav entry when the flag is on", async () => {
+		renderLayout(
+			fakeLocalApi(
+				{ status: "anonymous" },
+				{},
+				apiWithFlags({ "environments-feature": true, "todo-feature": true }),
+			),
+		);
+
+		await expect.element(page.getByTestId("nav-environments")).toBeInTheDocument();
+		await expect.element(page.getByTestId("nav-todos")).toBeInTheDocument();
 	});
 });
 
@@ -107,8 +166,10 @@ describe("AppSidebarLayout account menu", () => {
 
 		await page.getByRole("button", { name: "Account menu for Ada Lovelace" }).click();
 
-		await expect.element(page.getByText("Ada Lovelace")).toBeVisible();
-		await expect.element(page.getByText("ada@example.com")).toBeVisible();
+		// Name and email render in both the footer trigger and the open menu.
+		const menu = page.getByRole("menu");
+		await expect.element(menu.getByText("Ada Lovelace")).toBeVisible();
+		await expect.element(menu.getByText("ada@example.com")).toBeVisible();
 		await page.getByRole("menuitem", { name: "Log out" }).click();
 
 		expect(logout).toHaveBeenCalledTimes(1);

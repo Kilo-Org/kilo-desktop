@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { OAuthFetch } from "./types.js";
-import { exchangeForApiKey, passportToUser, whoamiResponseSchema } from "./actions.js";
+import {
+	exchangeForApiKey,
+	getUserPassport,
+	passportToUser,
+	whoamiResponseSchema,
+} from "./actions.js";
 
 const DOMAIN = "anaconda.test";
 const TOKEN = "access-token";
@@ -147,5 +152,62 @@ describe("passport", () => {
 
 	it("rejects a payload missing the passport", () => {
 		expect(whoamiResponseSchema.safeParse({}).success).toBe(false);
+	});
+});
+
+describe("getUserPassport", () => {
+	it("throws when the fetch rejects (offline)", async () => {
+		const fetch = vi.fn<OAuthFetch>().mockRejectedValue(new Error("offline"));
+
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow("offline");
+	});
+
+	it("throws with the status when the response is not OK", async () => {
+		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({ detail: "boom" }, 500));
+
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow(
+			"userinfo request failed (500)",
+		);
+	});
+
+	it("throws when the body fails schema parse", async () => {
+		const fetch = vi.fn<OAuthFetch>(async () =>
+			jsonResponse({ passport: { attributes: [{ id: 1 }] } }, 200),
+		);
+
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).rejects.toThrow();
+	});
+
+	it("returns an empty passport when the body omits it", async () => {
+		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({}, 200));
+
+		await expect(getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT)).resolves.toEqual({});
+	});
+
+	it("returns the parsed passport (attributes + organizations) on success", async () => {
+		const passport = {
+			user_id: "u1",
+			profile: { username: "ada", email: "ada@example.com" },
+			organizations: [
+				{ id: "org-1", name: "Acme", role: "admin" },
+				{ id: "org-2", name: "Umbrella" },
+			],
+			attributes: [{ id: "business_subscription.org-1", group: "subscriptions" }],
+		};
+		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse({ passport }, 200));
+
+		const result = await getUserPassport(DOMAIN, TOKEN, fetch, USER_AGENT);
+
+		expect(result).toEqual(passport);
+		expect(fetch).toHaveBeenCalledWith(
+			`https://${DOMAIN}/api/auth/userinfo`,
+			expect.objectContaining({
+				method: "GET",
+				headers: {
+					Authorization: `Bearer ${TOKEN}`,
+					"User-Agent": USER_AGENT,
+				},
+			}),
+		);
 	});
 });

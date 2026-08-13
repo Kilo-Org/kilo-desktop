@@ -6,23 +6,32 @@ import {
 	type InferContract,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
-export const kiloChatConnectionInputSchema = z.object({
-	chatId: z.uuid(),
+export const kiloSessionPreparationInputSchema = z.object({
+	workspaceId: z.string().min(1).optional(),
 });
 
-export const kiloWorkspaceConnectionSchema = z.object({
+export const kiloGlobalConnectionSchema = z.object({
 	baseUrl: z.url(),
 	username: z.string().min(1),
 	password: z.string().min(1),
 	version: z.string().min(1),
-	directory: z.string().min(1),
+	globalDirectory: z.string().min(1),
 });
 
-export type KiloChatConnectionInput = z.infer<typeof kiloChatConnectionInputSchema>;
-export type KiloWorkspaceConnection = z.infer<typeof kiloWorkspaceConnectionSchema>;
+export const kiloSessionPreparationSchema = z.object({
+	directory: z.string().min(1),
+	workspaceId: z.string().min(1).optional(),
+});
+
+export type KiloGlobalConnection = z.infer<typeof kiloGlobalConnectionSchema>;
+export type KiloSessionPreparation = z.infer<typeof kiloSessionPreparationSchema>;
 
 export const kiloUiChatContract = defineContract({
-	"chat.getConnection": defineMethod(kiloChatConnectionInputSchema, kiloWorkspaceConnectionSchema),
+	"chat.getConnection": defineMethod(z.undefined(), kiloGlobalConnectionSchema),
+	"chat.prepareSession": defineMethod(
+		kiloSessionPreparationInputSchema,
+		kiloSessionPreparationSchema,
+	),
 });
 
 export type KiloUiChatService = InferContract<typeof kiloUiChatContract>;

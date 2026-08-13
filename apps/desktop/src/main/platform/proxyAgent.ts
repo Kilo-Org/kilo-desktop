@@ -37,6 +37,12 @@ export function installProxyAgent(): void {
 	const http = require("node:http") as typeof httpType;
 	const https = require("node:https") as typeof httpsType;
 
+	// `@vscode/proxy-agent`'s `Log` interface requires a `trace` level that our
+	// scoped `electron-log` logger does not expose. Adapt it here — at the one
+	// foreign consumer — instead of widening the shell-wide logger type. `trace`
+	// is the noisiest level, so route it to `debug`.
+	const proxyLog = { ...logger, trace: (...args: unknown[]) => logger.debug(...args) };
+
 	const params: ProxyAgentParams = {
 		resolveProxy: (url) => session.defaultSession.resolveProxy(url),
 		getProxyURL: () => undefined,
@@ -48,7 +54,7 @@ export function installProxyAgent(): void {
 		addCertificatesV2: () => false,
 		loadSystemCertificatesFromNode: () => false,
 		loadAdditionalCertificates: async () => [],
-		log: logger,
+		log: proxyLog,
 		getLogLevel: () => LogLevel.Info,
 		proxyResolveTelemetry: () => {},
 		isUseHostProxyEnabled: () => true,

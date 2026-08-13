@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOutIcon, UserIcon } from "lucide-react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
+import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { PLUGIN_NAV, useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
+import { isSettingsPath } from "@/features/plugin-settings";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -67,6 +69,7 @@ function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: s
 
 export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
+	const navigate = useNavigate();
 	const session = useAuthSession();
 	const sdk = useSdk("auth");
 	// Filter nav entries against the current feature-flag map so a plugin
@@ -74,6 +77,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 	// sidebar the instant its flag flips off — without unregistering the
 	// underlying route.
 	const visibleNav = useVisiblePluginNav(navEntries);
+	const settings = isSettingsPath(pathname);
 	const initials = session.status === "authenticated" ? getUserInitials(session.user) : "";
 	const accountName =
 		session.status === "authenticated"
@@ -102,23 +106,33 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 	return (
 		<TooltipProvider>
-			<SidebarProvider className="app-shell-glass h-svh min-h-0 overflow-hidden">
+			<SidebarProvider className="app-shell-glass h-svh min-h-0">
 				<Sidebar
 					collapsible="none"
 					className="h-svh border-none bg-transparent!"
 					data-qa-id="app-sidebar"
 				>
-					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
+					{/* Spacer under the titlebar. No drag/hit target — a drag region here
+					    intercepts app-bar clicks on Windows Electron. */}
+					<SidebarHeader className="pointer-events-none h-14 shrink-0 p-0" />
 					<SidebarContent>
-						<SidebarGroup className="pt-0">
-							<SidebarMenu>
-								{visibleNav.map((entry) => (
-									<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
-								))}
-							</SidebarMenu>
-						</SidebarGroup>
-						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-						<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
+						{settings ? (
+							<SettingsSidebar />
+						) : (
+							<>
+								{visibleNav.length > 0 && (
+									<SidebarGroup className="pt-0">
+										<SidebarMenu>
+											{visibleNav.map((entry) => (
+												<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
+											))}
+										</SidebarMenu>
+									</SidebarGroup>
+								)}
+								{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
+								<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
+							</>
+						)}
 					</SidebarContent>
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-3">
@@ -167,6 +181,15 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 											<DropdownMenuSeparator />
 											<DropdownMenuGroup>
 												<DropdownMenuItem
+													data-qa-id="nav-settings"
+													onClick={() => {
+														void navigate({ to: "/settings" });
+													}}
+												>
+													<SettingsIcon />
+													Settings
+												</DropdownMenuItem>
+												<DropdownMenuItem
 													onClick={() => {
 														void handleLogout();
 													}}
@@ -182,19 +205,33 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 						</SidebarFooter>
 					)}
 				</Sidebar>
-
-				<SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent pr-3 pb-3">
-					<header className="flex h-14 items-center justify-end gap-2 pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
+				{/* Keep overflow off SidebarInset — Electron ignores no-drag inside
+				    overflow:hidden ancestors, so titlebar buttons would not receive clicks. */}
+				<SidebarInset className="min-h-0 min-w-0 bg-transparent pr-3 pb-3">
+					<header className="relative z-20 flex h-14 items-center justify-end gap-2 pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
 						{session.status !== "authenticated" && (
-							<Button
-								onClick={() => {
-									void handleLogin();
-								}}
-								aria-label="Log in"
-								className="[-webkit-app-region:no-drag]"
-							>
-								Log in
-							</Button>
+							<>
+								<Button
+									variant="ghost"
+									size="icon"
+									aria-label="Settings"
+									className="[-webkit-app-region:no-drag]"
+									nativeButton={false}
+									render={<Link to="/settings" />}
+									data-qa-id="nav-settings"
+								>
+									<SettingsIcon />
+								</Button>
+								<Button
+									onClick={() => {
+										void handleLogin();
+									}}
+									aria-label="Log in"
+									className="[-webkit-app-region:no-drag]"
+								>
+									Log in
+								</Button>
+							</>
 						)}
 					</header>
 					<div className="bg-muted border-border flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-md border">

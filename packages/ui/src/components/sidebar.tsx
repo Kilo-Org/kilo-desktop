@@ -22,7 +22,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftIcon, SearchIcon } from "lucide-react";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -315,6 +315,27 @@ function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input
 			className={cn("h-8 w-full bg-background shadow-none", className)}
 			{...props}
 		/>
+	);
+}
+
+function SidebarSearch({ className, ...props }: React.ComponentProps<typeof Input>) {
+	return (
+		<div data-slot="sidebar-search" data-sidebar="search" className="relative py-1">
+			<SearchIcon className="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2" />
+			<Input
+				type="search"
+				data-slot="sidebar-search-input"
+				className={cn(
+					"h-8 w-full border-0 ps-8 text-sm shadow-none",
+					"dark:bg-transparent",
+					"focus-visible:border-0 focus-visible:ring-0",
+					"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5",
+					"rounded-md!",
+					className,
+				)}
+				{...props}
+			/>
+		</div>
 	);
 }
 
@@ -689,6 +710,7 @@ export {
 	SidebarMenuSubItem,
 	SidebarProvider,
 	SidebarRail,
+	SidebarSearch,
 	SidebarSeparator,
 	SidebarTrigger,
 	useSidebar,

@@ -106,13 +106,15 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 
 	return (
 		<TooltipProvider>
-			<SidebarProvider className="app-shell-glass h-svh min-h-0 overflow-hidden">
+			<SidebarProvider className="app-shell-glass h-svh min-h-0">
 				<Sidebar
 					collapsible="none"
 					className="h-svh border-none bg-transparent!"
 					data-qa-id="app-sidebar"
 				>
-					<SidebarHeader className="h-14 shrink-0 p-0 [-webkit-app-region:drag]" />
+					{/* Spacer under the titlebar. No drag/hit target — a drag region here
+					    intercepts app-bar clicks on Windows Electron. */}
+					<SidebarHeader className="pointer-events-none h-14 shrink-0 p-0" />
 					<SidebarContent>
 						{settings ? (
 							<SettingsSidebar />
@@ -203,8 +205,10 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 						</SidebarFooter>
 					)}
 				</Sidebar>
-				<SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent pr-3 pb-3">
-					<header className="flex h-14 items-center justify-end gap-2 pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
+				{/* Keep overflow off SidebarInset — Electron ignores no-drag inside
+				    overflow:hidden ancestors, so titlebar buttons would not receive clicks. */}
+				<SidebarInset className="min-h-0 min-w-0 bg-transparent pr-3 pb-3">
+					<header className="relative z-20 flex h-14 items-center justify-end gap-2 pr-[env(titlebar-area-width,0px)] [-webkit-app-region:drag]">
 						{session.status !== "authenticated" && (
 							<>
 								<Button

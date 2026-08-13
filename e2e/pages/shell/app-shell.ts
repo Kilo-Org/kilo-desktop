@@ -21,6 +21,10 @@ export class AppShellPage {
 		await click(this.navItem(featureId));
 	}
 
+	async openSettings(): Promise<void> {
+		await click(getPage().getByRole("button", { name: "Settings" }));
+	}
+
 	async verifyCustomProtocolBoot(): Promise<void> {
 		// Use the utils page singleton (not barrel getURL/waitForFunction) — those named
 		// exports resolve as non-functions under Playwright's CJS interop on CI.

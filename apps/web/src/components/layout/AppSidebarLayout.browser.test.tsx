@@ -275,6 +275,26 @@ describe("AppSidebarLayout account menu", () => {
 			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_OUT" }));
 		});
 	});
+
+	it("does not track LOGGED_OUT when logout fails", async () => {
+		const logout = vi.fn(async (): Promise<AuthSession> => ({ status: "error", reason: "nope" }));
+		const track = vi.fn(async () => undefined);
+		renderLayout(
+			fakeLocalApi(
+				{ status: "authenticated", user: { username: "ada" } },
+				{ logout },
+				apiWithTrack(track),
+			),
+		);
+
+		await page.getByRole("button", { name: "Account menu for ada" }).click();
+		await page.getByRole("menuitem", { name: "Log out" }).click();
+
+		await vi.waitFor(() => {
+			expect(logout).toHaveBeenCalledTimes(1);
+		});
+		expect(track).not.toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_OUT" }));
+	});
 });
 
 describe("AppSidebarLayout settings takeover", () => {

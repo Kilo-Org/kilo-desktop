@@ -25,6 +25,10 @@ export type {
 	RegisteredTool,
 	SdkIntents,
 	SchemaLike,
+	KvStore,
+	KvStoreOptions,
+	KvStoreFactory,
+	MainSdkStorage,
 	ContributionOptions,
 	Contribution,
 	CommandDefinition,
@@ -85,6 +89,11 @@ export {
 	type FeatureEvent,
 } from "./services/event-bus.js";
 export { StateBroker } from "./services/state-broker.js";
+export {
+	createObservableValue,
+	type ObservableValue,
+	type ObservableValueOptions,
+} from "./services/observable-value.js";
 export { CapabilityRegistry } from "./services/capability-registry.js";
 export { ContributionRegistry } from "./services/contribution-registry.js";
 export { CommandRegistry } from "./services/command-registry.js";

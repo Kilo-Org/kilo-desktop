@@ -650,6 +650,81 @@ export interface DispatchIntent {
 	params?: Record<string, unknown>;
 }
 
+// ─── Storage (per-feature key/value) ─────────────────────────────────────────
+
+/**
+ * A typed, file-backed key/value store scoped to a feature's storage
+ * directory. The shell provides the backing implementation (electron-store on
+ * Electron; in-memory in tests) — features only see this interface.
+ *
+ * Writes are synchronous and atomic where the backend supports it: `set`
+ * returns the new snapshot and throws when persistence fails, so a caller can
+ * surface the failure to the UI instead of silently reverting on the next
+ * restart. Malformed on-disk data falls back to `defaults` (the backend is
+ * responsible for keeping the file recoverable).
+ *
+ * @example
+ * const settings = mainSdk.storage.kv({
+ *   defaults: { enabled: true, urlOverride: null as string | null },
+ * });
+ * settings.get("enabled");      // → true
+ * settings.set({ enabled: false });
+ * settings.snapshot();          // → { enabled: false, urlOverride: null }
+ */
+export interface KvStore<T extends Record<string, unknown>> {
+	/** Return a snapshot of every key, backfilled with defaults for missing/wrong-typed values. */
+	snapshot(): T;
+	/** Read one key. Falls back to the injected default when the persisted value is missing or wrong-typed. */
+	get<K extends keyof T>(key: K): T[K];
+	/**
+	 * Persist a partial update and return the new snapshot.
+	 * Throws when the on-disk write fails.
+	 */
+	set(patch: Partial<T>): T;
+	/** Reset all persisted keys — subsequent reads return `defaults`. */
+	clear(): void;
+}
+
+/**
+ * Options for opening a per-feature key/value store.
+ *
+ * `namespace` selects the file name inside the feature's storage directory
+ * (default `"kv"`, i.e. `<storageDir>/kv.json`). Features that need multiple
+ * unrelated stores pass distinct namespaces; opening the same namespace
+ * twice within a feature returns the same live store.
+ */
+export interface KvStoreOptions<T extends Record<string, unknown>> {
+	defaults: T;
+	namespace?: string;
+}
+
+/**
+ * Per-feature storage services on the main SDK. Currently exposes typed KV
+ * (`storage.kv`) backed by the feature's Decision #20 storage directory —
+ * the same slot that hosts the feature's SQLite `data.db`. Additional
+ * storage primitives (e.g. secret vault) can grow on this interface later
+ * without further churn on `MainSdk`.
+ */
+export interface MainSdkStorage {
+	/**
+	 * Open (or reuse) a typed key/value store scoped to this feature. The
+	 * backing file lives inside the feature's storage directory; nothing is
+	 * shared across features.
+	 */
+	kv<T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T>;
+}
+
+/**
+ * Host-provided factory for a per-feature key/value store. Called lazily on
+ * `mainSdk.storage.kv(...)`. The host binds the feature's storage directory
+ * so the returned store can never write outside it; omit `resolveKvStore`
+ * in environments without persistent storage (browser mode) — calls to
+ * `storage.kv` will then throw.
+ */
+export type KvStoreFactory = <T extends Record<string, unknown>>(
+	options: KvStoreOptions<T>,
+) => KvStore<T>;
+
 // ─── MainSdk (main-process side) ─────────────────────────────────────────────
 
 /** Feature-scoped application logger supplied by the host process. */
@@ -755,6 +830,14 @@ export interface MainSdk {
 	 * Node-free features simply never touch it.
 	 */
 	readonly storageDir: string;
+	/**
+	 * Per-feature storage services. Currently exposes typed KV
+	 * (`storage.kv(...)`) backed by the feature's storage directory —
+	 * atomic writes, corrupt-file recovery, and defaults come for free.
+	 * Accessing `storage.kv` in an environment without storage (browser
+	 * mode) throws; features that never call it are unaffected.
+	 */
+	readonly storage: MainSdkStorage;
 	/**
 	 * Resolve a static asset shipped inside this plugin's package to an
 	 * absolute filesystem path (e.g. `mainSdk.resolvePluginAsset("drizzle")`

@@ -163,6 +163,118 @@ describe("FeatureRouter", () => {
 		expect(resolvePluginAsset).toHaveBeenCalledTimes(2);
 	});
 
+	it("storage.kv delegates to the injected factory", () => {
+		const router = new FeatureRouter();
+		const createCalls: Array<Record<string, unknown>> = [];
+		const createKvStore = <T extends Record<string, unknown>>(options: {
+			defaults: T;
+		}): {
+			snapshot: () => T;
+			get: <K extends keyof T>(key: K) => T[K];
+			set: (patch: Partial<T>) => T;
+			clear: () => void;
+		} => {
+			createCalls.push(options.defaults);
+			let state: T = { ...options.defaults };
+			return {
+				snapshot: () => ({ ...state }),
+				get: (key) => state[key],
+				set: (patch) => {
+					state = { ...state, ...patch } as T;
+					return { ...state };
+				},
+				clear: () => {
+					state = { ...options.defaults };
+				},
+			};
+		};
+		const mainSdk = router.createMainSdk("my-feature", { createKvStore });
+
+		const settings = mainSdk.storage.kv({ defaults: { enabled: true } });
+		expect(createCalls).toHaveLength(1);
+		expect(settings.snapshot()).toEqual({ enabled: true });
+		settings.set({ enabled: false });
+		expect(settings.snapshot()).toEqual({ enabled: false });
+	});
+
+	// Reusing the same namespace within a feature must return the same live
+	// store — opening two electron-store handles onto one file would race on
+	// write-then-rename and split writes across snapshots.
+	it("storage.kv returns the same instance for the same namespace within a feature", () => {
+		const router = new FeatureRouter();
+		let createCount = 0;
+		const createKvStore = <T extends Record<string, unknown>>(options: {
+			defaults: T;
+		}): {
+			snapshot: () => T;
+			get: <K extends keyof T>(key: K) => T[K];
+			set: (patch: Partial<T>) => T;
+			clear: () => void;
+		} => {
+			createCount++;
+			return {
+				snapshot: () => ({ ...options.defaults }),
+				get: (key) => options.defaults[key],
+				set: (patch) => ({ ...options.defaults, ...patch }) as T,
+				clear: () => {},
+			};
+		};
+		const mainSdk = router.createMainSdk("my-feature", { createKvStore });
+
+		const first = mainSdk.storage.kv({ namespace: "settings", defaults: { a: 1 } });
+		const second = mainSdk.storage.kv({ namespace: "settings", defaults: { a: 1 } });
+		const other = mainSdk.storage.kv({ namespace: "cache", defaults: { b: 2 } });
+
+		expect(first).toBe(second);
+		expect(first).not.toBe(other);
+		expect(createCount).toBe(2);
+	});
+
+	it("throws on storage.kv when no factory is provided (browser mode)", () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("my-feature");
+		expect(() => mainSdk.storage.kv({ defaults: { enabled: true } })).toThrow(
+			/no key\/value storage/,
+		);
+	});
+
+	// Security: enforce the sandbox invariant at the router boundary too so
+	// a malformed namespace can never spoof the per-namespace cache under a
+	// key like "../shared" — the concrete factory in apps/desktop also
+	// rejects it, but relying on the factory alone leaves the cache slot
+	// reachable by any KV factory implementation.
+	it.each([
+		["escaping segment", "../shared"],
+		["forward slash", "foo/bar"],
+		["backslash", "foo\\bar"],
+		["empty namespace", ""],
+	])("storage.kv rejects namespace with %s before hitting the cache", (_label, namespace) => {
+		const router = new FeatureRouter();
+		let createCalls = 0;
+		const createKvStore = <T extends Record<string, unknown>>(options: {
+			defaults: T;
+		}): {
+			snapshot: () => T;
+			get: <K extends keyof T>(key: K) => T[K];
+			set: (patch: Partial<T>) => T;
+			clear: () => void;
+		} => {
+			createCalls++;
+			return {
+				snapshot: () => ({ ...options.defaults }),
+				get: (key) => options.defaults[key],
+				set: () => ({ ...options.defaults }),
+				clear: () => {},
+			};
+		};
+		const mainSdk = router.createMainSdk("my-feature", { createKvStore });
+
+		expect(() => mainSdk.storage.kv({ namespace, defaults: { a: 1 } })).toThrow(
+			/Invalid KV namespace/,
+		);
+		expect(createCalls).toBe(0);
+	});
+
 	it("throws on resolvePluginAsset when no resolver is provided (built-in features, browser mode)", () => {
 		const router = new FeatureRouter();
 		const mainSdk = router.createMainSdk("my-feature");

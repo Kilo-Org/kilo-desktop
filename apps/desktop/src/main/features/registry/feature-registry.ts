@@ -16,6 +16,7 @@ import type {
 } from "@anaconda-agentic-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
+import { createFeatureKvStoreFactory } from "../../platform/featureKvStore.js";
 import { featureStorageDir } from "../../platform/featureStorage.js";
 
 /**
@@ -91,19 +92,28 @@ export async function bootFeatures(
 			continue;
 		}
 		options?.onBeforeFeatureBoot?.(feature.id);
+		// Share one resolver between `resolveStorageDir` and the KV factory so
+		// the directory is created lazily at most once per feature, and both
+		// facades observe the same path.
+		const resolveStorageDir =
+			storageRoot === undefined
+				? undefined
+				: (): string => {
+						const dir = featureStorageDir(storageRoot, feature.id);
+						mkdirSync(dir, { recursive: true });
+						return dir;
+					};
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
 			...(options?.fetch ? { fetch: options.fetch } : {}),
-			...(storageRoot === undefined
-				? {}
-				: {
-						resolveStorageDir: () => {
-							const dir = featureStorageDir(storageRoot, feature.id);
-							mkdirSync(dir, { recursive: true });
-							return dir;
-						},
-					}),
+			...(resolveStorageDir
+				? {
+						resolveStorageDir,
+						createKvStore: (kvOptions) =>
+							createFeatureKvStoreFactory(resolveStorageDir())(kvOptions),
+					}
+				: {}),
 			// Plugin registrations from the loader carry a resolveAsset (they know
 			// where their package lives on disk); built-in FEATURES don't and
 			// mainSdk.resolvePluginAsset would throw for them, which is fine —

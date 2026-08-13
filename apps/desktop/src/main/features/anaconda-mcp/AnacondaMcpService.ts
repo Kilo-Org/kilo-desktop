@@ -4,7 +4,8 @@ import {
 	type AuthMainCapability,
 	type FeatureFlagMainCapability,
 } from "@anaconda-agentic-desktop/contracts";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdk, ObservableValue } from "@anaconda-agentic-desktop/feature-sdk";
+import { createObservableValue } from "@anaconda-agentic-desktop/feature-sdk";
 import type { KiloServerCapabilities } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
 import isEqual from "lodash/isEqual.js";
 
@@ -75,7 +76,7 @@ export interface AnacondaMcpServiceDeps {
  * from the server on its next restart.
  */
 export class AnacondaMcpService {
-	#status: AnacondaMcpStatus = { state: "waiting-for-auth" };
+	readonly #status: ObservableValue<AnacondaMcpStatus>;
 	#envDisposer: (() => void) | null = null;
 	#overlayDisposer: (() => void) | null = null;
 	#reconciling = false;
@@ -91,10 +92,22 @@ export class AnacondaMcpService {
 
 	constructor(deps: AnacondaMcpServiceDeps) {
 		this.#deps = deps;
+		// Structural equality is required: the prior hand-rolled `state/url`
+		// comparison missed `error` → `error` transitions with a different
+		// `reason`, so a UI subscribed to status events never learned the
+		// failure mode changed. `isEqual` handles nested payloads uniformly
+		// and any future variant fields.
+		this.#status = createObservableValue<AnacondaMcpStatus>(
+			{ state: "waiting-for-auth" },
+			{ equals: isEqual },
+		);
+		this.#status.subscribe((next) => {
+			this.#deps.sdk.events.emit(ANACONDA_MCP_STATUS_CHANGED, next);
+		});
 	}
 
 	get status(): AnacondaMcpStatus {
-		return this.#status;
+		return this.#status.peek();
 	}
 
 	/**
@@ -249,15 +262,9 @@ export class AnacondaMcpService {
 	}
 
 	#setStatus(next: AnacondaMcpStatus): void {
-		const prev = this.#status;
-		// Full structural equality: catches state changes, url changes on
-		// `connected`, reason changes on `error`, and any future variant
-		// field. The prior hand-rolled state+url comparison missed
-		// `error` → `error` transitions with a different `reason`, so a
-		// UI subscribed to status events never learned the failure mode
-		// changed. `isEqual` handles nested payloads uniformly.
-		if (isEqual(prev, next)) return;
-		this.#status = next;
-		this.#deps.sdk.events.emit(ANACONDA_MCP_STATUS_CHANGED, next);
+		// Change-gated by the observable's structural equality (`isEqual`);
+		// subscribers wire the emit side, so the status event is fired
+		// exactly once per real transition.
+		this.#status.set(next);
 	}
 }

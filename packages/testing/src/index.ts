@@ -12,6 +12,9 @@ import {
 import type {
 	ChannelHandlerMap,
 	ChannelMap,
+	KvStore,
+	KvStoreFactory,
+	KvStoreOptions,
 	MainSdk,
 	MainSdkFetch,
 	MainSdkLogger,
@@ -27,6 +30,36 @@ const noopMainSdkLogger = {
 	warn: noop,
 	error: noop,
 } satisfies MainSdkLogger;
+
+/**
+ * In-memory `mainSdk.storage.kv` factory for tests. Mirrors the production
+ * contract — snapshot backfills defaults for missing keys; `set` returns the
+ * new snapshot; `clear` resets to defaults — without touching the filesystem.
+ * State is per factory instance, so distinct `createFakeMainSdk` calls get
+ * distinct persistence, matching the per-feature isolation of the real store.
+ */
+function createInMemoryKvStoreFactory(): KvStoreFactory {
+	return <T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T> => {
+		const defaults = { ...options.defaults } as T;
+		let state: T = { ...defaults };
+		return {
+			snapshot: () => ({ ...state }),
+			get: (key) => state[key],
+			set: (patch) => {
+				const next = { ...state } as T;
+				for (const key of Object.keys(patch) as Array<keyof T>) {
+					const value = patch[key];
+					if (value !== undefined) next[key] = value as T[typeof key];
+				}
+				state = next;
+				return { ...next };
+			},
+			clear: () => {
+				state = { ...defaults };
+			},
+		};
+	};
+}
 
 /**
  * In-memory `sdk.fs` fake mirroring the production scoping model: paths are
@@ -477,6 +510,14 @@ export interface FakeMainSdkOptions {
 	/** Network fake. Defaults to the current runtime's global fetch. */
 	fetch?: MainSdkFetch;
 	/**
+	 * KV factory for `mainSdk.storage.kv(...)`. Defaults to an in-memory
+	 * store that mirrors the production contract — snapshot backfills
+	 * defaults, `set` returns the new snapshot, `clear` resets to defaults —
+	 * without touching the filesystem. Pass a custom factory to inject
+	 * pre-seeded state or to spy on writes.
+	 */
+	createKvStore?: KvStoreFactory;
+	/**
 	 * Receive `mainSdk.boot.reportProgress(msg)` calls. Defaults to a no-op
 	 * (production behaviour after `bootFeatures` returns). Pass a spy to
 	 * assert on progress messages emitted from `mainRegister`.
@@ -490,9 +531,11 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 	const featureId = options?.featureId ?? "test-feature";
 	const router = options?.services?.featureRouter ?? new FeatureRouter();
 	const pluginDir = options?.pluginDir;
+	const createKvStore = options?.createKvStore ?? createInMemoryKvStoreFactory();
 	const mainSdk = router.createMainSdk(featureId, {
 		logger: options?.logger ?? noopMainSdkLogger,
 		fetch: options?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+		createKvStore,
 		resolveStorageDir: () => {
 			if (options?.storageDir !== undefined) return options.storageDir;
 			// Node-only, resolved lazily via process.getBuiltinModule so this
@@ -520,6 +563,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		events: mainSdk.events,
 		plugins: mainSdk.plugins,
 		boot: mainSdk.boot,
+		storage: mainSdk.storage,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {

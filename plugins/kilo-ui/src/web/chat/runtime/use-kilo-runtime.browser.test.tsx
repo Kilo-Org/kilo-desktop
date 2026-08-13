@@ -1,7 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
@@ -10,6 +10,9 @@ import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
 vi.mock("@assistant-ui/react-opencode", () => ({
+	OpenCodeAttachmentAdapter: vi.fn(function OpenCodeAttachmentAdapter() {
+		return { accept: "image/png,text/plain" };
+	}),
 	useOpenCodeRuntime: vi.fn(() => ({ source: "kilo-test-runtime" })),
 }));
 
@@ -56,7 +59,9 @@ describe("useKiloRuntime", () => {
 			backend: expect.objectContaining({ globalClient: {} }),
 			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
 			onError,
+			adapters: { attachments: expect.objectContaining({ accept: "image/png,text/plain" }) },
 		});
+		expect(OpenCodeAttachmentAdapter).toHaveBeenCalledOnce();
 	});
 
 	it("forwards live agent and model getters that track selection changes", () => {
@@ -126,7 +131,10 @@ describe("useKiloRuntime", () => {
 		renderHook(() => useKiloRuntime({ client }));
 
 		expect(createKiloRuntimeBackend).not.toHaveBeenCalled();
-		expect(useOpenCodeRuntime).toHaveBeenCalledWith({ client: expect.anything() });
+		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
+			client: expect.anything(),
+			adapters: { attachments: expect.objectContaining({ accept: "image/png,text/plain" }) },
+		});
 	});
 
 	it("forwards sessionActivity into the backend", () => {

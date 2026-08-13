@@ -7,7 +7,7 @@ packages:
 
 catalog:
   atomically: ^2.1.1
-  electron: 43.2.0
+  electron: 43.4.0
   lodash: ^4.17.21
   type-fest: ^5.8.0
   typescript: ^7.0.2

@@ -8,6 +8,7 @@ import {
 	DropdownMenuTrigger,
 } from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import { SidebarSearch } from "@anaconda-agentic-desktop/ui/components/sidebar";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
@@ -27,7 +28,6 @@ import {
 	MoreHorizontalIcon,
 	PencilIcon,
 	PlusIcon,
-	SearchIcon,
 	Trash2Icon,
 	Undo2Icon,
 } from "lucide-react";
@@ -150,26 +150,13 @@ const SessionListSearch: FC<{
 	onValueChange: (value: string) => void;
 }> = ({ value, onValueChange }) => {
 	return (
-		<div data-slot="aui_thread-list-search" className="relative py-1">
-			<SearchIcon
-				data-slot="aui_thread-list-search-icon"
-				className="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2"
-			/>
-			<Input
-				type="search"
-				value={value}
-				onChange={(event) => onValueChange(event.target.value)}
-				aria-label="Search chats"
-				placeholder="Search chats"
-				className={cn(
-					"h-8 w-full border-0 ps-8 text-sm shadow-none",
-					"dark:bg-transparent",
-					"focus-visible:border-0 focus-visible:ring-0",
-					sidebarSurfaceIdleClassName,
-					sidebarNavRadiusClassName,
-				)}
-			/>
-		</div>
+		<SidebarSearch
+			value={value}
+			onChange={(event) => onValueChange(event.target.value)}
+			aria-label="Search chats"
+			placeholder="Search chats"
+			containerProps={{ "data-slot": "aui_thread-list-search" }}
+		/>
 	);
 };
 

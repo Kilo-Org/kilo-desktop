@@ -111,6 +111,7 @@ export {
 	pluginNavEntrySchema,
 	pluginZoneContributionSchema,
 	pluginProviderContributionSchema,
+	pluginSettingsContributionSchema,
 	pluginContributesSchema,
 	parsePluginManifest,
 	type PluginManifest,
@@ -118,6 +119,7 @@ export {
 	type PluginNavEntry,
 	type PluginZoneContribution,
 	type PluginProviderContribution,
+	type PluginSettingsContribution,
 	type PluginContributes,
 } from "./plugin/manifest.js";
 export {
@@ -127,6 +129,7 @@ export {
 	pluginNav,
 	pluginZoneContributions,
 	pluginProviderContributions,
+	pluginSettingsContributions,
 	reportPluginDiscoveryIssues,
 	PLUGIN_ROUTE_NAMESPACE,
 	stripPluginNamespace,
@@ -141,4 +144,5 @@ export {
 	type ResolvedPluginNav,
 	type ResolvedPluginZoneContribution,
 	type ResolvedPluginProviderContribution,
+	type ResolvedPluginSettingsContribution,
 } from "./plugin/loader.js";

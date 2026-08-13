@@ -47,4 +47,27 @@ export class AppShellPage {
 			return scheme === "light" || scheme === "dark";
 		});
 	}
+
+	async verifyAppearanceSettings(): Promise<void> {
+		await expectElementToBeVisible(
+			getLocatorByTestId("settings-back"),
+			"Settings should take over the siderail with a back-to-app control",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("settings-page"),
+			"Settings page should be visible",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("appearance-settings"),
+			"Appearance should be the first settings section",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("appearance-theme"),
+			"Appearance should offer a theme picker",
+		);
+	}
+
+	async leaveSettings(): Promise<void> {
+		await click(getLocatorByTestId("settings-back"));
+	}
 }

@@ -29,7 +29,7 @@
 		"@vitest/browser": "5.0.0-rc.1",
 		"@vitest/browser-playwright": "5.0.0-rc.1",
 		"@vitest/coverage-v8": "5.0.0-rc.1",
-		"playwright": "1.61.1",
+		"playwright": "1.62.1",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"typescript": "catalog:",

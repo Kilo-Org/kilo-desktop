@@ -35,7 +35,7 @@ catalogs:
 overrides:
   '@assistant-ui/react-opencode>@opencode-ai/sdk': link:plugins/kilo-ui/opencode-sdk-compat
   '@assistant-ui/core': 0.3.5
-  '@assistant-ui/store': 0.3.3
+  '@assistant-ui/store': 0.3.9
   '@assistant-ui/tap': 0.9.9
 
 patchedDependencies:
@@ -672,7 +672,7 @@ importers:
     dependencies:
       '@assistant-ui/core':
         specifier: 0.3.5
-        version: 0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
+        version: 0.3.5(@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
       '@assistant-ui/react':
         specifier: 0.15.4
         version: 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -935,7 +935,7 @@ packages:
   '@assistant-ui/core@0.3.5':
     resolution: {integrity: sha512-+3hFt6g+y83rbQAjbWZCvtCe4J5RIYwjcRWRly56AxIQqcXv11vFJTc4587RkOEGZTkjp8FUOA2ILEW5YoweHg==}
     peerDependencies:
-      '@assistant-ui/store': 0.3.3
+      '@assistant-ui/store': 0.3.9
       '@assistant-ui/tap': 0.9.9
       '@types/react': '*'
       assistant-cloud: ^0.1.31
@@ -984,14 +984,16 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@assistant-ui/store@0.3.3':
-    resolution: {integrity: sha512-kNkxE6vNkaBTGwJc3NcAYB+MoDSk08ab8VLJ3wFdr4xR3Y8YApWMojMYvoy1E/VCNmvli8m3Zh+qpTqoFWRuSA==}
+  '@assistant-ui/store@0.3.9':
+    resolution: {integrity: sha512-BXX1FNDBy47x3DItCiDULDAvFI6cFdNq2s48ch7pFZ6ZR2YHR8oxDshFRzdcoP6W/aYZTkGTI/zokOIugHUkuA==}
     peerDependencies:
       '@assistant-ui/tap': 0.9.9
       '@types/react': '*'
       react: ^18 || ^19
     peerDependenciesMeta:
       '@types/react':
+        optional: true
+      react:
         optional: true
 
   '@assistant-ui/tap@0.9.9':
@@ -1014,6 +1016,9 @@ packages:
   '@aws-sdk/core@3.977.1':
     resolution: {integrity: sha512-KVtQRtc00ES/y+Sc3vYXeP6pCIcNlBJCZOwvqSy8ZpVGmbM5+IG+AfhuTKQ2oXmIVqZJewaGMMpzPkywC6xg0w==}
     engines: {node: '>=20.0.0'}
+    deprecated: |-
+      Deprecated due to Document number parsing bug in JSON, see
+        https://github.com/aws/aws-sdk-js-v3/issues/8246. Newer version available.
 
   '@aws-sdk/credential-provider-env@3.972.62':
     resolution: {integrity: sha512-BkDrk2cNjed31IKin/Oksb2ziF+gfuyRskFVuT4EU9Mep7M8Y/d8DJG4+anHme4Vuse7CwaEscwEfGyR6mzBhQ==}
@@ -3976,6 +3981,7 @@ packages:
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xobotyi/scrollbar-width@1.9.5':
     resolution: {integrity: sha512-N8tkAACJx2ww8vFMneJmaAgmjAG1tnVBZJRLRcx061tmsLRZHSEZSLuGWnwPtunsSLvSqXQ2wfp7Mgqg1I+2dQ==}
@@ -8182,9 +8188,9 @@ snapshots:
       react-dom: 19.2.8(react@19.2.8)
       stylis: 4.4.0
 
-  '@assistant-ui/core@0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))':
+  '@assistant-ui/core@0.3.5(@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))':
     dependencies:
-      '@assistant-ui/store': 0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
+      '@assistant-ui/store': 0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
       '@assistant-ui/tap': 0.9.9(@types/react@19.2.17)(react@19.2.8)
       assistant-stream: 0.3.33
       nanoid: 6.0.0
@@ -8214,9 +8220,9 @@ snapshots:
 
   '@assistant-ui/react-opencode@0.2.17(patch_hash=ec3e2946d0d8c90d55f60efee251b59b428a647e9d64c2a4f36b2d211ba41e87)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
     dependencies:
-      '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
+      '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
       '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
-      '@assistant-ui/store': 0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
+      '@assistant-ui/store': 0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
       '@opencode-ai/sdk': link:plugins/kilo-ui/opencode-sdk-compat
       react: 19.2.8
     optionalDependencies:
@@ -8230,8 +8236,8 @@ snapshots:
 
   '@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))':
     dependencies:
-      '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
-      '@assistant-ui/store': 0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
+      '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
+      '@assistant-ui/store': 0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)
       '@assistant-ui/tap': 0.9.9(@types/react@19.2.17)(react@19.2.8)
       '@radix-ui/primitive': 1.1.7
       '@radix-ui/react-collection': 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -8260,12 +8266,12 @@ snapshots:
       - redis
       - use-sync-external-store
 
-  '@assistant-ui/store@0.3.3(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)':
+  '@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8)':
     dependencies:
       '@assistant-ui/tap': 0.9.9(@types/react@19.2.17)(react@19.2.8)
-      react: 19.2.8
     optionalDependencies:
       '@types/react': 19.2.17
+      react: 19.2.8
 
   '@assistant-ui/tap@0.9.9(@types/react@19.2.17)(react@19.2.8)':
     dependencies:

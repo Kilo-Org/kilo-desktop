@@ -40,6 +40,26 @@ export interface InitializeManagedConfigOptions {
 	readonly managedConfig?: Pick<ManagedKiloConfig, "setMcpEntry" | "removeMcpEntry">;
 }
 
+/** Builds the CLI argv for Kilo's managed stdio MCP relay child. */
+export function buildWebMcpRelayArgv(
+	relayEntry: string,
+	options?: {
+		readonly port?: number;
+		readonly relayId?: string;
+		readonly label?: string;
+	},
+): string[] {
+	return [
+		relayEntry,
+		"--port",
+		String(options?.port ?? WEBMCP_RELAY_PORT),
+		"--relay-id",
+		options?.relayId ?? WEBMCP_RELAY_ID,
+		"--label",
+		options?.label ?? WEBMCP_RELAY_LABEL,
+	];
+}
+
 export type ManagedConfigInitializationOutcome =
 	| {
 			readonly kind: "written";
@@ -63,16 +83,7 @@ export type ManagedConfigInitializationOutcome =
 function buildEntry(appExecutablePath: string, relayEntry: string): WebMcpRelayEntry {
 	return {
 		type: "local",
-		command: [
-			appExecutablePath,
-			relayEntry,
-			"--port",
-			String(WEBMCP_RELAY_PORT),
-			"--relay-id",
-			WEBMCP_RELAY_ID,
-			"--label",
-			WEBMCP_RELAY_LABEL,
-		],
+		command: [appExecutablePath, ...buildWebMcpRelayArgv(relayEntry)],
 		environment: { ELECTRON_RUN_AS_NODE: "1" },
 		enabled: true,
 	};

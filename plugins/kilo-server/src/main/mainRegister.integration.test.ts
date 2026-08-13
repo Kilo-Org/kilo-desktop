@@ -8,13 +8,15 @@ import type { KiloServerConnection, KiloServerStatus } from "../contracts/schema
 import {
 	ContributedEnvManager,
 	createKiloServerManagerOptions,
-	registerKiloServer,
+	registerKiloServer as registerProductionKiloServer,
 	type KiloServerCapabilities,
 	type KiloServerController,
 } from "./index.js";
 import type { ManagedMcpOutcome } from "./ManagedKiloConfig.js";
+import type { WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
+type RegisterKiloServerOptions = NonNullable<Parameters<typeof registerProductionKiloServer>[1]>;
 
 function fakeServer() {
 	const connection: KiloServerConnection = {
@@ -33,6 +35,26 @@ function fakeServer() {
 		restart: vi.fn(async () => connection),
 		dispose: vi.fn(),
 	} satisfies KiloServerController;
+}
+
+function stubRelayService(): WebMcpRelayServiceHandle & {
+	start: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
+	dispose: ReturnType<typeof vi.fn<() => void>>;
+} {
+	return {
+		start: vi.fn(async () => true),
+		dispose: vi.fn(),
+	};
+}
+
+function registerKiloServer(
+	mainSdk: Parameters<typeof registerProductionKiloServer>[0],
+	options: RegisterKiloServerOptions = {},
+): Promise<void> {
+	return registerProductionKiloServer(mainSdk, {
+		createWebMcpRelayService: stubRelayService,
+		...options,
+	});
 }
 
 describe("kilo-server main registration", () => {
@@ -269,6 +291,94 @@ describe("kilo-server main registration", () => {
 		// getConnection from spawning the server.
 		await mainSdk.invoke("server.getConnection");
 		expect(server.ensureRunning).toHaveBeenCalled();
+		mainSdk.dispose();
+	});
+
+	it("starts the WebMCP rendezvous during feature boot without starting Kilo", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const relayService = stubRelayService();
+		let releaseRelay!: (ready: boolean) => void;
+		const relayGate = new Promise<boolean>((resolve) => {
+			releaseRelay = resolve;
+		});
+		relayService.start.mockReturnValue(relayGate);
+
+		let registrationFinished = false;
+		const registration = registerKiloServer(mainSdk, {
+			createServer: () => server,
+			initializeManagedConfig: async () => ({
+				kind: "written",
+				reason: "created",
+				entry: {
+					type: "local",
+					command: ["/exe", "/entry"],
+					environment: { ELECTRON_RUN_AS_NODE: "1" },
+					enabled: true,
+				},
+			}),
+			createWebMcpRelayService: () => relayService,
+			runAsNodeEnabled: async () => true,
+		}).then(() => {
+			registrationFinished = true;
+		});
+
+		await vi.waitFor(() => expect(relayService.start).toHaveBeenCalledOnce());
+		expect(registrationFinished).toBe(false);
+		expect(server.ensureRunning).not.toHaveBeenCalled();
+
+		releaseRelay(true);
+		await registration;
+		expect(registrationFinished).toBe(true);
+		mainSdk.dispose();
+		expect(relayService.dispose).toHaveBeenCalledOnce();
+	});
+
+	it("starts the WebMCP rendezvous when its managed entry is already current", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const relayService = stubRelayService();
+
+		await registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			initializeManagedConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			createWebMcpRelayService: () => relayService,
+			runAsNodeEnabled: async () => true,
+		});
+
+		expect(relayService.start).toHaveBeenCalledOnce();
+		mainSdk.dispose();
+	});
+
+	it("does not start the WebMCP rendezvous when configuration removed the entry", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const relayService = stubRelayService();
+
+		await registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			initializeManagedConfig: async () => ({ kind: "removed", reason: "fuse-off" }),
+			createWebMcpRelayService: () => relayService,
+			runAsNodeEnabled: async () => false,
+		});
+
+		expect(relayService.start).not.toHaveBeenCalled();
+		mainSdk.dispose();
+	});
+
+	it("still starts Kilo when the eager WebMCP rendezvous cannot start", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const relayService = stubRelayService();
+		relayService.start.mockResolvedValue(false);
+
+		await registerKiloServer(mainSdk, {
+			createServer: () => server,
+			initializeManagedConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			createWebMcpRelayService: () => relayService,
+			runAsNodeEnabled: async () => true,
+		});
+
+		await mainSdk.invoke("server.getConnection");
+		expect(server.ensureRunning).toHaveBeenCalledOnce();
 		mainSdk.dispose();
 	});
 

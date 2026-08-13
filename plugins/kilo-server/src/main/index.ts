@@ -20,6 +20,7 @@ import {
 	initializeManagedConfig as initializeWebMcpConfig,
 	type ManagedConfigInitializationOutcome,
 } from "./initialize-managed-config.js";
+import { WebMcpRelayService, type WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 export { ContributedEnvManager } from "./ContributedEnvManager.js";
 
@@ -70,6 +71,11 @@ interface RegisterKiloServerOptions {
 	 * enabled — dev/test does honor `ELECTRON_RUN_AS_NODE`.
 	 */
 	runAsNodeEnabled?: () => Promise<boolean>;
+	/**
+	 * Owns the WebMCP WS rendezvous (`:9345`) outside Kilo's lazy MCP spawn.
+	 * Injected in tests; production defaults to {@link WebMcpRelayService}.
+	 */
+	createWebMcpRelayService?: () => WebMcpRelayServiceHandle;
 }
 
 export type KiloServerCapabilities = {
@@ -135,6 +141,12 @@ async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boole
  */
 const ENV_RESTART_DEBOUNCE_MS = 300;
 
+function configLeftRelayEntry(outcome: ManagedConfigInitializationOutcome): boolean {
+	return (
+		outcome.kind === "written" || (outcome.kind === "skipped" && outcome.reason === "up-to-date")
+	);
+}
+
 function assertManagedConfigAccepted(
 	sourceId: string,
 	entryId: string,
@@ -157,7 +169,7 @@ function assertManagedConfigAccepted(
 export function registerKiloServer(
 	mainSdk: MainSdk,
 	options: RegisterKiloServerOptions = {},
-): void {
+): Promise<void> {
 	const { configDirectory } = resolveKiloServerDirectories(mainSdk.storageDir);
 	const appExecutablePath = options.appExecutablePath ?? process.execPath;
 	const runAsNodeEnabled =
@@ -231,23 +243,36 @@ export function registerKiloServer(
 		(status) => mainSdk.events.emit("server-status-changed", status),
 		contributedEnv,
 	);
+	const createRelayService =
+		options.createWebMcpRelayService ??
+		(() =>
+			new WebMcpRelayService({
+				logger: mainSdk.logger,
+			}));
+	let relayService: WebMcpRelayServiceHandle | undefined;
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
 	//
 	// (1) detect fuse, (2) initialize or remove the managed entry in kilo.jsonc,
-	// (3) then start kilo serve. Gating startup on the atomic config update
-	// eliminates the first-boot race. An initialization failure never blocks
-	// Kilo from starting without the bridge.
+	// (3) start the in-process `:9345` rendezvous, (4) then allow lazy Kilo
+	// startup. Feature boot awaits this promise, so the renderer's first relay
+	// scan happens after the rendezvous attempt. An initialization or relay
+	// failure never blocks Kilo startup; its later MCP child can still bind the
+	// port through the relay package's normal fallback behavior.
 	//
 	// Every path that can start or restart Kilo awaits the same readiness
 	// promise, so no caller can race the config write.
 	const configReady = (async () => {
 		try {
 			const enabled = await runAsNodeEnabled();
-			await initializeManagedConfig(configDirectory, enabled);
+			const outcome = await initializeManagedConfig(configDirectory, enabled);
+			if (configLeftRelayEntry(outcome) && !disposed) {
+				relayService = createRelayService();
+				await relayService.start();
+			}
 		} catch (error) {
 			mainSdk.logger.warn(
-				`WebMCP configuration initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+				`WebMCP initialization failed: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	})();
@@ -259,8 +284,8 @@ export function registerKiloServer(
 
 	// NOTE: no eager `ensureRunning()`. The server spawns lazily on the
 	// first `server.getConnection` request (typically from the renderer
-	// when it mounts the Kilo UI). Initialization runs in the background via
-	// `configReady`, so configuration is usually ready by the first request.
+	// when it mounts the Kilo UI). Feature boot awaits `configReady`, while
+	// connection callers also await it defensively.
 	// Lazy spawn ensures env contributions from other features are captured
 	// in the initial spawn env — avoiding an immediate restart that
 	// would break the renderer's cached connection URL.
@@ -314,10 +339,13 @@ export function registerKiloServer(
 	mainSdk.onDispose(() => {
 		disposed = true;
 		handleEnvChange.cancel();
+		relayService?.dispose();
 		server.dispose();
 	});
+
+	return configReady;
 }
 
-export function mainRegister(mainSdk: MainSdk): void {
-	registerKiloServer(mainSdk);
+export function mainRegister(mainSdk: MainSdk): Promise<void> {
+	return registerKiloServer(mainSdk);
 }

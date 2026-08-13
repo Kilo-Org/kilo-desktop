@@ -219,7 +219,7 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 	let newest: PlanProjection | undefined;
 	let assistantRun:
 		| {
-				messageId: string;
+				messageIds: string[];
 				parts: Part[];
 				planningAgent: boolean;
 		  }
@@ -227,7 +227,7 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 
 	const projectAssistantRun = () => {
 		if (!assistantRun) return;
-		const { messageId, parts, planningAgent } = assistantRun;
+		const { messageIds, parts, planningAgent } = assistantRun;
 		const hasPlanExit = hasPlanExitPart(parts);
 		const options = {
 			treatWritesAsPlan: planningAgent || hasPlanExit,
@@ -238,7 +238,9 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 			const projection = priorMarkdown
 				? (getPlanProjectionFromParts(parts, { ...options, priorMarkdown }) ?? initial)
 				: initial;
-			byMessageId.set(messageId, projection);
+			for (const messageId of messageIds) {
+				byMessageId.set(messageId, projection);
+			}
 			byAnchorCallId.set(projection.anchorCallId, projection);
 			newest = projection;
 			if (projection.path && projection.markdown) {
@@ -255,12 +257,12 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 			continue;
 		}
 		if (assistantRun) {
-			assistantRun.messageId = messageId;
+			assistantRun.messageIds.push(messageId);
 			assistantRun.parts.push(...message.parts);
 			assistantRun.planningAgent ||= isPlanningAgent(message.info.agent);
 		} else {
 			assistantRun = {
-				messageId,
+				messageIds: [messageId],
 				parts: [...message.parts],
 				planningAgent: isPlanningAgent(message.info.agent),
 			};

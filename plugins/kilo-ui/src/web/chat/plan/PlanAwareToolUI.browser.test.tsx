@@ -16,7 +16,7 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 	return {
 		...actual,
 		useAuiState: (selector: (state: { message: { id: string } }) => unknown) =>
-			selector({ message: { id: "msg-exit" } }),
+			selector({ message: { id: "msg-write" } }),
 	};
 });
 
@@ -35,18 +35,17 @@ afterEach(() => {
 
 describe("PlanAwareToolUI", () => {
 	it("renders the plan card instead of the projected write row", async () => {
+		const projection = {
+			status: "ready" as const,
+			path: "1786492270654-random-snack-inventory.md",
+			markdown: "# Random Plan: Desk Snack Inventory",
+			anchorCallId: "write-plan",
+			hiddenCallIds: new Set(["write-plan", "exit-plan"]),
+		};
 		projectionState.current = {
 			byMessageId: new Map([
-				[
-					"msg-exit",
-					{
-						status: "ready",
-						path: "1786492270654-random-snack-inventory.md",
-						markdown: "# Random Plan: Desk Snack Inventory",
-						anchorCallId: "write-plan",
-						hiddenCallIds: new Set(["write-plan", "exit-plan"]),
-					},
-				],
+				["msg-write", projection],
+				["msg-exit", projection],
 			]),
 			byAnchorCallId: new Map(),
 			newest: undefined,

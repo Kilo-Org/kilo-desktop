@@ -270,7 +270,7 @@ describe("projectPlanThread", () => {
 		expect(readyProjection?.status).toBe("ready");
 		expect(readyProjection?.anchorCallId).toBe("write-plan");
 		expect(readyProjection?.hiddenCallIds).toEqual(new Set(["write-plan", "exit-plan"]));
-		expect(getPlanProjectionForMessage(ready, "msg-write")).toBeUndefined();
+		expect(getPlanProjectionForMessage(ready, "msg-write")).toBe(readyProjection);
 	});
 
 	it("projects each message once and enriches chained edits in order", () => {

@@ -318,20 +318,9 @@ function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input
 	);
 }
 
-function SidebarSearch({
-	className,
-	containerProps,
-	...props
-}: React.ComponentProps<typeof Input> & {
-	containerProps?: React.ComponentProps<"div">;
-}) {
+function SidebarSearch({ className, ...props }: React.ComponentProps<typeof Input>) {
 	return (
-		<div
-			data-slot="sidebar-search"
-			data-sidebar="search"
-			{...containerProps}
-			className={cn("relative py-1", containerProps?.className)}
-		>
+		<div data-slot="sidebar-search" data-sidebar="search" className="relative py-1">
 			<SearchIcon className="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2" />
 			<Input
 				type="search"

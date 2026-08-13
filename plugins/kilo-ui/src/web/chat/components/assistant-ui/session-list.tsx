@@ -155,7 +155,6 @@ const SessionListSearch: FC<{
 			onChange={(event) => onValueChange(event.target.value)}
 			aria-label="Search chats"
 			placeholder="Search chats"
-			containerProps={{ "data-slot": "aui_thread-list-search" }}
 		/>
 	);
 };

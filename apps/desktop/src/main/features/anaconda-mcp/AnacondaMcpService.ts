@@ -16,13 +16,13 @@ import isEqual from "lodash/isEqual.js";
  */
 export const DEFAULT_MCP_URL = "https://anaconda.com/api/mcp";
 
-/** Stable MCP server ID contributed to the Kilo config overlay. */
+/** Stable MCP server ID persisted in Desktop's owned Kilo config. */
 export const MCP_ID = "anaconda-remote";
 
 /** Env var name that Kilo expands in the `{env:VAR}` header template. */
 export const MCP_ENV_VAR = "ANACONDA_API_KEY";
 
-/** Source id for both contributions to the kilo-server plugin. */
+/** Source id for the managed MCP entry and Kilo server environment contribution. */
 export const CONTRIBUTION_SOURCE_ID = "anaconda-mcp";
 
 /**
@@ -52,18 +52,13 @@ export interface AnacondaMcpServiceDeps {
  * change) it computes the desired state, diffs against the current effective
  * state, and applies the minimum set of mutations.
  *
- * Two contributions per successful reconcile, both scoped to the Kilo server
- * process that Desktop spawns:
+ * A successful reconcile manages two pieces of state:
  *
- * 1. Contribute the MCP entry as a config overlay
- *    (`kiloService.configOverlay.contribute`). The kilo-server plugin injects
- *    it via the `KILO_CONFIG_CONTENT` env var, which Kilo merges over the
- *    on-disk config at load time. Nothing is ever written to the user's
- *    shared `~/.config/kilo/kilo.jsonc` — no lost-update races with Kilo CLI
- *    / VS Code, no residue after uninstall, and other Kilo clients (which
- *    don't have `ANACONDA_API_KEY` in their environment) never see a broken
- *    entry. The `Authorization` header is the `{env:ANACONDA_API_KEY}`
- *    template — the raw key never appears in the overlay JSON.
+ * 1. Persist the MCP entry through `kiloService.managedMcp` into Desktop's
+ *    app-owned `kilo.jsonc`. The Kilo plugin serializes atomic JSONC updates,
+ *    preserves unknown entries/comments, and tracks which entries Desktop may
+ *    remove. The Authorization header remains an environment template, so the
+ *    raw key is never written to disk.
  *
  * 2. Contribute `ANACONDA_API_KEY` to the kilo-server spawn environment via
  *    `serverEnv.contribute`. Kilo resolves the header template against this
@@ -78,7 +73,7 @@ export interface AnacondaMcpServiceDeps {
 export class AnacondaMcpService {
 	readonly #status: ObservableValue<AnacondaMcpStatus>;
 	#envDisposer: (() => void) | null = null;
-	#overlayDisposer: (() => void) | null = null;
+	#managedMcp: KiloServerCapabilities["kiloService"]["managedMcp"] | null = null;
 	#reconciling = false;
 	#reconcilePending = false;
 	#disposed = false;
@@ -123,7 +118,7 @@ export class AnacondaMcpService {
 	 * When `dispose()` is called mid-reconcile, the loop notices the
 	 * `#disposed` flag on the next iteration and performs teardown instead of
 	 * a normal reconcile — so dispose never races the state machine that owns
-	 * `#envDisposer`, `#overlayDisposer`, and status transitions.
+	 * `#envDisposer`, the managed config entry, and status transitions.
 	 */
 	async reconcile(): Promise<void> {
 		if (this.#reconciling) {
@@ -139,7 +134,7 @@ export class AnacondaMcpService {
 				do {
 					this.#reconcilePending = false;
 					if (this.#disposed) {
-						this.#teardown();
+						await this.#teardown();
 						this.#setStatus({ state: "disabled" });
 						return;
 					}
@@ -178,14 +173,14 @@ export class AnacondaMcpService {
 		const featureFlag = sdk.plugins.get<FeatureFlagMainCapability>("feature-flag");
 		const flagEnabled = featureFlag?.featureFlag.getFlag<boolean>(FEATURE_FLAG_KEY, false) ?? false;
 		if (!flagEnabled) {
-			this.#teardown();
+			await this.#teardown();
 			this.#setStatus({ state: "disabled" });
 			return;
 		}
 
 		// 1. If the user turned it off in the settings panel, tear down.
 		if (!settings.enabled) {
-			this.#teardown();
+			await this.#teardown();
 			this.#setStatus({ state: "disabled" });
 			return;
 		}
@@ -193,7 +188,7 @@ export class AnacondaMcpService {
 		// 2. Resolve kilo-server capability.
 		const kilo = sdk.plugins.get<KiloServerCapabilities>("kilo-server");
 		if (!kilo) {
-			this.#teardown();
+			await this.#teardown();
 			this.#setStatus({ state: "waiting-for-kilo" });
 			return;
 		}
@@ -202,7 +197,7 @@ export class AnacondaMcpService {
 		const auth = sdk.plugins.get<AuthMainCapability>("auth");
 		const apiKey = await auth?.session.getApiKey();
 		if (!apiKey) {
-			this.#teardown();
+			await this.#teardown();
 			this.#setStatus({ state: "waiting-for-auth" });
 			return;
 		}
@@ -210,11 +205,9 @@ export class AnacondaMcpService {
 		// 4. Compute desired URL.
 		const url = settings.urlOverride ?? DEFAULT_MCP_URL;
 
-		// 5. Contribute the MCP overlay and the API key env. Contributions
-		//    are idempotent per sourceId: re-contributing the same payload is
-		//    a no-op inside the kilo-server plugin (deep-equality check), and
-		//    a changed payload triggers its debounced server restart.
-		this.#ensureContributions(kilo, url, apiKey);
+		// 5. Persist the managed MCP entry and contribute the API key env. Both
+		//    paths are idempotent and share Kilo's debounced restart handling.
+		await this.#ensureContributions(kilo, url, apiKey);
 
 		// 6. Success.
 		this.#setStatus({ state: "connected", url });
@@ -233,32 +226,36 @@ export class AnacondaMcpService {
 
 	// ─── Private ────────────────────────────────────────────────────────────────
 
-	#ensureContributions(kilo: KiloServerCapabilities, url: string, apiKey: string): void {
-		// Contribute unconditionally: re-contributing under the same sourceId
-		// REPLACES the previous contribution inside the kilo-server plugin,
-		// and unchanged payloads are deduplicated there (deep-equality), so
-		// this never causes a restart unless the URL or key actually changed.
-		// Only the latest disposers are kept; superseded ones are inert.
-		this.#overlayDisposer = kilo.kiloService.configOverlay.contribute(CONTRIBUTION_SOURCE_ID, {
-			mcp: {
-				[MCP_ID]: {
-					type: "remote",
-					url,
-					enabled: true,
-					headers: { Authorization: `Bearer {env:${MCP_ENV_VAR}}` },
-				},
-			},
+	async #ensureContributions(
+		kilo: KiloServerCapabilities,
+		url: string,
+		apiKey: string,
+	): Promise<void> {
+		await kilo.kiloService.managedMcp.set(CONTRIBUTION_SOURCE_ID, MCP_ID, {
+			type: "remote",
+			url,
+			enabled: true,
+			headers: { Authorization: `Bearer {env:${MCP_ENV_VAR}}` },
 		});
-		this.#envDisposer = kilo.kiloService.serverEnv.contribute(CONTRIBUTION_SOURCE_ID, {
+		const envDisposer = kilo.kiloService.serverEnv.contribute(CONTRIBUTION_SOURCE_ID, {
 			[MCP_ENV_VAR]: apiKey,
 		});
+		this.#envDisposer = envDisposer;
+		this.#managedMcp = kilo.kiloService.managedMcp;
 	}
 
-	#teardown(): void {
-		this.#overlayDisposer?.();
-		this.#overlayDisposer = null;
-		this.#envDisposer?.();
+	async #teardown(): Promise<void> {
+		const managedMcp =
+			this.#managedMcp ??
+			this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server")?.kiloService.managedMcp;
+		this.#managedMcp = null;
+		const envDisposer = this.#envDisposer;
 		this.#envDisposer = null;
+		try {
+			await managedMcp?.remove(CONTRIBUTION_SOURCE_ID, MCP_ID);
+		} finally {
+			envDisposer?.();
+		}
 	}
 
 	#setStatus(next: AnacondaMcpStatus): void {

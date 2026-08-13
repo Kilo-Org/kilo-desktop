@@ -62,6 +62,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 			treeSitterWasmDirectory: "/vendor/tree-sitter",
 		},
 		runtimeDirectory: "/tmp/kilo-test-runtime",
+		configDirectory: "/tmp/kilo-test-runtime/config/kilo",
 		stateDirectory: "/tmp/kilo-test-state",
 		environment: { PATH: "/bin", NODE_OPTIONS: "--inspect", LD_PRELOAD: "bad.so" },
 		platform: "linux",
@@ -118,7 +119,7 @@ describe("KiloServerManager", () => {
 		});
 	});
 
-	it("spawns with shared global XDG paths, loopback CORS, and a sanitized inherited environment", async () => {
+	it("spawns with an app-owned config profile, shared Kilo data, loopback CORS, and a sanitized environment", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
@@ -146,24 +147,28 @@ describe("KiloServerManager", () => {
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: "/vendor/tree-sitter",
-			// Inherit host config/data/cache so auth/sessions match Kilo CLI / VS Code.
-			XDG_CONFIG_HOME: "/custom/config",
+			// Desktop owns Kilo config, rather than merging the host's ~/.config/kilo.
+			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
+			// Shared data keeps provider credentials and sessions from Kilo CLI / VS Code.
 			XDG_DATA_HOME: "/custom/data",
 			XDG_CACHE_HOME: "/custom/cache",
 			// Explicit host XDG_STATE_HOME wins over the app-local state directory.
 			XDG_STATE_HOME: "/custom/state",
 			NO_PROXY: "127.0.0.1,localhost",
 		});
+		expect(options.env.KILO_CONFIG_DIR).toBeUndefined();
 		expect(options.env.NODE_OPTIONS).toBeUndefined();
 		expect(options.env.LD_PRELOAD).toBeUndefined();
 		manager.dispose();
 	});
 
-	it("defaults XDG_STATE_HOME to the app-local state directory", async () => {
+	it("owns config and defaults state while preserving shared data and cache", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
+				kilo_config_dir: "/tmp/other-profile",
 				XDG_CONFIG_HOME: "/custom/config",
+				xdg_config_home: "/tmp/other-config",
 				XDG_DATA_HOME: "/custom/data",
 				XDG_CACHE_HOME: "/custom/cache",
 			},
@@ -172,11 +177,14 @@ describe("KiloServerManager", () => {
 		const [, , options] = spawn.mock.calls[0]!;
 
 		expect(options.env).toMatchObject({
-			XDG_CONFIG_HOME: "/custom/config",
+			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
 			XDG_DATA_HOME: "/custom/data",
 			XDG_CACHE_HOME: "/custom/cache",
 			XDG_STATE_HOME: "/tmp/kilo-test-state",
 		});
+		expect(options.env.KILO_CONFIG_DIR).toBeUndefined();
+		expect(options.env.kilo_config_dir).toBeUndefined();
+		expect(options.env.xdg_config_home).toBeUndefined();
 		manager.dispose();
 	});
 
@@ -328,6 +336,7 @@ describe("KiloServerManager", () => {
 		const manager = new KiloServerManager({
 			installation: { executablePath: "/kilo", treeSitterWasmDirectory: "/tree" },
 			runtimeDirectory: "/tmp/kilo-timeout",
+			configDirectory: "/tmp/kilo-timeout/config/kilo",
 			stateDirectory: "/tmp/kilo-timeout-state",
 			spawn: () => child,
 			startupTimeoutMs: 1,
@@ -502,97 +511,16 @@ describe("KiloServerManager", () => {
 	});
 });
 
-describe("KILO_CONFIG_CONTENT overlay injection", () => {
-	function createOverlayHarness(environment: NodeJS.ProcessEnv = { PATH: "/bin" }) {
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
-		const harness = createHarness({ environment, contributedEnv });
-		return { ...harness, contributedEnv };
-	}
-
-	it("does not set KILO_CONFIG_CONTENT when no overlay is contributed", async () => {
-		const { manager, spawn } = createOverlayHarness();
-		await manager.ensureRunning();
-		const [, , options] = spawn.mock.calls[0]!;
-		expect(options.env.KILO_CONFIG_CONTENT).toBeUndefined();
-		manager.dispose();
-	});
-
-	it("injects the merged overlay as KILO_CONFIG_CONTENT into the spawn env", async () => {
-		const { manager, spawn, contributedEnv } = createOverlayHarness();
-		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
-			mcp: {
-				"anaconda-remote": {
-					type: "remote",
-					url: "https://example.test/mcp",
-					enabled: true,
-					headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
-				},
+describe("owned config environment", () => {
+	it("removes inherited KILO_CONFIG_CONTENT so the file is authoritative", async () => {
+		const { manager, spawn } = createHarness({
+			environment: {
+				PATH: "/bin",
+				KILO_CONFIG_CONTENT: JSON.stringify({ mcp: { unexpected: {} } }),
 			},
 		});
 		await manager.ensureRunning();
-		const [, , options] = spawn.mock.calls[0]!;
-		expect(JSON.parse(options.env.KILO_CONFIG_CONTENT!)).toEqual({
-			mcp: {
-				"anaconda-remote": {
-					type: "remote",
-					url: "https://example.test/mcp",
-					enabled: true,
-					headers: { Authorization: "Bearer {env:ANACONDA_API_KEY}" },
-				},
-			},
-		});
-		manager.dispose();
-	});
-
-	it("merges the overlay over an inherited KILO_CONFIG_CONTENT (per-entry for mcp)", async () => {
-		const inherited = JSON.stringify({
-			theme: "dark",
-			mcp: { "dev-server": { type: "remote", url: "https://dev.test" } },
-		});
-		const { manager, spawn, contributedEnv } = createOverlayHarness({
-			PATH: "/bin",
-			KILO_CONFIG_CONTENT: inherited,
-		});
-		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
-			mcp: { "anaconda-remote": { type: "remote", url: "https://example.test/mcp" } },
-		});
-		await manager.ensureRunning();
-		const [, , options] = spawn.mock.calls[0]!;
-		expect(JSON.parse(options.env.KILO_CONFIG_CONTENT!)).toEqual({
-			theme: "dark",
-			mcp: {
-				"dev-server": { type: "remote", url: "https://dev.test" },
-				"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
-			},
-		});
-		manager.dispose();
-	});
-
-	it("passes an inherited KILO_CONFIG_CONTENT through untouched when no overlay exists", async () => {
-		const inherited = JSON.stringify({ theme: "dark" });
-		const { manager, spawn } = createOverlayHarness({
-			PATH: "/bin",
-			KILO_CONFIG_CONTENT: inherited,
-		});
-		await manager.ensureRunning();
-		const [, , options] = spawn.mock.calls[0]!;
-		expect(options.env.KILO_CONFIG_CONTENT).toBe(inherited);
-		manager.dispose();
-	});
-
-	it("detects drift when the overlay changes after spawn", async () => {
-		const { manager, contributedEnv } = createOverlayHarness();
-		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
-			mcp: { "anaconda-remote": { url: "https://one.test" } },
-		});
-		await manager.ensureRunning();
-		expect(manager.contributedEnvChangedSinceSpawn()).toBe(false);
-
-		contributedEnv.contributeConfigOverlay("anaconda-mcp", {
-			mcp: { "anaconda-remote": { url: "https://two.test" } },
-		});
-		expect(manager.contributedEnvChangedSinceSpawn()).toBe(true);
+		expect(spawn.mock.calls[0]![2].env.KILO_CONFIG_CONTENT).toBeUndefined();
 		manager.dispose();
 	});
 });

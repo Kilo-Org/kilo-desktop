@@ -14,8 +14,12 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
+import { ManagedKiloConfig, type ManagedMcpOutcome } from "./ManagedKiloConfig.js";
 import { resolveKiloInstallation } from "./installation.js";
-import { seedKiloMcpConfig, type SeedOutcome } from "./seed-kilo-mcp-config.js";
+import {
+	initializeManagedConfig as initializeWebMcpConfig,
+	type ManagedConfigInitializationOutcome,
+} from "./initialize-managed-config.js";
 
 export { ContributedEnvManager } from "./ContributedEnvManager.js";
 
@@ -48,9 +52,14 @@ interface RegisterKiloServerOptions {
 	) => KiloServerController;
 	/**
 	 * Interim WebMCP↔Kilo bridge (see anaconda/agentic-desktop#102).
-	 * Injected in tests; production defaults call the real seed.
+	 * Injected in tests; production defaults call the real initializer.
 	 */
-	seedMcpConfig?: (runtimeDirectory: string, enabled: boolean) => Promise<SeedOutcome>;
+	initializeManagedConfig?: (
+		configDirectory: string,
+		enabled: boolean,
+	) => Promise<ManagedConfigInitializationOutcome>;
+	/** Injected serialized config writer for tests. */
+	managedConfig?: Pick<ManagedKiloConfig, "setMcpEntry" | "removeMcpEntry">;
 	/** Anaconda Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
 	/**
@@ -70,17 +79,29 @@ export type KiloServerCapabilities = {
 	kiloService: KiloServerCapabilityService;
 };
 
+function resolveKiloServerDirectories(storageDirectory: string): {
+	runtimeDirectory: string;
+	configDirectory: string;
+} {
+	const runtimeDirectory = path.join(storageDirectory, "runtime");
+	return {
+		runtimeDirectory,
+		configDirectory: path.join(runtimeDirectory, "config", "kilo"),
+	};
+}
+
 export function createKiloServerManagerOptions(
 	mainSdk: MainSdk,
 	onStatusChange: (status: KiloServerStatus) => void,
 	contributedEnv: ContributedEnvManager,
 	resolveInstallation: typeof resolveKiloInstallation = resolveKiloInstallation,
 ): KiloServerManagerOptions {
+	const directories = resolveKiloServerDirectories(mainSdk.storageDir);
 	return {
 		installation: resolveInstallation({
 			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
 		}),
-		runtimeDirectory: path.join(mainSdk.storageDir, "runtime"),
+		...directories,
 		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
 		stateDirectory: mainSdk.storageDir,
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
@@ -103,7 +124,7 @@ async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boole
 		return value !== FuseState.DISABLE;
 	} catch {
 		// Not an Electron binary (dev/test/CI): dev Electron honors
-		// ELECTRON_RUN_AS_NODE without a fuse wire, so seeding is safe.
+		// ELECTRON_RUN_AS_NODE without a fuse wire, so configuration is safe.
 		return true;
 	}
 }
@@ -114,20 +135,42 @@ async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boole
  */
 const ENV_RESTART_DEBOUNCE_MS = 300;
 
+function assertManagedConfigAccepted(
+	sourceId: string,
+	entryId: string,
+	outcome: ManagedMcpOutcome,
+	action: "set" | "remove",
+): void {
+	if (outcome.kind === "skipped-error") {
+		throw new Error(`Could not ${action} managed MCP "${entryId}": ${outcome.reason}`);
+	}
+	if (outcome.kind === "skipped" && outcome.reason === "owned-by-other-source") {
+		throw new Error(
+			`Could not ${action} managed MCP "${entryId}": it is owned by another source, not "${sourceId}".`,
+		);
+	}
+	if (action === "set" && outcome.kind === "skipped" && outcome.reason === "unmanaged-entry") {
+		throw new Error(`Could not manage MCP "${entryId}": an unmanaged entry already uses that id.`);
+	}
+}
+
 export function registerKiloServer(
 	mainSdk: MainSdk,
 	options: RegisterKiloServerOptions = {},
 ): void {
-	const runtimeDirectory = path.join(mainSdk.storageDir, "runtime");
+	const { configDirectory } = resolveKiloServerDirectories(mainSdk.storageDir);
 	const appExecutablePath = options.appExecutablePath ?? process.execPath;
 	const runAsNodeEnabled =
 		options.runAsNodeEnabled ?? (() => defaultRunAsNodeEnabled(appExecutablePath));
 
 	let disposed = false;
+	let configRestartRequested = false;
 
 	// Debounce to coalesce rapid contributions into a single restart.
 	const handleEnvChange = debounce(async () => {
 		if (disposed) return;
+		const forceRestart = configRestartRequested;
+		configRestartRequested = false;
 		// If neither running nor starting, nothing to do — the first
 		// `ensureRunning()` will snapshot the (now-current) contributions
 		// during its own spawn. Cold-boot path.
@@ -144,7 +187,7 @@ export function registerKiloServer(
 		}
 		// Server is (now) running. Skip if the env used at spawn already
 		// reflects the current contributions.
-		if (!server.contributedEnvChangedSinceSpawn()) return;
+		if (!forceRestart && !server.contributedEnvChangedSinceSpawn()) return;
 		server.restart().catch((error) => {
 			mainSdk.logger.warn(
 				`Failed to restart Kilo server after env change: ${error instanceof Error ? error.message : String(error)}`,
@@ -152,27 +195,36 @@ export function registerKiloServer(
 		});
 	}, ENV_RESTART_DEBOUNCE_MS);
 
+	const requestConfigRestart = (): void => {
+		// A future first spawn will read the updated file. Deciding now avoids
+		// restarting a server that happens to start during the debounce window.
+		if (!server.isRunning && !server.isStarting) return;
+		configRestartRequested = true;
+		handleEnvChange();
+	};
+
 	const contributedEnv = new ContributedEnvManager(handleEnvChange, mainSdk.logger);
 
 	const createServer =
 		options.createServer ??
 		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
 			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
+	const managedConfig =
+		options.managedConfig ?? new ManagedKiloConfig(configDirectory, mainSdk.logger);
 
-	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Seed the
-	// managed `mcp` entry before `kilo serve` boots so its first read of
-	// kilo.jsonc already sees the relay entry. The seed is idempotent and
-	// marker-guarded; a failure here never blocks Kilo from starting (Kilo
-	// simply comes up without the bridge and Kilo's own MCP config UI still
-	// works normally).
-	const seedMcpConfig =
-		options.seedMcpConfig ??
+	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Initialize
+	// the managed `mcp` entry before `kilo serve` boots so its first read of
+	// kilo.jsonc already sees the relay entry. Initialization is idempotent and
+	// marker-guarded; a failure never blocks Kilo from starting.
+	const initializeManagedConfig =
+		options.initializeManagedConfig ??
 		((directory: string, enabled: boolean) =>
-			seedKiloMcpConfig({
-				configDirectory: path.join(directory, "config", "kilo"),
+			initializeWebMcpConfig({
+				configDirectory: directory,
 				appExecutablePath,
 				enabled,
 				logger: mainSdk.logger,
+				managedConfig,
 			}));
 
 	const server = createServer(
@@ -182,56 +234,50 @@ export function registerKiloServer(
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
 	//
-	// (1) detect fuse, (2) seed OR remove-managed-entry against kilo.jsonc,
-	// (3) then start kilo serve. The seed is cheap (one mkdir + two atomic
-	// writes) and gating startup on it eliminates the first-boot race where
-	// kilo serve reads the config before the rename lands. A seed failure
-	// never blocks startup.
+	// (1) detect fuse, (2) initialize or remove the managed entry in kilo.jsonc,
+	// (3) then start kilo serve. Gating startup on the atomic config update
+	// eliminates the first-boot race. An initialization failure never blocks
+	// Kilo from starting without the bridge.
 	//
-	// The seed promise is shared: EVERY caller that reaches `ensureRunning`
-	// (mainRegister here, the `getConnection` capability, `server.restart`)
-	// awaits the same promise, so a renderer that calls `getConnection` in
-	// the seed window cannot bypass the ordering and race the config write.
-	const seedComplete = (async () => {
+	// Every path that can start or restart Kilo awaits the same readiness
+	// promise, so no caller can race the config write.
+	const configReady = (async () => {
 		try {
 			const enabled = await runAsNodeEnabled();
-			await seedMcpConfig(runtimeDirectory, enabled);
+			await initializeManagedConfig(configDirectory, enabled);
 		} catch (error) {
 			mainSdk.logger.warn(
-				`WebMCP relay seed failed: ${error instanceof Error ? error.message : String(error)}`,
+				`WebMCP configuration initialization failed: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	})();
 
-	async function ensureRunningAfterSeed(): Promise<KiloServerConnection> {
-		await seedComplete;
+	async function ensureRunningAfterConfig(): Promise<KiloServerConnection> {
+		await configReady;
 		return server.ensureRunning();
 	}
 
 	// NOTE: no eager `ensureRunning()`. The server spawns lazily on the
 	// first `server.getConnection` request (typically from the renderer
-	// when it mounts the Kilo UI). The seed still runs in the background
-	// via `seedComplete`, so by the time a consumer awaits
-	// `ensureRunningAfterSeed`, the seed is usually already done. Lazy
-	// spawn ensures env contributions from other features are captured
+	// when it mounts the Kilo UI). Initialization runs in the background via
+	// `configReady`, so configuration is usually ready by the first request.
+	// Lazy spawn ensures env contributions from other features are captured
 	// in the initial spawn env — avoiding an immediate restart that
 	// would break the renderer's cached connection URL.
 
 	const connectionService = {
-		// Route through ensureRunningAfterSeed so getConnection callers
-		// (renderer mount + `server.getConnection` RPC) wait on the WebMCP
-		// seed just like the initial startup does — closes the first-boot
-		// race where a renderer request could spawn kilo before the config
-		// write landed. (Interim WebMCP↔Kilo bridge, anaconda/agentic-desktop#102.)
-		getConnection: async () => ensureRunningAfterSeed(),
+		// Route through ensureRunningAfterConfig so getConnection callers
+		// (renderer mount + `server.getConnection` RPC) await `configReady` and
+		// cannot spawn Kilo before the atomic config update lands.
+		getConnection: async () => ensureRunningAfterConfig(),
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {
 		"server.getConnection": connectionService.getConnection,
 		"server.restart": async () => {
 			// Restart may run long after boot, but wait defensively in case it
-			// races the very first seed on fast machines.
-			await seedComplete;
+			// races the initial config write on fast machines.
+			await configReady;
 			return server.restart();
 		},
 		"server.status": async () => server.status,
@@ -241,12 +287,23 @@ export function registerKiloServer(
 		serverEnv: {
 			contribute: contributedEnv.contribute.bind(contributedEnv),
 		},
-		configOverlay: {
-			contribute: contributedEnv.contributeConfigOverlay.bind(contributedEnv),
+		managedMcp: {
+			set: async (sourceId, entryId, entry) => {
+				await configReady;
+				const outcome = await managedConfig.setMcpEntry(sourceId, entryId, entry);
+				assertManagedConfigAccepted(sourceId, entryId, outcome, "set");
+				if (outcome.kind === "written") requestConfigRestart();
+			},
+			remove: async (sourceId, entryId) => {
+				await configReady;
+				const outcome = await managedConfig.removeMcpEntry(sourceId, entryId);
+				assertManagedConfigAccepted(sourceId, entryId, outcome, "remove");
+				if (outcome.kind === "removed") requestConfigRestart();
+			},
 		},
 		restartServer: async () => {
-			// Wait on the seed for the same reason as `server.restart`.
-			await seedComplete;
+			// Wait for config readiness for the same reason as `server.restart`.
+			await configReady;
 			await server.restart();
 		},
 	};

@@ -181,7 +181,7 @@ installed copy). The bundled `kilo serve` is the odd one out — we ship and
 control it and want zero end-user configuration.
 
 The interim ships `@mcp-b/webmcp-local-relay` inside the packaged app,
-seeds an `mcp["anaconda-desktop-relay"]` entry into the app-owned
+initializes an `mcp["anaconda-desktop-relay"]` entry into the app-owned
 `kilo.jsonc`, and spawns the relay by running Anaconda Desktop's own
 executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 
@@ -193,7 +193,7 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │  kilo-server plugin                                                                │
 │                                                                                    │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │ 1. mainRegister() — awaited seed step (idempotent, sidecar-tracked)         │   │
+│  │ 1. mainRegister() — awaited config initialization (idempotent, sidecar-tracked)         │   │
 │  │                                                                             │   │
 │  │    defaultRunAsNodeEnabled(process.execPath)  ──► reads @electron/fuses    │   │
 │  │                                                    → true / false           │   │
@@ -202,7 +202,7 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │  │                                       node_modules/@mcp-b/webmcp-local-     │   │
 │  │                                       relay/dist/cli.mjs                    │   │
 │  │                                                                             │   │
-│  │    seedKiloMcpConfig(${runtime}/config/kilo/, {                             │   │
+│  │    initializeManagedConfig(${runtime}/config/kilo/, {                             │   │
 │  │      // written to kilo.jsonc (Kilo's canonical file, JSONC-tolerant)      │   │
 │  │      mcp: {                                                                 │   │
 │  │        "anaconda-desktop-relay": {                                          │   │
@@ -220,7 +220,7 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-managed.json           │   │
 │  │      { "version": 1, "managed": ["anaconda-desktop-relay"] }                │   │
 │  │                                                                             │   │
-│  │    When RunAsNode is disabled (downgrade / rollback), seed instead REMOVES │   │
+│  │    When RunAsNode is disabled (downgrade / rollback), initialization instead REMOVES │   │
 │  │    the managed entry and prunes the sidecar.                               │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
 │                       │                                                            │
@@ -272,14 +272,15 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 
 Three new pieces beyond §1's diagram:
 
-- **Seed step** in `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts` writes
+- **Config initialization** in `plugins/kilo-server/src/main/initialize-managed-config.ts` writes
   an `mcp` block into the app-owned `kilo.jsonc` before `KiloServerManager#start`
   runs. Idempotent, JSONC-preserving (`jsonc-parser`), atomic (`atomically`).
   When the runtime fuse detection reports `RunAsNode` off, the same call
   **removes** any managed entry it previously wrote and prunes the sidecar,
   so downgrade / rollback / fuse re-hardening self-heals.
 - **Ownership sidecar** at `${runtime}/config/kilo/.anaconda-desktop-managed.json`
-  tracks which MCP entry names we own. Kilo never opens this file — Kilo's
+  tracks which MCP entry names Desktop owns and which feature source owns each
+  entry. Kilo never opens this file — Kilo's
   top-level `Config` schema is `additionalProperties: false`, so any marker
   stored inside `kilo.jsonc` would fail validation and stop `kilo serve` from
   starting. Missing sidecar (deleted by user, corrupt, or absent) = "we own
@@ -302,16 +303,16 @@ Time ─►
  t1    plugins/kilo-server mainRegister() runs
        │  ├─ defaultRunAsNodeEnabled()        (reads fuses off process.execPath)
        │  ├─ resolveWebMcpRelayEntry()        (fs check, logs+skips if missing)
-       │  └─ await seedKiloMcpConfig()        (JSONC merge + sidecar write)
+       │  └─ await initializeManagedConfig()        (JSONC merge + sidecar write)
        │       │
-       │       ├─ RunAsNode enabled → seed managed entry + record in sidecar
+       │       ├─ RunAsNode enabled → write managed entry + record in sidecar
        │       └─ RunAsNode disabled → remove any managed entry + prune sidecar
        │
  t2    KiloServerManager.ensureRunning()      (only after t1 completes)
        │  └─ spawn kilo serve
        │
  t3    kilo serve boots
-       │  ├─ reads XDG_CONFIG_HOME/kilo/kilo.jsonc
+	   │  ├─ reads XDG_CONFIG_HOME/kilo/kilo.jsonc
        │  └─ sees mcp["anaconda-desktop-relay"]
        │
  t4    kilo serve spawns the relay subprocess
@@ -333,7 +334,7 @@ Time ─►
        READY
 ```
 
-The seed is **awaited** before `ensureRunning`. `kilo serve` cannot read the
+`configReady` is **awaited** before `ensureRunning`. `kilo serve` cannot read the
 config file before the atomic rename lands.
 
 Key ordering guarantee: the relay is a **child of `kilo serve`**, not of the
@@ -373,7 +374,7 @@ what the bundled relay adds.
 ### Config-file merge invariants
 
 ```
-Before seeding (user's kilo.jsonc, if any):    After seeding:
+Before initialization (user's kilo.jsonc, if any):    After initialization:
 
   kilo.jsonc                                     kilo.jsonc
   ──────────                                     ──────────
@@ -413,8 +414,11 @@ Rules:
    comment / formatting quirk is preserved by `jsonc-parser`'s `modify()`
    API. Ownership tracking never leaks into `kilo.jsonc` because Kilo's
    top-level `Config` schema rejects unknown keys.
-2. Overwrite only if the entry's name is listed in the sidecar's
-   `managed` array. If the user deleted the sidecar or removed the entry
+2. Overwrite or remove only if the entry's name is listed in the sidecar's
+   `managed` array and its recorded owner matches the calling source. This
+   prevents one feature from replacing or deleting another feature's entry.
+   Schema-v1 entries without an owner are adopted by their first successful
+   post-upgrade write. If the user deleted the sidecar or removed the entry
    from the list, we **do not resurrect** the managed entry — that is the
    escape hatch.
 3. Writes are atomic (via `atomically`).
@@ -452,9 +456,9 @@ attached to it can call them.
 
 Both halves are therefore pinned to each other:
 
-- Seeded relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
+- Managed relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
   (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` in
-  `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts`). Fixed-port mode
+  `plugins/kilo-server/src/main/initialize-managed-config.ts`). Fixed-port mode
   refuses to chain to a non-relay owner; 9345 is far from the 9333 default
   foreign relays use, still inside the CSP-allowed range.
 - Embed attributes: `data-relay-port="9345" data-relay-id="anaconda-agentic-desktop"`
@@ -506,7 +510,7 @@ Mitigating factors:
   our code-signing identity, which meaningfully weakens the fuse's guarantee
   for our threat model regardless.
 - If a future build ships with `RunAsNode: false` (either intentionally as the
-  #102 cleanup or accidentally), the seed detects the fuse state at boot and
+  #102 cleanup or accidentally), the initializer detects the fuse state at boot and
   **removes** its previously-written managed entry, so users are not stranded
   with a bogus `command` pointing at a binary that no longer runs as Node.
 

@@ -14,7 +14,6 @@ import {
 } from "./AnacondaMcpService.js";
 
 import type { AnacondaMcpServiceOptions } from "./AnacondaMcpService.js";
-import type { KiloConfigOverlay } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
 
 /** Silences the scoped logger so expected failures don't spam test output. */
 const silentLogger = { info() {}, warn() {}, error() {} };
@@ -38,20 +37,20 @@ function createTestHarness(overrides?: {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "anaconda-mcp" });
 	(mainSdk as unknown as { logger: unknown }).logger = silentLogger;
 
-	// Track contributions
+	// Track managed config and environment changes.
 	const envDisposer = vi.fn();
 	const envContribute = vi.fn((_sourceId: string, _env: Record<string, string>) => envDisposer);
-	const overlayDisposer = vi.fn();
-	const overlayContribute = vi.fn(
-		(_sourceId: string, _overlay: KiloConfigOverlay) => overlayDisposer,
+	const managedMcpSet = vi.fn(
+		async (_sourceId: string, _entryId: string, _entry: Record<string, unknown>) => {},
 	);
+	const managedMcpRemove = vi.fn(async (_sourceId: string, _entryId: string) => {});
 
 	// Stub kilo-server capability
 	if (overrides?.withKilo !== false) {
 		const kiloSdk = createMainSdk("kilo-server");
 		kiloSdk.plugins.expose("kiloService", {
 			serverEnv: { contribute: envContribute },
-			configOverlay: { contribute: overlayContribute },
+			managedMcp: { set: managedMcpSet, remove: managedMcpRemove },
 			restartServer: async () => {},
 		});
 	}
@@ -93,8 +92,8 @@ function createTestHarness(overrides?: {
 		mainSdk,
 		envContribute,
 		envDisposer,
-		overlayContribute,
-		overlayDisposer,
+		managedMcpSet,
+		managedMcpRemove,
 		getFlag,
 		get settings() {
 			return settings;
@@ -105,22 +104,21 @@ function createTestHarness(overrides?: {
 	};
 }
 
-/** Extract the MCP entry object from the latest overlay contribution. */
-function latestOverlayEntry(
-	overlayContribute: ReturnType<typeof createTestHarness>["overlayContribute"],
+/** Extract the MCP entry object from the latest managed config write. */
+function latestManagedEntry(
+	managedMcpSet: ReturnType<typeof createTestHarness>["managedMcpSet"],
 ): Record<string, unknown> {
-	const overlay = overlayContribute.mock.calls.at(-1)![1];
-	return (overlay.mcp as Record<string, Record<string, unknown>>)[MCP_ID]!;
+	return managedMcpSet.mock.calls.at(-1)![2];
 }
 
 describe("AnacondaMcpService", () => {
 	it("enters waiting-for-auth when no API key is available", async () => {
-		const { service, overlayContribute } = createTestHarness({ apiKey: null });
+		const { service, managedMcpSet } = createTestHarness({ apiKey: null });
 
 		await service.reconcile();
 
 		expect(service.status).toEqual({ state: "waiting-for-auth" });
-		expect(overlayContribute).not.toHaveBeenCalled();
+		expect(managedMcpSet).not.toHaveBeenCalled();
 	});
 
 	it("enters waiting-for-kilo when kilo-server capability is unavailable", async () => {
@@ -132,32 +130,33 @@ describe("AnacondaMcpService", () => {
 	});
 
 	it("enters connected state when auth and kilo are available", async () => {
-		const { service, envContribute, overlayContribute } = createTestHarness({
+		const { service, envContribute, managedMcpSet } = createTestHarness({
 			apiKey: "my-api-key",
 		});
 
 		await service.reconcile();
 
 		expect(service.status).toEqual({ state: "connected", url: DEFAULT_MCP_URL });
-		expect(overlayContribute).toHaveBeenCalledTimes(1);
+		expect(managedMcpSet).toHaveBeenCalledTimes(1);
 		expect(envContribute).toHaveBeenCalledTimes(1);
 		expect(envContribute).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, {
 			[MCP_ENV_VAR]: "my-api-key",
 		});
 	});
 
-	it("contributes the MCP entry under the stable id with the {env:VAR} header template — never a raw key", async () => {
-		const { service, overlayContribute } = createTestHarness({
+	it("persists the MCP entry under the stable id with the {env:VAR} header template — never a raw key", async () => {
+		const { service, managedMcpSet } = createTestHarness({
 			apiKey: "super-secret-key-abc123",
 		});
 
 		await service.reconcile();
 
-		const overlay = overlayContribute.mock.calls[0]![1];
-		// The raw key must NOT appear anywhere in the overlay payload —
+		const entry = managedMcpSet.mock.calls[0]![2];
+		// The raw key must NOT appear anywhere in the persisted payload —
 		// only the template that Kilo resolves against the spawn env.
-		expect(JSON.stringify(overlay)).not.toContain("super-secret-key-abc123");
-		expect(latestOverlayEntry(overlayContribute)).toEqual({
+		expect(JSON.stringify(entry)).not.toContain("super-secret-key-abc123");
+		expect(managedMcpSet.mock.calls[0]?.slice(0, 2)).toEqual([CONTRIBUTION_SOURCE_ID, MCP_ID]);
+		expect(latestManagedEntry(managedMcpSet)).toEqual({
 			type: "remote",
 			url: DEFAULT_MCP_URL,
 			enabled: true,
@@ -166,7 +165,7 @@ describe("AnacondaMcpService", () => {
 	});
 
 	it("uses the url override when configured", async () => {
-		const { service, overlayContribute } = createTestHarness({
+		const { service, managedMcpSet } = createTestHarness({
 			apiKey: "key",
 			settings: { urlOverride: "https://custom.mcp.dev/mcp" },
 		});
@@ -177,13 +176,13 @@ describe("AnacondaMcpService", () => {
 			state: "connected",
 			url: "https://custom.mcp.dev/mcp",
 		});
-		expect(latestOverlayEntry(overlayContribute)).toMatchObject({
+		expect(latestManagedEntry(managedMcpSet)).toMatchObject({
 			url: "https://custom.mcp.dev/mcp",
 		});
 	});
 
 	it("enters disabled state when settings.enabled is false", async () => {
-		const { service, envContribute, overlayContribute } = createTestHarness({
+		const { service, envContribute, managedMcpSet } = createTestHarness({
 			apiKey: "key",
 			settings: { enabled: false },
 		});
@@ -191,7 +190,7 @@ describe("AnacondaMcpService", () => {
 		await service.reconcile();
 
 		expect(service.status).toEqual({ state: "disabled" });
-		expect(overlayContribute).not.toHaveBeenCalled();
+		expect(managedMcpSet).not.toHaveBeenCalled();
 		expect(envContribute).not.toHaveBeenCalled();
 	});
 
@@ -206,7 +205,7 @@ describe("AnacondaMcpService", () => {
 
 		expect(harness.service.status).toEqual({ state: "disabled" });
 		expect(harness.envDisposer).toHaveBeenCalledTimes(1);
-		expect(harness.overlayDisposer).toHaveBeenCalledTimes(1);
+		expect(harness.managedMcpRemove).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, MCP_ID);
 	});
 
 	it("re-contributes on key rotation and URL change (kilo-server dedupes no-ops)", async () => {
@@ -214,12 +213,12 @@ describe("AnacondaMcpService", () => {
 
 		await harness.service.reconcile();
 		expect(harness.envContribute).toHaveBeenCalledTimes(1);
-		expect(harness.overlayContribute).toHaveBeenCalledTimes(1);
+		expect(harness.managedMcpSet).toHaveBeenCalledTimes(1);
 
-		// URL change flows into the next overlay contribution.
+		// URL change flows into the next managed config write.
 		harness.settings = { enabled: true, urlOverride: "https://staging.mcp.dev/mcp" };
 		await harness.service.reconcile();
-		expect(latestOverlayEntry(harness.overlayContribute)).toMatchObject({
+		expect(latestManagedEntry(harness.managedMcpSet)).toMatchObject({
 			url: "https://staging.mcp.dev/mcp",
 		});
 		expect(harness.service.status).toEqual({
@@ -260,13 +259,12 @@ describe("AnacondaMcpService", () => {
 		// pass) and then the queued disposed-branch disposed everything.
 		expect(harness.service.status).toEqual({ state: "disabled" });
 		expect(harness.envContribute.mock.calls.length).toBe(harness.envDisposer.mock.calls.length);
-		expect(harness.overlayContribute.mock.calls.length).toBe(
-			harness.overlayDisposer.mock.calls.length,
-		);
+		expect(harness.managedMcpSet).toHaveBeenCalledOnce();
+		expect(harness.managedMcpRemove).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, MCP_ID);
 	});
 
 	it("dispose() from idle also tears down and emits disabled", async () => {
-		const { service, mainSdk, envDisposer, overlayDisposer } = createTestHarness({
+		const { service, mainSdk, envDisposer, managedMcpRemove } = createTestHarness({
 			apiKey: "key",
 		});
 		const seen: unknown[] = [];
@@ -278,7 +276,7 @@ describe("AnacondaMcpService", () => {
 		await service.dispose();
 		expect(service.status).toEqual({ state: "disabled" });
 		expect(envDisposer).toHaveBeenCalledTimes(1);
-		expect(overlayDisposer).toHaveBeenCalledTimes(1);
+		expect(managedMcpRemove).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, MCP_ID);
 		expect((seen[seen.length - 1] as { state?: string }).state).toBe("disabled");
 	});
 
@@ -316,7 +314,7 @@ describe("AnacondaMcpService", () => {
 		const kiloSdk = createMainSdk("kilo-server");
 		kiloSdk.plugins.expose("kiloService", {
 			serverEnv: { contribute: () => () => {} },
-			configOverlay: { contribute: () => () => {} },
+			managedMcp: { set: async () => {}, remove: async () => {} },
 			restartServer: async () => {},
 		});
 		let releaseAuth!: () => void;
@@ -362,7 +360,7 @@ describe("AnacondaMcpService", () => {
 
 	describe("feature flag gate (remote-anaconda-mcp)", () => {
 		it("stays disabled when the flag is off, even with valid auth and kilo-server", async () => {
-			const { service, envContribute, overlayContribute } = createTestHarness({
+			const { service, envContribute, managedMcpSet } = createTestHarness({
 				apiKey: "sk-real",
 				featureFlagEnabled: false,
 			});
@@ -370,13 +368,13 @@ describe("AnacondaMcpService", () => {
 			await service.reconcile();
 
 			expect(service.status).toEqual({ state: "disabled" });
-			expect(overlayContribute).not.toHaveBeenCalled();
+			expect(managedMcpSet).not.toHaveBeenCalled();
 			expect(envContribute).not.toHaveBeenCalled();
 		});
 
 		it("defaults to OFF when the feature-flag capability is unavailable", async () => {
 			// Simulates a build where the flag service failed to register.
-			const { service, overlayContribute } = createTestHarness({
+			const { service, managedMcpSet } = createTestHarness({
 				apiKey: "sk-real",
 				featureFlagEnabled: null,
 			});
@@ -384,7 +382,7 @@ describe("AnacondaMcpService", () => {
 			await service.reconcile();
 
 			expect(service.status).toEqual({ state: "disabled" });
-			expect(overlayContribute).not.toHaveBeenCalled();
+			expect(managedMcpSet).not.toHaveBeenCalled();
 		});
 
 		it("evaluates the flag under the well-known key with a false default", async () => {
@@ -406,7 +404,7 @@ describe("AnacondaMcpService", () => {
 			});
 			await harness.service.reconcile();
 			expect(harness.service.status.state).toBe("connected");
-			expect(harness.overlayContribute).toHaveBeenCalledTimes(1);
+			expect(harness.managedMcpSet).toHaveBeenCalledTimes(1);
 
 			// Flip the flag off and reconcile — should behave like a full opt-out.
 			harness.getFlag.mockImplementation(
@@ -415,7 +413,7 @@ describe("AnacondaMcpService", () => {
 			await harness.service.reconcile();
 
 			expect(harness.service.status).toEqual({ state: "disabled" });
-			expect(harness.overlayDisposer).toHaveBeenCalledTimes(1);
+			expect(harness.managedMcpRemove).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, MCP_ID);
 			expect(harness.envDisposer).toHaveBeenCalledTimes(1);
 		});
 
@@ -426,7 +424,7 @@ describe("AnacondaMcpService", () => {
 			});
 			await harness.service.reconcile();
 			expect(harness.service.status).toEqual({ state: "disabled" });
-			expect(harness.overlayContribute).not.toHaveBeenCalled();
+			expect(harness.managedMcpSet).not.toHaveBeenCalled();
 
 			// Flip on and reconcile.
 			harness.getFlag.mockImplementation(
@@ -435,7 +433,7 @@ describe("AnacondaMcpService", () => {
 			await harness.service.reconcile();
 
 			expect(harness.service.status).toEqual({ state: "connected", url: DEFAULT_MCP_URL });
-			expect(harness.overlayContribute).toHaveBeenCalledTimes(1);
+			expect(harness.managedMcpSet).toHaveBeenCalledTimes(1);
 		});
 	});
 });

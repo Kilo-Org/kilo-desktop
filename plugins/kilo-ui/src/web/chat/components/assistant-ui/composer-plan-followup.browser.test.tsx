@@ -21,8 +21,25 @@ import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelec
 import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
+import { KiloAuthContext, type KiloAuthContextValue } from "../../../account/KiloAuthContext.js";
 import { Thread } from "./thread.js";
 import { resetPlanApprovalUiState } from "../../plan/use-approve-plan.js";
+
+const signedInAuth: KiloAuthContextValue = {
+	isLoading: false,
+	connectionUnavailable: false,
+	authenticated: true,
+	profile: null,
+	deviceAuth: { status: "idle" },
+	isRefreshing: false,
+	isSwitchingOrg: false,
+	login: () => undefined,
+	cancelLogin: () => undefined,
+	logout: () => undefined,
+	refreshProfile: () => undefined,
+	setOrganization: () => undefined,
+	openExternal: () => undefined,
+};
 
 const replyToQuestion = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
@@ -180,7 +197,9 @@ function renderThread(initialMessages?: readonly ThreadMessageLike[]) {
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ThreadHarness {...(initialMessages === undefined ? {} : { initialMessages })} />
+					<KiloAuthContext.Provider value={signedInAuth}>
+						<ThreadHarness {...(initialMessages === undefined ? {} : { initialMessages })} />
+					</KiloAuthContext.Provider>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,

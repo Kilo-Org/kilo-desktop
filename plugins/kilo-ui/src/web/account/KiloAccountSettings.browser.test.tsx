@@ -81,7 +81,7 @@ describe("KiloAccountSettings", () => {
 		await expect.element(screen.getByTestId("kilo-account-login")).not.toBeInTheDocument();
 	});
 
-	it("shows the login button when signed out", async () => {
+	it("shows the sign-in button when signed out", async () => {
 		const { screen, auth } = renderSettings(idleAuth());
 		await expect.element(screen.getByTestId("kilo-account-login")).toBeVisible();
 		await screen.getByTestId("kilo-account-login").click();
@@ -102,6 +102,22 @@ describe("KiloAccountSettings", () => {
 		await expect.element(screen.getByTestId("kilo-account-login")).not.toBeInTheDocument();
 	});
 
+	it("shows a sign-in error with retry when device auth fails while signed out", async () => {
+		const { screen, auth } = renderSettings(
+			idleAuth({
+				deviceAuth: {
+					status: "error",
+					error: "kilo server POST http://127.0.0.1:4096/provider/kilo/oauth/callback -> 401",
+				},
+			}),
+		);
+		await expect.element(screen.getByTestId("kilo-account-device-auth")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-device-error")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-login")).not.toBeInTheDocument();
+		await screen.getByTestId("kilo-account-retry").click();
+		expect(auth.login).toHaveBeenCalledOnce();
+	});
+
 	it("renders signed-in profile, org, balance, and pass", async () => {
 		const { screen, auth } = renderSettings(
 			idleAuth({
@@ -118,7 +134,15 @@ describe("KiloAccountSettings", () => {
 			.element(screen.getByTestId("kilo-account-balance-value"))
 			.toHaveTextContent("$42.50");
 		await expect.element(screen.getByTestId("kilo-account-pass-bar")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-dashboard")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
+
+		const balance = document.querySelector("[data-qa-id=kilo-account-balance]");
+		const dashboard = document.querySelector("[data-qa-id=kilo-account-dashboard]");
+		expect(balance?.contains(dashboard)).toBe(true);
+
+		await screen.getByTestId("kilo-account-dashboard").click();
+		expect(auth.openExternal).toHaveBeenCalledWith("https://app.kilo.ai/profile");
 
 		await screen.getByTestId("kilo-account-logout").click();
 		expect(auth.logout).toHaveBeenCalledOnce();
@@ -134,5 +158,44 @@ describe("KiloAccountSettings", () => {
 		await expect.element(screen.getByTestId("kilo-account-get-pass")).toBeVisible();
 		await screen.getByTestId("kilo-account-get-pass").click();
 		expect(auth.openExternal).toHaveBeenCalledWith("https://kilo.ai/pricing/kilo-pass");
+	});
+
+	it("aligns balance actions with the amount", async () => {
+		const { screen } = renderSettings(
+			idleAuth({
+				authenticated: true,
+				profile: { ...signedInProfile, kiloPass: null },
+			}),
+		);
+		await expect.element(screen.getByTestId("kilo-account-balance")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-refresh")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-top-up")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-dashboard")).toBeVisible();
+
+		const value = document.querySelector("[data-qa-id=kilo-account-balance-value]");
+		const refresh = document.querySelector("[data-qa-id=kilo-account-refresh]");
+		const topUp = document.querySelector("[data-qa-id=kilo-account-top-up]");
+		const dashboard = document.querySelector("[data-qa-id=kilo-account-dashboard]");
+		if (
+			!(value instanceof HTMLElement) ||
+			!(refresh instanceof HTMLElement) ||
+			!(topUp instanceof HTMLElement) ||
+			!(dashboard instanceof HTMLElement)
+		) {
+			throw new Error("balance controls missing");
+		}
+
+		const mid = (el: HTMLElement) => {
+			const box = el.getBoundingClientRect();
+			return box.top + box.height / 2;
+		};
+		const refreshBox = refresh.getBoundingClientRect();
+		const topUpBox = topUp.getBoundingClientRect();
+		const dashboardBox = dashboard.getBoundingClientRect();
+		expect(Math.abs(refreshBox.height - topUpBox.height)).toBeLessThanOrEqual(1);
+		expect(Math.abs(topUpBox.height - dashboardBox.height)).toBeLessThanOrEqual(1);
+		expect(Math.abs(mid(refresh) - mid(topUp))).toBeLessThanOrEqual(1);
+		expect(Math.abs(mid(topUp) - mid(dashboard))).toBeLessThanOrEqual(1);
+		expect(Math.abs(mid(value) - mid(topUp))).toBeLessThanOrEqual(2);
 	});
 });

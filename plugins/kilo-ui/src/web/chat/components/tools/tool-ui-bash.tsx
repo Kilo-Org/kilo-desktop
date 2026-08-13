@@ -37,7 +37,7 @@ export const BashTerminal: ToolCallMessagePartComponent = memo(({ args, result, 
 	const summaryText = getCommandSummary(args);
 
 	const completeIcon = isError ? (
-		<XCircleIcon className="text-destructive size-3 shrink-0" />
+		<XCircleIcon className="text-destructive-foreground size-3 shrink-0" />
 	) : (
 		<DollarSignIcon className="size-3.5 shrink-0" />
 	);
@@ -61,7 +61,7 @@ export const BashTerminal: ToolCallMessagePartComponent = memo(({ args, result, 
 					{stderr ? (
 						<pre
 							className={cn(
-								"text-destructive wrap-break-word whitespace-pre-wrap",
+								"text-destructive-foreground wrap-break-word whitespace-pre-wrap",
 								stdout && "mt-2",
 							)}
 						>

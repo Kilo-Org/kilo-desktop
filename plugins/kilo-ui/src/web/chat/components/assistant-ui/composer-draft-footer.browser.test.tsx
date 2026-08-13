@@ -28,7 +28,24 @@ import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelec
 import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
+import { KiloAuthContext, type KiloAuthContextValue } from "../../../account/KiloAuthContext.js";
 import { Thread } from "./thread.js";
+
+const signedInAuth: KiloAuthContextValue = {
+	isLoading: false,
+	connectionUnavailable: false,
+	authenticated: true,
+	profile: null,
+	deviceAuth: { status: "idle" },
+	isRefreshing: false,
+	isSwitchingOrg: false,
+	login: () => undefined,
+	cancelLogin: () => undefined,
+	logout: () => undefined,
+	refreshProfile: () => undefined,
+	setOrganization: () => undefined,
+	openExternal: () => undefined,
+};
 
 const stubChatModel: ChatModelAdapter = {
 	async run() {
@@ -179,11 +196,13 @@ function renderThread(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ThreadHarness
-						{...(options.initialMessages === undefined
-							? {}
-							: { initialMessages: options.initialMessages })}
-					/>
+					<KiloAuthContext.Provider value={signedInAuth}>
+						<ThreadHarness
+							{...(options.initialMessages === undefined
+								? {}
+								: { initialMessages: options.initialMessages })}
+						/>
+					</KiloAuthContext.Provider>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
@@ -201,7 +220,9 @@ function renderThreadListFocusHarness() {
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ThreadListFocusHarness />
+					<KiloAuthContext.Provider value={signedInAuth}>
+						<ThreadListFocusHarness />
+					</KiloAuthContext.Provider>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,

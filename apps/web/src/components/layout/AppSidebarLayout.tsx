@@ -130,9 +130,11 @@ function ShellTitlebar({
 			</div>
 
 			<motion.div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft }}>
-				{/* Leading header contributions (e.g. chat session breadcrumb) */}
-				<ZoneOutlet zone="header-leading" className="flex min-w-0 flex-1 items-center gap-1" />
-				<div className="flex shrink-0 items-center justify-end gap-2">
+				{/* Persistent flex-1 so empty ZoneOutlet (null) cannot collapse this slot. */}
+				<div className="flex min-w-0 flex-1 items-center gap-1">
+					<ZoneOutlet zone="header-leading" className="flex min-w-0 items-center gap-1" />
+				</div>
+				<div className="ml-auto flex shrink-0 items-center justify-end gap-2">
 					{/* Trailing header contributions (e.g. chat right-panel toggle) */}
 					<ZoneOutlet zone="header-trailing" className="flex items-center gap-1" />
 					{session.status !== "authenticated" && (
@@ -150,10 +152,10 @@ function ShellTitlebar({
 							</Button>
 							<Button
 								onClick={onLogin}
-								aria-label="Log in"
+								aria-label="Sign In"
 								className="[-webkit-app-region:no-drag]"
 							>
-								Log in
+								Sign In
 							</Button>
 						</>
 					)}

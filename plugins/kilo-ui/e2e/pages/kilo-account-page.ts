@@ -20,7 +20,7 @@ export class KiloAccountPage {
 	}
 
 	/**
-	 * Asserts the account panel finished loading: either the signed-out login
+	 * Asserts the account panel finished loading: either the signed-out sign-in
 	 * button or the signed-in logout control. Does not complete OAuth in CI.
 	 */
 	async verifyLoginOrSignedIn(): Promise<void> {
@@ -35,7 +35,7 @@ export class KiloAccountPage {
 		if (state === "signed-out") {
 			await expectElementToBeVisible(
 				this.login(),
-				"Kilo login button should be visible when signed out",
+				"Kilo sign-in button should be visible when signed out",
 			);
 			return;
 		}

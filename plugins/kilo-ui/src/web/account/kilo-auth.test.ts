@@ -5,7 +5,13 @@ import {
 	errorMessage,
 	formatBalance,
 	formatPassShort,
+	formatRenewalDate,
+	initialsFor,
+	displayChatError,
+	isKiloSignInError,
 	isPersonalAccount,
+	needsKiloSignIn,
+	offerKiloSignIn,
 	organizationIdFromValue,
 	parseDeviceCode,
 	passUsagePercent,
@@ -98,6 +104,17 @@ describe("balance and pass formatting", () => {
 		expect(passUsagePercent(50, 20)).toBe(100);
 		expect(passUsagePercent(1, 0)).toBe(100);
 	});
+
+	it("derives avatar initials", () => {
+		expect(initialsFor("Dev User", "dev@anaconda.com")).toBe("DU");
+		expect(initialsFor(" Madonna ", "m@example.com")).toBe("MA");
+		expect(initialsFor(undefined, "dev@anaconda.com")).toBe("DE");
+	});
+
+	it("formats the pass renewal date", () => {
+		expect(formatRenewalDate("2026-09-01T00:00:00.000Z")).toMatch(/Sep 1|1 Sep/);
+		expect(formatRenewalDate("not-a-date")).toBe("");
+	});
 });
 
 describe("errorMessage", () => {
@@ -105,5 +122,83 @@ describe("errorMessage", () => {
 		expect(errorMessage(new Error("boom"))).toBe("boom");
 		expect(errorMessage("nope")).toBe("nope");
 		expect(errorMessage(null, "fallback")).toBe("fallback");
+	});
+});
+
+describe("needsKiloSignIn", () => {
+	const signedOut = {
+		connectionUnavailable: false,
+		isLoading: false,
+		authenticated: false as boolean | null,
+		deviceAuth: { status: "idle" as const },
+	};
+
+	it("is true only when Gateway credentials are missing and idle", () => {
+		expect(needsKiloSignIn(signedOut)).toBe(true);
+	});
+
+	it("is false while loading, unavailable, authenticated, or in a device-auth flow", () => {
+		expect(needsKiloSignIn({ ...signedOut, isLoading: true })).toBe(false);
+		expect(needsKiloSignIn({ ...signedOut, connectionUnavailable: true })).toBe(false);
+		expect(needsKiloSignIn({ ...signedOut, authenticated: true })).toBe(false);
+		expect(needsKiloSignIn({ ...signedOut, authenticated: null })).toBe(false);
+		expect(needsKiloSignIn({ ...signedOut, deviceAuth: { status: "waiting" } })).toBe(false);
+	});
+});
+
+describe("offerKiloSignIn", () => {
+	it("is true only for a Kilo model while signed out", () => {
+		expect(offerKiloSignIn({ authenticated: false, connectionUnavailable: false }, true)).toBe(
+			true,
+		);
+		expect(offerKiloSignIn({ authenticated: false, connectionUnavailable: false }, false)).toBe(
+			false,
+		);
+		expect(offerKiloSignIn({ authenticated: true, connectionUnavailable: false }, true)).toBe(
+			false,
+		);
+		expect(offerKiloSignIn({ authenticated: false, connectionUnavailable: true }, true)).toBe(
+			false,
+		);
+		expect(offerKiloSignIn({ authenticated: null, connectionUnavailable: false }, true)).toBe(
+			false,
+		);
+	});
+});
+
+const gatewayAuthDump =
+	'Unauthorized: {"error":{"code":"PAID_MODEL_AUTH_REQUIRED","message":"You need to sign in to use this model."},"error_type":"paid_model_auth_required"}';
+
+describe("isKiloSignInError", () => {
+	it("matches Gateway sign-in and sign-up errors", () => {
+		expect(isKiloSignInError("You need to sign in to use this model")).toBe(true);
+		expect(isKiloSignInError("You need to sign up to keep going")).toBe(true);
+		expect(isKiloSignInError("APIError PAID_MODEL_AUTH_REQUIRED")).toBe(true);
+		expect(isKiloSignInError("PROMOTION_MODEL_LIMIT_REACHED")).toBe(true);
+		expect(isKiloSignInError(gatewayAuthDump)).toBe(true);
+		expect(isKiloSignInError("Provider rate limit exceeded")).toBe(false);
+		expect(isKiloSignInError(undefined)).toBe(false);
+	});
+});
+
+describe("displayChatError", () => {
+	it("unwraps Gateway JSON dumps into tidy titles", () => {
+		expect(displayChatError(gatewayAuthDump)).toBe("You need to sign in to Kilo to use this model");
+		expect(
+			displayChatError(
+				'Unauthorized: {"error":{"code":"PROMOTION_MODEL_LIMIT_REACHED","message":"limit"}}',
+			),
+		).toBe("You need to sign up for Kilo to keep going");
+	});
+
+	it("keeps already-tidy titles and unwraps other JSON messages", () => {
+		expect(displayChatError("You need to sign in to use this model")).toBe(
+			"You need to sign in to Kilo to use this model",
+		);
+		expect(
+			displayChatError('Unauthorized: {"error":{"message":"Provider rate limit exceeded"}}'),
+		).toBe("Provider rate limit exceeded");
+		expect(displayChatError("Provider rate limit exceeded")).toBe("Provider rate limit exceeded");
+		expect(displayChatError(undefined)).toBe("");
 	});
 });

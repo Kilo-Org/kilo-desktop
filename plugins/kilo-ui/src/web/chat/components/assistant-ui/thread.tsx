@@ -51,6 +51,7 @@ import {
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
+	CheckCircle2Icon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
 	DownloadIcon,
@@ -71,13 +72,23 @@ import {
 	type KeyboardEvent,
 } from "react";
 
+import {
+	displayChatError,
+	isKiloSignInError,
+	offerKiloSignIn,
+} from "../../../account/kilo-auth.js";
+import { useKiloAuth } from "../../../account/KiloAuthContext.js";
 import { useChatAgentSelection } from "../../agent-selection/ChatAgentSelectionContext.js";
 import {
 	cycleCatalogAgent,
 	OPTIMISTIC_AGENT_CATALOG,
 } from "../../agent-selection/agent-catalog.js";
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
+import { useChatModelSelection } from "../../model-selection/ChatModelSelectionContext.js";
+import { isKiloGatewayProvider } from "../../model-selection/model-catalog.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
+import { useOptionalOpenCodeRuntimeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
+import { retryFailedPrompt } from "./retry-failed-prompt.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
@@ -466,7 +477,7 @@ const ComposerAction: FC<{
 									type="button"
 									variant="ghost"
 									size="icon"
-									className="aui-composer-stop-dictation text-destructive size-7 rounded-full"
+									className="aui-composer-stop-dictation text-destructive-foreground size-7 rounded-full"
 									aria-label="Stop voice input"
 								/>
 							}
@@ -579,10 +590,95 @@ const AssistantWorkingIndicator: FC = () => (
 const MessageError: FC = () => {
 	return (
 		<MessagePrimitive.Error>
-			<ErrorPrimitive.Root className="aui-message-error-root border-destructive bg-destructive/10 text-destructive dark:bg-destructive/5 mt-2 rounded-md border p-3 text-sm dark:text-red-200">
-				<ErrorPrimitive.Message className="aui-message-error-message line-clamp-2" />
-			</ErrorPrimitive.Root>
+			<KiloMessageErrorBanner />
 		</MessagePrimitive.Error>
+	);
+};
+
+function messageErrorText(status: { type?: string; reason?: string; error?: unknown } | undefined) {
+	if (status?.type !== "incomplete" || status.reason !== "error") return undefined;
+	const error = status.error;
+	if (typeof error === "string") return error;
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"message" in error &&
+		typeof error.message === "string"
+	) {
+		return error.message;
+	}
+	return error === undefined ? undefined : String(error);
+}
+
+const KiloMessageErrorBanner: FC = () => {
+	const auth = useKiloAuth();
+	const aui = useAui();
+	const extras = useOptionalOpenCodeRuntimeExtras();
+	const { model } = useChatModelSelection();
+	const errorText = useAuiState((s) => messageErrorText(s.message.status));
+	const isKiloModel = model !== undefined && isKiloGatewayProvider({ id: model.providerID });
+	const offerSignIn = offerKiloSignIn(auth, isKiloModel);
+	const signedIn = auth.authenticated === true && isKiloSignInError(errorText);
+	const signingIn = auth.deviceAuth.status === "initiating" || auth.deviceAuth.status === "waiting";
+	const retrying = useRef(false);
+
+	if (signedIn) {
+		return (
+			<div
+				role="status"
+				className="border-border bg-background mt-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
+				data-qa-id="kilo-message-error-signed-in"
+			>
+				<span className="flex min-w-0 items-center gap-2">
+					<CheckCircle2Icon className="text-primary size-4 shrink-0" />
+					<span>You&rsquo;re signed in to Kilo.</span>
+				</span>
+				<Button
+					type="button"
+					size="sm"
+					onClick={() => {
+						if (retrying.current) return;
+						retrying.current = true;
+						const thread = aui.thread();
+						void retryFailedPrompt({
+							messages: thread.getState().messages,
+							assistantId: aui.message().getState().id,
+							...(extras ? { revert: extras.revert } : {}),
+							append: (text) => {
+								thread.append(text);
+							},
+						}).finally(() => {
+							retrying.current = false;
+						});
+					}}
+					data-qa-id="kilo-message-error-retry"
+				>
+					Retry
+				</Button>
+			</div>
+		);
+	}
+
+	return (
+		<ErrorPrimitive.Root className="aui-message-error-root border-border bg-background mt-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+			<span className="aui-message-error-message text-destructive-foreground line-clamp-2 min-w-0 flex-1">
+				{displayChatError(errorText)}
+			</span>
+			{offerSignIn ? (
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					onClick={() => {
+						auth.login();
+					}}
+					disabled={signingIn}
+					data-qa-id="kilo-message-error-signin"
+				>
+					{signingIn ? "Signing in…" : "Sign in"}
+				</Button>
+			) : null}
+		</ErrorPrimitive.Root>
 	);
 };
 

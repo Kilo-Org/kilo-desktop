@@ -105,24 +105,6 @@ vi.mock("../account/KiloAuthProvider.js", () => ({
 	KiloAuthProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
-vi.mock("../account/KiloAuthContext.js", () => ({
-	useKiloAuth: () => ({
-		isLoading: true,
-		connectionUnavailable: false,
-		authenticated: null,
-		profile: null,
-		deviceAuth: { status: "idle" as const },
-		isRefreshing: false,
-		isSwitchingOrg: false,
-		login: () => undefined,
-		cancelLogin: () => undefined,
-		logout: () => undefined,
-		refreshProfile: () => undefined,
-		setOrganization: () => undefined,
-		openExternal: () => undefined,
-	}),
-}));
-
 vi.mock("./model-selection/use-kilo-model-catalog.js", () => ({
 	useKiloModelCatalog: vi.fn(() => ({
 		data: undefined,

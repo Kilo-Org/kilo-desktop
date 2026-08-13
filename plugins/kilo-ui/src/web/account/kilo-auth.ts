@@ -34,7 +34,7 @@ export type KiloAuthStatus = {
 	type?: "api" | "oauth";
 };
 
-export type DeviceAuthStatus = "idle" | "initiating" | "waiting" | "success" | "error";
+export type DeviceAuthStatus = "idle" | "initiating" | "waiting" | "finishing" | "error";
 
 export type DeviceAuthState = {
 	status: DeviceAuthStatus;
@@ -69,6 +69,25 @@ export function formatPassShort(amount: number): string {
 export function passUsagePercent(usageUsd: number, baseCreditsUsd: number): number {
 	const base = Math.max(1, baseCreditsUsd);
 	return Math.min(100, (usageUsd / base) * 100);
+}
+
+/** Two-letter avatar initials from a display name, falling back to the email. */
+export function initialsFor(name: string | undefined, email: string): string {
+	const source = name?.trim() || email;
+	const parts = source.split(/\s+/).filter(Boolean);
+	const first = parts[0];
+	const last = parts[parts.length - 1];
+	if (first && last && parts.length >= 2) {
+		return `${first[0]}${last[0]}`.toUpperCase();
+	}
+	return source.slice(0, 2).toUpperCase();
+}
+
+/** Short renewal date ("Sep 1") for the Kilo Pass usage row. UTC keeps the ISO date part stable. */
+export function formatRenewalDate(iso: string): string {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "";
+	return date.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 export function buildOrgOptions(
@@ -109,4 +128,109 @@ export function errorMessage(error: unknown, fallback = "Something went wrong"):
 	if (error instanceof Error && error.message) return error.message;
 	if (typeof error === "string" && error) return error;
 	return fallback;
+}
+
+/** True when Gateway credentials are missing and the UI should prompt sign-in. */
+export function needsKiloSignIn(auth: {
+	connectionUnavailable: boolean;
+	isLoading: boolean;
+	authenticated: boolean | null;
+	deviceAuth: Pick<DeviceAuthState, "status">;
+}): boolean {
+	return (
+		!auth.connectionUnavailable &&
+		!auth.isLoading &&
+		auth.authenticated === false &&
+		auth.deviceAuth.status === "idle"
+	);
+}
+
+/** True when a Kilo Gateway model error can be resolved by signing in. */
+export function offerKiloSignIn(
+	auth: {
+		authenticated: boolean | null;
+		connectionUnavailable: boolean;
+	},
+	isKiloModel: boolean,
+): boolean {
+	return isKiloModel && !auth.connectionUnavailable && auth.authenticated === false;
+}
+
+const KILO_SIGN_IN_ERROR = "You need to sign in to use this model";
+const KILO_SIGN_UP_ERROR = "You need to sign up to keep going";
+const KILO_SIGN_IN_TITLE = "You need to sign in to Kilo to use this model";
+const KILO_SIGN_UP_TITLE = "You need to sign up for Kilo to keep going";
+
+const KILO_ERROR_TITLES: Record<string, string> = {
+	PAID_MODEL_AUTH_REQUIRED: KILO_SIGN_IN_TITLE,
+	PROMOTION_MODEL_LIMIT_REACHED: KILO_SIGN_UP_TITLE,
+	paid_model_auth_required: KILO_SIGN_IN_TITLE,
+	promotion_model_limit_reached: KILO_SIGN_UP_TITLE,
+};
+
+function parseEmbeddedJson(message: string): Record<string, unknown> | undefined {
+	const start = message.indexOf("{");
+	const end = message.lastIndexOf("}");
+	if (start === -1 || end <= start) return undefined;
+	try {
+		const parsed: unknown = JSON.parse(message.slice(start, end + 1));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed as Record<string, unknown>;
+		}
+	} catch {
+		return undefined;
+	}
+	return undefined;
+}
+
+function nestedError(body: Record<string, unknown>): Record<string, unknown> | undefined {
+	const error = body.error;
+	if (error && typeof error === "object" && !Array.isArray(error)) {
+		return error as Record<string, unknown>;
+	}
+	return undefined;
+}
+
+function kiloErrorTitle(message: string): string | undefined {
+	const body = parseEmbeddedJson(message);
+	const nested = body ? nestedError(body) : undefined;
+	const code = nested?.code ?? body?.code ?? body?.error_type;
+	if (typeof code === "string" && KILO_ERROR_TITLES[code]) {
+		return KILO_ERROR_TITLES[code];
+	}
+	if (
+		message.includes("PROMOTION_MODEL_LIMIT_REACHED") ||
+		message.includes(KILO_SIGN_UP_ERROR) ||
+		message.includes(KILO_SIGN_UP_TITLE)
+	) {
+		return KILO_SIGN_UP_TITLE;
+	}
+	if (
+		message.includes("PAID_MODEL_AUTH_REQUIRED") ||
+		message.includes(KILO_SIGN_IN_ERROR) ||
+		message.includes(KILO_SIGN_IN_TITLE)
+	) {
+		return KILO_SIGN_IN_TITLE;
+	}
+	return undefined;
+}
+
+function unwrapEmbeddedErrorMessage(message: string): string | undefined {
+	const body = parseEmbeddedJson(message);
+	if (!body) return undefined;
+	const nested = nestedError(body);
+	if (typeof nested?.message === "string" && nested.message.trim()) return nested.message;
+	if (typeof body.message === "string" && body.message.trim()) return body.message;
+	return undefined;
+}
+
+/** True when the assistant error is Kilo Gateway asking the user to sign in. */
+export function isKiloSignInError(message: string | undefined): boolean {
+	return kiloErrorTitle(message ?? "") !== undefined;
+}
+
+/** User-facing chat error text. Unwraps Gateway JSON dumps into tidy titles. */
+export function displayChatError(message: string | undefined): string {
+	if (!message) return "";
+	return kiloErrorTitle(message) ?? unwrapEmbeddedErrorMessage(message) ?? message;
 }

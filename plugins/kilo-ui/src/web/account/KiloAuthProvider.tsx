@@ -29,6 +29,10 @@ function invalidateGatewayCatalogs(queryClient: ReturnType<typeof useQueryClient
 /**
  * App-lifetime Kilo Gateway auth: device OAuth, profile, org switch, logout.
  * Lives under ChatConnectionProvider so login survives leaving Settings.
+ * Login holds the device-auth panel in a "finishing" state until the profile
+ * is cached, then clears it straight into the signed-in view — no interstitial
+ * success card. Logout always lands on the signed-out view — auth.remove is
+ * best-effort because the server may 401 when credentials are already gone.
  */
 export function KiloAuthProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
@@ -60,15 +64,19 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		staleTime: 30_000,
 	});
 
+	const profileQueryKey = [...PROFILE_KEY, connection?.baseUrl, connection?.version];
+
+	const fetchProfile = useCallback(async (): Promise<KiloProfileData> => {
+		if (!client) throw new Error("Kilo is not connected");
+		const { data } = await client.kilo.profile(directory ? { directory } : undefined, {
+			throwOnError: true,
+		});
+		return data as KiloProfileData;
+	}, [client, directory]);
+
 	const profileQuery = useQuery({
-		queryKey: [...PROFILE_KEY, connection?.baseUrl, connection?.version],
-		queryFn: async (): Promise<KiloProfileData> => {
-			if (!client) throw new Error("Kilo is not connected");
-			const { data } = await client.kilo.profile(directory ? { directory } : undefined, {
-				throwOnError: true,
-			});
-			return data as KiloProfileData;
-		},
+		queryKey: profileQueryKey,
+		queryFn: fetchProfile,
 		enabled: client !== null && authStatusQuery.data?.authenticated === true,
 		retry: false,
 		staleTime: 30_000,
@@ -113,43 +121,52 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 				);
 				if (attempt !== attemptRef.current) return;
 
+				setDeviceAuth({ status: "finishing" });
 				await rebootAndRefresh();
+				// Hold the finishing state until the profile is cached, so the panel
+				// clears straight into the signed-in view instead of a loading skeleton.
+				// fetchQuery works while the profile query is still disabled; a failure
+				// here is left to the enabled query's own retry, not shown as a login error.
+				await queryClient
+					.fetchQuery({ queryKey: profileQueryKey, queryFn: fetchProfile, staleTime: 30_000 })
+					.catch(() => undefined);
 				if (attempt !== attemptRef.current) return;
 
-				setDeviceAuth({ status: "success" });
-				window.setTimeout(() => {
-					if (attempt === attemptRef.current) setDeviceAuth(IDLE_DEVICE_AUTH);
-				}, 1500);
+				setDeviceAuth(IDLE_DEVICE_AUTH);
 			} catch (error) {
 				if (attempt !== attemptRef.current) return;
 				setDeviceAuth({
 					status: "error",
-					error: errorMessage(error, "Login failed"),
+					error: errorMessage(error, "Sign-in failed"),
 				});
 			}
 		})();
-	}, [client, directory, rebootAndRefresh, sdk.shell]);
+	}, [client, directory, fetchProfile, profileQueryKey, queryClient, rebootAndRefresh, sdk.shell]);
 
 	const cancelLogin = useCallback(() => {
 		attemptRef.current += 1;
 		setDeviceAuth(IDLE_DEVICE_AUTH);
 	}, []);
 
+	const applySignedOut = useCallback(() => {
+		queryClient.setQueryData([...AUTH_STATUS_KEY, connection?.baseUrl, connection?.version], {
+			authenticated: false,
+		} satisfies KiloAuthStatus);
+		queryClient.removeQueries({ queryKey: PROFILE_KEY });
+		setDeviceAuth(IDLE_DEVICE_AUTH);
+	}, [connection?.baseUrl, connection?.version, queryClient]);
+
 	const logout = useCallback(() => {
 		if (!client) return;
+		attemptRef.current += 1;
 		void (async () => {
-			try {
-				await client.auth.remove({ providerID: "kilo" }, { throwOnError: true });
-				await rebootAndRefresh();
-				setDeviceAuth(IDLE_DEVICE_AUTH);
-			} catch (error) {
-				setDeviceAuth({
-					status: "error",
-					error: errorMessage(error, "Failed to log out"),
-				});
-			}
+			// Logout is idempotent: 401 / already-cleared credentials still mean signed out.
+			await client.auth.remove({ providerID: "kilo" }).catch(() => undefined);
+			await client.global.dispose().catch(() => undefined);
+			applySignedOut();
+			invalidateGatewayCatalogs(queryClient);
 		})();
-	}, [client, rebootAndRefresh]);
+	}, [applySignedOut, client, queryClient]);
 
 	const refreshProfile = useCallback(() => {
 		if (!client) return;

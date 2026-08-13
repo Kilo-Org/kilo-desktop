@@ -173,7 +173,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 						</div>
 					</div>
 					{error ? (
-						<div className="text-destructive flex min-w-0 items-center gap-2 text-xs">
+						<div className="text-destructive-foreground flex min-w-0 items-center gap-2 text-xs">
 							<AlertCircleIcon className="size-3.5 shrink-0" />
 							<span className="truncate">{error}</span>
 						</div>

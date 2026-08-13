@@ -74,6 +74,12 @@
 			"skillPath": "assistant-ui/skills/streaming/SKILL.md",
 			"computedHash": "20221d04867a93cdf254a74d9275f5d758b84607f214c3a8eb326520de7521b8"
 		},
+		"tdd": {
+			"source": "mattpocock/skills",
+			"sourceType": "github",
+			"skillPath": "skills/engineering/tdd/SKILL.md",
+			"computedHash": "614ac2e45fb0ec02f6ce422d26bd9aa4e33aa4867323f5a3a5c0c20b96f78ff4"
+		},
 		"thread-list": {
 			"source": "assistant-ui/skills",
 			"sourceType": "github",

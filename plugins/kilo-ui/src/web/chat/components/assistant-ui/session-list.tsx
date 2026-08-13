@@ -262,7 +262,7 @@ const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 	if (query && isEmpty) {
 		return (
 			<div data-slot="aui_thread-list-empty" className="text-muted-foreground px-2.5 py-4 text-sm">
-				No threads found
+				No chats found
 			</div>
 		);
 	}

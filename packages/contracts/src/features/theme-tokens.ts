@@ -7,13 +7,13 @@ export const THEME_STORAGE_KEY = "theme:v1";
 
 /**
  * Hex paint tokens for native chrome (Linux window background, splash, title-bar symbols).
- * Equivalents of `--storm-100` / `--storm-900` / `--storm-50`
- * (apps/web/.../color-primitives.css) — Electron cannot use oklch here.
+ * Hex equivalents of the `--storm-100` / `--storm-900` / `--storm-50` values from
+ * `@anaconda/shadcn-theme` — Electron cannot use oklch here.
  * macOS uses a transparent window over vibrancy instead.
  */
 export const themeChromeColors = {
-	light: { background: "#f3f5f8", foreground: "#1a1a1a" },
-	dark: { background: "#16181F", foreground: "#f9fafb" },
+	light: { background: "#f3f5f8", foreground: "#141820" },
+	dark: { background: "#141820", foreground: "#fafafa" },
 } as const;
 
 export type ThemeChromeColors = (typeof themeChromeColors)[keyof typeof themeChromeColors];
@@ -23,7 +23,7 @@ export const TRANSPARENT_WINDOW_BACKGROUND = "#00000000";
 
 /**
  * First-paint / html shell tint opacities — keep in sync with
- * `--shell-glass-opacity` in apps/web/.../tokens.css.
+ * `--shell-glass-opacity` in apps/web/src/globals.css.
  */
 export const shellGlassOpacity = {
 	light: 64,
@@ -31,10 +31,10 @@ export const shellGlassOpacity = {
 } as const;
 
 /**
- * Dark shell surface hex: `--storm-900` (`#16181F`) — keep in sync with
+ * Dark shell surface hex: `--storm-900` (`#141820`) — keep in sync with
  * `--sidebar` / the html glass tint in apps/web globals.css.
  */
-export const shellGlassDarkSurface = "#16181F";
+export const shellGlassDarkSurface = "#141820";
 
 export function resolveShouldUseDarkColors(source: ThemeSource, systemDark: boolean): boolean {
 	if (source === "system") return systemDark;

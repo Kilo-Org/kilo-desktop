@@ -1,6 +1,32 @@
 {
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
-	"extends": [
-		"local>anaconda/renovate-config"
-	]
+	"extends": ["local>anaconda/renovate-config"],
+	"rangeStrategy": "replace",
+	"packageRules": [
+		{
+			"automerge": true,
+			"description": "Automatically merge minor and patch updates for GitHub Actions.",
+			"matchManagers": ["github-actions"],
+			"matchUpdateTypes": ["minor", "patch", "digest"],
+			"rebaseWhen": "behind-base-branch"
+		},
+		{
+			"description": "Ensure lock file maintenance PRs are never throttled",
+			"matchUpdateTypes": ["lockFileMaintenance"],
+			"prPriority": 10
+		}
+	],
+	"lockFileMaintenance": {
+		"enabled": true,
+		"automerge": false,
+		"description": "Regenerate pnpm-lock.yaml. Manual merge: native addons (electron, better-sqlite3, keytar) can break on lockfile-only bumps.",
+		"recreateWhen": "always",
+		"rebaseWhen": "behind-base-branch",
+		"commitMessageAction": "Updating pnpm-lock.yaml",
+		"schedule": ["* 0-3 * * 1"],
+		"groupName": null,
+		"prBodyDefinitions": {
+			"Change": "Updating pnpm-lock.yaml"
+		}
+	}
 }

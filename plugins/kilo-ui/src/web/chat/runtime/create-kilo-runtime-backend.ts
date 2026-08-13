@@ -16,12 +16,17 @@ import { hydrateSessionActivity } from "../session-activity/hydrate-session-acti
 import {
 	buildAnacondaSessionMetadata,
 	readSessionInfoPatch,
+	readWorkspaceFoldersFromMetadata,
 } from "../session-activity/session-activity-logic.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 import { withAnacondaSessionListFilter } from "./with-anaconda-session-list-filter.js";
 import { withPromptOptions, type PromptOptionGetters } from "./with-prompt-options.js";
+import {
+	buildWorkspacePermissionRules,
+	buildWorkspaceSystemPrompt,
+} from "./workspace-session-context.js";
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;
 
@@ -42,6 +47,7 @@ export function createKiloRuntimeBackend({
 	const directoriesBySessionId = new Map<string, string>();
 	const clientsByDirectory = new Map<string, KiloClient>();
 	const clientsBySessionId = new Map<string, KiloClient>();
+	const workspaceSystemBySessionId = new Map<string, string>();
 	let refreshPromise: Promise<void> | undefined;
 
 	const globalClient = createDeferredKiloRuntimeClient(
@@ -60,6 +66,18 @@ export function createKiloRuntimeBackend({
 		...(getVariant ? { getVariant } : {}),
 		...(getAgent ? { getAgent } : {}),
 		...(getModel ? { getModel } : {}),
+		getSystem: (prompt) => {
+			const sessionId = typeof prompt.sessionID === "string" ? prompt.sessionID : undefined;
+			return sessionId ? workspaceSystemBySessionId.get(sessionId) : undefined;
+		},
+	};
+
+	const rememberWorkspaceSystem = (
+		sessionId: string,
+		workspaceFolders: KiloSessionPreparation["workspaceFolders"],
+	) => {
+		const system = buildWorkspaceSystemPrompt(workspaceFolders);
+		if (system) workspaceSystemBySessionId.set(sessionId, system);
 	};
 
 	const directoryClient = (directory: string) => {
@@ -90,6 +108,7 @@ export function createKiloRuntimeBackend({
 					})),
 				);
 				for (const session of sessions) {
+					rememberWorkspaceSystem(session.id, readWorkspaceFoldersFromMetadata(session.metadata));
 					rememberSession(session);
 				}
 			})
@@ -143,14 +162,19 @@ export function createKiloRuntimeBackend({
 		globalClient,
 		getSessionClient,
 		initializeSession: async () => {
-			const { directory, workspaceId } = await prepareSession();
+			const { directory, workspaceId, workspaceFolders } = await prepareSession();
+			const metadata = buildAnacondaSessionMetadata(
+				workspaceId ? { workspaceId, workspaceFolders } : undefined,
+			);
+			const permission = buildWorkspacePermissionRules(workspaceFolders);
 			const response = await directoryClient(directory).session.create(
-				buildAnacondaSessionMetadata(workspaceId ? { workspaceId } : undefined),
+				permission.length > 0 ? { ...metadata, permission } : metadata,
 				REQUEST_OPTIONS,
 			);
 			const session = response.data;
 			if (!session?.id) throw new Error("Failed to create Kilo session.");
 			const ref = { id: session.id, directory };
+			rememberWorkspaceSystem(session.id, workspaceFolders);
 			rememberSession(ref);
 			if (workspaceId) {
 				sessionActivity?.getState().hydrateSessions([{ id: session.id, workspaceId }]);

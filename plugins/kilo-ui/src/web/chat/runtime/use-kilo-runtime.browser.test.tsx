@@ -32,7 +32,7 @@ describe("useKiloRuntime", () => {
 
 	it("creates one backend and forwards runtime options", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		const onError = vi.fn();
 
 		renderHook(() =>
@@ -61,7 +61,7 @@ describe("useKiloRuntime", () => {
 
 	it("forwards live agent and model getters that track selection changes", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 
 		const { rerender } = renderHook(
 			({ agent, model }: { agent: string; model: { providerID: string; modelID: string } }) =>
@@ -102,7 +102,7 @@ describe("useKiloRuntime", () => {
 
 	it("uses an explicit synchronous agent getter for prompt dispatch", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		let selectedAgent = "plan";
 
 		renderHook(() =>
@@ -131,7 +131,7 @@ describe("useKiloRuntime", () => {
 
 	it("forwards sessionActivity into the backend", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		const sessionActivity = createSessionActivityStore({ storage: null });
 
 		renderHook(() =>

@@ -6,6 +6,8 @@ import {
 	type InferContract,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
+import { workspaceFolderInputSchema } from "../workspaces/schemas.js";
+
 export const kiloSessionPreparationInputSchema = z.object({
 	workspaceId: z.string().min(1).optional(),
 });
@@ -21,6 +23,7 @@ export const kiloGlobalConnectionSchema = z.object({
 export const kiloSessionPreparationSchema = z.object({
 	directory: z.string().min(1),
 	workspaceId: z.string().min(1).optional(),
+	workspaceFolders: z.array(workspaceFolderInputSchema),
 });
 
 export type KiloGlobalConnection = z.infer<typeof kiloGlobalConnectionSchema>;

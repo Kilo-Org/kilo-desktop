@@ -9,6 +9,7 @@ export type PromptOptionGetters = {
 	getVariant?: () => string | undefined;
 	getAgent?: () => string | undefined;
 	getModel?: () => PromptModelRef | undefined;
+	getSystem?: (prompt: Readonly<Record<string, unknown>>) => string | undefined;
 };
 
 /**
@@ -36,6 +37,12 @@ export function withPromptOptions(client: KiloClient, getters: PromptOptionGette
 		const model = getters.getModel?.();
 		if (model !== undefined) {
 			next = { ...next, model };
+		}
+
+		const system = getters.getSystem?.(next);
+		if (system !== undefined) {
+			const explicitSystem = typeof next.system === "string" ? next.system : undefined;
+			next = { ...next, system: explicitSystem ? `${system}\n\n${explicitSystem}` : system };
 		}
 
 		return next as T;

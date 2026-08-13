@@ -12,7 +12,7 @@ import {
 	type KiloServerCapabilities,
 	type KiloServerController,
 } from "./index.js";
-import type { ManagedMcpOutcome } from "./ManagedKiloConfig.js";
+import type { ManagedMcpOutcome } from "./KiloMcpConfig.js";
 import type { WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");

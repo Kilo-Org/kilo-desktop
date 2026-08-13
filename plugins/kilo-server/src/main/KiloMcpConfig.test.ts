@@ -5,16 +5,12 @@ import path from "node:path";
 import { parse } from "jsonc-parser";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-	KILO_CONFIG_FILENAME,
-	MANAGED_SIDECAR_FILENAME,
-	ManagedKiloConfig,
-} from "./ManagedKiloConfig.js";
+import { KILO_CONFIG_FILENAME, MANAGED_SIDECAR_FILENAME, KiloMcpConfig } from "./KiloMcpConfig.js";
 
 const SOURCE_ONE = "feature-one";
 const SOURCE_TWO = "feature-two";
 
-describe("ManagedKiloConfig", () => {
+describe("KiloMcpConfig", () => {
 	let tempDirectory: string;
 	let configDirectory: string;
 
@@ -35,7 +31,7 @@ describe("ManagedKiloConfig", () => {
 	}
 
 	it("serializes concurrent writers so both managed entries survive", async () => {
-		const config = new ManagedKiloConfig(configDirectory);
+		const config = new KiloMcpConfig(configDirectory);
 
 		await Promise.all([
 			config.setMcpEntry(SOURCE_ONE, "one", {
@@ -69,7 +65,7 @@ describe("ManagedKiloConfig", () => {
 }
 `,
 		);
-		const config = new ManagedKiloConfig(configDirectory);
+		const config = new KiloMcpConfig(configDirectory);
 
 		await expect(
 			config.setMcpEntry(SOURCE_ONE, "shared", {
@@ -85,7 +81,7 @@ describe("ManagedKiloConfig", () => {
 	});
 
 	it("removes only sidecar-owned entries", async () => {
-		const config = new ManagedKiloConfig(configDirectory);
+		const config = new KiloMcpConfig(configDirectory);
 		await config.setMcpEntry(SOURCE_ONE, "managed", {
 			type: "remote",
 			url: "https://managed.test",
@@ -102,7 +98,7 @@ describe("ManagedKiloConfig", () => {
 	});
 
 	it("prevents one source from overwriting or removing another source's entry", async () => {
-		const config = new ManagedKiloConfig(configDirectory);
+		const config = new KiloMcpConfig(configDirectory);
 		await config.setMcpEntry(SOURCE_ONE, "shared", {
 			type: "remote",
 			url: "https://one.test/mcp",
@@ -145,7 +141,7 @@ describe("ManagedKiloConfig", () => {
 			path.join(configDirectory, MANAGED_SIDECAR_FILENAME),
 			`${JSON.stringify({ version: 1, managed: ["legacy"] })}\n`,
 		);
-		const config = new ManagedKiloConfig(configDirectory);
+		const config = new KiloMcpConfig(configDirectory);
 
 		await expect(
 			config.setMcpEntry(SOURCE_ONE, "legacy", {
@@ -168,7 +164,7 @@ describe("ManagedKiloConfig", () => {
 	});
 
 	it("snapshots entries before queued writes", async () => {
-		const config = new ManagedKiloConfig(configDirectory);
+		const config = new KiloMcpConfig(configDirectory);
 		const entry: Record<string, unknown> = { type: "remote", url: "https://original.test" };
 		const writing = config.setMcpEntry(SOURCE_ONE, "snapshot", entry);
 		entry.url = "https://mutated.test";

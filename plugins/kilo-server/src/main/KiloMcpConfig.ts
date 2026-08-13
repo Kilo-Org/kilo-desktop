@@ -189,7 +189,7 @@ function tryApplyModification(
  * successful write for backward compatibility. The queue prevents independent
  * features and the boot-time WebMCP initialization from losing each other's writes.
  */
-export class ManagedKiloConfig {
+export class KiloMcpConfig {
 	readonly #configDirectory: string;
 	readonly #logger: Pick<KiloLogger, "info" | "warn" | "error">;
 	#pending: Promise<void> = Promise.resolve();

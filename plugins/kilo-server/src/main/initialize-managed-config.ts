@@ -2,16 +2,16 @@ import type { KiloLogger } from "./KiloServerManager.js";
 import {
 	KILO_CONFIG_FILENAME,
 	MANAGED_SIDECAR_FILENAME,
-	ManagedKiloConfig,
+	KiloMcpConfig,
 	type ManagedMcpOutcome,
-} from "./ManagedKiloConfig.js";
+} from "./KiloMcpConfig.js";
 import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
 
 /**
  * Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
  *
  * Initializes the bundled WebMCP relay into Desktop's owned Kilo config. Generic
- * JSONC mutation and ownership tracking live in `ManagedKiloConfig`; this
+ * JSONC mutation and ownership tracking live in `KiloMcpConfig`; this
  * module only resolves and builds the relay-specific entry.
  */
 
@@ -37,7 +37,7 @@ export interface InitializeManagedConfigOptions {
 	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
 	readonly resolveRelay?: () => { entry: string; version: string };
 	/** Shares the registration's serialized writer with runtime MCP updates. */
-	readonly managedConfig?: Pick<ManagedKiloConfig, "setMcpEntry" | "removeMcpEntry">;
+	readonly managedConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
 }
 
 /** Builds the CLI argv for Kilo's managed stdio MCP relay child. */
@@ -101,8 +101,7 @@ export async function initializeManagedConfig(
 	options: InitializeManagedConfigOptions,
 ): Promise<ManagedConfigInitializationOutcome> {
 	const logger = options.logger ?? { info() {}, warn() {}, error() {} };
-	const managedConfig =
-		options.managedConfig ?? new ManagedKiloConfig(options.configDirectory, logger);
+	const managedConfig = options.managedConfig ?? new KiloMcpConfig(options.configDirectory, logger);
 
 	if (options.enabled === false) {
 		return mapRemovalOutcome(

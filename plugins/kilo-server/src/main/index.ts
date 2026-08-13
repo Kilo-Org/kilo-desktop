@@ -14,7 +14,7 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
-import { ManagedKiloConfig, type ManagedMcpOutcome } from "./ManagedKiloConfig.js";
+import { KiloMcpConfig, type ManagedMcpOutcome } from "./KiloMcpConfig.js";
 import { resolveKiloInstallation } from "./installation.js";
 import {
 	initializeManagedConfig as initializeWebMcpConfig,
@@ -60,7 +60,7 @@ interface RegisterKiloServerOptions {
 		enabled: boolean,
 	) => Promise<ManagedConfigInitializationOutcome>;
 	/** Injected serialized config writer for tests. */
-	managedConfig?: Pick<ManagedKiloConfig, "setMcpEntry" | "removeMcpEntry">;
+	managedConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
 	/** Anaconda Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
 	/**
@@ -221,8 +221,7 @@ export function registerKiloServer(
 		options.createServer ??
 		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
 			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
-	const managedConfig =
-		options.managedConfig ?? new ManagedKiloConfig(configDirectory, mainSdk.logger);
+	const managedConfig = options.managedConfig ?? new KiloMcpConfig(configDirectory, mainSdk.logger);
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Initialize
 	// the managed `mcp` entry before `kilo serve` boots so its first read of

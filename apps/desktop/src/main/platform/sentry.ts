@@ -23,7 +23,7 @@ export function initSentry(): void {
 			tracesSampleRate: 1.0,
 			enableLogs: true,
 			defaultIntegrations: false,
-			integrations: [Sentry.spotlightIntegration({ sidecarUrl: "http://localhost:8969/stream" })],
+			integrations: [Sentry.spotlightIntegration()],
 		}),
 	});
 

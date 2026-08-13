@@ -62,6 +62,7 @@ import {
 import {
 	createContext,
 	useContext,
+	useEffect,
 	useRef,
 	useState,
 	type ComponentType,
@@ -276,14 +277,21 @@ const ThreadSuggestionItem: FC = () => {
 const Composer: FC = () => {
 	const aui = useAui();
 	const isDraft = useAuiState(isDraftView);
+	const activeThreadId = useAuiState((s) => s.threadListItem.id);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
+	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const { refine, submitting, canReply } = useApprovePlan();
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
 
 	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
+
+	useEffect(() => {
+		if (!isDraft || isConnecting) return;
+		inputRef.current?.focus({ preventScroll: true });
+	}, [activeThreadId, isConnecting, isDraft]);
 
 	const sendWhenConnected = () => {
 		if (isConnectingRef.current) {
@@ -381,6 +389,7 @@ const Composer: FC = () => {
 			>
 				<ComposerAttachments />
 				<ComposerPrimitive.Input
+					ref={inputRef}
 					placeholder="Send a message..."
 					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
 					minRows={2}

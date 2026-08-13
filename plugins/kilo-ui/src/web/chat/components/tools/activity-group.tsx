@@ -67,6 +67,14 @@ const ownsPendingAsk = (
 const ANIMATION_DURATION = 200;
 const MAX_VISIBLE_ICONS = 5;
 
+/** Header is the whole story — expanding would reveal nothing (or a duplicate label). */
+const LABEL_ONLY_ACTIVITY_KINDS: ReadonlySet<ActivityKind> = new Set([
+	"asking",
+	"skill",
+	"reading",
+	"planning",
+]);
+
 type GroupLike = {
 	indices: readonly number[];
 };
@@ -120,17 +128,21 @@ const ActivityIconStack: FC<{
 	);
 };
 
-const ActivityLabel: FC<{ label: string; shimmer?: boolean }> = ({ label, shimmer = false }) => {
-	const split = label.indexOf(" ");
+const ActivityLabel: FC<{
+	label: string;
+	object?: string | undefined;
+	shimmer?: boolean;
+}> = ({ label, object, shimmer = false }) => {
+	const split = object === undefined ? label.indexOf(" ") : -1;
 	const verb = split === -1 ? label : label.slice(0, split);
-	const object = split === -1 ? null : label.slice(split + 1);
+	const rest = object !== undefined ? object : split === -1 ? null : label.slice(split + 1);
 	return (
 		<span className="relative inline-block">
 			{verb}
-			{object !== null ? (
+			{rest ? (
 				<>
 					{" "}
-					<span className="opacity-60">{object}</span>
+					<span className="opacity-60">{rest}</span>
 				</>
 			) : null}
 			{shimmer ? (
@@ -202,7 +214,9 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		return false;
 	});
 
-	if (summary.toolCount === 0) {
+	// One subgroup is already a collapsible (thinking, or a single tool kind).
+	// Wrapping it in "N tools used" would force a second expand for the same row.
+	if (summary.segments.length <= 1) {
 		return (
 			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
 				{children}
@@ -225,9 +239,6 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		(hasPendingAsk && activeSegment?.kind === "asking"),
 	);
 
-	const askOnly =
-		summary.segments.length > 0 && summary.segments.every((segment) => segment.kind === "asking");
-
 	if (streaming && !streamExpanded) {
 		const label = activeSegment
 			? getKindMeta(activeSegment.kind).liveLabel(getSegmentStats(parts, activeSegment))
@@ -238,25 +249,6 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			colored: index === activeIndex,
 			loading: index === activeIndex && activeLoading,
 		}));
-		const headerClassName =
-			"text-muted-foreground flex items-center gap-2 py-1 text-sm transition-colors";
-		const header = (
-			<>
-				<ActivityIconStack items={stackItems} className="-space-x-1" />
-				<span className="font-medium">
-					<ActivityLabel label={label} shimmer={activeLoading} />
-				</span>
-			</>
-		);
-		// Ask-only groups answer in the composer Questionnaire — no nested tool
-		// chrome to expand, so don't pretend this row is collapsible.
-		if (askOnly) {
-			return (
-				<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
-					<div className={headerClassName}>{header}</div>
-				</div>
-			);
-		}
 		return (
 			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
 				<button
@@ -265,22 +257,17 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 						setStreamExpanded(true);
 						setOpen(true);
 					}}
-					className={cn(headerClassName, "hover:text-foreground")}
+					className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
 				>
-					{header}
+					<ActivityIconStack items={stackItems} className="-space-x-1" />
+					<span className="font-medium">
+						<ActivityLabel label={label} shimmer={activeLoading} />
+					</span>
 					<ChevronDownIcon className="size-3.5 shrink-0" />
 				</button>
 				<ActivityStreamContext.Provider value={true}>
 					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
 				</ActivityStreamContext.Provider>
-			</div>
-		);
-	}
-
-	if (askOnly) {
-		return (
-			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
-				{children}
 			</div>
 		);
 	}
@@ -368,12 +355,15 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	if (streamCollapsed && !active) return null;
 
-	// Question tools are answered in the composer Questionnaire — the subgroup
-	// label is the only message-stream chrome (Asking / Asked …). While the
-	// stream row is collapsed, the parent ActivityGroup owns the ask icon.
-	if (kind === "asking") {
+	// A single label-only activity is fully described by its header. Multiple
+	// items need a disclosure for their child list; asking is the exception
+	// because its questionnaire renders outside the activity group.
+	// While the stream row is collapsed, the parent ActivityGroup owns the icon.
+	const labelOnly = LABEL_ONLY_ACTIVITY_KINDS.has(kind) && (kind === "asking" || stats.count === 1);
+	if (labelOnly) {
 		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
+		const showChildren = kind !== "asking" && group.indices.length > 1;
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
 				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
@@ -389,9 +379,18 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						]}
 					/>
 					<span className="font-medium">
-						<ActivityLabel label={label} shimmer={active} />
+						<ActivityLabel
+							label={label}
+							object={kind === "skill" ? (stats.skill ?? "") : undefined}
+							shimmer={active}
+						/>
 					</span>
 				</div>
+				{showChildren ? (
+					<div className="border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3">
+						{children}
+					</div>
+				) : null}
 			</ActivitySubgroupContext.Provider>
 		);
 	}

@@ -16,6 +16,7 @@ import {
 	needsAttention,
 	partitionSidebarThreads,
 	readAnacondaSessionMetadata,
+	readWorkspaceFoldersFromMetadata,
 	readSessionInfoPatch,
 	readWorkspaceIdFromMetadata,
 	resolveSessionLocationLabel,
@@ -329,6 +330,25 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		expect(buildAnacondaSessionMetadata({ workspaceId: "ws-1" })).toEqual({
 			metadata: { [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } },
 		});
+		expect(
+			buildAnacondaSessionMetadata({
+				workspaceId: "ws-1",
+				workspaceFolders: [
+					{ path: "/workspace/main", isPrimary: true },
+					{ path: "/workspace/reference", isPrimary: false },
+				],
+			}),
+		).toEqual({
+			metadata: {
+				[ANACONDA_METADATA_KEY]: {
+					workspaceId: "ws-1",
+					workspaceFolders: [
+						{ path: "/workspace/main", isPrimary: true },
+						{ path: "/workspace/reference", isPrimary: false },
+					],
+				},
+			},
+		});
 	});
 
 	it("reads workspace id from nested anaconda metadata", () => {
@@ -339,6 +359,18 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		expect(readWorkspaceIdFromMetadata({ other: "x" })).toBeUndefined();
 		expect(readWorkspaceIdFromMetadata(undefined)).toBeUndefined();
 		expect(readWorkspaceIdFromMetadata("nope")).toBeUndefined();
+		expect(
+			readWorkspaceFoldersFromMetadata({
+				[ANACONDA_METADATA_KEY]: {
+					workspaceFolders: [
+						{ path: "/workspace/main", isPrimary: true },
+						{ path: "", isPrimary: false },
+						{ path: "/workspace/missing-flag" },
+					],
+				},
+			}),
+		).toEqual([{ path: "/workspace/main", isPrimary: true }]);
+		expect(readWorkspaceFoldersFromMetadata(undefined)).toEqual([]);
 	});
 
 	it("detects anaconda-owned sessions for list filtering", () => {

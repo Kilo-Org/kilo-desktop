@@ -168,17 +168,16 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
 
 	const catalogQuery = useKiloModelCatalog(connection.data);
-	const { model, setModel, name, effort, efforts, setEffort } = usePersistedModelSelection(
-		catalogQuery.data,
-	);
+	const { model, validatedModel, setModel, name, effort, efforts, setEffort } =
+		usePersistedModelSelection(catalogQuery.data);
 	const activeEffort = resolveModelEffort(
 		catalogQuery.data?.models ?? [],
-		model ? modelRefToId(model) : undefined,
+		validatedModel ? modelRefToId(validatedModel) : undefined,
 		effort,
 	);
 
 	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
-	const { agent, setAgent, resetAgent } = useAgentSelection(agentCatalogQuery.data);
+	const { agent, getAgent, setAgent, resetAgent } = useAgentSelection(agentCatalogQuery.data);
 	const resetAgentRef = useRef(resetAgent);
 	resetAgentRef.current = resetAgent;
 
@@ -199,7 +198,8 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connectionPromise,
 		prepareSession,
 		...(agent ? { defaultAgent: agent } : {}),
-		...(model ? { defaultModel: model } : {}),
+		getAgent,
+		...(validatedModel ? { defaultModel: validatedModel } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
 		onError: refreshConnection,

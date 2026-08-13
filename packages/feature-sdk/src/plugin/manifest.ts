@@ -28,6 +28,9 @@ const routePathSchema = z
 	.string()
 	.regex(/^\/.+/, "Path must start with '/' and have at least one segment.");
 
+export const pluginPageSurfaceSchema = z.enum(["default", "transparent"]);
+export type PluginPageSurface = z.infer<typeof pluginPageSurfaceSchema>;
+
 /**
  * A full-page route contributed by the plugin (`contributes.routes`). The HOST
  * owns route creation (Decision #19) — plugins never import the router; the
@@ -48,6 +51,11 @@ export const pluginRouteSchema = z.strictObject({
 	component: z.string().min(1),
 	/** Optional human-readable page title (used for the browser-mode unavailable state). */
 	title: z.string().min(1).optional(),
+	/**
+	 * Shell-owned surface around the page. Use `transparent` when the page
+	 * renders its own full-size surfaces, such as a split-pane workspace.
+	 */
+	surface: pluginPageSurfaceSchema.optional(),
 });
 export type PluginRoute = z.infer<typeof pluginRouteSchema>;
 

@@ -56,6 +56,7 @@ describe("usePersistedModelSelection", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(catalog));
 
 		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.validatedModel).toEqual(defaultModel);
 		expect(result.current.effort).toBe("high");
 		expect(result.current.name).toBe("Claude Sonnet");
 
@@ -86,6 +87,7 @@ describe("usePersistedModelSelection", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(catalog));
 
 		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.validatedModel).toEqual(defaultModel);
 		expect(result.current.effort).toBeUndefined();
 
 		act(() => result.current.setEffort("medium"));
@@ -107,6 +109,7 @@ describe("usePersistedModelSelection", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(undefined));
 
 		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.validatedModel).toBeUndefined();
 		expect(result.current.name).toBe("Claude Sonnet");
 		expect(result.current.effort).toBe("high");
 		expect(result.current.efforts).toEqual([{ id: "high", name: "High" }]);

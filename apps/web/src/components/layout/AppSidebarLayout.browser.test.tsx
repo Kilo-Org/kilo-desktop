@@ -128,6 +128,27 @@ describe("AppSidebarLayout login button", () => {
 	});
 });
 
+describe("AppSidebarLayout nav toggle", () => {
+	afterEach(cleanup);
+
+	it("toggles the left nav open and closed", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		await expect
+			.element(page.getByRole("button", { name: "Toggle navigation" }))
+			.toBeInTheDocument();
+
+		const sidebar = () => baseElement.querySelector('[data-slot="sidebar"]');
+		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
+
+		await page.getByRole("button", { name: "Toggle navigation" }).click();
+		expect(sidebar()?.getAttribute("data-state")).toBe("collapsed");
+
+		await page.getByRole("button", { name: "Toggle navigation" }).click();
+		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
+	});
+});
+
 describe("AppSidebarLayout plugin nav flag gating", () => {
 	afterEach(cleanup);
 
@@ -149,16 +170,20 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 	});
 
 	it("hides a flag-gated plugin nav entry when the flag is missing entirely", async () => {
-		renderLayout(fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({})));
+		const { baseElement } = renderLayout(
+			fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({})),
+		);
 
 		// Both nav entries carry a `featureFlag` now, so an empty flag map
 		// hides them both.
 		await expect.element(page.getByTestId("nav-environments")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("nav-todos")).not.toBeInTheDocument();
+		// Empty group still has SidebarGroup padding — omit the chrome entirely.
+		expect(baseElement.querySelector('[data-sidebar="group"]')).toBeNull();
 	});
 
 	it("shows the flag-gated plugin nav entry when the flag is on", async () => {
-		renderLayout(
+		const { baseElement } = renderLayout(
 			fakeLocalApi(
 				{ status: "anonymous" },
 				{},
@@ -168,6 +193,7 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 
 		await expect.element(page.getByTestId("nav-environments")).toBeInTheDocument();
 		await expect.element(page.getByTestId("nav-todos")).toBeInTheDocument();
+		expect(baseElement.querySelector('[data-sidebar="group"]')).not.toBeNull();
 	});
 });
 

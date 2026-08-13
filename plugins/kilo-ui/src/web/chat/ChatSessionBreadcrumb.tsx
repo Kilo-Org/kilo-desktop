@@ -1,0 +1,49 @@
+import { useAuiState } from "@assistant-ui/react";
+import { FolderIcon } from "lucide-react";
+import type { FC } from "react";
+
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@anaconda-agentic-desktop/ui/components/breadcrumb";
+
+import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
+import { resolveSessionLocationLabel } from "./session-activity/session-activity-logic.js";
+import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
+
+/**
+ * Chat-page contribution for the shell `header-leading` zone. Shows
+ * workspace → session when a non-draft session is active.
+ */
+export const ChatSessionBreadcrumb: FC = () => {
+	const status = useAuiState((s) => s.threadListItem.status);
+	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
+	const sessionTitle = useAuiState((s) => s.threadListItem.title);
+	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
+	const { workspaces } = useWorkspacesFeature();
+
+	if (status === "new") return null;
+
+	const workspaceName = resolveSessionLocationLabel(activity, workspaces);
+	const title = sessionTitle?.trim() || "New Chat";
+
+	return (
+		<Breadcrumb data-qa-id="chat-session-breadcrumb" className="min-w-0">
+			<BreadcrumbList className="flex-nowrap">
+				<BreadcrumbItem className="min-w-0">
+					<span className="inline-flex min-w-0 items-center gap-1.5">
+						<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+						<span className="truncate">{workspaceName}</span>
+					</span>
+				</BreadcrumbItem>
+				<BreadcrumbSeparator />
+				<BreadcrumbItem className="min-w-0">
+					<BreadcrumbPage className="truncate">{title}</BreadcrumbPage>
+				</BreadcrumbItem>
+			</BreadcrumbList>
+		</Breadcrumb>
+	);
+};

@@ -118,7 +118,6 @@
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 70%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
 
-	/* Outer shell — mid tint: vibrancy readable without washing out chrome.
-	   Keep in sync with shellGlassOpacity.dark in theme-tokens.ts. */
-	--shell-glass-opacity: 74%;
+	/* Outer shell — keep in sync with shellGlassOpacity.dark in theme-tokens.ts. */
+	--shell-glass-opacity: 90%;
 }

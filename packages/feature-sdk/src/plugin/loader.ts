@@ -1,4 +1,9 @@
-import { PLUGIN_MANIFEST_FILENAME, pluginManifestSchema, type PluginManifest } from "./manifest.js";
+import {
+	PLUGIN_MANIFEST_FILENAME,
+	pluginManifestSchema,
+	type PluginManifest,
+	type PluginPageSurface,
+} from "./manifest.js";
 
 import { isShellZone, SHELL_ZONES } from "../types/zones.js";
 
@@ -151,6 +156,8 @@ export interface ResolvedPluginRoute {
 	path: string;
 	/** Optional human-readable page title (browser-mode unavailable state). */
 	title?: string | undefined;
+	/** Optional override for the shell-owned page surface. */
+	surface?: PluginPageSurface | undefined;
 	/** The resolved page component export (a React component to the shell). */
 	component: unknown;
 	/**
@@ -448,6 +455,7 @@ function resolveContributions(
 			pluginId: manifest.id,
 			path: resolvedPath,
 			title: route.title,
+			...(route.surface === undefined ? {} : { surface: route.surface }),
 			component,
 			browserSafe,
 		});

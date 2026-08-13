@@ -12,6 +12,12 @@ export const PIERRE_DIFF_OPTIONS = {
 	theme: { dark: "pierre-dark" as const, light: "pierre-light" as const },
 	diffStyle: "unified" as const,
 	overflow: "wrap" as const,
+	unsafeCSS: `
+		:host {
+			--diffs-light-bg: var(--background);
+			--diffs-dark-bg: var(--background);
+		}
+	`,
 };
 
 const FILE_PATH_KEYS = ["file_path", "filePath", "path", "file"] as const;

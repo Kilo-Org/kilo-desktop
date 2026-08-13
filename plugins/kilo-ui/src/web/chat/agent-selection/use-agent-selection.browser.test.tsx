@@ -21,6 +21,19 @@ describe("useAgentSelection", () => {
 		expect(result.current.agent).toBe("code");
 	});
 
+	it("updates the dispatch getter synchronously", () => {
+		const { result } = renderHook(() => useAgentSelection(undefined));
+		let dispatchedAgent: string | undefined;
+
+		act(() => {
+			result.current.setAgent("plan");
+			dispatchedAgent = result.current.getAgent();
+		});
+
+		expect(dispatchedAgent).toBe("plan");
+		expect(result.current.agent).toBe("plan");
+	});
+
 	it("reconciles an optimistic choice against the resolved catalog", () => {
 		type Props = { resolved: boolean };
 		const { result, rerender } = renderHook(

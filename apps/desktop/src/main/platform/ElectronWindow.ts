@@ -15,8 +15,8 @@ import { getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
 
-/** Matches the app header band (p-3 + 32px control). */
-const TITLEBAR_HEIGHT = 56;
+/** Matches the app header band (`h-12` = 48px). */
+const TITLEBAR_HEIGHT = 48;
 const TRAFFIC_LIGHT_SIZE = 14;
 
 export class ElectronWindow {

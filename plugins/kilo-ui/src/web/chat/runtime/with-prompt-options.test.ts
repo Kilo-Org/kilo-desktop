@@ -115,4 +115,29 @@ describe("withPromptOptions", () => {
 			}),
 		);
 	});
+
+	it("prepends session workspace context without discarding an explicit system prompt", async () => {
+		const prompt = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync: vi.fn(), prompt },
+		} as unknown as KiloClient;
+
+		const wrapped = withPromptOptions(client, {
+			getSystem: (input) =>
+				input.sessionID === "workspace-session"
+					? "Workspace folders: /main, /reference"
+					: undefined,
+		});
+		await wrapped.session.prompt({
+			sessionID: "workspace-session",
+			parts: [{ type: "text", text: "hi" }],
+			system: "Answer concisely.",
+		});
+
+		expect(prompt).toHaveBeenCalledWith(
+			expect.objectContaining({
+				system: "Workspace folders: /main, /reference\n\nAnswer concisely.",
+			}),
+		);
+	});
 });

@@ -36,6 +36,28 @@ describe("pluginManifestSchema", () => {
 		]);
 	});
 
+	it("accepts a transparent shell surface for pages that render their own surfaces", () => {
+		const manifest = parsePluginManifest({
+			...validManifest,
+			contributes: {
+				routes: [{ path: "/workspace", component: "Workspace", surface: "transparent" }],
+			},
+		});
+
+		expect(manifest.contributes.routes[0]?.surface).toBe("transparent");
+	});
+
+	it("rejects unknown page surfaces", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: {
+				routes: [{ path: "/workspace", component: "Workspace", surface: "glass" }],
+			},
+		});
+
+		expect(result.success).toBe(false);
+	});
+
 	it("defaults contributes and its arrays to empty", () => {
 		const manifest = parsePluginManifest({
 			id: "headless",

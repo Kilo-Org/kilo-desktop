@@ -103,4 +103,30 @@ describe("OpenCodeComposerInteraction", () => {
 		await expect.element(screen.getByText("Which environment?")).toBeVisible();
 		await expect.element(screen.getByText("Run a shell command")).not.toBeInTheDocument();
 	});
+
+	it("leaves plan follow-up questions to the composer Refine action", async () => {
+		runtime.questions.push({
+			id: "plan-followup-1",
+			sessionID: "session-1",
+			askedAt: 1,
+			questions: [
+				{
+					question: "Ready to implement?",
+					header: "Implement",
+					options: [
+						{ label: "Continue here", description: "Implement the plan" },
+						{ label: "Keep refining", description: "Stay in plan mode" },
+					],
+					custom: false,
+				},
+			],
+		});
+		const { baseElement } = render(
+			<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("Message composer")).toBeVisible();
+		await expect.element(screen.getByText("Ready to implement?")).not.toBeInTheDocument();
+	});
 });

@@ -36,7 +36,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.events` / `mainSdk.events` — symmetric, namespaced, cross-process pub/sub
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
-- `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`, `home-composer-leading-action`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
+- `sdk.contribute` — imperatively register UI in a shell zone (canonical `ShellZone` ids: `sidebar`, `status-bar`, `dashboard`, `home-composer-leading-action`, `header-leading`, `header-trailing`; the shell renders only these). Page-scoped/conditional; for always-present widgets prefer declarative `contributes.zones` in `plugin.json`
 - `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
 - `contributes.settings` — declarative settings-page sections (`id` + `component` export). The shell owns `/settings` and lists sections in a left nav; not a zone (exclusive selection, not stacked chrome). Optional `featureFlag` hides the nav entry the same way as `contributes.nav`
 - `sdk.commands` — command palette entries

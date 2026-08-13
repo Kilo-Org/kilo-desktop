@@ -49,9 +49,10 @@ export function usePersistedModelSelection(catalog: KiloModelCatalog | undefined
 
 	// Before the catalog loads, surface the stored selection so the trigger can
 	// paint immediately. Once the catalog arrives, validate / fall back as usual.
-	const model = catalog
+	const validatedModel = catalog
 		? (resolveStoredModel(catalog, selection.modelOverride) ?? pickDefaultModel(catalog))
-		: selection.modelOverride;
+		: undefined;
+	const model = validatedModel ?? (catalog ? undefined : selection.modelOverride);
 
 	const resolvedEntry = catalogEntry(catalog, model);
 	const name = resolvedEntry?.name ?? selection.name;
@@ -112,6 +113,8 @@ export function usePersistedModelSelection(catalog: KiloModelCatalog | undefined
 
 	return {
 		model,
+		/** Catalog-validated model that is safe to send to Kilo. */
+		validatedModel,
 		setModel,
 		/** Display name for the optimistic trigger before the catalog loads. */
 		name,

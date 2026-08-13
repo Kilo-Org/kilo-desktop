@@ -19,7 +19,7 @@ function isKiloReadyStatus(
  * Settings are persisted to `<storageDir>/settings.json` so a user's
  * disable choice survives across restarts.
  */
-export function mainRegister(mainSdk: MainSdk): void {
+export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	const settingsStore = new SettingsStore(mainSdk);
 
 	const service = new AnacondaMcpService({
@@ -36,9 +36,6 @@ export function mainRegister(mainSdk: MainSdk): void {
 			);
 		});
 	};
-
-	// Initial reconciliation.
-	scheduleReconcile("boot");
 
 	// React to auth changes (login/logout/key rotation).
 	mainSdk.events.on("auth.changed", () => scheduleReconcile("auth-change"));
@@ -82,4 +79,10 @@ export function mainRegister(mainSdk: MainSdk): void {
 			);
 		});
 	});
+
+	// Kilo registers before this feature. Keep feature boot open until the
+	// initial reconcile has contributed all spawn-time environment and config,
+	// so the renderer's first connection request cannot race those contributions
+	// and force an immediate server restart.
+	await service.reconcile();
 }

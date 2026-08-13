@@ -9,6 +9,7 @@ import { ANACONDA_MCP_FEATURE_ID } from "@anaconda-agentic-desktop/contracts";
 import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
+import { orderMainFeatures } from "./feature-order.js";
 import { mainRegister as anacondaMcpMainRegister } from "../anaconda-mcp/index.js";
 
 /** Built-in features developed inside apps/ (three-location pattern). */
@@ -36,13 +37,14 @@ reportPluginDiscoveryIssues(pluginDiscovery);
  * Every feature that will become a plugin registers here.
  * Adding a feature = adding an entry. Never edit Application.ts manually for feature-specific code.
  * Bundled plugins register in BUNDLED_PLUGINS (bundled-plugins.ts) and are
- * appended here by the loader, so features and plugins boot identically.
+ * combined here by the loader, so features and plugins boot identically.
+ * `orderMainFeatures` promotes capability prerequisites ahead of built-ins.
  *
  * Each entry provides:
  * - id: unique feature identifier (becomes the plugin ID on migration)
  * - mainRegister(mainSdk): registers handlers, opens DB, etc.
  */
-export const FEATURES: readonly FeatureRegistration[] = [
-	...BUILT_IN_FEATURES,
-	...pluginRegistrations(pluginDiscovery),
-];
+export const FEATURES: readonly FeatureRegistration[] = orderMainFeatures(
+	BUILT_IN_FEATURES,
+	pluginRegistrations(pluginDiscovery),
+);

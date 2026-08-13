@@ -98,6 +98,27 @@ const rowMotionProps: Pick<
 	transition: { duration: 0.15 },
 };
 
+/**
+ * Resolve ItemByIndex from a stable thread id. AnimatePresence keeps deleted
+ * rows mounted during exit; index lookup would then hit a missing slot and
+ * throw `useClientLookup: key "undefined" not found`. When the id is gone,
+ * render nothing so the exit fade can finish without a lookup.
+ */
+const SessionListItemSlot: FC<{
+	id: string;
+	archived?: boolean;
+	components: ComponentPropsWithoutRef<typeof ThreadListPrimitive.ItemByIndex>["components"];
+}> = ({ id, archived = false, components }) => {
+	const index = useAuiState((s) => {
+		const ids = archived ? s.threads.archivedThreadIds : s.threads.threadIds;
+		return ids.indexOf(id);
+	});
+	if (index < 0) return null;
+	return (
+		<ThreadListPrimitive.ItemByIndex index={index} archived={archived} components={components} />
+	);
+};
+
 export const SessionList: FC = () => {
 	const [search, setSearch] = useState("");
 	const hasThreads = useAuiState(
@@ -227,7 +248,7 @@ const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 	if (query && isEmpty) {
 		return (
 			<div data-slot="aui_thread-list-empty" className="text-muted-foreground px-2.5 py-4 text-sm">
-				No threads found
+				No chats found
 			</div>
 		);
 	}
@@ -249,19 +270,23 @@ const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 					/>
 				)}
 				{attentionExpanded &&
-					partition.attention.map(({ index, archived }) => (
-						<motion.li
-							{...rowMotionProps}
-							key={(archived ? archivedThreadIds : threadIds)[index] ?? `attention-${index}`}
-							className="list-none [contain-intrinsic-size:auto_64px] [content-visibility:auto]"
-						>
-							<ThreadListPrimitive.ItemByIndex
-								index={index}
-								archived={archived}
-								components={{ ThreadListItem: SessionCardRow }}
-							/>
-						</motion.li>
-					))}
+					partition.attention.map(({ index, archived }) => {
+						const id = (archived ? archivedThreadIds : threadIds)[index];
+						if (!id) return null;
+						return (
+							<motion.li
+								{...rowMotionProps}
+								key={id}
+								className="list-none [contain-intrinsic-size:auto_64px] [content-visibility:auto]"
+							>
+								<SessionListItemSlot
+									id={id}
+									archived={archived}
+									components={{ ThreadListItem: SessionCardRow }}
+								/>
+							</motion.li>
+						);
+					})}
 				{partition.sessions.length > 0 && (
 					<SessionShelfHeader
 						key="active-header"
@@ -273,18 +298,19 @@ const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 					/>
 				)}
 				{activeExpanded &&
-					partition.sessions.map((index) => (
-						<motion.li
-							{...rowMotionProps}
-							key={threadIds[index] ?? `session-${index}`}
-							className="list-none [contain-intrinsic-size:auto_64px] [content-visibility:auto]"
-						>
-							<ThreadListPrimitive.ItemByIndex
-								index={index}
-								components={{ ThreadListItem: SessionCardRow }}
-							/>
-						</motion.li>
-					))}
+					partition.sessions.map((index) => {
+						const id = threadIds[index];
+						if (!id) return null;
+						return (
+							<motion.li
+								{...rowMotionProps}
+								key={id}
+								className="list-none [contain-intrinsic-size:auto_64px] [content-visibility:auto]"
+							>
+								<SessionListItemSlot id={id} components={{ ThreadListItem: SessionCardRow }} />
+							</motion.li>
+						);
+					})}
 				{partition.settled.length > 0 && (
 					<SessionShelfHeader
 						key="settled-header"
@@ -296,19 +322,23 @@ const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 					/>
 				)}
 				{settledExpanded &&
-					partition.settled.map((index) => (
-						<motion.li
-							{...rowMotionProps}
-							key={archivedThreadIds[index] ?? `settled-${index}`}
-							className="list-none [contain-intrinsic-size:auto_28px] [content-visibility:auto]"
-						>
-							<ThreadListPrimitive.ItemByIndex
-								index={index}
-								archived
-								components={{ ThreadListItem: SettledSessionRow }}
-							/>
-						</motion.li>
-					))}
+					partition.settled.map((index) => {
+						const id = archivedThreadIds[index];
+						if (!id) return null;
+						return (
+							<motion.li
+								{...rowMotionProps}
+								key={id}
+								className="list-none [contain-intrinsic-size:auto_28px] [content-visibility:auto]"
+							>
+								<SessionListItemSlot
+									id={id}
+									archived
+									components={{ ThreadListItem: SettledSessionRow }}
+								/>
+							</motion.li>
+						);
+					})}
 			</AnimatePresence>
 		</ul>
 	);

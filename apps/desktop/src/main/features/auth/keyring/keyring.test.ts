@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Keyring } from "./keyring.js";
@@ -172,6 +172,44 @@ describe("Keyring", () => {
 		const result = await keyring.getToken();
 
 		expect(result?.api_key).toBe("ak-fallback");
+	});
+
+	it("getApiKey returns null when no token is stored", async () => {
+		const keyring = await Keyring.load(createSite({ keyring_path: keyringPath }));
+
+		expect(await keyring.getApiKey()).toBeNull();
+	});
+
+	it("getUserId returns null when no token is stored", async () => {
+		const keyring = await Keyring.load(createSite({ keyring_path: keyringPath }));
+
+		expect(await keyring.getUserId()).toBeNull();
+	});
+
+	it("loads a config-only backend when the config backend has priority", async () => {
+		const keyring = await Keyring.load(
+			createSite({ keyring_path: keyringPath, api_key: "ak-config-only", domain: undefined }),
+		);
+
+		expect(keyring.domain).toBe("");
+		expect(keyring.writable).toBe(false);
+		expect(await keyring.getApiKey()).toBe("ak-config-only");
+	});
+
+	it("falls back to the system backend when the anaconda keyring path is not viable", async () => {
+		// Point the keyring at a path whose parent is a file, so mkdir/open fail
+		// and AnacondaKeyring.isViable() returns false.
+		const blockingFile = join(tmpDir, "blocking-file");
+		await writeFile(blockingFile, "not a directory");
+		const unviablePath = join(blockingFile, "nested", "keyring");
+
+		const keyring = await Keyring.load(
+			createSite({ keyring_path: unviablePath, domain: undefined }),
+		);
+
+		// With anaconda not viable, the system backend becomes primary (priority 5).
+		expect(keyring.domain).toBe("");
+		expect(keyring.writable).toBe(true);
 	});
 
 	it("getToken propagates a decode error from a corrupt entry in the primary backend", async () => {

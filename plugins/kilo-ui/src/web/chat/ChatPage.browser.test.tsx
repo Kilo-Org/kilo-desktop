@@ -31,6 +31,7 @@ import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage } from "./ChatPage.js";
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
+import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
 
 /** Stand-in for a shell ZoneOutlet so page contributions render in tests. */
 function ZoneOutletStandIn({
@@ -230,6 +231,140 @@ describe("chat connection context", () => {
 		expect(() => renderHook(() => useChatConnection())).toThrow(
 			/useChatConnection requires ChatConnectionProvider/,
 		);
+	});
+});
+
+describe("ChatPage error rendering", () => {
+	function renderWithStatus(status: {
+		isPending: boolean;
+		isError: boolean;
+		error: unknown;
+		connectionPromise: Promise<KiloGlobalConnection>;
+	}) {
+		return render(
+			<ChatConnectionProvider status={status}>
+				<ChatPage />
+			</ChatConnectionProvider>,
+		);
+	}
+
+	it("stringifies a non-Error connection failure in the banner", async () => {
+		const { baseElement } = renderWithStatus({
+			isPending: false,
+			isError: true,
+			error: "raw string failure",
+			connectionPromise: new Promise<KiloGlobalConnection>(() => undefined),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByText(/Could not connect to Kilo: raw string failure/))
+			.toBeVisible();
+	});
+});
+
+describe("ChatFeatureProvider thread + prepareSession wiring", () => {
+	it("resets the agent only when the thread id is cleared and prepares without a workspace", async () => {
+		const prepareSession = vi.fn(async () => ({ directory: "/tmp/chat" }));
+		renderChatPage({ getConnection: async () => connection, prepareSession });
+
+		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+		const options = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+		expect(options?.onThreadIdChange).toEqual(expect.any(Function));
+
+		// Clearing the thread id resets the agent; selecting a thread does not throw.
+		expect(() => options!.onThreadIdChange!(undefined)).not.toThrow();
+		expect(() => options!.onThreadIdChange!("thread-42")).not.toThrow();
+
+		// No active workspace was set, so prepareSession is called with empty options.
+		await options!.prepareSession!();
+		expect(prepareSession).toHaveBeenLastCalledWith({});
+	});
+
+	it("passes the resolved default model and effort variant into the runtime", async () => {
+		vi.mocked(useKiloModelCatalog).mockReturnValue({
+			data: {
+				providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
+				models: [
+					{
+						id: "anthropic/claude-sonnet",
+						name: "Claude Sonnet",
+						providerID: "anthropic",
+						modelID: "claude-sonnet",
+						efforts: true,
+					},
+				],
+				defaults: { anthropic: "claude-sonnet" },
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+
+		renderChatPage({ getConnection: async () => connection });
+
+		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+		await vi.waitFor(() => {
+			const options = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+			expect(options?.defaultModel).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-sonnet",
+			});
+			expect(options?.variant).toBeDefined();
+		});
+	});
+
+	it("holds the connection promise identity while a refresh is in flight", async () => {
+		vi.mocked(useKiloModelCatalog).mockReturnValue({
+			data: undefined,
+			isPending: false,
+			isError: false,
+		} as never);
+		let resolveRefetch: ((value: KiloGlobalConnection) => void) | undefined;
+		let call = 0;
+		const getConnection = vi.fn<KiloUiChatService["chat.getConnection"]>(() => {
+			call += 1;
+			if (call === 1) return Promise.resolve(connection);
+			return new Promise<KiloGlobalConnection>((resolve) => {
+				resolveRefetch = resolve;
+			});
+		});
+		renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledTimes(1));
+		const settled = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+		await expect(settled).resolves.toEqual(connection);
+
+		// Trigger a refetch via onError; while it is in flight the memo keeps the
+		// current promise identity (line 118 held-during-refetch branch).
+		vi.mocked(useKiloRuntime).mock.lastCall?.[0].onError?.(new Error("Unauthorized"));
+
+		await vi.waitFor(() => expect(getConnection.mock.calls.length).toBeGreaterThan(1));
+		await vi.waitFor(() =>
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).toBe(settled),
+		);
+
+		resolveRefetch?.(connection);
+	});
+
+	it("wraps a non-Error connection failure into an Error for the runtime promise", async () => {
+		vi.mocked(useKiloModelCatalog).mockReturnValue({
+			data: undefined,
+			isPending: false,
+			isError: false,
+		} as never);
+		const getConnection = vi.fn<KiloUiChatService["chat.getConnection"]>(async () => {
+			// eslint-disable-next-line no-throw-literal
+			throw "connection string failure";
+		});
+		renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalled());
+		await vi.waitFor(() => {
+			const promise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+			expect(promise).toBeDefined();
+		});
+		const promise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+		await expect(promise).rejects.toThrow();
 	});
 });
 

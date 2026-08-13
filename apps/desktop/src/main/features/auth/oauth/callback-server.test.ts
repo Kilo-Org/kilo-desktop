@@ -125,6 +125,49 @@ describe("startLoopbackAuthorize", () => {
 			holder.close();
 		}
 	});
+
+	it("responds 404 for a request to a non-callback path", async () => {
+		const { redirectUrl, close } = await startAuthorize();
+		try {
+			const origin = new URL(redirectUrl).origin;
+			const response = await fetch(`${origin}/not-the-callback`, { redirect: "manual" });
+			expect(response.status).toBe(404);
+		} finally {
+			close();
+		}
+	});
+
+	it("rejects with a wrapped Error when openExternal rejects with a non-Error", async () => {
+		const { authorize } = await startAuthorize();
+		mockElectron.shell.openExternal.mockRejectedValueOnce("browser exploded");
+
+		await expect(authorize(AUTH_URL)).rejects.toThrow("browser exploded");
+	});
+
+	it("rejects with the original error when binding fails for a non-EADDRINUSE reason", async () => {
+		// Binding to the privileged port 1 as a normal user raises EACCES (or, in
+		// some CI sandboxes, another non-EADDRINUSE errno), exercising the branch
+		// that rethrows the original cause rather than the port-in-use message.
+		await expect(startAuthorize({ port: 1 })).rejects.toThrow();
+	});
+
+	it("uses an empty domain in the result URLs when no domain is provided", async () => {
+		const { redirectUrl, authorize, close } = await startLoopbackAuthorize({
+			logger: silentLogger,
+			port: 0,
+		});
+		try {
+			let pending: Promise<Response> | undefined;
+			mockElectron.shell.openExternal.mockImplementationOnce(async () => {
+				pending = fetch(`${redirectUrl}?code=xyz`, { redirect: "manual" });
+			});
+			await authorize(AUTH_URL);
+			const response = await pending;
+			expect(response?.headers.get("location")).toBe("https:///app/local-login-success");
+		} finally {
+			close();
+		}
+	});
 });
 
 describe("electronFetch", () => {

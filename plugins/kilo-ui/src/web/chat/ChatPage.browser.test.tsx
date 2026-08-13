@@ -26,7 +26,11 @@ import {
 	type WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
 import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvider.js";
-import { ChatConnectionProvider, useChatConnection } from "./connection/ChatConnectionContext.js";
+import {
+	ChatConnectionProvider,
+	type ChatConnectionStatus,
+	useChatConnection,
+} from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage } from "./ChatPage.js";
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
@@ -235,12 +239,7 @@ describe("chat connection context", () => {
 });
 
 describe("ChatPage error rendering", () => {
-	function renderWithStatus(status: {
-		isPending: boolean;
-		isError: boolean;
-		error: unknown;
-		connectionPromise: Promise<KiloGlobalConnection>;
-	}) {
+	function renderWithStatus(status: ChatConnectionStatus) {
 		return render(
 			<ChatConnectionProvider status={status}>
 				<ChatPage />
@@ -252,7 +251,8 @@ describe("ChatPage error rendering", () => {
 		const { baseElement } = renderWithStatus({
 			isPending: false,
 			isError: true,
-			error: "raw string failure",
+			// ChatPage defensively stringifies non-Error failures; force one past the Error | null type.
+			error: "raw string failure" as unknown as Error,
 			connectionPromise: new Promise<KiloGlobalConnection>(() => undefined),
 		});
 		const screen = page.elementLocator(baseElement);

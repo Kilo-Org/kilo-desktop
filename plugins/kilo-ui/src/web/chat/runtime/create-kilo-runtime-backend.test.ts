@@ -288,7 +288,7 @@ describe("createKiloRuntimeBackend", () => {
 	});
 
 	it("throws when session creation returns no session id", async () => {
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace/x", workspaceFolders: [] }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace/x", workspaceFolders }));
 		const create = vi.fn(async () => ({ data: {} }));
 		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
 		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);

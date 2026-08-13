@@ -4,7 +4,7 @@
 	"private": true,
 	"type": "module",
 	"description": "Anaconda Agentic Desktop",
-	"packageManager": "pnpm@11.17.0",
+	"packageManager": "pnpm@11.21.0",
 	"engines": {
 		"node": ">=24"
 	},

@@ -144,6 +144,15 @@ describe("PLUGIN_SETTINGS", () => {
 			browserSafe: true,
 		});
 	});
+
+	it("includes the kilo-ui Kilo account section", () => {
+		expect(PLUGIN_SETTINGS.some((section) => section.id === "kilo-account")).toBe(true);
+		expect(PLUGIN_SETTINGS.find((section) => section.id === "kilo-account")).toMatchObject({
+			pluginId: "kilo-ui",
+			title: "Kilo",
+			priority: 90,
+		});
+	});
 });
 
 describe("isSettingsPath", () => {

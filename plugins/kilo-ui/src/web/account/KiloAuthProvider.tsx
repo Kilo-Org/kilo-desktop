@@ -1,0 +1,260 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+
+import type { KiloUiChatService } from "../../contracts/chat/schemas.js";
+import { useChatConnection } from "../chat/connection/ChatConnectionContext.js";
+import { createKiloDirectoryClient } from "../chat/runtime/create-kilo-runtime-client.js";
+import {
+	errorMessage,
+	parseDeviceCode,
+	type DeviceAuthState,
+	type KiloAuthStatus,
+	type KiloProfileData,
+} from "./kilo-auth.js";
+import { KiloAuthContext, type KiloAuthContextValue } from "./KiloAuthContext.js";
+
+const IDLE_DEVICE_AUTH: DeviceAuthState = { status: "idle" };
+const DEFAULT_EXPIRES_IN = 900;
+
+const AUTH_STATUS_KEY = ["kilo-ui", "kilo.authStatus"] as const;
+const PROFILE_KEY = ["kilo-ui", "kilo.profile"] as const;
+
+function invalidateGatewayCatalogs(queryClient: ReturnType<typeof useQueryClient>): void {
+	void queryClient.invalidateQueries({ queryKey: ["kilo-ui", "provider.list"] });
+	void queryClient.invalidateQueries({ queryKey: ["kilo-ui", "app.agents"] });
+}
+
+/**
+ * App-lifetime Kilo Gateway auth: device OAuth, profile, org switch, logout.
+ * Lives under ChatConnectionProvider so login survives leaving Settings.
+ */
+export function KiloAuthProvider({ children }: { children: ReactNode }) {
+	const sdk = useSdk<KiloUiChatService>("kilo-ui");
+	const queryClient = useQueryClient();
+	const { isPending, isError, connection } = useChatConnection();
+	const [deviceAuth, setDeviceAuth] = useState<DeviceAuthState>(IDLE_DEVICE_AUTH);
+	const [isRefreshing, setIsRefreshing] = useState(false);
+	const [isSwitchingOrg, setIsSwitchingOrg] = useState(false);
+	const attemptRef = useRef(0);
+
+	const client = useMemo(() => {
+		if (!connection) return null;
+		return createKiloDirectoryClient(connection, connection.globalDirectory);
+	}, [connection]);
+
+	const directory = connection?.globalDirectory;
+
+	const authStatusQuery = useQuery({
+		queryKey: [...AUTH_STATUS_KEY, connection?.baseUrl, connection?.version],
+		queryFn: async (): Promise<KiloAuthStatus> => {
+			if (!client) throw new Error("Kilo is not connected");
+			const { data } = await client.kilo.authStatus(directory ? { directory } : undefined, {
+				throwOnError: true,
+			});
+			return data as KiloAuthStatus;
+		},
+		enabled: client !== null,
+		retry: false,
+		staleTime: 30_000,
+	});
+
+	const profileQuery = useQuery({
+		queryKey: [...PROFILE_KEY, connection?.baseUrl, connection?.version],
+		queryFn: async (): Promise<KiloProfileData> => {
+			if (!client) throw new Error("Kilo is not connected");
+			const { data } = await client.kilo.profile(directory ? { directory } : undefined, {
+				throwOnError: true,
+			});
+			return data as KiloProfileData;
+		},
+		enabled: client !== null && authStatusQuery.data?.authenticated === true,
+		retry: false,
+		staleTime: 30_000,
+	});
+
+	const rebootAndRefresh = useCallback(async () => {
+		if (!client) return;
+		await client.global.dispose().catch(() => undefined);
+		await queryClient.invalidateQueries({ queryKey: AUTH_STATUS_KEY });
+		await queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
+		invalidateGatewayCatalogs(queryClient);
+	}, [client, queryClient]);
+
+	const login = useCallback(() => {
+		if (!client || !directory) return;
+		const attempt = ++attemptRef.current;
+		setDeviceAuth({ status: "initiating" });
+
+		void (async () => {
+			try {
+				const { data: auth } = await client.provider.oauth.authorize(
+					{ providerID: "kilo", method: 0, directory },
+					{ throwOnError: true },
+				);
+				if (attempt !== attemptRef.current) return;
+
+				const code = parseDeviceCode(auth.instructions);
+				const verificationUrl = auth.url;
+				setDeviceAuth({
+					status: "waiting",
+					...(code !== undefined ? { code } : {}),
+					verificationUrl,
+					expiresIn: DEFAULT_EXPIRES_IN,
+				});
+				if (verificationUrl) {
+					void sdk.shell.openExternal(verificationUrl);
+				}
+
+				await client.provider.oauth.callback(
+					{ providerID: "kilo", method: 0, directory },
+					{ throwOnError: true },
+				);
+				if (attempt !== attemptRef.current) return;
+
+				await rebootAndRefresh();
+				if (attempt !== attemptRef.current) return;
+
+				setDeviceAuth({ status: "success" });
+				window.setTimeout(() => {
+					if (attempt === attemptRef.current) setDeviceAuth(IDLE_DEVICE_AUTH);
+				}, 1500);
+			} catch (error) {
+				if (attempt !== attemptRef.current) return;
+				setDeviceAuth({
+					status: "error",
+					error: errorMessage(error, "Login failed"),
+				});
+			}
+		})();
+	}, [client, directory, rebootAndRefresh, sdk.shell]);
+
+	const cancelLogin = useCallback(() => {
+		attemptRef.current += 1;
+		setDeviceAuth(IDLE_DEVICE_AUTH);
+	}, []);
+
+	const logout = useCallback(() => {
+		if (!client) return;
+		void (async () => {
+			try {
+				await client.auth.remove({ providerID: "kilo" }, { throwOnError: true });
+				await rebootAndRefresh();
+				setDeviceAuth(IDLE_DEVICE_AUTH);
+			} catch (error) {
+				setDeviceAuth({
+					status: "error",
+					error: errorMessage(error, "Failed to log out"),
+				});
+			}
+		})();
+	}, [client, rebootAndRefresh]);
+
+	const refreshProfile = useCallback(() => {
+		if (!client) return;
+		setIsRefreshing(true);
+		void (async () => {
+			try {
+				await queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
+				await queryClient.invalidateQueries({ queryKey: AUTH_STATUS_KEY });
+				await profileQuery.refetch();
+			} finally {
+				setIsRefreshing(false);
+			}
+		})();
+	}, [client, profileQuery, queryClient]);
+
+	const setOrganization = useCallback(
+		(organizationId: string | null) => {
+			if (!client) return;
+			setIsSwitchingOrg(true);
+			void (async () => {
+				try {
+					await client.kilo.organization.set(
+						{ organizationId, ...(directory ? { directory } : {}) },
+						{ throwOnError: true },
+					);
+					await rebootAndRefresh();
+					await profileQuery.refetch();
+				} catch (error) {
+					setDeviceAuth({
+						status: "error",
+						error: errorMessage(error, "Failed to switch organization"),
+					});
+					await profileQuery.refetch().catch(() => undefined);
+				} finally {
+					setIsSwitchingOrg(false);
+				}
+			})();
+		},
+		[client, directory, profileQuery, rebootAndRefresh],
+	);
+
+	const openExternal = useCallback(
+		(url: string) => {
+			void sdk.shell.openExternal(url);
+		},
+		[sdk.shell],
+	);
+
+	// Clear device-auth noise when connection drops.
+	useEffect(() => {
+		if (isError || !connection) {
+			attemptRef.current += 1;
+			setDeviceAuth(IDLE_DEVICE_AUTH);
+		}
+	}, [connection, isError]);
+
+	const authenticated = useMemo(() => {
+		if (client === null) return null;
+		if (authStatusQuery.isPending) return null;
+		if (authStatusQuery.isError) return false;
+		return authStatusQuery.data?.authenticated === true;
+	}, [
+		authStatusQuery.data?.authenticated,
+		authStatusQuery.isError,
+		authStatusQuery.isPending,
+		client,
+	]);
+
+	const isLoading =
+		isPending ||
+		(client !== null && authStatusQuery.isPending) ||
+		(authenticated === true && profileQuery.isPending && !profileQuery.data);
+
+	const value = useMemo<KiloAuthContextValue>(
+		() => ({
+			isLoading,
+			connectionUnavailable: isError,
+			authenticated,
+			profile: authenticated ? (profileQuery.data ?? null) : null,
+			deviceAuth,
+			isRefreshing,
+			isSwitchingOrg,
+			login,
+			cancelLogin,
+			logout,
+			refreshProfile,
+			setOrganization,
+			openExternal,
+		}),
+		[
+			authenticated,
+			cancelLogin,
+			deviceAuth,
+			isError,
+			isLoading,
+			isRefreshing,
+			isSwitchingOrg,
+			login,
+			logout,
+			openExternal,
+			profileQuery.data,
+			refreshProfile,
+			setOrganization,
+		],
+	);
+
+	return <KiloAuthContext.Provider value={value}>{children}</KiloAuthContext.Provider>;
+}

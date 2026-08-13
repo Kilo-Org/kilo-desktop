@@ -6,6 +6,8 @@ export type ChatConnectionStatus = {
 	isPending: boolean;
 	isError: boolean;
 	error: Error | null;
+	/** Resolved connection when ready; undefined while pending or on error. */
+	connection: KiloGlobalConnection | undefined;
 	connectionPromise: Promise<KiloGlobalConnection>;
 };
 

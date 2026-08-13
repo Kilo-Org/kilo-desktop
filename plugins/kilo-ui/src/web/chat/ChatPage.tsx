@@ -11,12 +11,14 @@ import {
 
 import { HEADER_LEADING_ZONE, HEADER_TRAILING_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
 	SHELL_LAYOUT_SNAP,
 	SHELL_LAYOUT_SPRING,
 } from "@anaconda-agentic-desktop/ui/lib/shell-motion";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
+import { useKiloAuth } from "../account/KiloAuthContext.js";
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
@@ -64,6 +66,13 @@ function writeStoredPanelWidth(width: number): void {
 export function ChatPage() {
 	const sdk = useSdk("kilo-ui");
 	const connection = useChatConnection();
+	const auth = useKiloAuth();
+	const showSignIn =
+		!connection.isError &&
+		!auth.connectionUnavailable &&
+		!auth.isLoading &&
+		auth.authenticated === false &&
+		auth.deviceAuth.status === "idle";
 	const reduceMotion = useReducedMotion();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
@@ -271,6 +280,25 @@ export function ChatPage() {
 					Could not connect to Kilo:{" "}
 					{connection.error instanceof Error ? connection.error.message : String(connection.error)}
 				</p>
+			) : null}
+			{showSignIn ? (
+				<div
+					className="border-border bg-muted/40 mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3"
+					data-qa-id="kilo-chat-signin-banner"
+					role="status"
+				>
+					<p className="text-sm">
+						Sign in to Kilo Gateway to use Kilo models and your credits in this app.
+					</p>
+					<Button
+						type="button"
+						size="sm"
+						onClick={() => sdk.navigate("/settings/kilo-account")}
+						data-qa-id="kilo-chat-signin-banner-button"
+					>
+						Sign in to Kilo
+					</Button>
+				</div>
 			) : null}
 			<div
 				ref={containerRef}

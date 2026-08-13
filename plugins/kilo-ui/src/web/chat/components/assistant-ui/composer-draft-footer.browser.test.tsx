@@ -116,6 +116,7 @@ function ThreadListFocusHarness() {
 					isPending: false,
 					isError: false,
 					error: null,
+					connection,
 					connectionPromise: Promise.resolve(connection),
 				}}
 			>
@@ -143,6 +144,7 @@ function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadM
 					isPending: false,
 					isError: false,
 					error: null,
+					connection,
 					connectionPromise: Promise.resolve(connection),
 				}}
 			>

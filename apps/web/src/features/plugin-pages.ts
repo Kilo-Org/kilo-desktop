@@ -2,6 +2,7 @@ import {
 	pluginRoutes,
 	stripPluginNamespace,
 	type PluginDiscovery,
+	type PluginPageSurface,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type { PluginPageProps } from "@anaconda-agentic-desktop/feature-sdk";
@@ -22,6 +23,8 @@ export interface PluginPage {
 	path: string;
 	/** Optional page title for the browser-mode unavailable state. */
 	title: string | undefined;
+	/** Shell-owned surface around the contributed page. */
+	surface: PluginPageSurface;
 	component: ComponentType<PluginPageProps>;
 	/**
 	 * False for Electron-only plugins (main entry, no browserRegister): in
@@ -42,6 +45,7 @@ export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
 		pluginId: route.pluginId,
 		path: route.path,
 		title: route.title,
+		surface: route.surface ?? "default",
 		// The loader verified this export is a function; the shell owns the
 		// React-specific interpretation (feature-sdk stays React-free).
 		component: route.component as ComponentType<PluginPageProps>,

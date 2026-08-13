@@ -1,13 +1,15 @@
 import { motion, useTransform } from "motion/react";
 import type { CSSProperties, ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOutIcon, UserIcon } from "lucide-react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
+import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { PLUGIN_NAV, useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
+import { isSettingsPath } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
@@ -134,9 +136,26 @@ function ShellTitlebar({
 					{/* Trailing header contributions (e.g. chat right-panel toggle) */}
 					<ZoneOutlet zone="header-trailing" className="flex items-center gap-1" />
 					{session.status !== "authenticated" && (
-						<Button onClick={onLogin} aria-label="Log in">
-							Log in
-						</Button>
+						<>
+							<Button
+								variant="ghost"
+								size="icon"
+								aria-label="Settings"
+								className="[-webkit-app-region:no-drag]"
+								nativeButton={false}
+								render={<Link to="/settings" />}
+								data-qa-id="nav-settings"
+							>
+								<SettingsIcon />
+							</Button>
+							<Button
+								onClick={onLogin}
+								aria-label="Log in"
+								className="[-webkit-app-region:no-drag]"
+							>
+								Log in
+							</Button>
+						</>
 					)}
 				</div>
 			</motion.div>
@@ -154,6 +173,7 @@ function ShellInset({ children }: { children: ReactNode }) {
 
 export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
+	const navigate = useNavigate();
 	const session = useAuthSession();
 	const sdk = useSdk("auth");
 	// Filter nav entries against the current feature-flag map so a plugin
@@ -161,6 +181,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 	// sidebar the instant its flag flips off — without unregistering the
 	// underlying route.
 	const visibleNav = useVisiblePluginNav(navEntries);
+	const settings = isSettingsPath(pathname);
 	const initials = session.status === "authenticated" ? getUserInitials(session.user) : "";
 	const accountName =
 		session.status === "authenticated"
@@ -198,20 +219,27 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 					className="h-svh border-none bg-transparent! group-data-[side=left]:border-none [&_[data-sidebar=sidebar]]:bg-transparent"
 					data-qa-id="app-sidebar"
 				>
-					{/* Flow spacer under the fixed ShellTitlebar */}
-					<SidebarHeader className="h-12 shrink-0 p-0" />
+					{/* Flow spacer under the fixed ShellTitlebar. No drag/hit target — a
+					    drag region here intercepts app-bar clicks on Windows Electron. */}
+					<SidebarHeader className="pointer-events-none h-12 shrink-0 p-0" />
 					<SidebarContent>
-						{visibleNav.length > 0 ? (
-							<SidebarGroup className="pt-0">
-								<SidebarMenu>
-									{visibleNav.map((entry) => (
-										<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
-									))}
-								</SidebarMenu>
-							</SidebarGroup>
-						) : null}
-						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-						<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
+						{settings ? (
+							<SettingsSidebar />
+						) : (
+							<>
+								{visibleNav.length > 0 ? (
+									<SidebarGroup className="pt-0">
+										<SidebarMenu>
+											{visibleNav.map((entry) => (
+												<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
+											))}
+										</SidebarMenu>
+									</SidebarGroup>
+								) : null}
+								{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
+								<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
+							</>
+						)}
 					</SidebarContent>
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-3">
@@ -259,6 +287,15 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 											</DropdownMenuGroup>
 											<DropdownMenuSeparator />
 											<DropdownMenuGroup>
+												<DropdownMenuItem
+													data-qa-id="nav-settings"
+													onClick={() => {
+														void navigate({ to: "/settings" });
+													}}
+												>
+													<SettingsIcon />
+													Settings
+												</DropdownMenuItem>
 												<DropdownMenuItem
 													onClick={() => {
 														void handleLogout();

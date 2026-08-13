@@ -133,6 +133,12 @@ export interface DiscoveredPlugin {
 	 * skipped with an issue.
 	 */
 	zones: ResolvedPluginZoneContribution[];
+	/**
+	 * `contributes.settings` sections with their components resolved. Web-entry
+	 * discovery only; missing components or duplicate ids are skipped with an
+	 * issue.
+	 */
+	settings: ResolvedPluginSettingsContribution[];
 }
 
 /**
@@ -231,6 +237,26 @@ export interface ResolvedPluginProviderContribution {
 	browserSafe: boolean;
 }
 
+/**
+ * A resolved settings-page section. The host mounts `component` at
+ * `/settings/$id`. `component` stays `unknown` — the shell casts it.
+ * `browserSafe` gates mounting in standalone browser mode.
+ */
+export interface ResolvedPluginSettingsContribution {
+	pluginId: string;
+	/** URL slug, unique across plugins. */
+	id: string;
+	title: string;
+	/** The resolved section component export. */
+	component: unknown;
+	icon?: string | undefined;
+	iconComponent?: unknown | undefined;
+	/** Higher renders first in the settings nav. Default 0. */
+	priority: number;
+	featureFlag?: string | undefined;
+	browserSafe: boolean;
+}
+
 /** A non-fatal problem found during discovery. The offending plugin is skipped. */
 export interface PluginDiscoveryIssue {
 	/** Plugin id when the manifest parsed far enough to know it. */
@@ -286,6 +312,7 @@ export function discoverPlugins(
 	const reservedIds = new Set(options.reservedIds);
 	const seenIds = new Set<string>();
 	const seenRoutePaths = new Map<string, string>();
+	const seenSettingsIds = new Map<string, string>();
 
 	for (const [index, candidate] of bundled.entries()) {
 		const parsed = pluginManifestSchema.safeParse(candidate.manifest);
@@ -332,8 +359,14 @@ export function discoverPlugins(
 			// Contributions are a renderer concern — only resolved for web discovery.
 			const resolved =
 				entry === "web"
-					? resolveContributions(manifest, candidate.module, seenRoutePaths, issues)
-					: { providers: [], routes: [], nav: [], zones: [] };
+					? resolveContributions(
+							manifest,
+							candidate.module,
+							seenRoutePaths,
+							seenSettingsIds,
+							issues,
+						)
+					: { providers: [], routes: [], nav: [], zones: [], settings: [] };
 			plugins.push({ manifest, registration, ...resolved });
 		}
 	}
@@ -346,29 +379,32 @@ interface ResolvedContributions {
 	routes: ResolvedPluginRoute[];
 	nav: ResolvedPluginNav[];
 	zones: ResolvedPluginZoneContribution[];
+	settings: ResolvedPluginSettingsContribution[];
 }
 
 /**
  * Resolve a plugin's declarative `contributes` against its web entry module.
- * Provider/route/zone components are looked up by export name; nav entries are
- * pure data. Individual bad contributions are skipped with an issue — the
- * plugin itself still loads.
+ * Provider/route/zone/settings components are looked up by export name; nav
+ * entries are pure data. Individual bad contributions are skipped with an
+ * issue — the plugin itself still loads.
  */
 function resolveContributions(
 	manifest: PluginManifest,
 	module: PluginModule,
 	seenRoutePaths: Map<string, string>,
+	seenSettingsIds: Map<string, string>,
 	issues: PluginDiscoveryIssue[],
 ): ResolvedContributions {
 	// Electron-only plugins (main entry, no browserRegister) cannot serve their
 	// backend in standalone browser mode — the shell shows an unavailable state
-	// for their routes and omits their providers and zone widgets.
+	// for their routes and omits their providers, zone widgets, and settings.
 	const browserSafe = manifest.main === undefined || typeof module.browserRegister === "function";
 	const {
 		providers: providerDecls,
 		routes: routeDecls,
 		nav: navDecls,
 		zones: zoneDecls,
+		settings: settingsDecls,
 	} = manifest.contributes;
 
 	const providers: ResolvedPluginProviderContribution[] = [];
@@ -481,7 +517,49 @@ function resolveContributions(
 		});
 	}
 
-	return { providers, routes, nav, zones };
+	const settings: ResolvedPluginSettingsContribution[] = [];
+	for (const contribution of settingsDecls) {
+		const claimedBy = seenSettingsIds.get(contribution.id);
+		if (claimedBy !== undefined) {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" declares settings section "${contribution.id}" which is already claimed by plugin "${claimedBy}" — skipping the section.`,
+			});
+			continue;
+		}
+
+		const component = module[contribution.component];
+		if (typeof component !== "function") {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" settings section "${contribution.id}" names component export "${contribution.component}" but the web entry does not export a component with that name — skipping the section.`,
+			});
+			continue;
+		}
+
+		const iconExport = contribution.icon !== undefined ? module[contribution.icon] : undefined;
+		const iconComponent =
+			iconExport !== undefined &&
+			iconExport !== null &&
+			(typeof iconExport === "function" || typeof iconExport === "object")
+				? iconExport
+				: undefined;
+
+		seenSettingsIds.set(contribution.id, manifest.id);
+		settings.push({
+			pluginId: manifest.id,
+			id: contribution.id,
+			title: contribution.title,
+			component,
+			icon: contribution.icon,
+			iconComponent,
+			priority: contribution.priority ?? 0,
+			...(contribution.featureFlag !== undefined ? { featureFlag: contribution.featureFlag } : {}),
+			browserSafe,
+		});
+	}
+
+	return { providers, routes, nav, zones, settings };
 }
 
 function createRegistration(
@@ -561,6 +639,16 @@ export function pluginProviderContributions(
 	discovery: PluginDiscovery,
 ): ResolvedPluginProviderContribution[] {
 	return discovery.plugins.flatMap((plugin) => plugin.providers);
+}
+
+/**
+ * All resolved settings-page sections across the discovered plugins. The
+ * shell mounts these on `/settings/$id`. Empty for `entry: "main"`.
+ */
+export function pluginSettingsContributions(
+	discovery: PluginDiscovery,
+): ResolvedPluginSettingsContribution[] {
+	return discovery.plugins.flatMap((plugin) => plugin.settings);
 }
 
 /**

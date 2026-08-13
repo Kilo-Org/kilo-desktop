@@ -13,6 +13,7 @@ const validManifest = {
 		routes: [{ path: "/todos", component: "TodoList", title: "Todo List" }],
 		nav: [{ to: "/todos", label: "Todos", icon: "list-checks" }],
 		zones: [{ zone: "status-bar", component: "TodosStatusBarItem" }],
+		settings: [{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 }],
 	},
 };
 
@@ -29,6 +30,9 @@ describe("pluginManifestSchema", () => {
 		]);
 		expect(manifest.contributes.zones).toEqual([
 			{ zone: "status-bar", component: "TodosStatusBarItem" },
+		]);
+		expect(manifest.contributes.settings).toEqual([
+			{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 },
 		]);
 	});
 
@@ -61,7 +65,13 @@ describe("pluginManifestSchema", () => {
 			version: "0.1.0",
 			main: "./src/main/index.ts",
 		});
-		expect(manifest.contributes).toEqual({ providers: [], routes: [], nav: [], zones: [] });
+		expect(manifest.contributes).toEqual({
+			providers: [],
+			routes: [],
+			nav: [],
+			zones: [],
+			settings: [],
+		});
 	});
 
 	it("defaults omitted contributes arrays individually", () => {
@@ -75,6 +85,7 @@ describe("pluginManifestSchema", () => {
 		expect(manifest.contributes.routes).toEqual([]);
 		expect(manifest.contributes.providers).toEqual([]);
 		expect(manifest.contributes.zones).toEqual([]);
+		expect(manifest.contributes.settings).toEqual([]);
 		expect(manifest.contributes.nav).toHaveLength(1);
 	});
 
@@ -102,6 +113,17 @@ describe("pluginManifestSchema", () => {
 		"rejects non-kebab-case id %j",
 		(id) => {
 			expect(pluginManifestSchema.safeParse({ ...validManifest, id }).success).toBe(false);
+		},
+	);
+
+	it.each(["General", "my_section", "-mcp", "mcp-", "anaconda--mcp", ""])(
+		"rejects non-kebab-case settings id %j",
+		(id) => {
+			const result = pluginManifestSchema.safeParse({
+				...validManifest,
+				contributes: { settings: [{ id, title: "X", component: "Panel" }] },
+			});
+			expect(result.success).toBe(false);
 		},
 	);
 
@@ -163,7 +185,7 @@ describe("pluginManifestSchema", () => {
 		expect(result.success).toBe(false);
 	});
 
-	it("rejects providers/routes/zones on a manifest without a web entry", () => {
+	it("rejects providers/routes/zones/settings on a manifest without a web entry", () => {
 		const providersResult = pluginManifestSchema.safeParse({
 			id: "headless",
 			displayName: "Headless",
@@ -190,6 +212,15 @@ describe("pluginManifestSchema", () => {
 			contributes: { zones: [{ zone: "status-bar", component: "Widget" }] },
 		});
 		expect(zonesResult.success).toBe(false);
+
+		const settingsResult = pluginManifestSchema.safeParse({
+			id: "headless",
+			displayName: "Headless",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			contributes: { settings: [{ id: "headless", title: "Headless", component: "Panel" }] },
+		});
+		expect(settingsResult.success).toBe(false);
 	});
 
 	it("allows nav-only contributions without a web entry", () => {
@@ -221,7 +252,7 @@ describe("pluginManifestSchema", () => {
 	it("rejects unknown contributes keys (strict)", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			contributes: { providers: [], routes: [], nav: [], zones: [], menus: [] },
+			contributes: { providers: [], routes: [], nav: [], zones: [], settings: [], menus: [] },
 		});
 		expect(result.success).toBe(false);
 	});

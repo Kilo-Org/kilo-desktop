@@ -117,11 +117,7 @@ export function AnacondaMcpSettings() {
 
 	if (!featureEnabled) {
 		return (
-			<div
-				className="mx-auto max-w-xl px-5 py-8"
-				data-qa-id="anaconda-mcp-settings"
-				data-state="flag-off"
-			>
+			<div className="mx-auto max-w-xl" data-qa-id="anaconda-mcp-settings" data-state="flag-off">
 				<h1 className="text-2xl font-semibold tracking-tight">Anaconda MCP</h1>
 				<p className="text-muted-foreground mt-1 text-sm">
 					This feature is not enabled for your account. Contact your Anaconda administrator or try
@@ -132,7 +128,7 @@ export function AnacondaMcpSettings() {
 	}
 
 	return (
-		<div className="mx-auto max-w-xl px-5 py-8" data-qa-id="anaconda-mcp-settings">
+		<div className="mx-auto max-w-xl" data-qa-id="anaconda-mcp-settings">
 			<h1 className="text-2xl font-semibold tracking-tight">Anaconda MCP</h1>
 			<p className="text-muted-foreground mt-1 text-sm">
 				Connects to the Anaconda Remote MCP server to provide package search and organization policy

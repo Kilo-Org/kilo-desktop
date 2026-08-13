@@ -120,10 +120,40 @@ export const pluginProviderContributionSchema = z.strictObject({
 export type PluginProviderContribution = z.infer<typeof pluginProviderContributionSchema>;
 
 /**
+ * A settings-page section (`contributes.settings`). The host mounts the named
+ * component on `/settings/$id` and lists it in the settings section nav.
+ * Settings is a contribution point, not a zone: exclusive section selection
+ * with titles and optional flags, not a stacked chrome outlet.
+ */
+export const pluginSettingsContributionSchema = z.strictObject({
+	/** URL slug and registry key, unique across plugins (kebab-case). */
+	id: z
+		.string()
+		.regex(featureIdPattern, 'Settings section id must be kebab-case (e.g. "anaconda-mcp").'),
+	/** Section title shown in the settings nav. */
+	title: z.string().min(1),
+	/** Name of the section component export in the plugin's web entry module. */
+	component: z.string().min(1),
+	/** Optional lucide icon name or web-entry export name. */
+	icon: z.string().min(1).optional(),
+	/** Higher renders first in the settings nav. Default 0. */
+	priority: z.number().int().optional(),
+	/**
+	 * Optional LaunchDarkly feature-flag key gating the section's visibility
+	 * in the settings nav. Same semantics as `contributes.nav[].featureFlag`:
+	 * when set and the flag resolves to `false` the shell omits the nav entry;
+	 * a direct `/settings/$id` visit still mounts the component.
+	 */
+	featureFlag: z.string().min(1).optional(),
+});
+export type PluginSettingsContribution = z.infer<typeof pluginSettingsContributionSchema>;
+
+/**
  * Everything a plugin adds to the shell, declared statically (B1 / VS Code
- * `contributes` model). `providers`, `routes`, and `zones` name component
- * exports the host resolves and mounts; `nav` is pure data. The imperative
- * `sdk.contribute` remains for dynamic, app-state-dependent contributions.
+ * `contributes` model). `providers`, `routes`, `zones`, and `settings` name
+ * component exports the host resolves and mounts; `nav` is pure data. The
+ * imperative `sdk.contribute` remains for dynamic, app-state-dependent
+ * contributions.
  */
 export const pluginContributesSchema = z.strictObject({
 	/** App-lifetime provider components, composed inside the shell's SDK/query providers. */
@@ -134,6 +164,8 @@ export const pluginContributesSchema = z.strictObject({
 	nav: z.array(pluginNavEntrySchema).default([]),
 	/** Persistent zone widgets (zone + component export), host-mounted at activation. */
 	zones: z.array(pluginZoneContributionSchema).default([]),
+	/** Settings-page sections (id + component export), host-mounted at `/settings/$id`. */
+	settings: z.array(pluginSettingsContributionSchema).default([]),
 });
 export type PluginContributes = z.infer<typeof pluginContributesSchema>;
 
@@ -166,8 +198,14 @@ export const pluginManifestSchema = z
 		 * browser-mode support. Omit for headless plugins.
 		 */
 		web: z.string().min(1).optional(),
-		/** Declarative UI contributions (providers, routes, nav, zone widgets). */
-		contributes: pluginContributesSchema.default({ providers: [], routes: [], nav: [], zones: [] }),
+		/** Declarative UI contributions (providers, routes, nav, zone widgets, settings). */
+		contributes: pluginContributesSchema.default({
+			providers: [],
+			routes: [],
+			nav: [],
+			zones: [],
+			settings: [],
+		}),
 	})
 	.refine((manifest) => manifest.main !== undefined || manifest.web !== undefined, {
 		message: "Manifest must declare at least one entry point ('main' or 'web').",
@@ -176,11 +214,12 @@ export const pluginManifestSchema = z
 		(manifest) =>
 			(manifest.contributes.providers.length === 0 &&
 				manifest.contributes.routes.length === 0 &&
-				manifest.contributes.zones.length === 0) ||
+				manifest.contributes.zones.length === 0 &&
+				manifest.contributes.settings.length === 0) ||
 			manifest.web !== undefined,
 		{
 			message:
-				"Manifest declares provider/route/zone components but no 'web' entry to resolve them from.",
+				"Manifest declares provider/route/zone/settings components but no 'web' entry to resolve them from.",
 		},
 	);
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;

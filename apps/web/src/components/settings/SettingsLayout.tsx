@@ -8,7 +8,7 @@ import { Outlet } from "@tanstack/react-router";
  */
 export function SettingsLayout({ children }: { children?: ReactNode }) {
 	return (
-		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="settings-page">
+		<div className="flex min-h-0 flex-1 flex-col px-4 pt-4 pb-4" data-qa-id="settings-page">
 			{children ?? <Outlet />}
 		</div>
 	);

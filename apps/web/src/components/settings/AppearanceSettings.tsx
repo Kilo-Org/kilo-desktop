@@ -29,8 +29,8 @@ export function AppearanceSettings() {
 	const { source, setSource } = useColorScheme();
 
 	return (
-		<div className="mx-auto w-full max-w-3xl px-8 py-8" data-qa-id="appearance-settings">
-			<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="settings-section-heading">
+		<div className="mx-auto w-full max-w-2xl" data-qa-id="appearance-settings">
+			<h1 className="text-xl font-semibold tracking-tight" data-qa-id="settings-section-heading">
 				Appearance
 			</h1>
 			<FieldSet className="mt-6">
@@ -39,7 +39,7 @@ export function AppearanceSettings() {
 				<div
 					role="radiogroup"
 					aria-label="Theme"
-					className="grid grid-cols-3 gap-4"
+					className="grid grid-cols-3 gap-3"
 					data-qa-id="appearance-theme"
 				>
 					{THEME_OPTIONS.map((option) => (
@@ -82,14 +82,14 @@ function ThemeChoice({
 			onClick={onSelect}
 			data-qa-id={qaId}
 			className={cn(
-				"flex flex-col gap-3 rounded-xl p-2.5 text-left outline-none transition-shadow",
+				"flex flex-col gap-2 rounded-lg p-2 text-left outline-none transition-shadow",
 				"focus-visible:ring-3 focus-visible:ring-ring/50",
 				selected ? "bg-foreground/5 ring-2 ring-ring" : "ring-1 ring-border hover:bg-foreground/5",
 			)}
 		>
 			{preview}
-			<span className="flex items-center justify-center gap-2 pb-1 text-sm font-medium">
-				<Icon className="size-4" />
+			<span className="flex items-center justify-center gap-1.5 pb-0.5 text-sm font-medium">
+				<Icon className="size-3.5" />
 				{label}
 			</span>
 		</button>
@@ -151,17 +151,17 @@ function MiniWindow({ scheme }: { scheme: "light" | "dark" }) {
 			className={cn("overflow-hidden rounded-lg border shadow-xs", paint.border)}
 			style={{ background: chrome.background }}
 		>
-			<div className="flex h-4 items-center gap-1 px-2" style={{ background: paint.bar }}>
-				<span className="size-2 rounded-full bg-[#ff5f57]" />
-				<span className="size-2 rounded-full bg-[#febc2e]" />
-				<span className="size-2 rounded-full bg-[#28c840]" />
+			<div className="flex h-3.5 items-center gap-1 px-2" style={{ background: paint.bar }}>
+				<span className="size-1.5 rounded-full bg-[#ff5f57]" />
+				<span className="size-1.5 rounded-full bg-[#febc2e]" />
+				<span className="size-1.5 rounded-full bg-[#28c840]" />
 			</div>
-			<div className="flex h-24">
+			<div className="flex h-20">
 				<div className="w-[30%]" style={{ background: paint.sidebar }} />
-				<div className="flex flex-1 flex-col gap-2 p-3">
-					<div className="h-2 w-[72%] rounded-full" style={{ background: paint.line }} />
-					<div className="h-2 w-[48%] rounded-full" style={{ background: paint.muted }} />
-					<div className="mt-auto h-8 w-full rounded-md" style={{ background: paint.block }} />
+				<div className="flex flex-1 flex-col gap-1.5 p-2.5">
+					<div className="h-1.5 w-[72%] rounded-full" style={{ background: paint.line }} />
+					<div className="h-1.5 w-[48%] rounded-full" style={{ background: paint.muted }} />
+					<div className="mt-auto h-6 w-full rounded-md" style={{ background: paint.block }} />
 				</div>
 			</div>
 		</div>

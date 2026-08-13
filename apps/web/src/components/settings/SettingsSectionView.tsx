@@ -28,7 +28,7 @@ export function SettingsSectionView({
 
 	if (!section) {
 		return (
-			<div className="mx-auto max-w-xl px-5 py-8">
+			<div className="mx-auto max-w-xl">
 				<h1
 					className="text-2xl font-semibold tracking-tight"
 					data-qa-id="settings-section-not-found"
@@ -45,7 +45,7 @@ export function SettingsSectionView({
 
 	if (!section.browserSafe && !desktopAvailable) {
 		return (
-			<div className="mx-auto max-w-xl px-5 py-8">
+			<div className="mx-auto max-w-xl">
 				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="settings-section-heading">
 					{section.title}
 				</h1>

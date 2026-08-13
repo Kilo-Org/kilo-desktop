@@ -355,10 +355,12 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	if (streamCollapsed && !active) return null;
 
-	// Label-only kinds have no nested detail. Multiple items still list under
-	// the header, but the row is not a disclosure. While the stream row is
-	// collapsed, the parent ActivityGroup owns the icon.
-	if (LABEL_ONLY_ACTIVITY_KINDS.has(kind)) {
+	// A single label-only activity is fully described by its header. Multiple
+	// items need a disclosure for their child list; asking is the exception
+	// because its questionnaire renders outside the activity group.
+	// While the stream row is collapsed, the parent ActivityGroup owns the icon.
+	const labelOnly = LABEL_ONLY_ACTIVITY_KINDS.has(kind) && (kind === "asking" || stats.count === 1);
+	if (labelOnly) {
 		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
 		const showChildren = kind !== "asking" && group.indices.length > 1;

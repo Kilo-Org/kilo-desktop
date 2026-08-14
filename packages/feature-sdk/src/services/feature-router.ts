@@ -7,6 +7,7 @@ import type {
 import { FeatureError } from "../errors.js";
 import type {
 	ChannelHandlers,
+	HostMessagePort,
 	KvStore,
 	KvStoreFactory,
 	KvStoreOptions,
@@ -39,6 +40,11 @@ function assertValidKvNamespace(namespace: string): void {
 }
 
 type Handler = (args: unknown) => unknown | Promise<unknown>;
+type FeatureDisposer = () => unknown;
+interface PortHandlerEntry {
+	argsSchema: SchemaLike;
+	handler: (port: HostMessagePort, args: unknown) => void | Promise<void>;
+}
 
 interface HandlerEntry {
 	inputSchema: SchemaLike;
@@ -133,7 +139,8 @@ function createConsoleLogger(featureId: string): MainSdkLogger {
  */
 export class FeatureRouter {
 	private handlers = new Map<string, Map<string, HandlerEntry>>();
-	private disposables = new Map<string, Array<() => void>>();
+	private disposables = new Map<string, FeatureDisposer[]>();
+	private portHandlers = new Map<string, Map<string, PortHandlerEntry>>();
 	private readonly fallback: InvokeFallback | undefined;
 	readonly eventBus: EventBus;
 	readonly capabilityRegistry: CapabilityRegistry;
@@ -154,6 +161,9 @@ export class FeatureRouter {
 		}
 		if (!this.disposables.has(featureId)) {
 			this.disposables.set(featureId, []);
+		}
+		if (!this.portHandlers.has(featureId)) {
+			this.portHandlers.set(featureId, new Map());
 		}
 
 		const channels = <C extends ChannelMap>(channelMap: C): ChannelHandlers<C> => {
@@ -242,6 +252,20 @@ export class FeatureRouter {
 				reportBootProgress?.(message);
 			},
 		};
+		const ports: MainSdk["ports"] = {
+			handle: (channel, argsSchema, handler) => {
+				const registeredPorts = this.portHandlers.get(featureId)!;
+				if (registeredPorts.has(channel)) {
+					console.warn(
+						`[FeatureRouter] Port handler for "${featureId}:${channel}" registered twice — replacing.`,
+					);
+				}
+				registeredPorts.set(channel, {
+					argsSchema,
+					handler: handler as PortHandlerEntry["handler"],
+				});
+			},
+		};
 
 		// One live KV store per (feature, namespace). Reusing avoids opening two
 		// electron-store handles onto the same file — every read would then race
@@ -280,6 +304,7 @@ export class FeatureRouter {
 			plugins,
 			boot,
 			storage,
+			ports,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(
@@ -348,6 +373,50 @@ export class FeatureRouter {
 		}
 	}
 
+	/** Attach a transferred host port to the feature-scoped main handler. */
+	async connectPort(
+		featureId: string,
+		channel: string,
+		port: HostMessagePort,
+		args?: unknown,
+	): Promise<void> {
+		const entry = this.portHandlers.get(featureId)?.get(channel);
+		if (!entry) {
+			throw new FeatureError(
+				`No port handler for channel "${channel}" in feature "${featureId}".`,
+				"NOT_FOUND",
+			);
+		}
+
+		let parsedArgs: unknown;
+		try {
+			parsedArgs = entry.argsSchema.parse(args);
+		} catch (error) {
+			throw new FeatureError(
+				`Invalid input for port "${featureId}:${channel}": ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				"VALIDATION",
+			);
+		}
+
+		let portClosed = false;
+		const closePort = () => {
+			if (portClosed) return;
+			portClosed = true;
+			port.close();
+		};
+		this.disposables.get(featureId)!.push(closePort);
+		try {
+			await entry.handler(port, parsedArgs);
+		} catch (error) {
+			const disposables = this.disposables.get(featureId);
+			const index = disposables?.indexOf(closePort) ?? -1;
+			if (index >= 0) disposables!.splice(index, 1);
+			throw error;
+		}
+	}
+
 	/**
 	 * Check if a feature has a local handler for a channel.
 	 */
@@ -371,6 +440,7 @@ export class FeatureRouter {
 			}
 		}
 		this.handlers.delete(featureId);
+		this.portHandlers.delete(featureId);
 		this.disposables.delete(featureId);
 	}
 }

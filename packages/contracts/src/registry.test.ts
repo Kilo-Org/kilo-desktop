@@ -4,11 +4,18 @@ import { authEvents, authMethods } from "./features/auth.js";
 import { featureEvents, featureMessages } from "./features/feature-event.js";
 import { featureFlagEvents, featureFlagMethods } from "./features/feature-flag.js";
 import { featureMethods } from "./features/feature-invoke.js";
+import { featurePorts } from "./features/feature-port.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
 import { themeMethods } from "./features/theme.js";
-import { assertNoDuplicateChannels, ipcEvents, ipcMessages, ipcMethods } from "./registry.js";
+import {
+	assertNoDuplicateChannels,
+	ipcEvents,
+	ipcMessages,
+	ipcMethods,
+	ipcPorts,
+} from "./registry.js";
 
 describe("IPC registry", () => {
 	it("merged method channel count equals the sum of feature parts", () => {
@@ -30,6 +37,7 @@ describe("IPC registry", () => {
 				Object.keys(featureFlagEvents).length,
 		);
 		expect(Object.keys(ipcMessages)).toHaveLength(Object.keys(featureMessages).length);
+		expect(Object.keys(ipcPorts)).toHaveLength(Object.keys(featurePorts).length);
 	});
 
 	it("throws on duplicate channel keys", () => {

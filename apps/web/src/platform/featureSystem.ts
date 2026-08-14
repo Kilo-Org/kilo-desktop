@@ -10,6 +10,7 @@ import type {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { getDesktopBridge } from "./desktopBridge.js";
+import { openFeaturePort } from "./featurePorts.js";
 import { createInertNavigation } from "./navigation.js";
 import { getColorSchemeSnapshot, subscribeColorScheme } from "./theme/color-scheme.js";
 
@@ -196,6 +197,7 @@ export function createAppFeatureSystem(
 		...(bridge
 			? {
 					transport: {
+						ports: { open: openFeaturePort },
 						invoke: async (featureId: string, channel: string, args?: unknown) => {
 							const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
 							if (!result.ok) {

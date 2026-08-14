@@ -49,6 +49,9 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 */
 	readonly client: T;
 
+	/** Open a feature-scoped transferable channel to this feature's main process. */
+	readonly ports: SdkPorts;
+
 	/** Namespaced event bus — fire-and-forget pub/sub. See {@link SdkEvents}. */
 	readonly events: SdkEvents;
 
@@ -124,6 +127,17 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 * component unmount. Feature code should not call this.
 	 */
 	destroy(): void;
+}
+
+/** Renderer-side transferable channel API. */
+export interface SdkPorts {
+	/**
+	 * Open a channel handled by this feature's `mainSdk.ports.handle()`.
+	 * Electron transfers the returned port without exposing its IPC APIs.
+	 * Renderer code normally supplies `MessagePort` as the type parameter;
+	 * keeping the core contract generic leaves Node-only plugin builds DOM-free.
+	 */
+	open<TPort = unknown>(channel: string, args?: unknown): TPort;
 }
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -770,6 +784,26 @@ export interface MainSdkBoot {
 }
 
 /**
+ * Electron-free structural subset shared by transferred main-process ports.
+ * It intentionally matches MessagePortMain without importing Electron.
+ */
+export interface HostMessagePort {
+	postMessage(message: unknown): void;
+	on(event: "message", listener: (event: { data: unknown }) => void): this;
+	off(event: "message", listener: (event: { data: unknown }) => void): this;
+	start(): void;
+	close(): void;
+}
+
+export interface MainSdkPorts {
+	handle<TArgs>(
+		channel: string,
+		argsSchema: SchemaLike<TArgs>,
+		handler: (port: HostMessagePort, args: TArgs) => void | Promise<void>,
+	): void;
+}
+
+/**
  * Typed handler registrar bound to a channel map. Bind once via
  * `mainSdk.channels(map)`, then register each channel — or use `handleAll`
  * so the compiler proves no channel was forgotten.
@@ -822,6 +856,8 @@ export interface MainSdk {
 	 * spawn async work cannot push stale progress updates into shell UI.
 	 */
 	readonly boot: MainSdkBoot;
+	/** Register feature-owned handlers for transferred MessagePorts. */
+	readonly ports: MainSdkPorts;
 	/**
 	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
 	 * created lazily on first access. Features persist ONLY here — open your

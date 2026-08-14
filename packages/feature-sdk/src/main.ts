@@ -2,6 +2,8 @@
 export type {
 	MainSdk,
 	MainSdkBoot,
+	MainSdkPorts,
+	HostMessagePort,
 	MainSdkFetch,
 	MainSdkLogger,
 	MainSdkNet,

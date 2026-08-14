@@ -13,6 +13,7 @@ import type {
 	FeatureEventPayload,
 	IpcHandlers,
 	IpcMessageHandlers,
+	IpcPortHandlers,
 } from "@anaconda-agentic-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
@@ -185,5 +186,13 @@ export function createFeatureHandlers(): Pick<IpcHandlers, "feature:invoke"> {
 				throw error;
 			}
 		},
+	};
+}
+
+/** Route a transferred renderer port to the owning feature's main handler. */
+export function createFeaturePortHandlers(): Pick<IpcPortHandlers, "feature:port"> {
+	return {
+		"feature:port": (input, context) =>
+			featureRouter.connectPort(input.featureId, input.channel, context.port, input.args),
 	};
 }

@@ -10,7 +10,7 @@ import type {
 import { CondaService } from "./CondaService.js";
 import { registerCondaHandlers } from "./handlers.js";
 import { stageConda } from "./staging/index.js";
-import { registerCondaTools } from "./tools.js";
+import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
 
 /**
  * Conda environment provider — v1 provider for the environments plugin.

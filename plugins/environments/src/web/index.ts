@@ -21,7 +21,7 @@
  */
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { registerCondaTools } from "../main/providers/conda/tools.js";
+import { registerCondaTools } from "../shared/providers/conda/tools.js";
 
 export { EnvironmentsPage } from "./EnvironmentsPage.js";
 export { EnvironmentsNavIcon } from "./EnvironmentsNavIcon.js";

@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { execa, type ExecaError } from "execa";
+import isObjectLike from "lodash/isObjectLike.js";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
@@ -223,15 +224,7 @@ function firstLine(text: string): string | undefined {
 }
 
 function isExecaError(value: unknown): value is ExecaError {
-	// execa errors carry `shortMessage` + `command`; structural check keeps
-	// us decoupled from execa's private class hierarchy across versions.
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"shortMessage" in value &&
-		"command" in value &&
-		typeof (value as { shortMessage: unknown }).shortMessage === "string"
-	);
+	return value instanceof Error && "shortMessage" in value && "command" in value;
 }
 
 /**
@@ -255,11 +248,7 @@ export function parseEnvList(stdout: string): CondaEnv[] {
 			`conda env list returned non-JSON output: ${(error as Error).message}`,
 		);
 	}
-	if (
-		typeof parsed !== "object" ||
-		parsed === null ||
-		!Array.isArray((parsed as { envs?: unknown }).envs)
-	) {
+	if (!isObjectLike(parsed) || !Array.isArray((parsed as { envs?: unknown }).envs)) {
 		throw featureError("PROVIDER_NOT_READY", "conda env list output missing `envs` array.");
 	}
 	const rawEnvs = (parsed as { envs: unknown[] }).envs;

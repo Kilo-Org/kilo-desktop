@@ -2,7 +2,8 @@ import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
 /**
  * Register provider-scoped WebMCP tools for the conda provider. Called by
- * the plugin's `webRegister` — see `plugins/environments/src/web/index.ts`.
+ * both `webRegister` and `CondaProvider.registerTools` — lives in `shared/`
+ * because it depends only on the SDK interface, not on main or web internals.
  *
  * Sub-issue 4 exposes only `conda.envs.list` (`readOnlyHint: true`) — it
  * proves the full renderer-side pipeline (tool → sdk.invoke → main

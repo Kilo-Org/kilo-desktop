@@ -19,7 +19,12 @@ function makeDiscovery(): PluginDiscovery {
 					web: "./src/web/index.ts",
 					contributes: {
 						routes: [
-							{ path: "/demo", component: "TodosPage", title: "Demo" },
+							{
+								path: "/demo",
+								component: "TodosPage",
+								title: "Demo",
+								surface: "transparent",
+							},
 							{ path: "/demo/stats", component: "StatsPage" },
 						],
 					},
@@ -40,6 +45,7 @@ describe("buildPluginPages", () => {
 				pluginId: "demo",
 				path: "/plugins/demo",
 				title: "Demo",
+				surface: "transparent",
 				component: TodosPage,
 				browserSafe: false,
 				splat: "demo",
@@ -48,6 +54,7 @@ describe("buildPluginPages", () => {
 				pluginId: "demo",
 				path: "/plugins/demo/stats",
 				title: undefined,
+				surface: "default",
 				component: StatsPage,
 				browserSafe: false,
 				splat: "demo/stats",
@@ -66,14 +73,18 @@ describe("findPluginPage", () => {
 });
 
 describe("PLUGIN_PAGES", () => {
-	it("contains the bundled todos plugin page under the /plugins namespace", () => {
+	it("uses the default surface unless a bundled page explicitly opts out", () => {
 		const todos = findPluginPage(PLUGIN_PAGES, "/plugins/todos");
 		expect(todos).toBeDefined();
 		expect(todos?.pluginId).toBe("todos");
 		expect(todos?.title).toBe("Todo List");
 		expect(todos?.splat).toBe("todos");
+		expect(todos?.surface).toBe("default");
 		// Electron-only plugin: no browserRegister.
 		expect(todos?.browserSafe).toBe(false);
+
+		const chat = findPluginPage(PLUGIN_PAGES, "/plugins/chat");
+		expect(chat?.surface).toBe("transparent");
 	});
 
 	it("contains the Kilo chat route without shell-owned companion UI", () => {

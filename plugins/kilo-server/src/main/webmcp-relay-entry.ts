@@ -41,7 +41,7 @@ function defaultReadPackageJson(packageJsonPath: string): {
 	bin?: string | Record<string, string>;
 } {
 	// synchronous read: called once at plugin boot, kept synchronous to keep the
-	// seed step's control flow (mkdir → resolve → write) easy to reason about.
+	// config initialization's control flow (mkdir → resolve → write) easy to reason about.
 	// eslint-disable-next-line @typescript-eslint/no-require-imports
 	return DEFAULT_REQUIRE(packageJsonPath) as {
 		version: string;
@@ -71,7 +71,7 @@ export function translateAsarPath(inputPath: string): string {
  * absolute filesystem path suitable for `child_process.spawn(execPath, [entry])`.
  *
  * Throws with a clear message if the package or its `bin` cannot be resolved
- * so the seed step fails loud rather than writing a broken `kilo.json`.
+ * so the config initialization fails loud rather than writing a broken `kilo.json`.
  */
 export function resolveWebMcpRelayEntry(
 	options: ResolveWebMcpRelayOptions = {},

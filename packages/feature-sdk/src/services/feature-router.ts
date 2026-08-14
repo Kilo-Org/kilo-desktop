@@ -9,14 +9,29 @@ import type {
 	ChannelHandlers,
 	HostMessagePort,
 	HostPortContext,
+	KvStore,
+	KvStoreFactory,
+	KvStoreOptions,
 	MainSdk,
 	MainSdkFetch,
 	MainSdkHost,
 	MainSdkLogger,
+	MainSdkStorage,
 } from "../types/sdk.js";
 import type { SchemaLike } from "../types/schema.js";
 import { CapabilityRegistry } from "./capability-registry.js";
 import { emitFeatureEvent, EventBus, type FeatureEvent } from "./event-bus.js";
+
+const KV_NAMESPACE_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+function assertValidKvNamespace(namespace: string): void {
+	if (!KV_NAMESPACE_PATTERN.test(namespace)) {
+		throw new Error(
+			`[FeatureRouter] Invalid KV namespace "${namespace}": must match ${KV_NAMESPACE_PATTERN.source}. ` +
+				`Path separators, "..", and empty names would escape the feature's storage sandbox.`,
+		);
+	}
+}
 
 type Handler = (args: unknown) => unknown | Promise<unknown>;
 type FeatureDisposer = () => unknown;
@@ -71,6 +86,8 @@ export interface CreateMainSdkOptions {
 	 * `resolvePluginAsset` then throws.
 	 */
 	resolvePluginAsset?: (subpath: string) => string;
+	/** Open a typed key/value store scoped to this feature. */
+	createKvStore?: KvStoreFactory;
 	/**
 	 * Receive boot-time progress messages from this feature's `mainRegister`.
 	 * The caller (typically `bootFeatures`) is responsible for gating this to
@@ -175,6 +192,7 @@ export class FeatureRouter {
 
 		const resolveStorageDir = options?.resolveStorageDir;
 		const resolvePluginAsset = options?.resolvePluginAsset;
+		const createKvStore = options?.createKvStore;
 		const logger = options?.logger ?? createConsoleLogger(featureId);
 		const fetchImpl: MainSdkFetch =
 			options?.fetch ?? ((input, init) => globalThis.fetch(input, init));
@@ -240,6 +258,25 @@ export class FeatureRouter {
 			},
 		};
 
+		const kvStores = new Map<string, KvStore<Record<string, unknown>>>();
+		const storage: MainSdkStorage = {
+			kv: <T extends Record<string, unknown>>(kvOptions: KvStoreOptions<T>): KvStore<T> => {
+				if (!createKvStore) {
+					throw new Error(
+						`[FeatureRouter] Feature "${featureId}" has no key/value storage in this ` +
+							`environment (browser mode provides no persistent storage).`,
+					);
+				}
+				const namespace = kvOptions.namespace ?? "kv";
+				assertValidKvNamespace(namespace);
+				const cached = kvStores.get(namespace);
+				if (cached) return cached as KvStore<T>;
+				const store = createKvStore<T>(kvOptions);
+				kvStores.set(namespace, store as KvStore<Record<string, unknown>>);
+				return store;
+			},
+		};
+
 		return {
 			featureId,
 			logger,
@@ -247,6 +284,7 @@ export class FeatureRouter {
 			events,
 			plugins,
 			boot,
+			storage,
 			ports,
 			host: options?.host,
 			get storageDir(): string {

@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { KiloClient } from "@kilocode/sdk/v2/client";
-
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
@@ -10,10 +8,6 @@ import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo
 vi.mock("./create-kilo-runtime-client.js", () => ({
 	createKiloDirectoryClient: vi.fn(),
 	createKiloGlobalClient: vi.fn(),
-}));
-
-vi.mock("./with-prompt-options.js", () => ({
-	withPromptOptions: (client: KiloClient) => client,
 }));
 
 const connection: KiloGlobalConnection = {
@@ -85,7 +79,10 @@ describe("createKiloRuntimeBackend", () => {
 	});
 
 	it("creates a session only after preparation and keeps its directory immutable", async () => {
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace/selected" }));
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/selected",
+			workspaceFolders: [],
+		}));
 		const create = vi.fn(async () => ({ data: { id: "session-new" } }));
 		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
 		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
@@ -113,10 +110,15 @@ describe("createKiloRuntimeBackend", () => {
 		const prepareSession = vi.fn(async () => ({
 			directory: "/workspace/selected",
 			workspaceId: "ws-1",
+			workspaceFolders: [
+				{ path: "/workspace/selected", isPrimary: true },
+				{ path: "/workspace/reference", isPrimary: false },
+			],
 		}));
 		const create = vi.fn(async () => ({ data: { id: "session-ws" } }));
+		const prompt = vi.fn(async () => ({ data: {} }));
 		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
-		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create, prompt } } as never);
 		const backend = createKiloRuntimeBackend({
 			connectionPromise: Promise.resolve(connection),
 			prepareSession,
@@ -128,8 +130,42 @@ describe("createKiloRuntimeBackend", () => {
 			directory: "/workspace/selected",
 		});
 		expect(create).toHaveBeenCalledWith(
-			{ metadata: { anaconda: { workspaceId: "ws-1" } } },
+			{
+				metadata: {
+					anaconda: {
+						workspaceId: "ws-1",
+						workspaceFolders: [
+							{ path: "/workspace/selected", isPrimary: true },
+							{ path: "/workspace/reference", isPrimary: false },
+						],
+					},
+				},
+				permission: [
+					{
+						permission: "external_directory",
+						pattern: "/workspace/reference",
+						action: "allow",
+					},
+					{
+						permission: "external_directory",
+						pattern: "/workspace/reference/*",
+						action: "allow",
+					},
+				],
+			},
 			{ throwOnError: true },
+		);
+
+		await backend.getSessionClient({ id: "session-ws" }).session.prompt({
+			sessionID: "session-ws",
+			parts: [{ type: "text", text: "Find the shared code." }],
+		});
+		expect(prompt).toHaveBeenCalledWith(
+			expect.objectContaining({
+				system: expect.stringMatching(
+					/Primary folder.*\/workspace\/selected[\s\S]*Additional workspace folder.*\/workspace\/reference/,
+				),
+			}),
 		);
 	});
 

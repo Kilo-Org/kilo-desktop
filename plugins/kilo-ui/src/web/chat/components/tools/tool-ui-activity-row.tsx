@@ -94,6 +94,7 @@ export const SoloAwareExpandableRow = memo(
 		detail,
 		completeIcon,
 		trailing,
+		hideSoloWithoutDetail = false,
 	}: {
 		kind: ActivitySubgroupContextValue["kind"];
 		liveVerb: string;
@@ -104,6 +105,8 @@ export const SoloAwareExpandableRow = memo(
 		detail: ReactNode;
 		completeIcon?: ReactNode;
 		trailing?: ReactNode;
+		/** Hide a redundant solo label when the subgroup header already describes it. */
+		hideSoloWithoutDetail?: boolean;
 	}) => {
 		const [open, setOpen] = useState(false);
 		const solo = useSoloInSubgroup(kind);
@@ -114,6 +117,7 @@ export const SoloAwareExpandableRow = memo(
 
 		if (solo) {
 			if (!hasDetail) {
+				if (hideSoloWithoutDetail) return null;
 				return (
 					<div className="text-muted-foreground flex items-center gap-2 py-0.5 text-sm">
 						<ToolStatusIcon status={status} completeIcon={completeIcon} />

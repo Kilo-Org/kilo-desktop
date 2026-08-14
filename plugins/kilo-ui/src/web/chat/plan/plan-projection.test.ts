@@ -150,17 +150,13 @@ describe("getPlanProjectionFromParts", () => {
 		expect(failed?.error).toBe("Plan file not found");
 	});
 
-	it("ignores non-plan and pathless writes unless the initial draft opts in", () => {
+	it("ignores non-plan and pathless writes", () => {
 		expect(
 			getPlanProjectionFromParts([writePart("write-src", { path: "src/app.ts" })]),
 		).toBeUndefined();
 
 		const pending = toolPart("write", "write-pending", { status: "running", input: {} });
 		expect(getPlanProjectionFromParts([pending])).toBeUndefined();
-		expect(
-			getPlanProjectionFromParts([pending], { treatPathlessPendingWritesAsPlan: true })
-				?.anchorCallId,
-		).toBe("write-pending");
 	});
 
 	it("reconstructs edit-only plan revisions from prior markdown", () => {
@@ -196,6 +192,21 @@ describe("getPlanProjectionFromParts", () => {
 });
 
 describe("projectPlanThread", () => {
+	it("does not project a pathless write from the code agent", () => {
+		const projected = projectPlanThread(
+			threadSource([
+				{
+					id: "msg-code",
+					role: "assistant",
+					agent: "code",
+					parts: [toolPart("write", "write-code", { status: "running", input: {} })],
+				},
+			]),
+		);
+
+		expect(getPlanProjectionForMessage(projected, "msg-code")).toBeUndefined();
+	});
+
 	it("keeps a plan-agent write projected while its nonstandard path streams", () => {
 		const pending = projectPlanThread(
 			threadSource([
@@ -259,7 +270,7 @@ describe("projectPlanThread", () => {
 		expect(readyProjection?.status).toBe("ready");
 		expect(readyProjection?.anchorCallId).toBe("write-plan");
 		expect(readyProjection?.hiddenCallIds).toEqual(new Set(["write-plan", "exit-plan"]));
-		expect(getPlanProjectionForMessage(ready, "msg-write")).toBeUndefined();
+		expect(getPlanProjectionForMessage(ready, "msg-write")).toBe(readyProjection);
 	});
 
 	it("projects each message once and enriches chained edits in order", () => {

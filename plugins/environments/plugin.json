@@ -8,6 +8,13 @@
 		"routes": [
 			{ "path": "/environments", "component": "EnvironmentsPage", "title": "Environments" }
 		],
-		"nav": [{ "to": "/environments", "label": "Environments", "icon": "EnvironmentsNavIcon" }]
+		"nav": [
+			{
+				"to": "/environments",
+				"label": "Environments",
+				"icon": "EnvironmentsNavIcon",
+				"featureFlag": "environments-feature"
+			}
+		]
 	}
 }

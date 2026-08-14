@@ -162,3 +162,27 @@ describe("MessageCopyButton", () => {
 		await expect.poll(() => copyText.mock.calls).toEqual([["Copy me via shell"]]);
 	});
 });
+
+describe("AssistantActionMoreTrigger", () => {
+	it("keeps the More tooltip visible while hovering the overflow button", async () => {
+		renderThread({
+			initialMessages: [
+				{
+					role: "assistant",
+					content: [{ type: "text", text: "Hover the more action" }],
+				},
+			],
+		});
+		const screen = page.elementLocator(document.body);
+
+		const moreButton = screen.getByRole("button", { name: "More" });
+		await expect.element(moreButton).toBeVisible();
+		await moreButton.hover();
+
+		await expect
+			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+			.toBe("More");
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("More");
+	});
+});

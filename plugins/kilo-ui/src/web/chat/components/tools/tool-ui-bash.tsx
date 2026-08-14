@@ -5,7 +5,7 @@ import { DollarSignIcon, XCircleIcon } from "lucide-react";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { isCancelledToolStatus, truncate } from "./tool-ui-shared.js";
+import { getCommandSummary, isCancelledToolStatus } from "./tool-ui-shared.js";
 
 const parseResult = (result: unknown) => {
 	if (!result) return {};
@@ -24,7 +24,6 @@ const parseResult = (result: unknown) => {
 
 export const BashTerminal: ToolCallMessagePartComponent = memo(({ args, result, status }) => {
 	const command = typeof args?.command === "string" ? args.command : "";
-	const description = typeof args?.description === "string" ? args.description : "";
 	const isRunning = status?.type === "running";
 	const isCancelled = isCancelledToolStatus(status);
 
@@ -35,7 +34,7 @@ export const BashTerminal: ToolCallMessagePartComponent = memo(({ args, result, 
 	const hasOutput = Boolean(stdout || stderr);
 	const isError = !isRunning && exitCode !== 0;
 
-	const summaryText = description || truncate(command);
+	const summaryText = getCommandSummary(args);
 
 	const completeIcon = isError ? (
 		<XCircleIcon className="text-destructive size-3 shrink-0" />
@@ -52,6 +51,7 @@ export const BashTerminal: ToolCallMessagePartComponent = memo(({ args, result, 
 			status={status}
 			hasDetail={hasOutput}
 			completeIcon={completeIcon}
+			hideSoloWithoutDetail={!isError && !isCancelled}
 			detail={
 				<div className="bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs">
 					{command ? <div className="text-muted-foreground mb-2">$ {command}</div> : null}

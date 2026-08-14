@@ -9,6 +9,7 @@ import {
 	pluginProviderContributions,
 	pluginRegistrations,
 	pluginRoutes,
+	pluginSettingsContributions,
 	pluginZoneContributions,
 	reportPluginDiscoveryIssues,
 	type BundledPlugin,
@@ -575,6 +576,120 @@ describe("contribution resolution", () => {
 		]);
 	});
 
+	it("resolves settings sections against the web entry module", () => {
+		const PingSettings = () => null;
+		const PingSettingsIcon = () => null;
+		const settingsManifest = {
+			...manifest,
+			contributes: {
+				settings: [
+					{
+						id: "ping",
+						title: "Ping",
+						component: "PingSettings",
+						icon: "PingSettingsIcon",
+						priority: 7,
+						featureFlag: "ping-settings",
+					},
+				],
+			},
+		};
+		const discovery = discoverPlugins(
+			[
+				{
+					manifest: settingsManifest,
+					module: { browserRegister, PingSettings, PingSettingsIcon },
+				},
+			],
+			"web",
+		);
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginSettingsContributions(discovery)).toEqual([
+			{
+				pluginId: "ping",
+				id: "ping",
+				title: "Ping",
+				component: PingSettings,
+				icon: "PingSettingsIcon",
+				iconComponent: PingSettingsIcon,
+				priority: 7,
+				featureFlag: "ping-settings",
+				browserSafe: true,
+			},
+		]);
+	});
+
+	it("skips a settings section whose component export is missing", () => {
+		const settingsManifest = {
+			...manifest,
+			contributes: { settings: [{ id: "ping", title: "Ping", component: "PingSettings" }] },
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: settingsManifest, module: { browserRegister } }],
+			"web",
+		);
+
+		expect(pluginSettingsContributions(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "ping",
+				message: expect.stringContaining('names component export "PingSettings"'),
+			},
+		]);
+	});
+
+	it("skips a settings id already claimed by an earlier plugin", () => {
+		const PingSettings = () => null;
+		const OtherSettings = () => null;
+		const first = {
+			...manifest,
+			contributes: { settings: [{ id: "shared", title: "Ping", component: "PingSettings" }] },
+		};
+		const rival = {
+			id: "rival",
+			displayName: "Rival",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+			contributes: { settings: [{ id: "shared", title: "Rival", component: "OtherSettings" }] },
+		};
+		const discovery = discoverPlugins(
+			[
+				{ manifest: first, module: { browserRegister, PingSettings } },
+				{ manifest: rival, module: { OtherSettings } },
+			],
+			"web",
+		);
+
+		expect(pluginSettingsContributions(discovery).map((section) => section.pluginId)).toEqual([
+			"ping",
+		]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "rival",
+				message: expect.stringContaining('already claimed by plugin "ping"'),
+			},
+		]);
+	});
+
+	it("marks settings browserSafe false for Electron-only plugins", () => {
+		const PingSettings = () => null;
+		const electronOnly = {
+			id: "ping",
+			displayName: "Ping",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			web: "./src/web/index.ts",
+			contributes: { settings: [{ id: "ping", title: "Ping", component: "PingSettings" }] },
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: electronOnly, module: { PingSettings } }],
+			"web",
+		);
+
+		expect(pluginSettingsContributions(discovery)[0]?.browserSafe).toBe(false);
+	});
+
 	it("does not resolve contributions for main-entry discovery (renderer concern)", () => {
 		const bundled: BundledPlugin[] = [
 			{ manifest: routedManifest, module: { mainRegister, PingPage, PingStatus } },
@@ -586,6 +701,7 @@ describe("contribution resolution", () => {
 		expect(pluginNav(discovery)).toEqual([]);
 		expect(pluginProviderContributions(discovery)).toEqual([]);
 		expect(pluginZoneContributions(discovery)).toEqual([]);
+		expect(pluginSettingsContributions(discovery)).toEqual([]);
 	});
 });
 

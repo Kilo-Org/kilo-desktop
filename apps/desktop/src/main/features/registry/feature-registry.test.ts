@@ -330,7 +330,8 @@ describe("feature port bridge", () => {
 	it("attaches the transferred port to the owning feature handler", async () => {
 		const featureId = "feature-port-bridge-test";
 		const attached = vi.fn();
-		const port = {} as never;
+		const close = vi.fn();
+		const port = { close } as never;
 		const dispose = await bootFeatures([
 			{
 				id: featureId,
@@ -350,9 +351,10 @@ describe("feature port bridge", () => {
 				},
 				{ senderId: 42, port },
 			);
-			expect(attached).toHaveBeenCalledWith(port, { notebookId: "nb-1" });
+			expect(attached).toHaveBeenCalledWith(port, { notebookId: "nb-1" }, { senderId: 42 });
 		} finally {
 			await dispose();
 		}
+		expect(close).toHaveBeenCalledOnce();
 	});
 });

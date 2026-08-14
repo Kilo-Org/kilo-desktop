@@ -273,6 +273,16 @@ providers wrap lower-priority providers; equal priorities keep plugin registry o
 
 **Use routes, not contributions, for the feature's main view** — declare them in `plugin.json` `contributes.routes` (the host mounts them; plugins never touch the router).
 
+**Settings sections** are a separate contribution point, not a zone. Declare them in `plugin.json` `contributes.settings`; the shell lists them on `/settings` and mounts one section at a time:
+
+```jsonc
+"contributes": {
+  "settings": [{ "id": "todos", "title": "Todos", "component": "TodosSettings" }]
+}
+```
+
+Optional `featureFlag` hides the nav entry (same semantics as `contributes.nav`). There is no `sdk.contributeSettings` — settings are declarative only.
+
 ### `sdk.commands` — command palette entries
 
 ```ts

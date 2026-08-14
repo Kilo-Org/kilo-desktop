@@ -33,6 +33,9 @@ const routePathSchema = z
 	.string()
 	.regex(/^\/.+/, "Path must start with '/' and have at least one segment.");
 
+export const pluginPageSurfaceSchema = z.enum(["default", "transparent"]);
+export type PluginPageSurface = z.infer<typeof pluginPageSurfaceSchema>;
+
 /**
  * A full-page route contributed by the plugin (`contributes.routes`). The HOST
  * owns route creation (Decision #19) — plugins never import the router; the
@@ -53,6 +56,8 @@ export const pluginRouteSchema = z.strictObject({
 	component: z.string().min(1),
 	/** Optional human-readable page title (used for the browser-mode unavailable state). */
 	title: z.string().min(1).optional(),
+	/** Optional shell-owned surface around the page. */
+	surface: pluginPageSurfaceSchema.optional(),
 });
 export type PluginRoute = z.infer<typeof pluginRouteSchema>;
 
@@ -70,6 +75,8 @@ export const pluginNavEntrySchema = z.strictObject({
 	icon: z.string().min(1).optional(),
 	/** Higher renders first among nav entries. Default 0 — matches `sdk.contribute`. */
 	priority: z.number().int().optional(),
+	/** Optional LaunchDarkly flag gating this navigation entry. */
+	featureFlag: z.string().min(1).optional(),
 });
 export type PluginNavEntry = z.infer<typeof pluginNavEntrySchema>;
 
@@ -118,6 +125,19 @@ export const pluginProviderContributionSchema = z.strictObject({
 });
 export type PluginProviderContribution = z.infer<typeof pluginProviderContributionSchema>;
 
+/** A settings-page section mounted by the shell at `/settings/$id`. */
+export const pluginSettingsContributionSchema = z.strictObject({
+	id: z
+		.string()
+		.regex(featureIdPattern, 'Settings section id must be kebab-case (e.g. "anaconda-mcp").'),
+	title: z.string().min(1),
+	component: z.string().min(1),
+	icon: z.string().min(1).optional(),
+	priority: z.number().int().optional(),
+	featureFlag: z.string().min(1).optional(),
+});
+export type PluginSettingsContribution = z.infer<typeof pluginSettingsContributionSchema>;
+
 /**
  * Everything a plugin adds declaratively (B1 / VS Code `contributes` model).
  * `providers`, `routes`, and `zones` name component exports the host resolves;
@@ -133,6 +153,8 @@ export const pluginContributesSchema = z.strictObject({
 	nav: z.array(pluginNavEntrySchema).default([]),
 	/** Persistent zone contributions, registered at activation. */
 	zones: z.array(pluginZoneContributionSchema).default([]),
+	/** Settings-page sections mounted by the shell. */
+	settings: z.array(pluginSettingsContributionSchema).default([]),
 });
 export type PluginContributes = z.infer<typeof pluginContributesSchema>;
 
@@ -173,6 +195,7 @@ export const pluginManifestSchema = z
 			routes: [],
 			nav: [],
 			zones: [],
+			settings: [],
 		}),
 	})
 	.refine((manifest) => manifest.main !== undefined || manifest.web !== undefined, {
@@ -183,6 +206,7 @@ export const pluginManifestSchema = z
 			(manifest.contributes.providers.length === 0 &&
 				manifest.contributes.routes.length === 0 &&
 				manifest.contributes.zones.length === 0 &&
+				manifest.contributes.settings.length === 0 &&
 				manifest.zones.length === 0) ||
 			manifest.web !== undefined,
 		{

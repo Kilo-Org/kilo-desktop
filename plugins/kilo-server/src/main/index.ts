@@ -1,58 +1,66 @@
 import path from "node:path";
 
 import { FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
+import debounce from "lodash/debounce.js";
 
 import {
 	kiloServerContract,
-	type KiloConfigOverlay,
+	type KiloServerCapabilityService,
 	type KiloServerService,
 	type KiloServerConnection,
 	type KiloServerStatus,
 } from "../contracts/schemas.js";
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
+import { KiloMcpConfig, type KiloMcpMutationOutcome } from "./KiloMcpConfig.js";
 import { resolveKiloInstallation } from "./installation.js";
 import {
-	buildWebMcpRelayOverlay,
-	kiloMcpConfigDirectory,
-	MCP_ENTRY_NAME,
-	seedKiloMcpConfig,
-	type SeedOutcome,
-} from "./seed-kilo-mcp-config.js";
-import {
-	seedManagedMcpEntry,
-	type SeededMcpEntry,
-	type SeedManagedMcpEntryOptions,
-} from "./seed-managed-mcp-entry.js";
-import {
-	WebMcpRelaySupervisor,
-	type WebMcpRelaySupervisorHandle,
-} from "./webmcp-relay-supervisor.js";
+	reconcileWebMcpRelayConfig,
+	type WebMcpRelayConfigOutcome,
+} from "./webmcp-relay-config.js";
+import { WebMcpRelayService, type WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
+
+export { ContributedEnvManager } from "./ContributedEnvManager.js";
 
 export interface KiloServerController {
 	readonly status: KiloServerStatus;
+	readonly isRunning: boolean;
+	/**
+	 * True while a spawn is in flight but the child is not yet health-checked.
+	 * Distinct from `isRunning`; the env-change debouncer awaits an in-flight
+	 * spawn before evaluating drift to avoid missing a contribution that
+	 * arrives after `#createEnvironment` snapshotted but before the child is
+	 * ready.
+	 */
+	readonly isStarting: boolean;
+	/**
+	 * True when the currently-merged contributed env differs from the snapshot
+	 * captured at the last spawn. Consumers should skip a restart when this
+	 * is false — the running child already reflects the current contributions.
+	 */
+	contributedEnvChangedSinceSpawn(): boolean;
 	ensureRunning(): Promise<KiloServerConnection>;
 	restart(): Promise<KiloServerConnection>;
 	dispose(): void;
 }
 
-export type CreateKiloServerHooks = {
-	/** Read on every `kilo serve` spawn; merged into `KILO_CONFIG_CONTENT`. */
-	readonly getConfigOverlay: () => KiloConfigOverlay | undefined;
-};
-
 interface RegisterKiloServerOptions {
 	createServer?: (
 		onStatusChange: (status: KiloServerStatus) => void,
-		hooks: CreateKiloServerHooks,
+		contributedEnv: ContributedEnvManager,
 	) => KiloServerController;
 	/**
 	 * Interim WebMCP↔Kilo bridge (see anaconda/agentic-desktop#102).
-	 * Injected in tests; production defaults build the relay overlay and
-	 * prune any leftover pre-shared-XDG file seed.
+	 * Injected in tests; production defaults call the real initializer.
 	 */
-	seedMcpConfig?: (runtimeDirectory: string, enabled: boolean) => Promise<SeedOutcome>;
+	reconcileWebMcpRelayConfig?: (
+		configDirectory: string,
+		enabled: boolean,
+	) => Promise<WebMcpRelayConfigOutcome>;
+	/** Injected serialized config writer for tests. */
+	kiloMcpConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
 	/** Anaconda Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
 	/**
@@ -64,112 +72,49 @@ interface RegisterKiloServerOptions {
 	 */
 	runAsNodeEnabled?: () => Promise<boolean>;
 	/**
-	 * Owns the WebMCP WS rendezvous (`:9345`) outside kilo's lazy MCP spawn.
-	 * Injected in tests; production defaults to {@link WebMcpRelaySupervisor}.
+	 * Owns the WebMCP WS rendezvous (`:9345`) outside Kilo's lazy MCP spawn.
+	 * Injected in tests; production defaults to {@link WebMcpRelayService}.
 	 */
-	createWebMcpRelaySupervisor?: () => WebMcpRelaySupervisorHandle;
-}
-
-export type ManagedMcpSeedFn = () => Promise<void>;
-
-export type KiloManagedMcpService = {
-	/**
-	 * App-owned runtime config dir — used only to prune leftover pre-shared-XDG
-	 * file seeds. Live MCP entries go through {@link seedEntry}'s overlay.
-	 */
-	readonly configDirectory: string;
-	/**
-	 * Queue an additional managed-MCP seed that runs before `kilo serve`
-	 * starts. Safe to call from another plugin's `mainRegister` during the
-	 * same boot wave: the WebMCP seed awaits fuse detection first, which
-	 * yields so later plugins can register here before extras run.
-	 *
-	 * Late callers (after the boot seed gate closes) run immediately; kilo
-	 * may need a restart to pick up the new MCP server.
-	 */
-	registerSeed(seed: ManagedMcpSeedFn): void;
-	/**
-	 * Contribute (or remove) an MCP entry via `KILO_CONFIG_CONTENT` overlay.
-	 * Also prunes any stale file seed under {@link configDirectory} — that
-	 * path is no longer read after shared XDG (`~/.config/kilo`).
-	 */
-	seedEntry(
-		options: Omit<SeedManagedMcpEntryOptions, "configDirectory" | "logger">,
-	): Promise<SeedOutcome>;
-};
-
-/**
- * Merge or remove a managed MCP entry in the spawn-time config overlay.
- * Pure helper so plugin seeds (e.g. notebook `runt`) share the WebMCP path.
- */
-export function applyManagedMcpOverlayEntry(
-	overlay: KiloConfigOverlay | undefined,
-	options: {
-		readonly name: string;
-		readonly entry?: SeededMcpEntry;
-		readonly enabled?: boolean;
-	},
-): { readonly overlay: KiloConfigOverlay | undefined; readonly outcome: SeedOutcome } {
-	const enabled = options.enabled ?? true;
-	const entryName = options.name;
-	const currentMcp = overlay?.mcp;
-
-	if (!enabled) {
-		if (currentMcp === undefined || !(entryName in currentMcp)) {
-			return { overlay, outcome: { kind: "skipped", reason: "nothing-to-remove" } };
-		}
-		const nextMcp: Record<string, unknown> = { ...currentMcp };
-		delete nextMcp[entryName];
-		if (Object.keys(nextMcp).length === 0) {
-			return { overlay: undefined, outcome: { kind: "removed", reason: "explicit" } };
-		}
-		return {
-			overlay: { mcp: nextMcp },
-			outcome: { kind: "removed", reason: "explicit" },
-		};
-	}
-
-	if (!options.entry) {
-		return {
-			overlay,
-			outcome: {
-				kind: "skipped-error",
-				reason: `seedEntry("${entryName}") requires entry`,
-			},
-		};
-	}
-
-	const existing = currentMcp?.[entryName];
-	const reason: "created" | "updated" = existing === undefined ? "created" : "updated";
-	return {
-		overlay: { mcp: { ...currentMcp, [entryName]: options.entry } },
-		outcome: { kind: "written", reason, entry: options.entry },
-	};
+	createWebMcpRelayService?: () => WebMcpRelayServiceHandle;
 }
 
 export type KiloServerCapabilities = {
 	connectionService: {
 		getConnection(): Promise<KiloServerConnection>;
 	};
-	managedMcpService: KiloManagedMcpService;
+	kiloService: KiloServerCapabilityService;
 };
+
+function resolveKiloServerDirectories(storageDirectory: string): {
+	runtimeDirectory: string;
+	configDirectory: string;
+} {
+	const runtimeDirectory = path.join(storageDirectory, "runtime");
+	return {
+		runtimeDirectory,
+		configDirectory: path.join(runtimeDirectory, "config", "kilo"),
+	};
+}
 
 export function createKiloServerManagerOptions(
 	mainSdk: MainSdk,
 	onStatusChange: (status: KiloServerStatus) => void,
+	contributedEnv: ContributedEnvManager,
 	resolveInstallation: typeof resolveKiloInstallation = resolveKiloInstallation,
 ): KiloServerManagerOptions {
+	const directories = resolveKiloServerDirectories(mainSdk.storageDir);
 	return {
 		installation: resolveInstallation({
 			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
 		}),
-		runtimeDirectory: path.join(mainSdk.storageDir, "runtime"),
+		...directories,
 		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
 		stateDirectory: mainSdk.storageDir,
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
 		fetch: mainSdk.net.fetch,
 		logger: mainSdk.logger,
 		onStatusChange,
+		contributedEnv,
 	};
 }
 
@@ -185,272 +130,223 @@ async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boole
 		return value !== FuseState.DISABLE;
 	} catch {
 		// Not an Electron binary (dev/test/CI): dev Electron honors
-		// ELECTRON_RUN_AS_NODE without a fuse wire, so seeding is safe.
+		// ELECTRON_RUN_AS_NODE without a fuse wire, so configuration is safe.
 		return true;
 	}
 }
 
-function seedLeftRelayEntry(outcome: SeedOutcome): boolean {
+/**
+ * Default debounce delay (ms) before restarting the server after env changes.
+ * Allows multiple rapid contributions to coalesce into a single restart.
+ */
+const ENV_RESTART_DEBOUNCE_MS = 300;
+
+function configLeftRelayEntry(outcome: WebMcpRelayConfigOutcome): boolean {
 	return (
 		outcome.kind === "written" || (outcome.kind === "skipped" && outcome.reason === "up-to-date")
 	);
 }
 
+function assertMcpConfigMutationAccepted(
+	sourceId: string,
+	entryId: string,
+	outcome: KiloMcpMutationOutcome,
+	action: "set" | "remove",
+): void {
+	if (outcome.kind === "skipped-error") {
+		throw new Error(`Could not ${action} Desktop-owned MCP "${entryId}": ${outcome.reason}`);
+	}
+	if (outcome.kind === "skipped" && outcome.reason === "owned-by-other-source") {
+		throw new Error(
+			`Could not ${action} Desktop-owned MCP "${entryId}": it is owned by another source, not "${sourceId}".`,
+		);
+	}
+	if (action === "set" && outcome.kind === "skipped" && outcome.reason === "entry-not-owned") {
+		throw new Error(
+			`Could not set MCP "${entryId}": an entry not owned by Desktop already uses that id.`,
+		);
+	}
+}
+
 export function registerKiloServer(
 	mainSdk: MainSdk,
 	options: RegisterKiloServerOptions = {},
-): void {
-	const runtimeDirectory = path.join(mainSdk.storageDir, "runtime");
-	const configDirectory = kiloMcpConfigDirectory(runtimeDirectory);
+): Promise<void> {
+	const { configDirectory } = resolveKiloServerDirectories(mainSdk.storageDir);
 	const appExecutablePath = options.appExecutablePath ?? process.execPath;
 	const runAsNodeEnabled =
 		options.runAsNodeEnabled ?? (() => defaultRunAsNodeEnabled(appExecutablePath));
 
-	/** Set before first ensureRunning; read on every spawn via getConfigOverlay. */
-	let configOverlay: KiloConfigOverlay | undefined;
-	let webMcpRelaySeeded = false;
+	let disposed = false;
+	let configRestartRequested = false;
 
-	const getConfigOverlay = () => configOverlay;
+	// Debounce to coalesce rapid contributions into a single restart.
+	const handleEnvChange = debounce(async () => {
+		if (disposed) return;
+		const forceRestart = configRestartRequested;
+		configRestartRequested = false;
+		// If neither running nor starting, nothing to do — the first
+		// `ensureRunning()` will snapshot the (now-current) contributions
+		// during its own spawn. Cold-boot path.
+		if (!server.isRunning && !server.isStarting) return;
+		// If a spawn is in flight, WAIT for it to finish before deciding.
+		// Otherwise a contribution arriving mid-spawn (after
+		// `#createEnvironment` snapshotted but before `#connection` was
+		// set) would be missed here: `isRunning` was false, we early-
+		// returned, and no future event would recheck. Bug flagged in
+		// PR #116 review as WARNING kilo-server/index.ts:138.
+		if (server.isStarting) {
+			await server.ensureRunning().catch(() => undefined);
+			if (disposed) return;
+		}
+		// Server is (now) running. Skip if the env used at spawn already
+		// reflects the current contributions.
+		if (!forceRestart && !server.contributedEnvChangedSinceSpawn()) return;
+		server.restart().catch((error) => {
+			mainSdk.logger.warn(
+				`Failed to restart Kilo server after env change: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		});
+	}, ENV_RESTART_DEBOUNCE_MS);
+
+	const requestConfigRestart = (): void => {
+		// A future first spawn will read the updated file. Deciding now avoids
+		// restarting a server that happens to start during the debounce window.
+		if (!server.isRunning && !server.isStarting) return;
+		configRestartRequested = true;
+		handleEnvChange();
+	};
+
+	const contributedEnv = new ContributedEnvManager(handleEnvChange, mainSdk.logger);
 
 	const createServer =
 		options.createServer ??
-		((onStatusChange: (status: KiloServerStatus) => void, hooks: CreateKiloServerHooks) =>
-			new KiloServerManager({
-				...createKiloServerManagerOptions(mainSdk, onStatusChange),
-				getConfigOverlay: hooks.getConfigOverlay,
+		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
+			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
+	const kiloMcpConfig = options.kiloMcpConfig ?? new KiloMcpConfig(configDirectory, mainSdk.logger);
+
+	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Initialize
+	// the Desktop-owned `mcp` entry before `kilo serve` boots so its first read of
+	// kilo.jsonc already sees the relay entry. Initialization is idempotent and
+	// marker-guarded; a failure never blocks Kilo from starting.
+	const reconcileRelayConfig =
+		options.reconcileWebMcpRelayConfig ??
+		((directory: string, enabled: boolean) =>
+			reconcileWebMcpRelayConfig({
+				configDirectory: directory,
+				appExecutablePath,
+				enabled,
+				logger: mainSdk.logger,
+				kiloMcpConfig,
 			}));
 
-	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
-	// Production builds a KILO_CONFIG_CONTENT overlay (kilo shares host XDG and
-	// no longer reads the app-owned runtime kilo.jsonc). Test hooks keep the
-	// seedMcpConfig shape for ordering / fuse assertions.
-	const seedMcpConfig =
-		options.seedMcpConfig ??
-		(async (directory: string, enabled: boolean): Promise<SeedOutcome> => {
-			// Always prune leftover pre-shared-XDG file seeds under the runtime path.
-			await seedKiloMcpConfig({
-				configDirectory: kiloMcpConfigDirectory(directory),
-				appExecutablePath,
-				enabled: false,
+	const server = createServer(
+		(status) => mainSdk.events.emit("server-status-changed", status),
+		contributedEnv,
+	);
+	const createRelayService =
+		options.createWebMcpRelayService ??
+		(() =>
+			new WebMcpRelayService({
 				logger: mainSdk.logger,
-			});
-
-			if (!enabled) {
-				const cleared = applyManagedMcpOverlayEntry(configOverlay, {
-					name: MCP_ENTRY_NAME,
-					enabled: false,
-				});
-				configOverlay = cleared.overlay;
-				return { kind: "removed", reason: "fuse-off" };
-			}
-
-			const result = buildWebMcpRelayOverlay({
-				appExecutablePath,
-				logger: mainSdk.logger,
-			});
-			if (result.kind !== "ok") {
-				const cleared = applyManagedMcpOverlayEntry(configOverlay, {
-					name: MCP_ENTRY_NAME,
-					enabled: false,
-				});
-				configOverlay = cleared.overlay;
-				return { kind: "skipped-error", reason: result.reason };
-			}
-
-			const applied = applyManagedMcpOverlayEntry(configOverlay, {
-				name: MCP_ENTRY_NAME,
-				entry: result.entry,
-			});
-			configOverlay = applied.overlay;
-			mainSdk.logger.info(
-				`Contributed WebMCP relay overlay using @mcp-b/webmcp-local-relay@${result.version}.`,
-			);
-			return {
-				kind: "written",
-				reason: "created",
-				entry: result.entry,
-			};
-		});
-
-	const extraSeeds: ManagedMcpSeedFn[] = [];
-	let extrasClosed = false;
-
-	const managedMcpService: KiloManagedMcpService = {
-		configDirectory,
-		registerSeed(seed) {
-			if (extrasClosed) {
-				void seed().catch((error) => {
-					mainSdk.logger.warn(
-						`Late managed MCP seed failed: ${error instanceof Error ? error.message : String(error)}`,
-					);
-				});
-				return;
-			}
-			extraSeeds.push(seed);
-		},
-		async seedEntry(entryOptions) {
-			const label = entryOptions.label ?? entryOptions.name;
-			// Prune leftover pre-shared-XDG file seeds; kilo no longer reads them.
-			await seedManagedMcpEntry({
-				configDirectory,
-				name: entryOptions.name,
-				enabled: false,
-				logger: mainSdk.logger,
-				label: `${label} (stale file seed)`,
-			});
-
-			const applied = applyManagedMcpOverlayEntry(configOverlay, {
-				name: entryOptions.name,
-				...(entryOptions.entry !== undefined ? { entry: entryOptions.entry } : {}),
-				...(entryOptions.enabled !== undefined ? { enabled: entryOptions.enabled } : {}),
-			});
-			configOverlay = applied.overlay;
-			if (applied.outcome.kind === "written") {
-				mainSdk.logger.info(
-					`Contributed ${label} overlay mcp["${entryOptions.name}"] (${applied.outcome.reason}).`,
-				);
-			}
-			return applied.outcome;
-		},
-	};
-
-	const server = createServer((status) => mainSdk.events.emit("server-status-changed", status), {
-		getConfigOverlay,
-	});
+			}));
+	let relayService: WebMcpRelayServiceHandle | undefined;
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
 	//
-	// (1) detect fuse, (2) contribute relay overlay (or clear on fuse-off),
-	// (3) run any plugin-registered seeds, (4) start main-owned `:9345`
-	// rendezvous, (5) then start kilo serve. The first await yields so later
-	// plugins' mainRegister can call registerSeed before extras run. A seed
-	// failure never blocks startup.
+	// (1) detect fuse, (2) reconcile the Desktop-owned entry in kilo.jsonc,
+	// (3) start the in-process `:9345` rendezvous, (4) then allow lazy Kilo
+	// startup. Feature boot awaits this promise, so the renderer's first relay
+	// scan happens after the rendezvous attempt. An initialization or relay
+	// failure never blocks Kilo startup; its later MCP child can still bind the
+	// port through the relay package's normal fallback behavior.
 	//
-	// The seed promise is shared: EVERY caller that reaches `ensureRunning`
-	// (mainRegister here, the `getConnection` capability, `server.restart`)
-	// awaits the same promise, so a renderer that calls `getConnection` in
-	// the seed window cannot bypass the ordering and race the overlay.
-	const seedComplete = (async () => {
+	// Every path that can start or restart Kilo awaits the same readiness
+	// promise, so no caller can race the config write.
+	const configReady = (async () => {
 		try {
 			const enabled = await runAsNodeEnabled();
-			const outcome = await seedMcpConfig(runtimeDirectory, enabled);
-			webMcpRelaySeeded = seedLeftRelayEntry(outcome);
-			if (!webMcpRelaySeeded && configOverlay?.mcp?.[MCP_ENTRY_NAME] !== undefined) {
-				configOverlay = applyManagedMcpOverlayEntry(configOverlay, {
-					name: MCP_ENTRY_NAME,
-					enabled: false,
-				}).overlay;
-			}
-			// Test hooks that return "written" without setting the overlay still
-			// need a present mcp key so overlay assertions stay realistic.
-			if (
-				webMcpRelaySeeded &&
-				configOverlay?.mcp?.[MCP_ENTRY_NAME] === undefined &&
-				options.seedMcpConfig
-			) {
-				configOverlay = applyManagedMcpOverlayEntry(configOverlay, {
-					name: MCP_ENTRY_NAME,
-					entry: { type: "local", command: ["test"], enabled: true },
-				}).overlay;
-			}
-			const registered = extraSeeds.splice(0);
-			extrasClosed = true;
-			for (const seed of registered) {
-				try {
-					await seed();
-				} catch (error) {
-					mainSdk.logger.warn(
-						`Managed MCP seed failed: ${error instanceof Error ? error.message : String(error)}`,
-					);
-				}
-			}
-
-			// Bind :9345 before (or while) kilo boots so the renderer's widget
-			// first-scan hits a live rendezvous. Do not await readiness on the
-			// seed path — cold Electron RUN_AS_NODE spawn is 20–40s; kick and
-			// let getConnection / chat proceed in parallel.
-			if (webMcpRelaySeeded) {
-				scheduleWebMcpRendezvous();
+			const outcome = await reconcileRelayConfig(configDirectory, enabled);
+			if (configLeftRelayEntry(outcome) && !disposed) {
+				relayService = createRelayService();
+				await relayService.start();
 			}
 		} catch (error) {
-			extrasClosed = true;
-			webMcpRelaySeeded = false;
-			configOverlay = applyManagedMcpOverlayEntry(configOverlay, {
-				name: MCP_ENTRY_NAME,
-				enabled: false,
-			}).overlay;
 			mainSdk.logger.warn(
-				`WebMCP relay seed failed: ${error instanceof Error ? error.message : String(error)}`,
+				`WebMCP initialization failed: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	})();
 
-	const createRelaySupervisor =
-		options.createWebMcpRelaySupervisor ??
-		(options.createServer
-			? // Test harnesses inject `createServer`; do not spawn a real Electron
-				// relay under vitest unless the test opts in via the hook above.
-				() => ({ start: async () => true, dispose() {} })
-			: () =>
-					new WebMcpRelaySupervisor({
-						appExecutablePath,
-						logger: mainSdk.logger,
-					}));
-
-	let relaySupervisor: WebMcpRelaySupervisorHandle | undefined;
-	let rendezvousStarted = false;
-
-	function scheduleWebMcpRendezvous(): void {
-		if (rendezvousStarted || !webMcpRelaySeeded) return;
-		rendezvousStarted = true;
-		relaySupervisor = createRelaySupervisor();
-		void relaySupervisor.start().then((ok) => {
-			if (!ok) {
-				// Allow a later getConnection / restart to retry once.
-				rendezvousStarted = false;
-			}
-		});
-	}
-
-	async function ensureRunningAfterSeed(): Promise<KiloServerConnection> {
-		await seedComplete;
-		// Rendezvous may already be starting from the seed path; retry if the
-		// first attempt failed before kilo came up.
-		if (webMcpRelaySeeded) scheduleWebMcpRendezvous();
+	async function ensureRunningAfterConfig(): Promise<KiloServerConnection> {
+		await configReady;
 		return server.ensureRunning();
 	}
 
-	// Kick off the initial start-up after the seed. The manager records and
-	// emits startup failures; keep app initialization alive so a later
-	// connection request can retry without producing an unhandled rejection.
-	void ensureRunningAfterSeed().catch(() => undefined);
+	// NOTE: no eager `ensureRunning()`. The server spawns lazily on the
+	// first `server.getConnection` request (typically from the renderer
+	// when it mounts the Kilo UI). Feature boot awaits `configReady`, while
+	// connection callers also await it defensively.
+	// Lazy spawn ensures env contributions from other features are captured
+	// in the initial spawn env — avoiding an immediate restart that
+	// would break the renderer's cached connection URL.
 
 	const connectionService = {
-		getConnection: async () => ensureRunningAfterSeed(),
+		// Route through ensureRunningAfterConfig so getConnection callers
+		// (renderer mount + `server.getConnection` RPC) await `configReady` and
+		// cannot spawn Kilo before the atomic config update lands.
+		getConnection: async () => ensureRunningAfterConfig(),
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {
 		"server.getConnection": connectionService.getConnection,
 		"server.restart": async () => {
 			// Restart may run long after boot, but wait defensively in case it
-			// races the very first seed on fast machines.
-			await seedComplete;
+			// races the initial config write on fast machines.
+			await configReady;
 			return server.restart();
 		},
 		"server.status": async () => server.status,
 	};
 
+	const kiloService: KiloServerCapabilityService = {
+		serverEnv: {
+			contribute: contributedEnv.contribute.bind(contributedEnv),
+		},
+		mcpConfig: {
+			set: async (sourceId, entryId, entry) => {
+				await configReady;
+				const outcome = await kiloMcpConfig.setMcpEntry(sourceId, entryId, entry);
+				assertMcpConfigMutationAccepted(sourceId, entryId, outcome, "set");
+				if (outcome.kind === "written") requestConfigRestart();
+			},
+			remove: async (sourceId, entryId) => {
+				await configReady;
+				const outcome = await kiloMcpConfig.removeMcpEntry(sourceId, entryId);
+				assertMcpConfigMutationAccepted(sourceId, entryId, outcome, "remove");
+				if (outcome.kind === "removed") requestConfigRestart();
+			},
+		},
+		restartServer: async () => {
+			// Wait for config readiness for the same reason as `server.restart`.
+			await configReady;
+			await server.restart();
+		},
+	};
+
 	mainSdk.plugins.expose("connectionService", connectionService);
-	mainSdk.plugins.expose("managedMcpService", managedMcpService);
+	mainSdk.plugins.expose("kiloService", kiloService);
 	mainSdk.channels(kiloServerContract).handleAll(service);
 	mainSdk.onDispose(() => {
-		relaySupervisor?.dispose();
+		disposed = true;
+		handleEnvChange.cancel();
+		relayService?.dispose();
 		server.dispose();
 	});
+
+	return configReady;
 }
 
-export function mainRegister(mainSdk: MainSdk): void {
-	registerKiloServer(mainSdk);
+export function mainRegister(mainSdk: MainSdk): Promise<void> {
+	return registerKiloServer(mainSdk);
 }
-
-export type { SeededMcpEntry, SeedOutcome };

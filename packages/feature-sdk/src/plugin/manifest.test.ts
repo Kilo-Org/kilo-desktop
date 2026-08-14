@@ -25,6 +25,7 @@ const validManifest = {
 				priority: 5,
 			},
 		],
+		settings: [{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 }],
 	},
 };
 
@@ -52,6 +53,31 @@ describe("pluginManifestSchema", () => {
 			},
 		]);
 		expect(manifest.zones).toEqual([{ id: "detail-panel" }]);
+		expect(manifest.contributes.settings).toEqual([
+			{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 },
+		]);
+	});
+
+	it("accepts a transparent shell surface for pages that render their own surfaces", () => {
+		const manifest = parsePluginManifest({
+			...validManifest,
+			contributes: {
+				routes: [{ path: "/workspace", component: "Workspace", surface: "transparent" }],
+			},
+		});
+
+		expect(manifest.contributes.routes[0]?.surface).toBe("transparent");
+	});
+
+	it("rejects unknown page surfaces", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: {
+				routes: [{ path: "/workspace", component: "Workspace", surface: "glass" }],
+			},
+		});
+
+		expect(result.success).toBe(false);
 	});
 
 	it("defaults contributes and its arrays to empty", () => {
@@ -67,6 +93,7 @@ describe("pluginManifestSchema", () => {
 			routes: [],
 			nav: [],
 			zones: [],
+			settings: [],
 		});
 	});
 
@@ -81,6 +108,7 @@ describe("pluginManifestSchema", () => {
 		expect(manifest.contributes.routes).toEqual([]);
 		expect(manifest.contributes.providers).toEqual([]);
 		expect(manifest.contributes.zones).toEqual([]);
+		expect(manifest.contributes.settings).toEqual([]);
 		expect(manifest.contributes.nav).toHaveLength(1);
 	});
 
@@ -108,6 +136,17 @@ describe("pluginManifestSchema", () => {
 		"rejects non-kebab-case id %j",
 		(id) => {
 			expect(pluginManifestSchema.safeParse({ ...validManifest, id }).success).toBe(false);
+		},
+	);
+
+	it.each(["General", "my_section", "-mcp", "mcp-", "anaconda--mcp", ""])(
+		"rejects non-kebab-case settings id %j",
+		(id) => {
+			const result = pluginManifestSchema.safeParse({
+				...validManifest,
+				contributes: { settings: [{ id, title: "X", component: "Panel" }] },
+			});
+			expect(result.success).toBe(false);
 		},
 	);
 
@@ -228,6 +267,15 @@ describe("pluginManifestSchema", () => {
 			zones: [{ id: "detail-panel" }],
 		});
 		expect(zoneDeclarationsResult.success).toBe(false);
+
+		const settingsResult = pluginManifestSchema.safeParse({
+			id: "headless",
+			displayName: "Headless",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			contributes: { settings: [{ id: "headless", title: "Headless", component: "Panel" }] },
+		});
+		expect(settingsResult.success).toBe(false);
 	});
 
 	it("allows nav-only contributions without a web entry", () => {
@@ -259,7 +307,7 @@ describe("pluginManifestSchema", () => {
 	it("rejects unknown contributes keys (strict)", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
-			contributes: { providers: [], routes: [], nav: [], zones: [], menus: [] },
+			contributes: { providers: [], routes: [], nav: [], zones: [], settings: [], menus: [] },
 		});
 		expect(result.success).toBe(false);
 	});

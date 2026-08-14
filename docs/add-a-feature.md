@@ -24,8 +24,9 @@ A feature ships two halves that communicate only through the SDK:
   `plugin.json` and register in `BUNDLED_PLUGINS`.
 - **UI and lifecycle surfaces**: declared statically in `plugin.json` `contributes` —
   `providers` (app-lifetime React providers), `routes` (full pages the shell mounts),
-  `nav` (sidebar entries), and `zones` (plugin-lifetime zone registrations). No shell
-  edits. The imperative `sdk.contribute` remains for conditional widgets.
+  `nav` (sidebar entries), `zones` (plugin-lifetime zone registrations), and
+  `settings` (settings-page sections on `/settings` — a contribution point, not a
+  zone). No shell edits. The imperative `sdk.contribute` remains for conditional widgets.
 
 ### Reporting boot progress
 

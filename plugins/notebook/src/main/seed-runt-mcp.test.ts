@@ -4,9 +4,9 @@ import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
 import {
 	buildRuntMcpEntry,
-	registerRuntMcpSeed,
+	reconcileRuntMcpConfig,
 	RUNT_MCP_ENTRY_NAME,
-	type KiloManagedMcpService,
+	type KiloMcpConfigService,
 } from "./seed-runt-mcp.js";
 
 describe("buildRuntMcpEntry", () => {
@@ -19,62 +19,52 @@ describe("buildRuntMcpEntry", () => {
 	});
 });
 
-describe("registerRuntMcpSeed", () => {
-	it("registers a managed seed that contributes the runt MCP overlay entry", async () => {
-		const seedEntry = vi.fn(async () => ({ kind: "written" as const, reason: "created" as const }));
-		const registerSeed = vi.fn((seed: () => Promise<void>) => {
-			void seed();
-		});
-		const managedMcpService: KiloManagedMcpService = {
-			configDirectory: "/runtime/config/kilo",
-			registerSeed,
-			seedEntry,
+describe("reconcileRuntMcpConfig", () => {
+	it("persists the runt MCP entry through kilo-server ownership", async () => {
+		const mcpConfig: KiloMcpConfigService = {
+			set: vi.fn(async () => undefined),
+			remove: vi.fn(async () => undefined),
 		};
 
 		const { mainSdk: notebookSdk, createMainSdk } = createLinkedFakeSdkPair({
 			featureId: "notebook",
 		});
 		const kiloServerSdk = createMainSdk("kilo-server");
-		kiloServerSdk.plugins.expose("managedMcpService", managedMcpService);
+		kiloServerSdk.plugins.expose("kiloService", { mcpConfig });
 
-		registerRuntMcpSeed(notebookSdk, {
+		await reconcileRuntMcpConfig(notebookSdk, {
 			socketPath: "/tmp/runtimed.sock",
 			resolveRuntBinary: () => "/opt/runt-nightly",
 		});
 
-		expect(registerSeed).toHaveBeenCalledOnce();
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(seedEntry).toHaveBeenCalledWith({
-			name: RUNT_MCP_ENTRY_NAME,
-			entry: buildRuntMcpEntry("/opt/runt-nightly", "/tmp/runtimed.sock"),
-			label: "notebook runt MCP",
-		});
+		expect(mcpConfig.set).toHaveBeenCalledWith(
+			"notebook",
+			RUNT_MCP_ENTRY_NAME,
+			buildRuntMcpEntry("/opt/runt-nightly", "/tmp/runtimed.sock"),
+		);
+		expect(mcpConfig.remove).not.toHaveBeenCalled();
 		notebookSdk.dispose();
 		kiloServerSdk.dispose();
 	});
 
-	it("skips seeding when the runt CLI is not staged", async () => {
-		const seedEntry = vi.fn();
-		const registerSeed = vi.fn((seed: () => Promise<void>) => {
-			void seed();
-		});
+	it("removes stale runt configuration when the CLI is not staged", async () => {
+		const mcpConfig: KiloMcpConfigService = {
+			set: vi.fn(async () => undefined),
+			remove: vi.fn(async () => undefined),
+		};
 		const { mainSdk: notebookSdk, createMainSdk } = createLinkedFakeSdkPair({
 			featureId: "notebook",
 		});
 		const kiloServerSdk = createMainSdk("kilo-server");
-		kiloServerSdk.plugins.expose("managedMcpService", {
-			configDirectory: "/runtime/config/kilo",
-			registerSeed,
-			seedEntry,
-		});
+		kiloServerSdk.plugins.expose("kiloService", { mcpConfig });
 
-		registerRuntMcpSeed(notebookSdk, {
+		await reconcileRuntMcpConfig(notebookSdk, {
 			socketPath: "/tmp/runtimed.sock",
 			resolveRuntBinary: () => undefined,
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(seedEntry).not.toHaveBeenCalled();
+		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", RUNT_MCP_ENTRY_NAME);
+		expect(mcpConfig.set).not.toHaveBeenCalled();
 		notebookSdk.dispose();
 		kiloServerSdk.dispose();
 	});

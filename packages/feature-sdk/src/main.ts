@@ -7,6 +7,10 @@ export type {
 	HostPortContext,
 	MainSdkHost,
 	MainSdkHostDialogOptions,
+	KvStore,
+	KvStoreOptions,
+	KvStoreFactory,
+	MainSdkStorage,
 	MainSdkFetch,
 	MainSdkLogger,
 	MainSdkNet,
@@ -29,3 +33,8 @@ export { FeatureError, type FeatureErrorCode } from "./errors.js";
 export { FeatureRouter, type CreateMainSdkOptions } from "./services/feature-router.js";
 export { EventBus, type FeatureEvent } from "./services/event-bus.js";
 export { CapabilityRegistry } from "./services/capability-registry.js";
+export {
+	createObservableValue,
+	type ObservableValue,
+	type ObservableValueOptions,
+} from "./services/observable-value.js";

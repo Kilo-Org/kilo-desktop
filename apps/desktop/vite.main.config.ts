@@ -29,6 +29,10 @@ export default defineConfig(({ command }) => {
 			alias: {
 				$config: path.resolve(root, "config"),
 			},
+			// Electron main is Node. Vite's client environment otherwise prefers
+			// the `browser` export condition (e.g. `ws/browser.js`, which throws).
+			conditions: ["node"],
+			mainFields: ["module", "jsnext:main", "jsnext"],
 		},
 		build: {
 			lib: {
@@ -37,6 +41,12 @@ export default defineConfig(({ command }) => {
 				fileName: () => "main.js",
 			},
 			rollupOptions: {
+				// Vite treats this lib build as a client consumer, so Rolldown would
+				// default `platform` to `browser` for ESM output. Browser platform does
+				// not inject `module.createRequire`, and CJS deps such as `ws` (pulled
+				// in by `@mcp-b/webmcp-local-relay`) then throw on `require("events")`
+				// via Rolldown's `__require` shim. Pin Node so those requires resolve.
+				platform: "node",
 				external: [
 					"electron",
 					/^@runtimed\/node(?:\/.*)?$/,

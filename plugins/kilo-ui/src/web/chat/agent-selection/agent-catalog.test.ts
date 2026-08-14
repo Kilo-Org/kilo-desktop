@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { Agent } from "@kilocode/sdk/v2/client";
 import { BugIcon, HammerIcon, ListTodoIcon, MessageCircleQuestionIcon } from "lucide-react";
 
-import { buildAgentCatalog, findCatalogAgent, OPTIMISTIC_AGENT_CATALOG } from "./agent-catalog.js";
+import {
+	buildAgentCatalog,
+	cycleCatalogAgent,
+	findCatalogAgent,
+	OPTIMISTIC_AGENT_CATALOG,
+} from "./agent-catalog.js";
 
 function agent(partial: Partial<Agent> & Pick<Agent, "name" | "mode">): Agent {
 	return {
@@ -58,5 +63,17 @@ describe("agent-catalog", () => {
 			"debug",
 		]);
 		expect(findCatalogAgent(OPTIMISTIC_AGENT_CATALOG, "code")?.displayName).toBe("Code");
+	});
+
+	it("cycles forward and wraps around the switcher", () => {
+		expect(cycleCatalogAgent(OPTIMISTIC_AGENT_CATALOG, "code", 1)).toBe("plan");
+		expect(cycleCatalogAgent(OPTIMISTIC_AGENT_CATALOG, "plan", 1)).toBe("ask");
+		expect(cycleCatalogAgent(OPTIMISTIC_AGENT_CATALOG, "ask", 1)).toBe("debug");
+		expect(cycleCatalogAgent(OPTIMISTIC_AGENT_CATALOG, "debug", 1)).toBe("code");
+	});
+
+	it("starts from the first agent when the current name is unknown", () => {
+		expect(cycleCatalogAgent(OPTIMISTIC_AGENT_CATALOG, "missing", 1)).toBe("plan");
+		expect(cycleCatalogAgent(undefined, "code", 1)).toBe("code");
 	});
 });

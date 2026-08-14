@@ -1,4 +1,9 @@
-import { PLUGIN_ROUTE_NAMESPACE } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	PLUGIN_ROUTE_NAMESPACE,
+	type PluginPageSurface as PluginPageSurfaceKind,
+} from "@anaconda-agentic-desktop/feature-sdk";
+
+import type { ReactNode } from "react";
 
 import { PLUGIN_PAGES, findPluginPage, type PluginPage } from "@/features/plugin-pages";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
@@ -13,6 +18,28 @@ type PluginPageViewProps = {
 	/** Injectable for tests; defaults to Electron bridge detection. */
 	desktopAvailable?: boolean;
 };
+
+function PluginPageSurface({
+	children,
+	surface = "default",
+}: {
+	children: ReactNode;
+	surface?: PluginPageSurfaceKind;
+}) {
+	return (
+		<div
+			className={
+				surface === "transparent"
+					? "h-full min-h-0 bg-transparent"
+					: "bg-muted border-border h-full min-h-0 rounded-md border"
+			}
+			data-qa-id="plugin-page-surface"
+			data-surface={surface}
+		>
+			{children}
+		</div>
+	);
+}
 
 /**
  * Resolves a plugin page from the manifest registry at render time — the
@@ -32,14 +59,16 @@ export function PluginPageView({
 
 	if (!page) {
 		return (
-			<div className="mx-auto max-w-xl px-5 py-8">
-				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-not-found">
-					Page not found
-				</h1>
-				<p className="text-muted-foreground mt-1 text-sm">
-					No plugin provides a page at <code className="bg-muted rounded px-1">{path}</code>.
-				</p>
-			</div>
+			<PluginPageSurface>
+				<div className="mx-auto max-w-xl px-5 py-8">
+					<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-not-found">
+						Page not found
+					</h1>
+					<p className="text-muted-foreground mt-1 text-sm">
+						No plugin provides a page at <code className="bg-muted rounded px-1">{path}</code>.
+					</p>
+				</div>
+			</PluginPageSurface>
 		);
 	}
 
@@ -48,17 +77,23 @@ export function PluginPageView({
 	if (!page.browserSafe && !desktopAvailable) {
 		const title = page.title ?? page.path;
 		return (
-			<div className="mx-auto max-w-xl px-5 py-8">
-				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-heading">
-					{title}
-				</h1>
-				<p className="text-muted-foreground mt-1 text-sm" data-qa-id="plugin-page-unavailable">
-					{title} is not available in browser mode. Run the desktop app to use this feature.
-				</p>
-			</div>
+			<PluginPageSurface surface={page.surface}>
+				<div className="mx-auto max-w-xl px-5 py-8">
+					<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-heading">
+						{title}
+					</h1>
+					<p className="text-muted-foreground mt-1 text-sm" data-qa-id="plugin-page-unavailable">
+						{title} is not available in browser mode. Run the desktop app to use this feature.
+					</p>
+				</div>
+			</PluginPageSurface>
 		);
 	}
 
 	const Page = page.component;
-	return <Page path={page.path} search={search} />;
+	return (
+		<PluginPageSurface surface={page.surface}>
+			<Page path={page.path} search={search} />
+		</PluginPageSurface>
+	);
 }

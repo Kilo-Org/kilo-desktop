@@ -11,6 +11,10 @@ import {
 
 import { HEADER_LEADING_ZONE, HEADER_TRAILING_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import {
+	SHELL_LAYOUT_SNAP,
+	SHELL_LAYOUT_SPRING,
+} from "@anaconda-agentic-desktop/ui/lib/shell-motion";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
@@ -36,13 +40,6 @@ const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH_FRACTION = 0.5;
 const PANEL_GAP_PX = 12; // matches w-3 gutter
-
-const panelSpring = {
-	type: "spring" as const,
-	stiffness: 420,
-	damping: 36,
-	mass: 0.85,
-};
 
 function readStoredPanelWidth(): number {
 	try {
@@ -186,7 +183,7 @@ export function ChatPage() {
 		const controls = animate(
 			panelSlotWidth,
 			targetPanelWidth,
-			shouldSpring ? panelSpring : { duration: 0 },
+			shouldSpring ? SHELL_LAYOUT_SPRING : SHELL_LAYOUT_SNAP,
 		);
 		void controls.then(() => {
 			if (!panelOpen) setPanelMounted(false);
@@ -313,8 +310,8 @@ export function ChatPage() {
 			>
 				{/*
 				  Chat column is flex-1 so it tracks shell layout (left-nav open/close) in the
-				  same frame as the CSS width transition. Pixel widths derived from
-				  ResizeObserver lagged that transition and made the right edge jump.
+				  same frame as the nav spring. Pixel widths derived from ResizeObserver
+				  lagged that animation and made the right edge jump.
 				*/}
 				<div
 					className={cn(

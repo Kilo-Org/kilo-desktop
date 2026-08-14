@@ -9,7 +9,7 @@ import {
 } from "./ElectronNotebookHostService.js";
 import type { HostMessagePort } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
-import { registerRuntMcpSeed } from "./seed-runt-mcp.js";
+import { reconcileRuntMcpConfig } from "./seed-runt-mcp.js";
 import type { BuildChannel } from "./socket-path.js";
 
 const connectionArgsSchema = z.object({
@@ -41,7 +41,10 @@ export interface ElectronNotebookHostServiceLike {
 	dispose(): Promise<void>;
 }
 
-export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions = {}): void {
+export async function mainRegister(
+	mainSdk: MainSdk,
+	options: NotebookFeatureOptions = {},
+): Promise<void> {
 	const createHostService =
 		options.createHostService ??
 		((serviceOptions) => new ElectronNotebookHostService(serviceOptions));
@@ -54,7 +57,7 @@ export function mainRegister(mainSdk: MainSdk, options: NotebookFeatureOptions =
 		options.resolveBundleRoot ??
 		(() => resolveNotebookBundleRoot({ candidate: mainSdk.resolvePluginAsset("build/notebook") }));
 
-	registerRuntMcpSeed(mainSdk, {
+	await reconcileRuntMcpConfig(mainSdk, {
 		socketPath: hostService.socketPath,
 		logger: mainSdk.logger,
 		...(options.resolveRuntBinary ? { resolveRuntBinary: options.resolveRuntBinary } : {}),

@@ -1,6 +1,10 @@
 import {
 	AssistantRuntimeProvider,
+	InMemoryThreadListAdapter,
+	ThreadListPrimitive,
+	useAuiState,
 	useLocalRuntime,
+	useRemoteThreadListRuntime,
 	type ChatModelAdapter,
 	type ThreadMessageLike,
 } from "@assistant-ui/react";
@@ -75,6 +79,58 @@ const agentSelection = {
 	isCatalogError: false,
 };
 
+class FocusThreadListAdapter extends InMemoryThreadListAdapter {
+	override async list() {
+		return {
+			threads: [{ remoteId: "existing-session", status: "regular" as const }],
+		};
+	}
+
+	override async fetch(threadId: string) {
+		return { remoteId: threadId, status: "regular" as const };
+	}
+}
+
+const focusThreadListAdapter = new FocusThreadListAdapter();
+
+function ActiveThreadStatus() {
+	const status = useAuiState((state) => state.threadListItem.status);
+	return <output data-qa-id="active-thread-status">{status}</output>;
+}
+
+function ThreadListFocusHarness() {
+	const runtime = useRemoteThreadListRuntime({
+		adapter: focusThreadListAdapter,
+		initialThreadId: "existing-session",
+		runtimeHook: () => useLocalRuntime(stubChatModel),
+	});
+
+	return (
+		<AssistantRuntimeProvider runtime={runtime}>
+			<ThreadListPrimitive.Root>
+				<ThreadListPrimitive.New>New Chat</ThreadListPrimitive.New>
+			</ThreadListPrimitive.Root>
+			<ActiveThreadStatus />
+			<ChatConnectionProvider
+				status={{
+					isPending: false,
+					isError: false,
+					error: null,
+					connectionPromise: Promise.resolve(connection),
+				}}
+			>
+				<ChatAgentSelectionProvider value={agentSelection}>
+					<ChatModelSelectionProvider value={modelSelection}>
+						<div className="h-[480px]">
+							<Thread />
+						</div>
+					</ChatModelSelectionProvider>
+				</ChatAgentSelectionProvider>
+			</ChatConnectionProvider>
+		</AssistantRuntimeProvider>
+	);
+}
+
 function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadMessageLike[] }) {
 	const runtime = useLocalRuntime(stubChatModel, {
 		...(initialMessages === undefined ? {} : { initialMessages }),
@@ -132,12 +188,41 @@ function renderThread(
 	);
 }
 
+function renderThreadListFocusHarness() {
+	const sdk = createFakeSdk({ featureId: "kilo-ui" });
+	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	kiloUiBrowserRegister(mainSdk);
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+	return render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<ThreadListFocusHarness />
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+}
+
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
 });
 
 describe("ComposerDraftFooter", () => {
+	it("focuses the composer after switching from a session to a new chat", async () => {
+		const { baseElement } = renderThreadListFocusHarness();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("active-thread-status")).toHaveTextContent("regular");
+		await screen.getByRole("button", { name: "New Chat" }).click();
+
+		await expect.element(screen.getByTestId("active-thread-status")).toHaveTextContent("new");
+		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toHaveFocus();
+	});
+
 	it("shows the draft footer with the workspace selector on an empty chat", async () => {
 		const { baseElement } = renderThread();
 		const screen = page.elementLocator(baseElement);

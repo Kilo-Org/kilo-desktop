@@ -9,6 +9,7 @@ import {
 	GrepTool,
 	PlanExitToolUI,
 	ReadTool,
+	SkillTool,
 	WebFetchTool,
 	WebSearchTool,
 	WriteTool,
@@ -45,4 +46,5 @@ export default defineToolkit({
 	ask_question: askQuestionTool,
 	request_user_input: askQuestionTool,
 	requestUserInput: askQuestionTool,
+	skill: { type: "backend", render: SkillTool },
 });

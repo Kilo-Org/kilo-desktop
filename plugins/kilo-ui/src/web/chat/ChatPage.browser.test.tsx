@@ -178,7 +178,8 @@ function renderChatPage(options?: {
 	workspaces?: Workspace[];
 }) {
 	const getConnection = options?.getConnection ?? (async () => connection);
-	const prepareSession = options?.prepareSession ?? (async () => ({ directory: "/tmp/chat" }));
+	const prepareSession =
+		options?.prepareSession ?? (async () => ({ directory: "/tmp/chat", workspaceFolders: [] }));
 	const workspaces = options?.workspaces ?? [];
 
 	const kiloUi = createFakeSdk({
@@ -335,7 +336,10 @@ describe("ChatPage", () => {
 
 	it("requests one global connection without preparing a session", async () => {
 		const getConnection = vi.fn(async () => connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/tmp/chat" }));
+		const prepareSession = vi.fn(async () => ({
+			directory: "/tmp/chat",
+			workspaceFolders: [],
+		}));
 		const { baseElement } = renderChatPage({ getConnection, prepareSession });
 		const screen = page.elementLocator(baseElement);
 
@@ -487,6 +491,7 @@ describe("ChatPage", () => {
 		const getConnection = vi.fn(async () => connection);
 		const prepareSession = vi.fn(async ({ workspaceId }: { workspaceId?: string | undefined }) => ({
 			directory: workspaceId ? `/projects/${workspaceId}` : "/tmp/chat",
+			workspaceFolders: [],
 		}));
 		const { baseElement, sdk } = renderChatPage({
 			getConnection,

@@ -95,6 +95,118 @@ describe("asking activity grouping", () => {
 	});
 });
 
+describe("terminal activity labels", () => {
+	it("uses the command description for a single terminal tool", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "bash",
+				args: { command: "pnpm test", description: "Run unit tests" },
+				status: { type: "running" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "terminal",
+			indices: [0],
+			running: true,
+			requiresAction: false,
+		});
+
+		expect(stats.commandSummary).toBe("Run unit tests");
+		expect(getKindMeta("terminal").liveLabel(stats)).toBe("Running Run unit tests");
+		expect(getKindMeta("terminal").doneLabel(stats)).toBe("Ran Run unit tests");
+	});
+});
+
+describe("skill activity grouping", () => {
+	it("maps the skill tool into its own subgroup", () => {
+		expect(getGroupKeyForTool("skill")).toBe("group-skill");
+		expect(getGroupKeyForTool("Skill")).toBe("group-skill");
+		expect(activityKindFromGroupKey("group-skill")).toBe("skill");
+		expect(getActivityKind({ type: "tool-call", toolName: "skill" })).toBe("skill");
+	});
+
+	it("does not treat skill as an MCP server prefix", () => {
+		expect(getMcpServerFromToolName("skill")).toBeUndefined();
+	});
+
+	it("labels live and completed skill states", () => {
+		expect(getKindMeta("skill").liveLabel({ count: 1, files: 0, skill: "write-vitest" })).toBe(
+			"Reading Skill",
+		);
+		expect(getKindMeta("skill").doneLabel({ count: 1, files: 0, skill: "write-vitest" })).toBe(
+			"Read Skill",
+		);
+		expect(getKindMeta("skill").doneLabel({ count: 2, files: 0 })).toBe("Read 2 Skills");
+	});
+
+	it("pulls the skill name into segment stats", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "skill",
+				args: { name: "write-vitest" },
+				status: { type: "complete" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "skill",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.skill).toBe("write-vitest");
+	});
+
+	it("omits a skill name when the subgroup loaded more than one", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "skill", args: { name: "write-vitest" } },
+			{ type: "tool-call", toolName: "skill", args: { name: "write-e2e-test" } },
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "skill",
+			indices: [0, 1],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.skill).toBeUndefined();
+		expect(getKindMeta("skill").doneLabel(stats)).toBe("Read 2 Skills");
+	});
+
+	it("keeps skill calls out of the generic tools group", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "skill", args: { name: "write-vitest" } },
+			{ type: "tool-call", toolName: "task" },
+		];
+		expect(parts.map(getActivityKind)).toEqual(["skill", "tools"]);
+		const summary = summarizeActivity(
+			parts,
+			parts.map((_, i) => i),
+		);
+		expect(summary.segments.map((s) => s.kind)).toEqual(["skill", "tools"]);
+		expect(summary.iconItems.map((i) => i.label)).toEqual(["Skill", "Tools"]);
+	});
+});
+
+describe("terminal activity labels", () => {
+	it("shows the command count for multiple terminal tools", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "bash", args: { command: "pnpm lint" } },
+			{ type: "tool-call", toolName: "bash", args: { command: "pnpm test" } },
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "terminal",
+			indices: [0, 1],
+			running: true,
+			requiresAction: false,
+		});
+
+		expect(stats.commandSummary).toBeUndefined();
+		expect(getKindMeta("terminal").liveLabel(stats)).toBe("Running 2 commands");
+		expect(getKindMeta("terminal").doneLabel(stats)).toBe("Ran 2 commands");
+	});
+});
+
 describe("MCP activity grouping", () => {
 	it("maps consecutive same-server tools into one mcp subgroup key", () => {
 		expect(getGroupKeyForTool("atlassian_getJiraIssue")).toBe("group-mcp-atlassian");

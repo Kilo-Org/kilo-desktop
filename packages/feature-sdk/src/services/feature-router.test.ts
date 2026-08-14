@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { defineMethod } from "../channel-map.js";
 import { FeatureError } from "../errors.js";
+import type { KvStoreFactory } from "../types/sdk.js";
 import { FeatureRouter } from "./feature-router.js";
 import { noop, testChannels } from "./test-helpers.js";
 
@@ -43,6 +44,67 @@ describe("FeatureRouter", () => {
 		const mainSdk = new FeatureRouter().createMainSdk("my-feature");
 		expect(() => mainSdk.boot.reportProgress("nobody listens")).not.toThrow();
 	});
+
+	it("storage.kv delegates to and caches the injected factory by namespace", () => {
+		let createCount = 0;
+		const createKvStore: KvStoreFactory = <T extends Record<string, unknown>>(options: {
+			defaults: T;
+		}) => {
+			createCount++;
+			let state = { ...options.defaults } as T;
+			return {
+				snapshot: () => ({ ...state }),
+				get: <K extends keyof T>(key: K) => state[key],
+				set: (patch: Partial<T>) => {
+					state = { ...state, ...patch };
+					return { ...state };
+				},
+				clear: () => {
+					state = { ...options.defaults };
+				},
+			};
+		};
+		const mainSdk = new FeatureRouter().createMainSdk("my-feature", { createKvStore });
+
+		const settings = mainSdk.storage.kv({ namespace: "settings", defaults: { enabled: true } });
+		const reused = mainSdk.storage.kv({ namespace: "settings", defaults: { enabled: true } });
+		const cache = mainSdk.storage.kv({ namespace: "cache", defaults: { value: 1 } });
+
+		expect(settings).toBe(reused);
+		expect(settings).not.toBe(cache);
+		expect(createCount).toBe(2);
+		expect(settings.set({ enabled: false })).toEqual({ enabled: false });
+	});
+
+	it("throws on storage.kv when no factory is provided", () => {
+		const mainSdk = new FeatureRouter().createMainSdk("my-feature");
+		expect(() => mainSdk.storage.kv({ defaults: { enabled: true } })).toThrow(
+			/no key\/value storage/,
+		);
+	});
+
+	it.each(["../shared", "foo/bar", "foo\\bar", ""])(
+		"rejects unsafe KV namespace %j before calling the factory",
+		(namespace) => {
+			let createCount = 0;
+			const createKvStore: KvStoreFactory = <T extends Record<string, unknown>>(options: {
+				defaults: T;
+			}) => {
+				createCount++;
+				return {
+					snapshot: () => ({ ...options.defaults }),
+					get: <K extends keyof T>(key: K): T[K] => options.defaults[key],
+					set: (patch: Partial<T>): T => ({ ...options.defaults, ...patch }) as T,
+					clear: () => undefined,
+				};
+			};
+			const mainSdk = new FeatureRouter().createMainSdk("my-feature", { createKvStore });
+			expect(() => mainSdk.storage.kv({ namespace, defaults: { value: 1 } })).toThrow(
+				/Invalid KV namespace/,
+			);
+			expect(createCount).toBe(0);
+		},
+	);
 
 	it("routes transferred ports only to the feature-scoped handler", async () => {
 		const router = new FeatureRouter();

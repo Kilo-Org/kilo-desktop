@@ -137,18 +137,27 @@ describe("kilo-ui mainRegister", () => {
 	});
 
 	it("prepares a session in a workspace primary folder", async () => {
-		const { mainSdk, project, exposeConnectionService } = boot();
+		const { mainSdk, project, userData, exposeConnectionService } = boot();
 		exposeConnectionService();
+		const reference = path.join(userData, "Reference");
+		fs.mkdirSync(reference);
 
 		const created = (await mainSdk.invoke("create", {
-			folders: [{ path: project, isPrimary: true }],
+			folders: [
+				{ path: project, isPrimary: true },
+				{ path: reference, isPrimary: false },
+			],
 		})) as { id: string; folders: Array<{ path: string; isPrimary: boolean }> };
 		const primary = created.folders.find((folder) => folder.isPrimary);
 		expect(primary).toBeDefined();
 
 		await expect(
 			mainSdk.invoke("chat.prepareSession", { workspaceId: created.id }),
-		).resolves.toEqual({ directory: primary!.path, workspaceId: created.id });
+		).resolves.toEqual({
+			directory: primary!.path,
+			workspaceId: created.id,
+			workspaceFolders: created.folders.map(({ path, isPrimary }) => ({ path, isPrimary })),
+		});
 	});
 
 	it("creates unique unscoped session directories only when prepared", async () => {
@@ -161,6 +170,8 @@ describe("kilo-ui mainRegister", () => {
 		expect(path.dirname(first.directory)).toBe(chatsDirectory);
 		expect(fs.statSync(first.directory).isDirectory()).toBe(true);
 		expect(fs.statSync(second.directory).isDirectory()).toBe(true);
+		expect(first.workspaceFolders).toEqual([]);
+		expect(second.workspaceFolders).toEqual([]);
 	});
 
 	it("rejects session preparation for a missing workspace", async () => {

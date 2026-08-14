@@ -25,6 +25,7 @@ function makePage(overrides: Partial<PluginPage> = {}): PluginPage {
 		pluginId: "demo",
 		path: "/plugins/demo",
 		title: "Demo",
+		surface: "default",
 		component: DemoPage,
 		browserSafe: true,
 		splat: "demo",
@@ -45,9 +46,29 @@ describe("PluginPageView", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("demo-page")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("plugin-page-surface"))
+			.toHaveAttribute("data-surface", "default");
 		expect(screen.getByTestId("demo-page").query()?.textContent).toBe(
 			'/plugins/demo search={"filter":"open"}',
 		);
+	});
+
+	it("allows split-pane pages to opt out of the default shell surface", async () => {
+		const { baseElement } = render(
+			<PluginPageView
+				splat="demo"
+				search={{}}
+				pages={[makePage({ surface: "transparent" })]}
+				desktopAvailable={false}
+			/>,
+		);
+		const screen = page.elementLocator(baseElement);
+		const surface = screen.getByTestId("plugin-page-surface");
+
+		await expect.element(surface).toHaveAttribute("data-surface", "transparent");
+		expect(surface.query()?.classList.contains("bg-transparent")).toBe(true);
+		expect(surface.query()?.classList.contains("bg-muted")).toBe(false);
 	});
 
 	it("renders a not-found state for unknown paths", async () => {

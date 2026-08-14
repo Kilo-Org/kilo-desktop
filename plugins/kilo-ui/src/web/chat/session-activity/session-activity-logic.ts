@@ -1,8 +1,13 @@
+import type { KiloSessionPreparation } from "../../../contracts/chat/schemas.js";
+
 /** Nested under Kilo session `metadata` for every session this app creates. */
 export const ANACONDA_METADATA_KEY = "anaconda";
 
+export type AnacondaWorkspaceFolder = KiloSessionPreparation["workspaceFolders"][number];
+
 export type AnacondaSessionMetadata = {
 	workspaceId?: string;
+	workspaceFolders?: AnacondaWorkspaceFolder[];
 };
 
 type SessionStatusType = "busy" | "retry" | "idle";
@@ -54,11 +59,15 @@ const asFiniteNumber = (value: unknown): number | undefined =>
 const asStatusType = (value: unknown): SessionStatusType | undefined =>
 	value === "busy" || value === "retry" || value === "idle" ? value : undefined;
 
-export function buildAnacondaSessionMetadata(input?: { workspaceId?: string | undefined }): {
+export function buildAnacondaSessionMetadata(input?: {
+	workspaceId?: string | undefined;
+	workspaceFolders?: AnacondaWorkspaceFolder[] | undefined;
+}): {
 	metadata: { [ANACONDA_METADATA_KEY]: AnacondaSessionMetadata };
 } {
 	const anaconda: AnacondaSessionMetadata = {};
 	if (input?.workspaceId) anaconda.workspaceId = input.workspaceId;
+	if (input?.workspaceFolders?.length) anaconda.workspaceFolders = input.workspaceFolders;
 	return { metadata: { [ANACONDA_METADATA_KEY]: anaconda } };
 }
 
@@ -75,6 +84,17 @@ export function hasAnacondaSessionMetadata(metadata: unknown): boolean {
 
 export function readWorkspaceIdFromMetadata(metadata: unknown): string | undefined {
 	return asString(readAnacondaSessionMetadata(metadata)?.workspaceId);
+}
+
+export function readWorkspaceFoldersFromMetadata(metadata: unknown): AnacondaWorkspaceFolder[] {
+	const folders = readAnacondaSessionMetadata(metadata)?.workspaceFolders;
+	if (!Array.isArray(folders)) return [];
+	return folders.flatMap((folder) => {
+		const record = asRecord(folder);
+		const folderPath = asString(record?.path);
+		if (!folderPath || typeof record?.isPrimary !== "boolean") return [];
+		return [{ path: folderPath, isPrimary: record.isPrimary }];
+	});
 }
 
 export type SessionActivityPatch = Partial<

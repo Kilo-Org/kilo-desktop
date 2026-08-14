@@ -12,6 +12,9 @@ import {
 import type {
 	ChannelHandlerMap,
 	ChannelMap,
+	KvStore,
+	KvStoreFactory,
+	KvStoreOptions,
 	MainSdk,
 	MainSdkFetch,
 	MainSdkLogger,
@@ -27,6 +30,29 @@ const noopMainSdkLogger = {
 	warn: noop,
 	error: noop,
 } satisfies MainSdkLogger;
+
+function createInMemoryKvStoreFactory(): KvStoreFactory {
+	return <T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T> => {
+		const defaults = { ...options.defaults } as T;
+		let state: T = { ...defaults };
+		return {
+			snapshot: () => ({ ...state }),
+			get: (key) => state[key],
+			set: (patch) => {
+				const next = { ...state } as T;
+				for (const key of Object.keys(patch) as Array<keyof T>) {
+					const value = patch[key];
+					if (value !== undefined) next[key] = value as T[typeof key];
+				}
+				state = next;
+				return { ...next };
+			},
+			clear: () => {
+				state = { ...defaults };
+			},
+		};
+	};
+}
 
 /**
  * In-memory `sdk.fs` fake mirroring the production scoping model: paths are
@@ -480,6 +506,8 @@ export interface FakeMainSdkOptions {
 	fetch?: MainSdkFetch;
 	/** Optional desktop host capabilities for main-process plugin tests. */
 	host?: MainSdk["host"];
+	/** Optional KV factory; defaults to an isolated in-memory implementation. */
+	createKvStore?: KvStoreFactory;
 	/**
 	 * Receive `mainSdk.boot.reportProgress(msg)` calls. Defaults to a no-op
 	 * (production behaviour after `bootFeatures` returns). Pass a spy to
@@ -494,10 +522,12 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 	const featureId = options?.featureId ?? "test-feature";
 	const router = options?.services?.featureRouter ?? new FeatureRouter();
 	const pluginDir = options?.pluginDir;
+	const createKvStore = options?.createKvStore ?? createInMemoryKvStoreFactory();
 	const mainSdk = router.createMainSdk(featureId, {
 		logger: options?.logger ?? noopMainSdkLogger,
 		fetch: options?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
 		...(options?.host ? { host: options.host } : {}),
+		createKvStore,
 		resolveStorageDir: () => {
 			if (options?.storageDir !== undefined) return options.storageDir;
 			// Node-only, resolved lazily via process.getBuiltinModule so this
@@ -525,6 +555,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		events: mainSdk.events,
 		plugins: mainSdk.plugins,
 		boot: mainSdk.boot,
+		storage: mainSdk.storage,
 		ports: mainSdk.ports,
 		host: mainSdk.host,
 		// Delegate instead of spreading — spreading would eagerly invoke the
@@ -547,18 +578,25 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
  * registry, and FeatureRouter. Use this for cross-boundary feature tests that
  * should exercise the browser-mode semantics without hand-wiring services.
  */
-export function createLinkedFakeSdkPair(options?: { featureId?: string }): {
+export function createLinkedFakeSdkPair(options?: {
+	featureId?: string;
+	main?: Omit<FakeMainSdkOptions, "featureId" | "services">;
+}): {
 	rendererSdk: FakeSdk;
 	mainSdk: FakeMainSdk;
-	createMainSdk(featureId: string): FakeMainSdk;
+	createMainSdk(
+		featureId: string,
+		options?: Omit<FakeMainSdkOptions, "featureId" | "services">,
+	): FakeMainSdk;
 } {
 	const featureId = options?.featureId ?? "test-feature";
 	const services = buildFakeServices({});
 	const rendererSdk = applySdkOverrides(createSdk(featureId, services), services, {});
-	const mainSdk = createFakeMainSdk({ featureId, services });
+	const mainSdk = createFakeMainSdk({ featureId, services, ...options?.main });
 	return {
 		rendererSdk,
 		mainSdk,
-		createMainSdk: (targetFeatureId) => createFakeMainSdk({ featureId: targetFeatureId, services }),
+		createMainSdk: (targetFeatureId, targetOptions) =>
+			createFakeMainSdk({ featureId: targetFeatureId, services, ...targetOptions }),
 	};
 }

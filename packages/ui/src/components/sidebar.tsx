@@ -4,7 +4,19 @@ import * as React from "react";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
+import {
+	animate,
+	motion,
+	useMotionValue,
+	useReducedMotion,
+	useTransform,
+	type MotionValue,
+} from "motion/react";
 
+import {
+	SHELL_LAYOUT_SNAP,
+	SHELL_LAYOUT_SPRING,
+} from "@anaconda-agentic-desktop/ui/lib/shell-motion";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
@@ -22,7 +34,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftIcon, SearchIcon } from "lucide-react";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -39,6 +51,7 @@ type SidebarContextProps = {
 	setOpenMobile: (open: boolean) => void;
 	isMobile: boolean;
 	toggleSidebar: () => void;
+	progress: MotionValue<number>;
 };
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
@@ -67,11 +80,13 @@ function SidebarProvider({
 }) {
 	const isMobile = false;
 	const [openMobile, setOpenMobile] = React.useState(false);
+	const reduceMotion = useReducedMotion();
 
 	// This is the internal state of the sidebar.
 	// We use openProp and setOpenProp for control from outside the component.
 	const [_open, _setOpen] = React.useState(defaultOpen);
 	const open = openProp ?? _open;
+	const progress = useMotionValue(open ? 1 : 0);
 	const setOpen = React.useCallback(
 		(value: boolean | ((value: boolean) => boolean)) => {
 			const openState = typeof value === "function" ? value(open) : value;
@@ -83,8 +98,13 @@ function SidebarProvider({
 
 			// This sets the cookie to keep the sidebar state.
 			document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+			void animate(
+				progress,
+				openState ? 1 : 0,
+				reduceMotion ? SHELL_LAYOUT_SNAP : SHELL_LAYOUT_SPRING,
+			);
 		},
-		[setOpenProp, open],
+		[setOpenProp, open, progress, reduceMotion],
 	);
 
 	// Helper to toggle the sidebar.
@@ -118,8 +138,9 @@ function SidebarProvider({
 			openMobile,
 			setOpenMobile,
 			toggleSidebar,
+			progress,
 		}),
-		[state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+		[state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, progress],
 	);
 
 	return (
@@ -158,7 +179,9 @@ function Sidebar({
 	variant?: "sidebar" | "floating" | "inset";
 	collapsible?: "offcanvas" | "icon" | "none";
 }) {
-	const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+	const { isMobile, state, openMobile, setOpenMobile, progress } = useSidebar();
+	const gapWidth = useTransform(progress, [0, 1], ["0.75rem", SIDEBAR_WIDTH]);
+	const offcanvasOffset = useTransform(progress, [0, 1], [`-${SIDEBAR_WIDTH}`, "0rem"]);
 
 	if (collapsible === "none") {
 		return (
@@ -210,39 +233,32 @@ function Sidebar({
 			data-side={side}
 			data-slot="sidebar"
 		>
-			{/* This is what handles the sidebar gap on desktop */}
-			<div
+			<motion.div
 				data-slot="sidebar-gap"
-				className={cn(
-					"relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-					"group-data-[collapsible=offcanvas]:w-0",
-					"group-data-[side=right]:rotate-180",
-					variant === "floating" || variant === "inset"
-						? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-						: "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
-				)}
+				className="relative bg-transparent group-data-[side=right]:rotate-180"
+				style={{ width: gapWidth }}
 			/>
-			<div
+			<motion.div
 				data-slot="sidebar-container"
 				data-side={side}
+				style={side === "left" ? { left: offcanvasOffset } : { right: offcanvasOffset }}
 				className={cn(
-					"fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-					// Adjust the padding for floating and inset variants.
+					"fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width)",
 					variant === "floating" || variant === "inset"
 						? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
 						: "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
 					className,
 				)}
-				{...props}
 			>
 				<div
 					data-sidebar="sidebar"
 					data-slot="sidebar-inner"
 					className="bg-sidebar group-data-[variant=floating]:ring-sidebar-border flex size-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1"
+					{...props}
 				>
 					{children}
 				</div>
-			</div>
+			</motion.div>
 		</div>
 	);
 }
@@ -315,6 +331,27 @@ function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input
 			className={cn("h-8 w-full bg-background shadow-none", className)}
 			{...props}
 		/>
+	);
+}
+
+function SidebarSearch({ className, ...props }: React.ComponentProps<typeof Input>) {
+	return (
+		<div data-slot="sidebar-search" data-sidebar="search" className="relative py-1">
+			<SearchIcon className="text-muted-foreground pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2" />
+			<Input
+				type="search"
+				data-slot="sidebar-search-input"
+				className={cn(
+					"h-8 w-full border-0 ps-8 text-sm shadow-none",
+					"dark:bg-transparent",
+					"focus-visible:border-0 focus-visible:ring-0",
+					"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5",
+					"rounded-md!",
+					className,
+				)}
+				{...props}
+			/>
+		</div>
 	);
 }
 
@@ -689,6 +726,7 @@ export {
 	SidebarMenuSubItem,
 	SidebarProvider,
 	SidebarRail,
+	SidebarSearch,
 	SidebarSeparator,
 	SidebarTrigger,
 	useSidebar,

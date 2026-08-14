@@ -29,14 +29,16 @@ export const kiloServerStatusSchema = z.discriminatedUnion("status", [
 export type KiloServerConnection = z.infer<typeof kiloServerConnectionSchema>;
 export type KiloServerStatus = z.infer<typeof kiloServerStatusSchema>;
 
-/**
- * Partial Kilo config injected into the spawned server via `KILO_CONFIG_CONTENT`.
- * Overlays are mcp-only for now — widening requires matching Kilo's mergeConfig
- * semantics for other top-level sections.
- */
-export interface KiloConfigOverlay {
-	readonly mcp?: Readonly<Record<string, unknown>>;
-}
+/** Connection request: absolute working directory for the Kilo session. */
+export const kiloGetConnectionInputSchema = z.object({
+	directory: z.string().min(1),
+});
+
+export type KiloGetConnectionInput = z.infer<typeof kiloGetConnectionInputSchema>;
+
+export type KiloMcpEntry = Readonly<Record<string, unknown>>;
+
+// ─── Contract ───────────────────────────────────────────────────────────────────
 
 export const kiloServerContract = defineContract({
 	"server.getConnection": defineMethod(z.undefined(), kiloServerConnectionSchema),
@@ -45,3 +47,56 @@ export const kiloServerContract = defineContract({
 });
 
 export type KiloServerService = InferContract<typeof kiloServerContract>;
+
+// ─── Main-side capability (consumed by other plugins via plugins.get) ───────────
+
+/**
+ * The service object exposed by the kilo-server plugin as a main-side capability.
+ * Contains methods for env contribution, MCP config persistence, and server
+ * restart.
+ */
+export interface KiloServerCapabilityService {
+	readonly [key: string]: unknown;
+	readonly serverEnv: {
+		/**
+		 * Contribute environment variables to the Kilo server spawn.
+		 * Returns a disposer that removes the contribution and triggers a server restart.
+		 */
+		contribute(sourceId: string, env: Record<string, string>): () => void;
+	};
+	readonly mcpConfig: {
+		/**
+		 * Persist a Desktop-owned entry in the app-owned Kilo config. Unknown
+		 * entries and JSONC comments are preserved. Resolves after the atomic
+		 * write; a running Kilo server is restarted through the shared debouncer.
+		 * A source may update only entries it already owns.
+		 */
+		set(sourceId: string, entryId: string, entry: KiloMcpEntry): Promise<void>;
+		/** Remove an entry only when the ownership sidecar assigns it to this source. */
+		remove(sourceId: string, entryId: string): Promise<void>;
+	};
+	/**
+	 * Restart the Kilo server. Resolves when the server is ready again.
+	 * Useful after environment or config changes that require a full respawn.
+	 */
+	restartServer(): Promise<void>;
+}
+
+/**
+ * Capability type for consumers resolving kilo-server via `mainSdk.plugins.get`.
+ *
+ * Usage:
+ * ```ts
+ * const kilo = mainSdk.plugins.get<KiloServerCapabilities>("kilo-server");
+ * kilo?.kiloService.serverEnv.contribute("my-plugin", { MY_VAR: "value" });
+ * await kilo?.kiloService.mcpConfig.set("my-plugin", "my-mcp", {
+ *   type: "remote",
+ *   url: "https://...",
+ * });
+ * await kilo?.kiloService.restartServer();
+ * ```
+ */
+export interface KiloServerCapabilities {
+	readonly [key: string]: unknown;
+	kiloService: KiloServerCapabilityService;
+}

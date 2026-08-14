@@ -7,24 +7,15 @@ import { findRuntArtifact } from "./distribution/artifacts.js";
 export const RUNT_MCP_ENTRY_NAME = "runt";
 
 /** Structural capability shape from kilo-server — asserted, not imported. */
-export type KiloManagedMcpService = {
-	readonly configDirectory: string;
-	registerSeed(seed: () => Promise<void>): void;
-	seedEntry(options: {
-		readonly name: string;
-		readonly entry?: {
-			readonly type: "local";
-			readonly command: readonly [string, ...string[]];
-			readonly environment?: Readonly<Record<string, string>>;
-			readonly enabled: true;
-		};
-		readonly enabled?: boolean;
-		readonly label?: string;
-	}): Promise<unknown>;
+export type KiloMcpConfigService = {
+	set(sourceId: string, entryId: string, entry: Readonly<Record<string, unknown>>): Promise<void>;
+	remove(sourceId: string, entryId: string): Promise<void>;
 };
 
-export type KiloServerManagedMcpCapabilities = {
-	managedMcpService: KiloManagedMcpService;
+export type KiloServerMcpCapabilities = {
+	kiloService: {
+		mcpConfig: KiloMcpConfigService;
+	};
 };
 
 export interface SeedRuntMcpOptions {
@@ -49,16 +40,19 @@ export function buildRuntMcpEntry(
 }
 
 /**
- * Registers a managed `mcp["runt"]` seed with kilo-server so `kilo serve`
- * sees `runt mcp` via `KILO_CONFIG_CONTENT` before it boots. No-ops when the
- * CLI is not staged for this platform or kilo-server is inactive.
+ * Reconciles Desktop's owned `mcp["runt"]` entry through kilo-server before
+ * the notebook feature finishes booting. A missing staged CLI removes any
+ * stale owned entry; an inactive kilo-server leaves configuration untouched.
  */
-export function registerRuntMcpSeed(mainSdk: MainSdk, options: SeedRuntMcpOptions): void {
+export async function reconcileRuntMcpConfig(
+	mainSdk: MainSdk,
+	options: SeedRuntMcpOptions,
+): Promise<void> {
 	const logger = options.logger ?? mainSdk.logger;
-	const managedMcp =
-		mainSdk.plugins.get<KiloServerManagedMcpCapabilities>("kilo-server")?.managedMcpService;
-	if (!managedMcp) {
-		logger.warn("Skipping runt MCP seed: kilo-server managedMcpService is unavailable.");
+	const mcpConfig =
+		mainSdk.plugins.get<KiloServerMcpCapabilities>("kilo-server")?.kiloService.mcpConfig;
+	if (!mcpConfig) {
+		logger.warn("Skipping runt MCP configuration: kilo-server mcpConfig is unavailable.");
 		return;
 	}
 
@@ -73,16 +67,16 @@ export function registerRuntMcpSeed(mainSdk: MainSdk, options: SeedRuntMcpOption
 			return existsSync(candidate) ? candidate : undefined;
 		});
 
-	managedMcp.registerSeed(async () => {
-		const runtBinary = resolveRuntBinary();
-		if (!runtBinary) {
-			logger.info("Skipping runt MCP seed: runt CLI is not staged for this platform.");
-			return;
-		}
-		await managedMcp.seedEntry({
-			name: RUNT_MCP_ENTRY_NAME,
-			entry: buildRuntMcpEntry(runtBinary, options.socketPath),
-			label: "notebook runt MCP",
-		});
-	});
+	const runtBinary = resolveRuntBinary();
+	if (!runtBinary) {
+		await mcpConfig.remove("notebook", RUNT_MCP_ENTRY_NAME);
+		logger.info("Removed runt MCP configuration because the runt CLI is not staged.");
+		return;
+	}
+
+	await mcpConfig.set(
+		"notebook",
+		RUNT_MCP_ENTRY_NAME,
+		buildRuntMcpEntry(runtBinary, options.socketPath),
+	);
 }

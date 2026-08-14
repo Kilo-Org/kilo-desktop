@@ -6,36 +6,55 @@ import { createFakeMainSdk, createLinkedFakeSdkPair } from "@anaconda-agentic-de
 
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
 import {
+	ContributedEnvManager,
 	createKiloServerManagerOptions,
-	registerKiloServer,
+	registerKiloServer as registerProductionKiloServer,
 	type KiloServerCapabilities,
 	type KiloServerController,
 } from "./index.js";
+import type { KiloMcpMutationOutcome } from "./KiloMcpConfig.js";
+import type { WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
-
-/** Avoid spawning a real Electron relay under unit/integration tests. */
-function stubRelaySupervisor() {
-	return {
-		start: vi.fn(async () => true),
-		dispose: vi.fn(),
-	};
-}
+type RegisterKiloServerOptions = NonNullable<Parameters<typeof registerProductionKiloServer>[1]>;
 
 function fakeServer() {
 	const connection: KiloServerConnection = {
 		baseUrl: "http://127.0.0.1:4321",
 		username: "kilo",
 		password: "secret",
-		version: "7.4.20",
+		version: "7.4.21",
 		globalDirectory: "/plugin-data/kilo-server/runtime",
 	};
 	return {
-		status: { status: "stopped" },
+		status: { status: "stopped" } as KiloServerStatus,
+		isRunning: false as boolean,
+		isStarting: false as boolean,
+		contributedEnvChangedSinceSpawn: vi.fn(() => true),
 		ensureRunning: vi.fn(async () => connection),
 		restart: vi.fn(async () => connection),
 		dispose: vi.fn(),
 	} satisfies KiloServerController;
+}
+
+function stubRelayService(): WebMcpRelayServiceHandle & {
+	start: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
+	dispose: ReturnType<typeof vi.fn<() => void>>;
+} {
+	return {
+		start: vi.fn(async () => true),
+		dispose: vi.fn(),
+	};
+}
+
+function registerKiloServer(
+	mainSdk: Parameters<typeof registerProductionKiloServer>[0],
+	options: RegisterKiloServerOptions = {},
+): Promise<void> {
+	return registerProductionKiloServer(mainSdk, {
+		createWebMcpRelayService: stubRelayService,
+		...options,
+	});
 }
 
 describe("kilo-server main registration", () => {
@@ -54,8 +73,14 @@ describe("kilo-server main registration", () => {
 			treeSitterWasmDirectory: "/plugin/tree-sitter",
 		}));
 		const onStatusChange = vi.fn();
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
 
-		const options = createKiloServerManagerOptions(mainSdk, onStatusChange, resolveInstallation);
+		const options = createKiloServerManagerOptions(
+			mainSdk,
+			onStatusChange,
+			contributedEnv,
+			resolveInstallation,
+		);
 
 		expect(resolveInstallation).toHaveBeenCalledWith({
 			resourceRoots: [path.join(PLUGIN_DIR, "resources/kilo")],
@@ -64,7 +89,9 @@ describe("kilo-server main registration", () => {
 			fetch,
 			logger,
 			onStatusChange,
+			contributedEnv,
 			runtimeDirectory: path.join("/plugin-data/kilo-server", "runtime"),
+			configDirectory: path.join("/plugin-data/kilo-server", "runtime", "config", "kilo"),
 			stateDirectory: "/plugin-data/kilo-server",
 		});
 		mainSdk.dispose();
@@ -75,12 +102,14 @@ describe("kilo-server main registration", () => {
 		const server = fakeServer();
 		registerKiloServer(mainSdk, {
 			createServer: () => server,
-			seedMcpConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			runAsNodeEnabled: async () => true,
 		});
-		// Seed is awaited before ensureRunning; give the microtask queue a tick.
+		// Lazy spawn: no ensureRunning call until a consumer requests the
+		// connection. The initialization still runs in the background — give it a tick
+		// to complete before we assert.
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(server.ensureRunning).toHaveBeenCalledOnce();
+		expect(server.ensureRunning).not.toHaveBeenCalled();
 
 		const connectionService =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
@@ -88,22 +117,16 @@ describe("kilo-server main registration", () => {
 		await expect(connectionService!.getConnection()).resolves.toMatchObject({
 			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
-		expect(mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.managedMcpService).toEqual(
-			expect.objectContaining({
-				configDirectory: path.join(mainSdk.storageDir, "runtime", "config", "kilo"),
-				registerSeed: expect.any(Function),
-				seedEntry: expect.any(Function),
-			}),
-		);
 
 		await expect(mainSdk.invoke("server.getConnection")).resolves.toEqual({
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
 			password: "secret",
-			version: "7.4.20",
+			version: "7.4.21",
 			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
-		expect(server.ensureRunning).toHaveBeenCalledTimes(3);
+		// Two consumer calls above, each triggers one ensureRunning.
+		expect(server.ensureRunning).toHaveBeenCalledTimes(2);
 		mainSdk.dispose();
 		expect(server.dispose).toHaveBeenCalledOnce();
 	});
@@ -119,93 +142,29 @@ describe("kilo-server main registration", () => {
 				publishStatus = onStatusChange;
 				return server;
 			},
-			seedMcpConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			runAsNodeEnabled: async () => true,
 		});
+		// Lazy spawn: no ensureRunning until a consumer requests the connection.
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(server.ensureRunning).toHaveBeenCalledOnce();
+		expect(server.ensureRunning).not.toHaveBeenCalled();
 
-		publishStatus?.({ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.20" });
+		publishStatus?.({ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.21" });
 		expect(listener).toHaveBeenCalledWith({
 			status: "ready",
 			baseUrl: "http://127.0.0.1:4321",
-			version: "7.4.20",
+			version: "7.4.21",
 		});
 		await expect(mainSdk.invoke("server.status")).resolves.toEqual({ status: "stopped" });
-		await expect(mainSdk.invoke("server.restart")).resolves.toMatchObject({ version: "7.4.20" });
+		await expect(mainSdk.invoke("server.restart")).resolves.toMatchObject({ version: "7.4.21" });
 		mainSdk.dispose();
 	});
 
-	it("runs the interim WebMCP seed step against ${storageDir}/runtime/config/kilo (see #102)", async () => {
+	it("runs the interim WebMCP config initialization against ${storageDir}/runtime/config/kilo (see #102)", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		const seedMcpConfig = vi.fn(async (_runtimeDirectory: string, _enabled: boolean) => ({
-			kind: "written" as const,
-			reason: "created" as const,
-			entry: {
-				type: "local" as const,
-				command: ["/exe", "/entry"] as [string, string],
-				environment: { ELECTRON_RUN_AS_NODE: "1" },
-				enabled: true as const,
-			},
-		}));
-
-		registerKiloServer(mainSdk, {
-			createServer: () => server,
-			seedMcpConfig,
-			appExecutablePath: "/exe",
-			runAsNodeEnabled: async () => true,
-		});
-
-		// Wait for the seed → ensureRunning sequence to settle.
-		await new Promise((resolve) => setTimeout(resolve, 0));
-
-		expect(seedMcpConfig).toHaveBeenCalledOnce();
-		const call = seedMcpConfig.mock.calls[0];
-		if (!call) throw new Error("expected seedMcpConfig to have been called once");
-		const [runtimeDirectory, enabled] = call;
-		expect(runtimeDirectory).toMatch(/[\\/]runtime$/);
-		expect(runtimeDirectory).toBe(path.join(mainSdk.storageDir, "runtime"));
-		expect(enabled).toBe(true);
-		mainSdk.dispose();
-	});
-
-	it("passes enabled=false to the seed when the RunAsNode fuse is off (downgrade / rollback safety)", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const server = fakeServer();
-		const seedMcpConfig = vi.fn(async (_runtimeDirectory: string, _enabled: boolean) => ({
-			kind: "removed" as const,
-			reason: "fuse-off" as const,
-		}));
-
-		registerKiloServer(mainSdk, {
-			createServer: () => server,
-			seedMcpConfig,
-			appExecutablePath: "/exe",
-			runAsNodeEnabled: async () => false,
-		});
-
-		await new Promise((resolve) => setTimeout(resolve, 0));
-
-		const call = seedMcpConfig.mock.calls[0];
-		if (!call) throw new Error("expected seedMcpConfig to have been called once");
-		expect(call[1]).toBe(false);
-		mainSdk.dispose();
-	});
-
-	it("awaits the seed before calling ensureRunning (no first-boot race)", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const server = fakeServer();
-		const order: string[] = [];
-		let releaseSeed!: () => void;
-		const seedGate = new Promise<void>((resolve) => {
-			releaseSeed = resolve;
-		});
-		const seedMcpConfig = vi.fn(async (_runtimeDirectory: string, _enabled: boolean) => {
-			order.push("seed-start");
-			await seedGate;
-			order.push("seed-end");
-			return {
+		const reconcileWebMcpRelayConfig = vi.fn(
+			async (_configDirectory: string, _enabled: boolean) => ({
 				kind: "written" as const,
 				reason: "created" as const,
 				entry: {
@@ -214,8 +173,78 @@ describe("kilo-server main registration", () => {
 					environment: { ELECTRON_RUN_AS_NODE: "1" },
 					enabled: true as const,
 				},
-			};
+			}),
+		);
+
+		registerKiloServer(mainSdk, {
+			createServer: () => server,
+			reconcileWebMcpRelayConfig,
+			appExecutablePath: "/exe",
+			runAsNodeEnabled: async () => true,
 		});
+
+		// Wait for the initialization → ensureRunning sequence to settle.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(reconcileWebMcpRelayConfig).toHaveBeenCalledOnce();
+		const call = reconcileWebMcpRelayConfig.mock.calls[0];
+		if (!call) throw new Error("expected reconcileWebMcpRelayConfig to have been called once");
+		const [configDirectory, enabled] = call;
+		expect(configDirectory).toBe(path.join(mainSdk.storageDir, "runtime", "config", "kilo"));
+		expect(enabled).toBe(true);
+		mainSdk.dispose();
+	});
+
+	it("passes enabled=false to the initializer when the RunAsNode fuse is off (downgrade / rollback safety)", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const reconcileWebMcpRelayConfig = vi.fn(
+			async (_configDirectory: string, _enabled: boolean) => ({
+				kind: "removed" as const,
+				reason: "fuse-off" as const,
+			}),
+		);
+
+		registerKiloServer(mainSdk, {
+			createServer: () => server,
+			reconcileWebMcpRelayConfig,
+			appExecutablePath: "/exe",
+			runAsNodeEnabled: async () => false,
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const call = reconcileWebMcpRelayConfig.mock.calls[0];
+		if (!call) throw new Error("expected reconcileWebMcpRelayConfig to have been called once");
+		expect(call[1]).toBe(false);
+		mainSdk.dispose();
+	});
+
+	it("awaits config readiness before calling ensureRunning (no first-boot race)", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const order: string[] = [];
+		let releaseConfig!: () => void;
+		const configGate = new Promise<void>((resolve) => {
+			releaseConfig = resolve;
+		});
+		const reconcileWebMcpRelayConfig = vi.fn(
+			async (_configDirectory: string, _enabled: boolean) => {
+				order.push("config-start");
+				await configGate;
+				order.push("config-end");
+				return {
+					kind: "written" as const,
+					reason: "created" as const,
+					entry: {
+						type: "local" as const,
+						command: ["/exe", "/entry"] as [string, string],
+						environment: { ELECTRON_RUN_AS_NODE: "1" },
+						enabled: true as const,
+					},
+				};
+			},
+		);
 		server.ensureRunning = vi.fn(async () => {
 			order.push("ensure-running");
 			return {
@@ -223,159 +252,68 @@ describe("kilo-server main registration", () => {
 				username: "kilo",
 				password: "secret",
 				version: "7.4.20",
-				globalDirectory: "/tmp/kilo-runtime",
+				globalDirectory: "/plugin-data/kilo-server/runtime",
 			};
 		});
 
 		registerKiloServer(mainSdk, {
 			createServer: () => server,
-			seedMcpConfig,
+			reconcileWebMcpRelayConfig,
 			runAsNodeEnabled: async () => true,
 		});
 
-		// Give the microtask queue a chance; seed is pending, ensureRunning
-		// must not have run yet.
+		// Give the microtask queue a chance; config initialization is pending, and lazy spawn
+		// means ensureRunning hasn't run yet either.
 		await new Promise((resolve) => setTimeout(resolve, 5));
-		expect(order).toEqual(["seed-start"]);
+		expect(order).toEqual(["config-start"]);
 
-		releaseSeed();
+		// A consumer requests the connection — this must AWAIT config readiness
+		// before it can call ensureRunning.
+		const connectionPromise = mainSdk.invoke("server.getConnection");
 		await new Promise((resolve) => setTimeout(resolve, 5));
-		expect(order).toEqual(["seed-start", "seed-end", "ensure-running"]);
+		expect(order).toEqual(["config-start"]);
+
+		releaseConfig();
+		await connectionPromise;
+		expect(order).toEqual(["config-start", "config-end", "ensure-running"]);
 		mainSdk.dispose();
 	});
 
-	it("runs plugin-registered managed MCP seeds before ensureRunning", async () => {
+	it("still starts Kilo when the config initialization fails (interim, see #102)", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		const order: string[] = [];
-		let releaseSeed!: () => void;
-		const seedGate = new Promise<void>((resolve) => {
-			releaseSeed = resolve;
-		});
-
-		registerKiloServer(mainSdk, {
-			createServer: () => server,
-			seedMcpConfig: async () => {
-				order.push("webmcp-seed");
-				await seedGate;
-				return { kind: "skipped", reason: "up-to-date" };
-			},
-			runAsNodeEnabled: async () => true,
-		});
-
-		const managedMcp =
-			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.managedMcpService;
-		expect(managedMcp).toBeDefined();
-		managedMcp!.registerSeed(async () => {
-			order.push("plugin-seed");
-		});
-
-		await new Promise((resolve) => setTimeout(resolve, 5));
-		expect(order).toEqual(["webmcp-seed"]);
-		expect(server.ensureRunning).not.toHaveBeenCalled();
-
-		releaseSeed();
-		await new Promise((resolve) => setTimeout(resolve, 5));
-		expect(order).toEqual(["webmcp-seed", "plugin-seed"]);
-		expect(server.ensureRunning).toHaveBeenCalledOnce();
-		mainSdk.dispose();
-	});
-
-	it("contributes plugin seedEntry into KILO_CONFIG_CONTENT overlay (not the dead runtime file)", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const server = fakeServer();
-		let getConfigOverlay: (() => { mcp?: Record<string, unknown> } | undefined) | undefined;
-		let releaseSeed!: () => void;
-		const seedGate = new Promise<void>((resolve) => {
-			releaseSeed = resolve;
-		});
-
-		const runtEntry = {
-			type: "local" as const,
-			command: ["/opt/runt-nightly", "mcp", "--socket", "/tmp/runtimed.sock", "--no-show"] as [
-				string,
-				string,
-				string,
-				string,
-				string,
-			],
-			enabled: true as const,
-		};
-
-		registerKiloServer(mainSdk, {
-			createServer: (_onStatusChange, hooks) => {
-				getConfigOverlay = hooks.getConfigOverlay;
-				return server;
-			},
-			seedMcpConfig: async () => {
-				await seedGate;
-				return {
-					kind: "written",
-					reason: "created",
-					entry: {
-						type: "local",
-						command: ["/exe", "/relay"],
-						environment: { ELECTRON_RUN_AS_NODE: "1" },
-						enabled: true,
-					},
-				};
-			},
-			runAsNodeEnabled: async () => true,
-		});
-
-		const managedMcp =
-			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.managedMcpService;
-		expect(managedMcp).toBeDefined();
-		managedMcp!.registerSeed(async () => {
-			await managedMcp!.seedEntry({
-				name: "runt",
-				entry: runtEntry,
-				label: "notebook runt MCP",
-			});
-		});
-
-		releaseSeed();
-		await new Promise((resolve) => setTimeout(resolve, 5));
-		expect(getConfigOverlay).toBeDefined();
-		expect(getConfigOverlay!()).toEqual({
-			mcp: {
-				"anaconda-desktop-relay": {
-					type: "local",
-					command: ["test"],
-					enabled: true,
-				},
-				runt: runtEntry,
-			},
-		});
-		mainSdk.dispose();
-	});
-
-	it("still starts Kilo when the seed step fails (interim, see #102)", async () => {
-		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const server = fakeServer();
-		const seedMcpConfig = vi.fn(async () => {
+		const reconcileWebMcpRelayConfig = vi.fn(async () => {
 			throw new Error("relay not installed");
 		});
 
 		registerKiloServer(mainSdk, {
 			createServer: () => server,
-			seedMcpConfig,
+			reconcileWebMcpRelayConfig,
 			runAsNodeEnabled: async () => true,
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		// Lazy spawn: the initialization runs on its own, but ensureRunning only fires
+		// on demand. An initialization failure must NOT prevent a subsequent
+		// getConnection from spawning the server.
+		await mainSdk.invoke("server.getConnection");
 		expect(server.ensureRunning).toHaveBeenCalled();
 		mainSdk.dispose();
 	});
 
-	it("starts the WebMCP rendezvous after a successful seed even before getConnection", async () => {
+	it("starts the WebMCP rendezvous during feature boot without starting Kilo", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		const supervisor = stubRelaySupervisor();
+		const relayService = stubRelayService();
+		let releaseRelay!: (ready: boolean) => void;
+		const relayGate = new Promise<boolean>((resolve) => {
+			releaseRelay = resolve;
+		});
+		relayService.start.mockReturnValue(relayGate);
 
-		registerKiloServer(mainSdk, {
+		let registrationFinished = false;
+		const registration = registerKiloServer(mainSdk, {
 			createServer: () => server,
-			seedMcpConfig: async () => ({
+			reconcileWebMcpRelayConfig: async () => ({
 				kind: "written",
 				reason: "created",
 				entry: {
@@ -385,59 +323,100 @@ describe("kilo-server main registration", () => {
 					enabled: true,
 				},
 			}),
-			createWebMcpRelaySupervisor: () => supervisor,
+			createWebMcpRelayService: () => relayService,
+			runAsNodeEnabled: async () => true,
+		}).then(() => {
+			registrationFinished = true;
+		});
+
+		await vi.waitFor(() => expect(relayService.start).toHaveBeenCalledOnce());
+		expect(registrationFinished).toBe(false);
+		expect(server.ensureRunning).not.toHaveBeenCalled();
+
+		releaseRelay(true);
+		await registration;
+		expect(registrationFinished).toBe(true);
+		mainSdk.dispose();
+		expect(relayService.dispose).toHaveBeenCalledOnce();
+	});
+
+	it("starts the WebMCP rendezvous when its Desktop-owned entry is already current", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const relayService = stubRelayService();
+
+		await registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			createWebMcpRelayService: () => relayService,
 			runAsNodeEnabled: async () => true,
 		});
 
-		await vi.waitFor(() => expect(supervisor.start).toHaveBeenCalledOnce());
+		expect(relayService.start).toHaveBeenCalledOnce();
 		mainSdk.dispose();
-		expect(supervisor.dispose).toHaveBeenCalledOnce();
 	});
 
-	it("skips the WebMCP rendezvous when the seed did not leave a relay entry", async () => {
+	it("does not start the WebMCP rendezvous when configuration removed the entry", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const server = fakeServer();
-		const supervisor = stubRelaySupervisor();
+		const relayService = stubRelayService();
 
-		registerKiloServer(mainSdk, {
-			createServer: () => server,
-			seedMcpConfig: async () => ({ kind: "removed", reason: "fuse-off" }),
-			createWebMcpRelaySupervisor: () => supervisor,
+		await registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			reconcileWebMcpRelayConfig: async () => ({ kind: "removed", reason: "fuse-off" }),
+			createWebMcpRelayService: () => relayService,
 			runAsNodeEnabled: async () => false,
 		});
 
-		await mainSdk.invoke("server.getConnection");
-		expect(supervisor.start).not.toHaveBeenCalled();
+		expect(relayService.start).not.toHaveBeenCalled();
 		mainSdk.dispose();
 	});
 
-	it("getConnection called during the seed window awaits the seed and does not race ensureRunning", async () => {
-		// Regression: without shared seed sequencing, a renderer that calls
-		// getConnection during the seed window (mounted chat UI, etc.) can
+	it("still starts Kilo when the eager WebMCP rendezvous cannot start", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const relayService = stubRelayService();
+		relayService.start.mockResolvedValue(false);
+
+		await registerKiloServer(mainSdk, {
+			createServer: () => server,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			createWebMcpRelayService: () => relayService,
+			runAsNodeEnabled: async () => true,
+		});
+
+		await mainSdk.invoke("server.getConnection");
+		expect(server.ensureRunning).toHaveBeenCalledOnce();
+		mainSdk.dispose();
+	});
+
+	it("getConnection called during the initialization window awaits config readiness and does not race ensureRunning", async () => {
+		// Regression: without shared config readiness, a renderer that calls
+		// getConnection during the initialization window (mounted chat UI, etc.) can
 		// trigger ensureRunning() before the config write lands, reopening the
-		// exact race the awaited seed was designed to close.
+		// exact race the awaited initialization was designed to close.
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
 		const order: string[] = [];
-		let releaseSeed!: () => void;
-		const seedGate = new Promise<void>((resolve) => {
-			releaseSeed = resolve;
+		let releaseConfig!: () => void;
+		const configGate = new Promise<void>((resolve) => {
+			releaseConfig = resolve;
 		});
-		const seedMcpConfig = vi.fn(async (_runtimeDirectory: string, _enabled: boolean) => {
-			order.push("seed-start");
-			await seedGate;
-			order.push("seed-end");
-			return {
-				kind: "written" as const,
-				reason: "created" as const,
-				entry: {
-					type: "local" as const,
-					command: ["/exe", "/entry"] as [string, string],
-					environment: { ELECTRON_RUN_AS_NODE: "1" },
-					enabled: true as const,
-				},
-			};
-		});
+		const reconcileWebMcpRelayConfig = vi.fn(
+			async (_runtimeDirectory: string, _enabled: boolean) => {
+				order.push("config-start");
+				await configGate;
+				order.push("config-end");
+				return {
+					kind: "written" as const,
+					reason: "created" as const,
+					entry: {
+						type: "local" as const,
+						command: ["/exe", "/entry"] as [string, string],
+						environment: { ELECTRON_RUN_AS_NODE: "1" },
+						enabled: true as const,
+					},
+				};
+			},
+		);
 		server.ensureRunning = vi.fn(async () => {
 			order.push("ensure-running");
 			return {
@@ -445,38 +424,489 @@ describe("kilo-server main registration", () => {
 				username: "kilo",
 				password: "secret",
 				version: "7.4.20",
-				globalDirectory: "/tmp/kilo-runtime",
+				globalDirectory: "/plugin-data/kilo-server/runtime",
 			};
 		});
 
 		registerKiloServer(mainSdk, {
 			createServer: () => server,
-			seedMcpConfig,
+			reconcileWebMcpRelayConfig,
 			runAsNodeEnabled: async () => true,
 		});
 
-		// Renderer calls getConnection while the seed is still gated.
+		// Renderer calls getConnection while the initialization is still gated.
 		const capability =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
 		expect(capability).toBeDefined();
 		const inflight = capability!.getConnection();
 
-		// Give microtasks a chance: seed has started, but ensureRunning MUST
-		// not have run yet — the capability call must wait on the seed.
+		// Give microtasks a chance: config initialization has started, but ensureRunning MUST
+		// not have run yet — the capability call must wait for config readiness.
 		await new Promise((resolve) => setTimeout(resolve, 5));
-		expect(order).toEqual(["seed-start"]);
+		expect(order).toEqual(["config-start"]);
 
-		releaseSeed();
-		await expect(inflight).resolves.toMatchObject({ globalDirectory: "/tmp/kilo-runtime" });
+		releaseConfig();
+		await expect(inflight).resolves.toMatchObject({ baseUrl: "http://127.0.0.1:4321" });
 		// The initial mainRegister IIFE and the getConnection capability each
-		// call ensureRunning after the seed. Assert the invariant we care
-		// about — no ensure-running before seed-end — rather than an exact
+		// call ensureRunning after config initialization. Assert the invariant we care
+		// about — no ensure-running before config-end — rather than an exact
 		// count.
-		expect(order[0]).toBe("seed-start");
-		const seedEndIndex = order.indexOf("seed-end");
-		expect(seedEndIndex).toBeGreaterThan(0);
-		expect(order.slice(0, seedEndIndex + 1)).not.toContain("ensure-running");
-		expect(order.slice(seedEndIndex + 1).every((entry) => entry === "ensure-running")).toBe(true);
+		expect(order[0]).toBe("config-start");
+		const configEndIndex = order.indexOf("config-end");
+		expect(configEndIndex).toBeGreaterThan(0);
+		expect(order.slice(0, configEndIndex + 1)).not.toContain("ensure-running");
+		expect(order.slice(configEndIndex + 1).every((entry) => entry === "ensure-running")).toBe(true);
+	});
+
+	it("exposes serverEnv.contribute capability for other plugins to inject env", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		registerKiloServer(mainSdk, { createServer: () => server });
+
+		// Another plugin resolves the capability
+		const consumer = createMainSdk("anaconda-mcp");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		expect(capability).not.toBeNull();
+		expect(capability!.kiloService.serverEnv).toBeDefined();
+		expect(typeof capability!.kiloService.serverEnv.contribute).toBe("function");
+
+		const dispose = capability!.kiloService.serverEnv.contribute("anaconda-mcp", {
+			ANACONDA_API_KEY: "test-key",
+		});
+		expect(typeof dispose).toBe("function");
+		dispose();
 		mainSdk.dispose();
+	});
+
+	it("exposes restartServer capability that delegates to server.restart", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		registerKiloServer(mainSdk, { createServer: () => server });
+		server.restart.mockClear();
+
+		const consumer = createMainSdk("anaconda-mcp");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		expect(capability).not.toBeNull();
+		expect(typeof capability!.kiloService.restartServer).toBe("function");
+
+		await capability!.kiloService.restartServer();
+		expect(server.restart).toHaveBeenCalledOnce();
+		mainSdk.dispose();
+	});
+
+	it("capability is removed on plugin dispose", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		registerKiloServer(mainSdk, { createServer: () => server });
+
+		const consumer = createMainSdk("anaconda-mcp");
+		expect(consumer.plugins.get<KiloServerCapabilities>("kilo-server")).not.toBeNull();
+
+		mainSdk.dispose();
+		expect(consumer.plugins.get<KiloServerCapabilities>("kilo-server")).toBeNull();
+	});
+
+	it("does not restart when env changes while the server is not running (lazy spawn picks them up)", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = false;
+			registerKiloServer(mainSdk, { createServer: () => server });
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("anaconda-mcp", { KEY: "value" });
+
+			// Lazy-spawn semantics: contributions before the server starts don't
+			// trigger a restart — the next `ensureRunning()` will pick them up.
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
+			expect(server.ensureRunning).not.toHaveBeenCalled();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("skips restart when the running server's env matches current contributions", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			// Env is already reflected in the running child — no restart needed.
+			server.contributedEnvChangedSinceSpawn = vi.fn(() => false);
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("anaconda-mcp", { KEY: "value" });
+
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("triggers a debounced restart when server is running and env changes", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+			// Make two rapid contributions — should coalesce into one restart
+			capability!.kiloService.serverEnv.contribute("source-a", { KEY_A: "a" });
+			capability!.kiloService.serverEnv.contribute("source-b", { KEY_B: "b" });
+
+			// Before debounce fires
+			expect(server.restart).not.toHaveBeenCalled();
+
+			// After debounce
+			await vi.advanceTimersByTimeAsync(350);
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("triggers restart when a contribution is disposed while server is running", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+			const dispose = capability!.kiloService.serverEnv.contribute("source-a", { KEY: "val" });
+			await vi.advanceTimersByTimeAsync(350);
+			server.restart.mockClear();
+
+			dispose();
+			await vi.advanceTimersByTimeAsync(350);
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("logs a warning if restart fails after env change", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			server.restart.mockRejectedValue(new Error("spawn failed"));
+			const warnSpy = vi.spyOn(mainSdk.logger, "warn");
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("source-a", { KEY: "val" });
+
+			await vi.advanceTimersByTimeAsync(350);
+			expect(server.restart).toHaveBeenCalledOnce();
+			// Give the promise rejection handler a chance to run
+			await vi.advanceTimersByTimeAsync(0);
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Failed to restart Kilo server after env change"),
+			);
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// Regression: PR #116 review — WARNING kilo-server/index.ts:138. When a
+	// contribution arrived while a spawn was in flight (isRunning=false,
+	// isStarting=true), the old handler early-returned on !isRunning and
+	// the drift was never re-checked afterward, so the running child was
+	// stuck with a stale env until an unrelated contribution triggered
+	// another debounce cycle. Fix: await the in-flight spawn, THEN check.
+	it("restarts when a contribution arrives mid-spawn (before isRunning flips)", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			// Simulate a spawn in flight: not yet running, but starting, and
+			// the current env DOES differ from the (empty) snapshot.
+			server.isRunning = false;
+			server.isStarting = true;
+			server.contributedEnvChangedSinceSpawn = vi.fn(() => true);
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("late-source", { KEY: "value" });
+
+			// Advance past the debounce; the handler awaits ensureRunning
+			// (mocked to resolve immediately) then checks drift.
+			await vi.advanceTimersByTimeAsync(350);
+			// Simulate the spawn completing between debounce fire and the
+			// drift check: flip isRunning to true so restart proceeds.
+			server.isRunning = true;
+			server.isStarting = false;
+			await vi.advanceTimersByTimeAsync(10);
+
+			expect(server.ensureRunning).toHaveBeenCalled();
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("no-ops on env change when the server has never spawned and is not starting", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = false;
+			server.isStarting = false;
+			registerKiloServer(mainSdk, { createServer: () => server });
+			server.restart.mockClear();
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			capability!.kiloService.serverEnv.contribute("cold", { KEY: "value" });
+
+			await vi.advanceTimersByTimeAsync(350);
+			// Cold boot: the next ensureRunning() will pick up current env.
+			expect(server.restart).not.toHaveBeenCalled();
+			expect(server.ensureRunning).not.toHaveBeenCalled();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe("kilo-server MCP config capability", () => {
+	function fakeKiloMcpConfig() {
+		return {
+			setMcpEntry: vi.fn(async (): Promise<KiloMcpMutationOutcome> => ({
+				kind: "written",
+				reason: "updated",
+			})),
+			removeMcpEntry: vi.fn(async (): Promise<KiloMcpMutationOutcome> => ({
+				kind: "removed",
+				reason: "explicit",
+			})),
+		};
+	}
+
+	it("persists and removes Desktop-owned entries for other features", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		const kiloMcpConfig = fakeKiloMcpConfig();
+		registerKiloServer(mainSdk, {
+			createServer: () => server,
+			kiloMcpConfig,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+
+		const consumer = createMainSdk("anaconda-mcp");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		expect(capability).not.toBeNull();
+		await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
+			type: "remote",
+			url: "https://example.test/mcp",
+		});
+		await capability!.kiloService.mcpConfig.remove("anaconda-mcp", "anaconda-remote");
+		expect(kiloMcpConfig.setMcpEntry).toHaveBeenCalledWith("anaconda-mcp", "anaconda-remote", {
+			type: "remote",
+			url: "https://example.test/mcp",
+		});
+		expect(kiloMcpConfig.removeMcpEntry).toHaveBeenCalledWith("anaconda-mcp", "anaconda-remote");
+		mainSdk.dispose();
+	});
+
+	it("triggers a debounced restart when a Desktop-owned entry changes", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			registerKiloServer(mainSdk, {
+				createServer: () => server,
+				kiloMcpConfig: fakeKiloMcpConfig(),
+				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			});
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
+				type: "remote",
+				url: "https://example.test/mcp",
+			});
+
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not restart when writing config before the server has spawned", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = false;
+			registerKiloServer(mainSdk, {
+				createServer: () => server,
+				kiloMcpConfig: fakeKiloMcpConfig(),
+				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			});
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
+				type: "remote",
+				url: "https://example.test/mcp",
+			});
+
+			// Lazy-spawn semantics: the first server reads the updated file.
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not restart for an idempotent MCP config write", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			const kiloMcpConfig = fakeKiloMcpConfig();
+			kiloMcpConfig.setMcpEntry.mockResolvedValue({ kind: "skipped", reason: "up-to-date" });
+			registerKiloServer(mainSdk, {
+				createServer: () => server,
+				kiloMcpConfig,
+				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			});
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
+				type: "remote",
+				url: "https://example.test/mcp",
+			});
+
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("rejects a Desktop-owned write that would overwrite a user-owned entry", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const kiloMcpConfig = fakeKiloMcpConfig();
+		kiloMcpConfig.setMcpEntry.mockResolvedValue({
+			kind: "skipped",
+			reason: "entry-not-owned",
+		});
+		registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			kiloMcpConfig,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+		const consumer = createMainSdk("anaconda-mcp");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		await expect(
+			capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
+				type: "remote",
+				url: "https://example.test/mcp",
+			}),
+		).rejects.toThrow(/entry not owned by Desktop already uses that id/);
+		mainSdk.dispose();
+	});
+
+	it("rejects updates and removals owned by another source", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const kiloMcpConfig = fakeKiloMcpConfig();
+		kiloMcpConfig.setMcpEntry.mockResolvedValue({
+			kind: "skipped",
+			reason: "owned-by-other-source",
+		});
+		kiloMcpConfig.removeMcpEntry.mockResolvedValue({
+			kind: "skipped",
+			reason: "owned-by-other-source",
+		});
+		registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			kiloMcpConfig,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+		const consumer = createMainSdk("other-feature");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		await expect(
+			capability!.kiloService.mcpConfig.set("other-feature", "anaconda-remote", {
+				type: "remote",
+				url: "https://example.test/mcp",
+			}),
+		).rejects.toThrow(/owned by another source/);
+		await expect(
+			capability!.kiloService.mcpConfig.remove("other-feature", "anaconda-remote"),
+		).rejects.toThrow(/owned by another source/);
+		mainSdk.dispose();
+	});
+
+	it("triggers a restart when a Desktop-owned entry is removed", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			registerKiloServer(mainSdk, {
+				createServer: () => server,
+				kiloMcpConfig: fakeKiloMcpConfig(),
+				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			});
+
+			const consumer = createMainSdk("anaconda-mcp");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
+				type: "remote",
+				url: "https://example.test/mcp",
+			});
+			await vi.advanceTimersByTimeAsync(500);
+			server.restart.mockClear();
+
+			await capability!.kiloService.mcpConfig.remove("anaconda-mcp", "anaconda-remote");
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

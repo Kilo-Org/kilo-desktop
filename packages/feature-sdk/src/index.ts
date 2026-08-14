@@ -44,6 +44,10 @@ export type {
 	HostPortContext,
 	MainSdkHost,
 	MainSdkHostDialogOptions,
+	KvStore,
+	KvStoreOptions,
+	KvStoreFactory,
+	MainSdkStorage,
 	MainSdkFetch,
 	MainSdkLogger,
 	MainSdkNet,
@@ -108,6 +112,11 @@ export {
 	type ShellDelegates,
 } from "./services/create-sdk.js";
 export { createStaticNavigation } from "./services/navigation.js";
+export {
+	createObservableValue,
+	type ObservableValue,
+	type ObservableValueOptions,
+} from "./services/observable-value.js";
 
 // Plugin system — manifest schema + loader (discover phase; activation stays
 // with the shell boot sequences)
@@ -115,19 +124,23 @@ export {
 	PLUGIN_MANIFEST_FILENAME,
 	featureIdPattern,
 	pluginManifestSchema,
+	pluginPageSurfaceSchema,
 	pluginRouteSchema,
 	pluginNavEntrySchema,
 	pluginZoneContributionSchema,
 	pluginZoneDeclarationSchema,
 	pluginProviderContributionSchema,
+	pluginSettingsContributionSchema,
 	pluginContributesSchema,
 	parsePluginManifest,
 	type PluginManifest,
+	type PluginPageSurface,
 	type PluginRoute,
 	type PluginNavEntry,
 	type PluginZoneContribution,
 	type PluginZoneDeclaration,
 	type PluginProviderContribution,
+	type PluginSettingsContribution,
 	type PluginContributes,
 } from "./plugin/manifest.js";
 export {
@@ -137,6 +150,7 @@ export {
 	pluginNav,
 	pluginZoneContributions,
 	pluginProviderContributions,
+	pluginSettingsContributions,
 	reportPluginDiscoveryIssues,
 	PLUGIN_ROUTE_NAMESPACE,
 	stripPluginNamespace,
@@ -151,4 +165,5 @@ export {
 	type ResolvedPluginNav,
 	type ResolvedPluginZoneContribution,
 	type ResolvedPluginProviderContribution,
+	type ResolvedPluginSettingsContribution,
 } from "./plugin/loader.js";

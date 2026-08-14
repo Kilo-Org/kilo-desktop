@@ -73,3 +73,20 @@ export function findCatalogAgent(
 	}
 	return catalog.agents.find((agent) => agent.name === name);
 }
+
+/** Next/previous switcher agent, wrapping at the ends. */
+export function cycleCatalogAgent(
+	catalog: KiloAgentCatalog | undefined,
+	current: string | undefined,
+	direction: 1 | -1,
+): string | undefined {
+	const agents = catalog?.agents ?? [];
+	if (agents.length === 0) {
+		return current;
+	}
+
+	const index = agents.findIndex((entry) => entry.name === current);
+	const from = index === -1 ? 0 : index;
+	const next = (from + direction + agents.length) % agents.length;
+	return agents[next]?.name;
+}

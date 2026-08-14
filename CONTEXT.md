@@ -39,6 +39,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
 - `sdk.contribute` — imperatively register dynamic UI in a stable zone. The shell owns canonical `ShellZone` outlets. Plugin-owned hosts declare zones in `plugin.json`, and other plugins target qualified names through declarative `contributes.zones`; `useSdkContributions(zone)` lets those hosts consume the live priority-ordered registry.
 - `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
+- `contributes.settings` — declarative settings-page sections (`id` + `component` export). The shell owns `/settings`; optional `featureFlag` uses the same visibility semantics as `contributes.nav`
 - `sdk.commands` — command palette entries
 - `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)
@@ -57,7 +58,7 @@ Main-side cross-feature `invoke` through the shared `FeatureRouter` is intention
 
 **Errors:** expected failures throw `FeatureError` from the SDK (`throw new FeatureError("Todo not found.", "NOT_FOUND")`). The shell translates it across the IPC boundary so the message survives; generic errors are scrubbed to a generic string.
 
-**Storage:** the shell provides a per-feature data directory as `mainSdk.storageDir` (`${userData}/plugins/<id>/`, created lazily). Features that persist open their own SQLite file there (`data.db`) and ship their drizzle migrations inside the feature directory. Nothing shares a shell database.
+**Storage:** the shell provides a per-feature data directory as `mainSdk.storageDir` (`${userData}/plugins/<id>/`, created lazily). Features that persist open their own SQLite file there (`data.db`) and ship their drizzle migrations inside the feature directory. Nothing shares a shell database. Simple JSON-shaped settings use `mainSdk.storage.kv({ defaults, namespace? })`, backed by an atomic host store with default backfill and corrupt-file recovery.
 
 **Lifecycles:** `useSdk(featureId)` returns a shared per-feature SDK instance that is NOT destroyed on component unmount. `sdk.destroy()` cleans up only what was registered through that instance. Full feature teardown (`teardownFeature`) is shell-owned and happens on feature/plugin unload only.
 
@@ -126,8 +127,9 @@ Three tiers decide where a dependency lives:
 | **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                             |
 | **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                 |
 | **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                       |
-| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, zone entries, routes, and nav; conditional zone UI uses `sdk.contribute`.                              |
+| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, zone entries, routes, nav, and settings sections; conditional zone UI uses `sdk.contribute`.           |
 | **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                       |
+| **Anaconda MCP**   | Core feature that owns the optional Anaconda Remote MCP entry and contributes its API key to the Kilo server without writing the credential into config.                                     |
 
 ## Conventions
 

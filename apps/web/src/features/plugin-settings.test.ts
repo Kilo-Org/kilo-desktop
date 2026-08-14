@@ -1,0 +1,156 @@
+import { describe, expect, it } from "vitest";
+
+import { discoverPlugins, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
+
+import {
+	buildPluginSettings,
+	filterVisiblePluginSettings,
+	findSettingsSection,
+	isSettingsPath,
+	PLUGIN_SETTINGS,
+	type PluginSettingsSection,
+} from "./plugin-settings";
+
+const AlphaPanel = () => null;
+const BetaPanel = () => null;
+const AlphaIcon = () => null;
+
+function makeDiscovery(): PluginDiscovery {
+	return discoverPlugins(
+		[
+			{
+				manifest: {
+					id: "alpha",
+					displayName: "Alpha",
+					version: "1.0.0",
+					web: "./src/web/index.ts",
+					contributes: {
+						settings: [
+							{
+								id: "alpha",
+								title: "Alpha",
+								component: "AlphaPanel",
+								icon: "AlphaIcon",
+								priority: 1,
+							},
+							{
+								id: "beta",
+								title: "Beta",
+								component: "BetaPanel",
+								priority: 10,
+								featureFlag: "beta-settings",
+							},
+						],
+					},
+				},
+				module: { AlphaPanel, BetaPanel, AlphaIcon },
+			},
+		],
+		"web",
+	);
+}
+
+describe("buildPluginSettings", () => {
+	it("derives priority-ordered sections from discovery", () => {
+		const sections = buildPluginSettings(makeDiscovery());
+
+		expect(sections.map((section) => section.id)).toEqual(["beta", "alpha"]);
+		expect(sections[1]).toEqual({
+			pluginId: "alpha",
+			id: "alpha",
+			title: "Alpha",
+			component: AlphaPanel,
+			icon: "AlphaIcon",
+			iconComponent: AlphaIcon,
+			priority: 1,
+			featureFlag: undefined,
+			browserSafe: true,
+		});
+		expect(sections[0]?.featureFlag).toBe("beta-settings");
+	});
+
+	it("merges built-in sections ahead of plugin contributions, then sorts by priority", () => {
+		const builtIn: PluginSettingsSection[] = [
+			{
+				pluginId: "shell",
+				id: "general",
+				title: "General",
+				component: () => null,
+				icon: undefined,
+				iconComponent: undefined,
+				priority: 5,
+				featureFlag: undefined,
+				browserSafe: true,
+			},
+		];
+		const sections = buildPluginSettings(makeDiscovery(), { builtIn });
+		expect(sections.map((section) => section.id)).toEqual(["beta", "general", "alpha"]);
+	});
+});
+
+describe("filterVisiblePluginSettings", () => {
+	const sections = buildPluginSettings(makeDiscovery());
+
+	it("keeps sections without a featureFlag regardless of flag map", () => {
+		expect(filterVisiblePluginSettings(sections, {}, true).map((s) => s.id)).toContain("alpha");
+	});
+
+	it("hides sections whose gating flag is missing or falsy", () => {
+		expect(filterVisiblePluginSettings(sections, {}, true).map((s) => s.id)).not.toContain("beta");
+		expect(
+			filterVisiblePluginSettings(sections, { "beta-settings": false }, true).map((s) => s.id),
+		).not.toContain("beta");
+	});
+
+	it("shows sections whose gating flag is truthy", () => {
+		expect(
+			filterVisiblePluginSettings(sections, { "beta-settings": true }, true).map((s) => s.id),
+		).toContain("beta");
+	});
+
+	it("omits Electron-only sections when the desktop bridge is unavailable", () => {
+		const electronOnly: PluginSettingsSection[] = [
+			{
+				pluginId: "desk",
+				id: "desk",
+				title: "Desk",
+				component: () => null,
+				icon: undefined,
+				iconComponent: undefined,
+				priority: 0,
+				featureFlag: undefined,
+				browserSafe: false,
+			},
+		];
+		expect(filterVisiblePluginSettings(electronOnly, {}, false)).toEqual([]);
+		expect(filterVisiblePluginSettings(electronOnly, {}, true)).toHaveLength(1);
+	});
+});
+
+describe("findSettingsSection", () => {
+	it("finds a section by id", () => {
+		const sections = buildPluginSettings(makeDiscovery());
+		expect(findSettingsSection(sections, "alpha")?.title).toBe("Alpha");
+		expect(findSettingsSection(sections, "missing")).toBeUndefined();
+	});
+});
+
+describe("PLUGIN_SETTINGS", () => {
+	it("starts with the shell Appearance section", () => {
+		expect(PLUGIN_SETTINGS[0]).toMatchObject({
+			pluginId: "shell",
+			id: "appearance",
+			title: "Appearance",
+			browserSafe: true,
+		});
+	});
+});
+
+describe("isSettingsPath", () => {
+	it("matches the settings takeover routes", () => {
+		expect(isSettingsPath("/settings")).toBe(true);
+		expect(isSettingsPath("/settings/alpha")).toBe(true);
+		expect(isSettingsPath("/plugins/chat")).toBe(false);
+		expect(isSettingsPath("/")).toBe(false);
+	});
+});

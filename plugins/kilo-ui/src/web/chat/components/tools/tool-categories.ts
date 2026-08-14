@@ -8,10 +8,11 @@ import {
 	GlobeIcon,
 	ListTodoIcon,
 	SearchIcon,
+	SparklesIcon,
 	TerminalIcon,
 	WrenchIcon,
 } from "lucide-react";
-import { basename, getPatchInfo, str, truncate } from "./tool-ui-shared.js";
+import { basename, getCommandSummary, getPatchInfo, str, truncate } from "./tool-ui-shared.js";
 
 /**
  * Tool grouping for the activity view. Categories mirror the built-in tool
@@ -28,7 +29,8 @@ export type ToolCategory =
 	| "web"
 	| "terminal"
 	| "planning"
-	| "asking";
+	| "asking"
+	| "skill";
 
 /** Dynamic subgroup for an MCP server, e.g. `mcp:atlassian`. */
 export type McpActivityKind = `mcp:${string}`;
@@ -59,6 +61,7 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	ask_question: "asking",
 	request_user_input: "asking",
 	requestuserinput: "asking",
+	skill: "skill",
 };
 
 export const getToolCategory = (toolName: string): ToolCategory | undefined =>
@@ -66,6 +69,8 @@ export const getToolCategory = (toolName: string): ToolCategory | undefined =>
 
 export const isAskQuestionTool = (toolName: string): boolean =>
 	getToolCategory(toolName) === "asking";
+
+export const isSkillTool = (toolName: string): boolean => getToolCategory(toolName) === "skill";
 
 /**
  * OpenCode/Kilo MCP tools are named `{server}_{toolName}`. Built-in tools with
@@ -124,7 +129,8 @@ export const activityKindFromGroupKey = (groupKey: string): ActivityKind | undef
 		rest === "web" ||
 		rest === "terminal" ||
 		rest === "planning" ||
-		rest === "asking"
+		rest === "asking" ||
+		rest === "skill"
 	) {
 		return rest;
 	}
@@ -234,6 +240,10 @@ export type KindStats = {
 	file?: string | undefined;
 	/** Short question prompt for asking subgroups. */
 	question?: string | undefined;
+	/** Description or abbreviated command for a single terminal tool call. */
+	commandSummary?: string | undefined;
+	/** Skill id for a skill subgroup that loaded exactly one skill. */
+	skill?: string | undefined;
 };
 
 type KindMeta = {
@@ -306,8 +316,10 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 	terminal: {
 		icon: TerminalIcon,
 		label: "Terminal",
-		liveLabel: () => "Running commands",
-		doneLabel: ({ count }) => `Ran ${plural(count, "command")}`,
+		liveLabel: ({ count, commandSummary }) =>
+			commandSummary ? `Running ${commandSummary}` : `Running ${plural(count, "command")}`,
+		doneLabel: ({ count, commandSummary }) =>
+			commandSummary ? `Ran ${commandSummary}` : `Ran ${plural(count, "command")}`,
 		circleClassName:
 			"border-zinc-600/40 bg-zinc-100 text-zinc-600 dark:border-zinc-400/40 dark:bg-zinc-950 dark:text-zinc-400",
 	},
@@ -326,7 +338,16 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 		doneLabel: ({ question, count }) =>
 			question ? `Asked ${question}` : `Asked ${plural(count, "question")}`,
 		circleClassName:
-			"border-sky-600/40 bg-sky-100 text-sky-600 dark:border-sky-400/40 dark:bg-sky-950 dark:text-sky-400",
+			"border-indigo-600/40 bg-indigo-100 text-indigo-600 dark:border-indigo-400/40 dark:bg-indigo-950 dark:text-indigo-400",
+	},
+	skill: {
+		icon: SparklesIcon,
+		label: "Skill",
+		liveLabel: () => "Reading Skill",
+		doneLabel: ({ skill, count }) =>
+			skill || count <= 1 ? "Read Skill" : `Read ${plural(count, "Skill")}`,
+		circleClassName:
+			"border-fuchsia-600/40 bg-fuchsia-100 text-fuchsia-600 dark:border-fuchsia-400/40 dark:bg-fuchsia-950 dark:text-fuchsia-400",
 	},
 	tools: {
 		icon: WrenchIcon,
@@ -410,6 +431,27 @@ export const getPartQuestionSummary = (part: ActivityPart): string | undefined =
 	return questionSummaryFromArgs(part.args);
 };
 
+/** OpenCode/Kilo `skill` tool takes `{ name }`. */
+export const getPartSkillName = (part: ActivityPart): string | undefined => {
+	if (part.type !== "tool-call" || !part.toolName || !isSkillTool(part.toolName)) {
+		return undefined;
+	}
+	if (!part.args || typeof part.args !== "object") return undefined;
+	const name = str((part.args as Record<string, unknown>).name);
+	return name ? truncate(name, 48) : undefined;
+};
+
+const uniqueSkillNames = (parts: readonly ActivityPart[], indices: readonly number[]): string[] => {
+	const names = new Set<string>();
+	for (const index of indices) {
+		const part = parts[index];
+		if (!part) continue;
+		const name = getPartSkillName(part);
+		if (name) names.add(name);
+	}
+	return [...names];
+};
+
 export const getSegmentStats = (
 	parts: readonly ActivityPart[],
 	segment: ActivitySegment,
@@ -424,11 +466,19 @@ export const getSegmentStats = (
 			if (question) break;
 		}
 	}
+	const commandSummary =
+		segment.kind === "terminal" && segment.indices.length === 1
+			? getCommandSummary(parts[segment.indices[0]!]?.args as Record<string, unknown> | undefined)
+			: undefined;
+	const skills =
+		segment.kind === "skill" ? uniqueSkillNames(parts, segment.indices) : ([] as string[]);
 	return {
 		count: segment.indices.length,
 		files: files.length,
 		file: files.length === 1 ? basename(files[0]!) : undefined,
 		question,
+		commandSummary: commandSummary || undefined,
+		skill: skills.length === 1 ? skills[0] : undefined,
 	};
 };
 

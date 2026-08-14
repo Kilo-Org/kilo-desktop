@@ -181,9 +181,10 @@ installed copy). The bundled `kilo serve` is the odd one out — we ship and
 control it and want zero end-user configuration.
 
 The interim ships `@mcp-b/webmcp-local-relay` inside the packaged app,
-seeds an `mcp["anaconda-desktop-relay"]` entry into the app-owned
-`kilo.jsonc`, and spawns the relay by running Anaconda Desktop's own
-executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
+initializes an `mcp["anaconda-desktop-relay"]` entry into the app-owned
+`kilo.jsonc`, runs the WebSocket rendezvous in Electron main, and lets Kilo
+launch the package's CLI through Anaconda Desktop's executable in Node mode
+(`ELECTRON_RUN_AS_NODE=1`) for the stdio MCP transport.
 
 ### Target topology
 
@@ -193,7 +194,7 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │  kilo-server plugin                                                                │
 │                                                                                    │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │ 1. mainRegister() — awaited seed step (idempotent, sidecar-tracked)         │   │
+│  │ 1. mainRegister() — awaited config reconciliation (idempotent, sidecar-tracked)         │   │
 │  │                                                                             │   │
 │  │    defaultRunAsNodeEnabled(process.execPath)  ──► reads @electron/fuses    │   │
 │  │                                                    → true / false           │   │
@@ -202,7 +203,7 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │  │                                       node_modules/@mcp-b/webmcp-local-     │   │
 │  │                                       relay/dist/cli.mjs                    │   │
 │  │                                                                             │   │
-│  │    seedKiloMcpConfig(${runtime}/config/kilo/, {                             │   │
+│  │    reconcileWebMcpRelayConfig(${runtime}/config/kilo/, {                             │   │
 │  │      // written to kilo.jsonc (Kilo's canonical file, JSONC-tolerant)      │   │
 │  │      mcp: {                                                                 │   │
 │  │        "anaconda-desktop-relay": {                                          │   │
@@ -217,12 +218,15 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │  │      // that is not part of Kilo's schema may live inside kilo.jsonc.      │   │
 │  │    })                                                                       │   │
 │  │                                                                             │   │
-│  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-managed.json           │   │
-│  │      { "version": 1, "managed": ["anaconda-desktop-relay"] }                │   │
+│  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-ownership.json           │   │
+│  │      { "version": 3, "ownedEntryIds": ["anaconda-desktop-relay"] }                │   │
 │  │                                                                             │   │
-│  │    When RunAsNode is disabled (downgrade / rollback), seed instead REMOVES │   │
-│  │    the managed entry and prunes the sidecar.                               │   │
+│  │    When RunAsNode is disabled (downgrade / rollback), initialization instead REMOVES │   │
+│  │    the Desktop-owned entry and prunes the sidecar.                               │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
+│                       │                                                            │
+│                       ├─ WebMcpRelayService creates RelayBridgeServer in-process │
+│                       └─ Electron main owns ws://127.0.0.1:9345               │
 │                       │                                                            │
 │                       ▼                                                            │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐   │
@@ -241,8 +245,8 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │  │          env={ ELECTRON_RUN_AS_NODE: "1", ... })                            │   │
 │  │                                                                             │   │
 │  │      → Electron runs in headless Node mode, executes relay.js               │   │
-│  │      → Relay listens WS on 127.0.0.1:9333 AND speaks MCP over stdio         │   │
-│  │        with its parent (kilo serve)                                         │   │
+│  │      → Fixed port is owned by Desktop main, so this relay joins it            │   │
+│  │        in client mode and speaks MCP over stdio with kilo serve              │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
 │                                        │                                           │
 │                                        │ stdio MCP                                 │
@@ -265,25 +269,28 @@ executable in Node mode (`ELECTRON_RUN_AS_NODE=1`).
 │    ToolRegistry ──► installWebMcp ──► document.modelContext                       │
 │                                             │                                     │
 │                                             ▼                                     │
-│    <iframe /webmcp/widget.html>   ── ws://127.0.0.1:9333 ──►  relay (above)       │
+│    <iframe /webmcp/widget.html>   ── ws://127.0.0.1:9345 ──►  relay (above)       │
 │                                                                                   │
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Three new pieces beyond §1's diagram:
+Four pieces beyond §1's diagram:
 
-- **Seed step** in `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts` writes
+- **Relay config reconciliation** in `plugins/kilo-server/src/main/webmcp-relay-config.ts` writes
   an `mcp` block into the app-owned `kilo.jsonc` before `KiloServerManager#start`
   runs. Idempotent, JSONC-preserving (`jsonc-parser`), atomic (`atomically`).
   When the runtime fuse detection reports `RunAsNode` off, the same call
-  **removes** any managed entry it previously wrote and prunes the sidecar,
+  **removes** any Desktop-owned entry it previously wrote and prunes the sidecar,
   so downgrade / rollback / fuse re-hardening self-heals.
-- **Ownership sidecar** at `${runtime}/config/kilo/.anaconda-desktop-managed.json`
-  tracks which MCP entry names we own. Kilo never opens this file — Kilo's
+- **Ownership sidecar** at `${runtime}/config/kilo/.anaconda-desktop-ownership.json`
+  tracks which MCP entry names Desktop owns and which feature source owns each
+  entry. Kilo never opens this file — Kilo's
   top-level `Config` schema is `additionalProperties: false`, so any marker
   stored inside `kilo.jsonc` would fail validation and stop `kilo serve` from
   starting. Missing sidecar (deleted by user, corrupt, or absent) = "we own
-  nothing" = escape hatch.
+  nothing" = escape hatch. The next MCP config mutation migrates the legacy
+  `.anaconda-desktop-managed.json` sidecar and its `managed` array to the new
+  filename and `ownedEntryIds` field, preserving source ownership.
 - **Bundled relay entry** — the same `@mcp-b/webmcp-local-relay@4.0.0` package
   that `apps/web/scripts/sync-webmcp-assets.mjs` reads for its browser assets
   is now also unpacked from asar (see `apps/desktop/forge.config.ts`) so its
@@ -291,6 +298,12 @@ Three new pieces beyond §1's diagram:
   `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. The sync script asserts at
   build time that `apps/web`, `plugins/kilo-server`, and the resolved
   installed package all pin the exact same version.
+- **Main-owned rendezvous** in
+  `plugins/kilo-server/src/main/webmcp-relay-service.ts` creates the package's
+  public `RelayBridgeServer` directly in Electron main. Feature boot awaits
+  its fixed `127.0.0.1:9345` bind before creating the renderer window, and
+  plugin disposal stops it. Kilo stays lazy; its later MCP child joins the
+  live server in client mode.
 
 ### Boot sequence (cold start)
 
@@ -301,31 +314,35 @@ Time ─►
        │
  t1    plugins/kilo-server mainRegister() runs
        │  ├─ defaultRunAsNodeEnabled()        (reads fuses off process.execPath)
-       │  ├─ contribute KILO_CONFIG_CONTENT overlay for mcp["anaconda-desktop-relay"]
-       │  └─ WebMcpRelaySupervisor.start()    (background — does not block kilo)
-       │       spawn(process.execPath, [cli.mjs, --port 9345, --relay-id …],
-       │             ELECTRON_RUN_AS_NODE=1)
-       │       → binds ws://127.0.0.1:9345   (server mode rendezvous)
+       │  ├─ resolveWebMcpRelayEntry()        (fs check, logs+skips if missing)
+       │  └─ await reconcileWebMcpRelayConfig()    (JSONC merge + ownership write)
+       │       │
+       │       ├─ RunAsNode enabled → write Desktop-owned entry + record in sidecar
+       │       └─ RunAsNode disabled → remove any Desktop-owned entry + prune sidecar
        │
- t2    KiloServerManager.ensureRunning()
-       │  └─ spawn kilo serve (overlay merged into KILO_CONFIG_CONTENT)
+ t2    mainRegister awaits WebMcpRelayService.start()
+       │  └─ RelayBridgeServer binds ws://127.0.0.1:9345 in-process
        │
- t3    Renderer boots, installWebMcp() runs
-       │  └─ widget probes 9345 first → finds t1 rendezvous, publishes tools
+ t3    Renderer widget connects to 9345 and publishes tools
        │
- t4    First chat / MCP list → kilo spawns mcp["anaconda-desktop-relay"] child
-       │  └─ EADDRINUSE on 9345 → client mode → proxies to t1 over WS
-       │     tools/list already sees widget producers
+ t4    First chat connection lazily starts kilo serve
+       │  └─ Kilo reads mcp["anaconda-desktop-relay"]
        │
- t5    Kilo shows the tools under `anaconda-desktop-relay`
+ t5    Kilo spawns its relay subprocess
+       │  └─ joins Desktop main's fixed-port server in client mode
+       │     and proxies tools over stdio
+       │
+ t6    Kilo shows the tools under `anaconda-desktop-relay` in its MCP list
        READY
 ```
 
-The overlay is contributed **before** `ensureRunning`. The WS rendezvous is
-owned by Desktop main (`WebMcpRelaySupervisor`), not by kilo's lazy MCP
-spawn — so the widget can connect as soon as `:9345` is listening, even while
-kilo is still booting. Kilo's MCP child joins that live server in client mode
-on first use (no eager warm connect).
+`configReady` is **awaited** before `ensureRunning`. `kilo serve` cannot read the
+config file before the atomic rename lands.
+
+Key ordering guarantee: Desktop main owns the WS rendezvous before the renderer
+window is created and independently of Kilo's lazy MCP lifecycle. A Kilo
+restart only replaces the stdio client; the renderer remains attached to the
+in-process server.
 
 ### Runtime — a Kilo agent calls a plugin tool
 
@@ -334,11 +351,11 @@ Kilo agent LLM
    │  "call todos_list()"
    ▼
 kilo serve  ── stdio JSON-RPC ─►  relay (client mode)
-                                     │
-                                     ▼  WS (relay-to-relay)
-                          main-owned relay (server mode :9345)
-                                     │
-                                     ▼  WS frame
+                                     │  WS relay-to-relay
+                                     ▼
+                       Electron main relay (server mode :9345)
+                                     │  WS frame
+                                     ▼
                           widget.html iframe (renderer)
                                      │
                                      ▼  postMessage (in-page)
@@ -363,7 +380,7 @@ what the bundled relay adds.
 ### Config-file merge invariants
 
 ```
-Before seeding (user's kilo.jsonc, if any):    After seeding:
+Before initialization (user's kilo.jsonc, if any):    After initialization:
 
   kilo.jsonc                                     kilo.jsonc
   ──────────                                     ──────────
@@ -388,11 +405,12 @@ Before seeding (user's kilo.jsonc, if any):    After seeding:
                                                  }
                                                }
 
-                                                 .anaconda-desktop-managed.json   ← sidecar (new)
+                                                 .anaconda-desktop-ownership.json   ← sidecar (new)
                                                  ──────────────────────────────
                                                {
-                                                 "version": 1,
-                                                 "managed": ["anaconda-desktop-relay"]
+                                                 "version": 3,
+                                                 "ownedEntryIds": ["anaconda-desktop-relay"],
+                                                 "owners": { "anaconda-desktop-relay": "kilo-server" }
                                                }
 ```
 
@@ -403,9 +421,12 @@ Rules:
    comment / formatting quirk is preserved by `jsonc-parser`'s `modify()`
    API. Ownership tracking never leaks into `kilo.jsonc` because Kilo's
    top-level `Config` schema rejects unknown keys.
-2. Overwrite only if the entry's name is listed in the sidecar's
-   `managed` array. If the user deleted the sidecar or removed the entry
-   from the list, we **do not resurrect** the managed entry — that is the
+2. Overwrite or remove only if the entry's name is listed in the sidecar's
+   `ownedEntryIds` array and its recorded owner matches the calling source. This
+   prevents one feature from replacing or deleting another feature's entry.
+   Schema-v1 entries without an owner are adopted by their first successful
+   post-upgrade write. If the user deleted the sidecar or removed the entry
+   from the list, we **do not resurrect** the Desktop-owned entry — that is the
    escape hatch.
 3. Writes are atomic (via `atomically`).
 4. Absolute paths are recomputed on every boot so app upgrades /
@@ -413,7 +434,7 @@ Rules:
 5. If the existing `kilo.jsonc` is unparseable (invalid JSONC, or top-level
    not an object), we **refuse to write** and return `skipped-error` —
    never clobbering user data. The sidecar is never touched in that case.
-6. When the sidecar's `managed` list becomes empty (last managed entry
+6. When the sidecar's `ownedEntryIds` list becomes empty (last Desktop-owned entry
    removed), the sidecar file itself is deleted to keep the config
    directory tidy.
 
@@ -442,9 +463,9 @@ attached to it can call them.
 
 Both halves are therefore pinned to each other:
 
-- Seeded relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
+- Desktop-provided relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
   (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` in
-  `plugins/kilo-server/src/main/seed-kilo-mcp-config.ts`). Fixed-port mode
+  `plugins/kilo-server/src/main/webmcp-relay-config.ts`). Fixed-port mode
   refuses to chain to a non-relay owner; 9345 is far from the 9333 default
   foreign relays use, still inside the CSP-allowed range.
 - Embed attributes: `data-relay-port="9345" data-relay-id="anaconda-agentic-desktop"`
@@ -460,15 +481,13 @@ relay then promotes itself to server mode on the freed port and the widget's
 reconnect ladder finds it. A per-process id would leave the zombie holding
 the port indefinitely.
 
-**Boot-order race + main-owned rendezvous.** Historically `kilo serve` booted
-MCP servers lazily, so `:9345` could bind 30–60s after the widget's discovery
-ladder had gone dormant. Desktop now owns the rendezvous via
-`WebMcpRelaySupervisor` (started as soon as the overlay seed succeeds), so the
-widget's first scan can hit a live port independent of kilo's MCP connect.
-Kilo attaches its client-mode MCP child lazily on first tools/list — by then
-producers are already on the server. Secondary mitigation: `installWebMcp`
-posts a `webmcp.connect` nudge every 15 seconds for residual gaps (renderer
-probing before listen, orphan-takeover / EPIPE).
+**Boot-order race + reconnect nudge.** Desktop main starts the rendezvous
+independently of Kilo's lazy MCP connection, preventing the multi-minute gap
+where the widget scanned before any process owned 9345. `installWebMcp` also
+posts a `webmcp.connect` nudge into the widget every 15 seconds as a secondary
+guard for cold Electron startup, orphan takeover, and relay restarts. The
+widget treats the nudge as a no-op while connected and immediate discovery
+while dormant or disconnected.
 
 Failure modes that remain (accepted for the interim):
 
@@ -496,8 +515,8 @@ Mitigating factors:
   our code-signing identity, which meaningfully weakens the fuse's guarantee
   for our threat model regardless.
 - If a future build ships with `RunAsNode: false` (either intentionally as the
-  #102 cleanup or accidentally), the seed detects the fuse state at boot and
-  **removes** its previously-written managed entry, so users are not stranded
+  #102 cleanup or accidentally), the initializer detects the fuse state at boot and
+  **removes** its previously-written Desktop-owned entry, so users are not stranded
   with a bogus `command` pointing at a binary that no longer runs as Node.
 
 The fuse flips back to `false` once #102 lands.

@@ -4,7 +4,7 @@ import {
 	useAui,
 	useAuiState,
 } from "@assistant-ui/react";
-import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -99,13 +99,9 @@ function RuntimeState() {
 			<button
 				type="button"
 				onClick={() => {
-					void aui.composer.addAttachment({
-						id: "attachment-1",
-						type: "document",
-						name: "notes.txt",
-						contentType: "text/plain",
-						content: [{ type: "text", text: "Remember this attachment" }],
-					});
+					void aui.composer.addAttachment(
+						new File(["Remember this attachment"], "notes.txt", { type: "text/plain" }),
+					);
 				}}
 			>
 				Add attachment
@@ -133,6 +129,7 @@ function RuntimeHarness({
 }) {
 	const runtime = useOpenCodeRuntime({
 		client,
+		adapters: { attachments: new OpenCodeAttachmentAdapter() },
 		...(initialSessionId === undefined ? {} : { initialSessionId }),
 		...(onError === undefined ? {} : { onError }),
 	});
@@ -275,7 +272,12 @@ describe("patched OpenCode lazy session initialization", () => {
 				sessionID: "session-1",
 				parts: expect.arrayContaining([
 					{ type: "text", text: "With a file" },
-					expect.objectContaining({ type: "text", text: "Remember this attachment" }),
+					expect.objectContaining({
+						type: "file",
+						filename: "notes.txt",
+						mime: "text/plain",
+						url: expect.stringMatching(/^data:text\/plain;base64,/),
+					}),
 				]),
 			}),
 			expect.objectContaining({ throwOnError: true }),

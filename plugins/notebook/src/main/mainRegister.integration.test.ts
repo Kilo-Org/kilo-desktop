@@ -14,7 +14,7 @@ function fakePort(): HostMessagePort {
 	};
 }
 
-function boot() {
+async function boot() {
 	const router = new FeatureRouter();
 	const mainSdk = router.createMainSdk("notebook", {
 		resolvePluginAsset: (subpath) => `/plugins/notebook/${subpath}`,
@@ -33,7 +33,7 @@ function boot() {
 		connect: vi.fn(async () => undefined),
 		dispose: vi.fn(async () => undefined),
 	} satisfies ElectronNotebookHostServiceLike;
-	mainRegister(mainSdk, {
+	await mainRegister(mainSdk, {
 		resolveBundleRoot: () => "/plugins/notebook/build/notebook",
 		createHostService: () => hostService,
 	});
@@ -42,7 +42,7 @@ function boot() {
 
 describe("notebook mainRegister", () => {
 	it("reports the external singleton through the typed status channel", async () => {
-		const { router } = boot();
+		const { router } = await boot();
 
 		await expect(router.invoke("notebook", "status")).resolves.toEqual({
 			availability: { status: "available" },
@@ -56,7 +56,7 @@ describe("notebook mainRegister", () => {
 	});
 
 	it("routes a validated feature port with its trusted sender id", async () => {
-		const { hostService, router } = boot();
+		const { hostService, router } = await boot();
 		const port = fakePort();
 		const args = {
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
@@ -72,8 +72,8 @@ describe("notebook mainRegister", () => {
 		).rejects.toMatchObject({ code: "VALIDATION" });
 	});
 
-	it("contributes the bundle with an exact isolated-output CSP profile", () => {
-		const { mainSdk } = boot();
+	it("contributes the bundle with an exact isolated-output CSP profile", async () => {
+		const { mainSdk } = await boot();
 		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"];
 
 		expect(capability).toEqual({
@@ -84,7 +84,7 @@ describe("notebook mainRegister", () => {
 	});
 
 	it("disposes every active native host session with the feature", async () => {
-		const { hostService, router } = boot();
+		const { hostService, router } = await boot();
 
 		await router.destroyFeatureAsync("notebook");
 

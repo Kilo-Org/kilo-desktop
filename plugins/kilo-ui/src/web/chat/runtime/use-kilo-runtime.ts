@@ -1,5 +1,5 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
-import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import { useMemo, useRef } from "react";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
@@ -80,6 +80,7 @@ export function useKiloRuntime({
 			...(sessionActivity ? { sessionActivity } : {}),
 		});
 	}, [client, connectionPromise, prepareSession, promptGetters, sessionActivity]);
+	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 
 	return useOpenCodeRuntime({
 		...(backend ? { backend } : {}),
@@ -90,5 +91,6 @@ export function useKiloRuntime({
 		...(defaultModel === undefined ? {} : { defaultModel }),
 		...(isSendDisabled === undefined ? {} : { isSendDisabled }),
 		...(onError === undefined ? {} : { onError }),
+		adapters,
 	});
 }

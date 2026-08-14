@@ -25,6 +25,12 @@ import {
 } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
 	ActionBarMorePrimitive,
@@ -51,12 +57,12 @@ import {
 	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
-	RefreshCwIcon,
 	SquareIcon,
 } from "lucide-react";
 import {
 	createContext,
 	useContext,
+	useEffect,
 	useRef,
 	useState,
 	type ComponentType,
@@ -65,6 +71,11 @@ import {
 	type KeyboardEvent,
 } from "react";
 
+import { useChatAgentSelection } from "../../agent-selection/ChatAgentSelectionContext.js";
+import {
+	cycleCatalogAgent,
+	OPTIMISTIC_AGENT_CATALOG,
+} from "../../agent-selection/agent-catalog.js";
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
 
@@ -113,6 +124,22 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	);
 };
 
+const ComposerDockMask: FC = () => {
+	return (
+		<>
+			{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
+			<div
+				aria-hidden
+				className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
+			/>
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-tl" />
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-tr" />
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-bl" />
+			<div aria-hidden className="composer-corner-fill composer-corner-fill-br" />
+		</>
+	);
+};
+
 const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const { Welcome = DraftWelcomeHeadline } = useContext(ThreadComponentsContext);
 
@@ -143,7 +170,7 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
-			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:color-mix(in_oklab,var(--color-muted)_30%,var(--color-background))]"
+			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:var(--color-background)]"
 			style={{
 				["--thread-max-width" as string]: "44rem",
 				["--composer-radius" as string]: "1.5rem",
@@ -177,13 +204,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						<ThreadFollowupSuggestions />
 						<div className="relative">
 							<ThreadComposerBlock isDraft={isDraft} />
-							{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
-							{!isDraft ? (
-								<div
-									aria-hidden
-									className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
-								/>
-							) : null}
+							{!isDraft ? <ComposerDockMask /> : null}
 						</div>
 						{isDraft ? <ThreadSuggestions /> : null}
 					</ThreadPrimitive.ViewportFooter>
@@ -256,13 +277,21 @@ const ThreadSuggestionItem: FC = () => {
 const Composer: FC = () => {
 	const aui = useAui();
 	const isDraft = useAuiState(isDraftView);
+	const activeThreadId = useAuiState((s) => s.threadListItem.id);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
+	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const { refine, submitting, canReply } = useApprovePlan();
+	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
 
 	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
+
+	useEffect(() => {
+		if (!isDraft || isConnecting) return;
+		inputRef.current?.focus({ preventScroll: true });
+	}, [activeThreadId, isConnecting, isDraft]);
 
 	const sendWhenConnected = () => {
 		if (isConnectingRef.current) {
@@ -312,6 +341,27 @@ const Composer: FC = () => {
 	};
 
 	const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+		if (
+			event.key === "Tab" &&
+			event.shiftKey &&
+			!event.metaKey &&
+			!event.ctrlKey &&
+			!event.altKey &&
+			!event.nativeEvent.isComposing &&
+			!isCatalogError
+		) {
+			event.preventDefault();
+			const next = cycleCatalogAgent(
+				catalog ?? (isCatalogPending ? OPTIMISTIC_AGENT_CATALOG : undefined),
+				agent,
+				1,
+			);
+			if (next && next !== agent) {
+				setAgent(next);
+			}
+			return;
+		}
+
 		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
 		if (!showPlanFollowupActions) return;
 		// ComposerInput returns early while isRunning — intercept before that.
@@ -339,6 +389,7 @@ const Composer: FC = () => {
 			>
 				<ComposerAttachments />
 				<ComposerPrimitive.Input
+					ref={inputRef}
 					placeholder="Send a message..."
 					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
 					minRows={2}
@@ -506,6 +557,25 @@ const ComposerAction: FC<{
 	);
 };
 
+const CONSIDERING_NEXT_STEPS = "Considering next steps";
+
+const AssistantWorkingIndicator: FC = () => (
+	<span
+		data-slot="aui_assistant-message-indicator"
+		className="text-muted-foreground relative inline-block text-sm leading-none"
+		role="status"
+		aria-label={CONSIDERING_NEXT_STEPS}
+	>
+		<span>{CONSIDERING_NEXT_STEPS}</span>
+		<span
+			aria-hidden
+			className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
+		>
+			{CONSIDERING_NEXT_STEPS}
+		</span>
+	</span>
+);
+
 const MessageError: FC = () => {
 	return (
 		<MessagePrimitive.Error>
@@ -574,6 +644,7 @@ const AssistantMessage: FC = () => {
 							case "group-terminal":
 							case "group-planning":
 							case "group-asking":
+							case "group-skill":
 							case "group-tools": {
 								const kind = activityKindFromGroupKey(part.type);
 								if (!kind) return null;
@@ -592,15 +663,7 @@ const AssistantMessage: FC = () => {
 							case "data":
 								return part.dataRendererUI;
 							case "indicator":
-								return (
-									<span
-										data-slot="aui_assistant-message-indicator"
-										className="animate-pulse font-sans"
-										aria-label="Assistant is working"
-									>
-										{"●"}
-									</span>
-								);
+								return <AssistantWorkingIndicator />;
 							default: {
 								if (
 									typeof part.type === "string" &&
@@ -634,6 +697,34 @@ const AssistantMessage: FC = () => {
 	);
 };
 
+const AssistantActionMoreTrigger: FC = () => {
+	return (
+		<TooltipProvider>
+			<Tooltip disableHoverablePopup>
+				<TooltipTrigger
+					render={
+						<ActionBarMorePrimitive.Trigger
+							render={
+								<Button
+									variant="ghost"
+									size="icon"
+									className="aui-button-icon data-[state=open]:bg-accent size-6 p-1 active:scale-90"
+								/>
+							}
+						/>
+					}
+				>
+					<MoreHorizontalIcon />
+					<span className="sr-only">More</span>
+				</TooltipTrigger>
+				<TooltipContent side="bottom" className="pointer-events-none">
+					More
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
+};
+
 const AssistantActionBar: FC = () => {
 	return (
 		<ActionBarPrimitive.Root
@@ -642,15 +733,8 @@ const AssistantActionBar: FC = () => {
 			className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
 		>
 			<MessageCopyButton />
-			<ActionBarPrimitive.Reload render={<TooltipIconButton tooltip="Refresh" />}>
-				<RefreshCwIcon />
-			</ActionBarPrimitive.Reload>
 			<ActionBarMorePrimitive.Root>
-				<ActionBarMorePrimitive.Trigger
-					render={<TooltipIconButton tooltip="More" className="data-[state=open]:bg-accent" />}
-				>
-					<MoreHorizontalIcon />
-				</ActionBarMorePrimitive.Trigger>
+				<AssistantActionMoreTrigger />
 				<ActionBarMorePrimitive.Content
 					side="bottom"
 					align="start"

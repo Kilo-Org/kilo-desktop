@@ -10,6 +10,7 @@ import {
 	type KiloChildProcess,
 	type KiloServerManagerOptions,
 } from "./KiloServerManager.js";
+import { ContributedEnvManager } from "./ContributedEnvManager.js";
 
 class FakeChild extends EventEmitter implements KiloChildProcess {
 	readonly pid: number;
@@ -52,7 +53,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 		},
 	);
 	const fetch = vi.fn(async () =>
-		Response.json({ healthy: true, version: "7.4.20" }),
+		Response.json({ healthy: true, version: "7.4.21" }),
 	) as unknown as typeof globalThis.fetch;
 	const statuses: KiloServerStatus[] = [];
 	const manager = new KiloServerManager({
@@ -61,6 +62,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 			treeSitterWasmDirectory: "/vendor/tree-sitter",
 		},
 		runtimeDirectory: "/tmp/kilo-test-runtime",
+		configDirectory: "/tmp/kilo-test-runtime/config/kilo",
 		stateDirectory: "/tmp/kilo-test-state",
 		environment: { PATH: "/bin", NODE_OPTIONS: "--inspect", LD_PRELOAD: "bad.so" },
 		platform: "linux",
@@ -91,7 +93,7 @@ describe("KiloServerManager", () => {
 		expect(first).toMatchObject({
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
-			version: "7.4.20",
+			version: "7.4.21",
 			globalDirectory: "/tmp/kilo-test-runtime",
 		});
 		expect(first.password).toMatch(/^[a-f0-9]{64}$/);
@@ -105,7 +107,7 @@ describe("KiloServerManager", () => {
 		);
 		expect(statuses).toEqual([
 			{ status: "starting" },
-			{ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.20" },
+			{ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.21" },
 		]);
 		await expect(manager.ensureRunning()).resolves.toEqual(first);
 		expect(spawn).toHaveBeenCalledOnce();
@@ -117,7 +119,7 @@ describe("KiloServerManager", () => {
 		});
 	});
 
-	it("spawns with shared global XDG paths, loopback CORS, and a sanitized inherited environment", async () => {
+	it("spawns with an app-owned config profile, shared Kilo data, loopback CORS, and a sanitized environment", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
@@ -145,24 +147,28 @@ describe("KiloServerManager", () => {
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: "/vendor/tree-sitter",
-			// Inherit host config/data/cache so auth/sessions match Kilo CLI / VS Code.
-			XDG_CONFIG_HOME: "/custom/config",
+			// Desktop owns Kilo config, rather than merging the host's ~/.config/kilo.
+			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
+			// Shared data keeps provider credentials and sessions from Kilo CLI / VS Code.
 			XDG_DATA_HOME: "/custom/data",
 			XDG_CACHE_HOME: "/custom/cache",
 			// Explicit host XDG_STATE_HOME wins over the app-local state directory.
 			XDG_STATE_HOME: "/custom/state",
 			NO_PROXY: "127.0.0.1,localhost",
 		});
+		expect(options.env.KILO_CONFIG_DIR).toBeUndefined();
 		expect(options.env.NODE_OPTIONS).toBeUndefined();
 		expect(options.env.LD_PRELOAD).toBeUndefined();
 		manager.dispose();
 	});
 
-	it("defaults XDG_STATE_HOME to the app-local state directory", async () => {
+	it("owns config and defaults state while preserving shared data and cache", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
+				kilo_config_dir: "/tmp/other-profile",
 				XDG_CONFIG_HOME: "/custom/config",
+				xdg_config_home: "/tmp/other-config",
 				XDG_DATA_HOME: "/custom/data",
 				XDG_CACHE_HOME: "/custom/cache",
 			},
@@ -171,11 +177,14 @@ describe("KiloServerManager", () => {
 		const [, , options] = spawn.mock.calls[0]!;
 
 		expect(options.env).toMatchObject({
-			XDG_CONFIG_HOME: "/custom/config",
+			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
 			XDG_DATA_HOME: "/custom/data",
 			XDG_CACHE_HOME: "/custom/cache",
 			XDG_STATE_HOME: "/tmp/kilo-test-state",
 		});
+		expect(options.env.KILO_CONFIG_DIR).toBeUndefined();
+		expect(options.env.kilo_config_dir).toBeUndefined();
+		expect(options.env.xdg_config_home).toBeUndefined();
 		manager.dispose();
 	});
 
@@ -194,58 +203,6 @@ describe("KiloServerManager", () => {
 
 		expect(environment.PATH).toBe("/bin");
 		expect(Object.keys(environment).filter((name) => name.startsWith("DYLD_"))).toEqual([]);
-		manager.dispose();
-	});
-
-	it("injects getConfigOverlay into KILO_CONFIG_CONTENT at spawn", async () => {
-		const { manager, spawn } = createHarness({
-			environment: { PATH: "/bin" },
-			getConfigOverlay: () => ({
-				mcp: {
-					"anaconda-desktop-relay": {
-						type: "local",
-						command: ["/exe", "/relay"],
-						enabled: true,
-					},
-				},
-			}),
-		});
-		await manager.ensureRunning();
-		const environment = spawn.mock.calls[0]![2].env;
-		expect(JSON.parse(environment.KILO_CONFIG_CONTENT!)).toEqual({
-			mcp: {
-				"anaconda-desktop-relay": {
-					type: "local",
-					command: ["/exe", "/relay"],
-					enabled: true,
-				},
-			},
-		});
-		manager.dispose();
-	});
-
-	it("merges getConfigOverlay over inherited KILO_CONFIG_CONTENT", async () => {
-		const { manager, spawn } = createHarness({
-			environment: {
-				PATH: "/bin",
-				KILO_CONFIG_CONTENT: JSON.stringify({
-					mcp: { existing: { type: "local", command: ["a"], enabled: true } },
-					model: "keep-me",
-				}),
-			},
-			getConfigOverlay: () => ({
-				mcp: { relay: { type: "local", command: ["b"], enabled: true } },
-			}),
-		});
-		await manager.ensureRunning();
-		const environment = spawn.mock.calls[0]![2].env;
-		expect(JSON.parse(environment.KILO_CONFIG_CONTENT!)).toEqual({
-			model: "keep-me",
-			mcp: {
-				existing: { type: "local", command: ["a"], enabled: true },
-				relay: { type: "local", command: ["b"], enabled: true },
-			},
-		});
 		manager.dispose();
 	});
 
@@ -272,7 +229,7 @@ describe("KiloServerManager", () => {
 		) as unknown as typeof fetch;
 		const strict = createHarness({ fetch: mismatchFetch });
 		await expect(strict.manager.ensureRunning()).rejects.toThrow(
-			"Kilo server version mismatch: expected 7.4.20, got 9.0.0-dev.",
+			"Kilo server version mismatch: expected 7.4.21, got 9.0.0-dev.",
 		);
 
 		const override = createHarness({ fetch: mismatchFetch, allowVersionMismatch: true });
@@ -300,7 +257,7 @@ describe("KiloServerManager", () => {
 
 	it("rejects invalid and unhealthy health responses", async () => {
 		const invalid = createHarness({
-			fetch: vi.fn(async () => Response.json({ healthy: false, version: "7.4.20" })),
+			fetch: vi.fn(async () => Response.json({ healthy: false, version: "7.4.21" })),
 		});
 		await expect(invalid.manager.ensureRunning()).rejects.toThrow(
 			"Kilo server returned an invalid health response.",
@@ -379,6 +336,7 @@ describe("KiloServerManager", () => {
 		const manager = new KiloServerManager({
 			installation: { executablePath: "/kilo", treeSitterWasmDirectory: "/tree" },
 			runtimeDirectory: "/tmp/kilo-timeout",
+			configDirectory: "/tmp/kilo-timeout/config/kilo",
 			stateDirectory: "/tmp/kilo-timeout-state",
 			spawn: () => child,
 			startupTimeoutMs: 1,
@@ -400,5 +358,169 @@ describe("KiloServerManager", () => {
 		await expect(startup).rejects.toThrow("Kilo Code has shut down.");
 		expect(spawn).not.toHaveBeenCalled();
 		expect(manager.status).toEqual({ status: "stopped" });
+	});
+
+	it("includes contributed environment variables in the spawn environment", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		contributedEnv.contribute("anaconda-mcp", { ANACONDA_API_KEY: "test-key-123" });
+		contributedEnv.contribute("other-source", { CUSTOM_VAR: "custom-value" });
+
+		const { manager, spawn } = createHarness({ contributedEnv });
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		expect(environment.ANACONDA_API_KEY).toBe("test-key-123");
+		expect(environment.CUSTOM_VAR).toBe("custom-value");
+		manager.dispose();
+	});
+
+	it("does not include contributed env when no ContributedEnvManager is provided", async () => {
+		const { manager, spawn } = createHarness();
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// Should still work — no ANACONDA_API_KEY since no contribution
+		expect(environment.ANACONDA_API_KEY).toBeUndefined();
+		manager.dispose();
+	});
+
+	it("contributed env cannot override Kilo-specific variables", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		// Try to override critical variables — they should be overwritten by the manager
+		contributedEnv.contribute("malicious", {
+			KILO_SERVER_PASSWORD: "hacked",
+			XDG_CONFIG_HOME: "/tmp/evil",
+		});
+
+		const { manager, spawn } = createHarness({ contributedEnv });
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// Kilo-specific vars take precedence (set after contributed env in the spread)
+		expect(environment.KILO_SERVER_PASSWORD).not.toBe("hacked");
+		expect(environment.XDG_CONFIG_HOME).not.toBe("/tmp/evil");
+		manager.dispose();
+	});
+
+	it("reserved env key filter is case-insensitive (Windows-safe)", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		// Case-variant reserved keys — Windows treats env names case-insensitively
+		// at the CreateProcess/libuv layer, so a strict-case filter is bypassable.
+		contributedEnv.contribute("malicious", {
+			node_options: "--require /tmp/evil.js",
+			Electron_Run_As_Node: "1",
+			kilo_server_password: "hacked",
+			xdg_config_home: "/tmp/evil",
+		});
+
+		const { manager, spawn } = createHarness({ contributedEnv });
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// None of the case-variant keys should survive
+		expect(environment.node_options).toBeUndefined();
+		expect(environment.NODE_OPTIONS).toBeUndefined();
+		expect(environment.Electron_Run_As_Node).toBeUndefined();
+		expect(environment.ELECTRON_RUN_AS_NODE).toBeUndefined();
+		// The uppercase reserved key should either be the manager's value or undefined
+		expect(environment.kilo_server_password).toBeUndefined();
+		expect(environment.KILO_SERVER_PASSWORD).not.toBe("hacked");
+		expect(environment.xdg_config_home).toBeUndefined();
+		manager.dispose();
+	});
+
+	// Regression: PR #116 review — WARNING KiloServerManager.ts:334. The
+	// original reserved list was a fixed narrow set that missed PATH, dynamic
+	// linker vars, and any new KILO_*/XDG_* key. Now: exact list for high-
+	// value single keys, PLUS prefix families (KILO_, XDG_, DYLD_, LD_) so
+	// e.g. `DYLD_INSERT_LIBRARIES` (code injection on macOS) and
+	// `LD_PRELOAD` (same on Linux) cannot land in the child env.
+	it("reserved env keys cover PATH and dynamic-linker families", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		contributedEnv.contribute("malicious", {
+			PATH: "/tmp/evil:/tmp/hijack",
+			DYLD_INSERT_LIBRARIES: "/tmp/evil.dylib",
+			DYLD_FALLBACK_LIBRARY_PATH: "/tmp/evil",
+			LD_PRELOAD: "/tmp/evil.so",
+			LD_LIBRARY_PATH: "/tmp/evil",
+			// The prefix guard MUST also reject a future KILO_* / XDG_* var
+			// we haven't enumerated yet.
+			KILO_FUTURE_KNOB: "attacker-controlled",
+			XDG_FUTURE_KNOB: "attacker-controlled",
+		});
+
+		const { manager, spawn } = createHarness({
+			contributedEnv,
+			environment: { PATH: "/usr/bin:/bin", HOME: "/home/user" } as NodeJS.ProcessEnv,
+			logger,
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		// PATH must remain the inherited value, not the attacker's.
+		expect(environment.PATH).toBe("/usr/bin:/bin");
+		// Dynamic linker shim variables must not survive at all — the
+		// process-level scrub in `#createEnvironment` also removes them
+		// from the inherited env for good measure.
+		expect(environment.DYLD_INSERT_LIBRARIES).toBeUndefined();
+		expect(environment.DYLD_FALLBACK_LIBRARY_PATH).toBeUndefined();
+		expect(environment.LD_PRELOAD).toBeUndefined();
+		expect(environment.LD_LIBRARY_PATH).toBeUndefined();
+		// Future KILO_/XDG_ additions are reserved by prefix.
+		expect(environment.KILO_FUTURE_KNOB).toBeUndefined();
+		expect(environment.XDG_FUTURE_KNOB).toBeUndefined();
+		// The malicious contributor should have been warned about each one.
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('"PATH" is reserved'));
+		manager.dispose();
+	});
+
+	it("reports isRunning correctly", async () => {
+		const { manager, children } = createHarness();
+		expect(manager.isRunning).toBe(false);
+
+		await manager.ensureRunning();
+		expect(manager.isRunning).toBe(true);
+
+		children[0]!.exit(1);
+		expect(manager.isRunning).toBe(false);
+		manager.dispose();
+	});
+
+	it("contributedEnvChangedSinceSpawn tracks drift from the last spawn", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		const { manager } = createHarness({ contributedEnv });
+
+		// No spawn yet — always "changed" so callers know they need to spawn.
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(true);
+
+		// Contribute BEFORE spawn, then spawn — env should match the snapshot.
+		contributedEnv.contribute("plugin-a", { FOO: "bar" });
+		await manager.ensureRunning();
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(false);
+
+		// New contribution after spawn — drift detected.
+		contributedEnv.contribute("plugin-b", { BAZ: "qux" });
+		expect(manager.contributedEnvChangedSinceSpawn()).toBe(true);
+
+		manager.dispose();
+	});
+});
+
+describe("owned config environment", () => {
+	it("removes inherited KILO_CONFIG_CONTENT so the file is authoritative", async () => {
+		const { manager, spawn } = createHarness({
+			environment: {
+				PATH: "/bin",
+				KILO_CONFIG_CONTENT: JSON.stringify({ mcp: { unexpected: {} } }),
+			},
+		});
+		await manager.ensureRunning();
+		expect(spawn.mock.calls[0]![2].env.KILO_CONFIG_CONTENT).toBeUndefined();
+		manager.dispose();
 	});
 });

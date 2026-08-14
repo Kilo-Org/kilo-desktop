@@ -671,6 +671,26 @@ export interface DispatchIntent {
 	params?: Record<string, unknown>;
 }
 
+export interface KvStore<T extends Record<string, unknown>> {
+	snapshot(): T;
+	get<K extends keyof T>(key: K): T[K];
+	set(patch: Partial<T>): T;
+	clear(): void;
+}
+
+export interface KvStoreOptions<T extends Record<string, unknown>> {
+	defaults: T;
+	namespace?: string;
+}
+
+export interface MainSdkStorage {
+	kv<T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T>;
+}
+
+export type KvStoreFactory = <T extends Record<string, unknown>>(
+	options: KvStoreOptions<T>,
+) => KvStore<T>;
+
 // ─── MainSdk (main-process side) ─────────────────────────────────────────────
 
 /** Feature-scoped application logger supplied by the host process. */
@@ -832,6 +852,8 @@ export interface MainSdk {
 	 * Node-free features simply never touch it.
 	 */
 	readonly storageDir: string;
+	/** Typed, feature-scoped key/value storage supplied by the host. */
+	readonly storage: MainSdkStorage;
 	/**
 	 * Resolve a static asset shipped inside this plugin's package to an
 	 * absolute filesystem path (e.g. `mainSdk.resolvePluginAsset("drizzle")`

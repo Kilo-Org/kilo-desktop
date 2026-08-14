@@ -115,6 +115,53 @@ describe("usePersistedModelSelection", () => {
 		expect(result.current.efforts).toEqual([{ id: "high", name: "High" }]);
 	});
 
+	it("clears sticky efforts when switching to a model that has none", () => {
+		const noEffortModel: KiloModelRef = {
+			providerID: "anthropic",
+			modelID: "claude-haiku",
+		};
+		const catalogWithNoEffortModel: KiloModelCatalog = {
+			...catalog,
+			models: [
+				...catalog.models,
+				{
+					id: "anthropic/claude-haiku",
+					name: "Claude Haiku",
+					...noEffortModel,
+				},
+			],
+		};
+
+		writeModelSelection({
+			model: defaultModel,
+			name: "Claude Sonnet",
+			effort: "high",
+			efforts: [
+				{ id: "low", name: "Low" },
+				{ id: "medium", name: "Med" },
+				{ id: "high", name: "High" },
+			],
+		});
+		const { result } = renderHook(() => usePersistedModelSelection(catalogWithNoEffortModel));
+
+		expect(result.current.efforts).toEqual([
+			{ id: "low", name: "Low" },
+			{ id: "medium", name: "Med" },
+			{ id: "high", name: "High" },
+		]);
+
+		act(() => result.current.setModel(noEffortModel));
+
+		expect(result.current.model).toEqual(noEffortModel);
+		expect(result.current.name).toBe("Claude Haiku");
+		expect(result.current.efforts).toBeUndefined();
+		expect(readModelSelection()).toEqual({
+			model: noEffortModel,
+			name: "Claude Haiku",
+			effort: "high",
+		});
+	});
+
 	it("keeps effort in memory when nothing is stored and the catalog is missing", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(undefined));
 

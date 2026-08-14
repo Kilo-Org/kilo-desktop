@@ -6,6 +6,7 @@ import { BashTerminal } from "./tool-ui-bash.js";
 import { EditDiff } from "./tool-ui-edit.js";
 import { ToolCallFallback } from "./tool-ui-inline.js";
 import { GlobActivity, GrepActivity, ReadActivity } from "./tool-ui-read-search.js";
+import { SkillActivity } from "./tool-ui-skill.js";
 import { WebFetchActivity, WebSearchActivity } from "./tool-ui-web.js";
 import { WriteDiff } from "./tool-ui-write.js";
 import { PlanAwareToolUI, PlanExitTool } from "../../plan/PlanAwareToolUI.js";
@@ -20,6 +21,7 @@ export const WebSearchTool = WebSearchActivity;
 export const WebFetchTool = WebFetchActivity;
 export const ApplyPatchTool = ApplyPatchDiff;
 export const PlanExitToolUI = PlanExitTool;
+export const SkillTool = SkillActivity;
 export const FallbackTool = ToolCallFallback;
 
 /**

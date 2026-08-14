@@ -1,7 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
@@ -10,6 +10,9 @@ import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
 vi.mock("@assistant-ui/react-opencode", () => ({
+	OpenCodeAttachmentAdapter: vi.fn(function OpenCodeAttachmentAdapter() {
+		return { accept: "image/png,text/plain" };
+	}),
 	useOpenCodeRuntime: vi.fn(() => ({ source: "kilo-test-runtime" })),
 }));
 
@@ -32,7 +35,7 @@ describe("useKiloRuntime", () => {
 
 	it("creates one backend and forwards runtime options", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		const onError = vi.fn();
 
 		renderHook(() =>
@@ -56,12 +59,14 @@ describe("useKiloRuntime", () => {
 			backend: expect.objectContaining({ globalClient: {} }),
 			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
 			onError,
+			adapters: { attachments: expect.objectContaining({ accept: "image/png,text/plain" }) },
 		});
+		expect(OpenCodeAttachmentAdapter).toHaveBeenCalledOnce();
 	});
 
 	it("forwards live agent and model getters that track selection changes", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 
 		const { rerender } = renderHook(
 			({ agent, model }: { agent: string; model: { providerID: string; modelID: string } }) =>
@@ -102,7 +107,7 @@ describe("useKiloRuntime", () => {
 
 	it("uses an explicit synchronous agent getter for prompt dispatch", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		let selectedAgent = "plan";
 
 		renderHook(() =>
@@ -126,12 +131,15 @@ describe("useKiloRuntime", () => {
 		renderHook(() => useKiloRuntime({ client }));
 
 		expect(createKiloRuntimeBackend).not.toHaveBeenCalled();
-		expect(useOpenCodeRuntime).toHaveBeenCalledWith({ client: expect.anything() });
+		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
+			client: expect.anything(),
+			adapters: { attachments: expect.objectContaining({ accept: "image/png,text/plain" }) },
+		});
 	});
 
 	it("forwards sessionActivity into the backend", () => {
 		const connectionPromise = Promise.resolve(connection);
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		const sessionActivity = createSessionActivityStore({ storage: null });
 
 		renderHook(() =>

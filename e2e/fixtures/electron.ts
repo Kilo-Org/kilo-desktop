@@ -51,6 +51,8 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 			// Skip conda staging in e2e — prevents 150 MB downloads and multi-second
 			// detection delays. E2e specs that test conda ops stub it separately.
 			ANACONDA_SKIP_CONDA_STAGING: "1",
+			// --user-data-dir does not isolate the host Anaconda keychain.
+			ANACONDA_SKIP_KEYRING: "1",
 		},
 	});
 	return { app, userDataDir };
@@ -71,7 +73,8 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			const { app, userDataDir } = await launchApp();
 			await use(app);
 			await app.close();
-			await rm(userDataDir, { recursive: true, force: true });
+			await killStrayProcesses();
+			await rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 });
 		},
 		{ scope: "worker" },
 	],

@@ -6,7 +6,7 @@ import type { Agent } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
-import { useKiloAgentCatalog } from "./use-kilo-agent-catalog.js";
+import { useKiloAgentCatalog, fetchAgentCatalogForConnection } from "./use-kilo-agent-catalog.js";
 
 const agentsList = vi.hoisted(() => vi.fn());
 
@@ -106,5 +106,12 @@ describe("useKiloAgentCatalog", () => {
 			nextConnection,
 			nextConnection.globalDirectory,
 		);
+	});
+
+	it("throws when asked to fetch agents before a connection is available", async () => {
+		await expect(fetchAgentCatalogForConnection(undefined)).rejects.toThrow(
+			"Cannot fetch agents before Kilo is connected",
+		);
+		expect(createKiloDirectoryClient).not.toHaveBeenCalled();
 	});
 });

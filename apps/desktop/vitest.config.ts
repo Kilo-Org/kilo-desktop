@@ -16,6 +16,13 @@ export default defineConfig({
 			"**/main.ts",
 			"**/preload.ts",
 			"**/index.ts",
+			// Thin `net.request`/`net.fetch` wrapper; exercised via e2e/networking.
+			"**/HttpClient.ts",
+			// Two `path.join` helpers, covered indirectly by feature-registry/ScopedFs.
+			"**/featureStorage.ts",
+			// Monkey-patches process-global Node/Electron networking for third-party
+			// deps; no observable app seam (see file header).
+			"**/proxyAgent.ts",
 		]),
 		projects: [
 			{

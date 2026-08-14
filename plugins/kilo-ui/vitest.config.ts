@@ -19,6 +19,9 @@ export default defineConfig({
 				"src/web/index.ts",
 				"src/web/chat/components/**",
 				"src/test/**",
+				// Drizzle table definitions; behavior is covered by workspaces
+				// integration tests, not by unit-testing the schema declarations.
+				"src/main/workspaces/schema.ts",
 			]),
 			include: ["src/**"],
 		},

@@ -11,6 +11,15 @@ describe("BootProgressReporter", () => {
 		expect(reporter.message).toBe("Starting…");
 	});
 
+	it("constructs a scoped default logger when none is injected", () => {
+		const reporter = new BootProgressReporter();
+
+		expect(reporter.phase).toBe("initializing");
+		// Reporting through the default logger must not throw.
+		expect(() => reporter.report("updates", "Checking…")).not.toThrow();
+		expect(reporter.message).toBe("Checking…");
+	});
+
 	it("report() updates phase and message", () => {
 		const reporter = new BootProgressReporter(noopLogger);
 		reporter.report("updates", "Checking for updates…");

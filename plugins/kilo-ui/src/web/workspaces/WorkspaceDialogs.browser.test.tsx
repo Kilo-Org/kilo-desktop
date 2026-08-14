@@ -100,11 +100,22 @@ describe("WorkspaceDialogs — manage", () => {
 
 describe("WorkspaceDialogs — create/edit form", () => {
 	it("blocks submission with no folders and shows a validation error", async () => {
-		renderDialogs({ dialog: { mode: "create" } });
+		const create = vi.fn(async () => workspaceA);
+		const { view } = renderDialogs({ dialog: { mode: "create" }, handlers: { create } });
 
 		await expect.element(page.getByRole("heading", { name: "Create workspace" })).toBeVisible();
-		// The submit button is disabled without folders; the drop zone reflects it.
-		await expect.element(page.getByText("Drop folders here")).toBeVisible();
+
+		// The submit button is disabled while there are no folders, so a click can't submit.
+		const submit = page.getByRole("button", { name: "Create workspace" });
+		await expect.element(submit).toBeDisabled();
+
+		// Submitting the form directly (e.g. via Enter) runs validation instead of the mutation.
+		const form = view.baseElement.querySelector<HTMLFormElement>("form");
+		expect(form).not.toBeNull();
+		fireEvent.submit(form!);
+
+		await expect.element(page.getByText("Add at least one folder.")).toBeVisible();
+		expect(create).not.toHaveBeenCalled();
 	});
 
 	it("adds a folder through the picker, makes another primary, removes it, and saves", async () => {

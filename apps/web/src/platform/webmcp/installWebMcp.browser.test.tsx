@@ -188,6 +188,15 @@ describe("installWebMcp", () => {
 	});
 
 	it("publishes a tool's advertised annotations to model context", async () => {
+		// The testing shim strips annotations from its read surface, so spy on the
+		// registerTool call the bridge makes to assert annotations are forwarded.
+		const modelContext = document.modelContext;
+		expect(modelContext).toBeTruthy();
+		const registerSpy = vi.spyOn(
+			modelContext as NonNullable<Document["modelContext"]>,
+			"registerTool",
+		);
+
 		todos.tools.register({
 			name: "annotated",
 			description: "Has annotations",
@@ -197,6 +206,11 @@ describe("installWebMcp", () => {
 		});
 
 		await expect.poll(() => listToolNames()).toContain("todos_annotated");
+		const call = registerSpy.mock.calls.find(
+			([descriptor]) => descriptor.name === "todos_annotated",
+		);
+		expect(call?.[0].annotations).toEqual({ title: "Annotated tool", readOnlyHint: true });
+		registerSpy.mockRestore();
 	});
 
 	it("wraps a non-Error thrown by a handler as a tool error result", async () => {

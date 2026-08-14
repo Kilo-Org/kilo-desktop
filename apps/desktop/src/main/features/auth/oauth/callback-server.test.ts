@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type * as NodeHttp from "node:http";
 
 const mockElectron = vi.hoisted(() => ({
 	shell: {
@@ -13,6 +14,38 @@ vi.mock("electron", () => ({
 	shell: mockElectron.shell,
 	net: mockElectron.net,
 }));
+
+// Real servers are used everywhere except where a test opts into a synthetic
+// bind error. `listenError.code` is consumed once by the next `server.listen`
+// so we can drive the non-EADDRINUSE branch without relying on the OS refusing
+// a privileged port (which isn't portable across the CI matrix — see
+// ScopedFsService.mocked.test.ts for the same errno-mocking convention).
+const httpControl = vi.hoisted(() => ({ listenError: undefined as string | undefined }));
+
+vi.mock("node:http", async (importOriginal) => {
+	const actual = await importOriginal<typeof NodeHttp>();
+	return {
+		...actual,
+		createServer: (...args: Parameters<typeof actual.createServer>) => {
+			const server = actual.createServer(...args);
+			const originalListen = server.listen.bind(server);
+			server.listen = ((...listenArgs: unknown[]) => {
+				const code = httpControl.listenError;
+				if (code !== undefined) {
+					httpControl.listenError = undefined;
+					queueMicrotask(() => {
+						const error = new Error(`listen ${code}`) as NodeJS.ErrnoException;
+						error.code = code;
+						server.emit("error", error);
+					});
+					return server;
+				}
+				return originalListen(...(listenArgs as Parameters<typeof server.listen>));
+			}) as typeof server.listen;
+			return server;
+		},
+	};
+});
 
 import { startLoopbackAuthorize, electronFetch } from "./callback-server.js";
 import { DEFAULT_REDIRECT_URL } from "../constants.js";
@@ -145,10 +178,14 @@ describe("startLoopbackAuthorize", () => {
 	});
 
 	it("rejects with the original error when binding fails for a non-EADDRINUSE reason", async () => {
-		// Binding to the privileged port 1 as a normal user raises EACCES (or, in
-		// some CI sandboxes, another non-EADDRINUSE errno), exercising the branch
-		// that rethrows the original cause rather than the port-in-use message.
-		await expect(startAuthorize({ port: 1 })).rejects.toThrow();
+		// A synthetic EACCES on listen exercises the branch that rethrows the
+		// original cause rather than the port-in-use message. Mocking the errno
+		// keeps this portable across POSIX/Windows and privileged/unprivileged runs.
+		httpControl.listenError = "EACCES";
+		await expect(startAuthorize()).rejects.toThrow(/EACCES/);
+		// The branch must NOT translate it into the EADDRINUSE "port in use" message.
+		httpControl.listenError = "EACCES";
+		await expect(startAuthorize()).rejects.not.toThrow(/is in use/);
 	});
 
 	it("uses an empty domain in the result URLs when no domain is provided", async () => {

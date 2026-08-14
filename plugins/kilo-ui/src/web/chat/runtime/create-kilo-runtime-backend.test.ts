@@ -300,20 +300,37 @@ describe("createKiloRuntimeBackend", () => {
 	});
 
 	it("forwards agent and model prompt getters alongside the variant getter", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/getters",
+			workspaceFolders: [],
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-getters" } }));
+		const prompt = vi.fn(async () => ({ data: {} }));
 		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
 		vi.mocked(createKiloDirectoryClient).mockReturnValue({
-			session: { create: vi.fn(async () => ({ data: { id: "session-getters" } })) },
+			session: { create, prompt },
 		} as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => "variant",
+			getAgent: () => "code",
+			getModel: () => ({ providerID: "anthropic", modelID: "claude" }),
+		});
 
-		expect(() =>
-			createKiloRuntimeBackend({
-				connectionPromise: Promise.resolve(connection),
-				prepareSession: vi.fn(),
-				getVariant: () => "variant",
-				getAgent: () => "code",
-				getModel: () => ({ providerID: "anthropic", modelID: "claude" }),
+		const ref = await backend.initializeSession();
+		await backend.getSessionClient(ref).session.prompt({
+			sessionID: ref.id,
+			parts: [{ type: "text", text: "hello" }],
+		});
+
+		expect(prompt).toHaveBeenCalledWith(
+			expect.objectContaining({
+				variant: "variant",
+				agent: "code",
+				model: { providerID: "anthropic", modelID: "claude" },
 			}),
-		).not.toThrow();
+		);
 	});
 
 	it("applies streamed events into the activity store and re-hydrates on reconnect", async () => {

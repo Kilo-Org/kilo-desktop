@@ -36,6 +36,9 @@ import { ChatPage } from "./ChatPage.js";
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
+import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
+import { useChatAgentSelection } from "./agent-selection/ChatAgentSelectionContext.js";
+import { HammerIcon, ListTodoIcon } from "lucide-react";
 
 /** Stand-in for a shell ZoneOutlet so page contributions render in tests. */
 function ZoneOutletStandIn({
@@ -169,6 +172,7 @@ function renderChatPage(options?: {
 	getConnection?: KiloUiChatService["chat.getConnection"];
 	prepareSession?: KiloUiChatService["chat.prepareSession"];
 	workspaces?: Workspace[];
+	children?: ReactNode;
 }) {
 	const getConnection = options?.getConnection ?? (async () => connection);
 	const prepareSession =
@@ -199,6 +203,7 @@ function renderChatPage(options?: {
 					<ChatFeatureProvider>
 						<HeaderOutlets />
 						<ChatPage />
+						{options?.children}
 					</ChatFeatureProvider>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
@@ -281,19 +286,50 @@ describe("ChatPage error rendering", () => {
 
 describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 	it("resets the agent only when the thread id is cleared and prepares without a workspace", async () => {
+		vi.mocked(useKiloAgentCatalog).mockReturnValue({
+			data: {
+				agents: [
+					{ name: "code", displayName: "Code", icon: HammerIcon },
+					{ name: "plan", displayName: "Plan", icon: ListTodoIcon },
+				],
+			},
+			isPending: false,
+			isError: false,
+		} as never);
 		const prepareSession = vi.fn(async () => ({ directory: "/tmp/chat", workspaceFolders: [] }));
-		renderChatPage({ getConnection: async () => connection, prepareSession });
+		let setAgent!: (agent: string) => void;
+		function CaptureAgentControls() {
+			setAgent = useChatAgentSelection().setAgent;
+			return null;
+		}
+		renderChatPage({
+			getConnection: async () => connection,
+			prepareSession,
+			children: <CaptureAgentControls />,
+		});
 
 		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
-		const options = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
-		expect(options?.onThreadIdChange).toEqual(expect.any(Function));
 
-		// Clearing the thread id resets the agent; selecting a thread does not throw.
-		expect(() => options!.onThreadIdChange!(undefined)).not.toThrow();
-		expect(() => options!.onThreadIdChange!("thread-42")).not.toThrow();
+		// Move off the default agent so a reset is observable.
+		setAgent("plan");
+		await vi.waitFor(() =>
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0]?.defaultAgent).toBe("plan"),
+		);
+
+		// Selecting an existing thread keeps the current agent: give any errant
+		// reset a chance to re-render, then confirm the agent is still "plan".
+		vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-42");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0]?.defaultAgent).toBe("plan");
+
+		// Clearing the thread id resets the agent back to the default.
+		vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!(undefined);
+		await vi.waitFor(() =>
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0]?.defaultAgent).toBe("code"),
+		);
 
 		// No active workspace was set, so prepareSession is called with empty options.
-		await options!.prepareSession!();
+		await vi.mocked(useKiloRuntime).mock.lastCall![0].prepareSession!();
 		expect(prepareSession).toHaveBeenLastCalledWith({});
 	});
 

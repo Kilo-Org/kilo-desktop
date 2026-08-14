@@ -11,6 +11,7 @@ import {
 	parseDeviceCode,
 	type DeviceAuthState,
 	type KiloAuthStatus,
+	type KiloOrgError,
 	type KiloProfileData,
 } from "./kilo-auth.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "./KiloAuthContext.js";
@@ -39,6 +40,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 	const queryClient = useQueryClient();
 	const { isPending, isError, connection } = useChatConnection();
 	const [deviceAuth, setDeviceAuth] = useState<DeviceAuthState>(IDLE_DEVICE_AUTH);
+	const [orgError, setOrgError] = useState<KiloOrgError | null>(null);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [isSwitchingOrg, setIsSwitchingOrg] = useState(false);
 	const attemptRef = useRef(0);
@@ -154,6 +156,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		} satisfies KiloAuthStatus);
 		queryClient.removeQueries({ queryKey: PROFILE_KEY });
 		setDeviceAuth(IDLE_DEVICE_AUTH);
+		setOrgError(null);
 	}, [connection?.baseUrl, connection?.version, queryClient]);
 
 	const logout = useCallback(() => {
@@ -186,6 +189,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		(organizationId: string | null) => {
 			if (!client) return;
 			setIsSwitchingOrg(true);
+			setOrgError(null);
 			void (async () => {
 				try {
 					await client.kilo.organization.set(
@@ -195,9 +199,9 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 					await rebootAndRefresh();
 					await profileQuery.refetch();
 				} catch (error) {
-					setDeviceAuth({
-						status: "error",
-						error: errorMessage(error, "Failed to switch organization"),
+					setOrgError({
+						message: errorMessage(error, "Failed to switch organization"),
+						organizationId,
 					});
 					await profileQuery.refetch().catch(() => undefined);
 				} finally {
@@ -207,6 +211,10 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		},
 		[client, directory, profileQuery, rebootAndRefresh],
 	);
+
+	const dismissOrgError = useCallback(() => {
+		setOrgError(null);
+	}, []);
 
 	const openExternal = useCallback(
 		(url: string) => {
@@ -220,6 +228,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		if (isError || !connection) {
 			attemptRef.current += 1;
 			setDeviceAuth(IDLE_DEVICE_AUTH);
+			setOrgError(null);
 		}
 	}, [connection, isError]);
 
@@ -240,13 +249,20 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		(client !== null && authStatusQuery.isPending) ||
 		(authenticated === true && profileQuery.isPending && !profileQuery.data);
 
+	const profileError =
+		authenticated === true && !profileQuery.data && profileQuery.isError
+			? errorMessage(profileQuery.error, "Couldn't load your Kilo account")
+			: null;
+
 	const value = useMemo<KiloAuthContextValue>(
 		() => ({
 			isLoading,
 			connectionUnavailable: isError,
 			authenticated,
 			profile: authenticated ? (profileQuery.data ?? null) : null,
+			profileError,
 			deviceAuth,
+			orgError,
 			isRefreshing,
 			isSwitchingOrg,
 			login,
@@ -254,12 +270,14 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 			logout,
 			refreshProfile,
 			setOrganization,
+			dismissOrgError,
 			openExternal,
 		}),
 		[
 			authenticated,
 			cancelLogin,
 			deviceAuth,
+			dismissOrgError,
 			isError,
 			isLoading,
 			isRefreshing,
@@ -267,6 +285,8 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 			login,
 			logout,
 			openExternal,
+			orgError,
+			profileError,
 			profileQuery.data,
 			refreshProfile,
 			setOrganization,

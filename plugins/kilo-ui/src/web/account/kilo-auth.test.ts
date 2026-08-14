@@ -10,6 +10,7 @@ import {
 	displayChatError,
 	isKiloSignInError,
 	isPersonalAccount,
+	KILO_ACCOUNT_PATH,
 	needsKiloSignIn,
 	offerKiloSignIn,
 	organizationIdFromValue,
@@ -17,6 +18,7 @@ import {
 	passUsagePercent,
 	PERSONAL_ORG_VALUE,
 	resolveCurrentOrgValue,
+	startKiloDeviceAuth,
 	type KiloProfileData,
 } from "./kilo-auth.js";
 
@@ -122,6 +124,21 @@ describe("errorMessage", () => {
 		expect(errorMessage(new Error("boom"))).toBe("boom");
 		expect(errorMessage("nope")).toBe("nope");
 		expect(errorMessage(null, "fallback")).toBe("fallback");
+	});
+});
+
+describe("startKiloDeviceAuth", () => {
+	it("starts login then opens the account settings page", () => {
+		const calls: string[] = [];
+		startKiloDeviceAuth(
+			() => {
+				calls.push("login");
+			},
+			(path) => {
+				calls.push(path);
+			},
+		);
+		expect(calls).toEqual(["login", KILO_ACCOUNT_PATH]);
 	});
 });
 

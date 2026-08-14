@@ -21,11 +21,14 @@ const signedInAuth: KiloAuthContextValue = {
 	deviceAuth: { status: "idle" },
 	isRefreshing: false,
 	isSwitchingOrg: false,
+	profileError: null,
+	orgError: null,
 	login: () => undefined,
 	cancelLogin: () => undefined,
 	logout: () => undefined,
 	refreshProfile: () => undefined,
 	setOrganization: () => undefined,
+	dismissOrgError: () => undefined,
 	openExternal: () => undefined,
 };
 
@@ -154,8 +157,10 @@ describe("KiloModelSelector", () => {
 
 	it("offers sign-in from the Kilo Gateway list when signed out", async () => {
 		const login = vi.fn();
+		const navigate = vi.fn();
 		const screen = renderSelector({
 			auth: { ...signedOutAuth, login },
+			navigate,
 			selection: {
 				model: { providerID: "kilo", modelID: "auto-frontier" },
 				name: "Auto Frontier",
@@ -174,6 +179,7 @@ describe("KiloModelSelector", () => {
 
 		await screen.getByTestId("kilo-model-selector-signin").click();
 		expect(login).toHaveBeenCalledOnce();
+		expect(navigate).toHaveBeenCalledWith("/settings/kilo-account", undefined);
 	});
 
 	it("hides the sign-in row unless the Kilo Gateway rail is selected", async () => {

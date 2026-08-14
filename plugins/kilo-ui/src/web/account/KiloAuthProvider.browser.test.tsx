@@ -17,6 +17,7 @@ const authRemove = vi.hoisted(() => vi.fn());
 const dispose = vi.hoisted(() => vi.fn());
 const authStatus = vi.hoisted(() => vi.fn());
 const profile = vi.hoisted(() => vi.fn());
+const organizationSet = vi.hoisted(() => vi.fn());
 const authorize = vi.hoisted(() => vi.fn());
 const oauthCallback = vi.hoisted(() => vi.fn());
 const latestClient = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
@@ -27,7 +28,7 @@ vi.mock("../chat/runtime/create-kilo-runtime-client.js", () => ({
 			kilo: {
 				authStatus,
 				profile,
-				organization: { set: vi.fn() },
+				organization: { set: organizationSet },
 			},
 			auth: { remove: authRemove },
 			global: { dispose },
@@ -66,12 +67,20 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-function renderAccount({ authenticated = true }: { authenticated?: boolean } = {}) {
+function renderAccount({
+	authenticated = true,
+	profileOk = true,
+}: { authenticated?: boolean; profileOk?: boolean } = {}) {
 	authStatus.mockResolvedValue({
 		data: authenticated ? { authenticated: true, type: "oauth" } : { authenticated: false },
 	});
-	profile.mockResolvedValue({ data: signedInProfile });
+	if (profileOk) {
+		profile.mockResolvedValue({ data: signedInProfile });
+	} else {
+		profile.mockRejectedValue(new Error("profile unavailable"));
+	}
 	dispose.mockResolvedValue(undefined);
+	organizationSet.mockResolvedValue({ data: true });
 
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
@@ -198,5 +207,48 @@ describe("KiloAuthProvider logout", () => {
 
 		await expect.element(screen.getByTestId("kilo-account-signed-out")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-login")).toBeVisible();
+	});
+});
+
+describe("KiloAuthProvider profile errors", () => {
+	it("shows a retryable profile error instead of the signed-out hero", async () => {
+		const { screen } = renderAccount({ profileOk: false });
+
+		await expect.element(screen.getByTestId("kilo-account-profile-error")).toBeVisible();
+		await expect.element(screen.getByText("profile unavailable")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-signed-out")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-account-device-auth")).not.toBeInTheDocument();
+
+		profile.mockResolvedValue({ data: signedInProfile });
+		await screen.getByTestId("kilo-account-profile-retry").click();
+
+		await expect.element(screen.getByTestId("kilo-account-name")).toHaveTextContent("mchilvers");
+		await expect.element(screen.getByTestId("kilo-account-profile-error")).not.toBeInTheDocument();
+	});
+});
+
+describe("KiloAuthProvider org switch", () => {
+	it("keeps the signed-in view and does not open the login error panel", async () => {
+		const { screen } = renderAccount();
+
+		await expect.element(screen.getByTestId("kilo-account-name")).toBeVisible();
+		organizationSet.mockRejectedValue(new Error("cannot switch"));
+		await screen.getByTestId("kilo-account-org").click();
+		const personal = page.getByRole("option", { name: "Personal" });
+		await expect.element(personal).toBeVisible();
+		await personal.click();
+
+		await expect.element(screen.getByTestId("kilo-account-org-error")).toBeVisible();
+		await expect.element(screen.getByText("cannot switch")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-name")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-device-auth")).not.toBeInTheDocument();
+		expect(authorize).not.toHaveBeenCalled();
+
+		organizationSet.mockResolvedValue({ data: true });
+		await screen.getByTestId("kilo-account-org-retry").click();
+		expect(organizationSet).toHaveBeenLastCalledWith(
+			{ organizationId: null, directory: connection.globalDirectory },
+			{ throwOnError: true },
+		);
 	});
 });

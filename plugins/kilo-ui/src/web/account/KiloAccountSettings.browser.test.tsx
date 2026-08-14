@@ -41,11 +41,14 @@ function idleAuth(overrides: Partial<KiloAuthContextValue> = {}): KiloAuthContex
 		deviceAuth: { status: "idle" },
 		isRefreshing: false,
 		isSwitchingOrg: false,
+		profileError: null,
+		orgError: null,
 		login: vi.fn(),
 		cancelLogin: vi.fn(),
 		logout: vi.fn(),
 		refreshProfile: vi.fn(),
 		setOrganization: vi.fn(),
+		dismissOrgError: vi.fn(),
 		openExternal: vi.fn(),
 		...overrides,
 	};
@@ -146,6 +149,47 @@ describe("KiloAccountSettings", () => {
 
 		await screen.getByTestId("kilo-account-logout").click();
 		expect(auth.logout).toHaveBeenCalledOnce();
+	});
+
+	it("shows a profile-load error with retry instead of the signed-out hero", async () => {
+		const { screen, auth } = renderSettings(
+			idleAuth({
+				authenticated: true,
+				profile: null,
+				profileError: "profile unavailable",
+			}),
+		);
+		await expect
+			.element(screen.getByTestId("kilo-account-settings"))
+			.toHaveAttribute("data-state", "profile-error");
+		await expect.element(screen.getByTestId("kilo-account-profile-error")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-signed-out")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-account-login")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
+
+		await screen.getByTestId("kilo-account-profile-retry").click();
+		expect(auth.refreshProfile).toHaveBeenCalledOnce();
+		expect(auth.login).not.toHaveBeenCalled();
+	});
+
+	it("keeps the signed-in view when org switch fails and retries the org, not login", async () => {
+		const { screen, auth } = renderSettings(
+			idleAuth({
+				authenticated: true,
+				profile: signedInProfile,
+				orgError: { message: "cannot switch", organizationId: "org-2" },
+			}),
+		);
+		await expect.element(screen.getByTestId("kilo-account-name")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-org-error")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-device-auth")).not.toBeInTheDocument();
+
+		await screen.getByTestId("kilo-account-org-retry").click();
+		expect(auth.setOrganization).toHaveBeenCalledWith("org-2");
+		expect(auth.login).not.toHaveBeenCalled();
+
+		await screen.getByTestId("kilo-account-org-dismiss").click();
+		expect(auth.dismissOrgError).toHaveBeenCalledOnce();
 	});
 
 	it("offers Get Kilo Pass when the personal account has no pass", async () => {

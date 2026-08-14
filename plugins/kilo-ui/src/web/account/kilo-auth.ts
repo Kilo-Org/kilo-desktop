@@ -4,6 +4,14 @@ export const PERSONAL_ORG_VALUE = "personal";
 export const KILO_PROFILE_URL = "https://app.kilo.ai/profile";
 export const KILO_CREDITS_URL = "https://app.kilo.ai/credits";
 export const KILO_PASS_URL = "https://kilo.ai/pricing/kilo-pass";
+/** In-app settings section that hosts the device-auth panel. */
+export const KILO_ACCOUNT_PATH = "/settings/kilo-account";
+
+/** Start device OAuth and open the account page so the user sees the panel. */
+export function startKiloDeviceAuth(login: () => void, navigate: (path: string) => void): void {
+	login();
+	navigate(KILO_ACCOUNT_PATH);
+}
 
 export type KiloOrganization = {
 	id: string;
@@ -27,6 +35,11 @@ export type KiloProfileData = {
 		nextBillingAt?: string | null;
 	} | null;
 	currentOrgId: string | null;
+};
+
+export type KiloOrgError = {
+	message: string;
+	organizationId: string | null;
 };
 
 export type KiloAuthStatus = {

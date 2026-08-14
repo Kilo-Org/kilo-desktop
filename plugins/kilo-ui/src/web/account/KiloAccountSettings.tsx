@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import {
 	ArrowUpRightIcon,
 	Building2Icon,
+	CircleAlertIcon,
 	LogOutIcon,
 	RefreshCwIcon,
 	SparklesIcon,
@@ -99,14 +100,17 @@ export function KiloAccountSettings() {
 		);
 	}
 	const signedIn = auth.authenticated === true && auth.profile;
+	const profileFailed = auth.authenticated === true && !auth.profile && Boolean(auth.profileError);
 
 	return (
 		<PageShell
-			state={signedIn ? "signed-in" : "signed-out"}
+			state={signedIn ? "signed-in" : profileFailed ? "profile-error" : "signed-out"}
 			subtitle={
 				signedIn
 					? "Your Kilo Gateway account, credits, and organization."
-					: "Sign in to Kilo Gateway for models, credits, and organization settings."
+					: profileFailed
+						? "Your Kilo session is active, but we couldn't load your account details."
+						: "Sign in to Kilo Gateway for models, credits, and organization settings."
 			}
 		>
 			{showDeviceAuth ? (
@@ -119,7 +123,18 @@ export function KiloAccountSettings() {
 				/>
 			) : null}
 
-			{!showDeviceAuth && !signedIn ? <SignedOutHero onLogin={auth.login} /> : null}
+			{!showDeviceAuth && profileFailed ? (
+				<ProfileLoadError
+					message={auth.profileError ?? "Couldn't load your Kilo account"}
+					retrying={auth.isRefreshing}
+					onRetry={auth.refreshProfile}
+					onLogout={auth.logout}
+				/>
+			) : null}
+
+			{!showDeviceAuth && !signedIn && !profileFailed ? (
+				<SignedOutHero onLogin={auth.login} />
+			) : null}
 
 			{signedIn && auth.profile ? (
 				<SignedInView
@@ -223,9 +238,22 @@ function SignedInView({
 	currentOrgValue: string | undefined;
 }) {
 	const { name, email } = profile.profile;
+	const orgError = auth.orgError;
 
 	return (
 		<>
+			{orgError ? (
+				<AccountError
+					qa="kilo-account-org-error"
+					title="Couldn't switch organization"
+					message={orgError.message}
+					retrying={auth.isSwitchingOrg}
+					onRetry={() => auth.setOrganization(orgError.organizationId)}
+					retryQa="kilo-account-org-retry"
+					onDismiss={auth.dismissOrgError}
+					dismissQa="kilo-account-org-dismiss"
+				/>
+			) : null}
 			<section className="border-border bg-card rounded-xl border">
 				<div className="flex items-center gap-3.5 p-4">
 					<Avatar size="lg">
@@ -377,18 +405,102 @@ function SignedInView({
 				</section>
 			) : null}
 
-			<Button
-				type="button"
-				variant="ghost"
-				size="sm"
-				className="text-destructive-foreground hover:bg-destructive/10 hover:text-destructive-foreground self-end"
-				onClick={auth.logout}
-				data-qa-id="kilo-account-logout"
-			>
-				<LogOutIcon data-icon="inline-start" />
-				Sign Out of Kilo
-			</Button>
+			<SignOutButton onLogout={auth.logout} />
 		</>
+	);
+}
+
+function ProfileLoadError({
+	message,
+	retrying,
+	onRetry,
+	onLogout,
+}: {
+	message: string;
+	retrying: boolean;
+	onRetry: () => void;
+	onLogout: () => void;
+}) {
+	return (
+		<>
+			<AccountError
+				qa="kilo-account-profile-error"
+				title="Couldn't load your Kilo account"
+				message={message}
+				retrying={retrying}
+				onRetry={onRetry}
+				retryQa="kilo-account-profile-retry"
+			/>
+			<SignOutButton onLogout={onLogout} />
+		</>
+	);
+}
+
+function AccountError({
+	qa,
+	title,
+	message,
+	retrying,
+	onRetry,
+	retryQa,
+	onDismiss,
+	dismissQa,
+}: {
+	qa: string;
+	title: string;
+	message: string;
+	retrying: boolean;
+	onRetry: () => void;
+	retryQa: string;
+	onDismiss?: () => void;
+	dismissQa?: string;
+}) {
+	return (
+		<div
+			className="border-destructive/40 bg-destructive/5 overflow-hidden rounded-xl border"
+			data-qa-id={qa}
+		>
+			<div className="flex items-start gap-3 p-4">
+				<CircleAlertIcon className="text-destructive-foreground mt-0.5 size-4 shrink-0" />
+				<div className="min-w-0 flex-1">
+					<p className="text-sm font-medium">{title}</p>
+					<p className="text-muted-foreground mt-1 text-sm break-words">{message}</p>
+				</div>
+			</div>
+			<div className="bg-muted/50 border-border flex items-center justify-start gap-2 border-t px-4 py-2.5">
+				<Button type="button" size="sm" onClick={onRetry} disabled={retrying} data-qa-id={retryQa}>
+					{retrying ? <RefreshCwIcon className="animate-spin" data-icon="inline-start" /> : null}
+					Try again
+				</Button>
+				{onDismiss && dismissQa ? (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={onDismiss}
+						data-qa-id={dismissQa}
+					>
+						Dismiss
+					</Button>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
+function SignOutButton({ onLogout }: { onLogout: () => void }) {
+	return (
+		<Button
+			type="button"
+			variant="ghost"
+			size="sm"
+			className="text-destructive-foreground hover:bg-destructive/10 hover:text-destructive-foreground self-end"
+			onClick={onLogout}
+			data-qa-id="kilo-account-logout"
+		>
+			<LogOutIcon data-icon="inline-start" />
+			Sign Out of Kilo
+		</Button>
 	);
 }
 

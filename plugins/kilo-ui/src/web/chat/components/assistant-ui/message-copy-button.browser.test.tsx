@@ -35,11 +35,14 @@ const signedInAuth: KiloAuthContextValue = {
 	deviceAuth: { status: "idle" },
 	isRefreshing: false,
 	isSwitchingOrg: false,
+	profileError: null,
+	orgError: null,
 	login: () => undefined,
 	cancelLogin: () => undefined,
 	logout: () => undefined,
 	refreshProfile: () => undefined,
 	setOrganization: () => undefined,
+	dismissOrgError: () => undefined,
 	openExternal: () => undefined,
 };
 

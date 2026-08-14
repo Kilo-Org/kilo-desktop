@@ -25,8 +25,9 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { CommandItem } from "@anaconda-agentic-desktop/ui/components/command";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
-import { needsKiloSignIn } from "../../../account/kilo-auth.js";
+import { needsKiloSignIn, startKiloDeviceAuth } from "../../../account/kilo-auth.js";
 import { useKiloAuth } from "../../../account/KiloAuthContext.js";
 import { useChatModelSelection } from "../../model-selection/ChatModelSelectionContext.js";
 import {
@@ -119,6 +120,7 @@ function nextHighlightIndex(
  * provider rail (favorites + providers) and searchable list.
  */
 export const KiloModelSelector: FC = () => {
+	const sdk = useSdk("kilo-ui");
 	const auth = useKiloAuth();
 	const needsSignIn = needsKiloSignIn(auth);
 	const {
@@ -378,7 +380,11 @@ export const KiloModelSelector: FC = () => {
 								models={visibleModels}
 								favoriteIds={favoriteIds}
 								showSignInItem={showSignInItem}
-								onSignIn={auth.login}
+								onSignIn={() => {
+									startKiloDeviceAuth(auth.login, (path) => {
+										sdk.navigate(path);
+									});
+								}}
 								emptyLabel={
 									activeRail === "favorites" && !isSearching
 										? "No favorite models yet."
@@ -413,13 +419,18 @@ function GatewaySignInItem({ onSignIn }: { onSignIn: () => void }) {
 				setOpen(false);
 				onSignIn();
 			}}
-			className="group/model-item items-start gap-2 rounded-md py-2 [&>svg:last-child]:hidden"
+			className="group/model-item items-start gap-2 rounded-md py-2 ps-3 pe-3 [&>svg:last-child]:hidden"
 		>
+			<span className="mt-0.5 shrink-0 [&_svg]:size-3.5">
+				<ProviderIcon provider="kilo" variant="color" size={14} fallbackLabel="Kilo" />
+			</span>
 			<span className="flex min-w-0 flex-1 flex-col">
 				<span className="truncate font-medium">Sign in to Kilo</span>
 				<span className="text-muted-foreground truncate text-xs">Use your models and credits</span>
 			</span>
-			<ArrowRightIcon className="text-muted-foreground mt-0.5 size-3.5" />
+			<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center">
+				<ArrowRightIcon className="text-muted-foreground size-3.5" />
+			</span>
 		</CommandItem>
 	);
 }

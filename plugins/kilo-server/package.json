@@ -15,6 +15,7 @@
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",
 		"fetch-cli": "tsx scripts/fetch-cli.ts",
+		"prepare-assets": "pnpm run fetch-cli",
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},

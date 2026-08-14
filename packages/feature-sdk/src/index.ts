@@ -54,6 +54,14 @@ export type {
 	FeatureRegistration,
 } from "./types/sdk.js";
 
+export {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	type EmbeddedWebHost,
+	type EmbeddedWebHostRouteContext,
+	type EmbeddedWebHostSecurityProfile,
+} from "./types/embedded-web-host.js";
+
 // Canonical shell zone ids (Decision #21)
 export {
 	SHELL_ZONES,

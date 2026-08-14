@@ -9,8 +9,8 @@ import {
 	NOTEBOOK_TAB_DEFINITION_ID,
 	NOTEBOOK_TAB_TITLE,
 	type ChatRightPanelCapability,
-	type ChatRightPanelNotebookTab,
 } from "./notebook-webmcp-tools.js";
+import type { ChatRightPanelTabSnapshot } from "./notebook-tabs.js";
 
 /**
  * In-memory stand-in for kilo-ui's chatRightPanel capability. Production
@@ -21,7 +21,8 @@ function createFakeChatRightPanel(): ChatRightPanelCapability & {
 	setFocusedSessionId(sessionId: string | null): void;
 } {
 	let focusedSessionId: string | null = null;
-	const notebooksBySession = new Map<string, ChatRightPanelNotebookTab[]>();
+	const tabsBySession = new Map<string, ChatRightPanelTabSnapshot[]>();
+	const activeBySession = new Map<string, string>();
 	let ordinal = 0;
 
 	return {
@@ -29,22 +30,20 @@ function createFakeChatRightPanel(): ChatRightPanelCapability & {
 		setFocusedSessionId: (sessionId) => {
 			focusedSessionId = sessionId;
 		},
-		listNotebookTabs: (sessionId) => notebooksBySession.get(sessionId) ?? [],
+		listTabs: (sessionId) => tabsBySession.get(sessionId) ?? [],
+		getActiveTabId: (sessionId) => activeBySession.get(sessionId) ?? null,
 		show: () => undefined,
 		openContributedTab: (sessionId, definition) => {
 			ordinal += 1;
 			const instanceId = `nb-${String(ordinal)}`;
 			const title = `${definition.title} ${String(ordinal)}`;
-			const tab: ChatRightPanelNotebookTab = {
-				notebook_id: instanceId,
+			const tab: ChatRightPanelTabSnapshot = {
+				instanceId,
+				definitionId: definition.id,
 				title,
-				active: true,
 			};
-			const existing = (notebooksBySession.get(sessionId) ?? []).map((entry) => ({
-				...entry,
-				active: false,
-			}));
-			notebooksBySession.set(sessionId, [...existing, tab]);
+			tabsBySession.set(sessionId, [...(tabsBySession.get(sessionId) ?? []), tab]);
+			activeBySession.set(sessionId, instanceId);
 			return { instanceId, title };
 		},
 	};
@@ -103,7 +102,24 @@ describe("notebook plugin webRegister", () => {
 			notebook_id: "nb-1",
 			title: "Notebook 1",
 		});
-		expect(panel.listNotebookTabs("chat-1")).toHaveLength(1);
+		expect(panel.listTabs("chat-1")).toHaveLength(1);
+	});
+
+	it("normalizes legacy notebook instance ids inside the notebook plugin", () => {
+		const { notebookSdk, panel } = makeSystem();
+		panel.setFocusedSessionId("chat-1");
+		const legacyId = `${NOTEBOOK_TAB_DEFINITION_ID}:legacy-uuid`;
+		const originalListTabs = panel.listTabs;
+		panel.listTabs = () => [
+			{ instanceId: legacyId, definitionId: NOTEBOOK_TAB_DEFINITION_ID, title: "Notebook 1" },
+		];
+		panel.getActiveTabId = () => legacyId;
+
+		expect(listOpenNotebooks(notebookSdk)).toEqual({
+			sessionId: "chat-1",
+			notebooks: [{ notebook_id: "legacy-uuid", title: "Notebook 1", active: true }],
+		});
+		panel.listTabs = originalListTabs;
 	});
 
 	it("returns a structured error when no chat is focused", () => {

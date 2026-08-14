@@ -37,7 +37,7 @@ describe("ElectronShell", () => {
 		getAllWindows.mockReset().mockReturnValue([]);
 	});
 
-	it("parents notebook save dialogs to the renderer that requested them", async () => {
+	it("parents save dialogs to the renderer that requested them", async () => {
 		const requestingWindow = { webContents: { id: 73 } };
 		getAllWindows.mockReturnValue([requestingWindow]);
 		showSaveDialog.mockResolvedValue({ canceled: false, filePath: "/tmp/analysis.ipynb" });
@@ -46,12 +46,12 @@ describe("ElectronShell", () => {
 		await expect(
 			adapter.showSaveFileDialog(73, {
 				defaultPath: "/tmp/analysis.ipynb",
-				filters: [{ name: "Notebook", extensions: ["ipynb"] }],
+				filters: [{ name: "Documents", extensions: ["txt"] }],
 			}),
 		).resolves.toBe("/tmp/analysis.ipynb");
 		expect(showSaveDialog).toHaveBeenCalledWith(requestingWindow, {
 			defaultPath: "/tmp/analysis.ipynb",
-			filters: [{ name: "Notebook", extensions: ["ipynb"] }],
+			filters: [{ name: "Documents", extensions: ["txt"] }],
 		});
 	});
 

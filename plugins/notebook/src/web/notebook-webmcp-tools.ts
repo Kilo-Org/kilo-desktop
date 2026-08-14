@@ -5,16 +5,25 @@
  */
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
-/** Structural capability shape from kilo-ui — asserted, not imported. */
-export type ChatRightPanelNotebookTab = {
-	readonly notebook_id: string;
-	readonly title: string;
-	readonly active: boolean;
-};
+import {
+	NOTEBOOK_TAB_DEFINITION_ID,
+	NOTEBOOK_TAB_TITLE,
+	selectNotebookTabs,
+	type ChatRightPanelNotebookTab,
+	type ChatRightPanelTabSnapshot,
+} from "./notebook-tabs.js";
 
+export {
+	NOTEBOOK_TAB_DEFINITION_ID,
+	NOTEBOOK_TAB_TITLE,
+	type ChatRightPanelNotebookTab,
+} from "./notebook-tabs.js";
+
+/** Structural capability shape from kilo-ui — asserted, not imported. */
 export type ChatRightPanelCapability = {
 	getFocusedSessionId(): string | null;
-	listNotebookTabs(sessionId: string): readonly ChatRightPanelNotebookTab[];
+	listTabs(sessionId: string): readonly ChatRightPanelTabSnapshot[];
+	getActiveTabId(sessionId: string): string | null;
 	openContributedTab(
 		sessionId: string,
 		definition: { readonly id: string; readonly title: string },
@@ -25,9 +34,6 @@ export type ChatRightPanelCapability = {
 export type ChatRightPanelCapabilities = {
 	readonly chatRightPanel: ChatRightPanelCapability;
 };
-
-export const NOTEBOOK_TAB_DEFINITION_ID = "notebook.notebook";
-export const NOTEBOOK_TAB_TITLE = "Notebook";
 
 const NO_FOCUSED_SESSION =
 	"No focused chat session. Open a chat in the app before using notebook panel tools.";
@@ -64,7 +70,10 @@ export function listOpenNotebooks(sdk: SDK): {
 	}
 	return {
 		sessionId: sessionOrError.sessionId,
-		notebooks: panelOrError.listNotebookTabs(sessionOrError.sessionId),
+		notebooks: selectNotebookTabs(
+			panelOrError.listTabs(sessionOrError.sessionId),
+			panelOrError.getActiveTabId(sessionOrError.sessionId),
+		),
 	};
 }
 
@@ -86,9 +95,10 @@ export function openNotebookInPanel(sdk: SDK):
 		id: NOTEBOOK_TAB_DEFINITION_ID,
 		title: NOTEBOOK_TAB_TITLE,
 	});
-	// listNotebookTabs normalizes legacy `notebook.notebook:<uuid>` instance ids
-	// to the bare UUID nteract / runt MCP expect.
-	const active = panelOrError.listNotebookTabs(sessionId).find((entry) => entry.active);
+	const active = selectNotebookTabs(
+		panelOrError.listTabs(sessionId),
+		panelOrError.getActiveTabId(sessionId),
+	).find((entry) => entry.active);
 	return {
 		sessionId,
 		notebook_id: active?.notebook_id ?? tab.instanceId,

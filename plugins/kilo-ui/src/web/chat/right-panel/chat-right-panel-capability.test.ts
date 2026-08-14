@@ -3,8 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	chatRightPanelCapability,
 	createChatRightPanelCapability,
-	NOTEBOOK_TAB_DEFINITION_ID,
-	NOTEBOOK_TAB_TITLE,
 } from "./chat-right-panel-capability.js";
 import { useRightPanelStore } from "./right-panel-store.js";
 
@@ -25,58 +23,23 @@ describe("createChatRightPanelCapability", () => {
 		expect(panel.getFocusedSessionId()).toBeNull();
 	});
 
-	it("lists only notebook tabs for a session", () => {
+	it("lists contributed tabs and reports the active instance", () => {
 		const panel = createChatRightPanelCapability();
-		panel.openContributedTab(SESSION, {
-			id: NOTEBOOK_TAB_DEFINITION_ID,
-			title: NOTEBOOK_TAB_TITLE,
-		});
-		panel.openContributedTab(SESSION, { id: "other.panel", title: "Other" });
-		panel.openContributedTab(SESSION, {
-			id: NOTEBOOK_TAB_DEFINITION_ID,
-			title: NOTEBOOK_TAB_TITLE,
-		});
+		panel.openContributedTab(SESSION, { id: "canvas.panel", title: "Canvas" });
+		const active = panel.openContributedTab(SESSION, { id: "preview.panel", title: "Preview" });
 
-		const notebooks = panel.listNotebookTabs(SESSION);
-		expect(notebooks).toHaveLength(2);
-		expect(notebooks.every((tab) => !tab.notebook_id.includes(":"))).toBe(true);
-		expect(notebooks.map((tab) => tab.title)).toEqual(["Notebook 1", "Notebook 2"]);
-		expect(notebooks.filter((tab) => tab.active)).toHaveLength(1);
-		expect(notebooks.find((tab) => tab.active)?.title).toBe("Notebook 2");
-	});
-
-	it("strips a legacy notebook.notebook: prefix from notebook_id", () => {
-		const panel = createChatRightPanelCapability();
-		useRightPanelStore.setState({
-			bySessionId: {
-				[SESSION]: {
-					isOpen: true,
-					activeTabId: `${NOTEBOOK_TAB_DEFINITION_ID}:legacy-uuid`,
-					tabs: [
-						{
-							instanceId: `${NOTEBOOK_TAB_DEFINITION_ID}:legacy-uuid`,
-							definitionId: NOTEBOOK_TAB_DEFINITION_ID,
-							title: "Notebook 1",
-							ordinal: 1,
-						},
-					],
-					planAnchorCallId: null,
-				},
-			},
-		});
-		expect(panel.listNotebookTabs(SESSION)).toEqual([
-			{ notebook_id: "legacy-uuid", title: "Notebook 1", active: true },
-		]);
+		expect(panel.listTabs(SESSION)).toHaveLength(2);
+		expect(panel.getActiveTabId(SESSION)).toBe(active.instanceId);
 	});
 
 	it("opens a contributed tab and returns the active instance", () => {
 		const panel = createChatRightPanelCapability();
 		const tab = panel.openContributedTab(SESSION, {
-			id: NOTEBOOK_TAB_DEFINITION_ID,
-			title: NOTEBOOK_TAB_TITLE,
+			id: "canvas.panel",
+			title: "Canvas",
 		});
-		expect(tab.definitionId).toBe(NOTEBOOK_TAB_DEFINITION_ID);
-		expect(tab.title).toBe("Notebook 1");
+		expect(tab.definitionId).toBe("canvas.panel");
+		expect(tab.title).toBe("Canvas 1");
 		expect(panel.listTabs(SESSION)).toEqual([tab]);
 	});
 

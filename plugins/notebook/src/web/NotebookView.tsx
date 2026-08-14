@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 import { NTERACT_ELECTRON_HOST_PROTOCOL_VERSION, NOTEBOOK_HOST } from "../contracts/schemas.js";
+import { notebookIdFromInstanceId } from "./notebook-tabs.js";
 
 /**
  * nteract's notebook UI is a private workspace app whose execution path needs
@@ -21,19 +22,6 @@ import { NTERACT_ELECTRON_HOST_PROTOCOL_VERSION, NOTEBOOK_HOST } from "../contra
  * framing a wrong origin.
  */
 const DESKTOP_SCHEME_PREFIX = "anaconda-agentic-desktop";
-
-/** Legacy right-panel ids were `notebook.notebook:<uuid>`; runt expects a bare UUID. */
-const LEGACY_NOTEBOOK_ID_PREFIX = "notebook.notebook:";
-
-/**
- * Right-panel `instanceId` → daemon `notebook_id`. Strips the legacy
- * `notebook.notebook:` prefix so the iframe and nteract MCP share one room.
- */
-export function notebookIdFromInstanceId(instanceId: string): string {
-	return instanceId.startsWith(LEGACY_NOTEBOOK_ID_PREFIX)
-		? instanceId.slice(LEGACY_NOTEBOOK_ID_PREFIX.length)
-		: instanceId;
-}
 
 /**
  * The renderer cannot read `app.isPackaged`, so it cannot derive the scheme —

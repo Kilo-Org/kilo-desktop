@@ -12,28 +12,28 @@ import {
 	PLAN_TAB_DEFINITION_ID,
 } from "./right-panel-tab-registry.js";
 
-const Notebook = () => null;
+const Canvas = () => null;
 
 const contribution: Contribution = {
-	featureId: "notebook",
-	id: "notebook",
+	featureId: "canvas",
+	id: "canvas",
 	zone: CHAT_RIGHT_PANEL_TAB_EXTENSION,
-	label: "Notebook",
-	description: "Scratch notebook",
-	component: Notebook,
+	label: "Canvas",
+	description: "Scratch canvas",
+	component: Canvas,
 	priority: 50,
 };
 
 describe("right-panel-tab-registry", () => {
 	it("builds stable definitions from SDK contributions", () => {
-		expect(contributionDefinitionId(contribution)).toBe("notebook.notebook");
+		expect(contributionDefinitionId(contribution)).toBe("canvas.canvas");
 		expect(buildContributedTabDefinitions([contribution])).toMatchObject([
 			{
-				id: "notebook.notebook",
-				title: "Notebook",
-				description: "Scratch notebook",
+				id: "canvas.canvas",
+				title: "Canvas",
+				description: "Scratch canvas",
 				addable: true,
-				Content: Notebook,
+				Content: Canvas,
 			},
 		]);
 	});
@@ -46,14 +46,14 @@ describe("right-panel-tab-registry", () => {
 
 		expect(first).toEqual({
 			instanceId: "one",
-			definitionId: "notebook.notebook",
-			title: "Notebook 1",
+			definitionId: "canvas.canvas",
+			title: "Canvas 1",
 			ordinal: 1,
 		});
 		expect(second).toEqual({
 			instanceId: "two",
-			definitionId: "notebook.notebook",
-			title: "Notebook 2",
+			definitionId: "canvas.canvas",
+			title: "Canvas 2",
 			ordinal: 2,
 		});
 	});

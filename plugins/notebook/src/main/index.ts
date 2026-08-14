@@ -1,13 +1,18 @@
 import { z } from "zod";
 
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	type EmbeddedWebHost,
+	type HostMessagePort,
+	type MainSdk,
+} from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { notebookContract, NOTEBOOK_HOST, type NotebookService } from "../contracts/schemas.js";
 import {
 	ElectronNotebookHostService,
 	type ElectronNotebookHostServiceOptions,
 } from "./ElectronNotebookHostService.js";
-import type { HostMessagePort } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
 import { reconcileRuntMcpConfig } from "./seed-runt-mcp.js";
 import type { BuildChannel } from "./socket-path.js";
@@ -71,10 +76,13 @@ export async function mainRegister(
 		status: () => hostService.status(),
 	};
 	mainSdk.channels(notebookContract).handleAll(api);
-	mainSdk.plugins.expose("embeddedWebHost", {
+	const embeddedWebHost = {
 		host: NOTEBOOK_HOST,
 		root: resolveBundleRoot(),
-		securityProfiles: { "/output-frame.html": "isolated-output" },
-	});
+		securityProfiles: {
+			"/output-frame.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+		},
+	} satisfies EmbeddedWebHost;
+	mainSdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, embeddedWebHost);
 	mainSdk.onDispose(() => hostService.dispose());
 }

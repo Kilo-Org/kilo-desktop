@@ -4,6 +4,11 @@ import path from "node:path";
 
 import { net, protocol } from "electron";
 
+import {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	type EmbeddedWebHost,
+} from "@anaconda-agentic-desktop/feature-sdk/main";
+
 export const DESKTOP_HOST = "app";
 export const DESKTOP_PRODUCTION_SCHEME = "anaconda-agentic-desktop";
 export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
@@ -35,7 +40,7 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
 	".ttf": "font/ttf",
 	".txt": "text/plain; charset=utf-8",
 	// Streaming WebAssembly compilation rejects anything but this exact type, so
-	// falling through to application/octet-stream breaks the notebook's wasm.
+	// falling through to application/octet-stream breaks streaming compilation.
 	".wasm": "application/wasm",
 	".webp": "image/webp",
 	".woff": "font/woff",
@@ -52,41 +57,6 @@ export function getDesktopOrigin(isDevelopment: boolean, host: string = DESKTOP_
 
 export function getDesktopUrl(isDevelopment: boolean): string {
 	return `${getDesktopOrigin(isDevelopment)}/#/`;
-}
-
-/**
- * A third-party web bundle served from its own host on our scheme, framed by the
- * app renderer. Contributed by a feature (see `collectEmbeddedHosts`) rather than
- * wired here, so `platform/` stays free of feature names.
- *
- * A distinct host — not a path under `app` — is what makes this a distinct
- * origin, which is what earns the separate CSP below plus a storage partition
- * and no IPC trust (`isTrustedRendererUrl` matches `app` only). See
- * docs/notebook/embedding-decisions.md, D1.
- */
-export interface EmbeddedWebHost {
-	/** Host component on the desktop scheme, e.g. `notebook`. */
-	readonly host: string;
-	/**
-	 * Directory the bundle is served from. `undefined` means this build ships no
-	 * bundle — an expected state, served as 404 rather than treated as an error.
-	 */
-	readonly root: string | undefined;
-	/**
-	 * Same-origin JSON endpoints the bundle expects to fetch, by exact pathname.
-	 * Needed because nteract's browser host fetches a config path it hardcodes,
-	 * so the endpoint has to appear on the bundle's own origin.
-	 */
-	readonly routes?: Readonly<
-		Record<string, (context: EmbeddedWebHostRouteContext) => Promise<unknown>>
-	>;
-	/** Platform-owned CSP profiles for exact static document paths. */
-	readonly securityProfiles?: Readonly<Record<string, "isolated-output">>;
-}
-
-export interface EmbeddedWebHostRouteContext {
-	/** Resolved protocol origin of the document making this same-origin request. */
-	readonly origin: string;
 }
 
 export function registerDesktopSchemes(): void {
@@ -147,14 +117,12 @@ export function createContentSecurityPolicy(
  * Policy for an embedded third-party bundle. Deliberately looser than the app's
  * own — and deliberately written here rather than declared by the feature that
  * contributes the bundle, so the party being constrained is not the party
- * choosing the constraint (docs/notebook/embedding-decisions.md, D2).
+ * choosing the constraint.
  *
  * What the extra grants buy, none of which the app origin gains:
- * - `'wasm-unsafe-eval'`: the notebook bundle instantiates a wasm module.
- * - `http://127.0.0.1:*` on connect/img/media: the daemon's blob server binds an
- *   ephemeral port. Runtime frames themselves use the transferred MessagePort;
- *   there is no renderer-visible WebSocket endpoint.
- * - `worker-src blob:`: renderer plugins start workers from blob URLs.
+ * - `'wasm-unsafe-eval'`: embedded bundles may instantiate WebAssembly.
+ * - loopback HTTP on connect/img/media supports host-authorized local services.
+ * - `worker-src blob:` supports embedded bundles that create blob workers.
  */
 export function createEmbeddedContentSecurityPolicy(
 	appOrigin: string,
@@ -181,13 +149,11 @@ export function createEmbeddedContentSecurityPolicy(
 }
 
 /**
- * CSP for nteract's sandboxed rich-output document. It alone receives
- * `unsafe-inline` and `unsafe-eval`, which nteract's JavaScript and visualization
- * renderers need. The document
- * remains in nteract's separate protocol host and is framed only by that host;
- * the app renderer and the notebook shell retain their stricter policies.
+ * CSP for sandboxed active content. It alone receives `unsafe-inline` and
+ * `unsafe-eval`; the app renderer and ordinary embedded documents retain their
+ * stricter policies.
  */
-export function createIsolatedOutputContentSecurityPolicy(): string {
+export function createActiveUntrustedContentSecurityPolicy(): string {
 	const loopback = "http://127.0.0.1:*";
 	return [
 		"default-src 'none'",
@@ -204,12 +170,12 @@ export function createIsolatedOutputContentSecurityPolicy(): string {
 		"form-action 'none'",
 		// Deliberately omit frame-ancestors here. Chromium rejects self-framing
 		// custom-scheme documents once the iframe's no-allow-same-origin sandbox
-		// gives it an opaque origin. The sandbox and nteract's exact parent-window
-		// message validation are the security boundary for this code-only document.
+		// gives it an opaque origin. The sandbox and the embedding application's
+		// parent-window validation are the boundary for this code-only document.
 	].join("; ");
 }
 
-/** Exact host match, so `notebook.evil` cannot borrow the notebook's policy. */
+/** Exact host match, so a near-miss cannot borrow an embedded host's policy. */
 export function findEmbeddedHost(
 	hosts: readonly EmbeddedWebHost[],
 	host: string,
@@ -375,11 +341,12 @@ export class ElectronProtocol {
 				}
 				const embeddedPolicy = (inlineScriptHashes: readonly string[]) =>
 					createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes);
-				const isolatedOutputPolicy = () => createIsolatedOutputContentSecurityPolicy();
+				const activeUntrustedContentPolicy = () => createActiveUntrustedContentSecurityPolicy();
 				return withSecurityHeaders(
 					await serveEmbeddedHost(embedded, requestUrl),
-					embedded.securityProfiles?.[requestUrl.pathname] === "isolated-output"
-						? isolatedOutputPolicy
+					embedded.securityProfiles?.[requestUrl.pathname] ===
+						ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE
+						? activeUntrustedContentPolicy
 						: embeddedPolicy,
 				);
 			}

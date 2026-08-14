@@ -13,4 +13,4 @@ runs:
 
     - name: Build pinned notebook UI
       shell: bash
-      run: pnpm notebook:build-ui
+      run: pnpm --filter @anaconda-agentic-desktop/plugin-notebook run build-ui

@@ -89,7 +89,7 @@ transport.
 ## D5. Rich outputs get one exact route-specific CSP
 
 nteract emits `output-frame.html` and the Electron bootstrap supplies its host-served URL. The
-notebook feature declares only that exact path as `isolated-output`; the platform maps the profile
+notebook feature declares only that exact path as `active-untrusted-content`; the platform maps the profile
 to a CSP that grants nteract's JavaScript and visualization renderers `'unsafe-inline'` and
 `'unsafe-eval'`. The notebook shell does not gain either script grant, and the app origin remains
 stricter still. The output iframe keeps nteract's opaque-origin sandbox without

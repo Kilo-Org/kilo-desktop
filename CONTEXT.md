@@ -62,7 +62,7 @@ Main-side cross-feature `invoke` through the shared `FeatureRouter` is intention
 
 **Lifecycles:** `useSdk(featureId)` returns a shared per-feature SDK instance that is NOT destroyed on component unmount. `sdk.destroy()` cleans up only what was registered through that instance. Full feature teardown (`teardownFeature`) is shell-owned and happens on feature/plugin unload only.
 
-**Chat right-panel contributions:** `kilo-ui` owns the session-scoped right-panel host and declares the `chat-right-panel-tab` zone in its manifest. Plugins target `kilo-ui/chat-right-panel-tab` through `contributes.zones`; Kilo turns each add action into a distinct persisted tab instance and supplies `{ sessionId, instanceId, title }` to the contributed component. The notebook plugin uses `instanceId` as nteract's `notebook_id`, so multiple ephemeral scratch notebooks can coexist without a filesystem picker or `.ipynb` restoration API. The app shell has no generic route-sidecar layout.
+**Plugin-owned zones:** a plugin may own a contextual UI host and declare its zones in `plugin.json`. Other plugins target the qualified zone through `contributes.zones`; the owning plugin defines the component context and instance lifecycle. The app shell remains unaware of domain-specific content rendered there.
 
 ### FEATURES array (mandatory registration)
 

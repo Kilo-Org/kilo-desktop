@@ -102,10 +102,9 @@ export function createContributedTab(
 				.filter((tab) => tab.definitionId === definition.id)
 				.map((tab) => tab.ordinal ?? 0),
 		) + 1;
-	// Bare id — for notebook tabs this value is nteract/runt's `notebook_id`.
-	// Do not prefix with `definition.id`: runtined rooms keyed as
-	// `notebook.notebook:<uuid>` are invisible to nteract MCP tools that look
-	// up the bare UUID (daemon: "not resident … refusing (gone)").
+	// Instance identity is independent from the contribution definition so
+	// consumers can pass it to their own backing services without decoding a
+	// host-owned prefix.
 	return {
 		instanceId: createId(),
 		definitionId: definition.id,

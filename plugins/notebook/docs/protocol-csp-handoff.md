@@ -1,7 +1,7 @@
 # Handoff: serve nteract's SPA from our protocol + CSP (handoff steps 3 & 4)
 
 > **Transport/CSP update:** the notebook now uses a transferred Electron host port, and rich
-> outputs use the exact `isolated-output` security profile. See
+> outputs use the exact `active-untrusted-content` security profile. See
 > [embedding-decisions.md](./embedding-decisions.md); loopback-relay guidance below is historical.
 
 > **Runtime update:** references below to a staged daemon are historical. The protocol-host and CSP

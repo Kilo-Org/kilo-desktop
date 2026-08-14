@@ -11,7 +11,7 @@ import {
 } from "./right-panel-store.js";
 
 const SESSION = "session-1";
-const NOTEBOOK = { id: "notebook.notebook", title: "Notebook" };
+const CANVAS = { id: "canvas.canvas", title: "Canvas" };
 
 beforeEach(() => {
 	useRightPanelStore.setState({ bySessionId: {} });
@@ -38,16 +38,16 @@ describe("right-panel-store", () => {
 		).toEqual(EMPTY_SESSION_RIGHT_PANEL_STATE);
 	});
 
-	it("opens multiple numbered notebooks and selects the newest", () => {
-		useRightPanelStore.getState().openTab(SESSION, NOTEBOOK);
-		useRightPanelStore.getState().openTab(SESSION, NOTEBOOK);
+	it("opens multiple numbered contributions and selects the newest", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const state = selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION);
 
-		expect(state.tabs.map(({ title }) => title)).toEqual(["Notebook 1", "Notebook 2"]);
+		expect(state.tabs.map(({ title }) => title)).toEqual(["Canvas 1", "Canvas 2"]);
 		expect(new Set(state.tabs.map(({ instanceId }) => instanceId)).size).toBe(2);
 		expect(
 			selectActiveRightPanelTab(useRightPanelStore.getState().bySessionId, SESSION)?.title,
-		).toBe("Notebook 2");
+		).toBe("Canvas 2");
 	});
 
 	it("keeps Plan singleton and maintains its historical anchor", () => {
@@ -66,7 +66,7 @@ describe("right-panel-store", () => {
 	});
 
 	it("keeps the panel open after closing the last tab", () => {
-		useRightPanelStore.getState().openTab(SESSION, NOTEBOOK);
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const [tab] = useRightPanelStore.getState().bySessionId[SESSION]!.tabs;
 		useRightPanelStore.getState().closeTab(SESSION, tab!.instanceId);
 		expect(
@@ -75,18 +75,16 @@ describe("right-panel-store", () => {
 	});
 
 	it("isolates tabs by chat session", () => {
-		useRightPanelStore.getState().openTab(SESSION, NOTEBOOK);
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		useRightPanelStore.getState().show("session-2");
 		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs).toHaveLength(1);
 		expect(useRightPanelStore.getState().bySessionId["session-2"]?.tabs).toHaveLength(0);
 	});
 
 	it("moves draft tabs to the assigned remote session", () => {
-		useRightPanelStore.getState().openTab("local-1", NOTEBOOK);
+		useRightPanelStore.getState().openTab("local-1", CANVAS);
 		useRightPanelStore.getState().moveSessionState("local-1", "remote-1");
 		expect(useRightPanelStore.getState().bySessionId["local-1"]).toBeUndefined();
-		expect(useRightPanelStore.getState().bySessionId["remote-1"]?.tabs[0]?.title).toBe(
-			"Notebook 1",
-		);
+		expect(useRightPanelStore.getState().bySessionId["remote-1"]?.tabs[0]?.title).toBe("Canvas 1");
 	});
 });

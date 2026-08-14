@@ -161,8 +161,6 @@ apps/desktop/.data/
 # WebMCP relay assets are synced from @mcp-b/webmcp-local-relay at build time
 apps/web/public/webmcp/
 plugins/kilo-server/resources/kilo/
-plugins/notebook/resources/runtimed/
-plugins/notebook/resources/runt/
 build/
 release/
 playwright-report/

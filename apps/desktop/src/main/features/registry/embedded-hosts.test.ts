@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	type FeatureRegistration,
+} from "@anaconda-agentic-desktop/feature-sdk";
 
 const features: FeatureRegistration[] = [];
 
-// The real FEATURES array boots the notebook feature, which reaches for Electron
-// and the daemon socket; the collector only needs ids to look up.
+// Real bundled plugins may reach for Electron or native services during boot;
+// the collector only needs ids to exercise capability lookup.
 vi.mock("./features.js", () => ({
 	get FEATURES() {
 		return features;
@@ -38,75 +42,91 @@ afterEach(async () => {
 describe("collectEmbeddedHosts", () => {
 	it("collects a contributed host and ignores features that expose nothing", async () => {
 		const config = async () => ({ token: "t" });
-		await boot("embedded-host-notebook", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", {
-				host: "notebook",
+		await boot("embedded-host-canvas", (sdk) => {
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
 				root: "/bundle",
-				routes: { "/__nteract_dev_relay/config": config },
+				routes: { "/runtime/config": config },
 			});
 		});
 		await boot("embedded-host-silent", () => {});
 
 		expect(collectEmbeddedHosts()).toEqual([
-			{ host: "notebook", root: "/bundle", routes: { "/__nteract_dev_relay/config": config } },
+			{ host: "canvas", root: "/bundle", routes: { "/runtime/config": config } },
 		]);
 	});
 
 	it("accepts a host that ships no bundle, since that is an expected build", async () => {
 		await boot("embedded-host-rootless", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: undefined });
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
+				root: undefined,
+			});
 		});
 
-		expect(collectEmbeddedHosts()).toEqual([{ host: "notebook", root: undefined }]);
+		expect(collectEmbeddedHosts()).toEqual([{ host: "canvas", root: undefined }]);
 	});
 
 	it("accepts only platform-defined security profiles on exact absolute paths", async () => {
-		await boot("embedded-host-isolated-output", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", {
-				host: "notebook",
+		await boot("embedded-host-active-content", (sdk) => {
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
 				root: "/bundle",
-				securityProfiles: { "/output-frame.html": "isolated-output" },
+				securityProfiles: {
+					"/active-frame.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+				},
 			});
 		});
 
 		expect(collectEmbeddedHosts()).toEqual([
 			{
-				host: "notebook",
+				host: "canvas",
 				root: "/bundle",
-				securityProfiles: { "/output-frame.html": "isolated-output" },
+				securityProfiles: {
+					"/active-frame.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+				},
 			},
 		]);
 	});
 
 	it("skips a malformed contribution rather than taking down the protocol handler", async () => {
 		await boot("embedded-host-malformed", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", { host: 42, root: "/bundle" });
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, { host: 42, root: "/bundle" });
 		});
 		await boot("embedded-host-valid", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: "/bundle" });
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
+				root: "/bundle",
+			});
 		});
 
 		// The handler serves the whole app, so one bad plugin must not throw here.
-		expect(collectEmbeddedHosts(silentLogger)).toEqual([{ host: "notebook", root: "/bundle" }]);
+		expect(collectEmbeddedHosts(silentLogger)).toEqual([{ host: "canvas", root: "/bundle" }]);
 	});
 
 	it.each([
 		["not an object", "plain-string" as unknown],
 		["a null contribution", null],
-		["a non-string root", { host: "notebook", root: 7 }],
+		["a non-string root", { host: "canvas", root: 7 }],
 		["an empty host", { host: "", root: "/bundle" }],
-		["null routes", { host: "notebook", root: "/bundle", routes: null }],
+		["null routes", { host: "canvas", root: "/bundle", routes: null }],
 		[
 			"an unknown security profile",
-			{ host: "notebook", root: "/bundle", securityProfiles: { "/output": "relaxed" } },
+			{ host: "canvas", root: "/bundle", securityProfiles: { "/output": "relaxed" } },
 		],
 		[
 			"a relative security profile path",
-			{ host: "notebook", root: "/bundle", securityProfiles: { "output.html": "isolated-output" } },
+			{
+				host: "canvas",
+				root: "/bundle",
+				securityProfiles: {
+					"output.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+				},
+			},
 		],
 	])("rejects %s", async (_label, contribution) => {
 		await boot("embedded-host-invalid", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", contribution as Record<string, unknown>);
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, contribution as Record<string, unknown>);
 		});
 
 		expect(collectEmbeddedHosts(silentLogger)).toEqual([]);
@@ -114,8 +134,8 @@ describe("collectEmbeddedHosts", () => {
 
 	it("rejects routes that are not callable", async () => {
 		await boot("embedded-host-bad-routes", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", {
-				host: "notebook",
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
 				root: "/bundle",
 				routes: { "/config": "not-a-function" },
 			});
@@ -128,14 +148,20 @@ describe("collectEmbeddedHosts", () => {
 		// Mirrors the ordering that makes this a thunk: protocol.register runs first.
 		expect(collectEmbeddedHosts()).toEqual([]);
 		await boot("embedded-host-late", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: "/bundle" });
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
+				root: "/bundle",
+			});
 		});
 		expect(collectEmbeddedHosts()).toHaveLength(1);
 	});
 
 	it("drops a host once its feature is destroyed", async () => {
 		await boot("embedded-host-transient", (sdk) => {
-			sdk.plugins.expose("embeddedWebHost", { host: "notebook", root: "/bundle" });
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
+				root: "/bundle",
+			});
 		});
 		expect(collectEmbeddedHosts()).toHaveLength(1);
 

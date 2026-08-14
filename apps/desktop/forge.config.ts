@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +18,7 @@ import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { signWindowsFile } from "./config/windows-sign.js";
-import { findRuntArtifact } from "../../plugins/notebook/src/main/distribution/artifacts.js";
+import { createNotebookPackagingPlan } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -40,35 +39,18 @@ const appIcon =
 		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, "assets/icon.icon")]
 		: path.join(packageRoot, "assets/icon");
 
-// Staged by prepare:build. The UI payload is mandatory. Agentic Desktop attaches
-// to the user's installed runtimed singleton and deliberately ships no daemon.
-// `runt` remains a Kilo MCP client and is required only where releases publish it.
-const stagedNotebookBundle = path.join(workspaceRoot, "plugins/notebook/build/notebook");
-const stagedRunt = path.join(workspaceRoot, "plugins/notebook/resources/runt");
-const runtArtifact = findRuntArtifact();
-const requiredAssets = [
-	path.join(stagedNotebookBundle, "index.html"),
-	path.join(stagedNotebookBundle, "agentic-notebook-build.json"),
+const notebookPackaging = createNotebookPackagingPlan();
+const asarUnpackPackages = [
+	"better-sqlite3",
+	"@github/keytar",
+	"@mcp-b/webmcp-local-relay",
+	...notebookPackaging.asarUnpackPackages,
 ];
-if (runtArtifact) {
-	requiredAssets.push(
-		path.join(stagedRunt, runtArtifact.target, runtArtifact.executable),
-		path.join(stagedRunt, runtArtifact.target, "staged.json"),
-	);
-}
-for (const requiredAsset of requiredAssets) {
-	if (!existsSync(requiredAsset)) {
-		throw new Error(
-			`Notebook build asset is missing: ${requiredAsset}. Run pnpm prepare:notebook.`,
-		);
-	}
-}
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
 	path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
-	...(runtArtifact ? [stagedRunt] : []),
-	stagedNotebookBundle,
+	...notebookPackaging.extraResources,
 ];
 
 function updateFeed(platform: string, arch: string): string | undefined {
@@ -81,16 +63,20 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 	);
 
 	try {
+		// The shared-lockfile deploy cannot materialize the notebook plugin's generated
+		// local runtime package. Legacy deploy follows that link; the filtered graph
+		// intentionally excludes Kilo's patch, so permit that patch to remain unused.
 		await execa(
 			"pnpm",
 			[
+				"--config.allowUnusedPatches=true",
 				"--filter",
 				"@anaconda-agentic-desktop/desktop",
 				"deploy",
+				"--legacy",
 				"--prod",
 				"--ignore-scripts",
 				"--offline",
-				"--frozen-lockfile",
 				stagingDirectory,
 			],
 			{
@@ -119,8 +105,7 @@ const config: ForgeConfig = {
 			// has a real filesystem path. Kilo spawns it via `process.execPath` +
 			// `ELECTRON_RUN_AS_NODE=1` (see plugins/kilo-server/src/main/webmcp-relay-config.ts
 			// and the interim tracking issue anaconda/agentic-desktop#102).
-			unpack:
-				"**/node_modules/{better-sqlite3,@github/keytar,@mcp-b/webmcp-local-relay,@runtimed}/**",
+			unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`,
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",

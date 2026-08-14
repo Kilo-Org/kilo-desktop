@@ -1,9 +1,12 @@
-import type { EmbeddedWebHost } from "../../platform/ElectronProtocol.js";
+import {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	type EmbeddedWebHost,
+} from "@anaconda-agentic-desktop/feature-sdk/main";
+
 import { createLogger } from "../../platform/logger.js";
 import { featureRouter } from "./feature-registry.js";
 import { FEATURES } from "./features.js";
-
-const CAPABILITY_NAME = "embeddedWebHost";
 
 /** Structural so tests can pass a no-op instead of initializing `electron-log`. */
 export interface EmbeddedHostsLogger {
@@ -21,7 +24,8 @@ function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
 		}
 		if (
 			!Object.entries(candidate.securityProfiles).every(
-				([route, profile]) => route.startsWith("/") && profile === "isolated-output",
+				([route, profile]) =>
+					route.startsWith("/") && profile === ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 			)
 		) {
 			return false;
@@ -44,12 +48,16 @@ export function collectEmbeddedHosts(
 ): readonly EmbeddedWebHost[] {
 	const hosts: EmbeddedWebHost[] = [];
 	for (const feature of FEATURES) {
-		const capability = featureRouter.capabilityRegistry.get(feature.id)?.[CAPABILITY_NAME];
+		const capability = featureRouter.capabilityRegistry.get(feature.id)?.[
+			EMBEDDED_WEB_HOST_CAPABILITY
+		];
 		if (capability === undefined) continue;
 		// Skip rather than throw: one malformed contribution must not take down the
 		// protocol handler, which serves the whole app.
 		if (!isEmbeddedWebHost(capability)) {
-			logger.warn(`Feature "${feature.id}" exposed a malformed ${CAPABILITY_NAME} — ignoring.`);
+			logger.warn(
+				`Feature "${feature.id}" exposed a malformed ${EMBEDDED_WEB_HOST_CAPABILITY} — ignoring.`,
+			);
 			continue;
 		}
 		hosts.push(capability);

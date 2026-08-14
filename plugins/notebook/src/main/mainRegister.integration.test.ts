@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { FeatureRouter, type HostMessagePort } from "@anaconda-agentic-desktop/feature-sdk/main";
+import {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	FeatureRouter,
+	type HostMessagePort,
+} from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { mainRegister, type ElectronNotebookHostServiceLike } from "./index.js";
 
@@ -72,14 +77,16 @@ describe("notebook mainRegister", () => {
 		).rejects.toMatchObject({ code: "VALIDATION" });
 	});
 
-	it("contributes the bundle with an exact isolated-output CSP profile", async () => {
+	it("contributes the bundle with an exact active-content CSP profile", async () => {
 		const { mainSdk } = await boot();
-		const capability = mainSdk.plugins.get("notebook")?.["embeddedWebHost"];
+		const capability = mainSdk.plugins.get("notebook")?.[EMBEDDED_WEB_HOST_CAPABILITY];
 
 		expect(capability).toEqual({
 			host: "notebook",
 			root: "/plugins/notebook/build/notebook",
-			securityProfiles: { "/output-frame.html": "isolated-output" },
+			securityProfiles: {
+				"/output-frame.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+			},
 		});
 	});
 

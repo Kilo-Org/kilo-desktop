@@ -9,7 +9,8 @@
 		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
 		"./contracts": "./src/contracts/schemas.ts",
-		"./packaged-assets": "./src/main/resolve-plugin-asset.ts"
+		"./packaged-assets": "./src/main/resolve-plugin-asset.ts",
+		"./packaging": "./src/main/packaging.ts"
 	},
 	"scripts": {
 		"build-ui": "node --env-file-if-exists=.env.local --import tsx scripts/build-notebook-ui.ts",

@@ -80,9 +80,9 @@ function HeaderOutlets() {
 	);
 }
 
-function NotebookPanel({ instanceId, sessionId, title }: ChatRightPanelContributionProps) {
+function CanvasPanel({ instanceId, sessionId, title }: ChatRightPanelContributionProps) {
 	return (
-		<div data-qa-id="test-notebook-panel" data-instance-id={instanceId} data-session-id={sessionId}>
+		<div data-qa-id="test-canvas-panel" data-instance-id={instanceId} data-session-id={sessionId}>
 			{title}
 		</div>
 	);
@@ -198,13 +198,13 @@ function renderChatPage(options?: {
 	const system = createFakeFeatureSystem({
 		sdks: { "kilo-ui": kiloUi },
 	});
-	const removeNotebookContribution = system
-		.getSdk("notebook")
+	const removeCanvasContribution = system
+		.getSdk("canvas")
 		.contribute(CHAT_RIGHT_PANEL_TAB_EXTENSION, {
-			id: "notebook",
-			label: "Notebook",
-			description: "Scratch notebook",
-			component: NotebookPanel,
+			id: "canvas",
+			label: "Canvas",
+			description: "Scratch canvas",
+			component: CanvasPanel,
 		});
 	const queryClient = testClient();
 	const result = render(
@@ -219,7 +219,7 @@ function renderChatPage(options?: {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, queryClient, sdk: kiloUi, removeNotebookContribution };
+	return { ...result, queryClient, sdk: kiloUi, removeCanvasContribution };
 }
 
 afterEach(() => {
@@ -363,47 +363,45 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("chat-right-panel-maximize")).toBeVisible();
 	});
 
-	it("adds multiple numbered notebook instances from the live contribution", async () => {
+	it("adds multiple numbered instances from a live contribution", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
 		await screen.getByTestId("chat-right-panel-toggle").click();
 		await expect.element(screen.getByTestId("chat-right-panel-empty")).toBeVisible();
-		await screen.getByTestId("chat-right-panel-open-notebook-notebook").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
 
-		await expect.element(screen.getByTestId("test-notebook-panel")).toHaveTextContent("Notebook 1");
-		const firstNotebook = baseElement.querySelector<HTMLElement>(
-			"[data-qa-id='test-notebook-panel']",
-		);
-		expect(firstNotebook).not.toBeNull();
+		await expect.element(screen.getByTestId("test-canvas-panel")).toHaveTextContent("Canvas 1");
+		const firstCanvas = baseElement.querySelector<HTMLElement>("[data-qa-id='test-canvas-panel']");
+		expect(firstCanvas).not.toBeNull();
 		await expect.element(screen.getByTestId("chat-right-panel-empty")).not.toBeInTheDocument();
 
 		await screen.getByTestId("chat-right-panel-add-tab").click();
-		await screen.getByTestId("chat-right-panel-add-notebook-notebook").click();
+		await screen.getByTestId("chat-right-panel-add-canvas-canvas").click();
 		await vi.waitFor(() => {
-			expect(baseElement.querySelectorAll("[data-qa-id='test-notebook-panel']")).toHaveLength(2);
+			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(2);
 		});
-		expect(firstNotebook?.isConnected).toBe(true);
-		expect(firstNotebook?.textContent).toContain("Notebook 1");
+		expect(firstCanvas?.isConnected).toBe(true);
+		expect(firstCanvas?.textContent).toContain("Canvas 1");
 		expect(
 			baseElement.querySelector<HTMLElement>(
-				"[data-active='true'] [data-qa-id='test-notebook-panel']",
+				"[data-active='true'] [data-qa-id='test-canvas-panel']",
 			)?.textContent,
-		).toContain("Notebook 2");
+		).toContain("Canvas 2");
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs.map(({ title }) => title)).toEqual(
-			["Notebook 1", "Notebook 2"],
+			["Canvas 1", "Canvas 2"],
 		);
 	});
 
 	it("keeps an existing tab closeable when its contributing plugin disappears", async () => {
-		const { baseElement, removeNotebookContribution } = renderChatPage();
+		const { baseElement, removeCanvasContribution } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
 		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-notebook-notebook").click();
-		await expect.element(screen.getByTestId("test-notebook-panel")).toBeVisible();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
 
-		removeNotebookContribution();
+		removeCanvasContribution();
 		await expect
 			.element(screen.getByTestId("chat-right-panel-contribution-unavailable"))
 			.toBeVisible();

@@ -23,7 +23,7 @@ jobs:
           lfs: true
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: ./.github/actions/build-notebook-ui
+      - uses: ./plugins/notebook/actions/build-ui
       - uses: actions/upload-artifact@v4
         with:
           name: notebook-ui-${{ github.sha }}

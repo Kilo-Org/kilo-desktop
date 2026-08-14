@@ -36,11 +36,3 @@ export function createNotebookResolveAsset(options: {
 		return resolvePackageAsset(subpath);
 	};
 }
-
-export {
-	findRuntArtifact,
-	getRuntArtifact,
-	NTERACT_NOTEBOOK_SOURCE,
-	NTERACT_RELEASE,
-	RUNT_ARTIFACTS,
-} from "./distribution/artifacts.js";

@@ -10,6 +10,7 @@ import {
 	requireViteEnvironmentVariable,
 } from "./config/build-environment.js";
 import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
+import { NOTEBOOK_MAIN_EXTERNALS } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,7 +50,7 @@ export default defineConfig(({ command }) => {
 				platform: "node",
 				external: [
 					"electron",
-					/^@runtimed\/node(?:\/.*)?$/,
+					...NOTEBOOK_MAIN_EXTERNALS,
 					"better-sqlite3",
 					"@github/keytar",
 					// LaunchDarkly's Node SDK is CommonJS and lazily `require`s Node

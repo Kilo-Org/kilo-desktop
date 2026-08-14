@@ -81,7 +81,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	});
 
 	// Kilo registers before this feature. Keep feature boot open until the
-	// initial reconcile has contributed all spawn-time environment and config,
+	// initial reconcile has persisted config and contributed the spawn environment,
 	// so the renderer's first connection request cannot race those contributions
 	// and force an immediate server restart.
 	await service.reconcile();

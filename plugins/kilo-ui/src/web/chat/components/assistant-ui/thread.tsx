@@ -569,7 +569,7 @@ const AssistantWorkingIndicator: FC = () => (
 		<span>{CONSIDERING_NEXT_STEPS}</span>
 		<span
 			aria-hidden
-			className="shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none"
+			className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
 		>
 			{CONSIDERING_NEXT_STEPS}
 		</span>

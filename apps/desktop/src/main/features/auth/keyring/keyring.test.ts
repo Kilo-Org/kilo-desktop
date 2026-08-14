@@ -40,6 +40,22 @@ describe("Keyring", () => {
 		await rm(tmpDir, { recursive: true, force: true });
 	});
 
+	it("ANACONDA_SKIP_KEYRING=1 ignores config and file backends", async () => {
+		const previous = process.env.ANACONDA_SKIP_KEYRING;
+		process.env.ANACONDA_SKIP_KEYRING = "1";
+		try {
+			const keyring = await Keyring.load(
+				createSite({ keyring_path: keyringPath, api_key: "ak-should-ignore" }),
+			);
+
+			expect(await keyring.getToken()).toBeNull();
+			expect(keyring.writable).toBe(false);
+		} finally {
+			if (previous === undefined) delete process.env.ANACONDA_SKIP_KEYRING;
+			else process.env.ANACONDA_SKIP_KEYRING = previous;
+		}
+	});
+
 	it("getToken returns null when no backends have a token", async () => {
 		const keyring = await Keyring.load(createSite({ keyring_path: keyringPath }));
 

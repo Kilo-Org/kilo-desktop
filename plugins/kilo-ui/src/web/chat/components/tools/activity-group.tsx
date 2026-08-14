@@ -148,7 +148,7 @@ const ActivityLabel: FC<{
 			{shimmer ? (
 				<span
 					aria-hidden
-					className="shimmer pointer-events-none absolute top-0 left-0 motion-reduce:animate-none"
+					className="shimmer shimmer-color-foreground pointer-events-none absolute top-0 left-0 motion-reduce:animate-none"
 				>
 					{verb}
 				</span>

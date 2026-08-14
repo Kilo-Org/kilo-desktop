@@ -24,6 +24,13 @@ export class Keyring {
 	 * and determining the primary write target.
 	 */
 	static async load(site: AnacondaAuthSite): Promise<Keyring> {
+		// Packaged e2e sets this so the app does not inherit the host Anaconda
+		// keychain / ~/.anaconda keyring (those live outside --user-data-dir).
+		if (process.env.ANACONDA_SKIP_KEYRING === "1") {
+			const isolated = new ConfigKeyring({ ...site, api_key: null, keyring: {} });
+			return new Keyring(site.domain ?? "", [isolated], isolated);
+		}
+
 		const configBackend = new ConfigKeyring(site);
 
 		if (configBackend.priority > 0) {

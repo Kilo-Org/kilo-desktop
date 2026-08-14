@@ -13,6 +13,12 @@
 			"skillPath": "assistant-ui/skills/cloud/SKILL.md",
 			"computedHash": "ba88573ec94e2353346e657a4f62966e572c1f1ac840d68491e53d3398d2e641"
 		},
+		"codebase-design": {
+			"source": "mattpocock/skills",
+			"sourceType": "github",
+			"skillPath": "skills/engineering/codebase-design/SKILL.md",
+			"computedHash": "e6394592ecf4b5aa5bc93f95a20d0a56314788bde2e1221f87296d3becb734a2"
+		},
 		"copilots": {
 			"source": "assistant-ui/skills",
 			"sourceType": "github",

@@ -41,6 +41,8 @@ import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { SplashWindow } from "./platform/SplashWindow.js";
 import { configureUpdater } from "./platform/Updater.js";
+import { flushSentry } from "./platform/sentry.js";
+import * as Sentry from "@sentry/electron/main";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
 export class Application {
@@ -65,6 +67,7 @@ export class Application {
 	readonly #disposers: Array<() => void> = [];
 	#featureFlags: FeatureFlagService | undefined;
 	#isShuttingDown = false;
+	#flushedSentry = false;
 
 	async start(): Promise<void> {
 		const identity = getAppIdentity(
@@ -79,7 +82,17 @@ export class Application {
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
-			this.#app.on("before-quit", () => this.#dispose()),
+			// Electron runs `before-quit` listeners synchronously and then quits, so
+			// a fire-and-forget flush would be cut off. Preempt the first quit, await
+			// the (2s-bounded) Sentry flush and dispose, then re-trigger quit; the
+			// guard lets that second pass through.
+			this.#app.on("before-quit", async (event: Electron.Event) => {
+				if (this.#flushedSentry) return this.#dispose();
+				event.preventDefault();
+				await flushSentry();
+				this.#flushedSentry = true;
+				this.#app.quit();
+			}),
 		);
 
 		await this.#app.whenReady();
@@ -118,12 +131,15 @@ export class Application {
 			this.#disposers.push(this.#security.install(session.defaultSession));
 
 			reporter.report("features", "Preparing features\u2026");
+			Sentry.addBreadcrumb({ category: "app.boot", message: "Booting features" });
 			await this.#registerIpc(preferences, reporter);
+			Sentry.addBreadcrumb({ category: "app.boot", message: "Features booted" });
 			this.#registerPushEvents();
 			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
 			// half-initialized main window without security/IPC/handlers.
+			Sentry.captureException(error, { tags: { phase: "boot" } });
 			reporter.complete();
 			await splash.close();
 			this.#app.quit();

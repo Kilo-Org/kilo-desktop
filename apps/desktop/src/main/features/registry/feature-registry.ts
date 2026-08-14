@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 
+import * as Sentry from "@sentry/electron/main";
 import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import {
@@ -137,6 +138,7 @@ export async function bootFeatures(
 			booted.push(feature.id);
 		} catch (error) {
 			console.error(`[FeatureRegistry] mainRegister failed for "${feature.id}":`, error);
+			Sentry.captureException(error, { tags: { feature_id: feature.id } });
 			// Roll back partial registration so the feature is not half-alive.
 			featureRouter.destroyFeature(feature.id);
 		}

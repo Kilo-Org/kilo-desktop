@@ -6,6 +6,9 @@ packages:
   - e2e
 
 catalog:
+  "@sentry/electron": ^7.16.0
+  "@sentry/react": 10.67.0
+  "@sentry/vite-plugin": ^5.0.0
   atomically: ^2.1.1
   electron: 43.4.0
   lodash: ^4.17.21
@@ -43,6 +46,7 @@ allowBuilds:
   # Optional native addon pulled in transitively by @vscode/proxy-agent. We
   # never load it (addCertificatesV2 → false), so skip its native build.
   "@vscode/windows-ca-certs": false
+  "@sentry/cli": true
 
 minimumReleaseAge: 0
 

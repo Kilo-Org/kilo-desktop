@@ -126,6 +126,9 @@ importers:
       '@launchdarkly/node-client-sdk':
         specifier: ^4.0.0
         version: 4.0.1
+      '@runtimed/node':
+        specifier: link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node
+        version: link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node
       '@vscode/proxy-agent':
         specifier: ^0.44.0
         version: 0.44.0(supports-color@8.1.1)
@@ -822,12 +825,12 @@ importers:
 
   plugins/notebook:
     dependencies:
+      '@runtimed/node':
+        specifier: link:build/nteract-source/nteract/packages/runtimed-node
+        version: link:build/nteract-source/nteract/packages/runtimed-node
       lucide-react:
         specifier: ^1.27.0
         version: 1.27.0(react@19.2.8)
-      ws:
-        specifier: ^8.21.2
-        version: 8.21.3
     devDependencies:
       '@anaconda-agentic-desktop/e2e':
         specifier: workspace:*
@@ -865,9 +868,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.17)
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
       '@vitejs/plugin-react':
         specifier: ^6.0.4
         version: 6.0.4(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -3694,9 +3694,6 @@ packages:
 
   '@types/validate-npm-package-name@4.0.2':
     resolution: {integrity: sha512-lrpDziQipxCEeK5kWxvljWYhUvOiB2A9izZd9B2AFarYAkqZshb4lPbRs7zKEic6eGtH8V/2qJW+dPp9OtF6bw==}
-
-  '@types/ws@8.18.1':
-    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@typescript-eslint/eslint-plugin@8.63.0':
     resolution: {integrity: sha512-rvwSgqT+DHpWdzfSzPatRLm02a0GlESt++9iy3hLCDY4BgkaLcl8LBi9Yh7XGFBpwcBE/K3024QuXWTpbz4FfQ==}
@@ -11012,10 +11009,6 @@ snapshots:
   '@types/unist@3.0.3': {}
 
   '@types/validate-npm-package-name@4.0.2': {}
-
-  '@types/ws@8.18.1':
-    dependencies:
-      '@types/node': 24.13.3
 
   '@typescript-eslint/eslint-plugin@8.63.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)':
     dependencies:

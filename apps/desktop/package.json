@@ -30,6 +30,9 @@
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
+	"dependencyNotes": {
+		"@runtimed/node": "TEMPORARY: expose the pinned local native build to Electron while the notebook plugin is bundled and the upstream Electron/relay packages are unpublished."
+	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
@@ -40,6 +43,7 @@
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@github/keytar": "^7.10.6",
 		"@launchdarkly/node-client-sdk": "^4.0.0",
+		"@runtimed/node": "link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
 		"@vscode/proxy-agent": "^0.44.0",
 		"atomically": "catalog:",
 		"electron-debug": "^4.1.0",

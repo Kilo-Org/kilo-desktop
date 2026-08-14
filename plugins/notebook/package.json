@@ -20,8 +20,11 @@
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
+	"dependencyNotes": {
+		"@runtimed/node": "TEMPORARY: use the pinned local nteract source build until upstream publishes the Electron/relay entry points and matching native platform packages."
+	},
 	"dependencies": {
-		"@runtimed/node": "0.4.3",
+		"@runtimed/node": "link:build/nteract-source/nteract/packages/runtimed-node",
 		"lucide-react": "^1.27.0"
 	},
 	"peerDependencies": {

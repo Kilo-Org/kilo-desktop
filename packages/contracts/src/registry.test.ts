@@ -8,6 +8,7 @@ import { featurePorts } from "./features/feature-port.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
+import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
 import {
 	assertNoDuplicateChannels,
@@ -26,7 +27,8 @@ describe("IPC registry", () => {
 				Object.keys(featureMethods).length +
 				Object.keys(notificationsMethods).length +
 				Object.keys(fsMethods).length +
-				Object.keys(featureFlagMethods).length,
+				Object.keys(featureFlagMethods).length +
+				Object.keys(telemetryMethods).length,
 		);
 	});
 

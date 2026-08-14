@@ -6,6 +6,7 @@ import { featurePorts } from "./features/feature-port.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
+import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
 
 /**
@@ -34,6 +35,7 @@ assertNoDuplicateChannels(
 	notificationsMethods,
 	fsMethods,
 	featureFlagMethods,
+	telemetryMethods,
 );
 assertNoDuplicateChannels(featureEvents, authEvents, featureFlagEvents);
 assertNoDuplicateChannels(featureMessages);
@@ -56,6 +58,7 @@ export const ipcMethods = {
 	...shellMethods,
 	...themeMethods,
 	...authMethods,
+	...telemetryMethods,
 	...featureMethods,
 	...notificationsMethods,
 	...fsMethods,

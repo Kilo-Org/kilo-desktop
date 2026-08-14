@@ -21,6 +21,7 @@ import { registerFeatureFlagCapability } from "./features/feature-flag/feature-f
 import { createFsHandlers } from "./features/fs/handlers.js";
 import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
+import { createTelemetryHandlers, TelemetryService } from "./features/telemetry/index.js";
 import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
@@ -66,6 +67,7 @@ export class Application {
 	readonly #ipcServer = new IpcServer();
 	readonly #disposers: Array<() => void> = [];
 	#featureFlags: FeatureFlagService | undefined;
+	#telemetry: TelemetryService | undefined;
 	#isShuttingDown = false;
 	#flushedSentry = false;
 
@@ -135,6 +137,11 @@ export class Application {
 			await this.#registerIpc(preferences, reporter);
 			Sentry.addBreadcrumb({ category: "app.boot", message: "Features booted" });
 			this.#registerPushEvents();
+
+			// Fire the bootstrap event after IPC is registered. Fire-and-forget: the
+			// service swallows its own errors, so telemetry never blocks startup.
+			void this.#telemetry?.initialize();
+
 			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
@@ -242,12 +249,22 @@ export class Application {
 			}),
 		);
 
+		const telemetry = TelemetryService.create({
+			auth: this.#auth,
+			preferences,
+			appVersion: this.#app.metadata.appVersion,
+			serviceId: "anaconda-agentic-desktop",
+		});
+		this.#telemetry = telemetry;
+		this.#disposers.push(() => void telemetry.dispose());
+
 		const handlers = {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#windows, preferences),
 			...createAuthHandlers(this.#auth),
 			...createNotificationsHandlers(this.#notifications),
 			...createFsHandlers(this.#scopedFs),
+			...createTelemetryHandlers(telemetry),
 			...createFeatureHandlers(),
 			...createFeatureFlagHandlers(featureFlags),
 		} satisfies IpcHandlers;

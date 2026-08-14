@@ -198,14 +198,15 @@ describe("bindAuthToProvider", () => {
 	it("forwards a provider.identify rejection to onError", async () => {
 		const { auth, fire } = makeChangeableAuth(authenticatedSession);
 		const provider = makeProvider();
-		provider.identify.mockRejectedValueOnce(new Error("LD down"));
+		const cause = new Error("LD down");
+		provider.identify.mockRejectedValueOnce(cause);
 		const onError = vi.fn();
 
 		bindAuthToProvider(auth, provider, onError);
 		fire();
 
 		await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
-		expect(onError).toHaveBeenCalledWith(expect.any(Error));
+		expect(onError).toHaveBeenCalledWith(cause);
 	});
 
 	it("returns the unsubscribe handle from auth.onChanged", () => {

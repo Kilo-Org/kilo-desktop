@@ -47,6 +47,7 @@ allowBuilds:
   # never load it (addCertificatesV2 → false), so skip its native build.
   "@vscode/windows-ca-certs": false
   "@sentry/cli": true
+  protobufjs: false
 
 minimumReleaseAge: 0
 

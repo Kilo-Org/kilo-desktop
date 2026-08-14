@@ -123,5 +123,9 @@ export function createBrowserLocalApi(): LocalApi {
 				return () => {};
 			},
 		},
+		telemetry: {
+			// No main-process telemetry service outside Electron — drop events.
+			async track() {},
+		},
 	};
 }

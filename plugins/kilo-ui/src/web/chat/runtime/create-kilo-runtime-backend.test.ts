@@ -4,7 +4,6 @@ import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
-import { workspaceFolders } from "../../../main/workspaces/schema.js";
 
 vi.mock("./create-kilo-runtime-client.js", () => ({
 	createKiloDirectoryClient: vi.fn(),
@@ -288,7 +287,7 @@ describe("createKiloRuntimeBackend", () => {
 	});
 
 	it("throws when session creation returns no session id", async () => {
-		const prepareSession = vi.fn(async () => ({ directory: "/workspace/x", workspaceFolders }));
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace/x", workspaceFolders: [] }));
 		const create = vi.fn(async () => ({ data: {} }));
 		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
 		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);

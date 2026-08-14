@@ -240,10 +240,26 @@ describe("chat connection context", () => {
 
 describe("ChatPage error rendering", () => {
 	function renderWithStatus(status: ChatConnectionStatus) {
+		const kiloUi = createFakeSdk({
+			featureId: "kilo-ui",
+			channels: { ...workspacesContract, ...kiloUiChatContract },
+			handlers: {
+				list: async () => [],
+				get: async () => null,
+				create: async () => workspace,
+				update: async () => workspace,
+				remove: async () => ({ deleted: true }),
+				"chat.getConnection": async () => connection,
+				"chat.prepareSession": async () => ({ directory: "/tmp/chat", workspaceFolders: [] }),
+			} satisfies Partial<WorkspacesService & KiloUiChatService>,
+		});
+		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": kiloUi } });
 		return render(
-			<ChatConnectionProvider status={status}>
-				<ChatPage />
-			</ChatConnectionProvider>,
+			<SdkProvider system={system}>
+				<ChatConnectionProvider status={status}>
+					<ChatPage />
+				</ChatConnectionProvider>
+			</SdkProvider>,
 		);
 	}
 
@@ -265,7 +281,7 @@ describe("ChatPage error rendering", () => {
 
 describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 	it("resets the agent only when the thread id is cleared and prepares without a workspace", async () => {
-		const prepareSession = vi.fn(async () => ({ directory: "/tmp/chat" }));
+		const prepareSession = vi.fn(async () => ({ directory: "/tmp/chat", workspaceFolders: [] }));
 		renderChatPage({ getConnection: async () => connection, prepareSession });
 
 		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());

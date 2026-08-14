@@ -1,15 +1,11 @@
 import { RelayBridgeServer, type RelayBridgeServerOptions } from "@mcp-b/webmcp-local-relay";
 
-import {
-	WEBMCP_RELAY_ID,
-	WEBMCP_RELAY_LABEL,
-	WEBMCP_RELAY_PORT,
-} from "./initialize-managed-config.js";
+import { WEBMCP_RELAY_ID, WEBMCP_RELAY_LABEL, WEBMCP_RELAY_PORT } from "./webmcp-relay-config.js";
 import type { KiloLogger } from "./KiloServerManager.js";
 
 /**
  * Owns Desktop's in-process WebMCP WebSocket rendezvous for the lifetime of the
- * kilo-server plugin. It never starts an MCP transport: Kilo's managed relay
+ * kilo-server plugin. It never starts an MCP transport: Kilo's Desktop-provided relay
  * child remains the sole stdio MCP server and joins this bridge in client mode.
  * A successful start always means this process owns the fixed port in server
  * mode; an existing relay is not silently accepted because its relay identity

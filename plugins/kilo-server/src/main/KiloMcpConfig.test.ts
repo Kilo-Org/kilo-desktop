@@ -5,7 +5,13 @@ import path from "node:path";
 import { parse } from "jsonc-parser";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { KILO_CONFIG_FILENAME, MANAGED_SIDECAR_FILENAME, KiloMcpConfig } from "./KiloMcpConfig.js";
+import {
+	KILO_CONFIG_FILENAME,
+	OWNERSHIP_SIDECAR_FILENAME,
+	KiloMcpConfig,
+} from "./KiloMcpConfig.js";
+
+const LEGACY_SIDECAR_FILENAME = ".anaconda-desktop-managed.json";
 
 const SOURCE_ONE = "feature-one";
 const SOURCE_TWO = "feature-two";
@@ -15,7 +21,7 @@ describe("KiloMcpConfig", () => {
 	let configDirectory: string;
 
 	beforeEach(async () => {
-		tempDirectory = await mkdtemp(path.join(tmpdir(), "managed-kilo-config-"));
+		tempDirectory = await mkdtemp(path.join(tmpdir(), "kilo-mcp-config-"));
 		configDirectory = path.join(tempDirectory, "config", "kilo");
 		await mkdir(configDirectory, { recursive: true });
 	});
@@ -30,7 +36,7 @@ describe("KiloMcpConfig", () => {
 		};
 	}
 
-	it("serializes concurrent writers so both managed entries survive", async () => {
+	it("serializes concurrent writers so both Desktop-owned entries survive", async () => {
 		const config = new KiloMcpConfig(configDirectory);
 
 		await Promise.all([
@@ -49,13 +55,13 @@ describe("KiloMcpConfig", () => {
 			two: { type: "remote", url: "https://two.test/mcp" },
 		});
 		const sidecar = JSON.parse(
-			await readFile(path.join(configDirectory, MANAGED_SIDECAR_FILENAME), "utf8"),
-		) as { managed: string[]; owners: Record<string, string> };
-		expect(sidecar.managed).toEqual(["one", "two"]);
+			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
+		) as { ownedEntryIds: string[]; owners: Record<string, string> };
+		expect(sidecar.ownedEntryIds).toEqual(["one", "two"]);
 		expect(sidecar.owners).toEqual({ one: SOURCE_ONE, two: SOURCE_TWO });
 	});
 
-	it("preserves user comments and refuses to claim an unmanaged entry", async () => {
+	it("preserves user comments and refuses to claim an entry Desktop does not own", async () => {
 		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
 		await writeFile(
 			filePath,
@@ -72,7 +78,7 @@ describe("KiloMcpConfig", () => {
 				type: "remote",
 				url: "https://desktop.test",
 			}),
-		).resolves.toEqual({ kind: "skipped", reason: "unmanaged-entry" });
+		).resolves.toEqual({ kind: "skipped", reason: "entry-not-owned" });
 		expect(await readFile(filePath, "utf8")).toContain("// user-owned entry");
 		expect((await readConfig()).mcp.shared).toEqual({
 			type: "remote",
@@ -82,18 +88,18 @@ describe("KiloMcpConfig", () => {
 
 	it("removes only sidecar-owned entries", async () => {
 		const config = new KiloMcpConfig(configDirectory);
-		await config.setMcpEntry(SOURCE_ONE, "managed", {
+		await config.setMcpEntry(SOURCE_ONE, "owned", {
 			type: "remote",
-			url: "https://managed.test",
+			url: "https://owned.test",
 		});
 
-		await expect(config.removeMcpEntry(SOURCE_ONE, "managed")).resolves.toEqual({
+		await expect(config.removeMcpEntry(SOURCE_ONE, "owned")).resolves.toEqual({
 			kind: "removed",
 			reason: "explicit",
 		});
-		expect((await readConfig()).mcp).not.toHaveProperty("managed");
+		expect((await readConfig()).mcp).not.toHaveProperty("owned");
 		await expect(
-			readFile(path.join(configDirectory, MANAGED_SIDECAR_FILENAME), "utf8"),
+			readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
 		).rejects.toThrow(/ENOENT/);
 	});
 
@@ -130,7 +136,7 @@ describe("KiloMcpConfig", () => {
 		});
 	});
 
-	it("adopts a legacy managed entry once and records its source owner", async () => {
+	it("migrates the legacy sidecar and adopts an ownerless entry", async () => {
 		await writeFile(
 			path.join(configDirectory, KILO_CONFIG_FILENAME),
 			`${JSON.stringify({
@@ -138,7 +144,7 @@ describe("KiloMcpConfig", () => {
 			})}\n`,
 		);
 		await writeFile(
-			path.join(configDirectory, MANAGED_SIDECAR_FILENAME),
+			path.join(configDirectory, LEGACY_SIDECAR_FILENAME),
 			`${JSON.stringify({ version: 1, managed: ["legacy"] })}\n`,
 		);
 		const config = new KiloMcpConfig(configDirectory);
@@ -151,16 +157,56 @@ describe("KiloMcpConfig", () => {
 		).resolves.toEqual({ kind: "skipped", reason: "up-to-date" });
 
 		const sidecar = JSON.parse(
-			await readFile(path.join(configDirectory, MANAGED_SIDECAR_FILENAME), "utf8"),
-		) as { version: number; owners: Record<string, string> };
+			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
+		) as { version: number; ownedEntryIds: string[]; owners: Record<string, string> };
 		expect(sidecar).toMatchObject({
-			version: 2,
+			version: 3,
+			ownedEntryIds: ["legacy"],
 			owners: { legacy: SOURCE_ONE },
 		});
+		await expect(
+			readFile(path.join(configDirectory, LEGACY_SIDECAR_FILENAME), "utf8"),
+		).rejects.toThrow(/ENOENT/);
 		await expect(config.removeMcpEntry(SOURCE_TWO, "legacy")).resolves.toEqual({
 			kind: "skipped",
 			reason: "owned-by-other-source",
 		});
+	});
+
+	it("preserves source ownership when migrating a version 2 sidecar", async () => {
+		await writeFile(
+			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			`${JSON.stringify({
+				mcp: { shared: { type: "remote", url: "https://one.test/mcp" } },
+			})}\n`,
+		);
+		await writeFile(
+			path.join(configDirectory, LEGACY_SIDECAR_FILENAME),
+			`${JSON.stringify({
+				version: 2,
+				managed: ["shared"],
+				owners: { shared: SOURCE_ONE },
+			})}\n`,
+		);
+		const config = new KiloMcpConfig(configDirectory);
+
+		await expect(
+			config.setMcpEntry(SOURCE_TWO, "shared", {
+				type: "remote",
+				url: "https://two.test/mcp",
+			}),
+		).resolves.toEqual({ kind: "skipped", reason: "owned-by-other-source" });
+
+		const sidecar = JSON.parse(
+			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
+		) as { ownedEntryIds: string[]; owners: Record<string, string> };
+		expect(sidecar).toMatchObject({
+			ownedEntryIds: ["shared"],
+			owners: { shared: SOURCE_ONE },
+		});
+		await expect(
+			readFile(path.join(configDirectory, LEGACY_SIDECAR_FILENAME), "utf8"),
+		).rejects.toThrow(/ENOENT/);
 	});
 
 	it("snapshots entries before queued writes", async () => {

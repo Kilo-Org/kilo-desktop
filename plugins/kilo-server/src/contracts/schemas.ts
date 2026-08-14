@@ -36,7 +36,7 @@ export const kiloGetConnectionInputSchema = z.object({
 
 export type KiloGetConnectionInput = z.infer<typeof kiloGetConnectionInputSchema>;
 
-export type KiloManagedMcpEntry = Readonly<Record<string, unknown>>;
+export type KiloMcpEntry = Readonly<Record<string, unknown>>;
 
 // ─── Contract ───────────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ export type KiloServerService = InferContract<typeof kiloServerContract>;
 
 /**
  * The service object exposed by the kilo-server plugin as a main-side capability.
- * Contains methods for env contribution, managed MCP persistence, and server
+ * Contains methods for env contribution, MCP config persistence, and server
  * restart.
  */
 export interface KiloServerCapabilityService {
@@ -64,14 +64,14 @@ export interface KiloServerCapabilityService {
 		 */
 		contribute(sourceId: string, env: Record<string, string>): () => void;
 	};
-	readonly managedMcp: {
+	readonly mcpConfig: {
 		/**
-		 * Persist a Desktop-managed entry in the app-owned Kilo config. Unknown
+		 * Persist a Desktop-owned entry in the app-owned Kilo config. Unknown
 		 * entries and JSONC comments are preserved. Resolves after the atomic
 		 * write; a running Kilo server is restarted through the shared debouncer.
 		 * A source may update only entries it already owns.
 		 */
-		set(sourceId: string, entryId: string, entry: KiloManagedMcpEntry): Promise<void>;
+		set(sourceId: string, entryId: string, entry: KiloMcpEntry): Promise<void>;
 		/** Remove an entry only when the ownership sidecar assigns it to this source. */
 		remove(sourceId: string, entryId: string): Promise<void>;
 	};
@@ -89,7 +89,7 @@ export interface KiloServerCapabilityService {
  * ```ts
  * const kilo = mainSdk.plugins.get<KiloServerCapabilities>("kilo-server");
  * kilo?.kiloService.serverEnv.contribute("my-plugin", { MY_VAR: "value" });
- * await kilo?.kiloService.managedMcp.set("my-plugin", "my-mcp", {
+ * await kilo?.kiloService.mcpConfig.set("my-plugin", "my-mcp", {
  *   type: "remote",
  *   url: "https://...",
  * });

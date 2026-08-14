@@ -1,21 +1,21 @@
 import type { KiloLogger } from "./KiloServerManager.js";
 import {
 	KILO_CONFIG_FILENAME,
-	MANAGED_SIDECAR_FILENAME,
+	OWNERSHIP_SIDECAR_FILENAME,
 	KiloMcpConfig,
-	type ManagedMcpOutcome,
+	type KiloMcpMutationOutcome,
 } from "./KiloMcpConfig.js";
 import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
 
 /**
  * Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
  *
- * Initializes the bundled WebMCP relay into Desktop's owned Kilo config. Generic
+ * Reconciles the bundled WebMCP relay in Desktop's Kilo config. Generic
  * JSONC mutation and ownership tracking live in `KiloMcpConfig`; this
  * module only resolves and builds the relay-specific entry.
  */
 
-export { KILO_CONFIG_FILENAME, MANAGED_SIDECAR_FILENAME };
+export { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME };
 export const MCP_ENTRY_NAME = "anaconda-desktop-relay";
 export const MCP_ENTRY_SOURCE_ID = "kilo-server";
 
@@ -30,17 +30,17 @@ export type WebMcpRelayEntry = Readonly<Record<string, unknown>> & {
 	readonly enabled: true;
 };
 
-export interface InitializeManagedConfigOptions {
+export interface ReconcileWebMcpRelayConfigOptions {
 	readonly configDirectory: string;
 	readonly appExecutablePath: string;
 	readonly enabled?: boolean;
 	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
 	readonly resolveRelay?: () => { entry: string; version: string };
 	/** Shares the registration's serialized writer with runtime MCP updates. */
-	readonly managedConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
+	readonly kiloMcpConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
 }
 
-/** Builds the CLI argv for Kilo's managed stdio MCP relay child. */
+/** Builds the CLI argv for Kilo's Desktop-provided stdio MCP relay child. */
 export function buildWebMcpRelayArgv(
 	relayEntry: string,
 	options?: {
@@ -60,7 +60,7 @@ export function buildWebMcpRelayArgv(
 	];
 }
 
-export type ManagedConfigInitializationOutcome =
+export type WebMcpRelayConfigOutcome =
 	| {
 			readonly kind: "written";
 			readonly reason: "created" | "updated";
@@ -73,7 +73,7 @@ export type ManagedConfigInitializationOutcome =
 	| {
 			readonly kind: "skipped";
 			readonly reason:
-				| "unmanaged-entry"
+				| "entry-not-owned"
 				| "owned-by-other-source"
 				| "up-to-date"
 				| "nothing-to-remove";
@@ -89,7 +89,7 @@ function buildEntry(appExecutablePath: string, relayEntry: string): WebMcpRelayE
 	};
 }
 
-function mapRemovalOutcome(outcome: ManagedMcpOutcome): ManagedConfigInitializationOutcome {
+function mapRemovalOutcome(outcome: KiloMcpMutationOutcome): WebMcpRelayConfigOutcome {
 	if (outcome.kind === "removed") return { kind: "removed", reason: "fuse-off" };
 	if (outcome.kind === "written") {
 		return { kind: "skipped-error", reason: "unexpected write while removing WebMCP relay" };
@@ -97,15 +97,15 @@ function mapRemovalOutcome(outcome: ManagedMcpOutcome): ManagedConfigInitializat
 	return outcome;
 }
 
-export async function initializeManagedConfig(
-	options: InitializeManagedConfigOptions,
-): Promise<ManagedConfigInitializationOutcome> {
+export async function reconcileWebMcpRelayConfig(
+	options: ReconcileWebMcpRelayConfigOptions,
+): Promise<WebMcpRelayConfigOutcome> {
 	const logger = options.logger ?? { info() {}, warn() {}, error() {} };
-	const managedConfig = options.managedConfig ?? new KiloMcpConfig(options.configDirectory, logger);
+	const kiloMcpConfig = options.kiloMcpConfig ?? new KiloMcpConfig(options.configDirectory, logger);
 
 	if (options.enabled === false) {
 		return mapRemovalOutcome(
-			await managedConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME),
+			await kiloMcpConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME),
 		);
 	}
 
@@ -119,7 +119,7 @@ export async function initializeManagedConfig(
 	}
 
 	const entry = buildEntry(options.appExecutablePath, relay.entry);
-	const outcome = await managedConfig.setMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, entry);
+	const outcome = await kiloMcpConfig.setMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, entry);
 	if (outcome.kind !== "written") return outcome;
 	logger.info(
 		`Initialized WebMCP relay entry (${outcome.reason}) using @mcp-b/webmcp-local-relay@${relay.version}.`,

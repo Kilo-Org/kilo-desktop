@@ -149,8 +149,8 @@ describe("installWebMcp", () => {
 		// 9333-9348 is a shared rendezvous range used by every WebMCP relay on
 		// the machine (Claude Desktop, npx relays, ...). Without the id/port pin
 		// the widget can pair with a foreign relay while kilo's own relay has
-		// zero producers — tools silently vanish. Values MUST match the managed
-		// relay args in plugins/kilo-server/src/main/initialize-managed-config.ts.
+		// zero producers — tools silently vanish. Values MUST match the Desktop-provided
+		// relay args in plugins/kilo-server/src/main/webmcp-relay-config.ts.
 		const embed = document.querySelector<HTMLScriptElement>("script[data-webmcp-embed]");
 		expect(embed).not.toBeNull();
 		expect(embed?.getAttribute("data-relay-host")).toBe("127.0.0.1");

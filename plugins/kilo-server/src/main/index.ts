@@ -14,12 +14,12 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
-import { KiloMcpConfig, type ManagedMcpOutcome } from "./KiloMcpConfig.js";
+import { KiloMcpConfig, type KiloMcpMutationOutcome } from "./KiloMcpConfig.js";
 import { resolveKiloInstallation } from "./installation.js";
 import {
-	initializeManagedConfig as initializeWebMcpConfig,
-	type ManagedConfigInitializationOutcome,
-} from "./initialize-managed-config.js";
+	reconcileWebMcpRelayConfig,
+	type WebMcpRelayConfigOutcome,
+} from "./webmcp-relay-config.js";
 import { WebMcpRelayService, type WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 export { ContributedEnvManager } from "./ContributedEnvManager.js";
@@ -55,12 +55,12 @@ interface RegisterKiloServerOptions {
 	 * Interim WebMCP↔Kilo bridge (see anaconda/agentic-desktop#102).
 	 * Injected in tests; production defaults call the real initializer.
 	 */
-	initializeManagedConfig?: (
+	reconcileWebMcpRelayConfig?: (
 		configDirectory: string,
 		enabled: boolean,
-	) => Promise<ManagedConfigInitializationOutcome>;
+	) => Promise<WebMcpRelayConfigOutcome>;
 	/** Injected serialized config writer for tests. */
-	managedConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
+	kiloMcpConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
 	/** Anaconda Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
 	/**
@@ -141,28 +141,30 @@ async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boole
  */
 const ENV_RESTART_DEBOUNCE_MS = 300;
 
-function configLeftRelayEntry(outcome: ManagedConfigInitializationOutcome): boolean {
+function configLeftRelayEntry(outcome: WebMcpRelayConfigOutcome): boolean {
 	return (
 		outcome.kind === "written" || (outcome.kind === "skipped" && outcome.reason === "up-to-date")
 	);
 }
 
-function assertManagedConfigAccepted(
+function assertMcpConfigMutationAccepted(
 	sourceId: string,
 	entryId: string,
-	outcome: ManagedMcpOutcome,
+	outcome: KiloMcpMutationOutcome,
 	action: "set" | "remove",
 ): void {
 	if (outcome.kind === "skipped-error") {
-		throw new Error(`Could not ${action} managed MCP "${entryId}": ${outcome.reason}`);
+		throw new Error(`Could not ${action} Desktop-owned MCP "${entryId}": ${outcome.reason}`);
 	}
 	if (outcome.kind === "skipped" && outcome.reason === "owned-by-other-source") {
 		throw new Error(
-			`Could not ${action} managed MCP "${entryId}": it is owned by another source, not "${sourceId}".`,
+			`Could not ${action} Desktop-owned MCP "${entryId}": it is owned by another source, not "${sourceId}".`,
 		);
 	}
-	if (action === "set" && outcome.kind === "skipped" && outcome.reason === "unmanaged-entry") {
-		throw new Error(`Could not manage MCP "${entryId}": an unmanaged entry already uses that id.`);
+	if (action === "set" && outcome.kind === "skipped" && outcome.reason === "entry-not-owned") {
+		throw new Error(
+			`Could not set MCP "${entryId}": an entry not owned by Desktop already uses that id.`,
+		);
 	}
 }
 
@@ -221,21 +223,21 @@ export function registerKiloServer(
 		options.createServer ??
 		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
 			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
-	const managedConfig = options.managedConfig ?? new KiloMcpConfig(configDirectory, mainSdk.logger);
+	const kiloMcpConfig = options.kiloMcpConfig ?? new KiloMcpConfig(configDirectory, mainSdk.logger);
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Initialize
-	// the managed `mcp` entry before `kilo serve` boots so its first read of
+	// the Desktop-owned `mcp` entry before `kilo serve` boots so its first read of
 	// kilo.jsonc already sees the relay entry. Initialization is idempotent and
 	// marker-guarded; a failure never blocks Kilo from starting.
-	const initializeManagedConfig =
-		options.initializeManagedConfig ??
+	const reconcileRelayConfig =
+		options.reconcileWebMcpRelayConfig ??
 		((directory: string, enabled: boolean) =>
-			initializeWebMcpConfig({
+			reconcileWebMcpRelayConfig({
 				configDirectory: directory,
 				appExecutablePath,
 				enabled,
 				logger: mainSdk.logger,
-				managedConfig,
+				kiloMcpConfig,
 			}));
 
 	const server = createServer(
@@ -252,7 +254,7 @@ export function registerKiloServer(
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
 	//
-	// (1) detect fuse, (2) initialize or remove the managed entry in kilo.jsonc,
+	// (1) detect fuse, (2) reconcile the Desktop-owned entry in kilo.jsonc,
 	// (3) start the in-process `:9345` rendezvous, (4) then allow lazy Kilo
 	// startup. Feature boot awaits this promise, so the renderer's first relay
 	// scan happens after the rendezvous attempt. An initialization or relay
@@ -264,7 +266,7 @@ export function registerKiloServer(
 	const configReady = (async () => {
 		try {
 			const enabled = await runAsNodeEnabled();
-			const outcome = await initializeManagedConfig(configDirectory, enabled);
+			const outcome = await reconcileRelayConfig(configDirectory, enabled);
 			if (configLeftRelayEntry(outcome) && !disposed) {
 				relayService = createRelayService();
 				await relayService.start();
@@ -311,17 +313,17 @@ export function registerKiloServer(
 		serverEnv: {
 			contribute: contributedEnv.contribute.bind(contributedEnv),
 		},
-		managedMcp: {
+		mcpConfig: {
 			set: async (sourceId, entryId, entry) => {
 				await configReady;
-				const outcome = await managedConfig.setMcpEntry(sourceId, entryId, entry);
-				assertManagedConfigAccepted(sourceId, entryId, outcome, "set");
+				const outcome = await kiloMcpConfig.setMcpEntry(sourceId, entryId, entry);
+				assertMcpConfigMutationAccepted(sourceId, entryId, outcome, "set");
 				if (outcome.kind === "written") requestConfigRestart();
 			},
 			remove: async (sourceId, entryId) => {
 				await configReady;
-				const outcome = await managedConfig.removeMcpEntry(sourceId, entryId);
-				assertManagedConfigAccepted(sourceId, entryId, outcome, "remove");
+				const outcome = await kiloMcpConfig.removeMcpEntry(sourceId, entryId);
+				assertMcpConfigMutationAccepted(sourceId, entryId, outcome, "remove");
 				if (outcome.kind === "removed") requestConfigRestart();
 			},
 		},

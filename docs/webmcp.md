@@ -194,7 +194,7 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  kilo-server plugin                                                                │
 │                                                                                    │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │ 1. mainRegister() — awaited config initialization (idempotent, sidecar-tracked)         │   │
+│  │ 1. mainRegister() — awaited config reconciliation (idempotent, sidecar-tracked)         │   │
 │  │                                                                             │   │
 │  │    defaultRunAsNodeEnabled(process.execPath)  ──► reads @electron/fuses    │   │
 │  │                                                    → true / false           │   │
@@ -203,7 +203,7 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  │                                       node_modules/@mcp-b/webmcp-local-     │   │
 │  │                                       relay/dist/cli.mjs                    │   │
 │  │                                                                             │   │
-│  │    initializeManagedConfig(${runtime}/config/kilo/, {                             │   │
+│  │    reconcileWebMcpRelayConfig(${runtime}/config/kilo/, {                             │   │
 │  │      // written to kilo.jsonc (Kilo's canonical file, JSONC-tolerant)      │   │
 │  │      mcp: {                                                                 │   │
 │  │        "anaconda-desktop-relay": {                                          │   │
@@ -218,11 +218,11 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  │      // that is not part of Kilo's schema may live inside kilo.jsonc.      │   │
 │  │    })                                                                       │   │
 │  │                                                                             │   │
-│  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-managed.json           │   │
-│  │      { "version": 1, "managed": ["anaconda-desktop-relay"] }                │   │
+│  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-ownership.json           │   │
+│  │      { "version": 3, "ownedEntryIds": ["anaconda-desktop-relay"] }                │   │
 │  │                                                                             │   │
 │  │    When RunAsNode is disabled (downgrade / rollback), initialization instead REMOVES │   │
-│  │    the managed entry and prunes the sidecar.                               │   │
+│  │    the Desktop-owned entry and prunes the sidecar.                               │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
 │                       │                                                            │
 │                       ├─ WebMcpRelayService creates RelayBridgeServer in-process │
@@ -276,19 +276,21 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 
 Four pieces beyond §1's diagram:
 
-- **Config initialization** in `plugins/kilo-server/src/main/initialize-managed-config.ts` writes
+- **Relay config reconciliation** in `plugins/kilo-server/src/main/webmcp-relay-config.ts` writes
   an `mcp` block into the app-owned `kilo.jsonc` before `KiloServerManager#start`
   runs. Idempotent, JSONC-preserving (`jsonc-parser`), atomic (`atomically`).
   When the runtime fuse detection reports `RunAsNode` off, the same call
-  **removes** any managed entry it previously wrote and prunes the sidecar,
+  **removes** any Desktop-owned entry it previously wrote and prunes the sidecar,
   so downgrade / rollback / fuse re-hardening self-heals.
-- **Ownership sidecar** at `${runtime}/config/kilo/.anaconda-desktop-managed.json`
+- **Ownership sidecar** at `${runtime}/config/kilo/.anaconda-desktop-ownership.json`
   tracks which MCP entry names Desktop owns and which feature source owns each
   entry. Kilo never opens this file — Kilo's
   top-level `Config` schema is `additionalProperties: false`, so any marker
   stored inside `kilo.jsonc` would fail validation and stop `kilo serve` from
   starting. Missing sidecar (deleted by user, corrupt, or absent) = "we own
-  nothing" = escape hatch.
+  nothing" = escape hatch. The next MCP config mutation migrates the legacy
+  `.anaconda-desktop-managed.json` sidecar and its `managed` array to the new
+  filename and `ownedEntryIds` field, preserving source ownership.
 - **Bundled relay entry** — the same `@mcp-b/webmcp-local-relay@4.0.0` package
   that `apps/web/scripts/sync-webmcp-assets.mjs` reads for its browser assets
   is now also unpacked from asar (see `apps/desktop/forge.config.ts`) so its
@@ -313,10 +315,10 @@ Time ─►
  t1    plugins/kilo-server mainRegister() runs
        │  ├─ defaultRunAsNodeEnabled()        (reads fuses off process.execPath)
        │  ├─ resolveWebMcpRelayEntry()        (fs check, logs+skips if missing)
-       │  └─ await initializeManagedConfig()    (JSONC merge + sidecar write)
+       │  └─ await reconcileWebMcpRelayConfig()    (JSONC merge + ownership write)
        │       │
-       │       ├─ RunAsNode enabled → write managed entry + record in sidecar
-       │       └─ RunAsNode disabled → remove any managed entry + prune sidecar
+       │       ├─ RunAsNode enabled → write Desktop-owned entry + record in sidecar
+       │       └─ RunAsNode disabled → remove any Desktop-owned entry + prune sidecar
        │
  t2    mainRegister awaits WebMcpRelayService.start()
        │  └─ RelayBridgeServer binds ws://127.0.0.1:9345 in-process
@@ -403,11 +405,12 @@ Before initialization (user's kilo.jsonc, if any):    After initialization:
                                                  }
                                                }
 
-                                                 .anaconda-desktop-managed.json   ← sidecar (new)
+                                                 .anaconda-desktop-ownership.json   ← sidecar (new)
                                                  ──────────────────────────────
                                                {
-                                                 "version": 1,
-                                                 "managed": ["anaconda-desktop-relay"]
+                                                 "version": 3,
+                                                 "ownedEntryIds": ["anaconda-desktop-relay"],
+                                                 "owners": { "anaconda-desktop-relay": "kilo-server" }
                                                }
 ```
 
@@ -419,11 +422,11 @@ Rules:
    API. Ownership tracking never leaks into `kilo.jsonc` because Kilo's
    top-level `Config` schema rejects unknown keys.
 2. Overwrite or remove only if the entry's name is listed in the sidecar's
-   `managed` array and its recorded owner matches the calling source. This
+   `ownedEntryIds` array and its recorded owner matches the calling source. This
    prevents one feature from replacing or deleting another feature's entry.
    Schema-v1 entries without an owner are adopted by their first successful
    post-upgrade write. If the user deleted the sidecar or removed the entry
-   from the list, we **do not resurrect** the managed entry — that is the
+   from the list, we **do not resurrect** the Desktop-owned entry — that is the
    escape hatch.
 3. Writes are atomic (via `atomically`).
 4. Absolute paths are recomputed on every boot so app upgrades /
@@ -431,7 +434,7 @@ Rules:
 5. If the existing `kilo.jsonc` is unparseable (invalid JSONC, or top-level
    not an object), we **refuse to write** and return `skipped-error` —
    never clobbering user data. The sidecar is never touched in that case.
-6. When the sidecar's `managed` list becomes empty (last managed entry
+6. When the sidecar's `ownedEntryIds` list becomes empty (last Desktop-owned entry
    removed), the sidecar file itself is deleted to keep the config
    directory tidy.
 
@@ -460,9 +463,9 @@ attached to it can call them.
 
 Both halves are therefore pinned to each other:
 
-- Managed relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
+- Desktop-provided relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
   (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` in
-  `plugins/kilo-server/src/main/initialize-managed-config.ts`). Fixed-port mode
+  `plugins/kilo-server/src/main/webmcp-relay-config.ts`). Fixed-port mode
   refuses to chain to a non-relay owner; 9345 is far from the 9333 default
   foreign relays use, still inside the CSP-allowed range.
 - Embed attributes: `data-relay-port="9345" data-relay-id="anaconda-agentic-desktop"`
@@ -513,7 +516,7 @@ Mitigating factors:
   for our threat model regardless.
 - If a future build ships with `RunAsNode: false` (either intentionally as the
   #102 cleanup or accidentally), the initializer detects the fuse state at boot and
-  **removes** its previously-written managed entry, so users are not stranded
+  **removes** its previously-written Desktop-owned entry, so users are not stranded
   with a bogus `command` pointing at a binary that no longer runs as Node.
 
 The fuse flips back to `false` once #102 lands.

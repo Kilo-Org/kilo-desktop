@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-	WEBMCP_RELAY_ID,
-	WEBMCP_RELAY_LABEL,
-	WEBMCP_RELAY_PORT,
-} from "./initialize-managed-config.js";
+import { WEBMCP_RELAY_ID, WEBMCP_RELAY_LABEL, WEBMCP_RELAY_PORT } from "./webmcp-relay-config.js";
 import { WebMcpRelayService, type WebMcpRelayBridge } from "./webmcp-relay-service.js";
 
 function fakeBridge(mode: "server" | "client" = "server"): WebMcpRelayBridge & {

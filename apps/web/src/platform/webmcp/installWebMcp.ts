@@ -6,8 +6,8 @@ import { initializeWebMCPPolyfill } from "@mcp-b/webmcp-polyfill";
 /** Loopback host the relay daemon binds to. The relay only accepts local connections. */
 const RELAY_HOST = "127.0.0.1";
 /**
- * Identity-pinned rendezvous — MUST stay in sync with the managed relay args in
- * `plugins/kilo-server/src/main/initialize-managed-config.ts` (`WEBMCP_RELAY_PORT`,
+ * Identity-pinned rendezvous — MUST stay in sync with the Desktop-provided relay args in
+ * `plugins/kilo-server/src/main/webmcp-relay-config.ts` (`WEBMCP_RELAY_PORT`,
  * `WEBMCP_RELAY_ID`).
  *
  * The 9333–9348 loopback range is shared by every WebMCP relay on the machine

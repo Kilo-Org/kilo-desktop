@@ -22,7 +22,7 @@ export const MCP_ID = "anaconda-remote";
 /** Env var name that Kilo expands in the `{env:VAR}` header template. */
 export const MCP_ENV_VAR = "ANACONDA_API_KEY";
 
-/** Source id for the managed MCP entry and Kilo server environment contribution. */
+/** Source id for the Desktop-owned MCP entry and Kilo server environment contribution. */
 export const CONTRIBUTION_SOURCE_ID = "anaconda-mcp";
 
 /**
@@ -54,7 +54,7 @@ export interface AnacondaMcpServiceDeps {
  *
  * A successful reconcile manages two pieces of state:
  *
- * 1. Persist the MCP entry through `kiloService.managedMcp` into Desktop's
+ * 1. Persist the MCP entry through `kiloService.mcpConfig` into Desktop's
  *    app-owned `kilo.jsonc`. The Kilo plugin serializes atomic JSONC updates,
  *    preserves unknown entries/comments, and tracks which entries Desktop may
  *    remove. The Authorization header remains an environment template, so the
@@ -73,7 +73,7 @@ export interface AnacondaMcpServiceDeps {
 export class AnacondaMcpService {
 	readonly #status: ObservableValue<AnacondaMcpStatus>;
 	#envDisposer: (() => void) | null = null;
-	#managedMcp: KiloServerCapabilities["kiloService"]["managedMcp"] | null = null;
+	#mcpConfig: KiloServerCapabilities["kiloService"]["mcpConfig"] | null = null;
 	#reconciling = false;
 	#reconcilePending = false;
 	#disposed = false;
@@ -118,7 +118,7 @@ export class AnacondaMcpService {
 	 * When `dispose()` is called mid-reconcile, the loop notices the
 	 * `#disposed` flag on the next iteration and performs teardown instead of
 	 * a normal reconcile — so dispose never races the state machine that owns
-	 * `#envDisposer`, the managed config entry, and status transitions.
+	 * `#envDisposer`, the Desktop-owned config entry, and status transitions.
 	 */
 	async reconcile(): Promise<void> {
 		if (this.#reconciling) {
@@ -205,7 +205,7 @@ export class AnacondaMcpService {
 		// 4. Compute desired URL.
 		const url = settings.urlOverride ?? DEFAULT_MCP_URL;
 
-		// 5. Persist the managed MCP entry and contribute the API key env. Both
+		// 5. Persist the Desktop-owned MCP entry and contribute the API key env. Both
 		//    paths are idempotent and share Kilo's debounced restart handling.
 		await this.#ensureContributions(kilo, url, apiKey);
 
@@ -231,7 +231,7 @@ export class AnacondaMcpService {
 		url: string,
 		apiKey: string,
 	): Promise<void> {
-		await kilo.kiloService.managedMcp.set(CONTRIBUTION_SOURCE_ID, MCP_ID, {
+		await kilo.kiloService.mcpConfig.set(CONTRIBUTION_SOURCE_ID, MCP_ID, {
 			type: "remote",
 			url,
 			enabled: true,
@@ -241,18 +241,18 @@ export class AnacondaMcpService {
 			[MCP_ENV_VAR]: apiKey,
 		});
 		this.#envDisposer = envDisposer;
-		this.#managedMcp = kilo.kiloService.managedMcp;
+		this.#mcpConfig = kilo.kiloService.mcpConfig;
 	}
 
 	async #teardown(): Promise<void> {
-		const managedMcp =
-			this.#managedMcp ??
-			this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server")?.kiloService.managedMcp;
-		this.#managedMcp = null;
+		const mcpConfig =
+			this.#mcpConfig ??
+			this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server")?.kiloService.mcpConfig;
+		this.#mcpConfig = null;
 		const envDisposer = this.#envDisposer;
 		this.#envDisposer = null;
 		try {
-			await managedMcp?.remove(CONTRIBUTION_SOURCE_ID, MCP_ID);
+			await mcpConfig?.remove(CONTRIBUTION_SOURCE_ID, MCP_ID);
 		} finally {
 			envDisposer?.();
 		}

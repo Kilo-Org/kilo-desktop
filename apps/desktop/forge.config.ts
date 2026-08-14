@@ -84,7 +84,7 @@ const config: ForgeConfig = {
 		asar: {
 			// `@mcp-b/webmcp-local-relay` is unpacked so its bin (`dist/cli.mjs`)
 			// has a real filesystem path. Kilo spawns it via `process.execPath` +
-			// `ELECTRON_RUN_AS_NODE=1` (see plugins/kilo-server/src/main/initialize-managed-config.ts
+			// `ELECTRON_RUN_AS_NODE=1` (see plugins/kilo-server/src/main/webmcp-relay-config.ts
 			// and the interim tracking issue anaconda/agentic-desktop#102).
 			unpack: "**/node_modules/{better-sqlite3,@github/keytar,@mcp-b/webmcp-local-relay}/**",
 		},

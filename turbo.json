@@ -1,0 +1,44 @@
+{
+	"$schema": "https://turborepo.dev/schema.json",
+	"globalDependencies": [
+		"tsconfig.base.json",
+		"pnpm-workspace.yaml",
+		"vitest.coverage.shared.mjs",
+		".oxlintrc.json",
+		".oxfmtrc.json",
+		"pnpm-lock.yaml",
+		".nvmrc"
+	],
+	"tasks": {
+		"check": {
+			"dependsOn": ["^check"],
+			"outputs": []
+		},
+		"test": {
+			"dependsOn": ["^check"],
+			"outputs": []
+		},
+		"coverage": {
+			"dependsOn": ["^check"],
+			"outputs": ["coverage/**"]
+		},
+		"build": {
+			"dependsOn": ["^build", "sync:webmcp"],
+			"outputs": ["dist/**"],
+			"env": ["SENTRY_AUTH_TOKEN", "APP_MODE", "NODE_ENV"]
+		},
+		"sync:webmcp": {
+			"cache": false
+		},
+		"db:generate": {
+			"cache": false
+		},
+		"fetch-cli": {
+			"cache": false
+		},
+		"dev": {
+			"persistent": true,
+			"cache": false
+		}
+	}
+}

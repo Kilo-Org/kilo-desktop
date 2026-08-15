@@ -69,7 +69,7 @@ export class CondaProvider implements EnvironmentProvider {
 			// of silently registering handlers with no backend.
 			throw new Error("CondaProvider.registerHandlers called before boot() resolved.");
 		}
-		registerCondaHandlers(ctx.mainSdk, this.#service);
+		registerCondaHandlers(ctx.mainSdk, this.#service, ctx.queue);
 	}
 
 	registerTools(sdk: SDK): void {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
 import { condaContract, type CondaService } from "../../../contracts/providers/conda.js";
+import { JobQueue } from "../../JobQueue.js";
 import { registerCondaHandlers } from "./handlers.js";
 import type { CondaBackend } from "./CondaBackend.js";
 
@@ -38,11 +39,12 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 describe("conda handlers → sdk.invoke round-trip", () => {
 	it("returns the backend's env list through the renderer client", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
 		const list = vi.fn().mockResolvedValue([
 			{ name: "", prefix: "/opt/conda" },
 			{ name: "dev", prefix: "/opt/conda/envs/dev" },
 		]);
-		registerCondaHandlers(mainSdk, makeBackend({ list }));
+		registerCondaHandlers(mainSdk, makeBackend({ list }), queue);
 
 		const client = rendererSdk.client as unknown as CondaService;
 		const envs = await client["conda.envs.list"]();
@@ -52,27 +54,47 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 			{ name: "dev", prefix: "/opt/conda/envs/dev" },
 		]);
 		expect(list).toHaveBeenCalledOnce();
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("memoises env-list results within the read-cache TTL — a second call skips the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const list = vi.fn().mockResolvedValue([{ name: "", prefix: "/opt/conda" }]);
+		registerCondaHandlers(mainSdk, makeBackend({ list }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.envs.list"]();
+		await client["conda.envs.list"]();
+		expect(list).toHaveBeenCalledOnce();
+
+		queue.dispose();
 		mainSdk.dispose();
 	});
 
 	it("validates the response against the contract — malformed backend output rejects", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
 		registerCondaHandlers(
 			mainSdk,
 			makeBackend({
 				// oxlint-disable-next-line no-explicit-any -- deliberately breaking the contract
 				list: (async () => [{ prefix: "" }]) as any,
 			}),
+			queue,
 		);
 
 		const client = rendererSdk.client as unknown as CondaService;
 		await expect(client["conda.envs.list"]()).rejects.toThrow();
+		queue.dispose();
 		mainSdk.dispose();
 	});
 
 	it("does not bind write ops in this slice — invoking one throws NOT_FOUND at the router", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
-		registerCondaHandlers(mainSdk, makeBackend());
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
 
 		// The router reports an unregistered channel as an error; the exact
 		// message is shell-owned but must exist and mention the channel.
@@ -83,6 +105,7 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		// contract knows about `conda.envs.create` so an accidental typo
 		// would still surface as a router error, not a silent no-op.
 		void condaContract;
+		queue.dispose();
 		mainSdk.dispose();
 	});
 });

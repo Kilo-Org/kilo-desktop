@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig, loadEnv } from "vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { externalizeDeps } from "vite-plugin-externalize-deps";
+import { externalizeDeps } from "@anaconda-agentic-desktop/vite-plugin-externalize-deps";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -25,25 +25,14 @@ export default defineConfig(({ command }) => {
 
 	return {
 		plugins: [
-			// Externalize every runtime dependency (and Node built-ins) instead of
-			// hand-maintaining a `rollupOptions.external` array. Rolldown (Vite 8)
-			// otherwise rewrites CJS `require(...)` into a `__require` shim that
-			// throws at runtime for lazy-`require` deps (LaunchDarkly, `shell-env`'s
-			// nested execa@5, `@vscode/proxy-agent`, `ws` via the webmcp relay), and
-			// native modules (`better-sqlite3`, `@github/keytar`) can never be
-			// bundled. Externalized packages ship on disk via `pnpm deploy --prod`
-			// (see forge.config.ts).
 			externalizeDeps({
-				useFile: path.resolve(root, "package.json"),
-				// Not present in `dependencies`: `electron` is a devDependency and
-				// `@vscode/windows-ca-certs` is an uninstalled optional native dep of
-				// `@vscode/proxy-agent`. `better-sqlite3` is a transitive dep of the
-				// bundled kilo-ui / todos plugins, so this package.json does not list
-				// it. (`@github/keytar` is a direct dependency, so `deps` covers it.)
+				packageJsonPath: path.resolve(root, "package.json"),
+				// Not in `dependencies`: `electron` (devDep), `@vscode/windows-ca-certs`
+				// (uninstalled optional native dep of `@vscode/proxy-agent`), and
+				// `better-sqlite3` (transitive via the bundled kilo-ui / todos plugins).
 				include: ["electron", /^better-sqlite3(?:\/.+)?$/, "@vscode/windows-ca-certs"],
-				// Workspace-internal packages must stay bundled into the main output;
-				// they are `workspace:*` / `link:` deps, not resolvable runtime modules.
-				except: [/^@anaconda-agentic-desktop\/(?:.+)?$/],
+				// Workspace packages are `workspace:*` / `link:` deps that must stay bundled.
+				exclude: [/^@anaconda-agentic-desktop\/.+$/],
 			}),
 			sentryVitePlugin({
 				authToken: process.env.SENTRY_AUTH_TOKEN,
@@ -90,7 +79,6 @@ export default defineConfig(({ command }) => {
 				// not inject `module.createRequire`, and CJS deps such as `ws` (pulled
 				// in by `@mcp-b/webmcp-local-relay`) then throw on `require("events")`
 				// via Rolldown's `__require` shim. Pin Node so those requires resolve.
-				// (The externalizeDeps plugin above supplies `external`.)
 				platform: "node",
 			},
 		},

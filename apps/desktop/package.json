@@ -56,6 +56,7 @@
 	},
 	"devDependencies": {
 		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@anaconda-agentic-desktop/vite-plugin-externalize-deps": "workspace:*",
 		"@electron-forge/cli": "8.0.0-alpha.10",
 		"@electron-forge/maker-deb": "8.0.0-alpha.10",
 		"@electron-forge/maker-dmg": "8.0.0-alpha.10",
@@ -80,7 +81,6 @@
 		"type-fest": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
-		"vite-plugin-externalize-deps": "^0.10.0",
 		"vitest": "catalog:"
 	}
 }

@@ -1,0 +1,25 @@
+{
+	"name": "@anaconda-agentic-desktop/vite-plugin-externalize-deps",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Vite plugin that externalizes a package.json's dependencies (and Node built-ins) as an array-valued rollupOptions.external, so it merges cleanly with electron-forge's own external array under Vite 8 / Rolldown.",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"peerDependencies": {
+		"vite": "*"
+	},
+	"devDependencies": {
+		"@types/node": "^24.13.3",
+		"@vitest/coverage-v8": "5.0.0-rc.1",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

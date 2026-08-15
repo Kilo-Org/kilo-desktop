@@ -56,7 +56,6 @@
 	},
 	"devDependencies": {
 		"@anaconda-agentic-desktop/testing": "workspace:*",
-		"@sentry/vite-plugin": "catalog:",
 		"@electron-forge/cli": "8.0.0-alpha.10",
 		"@electron-forge/maker-deb": "8.0.0-alpha.10",
 		"@electron-forge/maker-dmg": "8.0.0-alpha.10",
@@ -68,6 +67,7 @@
 		"@electron-forge/shared-types": "8.0.0-alpha.10",
 		"@electron/fuses": "^2.0.0",
 		"@playwright/test": "1.62.1",
+		"@sentry/vite-plugin": "catalog:",
 		"@types/electron-squirrel-startup": "1.0.2",
 		"@types/lodash": "^4.17.20",
 		"@types/node": "^24.13.3",
@@ -80,6 +80,7 @@
 		"type-fest": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
+		"vite-plugin-externalize-deps": "^0.10.0",
 		"vitest": "catalog:"
 	}
 }

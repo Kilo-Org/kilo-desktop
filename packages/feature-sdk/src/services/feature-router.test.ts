@@ -44,6 +44,71 @@ describe("FeatureRouter", () => {
 		expect(() => mainSdk.boot.reportProgress("nobody listens")).not.toThrow();
 	});
 
+	it("routes transferred ports only to the feature-scoped handler", async () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("notebook");
+		const handler = vi.fn();
+		const port = {
+			postMessage: vi.fn(),
+			on: vi.fn(),
+			off: vi.fn(),
+			start: vi.fn(),
+			close: vi.fn(),
+		} as never;
+		mainSdk.ports.handle("host", z.object({ notebookId: z.string() }), handler);
+
+		await router.connectPort("notebook", "host", port, { notebookId: "nb-1" });
+
+		expect(handler).toHaveBeenCalledWith(port, { notebookId: "nb-1" });
+		await expect(
+			router.connectPort("notebook", "host", port, { notebookId: 42 }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+		await expect(router.connectPort("notebook", "missing", port)).rejects.toMatchObject({
+			code: "NOT_FOUND",
+		});
+		await expect(router.connectPort("other", "host", port)).rejects.toMatchObject({
+			code: "NOT_FOUND",
+		});
+	});
+
+	it("removes port handlers during feature teardown", async () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("notebook");
+		const close = vi.fn();
+		const port = { close } as never;
+		mainSdk.ports.handle("host", z.undefined(), vi.fn());
+		await router.connectPort("notebook", "host", port);
+		router.destroyFeature("notebook");
+		expect(close).toHaveBeenCalledOnce();
+
+		await expect(router.connectPort("notebook", "host", port)).rejects.toMatchObject({
+			code: "NOT_FOUND",
+		});
+	});
+
+	it("closes a port once when feature teardown races a rejecting setup", async () => {
+		const router = new FeatureRouter();
+		const mainSdk = router.createMainSdk("notebook");
+		const close = vi.fn();
+		const port = { close } as never;
+		let rejectSetup!: (error: Error) => void;
+		mainSdk.ports.handle(
+			"host",
+			z.undefined(),
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					rejectSetup = reject;
+				}),
+		);
+		const connecting = router.connectPort("notebook", "host", port);
+
+		router.destroyFeature("notebook");
+		rejectSetup(new Error("setup interrupted"));
+
+		await expect(connecting).rejects.toThrow("setup interrupted");
+		expect(close).toHaveBeenCalledOnce();
+	});
+
 	it("mainSdk.events stamps namespaces, delivers locally, and relays once", () => {
 		const relay = vi.fn();
 		const router = new FeatureRouter();

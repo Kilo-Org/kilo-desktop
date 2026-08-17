@@ -6,14 +6,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
 	KILO_CONFIG_FILENAME,
-	MANAGED_SIDECAR_FILENAME,
+	OWNERSHIP_SIDECAR_FILENAME,
 	MCP_ENTRY_NAME,
+	MCP_ENTRY_SOURCE_ID,
 	WEBMCP_RELAY_ID,
 	WEBMCP_RELAY_LABEL,
 	WEBMCP_RELAY_PORT,
-	seedKiloMcpConfig,
-	type SeededMcpEntry,
-} from "./seed-kilo-mcp-config.js";
+	reconcileWebMcpRelayConfig,
+	type WebMcpRelayEntry,
+} from "./webmcp-relay-config.js";
 
 const APP_EXE =
 	"/Applications/Anaconda Agentic Desktop.app/Contents/MacOS/Anaconda Agentic Desktop";
@@ -31,24 +32,24 @@ const RELAY_ARGS = [
 	WEBMCP_RELAY_LABEL,
 ] as const;
 
-const EXPECTED_ENTRY: SeededMcpEntry = {
+const EXPECTED_ENTRY: WebMcpRelayEntry = {
 	type: "local",
 	command: [APP_EXE, RELAY_ENTRY, ...RELAY_ARGS],
 	environment: { ELECTRON_RUN_AS_NODE: "1" },
 	enabled: true,
 };
 
-describe("seedKiloMcpConfig", () => {
+describe("reconcileWebMcpRelayConfig", () => {
 	let tempDir: string;
 	let configDir: string;
 	let configFile: string;
 	let sidecarFile: string;
 
 	beforeEach(async () => {
-		tempDir = await mkdtemp(path.join(tmpdir(), "seed-kilo-mcp-config-"));
+		tempDir = await mkdtemp(path.join(tmpdir(), "webmcp-relay-config-"));
 		configDir = path.join(tempDir, "config", "kilo");
 		configFile = path.join(configDir, KILO_CONFIG_FILENAME);
-		sidecarFile = path.join(configDir, MANAGED_SIDECAR_FILENAME);
+		sidecarFile = path.join(configDir, OWNERSHIP_SIDECAR_FILENAME);
 		await mkdir(configDir, { recursive: true });
 	});
 
@@ -61,14 +62,14 @@ describe("seedKiloMcpConfig", () => {
 		return JSON.parse(raw) as Record<string, unknown>;
 	}
 
-	async function readSidecarManaged(): Promise<readonly string[]> {
+	async function readOwnedEntryIds(): Promise<readonly string[]> {
 		const raw = await readFile(sidecarFile, "utf8");
-		const parsed = JSON.parse(raw) as { managed: string[] };
-		return parsed.managed;
+		const parsed = JSON.parse(raw) as { ownedEntryIds: string[] };
+		return parsed.ownedEntryIds;
 	}
 
 	it("writes to kilo.jsonc (not kilo.json)", async () => {
-		await seedKiloMcpConfig({
+		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -79,7 +80,7 @@ describe("seedKiloMcpConfig", () => {
 	});
 
 	it("creates the file with a schema-clean McpLocalConfig (no unknown top-level keys)", async () => {
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -92,11 +93,15 @@ describe("seedKiloMcpConfig", () => {
 		expect(Object.keys(config)).toEqual(["mcp"]);
 		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
 		// The sidecar records ownership.
-		expect(await readSidecarManaged()).toEqual([MCP_ENTRY_NAME]);
+		expect(await readOwnedEntryIds()).toEqual([MCP_ENTRY_NAME]);
+		const sidecar = JSON.parse(await readFile(sidecarFile, "utf8")) as {
+			owners: Record<string, string>;
+		};
+		expect(sidecar.owners).toEqual({ [MCP_ENTRY_NAME]: MCP_ENTRY_SOURCE_ID });
 	});
 
 	it("writes an entry that matches Kilo's McpLocalConfig schema shape", async () => {
-		await seedKiloMcpConfig({
+		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -111,13 +116,13 @@ describe("seedKiloMcpConfig", () => {
 		expect(entry.environment).toEqual({ ELECTRON_RUN_AS_NODE: "1" });
 		expect(entry.enabled).toBe(true);
 		// Fields that would fail Kilo's additionalProperties:false MUST be absent.
-		expect(entry).not.toHaveProperty("managedBy");
+		expect(entry).not.toHaveProperty("ownedBy");
 		expect(entry).not.toHaveProperty("args");
 		expect(entry).not.toHaveProperty("env");
 	});
 
 	it("pins the relay identity and port (split-brain guard, docs/webmcp.md §7)", async () => {
-		await seedKiloMcpConfig({
+		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -139,7 +144,7 @@ describe("seedKiloMcpConfig", () => {
 	});
 
 	it("is idempotent: a second run returns 'up-to-date' and does not touch the files", async () => {
-		await seedKiloMcpConfig({
+		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -147,7 +152,7 @@ describe("seedKiloMcpConfig", () => {
 		const beforeConfig = await readFile(configFile, "utf8");
 		const beforeSidecar = await readFile(sidecarFile, "utf8");
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -160,7 +165,7 @@ describe("seedKiloMcpConfig", () => {
 
 	it("preserves JSONC comments and unrelated sibling keys", async () => {
 		const jsoncBody = `{
-  // Kilo global config; managed partly by Anaconda Desktop.
+  // Kilo global config; partly owned by Anaconda Desktop.
   "$schema": "https://app.kilo.ai/config.json",
   "mcp": {
     // user's own MCP servers
@@ -173,7 +178,7 @@ describe("seedKiloMcpConfig", () => {
 `;
 		await writeFile(configFile, jsoncBody);
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -181,7 +186,7 @@ describe("seedKiloMcpConfig", () => {
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 
 		const raw = await readFile(configFile, "utf8");
-		expect(raw).toContain("// Kilo global config; managed partly by Anaconda Desktop.");
+		expect(raw).toContain("// Kilo global config; partly owned by Anaconda Desktop.");
 		expect(raw).toContain("// user's own MCP servers");
 		expect(raw).toContain("$schema");
 		expect(raw).toContain("my-custom");
@@ -192,7 +197,7 @@ describe("seedKiloMcpConfig", () => {
 		const badBody = "this is not JSON at all";
 		await writeFile(configFile, badBody);
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -207,7 +212,7 @@ describe("seedKiloMcpConfig", () => {
 		const badBody = '"just a string"\n';
 		await writeFile(configFile, badBody);
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -217,7 +222,7 @@ describe("seedKiloMcpConfig", () => {
 	});
 
 	it("recomputes absolute paths on every boot so app upgrades self-heal", async () => {
-		await seedKiloMcpConfig({
+		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -228,7 +233,7 @@ describe("seedKiloMcpConfig", () => {
 		);
 		const NEW_ENTRY = RELAY_ENTRY.replace("dist/cli.mjs", "dist/cli-v2.mjs");
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: NEW_EXE,
 			resolveRelay: () => ({ entry: NEW_ENTRY, version: RELAY_VERSION }),
@@ -240,7 +245,7 @@ describe("seedKiloMcpConfig", () => {
 		expect(entry).toMatchObject({ type: "local", command: [NEW_EXE, NEW_ENTRY, ...RELAY_ARGS] });
 	});
 
-	it("skips seeding when the user replaces our entry with an unmanaged one (sidecar gone)", async () => {
+	it("skips initialization when the user replaces our entry with an entry Desktop does not own (sidecar gone)", async () => {
 		// Simulate: user hand-edited kilo.jsonc and deleted the sidecar.
 		await writeFile(
 			configFile,
@@ -257,27 +262,27 @@ describe("seedKiloMcpConfig", () => {
 		);
 		// No sidecar written.
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
 		});
 
-		expect(outcome).toEqual({ kind: "skipped", reason: "unmanaged-entry" });
+		expect(outcome).toEqual({ kind: "skipped", reason: "entry-not-owned" });
 		const config = await readConfig();
 		expect((config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME]).toMatchObject({
 			command: ["/my/custom/node", "/my/relay.js"],
 		});
 	});
 
-	it("removes the managed entry when disabled=false (fuse-off / downgrade path)", async () => {
-		await seedKiloMcpConfig({
+	it("removes the Desktop-owned entry when disabled=false (fuse-off / downgrade path)", async () => {
+		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
 		});
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			enabled: false,
@@ -308,14 +313,14 @@ describe("seedKiloMcpConfig", () => {
 		);
 		// No sidecar: entry is user-owned.
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			enabled: false,
 			resolveRelay: fakeResolveRelay,
 		});
 
-		expect(outcome).toEqual({ kind: "skipped", reason: "unmanaged-entry" });
+		expect(outcome).toEqual({ kind: "skipped", reason: "entry-not-owned" });
 		const config = await readConfig();
 		expect((config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME]).toMatchObject({
 			command: ["/my/custom/node", "/my/relay.js"],
@@ -323,7 +328,7 @@ describe("seedKiloMcpConfig", () => {
 	});
 
 	it("is a no-op when disabled=false and no prior entry exists", async () => {
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			enabled: false,
@@ -335,7 +340,7 @@ describe("seedKiloMcpConfig", () => {
 	});
 
 	it("returns a skipped-error outcome when the relay cannot be resolved (does not throw)", async () => {
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: () => {
@@ -345,10 +350,10 @@ describe("seedKiloMcpConfig", () => {
 		expect(outcome).toEqual({ kind: "skipped-error", reason: "relay not installed" });
 	});
 
-	it("treats an empty existing file as a fresh seed", async () => {
+	it("treats an empty existing file as a fresh initialization", async () => {
 		await writeFile(configFile, "");
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -357,12 +362,12 @@ describe("seedKiloMcpConfig", () => {
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 		const config = await readConfig();
 		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
-		expect(await readSidecarManaged()).toEqual([MCP_ENTRY_NAME]);
+		expect(await readOwnedEntryIds()).toEqual([MCP_ENTRY_NAME]);
 	});
 
 	it("creates the config directory when it does not exist", async () => {
 		const deepDir = path.join(configDir, "not", "yet", "created");
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: deepDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -370,24 +375,24 @@ describe("seedKiloMcpConfig", () => {
 		expect(outcome.kind).toBe("written");
 		const raw = await readFile(path.join(deepDir, KILO_CONFIG_FILENAME), "utf8");
 		expect(raw).toContain(MCP_ENTRY_NAME);
-		const sidecar = await readFile(path.join(deepDir, MANAGED_SIDECAR_FILENAME), "utf8");
-		expect(JSON.parse(sidecar).managed).toEqual([MCP_ENTRY_NAME]);
+		const sidecar = await readFile(path.join(deepDir, OWNERSHIP_SIDECAR_FILENAME), "utf8");
+		expect(JSON.parse(sidecar).ownedEntryIds).toEqual([MCP_ENTRY_NAME]);
 	});
 
-	it("recovers when a prior seed crashed after writing the sidecar but before writing kilo.jsonc", async () => {
+	it("recovers when a prior initialization crashed after writing the sidecar but before writing kilo.jsonc", async () => {
 		// This is the crash window the new write ordering (sidecar first,
 		// config second) is designed to survive. Simulate the intermediate
 		// state and verify the next boot self-heals — i.e. sees the sidecar
 		// marker, treats the entry as ours, and writes the missing config.
 		// The old (config-first) ordering would strand the crash state
-		// forever: config-with-no-marker was treated as "unmanaged".
+		// forever: config-with-no-marker was treated as "not owned by Desktop".
 		await writeFile(
 			sidecarFile,
-			`${JSON.stringify({ version: 1, managed: [MCP_ENTRY_NAME] }, undefined, 2)}\n`,
+			`${JSON.stringify({ version: 3, ownedEntryIds: [MCP_ENTRY_NAME], owners: {} }, undefined, 2)}\n`,
 		);
 		// No kilo.jsonc yet.
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -398,11 +403,11 @@ describe("seedKiloMcpConfig", () => {
 		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
 	});
 
-	it("recovers when a prior seed crashed after writing a stale config but before updating the sidecar version", async () => {
+	it("recovers when a prior initialization crashed after writing a stale config but before updating the sidecar version", async () => {
 		// Also covered by the "recomputes absolute paths on every boot" case,
 		// but with an explicit crash-window framing. Sidecar says we own the
 		// entry; kilo.jsonc has an older path than the current process.
-		// The seed must overwrite the entry to match the new paths.
+		// The initializer must overwrite the entry to match the new paths.
 		const staleEntry = {
 			type: "local",
 			command: ["/old/exe", "/old/relay.js"],
@@ -415,10 +420,10 @@ describe("seedKiloMcpConfig", () => {
 		);
 		await writeFile(
 			sidecarFile,
-			`${JSON.stringify({ version: 1, managed: [MCP_ENTRY_NAME] }, undefined, 2)}\n`,
+			`${JSON.stringify({ version: 3, ownedEntryIds: [MCP_ENTRY_NAME], owners: {} }, undefined, 2)}\n`,
 		);
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
@@ -443,7 +448,7 @@ describe("seedKiloMcpConfig", () => {
 		);
 		const before = await readFile(configFile, "utf8");
 
-		const outcome = await seedKiloMcpConfig({
+		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,

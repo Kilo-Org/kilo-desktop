@@ -2,9 +2,11 @@ import { authEvents, authMethods } from "./features/auth.js";
 import { featureEvents, featureMessages } from "./features/feature-event.js";
 import { featureFlagEvents, featureFlagMethods } from "./features/feature-flag.js";
 import { featureMethods } from "./features/feature-invoke.js";
+import { featurePorts } from "./features/feature-port.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
+import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
 
 /**
@@ -33,14 +35,30 @@ assertNoDuplicateChannels(
 	notificationsMethods,
 	fsMethods,
 	featureFlagMethods,
+	telemetryMethods,
 );
 assertNoDuplicateChannels(featureEvents, authEvents, featureFlagEvents);
 assertNoDuplicateChannels(featureMessages);
+assertNoDuplicateChannels(featurePorts);
+assertNoDuplicateChannels(featurePorts, {
+	...shellMethods,
+	...themeMethods,
+	...authMethods,
+	...featureMethods,
+	...notificationsMethods,
+	...fsMethods,
+	...featureFlagMethods,
+	...authEvents,
+	...featureEvents,
+	...featureFlagEvents,
+	...featureMessages,
+});
 
 export const ipcMethods = {
 	...shellMethods,
 	...themeMethods,
 	...authMethods,
+	...telemetryMethods,
 	...featureMethods,
 	...notificationsMethods,
 	...fsMethods,
@@ -50,3 +68,4 @@ export const ipcEvents = { ...authEvents, ...featureEvents, ...featureFlagEvents
 // feature:event is intentionally duplex: the same validated envelope is a
 // renderer-to-main message and a main-to-renderer event.
 export const ipcMessages = { ...featureMessages };
+export const ipcPorts = { ...featurePorts };

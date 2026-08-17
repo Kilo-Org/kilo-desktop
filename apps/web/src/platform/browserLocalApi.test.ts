@@ -143,4 +143,9 @@ describe("createBrowserLocalApi", () => {
 		expect(listener).not.toHaveBeenCalled();
 		expect(() => unsubscribe()).not.toThrow();
 	});
+
+	it("drops telemetry events as a no-op outside Electron", async () => {
+		const api = createBrowserLocalApi();
+		await expect(api.telemetry.track({ event: "PAGE_VISIT", data: {} })).resolves.toBeUndefined();
+	});
 });

@@ -37,6 +37,9 @@ export interface FeatureSystem {
 /** Complete host transport for Electron mode. Omit it in browser mode. */
 export interface FeatureSystemTransport {
 	readonly invoke: InvokeFallback;
+	readonly ports?: {
+		open(featureId: string, channel: string, args?: unknown): unknown;
+	};
 	readonly events: {
 		emit(event: FeatureEvent): void;
 		on(handler: (event: FeatureEvent) => void): () => void;
@@ -72,6 +75,7 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 
 	const services: SdkFactoryServices = {
 		...(transport ? { emitEvent: (event: FeatureEvent) => transport.events.emit(event) } : {}),
+		...(transport?.ports ? { openPort: transport.ports.open } : {}),
 		stateBroker: new StateBroker(),
 		contributionRegistry: new ContributionRegistry(),
 		commandRegistry: new CommandRegistry(),

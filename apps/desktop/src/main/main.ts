@@ -1,11 +1,13 @@
 import { Application } from "./Application.js";
 import { createLogger } from "./platform/logger.js";
 import { registerDesktopSchemes } from "./platform/ElectronProtocol.js";
+import { initSentry } from "./platform/sentry.js";
 import electronSquirrelStartup from "electron-squirrel-startup";
 
 if (electronSquirrelStartup) {
 	process.exitCode = 0;
 } else {
+	initSentry();
 	registerDesktopSchemes();
 
 	void new Application().start().catch((error: unknown) => {

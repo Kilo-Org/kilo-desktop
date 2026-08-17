@@ -230,6 +230,7 @@ type FakeSdkShellOptions = {
 	contribute?: SDK["contribute"];
 	commands?: Partial<SDK["commands"]>;
 	notifications?: Partial<SDK["notifications"]>;
+	telemetry?: Partial<SDK["telemetry"]>;
 	theme?: Partial<SDK["theme"]>;
 	auth?: Partial<SDK["auth"]>;
 	featureFlags?: Partial<SDK["featureFlags"]>;
@@ -278,6 +279,7 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 			{ show: async () => ({ delivered: true }), setBadge: async () => ({ delivered: true }) },
 			options.notifications,
 		),
+		telemetry: merge<SDK["telemetry"]>({ track: async () => {} }, options.telemetry),
 		theme: merge<SDK["theme"]>(
 			{
 				subscribe: (fn) => {
@@ -564,6 +566,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		plugins: mainSdk.plugins,
 		boot: mainSdk.boot,
 		storage: mainSdk.storage,
+		ports: mainSdk.ports,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {

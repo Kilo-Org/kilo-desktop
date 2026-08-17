@@ -22,7 +22,7 @@ export class AppShellPage {
 	}
 
 	async openSettings(): Promise<void> {
-		await click(getPage().getByRole("button", { name: "Settings" }));
+		await click(getLocatorByTestId("nav-settings"));
 	}
 
 	async verifyCustomProtocolBoot(): Promise<void> {

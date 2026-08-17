@@ -74,3 +74,19 @@ describe("createShellDelegates featureFlags", () => {
 		expect(stop).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("createShellDelegates telemetry", () => {
+	it("forwards track to api.telemetry.track", async () => {
+		const track = vi.fn(async () => {});
+		const api = createBrowserLocalApi();
+		const { telemetry } = createShellDelegates({
+			...api,
+			telemetry: { ...api.telemetry, track },
+		});
+
+		const input = { event: "PAGE_VISIT", data: { featureId: "todos", path: "/x" } };
+		await telemetry.track(input);
+
+		expect(track).toHaveBeenCalledWith(input);
+	});
+});

@@ -117,6 +117,15 @@ describe("createElectronLocalApi", () => {
 		unsubscribe();
 	});
 
+	it("forwards telemetry.track through the bridge", async () => {
+		const invoke = vi.fn().mockResolvedValue({ ok: true, value: undefined });
+		const api = createElectronLocalApi(makeBridge({ invoke }));
+		const input = { event: "PAGE_VISIT", data: { path: "/" } } as const;
+
+		await expect(api.telemetry.track(input)).resolves.toBeUndefined();
+		expect(invoke).toHaveBeenCalledWith("telemetry:track", input);
+	});
+
 	it("throws LocalApiError when the bridge returns ok: false", async () => {
 		const bridge = makeBridge({
 			invoke: vi.fn().mockResolvedValue({

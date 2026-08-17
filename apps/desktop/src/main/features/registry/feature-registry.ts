@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 
+import * as Sentry from "@sentry/electron/main";
 import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import {
@@ -13,6 +14,7 @@ import type {
 	FeatureEventPayload,
 	IpcHandlers,
 	IpcMessageHandlers,
+	IpcPortHandlers,
 } from "@anaconda-agentic-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
@@ -136,6 +138,7 @@ export async function bootFeatures(
 			booted.push(feature.id);
 		} catch (error) {
 			console.error(`[FeatureRegistry] mainRegister failed for "${feature.id}":`, error);
+			Sentry.captureException(error, { tags: { feature_id: feature.id } });
 			// Roll back partial registration so the feature is not half-alive.
 			featureRouter.destroyFeature(feature.id);
 		}
@@ -185,5 +188,13 @@ export function createFeatureHandlers(): Pick<IpcHandlers, "feature:invoke"> {
 				throw error;
 			}
 		},
+	};
+}
+
+/** Route a transferred renderer port to the owning feature's main handler. */
+export function createFeaturePortHandlers(): Pick<IpcPortHandlers, "feature:port"> {
+	return {
+		"feature:port": (input, context) =>
+			featureRouter.connectPort(input.featureId, input.channel, context.port, input.args),
 	};
 }

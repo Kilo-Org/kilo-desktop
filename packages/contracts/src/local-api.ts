@@ -1,5 +1,6 @@
 import type { AuthSession } from "./features/auth.js";
 import type { NotificationDeliveryResult } from "./features/notifications.js";
+import type { TelemetryTrackInput } from "./features/telemetry.js";
 import type { ThemeState } from "./features/theme.js";
 import type { IpcError } from "./result.js";
 
@@ -55,6 +56,10 @@ export interface LocalApi {
 	featureFlags: {
 		getAllFlags(): Promise<Record<string, unknown>>;
 		onChanged(listener: (flags: Record<string, unknown>) => void): () => void;
+	};
+	telemetry: {
+		/** Fire-and-forget product event; gated on `allowDataCollection` in the main process. */
+		track(input: TelemetryTrackInput): Promise<void>;
 	};
 }
 

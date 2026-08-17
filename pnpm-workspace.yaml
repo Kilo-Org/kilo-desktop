@@ -6,13 +6,16 @@ packages:
   - e2e
 
 catalog:
+  "@sentry/electron": ^7.16.0
+  "@sentry/react": 10.67.0
+  "@sentry/vite-plugin": ^5.0.0
   atomically: ^2.1.1
-  electron: 43.2.0
+  electron: 43.4.0
   lodash: ^4.17.21
   type-fest: ^5.8.0
   typescript: ^7.0.2
   vite: ^8.1.5
-  vitest: 5.0.0-beta.7
+  vitest: 5.0.0-rc.1
   zod: ^4.4.3
 
 savePrefix: ^
@@ -26,8 +29,8 @@ overrides:
   # Keep react-opencode on the same core/store as @assistant-ui/react so Vite
   # does not embed a second AssistantContext (breaks composer typing).
   "@assistant-ui/core": "0.3.5"
-  "@assistant-ui/store": "0.3.3"
-  "@assistant-ui/tap": "0.9.9"
+  "@assistant-ui/store": "0.3.9"
+  "@assistant-ui/tap": "0.9.12"
 
 allowBuilds:
   electron: true
@@ -43,6 +46,8 @@ allowBuilds:
   # Optional native addon pulled in transitively by @vscode/proxy-agent. We
   # never load it (addCertificatesV2 → false), so skip its native build.
   "@vscode/windows-ca-certs": false
+  "@sentry/cli": true
+  protobufjs: false
 
 minimumReleaseAge: 0
 

@@ -19,12 +19,18 @@ describe("environments plugin web entry", () => {
 		expect(EnvironmentsNavIcon).toBeDefined();
 	});
 
-	it("webRegister runs against a fake SDK without side effects", () => {
+	it("webRegister registers the conda provider's read-only tools", () => {
 		const sdk = createFakeSdk({ featureId: "environments" });
 		expect(() => webRegister(sdk)).not.toThrow();
-		// No tools are registered in this scaffold — provider slices layer
-		// them on. Guarding here makes the sub-issue 4 – 9 additions visible
-		// in a diff.
-		expect(sdk.services.toolRegistry.all()).toEqual([]);
+
+		const tools = sdk.services.toolRegistry.all();
+		// Sub-issue 4 wires `conda.envs.list` only. Adding tools in later
+		// slices (create/install/channels/jobs.cancel) shows up here as
+		// diff — if that surface changes surface-visibly, this test flags
+		// it before shipping.
+		expect(tools.map((tool) => tool.name)).toEqual(["conda.envs.list"]);
+		const listTool = tools.find((tool) => tool.name === "conda.envs.list");
+		expect(listTool?.annotations).toMatchObject({ readOnlyHint: true });
+		expect(listTool?.exposeToModelContext).toBe(true);
 	});
 });

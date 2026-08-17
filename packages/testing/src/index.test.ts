@@ -192,6 +192,7 @@ describe("createFakeSdk", () => {
 			sdk.notifications.show({ type: "info", title: "t", message: "m" }),
 		).resolves.toEqual({ delivered: true });
 		await expect(sdk.notifications.setBadge(1)).resolves.toEqual({ delivered: true });
+		await expect(sdk.telemetry.track({ event: "test" })).resolves.toBeUndefined();
 	});
 
 	it("theme.subscribe immediately invokes the listener with light", () => {

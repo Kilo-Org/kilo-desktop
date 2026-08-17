@@ -1,5 +1,5 @@
 import { motion, useTransform } from "motion/react";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
@@ -11,7 +11,7 @@ import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
 import { isSettingsPath, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk, useTelemetry } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
@@ -185,6 +185,13 @@ export function AppSidebarLayout({
 }: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const navigate = useNavigate();
+	// PAGE_VISIT is a shell-level, cross-feature concern, so it uses the
+	// untagged useTelemetry() hook rather than the "auth" sdk instance below.
+	const { track } = useTelemetry();
+	useEffect(() => {
+		void track({ event: "PAGE_VISIT", data: { path: pathname } });
+	}, [pathname, track]);
+
 	const session = useAuthSession();
 	const sdk = useSdk("auth");
 	// Filter nav entries against the current feature-flag map so a plugin
@@ -212,14 +219,18 @@ export function AppSidebarLayout({
 		const next = await sdk.auth.login();
 		if (next.status === "error") {
 			toast.error("Sign-in failed", { description: next.reason });
+			return;
 		}
+		void sdk.telemetry.track({ event: "LOGGED_IN" });
 	};
 
 	const handleLogout = async (): Promise<void> => {
 		const next = await sdk.auth.logout();
 		if (next.status === "error") {
 			toast.error("Sign-out failed", { description: next.reason });
+			return;
 		}
+		void sdk.telemetry.track({ event: "LOGGED_OUT" });
 	};
 
 	return (

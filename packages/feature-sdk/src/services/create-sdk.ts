@@ -11,11 +11,13 @@ import type {
 	SdkFs,
 	SdkIntents,
 	SdkLocation,
+	SdkPorts,
 	SdkNavigation,
 	SdkNotifications,
 	SdkPlugins,
 	SdkShell,
 	SdkState,
+	SdkTelemetry,
 	SdkTheme,
 	SdkTools,
 	ShellFsDelegate,
@@ -30,6 +32,7 @@ import type { ToolRegistry } from "./tool-registry.js";
 
 export interface ShellDelegates {
 	notifications: SdkNotifications;
+	telemetry: SdkTelemetry;
 	theme: SdkTheme;
 	auth: SdkAuth;
 	featureFlags: SdkFeatureFlags;
@@ -52,6 +55,8 @@ export interface ShellDelegates {
 export interface SdkFactoryServices {
 	/** Optional renderer-to-main transport. Browser mode omits it. */
 	emitEvent?: (event: FeatureEvent) => void;
+	/** Optional renderer-to-main transferable port transport. Electron supplies it. */
+	openPort?: (featureId: string, channel: string, args?: unknown) => unknown;
 	stateBroker: StateBroker;
 	contributionRegistry: ContributionRegistry;
 	commandRegistry: CommandRegistry;
@@ -270,6 +275,18 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	};
 
+	// ─── Telemetry (shell delegate) ───────────────────────────────────────────
+	// Tag every event with featureId; an explicit data.featureId caller override wins.
+	const telemetry: SdkTelemetry = {
+		async track(input) {
+			assertAlive();
+			return services.shellDelegates.telemetry.track({
+				...input,
+				data: { featureId, ...input.data },
+			});
+		},
+	};
+
 	// ─── SDK object ────────────────────────────────────────────────────────────
 	const invoke = async (channel: string, args?: unknown) => {
 		assertAlive();
@@ -282,10 +299,21 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	});
 
+	const ports: SdkPorts = {
+		open<TPort>(channel: string, args?: unknown): TPort {
+			assertAlive();
+			if (!services.openPort) {
+				throw new Error("sdk.ports requires a host MessagePort transport.");
+			}
+			return services.openPort(featureId, channel, args) as TPort;
+		},
+	};
+
 	const sdk: SDK = {
 		featureId,
 		invoke,
 		client,
+		ports,
 
 		events,
 		state,
@@ -305,6 +333,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 
 		notifications: services.shellDelegates.notifications,
+		telemetry,
 		theme: services.shellDelegates.theme,
 		auth: services.shellDelegates.auth,
 		featureFlags,

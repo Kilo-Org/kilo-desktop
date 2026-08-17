@@ -7,13 +7,23 @@ import { login } from "./oauth-flow.js";
 /**
  * Minimal mock OIDC server for integration testing.
  */
-const createMockOIDCServer = (options: { issuer?: (port: number) => string } = {}) => {
+const createMockOIDCServer = (
+	options: {
+		issuer?: (port: number) => string;
+		discoveryStatus?: number;
+	} = {},
+) => {
 	const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 		const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
 		if (url.pathname === "/.well-known/openid-configuration") {
 			const address = server.address();
 			const port = typeof address === "object" && address ? address.port : 0;
+			if (options.discoveryStatus && options.discoveryStatus !== 200) {
+				res.writeHead(options.discoveryStatus, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "not_available" }));
+				return;
+			}
 			// The issuer defaults to the discovery origin but can be overridden to
 			// simulate a provider (like Anaconda) that serves its metadata from one
 			// host while reporting a different `issuer` — the case that broke prod.
@@ -180,5 +190,38 @@ describe("login", () => {
 			throw new Error("No browser");
 		});
 		await expect(login(config(), { authorize })).rejects.toThrow("No browser");
+	});
+
+	it("throws OAuthDiscoveryError when discovery responds with a non-ok status", async () => {
+		await mockServer.stop();
+		mockServer = createMockOIDCServer({ discoveryStatus: 500 });
+		port = await mockServer.start();
+
+		await expect(login(config(), { authorize: stubAuthorize() })).rejects.toThrow(
+			OAuthDiscoveryError,
+		);
+	});
+
+	it("derives the issuer URL from the domain when issuerUrl is absent", async () => {
+		// Omitting issuerUrl exercises the `https://${config.domain}` fallback; the
+		// derived https://localhost discovery has no server, so discovery fails.
+		const { issuerUrl: _omitted, ...withoutIssuer } = config();
+		await expect(login(withoutIssuer, { authorize: stubAuthorize() })).rejects.toThrow(
+			OAuthDiscoveryError,
+		);
+	});
+
+	it("carries no description on the callback error when none is provided", async () => {
+		const authorize = stubAuthorize("test-app://oauth/callback?error=access_denied");
+		await expect(login(config(), { authorize })).rejects.toMatchObject({
+			errorDescription: undefined,
+		});
+	});
+
+	it("performs discovery without opting into insecure requests", async () => {
+		// Without allowInsecureRequests the http token exchange is rejected, but
+		// discovery still runs through the `allowInsecureRequests` false branch.
+		const { allowInsecureRequests: _skip, ...secureConfig } = config();
+		await expect(login(secureConfig, { authorize: stubAuthorize() })).rejects.toThrow();
 	});
 });

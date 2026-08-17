@@ -12,12 +12,11 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 const coverage = {
 	...createCoverageConfig([
-		// Renderer barrel — no behaviour of its own.
+		// Renderer barrel — thin dispatcher covered by the web/index test.
 		"src/web/index.ts",
 		"src/test/**",
-		// CondaProvider stub — only boot() has logic; registerHandlers/registerTools
-		// and webComponents are placeholders until sub-issue 4.
-		"src/main/providers/conda/index.ts",
+		// Nav icon — trivial JSX that ships one SVG.
+		"src/web/EnvironmentsNavIcon.tsx",
 	]),
 	include: ["src/**"],
 };
@@ -38,6 +37,15 @@ export default defineConfig({
 						"src/**/*.browser.test.tsx",
 					],
 					environment: "node",
+				},
+			},
+			{
+				test: {
+					name: "integration",
+					include: ["src/**/*.integration.test.ts"],
+					environment: "node",
+					fileParallelism: false,
+					testTimeout: 30_000,
 				},
 			},
 			{

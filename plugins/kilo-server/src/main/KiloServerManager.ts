@@ -2,6 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -12,7 +13,6 @@ import { execa } from "execa";
 import isEqual from "lodash/isEqual.js";
 
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
-import type { KiloConfigOverlay } from "../contracts/schemas.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 
@@ -52,10 +52,12 @@ export interface KiloServerManagerOptions {
 	readonly installation: KiloInstallation;
 	readonly runtimeDirectory: string;
 	/**
-	 * App-local XDG state root (Electron plugin storage). Config/data/cache stay on
-	 * the shared host XDG paths so auth and sessions match Kilo CLI / VS Code.
-	 * Honors an existing `XDG_STATE_HOME` in `environment` when present.
+	 * App-owned `${XDG_CONFIG_HOME}/kilo` directory. The XDG config root is
+	 * isolated without moving Kilo's shared data directory and provider
+	 * credentials away from the CLI / VS Code extension.
 	 */
+	readonly configDirectory: string;
+	/** App-local XDG state root. Honors an inherited `XDG_STATE_HOME`. */
 	readonly stateDirectory: string;
 	readonly expectedVersion?: string;
 	readonly allowVersionMismatch?: boolean;
@@ -120,54 +122,6 @@ function delay(durationMs: number): Promise<void> {
 }
 
 /**
- * Compose the `KILO_CONFIG_CONTENT` value for the spawn env: the contributed
- * overlay merged over any value already present in the inherited environment
- * (e.g. a developer-set override). Returns `undefined` when there is nothing
- * to inject, so the variable is only set when it carries content.
- *
- * Overlays are `mcp`-only (see `KiloConfigOverlay`), so the merge is simple:
- * inherited top-level keys pass through untouched and `mcp` entries are
- * merged per id, overlay entries winning. This is intentionally NOT a full
- * reimplementation of `mergeConfig` in `@kilocode/sdk` (which also
- * per-entry-merges `agent`/`command`/`mode` and concatenates
- * `plugin`/`instructions`) — widening the overlay type requires adopting
- * those semantics here and in `getMergedConfigOverlay`.
- *
- * The `mcp` accumulator is prototype-less: entry ids become object keys, and
- * a plain `{}` would let a reserved id like `__proto__` mutate the
- * accumulator's prototype via bracket assignment (see the matching guard in
- * `ContributedEnvManager.getMergedConfigOverlay`).
- */
-function composeConfigContent(
-	inherited: string | undefined,
-	overlay: KiloConfigOverlay | undefined,
-): string | undefined {
-	if (overlay === undefined) return inherited;
-	let base: Record<string, unknown> = {};
-	if (inherited) {
-		try {
-			const parsed: unknown = JSON.parse(inherited);
-			if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-				base = parsed as Record<string, unknown>;
-			}
-		} catch {
-			// Malformed inherited content: the overlay alone is still valid.
-		}
-	}
-	const baseMcp = base.mcp;
-	const merged: Record<string, unknown> = { ...base };
-	if (overlay.mcp !== undefined || baseMcp !== undefined) {
-		const mcp: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-		if (baseMcp !== null && typeof baseMcp === "object" && !Array.isArray(baseMcp)) {
-			Object.assign(mcp, baseMcp);
-		}
-		if (overlay.mcp !== undefined) Object.assign(mcp, overlay.mcp);
-		merged.mcp = mcp;
-	}
-	return JSON.stringify(merged);
-}
-
-/**
  * Owns the lifecycle of the packaged `kilo serve` child process: spawn, wait
  * for the stdout handshake + `/global/health` probe, expose the connection to
  * consumers, and tear the child down cleanly on `dispose()`. Restarts are
@@ -206,7 +160,10 @@ export class KiloServerManager {
 			| "shutdownTimeoutMs"
 		>
 	> &
-		Pick<KiloServerManagerOptions, "installation" | "runtimeDirectory" | "stateDirectory">;
+		Pick<
+			KiloServerManagerOptions,
+			"installation" | "runtimeDirectory" | "configDirectory" | "stateDirectory"
+		>;
 	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	readonly #status: ObservableValue<KiloServerStatus>;
@@ -222,16 +179,11 @@ export class KiloServerManager {
 	 * by `#createEnvironment` before the spawn completed).
 	 */
 	#lastSpawnedContributedEnv: Record<string, string> = {};
-	/**
-	 * `KILO_CONFIG_CONTENT` value (composed inherited + overlay) used at the
-	 * last spawn. Compared alongside `#lastSpawnedContributedEnv` for drift.
-	 */
-	#lastSpawnedConfigContent: string | undefined;
-
 	constructor(options: KiloServerManagerOptions) {
 		this.#options = {
 			installation: options.installation,
 			runtimeDirectory: options.runtimeDirectory,
+			configDirectory: options.configDirectory,
 			stateDirectory: options.stateDirectory,
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
@@ -306,8 +258,7 @@ export class KiloServerManager {
 		if (!this.#contributedEnv) return false;
 		if (this.#connection === undefined && this.#startPromise === undefined) return true;
 		const current = this.#sanitizeContributedEnv(this.#contributedEnv.getMergedEnv());
-		if (!isEqual(current, this.#lastSpawnedContributedEnv)) return true;
-		return this.#composeCurrentConfigContent() !== this.#lastSpawnedConfigContent;
+		return !isEqual(current, this.#lastSpawnedContributedEnv);
 	}
 
 	ensureRunning(): Promise<KiloServerConnection> {
@@ -404,13 +355,14 @@ export class KiloServerManager {
 	}
 
 	/**
-	 * Ensures a stable cwd and app-local state root. Config/data/cache still use the
-	 * shared host XDG paths so auth and sessions match Kilo CLI / VS Code
-	 * (`~/.config/kilo`, `~/.local/share/kilo`, etc.).
+	 * Ensures the stable cwd, app-owned XDG config profile, and app-local state
+	 * root exist. Kilo's data/cache roots remain inherited so provider credentials
+	 * and sessions still match Kilo CLI / VS Code.
 	 */
 	async #ensureRuntimeDirectory(): Promise<void> {
 		await Promise.all([
 			mkdir(this.#options.runtimeDirectory, { recursive: true }),
+			mkdir(this.#options.configDirectory, { recursive: true }),
 			mkdir(this.#options.stateDirectory, { recursive: true }),
 		]);
 	}
@@ -470,36 +422,24 @@ export class KiloServerManager {
 		return sanitized;
 	}
 
-	/** Current `KILO_CONFIG_CONTENT` value: inherited env value + merged overlay. */
-	#composeCurrentConfigContent(): string | undefined {
-		return composeConfigContent(
-			this.#options.environment.KILO_CONFIG_CONTENT,
-			this.#contributedEnv?.getMergedConfigOverlay(),
-		);
-	}
-
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
 		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
 		const sanitizedContributed = this.#sanitizeContributedEnv(contributed);
-		const configContent = this.#composeCurrentConfigContent();
 		// Snapshot for drift detection; a subsequent env change that matches
 		// this snapshot won't trigger a restart.
 		this.#lastSpawnedContributedEnv = { ...sanitizedContributed };
-		this.#lastSpawnedConfigContent = configContent;
 
 		const environment: NodeJS.ProcessEnv = {
 			...this.#options.environment,
 			...sanitizedContributed,
-			// Config overlay channel. Contributors cannot set KILO_* directly
-			// (reserved prefix); overlays flow through the dedicated
-			// `configOverlay.contribute` capability instead and are composed
-			// here, merged over any inherited KILO_CONFIG_CONTENT.
-			...(configContent !== undefined ? { KILO_CONFIG_CONTENT: configContent } : {}),
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
-			// Match OpenCode desktop: isolate state under Electron storage, keep shared data.
+			// KILO_CONFIG_DIR is additive in Kilo 7.4.21. Isolate the base config
+			// root instead so ~/.config/kilo is not merged into Desktop.
+			XDG_CONFIG_HOME: path.dirname(this.#options.configDirectory),
+			// Match OpenCode desktop: isolate state under Electron storage.
 			XDG_STATE_HOME: this.#options.environment.XDG_STATE_HOME ?? this.#options.stateDirectory,
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
@@ -508,6 +448,14 @@ export class KiloServerManager {
 		// survived the spread from process.env.
 		for (const name of Object.keys(environment)) {
 			const upper = name.toUpperCase();
+			if (upper === "KILO_CONFIG_DIR" || upper === "KILO_CONFIG_CONTENT") {
+				delete environment[name];
+				continue;
+			}
+			if (upper === "XDG_CONFIG_HOME" && name !== "XDG_CONFIG_HOME") {
+				delete environment[name];
+				continue;
+			}
 			if (upper === "NODE_OPTIONS" || upper === "ELECTRON_RUN_AS_NODE") {
 				delete environment[name];
 			}

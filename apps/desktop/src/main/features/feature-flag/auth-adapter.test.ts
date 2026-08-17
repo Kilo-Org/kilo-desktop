@@ -5,7 +5,8 @@ import type { AuthSession } from "@anaconda-agentic-desktop/contracts";
 import type { AuthSessionService } from "../auth/auth-service.js";
 import type { UserInfoOrganization } from "../auth/actions.js";
 import { FREE_SUBSCRIPTION, type UserSubscription } from "../auth/utils.js";
-import { ANONYMOUS_CONTEXT, deriveContext } from "./auth-adapter.js";
+import { ANONYMOUS_CONTEXT, bindAuthToProvider, deriveContext } from "./auth-adapter.js";
+import type { FeatureFlagProvider } from "./types.js";
 
 function makeAuth(overrides: {
 	session: AuthSession | (() => Promise<AuthSession>);
@@ -154,5 +155,66 @@ describe("deriveContext", () => {
 		const context = await deriveContext(auth);
 		expect(context.name).toBeUndefined();
 		expect(context.username).toBeUndefined();
+	});
+});
+
+describe("bindAuthToProvider", () => {
+	function makeChangeableAuth(session: AuthSession) {
+		let listener: (() => void) | undefined;
+		const unsubscribe = vi.fn();
+		const auth = {
+			getSession: vi.fn(async () => session),
+			getSubscription: vi.fn(async () => FREE_SUBSCRIPTION),
+			getOrganizations: vi.fn(async () => [] as UserInfoOrganization[]),
+			onChanged: vi.fn((fn: () => void) => {
+				listener = fn;
+				return unsubscribe;
+			}),
+		} as unknown as AuthSessionService;
+		return { auth, unsubscribe, fire: () => listener?.() };
+	}
+
+	function makeProvider(): FeatureFlagProvider & { identify: ReturnType<typeof vi.fn> } {
+		return { identify: vi.fn() } as unknown as FeatureFlagProvider & {
+			identify: ReturnType<typeof vi.fn>;
+		};
+	}
+
+	it("re-identifies the provider with a derived context when auth changes", async () => {
+		const { auth, fire } = makeChangeableAuth(authenticatedSession);
+		const provider = makeProvider();
+		const onError = vi.fn();
+
+		bindAuthToProvider(auth, provider, onError);
+		fire();
+		await vi.waitFor(() => expect(provider.identify).toHaveBeenCalledTimes(1));
+
+		expect(provider.identify).toHaveBeenCalledWith(
+			expect.objectContaining({ userId: "u1", isEmployee: true }),
+		);
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	it("forwards a provider.identify rejection to onError", async () => {
+		const { auth, fire } = makeChangeableAuth(authenticatedSession);
+		const provider = makeProvider();
+		const cause = new Error("LD down");
+		provider.identify.mockRejectedValueOnce(cause);
+		const onError = vi.fn();
+
+		bindAuthToProvider(auth, provider, onError);
+		fire();
+
+		await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+		expect(onError).toHaveBeenCalledWith(cause);
+	});
+
+	it("returns the unsubscribe handle from auth.onChanged", () => {
+		const { auth, unsubscribe } = makeChangeableAuth(authenticatedSession);
+		const dispose = bindAuthToProvider(auth, makeProvider(), vi.fn());
+
+		dispose();
+
+		expect(unsubscribe).toHaveBeenCalledTimes(1);
 	});
 });

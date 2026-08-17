@@ -1,6 +1,10 @@
 import { createFeatureSystem, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 
-import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type {
+	AuthSession,
+	LocalApi,
+	TelemetryTrackInput,
+} from "@anaconda-agentic-desktop/contracts";
 import type {
 	FeatureEvent,
 	FeatureFlagMap,
@@ -10,6 +14,7 @@ import type {
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { getDesktopBridge } from "./desktopBridge.js";
+import { openFeaturePort } from "./featurePorts.js";
 import { createInertNavigation } from "./navigation.js";
 import { getColorSchemeSnapshot, subscribeColorScheme } from "./theme/color-scheme.js";
 
@@ -137,6 +142,17 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 			show: (opts) => api.notifications.show(opts),
 			setBadge: (count) => api.notifications.setBadge({ count }),
 		},
+		telemetry: {
+			// The SDK's open `event: string` is cast to the contract's closed
+			// enum; the main process validates it — this is the boundary check,
+			// not the renderer.
+			track: (input) =>
+				api.telemetry.track({
+					...input,
+					event: input.event as TelemetryTrackInput["event"],
+					data: input.data ?? {},
+				}),
+		},
 		theme: {
 			subscribe(fn) {
 				fn(getColorSchemeSnapshot());
@@ -196,6 +212,7 @@ export function createAppFeatureSystem(
 		...(bridge
 			? {
 					transport: {
+						ports: { open: openFeaturePort },
 						invoke: async (featureId: string, channel: string, args?: unknown) => {
 							const result = await bridge.invoke("feature:invoke", { featureId, channel, args });
 							if (!result.ok) {

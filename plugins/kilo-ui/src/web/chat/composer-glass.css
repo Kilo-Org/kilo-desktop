@@ -1,6 +1,6 @@
 /* Frosted glass surfaces (composer). Recipe matches t3code: translucent
    surface tint + blur + slight saturate. Light uses muted; dark uses the
-   shell surface (`--background` / #16181F). */
+   shell surface (`--background` / #141820). */
 
 :root {
 	--glass-blur: 12px;

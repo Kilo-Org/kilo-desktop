@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { STREAM_RECONNECTED_EVENT_TYPE } from "@assistant-ui/react-opencode";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
@@ -252,5 +252,132 @@ describe("createKiloRuntimeBackend", () => {
 		);
 		unsubscribe();
 		expect(eventCallOptions?.signal?.aborted).toBe(true);
+	});
+
+	it("throws when a session directory cannot be resolved from the global list", async () => {
+		const list = vi.fn(async () => ({ data: [] }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({
+			experimental: { session: { list } },
+		} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { get: vi.fn() } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+		});
+
+		await expect(
+			backend
+				.getSessionClient({ id: "missing-session" })
+				.session.get({ sessionID: "missing-session" }, { throwOnError: true }),
+		).rejects.toThrow(/Could not resolve the directory for Kilo session missing-session/);
+	});
+
+	it("reuses a cached session client on repeated lookups of the same id", async () => {
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: {} } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+		});
+
+		const first = backend.getSessionClient({ id: "cached", directory: "/workspace/cached" });
+		const second = backend.getSessionClient({ id: "cached", directory: "/workspace/cached" });
+
+		expect(second).toBe(first);
+	});
+
+	it("throws when session creation returns no session id", async () => {
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace/x", workspaceFolders: [] }));
+		const create = vi.fn(async () => ({ data: {} }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/Failed to create Kilo session/);
+	});
+
+	it("forwards agent and model prompt getters alongside the variant getter", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/getters",
+			workspaceFolders: [],
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-getters" } }));
+		const prompt = vi.fn(async () => ({ data: {} }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({
+			session: { create, prompt },
+		} as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => "variant",
+			getAgent: () => "code",
+			getModel: () => ({ providerID: "anthropic", modelID: "claude" }),
+		});
+
+		const ref = await backend.initializeSession();
+		await backend.getSessionClient(ref).session.prompt({
+			sessionID: ref.id,
+			parts: [{ type: "text", text: "hello" }],
+		});
+
+		expect(prompt).toHaveBeenCalledWith(
+			expect.objectContaining({
+				variant: "variant",
+				agent: "code",
+				model: { providerID: "anthropic", modelID: "claude" },
+			}),
+		);
+	});
+
+	it("applies streamed events into the activity store and re-hydrates on reconnect", async () => {
+		const list = vi.fn(async () => ({ data: [] }));
+		const event = vi.fn(async () => ({
+			stream: (async function* () {
+				// A reconnect marker triggers a re-hydrate; a normal event is applied.
+				yield {
+					payload: { type: STREAM_RECONNECTED_EVENT_TYPE },
+				};
+				yield {
+					directory: "/workspace/events",
+					payload: {
+						type: "session.updated",
+						properties: { info: { id: "session-events" } },
+					},
+				};
+				await new Promise(() => undefined);
+			})(),
+		}));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({
+			global: { event },
+			experimental: { session: { list } },
+			permission: { list: vi.fn(async () => ({ data: [] })) },
+			question: { list: vi.fn(async () => ({ data: [] })) },
+			session: { status: vi.fn(async () => ({ data: {} })) },
+		} as never);
+		const store = createSessionActivityStore({ storage: null });
+		const applySpy = vi.spyOn(store.getState(), "applyEvent");
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+			sessionActivity: store,
+		});
+
+		const source = backend.createEventSource();
+		source.subscribe(() => undefined);
+
+		// The reconnect marker flows through the re-hydrate branch (no applyEvent),
+		// and the normal event is applied to the store.
+		await vi.waitFor(() =>
+			expect(applySpy).toHaveBeenCalledWith(
+				expect.objectContaining({ type: "session.updated", sessionId: "session-events" }),
+			),
+		);
+		expect(applySpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({ type: STREAM_RECONNECTED_EVENT_TYPE }),
+		);
 	});
 });

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import type { KiloProviderListPayload } from "./model-catalog.js";
 import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
-import { useKiloModelCatalog } from "./use-kilo-model-catalog.js";
+import { useKiloModelCatalog, fetchModelCatalogForConnection } from "./use-kilo-model-catalog.js";
 
 const providerList = vi.hoisted(() => vi.fn());
 
@@ -84,5 +84,12 @@ describe("useKiloModelCatalog", () => {
 
 		rerender({ connection: { ...connection, baseUrl: "http://127.0.0.1:5096" } });
 		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(2));
+	});
+
+	it("throws when asked to fetch the catalog before a connection is available", async () => {
+		await expect(fetchModelCatalogForConnection(undefined)).rejects.toThrow(
+			"Cannot fetch the model catalog before Kilo is connected",
+		);
+		expect(createKiloDirectoryClient).not.toHaveBeenCalled();
 	});
 });

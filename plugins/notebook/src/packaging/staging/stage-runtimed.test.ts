@@ -47,7 +47,10 @@ describe("stageRuntimed", () => {
 
 		expect(result.staged).toBe(true);
 		expect(await readFile(result.executablePath)).toEqual(MACHO_BYTES);
-		expect((await stat(result.executablePath)).mode & 0o111).not.toBe(0);
+		expect((await stat(result.executablePath)).isFile()).toBe(true);
+		if (process.platform !== "win32") {
+			expect((await stat(result.executablePath)).mode & 0o111).not.toBe(0);
+		}
 		expect(await readFile(path.join(result.targetDirectory, "staged.json"), "utf8")).toContain(
 			result.artifact.sha256,
 		);

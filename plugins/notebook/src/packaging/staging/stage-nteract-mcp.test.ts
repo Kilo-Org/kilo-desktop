@@ -81,8 +81,12 @@ describe("stageNteractMcp", () => {
 		expect(extract).toHaveBeenCalledTimes(2);
 		expect(await readFile(result.nteractMcpPath)).toEqual(MCP_BYTES);
 		expect(await readFile(result.runtPath)).toEqual(RUNT_BYTES);
-		expect((await stat(result.nteractMcpPath)).mode & 0o111).not.toBe(0);
-		expect((await stat(result.runtPath)).mode & 0o111).not.toBe(0);
+		expect((await stat(result.nteractMcpPath)).isFile()).toBe(true);
+		expect((await stat(result.runtPath)).isFile()).toBe(true);
+		if (process.platform !== "win32") {
+			expect((await stat(result.nteractMcpPath)).mode & 0o111).not.toBe(0);
+			expect((await stat(result.runtPath)).mode & 0o111).not.toBe(0);
+		}
 		expect(await readFile(path.join(result.targetDirectory, "staged.json"), "utf8")).toContain(
 			artifact.nteractMcp.sha256,
 		);

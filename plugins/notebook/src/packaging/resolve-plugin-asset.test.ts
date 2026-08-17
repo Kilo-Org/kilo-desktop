@@ -40,9 +40,11 @@ describe("createNotebookResolveAsset", () => {
 			isPackaged: false,
 			packagedResourcesPath: "/unused",
 		});
-		expect(resolveAsset("build/notebook")).toContain("/plugins/notebook/build/notebook");
+		expect(resolveAsset("build/notebook")).toContain(
+			path.join("plugins", "notebook", "build", "notebook"),
+		);
 		expect(resolveAsset("resources/nteract-mcp/linux-x64/nteract-mcp")).toContain(
-			"/plugins/notebook/resources/nteract-mcp/linux-x64/nteract-mcp",
+			path.join("plugins", "notebook", "resources", "nteract-mcp", "linux-x64", "nteract-mcp"),
 		);
 	});
 });

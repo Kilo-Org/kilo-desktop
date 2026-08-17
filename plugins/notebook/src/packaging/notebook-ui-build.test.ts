@@ -109,7 +109,7 @@ describe("buildNotebookUi", () => {
 		expect(run).toHaveBeenCalledWith(
 			"cargo",
 			["xtask", "artifacts", "ensure", "runtime,sift,renderer"],
-			expect.objectContaining({ cwd: expect.stringContaining("cache/nteract") }),
+			expect.objectContaining({ cwd: expect.stringContaining(path.join("cache", "nteract")) }),
 		);
 		expect(run).toHaveBeenCalledWith(
 			"pnpm",

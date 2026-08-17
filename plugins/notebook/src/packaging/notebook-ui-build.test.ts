@@ -147,6 +147,53 @@ describe("buildNotebookUi", () => {
 		).toContain("module.exports");
 	});
 
+	it("builds the UI without compiling @runtimed/node when skipNativeBinding is set", async () => {
+		const root = await temporaryDirectory();
+		const run = fakeRunner();
+
+		const result = await buildNotebookUi({
+			cacheDirectory: path.join(root, "cache"),
+			destinationDirectory: path.join(root, "build/notebook"),
+			run,
+			skipNativeBinding: true,
+		});
+
+		expect(result.built).toBe(true);
+		await expect(validateStagedNotebookBundle(result.destinationDirectory)).resolves.toMatchObject({
+			sourceCommit: NTERACT_NOTEBOOK_SOURCE.commit,
+		});
+		expect(run).toHaveBeenCalledWith(
+			"pnpm",
+			["--dir", "apps/notebook", "build"],
+			expect.any(Object),
+		);
+		expect(run).not.toHaveBeenCalledWith(
+			"pnpm",
+			["--dir", "packages/runtimed-node", "build"],
+			expect.any(Object),
+		);
+	});
+
+	it("does not rebuild a missing native binding when skipNativeBinding is set and the UI is current", async () => {
+		const root = await temporaryDirectory();
+		const options = {
+			cacheDirectory: path.join(root, "cache"),
+			destinationDirectory: path.join(root, "build/notebook"),
+			run: fakeRunner(),
+		};
+		await buildNotebookUi(options);
+		await rm(path.join(options.cacheDirectory, "nteract/packages/runtimed-node"), {
+			force: true,
+			recursive: true,
+		});
+		options.run.mockClear();
+
+		await expect(buildNotebookUi({ ...options, skipNativeBinding: true })).resolves.toMatchObject({
+			built: false,
+		});
+		expect(options.run).not.toHaveBeenCalled();
+	});
+
 	it("builds the native @runtimed/node binding when the UI bundle is already current", async () => {
 		const root = await temporaryDirectory();
 		const options = {

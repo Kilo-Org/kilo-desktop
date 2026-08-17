@@ -66,6 +66,8 @@ export interface BuildNotebookUiOptions {
 	readonly cacheDirectory: string;
 	readonly destinationDirectory: string;
 	readonly run?: CommandRunner;
+	/** CI UI jobs only need the staged SPA; skip the host-local napi compile. */
+	readonly skipNativeBinding?: boolean;
 }
 
 export interface BuildNotebookUiResult {
@@ -429,7 +431,9 @@ export async function buildNotebookUi(
 	let uiPatched = false;
 	if (!uiIsCurrent) uiPatched = await tryPatchEmbedChrome(options.destinationDirectory);
 	const uiReady = uiIsCurrent || uiPatched;
-	const bindingIsCurrent = await currentRuntimedNodeBindingIsValid(runtimedNodeDirectory);
+	const skipNativeBinding = options.skipNativeBinding === true;
+	const bindingIsCurrent =
+		skipNativeBinding || (await currentRuntimedNodeBindingIsValid(runtimedNodeDirectory));
 	if (uiReady && bindingIsCurrent) {
 		return {
 			built: uiPatched,
@@ -473,7 +477,7 @@ export async function buildNotebookUi(
 	}
 	await checkoutPinnedSource(checkoutDirectory, options.cacheDirectory, run);
 	await run("pnpm", ["install", "--frozen-lockfile"], { cwd: checkoutDirectory });
-	if (!(await currentRuntimedNodeBindingIsValid(runtimedNodeDirectory))) {
+	if (!skipNativeBinding && !(await currentRuntimedNodeBindingIsValid(runtimedNodeDirectory))) {
 		await run("pnpm", ["--dir", RUNTIMED_NODE_PACKAGE, "build"], { cwd: checkoutDirectory });
 		await validateRuntimedNodeBinding(runtimedNodeDirectory);
 	}

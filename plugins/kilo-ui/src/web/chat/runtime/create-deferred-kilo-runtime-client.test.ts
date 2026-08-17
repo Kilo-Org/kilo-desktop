@@ -45,4 +45,32 @@ describe("createDeferredKiloRuntimeClient", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 	});
+
+	it("rejects when a traversed property is not an object", async () => {
+		const client = createDeferredKiloRuntimeClient(Promise.resolve({ session: 42 } as never));
+
+		// Reaching through `session` (a number) to a further property must reject
+		// because the resolved value is not traversable.
+		await expect((client.session as { create: () => Promise<unknown> }).create()).rejects.toThrow(
+			/is not an object/,
+		);
+	});
+
+	it("rejects when a resolved property is called but is not a function", async () => {
+		const client = createDeferredKiloRuntimeClient(
+			Promise.resolve({ session: { create: {} } } as never),
+		);
+
+		await expect(client.session.create({}, { throwOnError: true })).rejects.toThrow(
+			/is not a function/,
+		);
+	});
+
+	it("invokes the root client with an undefined receiver", async () => {
+		const rootCallable = Object.assign(async () => "root-result", {});
+		const client = createDeferredKiloRuntimeClient(Promise.resolve(rootCallable as never));
+
+		// Calling the root proxy directly exercises the apply path with no receiver.
+		await expect((client as unknown as () => Promise<string>)()).resolves.toBe("root-result");
+	});
 });

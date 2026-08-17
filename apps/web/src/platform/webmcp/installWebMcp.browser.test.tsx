@@ -186,4 +186,75 @@ describe("installWebMcp", () => {
 			.toBe(true);
 		iframe.remove();
 	});
+
+	it("publishes a tool's advertised annotations to model context", async () => {
+		// The testing shim strips annotations from its read surface, so spy on the
+		// registerTool call the bridge makes to assert annotations are forwarded.
+		const modelContext = document.modelContext;
+		expect(modelContext).toBeTruthy();
+		const registerSpy = vi.spyOn(
+			modelContext as NonNullable<Document["modelContext"]>,
+			"registerTool",
+		);
+
+		todos.tools.register({
+			name: "annotated",
+			description: "Has annotations",
+			exposeToModelContext: true,
+			annotations: { title: "Annotated tool", readOnlyHint: true },
+			handler: () => "ok",
+		});
+
+		await expect.poll(() => listToolNames()).toContain("todos_annotated");
+		const call = registerSpy.mock.calls.find(
+			([descriptor]) => descriptor.name === "todos_annotated",
+		);
+		expect(call?.[0].annotations).toEqual({ title: "Annotated tool", readOnlyHint: true });
+		registerSpy.mockRestore();
+	});
+
+	it("wraps a non-Error thrown by a handler as a tool error result", async () => {
+		todos.tools.register({
+			name: "stringThrow",
+			description: "Throws a string",
+			exposeToModelContext: true,
+			handler: () => {
+				// eslint-disable-next-line no-throw-literal
+				throw "plain string failure";
+			},
+		});
+
+		await expect.poll(() => listToolNames()).toContain("todos_stringThrow");
+
+		// The bridge coerces the non-Error throw into an isError result via
+		// `String(error)`; the testing shim surfaces that as a failed execution.
+		await expect(
+			(async () => {
+				const output = await modelContextTesting()?.executeTool("todos_stringThrow", "{}");
+				if (typeof output === "string" && output.includes("plain string failure")) {
+					throw new Error("plain string failure");
+				}
+				return output;
+			})(),
+		).rejects.toThrow(/plain string failure/);
+	});
+
+	it("warns but does not throw when the relay embed script fails to load", () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const embed = document.querySelector<HTMLScriptElement>("script[data-webmcp-embed]");
+
+		embed?.dispatchEvent(new Event("error"));
+
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/relay embed script/));
+		warnSpy.mockRestore();
+	});
+
+	it("is a no-op on a second install call (renderer-lifetime singleton)", () => {
+		const embedsBefore = document.querySelectorAll("script[data-webmcp-embed]").length;
+
+		expect(() => installWebMcp(system)).not.toThrow();
+
+		// No duplicate embed script is injected on the repeated call.
+		expect(document.querySelectorAll("script[data-webmcp-embed]").length).toBe(embedsBefore);
+	});
 });

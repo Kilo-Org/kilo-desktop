@@ -36,4 +36,52 @@ describe("PreferencesStore", () => {
 		store.get.mockReturnValue("neon");
 		expect(preferences.themeSource).toBeUndefined();
 	});
+
+	describe("allowDataCollection", () => {
+		it("defaults to true when unset (opt-out model)", () => {
+			const preferences = new PreferencesStore(createFakeStore() as never);
+			expect(preferences.allowDataCollection).toBe(true);
+		});
+
+		it("round-trips an explicit false", () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never);
+
+			preferences.setAllowDataCollection(false);
+			expect(store.set).toHaveBeenCalledWith("allowDataCollection", false);
+			expect(preferences.allowDataCollection).toBe(false);
+		});
+
+		it("treats a non-boolean stored value as the default", () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never);
+			store.get.mockReturnValue("yes");
+			expect(preferences.allowDataCollection).toBe(true);
+		});
+	});
+
+	describe("getInstallationId", () => {
+		it("generates and persists an id on first read", () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never);
+
+			const id = preferences.getInstallationId();
+			expect(id).toMatch(/^[0-9a-f-]{36}$/);
+			expect(store.set).toHaveBeenCalledWith("installationId", id);
+		});
+
+		it("returns the same id on subsequent reads", () => {
+			const preferences = new PreferencesStore(createFakeStore() as never);
+			expect(preferences.getInstallationId()).toBe(preferences.getInstallationId());
+		});
+
+		it("reuses a previously persisted id", () => {
+			const store = createFakeStore();
+			store.get.mockReturnValue("existing-install-id");
+			const preferences = new PreferencesStore(store as never);
+
+			expect(preferences.getInstallationId()).toBe("existing-install-id");
+			expect(store.set).not.toHaveBeenCalled();
+		});
+	});
 });

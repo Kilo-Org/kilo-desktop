@@ -25,3 +25,5 @@ export {
 
 export { useFeatureFlag } from "./useFeatureFlag.js";
 export { useSdkContributions } from "./useSdkContributions.js";
+
+export { useTelemetry } from "./useTelemetry.js";

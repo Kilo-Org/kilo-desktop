@@ -8,7 +8,17 @@ import {
 } from "./model-catalog.js";
 import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
 
-async function fetchModelCatalog(connection: KiloGlobalConnection): Promise<KiloModelCatalog> {
+/**
+ * Guarded catalog fetch used as the query function. Exported so the
+ * "not connected yet" guard can be tested directly without depending on
+ * react-query's disabled-query semantics.
+ */
+export async function fetchModelCatalogForConnection(
+	connection: KiloGlobalConnection | undefined,
+): Promise<KiloModelCatalog> {
+	if (!connection) {
+		throw new Error("Cannot fetch the model catalog before Kilo is connected");
+	}
 	const client = createKiloDirectoryClient(connection, connection.globalDirectory);
 	const { data } = await client.provider.list({}, { throwOnError: true });
 	return buildCatalogFromProviderList(data as KiloProviderListPayload);
@@ -17,12 +27,7 @@ async function fetchModelCatalog(connection: KiloGlobalConnection): Promise<Kilo
 export function useKiloModelCatalog(connection: KiloGlobalConnection | undefined) {
 	return useQuery({
 		queryKey: ["kilo-ui", "provider.list", connection?.baseUrl, connection?.version],
-		queryFn: () => {
-			if (!connection) {
-				throw new Error("Cannot fetch the model catalog before Kilo is connected");
-			}
-			return fetchModelCatalog(connection);
-		},
+		queryFn: () => fetchModelCatalogForConnection(connection),
 		enabled: connection !== undefined,
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,

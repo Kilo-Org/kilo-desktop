@@ -224,6 +224,34 @@ clipboard API. No Electron process, no SQLite file, no IPC.
 headless Chromium via Playwright. Both exercise the browser adapter, so the whole web
 suite runs without building or launching Electron.
 
+## Local Sentry via Spotlight
+
+Local development **never** reports to the shared remote Sentry project: `initSentry()`
+passes no DSN in dev, and `apps/desktop/.env.development` intentionally omits
+`VITE_SENTRY_DSN`. To inspect errors, traces, and logs locally, use
+[Spotlight](https://spotlightjs.com). In dev the Electron **main** process adds
+`spotlightIntegration`, which forwards events to a local Spotlight sidecar (renderer
+events route through the main process, so they show up too).
+
+Run the standalone Spotlight app, then start the desktop app:
+
+```bash
+npx @spotlightjs/spotlight   # sidecar + UI on http://localhost:8969
+pn dev                        # in another terminal
+```
+
+The SDK forwards to the default sidecar at `http://localhost:8969/stream`. Optionally
+wire Spotlight into an MCP-capable editor (Claude/Cursor) with
+`npx -y @spotlightjs/spotlight mcp`.
+
+Notes:
+
+- Spotlight is gated on `!app.isPackaged`, so none of the dev-only config runs in
+  packaged builds, and no `@spotlightjs/*` package ships in the app bundle.
+- In dev the SDK is initialized without a DSN and with `defaultIntegrations: false`
+  (the native minidump reporter requires a DSN); only `spotlightIntegration` is
+  active, so local events go to Spotlight and nowhere else.
+
 ## Electron architecture and security
 
 The renderer is sandboxed and has no Node.js access. The preload exposes only the

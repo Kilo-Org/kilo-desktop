@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 
 import {
@@ -13,6 +14,7 @@ import {
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
+const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
 
 function injectThemeBootstrap(): Plugin {
 	return {
@@ -37,6 +39,14 @@ export default defineConfig({
 		react(),
 		tailwindcss(),
 		injectThemeBootstrap(),
+		sentryVitePlugin({
+			authToken: process.env.SENTRY_AUTH_TOKEN,
+			org: "anaconda-nq",
+			project: "agentic-desktop",
+			...(uploadSourcemaps && {
+				sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
+			}),
+		}),
 	],
 	resolve: {
 		alias: {
@@ -58,6 +68,10 @@ export default defineConfig({
 		},
 	},
 	build: {
+		// Only emit maps when they will be uploaded and stripped
+		// (filesToDeleteAfterUpload). Without the token, emitting maps would ship
+		// raw `.map` files with no upload and no cleanup.
+		sourcemap: uploadSourcemaps,
 		outDir: "dist",
 		emptyOutDir: true,
 	},

@@ -183,7 +183,11 @@ describe("stageConda", () => {
 
 		const result = await stageConda(harness.ctx);
 
-		expect(result).toEqual({ condaBinPath: "/usr/local/bin/conda", strategy: "system" });
+		expect(result).toEqual({
+			condaBinPath: "/usr/local/bin/conda",
+			strategy: "system",
+			condaFilesRoot: harness.storageDir,
+		});
 		expect(harness.fetch).not.toHaveBeenCalled();
 		expect(mockedExeca).not.toHaveBeenCalled();
 
@@ -216,7 +220,11 @@ describe("stageConda", () => {
 
 		const result = await stageConda(harness.ctx);
 
-		expect(result).toEqual({ condaBinPath: fakeBin, strategy: "system" });
+		expect(result).toEqual({
+			condaBinPath: fakeBin,
+			strategy: "system",
+			condaFilesRoot: harness.storageDir,
+		});
 		expect(mockedDetectSystem).not.toHaveBeenCalled();
 		expect(harness.fetch).not.toHaveBeenCalled();
 	});
@@ -244,7 +252,11 @@ describe("stageConda", () => {
 
 		const result = await stageConda(harness.ctx);
 
-		expect(result).toEqual({ condaBinPath: "/new/path/conda", strategy: "system" });
+		expect(result).toEqual({
+			condaBinPath: "/new/path/conda",
+			strategy: "system",
+			condaFilesRoot: harness.storageDir,
+		});
 		expect(mockedDetectSystem).toHaveBeenCalledOnce();
 	});
 
@@ -312,7 +324,11 @@ describe("stageConda", () => {
 		try {
 			const result = await stageConda(harness.ctx);
 
-			expect(result).toEqual({ condaBinPath: "", strategy: "skipped" });
+			expect(result).toEqual({
+				condaBinPath: "",
+				strategy: "skipped",
+				condaFilesRoot: harness.storageDir,
+			});
 			expect(mockedDetectSystem).not.toHaveBeenCalled();
 			expect(harness.fetch).not.toHaveBeenCalled();
 			expect(mockedExeca).not.toHaveBeenCalled();

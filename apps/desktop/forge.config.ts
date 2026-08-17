@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -147,10 +147,13 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 		await cp(path.join(stagingDirectory, "node_modules"), path.join(buildPath, "node_modules"), {
 			recursive: true,
 		});
-		await rm(path.join(buildPath, "node_modules", ".bin"), {
-			force: true,
-			recursive: true,
-		});
+		// pnpm deploy creates `.bin` directories (top-level and nested inside
+		// individual packages, e.g. `@opentelemetry/configuration/node_modules/.bin`)
+		// whose symlinks resolve to paths outside the app. `@electron/asar` refuses
+		// symlinks that "link out of the package", so strip every `.bin` before
+		// packing. No app code invokes anything via `.bin` (unpacked native
+		// binaries are spawned by file path), so removing them all is safe.
+		await removeBinDirectories(path.join(buildPath, "node_modules"));
 	} finally {
 		await rm(stagingDirectory, { force: true, recursive: true });
 	}
@@ -183,6 +186,24 @@ async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
 		force: true,
 		recursive: true,
 	});
+}
+
+async function removeBinDirectories(directory: string): Promise<void> {
+	let entries;
+	try {
+		entries = await readdir(directory, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		const entryPath = path.join(directory, entry.name);
+		if (entry.name === ".bin") {
+			await rm(entryPath, { force: true, recursive: true });
+			continue;
+		}
+		await removeBinDirectories(entryPath);
+	}
 }
 
 const config: ForgeConfig = {

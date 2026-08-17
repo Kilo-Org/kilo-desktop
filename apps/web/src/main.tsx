@@ -1,5 +1,8 @@
+import "./instrument";
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import * as Sentry from "@sentry/react";
 
 import "./globals.css";
 import { AppProviders } from "@/app/AppProviders";
@@ -37,7 +40,15 @@ registerPluginZoneContributions(featureSystem, PLUGIN_ZONE_CONTRIBUTIONS, {
 // change notifications (see issue #74).
 installWebMcp(featureSystem);
 
-createRoot(root).render(
+createRoot(root, {
+	// @ts-expect-error -- reactErrorHandler types ErrorInfo against React 18 (componentStack: string|null); React 19 uses string|undefined
+	onUncaughtError: Sentry.reactErrorHandler((error, errorInfo) => {
+		console.warn("Uncaught error", error, errorInfo.componentStack);
+	}),
+	// @ts-expect-error -- same React 18/19 ErrorInfo mismatch
+	onCaughtError: Sentry.reactErrorHandler(),
+	onRecoverableError: Sentry.reactErrorHandler(),
+}).render(
 	<StrictMode>
 		<AppProviders localApi={localApi} system={featureSystem} />
 	</StrictMode>,

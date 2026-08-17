@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { builtinModules } from "node:module";
 
 import { defineConfig, loadEnv } from "vite";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -11,6 +12,7 @@ import {
 } from "./config/build-environment.js";
 import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
 import { NOTEBOOK_MAIN_EXTERNALS } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
+import appInfo from "./package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +22,25 @@ export default defineConfig(({ command }) => {
 	const viteEnvironment = loadEnv(environment, root, "VITE_");
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
+	const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
+
 	return {
+		plugins: [
+			sentryVitePlugin({
+				authToken: process.env.SENTRY_AUTH_TOKEN,
+				org: "anaconda-nq",
+				project: "agentic-desktop",
+				release: {
+					name: `${appInfo.name}@${appInfo.version}`,
+					deploy: {
+						env: process.env.APP_MODE ?? environment,
+					},
+				},
+				...(uploadSourcemaps && {
+					sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
+				}),
+			}),
+		],
 		define: {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_CHANNEL: JSON.stringify(channel),
@@ -36,6 +56,10 @@ export default defineConfig(({ command }) => {
 			mainFields: ["module", "jsnext:main", "jsnext"],
 		},
 		build: {
+			// Only emit source maps when they will be uploaded to Sentry and then
+			// stripped from the output (filesToDeleteAfterUpload). Without the token,
+			// emitting maps would ship raw `.map` files in the packaged `.app`.
+			sourcemap: uploadSourcemaps,
 			lib: {
 				entry: "src/main/main.ts",
 				formats: ["es"],
@@ -59,6 +83,7 @@ export default defineConfig(({ command }) => {
 					// runtime. Keep it external so Electron requires it from
 					// node_modules (shipped via `pnpm deploy --prod`).
 					"@launchdarkly/node-client-sdk",
+					"@sentry/electron",
 					"electron-store",
 					"electron-log",
 					"electron-squirrel-startup",
@@ -82,6 +107,7 @@ export default defineConfig(({ command }) => {
 					// packages declared on this package (not transitive deps of
 					// linked plugins such as kilo-server).
 					"ws",
+					"anaconda-opentelemetry",
 					...builtinModules,
 					...builtinModules.map((module) => `node:${module}`),
 				],

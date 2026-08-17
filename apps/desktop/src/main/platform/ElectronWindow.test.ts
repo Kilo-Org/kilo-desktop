@@ -248,7 +248,6 @@ describe("ElectronWindow theme chrome", () => {
 		expect(window?.destroy).toHaveBeenCalled();
 		expect(windows.main).toBeUndefined();
 	});
-
 	it("broadcasts renderer events to every window except their origin", () => {
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
@@ -281,5 +280,60 @@ describe("ElectronWindow theme chrome", () => {
 		expect(listener).toHaveBeenCalledWith(true);
 		unlisten();
 		expect(second?.off).toHaveBeenCalledWith("focus", focus);
+	});
+
+	it("does not auto-show a deferred window and resolves whenReady once it paints", async () => {
+		vi.useFakeTimers();
+		try {
+			const windows = new ElectronWindow(createShell() as never, () => false);
+			windows.create({ isDevelopment: false, deferShow: true });
+			const window = createdWindows[0];
+
+			// deferShow=true means no ready-to-show auto-show handler was registered.
+			const autoShow = window?.once.mock.calls.find((call) => call[0] === "ready-to-show");
+			expect(autoShow).toBeUndefined();
+
+			const ready = windows.whenReady();
+			const readyToShow = window?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
+			readyToShow?.();
+
+			await expect(ready).resolves.toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("whenReady resolves immediately when there is no live window", async () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+
+		await expect(windows.whenReady()).resolves.toBeUndefined();
+	});
+
+	it("reveal is a no-op when there is no live window", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+
+		expect(() => windows.reveal()).not.toThrow();
+	});
+
+	it("uses the packaged resources path for the Linux icon when packaged", () => {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		electronApp.isPackaged = true;
+		const originalResourcesPath = process.resourcesPath;
+		Object.defineProperty(process, "resourcesPath", {
+			value: "/fake/resources",
+			configurable: true,
+		});
+		try {
+			const windows = new ElectronWindow(createShell() as never, () => false);
+			windows.create({ isDevelopment: false });
+
+			expect(createdWindows[0]?.options.icon).toBe(path.join("/fake/resources", "icon.png"));
+		} finally {
+			electronApp.isPackaged = false;
+			Object.defineProperty(process, "resourcesPath", {
+				value: originalResourcesPath,
+				configurable: true,
+			});
+		}
 	});
 });

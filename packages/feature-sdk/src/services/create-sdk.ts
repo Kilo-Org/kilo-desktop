@@ -17,6 +17,7 @@ import type {
 	SdkPlugins,
 	SdkShell,
 	SdkState,
+	SdkTelemetry,
 	SdkTheme,
 	SdkTools,
 	ShellFsDelegate,
@@ -31,6 +32,7 @@ import type { ToolRegistry } from "./tool-registry.js";
 
 export interface ShellDelegates {
 	notifications: SdkNotifications;
+	telemetry: SdkTelemetry;
 	theme: SdkTheme;
 	auth: SdkAuth;
 	featureFlags: SdkFeatureFlags;
@@ -273,6 +275,18 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	};
 
+	// ─── Telemetry (shell delegate) ───────────────────────────────────────────
+	// Tag every event with featureId; an explicit data.featureId caller override wins.
+	const telemetry: SdkTelemetry = {
+		async track(input) {
+			assertAlive();
+			return services.shellDelegates.telemetry.track({
+				...input,
+				data: { featureId, ...input.data },
+			});
+		},
+	};
+
 	// ─── SDK object ────────────────────────────────────────────────────────────
 	const invoke = async (channel: string, args?: unknown) => {
 		assertAlive();
@@ -319,6 +333,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 
 		notifications: services.shellDelegates.notifications,
+		telemetry,
 		theme: services.shellDelegates.theme,
 		auth: services.shellDelegates.auth,
 		featureFlags,

@@ -80,6 +80,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 
 	/** Shell-level services (delegated to the shell). fs is sandboxed per feature — see {@link SdkFs}. */
 	readonly notifications: SdkNotifications;
+	readonly telemetry: SdkTelemetry;
 	readonly theme: SdkTheme;
 	readonly auth: SdkAuth;
 	readonly featureFlags: SdkFeatureFlags;
@@ -347,6 +348,30 @@ export interface SdkNotifications {
 		type: "info" | "success" | "warning" | "error";
 	}): Promise<NotificationResult>;
 	setBadge(count: number): Promise<NotificationResult>;
+}
+
+/**
+ * feature-sdk keeps a LOCAL copy of this shape so it never depends on
+ * `contracts` (same rule used for {@link AuthSession}): `event` is typed as
+ * `string` here; the closed enum is enforced at the IPC boundary in the main
+ * process. Keep in sync with contracts' telemetryTrackInputSchema.
+ */
+export interface TelemetryData {
+	event: string;
+	data?: Record<string, unknown>;
+	options?: { anonymize?: "always" | "if-not-logged-in" | "never" };
+}
+
+/**
+ * Product telemetry, shell-owned. Fire-and-forget: track() never rejects for
+ * expected drops (browser mode, opt-out). The SDK auto-tags each event with the
+ * calling feature's id under `data.featureId` (an explicit data.featureId wins).
+ *
+ * @example
+ * sdk.telemetry.track({ event: "PAGE_VISIT", data: { path: "/todos" } });
+ */
+export interface SdkTelemetry {
+	track(input: TelemetryData): Promise<void>;
 }
 
 /**

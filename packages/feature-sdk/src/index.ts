@@ -11,6 +11,8 @@ export type {
 	SdkCommands,
 	SdkNotifications,
 	NotificationResult,
+	SdkTelemetry,
+	TelemetryData,
 	SdkTheme,
 	SdkAuth,
 	AuthUser,

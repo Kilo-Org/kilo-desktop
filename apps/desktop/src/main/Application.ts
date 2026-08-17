@@ -22,6 +22,7 @@ import { registerFeatureFlagCapability } from "./features/feature-flag/feature-f
 import { createFsHandlers } from "./features/fs/handlers.js";
 import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
+import { createTelemetryHandlers, TelemetryService } from "./features/telemetry/index.js";
 import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
@@ -43,6 +44,8 @@ import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { SplashWindow } from "./platform/SplashWindow.js";
 import { configureUpdater } from "./platform/Updater.js";
+import { flushSentry } from "./platform/sentry.js";
+import * as Sentry from "@sentry/electron/main";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
 export class Application {
@@ -72,6 +75,7 @@ export class Application {
 		logger: this.#logger,
 	});
 	#featureFlags: FeatureFlagService | undefined;
+	#telemetry: TelemetryService | undefined;
 	#disposePromise: Promise<void> | undefined;
 
 	async start(): Promise<void> {
@@ -129,12 +133,20 @@ export class Application {
 			this.#disposers.push(this.#security.install(session.defaultSession));
 
 			reporter.report("features", "Preparing features\u2026");
+			Sentry.addBreadcrumb({ category: "app.boot", message: "Booting features" });
 			await this.#registerIpc(preferences, reporter);
+			Sentry.addBreadcrumb({ category: "app.boot", message: "Features booted" });
 			this.#registerPushEvents();
+
+			// Fire the bootstrap event after IPC is registered. Fire-and-forget: the
+			// service swallows its own errors, so telemetry never blocks startup.
+			void this.#telemetry?.initialize();
+
 			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
 			// half-initialized main window without security/IPC/handlers.
+			Sentry.captureException(error, { tags: { phase: "boot" } });
 			reporter.complete();
 			await splash.close();
 			this.#app.quit();
@@ -255,12 +267,22 @@ export class Application {
 			}),
 		);
 
+		const telemetry = TelemetryService.create({
+			auth: this.#auth,
+			preferences,
+			appVersion: this.#app.metadata.appVersion,
+			serviceId: "anaconda-agentic-desktop",
+		});
+		this.#telemetry = telemetry;
+		this.#disposers.push(() => void telemetry.dispose());
+
 		const handlers = {
 			...createShellHandlers(this.#shell),
 			...createThemeHandlers(this.#windows, preferences),
 			...createAuthHandlers(this.#auth),
 			...createNotificationsHandlers(this.#notifications),
 			...createFsHandlers(this.#scopedFs),
+			...createTelemetryHandlers(telemetry),
 			...createFeatureHandlers(),
 			...createFeatureFlagHandlers(featureFlags),
 		} satisfies IpcHandlers;
@@ -305,5 +327,6 @@ export class Application {
 		} catch (error) {
 			this.#logger.error("protocol shutdown failed", error);
 		}
+		await flushSentry();
 	}
 }

@@ -1,6 +1,10 @@
 import { createFeatureSystem, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 
-import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type {
+	AuthSession,
+	LocalApi,
+	TelemetryTrackInput,
+} from "@anaconda-agentic-desktop/contracts";
 import type {
 	FeatureEvent,
 	FeatureFlagMap,
@@ -137,6 +141,17 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 		notifications: {
 			show: (opts) => api.notifications.show(opts),
 			setBadge: (count) => api.notifications.setBadge({ count }),
+		},
+		telemetry: {
+			// The SDK's open `event: string` is cast to the contract's closed
+			// enum; the main process validates it — this is the boundary check,
+			// not the renderer.
+			track: (input) =>
+				api.telemetry.track({
+					...input,
+					event: input.event as TelemetryTrackInput["event"],
+					data: input.data ?? {},
+				}),
 		},
 		theme: {
 			subscribe(fn) {

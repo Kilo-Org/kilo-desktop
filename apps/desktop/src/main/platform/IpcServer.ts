@@ -1,4 +1,5 @@
 import { ipcMain, type IpcMain } from "electron";
+import * as Sentry from "@sentry/electron/main";
 
 import {
 	ipcMethods,
@@ -67,6 +68,7 @@ export class IpcServer {
 						return failure("BUSINESS", error.message);
 					}
 					this.logger.error(`IPC handler failed for ${channel}`, error);
+					Sentry.captureException(error, { tags: { ipc_channel: channel } });
 					return failure("INTERNAL", "The desktop operation failed.");
 				}
 			});
@@ -106,6 +108,7 @@ export class IpcServer {
 					const rejectPort = (error: unknown): void => {
 						port.close();
 						this.logger.error(`IPC port handler failed for ${channel}`, error);
+						Sentry.captureException(error, { tags: { ipc_channel: channel } });
 					};
 					try {
 						void Promise.resolve(

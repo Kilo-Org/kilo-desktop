@@ -23,8 +23,9 @@ function fakeLocalApi(
 	auth: AuthOverrides = {},
 	overrides: Partial<LocalApi> = {},
 ): LocalApi {
+	const base = createBrowserLocalApi();
 	return {
-		...createBrowserLocalApi(),
+		...base,
 		theme: {
 			sync: async () => undefined,
 		},
@@ -54,6 +55,10 @@ function apiWithFlags(flags: Record<string, unknown>): Partial<LocalApi> {
 			onChanged: () => () => undefined,
 		},
 	};
+}
+
+function apiWithTrack(track: LocalApi["telemetry"]["track"]): Partial<LocalApi> {
+	return { telemetry: { track } };
 }
 
 function renderLayout(
@@ -126,6 +131,43 @@ describe("AppSidebarLayout login button", () => {
 		await page.getByRole("button", { name: "Log in" }).click();
 
 		expect(login).toHaveBeenCalledTimes(1);
+	});
+
+	it("tracks LOGGED_IN after a successful login", async () => {
+		const login = vi.fn(async (): Promise<AuthSession> => ({
+			status: "authenticated",
+			user: { username: "ada" },
+		}));
+		const track = vi.fn(async () => undefined);
+		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
+
+		await page.getByRole("button", { name: "Log in" }).click();
+
+		await vi.waitFor(() => {
+			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_IN" }));
+		});
+	});
+
+	it("does not track LOGGED_IN when login fails", async () => {
+		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "error", reason: "nope" }));
+		const track = vi.fn(async () => undefined);
+		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
+
+		await page.getByRole("button", { name: "Log in" }).click();
+
+		await vi.waitFor(() => {
+			expect(login).toHaveBeenCalledTimes(1);
+		});
+		expect(track).not.toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_IN" }));
+	});
+
+	it("tracks PAGE_VISIT for the initial route on mount", async () => {
+		const track = vi.fn(async () => undefined);
+		renderLayout(fakeLocalApi({ status: "anonymous" }, {}, apiWithTrack(track)));
+
+		await vi.waitFor(() => {
+			expect(track).toHaveBeenCalledWith({ event: "PAGE_VISIT", data: { path: "/" } });
+		});
 	});
 });
 
@@ -203,6 +245,7 @@ describe("AppSidebarLayout account menu", () => {
 
 	it("shows account details and logs out", async () => {
 		const logout = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
+		const track = vi.fn(async () => undefined);
 		renderLayout(
 			fakeLocalApi(
 				{
@@ -215,6 +258,7 @@ describe("AppSidebarLayout account menu", () => {
 					},
 				},
 				{ logout },
+				apiWithTrack(track),
 			),
 		);
 
@@ -228,6 +272,29 @@ describe("AppSidebarLayout account menu", () => {
 		await page.getByRole("menuitem", { name: "Log out" }).click();
 
 		expect(logout).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => {
+			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_OUT" }));
+		});
+	});
+
+	it("does not track LOGGED_OUT when logout fails", async () => {
+		const logout = vi.fn(async (): Promise<AuthSession> => ({ status: "error", reason: "nope" }));
+		const track = vi.fn(async () => undefined);
+		renderLayout(
+			fakeLocalApi(
+				{ status: "authenticated", user: { username: "ada" } },
+				{ logout },
+				apiWithTrack(track),
+			),
+		);
+
+		await page.getByRole("button", { name: "Account menu for ada" }).click();
+		await page.getByRole("menuitem", { name: "Log out" }).click();
+
+		await vi.waitFor(() => {
+			expect(logout).toHaveBeenCalledTimes(1);
+		});
+		expect(track).not.toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_OUT" }));
 	});
 });
 

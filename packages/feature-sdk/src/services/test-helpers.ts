@@ -27,6 +27,7 @@ export function makeServices(featureRouter?: FeatureRouter) {
 			show: async () => ({ delivered: true }),
 			setBadge: async () => ({ delivered: true }),
 		},
+		telemetry: { track: async () => {} },
 		theme: {
 			subscribe: (fn) => {
 				fn("light");

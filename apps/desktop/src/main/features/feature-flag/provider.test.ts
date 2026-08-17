@@ -11,6 +11,10 @@ import type { FeatureFlagContext } from "./types.js";
 import type { Logger } from "../../platform/logger.js";
 
 const changeListeners = new Set<() => void>();
+const offSpy = vi.fn();
+const variationSpy = vi.fn((_key: string, defaultValue: unknown) => defaultValue);
+const allFlagsSpy = vi.fn<() => Record<string, unknown>>(() => ({}));
+const closeSpy = vi.fn(async () => {});
 const startSpy = vi.fn<() => Promise<LDWaitForInitializationResult>>(async () => ({
 	status: "complete",
 }));
@@ -22,12 +26,12 @@ const client = {
 	on: (event: string, cb: () => void) => {
 		if (event === "change") changeListeners.add(cb);
 	},
-	off: () => {},
+	off: offSpy,
 	start: startSpy,
 	identify: identifySpy,
-	variation: (_key: string, defaultValue: unknown) => defaultValue,
-	allFlags: () => ({}),
-	close: async () => {},
+	variation: variationSpy,
+	allFlags: allFlagsSpy,
+	close: closeSpy,
 } as unknown as LDClient;
 
 const createClientSpy = vi.fn(() => client);
@@ -68,6 +72,10 @@ beforeEach(() => {
 	changeListeners.clear();
 	startSpy.mockReset().mockResolvedValue({ status: "complete" });
 	identifySpy.mockReset().mockResolvedValue({ status: "completed" });
+	variationSpy.mockClear().mockImplementation((_key, defaultValue) => defaultValue);
+	allFlagsSpy.mockClear().mockReturnValue({});
+	closeSpy.mockClear();
+	offSpy.mockClear();
 	createClientSpy.mockClear();
 });
 
@@ -204,5 +212,34 @@ describe("LaunchDarklyProvider", () => {
 		changeListeners.forEach((cb) => cb());
 
 		expect(onChange).toHaveBeenCalledTimes(1);
+	});
+
+	it("getFlag delegates to the client variation with the default value", () => {
+		variationSpy.mockReturnValueOnce("enabled");
+		const provider = makeProvider();
+
+		expect(provider.getFlag("my-flag", "off")).toBe("enabled");
+		expect(variationSpy).toHaveBeenCalledWith("my-flag", "off");
+	});
+
+	it("getAllFlags delegates to the client allFlags", () => {
+		allFlagsSpy.mockReturnValueOnce({ a: true, b: 2 });
+		const provider = makeProvider();
+
+		expect(provider.getAllFlags()).toEqual({ a: true, b: 2 });
+		expect(allFlagsSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("dispose removes listeners and closes the client", async () => {
+		const provider = makeProvider();
+		const onChange = vi.fn();
+		provider.on("change", onChange);
+
+		await provider.dispose();
+
+		expect(closeSpy).toHaveBeenCalledTimes(1);
+		// Listeners were removed, so a subsequent SDK change is not re-emitted.
+		changeListeners.forEach((cb) => cb());
+		expect(onChange).not.toHaveBeenCalled();
 	});
 });

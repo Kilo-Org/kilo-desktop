@@ -127,4 +127,27 @@ describe("ThemeProvider", () => {
 		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
 		expect(globalThis.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
 	});
+
+	it("still applies the scheme when the host chrome sync rejects", async () => {
+		stubMatchMedia(false);
+		globalThis.localStorage.setItem(THEME_STORAGE_KEY, "dark");
+		const sync = vi
+			.fn<(state: ThemeState) => Promise<void>>()
+			.mockRejectedValue(new Error("host unavailable"));
+		const api = withThemeSync(createBrowserLocalApi(), sync);
+
+		expect(() => renderProvider(api)).not.toThrow();
+
+		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
+		expect(sync).toHaveBeenCalledWith({ source: "dark", shouldUseDarkColors: true });
+	});
+
+	it("throws from useColorScheme when used outside a ThemeProvider", () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		try {
+			expect(() => render(<Harness />)).toThrow(/useColorScheme must be used within ThemeProvider/);
+		} finally {
+			error.mockRestore();
+		}
+	});
 });

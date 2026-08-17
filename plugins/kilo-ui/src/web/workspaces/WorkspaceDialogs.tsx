@@ -296,6 +296,7 @@ function WorkspaceFormDialog({
 						<Field>
 							<FieldLabel>Folders</FieldLabel>
 							<div
+								data-qa-id="workspace-folder-dropzone"
 								onDragOver={(event) => {
 									event.preventDefault();
 									if (canPickDirectories) setIsDragging(true);

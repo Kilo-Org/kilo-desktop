@@ -1,6 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { OnboardingFlow } from "./OnboardingFlow.js";
 
@@ -93,5 +93,42 @@ describe("OnboardingFlow", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("onboarding-progress-kilo-sign-in")).toBeDisabled();
+	});
+
+	it("skips when the dialog is dismissed with Escape", async () => {
+		const onSkip = vi.fn();
+		const { baseElement } = render(
+			<OnboardingFlow
+				step="kilo-sign-in"
+				onBack={vi.fn()}
+				onContinue={vi.fn()}
+				onSkip={onSkip}
+				onJump={vi.fn()}
+			>
+				<p>Sign-in body</p>
+			</OnboardingFlow>,
+		);
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		expect(onSkip).toHaveBeenCalledOnce();
+	});
+
+	it("does not focus the first progress bar when the dialog opens", async () => {
+		const { baseElement } = render(
+			<OnboardingFlow
+				step="kilo-sign-in"
+				onBack={vi.fn()}
+				onContinue={vi.fn()}
+				onSkip={vi.fn()}
+				onJump={vi.fn()}
+			>
+				<p>Sign-in body</p>
+			</OnboardingFlow>,
+		);
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
+		await expect.element(screen.getByTestId("onboarding-overlay")).toHaveFocus();
+		await expect.element(screen.getByTestId("onboarding-progress-kilo-sign-in")).not.toHaveFocus();
 	});
 });

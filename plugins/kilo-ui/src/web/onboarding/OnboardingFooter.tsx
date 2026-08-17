@@ -1,6 +1,7 @@
 import { ChevronLeftIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { DialogFooter } from "@anaconda-agentic-desktop/ui/components/dialog";
 
 type OnboardingFooterProps = {
 	showBack: boolean;
@@ -22,7 +23,7 @@ export function OnboardingFooter({
 	onSkip,
 }: OnboardingFooterProps) {
 	return (
-		<footer className="border-border mt-6 flex flex-none items-center justify-between border-t pt-5">
+		<DialogFooter className="sm:justify-between">
 			<Button
 				type="button"
 				variant="ghost"
@@ -54,6 +55,6 @@ export function OnboardingFooter({
 					{continueLabel}
 				</Button>
 			</div>
-		</footer>
+		</DialogFooter>
 	);
 }

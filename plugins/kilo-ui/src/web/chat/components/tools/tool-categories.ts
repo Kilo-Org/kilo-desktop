@@ -20,7 +20,7 @@ import { basename, getCommandSummary, getPatchInfo, str, truncate } from "./tool
  * set of Kilo (the opencode fork used as the backend). MCP tools are named
  * `{server}_{tool}` and group by server; anything else unmapped lands in the
  * generic tools group. Known MCP servers can override their display label and
- * icon (e.g. nteract-mcp → Notebooks, matching the chat right-panel notebook tab).
+ * icon (e.g. notebooks → Notebooks, matching the chat right-panel notebook tab).
  */
 
 export type ToolCategory =
@@ -378,7 +378,7 @@ type McpKindOverride = Pick<KindMeta, "icon" | "label" | "circleClassName"> & {
  * Grouping still keys off `mcp:{server}` / `group-mcp-{server}`.
  */
 const MCP_KIND_OVERRIDES: Record<string, McpKindOverride> = {
-	"nteract-mcp": {
+	notebooks: {
 		icon: NotebookIcon,
 		label: "Notebooks",
 		circleClassName:

@@ -5,8 +5,8 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 import { findNteractMcpArtifact } from "../../packaging/artifacts.js";
 import type { BuildChannel } from "../runtime/socket-path.js";
 
-export const NTERACT_MCP_ENTRY_NAME = "nteract-mcp";
-/** Previous Kilo MCP id; dropped so tool prefixes are `nteract-mcp_*`, not `runt_*`. */
+export const NOTEBOOKS_MCP_ENTRY_NAME = "notebooks";
+/** Previous Kilo MCP id; dropped so tool prefixes are `notebooks_*`, not `runt_*`. */
 const LEGACY_RUNT_MCP_ENTRY_NAME = "runt";
 
 /** Structural capability shape from kilo-server — asserted, not imported. */
@@ -75,7 +75,7 @@ export async function reconcileRuntMcpConfig(
 	const mcpConfig =
 		mainSdk.plugins.get<KiloServerMcpCapabilities>("kilo-server")?.kiloService.mcpConfig;
 	if (!mcpConfig) {
-		logger.warn("Skipping nteract-mcp configuration: kilo-server mcpConfig is unavailable.");
+		logger.warn("Skipping notebook MCP configuration: kilo-server mcpConfig is unavailable.");
 		return;
 	}
 
@@ -109,11 +109,11 @@ export async function reconcileRuntMcpConfig(
 
 	if (!entry) {
 		await mcpConfig.remove("notebook", LEGACY_RUNT_MCP_ENTRY_NAME);
-		await mcpConfig.remove("notebook", NTERACT_MCP_ENTRY_NAME);
+		await mcpConfig.remove("notebook", NOTEBOOKS_MCP_ENTRY_NAME);
 		logger.info("Removed notebook MCP configuration because its bundled binary is not staged.");
 		return;
 	}
 
 	await mcpConfig.remove("notebook", LEGACY_RUNT_MCP_ENTRY_NAME);
-	await mcpConfig.set("notebook", NTERACT_MCP_ENTRY_NAME, entry);
+	await mcpConfig.set("notebook", NOTEBOOKS_MCP_ENTRY_NAME, entry);
 }

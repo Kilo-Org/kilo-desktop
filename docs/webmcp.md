@@ -182,7 +182,7 @@ control it and want zero end-user configuration.
 
 The interim ships a lockfile-pinned `@mcp-b/webmcp-local-relay` runtime inside
 the packaged app's unpacked kilo-server plugin assets,
-initializes an `mcp["anaconda-desktop-relay"]` entry into the app-owned
+initializes an `mcp["desktop"]` entry into the app-owned
 `kilo.jsonc`, runs the WebSocket rendezvous in Electron main, and lets Kilo
 launch the package's CLI through Anaconda Desktop's executable in Node mode
 (`ELECTRON_RUN_AS_NODE=1`) for the stdio MCP transport.
@@ -209,7 +209,7 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  │    reconcileWebMcpRelayConfig(${runtime}/config/kilo/, {                             │   │
 │  │      // written to kilo.jsonc (Kilo's canonical file, JSONC-tolerant)      │   │
 │  │      mcp: {                                                                 │   │
-│  │        "anaconda-desktop-relay": {                                          │   │
+│  │        "desktop": {                                          │   │
 │  │          type: "local",                       ◄── Kilo's McpLocalConfig    │   │
 │  │          command: [process.execPath, <relay entry>],                        │   │
 │  │          environment: { ELECTRON_RUN_AS_NODE: "1" },                        │   │
@@ -222,7 +222,7 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  │    })                                                                       │   │
 │  │                                                                             │   │
 │  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-ownership.json           │   │
-│  │      { "version": 3, "ownedEntryIds": ["anaconda-desktop-relay"] }                │   │
+│  │      { "version": 3, "ownedEntryIds": ["desktop"] }                │   │
 │  │                                                                             │   │
 │  │    When RunAsNode is disabled (downgrade / rollback), initialization instead REMOVES │   │
 │  │    the Desktop-owned entry and prunes the sidecar.                               │   │
@@ -329,13 +329,13 @@ Time ─►
  t3    Renderer widget connects to 9345 and publishes tools
        │
  t4    First chat connection lazily starts kilo serve
-       │  └─ Kilo reads mcp["anaconda-desktop-relay"]
+       │  └─ Kilo reads mcp["desktop"]
        │
  t5    Kilo spawns its relay subprocess
        │  └─ joins Desktop main's fixed-port server in client mode
        │     and proxies tools over stdio
        │
- t6    Kilo shows the tools under `anaconda-desktop-relay` in its MCP list
+ t6    Kilo shows the tools under `desktop` in its MCP list
        READY
 ```
 
@@ -396,7 +396,7 @@ Before initialization (user's kilo.jsonc, if any):    After initialization:
       "type": "local",                               "type": "local",
       "command": ["python", "-m", "my_mcp"]          "command": ["python", "-m", "my_mcp"]
     }                                              },
-  }                                                "anaconda-desktop-relay": {       ← added
+  }                                                "desktop": {       ← added
 }                                                    "type": "local",
                                                      "command": [
                                                        "/Applications/Anaconda…/MacOS/Anaconda Agentic Desktop",
@@ -412,14 +412,14 @@ Before initialization (user's kilo.jsonc, if any):    After initialization:
                                                  ──────────────────────────────
                                                {
                                                  "version": 3,
-                                                 "ownedEntryIds": ["anaconda-desktop-relay"],
-                                                 "owners": { "anaconda-desktop-relay": "kilo-server" }
+                                                 "ownedEntryIds": ["desktop"],
+                                                 "owners": { "desktop": "kilo-server" }
                                                }
 ```
 
 Rules:
 
-1. **Only** `mcp["anaconda-desktop-relay"]` is written inside `kilo.jsonc`.
+1. **Only** `mcp["desktop"]` is written inside `kilo.jsonc`.
    Every other top-level key, every sibling MCP entry, and every JSONC
    comment / formatting quirk is preserved by `jsonc-parser`'s `modify()`
    API. Ownership tracking never leaks into `kilo.jsonc` because Kilo's

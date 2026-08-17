@@ -5,7 +5,7 @@ import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 import {
 	buildNteractMcpEntry,
 	buildRuntMcpEntry,
-	NTERACT_MCP_ENTRY_NAME,
+	NOTEBOOKS_MCP_ENTRY_NAME,
 	reconcileRuntMcpConfig,
 	type KiloMcpConfigService,
 } from "./kilo-mcp-config.js";
@@ -30,7 +30,7 @@ describe("notebook MCP entries", () => {
 });
 
 describe("reconcileRuntMcpConfig", () => {
-	it("persists nteract-mcp through kilo-server ownership", async () => {
+	it("persists notebooks through kilo-server ownership", async () => {
 		const mcpConfig: KiloMcpConfigService = {
 			set: vi.fn(async () => undefined),
 			remove: vi.fn(async () => undefined),
@@ -50,11 +50,11 @@ describe("reconcileRuntMcpConfig", () => {
 
 		expect(mcpConfig.set).toHaveBeenCalledWith(
 			"notebook",
-			NTERACT_MCP_ENTRY_NAME,
+			NOTEBOOKS_MCP_ENTRY_NAME,
 			buildNteractMcpEntry("/opt/nteract-mcp", "nightly"),
 		);
 		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", "runt");
-		expect(mcpConfig.remove).not.toHaveBeenCalledWith("notebook", NTERACT_MCP_ENTRY_NAME);
+		expect(mcpConfig.remove).not.toHaveBeenCalledWith("notebook", NOTEBOOKS_MCP_ENTRY_NAME);
 		notebookSdk.dispose();
 		kiloServerSdk.dispose();
 	});
@@ -79,7 +79,7 @@ describe("reconcileRuntMcpConfig", () => {
 
 		expect(mcpConfig.set).toHaveBeenCalledWith(
 			"notebook",
-			NTERACT_MCP_ENTRY_NAME,
+			NOTEBOOKS_MCP_ENTRY_NAME,
 			buildRuntMcpEntry("/opt/runt-nightly", "/tmp/runtimed.sock"),
 		);
 		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", "runt");
@@ -104,7 +104,7 @@ describe("reconcileRuntMcpConfig", () => {
 		});
 
 		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", "runt");
-		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", NTERACT_MCP_ENTRY_NAME);
+		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", NOTEBOOKS_MCP_ENTRY_NAME);
 		expect(mcpConfig.set).not.toHaveBeenCalled();
 		notebookSdk.dispose();
 		kiloServerSdk.dispose();
@@ -128,7 +128,7 @@ describe("reconcileRuntMcpConfig", () => {
 		});
 
 		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", "runt");
-		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", NTERACT_MCP_ENTRY_NAME);
+		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", NOTEBOOKS_MCP_ENTRY_NAME);
 		expect(mcpConfig.set).not.toHaveBeenCalled();
 		notebookSdk.dispose();
 		kiloServerSdk.dispose();

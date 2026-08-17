@@ -22,7 +22,7 @@ describe("getMcpServerFromToolName", () => {
 		expect(getMcpServerFromToolName("atlassian_getJiraIssue")).toBe("atlassian");
 		expect(getMcpServerFromToolName("atlassian_getAccessibleAtlassianResources")).toBe("atlassian");
 		expect(getMcpServerFromToolName("my-server_search")).toBe("my-server");
-		expect(getMcpServerFromToolName("nteract-mcp_create_cell")).toBe("nteract-mcp");
+		expect(getMcpServerFromToolName("notebooks_create_cell")).toBe("notebooks");
 	});
 
 	it("ignores built-in tools even when they contain underscores", () => {
@@ -224,12 +224,12 @@ describe("MCP activity grouping", () => {
 		expect(getKindMeta("mcp:atlassian").icon).not.toBe(NotebookIcon);
 	});
 
-	it("presents nteract-mcp as a Notebooks group with the notebook tab icon", () => {
-		expect(getGroupKeyForTool("nteract-mcp_create_cell")).toBe("group-mcp-nteract-mcp");
-		expect(getActivityKind({ type: "tool-call", toolName: "nteract-mcp_create_cell" })).toBe(
-			"mcp:nteract-mcp",
+	it("presents notebooks as a Notebooks group with the notebook tab icon", () => {
+		expect(getGroupKeyForTool("notebooks_create_cell")).toBe("group-mcp-notebooks");
+		expect(getActivityKind({ type: "tool-call", toolName: "notebooks_create_cell" })).toBe(
+			"mcp:notebooks",
 		);
-		const meta = getKindMeta("mcp:nteract-mcp");
+		const meta = getKindMeta("mcp:notebooks");
 		expect(meta.label).toBe("Notebooks");
 		expect(meta.icon).toBe(NotebookIcon);
 		expect(meta.liveLabel({ count: 1, files: 0 })).toBe("Notebooks...");
@@ -237,11 +237,11 @@ describe("MCP activity grouping", () => {
 		expect(meta.circleClassName).toContain("teal");
 	});
 
-	it("gives nteract-mcp tools display names without the server prefix", () => {
-		expect(formatToolDisplayName("nteract-mcp_create_notebook")).toBe("Create notebook");
-		expect(formatToolDisplayName("nteract-mcp_connect_notebook")).toBe("Connect notebook");
-		expect(formatToolDisplayName("nteract-mcp_execute_cell")).toBe("Run cell");
-		expect(formatToolDisplayName("nteract-mcp_brand_new_tool")).toBe("Brand new tool");
+	it("gives notebooks tools display names without the server prefix", () => {
+		expect(formatToolDisplayName("notebooks_create_notebook")).toBe("Create notebook");
+		expect(formatToolDisplayName("notebooks_connect_notebook")).toBe("Connect notebook");
+		expect(formatToolDisplayName("notebooks_execute_cell")).toBe("Run cell");
+		expect(formatToolDisplayName("notebooks_brand_new_tool")).toBe("Brand new tool");
 		expect(formatToolDisplayName("atlassian_getJiraIssue")).toBe("Get jira issue");
 		expect(formatToolDisplayName("bash")).toBe("bash");
 	});

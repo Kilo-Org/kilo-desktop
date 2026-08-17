@@ -16,7 +16,7 @@ import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
  */
 
 export { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME };
-export const MCP_ENTRY_NAME = "anaconda-desktop-relay";
+export const MCP_ENTRY_NAME = "desktop";
 export const MCP_ENTRY_SOURCE_ID = "kilo-server";
 
 export const WEBMCP_RELAY_PORT = 9345;

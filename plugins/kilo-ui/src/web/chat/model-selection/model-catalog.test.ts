@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	buildCatalogFromProviderList,
+	isKiloGatewayProvider,
 	modelRefToId,
 	parseModelId,
 	pickDefaultModel,
@@ -59,6 +60,13 @@ describe("model-catalog", () => {
 			modelID: "org/model",
 		});
 		expect(parseModelId("bad")).toBeNull();
+	});
+
+	it("recognizes the Kilo Gateway provider by id or name", () => {
+		expect(isKiloGatewayProvider({ id: "kilo" })).toBe(true);
+		expect(isKiloGatewayProvider({ id: "kilo", name: "Kilo Gateway" })).toBe(true);
+		expect(isKiloGatewayProvider({ id: "other", name: "Kilo Gateway" })).toBe(true);
+		expect(isKiloGatewayProvider({ id: "anthropic", name: "Anthropic" })).toBe(false);
 	});
 
 	it("builds a connected-only catalog by default", () => {

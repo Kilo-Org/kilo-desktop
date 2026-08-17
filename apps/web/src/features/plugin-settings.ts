@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { ComponentType } from "react";
-import { PaletteIcon } from "lucide-react";
 
 import {
 	pluginSettingsContributions,
@@ -8,10 +7,7 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 import { useFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 
-import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
-
-import { PLUGIN_DISCOVERY } from "./features.js";
 
 /**
  * A settings-page section declared in a plugin manifest (`contributes.settings`)
@@ -40,20 +36,6 @@ type BuildOptions = {
 	 */
 	builtIn?: readonly PluginSettingsSection[];
 };
-
-const BUILT_IN_SETTINGS: readonly PluginSettingsSection[] = [
-	{
-		pluginId: "shell",
-		id: "appearance",
-		title: "Appearance",
-		component: AppearanceSettings,
-		icon: undefined,
-		iconComponent: PaletteIcon,
-		priority: 100,
-		featureFlag: undefined,
-		browserSafe: true,
-	},
-];
 
 /** Derive settings sections from a discovery result, priority-ordered (pure). */
 export function buildPluginSettings(
@@ -94,19 +76,13 @@ export function filterVisiblePluginSettings(
 	});
 }
 
-/** All settings sections of the bundled plugins, in priority order. */
-export const PLUGIN_SETTINGS: readonly PluginSettingsSection[] = buildPluginSettings(
-	PLUGIN_DISCOVERY,
-	{ builtIn: BUILT_IN_SETTINGS },
-);
-
 /**
  * Subscribe to the feature-flag store and return the subset of `sections`
  * visible in the settings nav right now. Re-renders only when a flag
  * referenced by one of the sections actually changes value.
  */
 export function useVisiblePluginSettings(
-	sections: readonly PluginSettingsSection[] = PLUGIN_SETTINGS,
+	sections: readonly PluginSettingsSection[],
 	desktopAvailable: boolean = isDesktopBridgeAvailable(),
 ): readonly PluginSettingsSection[] {
 	const { featureFlags } = useFeatureSystem().services.shellDelegates;

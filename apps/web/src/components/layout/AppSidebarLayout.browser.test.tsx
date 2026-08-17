@@ -11,10 +11,36 @@ import { page } from "vitest/browser";
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import type { PluginNavEntry } from "@/features/plugin-nav";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 import { AppSidebarLayout } from "./AppSidebarLayout";
+
+const flaggedNav: readonly PluginNavEntry[] = [
+	{
+		pluginId: "todos",
+		to: "/plugins/todos",
+		label: "Todos",
+		icon: undefined,
+		iconComponent: undefined,
+		priority: 1,
+		splat: "todos",
+		navQaId: "nav-todos",
+		featureFlag: "todo-feature",
+	},
+	{
+		pluginId: "environments",
+		to: "/plugins/environments",
+		label: "Environments",
+		icon: undefined,
+		iconComponent: undefined,
+		priority: 1,
+		splat: "environments",
+		navQaId: "nav-environments",
+		featureFlag: "environments-feature",
+	},
+];
 
 type AuthOverrides = Partial<LocalApi["auth"]>;
 
@@ -65,11 +91,12 @@ function renderLayout(
 	api: LocalApi,
 	path = "/",
 	setup?: (system: ReturnType<typeof createAppFeatureSystem>) => void,
+	navEntries: readonly PluginNavEntry[] = [],
 ) {
 	const system = createAppFeatureSystem(api);
 	setup?.(system);
 	const rootRoute = createRootRoute({
-		component: () => <AppSidebarLayout>content</AppSidebarLayout>,
+		component: () => <AppSidebarLayout navEntries={navEntries}>content</AppSidebarLayout>,
 	});
 	const router = createRouter({
 		routeTree: rootRoute,
@@ -106,21 +133,21 @@ describe("AppSidebarLayout login button", () => {
 		renderLayout(fakeLocalApi({ status: "anonymous" }));
 
 		await expect.element(page.getByRole("button", { name: "Settings" })).toBeVisible();
-		await expect.element(page.getByRole("button", { name: "Log in" })).toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
 		await expect
 			.element(page.getByTestId("app-sidebar").getByTestId("nav-settings"))
 			.not.toBeInTheDocument();
 		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
 	});
 
-	it("hides the Log in button and app-bar Settings icon when authenticated", async () => {
+	it("hides the Sign In button and app-bar Settings icon when authenticated", async () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
 		// Give the async auth delegate a tick to resolve to authenticated.
 		await expect
 			.element(page.getByRole("button", { name: "Account menu for ada" }))
 			.toBeInTheDocument();
-		await expect.element(page.getByRole("button", { name: "Log in" })).not.toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: "Sign In" })).not.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Settings" })).not.toBeInTheDocument();
 	});
 
@@ -128,7 +155,7 @@ describe("AppSidebarLayout login button", () => {
 		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		expect(login).toHaveBeenCalledTimes(1);
 	});
@@ -141,7 +168,7 @@ describe("AppSidebarLayout login button", () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		await vi.waitFor(() => {
 			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_IN" }));
@@ -153,7 +180,7 @@ describe("AppSidebarLayout login button", () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		await vi.waitFor(() => {
 			expect(login).toHaveBeenCalledTimes(1);
@@ -202,6 +229,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 				{},
 				apiWithFlags({ "environments-feature": false, "todo-feature": true }),
 			),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		// Todos declares `featureFlag: "todo-feature"` — visible when the
@@ -215,6 +245,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 	it("hides a flag-gated plugin nav entry when the flag is missing entirely", async () => {
 		const { baseElement } = renderLayout(
 			fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({})),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		// Both nav entries carry a `featureFlag` now, so an empty flag map
@@ -232,6 +265,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 				{},
 				apiWithFlags({ "environments-feature": true, "todo-feature": true }),
 			),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		await expect.element(page.getByTestId("nav-environments")).toBeInTheDocument();
@@ -307,6 +343,19 @@ describe("AppSidebarLayout settings takeover", () => {
 		await expect.element(page.getByTestId("settings-back")).toBeVisible();
 		await expect.element(page.getByRole("button", { name: "Settings" })).toBeVisible();
 		await expect.element(page.getByTestId("zone-sidebar")).not.toBeInTheDocument();
+	});
+
+	it("keeps Settings and Sign In right-aligned when header zones are empty", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
+
+		await expect.element(page.getByRole("button", { name: "Sign In" })).toBeVisible();
+		const header = baseElement.querySelector("header");
+		expect(header).not.toBeNull();
+		const login = page.getByRole("button", { name: "Sign In" }).element();
+		const headerRect = header!.getBoundingClientRect();
+		const loginRect = login.getBoundingClientRect();
+		expect(loginRect.left).toBeGreaterThan(headerRect.width / 2);
+		expect(headerRect.right - loginRect.right).toBeLessThan(48);
 	});
 
 	it("aligns Back to app with the first sidebar zone row", async () => {

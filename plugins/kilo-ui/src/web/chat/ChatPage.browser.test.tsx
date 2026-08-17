@@ -132,6 +132,10 @@ vi.mock("./plan/use-plan-thread-projection.js", () => ({
 	}),
 }));
 
+vi.mock("../account/KiloAuthProvider.js", () => ({
+	KiloAuthProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
 vi.mock("./model-selection/use-kilo-model-catalog.js", () => ({
 	useKiloModelCatalog: vi.fn(() => ({
 		data: undefined,
@@ -257,6 +261,7 @@ describe("chat connection context", () => {
 			isPending: false,
 			isError: false,
 			error: null,
+			connection,
 			connectionPromise: Promise.resolve(connection),
 		};
 		const wrapper = ({ children }: { children: ReactNode }) => (

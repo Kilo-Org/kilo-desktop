@@ -1,7 +1,8 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 
 import { SettingsEmptyState } from "@/components/settings/SettingsEmptyState";
-import { PLUGIN_SETTINGS, useVisiblePluginSettings } from "@/features/plugin-settings";
+import { useVisiblePluginSettings } from "@/features/plugin-settings";
+import { PLUGIN_SETTINGS } from "@/features/plugin-settings-entries";
 
 export const Route = createFileRoute("/settings/")({
 	component: SettingsIndex,

@@ -3,11 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
 
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
-import {
-	PLUGIN_SETTINGS,
-	useVisiblePluginSettings,
-	type PluginSettingsSection,
-} from "@/features/plugin-settings";
+import { useVisiblePluginSettings, type PluginSettingsSection } from "@/features/plugin-settings";
 import {
 	SidebarGroupLabel,
 	SidebarMenu,
@@ -16,8 +12,10 @@ import {
 	SidebarSearch,
 } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
+const EMPTY_SECTIONS: readonly PluginSettingsSection[] = [];
+
 type SettingsSidebarProps = {
-	/** Injectable for tests; defaults to bundled plugin settings sections. */
+	/** Injectable for tests; the app shell passes bundled plugin settings sections. */
 	sections?: readonly PluginSettingsSection[];
 };
 
@@ -30,8 +28,8 @@ type SettingsSidebarProps = {
  * match the sidebar ZoneOutlet / New Chat + Search chats so the rail does
  * not jump on enter/leave.
  */
-export function SettingsSidebar({ sections: injected }: SettingsSidebarProps) {
-	const visible = useVisiblePluginSettings(injected ?? PLUGIN_SETTINGS);
+export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarProps) {
+	const visible = useVisiblePluginSettings(sections);
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const [query, setQuery] = useState("");
 	const needle = query.trim().toLowerCase();

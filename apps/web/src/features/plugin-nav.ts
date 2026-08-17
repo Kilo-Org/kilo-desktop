@@ -8,8 +8,6 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk";
 import { useFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 
-import { PLUGIN_DISCOVERY } from "./features.js";
-
 /**
  * A sidebar nav entry declared in a plugin manifest (`contributes.nav`).
  * Pure data — the shell renders it as a link without touching plugin code.
@@ -85,9 +83,6 @@ export function filterVisiblePluginNav(
 	});
 }
 
-/** All sidebar nav entries contributed by the bundled plugins, priority-ordered. */
-export const PLUGIN_NAV: readonly PluginNavEntry[] = buildPluginNav(PLUGIN_DISCOVERY);
-
 /**
  * Subscribe to the feature-flag store and return the subset of `entries`
  * whose gating flag (if any) is truthy right now. Re-renders only when a
@@ -98,9 +93,7 @@ export const PLUGIN_NAV: readonly PluginNavEntry[] = buildPluginNav(PLUGIN_DISCO
  * `useMemo` below reads `featureFlags.peek()` and re-derives the filtered
  * list. Entries without a `featureFlag` are always retained.
  */
-export function useVisiblePluginNav(
-	entries: readonly PluginNavEntry[] = PLUGIN_NAV,
-): readonly PluginNavEntry[] {
+export function useVisiblePluginNav(entries: readonly PluginNavEntry[]): readonly PluginNavEntry[] {
 	const { featureFlags } = useFeatureSystem().services.shellDelegates;
 
 	const requiredKeys = useMemo(() => {

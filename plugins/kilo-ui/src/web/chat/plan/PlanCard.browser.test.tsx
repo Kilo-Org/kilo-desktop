@@ -118,6 +118,13 @@ function renderPlanCard(projection: PlanProjection) {
 					isPending: false,
 					isError: false,
 					error: null,
+					connection: {
+						baseUrl: "http://127.0.0.1:4096",
+						username: "kilo",
+						password: "kilo",
+						version: "1.0.0",
+						globalDirectory: "/kilo",
+					},
 					connectionPromise: Promise.resolve({
 						baseUrl: "http://127.0.0.1:4096",
 						username: "kilo",

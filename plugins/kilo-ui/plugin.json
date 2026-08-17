@@ -26,6 +26,15 @@
 				"label": "Chats",
 				"priority": 10
 			}
+		],
+		"settings": [
+			{
+				"id": "kilo-account",
+				"title": "Kilo",
+				"component": "KiloAccountSettings",
+				"icon": "KiloAccountNavIcon",
+				"priority": 90
+			}
 		]
 	}
 }

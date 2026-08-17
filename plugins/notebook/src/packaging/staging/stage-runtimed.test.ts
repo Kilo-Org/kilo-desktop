@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimedArtifact } from "./artifacts.js";
+import type { RuntimedArtifact } from "../artifacts.js";
 import { stageRuntimed } from "./stage-runtimed.js";
 
 const directories: string[] = [];

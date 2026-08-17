@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BundledNativeExecutable, NteractMcpArtifact, ReleaseAsset } from "./artifacts.js";
+import type { BundledNativeExecutable, NteractMcpArtifact, ReleaseAsset } from "../artifacts.js";
 import { stageNteractMcp } from "./stage-nteract-mcp.js";
 
 const directories: string[] = [];

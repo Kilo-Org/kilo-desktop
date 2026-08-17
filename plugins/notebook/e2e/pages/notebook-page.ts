@@ -6,10 +6,7 @@ import { expect } from "@playwright/test";
 
 import { packagedResourcesDirectory } from "@anaconda-agentic-desktop/e2e";
 
-import {
-	getNteractMcpArtifact,
-	getRuntimedArtifact,
-} from "../../src/main/distribution/artifacts.js";
+import { getNteractMcpArtifact, getRuntimedArtifact } from "../../src/packaging/artifacts.js";
 
 type DesktopBridge = {
 	invoke?: (

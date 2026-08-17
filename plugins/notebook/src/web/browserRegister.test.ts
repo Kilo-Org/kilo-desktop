@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
-import { notebookBrowserRegister } from "./browserRegister";
+import { notebookBrowserRegister } from "./browserRegister.js";
 
 describe("notebookBrowserRegister", () => {
 	it("reports no daemon rather than leaving the channel unregistered", async () => {

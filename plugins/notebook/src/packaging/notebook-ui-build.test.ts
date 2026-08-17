@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NTERACT_NOTEBOOK_SOURCE } from "../src/main/distribution/artifacts.js";
+import { NTERACT_NOTEBOOK_SOURCE } from "./artifacts.js";
 import {
 	AGENTIC_EMBED_CHROME_CSS,
 	AGENTIC_EMBED_CHROME_STYLE_ATTR,

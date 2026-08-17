@@ -8,7 +8,7 @@ import {
 	NTERACT_MCP_ENTRY_NAME,
 	reconcileRuntMcpConfig,
 	type KiloMcpConfigService,
-} from "./seed-runt-mcp.js";
+} from "./kilo-mcp-config.js";
 
 describe("notebook MCP entries", () => {
 	it("points kilo at the resilient proxy with the pinned channel", () => {

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { buildNotebookUi } from "./notebook-ui-build.js";
+import { buildNotebookUi } from "../src/packaging/notebook-ui-build.js";
 
 const pluginRoot = path.resolve(import.meta.dirname, "..");
 const result = await buildNotebookUi({

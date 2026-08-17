@@ -14,11 +14,11 @@ import { notebookContract, NOTEBOOK_HOST, type NotebookService } from "../contra
 import {
 	ElectronNotebookHostService,
 	type ElectronNotebookHostServiceOptions,
-} from "./ElectronNotebookHostService.js";
-import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
-import { reconcileRuntMcpConfig } from "./seed-runt-mcp.js";
-import type { BuildChannel } from "./socket-path.js";
-import { findRuntimedArtifact } from "./distribution/artifacts.js";
+} from "./runtime/ElectronNotebookHostService.js";
+import { resolveNotebookBundleRoot } from "./embedding/notebook-bundle-path.js";
+import { reconcileRuntMcpConfig } from "./integrations/kilo-mcp-config.js";
+import type { BuildChannel } from "./runtime/socket-path.js";
+import { findRuntimedArtifact } from "../packaging/artifacts.js";
 
 const connectionArgsSchema = z.object({
 	notebookId: z.string().uuid(),

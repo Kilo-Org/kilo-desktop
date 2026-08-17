@@ -7,7 +7,7 @@ import {
 	NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
 	NOTEBOOK_HOST,
 	type NotebookService,
-} from "../contracts/schemas.js";
+} from "../../contracts/schemas.js";
 import { notebookIdFromInstanceId } from "./notebook-tabs.js";
 
 /**

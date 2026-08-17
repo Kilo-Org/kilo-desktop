@@ -12,7 +12,7 @@ import {
 	type BundledNativeExecutable,
 	type NteractMcpArtifact,
 	type ReleaseAsset,
-} from "./artifacts.js";
+} from "../artifacts.js";
 import { isNativeExecutable } from "./stage-pinned-binary.js";
 
 const require = createRequire(import.meta.url);

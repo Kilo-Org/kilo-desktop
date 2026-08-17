@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { stageRuntimed } from "../src/main/distribution/stage-runtimed.js";
+import { stageRuntimed } from "../src/packaging/staging/stage-runtimed.js";
 
 const pluginRoot = path.resolve(import.meta.dirname, "..");
 const sourceBinaryPath = process.env["RUNTIMED_BINARY"]?.trim();

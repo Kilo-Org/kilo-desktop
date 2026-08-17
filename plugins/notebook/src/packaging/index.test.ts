@@ -2,8 +2,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { NTERACT_MCP_ARTIFACTS, RUNTIMED_ARTIFACTS } from "./distribution/artifacts.js";
-import { createNotebookPackagingPlan, NOTEBOOK_MAIN_EXTERNALS } from "./packaging.js";
+import { NTERACT_MCP_ARTIFACTS, RUNTIMED_ARTIFACTS } from "./artifacts.js";
+import { createNotebookPackagingPlan, NOTEBOOK_MAIN_EXTERNALS } from "./index.js";
 
 describe("notebook packaging", () => {
 	it("keeps the complete Windows notebook runtime mandatory", () => {

@@ -1,4 +1,4 @@
-import { getRuntimedArtifact, runtimedDownloadUrl, type RuntimedArtifact } from "./artifacts.js";
+import { getRuntimedArtifact, runtimedDownloadUrl, type RuntimedArtifact } from "../artifacts.js";
 import { stagePinnedBinary, type StagePinnedBinaryResult } from "./stage-pinned-binary.js";
 
 export interface StageRuntimedOptions {

@@ -9,8 +9,8 @@ import {
 	NOTEBOOK_TAB_DEFINITION_ID,
 	NOTEBOOK_TAB_TITLE,
 	type ChatRightPanelCapability,
-} from "./notebook-webmcp-tools.js";
-import type { ChatRightPanelTabSnapshot } from "./notebook-tabs.js";
+} from "./notebook/notebook-webmcp-tools.js";
+import type { ChatRightPanelTabSnapshot } from "./notebook/notebook-tabs.js";
 
 /**
  * In-memory stand-in for kilo-ui's chatRightPanel capability. Production

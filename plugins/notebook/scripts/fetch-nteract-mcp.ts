@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { stageNteractMcp } from "../src/main/distribution/stage-nteract-mcp.js";
+import { stageNteractMcp } from "../src/packaging/staging/stage-nteract-mcp.js";
 
 const pluginRoot = path.resolve(import.meta.dirname, "..");
 const sourceNteractMcpPath = process.env["NTERACT_MCP_BINARY"]?.trim();

@@ -1,9 +1,9 @@
 import type { MainSdk, SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { notebookBrowserRegister } from "./browserRegister.js";
-import { registerNotebookWebMcpTools } from "./notebook-webmcp-tools.js";
+import { registerNotebookWebMcpTools } from "./notebook/notebook-webmcp-tools.js";
 
-export { NotebookView } from "./NotebookView.js";
+export { NotebookView } from "./notebook/NotebookView.js";
 export { NotebookIcon } from "lucide-react";
 
 /**

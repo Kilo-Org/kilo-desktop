@@ -11,7 +11,7 @@ import {
 	notebookOriginFrom,
 	nteractSrcFor,
 	type NotebookViewProps,
-} from "./NotebookView";
+} from "./NotebookView.js";
 
 const DEFAULT_PROPS: NotebookViewProps = {
 	sessionId: "session-1",

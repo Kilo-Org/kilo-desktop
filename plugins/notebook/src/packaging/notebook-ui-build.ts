@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { execa } from "execa";
 
-import { NTERACT_NOTEBOOK_SOURCE } from "../src/main/distribution/artifacts.js";
+import { NTERACT_NOTEBOOK_SOURCE } from "./artifacts.js";
 
 export const NOTEBOOK_BUILD_MANIFEST = "agentic-notebook-build.json";
 export const NTERACT_LICENSE_FILE = "LICENSE.nteract";

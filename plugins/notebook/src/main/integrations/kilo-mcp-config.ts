@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import { findNteractMcpArtifact } from "./distribution/artifacts.js";
-import type { BuildChannel } from "./socket-path.js";
+import { findNteractMcpArtifact } from "../../packaging/artifacts.js";
+import type { BuildChannel } from "../runtime/socket-path.js";
 
 export const NTERACT_MCP_ENTRY_NAME = "nteract-mcp";
 /** Previous Kilo MCP id; dropped so tool prefixes are `nteract-mcp_*`, not `runt_*`. */

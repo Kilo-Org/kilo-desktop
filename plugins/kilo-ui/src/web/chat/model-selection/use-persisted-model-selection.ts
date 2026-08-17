@@ -41,8 +41,9 @@ function catalogEntry(catalog: KiloModelCatalog | undefined, ref: KiloModelRef |
 
 /**
  * Selected model + sticky effort, restored from localStorage across refreshes.
- * Falls back to Auto Free (then the catalog default) when nothing is stored
- * or the stored model is no longer in the catalog.
+ * Falls back to Auto Free (then another Kilo Auto model, then the catalog
+ * default for non-Kilo providers) when nothing is stored or the stored model
+ * is no longer in the catalog.
  */
 export function usePersistedModelSelection(catalog: KiloModelCatalog | undefined) {
 	const [selection, setSelection] = useState<SelectionState>(selectionFromStorage);

@@ -93,6 +93,35 @@ describe("model-catalog", () => {
 		});
 	});
 
+	it("ignores Kilo Gateway's provider.list default when it ranks a Gemini image model first", () => {
+		const withGeminiDefault: KiloProviderListPayload = {
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						"kilo-auto/frontier": {
+							id: "kilo-auto/frontier",
+							name: "Auto Frontier",
+							providerID: "kilo",
+						},
+						"google/gemini-3-pro-image": {
+							id: "google/gemini-3-pro-image",
+							name: "Google: Nano Banana Pro (Gemini 3 Pro Image)",
+							providerID: "kilo",
+						},
+					},
+				},
+			],
+			default: { kilo: "google/gemini-3-pro-image" },
+			connected: ["kilo"],
+		};
+		expect(pickDefaultModel(buildCatalogFromProviderList(withGeminiDefault))).toEqual({
+			providerID: "kilo",
+			modelID: "kilo-auto/frontier",
+		});
+	});
+
 	it("prefers Auto Free over the provider-marked default", () => {
 		const withAutoFree: KiloProviderListPayload = {
 			all: [

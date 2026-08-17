@@ -167,7 +167,7 @@ describe("AppSidebarLayout login button", () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		await vi.waitFor(() => {
 			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_IN" }));
@@ -179,7 +179,7 @@ describe("AppSidebarLayout login button", () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		await vi.waitFor(() => {
 			expect(login).toHaveBeenCalledTimes(1);

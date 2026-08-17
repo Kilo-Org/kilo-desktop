@@ -82,7 +82,7 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: notebook-ui
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}

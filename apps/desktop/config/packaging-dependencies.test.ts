@@ -57,4 +57,24 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).not.toMatch(/--filter\s+'/);
 		expect(preparePlugins).toMatch(/--filter\s+"@anaconda-agentic-desktop\/plugin-\*"/);
 	});
+
+	it("installs Rust 1.94.0 on packaging hosts so @runtimed/node can be built after the UI artifact lands", () => {
+		const setupNative = readFileSync(
+			path.join(workspaceRoot, "plugins/notebook/actions/setup-native/action.yml"),
+			"utf8",
+		);
+		const runE2e = readFileSync(
+			path.join(workspaceRoot, ".github/actions/run-e2e/action.yml"),
+			"utf8",
+		);
+		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
+		const publish = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+			"utf8",
+		);
+		expect(setupNative).toContain("1.94.0");
+		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
+		expect(build).toContain("./plugins/notebook/actions/setup-native");
+		expect(publish).toContain("./plugins/notebook/actions/setup-native");
+	});
 });

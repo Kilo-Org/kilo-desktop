@@ -112,5 +112,7 @@ jobs:
           name: notebook-ui-${{ github.sha }}
           path: plugins/notebook/build/notebook
 
+      - uses: ./plugins/notebook/actions/setup-native
+
       - name: Publish
         run: pnpm run publish

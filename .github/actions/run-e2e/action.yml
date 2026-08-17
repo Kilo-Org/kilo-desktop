@@ -43,6 +43,8 @@ runs:
       shell: bash
       run: pnpm --filter @anaconda-agentic-desktop/e2e exec playwright install chromium
 
+    - uses: ./plugins/notebook/actions/setup-native
+
     - name: Package desktop for e2e
       shell: bash
       run: pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e

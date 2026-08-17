@@ -1,0 +1,25 @@
+name: Setup notebook native toolchain
+description: >
+  Install Rust 1.94.0 so prepare-assets can build the host-local
+  @runtimed/node napi binding after the platform-independent UI artifact
+  is downloaded.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust 1.94.0
+      shell: bash
+      run: |
+        if ! command -v rustup >/dev/null 2>&1; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.94.0 --profile minimal
+        fi
+        cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+        echo "$cargo_bin" >> "$GITHUB_PATH"
+        if [[ -n "${USERPROFILE:-}" ]]; then
+          echo "${USERPROFILE}\\.cargo\\bin" >> "$GITHUB_PATH"
+        fi
+        export PATH="$cargo_bin:$PATH"
+        rustup toolchain install 1.94.0 --profile minimal
+        rustup default 1.94.0
+        rustc --version
+        cargo --version

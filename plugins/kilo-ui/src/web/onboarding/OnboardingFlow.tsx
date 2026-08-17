@@ -74,10 +74,6 @@ export function OnboardingFlow({
 				data-qa-id="onboarding-overlay"
 				className="flex max-h-[min(960px,calc(100vh-2rem))] min-h-0 flex-col sm:max-w-2xl"
 			>
-				<div className="text-base font-semibold tracking-tight" data-qa-id="onboarding-wordmark">
-					Welcome to Anaconda
-				</div>
-
 				<TooltipProvider delay={0}>
 					<div className="flex items-center gap-2">
 						{ONBOARDING_STEPS.map((id, index) => {
@@ -121,7 +117,7 @@ export function OnboardingFlow({
 				</TooltipProvider>
 
 				<DialogHeader>
-					<DialogTitle className="text-3xl leading-tight font-semibold tracking-tight">
+					<DialogTitle className="text-2xl leading-tight font-semibold tracking-tight">
 						{copy.title}
 					</DialogTitle>
 					<DialogDescription className="text-[15px] leading-relaxed">

@@ -530,6 +530,26 @@ const SessionCardRow: FC = () => {
 	const canSettle = rowState === null || rowState === "done";
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
 
+	const status = (
+		<span
+			className={cn(
+				"ml-auto flex h-5 min-w-8 shrink-0 items-center justify-end tabular-nums text-xs text-muted-foreground transition-[opacity,min-width]",
+				// Expand only while hover actions are visible so the title/location
+				// truncates under Settle instead of always reserving room.
+				canSettle &&
+					"group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24",
+				rowHoverLabelFadeClassName,
+			)}
+		>
+			<SessionRowStatus
+				rowState={rowState}
+				workingSince={activity?.workingSince}
+				updatedAt={activity?.updatedAt}
+				isActive={isActive}
+			/>
+		</span>
+	);
+
 	return (
 		<ThreadListItemPrimitive.Root
 			data-slot="aui_session-list-item"
@@ -539,14 +559,16 @@ const SessionCardRow: FC = () => {
 			)}
 		>
 			{isRenaming ? (
-				<div className="px-2.5 py-2">
-					<div className="flex h-5 min-w-0 items-center gap-1.5">
-						<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-						<span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-							{locationLabel}
-						</span>
-					</div>
-					<div className="mt-1 flex min-w-0">
+				<div className={locationLabel ? "px-2.5 py-2" : "flex h-7 items-center px-2.5"}>
+					{locationLabel ? (
+						<div className="flex h-5 min-w-0 items-center gap-1.5">
+							<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+							<span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+								{locationLabel}
+							</span>
+						</div>
+					) : null}
+					<div className={locationLabel ? "mt-1 flex min-w-0" : "flex min-w-0 flex-1"}>
 						<SessionItemRename onDone={finishRename} />
 					</div>
 				</div>
@@ -555,43 +577,41 @@ const SessionCardRow: FC = () => {
 					ref={triggerRef}
 					onClick={navigate}
 					data-slot="aui_session-list-item-trigger"
-					className="block w-full px-2.5 py-2 text-left focus-visible:outline-none"
+					className={
+						locationLabel
+							? "block w-full px-2.5 py-2 text-left focus-visible:outline-none"
+							: "flex h-7 w-full items-center px-2.5 text-left focus-visible:outline-none"
+					}
 				>
-					<span className="flex h-5 min-w-0 items-center gap-1.5">
-						<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-						<span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-							{locationLabel}
+					{locationLabel ? (
+						<span className="flex h-5 min-w-0 items-center gap-1.5">
+							<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+							<span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+								{locationLabel}
+							</span>
+							{status}
 						</span>
-						<span
-							className={cn(
-								"ml-auto flex h-5 min-w-8 shrink-0 items-center justify-end tabular-nums text-xs text-muted-foreground transition-[opacity,min-width]",
-								// Expand only while hover actions are visible so the location
-								// label truncates under Settle instead of always reserving room.
-								canSettle &&
-									"group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24",
-								rowHoverLabelFadeClassName,
-							)}
-						>
-							<SessionRowStatus
-								rowState={rowState}
-								workingSince={activity?.workingSince}
-								updatedAt={activity?.updatedAt}
-								isActive={isActive}
-							/>
-						</span>
-					</span>
-					<span className="mt-1 flex min-w-0">
+					) : null}
+					<span
+						className={locationLabel ? "mt-1 flex min-w-0" : "flex min-w-0 flex-1 items-center"}
+					>
 						<span
 							data-slot="aui_session-list-item-title"
 							className="min-w-0 flex-1 truncate text-sm font-medium"
 						>
 							<ThreadListItemPrimitive.Title fallback="New Chat" />
 						</span>
+						{locationLabel ? null : status}
 					</span>
 				</ThreadListItemPrimitive.Trigger>
 			)}
 			{!isRenaming && (
-				<span className={cn(rowHoverActionsClassName, "right-1.5 top-2 h-5")}>
+				<span
+					className={cn(
+						rowHoverActionsClassName,
+						locationLabel ? "right-1.5 top-2 h-5" : "right-1.5 top-1/2 h-5 -translate-y-1/2",
+					)}
+				>
 					{canSettle && (
 						<Button
 							type="button"

@@ -237,6 +237,29 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Acme App")).toBeVisible();
 	});
 
+	it("uses a single-row card without a location for unscoped sessions", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-workspace", title: "Workspace greeting" },
+				{ remoteId: "ses-unscoped", title: "Unscoped greeting" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([
+					{ id: "ses-workspace", workspaceId: "ws-1", directory: "/repo/acme" },
+					{ id: "ses-unscoped", directory: "/chats/session-uSrBjH" },
+				]);
+			},
+		});
+
+		const workspaceCard = screen.getByRole("listitem").filter({ hasText: "Workspace greeting" });
+		const unscopedCard = screen.getByRole("listitem").filter({ hasText: "Unscoped greeting" });
+
+		await expect.element(workspaceCard.getByText("Acme App")).toBeVisible();
+		await expect.element(unscopedCard.getByText("Unscoped greeting")).toBeVisible();
+		await expect.element(unscopedCard.getByText("session-uSrBjH")).not.toBeInTheDocument();
+		await expect.element(unscopedCard.getByText("Acme App")).not.toBeInTheDocument();
+	});
+
 	it("surfaces sessions needing attention at the top", async () => {
 		const { screen } = renderSessionList({
 			threads: [

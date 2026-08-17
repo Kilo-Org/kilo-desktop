@@ -397,19 +397,20 @@ export function directoryBasename(directory: string): string {
 	return segments[segments.length - 1] ?? directory;
 }
 
-/** Workspace name by stamped id, falling back to the directory basename. */
+/**
+ * Workspace name by stamped id. Deleted workspaces fall back to the directory
+ * basename. Unscoped chats have no location.
+ */
 export function resolveSessionLocationLabel(
 	activity: SessionActivity | undefined,
 	workspaces: readonly { id: string; name: string }[],
-): string {
+): string | null {
 	const workspaceId = activity?.workspaceId;
-	if (workspaceId) {
-		const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
-		if (workspace) return workspace.name;
-	}
+	if (!workspaceId) return null;
+	const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
+	if (workspace) return workspace.name;
 	const directory = activity?.directory;
-	if (directory) return directoryBasename(directory);
-	return "Session";
+	return directory ? directoryBasename(directory) : null;
 }
 
 type SidebarThreadEntry = {

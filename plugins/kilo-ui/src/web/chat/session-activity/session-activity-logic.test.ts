@@ -501,16 +501,16 @@ describe("resolveSessionLocationLabel", () => {
 		expect(resolveSessionLocationLabel(activity, workspaces)).toBe("project");
 	});
 
-	it("falls back to the directory basename without a stamped id", () => {
+	it("has no location without a stamped workspace", () => {
 		const activity: SessionActivity = {
 			...createEmptySessionActivity(),
-			directory: "/repo/project",
+			directory: "/chats/session-uSrBjH",
 		};
-		expect(resolveSessionLocationLabel(activity, workspaces)).toBe("project");
+		expect(resolveSessionLocationLabel(activity, workspaces)).toBeNull();
 	});
 
-	it("has a neutral fallback without any location data", () => {
-		expect(resolveSessionLocationLabel(undefined, workspaces)).toBe("Session");
+	it("has no location without any location data", () => {
+		expect(resolveSessionLocationLabel(undefined, workspaces)).toBeNull();
 	});
 });
 

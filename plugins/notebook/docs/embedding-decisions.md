@@ -102,17 +102,23 @@ hash or nonce is present, while nteract's JavaScript output renderer creates inl
 at runtime. Hashes remain required for static inline scripts on the app and notebook-shell
 documents, where arbitrary dynamic output code is not part of the contract.
 
-## D6. The app attaches to the user-owned singleton
+## D6. The app preserves the shared singleton and bundles the fallback executable
 
-Chosen: discover the standard `runtimed` endpoint and attach to the daemon already owned by the
-user's nteract installation. Agentic Desktop does not package, install, spawn, stop, upgrade, or
-replace the daemon. If it is absent, the notebook surface reports the prerequisite and offers a
-retry path.
+Chosen: probe the standard `runtimed` endpoint before starting anything. If a compatible daemon is
+already listening, attach without taking process ownership. If the endpoint is idle, start the
+pinned executable packaged with Agentic Desktop. The app never searches `PATH`, displaces an
+existing daemon, or signals a process it did not start.
 
-**Why:** the singleton is the collaboration authority. A user and multiple agents opening the same
-`.ipynb` must join the same live Automerge document and daemon-owned runtime state, rather than
-partitioning work across competing daemons. Runtime installation is a separate product concern and
-is intentionally outside this plugin for the initial integration.
+**Why:** the singleton remains the collaboration authority, while a fresh Agentic Desktop install
+must have working notebooks without a separate runtime installation. "Prefer bundled" therefore
+means prefer those bytes when a new process is needed—not prefer a second process over a live
+singleton.
+
+The ordering is load-bearing. The daemon lock is channel-scoped rather than socket-scoped, and a
+lock loser can exit with code zero without binding. Readiness is therefore a successful daemon
+query after a connect-first probe, never successful process creation. Concurrent notebook opens
+share one start attempt. Clean shutdown stops only the child started by this app; external daemons
+are left running.
 
 Compatibility belongs to the wire contract: require a supported protocol number and the semantic
 capabilities used by the client. Exact source revisions remain diagnostics, not admission policy.
@@ -138,3 +144,20 @@ daemon-owned document, or remove a saved `.ipynb` file.
 The old standalone `/notebook` page, route `sidecar` manifest field, built-in sidecar registry, and
 generic split-page layout are removed. If the notebook plugin unloads while persisted tabs exist,
 Kilo renders a closeable unavailable state until the contribution returns.
+
+## D8. Kilo uses nteract-mcp as the notebook MCP boundary
+
+Chosen: package `nteract-mcp` beside its matching `runt` executable and configure Kilo to launch
+the proxy with `NTERACT_CHANNEL=nightly`. The proxy supervises `runt mcp`, recovers from child or
+daemon upgrades, and forwards MCP tool-list changes. It does not replace `runtimed`; both agent and
+UI paths still converge on the shared singleton.
+
+The binaries are taken from the same pinned nteract release. Linux publishes standalone proxy and
+child assets. macOS and Windows publish the sidecars inside their signed application artifacts, so
+the asset preparation step extracts and independently checksum-verifies them. Packaging requires
+both colocated executables on every supported target.
+
+An explicitly configured noncanonical socket remains a development-only direct `runt mcp` path.
+The upstream proxy intentionally starts its child with only the `mcp` argument and strips socket
+override environment variables, so pretending it supports a custom socket would silently connect
+Kilo to a different daemon.

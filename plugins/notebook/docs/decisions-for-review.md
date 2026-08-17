@@ -38,11 +38,11 @@ Run the packaged app against a real installed singleton and verify:
 - interactive Plotly/Vega-style output renders only in the isolated output frame;
 - closing a tab or quitting Agentic Desktop does not stop the singleton.
 
-### Runtime prerequisite experience
+### Bundled runtime failure experience
 
-Installation is outside this plugin for the demo. Confirm the exact message and retry affordance
-shown when runtimed is missing, stopped, or incompatible, and identify the team-owned installation
-entry point that will replace the manual prerequisite for beta.
+Confirm the exact retryable message shown when the bundled daemon cannot start or the running
+singleton is incompatible. Agentic Desktop must not instruct users to install a second daemon or
+attempt to displace the process holding the singleton lock.
 
 ### Blob transport follow-up
 
@@ -53,7 +53,8 @@ MessagePort exclusively.
 
 ## Decisions already closed
 
-- Reuse the user-owned singleton; never package or spawn a competing daemon.
+- Reuse a compatible running singleton; only start the bundled daemon when the canonical endpoint
+  is idle.
 - Use protocol numbers and semantic capabilities, not commit equality.
 - Transfer one scoped Electron MessagePort; expose neither generic IPC nor a WebSocket relay.
 - Keep the notebook application and untrusted rich output on distinct CSP profiles.

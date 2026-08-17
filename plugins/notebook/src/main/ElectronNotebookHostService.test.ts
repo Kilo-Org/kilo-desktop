@@ -68,6 +68,12 @@ describe("ElectronNotebookHostService", () => {
 			return server;
 		});
 		mocks.createRelay.mockResolvedValue(relay("669d39ec-39d6-4160-815c-b46e170cde8d"));
+		mocks.queryDaemonInfo.mockResolvedValue({
+			version: "2.6.3",
+			socketPath: "/tmp/nightly.sock",
+			isDevMode: false,
+			blobPort: 48637,
+		});
 	});
 
 	it("connects a scoped peer to the external singleton and exposes no socket to the renderer", async () => {
@@ -225,7 +231,7 @@ describe("ElectronNotebookHostService", () => {
 		expect(server.emit).toHaveBeenCalledWith("transport.status", "online");
 	});
 
-	it("reports an actionable prerequisite instead of starting a daemon", async () => {
+	it("reports an actionable failure when no daemon or bundled binary is available", async () => {
 		mocks.queryDaemonInfo.mockResolvedValue(null);
 		const service = new ElectronNotebookHostService({
 			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
@@ -235,10 +241,57 @@ describe("ElectronNotebookHostService", () => {
 		await expect(service.status()).resolves.toEqual({
 			availability: {
 				status: "unavailable",
-				reason: "Install and start the nteract nightly runtime daemon.",
+				reason: "The bundled runtimed daemon is unavailable.",
+			},
+			process: {
+				status: "failed",
+				reason: "The bundled runtimed daemon is unavailable.",
 			},
 			daemon: null,
 		});
 		expect(mocks.createRelay).not.toHaveBeenCalled();
+	});
+
+	it("can warm the daemon without opening a notebook relay", async () => {
+		const ensureAvailable = vi.fn(async () => ({ status: "bundled" as const, pid: 42 }));
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			createDaemonManager: () => ({
+				state: { status: "idle" },
+				ensureAvailable,
+				dispose: async () => undefined,
+			}),
+		});
+
+		await expect(service.start()).resolves.toEqual({ status: "bundled", pid: 42 });
+		expect(ensureAvailable).toHaveBeenCalledOnce();
+		expect(mocks.createRelay).not.toHaveBeenCalled();
+	});
+
+	it("starts the bundled daemon before opening a relay", async () => {
+		const ensureAvailable = vi.fn(async () => ({ status: "bundled" as const, pid: 42 }));
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/runtimed-nightly.sock",
+			runtimedBinaryPath: "/resources/runtimed-nightly",
+			createDaemonManager: () => ({
+				state: { status: "idle" },
+				ensureAvailable,
+				dispose: async () => undefined,
+			}),
+		});
+
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			42,
+		);
+
+		expect(ensureAvailable).toHaveBeenCalledOnce();
+		expect(mocks.createRelay).toHaveBeenCalledOnce();
 	});
 });

@@ -126,8 +126,11 @@ export const SessionList: FC = () => {
 	);
 
 	return (
-		<div data-qa-id="kilo-thread-list">
-			<ThreadListPrimitive.Root data-slot="aui_thread-list-root" className="flex flex-col gap-0.5">
+		<div data-qa-id="kilo-thread-list" className="flex min-h-0 flex-1 flex-col">
+			<ThreadListPrimitive.Root
+				data-slot="aui_thread-list-root"
+				className="flex min-h-0 flex-1 flex-col gap-0.5"
+			>
 				<SessionListNewChat />
 				{hasThreads && <SessionListSearch value={search} onValueChange={setSearch} />}
 				<SessionListItems searchQuery={hasThreads ? search : ""} />
@@ -182,7 +185,10 @@ const SessionListSearch: FC<{
 
 const SessionListItems: FC<{ searchQuery: string }> = ({ searchQuery }) => {
 	return (
-		<div data-slot="aui_thread-list-items" className="flex flex-col gap-0.5">
+		<div
+			data-slot="aui_thread-list-items"
+			className="scroll-fade no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain"
+		>
 			<AuiIf condition={(s) => s.threads.isLoading}>
 				<SessionListSkeleton />
 			</AuiIf>

@@ -2,9 +2,23 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { findRuntArtifact } from "./distribution/artifacts.js";
-
 const require = createRequire(import.meta.url);
+
+// Forge evaluates this exported module directly in a plain Node subprocess.
+// Keep its target layout self-contained so config loading does not depend on
+// TypeScript's source-extension resolution before Vite has started.
+const NTERACT_MCP_EXECUTABLES = new Map([
+	["darwin-arm64", { nteractMcp: "nteract-mcp", runt: "runt-nightly" }],
+	["darwin-x64", { nteractMcp: "nteract-mcp", runt: "runt-nightly" }],
+	["linux-x64", { nteractMcp: "nteract-mcp", runt: "runt-nightly" }],
+	["win32-x64", { nteractMcp: "nteract-mcp.exe", runt: "runt-nightly.exe" }],
+]);
+const RUNTIMED_EXECUTABLES = new Map([
+	["darwin-arm64", "runtimed-nightly"],
+	["darwin-x64", "runtimed-nightly"],
+	["linux-x64", "runtimed-nightly"],
+	["win32-x64", "runtimed-nightly.exe"],
+]);
 
 export const NOTEBOOK_ASAR_UNPACK_PACKAGES = ["@runtimed"] as const;
 export const NOTEBOOK_MAIN_EXTERNALS = [/^@runtimed\/node(?:\/.*)?$/] as const;
@@ -36,19 +50,28 @@ export function createNotebookPackagingPlan(
 	const pluginRoot = options.pluginRoot ?? resolvePluginRoot();
 	const exists = options.exists ?? existsSync;
 	const stagedNotebookBundle = path.join(pluginRoot, "build/notebook");
-	const stagedRunt = path.join(pluginRoot, "resources/runt");
-	const runtArtifact = findRuntArtifact(options.platform, options.arch);
+	const stagedNteractMcp = path.join(pluginRoot, "resources/nteract-mcp");
+	const stagedRuntimed = path.join(pluginRoot, "resources/runtimed");
+	const platform = options.platform ?? process.platform;
+	const arch = options.arch ?? process.arch;
+	const target = `${platform}-${arch}`;
+	const nteractMcpExecutables = NTERACT_MCP_EXECUTABLES.get(target);
+	if (!nteractMcpExecutables) {
+		throw new Error(`nteract-mcp is not configured for ${platform}/${arch}`);
+	}
+	const runtimedExecutable = RUNTIMED_EXECUTABLES.get(target);
+	if (!runtimedExecutable) {
+		throw new Error(`runtimed is not configured for ${platform}/${arch}`);
+	}
 	const requiredAssets = [
 		path.join(stagedNotebookBundle, "index.html"),
 		path.join(stagedNotebookBundle, "agentic-notebook-build.json"),
+		path.join(stagedNteractMcp, target, nteractMcpExecutables.nteractMcp),
+		path.join(stagedNteractMcp, target, nteractMcpExecutables.runt),
+		path.join(stagedNteractMcp, target, "staged.json"),
+		path.join(stagedRuntimed, target, runtimedExecutable),
+		path.join(stagedRuntimed, target, "staged.json"),
 	];
-
-	if (runtArtifact) {
-		requiredAssets.push(
-			path.join(stagedRunt, runtArtifact.target, runtArtifact.executable),
-			path.join(stagedRunt, runtArtifact.target, "staged.json"),
-		);
-	}
 
 	for (const requiredAsset of requiredAssets) {
 		if (!exists(requiredAsset)) {
@@ -59,7 +82,7 @@ export function createNotebookPackagingPlan(
 	}
 
 	return {
-		extraResources: [stagedNotebookBundle, ...(runtArtifact ? [stagedRunt] : [])],
+		extraResources: [stagedNotebookBundle, stagedNteractMcp, stagedRuntimed],
 		asarUnpackPackages: NOTEBOOK_ASAR_UNPACK_PACKAGES,
 	};
 }

@@ -169,3 +169,26 @@ describe("Planning activity subgroup", () => {
 		expect(queryByText("todoread")).toBeNull();
 	});
 });
+
+describe("Notebooks activity subgroup", () => {
+	it("shows notebook tool display names without the nteract-mcp prefix", () => {
+		const { getByRole, getByText, queryByText } = renderActivity(
+			"mcp:nteract-mcp",
+			[
+				toolPart("call-1", "nteract-mcp_create_notebook", {}),
+				toolPart("call-2", "nteract-mcp_connect_notebook", {}),
+			],
+			ToolCallFallback,
+		);
+		const trigger = getByRole("button", { name: "Notebooks" });
+
+		expect(queryByText("nteract-mcp_create_notebook")).toBeNull();
+		expect(queryByText("Create notebook")).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(getByText("Create notebook")).toBeDefined();
+		expect(getByText("Connect notebook")).toBeDefined();
+		expect(queryByText("nteract-mcp_create_notebook")).toBeNull();
+		expect(queryByText("nteract-mcp_connect_notebook")).toBeNull();
+	});
+});

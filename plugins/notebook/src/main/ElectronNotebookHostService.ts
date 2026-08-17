@@ -23,6 +23,7 @@ import type {
 } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
+import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
 
 export interface ElectronNotebookConnectionArgs {
 	readonly notebookId: string;
@@ -34,6 +35,16 @@ export interface ElectronNotebookHostServiceOptions {
 	readonly mainSdk: MainSdk;
 	readonly runtimeChannel?: BuildChannel;
 	readonly socketPath?: string;
+	readonly runtimedBinaryPath?: string;
+	readonly createDaemonManager?: (
+		options: ConstructorParameters<typeof RuntimedDaemonManager>[0],
+	) => RuntimedDaemonManagerLike;
+}
+
+export interface RuntimedDaemonManagerLike {
+	readonly state: RuntimedDaemonState;
+	ensureAvailable(): Promise<RuntimedDaemonState>;
+	dispose(): Promise<void>;
 }
 
 class ReconnectableRelay implements ElectronRelaySession {
@@ -161,6 +172,7 @@ function normalizeDialogOptions(value: unknown): MainSdkHostDialogOptions | unde
 export class ElectronNotebookHostService {
 	readonly #mainSdk: MainSdk;
 	readonly #socketPath: string;
+	readonly #daemonManager: RuntimedDaemonManagerLike;
 	readonly #servers = new Map<ElectronNotebookHostServer, () => void>();
 
 	constructor(options: ElectronNotebookHostServiceOptions) {
@@ -168,17 +180,31 @@ export class ElectronNotebookHostService {
 		this.#socketPath =
 			options.socketPath ??
 			resolveDaemonSocketPath({ channel: options.runtimeChannel ?? "nightly" });
+		const createDaemonManager =
+			options.createDaemonManager ??
+			((managerOptions) => new RuntimedDaemonManager(managerOptions));
+		this.#daemonManager = createDaemonManager({
+			binaryPath: options.runtimedBinaryPath,
+			probe: async () => (await queryDaemonInfo({ socketPath: this.#socketPath })) !== null,
+			logger: this.#mainSdk.logger,
+		});
 	}
 
 	get socketPath(): string {
 		return this.#socketPath;
 	}
 
+	start(): Promise<RuntimedDaemonState> {
+		return this.#daemonManager.ensureAvailable();
+	}
+
 	async status() {
+		const process = await this.start();
 		const daemon = await queryDaemonInfo({ socketPath: this.#socketPath });
 		return daemon
 			? {
 					availability: { status: "available" as const },
+					process,
 					daemon: {
 						version: daemon.version,
 						socketPath: daemon.socketPath,
@@ -189,8 +215,12 @@ export class ElectronNotebookHostService {
 			: {
 					availability: {
 						status: "unavailable" as const,
-						reason: `Install and start the nteract ${this.#socketPath.includes("nightly") ? "nightly" : "stable"} runtime daemon.`,
+						reason:
+							process.status === "failed"
+								? process.reason
+								: "The notebook runtime daemon is not ready yet.",
 					},
+					process,
 					daemon: null,
 				};
 	}
@@ -200,6 +230,14 @@ export class ElectronNotebookHostService {
 		args: ElectronNotebookConnectionArgs,
 		senderId: number,
 	): Promise<void> {
+		const daemonState = await this.start();
+		if (daemonState.status !== "external" && daemonState.status !== "bundled") {
+			throw new Error(
+				"reason" in daemonState
+					? daemonState.reason
+					: "The notebook runtime daemon is unavailable.",
+			);
+		}
 		const createSession = () =>
 			createRelay({
 				notebookId: args.notebookId,
@@ -262,6 +300,7 @@ export class ElectronNotebookHostService {
 		for (const [, cleanup] of sessions) cleanup();
 		await Promise.all(sessions.map(([server]) => server.close()));
 		this.#servers.clear();
+		await this.#daemonManager.dispose();
 	}
 
 	#handler(

@@ -26,8 +26,10 @@ async function boot() {
 	});
 	const hostService = {
 		socketPath: "/tmp/runtimed.sock",
+		start: vi.fn(async () => ({ status: "external" as const })),
 		status: vi.fn(async () => ({
 			availability: { status: "available" as const },
+			process: { status: "external" as const },
 			daemon: {
 				version: "2.6.3",
 				socketPath: "/tmp/runtimed.sock",
@@ -46,11 +48,18 @@ async function boot() {
 }
 
 describe("notebook mainRegister", () => {
+	it("starts runtimed during app feature registration", async () => {
+		const { hostService } = await boot();
+
+		expect(hostService.start).toHaveBeenCalledOnce();
+	});
+
 	it("reports the external singleton through the typed status channel", async () => {
 		const { router } = await boot();
 
 		await expect(router.invoke("notebook", "status")).resolves.toEqual({
 			availability: { status: "available" },
+			process: { status: "external" },
 			daemon: {
 				version: "2.6.3",
 				socketPath: "/tmp/runtimed.sock",

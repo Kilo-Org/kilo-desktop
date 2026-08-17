@@ -13,6 +13,10 @@ describe("notebookBrowserRegister", () => {
 		expect(mainSdk.has("status")).toBe(true);
 		await expect(mainSdk.invoke("status")).resolves.toEqual({
 			availability: { status: "unavailable" },
+			process: {
+				status: "failed",
+				reason: "The notebook runtime daemon is unavailable in browser mode.",
+			},
 			daemon: null,
 		});
 	});

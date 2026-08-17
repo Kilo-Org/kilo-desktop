@@ -61,11 +61,51 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 	const stagingDirectory = await mkdtemp(
 		path.join(workspaceRoot, ".anaconda-agentic-desktop-production-"),
 	);
+	const linkedDependencies = [
+		{
+			packageName: "@anaconda-agentic-desktop/plugin-kilo-server",
+			source: path.join(workspaceRoot, "plugins/kilo-server"),
+			excludedDirectories: new Set([
+				".git",
+				".vitest",
+				"coverage",
+				"e2e",
+				"node_modules",
+				"resources",
+			]),
+		},
+		{
+			packageName: "@anaconda-agentic-desktop/plugin-kilo-ui",
+			source: path.join(workspaceRoot, "plugins/kilo-ui"),
+			excludedDirectories: new Set([".git", ".vitest", "coverage", "e2e", "node_modules"]),
+		},
+		{
+			packageName: "@anaconda-agentic-desktop/plugin-notebook",
+			source: path.join(workspaceRoot, "plugins/notebook"),
+			excludedDirectories: new Set([
+				".git",
+				".vitest",
+				"build",
+				"coverage",
+				"e2e",
+				"node_modules",
+				"resources",
+			]),
+		},
+		{
+			packageName: "@runtimed/node",
+			source: path.join(
+				workspaceRoot,
+				"plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
+			),
+			excludedDirectories: new Set(["node_modules", "npm", "scripts", "tests"]),
+		},
+	] as const;
 
 	try {
-		// The shared-lockfile deploy cannot materialize the notebook plugin's generated
-		// local runtime package. Legacy deploy follows that link; the filtered graph
-		// intentionally excludes Kilo's patch, so permit that patch to remain unused.
+		// Legacy deploy preserves `link:` dependencies so development keeps live workspace
+		// links. Materialize those links only in this temporary production tree before
+		// ASAR validation. The filtered graph excludes Kilo's patch, so permit it unused.
 		await execa(
 			"pnpm",
 			[
@@ -86,6 +126,18 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 				stdout: "inherit",
 			},
 		);
+		for (const dependency of linkedDependencies) {
+			const destination = path.join(stagingDirectory, "node_modules", dependency.packageName);
+			await rm(destination, { force: true, recursive: true });
+			await cp(dependency.source, destination, {
+				filter: (source) => {
+					const relativePath = path.relative(dependency.source, source);
+					const topLevelDirectory = relativePath.split(path.sep)[0];
+					return !topLevelDirectory || !dependency.excludedDirectories.has(topLevelDirectory);
+				},
+				recursive: true,
+			});
+		}
 		await cp(path.join(stagingDirectory, "node_modules"), path.join(buildPath, "node_modules"), {
 			recursive: true,
 		});

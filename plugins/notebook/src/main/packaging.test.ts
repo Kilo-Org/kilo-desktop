@@ -2,14 +2,20 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { NTERACT_MCP_ARTIFACTS, RUNTIMED_ARTIFACTS } from "./distribution/artifacts.js";
 import { createNotebookPackagingPlan, NOTEBOOK_MAIN_EXTERNALS } from "./packaging.js";
 
 describe("notebook packaging", () => {
-	it("keeps the notebook bundle mandatory and skips runt on unsupported targets", () => {
+	it("keeps the complete Windows notebook runtime mandatory", () => {
 		const pluginRoot = path.resolve("/plugin/notebook");
 		const required = new Set([
 			path.join(pluginRoot, "build/notebook/index.html"),
 			path.join(pluginRoot, "build/notebook/agentic-notebook-build.json"),
+			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/nteract-mcp.exe"),
+			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/runt-nightly.exe"),
+			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/staged.json"),
+			path.join(pluginRoot, "resources/runtimed/win32-x64/runtimed-nightly.exe"),
+			path.join(pluginRoot, "resources/runtimed/win32-x64/staged.json"),
 		]);
 
 		expect(
@@ -20,7 +26,11 @@ describe("notebook packaging", () => {
 				exists: (candidate) => required.has(candidate),
 			}),
 		).toEqual({
-			extraResources: [path.join(pluginRoot, "build/notebook")],
+			extraResources: [
+				path.join(pluginRoot, "build/notebook"),
+				path.join(pluginRoot, "resources/nteract-mcp"),
+				path.join(pluginRoot, "resources/runtimed"),
+			],
 			asarUnpackPackages: ["@runtimed"],
 		});
 	});
@@ -34,6 +44,42 @@ describe("notebook packaging", () => {
 				exists: () => false,
 			}),
 		).toThrow(/notebook plugin's prepare-assets script/);
+	});
+
+	it("keeps the Forge target layout aligned with every pinned runtimed artifact", () => {
+		for (const artifact of RUNTIMED_ARTIFACTS) {
+			const checkedPaths: string[] = [];
+			createNotebookPackagingPlan({
+				pluginRoot: path.resolve("/plugin/notebook"),
+				platform: artifact.platform,
+				arch: artifact.arch,
+				exists: (candidate) => {
+					checkedPaths.push(candidate);
+					return true;
+				},
+			});
+			expect(checkedPaths).toContain(
+				path.resolve("/plugin/notebook/resources/runtimed", artifact.target, artifact.executable),
+			);
+		}
+	});
+
+	it("keeps nteract-mcp colocated with its runt child on every target", () => {
+		for (const artifact of NTERACT_MCP_ARTIFACTS) {
+			const checkedPaths: string[] = [];
+			createNotebookPackagingPlan({
+				pluginRoot: path.resolve("/plugin/notebook"),
+				platform: artifact.platform,
+				arch: artifact.arch,
+				exists: (candidate) => {
+					checkedPaths.push(candidate);
+					return true;
+				},
+			});
+			const targetRoot = path.resolve("/plugin/notebook/resources/nteract-mcp", artifact.target);
+			expect(checkedPaths).toContain(path.join(targetRoot, artifact.nteractMcp.executable));
+			expect(checkedPaths).toContain(path.join(targetRoot, artifact.runt.executable));
+		}
 	});
 
 	it("declares the native adapter as a main-process external", () => {

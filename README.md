@@ -13,8 +13,8 @@ Docs:
   slice, from the shared contract to SQLite and back to the UI
 - [Releases, signing, and CI reference](docs/releases.md) — channels, artifacts,
   environments, credentials
-- [Notebook integration](plugins/notebook/docs/README.md) — embedding nteract's notebook UI while
-  attaching to the user's installed `runtimed` singleton
+- [Notebook integration](plugins/notebook/docs/README.md) — embedding nteract's notebook UI with a
+  bundled `runtimed` fallback that preserves the user's running singleton
 
 ## Tech stack
 

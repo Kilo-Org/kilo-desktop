@@ -8,19 +8,34 @@ another nteract client without creating a competing daemon or a private copy of 
 
 ## System boundary
 
-Agentic Desktop ships the nteract web application as a static plugin asset. It does **not** ship,
-install, spawn, supervise, stop, or upgrade `runtimed`. For the demo and initial beta, the user must
-already have the supported singleton daemon running. Installation belongs to a separate product
-workstream.
+Agentic Desktop ships the nteract web application and a pinned, platform-specific `runtimed`
+executable as plugin assets. During app launch it probes the canonical channel endpoint in the
+background. A compatible daemon already listening there is reused without taking ownership;
+otherwise the app starts and supervises its bundled executable. It never searches `PATH`, replaces
+an existing singleton, or signals a process it did not start.
+
+Kilo uses nteract's matching `nteract-mcp` executable rather than invoking `runt mcp` directly.
+The proxy and its `runt` child are packaged in the same target directory, which makes the proxy
+select the pinned child before considering `PATH`. The proxy owns MCP child restart and tool-list
+change handling while `runtimed` remains the notebook and kernel authority. An explicit custom
+socket used by development or tests falls back to direct `runt mcp --socket`; nteract-mcp supports
+only the canonical channel endpoint.
 
 The notebook frame receives one capability-scoped Electron `MessagePort`:
 
 ```text
 trusted app renderer
   -> feature SDK opens notebook/host port
+  -> notebook plugin has already reused the shared daemon or started its bundled fallback
   -> notebook plugin main process authorizes one native relay session
   -> @runtimed/node connects to the singleton Unix socket
   -> runtimed owns notebook state, kernels, execution, outputs, and persistence
+```
+
+The agent path is separate and converges on the same singleton:
+
+```text
+Kilo -> nteract-mcp -> runt mcp -> runtimed
 ```
 
 The frame never receives `ipcRenderer`, a generic IPC endpoint, the daemon socket path, room
@@ -46,21 +61,25 @@ Electron port and retain runtimed's negotiated protocol number.
 - The output frame remains sandboxed with an opaque origin and without `allow-same-origin`.
 - Native dialogs, safe external links, title changes, and focus events are narrow host methods
   scoped to the renderer that opened the feature port.
-- Missing or incompatible runtimed fails closed with a prerequisite message. There is no bundled
-  fallback daemon and no transport fallback to a listening WebSocket.
+- Missing, failed, or incompatible runtimed fails closed with a retryable status. There is no
+  transport fallback to a listening WebSocket.
 
 ## Release order
 
 1. Merge the nteract Electron host and publish the stable `@runtimed/node` version containing
    `@runtimed/node/electron`.
 2. Resolve that published version in Agentic Desktop and commit the generated lockfile.
-3. Run the full repository gate and packaged Electron smoke against an installed singleton.
+3. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
+   against an already-running compatible singleton.
 4. Verify execution, Save, Save As, reopen, reconnect, concurrent attachment, and isolated rich
    output before promoting the plugin from draft.
 
 ## Current limitations
 
-- The plugin reports how to install/start runtimed but does not perform installation.
+- A daemon already running on the canonical endpoint takes precedence over the bundled fallback.
+- macOS and Windows MCP sidecars are extracted from the pinned official nteract app artifacts;
+  Linux uses the standalone release assets. Every source and extracted executable is checksum
+  pinned.
 - Opening a notebook in another desktop window and cloning a sidecar notebook are explicitly
   unsupported host operations rather than silent no-ops.
 - Blob content still uses runtimed's loopback HTTP server. Moving blobs behind the custom protocol

@@ -15,13 +15,23 @@ describe("createNotebookResolveAsset", () => {
 		);
 	});
 
-	it("maps the runt CLI beneath packaged resources", () => {
+	it("maps the nteract MCP bundle beneath packaged resources", () => {
 		const resolveAsset = createNotebookResolveAsset({
 			isPackaged: true,
 			packagedResourcesPath: "/Apps/Agentic.app/Contents/Resources",
 		});
-		expect(resolveAsset("resources/runt/darwin-arm64/runt-nightly")).toBe(
-			path.join("/Apps/Agentic.app/Contents/Resources", "runt/darwin-arm64/runt-nightly"),
+		expect(resolveAsset("resources/nteract-mcp/darwin-arm64/nteract-mcp")).toBe(
+			path.join("/Apps/Agentic.app/Contents/Resources", "nteract-mcp/darwin-arm64/nteract-mcp"),
+		);
+	});
+
+	it("maps the runtimed daemon beneath packaged resources", () => {
+		const resolveAsset = createNotebookResolveAsset({
+			isPackaged: true,
+			packagedResourcesPath: "/Apps/Agentic.app/Contents/Resources",
+		});
+		expect(resolveAsset("resources/runtimed/darwin-arm64/runtimed-nightly")).toBe(
+			path.join("/Apps/Agentic.app/Contents/Resources", "runtimed/darwin-arm64/runtimed-nightly"),
 		);
 	});
 
@@ -31,8 +41,8 @@ describe("createNotebookResolveAsset", () => {
 			packagedResourcesPath: "/unused",
 		});
 		expect(resolveAsset("build/notebook")).toContain("/plugins/notebook/build/notebook");
-		expect(resolveAsset("resources/runt/linux-x64/runt-nightly")).toContain(
-			"/plugins/notebook/resources/runt/linux-x64/runt-nightly",
+		expect(resolveAsset("resources/nteract-mcp/linux-x64/nteract-mcp")).toContain(
+			"/plugins/notebook/resources/nteract-mcp/linux-x64/nteract-mcp",
 		);
 	});
 });

@@ -181,6 +181,9 @@ describe("SessionList", () => {
 		await expect.element(newChat).toBeVisible();
 		// The e2e page object locates the button by this data-slot.
 		expect(baseElement.querySelector('[data-slot="aui_thread-list-new"]')).not.toBeNull();
+		expect(baseElement.querySelector('[data-slot="aui_thread-list-items"]')?.className).toContain(
+			"scroll-fade",
+		);
 
 		await newChat.click();
 		await expect.element(newChat).toHaveAttribute("aria-current", "true");

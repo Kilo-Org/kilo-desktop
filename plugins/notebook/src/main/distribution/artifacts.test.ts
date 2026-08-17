@@ -1,35 +1,62 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	findRuntArtifact,
-	getRuntArtifact,
+	findNteractMcpArtifact,
+	findRuntimedArtifact,
+	getNteractMcpArtifact,
+	getRuntimedArtifact,
 	NTERACT_RELEASE,
-	RUNT_ARTIFACTS,
-	runtDownloadUrl,
+	NTERACT_MCP_ARTIFACTS,
+	RUNTIMED_ARTIFACTS,
+	runtimedDownloadUrl,
 } from "./artifacts.js";
 
 describe("notebook distribution artifacts", () => {
-	it("pins runt mcp CLIs for platforms that publish them", () => {
-		expect(RUNT_ARTIFACTS.map(({ target }) => target)).toEqual([
+	it("pins nteract-mcp and a colocated runt child for every desktop target", () => {
+		expect(NTERACT_MCP_ARTIFACTS.map(({ target }) => target)).toEqual([
 			"darwin-arm64",
 			"darwin-x64",
 			"linux-x64",
+			"win32-x64",
 		]);
-		for (const artifact of RUNT_ARTIFACTS) {
+		for (const artifact of NTERACT_MCP_ARTIFACTS) {
+			for (const binary of [artifact.nteractMcp, artifact.runt]) {
+				expect(binary.sha256).toMatch(/^[a-f0-9]{64}$/);
+				expect(binary.source.sha256).toMatch(/^[a-f0-9]{64}$/);
+				expect(binary.bytes).toBeGreaterThan(1_000_000);
+			}
+		}
+	});
+
+	it("selects nteract-mcp by platform and rejects unsupported targets", () => {
+		expect(getNteractMcpArtifact("win32", "x64").nteractMcp.executable).toBe("nteract-mcp.exe");
+		expect(findNteractMcpArtifact("linux", "arm64")).toBeUndefined();
+		expect(() => getNteractMcpArtifact("linux", "arm64")).toThrow(
+			/nteract-mcp is not configured for linux\/arm64/,
+		);
+	});
+
+	it("pins the required runtimed daemon for every desktop release target", () => {
+		expect(RUNTIMED_ARTIFACTS.map(({ target }) => target)).toEqual([
+			"darwin-arm64",
+			"darwin-x64",
+			"linux-x64",
+			"win32-x64",
+		]);
+		for (const artifact of RUNTIMED_ARTIFACTS) {
 			expect(artifact.sha256).toMatch(/^[a-f0-9]{64}$/);
-			expect(artifact.bytes).toBeGreaterThan(1_000_000);
-			expect(runtDownloadUrl(artifact)).toBe(
+			expect(artifact.bytes).toBeGreaterThan(30_000_000);
+			expect(runtimedDownloadUrl(artifact)).toBe(
 				`https://github.com/nteract/nteract/releases/download/${NTERACT_RELEASE.tag}/${artifact.assetName}`,
 			);
 		}
 	});
 
-	it("selects the artifact by platform and architecture", () => {
-		expect(getRuntArtifact("darwin", "arm64").executable).toBe("runt-nightly");
-		expect(findRuntArtifact("win32", "x64")).toBeUndefined();
-	});
-
-	it("rejects unsupported targets", () => {
-		expect(() => getRuntArtifact("win32", "x64")).toThrow(/runt is not configured for win32\/x64/);
+	it("selects runtimed by platform and rejects unsupported targets", () => {
+		expect(getRuntimedArtifact("win32", "x64").executable).toBe("runtimed-nightly.exe");
+		expect(findRuntimedArtifact("linux", "arm64")).toBeUndefined();
+		expect(() => getRuntimedArtifact("linux", "arm64")).toThrow(
+			/runtimed is not configured for linux\/arm64/,
+		);
 	});
 });

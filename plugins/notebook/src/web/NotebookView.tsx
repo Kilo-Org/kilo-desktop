@@ -1,8 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 
-import { NTERACT_ELECTRON_HOST_PROTOCOL_VERSION, NOTEBOOK_HOST } from "../contracts/schemas.js";
+import {
+	NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
+	NOTEBOOK_HOST,
+	type NotebookService,
+} from "../contracts/schemas.js";
 import { notebookIdFromInstanceId } from "./notebook-tabs.js";
 
 /**
@@ -81,9 +86,45 @@ export interface NotebookViewProps {
 }
 
 export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps) {
-	const sdk = useSdk("notebook");
+	const sdk = useSdk<NotebookService>("notebook");
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const frameSrc = nteractSrc(instanceId);
+	const desktopFrame = frameSrc?.startsWith(DESKTOP_SCHEME_PREFIX) ?? false;
+	const [retryVersion, setRetryVersion] = useState(0);
+	const [runtime, setRuntime] = useState<
+		| { readonly status: "checking" }
+		| { readonly status: "available" }
+		| { readonly status: "unavailable"; readonly reason: string }
+	>(desktopFrame ? { status: "checking" } : { status: "available" });
+
+	useEffect(() => {
+		if (!desktopFrame) return;
+		let active = true;
+		setRuntime({ status: "checking" });
+		void sdk.client.status().then(
+			(result) => {
+				if (!active) return;
+				setRuntime(
+					result.availability.status === "available"
+						? { status: "available" }
+						: {
+								status: "unavailable",
+								reason: result.availability.reason ?? "The notebook runtime daemon is unavailable.",
+							},
+				);
+			},
+			(error: unknown) => {
+				if (!active) return;
+				setRuntime({
+					status: "unavailable",
+					reason: error instanceof Error ? error.message : "Could not start the notebook runtime.",
+				});
+			},
+		);
+		return () => {
+			active = false;
+		};
+	}, [desktopFrame, retryVersion, sdk]);
 
 	useEffect(() => {
 		if (!frameSrc) return;
@@ -138,7 +179,34 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
-			{frameSrc ? (
+			{!frameSrc ? (
+				<div
+					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
+					data-qa-id="notebook-placeholder"
+				>
+					The notebook interface is not bundled in this build.
+				</div>
+			) : runtime.status === "checking" ? (
+				<div
+					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
+					data-qa-id="notebook-runtime-starting"
+				>
+					Starting the notebook runtime…
+				</div>
+			) : runtime.status === "unavailable" ? (
+				<div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm">
+					<p className="text-muted-foreground" data-qa-id="notebook-runtime-error">
+						{runtime.reason}
+					</p>
+					<Button
+						type="button"
+						data-qa-id="notebook-runtime-retry"
+						onClick={() => setRetryVersion((version) => version + 1)}
+					>
+						Retry
+					</Button>
+				</div>
+			) : (
 				// Deliberately no `sandbox` attribute. The trusted nteract application is
 				// isolated from the app renderer by its dedicated protocol origin and CSP.
 				// Untrusted notebook output is separately confined in output-frame.html.
@@ -153,13 +221,6 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 					allow="clipboard-read; clipboard-write; fullscreen"
 					data-qa-id="notebook-frame"
 				/>
-			) : (
-				<div
-					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
-					data-qa-id="notebook-placeholder"
-				>
-					The notebook interface is not bundled in this build.
-				</div>
 			)}
 		</div>
 	);

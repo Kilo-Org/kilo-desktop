@@ -25,7 +25,23 @@ export const notebookDaemonSchema = z.object({
 });
 export type NotebookDaemon = z.infer<typeof notebookDaemonSchema>;
 
-/** Agentic Desktop attaches to the user-owned singleton; it never owns its process. */
+export const notebookDaemonProcessSchema = z.object({
+	status: z.enum([
+		"idle",
+		"probing",
+		"external",
+		"starting",
+		"bundled",
+		"restarting",
+		"failed",
+		"stopped",
+	]),
+	pid: z.number().int().nonnegative().optional(),
+	attempt: z.number().int().positive().optional(),
+	reason: z.string().optional(),
+});
+export type NotebookDaemonProcess = z.infer<typeof notebookDaemonProcessSchema>;
+
 export const notebookDaemonAvailabilitySchema = z.object({
 	status: z.enum(["available", "unavailable"]),
 	/** Present on `unavailable`, with an actionable runtime prerequisite. */
@@ -39,6 +55,7 @@ export type NotebookDaemonAvailability = z.infer<typeof notebookDaemonAvailabili
  */
 export const notebookStatusSchema = z.object({
 	availability: notebookDaemonAvailabilitySchema,
+	process: notebookDaemonProcessSchema,
 	daemon: notebookDaemonSchema.nullable(),
 });
 export type NotebookStatus = z.infer<typeof notebookStatusSchema>;

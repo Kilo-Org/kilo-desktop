@@ -6,7 +6,10 @@ import { expect } from "@playwright/test";
 
 import { packagedResourcesDirectory } from "@anaconda-agentic-desktop/e2e";
 
-import { findRuntArtifact } from "../../src/main/distribution/artifacts.js";
+import {
+	getNteractMcpArtifact,
+	getRuntimedArtifact,
+} from "../../src/main/distribution/artifacts.js";
 
 type DesktopBridge = {
 	invoke?: (
@@ -20,6 +23,7 @@ type NotebookStatusResult =
 			ok: true;
 			value: {
 				availability: { status: string; reason?: string };
+				process: { status: string; pid?: number };
 				daemon: { version: string } | null;
 			};
 	  }
@@ -84,6 +88,10 @@ export class NotebookPage {
 			throw new Error(`Expected notebook:status to succeed, got "${result.error.message}"`);
 		}
 		expect(result.value.availability.status).toBe("available");
+		expect(
+			["external", "bundled"],
+			"Notebook status should identify a reachable external or bundled daemon",
+		).toContain(result.value.process.status);
 	}
 
 	async verifyDaemonIsReachable(): Promise<void> {
@@ -97,10 +105,15 @@ export class NotebookPage {
 		const resources = packagedResourcesDirectory();
 		expect(existsSync(path.join(resources, "notebook", "index.html"))).toBe(true);
 		expect(existsSync(path.join(resources, "notebook", "output-frame.html"))).toBe(true);
-		const runt = findRuntArtifact();
-		if (runt) {
-			expect(existsSync(path.join(resources, "runt", runt.target, runt.executable))).toBe(true);
-		}
+		const mcp = getNteractMcpArtifact();
+		const mcpRoot = path.join(resources, "nteract-mcp", mcp.target);
+		expect(existsSync(path.join(mcpRoot, mcp.nteractMcp.executable))).toBe(true);
+		expect(existsSync(path.join(mcpRoot, mcp.runt.executable))).toBe(true);
+		const runtimed = getRuntimedArtifact();
+		expect(
+			existsSync(path.join(resources, "runtimed", runtimed.target, runtimed.executable)),
+			"The packaged app should contain the host-platform runtimed daemon",
+		).toBe(true);
 	}
 
 	async executeCellAndVerifyOutput(): Promise<void> {

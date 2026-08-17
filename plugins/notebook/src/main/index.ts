@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import { z } from "zod";
 
 import {
@@ -16,6 +18,7 @@ import {
 import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
 import { reconcileRuntMcpConfig } from "./seed-runt-mcp.js";
 import type { BuildChannel } from "./socket-path.js";
+import { findRuntimedArtifact } from "./distribution/artifacts.js";
 
 const connectionArgsSchema = z.object({
 	notebookId: z.string().uuid(),
@@ -28,7 +31,9 @@ export interface NotebookFeatureOptions {
 	/** Selects the user-owned singleton. Defaults to nightly until the stable release includes the adapter. */
 	readonly runtimeChannel?: BuildChannel;
 	readonly resolveBundleRoot?: () => string | undefined;
+	readonly resolveNteractMcpBinary?: () => string | undefined;
 	readonly resolveRuntBinary?: () => string | undefined;
+	readonly resolveRuntimedBinary?: () => string | undefined;
 	/** Test seam for the native host service. */
 	readonly createHostService?: (
 		options: ElectronNotebookHostServiceOptions,
@@ -37,6 +42,7 @@ export interface NotebookFeatureOptions {
 
 export interface ElectronNotebookHostServiceLike {
 	readonly socketPath: string;
+	start(): ReturnType<ElectronNotebookHostService["start"]>;
 	status(): ReturnType<ElectronNotebookHostService["status"]>;
 	connect(
 		port: HostMessagePort,
@@ -50,21 +56,44 @@ export async function mainRegister(
 	mainSdk: MainSdk,
 	options: NotebookFeatureOptions = {},
 ): Promise<void> {
+	const runtimeChannel = options.runtimeChannel ?? "nightly";
 	const createHostService =
 		options.createHostService ??
 		((serviceOptions) => new ElectronNotebookHostService(serviceOptions));
+	const resolveRuntimedBinary =
+		options.resolveRuntimedBinary ??
+		(() => {
+			const artifact = findRuntimedArtifact();
+			if (!artifact) return undefined;
+			const candidate = mainSdk.resolvePluginAsset(
+				`resources/runtimed/${artifact.target}/${artifact.executable}`,
+			);
+			return existsSync(candidate) ? candidate : undefined;
+		});
+	const runtimedBinaryPath = resolveRuntimedBinary();
 	const hostService = createHostService({
 		mainSdk,
 		...(options.socketPath ? { socketPath: options.socketPath } : {}),
-		...(options.runtimeChannel ? { runtimeChannel: options.runtimeChannel } : {}),
+		runtimeChannel,
+		...(runtimedBinaryPath ? { runtimedBinaryPath } : {}),
+	});
+	mainSdk.onDispose(() => hostService.dispose());
+	void hostService.start().catch((error: unknown) => {
+		mainSdk.logger.warn(
+			`Notebook runtime startup failed: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	});
 	const resolveBundleRoot =
 		options.resolveBundleRoot ??
 		(() => resolveNotebookBundleRoot({ candidate: mainSdk.resolvePluginAsset("build/notebook") }));
 
 	await reconcileRuntMcpConfig(mainSdk, {
-		socketPath: hostService.socketPath,
+		runtimeChannel,
 		logger: mainSdk.logger,
+		...(options.socketPath ? { customSocketPath: hostService.socketPath } : {}),
+		...(options.resolveNteractMcpBinary
+			? { resolveNteractMcpBinary: options.resolveNteractMcpBinary }
+			: {}),
 		...(options.resolveRuntBinary ? { resolveRuntBinary: options.resolveRuntBinary } : {}),
 	});
 
@@ -84,5 +113,4 @@ export async function mainRegister(
 		},
 	} satisfies EmbeddedWebHost;
 	mainSdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, embeddedWebHost);
-	mainSdk.onDispose(() => hostService.dispose());
 }

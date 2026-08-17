@@ -5,26 +5,26 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntArtifact } from "./artifacts.js";
-import { stageRunt } from "./stage-runt.js";
+import type { RuntimedArtifact } from "./artifacts.js";
+import { stageRuntimed } from "./stage-runtimed.js";
 
 const directories: string[] = [];
 const MACHO_BYTES = Buffer.from([0xfe, 0xed, 0xfa, 0xcf, 1, 2, 3, 4]);
 
-function artifactFor(bytes: Buffer = MACHO_BYTES): RuntArtifact {
+function artifactFor(bytes: Buffer = MACHO_BYTES): RuntimedArtifact {
 	return {
 		target: "darwin-arm64-test",
 		platform: "darwin",
 		arch: "arm64",
-		assetName: "runt-nightly-darwin-arm64-test",
-		executable: "runt-nightly",
+		assetName: "runtimed-nightly-darwin-arm64-test",
+		executable: "runtimed-nightly",
 		bytes: bytes.byteLength,
 		sha256: createHash("sha256").update(bytes).digest("hex"),
 	};
 }
 
 async function temporaryDirectory(): Promise<string> {
-	const directory = await mkdtemp(path.join(os.tmpdir(), "runt-stage-"));
+	const directory = await mkdtemp(path.join(os.tmpdir(), "runtimed-stage-"));
 	directories.push(directory);
 	return directory;
 }
@@ -35,17 +35,21 @@ afterEach(async () => {
 	);
 });
 
-describe("stageRunt", () => {
-	it("stages the CLI when an artifact is provided", async () => {
+describe("stageRuntimed", () => {
+	it("stages an executable daemon with a verified manifest", async () => {
 		const resourceRoot = await temporaryDirectory();
 		const fetch_ = vi.fn(async () => new Response(MACHO_BYTES));
-		const result = await stageRunt({
+		const result = await stageRuntimed({
 			resourceRoot,
 			artifact: artifactFor(),
 			fetch: fetch_ as typeof fetch,
 		});
-		expect(result?.staged).toBe(true);
-		expect(await readFile(result!.executablePath)).toEqual(MACHO_BYTES);
-		expect((await stat(result!.executablePath)).mode & 0o111).not.toBe(0);
+
+		expect(result.staged).toBe(true);
+		expect(await readFile(result.executablePath)).toEqual(MACHO_BYTES);
+		expect((await stat(result.executablePath)).mode & 0o111).not.toBe(0);
+		expect(await readFile(path.join(result.targetDirectory, "staged.json"), "utf8")).toContain(
+			result.artifact.sha256,
+		);
 	});
 });

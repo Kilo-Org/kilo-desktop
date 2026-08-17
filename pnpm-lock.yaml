@@ -841,6 +841,9 @@ importers:
         specifier: ^1.27.0
         version: 1.27.0(react@19.2.8)
     devDependencies:
+      7zip-bin-full:
+        specifier: ^26.2.1
+        version: 26.2.1
       '@anaconda-agentic-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -853,6 +856,9 @@ importers:
       '@anaconda-agentic-desktop/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@anaconda-agentic-desktop/ui':
+        specifier: workspace:*
+        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
       '@anaconda/playwright-utils':
         specifier: 1.17.1
         version: 1.17.1(@playwright/test@1.62.1)(jiti@2.7.0)(supports-color@10.2.2)
@@ -1012,6 +1018,9 @@ importers:
         version: 5.0.0-rc.1(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-rc.1)(@vitest/coverage-v8@5.0.0-rc.1)(@vitest/ui@5.0.0-rc.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
 packages:
+
+  7zip-bin-full@26.2.1:
+    resolution: {integrity: sha512-h1DE4G8WEJ3/LI4HTcuOpouP7cy9JGqYfZm5fzLhdzw8jI3wFyA9RFu5MP+ICzelKEYmWweRWApEvVWKmJIdVQ==}
 
   '@anaconda-agentic-desktop/ui@file:packages/ui':
     resolution: {directory: packages/ui, type: directory}
@@ -8227,6 +8236,8 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  7zip-bin-full@26.2.1: {}
 
   '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))':
     dependencies:

@@ -33,6 +33,8 @@ import {
 } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage } from "./ChatPage.js";
+import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
+import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 import {
 	CHAT_RIGHT_PANEL_TAB_EXTENSION,
 	type ChatRightPanelContributionProps,
@@ -295,11 +297,19 @@ describe("ChatPage error rendering", () => {
 			} satisfies Partial<WorkspacesService & KiloUiChatService>,
 		});
 		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": kiloUi } });
+		const queryClient = testClient();
+		const sessionActivity = createSessionActivityStore({ storage: null });
 		return render(
 			<SdkProvider system={system}>
-				<ChatConnectionProvider status={status}>
-					<ChatPage />
-				</ChatConnectionProvider>
+				<QueryClientProvider client={queryClient}>
+					<WorkspacesFeatureProvider>
+						<SessionActivityProvider store={sessionActivity}>
+							<ChatConnectionProvider status={status}>
+								<ChatPage />
+							</ChatConnectionProvider>
+						</SessionActivityProvider>
+					</WorkspacesFeatureProvider>
+				</QueryClientProvider>
 			</SdkProvider>,
 		);
 	}

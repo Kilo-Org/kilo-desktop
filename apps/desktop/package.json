@@ -31,7 +31,8 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencyNotes": {
-		"@runtimed/node": "PACKAGING BRIDGE: pnpm deploy only follows local runtime packages declared directly by the deployed desktop package; implementation ownership remains in the notebook plugin."
+		"@runtimed/node": "PACKAGING BRIDGE: Forge materializes the notebook plugin's generated native peer after the lockfile-backed production deploy.",
+		"ws": "PACKAGING BRIDGE: Vite leaves `ws` external in the main bundle (CJS `events` require). pnpm deploy only hoists packages declared on desktop, so a transitive kilo-server dep is not enough."
 	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
@@ -43,7 +44,6 @@
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@github/keytar": "^7.10.6",
 		"@launchdarkly/node-client-sdk": "^4.0.0",
-		"@runtimed/node": "link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
 		"@vscode/proxy-agent": "^0.44.0",
 		"atomically": "catalog:",
 		"electron-debug": "^4.1.0",
@@ -57,6 +57,7 @@
 		"shell-env": "^4.0.3",
 		"smol-toml": "^1.3.1",
 		"update-electron-app": "^3.3.0",
+		"ws": "^8.21.3",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

@@ -180,7 +180,8 @@ config points at `npx @mcp-b/webmcp-local-relay@latest` or a locally
 installed copy). The bundled `kilo serve` is the odd one out — we ship and
 control it and want zero end-user configuration.
 
-The interim ships `@mcp-b/webmcp-local-relay` inside the packaged app,
+The interim ships a lockfile-pinned `@mcp-b/webmcp-local-relay` runtime inside
+the packaged app's unpacked kilo-server plugin assets,
 initializes an `mcp["anaconda-desktop-relay"]` entry into the app-owned
 `kilo.jsonc`, runs the WebSocket rendezvous in Electron main, and lets Kilo
 launch the package's CLI through Anaconda Desktop's executable in Node mode
@@ -200,8 +201,10 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  │                                                    → true / false           │   │
 │  │                                                                             │   │
 │  │    resolveWebMcpRelayEntry()  ───►  ${app}/resources/app.asar.unpacked/     │   │
-│  │                                       node_modules/@mcp-b/webmcp-local-     │   │
-│  │                                       relay/dist/cli.mjs                    │   │
+│  │                                       node_modules/@anaconda-agentic-desktop/│   │
+│  │                                       plugin-kilo-server/relay-runtime/      │   │
+│  │                                       node_modules/@mcp-b/webmcp-local-      │   │
+│  │                                       relay/dist/cli.mjs                     │   │
 │  │                                                                             │   │
 │  │    reconcileWebMcpRelayConfig(${runtime}/config/kilo/, {                             │   │
 │  │      // written to kilo.jsonc (Kilo's canonical file, JSONC-tolerant)      │   │
@@ -397,7 +400,7 @@ Before initialization (user's kilo.jsonc, if any):    After initialization:
 }                                                    "type": "local",
                                                      "command": [
                                                        "/Applications/Anaconda…/MacOS/Anaconda Agentic Desktop",
-                                                       "/…/app.asar.unpacked/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs"
+                                                       "/…/app.asar.unpacked/node_modules/@anaconda-agentic-desktop/plugin-kilo-server/relay-runtime/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs"
                                                      ],
                                                      "environment": { "ELECTRON_RUN_AS_NODE": "1" },
                                                      "enabled": true

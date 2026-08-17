@@ -168,9 +168,27 @@ export function buildCatalogFromProviderList(
 	};
 }
 
+/** Kilo Gateway Auto Free virtual model — preferred first-run default. */
+export const AUTO_FREE_MODEL_ID = "kilo-auto/free";
+
+function isConnectedAutoFree(model: KiloCatalogModel): boolean {
+	if (model.disabled) {
+		return false;
+	}
+	return (
+		model.modelID === AUTO_FREE_MODEL_ID ||
+		model.id === AUTO_FREE_MODEL_ID ||
+		/^auto\s*free$/i.test(model.name.trim())
+	);
+}
+
 export function pickDefaultModel(catalog: KiloModelCatalog | undefined): KiloModelRef | undefined {
 	if (!catalog) {
 		return undefined;
+	}
+	const autoFree = catalog.models.find(isConnectedAutoFree);
+	if (autoFree) {
+		return { providerID: autoFree.providerID, modelID: autoFree.modelID };
 	}
 	const firstConnected = catalog.providers.find((provider) => provider.connected);
 	if (!firstConnected) {

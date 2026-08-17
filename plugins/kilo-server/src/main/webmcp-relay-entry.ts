@@ -1,15 +1,16 @@
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 /**
  * Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
  *
  * `@mcp-b/webmcp-local-relay` ships an ESM CLI (`bin/webmcp-local-relay ->
- * dist/cli.mjs`) that requires a Node runtime. In the packaged app there is no
- * separate `node` binary, so `kilo serve` spawns the Anaconda Desktop
- * executable itself with `ELECTRON_RUN_AS_NODE=1`, which requires
- * `FuseV1Options.RunAsNode: true` in `forge.config.ts` (see the interim
- * callout in `docs/webmcp.md`).
+ * dist/cli.mjs`) that requires a Node runtime. Forge stages its lockfile-pinned
+ * dependency closure in the plugin's unpacked `relay-runtime` directory so the
+ * child process does not need the app's remaining node_modules outside ASAR.
+ * Kilo spawns the Anaconda Desktop executable with `ELECTRON_RUN_AS_NODE=1`,
+ * which requires `FuseV1Options.RunAsNode: true` in `forge.config.ts`.
  *
  * Once Kilo Code lands the native `type: "webmcp"` MCP transport tracked in
  * #102, this whole file and the fuse flip go away.
@@ -27,6 +28,9 @@ export interface ResolvedWebMcpRelay {
  * production; tests inject stubs.
  */
 export interface ResolveWebMcpRelayOptions {
+	/** Plugin-owned runtime root staged outside ASAR in packaged builds. */
+	readonly runtimeRoot?: string;
+	readonly exists?: (filePath: string) => boolean;
 	readonly requireResolve?: (specifier: string) => string;
 	readonly readPackageJson?: (packageJsonPath: string) => {
 		version: string;
@@ -50,10 +54,10 @@ function defaultReadPackageJson(packageJsonPath: string): {
 }
 
 /**
- * Rewrites a resolved path that lives inside an unpacked asar bundle so the
- * bin is executable at runtime. Electron's `require.resolve` returns paths
- * with `.asar/` embedded even when the target is under `.asar.unpacked/`; the
- * OS-level file only exists on the unpacked side.
+ * Rewrites a plugin asset path that lives inside an unpacked asar bundle so
+ * the child runtime has a real filesystem path. Electron's plugin resolver
+ * returns paths with `.asar/` embedded even when Forge marked the asset for
+ * extraction to `.asar.unpacked/`.
  *
  * Safe on unpackaged (dev/test) paths: no `.asar` segment → identity.
  */
@@ -78,20 +82,36 @@ export function resolveWebMcpRelayEntry(
 ): ResolvedWebMcpRelay {
 	const requireResolve = options.requireResolve ?? DEFAULT_REQUIRE.resolve;
 	const readPackageJson = options.readPackageJson ?? defaultReadPackageJson;
+	const exists = options.exists ?? existsSync;
 
-	// The package only exports its main entry (dist/index.mjs), so we resolve
-	// that first and walk up two levels to the package root.
-	let mainEntry: string;
-	try {
-		mainEntry = requireResolve(PACKAGE_NAME);
-	} catch (cause) {
-		throw new Error(
-			`Failed to resolve ${PACKAGE_NAME}. Ensure it is a dependency of ` +
-				`@anaconda-agentic-desktop/plugin-kilo-server and installed in the app's node_modules.`,
-			{ cause },
+	let packageRoot: string | undefined;
+	if (options.runtimeRoot) {
+		const runtimePackageRoot = path.join(
+			translateAsarPath(options.runtimeRoot),
+			"node_modules",
+			...PACKAGE_NAME.split("/"),
 		);
+		if (exists(path.join(runtimePackageRoot, "package.json"))) {
+			packageRoot = runtimePackageRoot;
+		} else if (options.runtimeRoot.includes(`${path.sep}app.asar${path.sep}`)) {
+			throw new Error(`Packaged WebMCP runtime is missing from ${runtimePackageRoot}.`);
+		}
 	}
-	const packageRoot = path.dirname(path.dirname(mainEntry)); // .../dist/index.mjs → .../
+	if (!packageRoot) {
+		// Development resolves the package's exported main entry and walks up to
+		// its root. Packaged builds always provide the isolated runtimeRoot above.
+		let mainEntry: string;
+		try {
+			mainEntry = requireResolve(PACKAGE_NAME);
+		} catch (cause) {
+			throw new Error(
+				`Failed to resolve ${PACKAGE_NAME}. Packaged builds must stage the ` +
+					`${PACKAGE_NAME} runtime through @anaconda-agentic-desktop/webmcp-relay-runtime.`,
+				{ cause },
+			);
+		}
+		packageRoot = path.dirname(path.dirname(mainEntry)); // .../dist/index.mjs → .../
+	}
 	const packageJsonPath = path.join(packageRoot, "package.json");
 
 	let manifest: { version: string; bin?: string | Record<string, string> };

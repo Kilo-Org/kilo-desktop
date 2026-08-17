@@ -77,6 +77,10 @@ export default defineConfig(({ command }) => {
 					// missing optional dep.
 					"@vscode/proxy-agent",
 					"@vscode/windows-ca-certs",
+					// Must also be a direct desktop dependency: the bundled main
+					// imports `ws` at runtime, and `pnpm deploy --prod` only hoists
+					// packages declared on this package (not transitive deps of
+					// linked plugins such as kilo-server).
 					"ws",
 					...builtinModules,
 					...builtinModules.map((module) => `node:${module}`),

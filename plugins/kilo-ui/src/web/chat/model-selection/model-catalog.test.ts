@@ -85,6 +85,75 @@ describe("model-catalog", () => {
 		});
 	});
 
+	it("prefers Auto Free over the provider-marked default", () => {
+		const withAutoFree: KiloProviderListPayload = {
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						auto: { id: "auto", name: "Auto", providerID: "kilo" },
+						"kilo-auto/free": {
+							id: "kilo-auto/free",
+							name: "Auto Free",
+							providerID: "kilo",
+						},
+						"kilo-auto/frontier": {
+							id: "kilo-auto/frontier",
+							name: "Auto Frontier",
+							providerID: "kilo",
+						},
+					},
+				},
+			],
+			default: { kilo: "auto" },
+			connected: ["kilo"],
+		};
+		expect(pickDefaultModel(buildCatalogFromProviderList(withAutoFree))).toEqual({
+			providerID: "kilo",
+			modelID: "kilo-auto/free",
+		});
+	});
+
+	it("does not pick a disconnected Auto Free model", () => {
+		const disconnectedAutoFree: KiloProviderListPayload = {
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						"kilo-auto/free": {
+							id: "kilo-auto/free",
+							name: "Auto Free",
+							providerID: "kilo",
+						},
+					},
+				},
+				{
+					id: "anthropic",
+					name: "Anthropic",
+					models: {
+						"claude-sonnet": {
+							id: "claude-sonnet",
+							name: "Claude Sonnet",
+							providerID: "anthropic",
+						},
+					},
+				},
+			],
+			default: { anthropic: "claude-sonnet" },
+			connected: ["anthropic"],
+		};
+		expect(
+			pickDefaultModel(
+				buildCatalogFromProviderList(disconnectedAutoFree, { connectedOnly: false }),
+			),
+		).toEqual({
+			providerID: "anthropic",
+			modelID: "claude-sonnet",
+		});
+	});
+
 	it("sorts Kilo Gateway first among providers", () => {
 		const withGateway: KiloProviderListPayload = {
 			all: [

@@ -43,9 +43,15 @@ const notebookPackaging = createNotebookPackagingPlan();
 const asarUnpackPackages = [
 	"better-sqlite3",
 	"@github/keytar",
-	"@mcp-b/webmcp-local-relay",
 	...notebookPackaging.asarUnpackPackages,
 ];
+const webMcpRelayRuntimePackage = "@anaconda-agentic-desktop/webmcp-relay-runtime";
+const webMcpRelayRuntimeSubpath = path.join(
+	"node_modules",
+	"@anaconda-agentic-desktop",
+	"plugin-kilo-server",
+	"relay-runtime",
+);
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
@@ -103,9 +109,9 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 	] as const;
 
 	try {
-		// Legacy deploy preserves `link:` dependencies so development keeps live workspace
-		// links. Materialize those links only in this temporary production tree before
-		// ASAR validation. The filtered graph excludes Kilo's patch, so permit it unused.
+		// Modern deploy consumes the committed workspace lockfile. Keep the build
+		// offline and frozen so release artifacts cannot drift when a compatible
+		// transitive version is published after the lockfile was reviewed.
 		await execa(
 			"pnpm",
 			[
@@ -113,10 +119,10 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 				"--filter",
 				"@anaconda-agentic-desktop/desktop",
 				"deploy",
-				"--legacy",
 				"--prod",
 				"--ignore-scripts",
 				"--offline",
+				"--frozen-lockfile",
 				stagingDirectory,
 			],
 			{
@@ -150,14 +156,42 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 	}
 }
 
+async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
+	const runtimeDirectory = path.join(buildPath, webMcpRelayRuntimeSubpath);
+	await rm(runtimeDirectory, { force: true, recursive: true });
+	await execa(
+		"pnpm",
+		[
+			"--config.allowUnusedPatches=true",
+			"--filter",
+			webMcpRelayRuntimePackage,
+			"deploy",
+			"--prod",
+			"--ignore-scripts",
+			"--offline",
+			"--frozen-lockfile",
+			runtimeDirectory,
+		],
+		{
+			cwd: workspaceRoot,
+			env: { HUSKY: "0" },
+			stderr: "inherit",
+			stdout: "inherit",
+		},
+	);
+	await rm(path.join(runtimeDirectory, "node_modules", ".bin"), {
+		force: true,
+		recursive: true,
+	});
+}
+
 const config: ForgeConfig = {
 	packagerConfig: {
 		asar: {
-			// `@mcp-b/webmcp-local-relay` is unpacked so its bin (`dist/cli.mjs`)
-			// has a real filesystem path. Kilo spawns it via `process.execPath` +
-			// `ELECTRON_RUN_AS_NODE=1` (see plugins/kilo-server/src/main/webmcp-relay-config.ts
-			// and the interim tracking issue anaconda/agentic-desktop#102).
-			unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`,
+			// Native addons and the isolated WebMCP child runtime need real
+			// filesystem paths. All other production dependencies remain inside
+			// the integrity-checked ASAR.
+			unpack: `{**/node_modules/{${asarUnpackPackages.join(",")}}/**,**/${webMcpRelayRuntimeSubpath.split(path.sep).join("/")}/**}`,
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
@@ -165,6 +199,10 @@ const config: ForgeConfig = {
 		extraResource: extraResources,
 		icon: appIcon,
 		name: identity.productName,
+		// Production node_modules are staged in packageAfterCopy via `pnpm deploy`.
+		// Packager prune runs `pnpm install --production` against this workspace
+		// package and can wipe the repo's node_modules (Forge is a devDependency).
+		prune: false,
 		ignore: (file) => {
 			if (!file) return false;
 			// Allowlist: package manifest and built main/preload. Plugin drizzle
@@ -300,6 +338,7 @@ const config: ForgeConfig = {
 		packageAfterCopy: async (_forgeConfig, buildPath) => {
 			await stageWebRenderer(buildPath, webDistDirectory);
 			await stageProductionDependencies(buildPath);
+			await stageWebMcpRelayRuntime(buildPath);
 		},
 		postMake: async (_forgeConfig, makeResults) => {
 			if (!windowsPlan.postMakeSign) return makeResults;

@@ -20,4 +20,29 @@ describe("notebookBrowserRegister", () => {
 			daemon: null,
 		});
 	});
+
+	it("rejects file open, save, and save-directory changes in browser mode", async () => {
+		const mainSdk = createFakeMainSdk({ featureId: "notebook" });
+		notebookBrowserRegister(mainSdk);
+
+		await expect(mainSdk.invoke("openFile", { path: "/tmp/analysis.ipynb" })).rejects.toMatchObject(
+			{
+				name: "FeatureError",
+				code: "BUSINESS",
+				message: "Opening notebook files is unavailable in browser mode.",
+			},
+		);
+		await expect(
+			mainSdk.invoke("save", { notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d" }),
+		).resolves.toEqual({
+			outcome: "failed",
+			reason: "Saving notebooks is unavailable in browser mode.",
+		});
+		await expect(
+			mainSdk.invoke("setDefaultSaveDirectory", {
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				directory: null,
+			}),
+		).resolves.toBeUndefined();
+	});
 });

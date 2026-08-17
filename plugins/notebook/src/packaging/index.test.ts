@@ -82,7 +82,27 @@ describe("notebook packaging", () => {
 		}
 	});
 
+	it("rejects unsupported desktop targets before packaging", () => {
+		expect(() =>
+			createNotebookPackagingPlan({
+				pluginRoot: path.resolve("/plugin/notebook"),
+				platform: "linux",
+				arch: "arm64",
+				exists: () => true,
+			}),
+		).toThrow(/nteract-mcp is not configured for linux\/arm64/);
+	});
+
 	it("declares the native adapter as a main-process external", () => {
 		expect(NOTEBOOK_MAIN_EXTERNALS[0].test("@runtimed/node/electron")).toBe(true);
+	});
+
+	it("resolves the installed plugin root when packaging options are omitted", () => {
+		try {
+			expect(createNotebookPackagingPlan().asarUnpackPackages).toEqual(["@runtimed"]);
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toMatch(/missing|not configured/);
+		}
 	});
 });

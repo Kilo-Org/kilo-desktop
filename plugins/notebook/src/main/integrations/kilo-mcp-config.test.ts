@@ -133,4 +133,65 @@ describe("reconcileRuntMcpConfig", () => {
 		notebookSdk.dispose();
 		kiloServerSdk.dispose();
 	});
+
+	it("skips configuration when kilo-server does not expose mcpConfig", async () => {
+		const { mainSdk: notebookSdk } = createLinkedFakeSdkPair({ featureId: "notebook" });
+		const warn = vi.spyOn(notebookSdk.logger, "warn");
+
+		await reconcileRuntMcpConfig(notebookSdk, {
+			runtimeChannel: "nightly",
+			resolveNteractMcpBinary: () => "/opt/nteract-mcp",
+			resolveRuntBinary: () => "/opt/runt-nightly",
+		});
+
+		expect(warn).toHaveBeenCalledWith(
+			"Skipping notebook MCP configuration: kilo-server mcpConfig is unavailable.",
+		);
+		notebookSdk.dispose();
+	});
+
+	it("removes notebook MCP when a custom socket has no staged runt binary", async () => {
+		const mcpConfig: KiloMcpConfigService = {
+			set: vi.fn(async () => undefined),
+			remove: vi.fn(async () => undefined),
+		};
+		const { mainSdk: notebookSdk, createMainSdk } = createLinkedFakeSdkPair({
+			featureId: "notebook",
+		});
+		const kiloServerSdk = createMainSdk("kilo-server");
+		kiloServerSdk.plugins.expose("kiloService", { mcpConfig });
+
+		await reconcileRuntMcpConfig(notebookSdk, {
+			runtimeChannel: "nightly",
+			customSocketPath: "/tmp/runtimed.sock",
+			resolveRuntBinary: () => undefined,
+		});
+
+		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", "runt");
+		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", NOTEBOOKS_MCP_ENTRY_NAME);
+		expect(mcpConfig.set).not.toHaveBeenCalled();
+		notebookSdk.dispose();
+		kiloServerSdk.dispose();
+	});
+
+	it("looks up bundled binaries from plugin assets when resolvers are omitted", async () => {
+		const mcpConfig: KiloMcpConfigService = {
+			set: vi.fn(async () => undefined),
+			remove: vi.fn(async () => undefined),
+		};
+		const { mainSdk: notebookSdk, createMainSdk } = createLinkedFakeSdkPair({
+			featureId: "notebook",
+			main: { pluginDir: "/tmp/missing-notebook-plugin" },
+		});
+		const kiloServerSdk = createMainSdk("kilo-server");
+		kiloServerSdk.plugins.expose("kiloService", { mcpConfig });
+
+		await reconcileRuntMcpConfig(notebookSdk, { runtimeChannel: "nightly" });
+
+		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", "runt");
+		expect(mcpConfig.remove).toHaveBeenCalledWith("notebook", NOTEBOOKS_MCP_ENTRY_NAME);
+		expect(mcpConfig.set).not.toHaveBeenCalled();
+		notebookSdk.dispose();
+		kiloServerSdk.dispose();
+	});
 });

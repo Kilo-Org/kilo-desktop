@@ -16,6 +16,12 @@ describe("resolveNotebookBundleRoot", () => {
 		).toBeUndefined();
 	});
 
+	it("falls back to the filesystem when no exists probe is supplied", () => {
+		expect(
+			resolveNotebookBundleRoot({ candidate: "/missing/notebook-bundle-that-does-not-exist" }),
+		).toBeUndefined();
+	});
+
 	it("probes index.html rather than accepting an empty directory", () => {
 		const candidate = "/repo/plugins/notebook/build/notebook";
 		const probed: string[] = [];

@@ -184,4 +184,173 @@ describe("RuntimedDaemonManager", () => {
 		await external.dispose();
 		expect(externalChild.signals).toEqual([]);
 	});
+
+	it("fails when spawning the bundled daemon throws", async () => {
+		const { manager } = build({
+			spawnProcess: () => {
+				throw new Error("ENOENT");
+			},
+		});
+		expect(await manager.ensureAvailable()).toEqual({
+			status: "failed",
+			reason: "Could not start the bundled runtimed daemon: ENOENT",
+		});
+		await manager.dispose();
+	});
+
+	it("fails when the bundled process emits an error before it is ready", async () => {
+		const child = new FakeChild();
+		const manager = new RuntimedDaemonManager({
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => false,
+			spawnProcess: () => {
+				queueMicrotask(() => child.emit("error", new Error("spawn EACCES")));
+				return child.asChildProcess();
+			},
+			sleep: async () => undefined,
+			readyTimeoutMs: 50,
+			pollIntervalMs: 1,
+		});
+
+		expect(await manager.ensureAvailable()).toEqual({
+			status: "failed",
+			reason: "Could not start the bundled runtimed daemon: spawn EACCES",
+		});
+		await manager.dispose();
+	});
+
+	it("restarts a bundled daemon that exits after becoming ready", async () => {
+		vi.useFakeTimers();
+		try {
+			let listening = false;
+			const spawned: FakeChild[] = [];
+			const manager = new RuntimedDaemonManager({
+				binaryPath: "/resources/runtimed-nightly",
+				probe: async () => listening,
+				spawnProcess: () => {
+					const next = new FakeChild();
+					spawned.push(next);
+					listening = true;
+					return next.asChildProcess();
+				},
+				sleep: async () => undefined,
+				now: () => 0,
+				readyTimeoutMs: 50,
+				pollIntervalMs: 1,
+			});
+
+			expect(await manager.ensureAvailable()).toEqual({ status: "bundled", pid: 4242 });
+			listening = false;
+			spawned[0]!.exit(1);
+			expect(manager.state).toEqual({ status: "restarting", attempt: 1 });
+			await vi.runAllTimersAsync();
+			expect(spawned).toHaveLength(2);
+			await manager.dispose();
+			expect(manager.state).toEqual({ status: "stopped" });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("returns the current state when already bundled or disposed", async () => {
+		let probes = 0;
+		const { manager } = build({ probe: async () => ++probes > 1 });
+		const bundled = await manager.ensureAvailable();
+		expect(await manager.ensureAvailable()).toEqual(bundled);
+		await manager.dispose();
+		expect(await manager.ensureAvailable()).toEqual({ status: "stopped" });
+	});
+
+	it("fails when the bundled process exits before the socket is ready", async () => {
+		const child = new FakeChild();
+		const manager = new RuntimedDaemonManager({
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => false,
+			spawnProcess: () => {
+				queueMicrotask(() => child.exit(1));
+				return child.asChildProcess();
+			},
+			sleep: async () => undefined,
+			readyTimeoutMs: 20,
+			pollIntervalMs: 1,
+		});
+
+		expect(await manager.ensureAvailable()).toMatchObject({
+			status: "failed",
+			reason: expect.stringContaining("exited before becoming ready"),
+		});
+		await manager.dispose();
+	});
+
+	it("attaches to an external daemon that appears after the bundled child exits", async () => {
+		const child = new FakeChild();
+		let listening = false;
+		const manager = new RuntimedDaemonManager({
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => listening,
+			spawnProcess: () => {
+				queueMicrotask(() => {
+					listening = true;
+					child.exit(0);
+				});
+				return child.asChildProcess();
+			},
+			sleep: async () => undefined,
+			readyTimeoutMs: 20,
+			pollIntervalMs: 1,
+		});
+
+		expect(await manager.ensureAvailable()).toEqual({ status: "external" });
+		await manager.dispose();
+	});
+
+	it("stops restarting after the maximum number of crashes", async () => {
+		vi.useFakeTimers();
+		try {
+			let listening = false;
+			const spawned: FakeChild[] = [];
+			const manager = new RuntimedDaemonManager({
+				binaryPath: "/resources/runtimed-nightly",
+				probe: async () => listening,
+				spawnProcess: () => {
+					const next = new FakeChild();
+					spawned.push(next);
+					listening = true;
+					return next.asChildProcess();
+				},
+				sleep: async () => undefined,
+				now: () => 0,
+				readyTimeoutMs: 50,
+				pollIntervalMs: 1,
+				maxRestartAttempts: 1,
+			});
+
+			expect(await manager.ensureAvailable()).toEqual({ status: "bundled", pid: 4242 });
+			listening = false;
+			spawned[0]!.exit(1);
+			await vi.runAllTimersAsync();
+			listening = false;
+			spawned[1]!.exit(1);
+			expect(manager.state).toEqual({
+				status: "failed",
+				reason: "The bundled runtimed daemon exited 1 times.",
+			});
+			await manager.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("stringifies non-Error spawn failures", async () => {
+		const { manager } = build({
+			spawnProcess: () => {
+				throw "ENOENT";
+			},
+		});
+		expect(await manager.ensureAvailable()).toEqual({
+			status: "failed",
+			reason: "Could not start the bundled runtimed daemon: ENOENT",
+		});
+		await manager.dispose();
+	});
 });

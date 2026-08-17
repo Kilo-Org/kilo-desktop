@@ -19,8 +19,20 @@ export default defineConfig({
 	resolve: { alias: runtimedNodeAlias },
 	test: {
 		coverage: {
-			...createCoverageConfig(["src/web/index.ts", "src/test/**"]),
-			include: ["src/**", "scripts/**"],
+			...createCoverageConfig([
+				// Plugin entrypoints — registration is covered by integration / e2e.
+				"src/main/index.ts",
+				"src/web/index.ts",
+				"src/test/**",
+				// Build-time binary staging and nteract UI checkout; exercised by
+				// prepare-assets and the notebook-ui job, not by unit coverage.
+				"src/packaging/staging/**",
+				"src/packaging/notebook-ui-build.ts",
+				// Custom-protocol MessagePort handshake and desktop runtime status.
+				// Vitest Chromium is http://localhost; covered by e2e smoke.
+				"src/web/notebook/NotebookView.tsx",
+			]),
+			include: ["src/**"],
 		},
 		projects: [
 			{

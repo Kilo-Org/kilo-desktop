@@ -215,4 +215,35 @@ describe("notebook plugin webRegister", () => {
 		);
 		expect(invoke).not.toHaveBeenCalled();
 	});
+
+	it("returns a structured error when kilo-ui is unavailable for open_file", async () => {
+		const notebookSdk = createFakeSdk({ featureId: "notebook" });
+		await expect(openNotebookFileInPanel(notebookSdk, "/projects/analysis.ipynb")).resolves.toEqual(
+			{
+				error: expect.stringContaining("unavailable"),
+			},
+		);
+	});
+
+	it("returns the invoke error when opening a notebook file fails", async () => {
+		const { notebookSdk, panel } = makeSystem();
+		panel.setFocusedSessionId("chat-1");
+		vi.spyOn(notebookSdk, "invoke").mockRejectedValueOnce(new Error("not an ipynb"));
+
+		await expect(openNotebookFileInPanel(notebookSdk, "/projects/notes.txt")).resolves.toEqual({
+			error: "not an ipynb",
+		});
+	});
+
+	it("falls back when opening a notebook file fails with a non-Error", async () => {
+		const { notebookSdk, panel } = makeSystem();
+		panel.setFocusedSessionId("chat-1");
+		vi.spyOn(notebookSdk, "invoke").mockRejectedValueOnce("denied");
+
+		await expect(openNotebookFileInPanel(notebookSdk, "/projects/analysis.ipynb")).resolves.toEqual(
+			{
+				error: "The notebook file could not be opened.",
+			},
+		);
+	});
 });

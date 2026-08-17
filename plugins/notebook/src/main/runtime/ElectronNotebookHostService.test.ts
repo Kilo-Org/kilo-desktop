@@ -62,6 +62,27 @@ function port() {
 	};
 }
 
+function desktopHost(overrides?: {
+	openFile?: () => Promise<string | null>;
+	saveFile?: () => Promise<string | null>;
+	openLink?: (url: string) => Promise<boolean>;
+}) {
+	return {
+		paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
+		dialog: {
+			openFile: vi.fn(overrides?.openFile ?? (async () => null)),
+			saveFile: vi.fn(overrides?.saveFile ?? (async () => null)),
+		},
+		externalLinks: { open: vi.fn(overrides?.openLink ?? (async () => true)) },
+		window: {
+			getTitle: () => "Agentic",
+			setTitle: vi.fn(),
+			isFocused: () => true,
+			onFocusChange: (_senderId: number, _listener: (focused: boolean) => void) => () => undefined,
+		},
+	};
+}
+
 describe("ElectronNotebookHostService", () => {
 	let handler!: ElectronNotebookHostHandler;
 	let server: ElectronNotebookHostServer;
@@ -143,6 +164,86 @@ describe("ElectronNotebookHostService", () => {
 		} finally {
 			await rm(directory, { recursive: true, force: true });
 		}
+	});
+
+	it("rejects relative, non-notebook, and unreadable open-file paths", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await expect(service.openFile("analysis.ipynb")).rejects.toThrow(/must be absolute/);
+		await expect(service.openFile("/tmp/notes.txt")).rejects.toThrow(/\.ipynb extension/);
+		await expect(service.openFile("/tmp/missing-notebook.ipynb")).rejects.toThrow(/not found/);
+	});
+
+	it("wraps native open-file relay failures", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const notebookPath = path.join(directory, "analysis.ipynb");
+		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
+		mocks.openRelayPath.mockRejectedValueOnce(new Error("lock held"));
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		try {
+			await expect(service.openFile(notebookPath)).rejects.toThrow(
+				/Could not open notebook: lock held/,
+			);
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("closes a previous host session when the same notebook reconnects", async () => {
+		const previous = { emit: vi.fn(), close: vi.fn(async () => undefined) };
+		const next = { emit: vi.fn(), close: vi.fn(async () => undefined) };
+		mocks.serve.mockReturnValueOnce(previous).mockReturnValueOnce(next);
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		const args = {
+			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			sessionId: "kilo-1",
+			title: "Analysis",
+		};
+		await service.connect(port(), args, 91);
+		await service.connect(port(), args, 91);
+		expect(previous.close).toHaveBeenCalledOnce();
+	});
+
+	it("forwards window focus changes and settles a save when the port closes", async () => {
+		const listeners = new Map<string, () => void>();
+		const hostPort = {
+			...port(),
+			on: vi.fn((event: string, listener: () => void) => {
+				listeners.set(event, listener);
+				return hostPort;
+			}),
+			off: vi.fn().mockReturnThis(),
+		};
+		let onFocus: ((focused: boolean) => void) | undefined;
+		const host = desktopHost();
+		host.window.onFocusChange = (_senderId, listener) => {
+			onFocus = listener;
+			return () => undefined;
+		};
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook", host }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		await service.connect(hostPort, { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+		onFocus?.(false);
+		expect(server.emit).toHaveBeenCalledWith("window.focusChanged", false);
+
+		const result = service.save(notebookId);
+		listeners.get("close")?.();
+		listeners.get("close")?.();
+		await expect(result).resolves.toEqual({
+			outcome: "failed",
+			reason: "The notebook was closed before saving completed.",
+		});
 	});
 
 	it("connects restored file tabs through their persisted notebook path", async () => {
@@ -567,5 +668,407 @@ describe("ElectronNotebookHostService", () => {
 
 		expect(ensureAvailable).toHaveBeenCalledOnce();
 		expect(mocks.createRelay).toHaveBeenCalledOnce();
+	});
+
+	it("answers sidecar protocol methods for daemon, blobs, and settings", async () => {
+		const mainSdk = createFakeMainSdk({ featureId: "notebook", host: desktopHost() });
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("daemon.isConnected", undefined)).resolves.toBe(true);
+		await expect(handler.invoke("daemon.getInfo", undefined)).resolves.toEqual({
+			version: "2.6.3",
+			socket_path: "/tmp/nightly.sock",
+			is_dev_mode: false,
+		});
+		await expect(handler.invoke("daemon.getReadyInfo", undefined)).resolves.toEqual(
+			expect.objectContaining({ notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d" }),
+		);
+		await expect(handler.invoke("blobs.getPort", undefined)).resolves.toBe(48637);
+		await expect(handler.invoke("deps.checkTyposquats", { packages: ["numpy"] })).resolves.toEqual(
+			[],
+		);
+		await expect(handler.invoke("relay.prepareSync", { generation: 1 })).resolves.toBeUndefined();
+		await expect(
+			handler.invoke("relay.notifySyncReady", { generation: 1 }),
+		).resolves.toBeUndefined();
+		await expect(handler.invoke("window.setTheme", { theme: "dark" })).resolves.toBeUndefined();
+		await expect(handler.invoke("settings.openWindow", undefined)).resolves.toBeUndefined();
+		await expect(
+			handler.invoke("settings.setSynced", { key: "a", value: 1 }),
+		).resolves.toBeUndefined();
+		await expect(handler.invoke("updater.beginUpgrade", undefined)).resolves.toBeUndefined();
+		await expect(handler.invoke("updater.check", undefined)).resolves.toEqual({
+			status: "idle",
+			version: null,
+			error: null,
+		});
+		await expect(handler.invoke("settings.getSynced", undefined)).resolves.toEqual({});
+		await expect(handler.invoke("settings.rotateInstallId", undefined)).resolves.toEqual(
+			expect.any(String),
+		);
+		await expect(handler.invoke("system.getGitInfo", undefined)).resolves.toBeNull();
+		await expect(handler.invoke("system.getUsername", undefined)).resolves.toBe(
+			os.userInfo().username,
+		);
+		await expect(handler.invoke("system.getFontFamilies", undefined)).resolves.toEqual([]);
+	});
+
+	it("rejects opening or cloning notebooks outside the Agentic side panel", async () => {
+		const mainSdk = createFakeMainSdk({ featureId: "notebook", host: desktopHost() });
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(
+			handler.invoke("notebook.openInNewWindow", { path: "/tmp/a.ipynb" }),
+		).rejects.toThrow(/Opening a notebook outside its Agentic side panel is unavailable/);
+		await expect(
+			handler.invoke("notebook.openHostedInNewWindow", { url: "https://example.test" }),
+		).rejects.toThrow(/Opening a notebook outside its Agentic side panel is unavailable/);
+		await expect(handler.invoke("notebook.cloneToEphemeral", undefined)).rejects.toThrow(
+			/Cloning the sidecar notebook is not supported/,
+		);
+	});
+
+	it("opens files and external links through the desktop host", async () => {
+		const openFile = vi.fn(async () => "/tmp/opened.ipynb");
+		const openLink = vi.fn(async () => true);
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: desktopHost({ openFile, openLink }),
+		});
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("dialog.openFile", { defaultPath: "/tmp" })).resolves.toBe(
+			"/tmp/opened.ipynb",
+		);
+		expect(openFile).toHaveBeenCalledWith(91, { defaultPath: "/tmp" });
+		await expect(
+			handler.invoke("externalLinks.open", { url: "https://docs.anaconda.com" }),
+		).resolves.toBeUndefined();
+		expect(openLink).toHaveBeenCalledWith("https://docs.anaconda.com");
+	});
+
+	it("rejects invalid or unauthorized external links", async () => {
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: desktopHost({ openLink: async () => false }),
+		});
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("externalLinks.open", { url: 1 as never })).rejects.toThrow(
+			/The external URL was rejected by the host/,
+		);
+		await expect(
+			handler.invoke("externalLinks.open", { url: "https://evil.example" }),
+		).rejects.toThrow(/The external URL was rejected by the host/);
+	});
+
+	it("forwards sidecar log notifications to the feature logger", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: desktopHost(),
+			logger,
+		});
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		handler.notify?.({ method: "log.debug", params: { message: "debug" } });
+		handler.notify?.({ method: "log.info", params: { message: "info" } });
+		handler.notify?.({ method: "log.warn", params: { message: "warn" } });
+		handler.notify?.({ method: "log.error", params: { message: "error" } });
+
+		expect(logger.info).toHaveBeenCalledWith("debug");
+		expect(logger.info).toHaveBeenCalledWith("info");
+		expect(logger.warn).toHaveBeenCalledWith("warn");
+		expect(logger.error).toHaveBeenCalledWith("error");
+	});
+
+	it("cancels Save As when the desktop host has no dialog", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+
+		const result = service.save(notebookId);
+		await expect(
+			handler.invoke("dialog.saveFile", { defaultPath: "/tmp/a.ipynb" }),
+		).resolves.toBeNull();
+		await expect(result).resolves.toEqual({ outcome: "cancelled" });
+	});
+
+	it("closes active sessions when disposed", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await service.dispose();
+		expect(server.close).toHaveBeenCalledOnce();
+	});
+
+	it("fails blob-port lookup when the daemon did not advertise one", async () => {
+		const native = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
+		const { blobPort: _blobPort, ...info } = native.info;
+		mocks.createRelay.mockResolvedValueOnce({ ...native, info: info as RelayInfo });
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("blobs.getPort", undefined)).rejects.toThrow(
+			/The runtime daemon has no blob server/,
+		);
+	});
+
+	it("reports an already-clean notebook as saved without prompting", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		await service.connect(
+			port(),
+			{
+				notebookId,
+				sessionId: "kilo-1",
+				title: "Analysis",
+				notebookPath: "/tmp/analysis.ipynb",
+			},
+			91,
+		);
+
+		await expect(service.save(notebookId)).resolves.toEqual({ outcome: "saved" });
+		expect(server.emit).not.toHaveBeenCalledWith("command", {
+			id: "notebook.save",
+			payload: undefined,
+		});
+	});
+
+	it("returns null from open-file when the desktop host is absent", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("dialog.openFile", { defaultPath: "/tmp" })).resolves.toBeNull();
+	});
+
+	it("reuses an in-flight save instead of emitting a second command", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+
+		const first = service.save(notebookId);
+		const second = service.save(notebookId);
+		expect(second).toBe(first);
+		expect(vi.mocked(server.emit).mock.calls.filter(([event]) => event === "command")).toHaveLength(
+			1,
+		);
+		await handler.invoke("window.setTitle", { title: "Analysis" });
+		await expect(first).resolves.toEqual({ outcome: "saved" });
+		await expect(second).resolves.toEqual({ outcome: "saved" });
+	});
+
+	it("fails a save that never receives a completion event", async () => {
+		vi.useFakeTimers();
+		try {
+			const service = new ElectronNotebookHostService({
+				mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+				socketPath: "/tmp/nightly.sock",
+			});
+			const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+			await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+
+			const result = service.save(notebookId);
+			await vi.advanceTimersByTimeAsync(30_000);
+			await expect(result).resolves.toEqual({
+				outcome: "failed",
+				reason: "The notebook did not confirm the save completed.",
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("marks the transport offline when reconnect cannot replace the relay", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+		mocks.createRelay.mockRejectedValueOnce(new Error("socket down"));
+
+		await expect(handler.invoke("daemon.reconnect", { force: true })).rejects.toThrow(
+			"socket down",
+		);
+		expect(server.emit).toHaveBeenCalledWith("transport.status", "offline");
+	});
+
+	it("refuses to connect when the daemon never becomes ready", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+			createDaemonManager: () => ({
+				state: { status: "failed", reason: "gone" },
+				ensureAvailable: async () => ({ status: "failed" as const, reason: "gone" }),
+				dispose: async () => undefined,
+			}),
+		});
+
+		await expect(
+			service.connect(
+				port(),
+				{
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					sessionId: "kilo-1",
+					title: "Analysis",
+				},
+				91,
+			),
+		).rejects.toThrow("gone");
+	});
+
+	it("drops malformed save-dialog filters instead of forwarding them", async () => {
+		const saveFile = vi.fn(async () => "/tmp/analysis.ipynb");
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({
+				featureId: "notebook",
+				host: desktopHost({ saveFile }),
+			}),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("dialog.saveFile", "not-an-object")).resolves.toBe(
+			"/tmp/analysis.ipynb",
+		);
+		expect(saveFile).toHaveBeenCalledWith(91, undefined);
+		await expect(
+			handler.invoke("dialog.saveFile", {
+				filters: [
+					{ name: 1, extensions: ["ipynb"] },
+					{ name: "Notebook", extensions: ["ipynb"] },
+				],
+			}),
+		).resolves.toBe("/tmp/analysis.ipynb");
+		expect(saveFile).toHaveBeenLastCalledWith(91, {
+			filters: [{ name: "Notebook", extensions: ["ipynb"] }],
+		});
+	});
+
+	it("falls back to the home directory when no default save path is configured", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
+			os.homedir(),
+		);
+		service.setDefaultSaveDirectory("669d39ec-39d6-4160-815c-b46e170cde8d", "relative");
+		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
+			os.homedir(),
+		);
 	});
 });

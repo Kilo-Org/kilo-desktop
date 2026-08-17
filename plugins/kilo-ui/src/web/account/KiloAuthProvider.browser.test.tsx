@@ -70,7 +70,12 @@ afterEach(() => {
 function renderAccount({
 	authenticated = true,
 	profileOk = true,
-}: { authenticated?: boolean; profileOk?: boolean } = {}) {
+	openExternal,
+}: {
+	authenticated?: boolean;
+	profileOk?: boolean;
+	openExternal?: () => Promise<{ opened: boolean }>;
+} = {}) {
 	authStatus.mockResolvedValue({
 		data: authenticated ? { authenticated: true, type: "oauth" } : { authenticated: false },
 	});
@@ -89,6 +94,7 @@ function renderAccount({
 			"chat.getConnection": async () => connection,
 			"chat.prepareSession": async () => ({ directory: "/tmp", workspaceFolders: [] }),
 		},
+		...(openExternal ? { shell: { openExternal } } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -172,6 +178,35 @@ describe("KiloAuthProvider login", () => {
 		await expect
 			.element(screen.getByTestId("kilo-account-settings"))
 			.toHaveAttribute("data-state", "signed-in");
+	});
+
+	it("keeps waiting when opening the verification URL is blocked", async () => {
+		const openExternal = vi.fn(async () => {
+			throw new Error("popup blocked");
+		});
+		const { screen } = renderAccount({ authenticated: false, openExternal });
+
+		authorize.mockResolvedValue({
+			data: {
+				instructions: "Go to https://kilo.ai/device and enter code: ABCD-1234",
+				url: "https://kilo.ai/device",
+			},
+		});
+		oauthCallback.mockImplementation(() => new Promise(() => {}));
+
+		await expect.element(screen.getByTestId("kilo-account-login")).toBeVisible();
+		await screen.getByTestId("kilo-account-login").click();
+
+		const panel = screen.getByTestId("kilo-account-device-auth");
+		await expect.element(panel).toHaveAttribute("data-state", "waiting");
+		await expect
+			.element(screen.getByTestId("kilo-account-device-code"))
+			.toHaveTextContent("ABCD-1234");
+		expect(openExternal).toHaveBeenCalledWith("https://kilo.ai/device");
+
+		await screen.getByTestId("kilo-account-open-browser").click();
+		await expect.element(panel).toHaveAttribute("data-state", "waiting");
+		expect(openExternal).toHaveBeenCalledTimes(2);
 	});
 });
 

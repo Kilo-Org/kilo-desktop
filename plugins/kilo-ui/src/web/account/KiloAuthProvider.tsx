@@ -92,6 +92,13 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		invalidateGatewayCatalogs(queryClient);
 	}, [client, queryClient]);
 
+	const openExternal = useCallback(
+		(url: string) => {
+			void sdk.shell.openExternal(url).catch(() => undefined);
+		},
+		[sdk.shell],
+	);
+
 	const login = useCallback(() => {
 		if (!client || !directory) return;
 		const attempt = ++attemptRef.current;
@@ -114,7 +121,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 					expiresIn: DEFAULT_EXPIRES_IN,
 				});
 				if (verificationUrl) {
-					void sdk.shell.openExternal(verificationUrl);
+					openExternal(verificationUrl);
 				}
 
 				await client.provider.oauth.callback(
@@ -143,7 +150,15 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 				});
 			}
 		})();
-	}, [client, directory, fetchProfile, profileQueryKey, queryClient, rebootAndRefresh, sdk.shell]);
+	}, [
+		client,
+		directory,
+		fetchProfile,
+		openExternal,
+		profileQueryKey,
+		queryClient,
+		rebootAndRefresh,
+	]);
 
 	const cancelLogin = useCallback(() => {
 		attemptRef.current += 1;
@@ -215,13 +230,6 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 	const dismissOrgError = useCallback(() => {
 		setOrgError(null);
 	}, []);
-
-	const openExternal = useCallback(
-		(url: string) => {
-			void sdk.shell.openExternal(url);
-		},
-		[sdk.shell],
-	);
 
 	// Clear device-auth noise when connection drops.
 	useEffect(() => {

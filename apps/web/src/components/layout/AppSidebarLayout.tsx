@@ -8,8 +8,8 @@ import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
-import { PLUGIN_NAV, useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
-import { isSettingsPath } from "@/features/plugin-settings";
+import { useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
+import { isSettingsPath, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
@@ -56,10 +56,15 @@ function resolveSidebarToggleLeft(): string {
 	return DEFAULT_SIDEBAR_TOGGLE_LEFT;
 }
 
+const EMPTY_NAV: readonly PluginNavEntry[] = [];
+const EMPTY_SETTINGS: readonly PluginSettingsSection[] = [];
+
 type AppSidebarLayoutProps = {
 	children: ReactNode;
-	/** Injectable for tests; defaults to the bundled plugin nav entries. */
+	/** Injectable for tests; the app shell passes bundled plugin nav entries. */
 	navEntries?: readonly PluginNavEntry[];
+	/** Injectable for tests; the app shell passes bundled settings sections. */
+	settingsSections?: readonly PluginSettingsSection[];
 };
 
 /**
@@ -173,7 +178,11 @@ function ShellInset({ children }: { children: ReactNode }) {
 	);
 }
 
-export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSidebarLayoutProps) {
+export function AppSidebarLayout({
+	children,
+	navEntries = EMPTY_NAV,
+	settingsSections = EMPTY_SETTINGS,
+}: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const navigate = useNavigate();
 	const session = useAuthSession();
@@ -226,7 +235,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 					<SidebarHeader className="pointer-events-none h-12 shrink-0 p-0" />
 					<SidebarContent>
 						{settings ? (
-							<SettingsSidebar />
+							<SettingsSidebar sections={settingsSections} />
 						) : (
 							<>
 								{visibleNav.length > 0 ? (

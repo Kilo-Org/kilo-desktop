@@ -1,16 +1,11 @@
 import type { ComponentType } from "react";
 
-import {
-	findSettingsSection,
-	PLUGIN_SETTINGS,
-	type PluginSettingsSection,
-} from "@/features/plugin-settings";
+import { findSettingsSection, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 
 type SettingsSectionViewProps = {
 	sectionId: string;
-	/** Injectable for tests; defaults to bundled plugin settings sections. */
-	sections?: readonly PluginSettingsSection[];
+	sections: readonly PluginSettingsSection[];
 	desktopAvailable?: boolean;
 };
 
@@ -21,7 +16,7 @@ type SettingsSectionViewProps = {
  */
 export function SettingsSectionView({
 	sectionId,
-	sections = PLUGIN_SETTINGS,
+	sections,
 	desktopAvailable = isDesktopBridgeAvailable(),
 }: SettingsSectionViewProps) {
 	const section = findSettingsSection(sections, sectionId);

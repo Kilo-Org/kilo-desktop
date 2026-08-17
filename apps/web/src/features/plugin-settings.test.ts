@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { discoverPlugins, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
 
+import { PLUGIN_SETTINGS } from "./plugin-settings-entries";
 import {
 	buildPluginSettings,
 	filterVisiblePluginSettings,
 	findSettingsSection,
 	isSettingsPath,
-	PLUGIN_SETTINGS,
 	type PluginSettingsSection,
 } from "./plugin-settings";
 

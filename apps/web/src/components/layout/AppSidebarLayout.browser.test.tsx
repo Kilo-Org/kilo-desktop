@@ -11,10 +11,36 @@ import { page } from "vitest/browser";
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import type { PluginNavEntry } from "@/features/plugin-nav";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 import { AppSidebarLayout } from "./AppSidebarLayout";
+
+const flaggedNav: readonly PluginNavEntry[] = [
+	{
+		pluginId: "todos",
+		to: "/plugins/todos",
+		label: "Todos",
+		icon: undefined,
+		iconComponent: undefined,
+		priority: 1,
+		splat: "todos",
+		navQaId: "nav-todos",
+		featureFlag: "todo-feature",
+	},
+	{
+		pluginId: "environments",
+		to: "/plugins/environments",
+		label: "Environments",
+		icon: undefined,
+		iconComponent: undefined,
+		priority: 1,
+		splat: "environments",
+		navQaId: "nav-environments",
+		featureFlag: "environments-feature",
+	},
+];
 
 type AuthOverrides = Partial<LocalApi["auth"]>;
 
@@ -60,11 +86,12 @@ function renderLayout(
 	api: LocalApi,
 	path = "/",
 	setup?: (system: ReturnType<typeof createAppFeatureSystem>) => void,
+	navEntries: readonly PluginNavEntry[] = [],
 ) {
 	const system = createAppFeatureSystem(api);
 	setup?.(system);
 	const rootRoute = createRootRoute({
-		component: () => <AppSidebarLayout>content</AppSidebarLayout>,
+		component: () => <AppSidebarLayout navEntries={navEntries}>content</AppSidebarLayout>,
 	});
 	const router = createRouter({
 		routeTree: rootRoute,
@@ -159,6 +186,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 				{},
 				apiWithFlags({ "environments-feature": false, "todo-feature": true }),
 			),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		// Todos declares `featureFlag: "todo-feature"` — visible when the
@@ -172,6 +202,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 	it("hides a flag-gated plugin nav entry when the flag is missing entirely", async () => {
 		const { baseElement } = renderLayout(
 			fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({})),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		// Both nav entries carry a `featureFlag` now, so an empty flag map
@@ -189,6 +222,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 				{},
 				apiWithFlags({ "environments-feature": true, "todo-feature": true }),
 			),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		await expect.element(page.getByTestId("nav-environments")).toBeInTheDocument();

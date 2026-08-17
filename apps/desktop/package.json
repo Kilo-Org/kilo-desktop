@@ -31,7 +31,7 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencyNotes": {
-		"@runtimed/node": "PACKAGING BRIDGE: Forge materializes the notebook plugin's generated native peer after the lockfile-backed production deploy.",
+		"@runtimed/node": "PACKAGING BRIDGE: Vite leaves `@runtimed/node` external in the main bundle (native napi binding). Desktop must link the notebook plugin's generated checkout so electron-forge start can resolve it. Forge recopies the same tree after the lockfile-backed production deploy.",
 		"ws": "PACKAGING BRIDGE: Vite leaves `ws` external in the main bundle (CJS `events` require). pnpm deploy only hoists packages declared on desktop, so a transitive kilo-server dep is not enough."
 	},
 	"dependencies": {
@@ -44,6 +44,7 @@
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@github/keytar": "^7.10.6",
 		"@launchdarkly/node-client-sdk": "^4.0.0",
+		"@runtimed/node": "link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
 		"@sentry/electron": "catalog:",
 		"@vscode/proxy-agent": "^0.44.0",
 		"anaconda-opentelemetry": "0.9.2",

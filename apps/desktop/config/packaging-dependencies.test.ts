@@ -17,6 +17,12 @@ describe("packaged production dependencies", () => {
 		expect(dependencies.ws).toEqual(expect.stringMatching(/\S/));
 	});
 
+	it("declares @runtimed/node on desktop so the Vite-external main import resolves during electron-forge start", () => {
+		expect(dependencies["@runtimed/node"]).toBe(
+			"link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
+		);
+	});
+
 	it("keeps the WebMCP relay out of the desktop dependency graph", () => {
 		expect(dependencies["@mcp-b/webmcp-local-relay"]).toBeUndefined();
 	});

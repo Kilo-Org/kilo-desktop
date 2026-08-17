@@ -93,7 +93,7 @@ describe("ElectronNotebookHostService", () => {
 
 		expect(mocks.createRelay).toHaveBeenCalledWith({
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-			ephemeral: true,
+			ephemeral: false,
 			socketPath: "/tmp/nightly.sock",
 			peerLabel: "agentic-desktop:kilo-1",
 			description: "Analysis",
@@ -105,6 +105,126 @@ describe("ElectronNotebookHostService", () => {
 			"daemon.ready",
 			expect.objectContaining({ notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d" }),
 		);
+	});
+
+	it("publishes notebook dirty state without changing the application window title", async () => {
+		const setTitle = vi.fn();
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: {
+				paths: { defaultSaveDirectory: () => "/tmp" },
+				dialog: {
+					openFile: vi.fn(async () => null),
+					saveFile: vi.fn(async () => null),
+				},
+				externalLinks: { open: vi.fn(async () => true) },
+				window: {
+					getTitle: () => "Agentic",
+					setTitle,
+					isFocused: () => true,
+					onFocusChange: () => () => undefined,
+				},
+			},
+		});
+		const dirtyChanged = vi.fn();
+		mainSdk.events.on("notebook.dirty-changed", dirtyChanged);
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+		await handler.invoke("window.setTitle", { title: "Analysis" });
+		await handler.invoke("window.setTitle", { title: "* Analysis" });
+
+		expect(dirtyChanged).toHaveBeenCalledWith({
+			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			sessionId: "kilo-1",
+			dirty: false,
+		});
+		expect(dirtyChanged).toHaveBeenLastCalledWith({
+			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			sessionId: "kilo-1",
+			dirty: true,
+		});
+		expect(setTitle).not.toHaveBeenCalled();
+		await expect(handler.invoke("window.getTitle", undefined)).resolves.toBe("Analysis");
+	});
+
+	it("routes Save through nteract and resolves after Save As applies its path", async () => {
+		const saveFile = vi.fn(async () => "/tmp/analysis.ipynb");
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: {
+				paths: { defaultSaveDirectory: () => "/tmp" },
+				dialog: { openFile: vi.fn(async () => null), saveFile },
+				externalLinks: { open: vi.fn(async () => true) },
+				window: {
+					getTitle: () => "Agentic",
+					setTitle: vi.fn(),
+					isFocused: () => true,
+					onFocusChange: () => () => undefined,
+				},
+			},
+		});
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+
+		const result = service.save(notebookId);
+		expect(server.emit).toHaveBeenCalledWith("command", {
+			id: "notebook.save",
+			payload: undefined,
+		});
+		await handler.invoke("dialog.saveFile", { defaultPath: "/tmp/analysis.ipynb" });
+		await handler.invoke("notebook.applyPathChanged", { path: "/tmp/analysis.ipynb" });
+
+		await expect(result).resolves.toEqual({ outcome: "saved" });
+	});
+
+	it("keeps a dirty tab open when the Save As dialog is cancelled", async () => {
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: {
+				paths: { defaultSaveDirectory: () => "/tmp" },
+				dialog: {
+					openFile: vi.fn(async () => null),
+					saveFile: vi.fn(async () => null),
+				},
+				externalLinks: { open: vi.fn(async () => true) },
+				window: {
+					getTitle: () => "Agentic",
+					setTitle: vi.fn(),
+					isFocused: () => true,
+					onFocusChange: () => () => undefined,
+				},
+			},
+		});
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+
+		const result = service.save(notebookId);
+		await handler.invoke("dialog.saveFile", { defaultPath: "/tmp/analysis.ipynb" });
+
+		await expect(result).resolves.toEqual({ outcome: "cancelled" });
+	});
+
+	it("reports a failed save when the notebook session is not connected", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/runtime.sock",
+		});
+
+		await expect(service.save("669d39ec-39d6-4160-815c-b46e170cde8d")).resolves.toEqual({
+			outcome: "failed",
+			reason: "The notebook is not connected.",
+		});
 	});
 
 	it("preserves bootstrap frames emitted before the Electron server subscribes", async () => {
@@ -207,6 +327,80 @@ describe("ElectronNotebookHostService", () => {
 		});
 	});
 
+	it("uses the connected chat workspace as nteract's default save directory", async () => {
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: {
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
+				dialog: {
+					openFile: vi.fn(async () => null),
+					saveFile: vi.fn(async () => null),
+				},
+				externalLinks: { open: vi.fn(async () => true) },
+				window: {
+					getTitle: () => "Analysis",
+					setTitle: vi.fn(),
+					isFocused: () => true,
+					onFocusChange: () => () => undefined,
+				},
+			},
+		});
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		service.setDefaultSaveDirectory("669d39ec-39d6-4160-815c-b46e170cde8d", "/projects/analysis");
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
+			"/projects/analysis",
+		);
+
+		service.setDefaultSaveDirectory("669d39ec-39d6-4160-815c-b46e170cde8d", "/projects/updated");
+		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
+			"/projects/updated",
+		);
+	});
+
+	it("falls back to Documents when the chat has no workspace", async () => {
+		const mainSdk = createFakeMainSdk({
+			featureId: "notebook",
+			host: {
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
+				dialog: {
+					openFile: vi.fn(async () => null),
+					saveFile: vi.fn(async () => null),
+				},
+				externalLinks: { open: vi.fn(async () => true) },
+				window: {
+					getTitle: () => "Analysis",
+					setTitle: vi.fn(),
+					isFocused: () => true,
+					onFocusChange: () => () => undefined,
+				},
+			},
+		});
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
+			"/Users/test/Documents",
+		);
+	});
+
 	it("replaces the native relay when nteract requests reconnect", async () => {
 		const first = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
 		const second = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
@@ -226,6 +420,13 @@ describe("ElectronNotebookHostService", () => {
 		await handler.invoke("daemon.reconnect", { force: true });
 
 		expect(mocks.createRelay).toHaveBeenCalledTimes(2);
+		expect(mocks.createRelay).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				ephemeral: false,
+			}),
+		);
 		expect(first.close).toHaveBeenCalledOnce();
 		expect(server.emit).toHaveBeenCalledWith("transport.status", "reconnecting");
 		expect(server.emit).toHaveBeenCalledWith("transport.status", "online");

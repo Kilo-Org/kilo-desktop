@@ -17,6 +17,11 @@ export function notebookBrowserRegister(mainSdk: MainSdk): void {
 			},
 			daemon: null,
 		}),
+		save: async () => ({
+			outcome: "failed",
+			reason: "Saving notebooks is unavailable in browser mode.",
+		}),
+		setDefaultSaveDirectory: async () => undefined,
 	};
 	mainSdk.channels(notebookContract).handleAll(service);
 }

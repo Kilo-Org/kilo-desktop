@@ -18,10 +18,12 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
+import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
 import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
 import { ChatRightPanelHeaderToggle } from "./right-panel/ChatRightPanelHeaderToggle.js";
+import { RightPanelTabCloseDialog } from "./right-panel/RightPanelTabCloseDialog.js";
 import {
 	RightPanelTabContent,
 	type RightPanelTabDefinition,
@@ -34,6 +36,8 @@ import {
 	useRightPanelStore,
 	type RightPanelTab,
 } from "./right-panel/right-panel-store.js";
+import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
+import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 
 const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
 const PANEL_DEFAULT_WIDTH = 420;
@@ -73,6 +77,16 @@ export function ChatPage() {
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
 	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
 	const maximizeSessionId = localThreadId?.trim() ? localThreadId : sessionId;
+	const { activeWorkspaceId, workspaces } = useWorkspacesFeature();
+	const sessionWorkspaceId = useSessionActivity((state) =>
+		remoteId ? state.sessions[remoteId]?.workspaceId : undefined,
+	);
+	const workspaceDirectory = resolveChatWorkspaceDirectory({
+		remoteId,
+		activeWorkspaceId,
+		sessionWorkspaceId,
+		workspaces,
+	});
 
 	const panelState = useRightPanelStore((state) =>
 		selectSessionRightPanelState(state.bySessionId, sessionId),
@@ -90,6 +104,10 @@ export function ChatPage() {
 	const [isResizing, setIsResizing] = useState(false);
 	const [panelMounted, setPanelMounted] = useState(panelState.isOpen);
 	const [maximizedBySession, setMaximizedBySession] = useState<Record<string, boolean>>({});
+	const [closeRequest, setCloseRequest] = useState<{
+		readonly sessionId: string;
+		readonly tab: RightPanelTab;
+	} | null>(null);
 	const panelOpen = panelState.isOpen;
 	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
 
@@ -215,10 +233,20 @@ export function ChatPage() {
 
 	const handleCloseTab = useCallback(
 		(tab: RightPanelTab) => {
-			closeTab(sessionId, tab.instanceId);
+			if (!tab.dirty) {
+				closeTab(sessionId, tab.instanceId);
+				return;
+			}
+			setCloseRequest({ sessionId, tab });
 		},
 		[closeTab, sessionId],
 	);
+
+	const closeRequestedTab = useCallback(() => {
+		if (!closeRequest) return;
+		closeTab(closeRequest.sessionId, closeRequest.tab.instanceId);
+		setCloseRequest(null);
+	}, [closeRequest, closeTab]);
 
 	const handleAddTab = useCallback(
 		(definition: RightPanelTabDefinition) => {
@@ -288,6 +316,7 @@ export function ChatPage() {
 							tab={tab}
 							sessionId={sessionId}
 							definitions={rightPanelDefinitions}
+							{...(workspaceDirectory ? { workspaceDirectory } : {})}
 						/>
 					</div>
 				);
@@ -297,6 +326,18 @@ export function ChatPage() {
 
 	return (
 		<>
+			{closeRequest ? (
+				<RightPanelTabCloseDialog
+					key={`${closeRequest.sessionId}:${closeRequest.tab.instanceId}`}
+					tab={closeRequest.tab}
+					lifecycle={chatRightPanelCapability.getTabLifecycle(
+						closeRequest.sessionId,
+						closeRequest.tab.instanceId,
+					)}
+					onCancel={() => setCloseRequest(null)}
+					onClose={closeRequestedTab}
+				/>
+			) : null}
 			{connection.isError ? (
 				<p className="text-destructive px-6 pt-4 text-sm" role="alert" data-qa-id="kilo-chat-error">
 					Could not connect to Kilo:{" "}

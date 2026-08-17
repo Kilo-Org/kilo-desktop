@@ -10,9 +10,15 @@ import {
 	type MainSdk,
 } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import { notebookContract, NOTEBOOK_HOST, type NotebookService } from "../contracts/schemas.js";
+import {
+	notebookContract,
+	NOTEBOOK_HOST,
+	type NotebookSaveResult,
+	type NotebookService,
+} from "../contracts/schemas.js";
 import {
 	ElectronNotebookHostService,
+	type ElectronNotebookConnectionArgs,
 	type ElectronNotebookHostServiceOptions,
 } from "./runtime/ElectronNotebookHostService.js";
 import { resolveNotebookBundleRoot } from "./embedding/notebook-bundle-path.js";
@@ -44,9 +50,11 @@ export interface ElectronNotebookHostServiceLike {
 	readonly socketPath: string;
 	start(): ReturnType<ElectronNotebookHostService["start"]>;
 	status(): ReturnType<ElectronNotebookHostService["status"]>;
+	save(notebookId: string): Promise<NotebookSaveResult>;
+	setDefaultSaveDirectory(notebookId: string, directory: string | null): void;
 	connect(
 		port: HostMessagePort,
-		args: { readonly notebookId: string; readonly sessionId: string; readonly title: string },
+		args: ElectronNotebookConnectionArgs,
 		senderId: number,
 	): Promise<void>;
 	dispose(): Promise<void>;
@@ -103,6 +111,10 @@ export async function mainRegister(
 
 	const api: NotebookService = {
 		status: () => hostService.status(),
+		save: ({ notebookId }) => hostService.save(notebookId),
+		setDefaultSaveDirectory: async ({ notebookId, directory }) => {
+			hostService.setDefaultSaveDirectory(notebookId, directory);
+		},
 	};
 	mainSdk.channels(notebookContract).handleAll(api);
 	const embeddedWebHost = {

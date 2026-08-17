@@ -51,4 +51,18 @@ describe("createChatRightPanelCapability", () => {
 			tabs: [],
 		});
 	});
+
+	it("updates transient dirty state and owns tab lifecycle callbacks", () => {
+		const panel = createChatRightPanelCapability();
+		const tab = panel.openContributedTab(SESSION, { id: "canvas.panel", title: "Canvas" });
+		const lifecycle = { save: async () => ({ outcome: "saved" as const }) };
+
+		panel.setTabDirty(SESSION, tab.instanceId, true);
+		const unregister = panel.registerTabLifecycle(SESSION, tab.instanceId, lifecycle);
+
+		expect(panel.listTabs(SESSION)[0]?.dirty).toBe(true);
+		expect(panel.getTabLifecycle(SESSION, tab.instanceId)).toBe(lifecycle);
+		unregister();
+		expect(panel.getTabLifecycle(SESSION, tab.instanceId)).toBeUndefined();
+	});
 });

@@ -60,8 +60,28 @@ export const notebookStatusSchema = z.object({
 });
 export type NotebookStatus = z.infer<typeof notebookStatusSchema>;
 
+export const NOTEBOOK_DIRTY_CHANGED_EVENT = "notebook.dirty-changed";
+
+export const notebookDirtyChangedSchema = z.object({
+	notebookId: z.string().uuid(),
+	sessionId: z.string().min(1),
+	dirty: z.boolean(),
+});
+export type NotebookDirtyChanged = z.infer<typeof notebookDirtyChangedSchema>;
+
+export const notebookSaveResultSchema = z.object({
+	outcome: z.enum(["saved", "cancelled", "failed"]),
+	reason: z.string().optional(),
+});
+export type NotebookSaveResult = z.infer<typeof notebookSaveResultSchema>;
+
 export const notebookContract = defineContract({
 	status: defineMethod(z.undefined(), notebookStatusSchema),
+	save: defineMethod(z.object({ notebookId: z.string().uuid() }), notebookSaveResultSchema),
+	setDefaultSaveDirectory: defineMethod(
+		z.object({ notebookId: z.string().uuid(), directory: z.string().min(1).nullable() }),
+		z.undefined(),
+	),
 });
 
 export type NotebookService = InferContract<typeof notebookContract>;

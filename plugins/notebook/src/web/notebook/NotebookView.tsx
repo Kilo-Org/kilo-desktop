@@ -5,10 +5,13 @@ import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 
 import {
 	NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
+	NOTEBOOK_DIRTY_CHANGED_EVENT,
 	NOTEBOOK_HOST,
+	notebookDirtyChangedSchema,
 	type NotebookService,
 } from "../../contracts/schemas.js";
 import { notebookIdFromInstanceId } from "./notebook-tabs.js";
+import type { ChatRightPanelCapabilities } from "./notebook-webmcp-tools.js";
 
 /**
  * nteract's notebook UI is a private workspace app whose execution path needs
@@ -83,10 +86,17 @@ export interface NotebookViewProps {
 	readonly sessionId: string;
 	readonly instanceId: string;
 	readonly title: string;
+	readonly workspaceDirectory?: string;
 }
 
-export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps) {
+export function NotebookView({
+	instanceId,
+	sessionId,
+	title,
+	workspaceDirectory,
+}: NotebookViewProps) {
 	const sdk = useSdk<NotebookService>("notebook");
+	const notebookId = notebookIdFromInstanceId(instanceId);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const frameSrc = nteractSrc(instanceId);
 	const desktopFrame = frameSrc?.startsWith(DESKTOP_SCHEME_PREFIX) ?? false;
@@ -96,6 +106,35 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 		| { readonly status: "available" }
 		| { readonly status: "unavailable"; readonly reason: string }
 	>(desktopFrame ? { status: "checking" } : { status: "available" });
+
+	useEffect(() => {
+		void sdk.client
+			.setDefaultSaveDirectory({ notebookId, directory: workspaceDirectory ?? null })
+			.catch(() => undefined);
+	}, [notebookId, sdk, workspaceDirectory]);
+
+	useEffect(() => {
+		const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
+		const unregisterLifecycle = panel?.registerTabLifecycle?.(sessionId, instanceId, {
+			save: () => sdk.client.save({ notebookId }),
+			discard: async () => undefined,
+		});
+		const unsubscribeDirty = sdk.events.on(NOTEBOOK_DIRTY_CHANGED_EVENT, (payload) => {
+			const parsed = notebookDirtyChangedSchema.safeParse(payload);
+			if (
+				!parsed.success ||
+				parsed.data.notebookId !== notebookId ||
+				parsed.data.sessionId !== sessionId
+			) {
+				return;
+			}
+			panel?.setTabDirty?.(sessionId, instanceId, parsed.data.dirty);
+		});
+		return () => {
+			unsubscribeDirty();
+			unregisterLifecycle?.();
+		};
+	}, [instanceId, notebookId, sdk, sessionId]);
 
 	useEffect(() => {
 		if (!desktopFrame) return;
@@ -147,7 +186,7 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 				return;
 			}
 			port = sdk.ports.open<MessagePort>("host", {
-				notebookId: notebookIdFromInstanceId(instanceId),
+				notebookId,
 				sessionId,
 				title,
 			});
@@ -175,7 +214,7 @@ export function NotebookView({ instanceId, sessionId, title }: NotebookViewProps
 			window.removeEventListener("message", onMessage);
 			if (!transferred) port?.close();
 		};
-	}, [frameSrc, instanceId, sdk, sessionId, title]);
+	}, [frameSrc, notebookId, sdk, sessionId, title]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">

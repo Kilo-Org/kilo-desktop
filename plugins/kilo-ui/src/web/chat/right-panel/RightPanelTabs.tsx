@@ -134,10 +134,12 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 						const definition = definitions.find(({ id }) => id === tab.definitionId);
 						const Icon = definition?.Icon ?? CircleHelpIcon;
 						const title = tab.title;
+						const dirtyDescriptionId = `right-panel-tab-dirty-${tab.instanceId}`;
 						return (
 							<div
 								key={tab.instanceId}
 								data-active-tab={active}
+								data-dirty={tab.dirty ? "true" : "false"}
 								data-qa-id={`chat-right-panel-tab-${tab.instanceId}`}
 								onMouseDown={handleTabMouseDown}
 								onAuxClick={(event) => handleTabAuxClick(event, tab)}
@@ -158,11 +160,24 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 												<button
 													type="button"
 													className="flex min-w-0 flex-1 items-center"
+													aria-describedby={tab.dirty ? dirtyDescriptionId : undefined}
 													onClick={() => onActivate(tab)}
 												/>
 											}
 										>
 											<span className="truncate">{title}</span>
+											{tab.dirty ? (
+												<>
+													<span
+														className="bg-foreground ml-1 size-1.5 shrink-0 rounded-full"
+														aria-hidden="true"
+														data-qa-id={`chat-right-panel-dirty-${tab.instanceId}`}
+													/>
+													<span id={dirtyDescriptionId} className="sr-only">
+														Unsaved changes
+													</span>
+												</>
+											) : null}
 										</TooltipTrigger>
 										<TooltipContent side="bottom">{title}</TooltipContent>
 									</Tooltip>

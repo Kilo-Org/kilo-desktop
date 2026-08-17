@@ -13,6 +13,7 @@ export interface ChatRightPanelContributionProps {
 	readonly sessionId: string;
 	readonly instanceId: string;
 	readonly title: string;
+	readonly workspaceDirectory?: string;
 }
 
 export const PLAN_TAB_DEFINITION_ID = "kilo-ui.plan";
@@ -31,6 +32,8 @@ export interface RightPanelTab {
 	definitionId: string;
 	title: string;
 	ordinal: number | null;
+	/** Transient unsaved-work state; intentionally excluded from persisted tab layout. */
+	dirty?: boolean;
 }
 
 const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
@@ -141,12 +144,18 @@ export const RightPanelTabContent: FC<{
 	tab: RightPanelTab;
 	sessionId: string;
 	definitions: readonly RightPanelTabDefinition[];
-}> = ({ tab, sessionId, definitions }) => {
+	workspaceDirectory?: string;
+}> = ({ tab, sessionId, definitions, workspaceDirectory }) => {
 	const definition = definitions.find(({ id }) => id === tab.definitionId);
 	const Content = definition?.Content ?? MissingContributionTab;
 	return (
 		<Suspense fallback={null}>
-			<Content sessionId={sessionId} instanceId={tab.instanceId} title={tab.title} />
+			<Content
+				sessionId={sessionId}
+				instanceId={tab.instanceId}
+				title={tab.title}
+				{...(workspaceDirectory ? { workspaceDirectory } : {})}
+			/>
 		</Suspense>
 	);
 };

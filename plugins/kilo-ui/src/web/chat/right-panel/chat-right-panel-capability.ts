@@ -18,8 +18,29 @@ export type ChatRightPanelCapability = {
 		definition: { readonly id: string; readonly title: string },
 	): RightPanelTab;
 	activateTab(sessionId: string, instanceId: string): void;
+	setTabDirty(sessionId: string, instanceId: string, dirty: boolean): void;
+	registerTabLifecycle(
+		sessionId: string,
+		instanceId: string,
+		lifecycle: RightPanelTabLifecycle,
+	): () => void;
+	getTabLifecycle(sessionId: string, instanceId: string): RightPanelTabLifecycle | undefined;
 	show(sessionId: string): void;
 };
+
+export interface RightPanelTabSaveResult {
+	readonly outcome: "saved" | "cancelled" | "failed";
+	readonly reason?: string;
+}
+
+export interface RightPanelTabLifecycle {
+	readonly save?: () => Promise<RightPanelTabSaveResult>;
+	readonly discard?: () => Promise<void>;
+}
+
+function lifecycleKey(sessionId: string, instanceId: string): string {
+	return `${sessionId}\0${instanceId}`;
+}
 
 /** Shape returned by `sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")`. */
 export type ChatRightPanelCapabilities = {
@@ -28,6 +49,7 @@ export type ChatRightPanelCapabilities = {
 
 export function createChatRightPanelCapability(): ChatRightPanelCapability {
 	let focusedSessionId: string | null = null;
+	const lifecycles = new Map<string, RightPanelTabLifecycle>();
 
 	return {
 		setFocusedSessionId(sessionId) {
@@ -60,6 +82,19 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 		},
 		activateTab(sessionId, instanceId) {
 			useRightPanelStore.getState().activateTab(sessionId, instanceId);
+		},
+		setTabDirty(sessionId, instanceId, dirty) {
+			useRightPanelStore.getState().setTabDirty(sessionId, instanceId, dirty);
+		},
+		registerTabLifecycle(sessionId, instanceId, lifecycle) {
+			const key = lifecycleKey(sessionId, instanceId);
+			lifecycles.set(key, lifecycle);
+			return () => {
+				if (lifecycles.get(key) === lifecycle) lifecycles.delete(key);
+			};
+		},
+		getTabLifecycle(sessionId, instanceId) {
+			return lifecycles.get(lifecycleKey(sessionId, instanceId));
 		},
 		show(sessionId) {
 			useRightPanelStore.getState().show(sessionId);

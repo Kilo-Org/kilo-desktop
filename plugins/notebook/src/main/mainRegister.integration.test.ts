@@ -37,6 +37,8 @@ async function boot() {
 				blobPort: 48637,
 			},
 		})),
+		save: vi.fn(async () => ({ outcome: "saved" as const })),
+		setDefaultSaveDirectory: vi.fn(),
 		connect: vi.fn(async () => undefined),
 		dispose: vi.fn(async () => undefined),
 	} satisfies ElectronNotebookHostServiceLike;
@@ -67,6 +69,32 @@ describe("notebook mainRegister", () => {
 				blobPort: 48637,
 			},
 		});
+	});
+
+	it("routes notebook save requests through the host service", async () => {
+		const { hostService, router } = await boot();
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+
+		await expect(router.invoke("notebook", "save", { notebookId })).resolves.toEqual({
+			outcome: "saved",
+		});
+		expect(hostService.save).toHaveBeenCalledWith(notebookId);
+	});
+
+	it("updates a notebook's default save directory", async () => {
+		const { hostService, router } = await boot();
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+
+		await expect(
+			router.invoke("notebook", "setDefaultSaveDirectory", {
+				notebookId,
+				directory: "/projects/analysis",
+			}),
+		).resolves.toBeUndefined();
+		expect(hostService.setDefaultSaveDirectory).toHaveBeenCalledWith(
+			notebookId,
+			"/projects/analysis",
+		);
 	});
 
 	it("routes a validated feature port with its trusted sender id", async () => {

@@ -4,6 +4,7 @@ import { PLAN_TAB_DEFINITION_ID } from "./right-panel-tab-registry.js";
 import {
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	EMPTY_SESSION_RIGHT_PANEL_STATE,
+	persistedRightPanelState,
 	resolveRightPanelSessionKey,
 	selectActiveRightPanelTab,
 	selectSessionRightPanelState,
@@ -79,6 +80,17 @@ describe("right-panel-store", () => {
 		useRightPanelStore.getState().show("session-2");
 		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs).toHaveLength(1);
 		expect(useRightPanelStore.getState().bySessionId["session-2"]?.tabs).toHaveLength(0);
+	});
+
+	it("updates dirty state without persisting it", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
+
+		useRightPanelStore.getState().setTabDirty(SESSION, tab.instanceId, true);
+
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.dirty).toBe(true);
+		const persisted = persistedRightPanelState(useRightPanelStore.getState());
+		expect(persisted.bySessionId[SESSION]?.tabs[0]).not.toHaveProperty("dirty");
 	});
 
 	it("moves draft tabs to the assigned remote session", () => {

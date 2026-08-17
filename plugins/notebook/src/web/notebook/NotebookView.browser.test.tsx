@@ -2,9 +2,15 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-vi.mock("@anaconda-agentic-desktop/sdk-react", () => ({
-	useSdk: () => ({ ports: { open: vi.fn() } }),
-}));
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+
+import {
+	NOTEBOOK_DIRTY_CHANGED_EVENT,
+	notebookContract,
+	type NotebookService,
+} from "../../contracts/schemas.js";
+import type { ChatRightPanelCapability } from "./notebook-webmcp-tools.js";
 
 import {
 	NotebookView,
@@ -19,8 +25,43 @@ const DEFAULT_PROPS: NotebookViewProps = {
 	title: "Notebook 1",
 };
 
-function renderView(viewProps: Partial<NotebookViewProps> = {}) {
-	return render(<NotebookView {...DEFAULT_PROPS} {...viewProps} />);
+function renderView(
+	viewProps: Partial<NotebookViewProps> = {},
+	options: {
+		panel?: Partial<ChatRightPanelCapability>;
+		save?: NotebookService["save"];
+		setDefaultSaveDirectory?: NotebookService["setDefaultSaveDirectory"];
+	} = {},
+) {
+	const save = options.save ?? (async () => ({ outcome: "saved" as const }));
+	const setDefaultSaveDirectory = options.setDefaultSaveDirectory ?? (async () => undefined);
+	const sdk = createFakeSdk({
+		featureId: "notebook",
+		channels: notebookContract,
+		handlers: {
+			status: async () => ({
+				availability: { status: "unavailable" as const },
+				process: { status: "failed" as const, reason: "Not staged for this test." },
+				daemon: null,
+			}),
+			save,
+			setDefaultSaveDirectory,
+		},
+	});
+	const system = createFakeFeatureSystem({ sdks: { notebook: sdk } });
+	if (options.panel) {
+		system
+			.getSdk("kilo-ui")
+			.plugins.expose("chatRightPanel", options.panel as Record<string, unknown>);
+	}
+	return {
+		...render(
+			<SdkProvider system={system}>
+				<NotebookView {...DEFAULT_PROPS} {...viewProps} />
+			</SdkProvider>,
+		),
+		sdk,
+	};
 }
 
 afterEach(() => {
@@ -73,7 +114,7 @@ describe("NotebookView", () => {
 		const frame = document.querySelector('[data-qa-id="notebook-frame"]');
 		expect(document.querySelector('[data-qa-id="notebook-title"]')).toBeNull();
 		expect(document.querySelector('[data-qa-id="notebook-status"]')).toBeNull();
-		// The stable tab instance id becomes nteract's ephemeral notebook id.
+		// The stable tab instance id becomes nteract's recoverable room id.
 		expect(frame?.getAttribute("src")).toBe("http://localhost:8737/?notebook_id=instance-1");
 		expect(document.querySelector('[data-qa-id="notebook-placeholder"]')).toBeNull();
 	});
@@ -93,6 +134,54 @@ describe("NotebookView", () => {
 
 		expect(document.querySelector('[data-qa-id="notebook-frame"]')?.getAttribute("src")).toBe(
 			"http://localhost:8737/?notebook_id=legacy-uuid",
+		);
+	});
+
+	it("registers generic tab lifecycle and projects notebook dirty events", async () => {
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		const setTabDirty = vi.fn();
+		let lifecycle:
+			| Parameters<NonNullable<ChatRightPanelCapability["registerTabLifecycle"]>>[2]
+			| undefined;
+		const registerTabLifecycle = vi.fn((_sessionId, _instanceId, nextLifecycle) => {
+			lifecycle = nextLifecycle;
+			return vi.fn();
+		});
+		const save = vi.fn(async () => ({ outcome: "saved" as const }));
+		const { sdk } = renderView(
+			{ instanceId: notebookId },
+			{
+				panel: { setTabDirty, registerTabLifecycle },
+				save,
+			},
+		);
+
+		await vi.waitFor(() => expect(registerTabLifecycle).toHaveBeenCalledOnce());
+		sdk.events.emit("dirty-changed", {
+			notebookId,
+			sessionId: "session-1",
+			dirty: true,
+		});
+		await vi.waitFor(() => expect(setTabDirty).toHaveBeenCalledWith("session-1", notebookId, true));
+		await expect(lifecycle?.save?.()).resolves.toEqual({ outcome: "saved" });
+		await expect(lifecycle?.discard?.()).resolves.toBeUndefined();
+		expect(save).toHaveBeenCalledWith({ notebookId });
+		expect(NOTEBOOK_DIRTY_CHANGED_EVENT).toBe("notebook.dirty-changed");
+	});
+
+	it("keeps the notebook host's default save directory synchronized with its workspace", async () => {
+		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		const setDefaultSaveDirectory = vi.fn(async () => undefined);
+		renderView(
+			{ instanceId: notebookId, workspaceDirectory: "/projects/analysis" },
+			{ setDefaultSaveDirectory },
+		);
+
+		await vi.waitFor(() =>
+			expect(setDefaultSaveDirectory).toHaveBeenCalledWith({
+				notebookId,
+				directory: "/projects/analysis",
+			}),
 		);
 	});
 });

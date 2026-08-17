@@ -28,6 +28,18 @@ export type ChatRightPanelCapability = {
 		sessionId: string,
 		definition: { readonly id: string; readonly title: string },
 	): { readonly instanceId: string; readonly title: string };
+	setTabDirty?(sessionId: string, instanceId: string, dirty: boolean): void;
+	registerTabLifecycle?(
+		sessionId: string,
+		instanceId: string,
+		lifecycle: {
+			readonly save?: () => Promise<{
+				readonly outcome: "saved" | "cancelled" | "failed";
+				readonly reason?: string | undefined;
+			}>;
+			readonly discard?: () => Promise<void>;
+		},
+	): () => void;
 	show(sessionId: string): void;
 };
 
@@ -122,7 +134,7 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "open",
 		description:
-			"Open a new ephemeral scratch notebook in the focused chat's right-hand side panel " +
+			"Open a new recoverable scratch notebook in the focused chat's right-hand side panel " +
 			"and return its notebook_id (a bare UUID). Call this BEFORE any runt / nteract MCP " +
 			"commands (create/connect/edit cells). Pass the returned notebook_id unchanged to " +
 			"those tools — do not strip or rewrite it. If nteract connect fails immediately " +

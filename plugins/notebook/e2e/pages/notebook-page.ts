@@ -39,6 +39,38 @@ export class NotebookPage {
 		await expect(getPage().getByTestId("kilo-chat-page")).toBeVisible();
 	}
 
+	async createPersistentChat(): Promise<void> {
+		const page = getPage();
+		await page.locator('[data-slot="aui_thread-list-new"]').click();
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		await page.getByTestId("workspace-unscoped-command").click();
+		await page.getByRole("textbox", { name: "Message input" }).fill("Notebook recovery test");
+		await page.getByRole("button", { name: "Send message" }).click();
+		await expect(page.locator('[data-slot="aui_session-list-item"]').first()).toBeVisible({
+			timeout: 30_000,
+		});
+	}
+
+	async renameCurrentChat(title: string): Promise<void> {
+		const newestChat = getPage().locator('[data-slot="aui_session-list-item"]').first();
+		await newestChat.hover();
+		await newestChat.getByRole("button", { name: "Thread actions" }).click();
+		await getPage().getByRole("menuitem", { name: "Rename" }).click();
+		const input = getPage().getByRole("textbox", { name: "Rename thread" });
+		await input.fill(title);
+		await input.press("Enter");
+		await expect(newestChat.getByText(title, { exact: true })).toBeVisible();
+	}
+
+	async openChat(title: string): Promise<void> {
+		const chat = getPage()
+			.locator('[data-slot="aui_session-list-item"]')
+			.filter({ hasText: title });
+		await expect(chat).toBeVisible({ timeout: 30_000 });
+		await chat.locator('[data-slot="aui_session-list-item-trigger"]').click();
+		await expect(getPage().getByTestId("kilo-chat-thread")).toBeVisible();
+	}
+
 	async addTwoNotebooks(): Promise<void> {
 		await getPage().getByTestId("chat-right-panel-toggle").click();
 		await getPage().getByTestId("chat-right-panel-open-notebook-notebook").click();
@@ -98,6 +130,11 @@ export class NotebookPage {
 		expect(result.value.daemon?.version).toBeTruthy();
 	}
 
+	async runtimeIsAvailable(): Promise<boolean> {
+		const result = await this.#status();
+		return result.ok && result.value.availability.status === "available";
+	}
+
 	async verifyBundledResources(): Promise<void> {
 		const resources = packagedResourcesDirectory();
 		expect(existsSync(path.join(resources, "notebook", "index.html"))).toBe(true);
@@ -154,6 +191,55 @@ export class NotebookPage {
 		await expect(codeCell.locator('[data-slot="ansi-output"]')).toContainText("5050", {
 			timeout: 60_000,
 		});
+	}
+
+	async openNotebookAndWriteSource(source: string): Promise<void> {
+		await getPage().getByTestId("chat-right-panel-toggle").click();
+		await getPage().getByTestId("chat-right-panel-open-notebook-notebook").click();
+		const notebook = getPage().frameLocator('iframe[data-qa-id="notebook-frame"]:visible');
+		await expect(notebook.locator("[data-notebook-synced]")).toHaveAttribute(
+			"data-notebook-synced",
+			"true",
+			{ timeout: 30_000 },
+		);
+		const codeCells = notebook.locator('[data-cell-type="code"]');
+		if ((await codeCells.count()) === 0) {
+			await notebook.locator('[data-testid="add-code-cell-button"]').click();
+		}
+		await expect(codeCells).toHaveCount(1);
+		await codeCells.locator('.cm-content[contenteditable="true"]').evaluate((node, value) => {
+			const editor = (
+				node as HTMLElement & {
+					cmTile?: {
+						view?: {
+							state: { doc: { length: number } };
+							dispatch: (transaction: unknown) => void;
+						};
+					};
+				}
+			).cmTile?.view;
+			if (!editor) throw new Error("CodeMirror view was not attached to the notebook cell");
+			editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value } });
+		}, source);
+		await expect(getPage().locator('[data-qa-id^="chat-right-panel-dirty-"]')).toBeVisible({
+			timeout: 10_000,
+		});
+	}
+
+	async verifyRecoveredSource(source: string): Promise<void> {
+		await expect(getPage().getByRole("button", { name: "Notebook 1", exact: true })).toBeVisible({
+			timeout: 30_000,
+		});
+		const notebook = getPage().frameLocator('iframe[data-qa-id="notebook-frame"]:visible');
+		await expect(notebook.locator("[data-notebook-synced]")).toHaveAttribute(
+			"data-notebook-synced",
+			"true",
+			{ timeout: 30_000 },
+		);
+		await expect(
+			notebook.locator('[data-cell-type="code"] .cm-content[contenteditable="true"]'),
+		).toContainText(source, { timeout: 30_000 });
+		await expect(getPage().locator('[data-qa-id^="chat-right-panel-dirty-"]')).toBeVisible();
 	}
 
 	async executeIsolatedJavaScriptOutput(): Promise<void> {

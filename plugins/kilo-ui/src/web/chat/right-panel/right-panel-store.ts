@@ -58,10 +58,27 @@ interface RightPanelStoreState {
 	openTab: (sessionId: string, definition: Pick<RightPanelTabDefinition, "id" | "title">) => void;
 	openPlan: (sessionId: string, options?: OpenPlanOptions) => void;
 	activateTab: (sessionId: string, tabId: string) => void;
+	setTabDirty: (sessionId: string, tabId: string, dirty: boolean) => void;
 	closeTab: (sessionId: string, tabId: string) => void;
 	show: (sessionId: string) => void;
 	close: (sessionId: string) => void;
 	toggleVisibility: (sessionId: string) => void;
+}
+
+export function persistedRightPanelState(
+	state: RightPanelStoreState,
+): Pick<RightPanelStoreState, "bySessionId"> {
+	return {
+		bySessionId: Object.fromEntries(
+			Object.entries(state.bySessionId).map(([sessionId, session]) => [
+				sessionId,
+				{
+					...session,
+					tabs: session.tabs.map(({ dirty: _dirty, ...tab }) => tab),
+				},
+			]),
+		),
+	};
 }
 
 export const EMPTY_SESSION_RIGHT_PANEL_STATE: SessionRightPanelState = {
@@ -138,6 +155,18 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 							: current,
 					),
 				})),
+			setTabDirty: (sessionId, tabId, dirty) =>
+				set((state) => ({
+					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
+						let changed = false;
+						const tabs = current.tabs.map((tab) => {
+							if (tab.instanceId !== tabId || tab.dirty === dirty) return tab;
+							changed = true;
+							return { ...tab, dirty };
+						});
+						return changed ? { ...current, tabs } : current;
+					}),
+				})),
 			closeTab: (sessionId, tabId) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
@@ -186,7 +215,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 			name: RIGHT_PANEL_STORAGE_KEY,
 			version: 2,
 			storage: createJSONStorage(resolveStorage),
-			partialize: (state) => ({ bySessionId: state.bySessionId }),
+			partialize: persistedRightPanelState,
 		},
 	),
 );

@@ -22,6 +22,8 @@ import type {
 	MainSdkHostDialogOptions,
 } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import type { NotebookSaveResult } from "../../contracts/schemas.js";
+
 import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
 import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
 
@@ -45,6 +47,31 @@ export interface RuntimedDaemonManagerLike {
 	readonly state: RuntimedDaemonState;
 	ensureAvailable(): Promise<RuntimedDaemonState>;
 	dispose(): Promise<void>;
+}
+
+interface PendingNotebookSave {
+	readonly promise: Promise<NotebookSaveResult>;
+	readonly resolve: (result: NotebookSaveResult) => void;
+	timer?: ReturnType<typeof setTimeout>;
+}
+
+interface NotebookHostSession {
+	readonly notebookId: string;
+	readonly sessionId: string;
+	readonly relay: ReconnectableRelay;
+	server?: ElectronNotebookHostServer;
+	title: string;
+	path?: string;
+	dirty: boolean;
+	pendingSave: PendingNotebookSave | undefined;
+	cleanup?: () => void;
+}
+
+const SAVE_COMPLETION_TIMEOUT_MS = 30_000;
+
+function notebookTitleState(title: string): { readonly dirty: boolean; readonly title: string } {
+	const dirty = title.startsWith("* ");
+	return { dirty, title: dirty ? title.slice(2) : title };
 }
 
 class ReconnectableRelay implements ElectronRelaySession {
@@ -169,11 +196,18 @@ function normalizeDialogOptions(value: unknown): MainSdkHostDialogOptions | unde
 	};
 }
 
+/**
+ * Owns the main-process lifetime of notebook relay and Electron host sessions.
+ * Each persisted tab UUID identifies one recoverable relay room, while renderer
+ * connections may be replaced as tabs remount. Dirty state and save operations
+ * remain session-local and are always settled when that connection is removed.
+ */
 export class ElectronNotebookHostService {
 	readonly #mainSdk: MainSdk;
 	readonly #socketPath: string;
 	readonly #daemonManager: RuntimedDaemonManagerLike;
-	readonly #servers = new Map<ElectronNotebookHostServer, () => void>();
+	readonly #sessions = new Map<string, NotebookHostSession>();
+	readonly #defaultSaveDirectories = new Map<string, string>();
 
 	constructor(options: ElectronNotebookHostServiceOptions) {
 		this.#mainSdk = options.mainSdk;
@@ -241,12 +275,21 @@ export class ElectronNotebookHostService {
 		const createSession = () =>
 			createRelay({
 				notebookId: args.notebookId,
-				ephemeral: true,
+				ephemeral: false,
 				socketPath: this.#socketPath,
 				peerLabel: `agentic-desktop:${args.sessionId}`,
 				description: args.title,
 			});
 		const relay = new ReconnectableRelay(await createSession());
+		const session: NotebookHostSession = {
+			notebookId: args.notebookId,
+			sessionId: args.sessionId,
+			relay,
+			title: relay.info.notebookPath ? path.basename(relay.info.notebookPath) : args.title,
+			...(relay.info.notebookPath ? { path: relay.info.notebookPath } : {}),
+			dirty: relay.info.notebookPath === undefined,
+			pendingSave: undefined,
+		};
 		let server: ElectronNotebookHostServer | null = null;
 		const reconnect = async () => {
 			if (!server) throw new Error("The Electron notebook host is not connected.");
@@ -266,9 +309,10 @@ export class ElectronNotebookHostService {
 			server = serveElectronNotebookHost({
 				port,
 				relay,
-				handler: this.#handler(() => relay.info, senderId, reconnect),
+				handler: this.#handler(session, senderId, reconnect),
 			});
 			const connectedServer = server;
+			session.server = connectedServer;
 			unlistenFocus = this.#mainSdk.host?.window.onFocusChange(senderId, (focused) => {
 				connectedServer.emit("window.focusChanged", focused);
 			});
@@ -278,15 +322,26 @@ export class ElectronNotebookHostService {
 				cleaned = true;
 				port.off("close", onClose!);
 				unlistenFocus?.();
-				this.#servers.delete(connectedServer);
+				if (this.#sessions.get(session.notebookId) === session) {
+					this.#sessions.delete(session.notebookId);
+					this.#defaultSaveDirectories.delete(session.notebookId);
+				}
+				this.#settleSave(session, {
+					outcome: "failed",
+					reason: "The notebook was closed before saving completed.",
+				});
 			};
-			this.#servers.set(connectedServer, onClose);
+			session.cleanup = onClose;
+			const previous = this.#sessions.get(session.notebookId);
+			this.#sessions.set(session.notebookId, session);
+			if (previous && previous !== session) void previous.server?.close();
 			port.on("close", onClose);
 			connectedServer.emit("daemon.ready", readyInfo(relay.info));
 			connectedServer.emit(
 				"window.focusChanged",
 				this.#mainSdk.host?.window.isFocused(senderId) ?? true,
 			);
+			this.#emitDirty(session);
 		} catch (error) {
 			onClose?.();
 			if (server) await server.close();
@@ -296,15 +351,40 @@ export class ElectronNotebookHostService {
 	}
 
 	async dispose(): Promise<void> {
-		const sessions = [...this.#servers];
-		for (const [, cleanup] of sessions) cleanup();
-		await Promise.all(sessions.map(([server]) => server.close()));
-		this.#servers.clear();
+		const sessions = [...this.#sessions.values()];
+		for (const session of sessions) session.cleanup?.();
+		await Promise.all(sessions.map((session) => session.server?.close()));
+		this.#sessions.clear();
+		this.#defaultSaveDirectories.clear();
 		await this.#daemonManager.dispose();
 	}
 
+	setDefaultSaveDirectory(notebookId: string, directory: string | null): void {
+		const validDirectory = directory && path.isAbsolute(directory) ? directory : undefined;
+		if (validDirectory) this.#defaultSaveDirectories.set(notebookId, validDirectory);
+		else this.#defaultSaveDirectories.delete(notebookId);
+	}
+
+	save(notebookId: string): Promise<NotebookSaveResult> {
+		const session = this.#sessions.get(notebookId);
+		if (!session?.server) {
+			return Promise.resolve({ outcome: "failed", reason: "The notebook is not connected." });
+		}
+		if (!session.dirty) return Promise.resolve({ outcome: "saved" });
+		if (session.pendingSave) return session.pendingSave.promise;
+
+		let resolve!: (result: NotebookSaveResult) => void;
+		const promise = new Promise<NotebookSaveResult>((settle) => {
+			resolve = settle;
+		});
+		session.pendingSave = { promise, resolve };
+		this.#startSaveTimeout(session);
+		session.server.emit("command", { id: "notebook.save", payload: undefined });
+		return promise;
+	}
+
 	#handler(
-		getInfo: () => RelayInfo,
+		session: NotebookHostSession,
 		senderId: number,
 		reconnect: () => Promise<void>,
 	): ElectronNotebookHostHandler {
@@ -323,7 +403,7 @@ export class ElectronNotebookHostService {
 				case "updater.beginUpgrade":
 					return undefined;
 				case "daemon.getInfo": {
-					const info = getInfo();
+					const info = session.relay.info;
 					return {
 						version: info.daemonVersion ?? "unknown",
 						socket_path: info.socketPath,
@@ -331,9 +411,9 @@ export class ElectronNotebookHostService {
 					};
 				}
 				case "daemon.getReadyInfo":
-					return readyInfo(getInfo());
+					return readyInfo(session.relay.info);
 				case "blobs.getPort": {
-					const info = getInfo();
+					const info = session.relay.info;
 					if (info.blobPort === undefined)
 						throw new Error("The runtime daemon has no blob server.");
 					return info.blobPort;
@@ -343,22 +423,34 @@ export class ElectronNotebookHostService {
 				case "notebook.applyPathChanged": {
 					const changed = params as { path?: unknown };
 					if (typeof changed.path === "string") {
-						host?.window.setTitle(senderId, path.basename(changed.path));
+						session.path = changed.path;
+						session.title = path.basename(changed.path);
+						this.#settleSave(session, { outcome: "saved" });
 					}
 					return undefined;
 				}
 				case "notebook.getDefaultSaveDirectory":
-					return host?.paths.defaultSaveDirectory() ?? os.homedir();
+					return (
+						this.#defaultSaveDirectories.get(session.notebookId) ??
+						host?.paths.defaultSaveDirectory() ??
+						os.homedir()
+					);
 				case "notebook.openInNewWindow":
 				case "notebook.openHostedInNewWindow":
 					throw new Error("Opening a notebook outside its Agentic side panel is unavailable.");
 				case "notebook.cloneToEphemeral":
 					throw new Error("Cloning the sidecar notebook is not supported by this host.");
 				case "window.getTitle":
-					return host?.window.getTitle(senderId) ?? "Notebook";
+					return session.title;
 				case "window.setTitle": {
 					const title = (params as { title?: unknown }).title;
-					if (typeof title === "string") host?.window.setTitle(senderId, title);
+					if (typeof title === "string") {
+						const next = notebookTitleState(title);
+						session.title = next.title;
+						session.dirty = next.dirty;
+						this.#emitDirty(session);
+						if (!next.dirty) this.#settleSave(session, { outcome: "saved" });
+					}
 					return undefined;
 				}
 				case "system.getGitInfo":
@@ -370,9 +462,17 @@ export class ElectronNotebookHostService {
 				case "dialog.openFile":
 					if (!host) return null;
 					return host.dialog.openFile(senderId, normalizeDialogOptions(params));
-				case "dialog.saveFile":
-					if (!host) return null;
-					return host.dialog.saveFile(senderId, normalizeDialogOptions(params));
+				case "dialog.saveFile": {
+					if (!host) {
+						this.#settleSave(session, { outcome: "cancelled" });
+						return null;
+					}
+					this.#pauseSaveTimeout(session);
+					const selectedPath = await host.dialog.saveFile(senderId, normalizeDialogOptions(params));
+					if (selectedPath === null) this.#settleSave(session, { outcome: "cancelled" });
+					else this.#startSaveTimeout(session);
+					return selectedPath;
+				}
 				case "externalLinks.open": {
 					const url = (params as { url?: unknown }).url;
 					if (typeof url !== "string" || !(await host?.externalLinks.open(url))) {
@@ -400,5 +500,40 @@ export class ElectronNotebookHostService {
 				else this.#mainSdk.logger[level](params.message);
 			},
 		};
+	}
+
+	#emitDirty(session: NotebookHostSession): void {
+		this.#mainSdk.events.emit("dirty-changed", {
+			notebookId: session.notebookId,
+			sessionId: session.sessionId,
+			dirty: session.dirty,
+		});
+	}
+
+	#startSaveTimeout(session: NotebookHostSession): void {
+		const pending = session.pendingSave;
+		if (!pending || pending.timer) return;
+		pending.timer = setTimeout(() => {
+			this.#settleSave(session, {
+				outcome: "failed",
+				reason: "The notebook did not confirm the save completed.",
+			});
+		}, SAVE_COMPLETION_TIMEOUT_MS);
+		pending.timer.unref?.();
+	}
+
+	#pauseSaveTimeout(session: NotebookHostSession): void {
+		const pending = session.pendingSave;
+		if (!pending?.timer) return;
+		clearTimeout(pending.timer);
+		delete pending.timer;
+	}
+
+	#settleSave(session: NotebookHostSession, result: NotebookSaveResult): void {
+		const pending = session.pendingSave;
+		if (!pending) return;
+		if (pending.timer) clearTimeout(pending.timer);
+		session.pendingSave = undefined;
+		pending.resolve(result);
 	}
 }

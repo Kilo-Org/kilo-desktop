@@ -4,11 +4,13 @@ import path from "node:path";
 
 import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
 
+import { KiloAccountPage } from "./pages/kilo-account-page.js";
 import { KiloCodePage } from "./pages/kilo-code-page.js";
 import { WorkspacesPage } from "./pages/workspaces-page.js";
 
 type KiloUiFixtures = {
 	kiloCodePage: KiloCodePage;
+	kiloAccountPage: KiloAccountPage;
 	workspacesPage: WorkspacesPage;
 	workspaceFolder: { path: string; name: string };
 };
@@ -23,6 +25,10 @@ export const test = shellTest.extend<KiloUiFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	kiloCodePage: async ({}, use) => {
 		await use(new KiloCodePage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	kiloAccountPage: async ({}, use) => {
+		await use(new KiloAccountPage());
 	},
 	workspacesPage: async ({ electronApp, workspaceFolder }, use) => {
 		await electronApp.evaluate(({ dialog }, selectedPath) => {

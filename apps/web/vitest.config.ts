@@ -54,6 +54,8 @@ export default defineConfig({
 						"@testing-library/react",
 						"use-sync-external-store/shim",
 						"use-sync-external-store/shim/with-selector",
+						"@kilocode/sdk/v2/client",
+						"motion/react",
 					],
 				},
 				test: {

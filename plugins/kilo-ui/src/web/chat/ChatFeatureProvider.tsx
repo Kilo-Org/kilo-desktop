@@ -14,6 +14,7 @@ import toolkit from "./components/tools/toolkit.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
+import { KiloAuthProvider } from "../account/KiloAuthProvider.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
 import { modelRefToId } from "./model-selection/model-catalog.js";
@@ -259,20 +260,23 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		isPending: connection.isPending,
 		isError: connection.isError,
 		error: connection.error instanceof Error ? connection.error : null,
+		connection: connection.data,
 		connectionPromise,
 	};
 
 	return (
 		<ChatConnectionProvider status={connectionStatus}>
-			<SessionActivityProvider store={sessionActivity}>
-				<ChatAgentSelectionProvider value={agentSelection}>
-					<ChatModelSelectionProvider value={modelSelection}>
-						<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-							{children}
-						</AssistantRuntimeProvider>
-					</ChatModelSelectionProvider>
-				</ChatAgentSelectionProvider>
-			</SessionActivityProvider>
+			<KiloAuthProvider>
+				<SessionActivityProvider store={sessionActivity}>
+					<ChatAgentSelectionProvider value={agentSelection}>
+						<ChatModelSelectionProvider value={modelSelection}>
+							<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+								{children}
+							</AssistantRuntimeProvider>
+						</ChatModelSelectionProvider>
+					</ChatAgentSelectionProvider>
+				</SessionActivityProvider>
+			</KiloAuthProvider>
 		</ChatConnectionProvider>
 	);
 }

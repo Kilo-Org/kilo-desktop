@@ -1,4 +1,6 @@
 export { kiloUiBrowserRegister as browserRegister } from "./browserRegister.js";
+export { KiloAccountNavIcon } from "./account/KiloAccountNavIcon.js";
+export { KiloAccountSettings } from "./account/KiloAccountSettings.js";
 export { ChatFeatureProvider } from "./chat/ChatFeatureProvider.js";
 export { ChatPage } from "./chat/ChatPage.js";
 export { SessionList } from "./chat/components/assistant-ui/session-list.js";

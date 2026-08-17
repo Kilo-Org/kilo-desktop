@@ -113,8 +113,11 @@ export function parseModelId(id: string): KiloModelRef | null {
 }
 
 /** Kilo's built-in OAuth gateway — keep first in the provider rail (below favorites). */
-function isKiloGatewayProvider(provider: { id: string; name: string }): boolean {
-	return provider.id === "kilo" || /^kilo\s*gateway$/i.test(provider.name.trim());
+export function isKiloGatewayProvider(provider: { id: string; name?: string }): boolean {
+	if (provider.id === "kilo") {
+		return true;
+	}
+	return provider.name !== undefined && /^kilo\s*gateway$/i.test(provider.name.trim());
 }
 
 function sortProvidersForRail(providers: KiloProviderGroup[]): KiloProviderGroup[] {

@@ -267,7 +267,11 @@ export function ChatPage() {
 	return (
 		<>
 			{connection.isError ? (
-				<p className="text-destructive px-6 pt-4 text-sm" role="alert" data-qa-id="kilo-chat-error">
+				<p
+					className="text-destructive-foreground px-6 pt-4 text-sm"
+					role="alert"
+					data-qa-id="kilo-chat-error"
+				>
 					Could not connect to Kilo:{" "}
 					{connection.error instanceof Error ? connection.error.message : String(connection.error)}
 				</p>
@@ -289,7 +293,7 @@ export function ChatPage() {
 					)}
 				>
 					<div
-						className="bg-muted border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border"
+						className="bg-muted border-border relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border"
 						data-qa-id="kilo-chat-thread"
 						data-chat-column-maximized-away={maximized && panelOpen ? "true" : "false"}
 					>

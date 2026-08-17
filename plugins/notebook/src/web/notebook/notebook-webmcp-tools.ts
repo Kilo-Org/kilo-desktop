@@ -1,11 +1,19 @@
 /**
- * WebMCP tools that surface open chat notebooks and open a scratch notebook
- * in the kilo-ui right panel. Cross-plugin access goes through
+ * WebMCP tools that surface open chat notebooks and open scratch or file-backed
+ * notebooks in the kilo-ui right panel. Cross-plugin access goes through
  * `sdk.plugins.get("kilo-ui")` — no kilo-ui source imports.
  */
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import { z } from "zod";
 
 import {
+	notebookContract,
+	notebookOpenFileResultSchema,
+	type NotebookOpenFileResult,
+} from "../../contracts/schemas.js";
+
+import {
+	NOTEBOOK_PATH_METADATA_KEY,
 	NOTEBOOK_TAB_DEFINITION_ID,
 	NOTEBOOK_TAB_TITLE,
 	selectNotebookTabs,
@@ -27,7 +35,13 @@ export type ChatRightPanelCapability = {
 	openContributedTab(
 		sessionId: string,
 		definition: { readonly id: string; readonly title: string },
+		options?: {
+			readonly instanceId?: string;
+			readonly title?: string;
+			readonly metadata?: Readonly<Record<string, string>>;
+		},
 	): { readonly instanceId: string; readonly title: string };
+	setTabTitle?(sessionId: string, instanceId: string, title: string): void;
 	setTabDirty?(sessionId: string, instanceId: string, dirty: boolean): void;
 	registerTabLifecycle?(
 		sessionId: string,
@@ -118,6 +132,53 @@ export function openNotebookInPanel(sdk: SDK):
 	};
 }
 
+export async function openNotebookFileInPanel(
+	sdk: SDK,
+	notebookPath: string,
+): Promise<
+	| {
+			readonly sessionId: string;
+			readonly notebook_id: string;
+			readonly title: string;
+			readonly path: string;
+	  }
+	| { readonly error: string }
+> {
+	const panelOrError = resolvePanel(sdk);
+	if ("error" in panelOrError) return panelOrError;
+	const sessionOrError = resolveFocusedSession(panelOrError);
+	if ("error" in sessionOrError) return sessionOrError;
+
+	let openedFile: NotebookOpenFileResult;
+	try {
+		openedFile = notebookOpenFileResultSchema.parse(
+			await sdk.invoke("openFile", { path: notebookPath }),
+		);
+	} catch (error) {
+		return {
+			error: error instanceof Error ? error.message : "The notebook file could not be opened.",
+		};
+	}
+
+	const { sessionId } = sessionOrError;
+	panelOrError.show(sessionId);
+	const tab = panelOrError.openContributedTab(
+		sessionId,
+		{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
+		{
+			instanceId: openedFile.notebookId,
+			title: openedFile.title,
+			metadata: { [NOTEBOOK_PATH_METADATA_KEY]: openedFile.path },
+		},
+	);
+	return {
+		sessionId,
+		notebook_id: tab.instanceId,
+		title: tab.title,
+		path: openedFile.path,
+	};
+}
+
 export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "list_open",
@@ -143,5 +204,18 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 		inputSchema: { type: "object", properties: {}, additionalProperties: false },
 		exposeToModelContext: true,
 		handler: () => openNotebookInPanel(sdk),
+	});
+
+	const openFileInput = notebookContract.openFile.input;
+	sdk.tools.register({
+		name: "open_file",
+		description:
+			"Open an existing .ipynb file in the focused chat's right-hand notebook panel. " +
+			"Pass an absolute file path. Returns the daemon notebook_id to use unchanged with " +
+			"runt / nteract MCP commands. Reopening the same file focuses its existing tab.",
+		inputSchema: z.toJSONSchema(openFileInput, { target: "draft-2020-12" }),
+		validate: openFileInput,
+		exposeToModelContext: true,
+		handler: (args) => openNotebookFileInPanel(sdk, openFileInput.parse(args).path),
 	});
 }

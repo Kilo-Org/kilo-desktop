@@ -6,6 +6,7 @@ import {
 	createContributedTab,
 	createPlanTab,
 	PLAN_TAB_DEFINITION_ID,
+	type CreateContributedTabOptions,
 	type RightPanelTab,
 	type RightPanelTabDefinition,
 } from "./right-panel-tab-registry.js";
@@ -55,9 +56,14 @@ export type OpenPlanOptions = {
 interface RightPanelStoreState {
 	bySessionId: Record<string, SessionRightPanelState>;
 	moveSessionState: (sourceSessionId: string, targetSessionId: string) => void;
-	openTab: (sessionId: string, definition: Pick<RightPanelTabDefinition, "id" | "title">) => void;
+	openTab: (
+		sessionId: string,
+		definition: Pick<RightPanelTabDefinition, "id" | "title">,
+		options?: CreateContributedTabOptions,
+	) => void;
 	openPlan: (sessionId: string, options?: OpenPlanOptions) => void;
 	activateTab: (sessionId: string, tabId: string) => void;
+	setTabTitle: (sessionId: string, tabId: string, title: string) => void;
 	setTabDirty: (sessionId: string, tabId: string, dirty: boolean) => void;
 	closeTab: (sessionId: string, tabId: string) => void;
 	show: (sessionId: string) => void;
@@ -134,10 +140,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 						},
 					};
 				}),
-			openTab: (sessionId, definition) =>
+			openTab: (sessionId, definition, options) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
-						upsertTab(current, createContributedTab(current.tabs, definition)),
+						upsertTab(current, createContributedTab(current.tabs, definition, undefined, options)),
 					),
 				})),
 			openPlan: (sessionId, options) =>
@@ -154,6 +160,18 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 							? { ...current, isOpen: true, activeTabId: tabId }
 							: current,
 					),
+				})),
+			setTabTitle: (sessionId, tabId, title) =>
+				set((state) => ({
+					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
+						let changed = false;
+						const tabs = current.tabs.map((tab) => {
+							if (tab.instanceId !== tabId || tab.title === title) return tab;
+							changed = true;
+							return { ...tab, title };
+						});
+						return changed ? { ...current, tabs } : current;
+					}),
 				})),
 			setTabDirty: (sessionId, tabId, dirty) =>
 				set((state) => ({

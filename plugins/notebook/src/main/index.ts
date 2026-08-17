@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import path from "node:path";
 
 import { z } from "zod";
 
@@ -13,6 +14,7 @@ import {
 import {
 	notebookContract,
 	NOTEBOOK_HOST,
+	type NotebookOpenFileResult,
 	type NotebookSaveResult,
 	type NotebookService,
 } from "../contracts/schemas.js";
@@ -30,6 +32,16 @@ const connectionArgsSchema = z.object({
 	notebookId: z.string().uuid(),
 	sessionId: z.string().min(1).max(512),
 	title: z.string().min(1).max(512),
+	notebookPath: z
+		.string()
+		.min(1)
+		.max(32_768)
+		.refine((value) => path.isAbsolute(value), "Notebook paths must be absolute.")
+		.refine(
+			(value) => path.extname(value).toLowerCase() === ".ipynb",
+			"Notebook files must use the .ipynb extension.",
+		)
+		.optional(),
 });
 
 export interface NotebookFeatureOptions {
@@ -50,6 +62,7 @@ export interface ElectronNotebookHostServiceLike {
 	readonly socketPath: string;
 	start(): ReturnType<ElectronNotebookHostService["start"]>;
 	status(): ReturnType<ElectronNotebookHostService["status"]>;
+	openFile(path: string): Promise<NotebookOpenFileResult>;
 	save(notebookId: string): Promise<NotebookSaveResult>;
 	setDefaultSaveDirectory(notebookId: string, directory: string | null): void;
 	connect(
@@ -105,12 +118,18 @@ export async function mainRegister(
 		...(options.resolveRuntBinary ? { resolveRuntBinary: options.resolveRuntBinary } : {}),
 	});
 
-	mainSdk.ports.handle("host", connectionArgsSchema, (port, args, context) =>
-		hostService.connect(port, args, context.senderId),
-	);
+	mainSdk.ports.handle("host", connectionArgsSchema, (port, args, context) => {
+		const { notebookPath, ...requiredArgs } = args;
+		return hostService.connect(
+			port,
+			{ ...requiredArgs, ...(notebookPath ? { notebookPath } : {}) },
+			context.senderId,
+		);
+	});
 
 	const api: NotebookService = {
 		status: () => hostService.status(),
+		openFile: ({ path: notebookPath }) => hostService.openFile(notebookPath),
 		save: ({ notebookId }) => hostService.save(notebookId),
 		setDefaultSaveDirectory: async ({ notebookId, directory }) => {
 			hostService.setDefaultSaveDirectory(notebookId, directory);

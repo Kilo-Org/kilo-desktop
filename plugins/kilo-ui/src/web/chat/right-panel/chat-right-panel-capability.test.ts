@@ -43,6 +43,25 @@ describe("createChatRightPanelCapability", () => {
 		expect(panel.listTabs(SESSION)).toEqual([tab]);
 	});
 
+	it("opens a restorable contributed tab with its backing resource identity", () => {
+		const panel = createChatRightPanelCapability();
+		const tab = panel.openContributedTab(
+			SESSION,
+			{ id: "notebook.notebook", title: "Notebook" },
+			{
+				instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				title: "analysis.ipynb",
+				metadata: { notebookPath: "/projects/analysis.ipynb" },
+			},
+		);
+
+		expect(tab).toMatchObject({
+			instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			title: "analysis.ipynb",
+			metadata: { notebookPath: "/projects/analysis.ipynb" },
+		});
+	});
+
 	it("show opens the panel without adding tabs", () => {
 		const panel = createChatRightPanelCapability();
 		panel.show(SESSION);
@@ -64,5 +83,14 @@ describe("createChatRightPanelCapability", () => {
 		expect(panel.getTabLifecycle(SESSION, tab.instanceId)).toBe(lifecycle);
 		unregister();
 		expect(panel.getTabLifecycle(SESSION, tab.instanceId)).toBeUndefined();
+	});
+
+	it("updates a contributed tab title", () => {
+		const panel = createChatRightPanelCapability();
+		const tab = panel.openContributedTab(SESSION, { id: "notebook.notebook", title: "Notebook" });
+
+		panel.setTabTitle(SESSION, tab.instanceId, "analysis.ipynb");
+
+		expect(panel.listTabs(SESSION)[0]?.title).toBe("analysis.ipynb");
 	});
 });

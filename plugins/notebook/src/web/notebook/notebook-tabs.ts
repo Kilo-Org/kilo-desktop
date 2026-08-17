@@ -1,10 +1,12 @@
 export const NOTEBOOK_TAB_DEFINITION_ID = "notebook.notebook";
 export const NOTEBOOK_TAB_TITLE = "Notebook";
+export const NOTEBOOK_PATH_METADATA_KEY = "notebookPath";
 
 export interface ChatRightPanelTabSnapshot {
 	readonly instanceId: string;
 	readonly definitionId: string;
 	readonly title: string;
+	readonly metadata?: Readonly<Record<string, string>>;
 }
 
 export interface ChatRightPanelNotebookTab {

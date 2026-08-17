@@ -61,6 +61,7 @@ export const notebookStatusSchema = z.object({
 export type NotebookStatus = z.infer<typeof notebookStatusSchema>;
 
 export const NOTEBOOK_DIRTY_CHANGED_EVENT = "notebook.dirty-changed";
+export const NOTEBOOK_TITLE_CHANGED_EVENT = "notebook.title-changed";
 
 export const notebookDirtyChangedSchema = z.object({
 	notebookId: z.string().uuid(),
@@ -69,14 +70,29 @@ export const notebookDirtyChangedSchema = z.object({
 });
 export type NotebookDirtyChanged = z.infer<typeof notebookDirtyChangedSchema>;
 
+export const notebookTitleChangedSchema = z.object({
+	notebookId: z.string().uuid(),
+	sessionId: z.string().min(1),
+	title: z.string().min(1),
+});
+export type NotebookTitleChanged = z.infer<typeof notebookTitleChangedSchema>;
+
 export const notebookSaveResultSchema = z.object({
 	outcome: z.enum(["saved", "cancelled", "failed"]),
 	reason: z.string().optional(),
 });
 export type NotebookSaveResult = z.infer<typeof notebookSaveResultSchema>;
 
+export const notebookOpenFileResultSchema = z.object({
+	notebookId: z.string().uuid(),
+	path: z.string().min(1),
+	title: z.string().min(1),
+});
+export type NotebookOpenFileResult = z.infer<typeof notebookOpenFileResultSchema>;
+
 export const notebookContract = defineContract({
 	status: defineMethod(z.undefined(), notebookStatusSchema),
+	openFile: defineMethod(z.object({ path: z.string().min(1) }), notebookOpenFileResultSchema),
 	save: defineMethod(z.object({ notebookId: z.string().uuid() }), notebookSaveResultSchema),
 	setDefaultSaveDirectory: defineMethod(
 		z.object({ notebookId: z.string().uuid(), directory: z.string().min(1).nullable() }),

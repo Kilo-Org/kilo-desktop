@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { realpath, stat } from "node:fs/promises";
 
 import {
 	serveElectronNotebookHost,
@@ -11,18 +12,20 @@ import {
 } from "@runtimed/node/electron";
 import {
 	createRelay,
+	openRelayPath,
 	queryDaemonInfo,
 	type RelayInfo,
 	type RelaySession,
 } from "@runtimed/node/relay";
 
+import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import type {
 	HostMessagePort,
 	MainSdk,
 	MainSdkHostDialogOptions,
 } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import type { NotebookSaveResult } from "../../contracts/schemas.js";
+import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts/schemas.js";
 
 import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
 import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
@@ -31,6 +34,7 @@ export interface ElectronNotebookConnectionArgs {
 	readonly notebookId: string;
 	readonly sessionId: string;
 	readonly title: string;
+	readonly notebookPath?: string;
 }
 
 export interface ElectronNotebookHostServiceOptions {
@@ -198,9 +202,10 @@ function normalizeDialogOptions(value: unknown): MainSdkHostDialogOptions | unde
 
 /**
  * Owns the main-process lifetime of notebook relay and Electron host sessions.
- * Each persisted tab UUID identifies one recoverable relay room, while renderer
- * connections may be replaced as tabs remount. Dirty state and save operations
- * remain session-local and are always settled when that connection is removed.
+ * Each persisted tab UUID identifies one recoverable pathless room or the
+ * daemon's stable identity for a file-backed notebook. Renderer connections
+ * may be replaced as tabs remount. Dirty state and save operations remain
+ * session-local and are always settled when that connection is removed.
  */
 export class ElectronNotebookHostService {
 	readonly #mainSdk: MainSdk;
@@ -259,6 +264,60 @@ export class ElectronNotebookHostService {
 				};
 	}
 
+	async openFile(requestedPath: string): Promise<NotebookOpenFileResult> {
+		if (!path.isAbsolute(requestedPath)) {
+			throw new FeatureError("Notebook paths must be absolute.", "VALIDATION");
+		}
+		if (path.extname(requestedPath).toLowerCase() !== ".ipynb") {
+			throw new FeatureError("Notebook files must use the .ipynb extension.", "VALIDATION");
+		}
+
+		let notebookPath: string;
+		try {
+			notebookPath = await realpath(requestedPath);
+			const file = await stat(notebookPath);
+			if (!file.isFile()) {
+				throw new FeatureError("The notebook path does not point to a file.", "VALIDATION");
+			}
+		} catch (error) {
+			if (error instanceof FeatureError) throw error;
+			throw new FeatureError(`Notebook file not found: ${requestedPath}`, "NOT_FOUND");
+		}
+
+		const daemonState = await this.start();
+		if (daemonState.status !== "external" && daemonState.status !== "bundled") {
+			throw new FeatureError(
+				"reason" in daemonState
+					? daemonState.reason
+					: "The notebook runtime daemon is unavailable.",
+				"BUSINESS",
+			);
+		}
+
+		let relay: RelaySession;
+		try {
+			relay = await openRelayPath(notebookPath, {
+				socketPath: this.#socketPath,
+				peerLabel: "agentic-desktop:open-file",
+				description: path.basename(notebookPath),
+			});
+		} catch (error) {
+			throw new FeatureError(
+				`Could not open notebook: ${error instanceof Error ? error.message : String(error)}`,
+				"BUSINESS",
+			);
+		}
+		try {
+			return {
+				notebookId: relay.info.notebookId,
+				path: notebookPath,
+				title: path.basename(notebookPath),
+			};
+		} finally {
+			await relay.close();
+		}
+	}
+
 	async connect(
 		port: HostMessagePort,
 		args: ElectronNotebookConnectionArgs,
@@ -272,14 +331,20 @@ export class ElectronNotebookHostService {
 					: "The notebook runtime daemon is unavailable.",
 			);
 		}
-		const createSession = () =>
-			createRelay({
-				notebookId: args.notebookId,
-				ephemeral: false,
+		const createSession = () => {
+			const relayOptions = {
 				socketPath: this.#socketPath,
 				peerLabel: `agentic-desktop:${args.sessionId}`,
 				description: args.title,
-			});
+			};
+			return args.notebookPath
+				? openRelayPath(args.notebookPath, relayOptions)
+				: createRelay({
+						notebookId: args.notebookId,
+						ephemeral: false,
+						...relayOptions,
+					});
+		};
 		const relay = new ReconnectableRelay(await createSession());
 		const session: NotebookHostSession = {
 			notebookId: args.notebookId,
@@ -424,7 +489,7 @@ export class ElectronNotebookHostService {
 					const changed = params as { path?: unknown };
 					if (typeof changed.path === "string") {
 						session.path = changed.path;
-						session.title = path.basename(changed.path);
+						this.#updateTitle(session, path.basename(changed.path));
 						this.#settleSave(session, { outcome: "saved" });
 					}
 					return undefined;
@@ -446,7 +511,7 @@ export class ElectronNotebookHostService {
 					const title = (params as { title?: unknown }).title;
 					if (typeof title === "string") {
 						const next = notebookTitleState(title);
-						session.title = next.title;
+						this.#updateTitle(session, next.title);
 						session.dirty = next.dirty;
 						this.#emitDirty(session);
 						if (!next.dirty) this.#settleSave(session, { outcome: "saved" });
@@ -507,6 +572,16 @@ export class ElectronNotebookHostService {
 			notebookId: session.notebookId,
 			sessionId: session.sessionId,
 			dirty: session.dirty,
+		});
+	}
+
+	#updateTitle(session: NotebookHostSession, title: string): void {
+		if (!title || session.title === title) return;
+		session.title = title;
+		this.#mainSdk.events.emit("title-changed", {
+			notebookId: session.notebookId,
+			sessionId: session.sessionId,
+			title,
 		});
 	}
 

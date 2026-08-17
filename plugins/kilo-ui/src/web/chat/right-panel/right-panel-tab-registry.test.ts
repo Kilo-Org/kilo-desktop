@@ -58,6 +58,25 @@ describe("right-panel-tab-registry", () => {
 		});
 	});
 
+	it("accepts contribution-owned identity, title, and persisted metadata", () => {
+		const [definition] = buildContributedTabDefinitions([contribution]);
+		const tab = createContributedTab([], definition!, undefined, {
+			instanceId: "file-notebook-id",
+			title: "analysis.ipynb",
+			metadata: { notebookPath: "/projects/analysis.ipynb" },
+		});
+
+		expect(tab).toEqual({
+			instanceId: "file-notebook-id",
+			definitionId: "canvas.canvas",
+			title: "analysis.ipynb",
+			ordinal: 1,
+			metadata: { notebookPath: "/projects/analysis.ipynb" },
+		});
+		expect(isRightPanelTab(tab)).toBe(true);
+		expect(isRightPanelTab({ ...tab, metadata: { notebookPath: 42 } })).toBe(false);
+	});
+
 	it("keeps Plan as a stable singleton definition", () => {
 		expect(createPlanTab()).toEqual({
 			instanceId: "plan",

@@ -7,6 +7,7 @@ import {
 	useRightPanelStore,
 	type RightPanelTab,
 } from "./right-panel-store.js";
+import type { CreateContributedTabOptions } from "./right-panel-tab-registry.js";
 
 export type ChatRightPanelCapability = {
 	setFocusedSessionId(sessionId: string | null): void;
@@ -16,8 +17,10 @@ export type ChatRightPanelCapability = {
 	openContributedTab(
 		sessionId: string,
 		definition: { readonly id: string; readonly title: string },
+		options?: CreateContributedTabOptions,
 	): RightPanelTab;
 	activateTab(sessionId: string, instanceId: string): void;
+	setTabTitle(sessionId: string, instanceId: string, title: string): void;
 	setTabDirty(sessionId: string, instanceId: string, dirty: boolean): void;
 	registerTabLifecycle(
 		sessionId: string,
@@ -66,8 +69,22 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 			return selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, sessionId)
 				.activeTabId;
 		},
-		openContributedTab(sessionId, definition) {
-			useRightPanelStore.getState().openTab(sessionId, definition);
+		openContributedTab(sessionId, definition, options) {
+			const requestedInstanceId = options?.instanceId;
+			const conflictingTab = requestedInstanceId
+				? selectSessionRightPanelState(
+						useRightPanelStore.getState().bySessionId,
+						sessionId,
+					).tabs.find(
+						(tab) => tab.instanceId === requestedInstanceId && tab.definitionId !== definition.id,
+					)
+				: undefined;
+			if (conflictingTab) {
+				throw new Error(
+					`Right-panel tab id "${requestedInstanceId}" is already owned by "${conflictingTab.definitionId}".`,
+				);
+			}
+			useRightPanelStore.getState().openTab(sessionId, definition, options);
 			const state = selectSessionRightPanelState(
 				useRightPanelStore.getState().bySessionId,
 				sessionId,
@@ -82,6 +99,9 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 		},
 		activateTab(sessionId, instanceId) {
 			useRightPanelStore.getState().activateTab(sessionId, instanceId);
+		},
+		setTabTitle(sessionId, instanceId, title) {
+			useRightPanelStore.getState().setTabTitle(sessionId, instanceId, title);
 		},
 		setTabDirty(sessionId, instanceId, dirty) {
 			useRightPanelStore.getState().setTabDirty(sessionId, instanceId, dirty);

@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import os from "node:os";
+import path from "node:path";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 
 import type {
 	ElectronNotebookHostHandler,
@@ -10,12 +13,14 @@ import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 const mocks = vi.hoisted(() => ({
 	createRelay: vi.fn(),
+	openRelayPath: vi.fn(),
 	queryDaemonInfo: vi.fn(),
 	serve: vi.fn(),
 }));
 
 vi.mock("@runtimed/node/relay", () => ({
 	createRelay: mocks.createRelay,
+	openRelayPath: mocks.openRelayPath,
 	queryDaemonInfo: mocks.queryDaemonInfo,
 }));
 vi.mock("@runtimed/node/electron", () => ({
@@ -24,7 +29,7 @@ vi.mock("@runtimed/node/electron", () => ({
 
 import { ElectronNotebookHostService } from "./ElectronNotebookHostService.js";
 
-function relay(notebookId: string): RelaySession {
+function relay(notebookId: string, notebookPath?: string): RelaySession {
 	const info: RelayInfo = {
 		notebookId,
 		commentsNotebookRef: null,
@@ -34,6 +39,7 @@ function relay(notebookId: string): RelaySession {
 		socketPath: "/tmp/nightly.sock",
 		blobPort: 48637,
 		isDevMode: false,
+		...(notebookPath ? { notebookPath } : {}),
 	};
 	return {
 		notebookId,
@@ -68,6 +74,9 @@ describe("ElectronNotebookHostService", () => {
 			return server;
 		});
 		mocks.createRelay.mockResolvedValue(relay("669d39ec-39d6-4160-815c-b46e170cde8d"));
+		mocks.openRelayPath.mockResolvedValue(
+			relay("669d39ec-39d6-4160-815c-b46e170cde8d", "/tmp/analysis.ipynb"),
+		);
 		mocks.queryDaemonInfo.mockResolvedValue({
 			version: "2.6.3",
 			socketPath: "/tmp/nightly.sock",
@@ -104,6 +113,62 @@ describe("ElectronNotebookHostService", () => {
 		expect(server.emit).toHaveBeenCalledWith(
 			"daemon.ready",
 			expect.objectContaining({ notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d" }),
+		);
+	});
+
+	it("opens a file-backed relay by canonical path and returns the daemon notebook id", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const notebookPath = path.join(directory, "analysis.ipynb");
+		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
+		const canonicalNotebookPath = await realpath(notebookPath);
+		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
+		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+
+		try {
+			await expect(service.openFile(notebookPath)).resolves.toEqual({
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				path: canonicalNotebookPath,
+				title: "analysis.ipynb",
+			});
+			expect(mocks.openRelayPath).toHaveBeenCalledWith(canonicalNotebookPath, {
+				socketPath: "/tmp/nightly.sock",
+				peerLabel: "agentic-desktop:open-file",
+				description: "analysis.ipynb",
+			});
+			expect(nativeRelay.close).toHaveBeenCalledOnce();
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("connects restored file tabs through their persisted notebook path", async () => {
+		const mainSdk = createFakeMainSdk({ featureId: "notebook" });
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "analysis.ipynb",
+				notebookPath: "/tmp/analysis.ipynb",
+			},
+			42,
+		);
+
+		expect(mocks.openRelayPath).toHaveBeenCalledWith("/tmp/analysis.ipynb", {
+			socketPath: "/tmp/nightly.sock",
+			peerLabel: "agentic-desktop:kilo-1",
+			description: "analysis.ipynb",
+		});
+		expect(mocks.createRelay).not.toHaveBeenCalled();
+		expect(server.emit).toHaveBeenCalledWith(
+			"daemon.ready",
+			expect.objectContaining({ notebook_path: "/tmp/analysis.ipynb" }),
 		);
 	});
 
@@ -172,6 +237,8 @@ describe("ElectronNotebookHostService", () => {
 				},
 			},
 		});
+		const titleChanged = vi.fn();
+		mainSdk.events.on("notebook.title-changed", titleChanged);
 		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
 		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
@@ -185,6 +252,12 @@ describe("ElectronNotebookHostService", () => {
 		await handler.invoke("notebook.applyPathChanged", { path: "/tmp/analysis.ipynb" });
 
 		await expect(result).resolves.toEqual({ outcome: "saved" });
+		expect(titleChanged).toHaveBeenCalledWith({
+			notebookId,
+			sessionId: "kilo-1",
+			title: "analysis.ipynb",
+		});
+		await expect(handler.invoke("window.getTitle", undefined)).resolves.toBe("analysis.ipynb");
 	});
 
 	it("keeps a dirty tab open when the Save As dialog is cancelled", async () => {

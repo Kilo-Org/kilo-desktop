@@ -37,6 +37,11 @@ async function boot() {
 				blobPort: 48637,
 			},
 		})),
+		openFile: vi.fn(async (path: string) => ({
+			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			path,
+			title: "analysis.ipynb",
+		})),
 		save: vi.fn(async () => ({ outcome: "saved" as const })),
 		setDefaultSaveDirectory: vi.fn(),
 		connect: vi.fn(async () => undefined),
@@ -79,6 +84,19 @@ describe("notebook mainRegister", () => {
 			outcome: "saved",
 		});
 		expect(hostService.save).toHaveBeenCalledWith(notebookId);
+	});
+
+	it("opens a notebook file through the host service", async () => {
+		const { hostService, router } = await boot();
+
+		await expect(
+			router.invoke("notebook", "openFile", { path: "/projects/analysis.ipynb" }),
+		).resolves.toEqual({
+			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			path: "/projects/analysis.ipynb",
+			title: "analysis.ipynb",
+		});
+		expect(hostService.openFile).toHaveBeenCalledWith("/projects/analysis.ipynb");
 	});
 
 	it("updates a notebook's default save directory", async () => {

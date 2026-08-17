@@ -1,5 +1,6 @@
+import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+
 import { notebookContract, type NotebookService } from "../contracts/schemas.js";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
 /**
  * Standalone browser mode has no main process, so there is no loopback relay
@@ -17,6 +18,9 @@ export function notebookBrowserRegister(mainSdk: MainSdk): void {
 			},
 			daemon: null,
 		}),
+		openFile: async () => {
+			throw new FeatureError("Opening notebook files is unavailable in browser mode.", "BUSINESS");
+		},
 		save: async () => ({
 			outcome: "failed",
 			reason: "Saving notebooks is unavailable in browser mode.",

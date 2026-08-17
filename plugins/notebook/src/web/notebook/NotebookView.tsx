@@ -7,10 +7,12 @@ import {
 	NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
 	NOTEBOOK_DIRTY_CHANGED_EVENT,
 	NOTEBOOK_HOST,
+	NOTEBOOK_TITLE_CHANGED_EVENT,
 	notebookDirtyChangedSchema,
+	notebookTitleChangedSchema,
 	type NotebookService,
 } from "../../contracts/schemas.js";
-import { notebookIdFromInstanceId } from "./notebook-tabs.js";
+import { NOTEBOOK_PATH_METADATA_KEY, notebookIdFromInstanceId } from "./notebook-tabs.js";
 import type { ChatRightPanelCapabilities } from "./notebook-webmcp-tools.js";
 
 /**
@@ -87,6 +89,19 @@ export interface NotebookViewProps {
 	readonly instanceId: string;
 	readonly title: string;
 	readonly workspaceDirectory?: string;
+	readonly metadata?: Readonly<Record<string, string>>;
+}
+
+export function notebookHostConnectionArgs(
+	props: Pick<NotebookViewProps, "instanceId" | "sessionId" | "title" | "metadata">,
+) {
+	const notebookPath = props.metadata?.[NOTEBOOK_PATH_METADATA_KEY];
+	return {
+		notebookId: notebookIdFromInstanceId(props.instanceId),
+		sessionId: props.sessionId,
+		title: props.title,
+		...(notebookPath ? { notebookPath } : {}),
+	};
 }
 
 export function NotebookView({
@@ -94,6 +109,7 @@ export function NotebookView({
 	sessionId,
 	title,
 	workspaceDirectory,
+	metadata,
 }: NotebookViewProps) {
 	const sdk = useSdk<NotebookService>("notebook");
 	const notebookId = notebookIdFromInstanceId(instanceId);
@@ -130,8 +146,20 @@ export function NotebookView({
 			}
 			panel?.setTabDirty?.(sessionId, instanceId, parsed.data.dirty);
 		});
+		const unsubscribeTitle = sdk.events.on(NOTEBOOK_TITLE_CHANGED_EVENT, (payload) => {
+			const parsed = notebookTitleChangedSchema.safeParse(payload);
+			if (
+				!parsed.success ||
+				parsed.data.notebookId !== notebookId ||
+				parsed.data.sessionId !== sessionId
+			) {
+				return;
+			}
+			panel?.setTabTitle?.(sessionId, instanceId, parsed.data.title);
+		});
 		return () => {
 			unsubscribeDirty();
+			unsubscribeTitle();
 			unregisterLifecycle?.();
 		};
 	}, [instanceId, notebookId, sdk, sessionId]);
@@ -185,11 +213,15 @@ export function NotebookView({
 			) {
 				return;
 			}
-			port = sdk.ports.open<MessagePort>("host", {
-				notebookId,
-				sessionId,
-				title,
-			});
+			port = sdk.ports.open<MessagePort>(
+				"host",
+				notebookHostConnectionArgs({
+					instanceId,
+					sessionId,
+					title,
+					...(metadata ? { metadata } : {}),
+				}),
+			);
 			try {
 				frameWindow.postMessage(
 					{
@@ -214,7 +246,7 @@ export function NotebookView({
 			window.removeEventListener("message", onMessage);
 			if (!transferred) port?.close();
 		};
-	}, [frameSrc, notebookId, sdk, sessionId, title]);
+	}, [frameSrc, instanceId, metadata, notebookId, sdk, sessionId, title]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">

@@ -93,6 +93,31 @@ describe("right-panel-store", () => {
 		expect(persisted.bySessionId[SESSION]?.tabs[0]).not.toHaveProperty("dirty");
 	});
 
+	it("persists contribution metadata needed to restore backing resources", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS, {
+			metadata: { notebookPath: "/projects/analysis.ipynb" },
+		});
+
+		const persisted = persistedRightPanelState(useRightPanelStore.getState());
+		expect(persisted.bySessionId[SESSION]?.tabs[0]?.metadata).toEqual({
+			notebookPath: "/projects/analysis.ipynb",
+		});
+	});
+
+	it("updates and persists a contribution-provided tab title", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
+
+		useRightPanelStore.getState().setTabTitle(SESSION, tab.instanceId, "analysis.ipynb");
+
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.title).toBe(
+			"analysis.ipynb",
+		);
+		expect(
+			persistedRightPanelState(useRightPanelStore.getState()).bySessionId[SESSION]?.tabs[0]?.title,
+		).toBe("analysis.ipynb");
+	});
+
 	it("moves draft tabs to the assigned remote session", () => {
 		useRightPanelStore.getState().openTab("local-1", CANVAS);
 		useRightPanelStore.getState().moveSessionState("local-1", "remote-1");

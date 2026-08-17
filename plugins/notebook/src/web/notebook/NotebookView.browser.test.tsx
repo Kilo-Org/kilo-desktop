@@ -7,6 +7,7 @@ import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-deskto
 
 import {
 	NOTEBOOK_DIRTY_CHANGED_EVENT,
+	NOTEBOOK_TITLE_CHANGED_EVENT,
 	notebookContract,
 	type NotebookService,
 } from "../../contracts/schemas.js";
@@ -14,6 +15,7 @@ import type { ChatRightPanelCapability } from "./notebook-webmcp-tools.js";
 
 import {
 	NotebookView,
+	notebookHostConnectionArgs,
 	notebookOriginFrom,
 	nteractSrcFor,
 	type NotebookViewProps,
@@ -43,6 +45,11 @@ function renderView(
 				availability: { status: "unavailable" as const },
 				process: { status: "failed" as const, reason: "Not staged for this test." },
 				daemon: null,
+			}),
+			openFile: async ({ path }: { path: string }) => ({
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				path,
+				title: "analysis.ipynb",
 			}),
 			save,
 			setDefaultSaveDirectory,
@@ -128,6 +135,22 @@ describe("NotebookView", () => {
 		);
 	});
 
+	it("passes a restored file tab's persisted path to the Electron host", () => {
+		expect(
+			notebookHostConnectionArgs({
+				instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "session-1",
+				title: "analysis.ipynb",
+				metadata: { notebookPath: "/projects/analysis.ipynb" },
+			}),
+		).toEqual({
+			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			sessionId: "session-1",
+			title: "analysis.ipynb",
+			notebookPath: "/projects/analysis.ipynb",
+		});
+	});
+
 	it("strips a legacy notebook.notebook: prefix before framing nteract", () => {
 		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
 		renderView({ instanceId: "notebook.notebook:legacy-uuid" });
@@ -140,6 +163,7 @@ describe("NotebookView", () => {
 	it("registers generic tab lifecycle and projects notebook dirty events", async () => {
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
 		const setTabDirty = vi.fn();
+		const setTabTitle = vi.fn();
 		let lifecycle:
 			| Parameters<NonNullable<ChatRightPanelCapability["registerTabLifecycle"]>>[2]
 			| undefined;
@@ -151,7 +175,7 @@ describe("NotebookView", () => {
 		const { sdk } = renderView(
 			{ instanceId: notebookId },
 			{
-				panel: { setTabDirty, registerTabLifecycle },
+				panel: { setTabDirty, setTabTitle, registerTabLifecycle },
 				save,
 			},
 		);
@@ -163,10 +187,19 @@ describe("NotebookView", () => {
 			dirty: true,
 		});
 		await vi.waitFor(() => expect(setTabDirty).toHaveBeenCalledWith("session-1", notebookId, true));
+		sdk.events.emit("title-changed", {
+			notebookId,
+			sessionId: "session-1",
+			title: "analysis.ipynb",
+		});
+		await vi.waitFor(() =>
+			expect(setTabTitle).toHaveBeenCalledWith("session-1", notebookId, "analysis.ipynb"),
+		);
 		await expect(lifecycle?.save?.()).resolves.toEqual({ outcome: "saved" });
 		await expect(lifecycle?.discard?.()).resolves.toBeUndefined();
 		expect(save).toHaveBeenCalledWith({ notebookId });
 		expect(NOTEBOOK_DIRTY_CHANGED_EVENT).toBe("notebook.dirty-changed");
+		expect(NOTEBOOK_TITLE_CHANGED_EVENT).toBe("notebook.title-changed");
 	});
 
 	it("keeps the notebook host's default save directory synchronized with its workspace", async () => {

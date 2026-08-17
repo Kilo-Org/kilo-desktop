@@ -14,6 +14,7 @@ export interface ChatRightPanelContributionProps {
 	readonly instanceId: string;
 	readonly title: string;
 	readonly workspaceDirectory?: string;
+	readonly metadata?: Readonly<Record<string, string>>;
 }
 
 export const PLAN_TAB_DEFINITION_ID = "kilo-ui.plan";
@@ -32,8 +33,16 @@ export interface RightPanelTab {
 	definitionId: string;
 	title: string;
 	ordinal: number | null;
+	/** Contribution-owned, serializable state that must survive tab restoration. */
+	metadata?: Readonly<Record<string, string>>;
 	/** Transient unsaved-work state; intentionally excluded from persisted tab layout. */
 	dirty?: boolean;
+}
+
+export interface CreateContributedTabOptions {
+	readonly instanceId?: string;
+	readonly title?: string;
+	readonly metadata?: Readonly<Record<string, string>>;
 }
 
 const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
@@ -97,6 +106,7 @@ export function createContributedTab(
 	currentTabs: readonly RightPanelTab[],
 	definition: Pick<RightPanelTabDefinition, "id" | "title">,
 	createId: () => string = () => crypto.randomUUID(),
+	options: CreateContributedTabOptions = {},
 ): RightPanelTab {
 	const ordinal =
 		Math.max(
@@ -109,11 +119,21 @@ export function createContributedTab(
 	// consumers can pass it to their own backing services without decoding a
 	// host-owned prefix.
 	return {
-		instanceId: createId(),
+		instanceId: options.instanceId ?? createId(),
 		definitionId: definition.id,
-		title: `${definition.title} ${String(ordinal)}`,
+		title: options.title ?? `${definition.title} ${String(ordinal)}`,
 		ordinal,
+		...(options.metadata ? { metadata: { ...options.metadata } } : {}),
 	};
+}
+
+function isTabMetadata(value: unknown): value is Readonly<Record<string, string>> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		!Array.isArray(value) &&
+		Object.values(value).every((entry) => typeof entry === "string")
+	);
 }
 
 export function isRightPanelTab(value: unknown): value is RightPanelTab {
@@ -123,7 +143,8 @@ export function isRightPanelTab(value: unknown): value is RightPanelTab {
 		typeof tab.instanceId === "string" &&
 		typeof tab.definitionId === "string" &&
 		typeof tab.title === "string" &&
-		(tab.ordinal === null || (typeof tab.ordinal === "number" && Number.isInteger(tab.ordinal)))
+		(tab.ordinal === null || (typeof tab.ordinal === "number" && Number.isInteger(tab.ordinal))) &&
+		(tab.metadata === undefined || isTabMetadata(tab.metadata))
 	);
 }
 
@@ -155,6 +176,7 @@ export const RightPanelTabContent: FC<{
 				instanceId={tab.instanceId}
 				title={tab.title}
 				{...(workspaceDirectory ? { workspaceDirectory } : {})}
+				{...(tab.metadata ? { metadata: tab.metadata } : {})}
 			/>
 		</Suspense>
 	);

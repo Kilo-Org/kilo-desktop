@@ -43,4 +43,18 @@ describe("packaged production dependencies", () => {
 		expect(forge).not.toMatch(/unpack:\s*"\*\*\/node_modules\/\*\*"/);
 		expect(forge).toContain("webMcpRelayRuntimeSubpath");
 	});
+
+	it("quotes plugin prepare-assets filters so Windows cmd.exe can match packages", () => {
+		const scripts = (
+			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
+				scripts?: Record<string, string>;
+			}
+		).scripts;
+		const preparePlugins = scripts?.["prepare:plugins"] ?? "";
+		// cmd.exe treats single quotes as literals, so a filter like
+		// `'@anaconda-agentic-desktop/plugin-*'` matches no workspace packages.
+		expect(preparePlugins).toContain("run prepare-assets");
+		expect(preparePlugins).not.toMatch(/--filter\s+'/);
+		expect(preparePlugins).toMatch(/--filter\s+"@anaconda-agentic-desktop\/plugin-\*"/);
+	});
 });

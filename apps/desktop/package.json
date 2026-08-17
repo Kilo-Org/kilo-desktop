@@ -21,7 +21,7 @@
 		"prepublish": "tsx config/preflight-publish.ts && pnpm run prepare:build",
 		"prepare:build": "pnpm run prepare:web && pnpm run prepare:plugins",
 		"prepare:web": "pnpm --filter @anaconda-agentic-desktop/web build && node --input-type=module -e \"import { access } from 'node:fs/promises'; await access(new URL('../web/dist/index.html', import.meta.url));\"",
-		"prepare:plugins": "pnpm --filter '@anaconda-agentic-desktop/plugin-*' -r --if-present run prepare-assets",
+		"prepare:plugins": "pnpm --filter \"@anaconda-agentic-desktop/plugin-*\" -r --if-present run prepare-assets",
 		"make": "electron-forge make",
 		"package": "electron-forge package",
 		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true pnpm run package",

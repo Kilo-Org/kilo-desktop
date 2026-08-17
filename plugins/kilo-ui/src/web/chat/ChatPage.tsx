@@ -43,7 +43,7 @@ const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH_FRACTION = 0.5;
-const PANEL_GAP_PX = 4; // matches w-1 gutter
+const PANEL_GAP_PX = 8; // matches w-2 gutter
 
 function readStoredPanelWidth(): number {
 	try {
@@ -393,7 +393,7 @@ export function ChatPage() {
 									aria-orientation="vertical"
 									aria-label="Resize right panel"
 									data-qa-id="chat-right-panel-resize"
-									className="w-1 shrink-0 cursor-col-resize touch-none bg-transparent"
+									className="w-2 shrink-0 cursor-col-resize touch-none bg-transparent"
 									onPointerDown={handleResizePointerDown}
 								/>
 							)}

@@ -5,10 +5,10 @@ export const NTERACT_RELEASE = {
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 
-/** Temporary source pin until the Electron adapter is included in a stable release. */
+/** Source pin for the notebook UI and @runtimed/node types until npm publishes the Electron adapter. */
 export const NTERACT_NOTEBOOK_SOURCE = {
-	tag: "quod/electron-notebook-host",
-	commit: "f3bbe36e5e4bd1803ba22c4f2d81f297d3ace6e3",
+	tag: "main",
+	commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 

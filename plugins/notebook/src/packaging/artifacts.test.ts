@@ -5,6 +5,7 @@ import {
 	findRuntimedArtifact,
 	getNteractMcpArtifact,
 	getRuntimedArtifact,
+	NTERACT_NOTEBOOK_SOURCE,
 	NTERACT_RELEASE,
 	NTERACT_MCP_ARTIFACTS,
 	RUNTIMED_ARTIFACTS,
@@ -12,6 +13,14 @@ import {
 } from "./artifacts.js";
 
 describe("notebook distribution artifacts", () => {
+	it("pins notebook UI source to nteract origin/main", () => {
+		expect(NTERACT_NOTEBOOK_SOURCE).toEqual({
+			tag: "main",
+			commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
+			repository: "https://github.com/nteract/nteract.git",
+		});
+	});
+
 	it("pins nteract-mcp and a colocated runt child for every desktop target", () => {
 		expect(NTERACT_MCP_ARTIFACTS.map(({ target }) => target)).toEqual([
 			"darwin-arm64",

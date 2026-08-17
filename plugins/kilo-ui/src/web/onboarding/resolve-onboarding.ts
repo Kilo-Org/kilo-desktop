@@ -12,20 +12,22 @@ export type ResolveOnboardingInput = {
 	state: OnboardingState | null;
 	workspaceCount: number | null;
 	workspacesLoading: boolean;
+	workspacesUnavailable?: boolean;
 	connectionUnavailable: boolean;
 };
 
 /**
  * First-run gate: hide once the user has finished or skipped, when Kilo is
  * unavailable (browser mode), or when they already have a workspace (existing
- * install). Do not wait for Kilo auth — the sign-in step handles that while
- * the overlay is already up, so the app does not paint first.
+ * install). Stay loading when persisted state or the workspace list cannot be
+ * read so a fetch error does not reopen the wizard. Do not wait for Kilo
+ * auth — the sign-in step handles that while the overlay is already up.
  */
 export function resolveOnboarding(input: ResolveOnboardingInput): OnboardingView {
 	if (input.connectionUnavailable) {
 		return { status: "hidden", initialStep: "kilo-sign-in" };
 	}
-	if (input.state === null || input.workspacesLoading) {
+	if (input.state === null || input.workspacesLoading || input.workspacesUnavailable) {
 		return { status: "loading", initialStep: "kilo-sign-in" };
 	}
 	if (input.state.outcome !== null) {

@@ -76,4 +76,22 @@ describe("OnboardingFlow", () => {
 		await screen.getByTestId("onboarding-progress-kilo-sign-in").click();
 		expect(onJump).toHaveBeenCalledWith("kilo-sign-in");
 	});
+
+	it("does not jump via the progress bars while a mutation is in flight", async () => {
+		const { baseElement } = render(
+			<OnboardingFlow
+				step="workspace"
+				busy
+				onBack={vi.fn()}
+				onContinue={vi.fn()}
+				onSkip={vi.fn()}
+				onJump={vi.fn()}
+			>
+				<p>Workspace body</p>
+			</OnboardingFlow>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("onboarding-progress-kilo-sign-in")).toBeDisabled();
+	});
 });

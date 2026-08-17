@@ -24,6 +24,12 @@ describe("resolveOnboarding", () => {
 		).toMatchObject({ status: "loading" });
 	});
 
+	it("stays loading when the workspace list or persisted state cannot be read", () => {
+		expect(resolveOnboarding({ ...open, workspacesUnavailable: true })).toMatchObject({
+			status: "loading",
+		});
+	});
+
 	it("hides after the user completes or skips", () => {
 		expect(
 			resolveOnboarding({ ...open, state: { outcome: "completed", closedAt: 1 } }),

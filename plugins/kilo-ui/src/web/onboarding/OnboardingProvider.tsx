@@ -41,9 +41,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 	const [step, setStep] = useState<OnboardingStepId | null>(null);
 
 	const view = resolveOnboarding({
-		state: persisted.isError ? { outcome: null, closedAt: null } : (persisted.data ?? null),
+		state: persisted.data ?? null,
 		workspaceCount: workspaces.isLoading ? null : workspaces.workspaces.length,
 		workspacesLoading: workspaces.isLoading,
+		workspacesUnavailable: workspaces.isUnavailable,
 		connectionUnavailable: auth.connectionUnavailable,
 	});
 
@@ -65,7 +66,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 			);
 			workspaces.setActiveWorkspaceId(saved.id);
 			await queryClient.invalidateQueries({ queryKey: listQueryKey });
-			await complete.mutateAsync();
+			await complete.mutateAsync().catch(() => undefined);
 		},
 		onError: (reason) => {
 			form.setError(reason instanceof Error ? reason.message : "Could not save workspace.");

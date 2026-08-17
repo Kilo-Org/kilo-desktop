@@ -70,6 +70,8 @@ function renderOnboarding(options: {
 	workspaces?: Partial<WorkspacesContextValue>;
 	onboarding?: OnboardingState;
 	create?: () => Promise<Workspace>;
+	complete?: () => Promise<OnboardingState>;
+	get?: () => Promise<OnboardingState>;
 }) {
 	let onboarding: OnboardingState = options.onboarding ?? { outcome: null, closedAt: null };
 	const setActiveWorkspaceId = vi.fn();
@@ -81,11 +83,13 @@ function renderOnboarding(options: {
 			showOpenDialog: async () => ({ canceled: false, paths: ["/projects/alpha"] }),
 		},
 		handlers: {
-			"onboarding.get": async () => onboarding,
-			"onboarding.complete": async () => {
-				onboarding = { outcome: "completed", closedAt: Date.now() };
-				return onboarding;
-			},
+			"onboarding.get": options.get ?? (async () => onboarding),
+			"onboarding.complete":
+				options.complete ??
+				(async () => {
+					onboarding = { outcome: "completed", closedAt: Date.now() };
+					return onboarding;
+				}),
 			"onboarding.skip": async () => {
 				onboarding = { outcome: "skipped", closedAt: Date.now() };
 				return onboarding;
@@ -151,6 +155,26 @@ describe("OnboardingProvider", () => {
 		await expect.element(screen.getByTestId("onboarding-continue")).toBeDisabled();
 	});
 
+	it("hides the wizard when the workspace list cannot be read", async () => {
+		const { screen } = renderOnboarding({
+			workspaces: { isUnavailable: true },
+		});
+
+		await expect.element(screen.getByTestId("app-body")).toBeVisible();
+		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+	});
+
+	it("hides the wizard when persisted onboarding state cannot be read", async () => {
+		const { screen } = renderOnboarding({
+			get: async () => {
+				throw new Error("kv unavailable");
+			},
+		});
+
+		await expect.element(screen.getByTestId("app-body")).toBeVisible();
+		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+	});
+
 	it("hides the wizard when Kilo is unavailable", async () => {
 		const { screen } = renderOnboarding({
 			auth: { connectionUnavailable: true },
@@ -179,5 +203,21 @@ describe("OnboardingProvider", () => {
 
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith(createdWorkspace.id);
+	});
+
+	it("does not report a workspace save error when only onboarding complete fails", async () => {
+		const { screen, setActiveWorkspaceId } = renderOnboarding({
+			auth: { authenticated: true },
+			complete: async () => {
+				throw new Error("kv write failed");
+			},
+		});
+
+		await screen.getByTestId("onboarding-continue").click();
+		await screen.getByRole("button", { name: /Drop folders/ }).click();
+		await screen.getByTestId("onboarding-continue").click();
+
+		expect(setActiveWorkspaceId).toHaveBeenCalledWith(createdWorkspace.id);
+		await expect.element(screen.getByText("Could not save workspace.")).not.toBeInTheDocument();
 	});
 });

@@ -8,6 +8,8 @@ import {
 
 const features: FeatureRegistration[] = [];
 
+vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
+
 // Real bundled plugins may reach for Electron or native services during boot;
 // the collector only needs ids to exercise capability lookup.
 vi.mock("./features.js", () => ({

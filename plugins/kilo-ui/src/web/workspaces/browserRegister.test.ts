@@ -115,4 +115,17 @@ describe("kiloUiBrowserRegister", () => {
 		});
 		sdk.dispose();
 	});
+
+	it("tracks onboarding complete and skip in memory", async () => {
+		const sdk = boot();
+		await expect(sdk.invoke("onboarding.get")).resolves.toEqual({
+			outcome: null,
+			closedAt: null,
+		});
+		const completed = await sdk.invoke("onboarding.complete");
+		expect(completed).toMatchObject({ outcome: "completed" });
+		await expect(sdk.invoke("onboarding.get")).resolves.toEqual(completed);
+		await expect(sdk.invoke("onboarding.skip")).resolves.toMatchObject({ outcome: "skipped" });
+		sdk.dispose();
+	});
 });

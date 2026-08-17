@@ -174,6 +174,21 @@ describe("kilo-ui mainRegister", () => {
 		expect(second.workspaceFolders).toEqual([]);
 	});
 
+	it("persists onboarding complete and skip", async () => {
+		const { mainSdk } = boot();
+		await expect(mainSdk.invoke("onboarding.get")).resolves.toEqual({
+			outcome: null,
+			closedAt: null,
+		});
+		const completed = await mainSdk.invoke("onboarding.complete");
+		expect(completed).toMatchObject({ outcome: "completed" });
+		expect(typeof (completed as { closedAt: number }).closedAt).toBe("number");
+		await expect(mainSdk.invoke("onboarding.get")).resolves.toEqual(completed);
+		const skipped = await mainSdk.invoke("onboarding.skip");
+		expect(skipped).toMatchObject({ outcome: "skipped" });
+		mainSdk.dispose();
+	});
+
 	it("rejects session preparation for a missing workspace", async () => {
 		const { mainSdk, exposeConnectionService } = boot();
 		exposeConnectionService();

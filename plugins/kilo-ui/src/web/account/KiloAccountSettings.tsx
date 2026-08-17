@@ -428,9 +428,9 @@ function SignOutButton({ onLogout }: { onLogout: () => void }) {
 	return (
 		<Button
 			type="button"
-			variant="ghost"
+			variant="destructive"
 			size="sm"
-			className="text-destructive-foreground hover:bg-destructive/10 hover:text-destructive-foreground self-end"
+			className="self-end"
 			onClick={onLogout}
 			data-qa-id="kilo-account-logout"
 		>

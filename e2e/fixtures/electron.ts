@@ -51,6 +51,9 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 			// Skip conda staging in e2e — prevents 150 MB downloads and multi-second
 			// detection delays. E2e specs that test conda ops stub it separately.
 			ANACONDA_SKIP_CONDA_STAGING: "1",
+			// First-run onboarding is covered by kilo-ui Vitest; e2e reuses one
+			// worker-scoped profile, so skip the overlay here.
+			ANACONDA_SKIP_ONBOARDING: "1",
 			// --user-data-dir does not isolate the host Anaconda keychain.
 			ANACONDA_SKIP_KEYRING: "1",
 		},

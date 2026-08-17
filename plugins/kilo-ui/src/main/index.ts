@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../contracts/chat/schemas.js";
+import type { OnboardingService } from "../contracts/onboarding/schemas.js";
 import type {
 	WorkspaceCapabilityService,
 	WorkspacesService,
@@ -8,7 +9,9 @@ import type {
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
+import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import { OnboardingStore } from "./onboarding/OnboardingStore.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
 import { createUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
@@ -90,8 +93,16 @@ export function mainRegister(mainSdk: MainSdk): void {
 		},
 	};
 
+	const onboarding = new OnboardingStore(mainSdk);
+	const onboardingApi: OnboardingService = {
+		"onboarding.get": async () => onboarding.get(),
+		"onboarding.complete": async () => onboarding.complete(),
+		"onboarding.skip": async () => onboarding.skip(),
+	};
+
 	mainSdk.plugins.expose("workspaceService", workspaceService);
 	mainSdk.channels(workspacesContract).handleAll(api);
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
+	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
 	mainSdk.onDispose(() => db.$client.close());
 }

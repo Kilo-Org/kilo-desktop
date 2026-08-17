@@ -7,7 +7,8 @@
 	"contributes": {
 		"providers": [
 			{ "component": "WorkspacesFeatureProvider", "priority": 20 },
-			{ "component": "ChatFeatureProvider", "priority": 10 }
+			{ "component": "ChatFeatureProvider", "priority": 10 },
+			{ "component": "OnboardingProvider", "priority": 5 }
 		],
 		"routes": [
 			{

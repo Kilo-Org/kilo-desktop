@@ -5,9 +5,11 @@ import type {
 	WorkspacesService,
 } from "../contracts/workspaces/schemas.js";
 import type { KiloUiChatService } from "../contracts/chat/schemas.js";
+import type { OnboardingService, OnboardingState } from "../contracts/onboarding/schemas.js";
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
+import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 
 const basename = (folderPath: string) =>
@@ -131,7 +133,24 @@ function registerChatBrowser(mainSdk: MainSdk): void {
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 }
 
+function registerOnboardingBrowser(mainSdk: MainSdk): void {
+	let state: OnboardingState = { outcome: null, closedAt: null };
+	const onboardingApi: OnboardingService = {
+		"onboarding.get": async () => state,
+		"onboarding.complete": async () => {
+			state = { outcome: "completed", closedAt: Date.now() };
+			return state;
+		},
+		"onboarding.skip": async () => {
+			state = { outcome: "skipped", closedAt: Date.now() };
+			return state;
+		},
+	};
+	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
+}
+
 export function kiloUiBrowserRegister(mainSdk: MainSdk): void {
 	registerWorkspacesBrowser(mainSdk);
 	registerChatBrowser(mainSdk);
+	registerOnboardingBrowser(mainSdk);
 }

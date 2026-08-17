@@ -17,6 +17,14 @@ import { NTERACT_RELEASE, type NativeReleaseArtifact } from "../artifacts.js";
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 const STAGING_MANIFEST = "staged.json";
 
+/** NTFS does not persist Unix execute bits, so Windows hosts cannot require them. */
+export function stagedExecuteBitsAreCurrent(
+	mode: number,
+	artifactPlatform: NodeJS.Platform,
+): boolean {
+	return process.platform === "win32" || artifactPlatform === "win32" || (mode & 0o111) !== 0;
+}
+
 interface StagingManifest {
 	readonly schemaVersion: 1;
 	readonly releaseTag: string;
@@ -74,7 +82,7 @@ async function existingStageIsCurrent(
 		const expected = expectedManifest(artifact);
 		return (
 			executableInfo.isFile() &&
-			(artifact.platform === "win32" || (executableInfo.mode & 0o111) !== 0) &&
+			stagedExecuteBitsAreCurrent(executableInfo.mode, artifact.platform) &&
 			(await isNativeExecutable(executablePath, artifact.platform)) &&
 			manifest.schemaVersion === expected.schemaVersion &&
 			manifest.releaseTag === expected.releaseTag &&

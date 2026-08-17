@@ -13,7 +13,7 @@ import {
 	type NteractMcpArtifact,
 	type ReleaseAsset,
 } from "../artifacts.js";
-import { isNativeExecutable } from "./stage-pinned-binary.js";
+import { isNativeExecutable, stagedExecuteBitsAreCurrent } from "./stage-pinned-binary.js";
 
 const require = createRequire(import.meta.url);
 const DOWNLOAD_TIMEOUT_MS = 120_000;
@@ -73,7 +73,7 @@ async function executableIsCurrent(
 	const [bytes, info] = await Promise.all([readFile(filePath), stat(filePath)]);
 	return (
 		info.isFile() &&
-		(platform === "win32" || (info.mode & 0o111) !== 0) &&
+		stagedExecuteBitsAreCurrent(info.mode, platform) &&
 		(await isNativeExecutable(filePath, platform)) &&
 		bytes.byteLength === binary.bytes &&
 		sha256(bytes) === binary.sha256

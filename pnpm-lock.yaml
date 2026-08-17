@@ -135,9 +135,6 @@ importers:
       '@launchdarkly/node-client-sdk':
         specifier: ^4.0.0
         version: 4.0.1
-      '@runtimed/node':
-        specifier: link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node
-        version: link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node
       '@sentry/electron':
         specifier: 'catalog:'
         version: 7.16.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.212.0(@opentelemetry/api@1.9.1))(supports-color@10.2.2)
@@ -226,6 +223,9 @@ importers:
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1
+      '@runtimed/node':
+        specifier: link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node
+        version: link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node
       '@sentry/vite-plugin':
         specifier: 'catalog:'
         version: 5.4.0(supports-color@10.2.2)

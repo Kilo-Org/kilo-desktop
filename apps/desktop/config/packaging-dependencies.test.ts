@@ -10,17 +10,28 @@ const workspaceRoot = path.resolve(desktopRoot, "../..");
 describe("packaged production dependencies", () => {
 	const manifest = JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
 		dependencies?: Record<string, string>;
+		devDependencies?: Record<string, string>;
 	};
 	const dependencies = manifest.dependencies ?? {};
+	const devDependencies = manifest.devDependencies ?? {};
+	const runtimedNodeLink =
+		"link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node";
 
 	it("declares ws on desktop so the Vite-external main import resolves after pnpm deploy", () => {
 		expect(dependencies.ws).toEqual(expect.stringMatching(/\S/));
 	});
 
-	it("declares @runtimed/node on desktop so the Vite-external main import resolves during electron-forge start", () => {
-		expect(dependencies["@runtimed/node"]).toBe(
-			"link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
-		);
+	it("keeps generated @runtimed/node out of production dependencies so frozen pnpm deploy can resolve the lockfile", () => {
+		expect(dependencies["@runtimed/node"]).toBeUndefined();
+	});
+
+	it("declares @runtimed/node as a desktop devDependency so electron-forge start can resolve the Vite-external native import", () => {
+		expect(devDependencies["@runtimed/node"]).toBe(runtimedNodeLink);
+	});
+
+	it("recopies generated @runtimed/node after the lockfile-backed production deploy", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toContain('packageName: "@runtimed/node"');
 	});
 
 	it("keeps the WebMCP relay out of the desktop dependency graph", () => {

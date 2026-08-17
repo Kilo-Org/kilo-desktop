@@ -19,6 +19,13 @@ const RUNTIMED_EXECUTABLES = new Map([
 	["linux-x64", "runtimed-nightly"],
 	["win32-x64", "runtimed-nightly.exe"],
 ]);
+const RUNTIMED_NODE_NATIVE_BINDINGS = new Map([
+	["darwin-arm64", "runtimed-node.darwin-arm64.node"],
+	["darwin-x64", "runtimed-node.darwin-x64.node"],
+	["linux-x64", "runtimed-node.linux-x64-gnu.node"],
+	["win32-x64", "runtimed-node.win32-x64-msvc.node"],
+]);
+const RUNTIMED_NODE_PACKAGE = "build/nteract-source/nteract/packages/runtimed-node";
 
 export const NOTEBOOK_ASAR_UNPACK_PACKAGES = ["@runtimed"] as const;
 export const NOTEBOOK_MAIN_EXTERNALS = [/^@runtimed\/node(?:\/.*)?$/] as const;
@@ -63,9 +70,16 @@ export function createNotebookPackagingPlan(
 	if (!runtimedExecutable) {
 		throw new Error(`runtimed is not configured for ${platform}/${arch}`);
 	}
+	const runtimedNodeBinding = RUNTIMED_NODE_NATIVE_BINDINGS.get(target);
+	if (!runtimedNodeBinding) {
+		throw new Error(`@runtimed/node is not configured for ${platform}/${arch}`);
+	}
+	const runtimedNodeSrc = path.join(pluginRoot, RUNTIMED_NODE_PACKAGE, "src");
 	const requiredAssets = [
 		path.join(stagedNotebookBundle, "index.html"),
 		path.join(stagedNotebookBundle, "agentic-notebook-build.json"),
+		path.join(runtimedNodeSrc, "binding.cjs"),
+		path.join(runtimedNodeSrc, runtimedNodeBinding),
 		path.join(stagedNteractMcp, target, nteractMcpExecutables.nteractMcp),
 		path.join(stagedNteractMcp, target, nteractMcpExecutables.runt),
 		path.join(stagedNteractMcp, target, "staged.json"),

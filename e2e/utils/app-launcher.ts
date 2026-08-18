@@ -6,6 +6,20 @@ import { logger } from "@anaconda/playwright-utils/custom-logger";
 import { packagedExecutable, repoRoot } from "./paths.js";
 
 /**
+ * Isolated `--user-data-dir` profiles still share the host keychain and would
+ * otherwise show first-run onboarding / conda staging. Every packaged e2e
+ * launch — including restart fixtures — must use this env.
+ */
+export function packagedAppLaunchEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+	return {
+		...env,
+		ANACONDA_SKIP_CONDA_STAGING: "1",
+		ANACONDA_SKIP_ONBOARDING: "1",
+		ANACONDA_SKIP_KEYRING: "1",
+	};
+}
+
+/**
  * Kill orphaned copies of *this* packaged app left behind by a crashed previous run.
  * Intentionally narrow — never `pkill Electron` (would hit Cursor/Figma/etc.).
  */

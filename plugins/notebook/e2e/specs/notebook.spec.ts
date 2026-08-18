@@ -65,11 +65,10 @@ test.describe("Notebook @smoke", () => {
 			!(await notebookPage.runtimeIsAvailable()),
 			"The packaged notebook runtime is not available in this build.",
 		);
-		await notebookPage.createPersistentChat();
 		const source = "recover_me_after_restart = 1729";
 		const chatTitle = `Notebook recovery ${String(Date.now())}`;
+		await notebookPage.createPersistentChat(chatTitle);
 		await notebookPage.openNotebookAndWriteSource(source);
-		await notebookPage.renameCurrentChat(chatTitle);
 
 		await restartableNotebookApp.restart();
 		await notebookPage.openKiloChat();

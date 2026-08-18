@@ -6,4 +6,5 @@
  */
 export { electronFixture } from "./fixtures/electron.js";
 export { expect, test } from "./fixtures/shell.js";
+export { packagedAppLaunchEnv } from "./utils/app-launcher.js";
 export { packagedResourcesDirectory } from "./utils/paths.js";

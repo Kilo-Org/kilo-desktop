@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { packagedAppLaunchEnv } from "@anaconda-agentic-desktop/e2e";
 import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
 import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
@@ -41,11 +42,7 @@ export const test = shellTest.extend<{
 			app = await electron.launch({
 				executablePath,
 				args: [`--user-data-dir=${userDataDirectory}`],
-				env: {
-					...process.env,
-					ANACONDA_SKIP_CONDA_STAGING: "1",
-					ANACONDA_SKIP_KEYRING: "1",
-				},
+				env: packagedAppLaunchEnv(),
 			});
 			setPage(await mainWindow(app));
 		};

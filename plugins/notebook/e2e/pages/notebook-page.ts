@@ -29,9 +29,35 @@ type NotebookStatusResult =
 export class NotebookPage {
 	#firstFrameSrc: string | null = null;
 	#secondFrameSrc: string | null = null;
+	#firstTabQaId: string | null = null;
+	#secondTabQaId: string | null = null;
 
 	#activeFrame() {
 		return getPage().locator('iframe[data-qa-id="notebook-frame"]:visible');
+	}
+
+	#tabList() {
+		return getPage().locator('[data-qa-id="chat-right-panel-tab-list"]');
+	}
+
+	async #tabQaIds(): Promise<string[]> {
+		const list = this.#tabList();
+		if ((await list.count()) === 0) return [];
+		return list.evaluate((node) =>
+			[...node.querySelectorAll("[data-qa-id^='chat-right-panel-tab-']")].flatMap((tab) => {
+				const id = tab.getAttribute("data-qa-id");
+				return id ? [id] : [];
+			}),
+		);
+	}
+
+	async #waitForTabCount(count: number): Promise<string[]> {
+		await expect.poll(async () => (await this.#tabQaIds()).length, { timeout: 30_000 }).toBe(count);
+		return this.#tabQaIds();
+	}
+
+	#activateTab(qaId: string) {
+		return getPage().locator(`[data-qa-id="${qaId}"] button:not([aria-label^="Close"])`);
 	}
 
 	async openKiloChat(): Promise<void> {
@@ -39,27 +65,33 @@ export class NotebookPage {
 		await expect(getPage().getByTestId("kilo-chat-page")).toBeVisible();
 	}
 
-	async createPersistentChat(): Promise<void> {
+	async createPersistentChat(title: string): Promise<void> {
 		const page = getPage();
+		await page.getByTestId("kilo-chat-thread").waitFor({ state: "visible" });
 		await page.locator('[data-slot="aui_thread-list-new"]').click();
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		await page.getByTestId("workspace-unscoped-command").click();
-		await page.getByRole("textbox", { name: "Message input" }).fill("Notebook recovery test");
+		await page.getByRole("textbox", { name: "Message input" }).fill(title);
 		await page.getByRole("button", { name: "Send message" }).click();
-		await expect(page.locator('[data-slot="aui_session-list-item"]').first()).toBeVisible({
+		// Titling is model-driven and can fail locally (expired host AWS SSO).
+		// Persist the session with an explicit rename instead.
+		await expect(page.getByRole("paragraph").filter({ hasText: title })).toBeVisible({
 			timeout: 30_000,
 		});
-	}
-
-	async renameCurrentChat(title: string): Promise<void> {
-		const newestChat = getPage().locator('[data-slot="aui_session-list-item"]').first();
-		await newestChat.hover();
-		await newestChat.getByRole("button", { name: "Thread actions" }).click();
-		await getPage().getByRole("menuitem", { name: "Rename" }).click();
-		const input = getPage().getByRole("textbox", { name: "Rename thread" });
+		const chat = page.locator('[data-slot="aui_session-list-item"]').filter({
+			has: page.locator('[data-slot="aui_session-list-item-title"]', { hasText: /^New Chat$/ }),
+		});
+		await chat.hover();
+		await chat.getByRole("button", { name: "Thread actions" }).click();
+		await page.getByRole("menuitem", { name: "Rename" }).click();
+		const input = page.getByRole("textbox", { name: "Rename thread" });
 		await input.fill(title);
 		await input.press("Enter");
-		await expect(newestChat.getByText(title, { exact: true })).toBeVisible();
+		await expect(
+			page.locator('[data-slot="aui_session-list-item"]').filter({
+				has: page.locator('[data-slot="aui_session-list-item-title"]', { hasText: title }),
+			}),
+		).toBeVisible();
 	}
 
 	async openChat(title: string): Promise<void> {
@@ -74,12 +106,14 @@ export class NotebookPage {
 	async addTwoNotebooks(): Promise<void> {
 		await getPage().getByTestId("chat-right-panel-toggle").click();
 		await getPage().getByTestId("chat-right-panel-open-notebook-notebook").click();
-		await expect(getPage().getByRole("button", { name: "Notebook 1", exact: true })).toBeVisible();
+		const [firstTabQaId] = await this.#waitForTabCount(1);
+		this.#firstTabQaId = firstTabQaId ?? null;
 		this.#firstFrameSrc = await this.#activeFrame().getAttribute("src");
 
 		await getPage().getByTestId("chat-right-panel-add-tab").click();
 		await getPage().getByTestId("chat-right-panel-add-notebook-notebook").click();
-		await expect(getPage().getByRole("button", { name: "Notebook 2", exact: true })).toBeVisible();
+		const tabIds = await this.#waitForTabCount(2);
+		this.#secondTabQaId = tabIds.find((id) => id !== this.#firstTabQaId) ?? null;
 		this.#secondFrameSrc = await this.#activeFrame().getAttribute("src");
 	}
 
@@ -91,10 +125,13 @@ export class NotebookPage {
 			/^anaconda-agentic-desktop(-dev)?:\/\/notebook\/?\?notebook_id=/,
 		);
 		expect(this.#secondFrameSrc).not.toBe(this.#firstFrameSrc);
+		if (!this.#firstTabQaId || !this.#secondTabQaId) {
+			throw new Error("Expected both notebook tab ids to be captured before switching");
+		}
 
-		await getPage().getByRole("button", { name: "Notebook 1", exact: true }).click();
+		await this.#activateTab(this.#firstTabQaId).click();
 		await expect(this.#activeFrame()).toHaveAttribute("src", this.#firstFrameSrc!);
-		await getPage().getByRole("button", { name: "Notebook 2", exact: true }).click();
+		await this.#activateTab(this.#secondTabQaId).click();
 		await expect(this.#activeFrame()).toHaveAttribute("src", this.#secondFrameSrc!);
 	}
 
@@ -227,9 +264,7 @@ export class NotebookPage {
 	}
 
 	async verifyRecoveredSource(source: string): Promise<void> {
-		await expect(getPage().getByRole("button", { name: "Notebook 1", exact: true })).toBeVisible({
-			timeout: 30_000,
-		});
+		await expect.poll(async () => (await this.#tabQaIds()).length, { timeout: 30_000 }).toBe(1);
 		const notebook = getPage().frameLocator('iframe[data-qa-id="notebook-frame"]:visible');
 		await expect(notebook.locator("[data-notebook-synced]")).toHaveAttribute(
 			"data-notebook-synced",

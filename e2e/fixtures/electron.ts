@@ -6,7 +6,7 @@ import { test as baseTest, type TestInfo } from "@playwright/test";
 import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 
-import { buildPackagedApp, killStrayProcesses } from "../utils/app-launcher.js";
+import { killStrayProcesses, packagedAppLaunchEnv } from "../utils/app-launcher.js";
 import { ConsoleLogCollector } from "../utils/console-log-collector.js";
 import { packagedExecutable } from "../utils/paths.js";
 
@@ -46,17 +46,7 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 	const app = await electron.launch({
 		executablePath: packagedExecutable(),
 		args: [`--user-data-dir=${userDataDir}`],
-		env: {
-			...process.env,
-			// Skip conda staging in e2e — prevents 150 MB downloads and multi-second
-			// detection delays. E2e specs that test conda ops stub it separately.
-			ANACONDA_SKIP_CONDA_STAGING: "1",
-			// First-run onboarding is covered by kilo-ui Vitest; e2e reuses one
-			// worker-scoped profile, so skip the overlay here.
-			ANACONDA_SKIP_ONBOARDING: "1",
-			// --user-data-dir does not isolate the host Anaconda keychain.
-			ANACONDA_SKIP_KEYRING: "1",
-		},
+		env: packagedAppLaunchEnv(),
 	});
 	return { app, userDataDir };
 }
@@ -68,11 +58,8 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerFixtures>({
 	sharedApp: [
 		// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
-		async ({}, use, workerInfo) => {
+		async ({}, use) => {
 			await killStrayProcesses();
-			if (workerInfo.workerIndex === 0 && process.env.SKIP_BUILD !== "true") {
-				await buildPackagedApp();
-			}
 			const { app, userDataDir } = await launchApp();
 			await use(app);
 			await app.close();

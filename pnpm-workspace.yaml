@@ -16,7 +16,7 @@ catalog:
   type-fest: ^5.8.0
   typescript: ^7.0.2
   vite: ^8.1.5
-  vitest: 5.0.0-rc.1
+  vitest: 5.0.0-rc.2
   zod: ^4.4.3
 
 savePrefix: ^

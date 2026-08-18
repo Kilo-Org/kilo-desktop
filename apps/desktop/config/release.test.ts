@@ -157,6 +157,16 @@ describe("release configuration", () => {
 		).toBe("0.1.0");
 	});
 
+	it("does not restamp an already-stamped canary version", () => {
+		expect(
+			getPublishAppVersion({
+				version: "0.1.1-canary.20260818.143052",
+				channel: "canary",
+				now: new Date("2026-08-18T15:00:00.000Z"),
+			}),
+		).toBe("0.1.1-canary.20260818.143052");
+	});
+
 	it("reads a shared canary build time so matrix legs publish the same version", () => {
 		expect(getCanaryBuildTime({ CANARY_BUILD_TIME: "2026-08-18T14:30:52.000Z" })).toEqual(
 			new Date("2026-08-18T14:30:52.000Z"),

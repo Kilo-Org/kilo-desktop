@@ -294,6 +294,8 @@ and publishes to `anaconda-agentic-desktop/<channel>/<platform>/<arch>/`. Automa
 checks run only in packaged macOS and Windows builds that were given `UPDATE_PUBLISH_URL`.
 Canary builds stamp a UTC timestamp onto the next patch (`0.1.1-canary.20260818.143052`)
 so every push to `main` is a newer version; staging and prod keep the committed version.
+Forge makers read that stamped version, so macOS DMG/ZIP/`RELEASES.json`, Windows nupkg,
+and Linux DEB all publish a unique canary version.
 
 See [docs/releases.md](docs/releases.md) for the full reference: the distribution matrix,
 build-time variables, GitHub Environments, workflows, signing credentials, and publish

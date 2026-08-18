@@ -49,15 +49,20 @@ disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never star
 Linux. Squirrel install, update, and uninstall launches are handled before normal
 application startup.
 
-Canary packaging stamps the packaged `package.json` and maker versions as
-`{nextPatch}-canary.{YYYYMMDD}.{HHmmss}` from the committed desktop version and a UTC
-timestamp (shared via `CANARY_BUILD_TIME` in CI so macOS/Windows/Linux publish the same
-version). The patch increment makes each canary sort above the committed version, so
-already-installed `0.1.0` builds update. Electron packager native metadata
-(`FileVersion` / `ProductVersion` / `CFBundleShortVersionString`) uses only the
-`{nextPatch}` numeric prefix because Windows PE versions allow at most four integer
-components. Staging and prod keep the committed version and still require an explicit
-bump.
+Canary packaging stamps the desktop `package.json` version (then restores it) so every
+Forge maker — DMG, ZIP, `RELEASES.json`, Squirrel nupkg/`RELEASES`, and DEB — names
+artifacts `{nextPatch}-canary.{YYYYMMDD}.{HHmmss}` from the committed desktop version and
+a UTC timestamp (shared via `CANARY_BUILD_TIME` in CI so macOS/Windows/Linux publish the
+same version). The packaged app `package.json` is stamped to the same value. The patch
+increment makes each canary sort above the committed version, so already-installed
+`0.1.0` builds update. Electron packager native metadata (`FileVersion` /
+`ProductVersion` / `CFBundleShortVersionString`) uses only the `{nextPatch}` numeric
+prefix because Windows PE versions allow at most four integer components. Staging and
+prod keep the committed version and still require an explicit bump.
+
+Squirrel.Windows NuGet versions cannot contain extra dots in the prerelease, so the
+Windows nupkg filename uses `0.1.1-canary20260818143052` while the app version stays
+`0.1.1-canary.20260818.143052`.
 
 Maker artifacts are written to `apps/desktop/out/make/`.
 

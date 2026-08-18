@@ -125,6 +125,17 @@ describe("packaged production dependencies", () => {
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");
 	});
 
+	it("stamps the desktop package version before Forge makers run", () => {
+		const scripts = (
+			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
+				scripts?: Record<string, string>;
+			}
+		).scripts;
+		expect(scripts?.make).toBe("tsx config/run-packaging.ts make");
+		expect(scripts?.package).toBe("tsx config/run-packaging.ts package");
+		expect(scripts?.publish).toBe("tsx config/run-packaging.ts publish");
+	});
+
 	it("persists Electron native rebuilds in a workspace cache Forge can reuse", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		expect(forge).toContain("useCache: true");

@@ -2,24 +2,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { packagedAppLaunchEnv, packagedExecutable } from "@anaconda-agentic-desktop/e2e";
+import {
+	packagedAppLaunchEnv,
+	packagedExecutable,
+	waitForMainWindow,
+} from "@anaconda-agentic-desktop/e2e";
 import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
 import { setPage } from "@anaconda/playwright-utils/page-utils";
-import { _electron as electron, type ElectronApplication, type Page } from "playwright";
+import { _electron as electron, type ElectronApplication } from "playwright";
 
 import { NotebookPage } from "./pages/notebook-page.js";
-
-const DESKTOP_URL_PREFIX = "anaconda-agentic-desktop://";
-
-async function mainWindow(app: ElectronApplication): Promise<Page> {
-	const existing = app.windows().find((page) => page.url().startsWith(DESKTOP_URL_PREFIX));
-	if (existing) return existing;
-	const opened = await app.waitForEvent("window", {
-		predicate: (page) => page.url().startsWith(DESKTOP_URL_PREFIX),
-		timeout: 30_000,
-	});
-	return opened;
-}
 
 type RestartableNotebookApp = {
 	app(): ElectronApplication;
@@ -44,13 +36,17 @@ export const test = shellTest.extend<{
 				args: [`--user-data-dir=${userDataDirectory}`],
 				env: packagedAppLaunchEnv(),
 			});
-			setPage(await mainWindow(app));
+			setPage(await waitForMainWindow(app, 60_000));
 		};
 		await launch();
 		await use({
 			app: () => app,
 			async restart() {
 				await app.close();
+				// Windows can keep the previous user-data-dir locked after close.
+				if (process.platform === "win32") {
+					await new Promise((resolve) => setTimeout(resolve, 1_000));
+				}
 				await launch();
 			},
 		});

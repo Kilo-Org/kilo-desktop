@@ -61,8 +61,21 @@ export class NotebookPage {
 	}
 
 	async openKiloChat(): Promise<void> {
-		await getPage().waitForURL(/#\/plugins\/chat/);
-		await expect(getPage().getByTestId("kilo-chat-page")).toBeVisible();
+		const page = getPage();
+		// Hash redirects on the custom protocol often never fire Playwright's
+		// default `load` event, so wait for the chat page itself.
+		await page.evaluate(() => {
+			globalThis.location.hash = "#/plugins/chat";
+		});
+		await expect(page.getByTestId("kilo-chat-page")).toBeVisible({ timeout: 30_000 });
+	}
+
+	#sessionItem(title: string | RegExp) {
+		return getPage()
+			.locator('[data-slot="aui_session-list-item"]')
+			.filter({
+				has: getPage().locator('[data-slot="aui_session-list-item-title"]', { hasText: title }),
+			});
 	}
 
 	async createPersistentChat(title: string): Promise<void> {
@@ -74,30 +87,28 @@ export class NotebookPage {
 		await page.getByRole("textbox", { name: "Message input" }).fill(title);
 		await page.getByRole("button", { name: "Send message" }).click();
 		// Titling is model-driven and can fail locally (expired host AWS SSO).
-		// Persist the session with an explicit rename instead.
-		await expect(page.getByRole("paragraph").filter({ hasText: title })).toBeVisible({
-			timeout: 30_000,
-		});
-		const chat = page.locator('[data-slot="aui_session-list-item"]').filter({
-			has: page.locator('[data-slot="aui_session-list-item-title"]', { hasText: /^New Chat$/ }),
-		});
-		await chat.hover();
-		await chat.getByRole("button", { name: "Thread actions" }).click();
+		// Persist the session with an explicit rename instead of waiting for a
+		// model-rendered paragraph — user bubbles use content-visibility and
+		// may not expose a paragraph role on Windows.
+		const untitled = this.#sessionItem(/^New Chat$/);
+		const named = this.#sessionItem(title);
+		const chats = page.locator('[data-slot="aui_session-list-item"]');
+		await expect.poll(async () => chats.count(), { timeout: 60_000 }).toBeGreaterThan(0);
+		if ((await named.count()) > 0) return;
+
+		const target = (await untitled.count()) > 0 ? untitled : chats;
+		await expect(target).toHaveCount(1);
+		await target.hover();
+		await target.getByRole("button", { name: "Thread actions" }).click();
 		await page.getByRole("menuitem", { name: "Rename" }).click();
 		const input = page.getByRole("textbox", { name: "Rename thread" });
 		await input.fill(title);
 		await input.press("Enter");
-		await expect(
-			page.locator('[data-slot="aui_session-list-item"]').filter({
-				has: page.locator('[data-slot="aui_session-list-item-title"]', { hasText: title }),
-			}),
-		).toBeVisible();
+		await expect(named).toBeVisible();
 	}
 
 	async openChat(title: string): Promise<void> {
-		const chat = getPage()
-			.locator('[data-slot="aui_session-list-item"]')
-			.filter({ hasText: title });
+		const chat = this.#sessionItem(title);
 		await expect(chat).toBeVisible({ timeout: 30_000 });
 		await chat.locator('[data-slot="aui_session-list-item-trigger"]').click();
 		await expect(getPage().getByTestId("kilo-chat-thread")).toBeVisible();

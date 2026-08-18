@@ -16,12 +16,16 @@ const MAIN_WINDOW_TIMEOUT_MS = 30_000;
 
 /**
  * The app's first window is the splash screen — a `data:` URL with no preload,
- * destroyed once boot finishes. `firstWindow()` can race it and return a page
- * without `desktopApi`, or one that closes mid-evaluate. The main window is
- * the one loaded over the desktop protocol.
+ * destroyed once boot finishes. `firstWindow()` / `waitForEvent("window")` can
+ * race it and return a page without `desktopApi`, or miss the main window when
+ * the same BrowserWindow navigates from `data:` / `about:blank` onto the
+ * desktop protocol (no second "window" event). Poll until a protocol URL exists.
  */
-async function mainWindow(app: ElectronApplication): Promise<Page> {
-	const deadline = Date.now() + MAIN_WINDOW_TIMEOUT_MS;
+export async function waitForMainWindow(
+	app: ElectronApplication,
+	timeoutMs = MAIN_WINDOW_TIMEOUT_MS,
+): Promise<Page> {
+	const deadline = Date.now() + timeoutMs;
 	for (;;) {
 		const match = app.windows().find((page) => page.url().startsWith(DESKTOP_URL_PREFIX));
 		if (match) return match;
@@ -70,7 +74,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 	],
 
 	electronApp: async ({ sharedApp }, use) => {
-		const page = await mainWindow(sharedApp);
+		const page = await waitForMainWindow(sharedApp);
 		setPage(page);
 		await page.evaluate(() => {
 			globalThis.location.hash = "#/";
@@ -80,7 +84,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 
 	diagnostics: [
 		async ({ electronApp }, use, testInfo: TestInfo) => {
-			const page = await mainWindow(electronApp);
+			const page = await waitForMainWindow(electronApp);
 			const logs = new ConsoleLogCollector(page);
 			logs.start();
 			await use();

@@ -65,6 +65,18 @@ describe("packaged production dependencies", () => {
 		expect(forge).not.toContain('"--legacy"');
 	});
 
+	it("stages the isolated WebMCP runtime from a workspace-local deploy", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		// Electron-packager dest is outside the repo. `pnpm deploy --offline`
+		// against that path uses a different empty store on Windows and fails
+		// looking up @mcp-b/webmcp-local-relay. Stage inside the workspace
+		// first, then copy — same pattern as production node_modules.
+		expect(forge).toContain(".anaconda-agentic-desktop-webmcp-relay-");
+		expect(forge).toMatch(
+			/mkdtemp\(\s*path\.join\(\s*workspaceRoot,\s*"\.anaconda-agentic-desktop-webmcp-relay-"/,
+		);
+	});
+
 	it("only unpacks native modules and the isolated WebMCP runtime", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		expect(forge).not.toMatch(/unpack:\s*"\*\*\/node_modules\/\*\*"/);

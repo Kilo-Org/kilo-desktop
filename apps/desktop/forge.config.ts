@@ -153,31 +153,44 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 
 async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
 	const runtimeDirectory = path.join(buildPath, webMcpRelayRuntimeSubpath);
-	await rm(runtimeDirectory, { force: true, recursive: true });
-	await execa(
-		"pnpm",
-		[
-			"--config.allowUnusedPatches=true",
-			"--filter",
-			webMcpRelayRuntimePackage,
-			"deploy",
-			"--prod",
-			"--ignore-scripts",
-			"--offline",
-			"--frozen-lockfile",
-			runtimeDirectory,
-		],
-		{
-			cwd: workspaceRoot,
-			env: { HUSKY: "0" },
-			stderr: "inherit",
-			stdout: "inherit",
-		},
+	// Deploy into a workspace-local temp dir, then copy. Electron-packager's
+	// dest is outside the repo; `pnpm deploy --offline` against that path uses
+	// a different empty store on Windows (ERR_PNPM_NO_OFFLINE_TARBALL for
+	// @mcp-b/webmcp-local-relay) because the dest sits inside another
+	// node_modules tree.
+	const stagingDirectory = await mkdtemp(
+		path.join(workspaceRoot, ".anaconda-agentic-desktop-webmcp-relay-"),
 	);
-	await rm(path.join(runtimeDirectory, "node_modules", ".bin"), {
-		force: true,
-		recursive: true,
-	});
+	try {
+		await execa(
+			"pnpm",
+			[
+				"--config.allowUnusedPatches=true",
+				"--filter",
+				webMcpRelayRuntimePackage,
+				"deploy",
+				"--prod",
+				"--ignore-scripts",
+				"--offline",
+				"--frozen-lockfile",
+				stagingDirectory,
+			],
+			{
+				cwd: workspaceRoot,
+				env: { HUSKY: "0" },
+				stderr: "inherit",
+				stdout: "inherit",
+			},
+		);
+		await rm(path.join(stagingDirectory, "node_modules", ".bin"), {
+			force: true,
+			recursive: true,
+		});
+		await rm(runtimeDirectory, { force: true, recursive: true });
+		await cp(stagingDirectory, runtimeDirectory, { recursive: true });
+	} finally {
+		await rm(stagingDirectory, { force: true, recursive: true });
+	}
 }
 
 async function removeBinDirectories(directory: string): Promise<void> {

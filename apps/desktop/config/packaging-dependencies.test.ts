@@ -134,8 +134,8 @@ describe("packaged production dependencies", () => {
 
 	it("stages the WebMCP relay as a short extra-resource so Squirrel extract stays under MAX_PATH", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		expect(forge).toContain("PACKAGED_WEBMCP_RELAY_DIRECTORY");
-		expect(forge).toMatch(
+		expect(forge).toContain("resolvePackagedWebMcpRelayDirectory");
+		expect(forge).not.toMatch(
 			/path\.join\(\s*buildPath,\s*"resources",\s*PACKAGED_WEBMCP_RELAY_DIRECTORY/,
 		);
 		expect(forge).toContain("dereference: true");

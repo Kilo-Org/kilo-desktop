@@ -21,9 +21,9 @@ import desktopPackage from "./package.json" with { type: "json" };
 import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
+import { resolvePackagedWebMcpRelayDirectory } from "./config/packaged-webmcp-relay.js";
 import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-temp.js";
 import { signWindowsFile } from "./config/windows-sign.js";
-import { PACKAGED_WEBMCP_RELAY_DIRECTORY } from "@anaconda-agentic-desktop/plugin-kilo-server/packaged-assets";
 import { createNotebookPackagingPlan } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
@@ -163,13 +163,14 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 }
 
 async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
-	const runtimeDirectory = path.join(buildPath, "resources", PACKAGED_WEBMCP_RELAY_DIRECTORY);
+	const runtimeDirectory = resolvePackagedWebMcpRelayDirectory(buildPath);
 	// Deploy into a workspace-local temp dir, then copy. Electron-packager's
 	// dest is outside the repo; `pnpm deploy --offline` against that path uses
 	// a different empty store on Windows (ERR_PNPM_NO_OFFLINE_TARBALL for
 	// @mcp-b/webmcp-local-relay) because the dest sits inside another
-	// node_modules tree. Stage under resources/ (not asar.unpacked) so Squirrel
-	// nupkg entries stay under the 260-character MAX_PATH extract budget.
+	// node_modules tree. Stage beside app.asar (not inside it or under
+	// asar.unpacked) so Squirrel nupkg entries stay under the 260-character
+	// MAX_PATH extract budget and runtime can resolve process.resourcesPath.
 	const stagingDirectory = await mkdtemp(
 		path.join(workspaceRoot, ".anaconda-agentic-desktop-webmcp-relay-"),
 	);

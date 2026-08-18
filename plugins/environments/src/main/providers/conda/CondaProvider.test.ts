@@ -46,7 +46,7 @@ describe("CondaProvider", () => {
 		mainSdk.dispose();
 	});
 
-	it("registerHandlers wires conda.envs.list once boot() resolved", async () => {
+	it("registerHandlers wires conda.envs.list + create + delete once boot() resolved", async () => {
 		const provider = new CondaProvider();
 		const mainSdk = createFakeMainSdk({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
@@ -60,14 +60,17 @@ describe("CondaProvider", () => {
 		provider.registerHandlers({ mainSdk, queue });
 
 		expect(mainSdk.has("conda.envs.list")).toBe(true);
+		expect(mainSdk.has("conda.envs.create")).toBe(true);
+		expect(mainSdk.has("conda.envs.delete")).toBe(true);
 		queue.dispose();
 		mainSdk.dispose();
 	});
 
-	it("registerTools registers conda.envs.list on the renderer SDK", () => {
+	it("registerTools registers list + create + delete on the renderer SDK", () => {
 		const provider = new CondaProvider();
 		const sdk = createFakeSdk({ featureId: "environments" });
 		provider.registerTools(sdk);
-		expect(sdk.services.toolRegistry.all().map((tool) => tool.name)).toEqual(["conda.envs.list"]);
+		const names = sdk.services.toolRegistry.all().map((tool) => tool.name);
+		expect(names.sort()).toEqual(["conda.envs.create", "conda.envs.delete", "conda.envs.list"]);
 	});
 });

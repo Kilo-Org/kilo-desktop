@@ -8,11 +8,23 @@ const validManifest = {
 	version: "1.0.0",
 	main: "./src/main/index.ts",
 	web: "./src/web/index.ts",
+	zones: [{ id: "detail-panel" }],
 	contributes: {
 		providers: [{ component: "TodosProvider", priority: 10 }],
 		routes: [{ path: "/todos", component: "TodoList", title: "Todo List" }],
 		nav: [{ to: "/todos", label: "Todos", icon: "list-checks" }],
-		zones: [{ zone: "status-bar", component: "TodosStatusBarItem" }],
+		zones: [
+			{ zone: "status-bar", component: "TodosStatusBarItem" },
+			{
+				zone: "todos/detail-panel",
+				id: "summary",
+				component: "TodoSummary",
+				label: "Summary",
+				description: "Show a todo summary.",
+				icon: "SummaryIcon",
+				priority: 5,
+			},
+		],
 		settings: [{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 }],
 	},
 };
@@ -30,7 +42,17 @@ describe("pluginManifestSchema", () => {
 		]);
 		expect(manifest.contributes.zones).toEqual([
 			{ zone: "status-bar", component: "TodosStatusBarItem" },
+			{
+				zone: "todos/detail-panel",
+				id: "summary",
+				component: "TodoSummary",
+				label: "Summary",
+				description: "Show a todo summary.",
+				icon: "SummaryIcon",
+				priority: 5,
+			},
 		]);
+		expect(manifest.zones).toEqual([{ id: "detail-panel" }]);
 		expect(manifest.contributes.settings).toEqual([
 			{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 },
 		]);
@@ -65,6 +87,7 @@ describe("pluginManifestSchema", () => {
 			version: "0.1.0",
 			main: "./src/main/index.ts",
 		});
+		expect(manifest.zones).toEqual([]);
 		expect(manifest.contributes).toEqual({
 			providers: [],
 			routes: [],
@@ -185,7 +208,30 @@ describe("pluginManifestSchema", () => {
 		expect(result.success).toBe(false);
 	});
 
-	it("rejects providers/routes/zones/settings on a manifest without a web entry", () => {
+	it("rejects malformed zone declaration and contribution ids", () => {
+		expect(
+			pluginManifestSchema.safeParse({
+				...validManifest,
+				zones: [{ id: "Chat Panel" }],
+			}).success,
+		).toBe(false);
+		expect(
+			pluginManifestSchema.safeParse({
+				...validManifest,
+				contributes: {
+					zones: [
+						{
+							zone: "todos/detail-panel",
+							id: "Summary Panel",
+							component: "TodoSummary",
+						},
+					],
+				},
+			}).success,
+		).toBe(false);
+	});
+
+	it("rejects UI contributions and zone declarations on a manifest without a web entry", () => {
 		const providersResult = pluginManifestSchema.safeParse({
 			id: "headless",
 			displayName: "Headless",
@@ -212,6 +258,15 @@ describe("pluginManifestSchema", () => {
 			contributes: { zones: [{ zone: "status-bar", component: "Widget" }] },
 		});
 		expect(zonesResult.success).toBe(false);
+
+		const zoneDeclarationsResult = pluginManifestSchema.safeParse({
+			id: "headless",
+			displayName: "Headless",
+			version: "1.0.0",
+			main: "./src/main/index.ts",
+			zones: [{ id: "detail-panel" }],
+		});
+		expect(zoneDeclarationsResult.success).toBe(false);
 
 		const settingsResult = pluginManifestSchema.safeParse({
 			id: "headless",

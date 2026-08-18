@@ -1,0 +1,14 @@
+name: Cache Kilo CLI
+description: >
+  Restore the platform-specific Kilo CLI staged by prepare-assets. The cache
+  key tracks cli-distribution/artifacts.ts, which pins KILO_CLI_VERSION and
+  the integrity hashes.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Kilo CLI
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: plugins/kilo-server/resources/kilo
+        key: kilo-cli-${{ runner.os }}-${{ hashFiles('plugins/kilo-server/src/main/cli-distribution/artifacts.ts') }}

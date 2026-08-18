@@ -21,12 +21,15 @@ import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plu
 import * as kiloServerWeb from "@anaconda-agentic-desktop/plugin-kilo-server/web";
 import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
 import * as kiloUiWeb from "@anaconda-agentic-desktop/plugin-kilo-ui/web";
+import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.json" with { type: "json" };
+import * as notebookWeb from "@anaconda-agentic-desktop/plugin-notebook/web";
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosWeb from "@anaconda-agentic-desktop/plugin-todos/web";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: kiloUiManifest, module: kiloUiWeb },
 	{ manifest: kiloServerManifest, module: kiloServerWeb },
+	{ manifest: notebookManifest, module: notebookWeb },
 	{ manifest: todosManifest, module: todosWeb },
 	{ manifest: environmentsManifest, module: environmentsWeb },
 ];

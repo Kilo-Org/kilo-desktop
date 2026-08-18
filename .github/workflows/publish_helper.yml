@@ -18,7 +18,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  notebook-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          lfs: true
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: ./plugins/notebook/actions/build-ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notebook-ui-${{ github.sha }}
+          path: plugins/notebook/build/notebook
+          if-no-files-found: error
+
   publish:
+    needs: notebook-ui
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
     environment: ${{ inputs.release_channel }}
@@ -41,6 +60,7 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       RELEASE_CHANNEL: ${{ inputs.release_channel }}
+      CANARY_BUILD_TIME: ${{ github.event.head_commit.timestamp || github.run_started_at }}
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       UPDATE_S3_BUCKET: ${{ vars.UPDATE_S3_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
@@ -87,6 +107,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: notebook-ui-${{ github.sha }}
+          path: plugins/notebook/build/notebook
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/kilo-server/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
 
       - name: Publish
         run: pnpm run publish

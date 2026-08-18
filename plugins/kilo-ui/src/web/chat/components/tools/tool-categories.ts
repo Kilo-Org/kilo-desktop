@@ -7,6 +7,7 @@ import {
 	FilePlusIcon,
 	GlobeIcon,
 	ListTodoIcon,
+	NotebookIcon,
 	SearchIcon,
 	SparklesIcon,
 	TerminalIcon,
@@ -18,7 +19,8 @@ import { basename, getCommandSummary, getPatchInfo, str, truncate } from "./tool
  * Tool grouping for the activity view. Categories mirror the built-in tool
  * set of Kilo (the opencode fork used as the backend). MCP tools are named
  * `{server}_{tool}` and group by server; anything else unmapped lands in the
- * generic tools group.
+ * generic tools group. Known MCP servers can override their display label and
+ * icon (e.g. notebooks → Notebooks, matching the chat right-panel notebook tab).
  */
 
 export type ToolCategory =
@@ -98,6 +100,12 @@ export const formatMcpServerLabel = (serverId: string): string =>
 		.filter(Boolean)
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
 		.join(" ");
+
+/** Local tool name after the `{server}_` MCP prefix, if this is an MCP tool. */
+export const getMcpToolLocalName = (toolName: string): string | undefined => {
+	if (!getMcpServerFromToolName(toolName)) return undefined;
+	return toolName.slice(toolName.indexOf("_") + 1);
+};
 
 export type ActivityGroupKey =
 	| `group-${ToolCategory | "tools" | "thinking"}`
@@ -359,14 +367,84 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 	},
 };
 
+type McpKindOverride = Pick<KindMeta, "icon" | "label" | "circleClassName"> & {
+	/** Local MCP tool name → label shown inside the group. */
+	toolLabels?: Record<string, string>;
+};
+
+/**
+ * Presentation for MCP servers that should look like first-class product
+ * groups rather than a title-cased server id with the generic wrench.
+ * Grouping still keys off `mcp:{server}` / `group-mcp-{server}`.
+ */
+const MCP_KIND_OVERRIDES: Record<string, McpKindOverride> = {
+	notebooks: {
+		icon: NotebookIcon,
+		label: "Notebooks",
+		circleClassName:
+			"border-teal-600/40 bg-teal-100 text-teal-600 dark:border-teal-400/40 dark:bg-teal-950 dark:text-teal-400",
+		toolLabels: {
+			create_notebook: "Create notebook",
+			connect_notebook: "Connect notebook",
+			save_notebook: "Save notebook",
+			show_notebook: "Show notebook",
+			disconnect_notebook: "Disconnect notebook",
+			list_active_notebooks: "List notebooks",
+			list_notebooks: "List notebooks",
+			create_cell: "Create cell",
+			set_cell: "Edit cell",
+			delete_cell: "Delete cell",
+			move_cell: "Move cell",
+			get_cell: "Read cell",
+			get_all_cells: "List cells",
+			execute_cell: "Run cell",
+			run_all_cells: "Run all cells",
+			get_results: "Get results",
+			interrupt_kernel: "Interrupt kernel",
+			restart_kernel: "Restart kernel",
+			manage_dependencies: "Manage dependencies",
+			replace_match: "Replace text",
+			replace_regex: "Replace regex",
+			create_comment: "Create comment",
+			reply_comment: "Reply to comment",
+			resolve_comment: "Resolve comment",
+			reopen_comment: "Reopen comment",
+		},
+	},
+};
+
+const sentenceCaseToolName = (name: string): string => {
+	const words = name
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.split(/[-_\s]+/)
+		.filter(Boolean);
+	if (words.length === 0) return name;
+	return words
+		.map((word, index) => {
+			const lower = word.toLowerCase();
+			return index === 0 ? `${lower.charAt(0).toUpperCase()}${lower.slice(1)}` : lower;
+		})
+		.join(" ");
+};
+
+/** User-facing tool label: MCP server prefix stripped, then a display name. */
+export const formatToolDisplayName = (toolName: string): string => {
+	const server = getMcpServerFromToolName(toolName);
+	const localName = getMcpToolLocalName(toolName);
+	if (!server || !localName) return toolName;
+	return MCP_KIND_OVERRIDES[server]?.toolLabels?.[localName] ?? sentenceCaseToolName(localName);
+};
+
 const mcpKindMeta = (kind: McpActivityKind): KindMeta => {
-	const label = formatMcpServerLabel(getMcpServerId(kind));
+	const serverId = getMcpServerId(kind);
+	const override = MCP_KIND_OVERRIDES[serverId];
+	const label = override?.label ?? formatMcpServerLabel(serverId);
 	return {
-		icon: WrenchIcon,
+		icon: override?.icon ?? WrenchIcon,
 		label,
 		liveLabel: () => `${label}...`,
 		doneLabel: () => label,
-		circleClassName: KIND_META.tools.circleClassName,
+		circleClassName: override?.circleClassName ?? KIND_META.tools.circleClassName,
 	};
 };
 

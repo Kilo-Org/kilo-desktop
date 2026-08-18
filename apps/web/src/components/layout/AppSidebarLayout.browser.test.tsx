@@ -119,6 +119,7 @@ function FakeNewChat() {
 
 function contributeFakeNewChat(system: ReturnType<typeof createAppFeatureSystem>) {
 	system.getSdk("auth").contribute("sidebar", {
+		id: "fake-new-chat",
 		label: "Chats",
 		priority: 10,
 		component: FakeNewChat,

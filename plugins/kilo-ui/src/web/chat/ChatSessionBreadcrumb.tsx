@@ -16,7 +16,8 @@ import { useSessionActivity } from "./session-activity/SessionActivityProvider.j
 
 /**
  * Chat-page contribution for the shell `header-leading` zone. Shows
- * workspace → session when a non-draft session is active.
+ * workspace → session when a non-draft session is in a workspace; unscoped
+ * sessions show only the title.
  */
 export const ChatSessionBreadcrumb: FC = () => {
 	const status = useAuiState((s) => s.threadListItem.status);
@@ -27,19 +28,23 @@ export const ChatSessionBreadcrumb: FC = () => {
 
 	if (status === "new") return null;
 
-	const workspaceName = resolveSessionLocationLabel(activity, workspaces);
+	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
 	const title = sessionTitle?.trim() || "New Chat";
 
 	return (
 		<Breadcrumb data-qa-id="chat-session-breadcrumb" className="min-w-0">
 			<BreadcrumbList className="flex-nowrap">
-				<BreadcrumbItem className="min-w-0">
-					<span className="inline-flex min-w-0 items-center gap-1.5">
-						<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-						<span className="truncate">{workspaceName}</span>
-					</span>
-				</BreadcrumbItem>
-				<BreadcrumbSeparator />
+				{locationLabel ? (
+					<>
+						<BreadcrumbItem className="min-w-0">
+							<span className="inline-flex min-w-0 items-center gap-1.5">
+								<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+								<span className="truncate">{locationLabel}</span>
+							</span>
+						</BreadcrumbItem>
+						<BreadcrumbSeparator />
+					</>
+				) : null}
 				<BreadcrumbItem className="min-w-0">
 					<BreadcrumbPage className="truncate">{title}</BreadcrumbPage>
 				</BreadcrumbItem>

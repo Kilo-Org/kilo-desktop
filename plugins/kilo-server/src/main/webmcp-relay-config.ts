@@ -16,7 +16,7 @@ import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
  */
 
 export { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME };
-export const MCP_ENTRY_NAME = "anaconda-desktop-relay";
+export const MCP_ENTRY_NAME = "desktop";
 export const MCP_ENTRY_SOURCE_ID = "kilo-server";
 
 export const WEBMCP_RELAY_PORT = 9345;
@@ -33,6 +33,7 @@ export type WebMcpRelayEntry = Readonly<Record<string, unknown>> & {
 export interface ReconcileWebMcpRelayConfigOptions {
 	readonly configDirectory: string;
 	readonly appExecutablePath: string;
+	readonly relayRuntimeRoot?: string;
 	readonly enabled?: boolean;
 	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
 	readonly resolveRelay?: () => { entry: string; version: string };
@@ -111,7 +112,11 @@ export async function reconcileWebMcpRelayConfig(
 
 	let relay: { entry: string; version: string };
 	try {
-		relay = (options.resolveRelay ?? resolveWebMcpRelayEntry)();
+		relay = options.resolveRelay
+			? options.resolveRelay()
+			: resolveWebMcpRelayEntry({
+					...(options.relayRuntimeRoot ? { runtimeRoot: options.relayRuntimeRoot } : {}),
+				});
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		logger.warn(`Skipping WebMCP configuration: ${reason}`);

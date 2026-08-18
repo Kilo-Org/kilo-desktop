@@ -116,6 +116,29 @@ describe("WorkspaceSelector", () => {
 		await userEvent.keyboard("{Escape}");
 	});
 
+	it("shows the full Don't work in a workspace label", async () => {
+		renderSelector();
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+
+		const option = page.getByRole("option", { name: "Don't work in a workspace" }).element();
+		const label = [...option.querySelectorAll("span")].find((element) =>
+			element.textContent?.includes("Don't work in a workspace"),
+		);
+		expect(label).toBeDefined();
+		expect(getComputedStyle(label!).textOverflow).not.toBe("ellipsis");
+		const textNode = [...label!.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+		expect(textNode).toBeDefined();
+		const range = document.createRange();
+		range.setStart(textNode!, textNode!.textContent!.length - 1);
+		range.setEnd(textNode!, textNode!.textContent!.length);
+		const popover = document.querySelector("[data-slot='popover-content']");
+		expect(popover).not.toBeNull();
+		expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(
+			popover!.getBoundingClientRect().right,
+		);
+	});
+
 	it("selects Don't work in a workspace as unscoped without changing the trigger label", async () => {
 		renderSelector({
 			showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, paths: ["/tmp/Project"] }),

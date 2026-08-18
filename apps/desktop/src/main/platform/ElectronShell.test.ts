@@ -1,19 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getAllWindows, getFocusedWindow, openExternal, parentWindow, showOpenDialog, writeText } =
-	vi.hoisted(() => ({
-		getAllWindows: vi.fn(),
-		getFocusedWindow: vi.fn(),
-		openExternal: vi.fn(),
-		parentWindow: {},
-		showOpenDialog: vi.fn(),
-		writeText: vi.fn(),
-	}));
+const {
+	getAllWindows,
+	getFocusedWindow,
+	openExternal,
+	parentWindow,
+	showOpenDialog,
+	showSaveDialog,
+	writeText,
+} = vi.hoisted(() => ({
+	getAllWindows: vi.fn(),
+	getFocusedWindow: vi.fn(),
+	openExternal: vi.fn(),
+	parentWindow: {},
+	showOpenDialog: vi.fn(),
+	showSaveDialog: vi.fn(),
+	writeText: vi.fn(),
+}));
 
 vi.mock("electron", () => ({
 	BrowserWindow: { getAllWindows, getFocusedWindow },
 	clipboard: { writeText },
-	dialog: { showOpenDialog },
+	dialog: { showOpenDialog, showSaveDialog },
 	shell: { openExternal },
 }));
 
@@ -24,8 +32,27 @@ describe("ElectronShell", () => {
 		openExternal.mockReset();
 		writeText.mockReset();
 		showOpenDialog.mockReset();
+		showSaveDialog.mockReset();
 		getFocusedWindow.mockReset().mockReturnValue(parentWindow);
 		getAllWindows.mockReset().mockReturnValue([]);
+	});
+
+	it("parents save dialogs to the renderer that requested them", async () => {
+		const requestingWindow = { webContents: { id: 73 } };
+		getAllWindows.mockReturnValue([requestingWindow]);
+		showSaveDialog.mockResolvedValue({ canceled: false, filePath: "/tmp/analysis.ipynb" });
+		const adapter = new ElectronShell();
+
+		await expect(
+			adapter.showSaveFileDialog(73, {
+				defaultPath: "/tmp/analysis.ipynb",
+				filters: [{ name: "Documents", extensions: ["txt"] }],
+			}),
+		).resolves.toBe("/tmp/analysis.ipynb");
+		expect(showSaveDialog).toHaveBeenCalledWith(requestingWindow, {
+			defaultPath: "/tmp/analysis.ipynb",
+			filters: [{ name: "Documents", extensions: ["txt"] }],
+		});
 	});
 
 	it("maps directory dialog options and results", async () => {

@@ -323,6 +323,7 @@ describe("contribution resolution", () => {
 		expect(pluginZoneContributions(discovery)).toEqual([
 			{
 				pluginId: "ping",
+				id: "PingStatus",
 				zone: "status-bar",
 				label: "PingStatus",
 				component: PingStatus,
@@ -352,6 +353,90 @@ describe("contribution resolution", () => {
 				component: PingProvider,
 				priority: 7,
 				browserSafe: true,
+			},
+		]);
+	});
+
+	it("resolves plugin-owned zones independently of registry order", () => {
+		const NotebookView = () => null;
+		const NotebookIcon = () => null;
+		const contributor = {
+			id: "notebook",
+			displayName: "Notebook",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+			contributes: {
+				zones: [
+					{
+						zone: "kilo-ui/chat-right-panel-tab",
+						id: "notebook",
+						component: "NotebookView",
+						label: "Notebook",
+						description: "Create a scratch notebook.",
+						icon: "NotebookIcon",
+						priority: 50,
+					},
+				],
+			},
+		};
+		const host = {
+			id: "kilo-ui",
+			displayName: "Kilo UI",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+			zones: [{ id: "chat-right-panel-tab" }],
+		};
+
+		const discovery = discoverPlugins(
+			[
+				{ manifest: contributor, module: { NotebookView, NotebookIcon } },
+				{ manifest: host, module: {} },
+			],
+			"web",
+		);
+
+		expect(discovery.issues).toEqual([]);
+		expect(pluginZoneContributions(discovery)).toEqual([
+			{
+				pluginId: "notebook",
+				id: "notebook",
+				zone: "kilo-ui/chat-right-panel-tab",
+				label: "Notebook",
+				description: "Create a scratch notebook.",
+				component: NotebookView,
+				icon: NotebookIcon,
+				priority: 50,
+				browserSafe: true,
+			},
+		]);
+	});
+
+	it("skips contributions whose target plugin did not declare the zone", () => {
+		const NotebookView = () => null;
+		const contributor = {
+			id: "notebook",
+			displayName: "Notebook",
+			version: "1.0.0",
+			web: "./src/web/index.ts",
+			contributes: {
+				zones: [
+					{
+						zone: "kilo-ui/chat-right-panel-tab",
+						id: "notebook",
+						component: "NotebookView",
+						label: "Notebook",
+					},
+				],
+			},
+		};
+
+		const discovery = discoverPlugins([{ manifest: contributor, module: { NotebookView } }], "web");
+
+		expect(pluginZoneContributions(discovery)).toEqual([]);
+		expect(discovery.issues).toEqual([
+			{
+				pluginId: "notebook",
+				message: expect.stringContaining('unknown zone "kilo-ui/chat-right-panel-tab"'),
 			},
 		]);
 	});
@@ -448,7 +533,7 @@ describe("contribution resolution", () => {
 		]);
 	});
 
-	it("skips a zone widget targeting a non-canonical zone", () => {
+	it("skips a zone contribution targeting an undeclared zone", () => {
 		const badZone = {
 			...manifest,
 			contributes: { zones: [{ zone: "statusbar", component: "PingStatus" }] },

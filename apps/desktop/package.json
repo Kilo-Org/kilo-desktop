@@ -15,11 +15,13 @@
 	"main": ".vite/build/main.js",
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",
-		"prestart": "pnpm --filter @anaconda-agentic-desktop/plugin-kilo-server run fetch-cli",
-		"premake": "pnpm --filter @anaconda-agentic-desktop/plugin-kilo-server run fetch-cli && pnpm run prepare:web",
-		"prepackage": "pnpm --filter @anaconda-agentic-desktop/plugin-kilo-server run fetch-cli && pnpm run prepare:web",
-		"prepublish": "tsx config/preflight-publish.ts && pnpm --filter @anaconda-agentic-desktop/plugin-kilo-server run fetch-cli && pnpm run prepare:web",
+		"prestart": "pnpm run prepare:plugins",
+		"premake": "pnpm run prepare:build",
+		"prepackage": "pnpm run prepare:build",
+		"prepublish": "tsx config/preflight-publish.ts && pnpm run prepare:build",
+		"prepare:build": "pnpm run prepare:web && pnpm run prepare:plugins",
 		"prepare:web": "pnpm --filter @anaconda-agentic-desktop/web build && node --input-type=module -e \"import { access } from 'node:fs/promises'; await access(new URL('../web/dist/index.html', import.meta.url));\"",
+		"prepare:plugins": "pnpm --filter \"@anaconda-agentic-desktop/plugin-*\" -r --if-present run prepare-assets",
 		"make": "electron-forge make",
 		"package": "electron-forge package",
 		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true pnpm run package",
@@ -28,15 +30,20 @@
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
+	"dependencyNotes": {
+		"ws": "PACKAGING BRIDGE: Vite leaves `ws` external in the main bundle (CJS `events` require). pnpm deploy only hoists packages declared on desktop, so a transitive kilo-server dep is not enough."
+	},
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
 		"@anaconda-agentic-desktop/plugin-environments": "workspace:*",
 		"@anaconda-agentic-desktop/plugin-kilo-server": "link:../../plugins/kilo-server",
 		"@anaconda-agentic-desktop/plugin-kilo-ui": "link:../../plugins/kilo-ui",
+		"@anaconda-agentic-desktop/plugin-notebook": "link:../../plugins/notebook",
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@github/keytar": "^7.10.6",
 		"@launchdarkly/node-client-sdk": "^4.0.0",
+		"@runtimed/node": "0.5.0",
 		"@sentry/electron": "catalog:",
 		"@vscode/proxy-agent": "^0.44.0",
 		"anaconda-opentelemetry": "0.9.2",
@@ -52,6 +59,7 @@
 		"shell-env": "^4.0.3",
 		"smol-toml": "^1.3.1",
 		"update-electron-app": "^3.3.0",
+		"ws": "^8.21.3",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

@@ -259,7 +259,7 @@ export function AppSidebarLayout({
 									</SidebarGroup>
 								) : null}
 								{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-								<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
+								<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
 							</>
 						)}
 					</SidebarContent>

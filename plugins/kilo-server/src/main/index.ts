@@ -235,6 +235,7 @@ export function registerKiloServer(
 			reconcileWebMcpRelayConfig({
 				configDirectory: directory,
 				appExecutablePath,
+				relayRuntimeRoot: mainSdk.resolvePluginAsset("relay-runtime"),
 				enabled,
 				logger: mainSdk.logger,
 				kiloMcpConfig,

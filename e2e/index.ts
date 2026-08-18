@@ -4,5 +4,7 @@
  * Plugins import `test` / `expect` from `@anaconda-agentic-desktop/e2e` and
  * extend with their own page objects — see .agents/skills/migrate-to-plugin/SKILL.md.
  */
-export { electronFixture } from "./fixtures/electron.js";
+export { electronFixture, waitForMainWindow } from "./fixtures/electron.js";
 export { expect, test } from "./fixtures/shell.js";
+export { packagedAppLaunchEnv } from "./utils/app-launcher.js";
+export { packagedExecutable, packagedResourcesDirectory } from "./utils/paths.js";

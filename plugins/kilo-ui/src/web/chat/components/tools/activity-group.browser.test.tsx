@@ -169,3 +169,26 @@ describe("Planning activity subgroup", () => {
 		expect(queryByText("todoread")).toBeNull();
 	});
 });
+
+describe("Notebooks activity subgroup", () => {
+	it("shows notebook tool display names without the notebooks prefix", () => {
+		const { getByRole, getByText, queryByText } = renderActivity(
+			"mcp:notebooks",
+			[
+				toolPart("call-1", "notebooks_create_notebook", {}),
+				toolPart("call-2", "notebooks_connect_notebook", {}),
+			],
+			ToolCallFallback,
+		);
+		const trigger = getByRole("button", { name: "Notebooks" });
+
+		expect(queryByText("notebooks_create_notebook")).toBeNull();
+		expect(queryByText("Create notebook")).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(getByText("Create notebook")).toBeDefined();
+		expect(getByText("Connect notebook")).toBeDefined();
+		expect(queryByText("notebooks_create_notebook")).toBeNull();
+		expect(queryByText("notebooks_connect_notebook")).toBeNull();
+	});
+});

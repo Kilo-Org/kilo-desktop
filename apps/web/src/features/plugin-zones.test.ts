@@ -11,6 +11,8 @@ import {
 
 const StatusItem = () => null;
 const Card = () => null;
+const Panel = () => null;
+const PanelIcon = () => null;
 
 /**
  * Electron-only plugins (main entry, no browserRegister) yield non-browser-safe
@@ -42,6 +44,47 @@ function makeDiscovery(electronOnly = true): PluginDiscovery {
 	);
 }
 
+function makePluginOwnedZoneDiscovery(electronOnly = false): PluginDiscovery {
+	return discoverPlugins(
+		[
+			{
+				manifest: {
+					id: "host",
+					displayName: "Host",
+					version: "1.0.0",
+					web: "./src/web/index.ts",
+					zones: [{ id: "detail-panel" }],
+				},
+				module: {},
+			},
+			{
+				manifest: {
+					id: "contributor",
+					displayName: "Contributor",
+					version: "1.0.0",
+					...(electronOnly ? { main: "./src/main/index.ts" } : {}),
+					web: "./src/web/index.ts",
+					contributes: {
+						zones: [
+							{
+								zone: "host/detail-panel",
+								id: "panel",
+								component: "Panel",
+								label: "Panel",
+								description: "Open panel.",
+								icon: "PanelIcon",
+								priority: 10,
+							},
+						],
+					},
+				},
+				module: { Panel, PanelIcon },
+			},
+		],
+		"web",
+	);
+}
+
 describe("buildPluginZoneContributions", () => {
 	it("maps resolved zone widgets, defaulting label to the component name", () => {
 		const contributions = buildPluginZoneContributions(makeDiscovery());
@@ -49,6 +92,7 @@ describe("buildPluginZoneContributions", () => {
 		expect(contributions).toEqual([
 			{
 				pluginId: "demo",
+				id: "StatusItem",
 				zone: "status-bar",
 				label: "StatusItem",
 				component: StatusItem,
@@ -57,11 +101,28 @@ describe("buildPluginZoneContributions", () => {
 			},
 			{
 				pluginId: "demo",
+				id: "Card",
 				zone: "dashboard",
 				label: "Demo Card",
 				component: Card,
 				priority: 0,
 				browserSafe: false,
+			},
+		]);
+	});
+
+	it("maps contributions to plugin-owned zones with host metadata", () => {
+		expect(buildPluginZoneContributions(makePluginOwnedZoneDiscovery())).toEqual([
+			{
+				pluginId: "contributor",
+				id: "panel",
+				zone: "host/detail-panel",
+				label: "Panel",
+				description: "Open panel.",
+				component: Panel,
+				icon: PanelIcon,
+				priority: 10,
+				browserSafe: true,
 			},
 		]);
 	});
@@ -110,6 +171,37 @@ describe("registerPluginZoneContributions", () => {
 
 		expect(count).toBe(2);
 	});
+
+	it("registers plugin-owned zones through the existing zone path", () => {
+		const contributorSdk = createFakeSdk({ featureId: "contributor" });
+		const system = createFakeFeatureSystem({ sdks: { contributor: contributorSdk } });
+		const contributions = buildPluginZoneContributions(makePluginOwnedZoneDiscovery());
+
+		expect(
+			registerPluginZoneContributions(system, contributions, { desktopAvailable: false }),
+		).toBe(1);
+		expect(system.services.contributionRegistry.getForZone("host/detail-panel")).toMatchObject([
+			{
+				featureId: "contributor",
+				id: "panel",
+				label: "Panel",
+				description: "Open panel.",
+				component: Panel,
+				icon: PanelIcon,
+				priority: 10,
+			},
+		]);
+	});
+
+	it("skips Electron-only plugin-owned zone contributions in browser mode", () => {
+		const contributorSdk = createFakeSdk({ featureId: "contributor" });
+		const system = createFakeFeatureSystem({ sdks: { contributor: contributorSdk } });
+		const contributions = buildPluginZoneContributions(makePluginOwnedZoneDiscovery(true));
+
+		expect(
+			registerPluginZoneContributions(system, contributions, { desktopAvailable: false }),
+		).toBe(0);
+	});
 });
 
 describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
@@ -128,5 +220,16 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 			priority: 10,
 		});
 		expect(contribution?.component).toBeTypeOf("function");
+	});
+
+	it("includes Notebook targeting Kilo's declared zone", () => {
+		expect(PLUGIN_ZONE_CONTRIBUTIONS).toContainEqual(
+			expect.objectContaining({
+				pluginId: "notebook",
+				id: "notebook",
+				zone: "kilo-ui/chat-right-panel-tab",
+				label: "Notebook",
+			}),
+		);
 	});
 });

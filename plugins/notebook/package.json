@@ -1,0 +1,86 @@
+{
+	"name": "@anaconda-agentic-desktop/plugin-notebook",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Recoverable nteract notebooks contributed to Kilo chat right panels",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/schemas.ts",
+		"./packaged-assets": "./src/packaging/resolve-plugin-asset.ts",
+		"./packaging": "./src/packaging/index.ts"
+	},
+	"scripts": {
+		"build-ui": "node --env-file-if-exists=.env.local --import tsx scripts/build-notebook-ui.ts",
+		"check": "tsc --noEmit -p tsconfig.json",
+		"fetch-nteract-mcp": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-nteract-mcp.ts",
+		"fetch-runtimed": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-runtimed.ts",
+		"prepare-assets": "pnpm run fetch-nteract-mcp && pnpm run fetch-runtimed && pnpm run build-ui",
+		"stage-bundle": "pnpm run build-ui",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"lucide-react": "^1.27.0"
+	},
+	"peerDependencies": {
+		"@runtimed/node": "0.5.0",
+		"@anaconda-agentic-desktop/feature-sdk": "^0.1.0",
+		"@anaconda-agentic-desktop/sdk-react": "^0.1.0",
+		"@anaconda-agentic-desktop/ui": "^0.1.0",
+		"@tanstack/react-query": "^5.101.4",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"zod": "^4.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@anaconda-agentic-desktop/sdk-react": {
+			"optional": true
+		},
+		"@anaconda-agentic-desktop/ui": {
+			"optional": true
+		},
+		"@tanstack/react-query": {
+			"optional": true
+		},
+		"react": {
+			"optional": true
+		},
+		"react-dom": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@anaconda-agentic-desktop/e2e": "workspace:*",
+		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
+		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@anaconda-agentic-desktop/ui": "workspace:*",
+		"@anaconda/playwright-utils": "1.17.1",
+		"@runtimed/node": "0.5.0",
+		"@playwright/test": "1.62.1",
+		"@tailwindcss/vite": "^4.3.3",
+		"@tanstack/react-query": "^5.101.4",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.0.0-rc.1",
+		"@vitest/browser-playwright": "5.0.0-rc.1",
+		"@vitest/coverage-v8": "5.0.0-rc.1",
+		"execa": "^9.6.0",
+		"7zip-bin-full": "^26.2.1",
+		"playwright": "1.62.1",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
+		"tsx": "^4.23.1",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

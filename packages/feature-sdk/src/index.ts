@@ -28,10 +28,6 @@ export type {
 	RegisteredTool,
 	SdkIntents,
 	SchemaLike,
-	KvStore,
-	KvStoreOptions,
-	KvStoreFactory,
-	MainSdkStorage,
 	ContributionOptions,
 	Contribution,
 	CommandDefinition,
@@ -47,11 +43,26 @@ export type {
 	MainSdkBoot,
 	MainSdkPorts,
 	HostMessagePort,
+	HostPortContext,
+	MainSdkHost,
+	MainSdkHostDialogOptions,
+	KvStore,
+	KvStoreOptions,
+	KvStoreFactory,
+	MainSdkStorage,
 	MainSdkFetch,
 	MainSdkLogger,
 	MainSdkNet,
 	FeatureRegistration,
 } from "./types/sdk.js";
+
+export {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	type EmbeddedWebHost,
+	type EmbeddedWebHostRouteContext,
+	type EmbeddedWebHostSecurityProfile,
+} from "./types/embedded-web-host.js";
 
 // Canonical shell zone ids (Decision #21)
 export {
@@ -94,11 +105,6 @@ export {
 	type FeatureEvent,
 } from "./services/event-bus.js";
 export { StateBroker } from "./services/state-broker.js";
-export {
-	createObservableValue,
-	type ObservableValue,
-	type ObservableValueOptions,
-} from "./services/observable-value.js";
 export { CapabilityRegistry } from "./services/capability-registry.js";
 export { ContributionRegistry } from "./services/contribution-registry.js";
 export { CommandRegistry } from "./services/command-registry.js";
@@ -116,6 +122,11 @@ export {
 	type ShellDelegates,
 } from "./services/create-sdk.js";
 export { createStaticNavigation } from "./services/navigation.js";
+export {
+	createObservableValue,
+	type ObservableValue,
+	type ObservableValueOptions,
+} from "./services/observable-value.js";
 
 // Plugin system — manifest schema + loader (discover phase; activation stays
 // with the shell boot sequences)
@@ -123,19 +134,21 @@ export {
 	PLUGIN_MANIFEST_FILENAME,
 	featureIdPattern,
 	pluginManifestSchema,
-	pluginRouteSchema,
 	pluginPageSurfaceSchema,
+	pluginRouteSchema,
 	pluginNavEntrySchema,
 	pluginZoneContributionSchema,
+	pluginZoneDeclarationSchema,
 	pluginProviderContributionSchema,
 	pluginSettingsContributionSchema,
 	pluginContributesSchema,
 	parsePluginManifest,
 	type PluginManifest,
-	type PluginRoute,
 	type PluginPageSurface,
+	type PluginRoute,
 	type PluginNavEntry,
 	type PluginZoneContribution,
+	type PluginZoneDeclaration,
 	type PluginProviderContribution,
 	type PluginSettingsContribution,
 	type PluginContributes,

@@ -19,6 +19,7 @@ export interface ReleaseEnvironment {
 	readonly RELEASE_CHANNEL?: string;
 	readonly UPDATE_PUBLISH_URL?: string;
 	readonly UPDATE_S3_BUCKET?: string;
+	readonly CANARY_BUILD_TIME?: string;
 }
 
 export type PublishEnvironment = ReleaseEnvironment & SigningEnvironment;
@@ -39,6 +40,57 @@ export function getReleaseChannel(environment: ReleaseEnvironment = {}): Publish
 
 export function getUpdatePublishUrl(environment: ReleaseEnvironment = {}): string {
 	return environment.UPDATE_PUBLISH_URL?.trim().replace(/\/+$/, "") ?? "";
+}
+
+export function getCanaryBuildTime(environment: ReleaseEnvironment = {}, now = new Date()): Date {
+	const raw = environment.CANARY_BUILD_TIME?.trim();
+	if (!raw) return now;
+	const parsed = new Date(raw);
+	if (Number.isNaN(parsed.getTime())) {
+		throw new Error(`Invalid CANARY_BUILD_TIME: ${raw}`);
+	}
+	return parsed;
+}
+
+export function getPublishAppVersion(input: {
+	readonly version: string;
+	readonly channel: PublishableReleaseChannel;
+	readonly now?: Date;
+}): string {
+	if (input.channel !== "canary") {
+		return input.version;
+	}
+	const now = input.now ?? new Date();
+	if (Number.isNaN(now.getTime())) {
+		throw new Error("Canary build time must be a valid date.");
+	}
+	return `${nextPatchVersion(input.version)}-canary.${formatCanaryTimestamp(now)}`;
+}
+
+export function getNativeAppVersion(version: string): string {
+	return parseVersionCore(version);
+}
+
+function nextPatchVersion(version: string): string {
+	const core = parseVersionCore(version);
+	const [major, minor, patch] = core.split(".");
+	return `${major}.${minor}.${Number(patch) + 1}`;
+}
+
+function parseVersionCore(version: string): string {
+	const match = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)/.exec(version);
+	if (!match?.groups) {
+		throw new Error(`Invalid app version: ${version}`);
+	}
+	return `${match.groups.major}.${match.groups.minor}.${match.groups.patch}`;
+}
+
+function formatCanaryTimestamp(now: Date): string {
+	const year = now.getUTCFullYear();
+	const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+	const day = String(now.getUTCDate()).padStart(2, "0");
+	const time = now.getUTCHours() * 10_000 + now.getUTCMinutes() * 100 + now.getUTCSeconds();
+	return `${year}${month}${day}.${time}`;
 }
 
 export function getReleasePrefix(channel: string): string {

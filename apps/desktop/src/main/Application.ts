@@ -12,6 +12,7 @@ import {
 	createFeatureMessageHandlers,
 	createFeaturePortHandlers,
 } from "./features/registry/feature-registry.js";
+import { collectEmbeddedHosts } from "./features/registry/embedded-hosts.js";
 import { FEATURES } from "./features/registry/features.js";
 import { registerAuthCapability } from "./features/auth/auth-capability-bridge.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
@@ -27,6 +28,7 @@ import {
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
 import { BootProgressReporter } from "./platform/BootProgressReporter.js";
+import { AwaitedShutdownBarrier } from "./platform/AwaitedShutdownBarrier.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronNotifications } from "./platform/ElectronNotifications.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
@@ -65,11 +67,16 @@ export class Application {
 	// After restoreNativeThemeFromPreferences, nativeTheme is the chrome signal.
 	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
 	readonly #ipcServer = new IpcServer();
-	readonly #disposers: Array<() => void> = [];
+	readonly #logger = createLogger("application");
+	readonly #disposers: Array<() => void | Promise<void>> = [];
+	readonly #shutdown = new AwaitedShutdownBarrier({
+		dispose: () => this.#dispose(),
+		quit: () => this.#app.quit(),
+		logger: this.#logger,
+	});
 	#featureFlags: FeatureFlagService | undefined;
 	#telemetry: TelemetryService | undefined;
-	#isShuttingDown = false;
-	#flushedSentry = false;
+	#disposePromise: Promise<void> | undefined;
 
 	async start(): Promise<void> {
 		const identity = getAppIdentity(
@@ -84,16 +91,8 @@ export class Application {
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),
-			// Electron runs `before-quit` listeners synchronously and then quits, so
-			// a fire-and-forget flush would be cut off. Preempt the first quit, await
-			// the (2s-bounded) Sentry flush and dispose, then re-trigger quit; the
-			// guard lets that second pass through.
-			this.#app.on("before-quit", async (event: Electron.Event) => {
-				if (this.#flushedSentry) return this.#dispose();
-				event.preventDefault();
-				await flushSentry();
-				this.#flushedSentry = true;
-				this.#app.quit();
+			this.#app.on("before-quit", (event: { preventDefault(): void }) => {
+				void this.#shutdown.handleBeforeQuit(event);
 			}),
 		);
 
@@ -121,6 +120,7 @@ export class Application {
 				isDevelopment,
 				rendererRoot: getProductionRendererRoot(import.meta.dirname),
 				...(developmentOrigin ? { developmentOrigin } : {}),
+				embeddedHosts: collectEmbeddedHosts,
 			});
 
 			// Bootstrap networking before #registerIpc (bootFeatures): merge the
@@ -233,6 +233,24 @@ export class Application {
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
 				createLogger,
 				fetch: this.#http.fetch,
+				host: {
+					paths: {
+						defaultSaveDirectory: () => this.#app.getPath("documents"),
+					},
+					dialog: {
+						openFile: (senderId, options) => this.#shell.showOpenFileDialog(senderId, options),
+						saveFile: (senderId, options) => this.#shell.showSaveFileDialog(senderId, options),
+					},
+					externalLinks: {
+						open: (url) => this.#shell.openExternal(url),
+					},
+					window: {
+						getTitle: (senderId) => this.#windows.getTitle(senderId),
+						setTitle: (senderId, title) => this.#windows.setTitle(senderId, title),
+						isFocused: (senderId) => this.#windows.isFocused(senderId),
+						onFocusChange: (senderId, listener) => this.#windows.onFocusChange(senderId, listener),
+					},
+				},
 				...(reporter
 					? {
 							// Coarse "Preparing <id>…" line the shell writes once
@@ -291,10 +309,24 @@ export class Application {
 		});
 	}
 
-	#dispose(): void {
-		if (this.#isShuttingDown) return;
-		this.#isShuttingDown = true;
-		for (const dispose of this.#disposers.splice(0).reverse()) dispose();
-		this.#protocol.dispose();
+	#dispose(): Promise<void> {
+		this.#disposePromise ??= this.#disposeOnce();
+		return this.#disposePromise;
+	}
+
+	async #disposeOnce(): Promise<void> {
+		for (const dispose of this.#disposers.splice(0).reverse()) {
+			try {
+				await dispose();
+			} catch (error) {
+				this.#logger.error("shutdown disposer failed", error);
+			}
+		}
+		try {
+			this.#protocol.dispose();
+		} catch (error) {
+			this.#logger.error("protocol shutdown failed", error);
+		}
+		await flushSentry();
 	}
 }

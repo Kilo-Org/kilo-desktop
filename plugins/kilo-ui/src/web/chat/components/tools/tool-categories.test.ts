@@ -1,9 +1,11 @@
+import { NotebookIcon } from "lucide-react";
 import { describe, expect, it } from "vitest";
 
 import {
 	activityKindFromGroupKey,
 	buildActivitySegments,
 	formatMcpServerLabel,
+	formatToolDisplayName,
 	getActivityKind,
 	getGroupKeyForTool,
 	getKindMeta,
@@ -20,6 +22,7 @@ describe("getMcpServerFromToolName", () => {
 		expect(getMcpServerFromToolName("atlassian_getJiraIssue")).toBe("atlassian");
 		expect(getMcpServerFromToolName("atlassian_getAccessibleAtlassianResources")).toBe("atlassian");
 		expect(getMcpServerFromToolName("my-server_search")).toBe("my-server");
+		expect(getMcpServerFromToolName("notebooks_create_cell")).toBe("notebooks");
 	});
 
 	it("ignores built-in tools even when they contain underscores", () => {
@@ -218,6 +221,29 @@ describe("MCP activity grouping", () => {
 		expect(formatMcpServerLabel("atlassian")).toBe("Atlassian");
 		expect(formatMcpServerLabel("my-server")).toBe("My Server");
 		expect(getKindMeta("mcp:atlassian").doneLabel({ count: 2, files: 0 })).toBe("Atlassian");
+		expect(getKindMeta("mcp:atlassian").icon).not.toBe(NotebookIcon);
+	});
+
+	it("presents notebooks as a Notebooks group with the notebook tab icon", () => {
+		expect(getGroupKeyForTool("notebooks_create_cell")).toBe("group-mcp-notebooks");
+		expect(getActivityKind({ type: "tool-call", toolName: "notebooks_create_cell" })).toBe(
+			"mcp:notebooks",
+		);
+		const meta = getKindMeta("mcp:notebooks");
+		expect(meta.label).toBe("Notebooks");
+		expect(meta.icon).toBe(NotebookIcon);
+		expect(meta.liveLabel({ count: 1, files: 0 })).toBe("Notebooks...");
+		expect(meta.doneLabel({ count: 1, files: 0 })).toBe("Notebooks");
+		expect(meta.circleClassName).toContain("teal");
+	});
+
+	it("gives notebooks tools display names without the server prefix", () => {
+		expect(formatToolDisplayName("notebooks_create_notebook")).toBe("Create notebook");
+		expect(formatToolDisplayName("notebooks_connect_notebook")).toBe("Connect notebook");
+		expect(formatToolDisplayName("notebooks_execute_cell")).toBe("Run cell");
+		expect(formatToolDisplayName("notebooks_brand_new_tool")).toBe("Brand new tool");
+		expect(formatToolDisplayName("atlassian_getJiraIssue")).toBe("Get jira issue");
+		expect(formatToolDisplayName("bash")).toBe("bash");
 	});
 
 	it("coalesces thinking / Atlassian / thinking / Atlassian into four segments", () => {

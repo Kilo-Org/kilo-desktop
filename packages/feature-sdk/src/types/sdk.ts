@@ -62,18 +62,16 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	readonly plugins: SdkPlugins;
 
 	/**
-	 * Register a React component in a named shell zone (status bar,
-	 * dashboard, ...). The shell owns where and how zones render.
-	 * Use routes, not contributions, for the feature's main view.
+	 * Register a React component in a named extension zone. The app shell owns
+	 * its canonical zones, while plugins may expose shared plugin-owned zones.
 	 * Returns an unregister function for conditional UI; contributions are
 	 * also cleaned up automatically when this SDK instance is destroyed.
 	 *
-	 * Any string is accepted, but the shell renders only the canonical
-	 * {@link ShellZone} ids — prefer the exported zone constants so a typo
-	 * cannot render nowhere.
+	 * Any string is accepted; prefer exported zone constants for shared outlets
+	 * so a typo cannot silently render nowhere.
 	 *
 	 * @example
-	 * const remove = sdk.contribute("status-bar", { component: TodoBadge, label: "Todos", priority: 10 });
+	 * const remove = sdk.contribute("status-bar", { id: "todos", component: TodoBadge, label: "Todos", priority: 10 });
 	 */
 	contribute(zone: ShellZone | (string & {}), options: ContributionOptions): () => void;
 
@@ -267,19 +265,28 @@ export interface SdkPlugins {
 // ─── Contributions ───────────────────────────────────────────────────────────
 
 export interface ContributionOptions {
+	/** Stable identifier within this feature and zone. */
+	id: string;
 	/** React component to render in the zone. */
 	component: unknown;
 	label: string;
+	/** Optional supporting copy for hosts that present contributions in a picker. */
+	description?: string;
+	/** Optional React icon component; remains unknown so feature-sdk stays React-free. */
+	icon?: unknown;
 	size?: string;
 	/** Higher priority renders first. Default 0. */
 	priority?: number;
 }
 
 export interface Contribution {
+	id: string;
 	featureId: string;
 	zone: string;
 	component: unknown;
 	label: string;
+	description?: string;
+	icon?: unknown;
 	size?: string;
 	priority: number;
 }
@@ -689,77 +696,22 @@ export interface DispatchIntent {
 	params?: Record<string, unknown>;
 }
 
-// ─── Storage (per-feature key/value) ─────────────────────────────────────────
-
-/**
- * A typed, file-backed key/value store scoped to a feature's storage
- * directory. The shell provides the backing implementation (electron-store on
- * Electron; in-memory in tests) — features only see this interface.
- *
- * Writes are synchronous and atomic where the backend supports it: `set`
- * returns the new snapshot and throws when persistence fails, so a caller can
- * surface the failure to the UI instead of silently reverting on the next
- * restart. Malformed on-disk data falls back to `defaults` (the backend is
- * responsible for keeping the file recoverable).
- *
- * @example
- * const settings = mainSdk.storage.kv({
- *   defaults: { enabled: true, urlOverride: null as string | null },
- * });
- * settings.get("enabled");      // → true
- * settings.set({ enabled: false });
- * settings.snapshot();          // → { enabled: false, urlOverride: null }
- */
 export interface KvStore<T extends Record<string, unknown>> {
-	/** Return a snapshot of every key, backfilled with defaults for missing/wrong-typed values. */
 	snapshot(): T;
-	/** Read one key. Falls back to the injected default when the persisted value is missing or wrong-typed. */
 	get<K extends keyof T>(key: K): T[K];
-	/**
-	 * Persist a partial update and return the new snapshot.
-	 * Throws when the on-disk write fails.
-	 */
 	set(patch: Partial<T>): T;
-	/** Reset all persisted keys — subsequent reads return `defaults`. */
 	clear(): void;
 }
 
-/**
- * Options for opening a per-feature key/value store.
- *
- * `namespace` selects the file name inside the feature's storage directory
- * (default `"kv"`, i.e. `<storageDir>/kv.json`). Features that need multiple
- * unrelated stores pass distinct namespaces; opening the same namespace
- * twice within a feature returns the same live store.
- */
 export interface KvStoreOptions<T extends Record<string, unknown>> {
 	defaults: T;
 	namespace?: string;
 }
 
-/**
- * Per-feature storage services on the main SDK. Currently exposes typed KV
- * (`storage.kv`) backed by the feature's Decision #20 storage directory —
- * the same slot that hosts the feature's SQLite `data.db`. Additional
- * storage primitives (e.g. secret vault) can grow on this interface later
- * without further churn on `MainSdk`.
- */
 export interface MainSdkStorage {
-	/**
-	 * Open (or reuse) a typed key/value store scoped to this feature. The
-	 * backing file lives inside the feature's storage directory; nothing is
-	 * shared across features.
-	 */
 	kv<T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T>;
 }
 
-/**
- * Host-provided factory for a per-feature key/value store. Called lazily on
- * `mainSdk.storage.kv(...)`. The host binds the feature's storage directory
- * so the returned store can never write outside it; omit `resolveKvStore`
- * in environments without persistent storage (browser mode) — calls to
- * `storage.kv` will then throw.
- */
 export type KvStoreFactory = <T extends Record<string, unknown>>(
 	options: KvStoreOptions<T>,
 ) => KvStore<T>;
@@ -815,16 +767,48 @@ export interface MainSdkBoot {
 export interface HostMessagePort {
 	postMessage(message: unknown): void;
 	on(event: "message", listener: (event: { data: unknown }) => void): this;
+	on(event: "close", listener: () => void): this;
 	off(event: "message", listener: (event: { data: unknown }) => void): this;
+	off(event: "close", listener: () => void): this;
 	start(): void;
 	close(): void;
+}
+
+export interface HostPortContext {
+	/** Electron webContents id of the trusted renderer that transferred the port. */
+	readonly senderId: number;
+}
+
+export interface MainSdkHostDialogOptions {
+	readonly filters?: readonly { readonly name: string; readonly extensions: readonly string[] }[];
+	readonly defaultPath?: string;
+}
+
+/** Narrow shell-owned desktop capabilities available to main-process plugins. */
+export interface MainSdkHost {
+	readonly paths: {
+		defaultSaveDirectory(): string;
+	};
+	readonly dialog: {
+		openFile(senderId: number, options?: MainSdkHostDialogOptions): Promise<string | null>;
+		saveFile(senderId: number, options?: MainSdkHostDialogOptions): Promise<string | null>;
+	};
+	readonly externalLinks: {
+		open(url: string): Promise<boolean>;
+	};
+	readonly window: {
+		getTitle(senderId: number): string;
+		setTitle(senderId: number, title: string): void;
+		isFocused(senderId: number): boolean;
+		onFocusChange(senderId: number, listener: (focused: boolean) => void): () => void;
+	};
 }
 
 export interface MainSdkPorts {
 	handle<TArgs>(
 		channel: string,
 		argsSchema: SchemaLike<TArgs>,
-		handler: (port: HostMessagePort, args: TArgs) => void | Promise<void>,
+		handler: (port: HostMessagePort, args: TArgs, context: HostPortContext) => void | Promise<void>,
 	): void;
 }
 
@@ -883,6 +867,8 @@ export interface MainSdk {
 	readonly boot: MainSdkBoot;
 	/** Register feature-owned handlers for transferred MessagePorts. */
 	readonly ports: MainSdkPorts;
+	/** Shell-owned desktop capabilities. Absent in browser and headless hosts. */
+	readonly host: MainSdkHost | undefined;
 	/**
 	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
 	 * created lazily on first access. Features persist ONLY here — open your
@@ -891,13 +877,7 @@ export interface MainSdk {
 	 * Node-free features simply never touch it.
 	 */
 	readonly storageDir: string;
-	/**
-	 * Per-feature storage services. Currently exposes typed KV
-	 * (`storage.kv(...)`) backed by the feature's storage directory —
-	 * atomic writes, corrupt-file recovery, and defaults come for free.
-	 * Accessing `storage.kv` in an environment without storage (browser
-	 * mode) throws; features that never call it are unaffected.
-	 */
+	/** Typed, feature-scoped key/value storage supplied by the host. */
 	readonly storage: MainSdkStorage;
 	/**
 	 * Resolve a static asset shipped inside this plugin's package to an
@@ -923,7 +903,8 @@ export interface MainSdk {
 	 */
 	channels<C extends ChannelMap>(channels: C): ChannelHandlers<C>;
 	/** Cleanup registration — runs when the shell tears the feature down (shutdown, unload). */
-	onDispose(fn: () => void): void;
+	/** Register cleanup that may be asynchronous during host-owned feature teardown. */
+	onDispose(fn: () => unknown): void;
 }
 
 // ─── Feature registration ────────────────────────────────────────────────────

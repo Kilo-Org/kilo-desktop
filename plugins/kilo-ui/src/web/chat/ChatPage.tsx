@@ -18,25 +18,32 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
+import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
+import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
 import { ChatRightPanelHeaderToggle } from "./right-panel/ChatRightPanelHeaderToggle.js";
-import { RightPanelTabContent } from "./right-panel/right-panel-tab-registry.js";
+import { RightPanelTabCloseDialog } from "./right-panel/RightPanelTabCloseDialog.js";
+import {
+	RightPanelTabContent,
+	type RightPanelTabDefinition,
+	useRightPanelTabDefinitions,
+} from "./right-panel/right-panel-tab-registry.js";
 import { RightPanelTabs } from "./right-panel/RightPanelTabs.js";
 import {
 	resolveRightPanelSessionKey,
-	selectActiveRightPanelTab,
 	selectSessionRightPanelState,
 	useRightPanelStore,
 	type RightPanelTab,
-	type RightPanelTabKind,
 } from "./right-panel/right-panel-store.js";
+import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
+import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 
 const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH_FRACTION = 0.5;
-const PANEL_GAP_PX = 12; // matches w-3 gutter
+const PANEL_GAP_PX = 8; // matches w-2 gutter
 
 function readStoredPanelWidth(): number {
 	try {
@@ -64,17 +71,25 @@ function writeStoredPanelWidth(width: number): void {
 export function ChatPage() {
 	const sdk = useSdk("kilo-ui");
 	const connection = useChatConnection();
+	const rightPanelDefinitions = useRightPanelTabDefinitions();
 	const reduceMotion = useReducedMotion();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
 	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
 	const maximizeSessionId = localThreadId?.trim() ? localThreadId : sessionId;
+	const { activeWorkspaceId, workspaces } = useWorkspacesFeature();
+	const sessionWorkspaceId = useSessionActivity((state) =>
+		remoteId ? state.sessions[remoteId]?.workspaceId : undefined,
+	);
+	const workspaceDirectory = resolveChatWorkspaceDirectory({
+		remoteId,
+		activeWorkspaceId,
+		sessionWorkspaceId,
+		workspaces,
+	});
 
 	const panelState = useRightPanelStore((state) =>
 		selectSessionRightPanelState(state.bySessionId, sessionId),
-	);
-	const activeTab = useRightPanelStore((state) =>
-		selectActiveRightPanelTab(state.bySessionId, sessionId),
 	);
 	const openTab = useRightPanelStore((state) => state.openTab);
 	const activateTab = useRightPanelStore((state) => state.activateTab);
@@ -89,6 +104,10 @@ export function ChatPage() {
 	const [isResizing, setIsResizing] = useState(false);
 	const [panelMounted, setPanelMounted] = useState(panelState.isOpen);
 	const [maximizedBySession, setMaximizedBySession] = useState<Record<string, boolean>>({});
+	const [closeRequest, setCloseRequest] = useState<{
+		readonly sessionId: string;
+		readonly tab: RightPanelTab;
+	} | null>(null);
 	const panelOpen = panelState.isOpen;
 	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
 
@@ -98,11 +117,13 @@ export function ChatPage() {
 	// header only while the chat route is mounted.
 	useEffect(() => {
 		const removeBreadcrumb = sdk.contribute(HEADER_LEADING_ZONE, {
+			id: "chat-session-breadcrumb",
 			component: ChatSessionBreadcrumb,
 			label: "Chat session breadcrumb",
 			priority: 10,
 		});
 		const removeToggle = sdk.contribute(HEADER_TRAILING_ZONE, {
+			id: "chat-right-panel-toggle",
 			component: ChatRightPanelHeaderToggle,
 			label: "Chat right panel toggle",
 			priority: 10,
@@ -112,6 +133,16 @@ export function ChatPage() {
 			removeToggle();
 		};
 	}, [sdk]);
+
+	// WebMCP tools resolve "current session" from this focused key.
+	useEffect(() => {
+		chatRightPanelCapability.setFocusedSessionId(sessionId);
+		return () => {
+			if (chatRightPanelCapability.getFocusedSessionId() === sessionId) {
+				chatRightPanelCapability.setFocusedSessionId(null);
+			}
+		};
+	}, [sessionId]);
 
 	useLayoutEffect(() => {
 		if (!remoteId?.trim() || !localThreadId?.trim() || remoteId === localThreadId) return;
@@ -195,21 +226,31 @@ export function ChatPage() {
 
 	const handleActivate = useCallback(
 		(tab: RightPanelTab) => {
-			activateTab(sessionId, tab.id);
+			activateTab(sessionId, tab.instanceId);
 		},
 		[activateTab, sessionId],
 	);
 
 	const handleCloseTab = useCallback(
 		(tab: RightPanelTab) => {
-			closeTab(sessionId, tab.id);
+			if (!tab.dirty) {
+				closeTab(sessionId, tab.instanceId);
+				return;
+			}
+			setCloseRequest({ sessionId, tab });
 		},
 		[closeTab, sessionId],
 	);
 
+	const closeRequestedTab = useCallback(() => {
+		if (!closeRequest) return;
+		closeTab(closeRequest.sessionId, closeRequest.tab.instanceId);
+		setCloseRequest(null);
+	}, [closeRequest, closeTab]);
+
 	const handleAddTab = useCallback(
-		(kind: RightPanelTabKind) => {
-			openTab(sessionId, kind);
+		(definition: RightPanelTabDefinition) => {
+			openTab(sessionId, definition);
 		},
 		[openTab, sessionId],
 	);
@@ -255,17 +296,48 @@ export function ChatPage() {
 			maximized={maximized}
 			onToggleMaximized={toggleMaximized}
 			tabs={panelState.tabs}
+			definitions={rightPanelDefinitions}
 			activeTabId={panelOpen ? panelState.activeTabId : null}
 			onActivate={handleActivate}
 			onCloseTab={handleCloseTab}
 			onAddTab={handleAddTab}
 		>
-			{activeTab ? <RightPanelTabContent tab={activeTab} /> : null}
+			{panelState.tabs.map((tab) => {
+				const active = tab.instanceId === panelState.activeTabId;
+				return (
+					<div
+						key={tab.instanceId}
+						hidden={!active}
+						className="min-h-0 flex-1 flex-col data-[active=true]:flex"
+						data-active={active}
+						data-qa-id={`chat-right-panel-content-${tab.instanceId}`}
+					>
+						<RightPanelTabContent
+							tab={tab}
+							sessionId={sessionId}
+							definitions={rightPanelDefinitions}
+							{...(workspaceDirectory ? { workspaceDirectory } : {})}
+						/>
+					</div>
+				);
+			})}
 		</RightPanelTabs>
 	);
 
 	return (
 		<>
+			{closeRequest ? (
+				<RightPanelTabCloseDialog
+					key={`${closeRequest.sessionId}:${closeRequest.tab.instanceId}`}
+					tab={closeRequest.tab}
+					lifecycle={chatRightPanelCapability.getTabLifecycle(
+						closeRequest.sessionId,
+						closeRequest.tab.instanceId,
+					)}
+					onCancel={() => setCloseRequest(null)}
+					onClose={closeRequestedTab}
+				/>
+			) : null}
 			{connection.isError ? (
 				<p
 					className="text-destructive-foreground px-6 pt-4 text-sm"
@@ -321,7 +393,7 @@ export function ChatPage() {
 									aria-orientation="vertical"
 									aria-label="Resize right panel"
 									data-qa-id="chat-right-panel-resize"
-									className="w-3 shrink-0 cursor-col-resize touch-none bg-transparent"
+									className="w-2 shrink-0 cursor-col-resize touch-none bg-transparent"
 									onPointerDown={handleResizePointerDown}
 								/>
 							)}

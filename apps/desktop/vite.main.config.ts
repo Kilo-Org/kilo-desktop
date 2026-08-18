@@ -11,6 +11,7 @@ import {
 	requireViteEnvironmentVariable,
 } from "./config/build-environment.js";
 import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
+import { NOTEBOOK_MAIN_EXTERNALS } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
 import appInfo from "./package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +74,7 @@ export default defineConfig(({ command }) => {
 				platform: "node",
 				external: [
 					"electron",
+					...NOTEBOOK_MAIN_EXTERNALS,
 					"better-sqlite3",
 					"@github/keytar",
 					// LaunchDarkly's Node SDK is CommonJS and lazily `require`s Node
@@ -100,6 +102,11 @@ export default defineConfig(({ command }) => {
 					// missing optional dep.
 					"@vscode/proxy-agent",
 					"@vscode/windows-ca-certs",
+					// Must also be a direct desktop dependency: the bundled main
+					// imports `ws` at runtime, and `pnpm deploy --prod` only hoists
+					// packages declared on this package (not transitive deps of
+					// linked plugins such as kilo-server).
+					"ws",
 					"anaconda-opentelemetry",
 					...builtinModules,
 					...builtinModules.map((module) => `node:${module}`),

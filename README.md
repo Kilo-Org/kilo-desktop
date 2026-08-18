@@ -13,6 +13,8 @@ Docs:
   slice, from the shared contract to SQLite and back to the UI
 - [Releases, signing, and CI reference](docs/releases.md) — channels, artifacts,
   environments, credentials
+- [Notebook integration](plugins/notebook/docs/README.md) — embedding nteract's notebook UI with a
+  bundled `runtimed` fallback that preserves the user's running singleton
 
 ## Tech stack
 
@@ -290,6 +292,8 @@ App identities are environment-specific so builds can be installed side by side:
 Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB on Linux)
 and publishes to `anaconda-agentic-desktop/<channel>/<platform>/<arch>/`. Automatic update
 checks run only in packaged macOS and Windows builds that were given `UPDATE_PUBLISH_URL`.
+Canary builds stamp a UTC timestamp onto the next patch (`0.1.1-canary.20260818.143052`)
+so every push to `main` is a newer version; staging and prod keep the committed version.
 
 See [docs/releases.md](docs/releases.md) for the full reference: the distribution matrix,
 build-time variables, GitHub Environments, workflows, signing credentials, and publish

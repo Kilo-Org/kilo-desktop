@@ -33,6 +33,13 @@ import {
 } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage } from "./ChatPage.js";
+import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
+import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import {
+	CHAT_RIGHT_PANEL_TAB_EXTENSION,
+	type ChatRightPanelContributionProps,
+} from "./right-panel/right-panel-tab-registry.js";
+import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
@@ -81,6 +88,24 @@ function HeaderOutlets() {
 			<ZoneOutletStandIn zone={HEADER_LEADING_ZONE} qaId="zone-header-leading" />
 			<ZoneOutletStandIn zone={HEADER_TRAILING_ZONE} qaId="zone-header-trailing" />
 		</>
+	);
+}
+
+function CanvasPanel({
+	instanceId,
+	sessionId,
+	title,
+	workspaceDirectory,
+}: ChatRightPanelContributionProps) {
+	return (
+		<div
+			data-qa-id="test-canvas-panel"
+			data-instance-id={instanceId}
+			data-session-id={sessionId}
+			data-workspace-directory={workspaceDirectory}
+		>
+			{title}
+		</div>
 	);
 }
 
@@ -199,6 +224,14 @@ function renderChatPage(options?: {
 	const system = createFakeFeatureSystem({
 		sdks: { "kilo-ui": kiloUi },
 	});
+	const removeCanvasContribution = system
+		.getSdk("canvas")
+		.contribute(CHAT_RIGHT_PANEL_TAB_EXTENSION, {
+			id: "canvas",
+			label: "Canvas",
+			description: "Scratch canvas",
+			component: CanvasPanel,
+		});
 	const queryClient = testClient();
 	const result = render(
 		<SdkProvider system={system}>
@@ -213,7 +246,7 @@ function renderChatPage(options?: {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, queryClient, sdk: kiloUi };
+	return { ...result, queryClient, sdk: kiloUi, removeCanvasContribution };
 }
 
 afterEach(() => {
@@ -264,11 +297,19 @@ describe("ChatPage error rendering", () => {
 			} satisfies Partial<WorkspacesService & KiloUiChatService>,
 		});
 		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": kiloUi } });
+		const queryClient = testClient();
+		const sessionActivity = createSessionActivityStore({ storage: null });
 		return render(
 			<SdkProvider system={system}>
-				<ChatConnectionProvider status={status}>
-					<ChatPage />
-				</ChatConnectionProvider>
+				<QueryClientProvider client={queryClient}>
+					<WorkspacesFeatureProvider>
+						<SessionActivityProvider store={sessionActivity}>
+							<ChatConnectionProvider status={status}>
+								<ChatPage />
+							</ChatConnectionProvider>
+						</SessionActivityProvider>
+					</WorkspacesFeatureProvider>
+				</QueryClientProvider>
 			</SdkProvider>,
 		);
 	}
@@ -535,17 +576,156 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("chat-right-panel-maximize")).toBeVisible();
 	});
 
-	it("adds the placeholder tab from the empty state", async () => {
+	it("adds multiple numbered instances from a live contribution", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
 		await screen.getByTestId("chat-right-panel-toggle").click();
 		await expect.element(screen.getByTestId("chat-right-panel-empty")).toBeVisible();
-		await screen.getByTestId("chat-right-panel-open-placeholder").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
 
-		await expect.element(screen.getByTestId("chat-right-panel-tab-placeholder")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-placeholder")).toBeVisible();
+		await expect.element(screen.getByTestId("test-canvas-panel")).toHaveTextContent("Canvas 1");
+		const firstCanvas = baseElement.querySelector<HTMLElement>("[data-qa-id='test-canvas-panel']");
+		expect(firstCanvas).not.toBeNull();
 		await expect.element(screen.getByTestId("chat-right-panel-empty")).not.toBeInTheDocument();
+
+		await screen.getByTestId("chat-right-panel-add-tab").click();
+		await screen.getByTestId("chat-right-panel-add-canvas-canvas").click();
+		await vi.waitFor(() => {
+			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(2);
+		});
+		expect(firstCanvas?.isConnected).toBe(true);
+		expect(firstCanvas?.textContent).toContain("Canvas 1");
+		expect(
+			baseElement.querySelector<HTMLElement>(
+				"[data-active='true'] [data-qa-id='test-canvas-panel']",
+			)?.textContent,
+		).toContain("Canvas 2");
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs.map(({ title }) => title)).toEqual(
+			["Canvas 1", "Canvas 2"],
+		);
+	});
+
+	it("shows generic dirty state and keeps the tab after Save is cancelled", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		const save = vi.fn(async () => ({ outcome: "cancelled" as const }));
+		const discard = vi.fn(async () => undefined);
+		const unregister = chatRightPanelCapability.registerTabLifecycle("draft", tab.instanceId, {
+			save,
+			discard,
+		});
+		chatRightPanelCapability.setTabDirty("draft", tab.instanceId, true);
+
+		await expect
+			.element(screen.getByTestId(`chat-right-panel-dirty-${tab.instanceId}`))
+			.toBeVisible();
+		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
+		await expect.element(screen.getByTestId("chat-right-panel-close-dialog")).toBeVisible();
+
+		await screen.getByTestId("chat-right-panel-close-save").click();
+		await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+		await expect.element(screen.getByTestId("chat-right-panel-close-dialog")).toBeVisible();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
+
+		await screen.getByTestId("chat-right-panel-close-discard").click();
+		await vi.waitFor(() => expect(discard).toHaveBeenCalledOnce());
+		await expect
+			.element(screen.getByTestId("chat-right-panel-close-dialog"))
+			.not.toBeInTheDocument();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(0);
+		unregister();
+	});
+
+	it("offers Discard and Cancel when a dirty tab has no save handler", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		chatRightPanelCapability.setTabDirty("draft", tab.instanceId, true);
+
+		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
+
+		await expect.element(screen.getByTestId("chat-right-panel-close-dialog")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-right-panel-close-save")).not.toBeInTheDocument();
+		await screen.getByTestId("chat-right-panel-close-cancel").click();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
+	});
+
+	it("disables close actions while pending and retains the tab after lifecycle failures", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		let resolveSave!: (result: { outcome: "failed"; reason: string }) => void;
+		const save = vi.fn(
+			() =>
+				new Promise<{ outcome: "failed"; reason: string }>((resolve) => {
+					resolveSave = resolve;
+				}),
+		);
+		const discard = vi.fn(async () => {
+			throw new Error("Discard cleanup failed");
+		});
+		const unregister = chatRightPanelCapability.registerTabLifecycle("draft", tab.instanceId, {
+			save,
+			discard,
+		});
+		chatRightPanelCapability.setTabDirty("draft", tab.instanceId, true);
+		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
+
+		await screen.getByTestId("chat-right-panel-close-save").click();
+		await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+		await expect.element(screen.getByTestId("chat-right-panel-close-save")).toBeDisabled();
+		await expect.element(screen.getByTestId("chat-right-panel-close-discard")).toBeDisabled();
+		await expect.element(screen.getByTestId("chat-right-panel-close-cancel")).toBeDisabled();
+		resolveSave({ outcome: "failed", reason: "Save failed" });
+
+		await expect
+			.element(screen.getByTestId("chat-right-panel-close-error"))
+			.toHaveTextContent("Save failed");
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
+		await screen.getByTestId("chat-right-panel-close-discard").click();
+		await expect
+			.element(screen.getByTestId("chat-right-panel-close-error"))
+			.toHaveTextContent("Discard cleanup failed");
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
+		unregister();
+	});
+
+	it("closes a clean tab without prompting", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+
+		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
+
+		await expect
+			.element(screen.getByTestId("chat-right-panel-close-dialog"))
+			.not.toBeInTheDocument();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(0);
+	});
+
+	it("keeps an existing tab closeable when its contributing plugin disappears", async () => {
+		const { baseElement, removeCanvasContribution } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
+
+		removeCanvasContribution();
+		await expect
+			.element(screen.getByTestId("chat-right-panel-contribution-unavailable"))
+			.toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id^='chat-right-panel-close-tab-']")).toBeTruthy();
 	});
 
 	it("shows the plan tab when openPlan is called for the session", async () => {
@@ -609,6 +789,19 @@ describe("ChatPage", () => {
 				.querySelector("[data-qa-id='kilo-chat-thread-mock']")
 				?.getAttribute("data-thread-instance"),
 		).toBe(instanceBefore);
+	});
+
+	it("passes the draft chat's primary workspace directory to right-panel contributions", async () => {
+		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
+		const { baseElement } = renderChatPage({ workspaces: [workspace] });
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute("data-workspace-directory", "/projects/workspace-1");
 	});
 
 	it("uses the latest workspace only when the runtime prepares a new session", async () => {

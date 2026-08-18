@@ -2,6 +2,9 @@
  * WebMCP tools that surface open chat notebooks and open scratch or file-backed
  * notebooks in the kilo-ui right panel. Cross-plugin access goes through
  * `sdk.plugins.get("kilo-ui")` — no kilo-ui source imports.
+ *
+ * Tool descriptions are the model-facing contract: create and show stay in this
+ * panel. nteract MCP is for cells, kernel, and save only.
  */
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { z } from "zod";
@@ -179,12 +182,23 @@ export async function openNotebookFileInPanel(
 	};
 }
 
+/**
+ * Model-facing policy for desktop notebook tools. Kilo surfaces these
+ * descriptions in the tool list, so this is how we steer the agent away from
+ * nteract MCP create/show (which open the external nteract app).
+ */
+const DESKTOP_NOTEBOOK_PANEL_POLICY =
+	"Never create or show a notebook in the external nteract app. " +
+	"Do not call notebooks_create_notebook, notebooks_show_notebook, or notebooks_open_notebook. " +
+	"Always use these desktop notebook tools to open the notebook in the chat right-hand side panel.";
+
 export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "list_open",
 		description:
-			"List scratch notebooks open in the focused chat's right-hand side panel. " +
-			"Each notebook_id is the id to pass to runt / nteract MCP tools. " +
+			"List notebooks open in the focused chat's right-hand side panel. " +
+			DESKTOP_NOTEBOOK_PANEL_POLICY +
+			" Each notebook_id is the id to pass to notebooks_* cell, kernel, and save tools. " +
 			"Call this to see which notebooks are already open before creating another.",
 		inputSchema: { type: "object", properties: {}, additionalProperties: false },
 		annotations: { readOnlyHint: true },
@@ -195,12 +209,13 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "open",
 		description:
-			"Open a new recoverable scratch notebook in the focused chat's right-hand side panel " +
-			"and return its notebook_id (a bare UUID). Call this BEFORE any runt / nteract MCP " +
-			"commands (create/connect/edit cells). Pass the returned notebook_id unchanged to " +
-			"those tools — do not strip or rewrite it. If nteract connect fails immediately " +
-			"after open, retry with the same notebook_id (the panel iframe may still be " +
-			"finishing its create_notebook handshake).",
+			"Open a new notebook in the focused chat's right-hand side panel and return its " +
+			"notebook_id (a bare UUID). " +
+			DESKTOP_NOTEBOOK_PANEL_POLICY +
+			" Call this instead of notebooks_create_notebook or notebooks_show_notebook. " +
+			"After it returns, use notebooks_* tools only for cells, kernel, and save — pass the " +
+			"notebook_id unchanged. If connect fails immediately after open, retry with the same " +
+			"notebook_id (the panel iframe may still be finishing its handshake).",
 		inputSchema: { type: "object", properties: {}, additionalProperties: false },
 		exposeToModelContext: true,
 		handler: () => openNotebookInPanel(sdk),
@@ -210,9 +225,10 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "open_file",
 		description:
-			"Open an existing .ipynb file in the focused chat's right-hand notebook panel. " +
-			"Pass an absolute file path. Returns the daemon notebook_id to use unchanged with " +
-			"runt / nteract MCP commands. Reopening the same file focuses its existing tab.",
+			"Open an existing .ipynb file in the focused chat's right-hand side panel. " +
+			DESKTOP_NOTEBOOK_PANEL_POLICY +
+			" Pass an absolute file path. Returns the daemon notebook_id to use unchanged with " +
+			"notebooks_* cell, kernel, and save tools. Reopening the same file focuses its existing tab.",
 		inputSchema: z.toJSONSchema(openFileInput, { target: "draft-2020-12" }),
 		validate: openFileInput,
 		exposeToModelContext: true,

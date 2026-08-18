@@ -105,6 +105,22 @@ describe("notebook plugin webRegister", () => {
 		expect(tools.find((tool) => tool.name === "list_open")?.annotations?.readOnlyHint).toBe(true);
 	});
 
+	it("tells the model to open notebooks only in the chat side panel", () => {
+		const { system, notebookSdk } = makeSystem();
+		webRegister(notebookSdk);
+
+		const descriptions = system.services.toolRegistry
+			.all()
+			.map((tool) => tool.description)
+			.join("\n");
+
+		expect(descriptions).toMatch(/chat right-hand side panel/i);
+		expect(descriptions).toContain("notebooks_create_notebook");
+		expect(descriptions).toContain("notebooks_show_notebook");
+		expect(descriptions).toMatch(/external nteract/i);
+		expect(descriptions).toMatch(/never/i);
+	});
+
 	it("list_open returns notebooks for the focused session", async () => {
 		const { system, notebookSdk, panel } = makeSystem();
 		webRegister(notebookSdk);

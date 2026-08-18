@@ -20,9 +20,11 @@ import { SignInStep } from "./SignInStep.js";
 import { WorkspaceStep } from "./WorkspaceStep.js";
 
 /**
- * First-run overlay: Kilo sign-in, then create a workspace. Registered as a
- * kilo-ui provider (priority 5, inside Chat) so it can read Kilo auth and
- * workspace state without crossing plugin boundaries.
+ * First-run overlay: Kilo sign-in, then create a workspace. Shown until the
+ * user completes or skips. Skip is persisted, so the wizard never returns.
+ * Existing workspaces do not suppress a first showing. Registered as a kilo-ui
+ * provider (priority 5, inside Chat) so it can read Kilo auth without crossing
+ * plugin boundaries.
  */
 export function OnboardingProvider({ children }: { children: ReactNode }) {
 	const onboardingSdk = useSdk<OnboardingService>("kilo-ui");
@@ -42,9 +44,6 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
 	const view = resolveOnboarding({
 		state: persisted.data ?? null,
-		workspaceCount: workspaces.isLoading ? null : workspaces.workspaces.length,
-		workspacesLoading: workspaces.isLoading,
-		workspacesUnavailable: workspaces.isUnavailable,
 		connectionUnavailable: auth.connectionUnavailable,
 	});
 

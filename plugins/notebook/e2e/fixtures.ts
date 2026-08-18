@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { packagedAppLaunchEnv } from "@anaconda-agentic-desktop/e2e";
+import { packagedAppLaunchEnv, packagedExecutable } from "@anaconda-agentic-desktop/e2e";
 import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
 import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
@@ -34,13 +34,13 @@ export const test = shellTest.extend<{
 	notebookPage: async ({}, use) => {
 		await use(new NotebookPage());
 	},
-	restartableNotebookApp: async ({ electronApp }, use) => {
-		const executablePath = electronApp.process().spawnfile;
+	restartableNotebookApp: async ({ electronApp: _workerApp }, use) => {
 		const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), "aad-notebook-restart-"));
 		let app!: ElectronApplication;
 		const launch = async () => {
+			// Playwright's process().spawnfile is cmd.exe on Windows, not Electron.
 			app = await electron.launch({
-				executablePath,
+				executablePath: packagedExecutable(),
 				args: [`--user-data-dir=${userDataDirectory}`],
 				env: packagedAppLaunchEnv(),
 			});

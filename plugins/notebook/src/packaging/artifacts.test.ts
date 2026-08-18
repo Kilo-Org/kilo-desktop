@@ -13,9 +13,14 @@ import {
 } from "./artifacts.js";
 
 describe("notebook distribution artifacts", () => {
-	it("pins notebook UI source to nteract origin/main", () => {
+	it("pins every bundled nteract component to the same stable release", () => {
+		expect(NTERACT_RELEASE).toEqual({
+			tag: "v2.7.0-stable.202608172336",
+			commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
+			repository: "https://github.com/nteract/nteract.git",
+		});
 		expect(NTERACT_NOTEBOOK_SOURCE).toEqual({
-			tag: "main",
+			tag: NTERACT_RELEASE.tag,
 			commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
 			repository: "https://github.com/nteract/nteract.git",
 		});
@@ -62,7 +67,7 @@ describe("notebook distribution artifacts", () => {
 	});
 
 	it("selects runtimed by platform and rejects unsupported targets", () => {
-		expect(getRuntimedArtifact("win32", "x64").executable).toBe("runtimed-nightly.exe");
+		expect(getRuntimedArtifact("win32", "x64").executable).toBe("runtimed.exe");
 		expect(findRuntimedArtifact("linux", "arm64")).toBeUndefined();
 		expect(() => getRuntimedArtifact("linux", "arm64")).toThrow(
 			/runtimed is not configured for linux\/arm64/,

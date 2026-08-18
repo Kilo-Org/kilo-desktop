@@ -30,8 +30,8 @@ describe("createNotebookResolveAsset", () => {
 			isPackaged: true,
 			packagedResourcesPath: "/Apps/Agentic.app/Contents/Resources",
 		});
-		expect(resolveAsset("resources/runtimed/darwin-arm64/runtimed-nightly")).toBe(
-			path.join("/Apps/Agentic.app/Contents/Resources", "runtimed/darwin-arm64/runtimed-nightly"),
+		expect(resolveAsset("resources/runtimed/darwin-arm64/runtimed")).toBe(
+			path.join("/Apps/Agentic.app/Contents/Resources", "runtimed/darwin-arm64/runtimed"),
 		);
 	});
 

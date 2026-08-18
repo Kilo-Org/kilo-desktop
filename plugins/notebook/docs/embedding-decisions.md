@@ -148,7 +148,7 @@ Kilo renders a closeable unavailable state until the contribution returns.
 ## D8. Kilo uses nteract-mcp as the notebook MCP boundary
 
 Chosen: package `nteract-mcp` beside its matching `runt` executable and configure Kilo to launch
-the proxy with `NTERACT_CHANNEL=nightly`. The proxy supervises `runt mcp`, recovers from child or
+the proxy with `NTERACT_CHANNEL=stable`. The proxy supervises `runt mcp`, recovers from child or
 daemon upgrades, and forwards MCP tool-list changes. It does not replace `runtimed`; both agent and
 UI paths still converge on the shared singleton.
 

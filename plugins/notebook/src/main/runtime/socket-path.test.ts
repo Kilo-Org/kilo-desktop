@@ -30,20 +30,20 @@ describe("resolveDaemonSocketPath", () => {
 		expect(socketPath).not.toContain("worktrees");
 	});
 
-	it("uses the nightly installed singleton by default for the demo", () => {
-		expect(resolveDaemonSocketPath({ env: {}, ...MAC })).toContain("/runt-nightly/");
+	it("uses the stable channel-level singleton by default", () => {
+		expect(resolveDaemonSocketPath({ env: {}, ...MAC })).toContain("/runt/");
 	});
 
 	it("ignores RUNTIMED_CACHE_NAMESPACE, which the daemon itself does not read", () => {
 		// Honoring it would point us at a socket the daemon never binds.
 		const env: Record<string, string> = { RUNTIMED_CACHE_NAMESPACE: "custom-ns" };
-		expect(resolveDaemonSocketPath({ env, ...MAC })).toContain("/runt-nightly/");
+		expect(resolveDaemonSocketPath({ env, ...MAC })).toContain("/runt/");
 	});
 
 	it("ignores ambient worktree variables and uses the installed singleton", () => {
 		const env = { RUNTIMED_DEV: "1", RUNTIMED_WORKSPACE_PATH: "/Users/mm/p/nteract" };
 		expect(resolveDaemonSocketPath({ env, ...MAC })).toBe(
-			"/Users/mm/Library/Caches/runt-nightly/runtimed.sock",
+			"/Users/mm/Library/Caches/runt/runtimed.sock",
 		);
 	});
 
@@ -69,11 +69,9 @@ describe("resolveDaemonSocketPath", () => {
 		expect(socketPath).not.toContain("Caches");
 	});
 
-	it("names the Windows pipe from the daemon binary, not the cache namespace", () => {
-		// The pipe is `runtimed-nightly`, never `runt-nightly` — these are
-		// separate axes upstream and conflating them silently misses the daemon.
+	it("names the default Windows pipe from the stable daemon binary", () => {
 		const socketPath = resolveDaemonSocketPath({ env: {}, ...WIN });
-		expect(socketPath).toBe("\\\\.\\pipe\\runtimed-nightly");
+		expect(socketPath).toBe("\\\\.\\pipe\\runtimed");
 	});
 
 	it("uses LOCALAPPDATA for the Windows cache dir when a socket path is derived", () => {

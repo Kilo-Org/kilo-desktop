@@ -218,7 +218,7 @@ export class ElectronNotebookHostService {
 		this.#mainSdk = options.mainSdk;
 		this.#socketPath =
 			options.socketPath ??
-			resolveDaemonSocketPath({ channel: options.runtimeChannel ?? "nightly" });
+			resolveDaemonSocketPath({ channel: options.runtimeChannel ?? "stable" });
 		const createDaemonManager =
 			options.createDaemonManager ??
 			((managerOptions) => new RuntimedDaemonManager(managerOptions));

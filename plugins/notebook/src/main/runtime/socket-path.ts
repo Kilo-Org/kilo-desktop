@@ -62,7 +62,7 @@ export function resolveDaemonSocketPath(options: ResolveSocketPathOptions = {}):
 	const override = env.RUNTIMED_SOCKET_PATH?.trim();
 	if (override) return override;
 
-	const channel = options.channel ?? "nightly";
+	const channel = options.channel ?? "stable";
 
 	if (platform === "win32") {
 		return `\\\\.\\pipe\\${daemonBinaryBasename(channel)}`;

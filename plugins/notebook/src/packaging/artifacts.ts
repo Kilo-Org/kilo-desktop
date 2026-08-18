@@ -1,14 +1,14 @@
 /** Pinned release used for the staged notebook runtime executables. */
 export const NTERACT_RELEASE = {
-	tag: "v2.6.3-nightly.202608112303",
-	commit: "6261fa1fc8814edb759b43fbc1ac24ce8edfb297",
+	tag: "v2.7.0-stable.202608172336",
+	commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 
 /** Source pin for the staged notebook UI. */
 export const NTERACT_NOTEBOOK_SOURCE = {
-	tag: "main",
-	commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
+	tag: NTERACT_RELEASE.tag,
+	commit: NTERACT_RELEASE.commit,
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 
@@ -49,21 +49,21 @@ export interface NteractMcpArtifact {
 }
 
 const DARWIN_ARM64_APP = {
-	assetName: "nteract-nightly-darwin-arm64.app.tar.gz",
-	bytes: 38_074_679,
-	sha256: "65ef1d1f3d9237f6fe63edcaec11fdf9917d15b3a66f95005de5c1506118d371",
+	assetName: "nteract-stable-darwin-arm64.app.tar.gz",
+	bytes: 37_323_740,
+	sha256: "8ed40d51471a4e22869195329c46d0e891d0bbc0ac01b51dd23491f7b067c621",
 } as const satisfies ReleaseAsset;
 
 const DARWIN_X64_APP = {
-	assetName: "nteract-nightly-darwin-x64.app.tar.gz",
-	bytes: 38_306_987,
-	sha256: "2fd63f511e007adb5afaabd2e7a254e84f44fddf8e8ba19602853991d628654b",
+	assetName: "nteract-stable-darwin-x64.app.tar.gz",
+	bytes: 37_557_516,
+	sha256: "8e1e7d6e3445792355ec58614a8311b0a5af7c81b887ca2e105e75c024b06ea5",
 } as const satisfies ReleaseAsset;
 
 const WINDOWS_X64_INSTALLER = {
-	assetName: "nteract-nightly-windows-x64.exe",
-	bytes: 27_598_240,
-	sha256: "8d7947596d11fef1e4360e7e5ee956121c3f8085392fd3daf5cd0234662e7074",
+	assetName: "nteract-stable-windows-x64.exe",
+	bytes: 27_497_600,
+	sha256: "d6eb760da4b01553ee597fa1da3fe00f16115bf6d1ee5cab759afb73be15187d",
 } as const satisfies ReleaseAsset;
 
 /**
@@ -78,22 +78,22 @@ export const NTERACT_MCP_ARTIFACTS = [
 		arch: "arm64",
 		nteractMcp: {
 			executable: "nteract-mcp",
-			bytes: 3_465_088,
-			sha256: "2604347bf1566b16d83ab1f470a9e1a3b7cd003b2eb9f0a5470ce6901bb42867",
+			bytes: 3_466_432,
+			sha256: "d23a5d0aaf03191debac173e06e982a5c73e87df208a53323c62b5e7ff73b16a",
 			source: DARWIN_ARM64_APP,
 			extraction: {
 				kind: "tar-gz",
-				entryPath: "nteract Nightly.app/Contents/MacOS/nteract-mcp",
+				entryPath: "nteract.app/Contents/MacOS/nteract-mcp",
 			},
 		},
 		runt: {
-			executable: "runt-nightly",
-			bytes: 17_749_184,
-			sha256: "dc3f70d36cd29245ee9f4411e51feb9e43057d5dc51f4ffd085dad492ab3883b",
+			executable: "runt",
+			bytes: 17_747_264,
+			sha256: "5fd2a411a62b743a17050dd3dcc2f9c7edeaf8c83a913d141bd477e52481ed17",
 			source: DARWIN_ARM64_APP,
 			extraction: {
 				kind: "tar-gz",
-				entryPath: "nteract Nightly.app/Contents/MacOS/runt",
+				entryPath: "nteract.app/Contents/MacOS/runt",
 			},
 		},
 	},
@@ -103,22 +103,22 @@ export const NTERACT_MCP_ARTIFACTS = [
 		arch: "x64",
 		nteractMcp: {
 			executable: "nteract-mcp",
-			bytes: 3_566_816,
-			sha256: "48350e915ba736aec002710b81e7cae70403cdc6e0e4fbd7bae25d6ce39a90ea",
+			bytes: 3_566_192,
+			sha256: "bc666238799f181d41f1f79462e878a31af90e60e3c8b7e67b5c50887d0addb6",
 			source: DARWIN_X64_APP,
 			extraction: {
 				kind: "tar-gz",
-				entryPath: "nteract Nightly.app/Contents/MacOS/nteract-mcp",
+				entryPath: "nteract.app/Contents/MacOS/nteract-mcp",
 			},
 		},
 		runt: {
-			executable: "runt-nightly",
-			bytes: 19_313_744,
-			sha256: "f0aff98088e426635452a98b2156800e0edb636c4c621a15b4cc1be305e0d08b",
+			executable: "runt",
+			bytes: 19_305_776,
+			sha256: "0ab488cb409333df2c43bf74986f9b0a2d6c89de5175bf06f241381255c8e01c",
 			source: DARWIN_X64_APP,
 			extraction: {
 				kind: "tar-gz",
-				entryPath: "nteract Nightly.app/Contents/MacOS/runt",
+				entryPath: "nteract.app/Contents/MacOS/runt",
 			},
 		},
 	},
@@ -128,23 +128,23 @@ export const NTERACT_MCP_ARTIFACTS = [
 		arch: "x64",
 		nteractMcp: {
 			executable: "nteract-mcp",
-			bytes: 4_072_040,
-			sha256: "1fabe31b7e7ff6afcefd8a1ad0d445acf7d070a186ce66ae71e6586fd2cae820",
+			bytes: 4_072_440,
+			sha256: "2c03fbd26490cf76ebae4d0234dcdd201ba6db1a03ea56cf2cbea5d9614771a9",
 			source: {
-				assetName: "nteract-mcp-nightly-linux-x64",
-				bytes: 4_072_040,
-				sha256: "1fabe31b7e7ff6afcefd8a1ad0d445acf7d070a186ce66ae71e6586fd2cae820",
+				assetName: "nteract-mcp-linux-x64",
+				bytes: 4_072_440,
+				sha256: "2c03fbd26490cf76ebae4d0234dcdd201ba6db1a03ea56cf2cbea5d9614771a9",
 			},
 			extraction: { kind: "direct" },
 		},
 		runt: {
-			executable: "runt-nightly",
-			bytes: 20_997_688,
-			sha256: "379a9caf5cc34617fff3bbc07dc4c532758857d82592c28176796166871436f9",
+			executable: "runt",
+			bytes: 20_970_688,
+			sha256: "f0fe32653248c4897bb3d0e61a20ca41555fbd4170feabe3cf080fd87167c4df",
 			source: {
-				assetName: "runt-nightly-linux-x64",
-				bytes: 20_997_688,
-				sha256: "379a9caf5cc34617fff3bbc07dc4c532758857d82592c28176796166871436f9",
+				assetName: "runt-linux-x64",
+				bytes: 20_970_688,
+				sha256: "f0fe32653248c4897bb3d0e61a20ca41555fbd4170feabe3cf080fd87167c4df",
 			},
 			extraction: { kind: "direct" },
 		},
@@ -155,15 +155,15 @@ export const NTERACT_MCP_ARTIFACTS = [
 		arch: "x64",
 		nteractMcp: {
 			executable: "nteract-mcp.exe",
-			bytes: 3_370_848,
-			sha256: "2dcc6ab92135d8de1bbcb79d45e4697f4c476a97e60314059cba69dc311d339a",
+			bytes: 3_366_752,
+			sha256: "36492965adf53fe70ab841aa7aace3c8e249fff93286fea24ea6943aeb0e96cb",
 			source: WINDOWS_X64_INSTALLER,
 			extraction: { kind: "nsis", entryPath: "nteract-mcp.exe" },
 		},
 		runt: {
-			executable: "runt-nightly.exe",
-			bytes: 19_770_720,
-			sha256: "ff09cd4583a7011489f5059274f1d47447860c43924cc19c53cf459c14b24b47",
+			executable: "runt.exe",
+			bytes: 19_807_584,
+			sha256: "ea381d8cafdcb8e9d66dfca436c1628f23c622be4714dfa1d5e7f18c821294f7",
 			source: WINDOWS_X64_INSTALLER,
 			extraction: { kind: "nsis", entryPath: "runt.exe" },
 		},
@@ -179,37 +179,37 @@ export const RUNTIMED_ARTIFACTS = [
 		target: "darwin-arm64",
 		platform: "darwin",
 		arch: "arm64",
-		assetName: "runtimed-nightly-darwin-arm64",
-		executable: "runtimed-nightly",
-		bytes: 38_087_488,
-		sha256: "be0cbf7f4e320772711f0b7054430bfa3e1d40de4ef413f56d5baef30024deb1",
+		assetName: "runtimed-darwin-arm64",
+		executable: "runtimed",
+		bytes: 38_135_648,
+		sha256: "b89cb5e1bf6a0ef6a1c01056a058417a23e85b9bc0fe9a0bbb4bd94a8421b4d2",
 	},
 	{
 		target: "darwin-x64",
 		platform: "darwin",
 		arch: "x64",
-		assetName: "runtimed-nightly-darwin-x64",
-		executable: "runtimed-nightly",
-		bytes: 40_455_920,
-		sha256: "350f930303d7405113650b4d203be50408b1d2c89e4db57442ffa1f7ae1e0cda",
+		assetName: "runtimed-darwin-x64",
+		executable: "runtimed",
+		bytes: 40_522_416,
+		sha256: "91844bf000253bff4ac2fda540556b8836ac5e9200f07f11bdf8c86f90514a67",
 	},
 	{
 		target: "linux-x64",
 		platform: "linux",
 		arch: "x64",
-		assetName: "runtimed-nightly-linux-x64",
-		executable: "runtimed-nightly",
-		bytes: 41_881_040,
-		sha256: "b37c0a1188edf5d2f9fba83b8e5ac9f26c75bdfae9258225b8e8d9285b9c19ac",
+		assetName: "runtimed-linux-x64",
+		executable: "runtimed",
+		bytes: 41_957_656,
+		sha256: "6a68308bfc3f0de3fb240e1a9575d8b7fc8039b78374e7af3b1a3000f86b8a06",
 	},
 	{
 		target: "win32-x64",
 		platform: "win32",
 		arch: "x64",
-		assetName: "runtimed-nightly-windows-x64.exe",
-		executable: "runtimed-nightly.exe",
-		bytes: 40_601_440,
-		sha256: "5f2fac4a194eafeb55aefdbb0b2707a749afaa6f9c8ee80830ca268cebb97d93",
+		assetName: "runtimed-windows-x64.exe",
+		executable: "runtimed.exe",
+		bytes: 40_771_936,
+		sha256: "13a45ed599a1870bb1f7c41cedd0c5ccc5226ee8e6c21e3135c91e614e134c36",
 	},
 ] as const satisfies readonly NativeReleaseArtifact[];
 

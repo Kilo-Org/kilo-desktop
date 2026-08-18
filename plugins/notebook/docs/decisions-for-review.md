@@ -13,12 +13,6 @@ host requires. Compatibility must be based on the wire contract, not an exact so
 missing required capability should disable only the affected feature and leave the user's running
 singleton untouched.
 
-### Default channel for beta
-
-The integration currently targets the nightly singleton for the demo and accepts an explicit
-development socket override. Decide when the internal beta changes its default to stable. This is a
-distribution decision; it must not introduce daemon ownership into the plugin.
-
 ## Before promoting the Agentic Desktop PR
 
 ### Packaged application proof
@@ -47,6 +41,8 @@ MessagePort exclusively.
 
 ## Decisions already closed
 
+- Bundle the `runtimed`, `runt`, `nteract-mcp`, and notebook UI artifacts from nteract 2.7.0 stable
+  and use its stable singleton socket by default. Nightly is an explicit development opt-in only.
 - Depend on the exact registry release `@runtimed/node@0.5.0`; do not vendor, source-build, or use a
   Git dependency for the Electron adapter.
 - Reuse a compatible running singleton; only start the bundled daemon when the canonical endpoint

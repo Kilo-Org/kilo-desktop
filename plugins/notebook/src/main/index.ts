@@ -46,7 +46,7 @@ const connectionArgsSchema = z.object({
 
 export interface NotebookFeatureOptions {
 	readonly socketPath?: string;
-	/** Selects the user-owned singleton. Defaults to nightly until the stable release includes the adapter. */
+	/** Selects the user-owned singleton. Defaults to the stable channel. */
 	readonly runtimeChannel?: BuildChannel;
 	readonly resolveBundleRoot?: () => string | undefined;
 	readonly resolveNteractMcpBinary?: () => string | undefined;
@@ -77,7 +77,7 @@ export async function mainRegister(
 	mainSdk: MainSdk,
 	options: NotebookFeatureOptions = {},
 ): Promise<void> {
-	const runtimeChannel = options.runtimeChannel ?? "nightly";
+	const runtimeChannel = options.runtimeChannel ?? "stable";
 	const createHostService =
 		options.createHostService ??
 		((serviceOptions) => new ElectronNotebookHostService(serviceOptions));

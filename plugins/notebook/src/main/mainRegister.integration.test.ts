@@ -8,6 +8,7 @@ import {
 } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { mainRegister, type ElectronNotebookHostServiceLike } from "./index.js";
+import type { ElectronNotebookHostServiceOptions } from "./runtime/ElectronNotebookHostService.js";
 
 function fakePort(): HostMessagePort {
 	return {
@@ -47,11 +48,15 @@ async function boot() {
 		connect: vi.fn(async () => undefined),
 		dispose: vi.fn(async () => undefined),
 	} satisfies ElectronNotebookHostServiceLike;
+	let hostServiceOptions: ElectronNotebookHostServiceOptions | undefined;
 	await mainRegister(mainSdk, {
 		resolveBundleRoot: () => "/plugins/notebook/build/notebook",
-		createHostService: () => hostService,
+		createHostService: (options) => {
+			hostServiceOptions = options;
+			return hostService;
+		},
 	});
-	return { hostService, mainSdk, router };
+	return { hostService, hostServiceOptions, mainSdk, router };
 }
 
 describe("notebook mainRegister", () => {
@@ -59,6 +64,12 @@ describe("notebook mainRegister", () => {
 		const { hostService } = await boot();
 
 		expect(hostService.start).toHaveBeenCalledOnce();
+	});
+
+	it("defaults every runtime consumer to the stable singleton", async () => {
+		const { hostServiceOptions } = await boot();
+
+		expect(hostServiceOptions?.runtimeChannel).toBe("stable");
 	});
 
 	it("reports the external singleton through the typed status channel", async () => {

@@ -242,7 +242,10 @@ const config: ForgeConfig = {
 			// dependencies remain inside the integrity-checked ASAR. The WebMCP
 			// relay is staged as an extra-resource (`resources/webmcp-relay`)
 			// instead of unpacking the long plugin-kilo-server path.
-			unpack: `{**/node_modules/{${asarUnpackPackages.join(",")}}/**}`,
+			// Keep this a single-level brace list. Wrapping it in another `{…}`
+			// makes @electron/asar match nothing, so signed builds die on
+			// `require("@runtimed/node")` with the .node still inside app.asar.
+			unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`,
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",

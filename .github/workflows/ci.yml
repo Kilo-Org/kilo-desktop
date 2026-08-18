@@ -81,7 +81,7 @@ jobs:
   e2e-pr:
     if: github.event_name == 'pull_request'
     needs: notebook-ui
-    runs-on: windows-latest
+    runs-on: WinLatest-x64-8vCPU-32GB
     timeout-minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
@@ -107,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, WinLatest-x64-8vCPU-32GB]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     concurrency:

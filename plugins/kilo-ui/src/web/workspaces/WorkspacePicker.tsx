@@ -138,7 +138,7 @@ export function WorkspacePickerRoot({
 					side="bottom"
 					sideOffset={6}
 					collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-					className="w-64 gap-0 p-0"
+					className="w-max min-w-64 gap-0 p-0"
 					onKeyDown={(event) => {
 						if (event.key === "Escape") setOpen(false);
 					}}
@@ -263,7 +263,7 @@ export function WorkspacePickerRoot({
 								data-checked={isUnscoped}
 							>
 								<FolderXIcon />
-								<span className="min-w-0 flex-1 truncate">Don't work in a workspace</span>
+								<span className="whitespace-nowrap">Don't work in a workspace</span>
 								{isUnscoped ? (
 									<span className="flex size-6 shrink-0 items-center justify-center">
 										<CheckIcon className="size-3.5" />

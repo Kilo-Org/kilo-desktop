@@ -124,4 +124,55 @@ describe("packaged production dependencies", () => {
 		expect(build).toContain("./plugins/notebook/actions/setup-native");
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");
 	});
+
+	it("persists Electron native rebuilds in a workspace cache Forge can reuse", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toContain("useCache: true");
+		expect(forge).toContain('.electron-rebuild-cache"');
+	});
+
+	it("restores the Electron rebuild cache on every packaging host", () => {
+		const cacheElectronRebuild = readFileSync(
+			path.join(workspaceRoot, ".github/actions/cache-electron-rebuild/action.yml"),
+			"utf8",
+		);
+		const runE2e = readFileSync(
+			path.join(workspaceRoot, ".github/actions/run-e2e/action.yml"),
+			"utf8",
+		);
+		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
+		const publish = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+			"utf8",
+		);
+		expect(cacheElectronRebuild).toContain("apps/desktop/.electron-rebuild-cache");
+		expect(cacheElectronRebuild).toContain("runner.os");
+		expect(cacheElectronRebuild).toContain("pnpm-lock.yaml");
+		expect(cacheElectronRebuild).toContain("pnpm-workspace.yaml");
+		expect(runE2e).toContain("./.github/actions/cache-electron-rebuild");
+		expect(build).toContain("./.github/actions/cache-electron-rebuild");
+		expect(publish).toContain("./.github/actions/cache-electron-rebuild");
+	});
+
+	it("caches the Kilo CLI the same way notebook binaries are cached", () => {
+		const setupCli = readFileSync(
+			path.join(workspaceRoot, "plugins/kilo-server/actions/setup-cli/action.yml"),
+			"utf8",
+		);
+		const runE2e = readFileSync(
+			path.join(workspaceRoot, ".github/actions/run-e2e/action.yml"),
+			"utf8",
+		);
+		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
+		const publish = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+			"utf8",
+		);
+		expect(setupCli).toContain("plugins/kilo-server/resources/kilo");
+		expect(setupCli).toContain("runner.os");
+		expect(setupCli).toContain("plugins/kilo-server/src/main/cli-distribution/artifacts.ts");
+		expect(runE2e).toContain("./plugins/kilo-server/actions/setup-cli");
+		expect(build).toContain("./plugins/kilo-server/actions/setup-cli");
+		expect(publish).toContain("./plugins/kilo-server/actions/setup-cli");
+	});
 });

@@ -254,7 +254,14 @@ const config: ForgeConfig = {
 		...(osxNotarize ? { osxNotarize } : {}),
 		...(windowsPlan.packager ? { windowsSign: windowsPlan.packager } : {}),
 	},
-	rebuildConfig: {},
+	rebuildConfig: {
+		// Hash-based cache of compiled native addons (better-sqlite3, keytar,
+		// @runtimed/node). Default is off and, when on, lives in $HOME — which
+		// CI does not persist. Keep the cache in-tree so packaging hosts can
+		// restore it with actions/cache.
+		useCache: true,
+		cachePath: path.join(packageRoot, ".electron-rebuild-cache"),
+	},
 	makers: [
 		{
 			name: "@electron-forge/maker-dmg",

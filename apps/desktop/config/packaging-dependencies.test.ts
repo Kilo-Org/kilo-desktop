@@ -14,24 +14,34 @@ describe("packaged production dependencies", () => {
 	};
 	const dependencies = manifest.dependencies ?? {};
 	const devDependencies = manifest.devDependencies ?? {};
-	const runtimedNodeLink =
-		"link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node";
 
 	it("declares ws on desktop so the Vite-external main import resolves after pnpm deploy", () => {
 		expect(dependencies.ws).toEqual(expect.stringMatching(/\S/));
 	});
 
-	it("keeps generated @runtimed/node out of production dependencies so frozen pnpm deploy can resolve the lockfile", () => {
-		expect(dependencies["@runtimed/node"]).toBeUndefined();
+	it("installs the published @runtimed/node package in production", () => {
+		expect(dependencies["@runtimed/node"]).toBe("0.5.0");
 	});
 
-	it("declares @runtimed/node as a desktop devDependency so electron-forge start can resolve the Vite-external native import", () => {
-		expect(devDependencies["@runtimed/node"]).toBe(runtimedNodeLink);
+	it("does not shadow the production @runtimed/node package with a development link", () => {
+		expect(devDependencies["@runtimed/node"]).toBeUndefined();
 	});
 
-	it("recopies generated @runtimed/node after the lockfile-backed production deploy", () => {
+	it("lets the lockfile-backed production deploy stage @runtimed/node", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		expect(forge).toContain('packageName: "@runtimed/node"');
+		expect(forge).not.toContain('packageName: "@runtimed/node"');
+		expect(forge).not.toContain("packages/runtimed-node");
+	});
+
+	it("uses the published package for notebook development and peer compatibility", () => {
+		const notebookManifest = JSON.parse(
+			readFileSync(path.join(workspaceRoot, "plugins/notebook/package.json"), "utf8"),
+		) as {
+			peerDependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
+		};
+		expect(notebookManifest.peerDependencies?.["@runtimed/node"]).toBe("0.5.0");
+		expect(notebookManifest.devDependencies?.["@runtimed/node"]).toBe("0.5.0");
 	});
 
 	it("keeps the WebMCP relay out of the desktop dependency graph", () => {
@@ -75,9 +85,13 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).toMatch(/--filter\s+"@anaconda-agentic-desktop\/plugin-\*"/);
 	});
 
-	it("installs Rust 1.94.0 on packaging hosts so @runtimed/node can be built after the UI artifact lands", () => {
+	it("does not prepare a source-built @runtimed/node on packaging hosts", () => {
 		const setupNative = readFileSync(
 			path.join(workspaceRoot, "plugins/notebook/actions/setup-native/action.yml"),
+			"utf8",
+		);
+		const buildUi = readFileSync(
+			path.join(workspaceRoot, "plugins/notebook/actions/build-ui/action.yml"),
 			"utf8",
 		);
 		const runE2e = readFileSync(
@@ -89,7 +103,11 @@ describe("packaged production dependencies", () => {
 			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
 			"utf8",
 		);
-		expect(setupNative).toContain("1.94.0");
+		expect(setupNative).not.toContain("runtimed-node");
+		expect(setupNative).not.toContain("1.94.0");
+		expect(buildUi).toContain("1.94.0");
+		expect(buildUi).not.toContain("./plugins/notebook/actions/setup-native");
+		expect(buildUi).not.toContain("NOTEBOOK_SKIP_NATIVE_BINDING");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("./plugins/notebook/actions/setup-native");
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");

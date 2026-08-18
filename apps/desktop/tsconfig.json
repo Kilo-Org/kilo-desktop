@@ -4,9 +4,7 @@
 		"noEmit": true,
 		"types": ["node", "vitest/globals"],
 		"paths": {
-			"$config/*": ["./config/*"],
-			"@runtimed/node/electron": ["../../plugins/notebook/types/runtimed-node/electron.ts"],
-			"@runtimed/node/relay": ["../../plugins/notebook/types/runtimed-node/relay.ts"]
+			"$config/*": ["./config/*"]
 		}
 	},
 	"include": [

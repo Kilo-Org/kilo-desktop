@@ -6,12 +6,6 @@ This page contains only decisions that still need an owner or release confirmati
 
 ## Before merging the nteract dependency
 
-### Stable package version
-
-Confirm the stable nteract release containing `@runtimed/node/electron`. Agentic Desktop should
-depend on that registry version and commit the normally generated lockfile. Do not vendor a local
-tarball or add a Git dependency as a release workaround.
-
 ### Supported daemon protocol
 
 Record the minimum supported runtimed protocol number and any semantic capabilities the notebook
@@ -53,6 +47,8 @@ MessagePort exclusively.
 
 ## Decisions already closed
 
+- Depend on the exact registry release `@runtimed/node@0.5.0`; do not vendor, source-build, or use a
+  Git dependency for the Electron adapter.
 - Reuse a compatible running singleton; only start the bundled daemon when the canonical endpoint
   is idle.
 - Use protocol numbers and semantic capabilities, not commit equality.

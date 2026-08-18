@@ -19,10 +19,6 @@ import { NTERACT_NOTEBOOK_SOURCE } from "./artifacts.js";
 
 export const NOTEBOOK_BUILD_MANIFEST = "agentic-notebook-build.json";
 export const NTERACT_LICENSE_FILE = "LICENSE.nteract";
-export const RUNTIMED_NODE_PACKAGE = "packages/runtimed-node";
-const RUNTIMED_NODE_BINDING_JS = "binding.cjs";
-const RUNTIMED_NODE_BINDING_DTS = "binding.d.ts";
-const RUNTIMED_NODE_BINDING_RE = /^runtimed-node\..+\.node$/;
 
 /** Marker on the style tag we inject into staged `index.html`. */
 export const AGENTIC_EMBED_CHROME_STYLE_ATTR = "data-agentic-embed-chrome";
@@ -66,8 +62,6 @@ export interface BuildNotebookUiOptions {
 	readonly cacheDirectory: string;
 	readonly destinationDirectory: string;
 	readonly run?: CommandRunner;
-	/** CI UI jobs only need the staged SPA; skip the host-local napi compile. */
-	readonly skipNativeBinding?: boolean;
 }
 
 export interface BuildNotebookUiResult {
@@ -291,41 +285,6 @@ async function currentBundleIsValid(destinationDirectory: string): Promise<boole
 }
 
 /**
- * `@runtimed/node` is linked to this checkout. Electron loads `relay.cjs` at
- * boot, which requires the napi-generated `binding.cjs` + `.node` files that
- * `git clone` never contains.
- */
-async function validateRuntimedNodeBinding(packageDirectory: string): Promise<void> {
-	const src = path.join(packageDirectory, "src");
-	for (const file of [RUNTIMED_NODE_BINDING_JS, RUNTIMED_NODE_BINDING_DTS]) {
-		const filePath = path.join(src, file);
-		try {
-			if ((await stat(filePath)).isFile()) continue;
-		} catch {
-			// Missing or unreadable; report the same recovery path.
-		}
-		throw new Error(
-			`@runtimed/node is missing src/${file}. Run the notebook plugin's prepare-assets script.`,
-		);
-	}
-	const entries = await readdir(src);
-	if (!entries.some((name) => RUNTIMED_NODE_BINDING_RE.test(name))) {
-		throw new Error(
-			"@runtimed/node is missing its native .node binding. Run the notebook plugin's prepare-assets script.",
-		);
-	}
-}
-
-async function currentRuntimedNodeBindingIsValid(packageDirectory: string): Promise<boolean> {
-	try {
-		await validateRuntimedNodeBinding(packageDirectory);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-/**
  * When a prior stage is otherwise sound but missing or outdated embed-chrome
  * CSS, refresh and re-hash `index.html` only — avoid a full upstream rebuild
  * for a style tag.
@@ -426,15 +385,11 @@ export async function buildNotebookUi(
 	options: BuildNotebookUiOptions,
 ): Promise<BuildNotebookUiResult> {
 	const checkoutDirectory = path.join(options.cacheDirectory, "nteract");
-	const runtimedNodeDirectory = path.join(checkoutDirectory, RUNTIMED_NODE_PACKAGE);
 	const uiIsCurrent = await currentBundleIsValid(options.destinationDirectory);
 	let uiPatched = false;
 	if (!uiIsCurrent) uiPatched = await tryPatchEmbedChrome(options.destinationDirectory);
 	const uiReady = uiIsCurrent || uiPatched;
-	const skipNativeBinding = options.skipNativeBinding === true;
-	const bindingIsCurrent =
-		skipNativeBinding || (await currentRuntimedNodeBindingIsValid(runtimedNodeDirectory));
-	if (uiReady && bindingIsCurrent) {
+	if (uiReady) {
 		return {
 			built: uiPatched,
 			checkoutDirectory,
@@ -442,7 +397,6 @@ export async function buildNotebookUi(
 		};
 	}
 
-	const needsUiRebuild = !uiReady;
 	const run = options.run ?? defaultRun;
 	await requireVersion(
 		run,
@@ -465,25 +419,16 @@ export async function buildNotebookUi(
 		/cargo 1\.94\.0\b/,
 		"Install Rust 1.94.0 to build the notebook UI",
 	);
-	if (needsUiRebuild) {
-		await requireVersion(
-			run,
-			"wasm-pack",
-			["--version"],
-			/wasm-pack 0\.15\.0\b/,
-			"Install wasm-pack 0.15.0 to build the notebook UI",
-		);
-		await requireWasmClang(run, options.cacheDirectory);
-	}
+	await requireVersion(
+		run,
+		"wasm-pack",
+		["--version"],
+		/wasm-pack 0\.15\.0\b/,
+		"Install wasm-pack 0.15.0 to build the notebook UI",
+	);
+	await requireWasmClang(run, options.cacheDirectory);
 	await checkoutPinnedSource(checkoutDirectory, options.cacheDirectory, run);
 	await run("pnpm", ["install", "--frozen-lockfile"], { cwd: checkoutDirectory });
-	if (!skipNativeBinding && !(await currentRuntimedNodeBindingIsValid(runtimedNodeDirectory))) {
-		await run("pnpm", ["--dir", RUNTIMED_NODE_PACKAGE, "build"], { cwd: checkoutDirectory });
-		await validateRuntimedNodeBinding(runtimedNodeDirectory);
-	}
-	if (!needsUiRebuild) {
-		return { built: true, checkoutDirectory, destinationDirectory: options.destinationDirectory };
-	}
 
 	await run("cargo", ["xtask", "artifacts", "ensure", "runtime,sift,renderer"], {
 		cwd: checkoutDirectory,

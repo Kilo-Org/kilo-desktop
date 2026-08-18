@@ -9,14 +9,9 @@ import { defineConfig } from "vitest/config";
 import { createCoverageConfig } from "../../vitest.coverage.shared.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const runtimedNodeAlias = {
-	"@runtimed/node/electron": path.join(root, "types/runtimed-node/electron.ts"),
-	"@runtimed/node/relay": path.join(root, "types/runtimed-node/relay.ts"),
-};
 
 export default defineConfig({
 	cacheDir: path.join(root, ".vitest/cache"),
-	resolve: { alias: runtimedNodeAlias },
 	test: {
 		coverage: {
 			...createCoverageConfig([
@@ -36,7 +31,6 @@ export default defineConfig({
 		},
 		projects: [
 			{
-				resolve: { alias: runtimedNodeAlias },
 				test: {
 					name: "unit",
 					include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
@@ -45,7 +39,6 @@ export default defineConfig({
 				},
 			},
 			{
-				resolve: { alias: runtimedNodeAlias },
 				test: {
 					name: "integration",
 					include: ["src/main/**/*.integration.test.ts"],

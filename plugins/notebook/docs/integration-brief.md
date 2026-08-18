@@ -64,14 +64,13 @@ Electron port and retain runtimed's negotiated protocol number.
 - Missing, failed, or incompatible runtimed fails closed with a retryable status. There is no
   transport fallback to a listening WebSocket.
 
-## Release order
+## Release verification
 
-1. Merge the nteract Electron host and publish the stable `@runtimed/node` version containing
-   `@runtimed/node/electron`.
-2. Resolve that published version in Agentic Desktop and commit the generated lockfile.
-3. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
+1. Keep Agentic Desktop pinned to the published `@runtimed/node@0.5.0` package containing
+   `@runtimed/node/electron` and its platform-native optional dependencies.
+2. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
    against an already-running compatible singleton.
-4. Verify execution, Save, Save As, reopen, reconnect, concurrent attachment, and isolated rich
+3. Verify execution, Save, Save As, reopen, reconnect, concurrent attachment, and isolated rich
    output before promoting the plugin from draft.
 
 ## Current limitations

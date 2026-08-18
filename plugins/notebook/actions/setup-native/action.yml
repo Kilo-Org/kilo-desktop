@@ -1,18 +1,11 @@
-name: Setup notebook native toolchain
+name: Cache notebook native resources
 description: >
-  Restore cached notebook native assets, then install Rust 1.94.0 so
-  prepare-assets can build the host-local @runtimed/node napi binding
-  after the platform-independent UI artifact is downloaded.
+  Restore the platform-specific runtimed and nteract-mcp executables used by
+  packaged notebook builds.
 
 runs:
   using: composite
   steps:
-    - name: Cache @runtimed/node binding
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-      with:
-        path: plugins/notebook/build/nteract-source/nteract/packages/runtimed-node/src
-        key: notebook-runtimed-node-${{ runner.os }}-${{ hashFiles('plugins/notebook/src/packaging/artifacts.ts') }}
-
     - name: Cache notebook runtime binaries
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
@@ -20,15 +13,3 @@ runs:
           plugins/notebook/resources/nteract-mcp
           plugins/notebook/resources/runtimed
         key: notebook-resources-${{ runner.os }}-${{ hashFiles('plugins/notebook/src/packaging/artifacts.ts') }}
-
-    - name: Install Rust 1.94.0
-      uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-      with:
-        toolchain: 1.94.0
-
-    - name: Cache cargo registry and nteract native targets
-      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      with:
-        workspaces: plugins/notebook/build/nteract-source/nteract
-        shared-key: notebook-native
-        cache-on-failure: true

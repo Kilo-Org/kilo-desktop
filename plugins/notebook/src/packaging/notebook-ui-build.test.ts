@@ -43,18 +43,9 @@ async function writeDist(checkoutDirectory: string, includeWasm = true): Promise
 		await writeFile(path.join(dist, "assets/runtimed_wasm_bg-abcdef12.wasm"), "wasm");
 }
 
-async function writeNativeBinding(checkoutDirectory: string): Promise<void> {
-	const src = path.join(checkoutDirectory, "packages/runtimed-node/src");
-	await mkdir(src, { recursive: true });
-	await writeFile(path.join(src, "binding.cjs"), "module.exports = {};\n");
-	await writeFile(path.join(src, "binding.d.ts"), "export {};\n");
-	await writeFile(path.join(src, "runtimed-node.test.node"), "native");
-}
-
 function fakeRunner(
-	options: { includeWasm?: boolean; emitNativeBinding?: boolean } = {},
+	options: { includeWasm?: boolean } = {},
 ): CommandRunner & ReturnType<typeof vi.fn> {
-	const emitNativeBinding = options.emitNativeBinding ?? true;
 	return vi.fn(
 		async (
 			command: string,
@@ -65,15 +56,6 @@ function fakeRunner(
 				const checkoutDirectory = args.at(-1)!;
 				await mkdir(checkoutDirectory, { recursive: true });
 				await writeFile(path.join(checkoutDirectory, "LICENSE"), "BSD 3-Clause License");
-			}
-			if (
-				command === "pnpm" &&
-				args[0] === "--dir" &&
-				args[1] === "packages/runtimed-node" &&
-				args[2] === "build"
-			) {
-				if (emitNativeBinding) await writeNativeBinding(runOptions.cwd!);
-				return;
 			}
 			if (command === "pnpm" && args[0] === "--dir" && args[1] === "apps/notebook") {
 				await writeDist(runOptions.cwd!, options.includeWasm ?? true);
@@ -134,112 +116,11 @@ describe("buildNotebookUi", () => {
 			["--dir", "apps/notebook", "build"],
 			expect.any(Object),
 		);
-		expect(run).toHaveBeenCalledWith(
-			"pnpm",
-			["--dir", "packages/runtimed-node", "build"],
-			expect.any(Object),
-		);
-		expect(
-			await readFile(
-				path.join(result.checkoutDirectory, "packages/runtimed-node/src/binding.cjs"),
-				"utf8",
-			),
-		).toContain("module.exports");
-	});
-
-	it("builds the UI without compiling @runtimed/node when skipNativeBinding is set", async () => {
-		const root = await temporaryDirectory();
-		const run = fakeRunner();
-
-		const result = await buildNotebookUi({
-			cacheDirectory: path.join(root, "cache"),
-			destinationDirectory: path.join(root, "build/notebook"),
-			run,
-			skipNativeBinding: true,
-		});
-
-		expect(result.built).toBe(true);
-		await expect(validateStagedNotebookBundle(result.destinationDirectory)).resolves.toMatchObject({
-			sourceCommit: NTERACT_NOTEBOOK_SOURCE.commit,
-		});
-		expect(run).toHaveBeenCalledWith(
-			"pnpm",
-			["--dir", "apps/notebook", "build"],
-			expect.any(Object),
-		);
 		expect(run).not.toHaveBeenCalledWith(
 			"pnpm",
 			["--dir", "packages/runtimed-node", "build"],
 			expect.any(Object),
 		);
-	});
-
-	it("does not rebuild a missing native binding when skipNativeBinding is set and the UI is current", async () => {
-		const root = await temporaryDirectory();
-		const options = {
-			cacheDirectory: path.join(root, "cache"),
-			destinationDirectory: path.join(root, "build/notebook"),
-			run: fakeRunner(),
-		};
-		await buildNotebookUi(options);
-		await rm(path.join(options.cacheDirectory, "nteract/packages/runtimed-node"), {
-			force: true,
-			recursive: true,
-		});
-		options.run.mockClear();
-
-		await expect(buildNotebookUi({ ...options, skipNativeBinding: true })).resolves.toMatchObject({
-			built: false,
-		});
-		expect(options.run).not.toHaveBeenCalled();
-	});
-
-	it("builds the native @runtimed/node binding when the UI bundle is already current", async () => {
-		const root = await temporaryDirectory();
-		const options = {
-			cacheDirectory: path.join(root, "cache"),
-			destinationDirectory: path.join(root, "build/notebook"),
-			run: fakeRunner(),
-		};
-		await buildNotebookUi(options);
-		await rm(path.join(options.cacheDirectory, "nteract/packages/runtimed-node"), {
-			force: true,
-			recursive: true,
-		});
-		options.run.mockClear();
-
-		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
-		expect(options.run).toHaveBeenCalledWith(
-			"pnpm",
-			["--dir", "packages/runtimed-node", "build"],
-			expect.any(Object),
-		);
-		expect(options.run).not.toHaveBeenCalledWith(
-			"pnpm",
-			["--dir", "apps/notebook", "build"],
-			expect.any(Object),
-		);
-		expect(options.run).not.toHaveBeenCalledWith(
-			"wasm-pack",
-			["--version"],
-			expect.objectContaining({ capture: true }),
-		);
-		expect(
-			await readFile(
-				path.join(options.cacheDirectory, "nteract/packages/runtimed-node/src/binding.cjs"),
-			),
-		).toEqual(expect.any(Buffer));
-	});
-
-	it("fails when the native @runtimed/node build does not emit binding.cjs", async () => {
-		const root = await temporaryDirectory();
-		await expect(
-			buildNotebookUi({
-				cacheDirectory: path.join(root, "cache"),
-				destinationDirectory: path.join(root, "build/notebook"),
-				run: fakeRunner({ emitNativeBinding: false }),
-			}),
-		).rejects.toThrow(/binding\.cjs/);
 	});
 
 	it("rebuilds when staged index.html lacks embed chrome CSS", async () => {

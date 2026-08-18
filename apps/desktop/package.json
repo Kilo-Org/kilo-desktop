@@ -31,7 +31,6 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencyNotes": {
-		"@runtimed/node": "PACKAGING BRIDGE: Vite leaves `@runtimed/node` external in the main bundle (native napi binding). Keep this as a desktop devDependency so electron-forge start can resolve the generated checkout. It cannot be a production dependency: modern `pnpm deploy` rewrites the `link:` specifier to a `file:` lockfile entry that does not exist. Forge recopies the same tree after the lockfile-backed production deploy.",
 		"ws": "PACKAGING BRIDGE: Vite leaves `ws` external in the main bundle (CJS `events` require). pnpm deploy only hoists packages declared on desktop, so a transitive kilo-server dep is not enough."
 	},
 	"dependencies": {
@@ -44,6 +43,7 @@
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@github/keytar": "^7.10.6",
 		"@launchdarkly/node-client-sdk": "^4.0.0",
+		"@runtimed/node": "0.5.0",
 		"@sentry/electron": "catalog:",
 		"@vscode/proxy-agent": "^0.44.0",
 		"anaconda-opentelemetry": "0.9.2",
@@ -76,7 +76,6 @@
 		"@electron-forge/shared-types": "8.0.0-alpha.10",
 		"@electron/fuses": "^2.0.0",
 		"@playwright/test": "1.62.1",
-		"@runtimed/node": "link:../../plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
 		"@types/electron-squirrel-startup": "1.0.2",
 		"@types/lodash": "^4.17.20",
 		"@types/node": "^24.13.3",

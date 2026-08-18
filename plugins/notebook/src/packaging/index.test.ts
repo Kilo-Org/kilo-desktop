@@ -11,11 +11,6 @@ describe("notebook packaging", () => {
 		const required = new Set([
 			path.join(pluginRoot, "build/notebook/index.html"),
 			path.join(pluginRoot, "build/notebook/agentic-notebook-build.json"),
-			path.join(pluginRoot, "build/nteract-source/nteract/packages/runtimed-node/src/binding.cjs"),
-			path.join(
-				pluginRoot,
-				"build/nteract-source/nteract/packages/runtimed-node/src/runtimed-node.win32-x64-msvc.node",
-			),
 			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/nteract-mcp.exe"),
 			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/runt-nightly.exe"),
 			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/staged.json"),
@@ -84,32 +79,6 @@ describe("notebook packaging", () => {
 			const targetRoot = path.resolve("/plugin/notebook/resources/nteract-mcp", artifact.target);
 			expect(checkedPaths).toContain(path.join(targetRoot, artifact.nteractMcp.executable));
 			expect(checkedPaths).toContain(path.join(targetRoot, artifact.runt.executable));
-		}
-	});
-
-	it("requires the generated @runtimed/node native binding for every desktop target", () => {
-		const bindings = new Map([
-			["darwin-arm64", "runtimed-node.darwin-arm64.node"],
-			["darwin-x64", "runtimed-node.darwin-x64.node"],
-			["linux-x64", "runtimed-node.linux-x64-gnu.node"],
-			["win32-x64", "runtimed-node.win32-x64-msvc.node"],
-		]);
-		for (const artifact of RUNTIMED_ARTIFACTS) {
-			const checkedPaths: string[] = [];
-			createNotebookPackagingPlan({
-				pluginRoot: path.resolve("/plugin/notebook"),
-				platform: artifact.platform,
-				arch: artifact.arch,
-				exists: (candidate) => {
-					checkedPaths.push(candidate);
-					return true;
-				},
-			});
-			const nativeRoot = path.resolve(
-				"/plugin/notebook/build/nteract-source/nteract/packages/runtimed-node/src",
-			);
-			expect(checkedPaths).toContain(path.join(nativeRoot, "binding.cjs"));
-			expect(checkedPaths).toContain(path.join(nativeRoot, bindings.get(artifact.target)!));
 		}
 	});
 

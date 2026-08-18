@@ -6,7 +6,6 @@ const pluginRoot = path.resolve(import.meta.dirname, "..");
 const result = await buildNotebookUi({
 	cacheDirectory: path.join(pluginRoot, "build/nteract-source"),
 	destinationDirectory: path.join(pluginRoot, "build/notebook"),
-	skipNativeBinding: process.env.NOTEBOOK_SKIP_NATIVE_BINDING === "1",
 });
 
 console.log(

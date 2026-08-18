@@ -98,14 +98,6 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 				"resources",
 			]),
 		},
-		{
-			packageName: "@runtimed/node",
-			source: path.join(
-				workspaceRoot,
-				"plugins/notebook/build/nteract-source/nteract/packages/runtimed-node",
-			),
-			excludedDirectories: new Set(["node_modules", "npm", "scripts", "tests"]),
-		},
 	] as const;
 
 	try {

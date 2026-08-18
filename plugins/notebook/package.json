@@ -22,9 +22,6 @@
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
-	"dependencyNotes": {
-		"@runtimed/node": "TEMPORARY: use the pinned local nteract source build until upstream publishes the Electron/relay entry points and matching native platform packages. Forge materializes this generated peer explicitly in packaged builds."
-	},
 	"dependencies": {
 		"lucide-react": "^1.27.0"
 	},
@@ -62,7 +59,7 @@
 		"@anaconda-agentic-desktop/testing": "workspace:*",
 		"@anaconda-agentic-desktop/ui": "workspace:*",
 		"@anaconda/playwright-utils": "1.17.1",
-		"@runtimed/node": "link:build/nteract-source/nteract/packages/runtimed-node",
+		"@runtimed/node": "0.5.0",
 		"@playwright/test": "1.62.1",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/react-query": "^5.101.4",

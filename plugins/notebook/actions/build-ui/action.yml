@@ -10,7 +10,17 @@ runs:
         path: plugins/notebook/build/notebook
         key: notebook-ui-${{ hashFiles('plugins/notebook/src/packaging/artifacts.ts', 'plugins/notebook/src/packaging/notebook-ui-build.ts') }}
 
-    - uses: ./plugins/notebook/actions/setup-native
+    - name: Install Rust 1.94.0
+      uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+      with:
+        toolchain: 1.94.0
+
+    - name: Cache cargo registry and nteract UI targets
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        workspaces: plugins/notebook/build/nteract-source/nteract
+        shared-key: notebook-ui
+        cache-on-failure: true
 
     - name: Install wasm-pack
       shell: bash
@@ -30,6 +40,4 @@ runs:
 
     - name: Build pinned notebook UI
       shell: bash
-      env:
-        NOTEBOOK_SKIP_NATIVE_BINDING: "1"
       run: pnpm --filter @anaconda-agentic-desktop/plugin-notebook run build-ui

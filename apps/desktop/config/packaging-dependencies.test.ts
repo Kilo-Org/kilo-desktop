@@ -97,6 +97,16 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).toMatch(/--filter\s+"@anaconda-agentic-desktop\/plugin-\*"/);
 	});
 
+	it("runs PR and merge-queue e2e on a larger Windows hosted runner", () => {
+		const ci = readFileSync(path.join(workspaceRoot, ".github/workflows/ci.yml"), "utf8");
+		const e2ePr = ci.split("e2e-pr:")[1]?.split("e2e-merge:")[0] ?? "";
+		const e2eMerge = ci.split("e2e-merge:")[1]?.split("e2e-gate:")[0] ?? "";
+		expect(e2ePr).toContain("runs-on: windows-latest-8-cores");
+		expect(e2ePr).not.toMatch(/runs-on:\s*windows-latest\s*$/m);
+		expect(e2eMerge).toContain("windows-latest-8-cores");
+		expect(e2eMerge).not.toMatch(/os:\s*\[macos-latest,\s*windows-latest\]/);
+	});
+
 	it("does not prepare a source-built @runtimed/node on packaging hosts", () => {
 		const setupNative = readFileSync(
 			path.join(workspaceRoot, "plugins/notebook/actions/setup-native/action.yml"),

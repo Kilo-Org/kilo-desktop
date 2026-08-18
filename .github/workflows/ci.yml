@@ -81,7 +81,9 @@ jobs:
   e2e-pr:
     if: github.event_name == 'pull_request'
     needs: notebook-ui
-    runs-on: windows-latest
+    # 8-core / 32 GB / 300 GB vs windows-latest (2 / 8 / 14). Packaging is
+    # CPU+disk bound; the extra cores do not parallelize Playwright (workers: 1).
+    runs-on: windows-latest-8-cores
     timeout-minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
@@ -107,7 +109,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest-8-cores]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     concurrency:

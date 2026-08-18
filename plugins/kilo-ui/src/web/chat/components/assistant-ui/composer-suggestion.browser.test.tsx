@@ -166,7 +166,7 @@ const seededMessages: ThreadMessageLike[] = [
 				toolName: "suggest",
 				args: {
 					suggest: pendingSuggestion.text,
-					actions: pendingSuggestion.actions,
+					actions: [{ label: "Start review", prompt: "/review uncommitted" }],
 				},
 			},
 		],

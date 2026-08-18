@@ -4,6 +4,7 @@ import {
 	DEFAULT_RELEASE_CHANNEL,
 	getArtifactKey,
 	getCanaryBuildTime,
+	getNativeAppVersion,
 	getPublishAppVersion,
 	getReleaseChannel,
 	getUpdateFeedUrl,
@@ -170,5 +171,11 @@ describe("release configuration", () => {
 				now: new Date("2026-08-18T14:30:52.000Z"),
 			}),
 		).toThrow("Invalid app version");
+	});
+
+	it("strips prerelease so Windows PE file versions stay at most four numeric components", () => {
+		expect(getNativeAppVersion("0.1.1-canary.20260818.143052")).toBe("0.1.1");
+		expect(getNativeAppVersion("0.1.0")).toBe("0.1.0");
+		expect(() => getNativeAppVersion("latest")).toThrow("Invalid app version");
 	});
 });

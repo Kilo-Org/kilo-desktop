@@ -49,11 +49,15 @@ disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never star
 Linux. Squirrel install, update, and uninstall launches are handled before normal
 application startup.
 
-Canary packaging stamps `appVersion` as `{nextPatch}-canary.{YYYYMMDD}.{HHmmss}` from
-the committed desktop version and a UTC timestamp (shared via `CANARY_BUILD_TIME` in
-CI so macOS/Windows/Linux publish the same version). The patch increment makes each
-canary sort above the committed version, so already-installed `0.1.0` builds update.
-Staging and prod keep the committed version and still require an explicit bump.
+Canary packaging stamps the packaged `package.json` and maker versions as
+`{nextPatch}-canary.{YYYYMMDD}.{HHmmss}` from the committed desktop version and a UTC
+timestamp (shared via `CANARY_BUILD_TIME` in CI so macOS/Windows/Linux publish the same
+version). The patch increment makes each canary sort above the committed version, so
+already-installed `0.1.0` builds update. Electron packager native metadata
+(`FileVersion` / `ProductVersion` / `CFBundleShortVersionString`) uses only the
+`{nextPatch}` numeric prefix because Windows PE versions allow at most four integer
+components. Staging and prod keep the committed version and still require an explicit
+bump.
 
 Maker artifacts are written to `apps/desktop/out/make/`.
 

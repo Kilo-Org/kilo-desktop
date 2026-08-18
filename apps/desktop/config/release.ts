@@ -67,12 +67,22 @@ export function getPublishAppVersion(input: {
 	return `${nextPatchVersion(input.version)}-canary.${formatCanaryTimestamp(now)}`;
 }
 
+export function getNativeAppVersion(version: string): string {
+	return parseVersionCore(version);
+}
+
 function nextPatchVersion(version: string): string {
+	const core = parseVersionCore(version);
+	const [major, minor, patch] = core.split(".");
+	return `${major}.${minor}.${Number(patch) + 1}`;
+}
+
+function parseVersionCore(version: string): string {
 	const match = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)/.exec(version);
 	if (!match?.groups) {
 		throw new Error(`Invalid app version: ${version}`);
 	}
-	return `${match.groups.major}.${match.groups.minor}.${Number(match.groups.patch) + 1}`;
+	return `${match.groups.major}.${match.groups.minor}.${match.groups.patch}`;
 }
 
 function formatCanaryTimestamp(now: Date): string {

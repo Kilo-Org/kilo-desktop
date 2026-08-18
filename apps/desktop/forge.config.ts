@@ -11,6 +11,7 @@ import { execa } from "execa";
 import {
 	getArtifactKey,
 	getCanaryBuildTime,
+	getNativeAppVersion,
 	getPublishAppVersion,
 	getReleaseChannel,
 	getUpdateFeedUrl,
@@ -32,6 +33,7 @@ const appVersion = getPublishAppVersion({
 	channel,
 	now: getCanaryBuildTime(process.env),
 });
+const nativeAppVersion = getNativeAppVersion(appVersion);
 const identity = getAppIdentity(channel);
 const channelTitle = channel.replace(/^./, (character) => character.toUpperCase());
 const dmgVolumeTitle = channel === "prod" ? "Agentic" : `Agentic ${channelTitle}`;
@@ -236,7 +238,9 @@ const config: ForgeConfig = {
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
-		appVersion,
+		// Windows PE FileVersion/ProductVersion accept at most four numeric
+		// components. Keep the canary prerelease on package.json and makers.
+		appVersion: nativeAppVersion,
 		executableName,
 		extraResource: extraResources,
 		icon: appIcon,

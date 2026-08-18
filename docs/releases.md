@@ -64,12 +64,17 @@ Squirrel.Windows NuGet versions cannot contain extra dots in the prerelease, so 
 Windows nupkg filename uses `0.1.1-canary20260818143052` while the app version stays
 `0.1.1-canary.20260818.143052`.
 
-Maker artifacts are written to `apps/desktop/out/make/`.
-
 Squirrel.Windows packs with a bundled `nuget.exe` that still enforces the 260-character
-`MAX_PATH` limit. Windows `make`/`publish` therefore points `TEMP`/`TMP` and Electron
-Packager `tmpdir` at `<drive>\\t` (override with `WINDOWS_PACKAGING_TEMP`) so unpacked
-native-addon paths stay under the limit.
+`MAX_PATH` limit, and `--releasify` extracts each nupkg entry to `{TEMP}\{guid}\{entry}`
+using the same limit. Windows `make`/`publish` therefore:
+
+1. Points `TEMP`/`TMP` and Electron Packager `tmpdir` at `<drive>\\t` (override with
+   `WINDOWS_PACKAGING_TEMP`) so nuget pack and Squirrel extract roots stay short.
+2. Stages the WebMCP relay as `resources/webmcp-relay` instead of unpacking
+   `app.asar.unpacked/node_modules/@anaconda-agentic-desktop/plugin-kilo-server/relay-runtime`,
+   so nupkg-relative paths themselves stay under the remaining budget.
+
+Maker artifacts are written to `apps/desktop/out/make/`.
 
 ## Artifact layout
 
@@ -94,16 +99,16 @@ in the committed files; secrets remain in GitHub Environments.
 
 The Forge compile-time contract uses:
 
-| Variable                 | Meaning                                                                                             |
-| ------------------------ | --------------------------------------------------------------------------------------------------- |
-| `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file                  |
-| `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                                 |
-| `CANARY_BUILD_TIME`      | Optional ISO timestamp shared across canary matrix legs; defaults to now                            |
-| `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                                          |
-| `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                                         |
-| `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                                |
-| `UPDATE_REMOTE_RELEASES` | Set to `true` on Windows when an existing Squirrel feed is available for delta creation             |
-| `WINDOWS_PACKAGING_TEMP` | Optional short Windows temp directory; defaults to `<drive>\\t` so nuget.exe stays under `MAX_PATH` |
+| Variable                 | Meaning                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file                                      |
+| `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                                                     |
+| `CANARY_BUILD_TIME`      | Optional ISO timestamp shared across canary matrix legs; defaults to now                                                |
+| `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                                                              |
+| `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                                                             |
+| `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                                                    |
+| `UPDATE_REMOTE_RELEASES` | Set to `true` on Windows when an existing Squirrel feed is available for delta creation                                 |
+| `WINDOWS_PACKAGING_TEMP` | Optional short Windows temp directory; defaults to `<drive>\\t` so nuget.exe and Squirrel extract stay under `MAX_PATH` |
 
 ## GitHub Environments
 

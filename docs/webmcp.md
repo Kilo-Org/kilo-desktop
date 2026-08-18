@@ -200,9 +200,7 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  │    defaultRunAsNodeEnabled(process.execPath)  ──► reads @electron/fuses    │   │
 │  │                                                    → true / false           │   │
 │  │                                                                             │   │
-│  │    resolveWebMcpRelayEntry()  ───►  ${app}/resources/app.asar.unpacked/     │   │
-│  │                                       node_modules/@anaconda-agentic-desktop/│   │
-│  │                                       plugin-kilo-server/relay-runtime/      │   │
+│  │    resolveWebMcpRelayEntry()  ───►  ${app}/resources/webmcp-relay/          │   │
 │  │                                       node_modules/@mcp-b/webmcp-local-      │   │
 │  │                                       relay/dist/cli.mjs                     │   │
 │  │                                                                             │   │
@@ -400,7 +398,7 @@ Before initialization (user's kilo.jsonc, if any):    After initialization:
 }                                                    "type": "local",
                                                      "command": [
                                                        "/Applications/Anaconda…/MacOS/Anaconda Agentic Desktop",
-                                                       "/…/app.asar.unpacked/node_modules/@anaconda-agentic-desktop/plugin-kilo-server/relay-runtime/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs"
+                                                       "/…/resources/webmcp-relay/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs"
                                                      ],
                                                      "environment": { "ELECTRON_RUN_AS_NODE": "1" },
                                                      "enabled": true

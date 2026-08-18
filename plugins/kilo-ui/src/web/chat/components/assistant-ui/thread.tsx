@@ -92,6 +92,7 @@ import { usePendingKiloSuggestion } from "../../suggestions/KiloSuggestionContex
 import {
 	assistantWorkingIndicatorMode,
 	isComposerPromptBusy,
+	messageHasInFlightActivity,
 } from "../../suggestions/kilo-suggestion-logic.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
 
@@ -735,6 +736,7 @@ const AssistantMessage: FC = () => {
 	const planThread = usePlanThreadProjection();
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 	const pendingSuggestion = usePendingKiloSuggestion();
+	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -751,7 +753,7 @@ const AssistantMessage: FC = () => {
 				className="text-foreground px-2 leading-relaxed wrap-break-word"
 			>
 				<MessagePrimitive.GroupedParts
-					indicator={assistantWorkingIndicatorMode(pendingSuggestion)}
+					indicator={assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity)}
 					groupBy={(part, context) => {
 						if (part.type === "reasoning") {
 							return ["group-activity", "group-thinking"] as const;
@@ -788,7 +790,9 @@ const AssistantMessage: FC = () => {
 							case "group-terminal":
 							case "group-planning":
 							case "group-asking":
+							case "group-suggesting":
 							case "group-skill":
+							case "group-subagent":
 							case "group-tools": {
 								const kind = activityKindFromGroupKey(part.type);
 								if (!kind) return null;

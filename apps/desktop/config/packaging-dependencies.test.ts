@@ -77,10 +77,10 @@ describe("packaged production dependencies", () => {
 		);
 	});
 
-	it("only unpacks native modules and the isolated WebMCP runtime", () => {
+	it("only unpacks native modules from ASAR", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		expect(forge).not.toMatch(/unpack:\s*"\*\*\/node_modules\/\*\*"/);
-		expect(forge).toContain("webMcpRelayRuntimeSubpath");
+		expect(forge).not.toContain("webMcpRelayRuntimeSubpath");
 	});
 
 	it("quotes plugin prepare-assets filters so Windows cmd.exe can match packages", () => {
@@ -130,6 +130,17 @@ describe("packaged production dependencies", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		expect(runPackaging).toContain("applyWindowsPackagingTemp");
 		expect(forge).toContain("tmpdir: windowsPackagingTemp");
+	});
+
+	it("stages the WebMCP relay as a short extra-resource so Squirrel extract stays under MAX_PATH", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toContain("resolvePackagedWebMcpRelayDirectory");
+		expect(forge).not.toMatch(
+			/path\.join\(\s*buildPath,\s*"resources",\s*PACKAGED_WEBMCP_RELAY_DIRECTORY/,
+		);
+		expect(forge).toContain("dereference: true");
+		expect(forge).not.toContain("webMcpRelayRuntimeSubpath");
+		expect(forge).not.toMatch(/plugin-kilo-server["'][\s\S]*relay-runtime/);
 	});
 
 	it("stamps the desktop package version before Forge makers run", () => {

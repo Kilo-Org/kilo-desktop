@@ -361,8 +361,9 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	// because its questionnaire renders outside the activity group.
 	// While the stream row is collapsed, the parent ActivityGroup owns the icon.
 	const labelOnly =
-		LABEL_ONLY_ACTIVITY_KINDS.has(kind) &&
-		(kind === "asking" || kind === "suggesting" || stats.count === 1);
+		(LABEL_ONLY_ACTIVITY_KINDS.has(kind) &&
+			(kind === "asking" || kind === "suggesting" || stats.count === 1)) ||
+		(kind === "subagent" && stats.count === 1 && segment.running);
 	if (labelOnly) {
 		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);

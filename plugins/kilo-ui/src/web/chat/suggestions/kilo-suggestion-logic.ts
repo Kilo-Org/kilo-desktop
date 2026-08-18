@@ -111,13 +111,31 @@ export function isComposerPromptBusy(
 	return isRunning && pendingSuggestion == null;
 }
 
+type StatusPart = {
+	type: string;
+	status?: { type: string } | undefined;
+};
+
+/**
+ * True when a tool call or reasoning part is still running, so the activity
+ * subgroup already shows live status (Delegating, Thinking, Running bash).
+ */
+export function messageHasInFlightActivity(parts: readonly StatusPart[]): boolean {
+	return parts.some(
+		(part) =>
+			(part.type === "tool-call" || part.type === "reasoning") && part.status?.type === "running",
+	);
+}
+
 /**
  * GroupedParts shows "Considering next steps" while the last assistant
- * message is still running. Suggest waits in that state, so hide the
- * indicator the same way VS Code hides its working indicator.
+ * message is still running. Hide it when a suggestion is waiting, or when a
+ * tool / subgroup already owns the live status row.
  */
 export function assistantWorkingIndicatorMode(
 	pendingSuggestion: KiloSuggestionRequest | null,
+	hasInFlightActivity: boolean,
 ): "never" | "no-text" {
-	return pendingSuggestion == null ? "no-text" : "never";
+	if (pendingSuggestion != null || hasInFlightActivity) return "never";
+	return "no-text";
 }

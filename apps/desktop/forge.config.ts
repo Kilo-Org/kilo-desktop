@@ -21,6 +21,7 @@ import desktopPackage from "./package.json" with { type: "json" };
 import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
+import { resolvePackagedWebMcpRelayDirectory } from "./config/packaged-webmcp-relay.js";
 import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-temp.js";
 import { signWindowsFile } from "./config/windows-sign.js";
 import { createNotebookPackagingPlan } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
@@ -62,12 +63,6 @@ const asarUnpackPackages = [
 	...notebookPackaging.asarUnpackPackages,
 ];
 const webMcpRelayRuntimePackage = "@anaconda-agentic-desktop/webmcp-relay-runtime";
-const webMcpRelayRuntimeSubpath = path.join(
-	"node_modules",
-	"@anaconda-agentic-desktop",
-	"plugin-kilo-server",
-	"relay-runtime",
-);
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
@@ -168,12 +163,14 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 }
 
 async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
-	const runtimeDirectory = path.join(buildPath, webMcpRelayRuntimeSubpath);
+	const runtimeDirectory = resolvePackagedWebMcpRelayDirectory(buildPath);
 	// Deploy into a workspace-local temp dir, then copy. Electron-packager's
 	// dest is outside the repo; `pnpm deploy --offline` against that path uses
 	// a different empty store on Windows (ERR_PNPM_NO_OFFLINE_TARBALL for
 	// @mcp-b/webmcp-local-relay) because the dest sits inside another
-	// node_modules tree.
+	// node_modules tree. Stage beside app.asar (not inside it or under
+	// asar.unpacked) so Squirrel nupkg entries stay under the 260-character
+	// MAX_PATH extract budget and runtime can resolve process.resourcesPath.
 	const stagingDirectory = await mkdtemp(
 		path.join(workspaceRoot, ".anaconda-agentic-desktop-webmcp-relay-"),
 	);
@@ -203,9 +200,13 @@ async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
 			recursive: true,
 		});
 		await rm(runtimeDirectory, { force: true, recursive: true });
-		await cp(stagingDirectory, runtimeDirectory, { recursive: true });
+		await cp(stagingDirectory, runtimeDirectory, { dereference: true, recursive: true });
+		await rm(path.join(runtimeDirectory, "node_modules", ".pnpm"), {
+			force: true,
+			recursive: true,
+		});
 	} finally {
-		await rm(stagingDirectory, { force: true, recursive: true });
+		await rm(stagingDirectory, { recursive: true, force: true });
 	}
 }
 
@@ -237,10 +238,11 @@ async function stampPackagedAppVersion(buildPath: string, version: string): Prom
 const config: ForgeConfig = {
 	packagerConfig: {
 		asar: {
-			// Native addons and the isolated WebMCP child runtime need real
-			// filesystem paths. All other production dependencies remain inside
-			// the integrity-checked ASAR.
-			unpack: `{**/node_modules/{${asarUnpackPackages.join(",")}}/**,**/${webMcpRelayRuntimeSubpath.split(path.sep).join("/")}/**}`,
+			// Native addons need real filesystem paths. All other production
+			// dependencies remain inside the integrity-checked ASAR. The WebMCP
+			// relay is staged as an extra-resource (`resources/webmcp-relay`)
+			// instead of unpacking the long plugin-kilo-server path.
+			unpack: `{**/node_modules/{${asarUnpackPackages.join(",")}}/**}`,
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",

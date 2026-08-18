@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
 	BookOpenIcon,
+	BotIcon,
 	BrainIcon,
 	CircleHelpIcon,
 	FilePenIcon,
@@ -34,7 +35,8 @@ export type ToolCategory =
 	| "planning"
 	| "asking"
 	| "suggesting"
-	| "skill";
+	| "skill"
+	| "subagent";
 
 /** Dynamic subgroup for an MCP server, e.g. `mcp:atlassian`. */
 export type McpActivityKind = `mcp:${string}`;
@@ -67,6 +69,7 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	requestuserinput: "asking",
 	suggest: "suggesting",
 	skill: "skill",
+	task: "subagent",
 };
 
 export const getToolCategory = (toolName: string): ToolCategory | undefined =>
@@ -79,6 +82,8 @@ export const isSuggestTool = (toolName: string): boolean =>
 	getToolCategory(toolName) === "suggesting";
 
 export const isSkillTool = (toolName: string): boolean => getToolCategory(toolName) === "skill";
+
+export const isTaskTool = (toolName: string): boolean => getToolCategory(toolName) === "subagent";
 
 /**
  * OpenCode/Kilo MCP tools are named `{server}_{toolName}`. Built-in tools with
@@ -145,7 +150,8 @@ export const activityKindFromGroupKey = (groupKey: string): ActivityKind | undef
 		rest === "planning" ||
 		rest === "asking" ||
 		rest === "suggesting" ||
-		rest === "skill"
+		rest === "skill" ||
+		rest === "subagent"
 	) {
 		return rest;
 	}
@@ -261,6 +267,8 @@ export type KindStats = {
 	commandSummary?: string | undefined;
 	/** Skill id for a skill subgroup that loaded exactly one skill. */
 	skill?: string | undefined;
+	/** Short task description (or agent type) for a single subagent call. */
+	task?: string | undefined;
 };
 
 type KindMeta = {
@@ -374,6 +382,19 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 			skill || count <= 1 ? "Read Skill" : `Read ${plural(count, "Skill")}`,
 		circleClassName:
 			"border-fuchsia-600/40 bg-fuchsia-100 text-fuchsia-600 dark:border-fuchsia-400/40 dark:bg-fuchsia-950 dark:text-fuchsia-400",
+	},
+	subagent: {
+		icon: BotIcon,
+		label: "Subagent",
+		liveLabel: ({ task }) => (task ? `Delegating ${task}` : "Delegating..."),
+		doneLabel: ({ task, count }) =>
+			task
+				? `Delegated ${task}`
+				: count <= 1
+					? "Delegated"
+					: `Delegated ${plural(count, "subagent")}`,
+		circleClassName:
+			"border-purple-600/40 bg-purple-100 text-purple-600 dark:border-purple-400/40 dark:bg-purple-950 dark:text-purple-400",
 	},
 	tools: {
 		icon: WrenchIcon,
@@ -547,12 +568,39 @@ export const getPartSkillName = (part: ActivityPart): string | undefined => {
 	return name ? truncate(name, 48) : undefined;
 };
 
+/** OpenCode/Kilo `task` tool takes `{ description, prompt, subagent_type }`. */
+export const getPartTaskDescription = (part: ActivityPart): string | undefined => {
+	if (part.type !== "tool-call" || !part.toolName || !isTaskTool(part.toolName)) {
+		return undefined;
+	}
+	if (!part.args || typeof part.args !== "object") return undefined;
+	const record = part.args as Record<string, unknown>;
+	const description = str(record.description).replace(/\s+/g, " ").trim();
+	if (description) return truncate(description, 72);
+	const agent = str(record.subagent_type).trim();
+	return agent ? truncate(agent, 48) : undefined;
+};
+
 const uniqueSkillNames = (parts: readonly ActivityPart[], indices: readonly number[]): string[] => {
 	const names = new Set<string>();
 	for (const index of indices) {
 		const part = parts[index];
 		if (!part) continue;
 		const name = getPartSkillName(part);
+		if (name) names.add(name);
+	}
+	return [...names];
+};
+
+const uniqueTaskDescriptions = (
+	parts: readonly ActivityPart[],
+	indices: readonly number[],
+): string[] => {
+	const names = new Set<string>();
+	for (const index of indices) {
+		const part = parts[index];
+		if (!part) continue;
+		const name = getPartTaskDescription(part);
 		if (name) names.add(name);
 	}
 	return [...names];
@@ -587,6 +635,8 @@ export const getSegmentStats = (
 			: undefined;
 	const skills =
 		segment.kind === "skill" ? uniqueSkillNames(parts, segment.indices) : ([] as string[]);
+	const tasks =
+		segment.kind === "subagent" ? uniqueTaskDescriptions(parts, segment.indices) : ([] as string[]);
 	return {
 		count: segment.indices.length,
 		files: files.length,
@@ -595,6 +645,7 @@ export const getSegmentStats = (
 		suggestion,
 		commandSummary: commandSummary || undefined,
 		skill: skills.length === 1 ? skills[0] : undefined,
+		task: tasks.length === 1 ? tasks[0] : undefined,
 	};
 };
 

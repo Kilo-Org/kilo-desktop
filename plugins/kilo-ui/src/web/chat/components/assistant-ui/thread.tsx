@@ -88,6 +88,11 @@ import { useChatModelSelection } from "../../model-selection/ChatModelSelectionC
 import { isKiloGatewayProvider } from "../../model-selection/model-catalog.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
+import { usePendingKiloSuggestion } from "../../suggestions/KiloSuggestionContext.js";
+import {
+	assistantWorkingIndicatorMode,
+	isComposerPromptBusy,
+} from "../../suggestions/kilo-suggestion-logic.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
@@ -296,8 +301,14 @@ const Composer: FC = () => {
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const { refine, submitting, canReply } = useApprovePlan();
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
+	const pendingSuggestion = usePendingKiloSuggestion();
 
 	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
+
+	const sendFollowup = () => {
+		if (isComposerEmpty) return;
+		aui.composer.send();
+	};
 
 	useEffect(() => {
 		if (!isDraft || isConnecting) return;
@@ -341,6 +352,13 @@ const Composer: FC = () => {
 			handlePlanRefineSubmit();
 			return;
 		}
+		// Suggest keeps thread.isRunning true, so ComposerPrimitive.Send is
+		// disabled — send through the runtime instead, matching VS Code.
+		if (pendingSuggestion) {
+			event.preventDefault();
+			sendFollowup();
+			return;
+		}
 		// When Kilo is still starting, wait before composer.send() so the draft
 		// stays visible and the send button can show a spinner. preventDefault
 		// skips ComposerPrimitive.Root's built-in send handler (Enter key).
@@ -374,10 +392,15 @@ const Composer: FC = () => {
 		}
 
 		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-		if (!showPlanFollowupActions) return;
-		// ComposerInput returns early while isRunning — intercept before that.
+		if (showPlanFollowupActions) {
+			// ComposerInput returns early while isRunning — intercept before that.
+			event.preventDefault();
+			handlePlanRefineSubmit();
+			return;
+		}
+		if (!pendingSuggestion) return;
 		event.preventDefault();
-		handlePlanRefineSubmit();
+		sendFollowup();
 	};
 
 	return (
@@ -408,12 +431,14 @@ const Composer: FC = () => {
 					enterKeyHint="send"
 					aria-label="Message input"
 					disabled={isConnecting}
+					cancelOnEscape={!pendingSuggestion}
 					onKeyDown={handleInputKeyDown}
 				/>
 				<ComposerAction
 					isConnecting={isConnecting}
 					isConnectionPending={isPending}
 					onSendWhenConnected={sendWhenConnected}
+					onSendFollowup={sendFollowup}
 					showPlanFollowupActions={showPlanFollowupActions}
 					planActionPending={submitting}
 					onRefine={refine}
@@ -427,6 +452,7 @@ const ComposerAction: FC<{
 	isConnecting: boolean;
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
+	onSendFollowup: () => void;
 	showPlanFollowupActions: boolean;
 	planActionPending: boolean;
 	onRefine: () => void;
@@ -434,6 +460,7 @@ const ComposerAction: FC<{
 	isConnecting,
 	isConnectionPending,
 	onSendWhenConnected,
+	onSendFollowup,
 	showPlanFollowupActions,
 	planActionPending,
 	onRefine,
@@ -441,6 +468,8 @@ const ComposerAction: FC<{
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const canSend = useAuiState((s) => s.composer.canSend);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
+	const pendingSuggestion = usePendingKiloSuggestion();
+	const isPromptBusy = isComposerPromptBusy(isRunning, pendingSuggestion);
 
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
@@ -501,7 +530,7 @@ const ComposerAction: FC<{
 						<Loader2Icon className="aui-composer-connecting-icon size-4.5 animate-spin" />
 					</TooltipIconButton>
 				) : null}
-				{!isConnecting && !isRunning && isConnectionPending ? (
+				{!isConnecting && !isPromptBusy && isConnectionPending ? (
 					<TooltipIconButton
 						tooltip="Send message"
 						side="bottom"
@@ -531,24 +560,41 @@ const ComposerAction: FC<{
 						Refine
 					</Button>
 				) : null}
-				{!showPlanFollowupActions && !isConnecting && !isRunning && !isConnectionPending ? (
-					<ComposerPrimitive.Send
-						render={
-							<TooltipIconButton
-								tooltip="Send message"
-								side="bottom"
-								type="button"
-								variant="default"
-								size="icon"
-								className="aui-composer-send size-7 rounded-full"
-								aria-label="Send message"
-							/>
-						}
-					>
-						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
-					</ComposerPrimitive.Send>
+				{!showPlanFollowupActions && !isConnecting && !isPromptBusy && !isConnectionPending ? (
+					pendingSuggestion ? (
+						<TooltipIconButton
+							tooltip="Send message"
+							side="bottom"
+							type="button"
+							variant="default"
+							size="icon"
+							disabled={!canSend}
+							className="aui-composer-send size-7 rounded-full"
+							aria-label="Send message"
+							data-qa-id="kilo-composer-send"
+							onClick={onSendFollowup}
+						>
+							<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
+						</TooltipIconButton>
+					) : (
+						<ComposerPrimitive.Send
+							render={
+								<TooltipIconButton
+									tooltip="Send message"
+									side="bottom"
+									type="button"
+									variant="default"
+									size="icon"
+									className="aui-composer-send size-7 rounded-full"
+									aria-label="Send message"
+								/>
+							}
+						>
+							<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
+						</ComposerPrimitive.Send>
+					)
 				) : null}
-				{!showPlanFollowupActions && !isConnecting && isRunning ? (
+				{!showPlanFollowupActions && !isConnecting && isPromptBusy ? (
 					<ComposerPrimitive.Cancel
 						render={
 							<Button
@@ -688,6 +734,7 @@ const AssistantMessage: FC = () => {
 	const messageId = useAuiState((s) => s.message.id);
 	const planThread = usePlanThreadProjection();
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
+	const pendingSuggestion = usePendingKiloSuggestion();
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -704,6 +751,7 @@ const AssistantMessage: FC = () => {
 				className="text-foreground px-2 leading-relaxed wrap-break-word"
 			>
 				<MessagePrimitive.GroupedParts
+					indicator={assistantWorkingIndicatorMode(pendingSuggestion)}
 					groupBy={(part, context) => {
 						if (part.type === "reasoning") {
 							return ["group-activity", "group-thinking"] as const;

@@ -70,6 +70,7 @@ const MAX_VISIBLE_ICONS = 5;
 /** Header is the whole story — expanding would reveal nothing (or a duplicate label). */
 const LABEL_ONLY_ACTIVITY_KINDS: ReadonlySet<ActivityKind> = new Set([
 	"asking",
+	"suggesting",
 	"skill",
 	"reading",
 	"planning",
@@ -359,11 +360,13 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	// items need a disclosure for their child list; asking is the exception
 	// because its questionnaire renders outside the activity group.
 	// While the stream row is collapsed, the parent ActivityGroup owns the icon.
-	const labelOnly = LABEL_ONLY_ACTIVITY_KINDS.has(kind) && (kind === "asking" || stats.count === 1);
+	const labelOnly =
+		LABEL_ONLY_ACTIVITY_KINDS.has(kind) &&
+		(kind === "asking" || kind === "suggesting" || stats.count === 1);
 	if (labelOnly) {
 		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
-		const showChildren = kind !== "asking" && group.indices.length > 1;
+		const showChildren = kind !== "asking" && kind !== "suggesting" && group.indices.length > 1;
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
 				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">

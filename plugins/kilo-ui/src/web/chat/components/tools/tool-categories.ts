@@ -6,6 +6,7 @@ import {
 	FilePenIcon,
 	FilePlusIcon,
 	GlobeIcon,
+	LightbulbIcon,
 	ListTodoIcon,
 	NotebookIcon,
 	SearchIcon,
@@ -32,6 +33,7 @@ export type ToolCategory =
 	| "terminal"
 	| "planning"
 	| "asking"
+	| "suggesting"
 	| "skill";
 
 /** Dynamic subgroup for an MCP server, e.g. `mcp:atlassian`. */
@@ -63,6 +65,7 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	ask_question: "asking",
 	request_user_input: "asking",
 	requestuserinput: "asking",
+	suggest: "suggesting",
 	skill: "skill",
 };
 
@@ -71,6 +74,9 @@ export const getToolCategory = (toolName: string): ToolCategory | undefined =>
 
 export const isAskQuestionTool = (toolName: string): boolean =>
 	getToolCategory(toolName) === "asking";
+
+export const isSuggestTool = (toolName: string): boolean =>
+	getToolCategory(toolName) === "suggesting";
 
 export const isSkillTool = (toolName: string): boolean => getToolCategory(toolName) === "skill";
 
@@ -138,6 +144,7 @@ export const activityKindFromGroupKey = (groupKey: string): ActivityKind | undef
 		rest === "terminal" ||
 		rest === "planning" ||
 		rest === "asking" ||
+		rest === "suggesting" ||
 		rest === "skill"
 	) {
 		return rest;
@@ -248,6 +255,8 @@ export type KindStats = {
 	file?: string | undefined;
 	/** Short question prompt for asking subgroups. */
 	question?: string | undefined;
+	/** Suggestion text for a suggesting subgroup. */
+	suggestion?: string | undefined;
 	/** Description or abbreviated command for a single terminal tool call. */
 	commandSummary?: string | undefined;
 	/** Skill id for a skill subgroup that loaded exactly one skill. */
@@ -347,6 +356,15 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 			question ? `Asked ${question}` : `Asked ${plural(count, "question")}`,
 		circleClassName:
 			"border-indigo-600/40 bg-indigo-100 text-indigo-600 dark:border-indigo-400/40 dark:bg-indigo-950 dark:text-indigo-400",
+	},
+	suggesting: {
+		icon: LightbulbIcon,
+		label: "Suggestion",
+		liveLabel: () => "Suggesting",
+		doneLabel: ({ suggestion, count }) =>
+			suggestion ? `Suggested ${suggestion}` : `Suggested ${plural(count, "action")}`,
+		circleClassName:
+			"border-amber-600/40 bg-amber-100 text-amber-600 dark:border-amber-400/40 dark:bg-amber-950 dark:text-amber-400",
 	},
 	skill: {
 		icon: SparklesIcon,
@@ -509,6 +527,16 @@ export const getPartQuestionSummary = (part: ActivityPart): string | undefined =
 	return questionSummaryFromArgs(part.args);
 };
 
+/** OpenCode/Kilo `suggest` tool takes `{ suggest, actions }`. */
+export const getPartSuggestionSummary = (part: ActivityPart): string | undefined => {
+	if (part.type !== "tool-call" || !part.toolName || !isSuggestTool(part.toolName)) {
+		return undefined;
+	}
+	if (!part.args || typeof part.args !== "object") return undefined;
+	const text = str((part.args as Record<string, unknown>).suggest);
+	return text ? truncate(text, 48) : undefined;
+};
+
 /** OpenCode/Kilo `skill` tool takes `{ name }`. */
 export const getPartSkillName = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isSkillTool(part.toolName)) {
@@ -544,6 +572,15 @@ export const getSegmentStats = (
 			if (question) break;
 		}
 	}
+	let suggestion: string | undefined;
+	if (segment.kind === "suggesting") {
+		for (const index of segment.indices) {
+			const part = parts[index];
+			if (!part) continue;
+			suggestion = getPartSuggestionSummary(part);
+			if (suggestion) break;
+		}
+	}
 	const commandSummary =
 		segment.kind === "terminal" && segment.indices.length === 1
 			? getCommandSummary(parts[segment.indices[0]!]?.args as Record<string, unknown> | undefined)
@@ -555,6 +592,7 @@ export const getSegmentStats = (
 		files: files.length,
 		file: files.length === 1 ? basename(files[0]!) : undefined,
 		question,
+		suggestion,
 		commandSummary: commandSummary || undefined,
 		skill: skills.length === 1 ? skills[0] : undefined,
 	};

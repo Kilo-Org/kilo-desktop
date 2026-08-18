@@ -19,6 +19,8 @@ import {
 	readWorkspaceFoldersFromMetadata,
 } from "../session-activity/session-activity-logic.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
+import { hydrateKiloSuggestions } from "../suggestions/hydrate-kilo-suggestions.js";
+import type { KiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 import { withAnacondaSessionListFilter } from "./with-anaconda-session-list-filter.js";
@@ -34,6 +36,7 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	connectionPromise: Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
 	sessionActivity?: SessionActivityStore;
+	suggestions?: KiloSuggestionStore;
 }
 
 export function createKiloRuntimeBackend({
@@ -43,6 +46,7 @@ export function createKiloRuntimeBackend({
 	getAgent,
 	getModel,
 	sessionActivity,
+	suggestions,
 }: CreateKiloRuntimeBackendOptions): OpenCodeRuntimeBackend {
 	const directoriesBySessionId = new Map<string, string>();
 	const clientsByDirectory = new Map<string, KiloClient>();
@@ -124,6 +128,9 @@ export function createKiloRuntimeBackend({
 		// store only learns updatedAt from live session.updated events.
 		void refreshSessions().catch(() => undefined);
 	}
+	if (suggestions) {
+		void hydrateKiloSuggestions(globalClient, suggestions);
+	}
 
 	const resolveSessionDirectory = async (sessionId: string) => {
 		const known = directoriesBySessionId.get(sessionId);
@@ -183,14 +190,18 @@ export function createKiloRuntimeBackend({
 		},
 		createEventSource: () => {
 			const source = new OpenCodeEventSource(globalClient, subscribeToGlobalEvents, rememberEvent);
-			if (sessionActivity) {
+			if (sessionActivity || suggestions) {
 				source.subscribe((event) => {
 					if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
-						void hydrateSessionActivity(globalClient, sessionActivity);
-						void refreshSessions().catch(() => undefined);
+						if (sessionActivity) {
+							void hydrateSessionActivity(globalClient, sessionActivity);
+							void refreshSessions().catch(() => undefined);
+						}
+						if (suggestions) void hydrateKiloSuggestions(globalClient, suggestions);
 						return;
 					}
-					sessionActivity.getState().applyEvent(event);
+					sessionActivity?.getState().applyEvent(event);
+					suggestions?.getState().applyEvent(event);
 				});
 			}
 			return source;

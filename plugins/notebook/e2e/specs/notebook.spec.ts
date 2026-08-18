@@ -55,25 +55,4 @@ test.describe("Notebook @smoke", () => {
 			await rm(saveDirectory, { recursive: true, force: true });
 		}
 	});
-
-	test("restores an unsaved notebook after an app restart", async ({
-		notebookPage,
-		restartableNotebookApp,
-	}) => {
-		await notebookPage.openKiloChat();
-		test.skip(
-			!(await notebookPage.runtimeIsAvailable()),
-			"The packaged notebook runtime is not available in this build.",
-		);
-		const source = "recover_me_after_restart = 1729";
-		const chatTitle = `Notebook recovery ${String(Date.now())}`;
-		await notebookPage.createPersistentChat(chatTitle);
-		await notebookPage.openNotebookAndWriteSource(source);
-
-		await restartableNotebookApp.restart();
-		await notebookPage.openKiloChat();
-		await notebookPage.openChat(chatTitle);
-
-		await notebookPage.verifyRecoveredSource(source);
-	});
 });

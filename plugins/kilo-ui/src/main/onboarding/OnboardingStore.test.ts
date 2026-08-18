@@ -16,6 +16,10 @@ describe("OnboardingStore", () => {
 		const again = new OnboardingStore(sdk, {}, () => 99);
 		expect(again.get()).toEqual({ outcome: "completed", closedAt: 42 });
 		expect(again.skip()).toEqual({ outcome: "skipped", closedAt: 99 });
+		expect(new OnboardingStore(sdk, {}, () => 7).get()).toEqual({
+			outcome: "skipped",
+			closedAt: 99,
+		});
 		sdk.dispose();
 	});
 

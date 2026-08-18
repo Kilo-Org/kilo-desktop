@@ -4,8 +4,6 @@ import { resolveOnboarding, type ResolveOnboardingInput } from "./resolve-onboar
 
 const open: ResolveOnboardingInput = {
 	state: { outcome: null, closedAt: null },
-	workspaceCount: 0,
-	workspacesLoading: false,
 	connectionUnavailable: false,
 };
 
@@ -17,17 +15,8 @@ describe("resolveOnboarding", () => {
 		});
 	});
 
-	it("stays loading until persisted state and workspaces have resolved", () => {
+	it("stays loading until persisted onboarding state has resolved", () => {
 		expect(resolveOnboarding({ ...open, state: null })).toMatchObject({ status: "loading" });
-		expect(
-			resolveOnboarding({ ...open, workspacesLoading: true, workspaceCount: null }),
-		).toMatchObject({ status: "loading" });
-	});
-
-	it("stays loading when the workspace list or persisted state cannot be read", () => {
-		expect(resolveOnboarding({ ...open, workspacesUnavailable: true })).toMatchObject({
-			status: "loading",
-		});
 	});
 
 	it("hides after the user completes or skips", () => {
@@ -41,14 +30,7 @@ describe("resolveOnboarding", () => {
 		});
 	});
 
-	it("hides for existing users who already have a workspace", () => {
-		expect(resolveOnboarding({ ...open, workspaceCount: 1 })).toEqual({
-			status: "hidden",
-			initialStep: "workspace",
-		});
-	});
-
-	it("starts at Kilo sign-in for a first-run user", () => {
+	it("shows the wizard when onboarding has not been completed or skipped", () => {
 		expect(resolveOnboarding(open)).toEqual({
 			status: "visible",
 			initialStep: "kilo-sign-in",

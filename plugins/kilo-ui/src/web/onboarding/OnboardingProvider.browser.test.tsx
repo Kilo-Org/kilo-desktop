@@ -136,8 +136,28 @@ describe("OnboardingProvider", () => {
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 	});
 
-	it("hides the wizard when the user already has a workspace", async () => {
+	it("shows the wizard even when the user already has a workspace", async () => {
 		const { screen } = renderOnboarding({
+			workspaces: { workspaces: [createdWorkspace] },
+		});
+
+		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
+		await expect.element(screen.getByTestId("app-body")).toBeVisible();
+	});
+
+	it("hides the wizard when onboarding was previously completed", async () => {
+		const { screen } = renderOnboarding({
+			onboarding: { outcome: "completed", closedAt: 1 },
+			workspaces: { workspaces: [createdWorkspace] },
+		});
+
+		await expect.element(screen.getByTestId("app-body")).toBeVisible();
+		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+	});
+
+	it("hides the wizard when onboarding was previously skipped", async () => {
+		const { screen } = renderOnboarding({
+			onboarding: { outcome: "skipped", closedAt: 1 },
 			workspaces: { workspaces: [createdWorkspace] },
 		});
 
@@ -155,13 +175,13 @@ describe("OnboardingProvider", () => {
 		await expect.element(screen.getByTestId("onboarding-continue")).toBeDisabled();
 	});
 
-	it("hides the wizard when the workspace list cannot be read", async () => {
+	it("shows the wizard when the workspace list cannot be read", async () => {
 		const { screen } = renderOnboarding({
 			workspaces: { isUnavailable: true },
 		});
 
+		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
 		await expect.element(screen.getByTestId("app-body")).toBeVisible();
-		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 	});
 
 	it("hides the wizard when persisted onboarding state cannot be read", async () => {

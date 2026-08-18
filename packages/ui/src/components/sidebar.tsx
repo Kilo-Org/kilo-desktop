@@ -17,6 +17,12 @@ import {
 	SHELL_LAYOUT_SNAP,
 	SHELL_LAYOUT_SPRING,
 } from "@anaconda-agentic-desktop/ui/lib/shell-motion";
+import {
+	clampSidebarWidth,
+	readStoredSidebarWidth,
+	SIDEBAR_WIDTH_MIN,
+	writeStoredSidebarWidth,
+} from "@anaconda-agentic-desktop/ui/lib/sidebar-width";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
@@ -38,10 +44,10 @@ import { PanelLeftIcon, SearchIcon } from "lucide-react";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+const SIDEBAR_COLLAPSED_GAP_PX = 12;
 
 type SidebarContextProps = {
 	state: "expanded" | "collapsed";
@@ -52,6 +58,9 @@ type SidebarContextProps = {
 	isMobile: boolean;
 	toggleSidebar: () => void;
 	progress: MotionValue<number>;
+	width: number;
+	setWidth: (width: number) => void;
+	widthPx: MotionValue<number>;
 };
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
@@ -87,6 +96,18 @@ function SidebarProvider({
 	const [_open, _setOpen] = React.useState(defaultOpen);
 	const open = openProp ?? _open;
 	const progress = useMotionValue(open ? 1 : 0);
+	// Expanded width is independent of open/collapsed. Drag the rail to change
+	// it; collapse still animates from this value. localStorage restores it.
+	const [width, _setWidth] = React.useState(readStoredSidebarWidth);
+	const widthPx = useMotionValue(width);
+	const setWidth = React.useCallback(
+		(value: number) => {
+			const next = clampSidebarWidth(value);
+			_setWidth(next);
+			widthPx.set(next);
+		},
+		[widthPx],
+	);
 	const setOpen = React.useCallback(
 		(value: boolean | ((value: boolean) => boolean)) => {
 			const openState = typeof value === "function" ? value(open) : value;
@@ -139,8 +160,23 @@ function SidebarProvider({
 			setOpenMobile,
 			toggleSidebar,
 			progress,
+			width,
+			setWidth,
+			widthPx,
 		}),
-		[state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, progress],
+		[
+			state,
+			open,
+			setOpen,
+			isMobile,
+			openMobile,
+			setOpenMobile,
+			toggleSidebar,
+			progress,
+			width,
+			setWidth,
+			widthPx,
+		],
 	);
 
 	return (
@@ -149,7 +185,7 @@ function SidebarProvider({
 				data-slot="sidebar-wrapper"
 				style={
 					{
-						"--sidebar-width": SIDEBAR_WIDTH,
+						"--sidebar-width": `${width}px`,
 						"--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
 						...style,
 					} as React.CSSProperties
@@ -179,9 +215,17 @@ function Sidebar({
 	variant?: "sidebar" | "floating" | "inset";
 	collapsible?: "offcanvas" | "icon" | "none";
 }) {
-	const { isMobile, state, openMobile, setOpenMobile, progress } = useSidebar();
-	const gapWidth = useTransform(progress, [0, 1], ["0.75rem", SIDEBAR_WIDTH]);
-	const offcanvasOffset = useTransform(progress, [0, 1], [`-${SIDEBAR_WIDTH}`, "0rem"]);
+	const { isMobile, state, openMobile, setOpenMobile, progress, widthPx } = useSidebar();
+	const gapWidth = useTransform(
+		[progress, widthPx],
+		([nextProgress, nextWidth]) =>
+			SIDEBAR_COLLAPSED_GAP_PX +
+			((nextWidth as number) - SIDEBAR_COLLAPSED_GAP_PX) * (nextProgress as number),
+	);
+	const offcanvasOffset = useTransform(
+		[progress, widthPx],
+		([nextProgress, nextWidth]) => -(nextWidth as number) * (1 - (nextProgress as number)),
+	);
 
 	if (collapsible === "none") {
 		return (
@@ -258,6 +302,7 @@ function Sidebar({
 				>
 					{children}
 				</div>
+				<SidebarRail />
 			</motion.div>
 		</div>
 	);
@@ -285,22 +330,61 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 	);
 }
 
-function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
-	const { toggleSidebar } = useSidebar();
+function SidebarRail({ className, ...props }: React.ComponentProps<"div">) {
+	const { toggleSidebar, setWidth, width, open, setOpen, isMobile } = useSidebar();
+
+	if (isMobile) return null;
 
 	return (
-		<button
+		<div
+			role="separator"
+			aria-orientation="vertical"
+			aria-label="Resize sidebar"
+			aria-valuenow={width}
+			aria-valuemin={SIDEBAR_WIDTH_MIN}
 			data-sidebar="rail"
 			data-slot="sidebar-rail"
-			aria-label="Toggle Sidebar"
-			tabIndex={-1}
-			onClick={toggleSidebar}
-			title="Toggle Sidebar"
+			data-qa-id="sidebar-resize"
+			onPointerDown={(event) => {
+				if (event.button > 0) return;
+				event.preventDefault();
+				const handle = event.currentTarget;
+				const side =
+					handle.closest("[data-side]")?.getAttribute("data-side") === "right" ? "right" : "left";
+				const startX = event.clientX;
+				const startWidth = width;
+				let moved = false;
+				let latest = startWidth;
+
+				const onMove = (moveEvent: PointerEvent) => {
+					const delta = side === "left" ? moveEvent.clientX - startX : startX - moveEvent.clientX;
+					if (Math.abs(delta) < 3) return;
+					moved = true;
+					if (!open) setOpen(true);
+					latest = startWidth + delta;
+					setWidth(latest);
+				};
+				const onUp = () => {
+					window.removeEventListener("pointermove", onMove);
+					window.removeEventListener("pointerup", onUp);
+					window.removeEventListener("pointercancel", onUp);
+					if (!moved) {
+						if (!open) toggleSidebar();
+						return;
+					}
+					writeStoredSidebarWidth(latest);
+				};
+
+				window.addEventListener("pointermove", onMove);
+				window.addEventListener("pointerup", onUp);
+				window.addEventListener("pointercancel", onUp);
+			}}
+			title="Drag to resize"
 			className={cn(
-				"absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
+				"absolute inset-y-0 z-20 flex w-4 touch-none select-none group-data-[side=left]:-right-4 group-data-[side=right]:left-0 ltr:-translate-x-1/2 rtl:-translate-x-1/2",
 				"in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
 				"[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
-				"group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
+				"group-data-[collapsible=offcanvas]:translate-x-0",
 				"[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
 				"[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
 				className,

@@ -124,6 +124,7 @@ describe("ElectronNotebookHostService", () => {
 		expect(mocks.createRelay).toHaveBeenCalledWith({
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
 			ephemeral: false,
+			packageManager: "conda",
 			socketPath: "/tmp/nightly.sock",
 			peerLabel: "agentic-desktop:kilo-1",
 			description: "Analysis",

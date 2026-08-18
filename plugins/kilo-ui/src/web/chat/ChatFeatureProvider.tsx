@@ -27,6 +27,8 @@ import {
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
+import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
 
 import "./composer-glass.css";
 
@@ -176,6 +178,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
+	const suggestions = useMemo(() => createKiloSuggestionStore(), []);
 
 	const catalogQuery = useKiloModelCatalog(connection.data);
 	const { model, validatedModel, setModel, name, effort, efforts, setEffort } =
@@ -214,6 +217,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		onThreadIdChange,
 		onError: refreshConnection,
 		sessionActivity,
+		suggestions,
 	});
 
 	const aui = useAui({
@@ -277,13 +281,15 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		<ChatConnectionProvider status={connectionStatus}>
 			<KiloAuthProvider>
 				<SessionActivityProvider store={sessionActivity}>
-					<ChatAgentSelectionProvider value={agentSelection}>
-						<ChatModelSelectionProvider value={modelSelection}>
-							<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-								{children}
-							</AssistantRuntimeProvider>
-						</ChatModelSelectionProvider>
-					</ChatAgentSelectionProvider>
+					<KiloSuggestionProvider store={suggestions}>
+						<ChatAgentSelectionProvider value={agentSelection}>
+							<ChatModelSelectionProvider value={modelSelection}>
+								<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+									{children}
+								</AssistantRuntimeProvider>
+							</ChatModelSelectionProvider>
+						</ChatAgentSelectionProvider>
+					</KiloSuggestionProvider>
 				</SessionActivityProvider>
 			</KiloAuthProvider>
 		</ChatConnectionProvider>

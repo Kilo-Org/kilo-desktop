@@ -342,6 +342,7 @@ export class ElectronNotebookHostService {
 				: createRelay({
 						notebookId: args.notebookId,
 						ephemeral: false,
+						packageManager: "conda",
 						...relayOptions,
 					});
 		};

@@ -49,17 +49,27 @@ disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never star
 Linux. Squirrel install, update, and uninstall launches are handled before normal
 application startup.
 
-Canary packaging stamps the packaged `package.json` and maker versions as
-`{nextPatch}-canary.{YYYYMMDD}.{HHmmss}` from the committed desktop version and a UTC
-timestamp (shared via `CANARY_BUILD_TIME` in CI so macOS/Windows/Linux publish the same
-version). The patch increment makes each canary sort above the committed version, so
-already-installed `0.1.0` builds update. Electron packager native metadata
-(`FileVersion` / `ProductVersion` / `CFBundleShortVersionString`) uses only the
-`{nextPatch}` numeric prefix because Windows PE versions allow at most four integer
-components. Staging and prod keep the committed version and still require an explicit
-bump.
+Canary packaging stamps the desktop `package.json` version (then restores it) so every
+Forge maker — DMG, ZIP, `RELEASES.json`, Squirrel nupkg/`RELEASES`, and DEB — names
+artifacts `{nextPatch}-canary.{YYYYMMDD}.{HHmmss}` from the committed desktop version and
+a UTC timestamp (shared via `CANARY_BUILD_TIME` in CI so macOS/Windows/Linux publish the
+same version). The packaged app `package.json` is stamped to the same value. The patch
+increment makes each canary sort above the committed version, so already-installed
+`0.1.0` builds update. Electron packager native metadata (`FileVersion` /
+`ProductVersion` / `CFBundleShortVersionString`) uses only the `{nextPatch}` numeric
+prefix because Windows PE versions allow at most four integer components. Staging and
+prod keep the committed version and still require an explicit bump.
+
+Squirrel.Windows NuGet versions cannot contain extra dots in the prerelease, so the
+Windows nupkg filename uses `0.1.1-canary20260818143052` while the app version stays
+`0.1.1-canary.20260818.143052`.
 
 Maker artifacts are written to `apps/desktop/out/make/`.
+
+Squirrel.Windows packs with a bundled `nuget.exe` that still enforces the 260-character
+`MAX_PATH` limit. Windows `make`/`publish` therefore points `TEMP`/`TMP` and Electron
+Packager `tmpdir` at `<drive>\\t` (override with `WINDOWS_PACKAGING_TEMP`) so unpacked
+native-addon paths stay under the limit.
 
 ## Artifact layout
 
@@ -84,15 +94,16 @@ in the committed files; secrets remain in GitHub Environments.
 
 The Forge compile-time contract uses:
 
-| Variable                 | Meaning                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------- |
-| `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file      |
-| `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                     |
-| `CANARY_BUILD_TIME`      | Optional ISO timestamp shared across canary matrix legs; defaults to now                |
-| `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                              |
-| `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                             |
-| `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                    |
-| `UPDATE_REMOTE_RELEASES` | Set to `true` on Windows when an existing Squirrel feed is available for delta creation |
+| Variable                 | Meaning                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------- |
+| `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file                  |
+| `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                                 |
+| `CANARY_BUILD_TIME`      | Optional ISO timestamp shared across canary matrix legs; defaults to now                            |
+| `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                                          |
+| `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                                         |
+| `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                                |
+| `UPDATE_REMOTE_RELEASES` | Set to `true` on Windows when an existing Squirrel feed is available for delta creation             |
+| `WINDOWS_PACKAGING_TEMP` | Optional short Windows temp directory; defaults to `<drive>\\t` so nuget.exe stays under `MAX_PATH` |
 
 ## GitHub Environments
 

@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import {
 	createMemoryHistory,
 	createRootRoute,
@@ -199,7 +199,10 @@ describe("AppSidebarLayout login button", () => {
 });
 
 describe("AppSidebarLayout nav toggle", () => {
-	afterEach(cleanup);
+	afterEach(() => {
+		cleanup();
+		localStorage.removeItem("shell:sidebar-width");
+	});
 
 	it("toggles the left nav open and closed", async () => {
 		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
@@ -216,6 +219,44 @@ describe("AppSidebarLayout nav toggle", () => {
 
 		await page.getByRole("button", { name: "Toggle navigation" }).click();
 		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
+	});
+
+	it("resizes the left nav when the rail is dragged", async () => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		const rail = page.getByTestId("sidebar-resize");
+		await expect.element(rail).toBeInTheDocument();
+
+		const wrapper = () =>
+			baseElement.querySelector('[data-slot="sidebar-wrapper"]') as HTMLElement | null;
+		expect(parseFloat(wrapper()?.style.getPropertyValue("--sidebar-width") ?? "")).toBe(256);
+
+		const handle = rail.element();
+		fireEvent.pointerDown(handle, { button: 0, clientX: 256, pointerId: 1 });
+		fireEvent(
+			window,
+			new PointerEvent("pointermove", { bubbles: true, clientX: 336, pointerId: 1 }),
+		);
+		fireEvent(window, new PointerEvent("pointerup", { bubbles: true, clientX: 336, pointerId: 1 }));
+
+		expect(parseFloat(wrapper()?.style.getPropertyValue("--sidebar-width") ?? "")).toBe(336);
+		expect(localStorage.getItem("shell:sidebar-width")).toBe("336");
+		expect(baseElement.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state")).toBe(
+			"expanded",
+		);
+	});
+
+	it("restores the last dragged sidebar width on remount", async () => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+		localStorage.setItem("shell:sidebar-width", "320");
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		await expect.element(page.getByTestId("sidebar-resize")).toBeInTheDocument();
+		const wrapper = baseElement.querySelector(
+			'[data-slot="sidebar-wrapper"]',
+		) as HTMLElement | null;
+		expect(parseFloat(wrapper?.style.getPropertyValue("--sidebar-width") ?? "")).toBe(320);
 	});
 });
 

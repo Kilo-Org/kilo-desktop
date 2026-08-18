@@ -52,12 +52,17 @@ export function getCanaryBuildTime(environment: ReleaseEnvironment = {}, now = n
 	return parsed;
 }
 
+const CANARY_PUBLISH_VERSION = /^\d+\.\d+\.\d+-canary\.\d{8}\.\d+$/;
+
 export function getPublishAppVersion(input: {
 	readonly version: string;
 	readonly channel: PublishableReleaseChannel;
 	readonly now?: Date;
 }): string {
 	if (input.channel !== "canary") {
+		return input.version;
+	}
+	if (CANARY_PUBLISH_VERSION.test(input.version)) {
 		return input.version;
 	}
 	const now = input.now ?? new Date();

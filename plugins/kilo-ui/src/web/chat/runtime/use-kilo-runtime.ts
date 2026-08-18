@@ -9,6 +9,7 @@ import type {
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
+import type { KiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { withPromptOptions, type PromptModelRef } from "./with-prompt-options.js";
 
@@ -30,6 +31,8 @@ export interface UseKiloRuntimeOptions {
 	onError?: (error: unknown) => void;
 	/** Shared session-activity store tapped into the runtime's SSE stream. */
 	sessionActivity?: SessionActivityStore;
+	/** Pending `suggest` tool requests recovered from SSE and `/suggestion`. */
+	suggestions?: KiloSuggestionStore;
 }
 
 export function useKiloRuntime({
@@ -45,6 +48,7 @@ export function useKiloRuntime({
 	isSendDisabled,
 	onError,
 	sessionActivity,
+	suggestions,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	// Refs so prompt injection always sees the latest composer selection even when
 	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
@@ -78,8 +82,9 @@ export function useKiloRuntime({
 			prepareSession,
 			...promptGetters,
 			...(sessionActivity ? { sessionActivity } : {}),
+			...(suggestions ? { suggestions } : {}),
 		});
-	}, [client, connectionPromise, prepareSession, promptGetters, sessionActivity]);
+	}, [client, connectionPromise, prepareSession, promptGetters, sessionActivity, suggestions]);
 	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 
 	return useOpenCodeRuntime({

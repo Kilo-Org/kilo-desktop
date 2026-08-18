@@ -21,6 +21,7 @@ import desktopPackage from "./package.json" with { type: "json" };
 import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
+import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-temp.js";
 import { signWindowsFile } from "./config/windows-sign.js";
 import { createNotebookPackagingPlan } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
 
@@ -42,6 +43,11 @@ const s3Bucket = process.env.UPDATE_S3_BUCKET?.trim();
 const osxSign = resolveOsxSign(process.env);
 const osxNotarize = resolveOsxNotarize(process.env);
 const windowsPlan = planWindowsSigning(process.env);
+const windowsPackagingTemp = getWindowsPackagingTempDirectory({
+	platform: process.platform,
+	driveRoot: path.parse(packageRoot).root,
+	...(process.env.WINDOWS_PACKAGING_TEMP ? { override: process.env.WINDOWS_PACKAGING_TEMP } : {}),
+});
 const executableName =
 	process.platform === "darwin" ? identity.productName : identity.executableName;
 const appIcon =
@@ -245,6 +251,7 @@ const config: ForgeConfig = {
 		extraResource: extraResources,
 		icon: appIcon,
 		name: identity.productName,
+		...(windowsPackagingTemp ? { tmpdir: windowsPackagingTemp } : {}),
 		// Production node_modules are staged in packageAfterCopy via `pnpm deploy`.
 		// Packager prune runs `pnpm install --production` against this workspace
 		// package and can wipe the repo's node_modules (Forge is a devDependency).

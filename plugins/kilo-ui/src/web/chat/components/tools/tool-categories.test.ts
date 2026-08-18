@@ -98,6 +98,45 @@ describe("asking activity grouping", () => {
 	});
 });
 
+describe("suggesting activity grouping", () => {
+	it("maps the suggest tool into its own subgroup", () => {
+		expect(getGroupKeyForTool("suggest")).toBe("group-suggesting");
+		expect(getGroupKeyForTool("Suggest")).toBe("group-suggesting");
+		expect(activityKindFromGroupKey("group-suggesting")).toBe("suggesting");
+		expect(getActivityKind({ type: "tool-call", toolName: "suggest" })).toBe("suggesting");
+		expect(getMcpServerFromToolName("suggest")).toBeUndefined();
+	});
+
+	it("labels live and completed suggestion states", () => {
+		expect(getKindMeta("suggesting").liveLabel({ count: 1, files: 0 })).toBe("Suggesting");
+		expect(
+			getKindMeta("suggesting").doneLabel({
+				count: 1,
+				files: 0,
+				suggestion: "Run a local review?",
+			}),
+		).toBe("Suggested Run a local review?");
+	});
+
+	it("pulls the suggestion text into segment stats", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "suggest",
+				args: { suggest: "Run a local review?", actions: [{ label: "Start" }] },
+				status: { type: "complete" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "suggesting",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.suggestion).toBe("Run a local review?");
+	});
+});
+
 describe("terminal activity labels", () => {
 	it("uses the command description for a single terminal tool", () => {
 		const parts: ActivityPart[] = [

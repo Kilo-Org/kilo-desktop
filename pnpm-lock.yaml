@@ -296,8 +296,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk-react
       '@anaconda-agentic-desktop/ui':
-        specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+        specifier: link:../../packages/ui
+        version: link:../../packages/ui
       '@anaconda/shadcn-theme':
         specifier: 0.1.0-alpha.0
         version: 0.1.0-alpha.0

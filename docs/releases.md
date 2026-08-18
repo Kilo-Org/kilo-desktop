@@ -49,6 +49,12 @@ disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never star
 Linux. Squirrel install, update, and uninstall launches are handled before normal
 application startup.
 
+Canary packaging stamps `appVersion` as `{nextPatch}-canary.{YYYYMMDD}.{HHmmss}` from
+the committed desktop version and a UTC timestamp (shared via `CANARY_BUILD_TIME` in
+CI so macOS/Windows/Linux publish the same version). The patch increment makes each
+canary sort above the committed version, so already-installed `0.1.0` builds update.
+Staging and prod keep the committed version and still require an explicit bump.
+
 Maker artifacts are written to `apps/desktop/out/make/`.
 
 ## Artifact layout
@@ -78,6 +84,7 @@ The Forge compile-time contract uses:
 | ------------------------ | --------------------------------------------------------------------------------------- |
 | `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file      |
 | `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                     |
+| `CANARY_BUILD_TIME`      | Optional ISO timestamp shared across canary matrix legs; defaults to now                |
 | `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                              |
 | `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                             |
 | `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                    |

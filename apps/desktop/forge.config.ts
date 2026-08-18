@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,10 +10,13 @@ import { execa } from "execa";
 
 import {
 	getArtifactKey,
+	getCanaryBuildTime,
+	getPublishAppVersion,
 	getReleaseChannel,
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 } from "./config/release.js";
+import desktopPackage from "./package.json" with { type: "json" };
 import { getAppIdentity } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
@@ -24,6 +27,11 @@ const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
 const channel = getReleaseChannel(process.env);
+const appVersion = getPublishAppVersion({
+	version: desktopPackage.version,
+	channel,
+	now: getCanaryBuildTime(process.env),
+});
 const identity = getAppIdentity(channel);
 const channelTitle = channel.replace(/^./, (character) => character.toUpperCase());
 const dmgVolumeTitle = channel === "prod" ? "Agentic" : `Agentic ${channelTitle}`;
@@ -211,6 +219,13 @@ async function removeBinDirectories(directory: string): Promise<void> {
 	}
 }
 
+async function stampPackagedAppVersion(buildPath: string, version: string): Promise<void> {
+	const manifestPath = path.join(buildPath, "package.json");
+	const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { version: string };
+	manifest.version = version;
+	await writeFile(manifestPath, `${JSON.stringify(manifest, null, "\t")}\n`);
+}
+
 const config: ForgeConfig = {
 	packagerConfig: {
 		asar: {
@@ -221,6 +236,7 @@ const config: ForgeConfig = {
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
+		appVersion,
 		executableName,
 		extraResource: extraResources,
 		icon: appIcon,
@@ -290,6 +306,7 @@ const config: ForgeConfig = {
 				return {
 					name: identity.squirrelName,
 					setupExe: identity.setupExecutableName,
+					version: appVersion,
 					...(remoteReleases ? { remoteReleases } : {}),
 					...(windowsPlan.squirrelCertificate ?? {}),
 				};
@@ -307,6 +324,7 @@ const config: ForgeConfig = {
 					maintainer: "Anaconda, Inc.",
 					name: identity.executableName,
 					productName: identity.productName,
+					version: appVersion,
 				},
 			},
 		},
@@ -369,6 +387,7 @@ const config: ForgeConfig = {
 	],
 	hooks: {
 		packageAfterCopy: async (_forgeConfig, buildPath) => {
+			await stampPackagedAppVersion(buildPath, appVersion);
 			await stageWebRenderer(buildPath, webDistDirectory);
 			await stageProductionDependencies(buildPath);
 			await stageWebMcpRelayRuntime(buildPath);

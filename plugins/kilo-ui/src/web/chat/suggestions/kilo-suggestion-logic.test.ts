@@ -4,6 +4,7 @@ import {
 	applySuggestionEvent,
 	assistantWorkingIndicatorMode,
 	isComposerPromptBusy,
+	messageHasInFlightActivity,
 	parseSuggestionRequest,
 	pickPendingSuggestion,
 	type KiloSuggestionEvent,
@@ -138,12 +139,47 @@ describe("isComposerPromptBusy", () => {
 	});
 });
 
+describe("messageHasInFlightActivity", () => {
+	it("is false when nothing is running", () => {
+		expect(messageHasInFlightActivity([])).toBe(false);
+		expect(messageHasInFlightActivity([{ type: "tool-call", status: { type: "complete" } }])).toBe(
+			false,
+		);
+		expect(messageHasInFlightActivity([{ type: "reasoning", status: { type: "complete" } }])).toBe(
+			false,
+		);
+	});
+
+	it("is true when a tool call or reasoning part is running", () => {
+		expect(messageHasInFlightActivity([{ type: "tool-call", status: { type: "running" } }])).toBe(
+			true,
+		);
+		expect(messageHasInFlightActivity([{ type: "reasoning", status: { type: "running" } }])).toBe(
+			true,
+		);
+	});
+
+	it("is true when an earlier tool is still running after a later complete part", () => {
+		expect(
+			messageHasInFlightActivity([
+				{ type: "tool-call", status: { type: "running" } },
+				{ type: "tool-call", status: { type: "complete" } },
+				{ type: "data" },
+			]),
+		).toBe(true);
+	});
+});
+
 describe("assistantWorkingIndicatorMode", () => {
 	it("hides considering-next-steps while a suggestion is pending", () => {
-		expect(assistantWorkingIndicatorMode(request())).toBe("never");
+		expect(assistantWorkingIndicatorMode(request(), false)).toBe("never");
+	});
+
+	it("hides considering-next-steps while a tool or subgroup is running", () => {
+		expect(assistantWorkingIndicatorMode(null, true)).toBe("never");
 	});
 
 	it("keeps the default indicator while the assistant is generating", () => {
-		expect(assistantWorkingIndicatorMode(null)).toBe("no-text");
+		expect(assistantWorkingIndicatorMode(null, false)).toBe("no-text");
 	});
 });

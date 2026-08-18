@@ -11,6 +11,7 @@ import {
 	ReadTool,
 	SkillTool,
 	SuggestTool,
+	TaskTool,
 	WebFetchTool,
 	WebSearchTool,
 	WriteTool,
@@ -49,4 +50,5 @@ export default defineToolkit({
 	requestUserInput: askQuestionTool,
 	suggest: { type: "backend", render: SuggestTool },
 	skill: { type: "backend", render: SkillTool },
+	task: { type: "backend", render: TaskTool },
 });

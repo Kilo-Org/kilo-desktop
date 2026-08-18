@@ -21,7 +21,6 @@ const getSummary = (name: string, data: unknown) => {
 	if (name === "opencode-retry") return "Retry";
 	if (name === "opencode-compaction") return "Compaction";
 	if (name === "opencode-agent") return "Agent event";
-	if (name === "opencode-subtask") return "Subtask";
 
 	return name.replace(/^opencode-/, "").replace(/-/g, " ");
 };
@@ -30,6 +29,7 @@ const HIDDEN_DATA_PARTS = new Set([
 	"opencode-step-start",
 	"opencode-step-finish",
 	"opencode-patch",
+	"opencode-subtask",
 ]);
 
 export const isHiddenOpenCodeDataPart = (name: string): boolean => HIDDEN_DATA_PARTS.has(name);

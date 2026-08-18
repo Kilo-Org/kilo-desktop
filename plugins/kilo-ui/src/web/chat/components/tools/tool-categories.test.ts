@@ -218,7 +218,7 @@ describe("skill activity grouping", () => {
 	it("keeps skill calls out of the generic tools group", () => {
 		const parts: ActivityPart[] = [
 			{ type: "tool-call", toolName: "skill", args: { name: "write-vitest" } },
-			{ type: "tool-call", toolName: "task" },
+			{ type: "tool-call", toolName: "mystery" },
 		];
 		expect(parts.map(getActivityKind)).toEqual(["skill", "tools"]);
 		const summary = summarizeActivity(
@@ -227,6 +227,98 @@ describe("skill activity grouping", () => {
 		);
 		expect(summary.segments.map((s) => s.kind)).toEqual(["skill", "tools"]);
 		expect(summary.iconItems.map((i) => i.label)).toEqual(["Skill", "Tools"]);
+	});
+});
+
+describe("subagent activity grouping", () => {
+	it("maps the task tool into its own subgroup", () => {
+		expect(getGroupKeyForTool("task")).toBe("group-subagent");
+		expect(getGroupKeyForTool("Task")).toBe("group-subagent");
+		expect(activityKindFromGroupKey("group-subagent")).toBe("subagent");
+		expect(getActivityKind({ type: "tool-call", toolName: "task" })).toBe("subagent");
+	});
+
+	it("does not treat task as an MCP server prefix", () => {
+		expect(getMcpServerFromToolName("task")).toBeUndefined();
+	});
+
+	it("labels live and completed subagent states", () => {
+		expect(getKindMeta("subagent").liveLabel({ count: 1, files: 0 })).toBe("Delegating...");
+		expect(
+			getKindMeta("subagent").liveLabel({ count: 1, files: 0, task: "Explore auth flow" }),
+		).toBe("Delegating Explore auth flow");
+		expect(
+			getKindMeta("subagent").doneLabel({ count: 1, files: 0, task: "Explore auth flow" }),
+		).toBe("Delegated Explore auth flow");
+		expect(getKindMeta("subagent").doneLabel({ count: 2, files: 0 })).toBe("Delegated 2 subagents");
+	});
+
+	it("pulls the task description into segment stats", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "task",
+				args: {
+					description: "Explore auth flow",
+					prompt: "Find how login works.",
+					subagent_type: "explore",
+				},
+				status: { type: "complete" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "subagent",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.task).toBe("Explore auth flow");
+	});
+
+	it("falls back to the agent type when the description is missing", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "task",
+				args: { prompt: "Review the diff.", subagent_type: "code-reviewer" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "subagent",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.task).toBe("code-reviewer");
+	});
+
+	it("omits a task description when the subgroup launched more than one", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "task", args: { description: "Explore auth" } },
+			{ type: "tool-call", toolName: "task", args: { description: "Review the patch" } },
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "subagent",
+			indices: [0, 1],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.task).toBeUndefined();
+		expect(getKindMeta("subagent").doneLabel(stats)).toBe("Delegated 2 subagents");
+	});
+
+	it("keeps task calls out of the generic tools group", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "skill", args: { name: "write-vitest" } },
+			{ type: "tool-call", toolName: "task", args: { description: "Explore auth" } },
+		];
+		expect(parts.map(getActivityKind)).toEqual(["skill", "subagent"]);
+		const summary = summarizeActivity(
+			parts,
+			parts.map((_, i) => i),
+		);
+		expect(summary.segments.map((s) => s.kind)).toEqual(["skill", "subagent"]);
+		expect(summary.iconItems.map((i) => i.label)).toEqual(["Skill", "Subagent"]);
 	});
 });
 

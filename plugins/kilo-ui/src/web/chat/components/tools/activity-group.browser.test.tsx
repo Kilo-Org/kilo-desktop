@@ -24,6 +24,7 @@ import { ActivityGroup, ActivitySubgroup } from "./activity-group.js";
 import { ToolCallFallback } from "./tool-ui-inline.js";
 import { ReadActivity } from "./tool-ui-read-search.js";
 import { SkillActivity } from "./tool-ui-skill.js";
+import { TaskActivity } from "./tool-ui-task.js";
 import type { ActivityKind } from "./tool-categories.js";
 
 const toolPart = (
@@ -45,6 +46,14 @@ const toolPart = (
 const readPart = (id: string, path: string) => toolPart(id, "read", { file_path: path });
 const skillPart = (id: string, name: string) => toolPart(id, "skill", { name });
 const planningPart = (id: string, toolName: "todowrite" | "todoread") => toolPart(id, toolName, {});
+const taskPart = (
+	id: string,
+	args: { description?: string; prompt?: string; subagent_type?: string },
+	result?: unknown,
+): ToolCallMessagePartProps => ({
+	...toolPart(id, "task", args),
+	result,
+});
 
 const renderActivity = (
 	kind: ActivityKind,
@@ -134,6 +143,71 @@ describe("Skill activity subgroup", () => {
 		fireEvent.click(trigger);
 		expect(queryByText("write-vitest")).toBeNull();
 		expect(queryByText("tools")).toBeNull();
+	});
+});
+
+describe("Subagent activity subgroup", () => {
+	it("renders one completed task as a collapsible header with hidden detail", () => {
+		const { baseElement, getByRole, getByText, queryByText } = renderActivity(
+			"subagent",
+			[
+				taskPart(
+					"call-1",
+					{
+						description: "Explore auth flow",
+						prompt: "Find how login works.",
+						subagent_type: "explore",
+					},
+					"<task_result>\nLogin lives in `auth.ts`.\n</task_result>",
+				),
+			],
+			TaskActivity,
+		);
+		const trigger = getByRole("button", { name: "Delegated Explore auth flow" });
+
+		expect(queryByText("Find how login works.")).toBeNull();
+		expect(queryByText("Login lives in", { exact: false })).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(queryByText("Find how login works.")).toBeNull();
+		expect(getByText("Login lives in", { exact: false })).toBeDefined();
+		expect(baseElement.querySelector("code")?.textContent).toBe("auth.ts");
+		expect(getByText("@explore")).toBeDefined();
+	});
+
+	it("shows a solo running task once in the subgroup header", () => {
+		const part = {
+			...taskPart("call-1", { description: "Explore auth flow", subagent_type: "explore" }),
+			status: { type: "running" as const },
+		};
+		const { baseElement, queryByRole } = renderActivity("subagent", [part], TaskActivity);
+
+		expect(baseElement.textContent).toContain("Delegating Explore auth flow");
+		expect(baseElement.textContent?.match(/Explore auth flow/g)).toHaveLength(1);
+		expect(queryByRole("button")).toBeNull();
+	});
+
+	it("collapses multiple tasks and lets the user toggle them", () => {
+		const { getByRole, getByText, queryByText } = renderActivity(
+			"subagent",
+			[
+				taskPart("call-1", { description: "Explore auth", subagent_type: "explore" }),
+				taskPart("call-2", { description: "Review the patch", subagent_type: "code-reviewer" }),
+			],
+			TaskActivity,
+		);
+		const trigger = getByRole("button", { name: "Delegated 2 subagents" });
+
+		expect(queryByText("Explore auth")).toBeNull();
+		expect(queryByText("Review the patch")).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(getByText("Explore auth")).toBeDefined();
+		expect(getByText("Review the patch")).toBeDefined();
+
+		fireEvent.click(trigger);
+		expect(queryByText("Explore auth")).toBeNull();
+		expect(queryByText("Review the patch")).toBeNull();
 	});
 });
 

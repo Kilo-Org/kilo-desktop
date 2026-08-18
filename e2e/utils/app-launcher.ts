@@ -10,9 +10,11 @@ import { packagedExecutable, repoRoot } from "./paths.js";
  * otherwise show first-run onboarding / conda staging. Every packaged e2e
  * launch — including restart fixtures — must use this env.
  */
-export function packagedAppLaunchEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function packagedAppLaunchEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
 	return {
-		...env,
+		...Object.fromEntries(
+			Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+		),
 		ANACONDA_SKIP_CONDA_STAGING: "1",
 		ANACONDA_SKIP_ONBOARDING: "1",
 		ANACONDA_SKIP_KEYRING: "1",

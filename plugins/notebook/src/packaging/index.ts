@@ -8,16 +8,16 @@ const require = createRequire(import.meta.url);
 // Keep its target layout self-contained so config loading does not depend on
 // TypeScript's source-extension resolution before Vite has started.
 const NTERACT_MCP_EXECUTABLES = new Map([
-	["darwin-arm64", { nteractMcp: "nteract-mcp", runt: "runt" }],
-	["darwin-x64", { nteractMcp: "nteract-mcp", runt: "runt" }],
-	["linux-x64", { nteractMcp: "nteract-mcp", runt: "runt" }],
-	["win32-x64", { nteractMcp: "nteract-mcp.exe", runt: "runt.exe" }],
+	["darwin-arm64", { nteractMcp: "nteract-mcp", runt: "runt-nightly" }],
+	["darwin-x64", { nteractMcp: "nteract-mcp", runt: "runt-nightly" }],
+	["linux-x64", { nteractMcp: "nteract-mcp", runt: "runt-nightly" }],
+	["win32-x64", { nteractMcp: "nteract-mcp.exe", runt: "runt-nightly.exe" }],
 ]);
 const RUNTIMED_EXECUTABLES = new Map([
-	["darwin-arm64", "runtimed"],
-	["darwin-x64", "runtimed"],
-	["linux-x64", "runtimed"],
-	["win32-x64", "runtimed.exe"],
+	["darwin-arm64", "runtimed-nightly"],
+	["darwin-x64", "runtimed-nightly"],
+	["linux-x64", "runtimed-nightly"],
+	["win32-x64", "runtimed-nightly.exe"],
 ]);
 export const NOTEBOOK_ASAR_UNPACK_PACKAGES = ["@runtimed"] as const;
 export const NOTEBOOK_MAIN_EXTERNALS = [/^@runtimed\/node(?:\/.*)?$/] as const;

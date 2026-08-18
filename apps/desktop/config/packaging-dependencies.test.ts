@@ -106,7 +106,7 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).toMatch(/--filter\s+"@anaconda-agentic-desktop\/plugin-\*"/);
 	});
 
-	it("does not prepare a source-built @runtimed/node on packaging hosts", () => {
+	it("does not source-build nteract artifacts on packaging hosts", () => {
 		const setupNative = readFileSync(
 			path.join(workspaceRoot, "plugins/notebook/actions/setup-native/action.yml"),
 			"utf8",
@@ -126,7 +126,8 @@ describe("packaged production dependencies", () => {
 		);
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
-		expect(buildUi).toContain("1.94.0");
+		expect(buildUi).not.toContain("rust-toolchain");
+		expect(buildUi).not.toContain("wasm-pack");
 		expect(buildUi).not.toContain("./plugins/notebook/actions/setup-native");
 		expect(buildUi).not.toContain("NOTEBOOK_SKIP_NATIVE_BINDING");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");

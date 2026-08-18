@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-	cp,
 	lstat,
 	mkdir,
 	mkdtemp,
@@ -13,9 +12,9 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { execa } from "execa";
+import { extract as extractTar } from "tar";
 
-import { NTERACT_NOTEBOOK_SOURCE } from "./artifacts.js";
+import { NTERACT_NOTEBOOK_UI, NTERACT_RELEASE, type ReleaseAsset } from "./artifacts.js";
 
 export const NOTEBOOK_BUILD_MANIFEST = "agentic-notebook-build.json";
 export const NTERACT_LICENSE_FILE = "LICENSE.nteract";
@@ -50,85 +49,29 @@ export interface NotebookBuildManifest {
 	readonly files: readonly NotebookBuildFile[];
 }
 
-export interface CommandRunner {
-	(
-		command: string,
-		args: readonly string[],
-		options: { cwd?: string; capture?: boolean },
-	): Promise<void | { readonly stdout: string }>;
-}
-
 export interface BuildNotebookUiOptions {
-	readonly cacheDirectory: string;
 	readonly destinationDirectory: string;
-	readonly run?: CommandRunner;
+	readonly release?: NotebookUiRelease;
+	readonly artifact?: ReleaseAsset;
+	readonly fetch?: typeof fetch;
+	readonly extract?: (archivePath: string, destinationDirectory: string) => Promise<void>;
 }
 
 export interface BuildNotebookUiResult {
 	readonly built: boolean;
-	readonly checkoutDirectory: string;
 	readonly destinationDirectory: string;
 }
 
-const defaultRun: CommandRunner = async (command, args, options) => {
-	const result = await execa(command, [...args], {
-		...(options.cwd ? { cwd: options.cwd } : {}),
-		stderr: "inherit",
-		stdout: options.capture ? "pipe" : "inherit",
-	});
-	if (options.capture) return { stdout: result.stdout ?? "" };
-};
-
-async function requireVersion(
-	run: CommandRunner,
-	command: string,
-	args: readonly string[],
-	expected: RegExp,
-	guidance: string,
-): Promise<void> {
-	let result: void | { readonly stdout: string };
-	try {
-		result = await run(command, args, { capture: true });
-	} catch (error) {
-		throw new Error(`${guidance}: ${error instanceof Error ? error.message : String(error)}`, {
-			cause: error,
-		});
-	}
-	if (result && !expected.test(result.stdout)) {
-		throw new Error(`${guidance}; found ${result.stdout.trim() || "an unknown version"}`);
-	}
+export interface NotebookUiRelease {
+	readonly tag: string;
+	readonly version: string;
+	readonly channel: "stable" | "nightly";
+	readonly commit: string;
+	readonly repository: string;
 }
 
-async function requireWasmClang(run: CommandRunner, cacheDirectory: string): Promise<void> {
-	const compiler = process.env["CC_wasm32_unknown_unknown"]?.trim() || "clang";
-	await requireVersion(
-		run,
-		compiler,
-		["--version"],
-		/clang version/i,
-		"Install a WASM-capable clang to build the notebook UI",
-	);
-	await mkdir(cacheDirectory, { recursive: true });
-	const probeDirectory = await mkdtemp(path.join(cacheDirectory, ".wasm-clang-probe-"));
-	const source = path.join(probeDirectory, "probe.c");
-	const output = path.join(probeDirectory, "probe.o");
-	try {
-		await writeFile(source, "int notebook_wasm_probe(void) { return 0; }\n");
-		try {
-			await run(compiler, ["--target=wasm32-unknown-unknown", "-c", source, "-o", output], {});
-		} catch (error) {
-			throw new Error(
-				"The configured clang has no wasm32 backend. On macOS run `brew install llvm`, then set CC_wasm32_unknown_unknown and AR_wasm32_unknown_unknown to Homebrew LLVM.",
-				{ cause: error },
-			);
-		}
-		if (!(await stat(output)).isFile()) {
-			throw new Error("The configured clang did not produce a wasm32 object file.");
-		}
-	} finally {
-		await rm(probeDirectory, { recursive: true, force: true });
-	}
-}
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+const PUBLISHED_BUNDLE_ROOT = "nteract-notebook-ui";
 
 function digest(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
@@ -210,7 +153,10 @@ async function applyAgenticEmbedChrome(directory: string): Promise<void> {
 	if (next !== html) await writeFile(indexPath, next);
 }
 
-async function writeBuildManifest(directory: string): Promise<void> {
+async function writeBuildManifest(
+	directory: string,
+	release: Pick<NotebookUiRelease, "tag" | "commit"> = NTERACT_RELEASE,
+): Promise<void> {
 	const files = (await collectFiles(directory)).filter((file) => file !== NOTEBOOK_BUILD_MANIFEST);
 	const records = await Promise.all(
 		files.map(async (relativePath): Promise<NotebookBuildFile> => {
@@ -220,8 +166,8 @@ async function writeBuildManifest(directory: string): Promise<void> {
 	);
 	const manifest: NotebookBuildManifest = {
 		schemaVersion: 1,
-		releaseTag: NTERACT_NOTEBOOK_SOURCE.tag,
-		sourceCommit: NTERACT_NOTEBOOK_SOURCE.commit,
+		releaseTag: release.tag,
+		sourceCommit: release.commit,
 		files: records,
 	};
 	await writeFile(
@@ -232,6 +178,7 @@ async function writeBuildManifest(directory: string): Promise<void> {
 
 export async function validateStagedNotebookBundle(
 	directory: string,
+	release: Pick<NotebookUiRelease, "tag" | "commit"> = NTERACT_RELEASE,
 ): Promise<NotebookBuildManifest> {
 	await validateNotebookBuildOutput(directory);
 	const indexHtml = await readFile(path.join(directory, "index.html"), "utf8");
@@ -243,8 +190,8 @@ export async function validateStagedNotebookBundle(
 	) as NotebookBuildManifest;
 	if (
 		manifest.schemaVersion !== 1 ||
-		manifest.releaseTag !== NTERACT_NOTEBOOK_SOURCE.tag ||
-		manifest.sourceCommit !== NTERACT_NOTEBOOK_SOURCE.commit ||
+		manifest.releaseTag !== release.tag ||
+		manifest.sourceCommit !== release.commit ||
 		!Array.isArray(manifest.files)
 	) {
 		throw new Error("notebook build manifest does not match the pinned nteract release");
@@ -275,9 +222,113 @@ export async function validateStagedNotebookBundle(
 	return manifest;
 }
 
-async function currentBundleIsValid(destinationDirectory: string): Promise<boolean> {
+async function stagePublishedNotebookUi(
+	options: BuildNotebookUiOptions,
+	release: NotebookUiRelease,
+	artifact: ReleaseAsset,
+	extract: NonNullable<BuildNotebookUiOptions["extract"]>,
+): Promise<BuildNotebookUiResult> {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+	let archive: Buffer;
 	try {
-		await validateStagedNotebookBundle(destinationDirectory);
+		const repositoryUrl = release.repository.replace(/\.git$/, "");
+		const response = await (options.fetch ?? fetch)(
+			`${repositoryUrl}/releases/download/${release.tag}/${artifact.assetName}`,
+			{ redirect: "follow", signal: controller.signal },
+		);
+		if (!response.ok) {
+			throw new Error(`could not download ${artifact.assetName}: HTTP ${response.status}`);
+		}
+		archive = Buffer.from(await response.arrayBuffer());
+	} finally {
+		clearTimeout(timer);
+	}
+	if (archive.byteLength !== artifact.bytes) {
+		throw new Error(
+			`notebook UI size mismatch for ${artifact.assetName}: expected ${artifact.bytes}, got ${archive.byteLength}`,
+		);
+	}
+	const archiveDigest = digest(archive);
+	if (archiveDigest !== artifact.sha256) {
+		throw new Error(
+			`notebook UI SHA-256 mismatch for ${artifact.assetName}: expected ${artifact.sha256}, got ${archiveDigest}`,
+		);
+	}
+
+	await mkdir(path.dirname(options.destinationDirectory), { recursive: true });
+	const workingDirectory = await mkdtemp(
+		path.join(path.dirname(options.destinationDirectory), ".notebook-download-"),
+	);
+	const archivePath = path.join(workingDirectory, artifact.assetName);
+	const stagedDirectory = path.join(workingDirectory, "notebook");
+	try {
+		await writeFile(archivePath, archive);
+		await mkdir(stagedDirectory);
+		await extract(archivePath, stagedDirectory);
+		const publishedManifest = JSON.parse(
+			await readFile(path.join(stagedDirectory, "nteract-notebook-ui.json"), "utf8"),
+		) as Record<string, unknown>;
+		if (
+			publishedManifest["schemaVersion"] !== 1 ||
+			publishedManifest["channel"] !== release.channel ||
+			publishedManifest["version"] !== release.version ||
+			publishedManifest["commit"] !== release.commit ||
+			publishedManifest["entrypoint"] !== "index.html" ||
+			publishedManifest["outputDocument"] !== "output-frame.html"
+		) {
+			throw new Error("published notebook UI manifest does not match the pinned nteract release");
+		}
+		await validateNotebookBuildOutput(stagedDirectory);
+		await applyAgenticEmbedChrome(stagedDirectory);
+		await writeBuildManifest(stagedDirectory, release);
+		await validateStagedNotebookBundle(stagedDirectory, release);
+		await replaceDirectory(options.destinationDirectory, stagedDirectory);
+	} finally {
+		await rm(workingDirectory, { recursive: true, force: true });
+	}
+	return { built: true, destinationDirectory: options.destinationDirectory };
+}
+
+async function extractPublishedNotebookUiArchive(
+	archivePath: string,
+	destinationDirectory: string,
+): Promise<void> {
+	await extractTar({
+		cwd: destinationDirectory,
+		file: archivePath,
+		gzip: true,
+		preservePaths: false,
+		strict: true,
+		strip: 1,
+		unlink: true,
+		filter(entryPath, entry) {
+			const normalized = path.posix.normalize(entryPath);
+			const insideBundle =
+				normalized === PUBLISHED_BUNDLE_ROOT || normalized.startsWith(`${PUBLISHED_BUNDLE_ROOT}/`);
+			if (
+				!insideBundle ||
+				path.posix.isAbsolute(entryPath) ||
+				entryPath.includes("\\") ||
+				entryPath.includes("\0") ||
+				entryPath.split("/").some((part) => part === "..")
+			) {
+				throw new Error(`unsafe notebook UI archive path: ${entryPath}`);
+			}
+			if (!("type" in entry) || !["File", "OldFile", "Directory"].includes(entry.type)) {
+				throw new Error(`unsupported notebook UI archive entry: ${entryPath}`);
+			}
+			return true;
+		},
+	});
+}
+
+async function currentBundleIsValid(
+	destinationDirectory: string,
+	release: Pick<NotebookUiRelease, "tag" | "commit">,
+): Promise<boolean> {
+	try {
+		await validateStagedNotebookBundle(destinationDirectory, release);
 		return true;
 	} catch {
 		return false;
@@ -286,10 +337,12 @@ async function currentBundleIsValid(destinationDirectory: string): Promise<boole
 
 /**
  * When a prior stage is otherwise sound but missing or outdated embed-chrome
- * CSS, refresh and re-hash `index.html` only — avoid a full upstream rebuild
- * for a style tag.
+ * CSS, refresh and re-hash `index.html` only — avoid another release download.
  */
-async function tryPatchEmbedChrome(directory: string): Promise<boolean> {
+async function tryPatchEmbedChrome(
+	directory: string,
+	release: Pick<NotebookUiRelease, "tag" | "commit">,
+): Promise<boolean> {
 	try {
 		const indexPath = path.join(directory, "index.html");
 		const html = await readFile(indexPath, "utf8");
@@ -310,54 +363,11 @@ async function tryPatchEmbedChrome(directory: string): Promise<boolean> {
 		);
 		const next: NotebookBuildManifest = { ...manifest, files };
 		await writeFile(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
-		await validateStagedNotebookBundle(directory);
+		await validateStagedNotebookBundle(directory, release);
 		return true;
 	} catch {
 		return false;
 	}
-}
-
-async function checkoutPinnedSource(
-	checkoutDirectory: string,
-	cacheDirectory: string,
-	run: CommandRunner,
-): Promise<void> {
-	let currentCommit: string | undefined;
-	try {
-		currentCommit = (
-			await readFile(path.join(checkoutDirectory, ".agentic-source-commit"), "utf8")
-		).trim();
-	} catch {
-		currentCommit = undefined;
-	}
-	if (currentCommit !== NTERACT_NOTEBOOK_SOURCE.commit) {
-		await rm(checkoutDirectory, { recursive: true, force: true });
-		await mkdir(cacheDirectory, { recursive: true });
-		await run(
-			"git",
-			[
-				"clone",
-				"--depth",
-				"1",
-				"--branch",
-				NTERACT_NOTEBOOK_SOURCE.tag,
-				NTERACT_NOTEBOOK_SOURCE.repository,
-				checkoutDirectory,
-			],
-			{},
-		);
-	}
-	await run("git", ["lfs", "pull"], { cwd: checkoutDirectory });
-	await run("git", ["merge-base", "--is-ancestor", NTERACT_NOTEBOOK_SOURCE.commit, "HEAD"], {
-		cwd: checkoutDirectory,
-	});
-	await run("git", ["merge-base", "--is-ancestor", "HEAD", NTERACT_NOTEBOOK_SOURCE.commit], {
-		cwd: checkoutDirectory,
-	});
-	await writeFile(
-		path.join(checkoutDirectory, ".agentic-source-commit"),
-		`${NTERACT_NOTEBOOK_SOURCE.commit}\n`,
-	);
 }
 
 async function replaceDirectory(targetDirectory: string, stagedDirectory: string): Promise<void> {
@@ -384,75 +394,22 @@ async function replaceDirectory(targetDirectory: string, stagedDirectory: string
 export async function buildNotebookUi(
 	options: BuildNotebookUiOptions,
 ): Promise<BuildNotebookUiResult> {
-	const checkoutDirectory = path.join(options.cacheDirectory, "nteract");
-	const uiIsCurrent = await currentBundleIsValid(options.destinationDirectory);
+	const release = options.release ?? NTERACT_RELEASE;
+	const artifact = options.artifact ?? NTERACT_NOTEBOOK_UI;
+	const uiIsCurrent = await currentBundleIsValid(options.destinationDirectory, release);
 	let uiPatched = false;
-	if (!uiIsCurrent) uiPatched = await tryPatchEmbedChrome(options.destinationDirectory);
+	if (!uiIsCurrent) uiPatched = await tryPatchEmbedChrome(options.destinationDirectory, release);
 	const uiReady = uiIsCurrent || uiPatched;
 	if (uiReady) {
 		return {
 			built: uiPatched,
-			checkoutDirectory,
 			destinationDirectory: options.destinationDirectory,
 		};
 	}
-
-	const run = options.run ?? defaultRun;
-	await requireVersion(
-		run,
-		"git",
-		["--version"],
-		/git version/i,
-		"Install Git to build the notebook UI",
+	return stagePublishedNotebookUi(
+		options,
+		release,
+		artifact,
+		options.extract ?? extractPublishedNotebookUiArchive,
 	);
-	await requireVersion(
-		run,
-		"git",
-		["lfs", "version"],
-		/git-lfs/i,
-		"Install Git LFS to build the notebook UI",
-	);
-	await requireVersion(
-		run,
-		"cargo",
-		["--version"],
-		/cargo 1\.94\.0\b/,
-		"Install Rust 1.94.0 to build the notebook UI",
-	);
-	await requireVersion(
-		run,
-		"wasm-pack",
-		["--version"],
-		/wasm-pack 0\.15\.0\b/,
-		"Install wasm-pack 0.15.0 to build the notebook UI",
-	);
-	await requireWasmClang(run, options.cacheDirectory);
-	await checkoutPinnedSource(checkoutDirectory, options.cacheDirectory, run);
-	await run("pnpm", ["install", "--frozen-lockfile"], { cwd: checkoutDirectory });
-
-	await run("cargo", ["xtask", "artifacts", "ensure", "runtime,sift,renderer"], {
-		cwd: checkoutDirectory,
-	});
-	await run("pnpm", ["--dir", "apps/notebook", "build"], { cwd: checkoutDirectory });
-
-	const distDirectory = path.join(checkoutDirectory, "apps/notebook/dist");
-	await validateNotebookBuildOutput(distDirectory);
-	await mkdir(path.dirname(options.destinationDirectory), { recursive: true });
-	const stagedDirectory = await mkdtemp(
-		path.join(path.dirname(options.destinationDirectory), ".notebook-staging-"),
-	);
-	try {
-		await cp(distDirectory, stagedDirectory, { recursive: true });
-		await cp(
-			path.join(checkoutDirectory, "LICENSE"),
-			path.join(stagedDirectory, NTERACT_LICENSE_FILE),
-		);
-		await applyAgenticEmbedChrome(stagedDirectory);
-		await writeBuildManifest(stagedDirectory);
-		await validateStagedNotebookBundle(stagedDirectory);
-		await replaceDirectory(options.destinationDirectory, stagedDirectory);
-	} finally {
-		await rm(stagedDirectory, { recursive: true, force: true });
-	}
-	return { built: true, checkoutDirectory, destinationDirectory: options.destinationDirectory };
 }

@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { create as createTar } from "tar";
 
-import { NTERACT_NOTEBOOK_SOURCE } from "./artifacts.js";
+import { NTERACT_RELEASE } from "./artifacts.js";
 import {
 	AGENTIC_EMBED_CHROME_CSS,
 	AGENTIC_EMBED_CHROME_STYLE_ATTR,
@@ -14,10 +16,17 @@ import {
 	NTERACT_LICENSE_FILE,
 	validateNotebookBuildOutput,
 	validateStagedNotebookBundle,
-	type CommandRunner,
 } from "./notebook-ui-build.js";
 
 const directories: string[] = [];
+
+const NIGHTLY_RELEASE = {
+	tag: "v2.7.0-nightly.202608182247",
+	version: "2.7.0-nightly.202608182247",
+	channel: "nightly",
+	commit: "de7a8ed1c658ca963d117a3abc046b4af9f12be0",
+	repository: "https://github.com/nteract/nteract.git",
+} as const;
 
 async function temporaryDirectory(): Promise<string> {
 	const directory = await mkdtemp(path.join(os.tmpdir(), "notebook-ui-build-"));
@@ -25,56 +34,59 @@ async function temporaryDirectory(): Promise<string> {
 	return directory;
 }
 
-async function writeDist(checkoutDirectory: string, includeWasm = true): Promise<void> {
-	const dist = path.join(checkoutDirectory, "apps/notebook/dist");
-	await mkdir(path.join(dist, "assets"), { recursive: true });
+async function writePublishedBundle(
+	directory: string,
+	options: { includeWasm?: boolean; channel?: "stable" | "nightly" } = {},
+): Promise<void> {
+	await mkdir(path.join(directory, "assets"), { recursive: true });
 	await writeFile(
-		path.join(dist, "index.html"),
-		[
-			"<!doctype html>",
-			"<html><head>",
-			'<script type="module" src="/assets/main-abcdef12.js"></script>',
-			'</head><body><div id="root"></div></body></html>',
-		].join(""),
+		path.join(directory, "index.html"),
+		'<html><head><script type="module" src="/assets/main-abcdef12.js"></script></head></html>',
 	);
-	await writeFile(path.join(dist, "assets/main-abcdef12.js"), "console.log('notebook')");
-	await writeFile(path.join(dist, "output-frame.html"), "<!doctype html><html></html>");
-	if (includeWasm)
-		await writeFile(path.join(dist, "assets/runtimed_wasm_bg-abcdef12.wasm"), "wasm");
+	await writeFile(path.join(directory, "assets/main-abcdef12.js"), "console.log('notebook')");
+	if (options.includeWasm ?? true) {
+		await writeFile(path.join(directory, "assets/runtimed_wasm_bg-abcdef12.wasm"), "wasm");
+	}
+	await writeFile(path.join(directory, "output-frame.html"), "<!doctype html><html></html>");
+	await writeFile(path.join(directory, NTERACT_LICENSE_FILE), "BSD 3-Clause License");
+	await writeFile(
+		path.join(directory, "nteract-notebook-ui.json"),
+		`${JSON.stringify({
+			channel: options.channel ?? NIGHTLY_RELEASE.channel,
+			commit: NIGHTLY_RELEASE.commit,
+			entrypoint: "index.html",
+			outputDocument: "output-frame.html",
+			schemaVersion: 1,
+			version: NIGHTLY_RELEASE.version,
+		})}\n`,
+	);
 }
 
-function fakeRunner(
-	options: { includeWasm?: boolean } = {},
-): CommandRunner & ReturnType<typeof vi.fn> {
-	return vi.fn(
-		async (
-			command: string,
-			args: readonly string[],
-			runOptions: { cwd?: string; capture?: boolean },
-		) => {
-			if (command === "git" && args[0] === "clone") {
-				const checkoutDirectory = args.at(-1)!;
-				await mkdir(checkoutDirectory, { recursive: true });
-				await writeFile(path.join(checkoutDirectory, "LICENSE"), "BSD 3-Clause License");
-			}
-			if (command === "pnpm" && args[0] === "--dir" && args[1] === "apps/notebook") {
-				await writeDist(runOptions.cwd!, options.includeWasm ?? true);
-			}
-			const isClang = command === "clang" || /(?:^|\/)clang(?:-\d+)?$/.test(command);
-			if (isClang && args.includes("--target=wasm32-unknown-unknown")) {
-				await writeFile(args.at(-1)!, "wasm object");
-			}
-			if (runOptions.capture) {
-				if (isClang) return { stdout: "clang version 21.1.0" };
-				const versions: Record<string, string> = {
-					git: args[0] === "lfs" ? "git-lfs/3.7.0" : "git version 2.51.0",
-					cargo: "cargo 1.94.0",
-					"wasm-pack": "wasm-pack 0.15.0",
-				};
-				return { stdout: versions[command] ?? "" };
-			}
+async function publishedArchive(
+	root: string,
+	options: Parameters<typeof writePublishedBundle>[1] = {},
+): Promise<Buffer> {
+	const bundleDirectory = path.join(root, "nteract-notebook-ui");
+	await mkdir(bundleDirectory);
+	await writePublishedBundle(bundleDirectory, options);
+	const archivePath = path.join(root, "notebook-ui.tar.gz");
+	await createTar({ cwd: root, file: archivePath, gzip: true }, ["nteract-notebook-ui"]);
+	return readFile(archivePath);
+}
+
+async function stageFixture(root: string, destinationDirectory: string): Promise<void> {
+	await mkdir(root, { recursive: true });
+	const archive = await publishedArchive(root);
+	await buildNotebookUi({
+		destinationDirectory,
+		release: NIGHTLY_RELEASE,
+		artifact: {
+			assetName: "nteract-nightly-notebook-ui.tar.gz",
+			bytes: archive.byteLength,
+			sha256: createHash("sha256").update(archive).digest("hex"),
 		},
-	) as CommandRunner & ReturnType<typeof vi.fn>;
+		fetch: async () => new Response(new Uint8Array(archive)),
+	});
 }
 
 afterEach(async () => {
@@ -84,175 +96,162 @@ afterEach(async () => {
 });
 
 describe("buildNotebookUi", () => {
-	it("fetches the pin, builds upstream artifacts, and stages a verified bundle", async () => {
+	it("stages the pinned published notebook bundle", async () => {
 		const root = await temporaryDirectory();
 		const destinationDirectory = path.join(root, "build/notebook");
-		const run = fakeRunner();
+		const archive = Buffer.from("published nightly notebook archive");
+		const artifact = {
+			assetName: "nteract-nightly-notebook-ui.tar.gz",
+			bytes: archive.byteLength,
+			sha256: createHash("sha256").update(archive).digest("hex"),
+		};
+		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
 
 		const result = await buildNotebookUi({
-			cacheDirectory: path.join(root, "cache"),
 			destinationDirectory,
-			run,
+			release: NIGHTLY_RELEASE,
+			artifact,
+			fetch: fetchArchive,
+			extract: async (_archivePath, extractedDirectory) => {
+				await writePublishedBundle(extractedDirectory);
+			},
 		});
 
 		expect(result.built).toBe(true);
+		expect(fetchArchive).toHaveBeenCalledWith(
+			`https://github.com/nteract/nteract/releases/download/${NIGHTLY_RELEASE.tag}/${artifact.assetName}`,
+			expect.objectContaining({ redirect: "follow" }),
+		);
 		expect(await readFile(path.join(destinationDirectory, NTERACT_LICENSE_FILE), "utf8")).toContain(
 			"BSD 3-Clause",
 		);
-		const stagedIndex = await readFile(path.join(destinationDirectory, "index.html"), "utf8");
-		expect(stagedIndex).toContain(AGENTIC_EMBED_CHROME_STYLE_ATTR);
-		expect(stagedIndex).toContain(AGENTIC_EMBED_CHROME_CSS);
-		await expect(validateStagedNotebookBundle(destinationDirectory)).resolves.toMatchObject({
-			releaseTag: NTERACT_NOTEBOOK_SOURCE.tag,
-			sourceCommit: NTERACT_NOTEBOOK_SOURCE.commit,
+		expect(await readFile(path.join(destinationDirectory, "index.html"), "utf8")).toContain(
+			AGENTIC_EMBED_CHROME_CSS,
+		);
+		expect(
+			JSON.parse(await readFile(path.join(destinationDirectory, NOTEBOOK_BUILD_MANIFEST), "utf8")),
+		).toMatchObject({
+			releaseTag: NIGHTLY_RELEASE.tag,
+			sourceCommit: NIGHTLY_RELEASE.commit,
 		});
-		expect(run).toHaveBeenCalledWith(
-			"cargo",
-			["xtask", "artifacts", "ensure", "runtime,sift,renderer"],
-			expect.objectContaining({ cwd: expect.stringContaining(path.join("cache", "nteract")) }),
-		);
-		expect(run).toHaveBeenCalledWith(
-			"pnpm",
-			["--dir", "apps/notebook", "build"],
-			expect.any(Object),
-		);
-		expect(run).not.toHaveBeenCalledWith(
-			"pnpm",
-			["--dir", "packages/runtimed-node", "build"],
-			expect.any(Object),
-		);
 	});
 
-	it("rebuilds when staged index.html lacks embed chrome CSS", async () => {
+	it("extracts the published archive without a source checkout", async () => {
 		const root = await temporaryDirectory();
-		const options = {
-			cacheDirectory: path.join(root, "cache"),
-			destinationDirectory: path.join(root, "build/notebook"),
-			run: fakeRunner(),
+		const archive = await publishedArchive(root);
+		const artifact = {
+			assetName: "nteract-nightly-notebook-ui.tar.gz",
+			bytes: archive.byteLength,
+			sha256: createHash("sha256").update(archive).digest("hex"),
 		};
-		await buildNotebookUi(options);
-		await writeFile(
-			path.join(options.destinationDirectory, "index.html"),
-			[
-				"<!doctype html>",
-				"<html><head>",
-				'<script type="module" src="/assets/main-abcdef12.js"></script>',
-				"</head><body></body></html>",
-			].join(""),
-		);
-		options.run.mockClear();
 
-		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
-		// Cheap path: inject CSS into the existing stage; no tool invocations.
-		expect(options.run).not.toHaveBeenCalled();
-		expect(await readFile(path.join(options.destinationDirectory, "index.html"), "utf8")).toContain(
-			AGENTIC_EMBED_CHROME_CSS,
-		);
-		await expect(validateStagedNotebookBundle(options.destinationDirectory)).resolves.toBeTruthy();
+		await expect(
+			buildNotebookUi({
+				destinationDirectory: path.join(root, "build/notebook"),
+				release: NIGHTLY_RELEASE,
+				artifact,
+				fetch: async () => new Response(new Uint8Array(archive)),
+			}),
+		).resolves.toMatchObject({ built: true });
 	});
 
-	it("patches staged index.html when embed chrome CSS is outdated", async () => {
+	it("reuses or patches a current staged bundle without downloading it again", async () => {
 		const root = await temporaryDirectory();
+		const archive = await publishedArchive(root);
+		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
 		const options = {
-			cacheDirectory: path.join(root, "cache"),
 			destinationDirectory: path.join(root, "build/notebook"),
-			run: fakeRunner(),
+			release: NIGHTLY_RELEASE,
+			artifact: {
+				assetName: "nteract-nightly-notebook-ui.tar.gz",
+				bytes: archive.byteLength,
+				sha256: createHash("sha256").update(archive).digest("hex"),
+			},
+			fetch: fetchArchive,
 		};
 		await buildNotebookUi(options);
-		const indexPath = path.join(options.destinationDirectory, "index.html");
-		const staleHtml = (await readFile(indexPath, "utf8")).replace(
-			AGENTIC_EMBED_CHROME_CSS,
-			"old-embed-chrome{}",
-		);
-		await writeFile(indexPath, staleHtml);
-		options.run.mockClear();
-
-		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
-		expect(options.run).not.toHaveBeenCalled();
-		expect(await readFile(indexPath, "utf8")).toContain(AGENTIC_EMBED_CHROME_CSS);
-		await expect(validateStagedNotebookBundle(options.destinationDirectory)).resolves.toBeTruthy();
-	});
-
-	it("skips every tool invocation when the staged bundle is current", async () => {
-		const root = await temporaryDirectory();
-		const options = {
-			cacheDirectory: path.join(root, "cache"),
-			destinationDirectory: path.join(root, "build/notebook"),
-			run: fakeRunner(),
-		};
-		await buildNotebookUi(options);
-		options.run.mockClear();
 
 		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: false });
-		expect(options.run).not.toHaveBeenCalled();
+		const indexPath = path.join(options.destinationDirectory, "index.html");
+		await writeFile(
+			indexPath,
+			(await readFile(indexPath, "utf8")).replace(AGENTIC_EMBED_CHROME_CSS, "old{}"),
+		);
+		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
+		expect(await readFile(indexPath, "utf8")).toContain(AGENTIC_EMBED_CHROME_CSS);
+		expect(fetchArchive).toHaveBeenCalledOnce();
 	});
 
-	it("rebuilds when a staged file no longer matches its manifest", async () => {
+	it("downloads a fresh bundle when staged bytes no longer match", async () => {
 		const root = await temporaryDirectory();
+		const archive = await publishedArchive(root);
+		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
 		const options = {
-			cacheDirectory: path.join(root, "cache"),
 			destinationDirectory: path.join(root, "build/notebook"),
-			run: fakeRunner(),
+			release: NIGHTLY_RELEASE,
+			artifact: {
+				assetName: "nteract-nightly-notebook-ui.tar.gz",
+				bytes: archive.byteLength,
+				sha256: createHash("sha256").update(archive).digest("hex"),
+			},
+			fetch: fetchArchive,
 		};
 		await buildNotebookUi(options);
 		await writeFile(path.join(options.destinationDirectory, "assets/main-abcdef12.js"), "corrupt");
-		options.run.mockClear();
 
 		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
-		expect(options.run).toHaveBeenCalledWith("git", ["--version"], { capture: true });
+		expect(fetchArchive).toHaveBeenCalledTimes(2);
 	});
 
-	it("rejects an upstream build with no WASM runtime", async () => {
+	it("rejects a release archive whose checksum does not match the pin", async () => {
 		const root = await temporaryDirectory();
+		const archive = await publishedArchive(root);
 		await expect(
 			buildNotebookUi({
-				cacheDirectory: path.join(root, "cache"),
 				destinationDirectory: path.join(root, "build/notebook"),
-				run: fakeRunner({ includeWasm: false }),
+				release: NIGHTLY_RELEASE,
+				artifact: {
+					assetName: "nteract-nightly-notebook-ui.tar.gz",
+					bytes: archive.byteLength,
+					sha256: "0".repeat(64),
+				},
+				fetch: async () => new Response(new Uint8Array(archive)),
+			}),
+		).rejects.toThrow(/SHA-256 mismatch/);
+	});
+
+	it("rejects a release archive with no WASM runtime", async () => {
+		const root = await temporaryDirectory();
+		const archive = await publishedArchive(root, { includeWasm: false });
+		await expect(
+			buildNotebookUi({
+				destinationDirectory: path.join(root, "build/notebook"),
+				release: NIGHTLY_RELEASE,
+				artifact: {
+					assetName: "nteract-nightly-notebook-ui.tar.gz",
+					bytes: archive.byteLength,
+					sha256: createHash("sha256").update(archive).digest("hex"),
+				},
+				fetch: async () => new Response(new Uint8Array(archive)),
 			}),
 		).rejects.toThrow(/no WASM runtime asset/);
 	});
 
-	it("rejects a checkout whose HEAD is not the pinned source revision", async () => {
+	it("rejects an archive manifest from another release channel", async () => {
 		const root = await temporaryDirectory();
-		const base = fakeRunner();
-		const run = vi.fn(async (...args: Parameters<CommandRunner>) => {
-			if (
-				args[0] === "git" &&
-				args[1][0] === "merge-base" &&
-				args[1][3] === NTERACT_NOTEBOOK_SOURCE.commit
-			) {
-				throw new Error("not the pinned commit");
-			}
-			return base(...args);
-		}) as CommandRunner;
-
+		const archive = await publishedArchive(root, { channel: "stable" });
 		await expect(
 			buildNotebookUi({
-				cacheDirectory: path.join(root, "cache"),
 				destinationDirectory: path.join(root, "build/notebook"),
-				run,
+				release: NIGHTLY_RELEASE,
+				artifact: {
+					assetName: "nteract-nightly-notebook-ui.tar.gz",
+					bytes: archive.byteLength,
+					sha256: createHash("sha256").update(archive).digest("hex"),
+				},
+				fetch: async () => new Response(new Uint8Array(archive)),
 			}),
-		).rejects.toThrow(/not the pinned commit/);
-	});
-
-	it("fails preflight when clang cannot target wasm32", async () => {
-		const root = await temporaryDirectory();
-		const base = fakeRunner();
-		const run = vi.fn(async (...args: Parameters<CommandRunner>) => {
-			if (args[1].includes("--target=wasm32-unknown-unknown")) {
-				throw new Error("No available targets");
-			}
-			return base(...args);
-		}) as CommandRunner;
-
-		await expect(
-			buildNotebookUi({
-				cacheDirectory: path.join(root, "cache"),
-				destinationDirectory: path.join(root, "build/notebook"),
-				run,
-			}),
-		).rejects.toThrow(/brew install llvm/);
+		).rejects.toThrow(/manifest does not match/);
 	});
 });
 
@@ -286,34 +285,25 @@ describe("notebook bundle validation", () => {
 		await writeFile(path.join(root, "index.html"), "<html>source</html>");
 		await expect(validateNotebookBuildOutput(root)).rejects.toThrow(/built \/assets/);
 
-		await writeDist(root, false);
-		await expect(
-			validateNotebookBuildOutput(path.join(root, "apps/notebook/dist")),
-		).rejects.toThrow(/no WASM/);
+		const noWasm = path.join(root, "no-wasm");
+		await writePublishedBundle(noWasm, { includeWasm: false });
+		await expect(validateNotebookBuildOutput(noWasm)).rejects.toThrow(/no WASM/);
 
 		const destination = path.join(root, "staged");
-		await buildNotebookUi({
-			cacheDirectory: path.join(root, "cache"),
-			destinationDirectory: destination,
-			run: fakeRunner(),
-		});
+		await stageFixture(path.join(root, "archive"), destination);
 		await writeFile(path.join(destination, "orphan.js"), "unexpected");
 		await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
 			/does not exactly cover/,
 		);
 		expect(await readFile(path.join(destination, NOTEBOOK_BUILD_MANIFEST), "utf8")).toContain(
-			NTERACT_NOTEBOOK_SOURCE.commit,
+			NTERACT_RELEASE.commit,
 		);
 	});
 
 	it("rejects a staged bundle whose index.html lacks embed chrome CSS", async () => {
 		const root = await temporaryDirectory();
 		const destination = path.join(root, "staged");
-		await buildNotebookUi({
-			cacheDirectory: path.join(root, "cache"),
-			destinationDirectory: destination,
-			run: fakeRunner(),
-		});
+		await stageFixture(path.join(root, "archive"), destination);
 		await writeFile(
 			path.join(destination, "index.html"),
 			[

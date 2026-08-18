@@ -41,8 +41,9 @@ MessagePort exclusively.
 
 ## Decisions already closed
 
-- Bundle the `runtimed`, `runt`, `nteract-mcp`, and notebook UI artifacts from nteract 2.7.0 stable
-  and use its stable singleton socket by default. Nightly is an explicit development opt-in only.
+- Bundle the `runtimed`, `runt`, `nteract-mcp`, and published notebook UI archive from the same
+  pinned nteract release. The current integration follows the pinned nightly channel for both the
+  singleton endpoint and MCP proxy.
 - Depend on the exact registry release `@runtimed/node@0.5.0`; do not vendor, source-build, or use a
   Git dependency for the Electron adapter.
 - Reuse a compatible running singleton; only start the bundled daemon when the canonical endpoint

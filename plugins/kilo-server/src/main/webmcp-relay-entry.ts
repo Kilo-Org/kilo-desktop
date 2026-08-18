@@ -7,8 +7,9 @@ import path from "node:path";
  *
  * `@mcp-b/webmcp-local-relay` ships an ESM CLI (`bin/webmcp-local-relay ->
  * dist/cli.mjs`) that requires a Node runtime. Forge stages its lockfile-pinned
- * dependency closure in the plugin's unpacked `relay-runtime` directory so the
- * child process does not need the app's remaining node_modules outside ASAR.
+ * dependency closure in `resources/webmcp-relay` so the child process does not
+ * need the app's remaining node_modules outside ASAR. That extra-resource path
+ * also keeps Squirrel nupkg entries under Windows MAX_PATH.
  * Kilo spawns the Anaconda Desktop executable with `ELECTRON_RUN_AS_NODE=1`,
  * which requires `FuseV1Options.RunAsNode: true` in `forge.config.ts`.
  *

@@ -62,4 +62,13 @@ describe("createKiloSuggestionStore", () => {
 		store.getState().hydrate([request()], sinceEpoch);
 		expect(store.getState().pending).toEqual([]);
 	});
+
+	it("ignores a hydrate snapshot from an older overlapping fetch", () => {
+		const store = createKiloSuggestionStore();
+		const first = store.getState().beginHydrate();
+		const second = store.getState().beginHydrate();
+		store.getState().hydrate([], store.getState().activityEpoch, second);
+		store.getState().hydrate([request()], store.getState().activityEpoch, first);
+		expect(store.getState().pending).toEqual([]);
+	});
 });

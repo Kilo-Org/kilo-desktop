@@ -46,7 +46,19 @@ export function usePendingKiloSuggestion(): KiloSuggestionRequest | null {
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;
 
+function dropPendingSuggestion(
+	store: KiloSuggestionStore,
+	request: KiloSuggestionRequest,
+	type: "suggestion.accepted" | "suggestion.dismissed",
+) {
+	store.getState().applyEvent({
+		type,
+		properties: { sessionID: request.sessionID, requestID: request.id },
+	});
+}
+
 export function useKiloSuggestionActions() {
+	const store = useKiloSuggestionStore();
 	const connection = useChatConnection().connection;
 	const directory = useOpenCodeSession()?.directory;
 
@@ -59,6 +71,7 @@ export function useKiloSuggestionActions() {
 					{ requestID: request.id, index },
 					REQUEST_OPTIONS,
 				);
+				dropPendingSuggestion(store, request, "suggestion.accepted");
 			},
 			dismiss: async (request: KiloSuggestionRequest) => {
 				if (!connection) throw new Error("Not connected to Kilo.");
@@ -67,8 +80,9 @@ export function useKiloSuggestionActions() {
 					{ requestID: request.id },
 					REQUEST_OPTIONS,
 				);
+				dropPendingSuggestion(store, request, "suggestion.dismissed");
 			},
 		}),
-		[connection, directory],
+		[connection, directory, store],
 	);
 }

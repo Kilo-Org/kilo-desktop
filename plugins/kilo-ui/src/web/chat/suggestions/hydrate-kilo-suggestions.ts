@@ -27,8 +27,9 @@ export async function hydrateKiloSuggestions(
 	client: KiloSuggestionHydrationClient,
 	store: KiloSuggestionStore,
 ): Promise<void> {
+	const generation = store.getState().beginHydrate();
 	const sinceEpoch = store.getState().activityEpoch;
 	const listed = await client.suggestion?.list().catch(() => undefined);
 	if (!listed) return;
-	store.getState().hydrate(parseListed(listed.data), sinceEpoch);
+	store.getState().hydrate(parseListed(listed.data), sinceEpoch, generation);
 }

@@ -355,12 +355,16 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"div">) {
 				const startWidth = width;
 				let moved = false;
 				let latest = startWidth;
+				let expanded = open;
 
 				const onMove = (moveEvent: PointerEvent) => {
 					const delta = side === "left" ? moveEvent.clientX - startX : startX - moveEvent.clientX;
 					if (Math.abs(delta) < 3) return;
 					moved = true;
-					if (!open) setOpen(true);
+					if (!expanded) {
+						expanded = true;
+						setOpen(true);
+					}
 					latest = startWidth + delta;
 					setWidth(latest);
 				};
@@ -369,7 +373,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"div">) {
 					window.removeEventListener("pointerup", onUp);
 					window.removeEventListener("pointercancel", onUp);
 					if (!moved) {
-						if (!open) toggleSidebar();
+						if (!expanded) toggleSidebar();
 						return;
 					}
 					writeStoredSidebarWidth(latest);

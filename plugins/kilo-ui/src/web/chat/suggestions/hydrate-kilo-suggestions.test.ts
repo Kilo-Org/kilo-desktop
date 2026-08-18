@@ -62,4 +62,29 @@ describe("hydrateKiloSuggestions", () => {
 
 		expect(store.getState().pending).toEqual([pending]);
 	});
+
+	it("does not resurrect a stale list after a newer hydrate", async () => {
+		const store = createKiloSuggestionStore();
+		const resolvers: Array<(value: { data: (typeof pending)[] }) => void> = [];
+		const client = {
+			suggestion: {
+				list: vi.fn(
+					() =>
+						new Promise<{ data: (typeof pending)[] }>((resolve) => {
+							resolvers.push(resolve);
+						}),
+				),
+			},
+		};
+
+		const first = hydrateKiloSuggestions(client, store);
+		const second = hydrateKiloSuggestions(client, store);
+		resolvers[1]?.({ data: [] });
+		await second;
+		expect(store.getState().pending).toEqual([]);
+
+		resolvers[0]?.({ data: [pending] });
+		await first;
+		expect(store.getState().pending).toEqual([]);
+	});
 });

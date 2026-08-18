@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 
 import { withStampedDesktopPackageJson } from "./stamp-desktop-version.js";
+import { applyWindowsPackagingTemp } from "./windows-packaging-temp.js";
 
 const FORGE_COMMANDS = ["make", "package", "publish"] as const;
 type ForgeCommand = (typeof FORGE_COMMANDS)[number];
@@ -22,6 +23,7 @@ function parseForgeCommand(value: string | undefined): ForgeCommand {
 
 const [command, ...forgeArgs] = process.argv.slice(2);
 
+await applyWindowsPackagingTemp();
 await withStampedDesktopPackageJson(manifestPath, process.env, async () => {
 	await execa("electron-forge", [parseForgeCommand(command), ...forgeArgs], {
 		cwd: desktopRoot,

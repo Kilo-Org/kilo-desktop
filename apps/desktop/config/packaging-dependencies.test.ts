@@ -125,6 +125,13 @@ describe("packaged production dependencies", () => {
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");
 	});
 
+	it("points Windows Forge temp at a short path before Squirrel runs", () => {
+		const runPackaging = readFileSync(path.join(desktopRoot, "config/run-packaging.ts"), "utf8");
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(runPackaging).toContain("applyWindowsPackagingTemp");
+		expect(forge).toContain("tmpdir: windowsPackagingTemp");
+	});
+
 	it("stamps the desktop package version before Forge makers run", () => {
 		const scripts = (
 			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
 	DEFAULT_SESSION_LIST_VIEW,
@@ -10,19 +10,24 @@ import {
 	type SessionListView,
 } from "./session-list-view.js";
 
+/** Persist after commit so updaters stay pure; skip the hydrate write. */
 export function useSessionListView() {
 	const [view, setView] = useState(readSessionListView);
+	const skip = useRef(true);
+
+	useEffect(() => {
+		if (skip.current) {
+			skip.current = false;
+			return;
+		}
+		writeSessionListView(view);
+	}, [view]);
 
 	const update = useCallback((patch: Partial<SessionListView>) => {
-		setView((current) => {
-			const next = { ...current, ...patch };
-			writeSessionListView(next);
-			return next;
-		});
+		setView((current) => ({ ...current, ...patch }));
 	}, []);
 
 	const reset = useCallback(() => {
-		writeSessionListView(DEFAULT_SESSION_LIST_VIEW);
 		setView(DEFAULT_SESSION_LIST_VIEW);
 	}, []);
 
@@ -31,13 +36,18 @@ export function useSessionListView() {
 
 export function useSessionListPins() {
 	const [ids, setIds] = useState(readSessionListPins);
+	const skip = useRef(true);
+
+	useEffect(() => {
+		if (skip.current) {
+			skip.current = false;
+			return;
+		}
+		writeSessionListPins(ids);
+	}, [ids]);
 
 	const toggle = useCallback((id: string) => {
-		setIds((current) => {
-			const next = toggleSessionListPin(current, id);
-			writeSessionListPins(next);
-			return next;
-		});
+		setIds((current) => toggleSessionListPin(current, id));
 	}, []);
 
 	return { ids, toggle };

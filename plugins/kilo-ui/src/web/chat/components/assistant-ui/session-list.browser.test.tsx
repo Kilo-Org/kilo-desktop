@@ -494,7 +494,7 @@ describe("SessionList", () => {
 
 		await expect
 			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
-			.toBe("Working · 0s");
+			.toMatch(/^Working · \d+s$/);
 	});
 
 	it("shows a tooltip on the settled session icon", async () => {

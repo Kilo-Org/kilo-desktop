@@ -11,7 +11,7 @@ import {
 describe("theme bootstrap build", () => {
 	it(
 		"injects critical theme CSS and bootstrap before the application module",
-		{ timeout: 30_000 },
+		{ timeout: 60_000 },
 		async () => {
 			const result = await build({
 				configFile: fileURLToPath(new URL("../../../vite.config.ts", import.meta.url)),

@@ -98,8 +98,11 @@ export function readWorkspaceFoldersFromMetadata(metadata: unknown): AnacondaWor
 }
 
 export type SessionActivityPatch = Partial<
-	Pick<SessionActivity, "directory" | "workspaceId" | "createdAt" | "updatedAt">
->;
+	Pick<SessionActivity, "directory" | "createdAt" | "updatedAt">
+> & {
+	/** `null` clears a previously stamped workspace (deleted workspace). */
+	workspaceId?: string | null;
+};
 
 /** Reads directory/timestamps/workspace id off a Kilo `Session` (`session.updated` info, list rows). */
 export function readSessionInfoPatch(info: Record<string, unknown>): SessionActivityPatch {
@@ -111,8 +114,9 @@ export function readSessionInfoPatch(info: Record<string, unknown>): SessionActi
 	if (createdAt !== undefined) patch.createdAt = createdAt;
 	const updatedAt = asFiniteNumber(time?.updated);
 	if (updatedAt !== undefined) patch.updatedAt = updatedAt;
-	const workspaceId = readWorkspaceIdFromMetadata(info.metadata);
-	if (workspaceId) patch.workspaceId = workspaceId;
+	if ("metadata" in info) {
+		patch.workspaceId = readWorkspaceIdFromMetadata(info.metadata) ?? null;
+	}
 	return patch;
 }
 
@@ -122,11 +126,19 @@ export function applySessionPatch(
 	patch: SessionActivityPatch,
 ): SessionActivity | null {
 	let next = session;
-	for (const key of ["directory", "workspaceId", "createdAt", "updatedAt"] as const) {
+	for (const key of ["directory", "createdAt", "updatedAt"] as const) {
 		const value = patch[key];
 		if (value !== undefined && next[key] !== value) {
 			next = { ...next, [key]: value };
 		}
+	}
+	if (patch.workspaceId === null) {
+		if (next.workspaceId !== undefined) {
+			const { workspaceId: _workspaceId, ...rest } = next;
+			next = rest;
+		}
+	} else if (patch.workspaceId !== undefined && next.workspaceId !== patch.workspaceId) {
+		next = { ...next, workspaceId: patch.workspaceId };
 	}
 	return next === session ? null : next;
 }

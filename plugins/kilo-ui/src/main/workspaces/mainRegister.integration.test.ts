@@ -104,6 +104,30 @@ describe("kilo-ui mainRegister", () => {
 		mainSdk.dispose();
 	});
 
+	it("clears the deleted workspace from matching chats", async () => {
+		const unscopeWorkspaceSessions = vi.fn(async () => undefined);
+		const userData = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-ui-main-"));
+		const storageDir = path.join(userData, "plugins", "kilo-ui");
+		const project = path.join(userData, "Project");
+		fs.mkdirSync(storageDir, { recursive: true });
+		fs.mkdirSync(project);
+		directories.push(userData);
+
+		const mainSdk = createFakeMainSdk({
+			featureId: "kilo-ui",
+			storageDir,
+			pluginDir: PLUGIN_DIR,
+		});
+		disposables.push(() => mainSdk.dispose());
+		mainRegister(mainSdk, { unscopeWorkspaceSessions });
+
+		const created = (await mainSdk.invoke("create", {
+			folders: [{ path: project, isPrimary: true }],
+		})) as { id: string };
+		await expect(mainSdk.invoke("remove", { id: created.id })).resolves.toEqual({ deleted: true });
+		expect(unscopeWorkspaceSessions).toHaveBeenCalledWith(created.id);
+	});
+
 	it("validates channels and closes the database on disposal", async () => {
 		const { mainSdk, project } = boot();
 		await expect(mainSdk.invoke("create", { folders: [] })).rejects.toMatchObject({

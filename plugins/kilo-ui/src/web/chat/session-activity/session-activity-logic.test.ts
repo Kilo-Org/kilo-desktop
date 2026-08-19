@@ -285,6 +285,26 @@ describe("applySessionActivityEvent", () => {
 				NOW,
 			);
 		expect(again).toBeNull();
+
+		const unscoped =
+			updated &&
+			applySessionActivityEvent(
+				updated,
+				{
+					type: "session.updated",
+					properties: {
+						sessionID: "ses-1",
+						info: {
+							id: "ses-1",
+							directory: "/repo/project",
+							time: { created: NOW - 100, updated: NOW },
+							metadata: { [ANACONDA_METADATA_KEY]: {} },
+						},
+					},
+				},
+				NOW,
+			);
+		expect(unscoped?.sessions["ses-1"]?.workspaceId).toBeUndefined();
 	});
 
 	it("removes sessions on session.deleted", () => {
@@ -391,6 +411,26 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 				metadata: { [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } },
 			}),
 		).toEqual({ directory: "/repo", createdAt: 1, updatedAt: 2, workspaceId: "ws-1" });
+		expect(
+			readSessionInfoPatch({
+				directory: "/repo",
+				metadata: { [ANACONDA_METADATA_KEY]: {} },
+			}),
+		).toEqual({ directory: "/repo", workspaceId: null });
+		expect(readSessionInfoPatch({ directory: "/repo" })).toEqual({ directory: "/repo" });
+	});
+
+	it("clears a stamped workspace id", () => {
+		const session: SessionActivity = {
+			...createEmptySessionActivity(),
+			directory: "/repo",
+			workspaceId: "ws-1",
+		};
+		expect(applySessionPatch(session, { workspaceId: null })).toEqual({
+			...createEmptySessionActivity(),
+			directory: "/repo",
+		});
+		expect(applySessionPatch(session, { workspaceId: "ws-1" })).toBeNull();
 	});
 });
 

@@ -1,0 +1,446 @@
+import {
+	needsAttention,
+	resolveSessionLocationLabel,
+	type SessionActivity,
+} from "../session-activity/session-activity-logic.js";
+
+/** Versioned key — bump the suffix if the stored shape changes. */
+export const SESSION_LIST_VIEW_STORAGE_KEY = "kilo-ui.session-list-view:v1";
+
+export const SESSION_LIST_GROUPINGS = ["lifecycle", "workspace", "updated"] as const;
+export const SESSION_LIST_ORDERINGS = ["recency", "title"] as const;
+export const SESSION_LIST_SHOW_FIELDS = ["workspace", "updated"] as const;
+export const SESSION_LIST_STATUS_FILTERS = [
+	"all",
+	"attention",
+	"working",
+	"idle",
+	"settled",
+] as const;
+
+export type SessionListGrouping = (typeof SESSION_LIST_GROUPINGS)[number];
+export type SessionListOrdering = (typeof SESSION_LIST_ORDERINGS)[number];
+export type SessionListShowField = (typeof SESSION_LIST_SHOW_FIELDS)[number];
+export type SessionListStatusFilter = (typeof SESSION_LIST_STATUS_FILTERS)[number];
+
+export type SessionListView = {
+	grouping: SessionListGrouping;
+	ordering: SessionListOrdering;
+	show: readonly SessionListShowField[];
+	status: SessionListStatusFilter;
+};
+
+export const DEFAULT_SESSION_LIST_VIEW: SessionListView = {
+	grouping: "lifecycle",
+	ordering: "recency",
+	show: [],
+	status: "all",
+};
+
+export const SESSION_LIST_GROUPING_LABELS: Record<SessionListGrouping, string> = {
+	lifecycle: "Status",
+	workspace: "Workspace",
+	updated: "Updated",
+};
+
+/** Sidebar heading for the current group-by. */
+export const SESSION_LIST_GROUPING_HEADERS: Record<SessionListGrouping, string> = {
+	lifecycle: "Status",
+	workspace: "Workspaces",
+	updated: "Updated",
+};
+
+export const SESSION_LIST_ORDERING_LABELS: Record<SessionListOrdering, string> = {
+	recency: "Updated",
+	title: "Title",
+};
+
+export const SESSION_LIST_SHOW_LABELS: Record<SessionListShowField, string> = {
+	workspace: "Workspace",
+	updated: "Updated",
+};
+
+export const SESSION_LIST_STATUS_LABELS: Record<SessionListStatusFilter, string> = {
+	all: "All",
+	attention: "Needs Attention",
+	working: "Working",
+	idle: "Idle",
+	settled: "Settled",
+};
+
+export type SessionListViewEntry = {
+	id: string;
+	remoteId?: string | undefined;
+	title?: string | undefined;
+	sourceIndex: number;
+	archived: boolean;
+};
+
+export type SessionListSectionTone =
+	| "attention"
+	| "pinned"
+	| "active"
+	| "settled"
+	| "workspace"
+	| "updated";
+
+export type SessionListSectionRow = {
+	id: string;
+	archived: boolean;
+	sourceIndex: number;
+};
+
+export type SessionListSection = {
+	key: string;
+	label: string | null;
+	tone: SessionListSectionTone;
+	rows: SessionListSectionRow[];
+};
+
+type Lifecycle = Exclude<SessionListStatusFilter, "all">;
+
+type Enriched = SessionListViewEntry & {
+	activity: SessionActivity | undefined;
+	lifecycle: Lifecycle;
+	location: string | null;
+	title: string;
+};
+
+function isMember<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+	return typeof value === "string" && (allowed as readonly string[]).includes(value);
+}
+
+function normalizeShow(value: unknown): SessionListShowField[] {
+	if (!Array.isArray(value)) return [];
+	return SESSION_LIST_SHOW_FIELDS.filter((field) => value.includes(field));
+}
+
+export function parseSessionListView(value: unknown): SessionListView {
+	if (!value || typeof value !== "object") return DEFAULT_SESSION_LIST_VIEW;
+	const record = value as Record<string, unknown>;
+	return {
+		grouping: isMember(record.grouping, SESSION_LIST_GROUPINGS)
+			? record.grouping
+			: DEFAULT_SESSION_LIST_VIEW.grouping,
+		ordering: isMember(record.ordering, SESSION_LIST_ORDERINGS)
+			? record.ordering
+			: DEFAULT_SESSION_LIST_VIEW.ordering,
+		show: normalizeShow(record.show),
+		status: isMember(record.status, SESSION_LIST_STATUS_FILTERS)
+			? record.status
+			: DEFAULT_SESSION_LIST_VIEW.status,
+	};
+}
+
+export function isDefaultSessionListView(view: SessionListView): boolean {
+	return (
+		view.grouping === DEFAULT_SESSION_LIST_VIEW.grouping &&
+		view.ordering === DEFAULT_SESSION_LIST_VIEW.ordering &&
+		view.status === DEFAULT_SESSION_LIST_VIEW.status &&
+		view.show.length === 0
+	);
+}
+
+function getLocalStorage(): Storage | null {
+	try {
+		return globalThis.localStorage ?? null;
+	} catch {
+		return null;
+	}
+}
+
+export function readSessionListView(
+	storage: Pick<Storage, "getItem"> | null = getLocalStorage(),
+): SessionListView {
+	if (!storage) return DEFAULT_SESSION_LIST_VIEW;
+	try {
+		const raw = storage.getItem(SESSION_LIST_VIEW_STORAGE_KEY);
+		if (!raw) return DEFAULT_SESSION_LIST_VIEW;
+		return parseSessionListView(JSON.parse(raw));
+	} catch {
+		return DEFAULT_SESSION_LIST_VIEW;
+	}
+}
+
+export function writeSessionListView(
+	view: SessionListView,
+	storage: Pick<Storage, "setItem"> | null = getLocalStorage(),
+): void {
+	if (!storage) return;
+	try {
+		storage.setItem(SESSION_LIST_VIEW_STORAGE_KEY, JSON.stringify(parseSessionListView(view)));
+	} catch {
+		// Keep the in-memory view usable when persistence is unavailable.
+	}
+}
+
+/** Versioned key — bump the suffix if the stored shape changes. */
+export const SESSION_LIST_PINS_STORAGE_KEY = "kilo-ui.session-list-pins:v1";
+
+export function parseSessionListPins(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const ids: string[] = [];
+	for (const entry of value) {
+		if (typeof entry !== "string" || entry.length === 0 || ids.includes(entry)) continue;
+		ids.push(entry);
+	}
+	return ids;
+}
+
+export function readSessionListPins(
+	storage: Pick<Storage, "getItem"> | null = getLocalStorage(),
+): string[] {
+	if (!storage) return [];
+	try {
+		const raw = storage.getItem(SESSION_LIST_PINS_STORAGE_KEY);
+		if (!raw) return [];
+		return parseSessionListPins(JSON.parse(raw));
+	} catch {
+		return [];
+	}
+}
+
+export function writeSessionListPins(
+	ids: readonly string[],
+	storage: Pick<Storage, "setItem"> | null = getLocalStorage(),
+): void {
+	if (!storage) return;
+	try {
+		storage.setItem(SESSION_LIST_PINS_STORAGE_KEY, JSON.stringify(parseSessionListPins(ids)));
+	} catch {
+		// Keep the in-memory pins usable when persistence is unavailable.
+	}
+}
+
+export function toggleSessionListPin(ids: readonly string[], id: string): string[] {
+	return ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id];
+}
+
+function isWorking(activity: SessionActivity | undefined): boolean {
+	return activity?.status === "busy" || activity?.status === "retry";
+}
+
+function lifecycleOf(activity: SessionActivity | undefined, archived: boolean): Lifecycle {
+	if (needsAttention(activity)) return "attention";
+	if (archived) return "settled";
+	if (isWorking(activity)) return "working";
+	return "idle";
+}
+
+function enrich(
+	entries: readonly SessionListViewEntry[],
+	activityBySessionId: Readonly<Record<string, SessionActivity>>,
+	workspaces: readonly { id: string; name: string }[],
+): Enriched[] {
+	return entries.map((entry) => {
+		const activity = entry.remoteId ? activityBySessionId[entry.remoteId] : undefined;
+		return {
+			...entry,
+			activity,
+			lifecycle: lifecycleOf(activity, entry.archived),
+			location: resolveSessionLocationLabel(activity, workspaces),
+			title: entry.title || "New Chat",
+		};
+	});
+}
+
+function sortRows(rows: Enriched[], ordering: SessionListOrdering) {
+	return rows.toSorted((left, right) => {
+		if (ordering === "title") {
+			return left.title.localeCompare(right.title) || left.sourceIndex - right.sourceIndex;
+		}
+		const leftTime = left.activity?.updatedAt ?? left.activity?.createdAt ?? 0;
+		const rightTime = right.activity?.updatedAt ?? right.activity?.createdAt ?? 0;
+		return rightTime - leftTime || left.sourceIndex - right.sourceIndex;
+	});
+}
+
+function toRows(rows: Enriched[]): SessionListSectionRow[] {
+	return rows.map(({ id, archived, sourceIndex }) => ({ id, archived, sourceIndex }));
+}
+
+function workspaceKey(row: Enriched): string {
+	return row.activity?.workspaceId ?? "unknown";
+}
+
+function pinKey(row: SessionListViewEntry): string {
+	return row.remoteId ?? row.id;
+}
+
+function sortAttentionFirst(rows: Enriched[], ordering: SessionListOrdering): Enriched[] {
+	const attention = sortRows(
+		rows.filter((row) => row.lifecycle === "attention"),
+		ordering,
+	);
+	const rest = sortRows(
+		rows.filter((row) => row.lifecycle !== "attention"),
+		ordering,
+	);
+	return [...attention, ...rest];
+}
+
+function startOfLocalDay(ms: number): number {
+	const date = new Date(ms);
+	date.setHours(0, 0, 0, 0);
+	return date.getTime();
+}
+
+function recencyBucket(
+	stamp: number | undefined,
+	now: number,
+): { key: string; label: string; order: number } {
+	if (stamp === undefined) return { key: "older", label: "Older", order: 4 };
+	const days = Math.round((startOfLocalDay(now) - startOfLocalDay(stamp)) / 86_400_000);
+	if (days <= 0) return { key: "today", label: "Today", order: 0 };
+	if (days === 1) return { key: "yesterday", label: "Yesterday", order: 1 };
+	if (days < 7) return { key: "week", label: "Last 7 Days", order: 2 };
+	if (days < 30) return { key: "month", label: "Last 30 Days", order: 3 };
+	return { key: "older", label: "Older", order: 4 };
+}
+
+function workspaceSections(rows: Enriched[], ordering: SessionListOrdering): SessionListSection[] {
+	const groups = new Map<string, { label: string; rows: Enriched[] }>();
+	for (const row of rows) {
+		const key = workspaceKey(row);
+		const group = groups.get(key);
+		if (group) {
+			group.rows.push(row);
+			continue;
+		}
+		groups.set(key, { label: row.location ?? "No workspace", rows: [row] });
+	}
+
+	return [...groups.entries()]
+		.toSorted(
+			(left, right) =>
+				left[1].label.localeCompare(right[1].label) || left[0].localeCompare(right[0]),
+		)
+		.map(([key, group]) => ({
+			key: `workspace:${key}`,
+			label: group.label,
+			tone: "workspace" as const,
+			rows: toRows(sortAttentionFirst(group.rows, ordering)),
+		}));
+}
+
+function updatedSections(
+	rows: Enriched[],
+	ordering: SessionListOrdering,
+	now: number,
+): SessionListSection[] {
+	const groups = new Map<string, { label: string; order: number; rows: Enriched[] }>();
+	for (const row of rows) {
+		const bucket = recencyBucket(row.activity?.updatedAt ?? row.activity?.createdAt, now);
+		const group = groups.get(bucket.key);
+		if (group) {
+			group.rows.push(row);
+			continue;
+		}
+		groups.set(bucket.key, { label: bucket.label, order: bucket.order, rows: [row] });
+	}
+
+	return [...groups.entries()]
+		.toSorted((left, right) => left[1].order - right[1].order)
+		.map(([key, group]) => ({
+			key: `updated:${key}`,
+			label: group.label,
+			tone: "updated" as const,
+			rows: toRows(sortAttentionFirst(group.rows, ordering)),
+		}));
+}
+
+/**
+ * Groups filtered session-list entries for the sidebar. Status grouping
+ * partitions attention into its own first section. Workspace and updated
+ * grouping keep those sessions in their folder/day, sorted to the top.
+ * Pinned sessions are a separate first section in every mode.
+ */
+export function buildSessionListSections(args: {
+	entries: readonly SessionListViewEntry[];
+	activityBySessionId: Readonly<Record<string, SessionActivity>>;
+	workspaces: readonly { id: string; name: string }[];
+	view: SessionListView;
+	pinnedIds?: ReadonlySet<string>;
+	now?: number;
+}): SessionListSection[] {
+	const pinnedIds = args.pinnedIds ?? new Set<string>();
+	const rows = enrich(args.entries, args.activityBySessionId, args.workspaces).filter(
+		(row) => args.view.status === "all" || row.lifecycle === args.view.status,
+	);
+	if (rows.length === 0) return [];
+
+	const pullAttention = args.view.grouping === "lifecycle";
+	const attention = pullAttention
+		? sortRows(
+				rows.filter((row) => row.lifecycle === "attention"),
+				args.view.ordering,
+			)
+		: [];
+	const rest = pullAttention ? rows.filter((row) => row.lifecycle !== "attention") : rows;
+	const pinned = sortRows(
+		rest.filter((row) => pinnedIds.has(pinKey(row))),
+		args.view.ordering,
+	);
+	const unpinned = rest.filter((row) => !pinnedIds.has(pinKey(row)));
+
+	const sections: SessionListSection[] = [];
+	if (attention.length > 0) {
+		sections.push({
+			key: "attention",
+			label: "Needs Attention",
+			tone: "attention",
+			rows: toRows(attention),
+		});
+	}
+	if (pinned.length > 0) {
+		sections.push({
+			key: "pinned",
+			label: "Pinned",
+			tone: "pinned",
+			rows: toRows(pinned),
+		});
+	}
+
+	switch (args.view.grouping) {
+		case "lifecycle": {
+			const active = sortRows(
+				unpinned.filter((row) => row.lifecycle !== "settled"),
+				args.view.ordering,
+			);
+			const settled = sortRows(
+				unpinned.filter((row) => row.lifecycle === "settled"),
+				args.view.ordering,
+			);
+			if (active.length > 0) {
+				sections.push({ key: "active", label: "Active", tone: "active", rows: toRows(active) });
+			}
+			if (settled.length > 0) {
+				sections.push({ key: "settled", label: "Settled", tone: "settled", rows: toRows(settled) });
+			}
+			return sections;
+		}
+		case "workspace":
+			return [...sections, ...workspaceSections(unpinned, args.view.ordering)];
+		case "updated":
+			return [
+				...sections,
+				...updatedSections(unpinned, args.view.ordering, args.now ?? Date.now()),
+			];
+		default: {
+			const _exhaustive: never = args.view.grouping;
+			return _exhaustive;
+		}
+	}
+}
+
+export function visibleShowFields(view: SessionListView): SessionListShowField[] {
+	if (view.grouping === "workspace") {
+		return view.show.filter((field) => field !== "workspace");
+	}
+	if (view.grouping === "updated") {
+		return SESSION_LIST_SHOW_FIELDS.filter(
+			(field) => field === "updated" || view.show.includes(field),
+		);
+	}
+	return [...view.show];
+}

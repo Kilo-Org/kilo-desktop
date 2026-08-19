@@ -212,6 +212,25 @@ describe("SessionList", () => {
 		expect(adapter.archiveCalls).toEqual(["ses-2"]);
 	});
 
+	it("keeps hover actions from covering the session title", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Unicorn and dodo population study" }],
+		});
+
+		const card = screen.getByRole("listitem").filter({
+			hasText: "Unicorn and dodo population study",
+		});
+		await userEvent.hover(card);
+		const settle = card.getByRole("button", { name: "Settle thread" });
+		await expect.element(settle).toBeVisible();
+
+		const title = card.element().querySelector('[data-slot="aui_session-list-item-title"]');
+		expect(title).not.toBeNull();
+		const titleBox = title!.getBoundingClientRect();
+		const settleBox = settle.element().getBoundingClientRect();
+		expect(titleBox.right).toBeLessThanOrEqual(settleBox.left);
+	});
+
 	it("renders session cards and the settled shelf", async () => {
 		const { screen } = renderSessionList({
 			threads: [
@@ -227,14 +246,51 @@ describe("SessionList", () => {
 
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
+		const sessionTitle = screen
+			.getByRole("listitem")
+			.filter({ hasText: "Fix the bug" })
+			.element()
+			.querySelector('[data-slot="aui_session-list-item-title"]');
+		expect(sessionTitle?.className).toContain("text-[13px]");
+		const grouping = screen.getByTestId("session-list-grouping-header");
+		await expect.element(grouping).toBeVisible();
+		await expect.element(grouping.getByText("Status")).toBeVisible();
+		await expect
+			.element(grouping.getByRole("button", { name: "Session list options" }))
+			.toBeVisible();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).toBeVisible();
 		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		const groupingLabel = grouping.getByText("Status").element();
+		expect(groupingLabel.className).toContain("text-sm");
+		expect(groupingLabel.className).toContain("font-medium");
+		const activeHeader = screen.getByTestId("session-list-active-toggle").element();
+		const activeLabel = screen
+			.getByTestId("session-list-active-toggle")
+			.getByText("Active")
+			.element();
+		expect(activeLabel.className).toContain("text-[13px]");
+		expect(activeLabel.className).toContain("font-medium");
+		expect(activeLabel.className).toContain("text-muted-foreground/70");
+		expect(activeHeader.className).toContain("hover:bg-transparent");
+		expect(activeHeader.className).toContain("aria-expanded:bg-transparent");
+		expect(getComputedStyle(activeHeader).backgroundColor).toMatch(
+			/^(transparent|rgba\(0,\s*0,\s*0,\s*0\))$/,
+		);
+		const chevron = activeHeader.querySelector("svg");
+		expect(chevron).not.toBeNull();
+		expect(getComputedStyle(chevron!).opacity).toBe("0");
+		await userEvent.hover(screen.getByTestId("session-list-active-toggle"));
+		await expect.poll(() => getComputedStyle(chevron!).opacity).toBe("1");
 		await expect.element(screen.getByText("Old work")).toBeVisible();
-		// Settled rows show the session's last-updated time.
 		const settledShelfRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await expect.element(settledShelfRow.getByText("2m")).not.toBeInTheDocument();
+		// Workspace is opt-in via Show — default rows are title-only.
+		await expect.element(screen.getByText("Acme App")).not.toBeInTheDocument();
+
+		await grouping.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Show/ }).click();
+		await page.getByRole("menuitemcheckbox", { name: "Updated" }).click();
 		await expect.element(settledShelfRow.getByText("2m")).toBeVisible();
-		// Workspace name resolves from the stamped workspace id, not the directory.
-		await expect.element(screen.getByText("Acme App")).toBeVisible();
 	});
 
 	it("uses a single-row card without a location for unscoped sessions", async () => {
@@ -250,6 +306,10 @@ describe("SessionList", () => {
 				]);
 			},
 		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Show/ }).click();
+		await page.getByRole("menuitemcheckbox", { name: "Workspace" }).click();
 
 		const workspaceCard = screen.getByRole("listitem").filter({ hasText: "Workspace greeting" });
 		const unscopedCard = screen.getByRole("listitem").filter({ hasText: "Unscoped greeting" });
@@ -274,7 +334,8 @@ describe("SessionList", () => {
 		});
 
 		await expect.element(screen.getByTestId("session-list-attention-toggle")).toBeVisible();
-		await expect.element(screen.getByText("Requires Approval")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: /^Needs Attention$/ })).toBeVisible();
+		await expect.element(screen.getByRole("status", { name: "Requires Approval" })).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 	});
 
@@ -296,7 +357,7 @@ describe("SessionList", () => {
 		});
 
 		await expect.element(screen.getByTestId("session-list-attention-toggle")).toBeVisible();
-		await expect.element(screen.getByText("Requires Input")).toBeVisible();
+		await expect.element(screen.getByRole("status", { name: "Requires Input" })).toBeVisible();
 	});
 
 	it("settles a quiet session and un-settles it back", async () => {
@@ -350,6 +411,80 @@ describe("SessionList", () => {
 			.toBeVisible();
 	});
 
+	it("keeps grouped session titles aligned when a status icon is present", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+			hydrate: (store) =>
+				store.getState().applyEvent({
+					type: "session.status",
+					properties: { sessionID: "ses-1", status: { type: "busy" } },
+				}),
+		});
+
+		const working = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		const idle = screen.getByRole("listitem").filter({ hasText: "Add tests" });
+		const icon = working.getByRole("status", { name: "Working" });
+		await expect.element(icon).toBeVisible();
+
+		const workingTitle = working
+			.element()
+			.querySelector('[data-slot="aui_session-list-item-title"]');
+		const idleTitle = idle.element().querySelector('[data-slot="aui_session-list-item-title"]');
+		expect(workingTitle).not.toBeNull();
+		expect(idleTitle).not.toBeNull();
+		const workingLeft = workingTitle!.getBoundingClientRect().left;
+		const idleLeft = idleTitle!.getBoundingClientRect().left;
+		expect(Math.abs(workingLeft - idleLeft)).toBeLessThan(2);
+
+		const headerLabel = screen.getByTestId("session-list-active-toggle").getByText("Active");
+		const iconBox = icon.element().getBoundingClientRect();
+		const headerLeft = headerLabel.element().getBoundingClientRect().left;
+		expect(Math.abs(iconBox.left - headerLeft)).toBeLessThan(2);
+		expect(iconBox.right).toBeLessThanOrEqual(workingLeft + 1);
+
+		const root = working.element().querySelector('[data-slot="aui_session-list-item"]');
+		expect(root).not.toBeNull();
+		const rootBox = root!.getBoundingClientRect();
+		expect(iconBox.left).toBeGreaterThanOrEqual(rootBox.left);
+		expect(iconBox.right).toBeLessThanOrEqual(rootBox.right);
+	});
+
+	it("shows working duration in a tooltip on the status icon", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) =>
+				store.getState().applyEvent({
+					type: "session.status",
+					properties: { sessionID: "ses-1", status: { type: "busy" } },
+				}),
+		});
+
+		const icon = screen.getByRole("status", { name: "Working" });
+		await expect.element(icon).toBeVisible();
+		await icon.hover();
+
+		await expect
+			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+			.toBe("Working · 0s");
+	});
+
+	it("shows a tooltip on the settled session icon", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
+		});
+
+		const icon = screen.getByRole("status", { name: "Settled" });
+		await expect.element(icon).toBeVisible();
+		await icon.hover();
+
+		await expect
+			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+			.toBe("Settled");
+	});
+
 	it("hides the settle action while a session is working", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
@@ -362,7 +497,7 @@ describe("SessionList", () => {
 
 		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		await expect.element(card).toBeVisible();
-		await expect.element(screen.getByText("Working")).toBeVisible();
+		await expect.element(screen.getByRole("status", { name: "Working" })).toBeVisible();
 
 		await userEvent.hover(card);
 		await expect
@@ -408,5 +543,286 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Delete me")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("Keep me")).toBeVisible();
 		expect(adapter.deleteCalls).toEqual(["ses-2"]);
+	});
+
+	it("does not offer Status in the Show menu", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Show/ }).click();
+
+		await expect.element(page.getByRole("menuitemcheckbox", { name: "Workspace" })).toBeVisible();
+		await expect.element(page.getByRole("menuitemcheckbox", { name: "Updated" })).toBeVisible();
+		await expect
+			.element(page.getByRole("menuitemcheckbox", { name: "Status" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("adds a workspace info line when Show is enabled", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+		await expect.element(screen.getByText("Acme App")).not.toBeInTheDocument();
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Show/ }).click();
+		await page.getByRole("menuitemcheckbox", { name: "Workspace" }).click();
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		const info = card.getByText("Acme App");
+		await expect.element(info).toBeVisible();
+		expect(info.element().getBoundingClientRect().height).toBeGreaterThan(8);
+		expect(card.element().getBoundingClientRect().height).toBeGreaterThan(36);
+	});
+
+	it("groups sessions by updated time into calendar buckets", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([
+					{ id: "ses-1", updatedAt: Date.now() },
+					{ id: "ses-2", updatedAt: Date.now() - 3 * 86_400_000 },
+				]);
+			},
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Updated" }).click();
+
+		await expect
+			.element(screen.getByTestId("session-list-grouping-header").getByText("Updated"))
+			.toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Today" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Last 7 Days" })).toBeVisible();
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+		await expect.element(screen.getByText("Add tests")).toBeVisible();
+		await expect.element(screen.getByText("3d")).toBeVisible();
+	});
+
+	it("groups sessions by workspace without a Needs Attention section", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([
+					{ id: "ses-1", workspaceId: "ws-1" },
+					{ id: "ses-2", workspaceId: "ws-1" },
+				]);
+				store.getState().applyEvent({
+					type: "permission.asked",
+					properties: { id: "perm-1", sessionID: "ses-2" },
+				});
+			},
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+
+		await expect
+			.element(screen.getByTestId("session-list-grouping-header").getByText("Workspaces"))
+			.toBeVisible();
+		await expect
+			.element(screen.getByTestId("session-list-attention-toggle"))
+			.not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
+		await expect.element(screen.getByText("Acme App")).toBeVisible();
+		await expect.element(screen.getByText("Add tests")).toBeVisible();
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+	});
+
+	it("keeps grouping values next to their submenu chevrons", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		const grouping = page.getByRole("menuitem", { name: /Grouping/ });
+		await expect.element(grouping).toBeVisible();
+
+		const label = grouping.getByText("Grouping", { exact: true });
+		const value = grouping.getByText("Status", { exact: true });
+		const chevron = grouping.element().querySelector("svg");
+		expect(chevron).not.toBeNull();
+		const labelBox = label.element().getBoundingClientRect();
+		const valueBox = value.element().getBoundingClientRect();
+		const chevronBox = chevron!.getBoundingClientRect();
+		expect(valueBox.left - labelBox.right).toBeGreaterThan(16);
+		expect(chevronBox.left).toBeGreaterThanOrEqual(valueBox.right);
+		expect(chevronBox.left - valueBox.right).toBeLessThan(12);
+	});
+
+	it("places the pin action next to the thread menu", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+		});
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await userEvent.hover(card);
+		const pin = card.getByRole("button", { name: "Pin thread" });
+		const more = card.getByRole("button", { name: "Thread actions" });
+		const settle = card.getByRole("button", { name: "Settle thread" });
+		await expect.element(pin).toBeVisible();
+		await expect.element(more).toBeVisible();
+		await expect.element(settle).toBeVisible();
+
+		const pinBox = pin.element().getBoundingClientRect();
+		const moreBox = more.element().getBoundingClientRect();
+		const settleBox = settle.element().getBoundingClientRect();
+		expect(pinBox.left).toBeGreaterThanOrEqual(settleBox.right);
+		expect(moreBox.left).toBeGreaterThanOrEqual(pinBox.right);
+		expect(moreBox.left - pinBox.right).toBeLessThan(4);
+
+		const settleIcon = settle.element().querySelector("svg");
+		const pinIcon = pin.element().querySelector("svg");
+		expect(settleIcon).not.toBeNull();
+		expect(pinIcon).not.toBeNull();
+		expect(
+			pinIcon!.getBoundingClientRect().left - settleIcon!.getBoundingClientRect().right,
+		).toBeLessThan(10);
+	});
+
+	it("shows icon-only hover actions with tooltips", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+		});
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await userEvent.hover(card);
+
+		const settle = card.getByRole("button", { name: "Settle thread" });
+		await expect.element(settle).toBeVisible();
+		expect(settle.element().textContent?.trim()).toBe("");
+
+		await settle.hover();
+		await expect
+			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+			.toBe("Settle");
+
+		await card.getByRole("button", { name: "Pin thread" }).hover();
+		await expect
+			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+			.toBe("Pin");
+
+		await card.getByRole("button", { name: "Thread actions" }).hover();
+		await expect
+			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+			.toBe("More");
+	});
+
+	it("shows a tooltip on the un-settle icon", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
+		});
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await userEvent.hover(card);
+
+		const unsettle = card.getByRole("button", { name: "Un-settle thread" });
+		await expect.element(unsettle).toBeVisible();
+		expect(unsettle.element().textContent?.trim()).toBe("");
+
+		await unsettle.hover();
+		await expect
+			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+			.toBe("Un-settle");
+	});
+
+	it("pins a session into Pinned and hides the section when empty", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+				{ remoteId: "ses-3", title: "Old work", status: "archived" },
+			],
+		});
+
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-pinned-toggle")).not.toBeInTheDocument();
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Pin thread" }).click();
+
+		await expect.element(screen.getByTestId("session-list-pinned-toggle")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: /^Pinned$/ })).toBeVisible();
+		const pinnedLabel = screen
+			.getByTestId("session-list-pinned-toggle")
+			.getByText("Pinned")
+			.element();
+		expect(pinnedLabel.className).toContain("text-sm");
+		const pinnedHeader = screen.getByTestId("session-list-pinned-toggle").element();
+		const groupingHeader = screen.getByTestId("session-list-grouping-header").element();
+		expect(
+			pinnedHeader.compareDocumentPosition(groupingHeader) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+		await expect.element(screen.getByText("Add tests")).toBeVisible();
+		await expect.element(screen.getByText("Old work")).toBeVisible();
+
+		const pinnedCard = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		const activeCard = screen.getByRole("listitem").filter({ hasText: "Add tests" });
+		const settledHeader = screen.getByTestId("session-list-settled-toggle").element();
+		const afterPinned =
+			groupingHeader.getBoundingClientRect().top -
+			pinnedCard.element().getBoundingClientRect().bottom;
+		const betweenSections =
+			settledHeader.getBoundingClientRect().top -
+			activeCard.element().getBoundingClientRect().bottom;
+		expect(Math.abs(afterPinned - betweenSections)).toBeLessThan(3);
+
+		await userEvent.hover(card);
+		const unpin = card.getByRole("button", { name: "Unpin thread" });
+		const more = card.getByRole("button", { name: "Thread actions" });
+		await expect.element(unpin).toBeVisible();
+		expect(unpin.element().querySelector("svg")?.classList.contains("lucide-pin-off")).toBe(true);
+		const unpinBox = unpin.element().getBoundingClientRect();
+		const moreBox = more.element().getBoundingClientRect();
+		expect(moreBox.left).toBeGreaterThanOrEqual(unpinBox.right);
+		expect(moreBox.left - unpinBox.right).toBeLessThan(8);
+
+		await more.click();
+		const unpinItem = page.getByRole("menuitem", { name: "Unpin" });
+		await expect.element(unpinItem).toBeVisible();
+		expect(unpinItem.element().querySelector("svg")?.classList.contains("lucide-pin-off")).toBe(
+			true,
+		);
+		await userEvent.keyboard("{Escape}");
+
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Unpin thread" }).click();
+		await expect.element(screen.getByTestId("session-list-pinned-toggle")).not.toBeInTheDocument();
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+	});
+
+	it("filters the list to settled sessions", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Old work", status: "archived" },
+			],
+		});
+
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /^Status/ }).click();
+		await page.getByRole("menuitemradio", { name: "Settled" }).click();
+
+		await expect.element(screen.getByText("Old work")).toBeVisible();
+		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 	});
 });

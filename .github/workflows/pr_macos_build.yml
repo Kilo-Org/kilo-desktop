@@ -16,7 +16,6 @@ jobs:
     name: macOS build (optional)
     runs-on: macos-latest
     timeout-minutes: 90
-    environment: canary
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}

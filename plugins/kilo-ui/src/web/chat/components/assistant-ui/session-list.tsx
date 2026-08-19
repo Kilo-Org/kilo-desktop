@@ -708,10 +708,14 @@ const SessionRow: FC = () => {
 				data-slot="aui_session-list-item-title"
 				className={cn(
 					"min-w-0 flex-1 truncate text-[13px]",
-					isSettled
+					// sidebar-accent-foreground is a muted storm step for filled
+					// accent chips; titles sit on a faint wash, so hover/selected
+					// use full sidebar-foreground.
+					isSettled && !isActive
 						? "text-muted-foreground group-hover/sidebar-row:text-sidebar-foreground"
-						: !isActive &&
-								"text-sidebar-foreground/70 group-hover/sidebar-row:text-sidebar-accent-foreground",
+						: isActive
+							? "text-sidebar-foreground"
+							: "text-sidebar-foreground/70 group-hover/sidebar-row:text-sidebar-foreground",
 				)}
 			>
 				<ThreadListItemPrimitive.Title fallback="New Chat" />

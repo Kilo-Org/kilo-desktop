@@ -293,6 +293,32 @@ describe("SessionList", () => {
 		await expect.element(settledShelfRow.getByText("2m")).toBeVisible();
 	});
 
+	it("keeps the selected session title as bright as hover", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+		});
+
+		const selected = screen.getByRole("listitem").filter({ hasText: "Add tests" });
+		const idle = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await selected.getByRole("button", { name: /Add tests/ }).click();
+		await userEvent.hover(idle);
+
+		const selectedTitle = selected
+			.element()
+			.querySelector('[data-slot="aui_session-list-item-title"]');
+		const idleTitle = idle.element().querySelector('[data-slot="aui_session-list-item-title"]');
+		const selectedClasses = selectedTitle?.className.split(/\s+/) ?? [];
+		const idleClasses = idleTitle?.className.split(/\s+/) ?? [];
+		expect(selectedClasses).toContain("text-sidebar-foreground");
+		expect(selectedClasses).not.toContain("text-sidebar-foreground/70");
+		expect(selectedClasses).not.toContain("text-sidebar-accent-foreground");
+		expect(idleClasses).toContain("group-hover/sidebar-row:text-sidebar-foreground");
+		expect(idleClasses).not.toContain("group-hover/sidebar-row:text-sidebar-accent-foreground");
+	});
+
 	it("uses a single-row card without a location for unscoped sessions", async () => {
 		const { screen } = renderSessionList({
 			threads: [

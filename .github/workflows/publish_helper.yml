@@ -33,7 +33,7 @@ jobs:
             runner: macos-latest
             timeout_minutes: 90
           - target: windows
-            runner: windows-latest
+            runner: WinLatest-x64-8vCPU-32GB
             timeout_minutes: 60
           - target: linux
             runner: ubuntu-latest

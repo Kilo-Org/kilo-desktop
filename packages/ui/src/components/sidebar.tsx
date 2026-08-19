@@ -386,8 +386,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"div">) {
 			title="Drag to resize"
 			className={cn(
 				"absolute inset-y-0 z-20 flex w-4 touch-none select-none group-data-[side=left]:-right-4 group-data-[side=right]:left-0 ltr:-translate-x-1/2 rtl:-translate-x-1/2",
-				"in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
-				"[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
+				"cursor-col-resize",
 				"group-data-[collapsible=offcanvas]:translate-x-0",
 				"[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
 				"[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",

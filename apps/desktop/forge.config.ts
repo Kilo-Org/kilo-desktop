@@ -41,6 +41,7 @@ const channelTitle = channel.replace(/^./, (character) => character.toUpperCase(
 const dmgVolumeTitle = channel === "prod" ? "Agentic" : `Agentic ${channelTitle}`;
 const publishUrl = getUpdatePublishUrl(process.env);
 const s3Bucket = process.env.UPDATE_S3_BUCKET?.trim();
+const skipNativeRebuild = process.env.ELECTRON_SKIP_NATIVE_REBUILD === "true";
 const osxSign = resolveOsxSign(process.env);
 const osxNotarize = resolveOsxNotarize(process.env);
 const windowsPlan = planWindowsSigning(process.env);
@@ -287,10 +288,9 @@ const config: ForgeConfig = {
 		...(windowsPlan.packager ? { windowsSign: windowsPlan.packager } : {}),
 	},
 	rebuildConfig: {
-		// Hash-based cache of compiled native addons (better-sqlite3, keytar,
-		// @runtimed/node). Default is off and, when on, lives in $HOME — which
-		// CI does not persist. Keep the cache in-tree so packaging hosts can
-		// restore it with actions/cache.
+		// E2E uses the packages' N-API prebuilds; releases retain Forge's rebuild
+		// pass and persist its default-off cache in-tree for CI restoration.
+		...(skipNativeRebuild ? { onlyModules: [] } : {}),
 		useCache: true,
 		cachePath: path.join(packageRoot, ".electron-rebuild-cache"),
 	},

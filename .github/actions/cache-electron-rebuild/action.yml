@@ -1,8 +1,7 @@
 name: Cache Electron native rebuilds
 description: >
-  Restore the @electron/rebuild hash cache so packaging hosts skip compiling
-  better-sqlite3, keytar, and @runtimed/node when Electron and native module
-  versions are unchanged.
+  Restore the @electron/rebuild hash cache so release packaging hosts can reuse
+  native addon rebuilds when Electron and dependency versions are unchanged.
 
 runs:
   using: composite

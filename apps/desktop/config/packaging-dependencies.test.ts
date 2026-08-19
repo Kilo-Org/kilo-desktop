@@ -186,7 +186,20 @@ describe("packaged production dependencies", () => {
 		expect(forge).toContain('.electron-rebuild-cache"');
 	});
 
-	it("restores the Electron rebuild cache on every packaging host", () => {
+	it("skips native addon rebuilds for e2e packages", () => {
+		const scripts = (
+			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
+				scripts?: Record<string, string>;
+			}
+		).scripts;
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+
+		expect(scripts?.["package:e2e"]).toContain("ELECTRON_SKIP_NATIVE_REBUILD=true");
+		expect(forge).toContain('process.env.ELECTRON_SKIP_NATIVE_REBUILD === "true"');
+		expect(forge).toContain("onlyModules: []");
+	});
+
+	it("restores the Electron rebuild cache on release packaging hosts only", () => {
 		const cacheElectronRebuild = readFileSync(
 			path.join(workspaceRoot, ".github/actions/cache-electron-rebuild/action.yml"),
 			"utf8",
@@ -204,7 +217,10 @@ describe("packaged production dependencies", () => {
 		expect(cacheElectronRebuild).toContain("runner.os");
 		expect(cacheElectronRebuild).toContain("pnpm-lock.yaml");
 		expect(cacheElectronRebuild).toContain("pnpm-workspace.yaml");
-		expect(runE2e).toContain("./.github/actions/cache-electron-rebuild");
+		expect(runE2e).not.toContain("./.github/actions/cache-electron-rebuild");
+		expect(runE2e).not.toContain("build-essential");
+		expect(runE2e).not.toContain("libsecret-1-dev");
+		expect(runE2e).not.toContain("pkg-config");
 		expect(build).toContain("./.github/actions/cache-electron-rebuild");
 		expect(publish).toContain("./.github/actions/cache-electron-rebuild");
 	});

@@ -26,7 +26,7 @@ import {
 import { resolveNotebookBundleRoot } from "./embedding/notebook-bundle-path.js";
 import { reconcileRuntMcpConfig } from "./integrations/kilo-mcp-config.js";
 import type { BuildChannel } from "./runtime/socket-path.js";
-import { findRuntimedArtifact } from "../packaging/artifacts.js";
+import { findRuntimedArtifact, NTERACT_RELEASE } from "../packaging/artifacts.js";
 
 const connectionArgsSchema = z.object({
 	notebookId: z.string().uuid(),
@@ -46,7 +46,7 @@ const connectionArgsSchema = z.object({
 
 export interface NotebookFeatureOptions {
 	readonly socketPath?: string;
-	/** Selects the user-owned singleton. Defaults to the stable channel. */
+	/** Selects the user-owned singleton. Defaults to the pinned release channel. */
 	readonly runtimeChannel?: BuildChannel;
 	readonly resolveBundleRoot?: () => string | undefined;
 	readonly resolveNteractMcpBinary?: () => string | undefined;
@@ -77,7 +77,7 @@ export async function mainRegister(
 	mainSdk: MainSdk,
 	options: NotebookFeatureOptions = {},
 ): Promise<void> {
-	const runtimeChannel = options.runtimeChannel ?? "stable";
+	const runtimeChannel = options.runtimeChannel ?? NTERACT_RELEASE.channel;
 	const createHostService =
 		options.createHostService ??
 		((serviceOptions) => new ElectronNotebookHostService(serviceOptions));

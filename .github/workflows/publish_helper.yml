@@ -18,26 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  notebook-ui:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          lfs: true
-      - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: ./plugins/notebook/actions/build-ui
-      - uses: actions/upload-artifact@v4
-        with:
-          name: notebook-ui-${{ github.sha }}
-          path: plugins/notebook/build/notebook
-          if-no-files-found: error
-
   publish:
-    needs: notebook-ui
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
     environment: ${{ inputs.release_channel }}
@@ -52,7 +33,7 @@ jobs:
             runner: macos-latest
             timeout_minutes: 90
           - target: windows
-            runner: windows-latest
+            runner: WinLatest-x64-8vCPU-32GB
             timeout_minutes: 60
           - target: linux
             runner: ubuntu-latest
@@ -107,11 +88,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: notebook-ui-${{ github.sha }}
-          path: plugins/notebook/build/notebook
 
       - uses: ./plugins/notebook/actions/setup-native
 

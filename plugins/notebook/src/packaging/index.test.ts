@@ -10,11 +10,11 @@ describe("notebook packaging", () => {
 		const pluginRoot = path.resolve("/plugin/notebook");
 		const required = new Set([
 			path.join(pluginRoot, "build/notebook/index.html"),
-			path.join(pluginRoot, "build/notebook/agentic-notebook-build.json"),
+			path.join(pluginRoot, "build/notebook/staged.json"),
 			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/nteract-mcp.exe"),
-			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/runt.exe"),
+			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/runt-nightly.exe"),
 			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/staged.json"),
-			path.join(pluginRoot, "resources/runtimed/win32-x64/runtimed.exe"),
+			path.join(pluginRoot, "resources/runtimed/win32-x64/runtimed-nightly.exe"),
 			path.join(pluginRoot, "resources/runtimed/win32-x64/staged.json"),
 		]);
 

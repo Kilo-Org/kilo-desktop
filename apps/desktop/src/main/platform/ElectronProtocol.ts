@@ -15,6 +15,8 @@ export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
 // Application policy: renderer features may connect to app-managed loopback servers on
 // ephemeral ports. Remote HTTP, localhost aliases, and WebSocket origins remain disallowed.
 const LOOPBACK_SERVER_CONNECT_SOURCE = "http://127.0.0.1:*";
+const BOKEH_CDN_SOURCE = "https://cdn.bokeh.org";
+const HOLOVIZ_CDN_SOURCE = "https://cdn.holoviz.org";
 
 /**
  * Path of the self-hosted WebMCP relay widget. The relay `embed.js` first tries to
@@ -157,8 +159,8 @@ export function createActiveUntrustedContentSecurityPolicy(): string {
 	const loopback = "http://127.0.0.1:*";
 	return [
 		"default-src 'none'",
-		"script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
-		"style-src 'self' 'unsafe-inline'",
+		`script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: ${BOKEH_CDN_SOURCE} ${HOLOVIZ_CDN_SOURCE}`,
+		`style-src 'self' 'unsafe-inline' ${HOLOVIZ_CDN_SOURCE}`,
 		`img-src 'self' data: blob: ${loopback}`,
 		"font-src 'self' data: blob:",
 		`media-src 'self' data: blob: ${loopback}`,

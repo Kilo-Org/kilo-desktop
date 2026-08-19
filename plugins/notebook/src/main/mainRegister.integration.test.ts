@@ -66,10 +66,10 @@ describe("notebook mainRegister", () => {
 		expect(hostService.start).toHaveBeenCalledOnce();
 	});
 
-	it("defaults every runtime consumer to the stable singleton", async () => {
+	it("defaults every runtime consumer to the pinned release channel", async () => {
 		const { hostServiceOptions } = await boot();
 
-		expect(hostServiceOptions?.runtimeChannel).toBe("stable");
+		expect(hostServiceOptions?.runtimeChannel).toBe("nightly");
 	});
 
 	it("reports the external singleton through the typed status channel", async () => {

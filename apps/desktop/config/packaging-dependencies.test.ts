@@ -111,10 +111,6 @@ describe("packaged production dependencies", () => {
 			path.join(workspaceRoot, "plugins/notebook/actions/setup-native/action.yml"),
 			"utf8",
 		);
-		const buildUi = readFileSync(
-			path.join(workspaceRoot, "plugins/notebook/actions/build-ui/action.yml"),
-			"utf8",
-		);
 		const runE2e = readFileSync(
 			path.join(workspaceRoot, ".github/actions/run-e2e/action.yml"),
 			"utf8",
@@ -126,13 +122,33 @@ describe("packaged production dependencies", () => {
 		);
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
-		expect(buildUi).not.toContain("rust-toolchain");
-		expect(buildUi).not.toContain("wasm-pack");
-		expect(buildUi).not.toContain("./plugins/notebook/actions/setup-native");
-		expect(buildUi).not.toContain("NOTEBOOK_SKIP_NATIVE_BINDING");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("./plugins/notebook/actions/setup-native");
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");
+	});
+
+	it("stages the notebook UI through packaging hooks without a workflow fan-out job", () => {
+		const desktopPackage = JSON.parse(
+			readFileSync(path.join(desktopRoot, "package.json"), "utf8"),
+		) as { scripts?: Record<string, string> };
+		const notebookPackage = JSON.parse(
+			readFileSync(path.join(workspaceRoot, "plugins/notebook/package.json"), "utf8"),
+		) as { scripts?: Record<string, string> };
+		const workflowPaths = [
+			".github/workflows/build.yml",
+			".github/workflows/ci.yml",
+			".github/workflows/nightly.yml",
+			".github/workflows/publish_helper.yml",
+		];
+
+		expect(desktopPackage.scripts?.["prepare:build"]).toContain("prepare:plugins");
+		expect(desktopPackage.scripts?.["prepare:plugins"]).toContain("run prepare-assets");
+		expect(notebookPackage.scripts?.["prepare-assets"]).toContain("build-ui");
+		for (const workflowPath of workflowPaths) {
+			const workflow = readFileSync(path.join(workspaceRoot, workflowPath), "utf8");
+			expect(workflow).not.toContain("./plugins/notebook/actions/build-ui");
+			expect(workflow).not.toContain("notebook-ui-${{ github.sha }}");
+		}
 	});
 
 	it("points Windows Forge temp at a short path before Squirrel runs", () => {

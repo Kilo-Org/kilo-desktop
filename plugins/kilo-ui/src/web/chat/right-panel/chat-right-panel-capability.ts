@@ -21,6 +21,7 @@ export type ChatRightPanelCapability = {
 	): RightPanelTab;
 	activateTab(sessionId: string, instanceId: string): void;
 	setTabTitle(sessionId: string, instanceId: string, title: string): void;
+	setTabIconPath(sessionId: string, instanceId: string, iconPath: string): void;
 	setTabDirty(sessionId: string, instanceId: string, dirty: boolean): void;
 	registerTabLifecycle(
 		sessionId: string,
@@ -102,6 +103,9 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 		},
 		setTabTitle(sessionId, instanceId, title) {
 			useRightPanelStore.getState().setTabTitle(sessionId, instanceId, title);
+		},
+		setTabIconPath(sessionId, instanceId, iconPath) {
+			useRightPanelStore.getState().setTabIconPath(sessionId, instanceId, iconPath);
 		},
 		setTabDirty(sessionId, instanceId, dirty) {
 			useRightPanelStore.getState().setTabDirty(sessionId, instanceId, dirty);

@@ -28,6 +28,8 @@ import { app } from "electron";
 
 import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
 import * as environmentsMain from "@anaconda-agentic-desktop/plugin-environments/main";
+import filesManifest from "@anaconda-agentic-desktop/plugin-files/plugin.json" with { type: "json" };
+import * as filesMain from "@anaconda-agentic-desktop/plugin-files/main";
 import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
 import * as kiloServerMain from "@anaconda-agentic-desktop/plugin-kilo-server/main";
 import { createKiloServerResolveAsset } from "@anaconda-agentic-desktop/plugin-kilo-server/packaged-assets";
@@ -62,6 +64,11 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 			isPackaged: app.isPackaged,
 			packagedResourcesPath: process.resourcesPath,
 		}),
+	},
+	{
+		manifest: filesManifest,
+		module: filesMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-files"),
 	},
 	{
 		manifest: todosManifest,

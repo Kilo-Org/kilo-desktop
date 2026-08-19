@@ -32,6 +32,8 @@ export interface RightPanelTab {
 	instanceId: string;
 	definitionId: string;
 	title: string;
+	/** Optional file path used to resolve a tab-specific icon. */
+	iconPath?: string;
 	ordinal: number | null;
 	/** Contribution-owned, serializable state that must survive tab restoration. */
 	metadata?: Readonly<Record<string, string>>;
@@ -144,6 +146,7 @@ export function isRightPanelTab(value: unknown): value is RightPanelTab {
 		typeof tab.definitionId === "string" &&
 		typeof tab.title === "string" &&
 		(tab.ordinal === null || (typeof tab.ordinal === "number" && Number.isInteger(tab.ordinal))) &&
+		(tab.iconPath === undefined || typeof tab.iconPath === "string") &&
 		(tab.metadata === undefined || isTabMetadata(tab.metadata))
 	);
 }

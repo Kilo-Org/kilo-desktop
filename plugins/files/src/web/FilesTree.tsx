@@ -1,0 +1,154 @@
+import { resolveTheme } from "@pierre/diffs";
+import { themeToTreeStyles } from "@pierre/trees";
+import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
+import { RefreshCwIcon, SearchIcon } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+
+import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+
+interface FilesTreeProps {
+	readonly sdk: SDK;
+	readonly paths: readonly string[];
+	readonly loading: boolean;
+	readonly truncated: boolean;
+	readonly error: string | null;
+	readonly activePath: string | null;
+	readonly selectionSyncVersion: number;
+	readonly onOpenFile: (relativePath: string) => void;
+	readonly onRefresh: () => void;
+}
+
+export function FilesTree({
+	sdk,
+	paths,
+	loading,
+	truncated,
+	error,
+	activePath,
+	selectionSyncVersion,
+	onOpenFile,
+	onRefresh,
+}: FilesTreeProps) {
+	const openFileRef = useRef(onOpenFile);
+	const syncingSelectionRef = useRef(false);
+	openFileRef.current = onOpenFile;
+	const { model } = useFileTree({
+		paths: [],
+		density: "compact",
+		flattenEmptyDirectories: true,
+		initialExpansion: 1,
+		fileTreeSearchMode: "hide-non-matches",
+		search: false,
+		onSelectionChange(selectedPaths) {
+			if (syncingSelectionRef.current) return;
+			const selected = selectedPaths.at(-1);
+			if (selected && !selected.endsWith("/")) openFileRef.current(selected);
+		},
+	});
+	const search = useFileTreeSearch(model);
+	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
+
+	useEffect(() => {
+		model.resetPaths(paths);
+	}, [model, paths]);
+
+	useEffect(() => {
+		if (!activePath) return;
+		const item = model.getItem(activePath);
+		if (!item) return;
+		syncingSelectionRef.current = true;
+		for (const selected of model.getSelectedPaths()) model.getItem(selected)?.deselect();
+		item.select();
+		queueMicrotask(() => {
+			syncingSelectionRef.current = false;
+		});
+	}, [activePath, model, paths, selectionSyncVersion]);
+
+	useEffect(
+		() =>
+			sdk.theme.subscribe((theme) => {
+				void resolveTheme(theme === "dark" ? "pierre-dark" : "pierre-light").then(
+					(resolved) => setTreeStyles(themeToTreeStyles(resolved) as CSSProperties),
+					() => setTreeStyles({ colorScheme: theme }),
+				);
+			}),
+		[sdk],
+	);
+
+	return (
+		<div className="flex min-h-0 flex-1 flex-col bg-transparent" data-qa-id="files-explorer">
+			<div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
+				<div className="relative min-w-0 flex-1">
+					<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
+					<Input
+						aria-label="Search workspace files"
+						className="h-7 pl-7 text-xs"
+						data-qa-id="files-search"
+						placeholder="Search files"
+						value={search.value}
+						onChange={(event) => {
+							const value = event.currentTarget.value;
+							if (value.trim()) search.setValue(value);
+							else search.close();
+						}}
+					/>
+				</div>
+				<Button
+					aria-label="Refresh files"
+					data-qa-id="files-refresh"
+					disabled={loading}
+					onClick={onRefresh}
+					size="icon-sm"
+					variant="ghost"
+				>
+					<RefreshCwIcon className={loading ? "animate-spin" : undefined} />
+				</Button>
+			</div>
+			{truncated ? (
+				<p className="text-muted-foreground border-b px-3 py-1.5 text-[11px]">
+					Showing the first 25,000 entries.
+				</p>
+			) : null}
+			{error ? (
+				<div
+					className="text-destructive flex flex-1 items-center justify-center p-5 text-center text-xs"
+					data-qa-id="files-list-error"
+				>
+					{error}
+				</div>
+			) : !loading && paths.length === 0 ? (
+				<div
+					className="text-muted-foreground flex flex-1 items-center justify-center p-5 text-center text-xs"
+					data-qa-id="files-empty"
+				>
+					This workspace has no files to display.
+				</div>
+			) : (
+				<FileTree
+					aria-label="Workspace files"
+					className="min-h-0 flex-1 overflow-hidden"
+					data-qa-id="files-tree"
+					model={model}
+					style={{
+						...treeStyles,
+						backgroundColor: "transparent",
+						borderColor: "var(--border)",
+						color: "var(--foreground)",
+						["--trees-fg-override" as string]: "var(--foreground)",
+						["--trees-bg-override" as string]: "transparent",
+						["--trees-bg-muted-override" as string]:
+							"color-mix(in srgb, currentColor 7%, transparent)",
+						["--trees-selected-bg-override" as string]:
+							"color-mix(in srgb, currentColor 12%, transparent)",
+						["--trees-border-color-override" as string]: "var(--border)",
+						["--trees-focus-ring-color-override" as string]: "var(--ring)",
+						["--trees-selected-focused-border-color-override" as string]: "var(--ring)",
+						["--trees-scrollbar-thumb-override" as string]: "var(--app-scrollbar-thumb)",
+					}}
+				/>
+			)}
+		</div>
+	);
+}

@@ -52,6 +52,9 @@ export default defineConfig({
 		alias: {
 			"@": srcRoot,
 		},
+		// Linked plugin sources import these packages from their own module graph.
+		// Keep provider and consumer imports on one React/context instance.
+		dedupe: ["react", "react-dom", "@anaconda-agentic-desktop/sdk-react"],
 	},
 	server: {
 		host: "127.0.0.1",

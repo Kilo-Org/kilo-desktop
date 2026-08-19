@@ -85,12 +85,16 @@ describe("createChatRightPanelCapability", () => {
 		expect(panel.getTabLifecycle(SESSION, tab.instanceId)).toBeUndefined();
 	});
 
-	it("updates a contributed tab title", () => {
+	it("updates a contributed tab title and file icon path", () => {
 		const panel = createChatRightPanelCapability();
 		const tab = panel.openContributedTab(SESSION, { id: "notebook.notebook", title: "Notebook" });
 
 		panel.setTabTitle(SESSION, tab.instanceId, "analysis.ipynb");
+		panel.setTabIconPath(SESSION, tab.instanceId, "notebooks/analysis.ipynb");
 
-		expect(panel.listTabs(SESSION)[0]?.title).toBe("analysis.ipynb");
+		expect(panel.listTabs(SESSION)[0]).toMatchObject({
+			title: "analysis.ipynb",
+			iconPath: "notebooks/analysis.ipynb",
+		});
 	});
 });

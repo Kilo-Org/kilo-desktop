@@ -1,0 +1,10 @@
+.files-panel {
+	container-type: inline-size;
+}
+
+@container (max-width: 620px) {
+	.files-panel[data-has-selection="true"] .files-explorer-pane {
+		width: min(15rem, 42%);
+		min-width: 11rem;
+	}
+}

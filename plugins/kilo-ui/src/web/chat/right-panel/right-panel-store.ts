@@ -64,6 +64,7 @@ interface RightPanelStoreState {
 	openPlan: (sessionId: string, options?: OpenPlanOptions) => void;
 	activateTab: (sessionId: string, tabId: string) => void;
 	setTabTitle: (sessionId: string, tabId: string, title: string) => void;
+	setTabIconPath: (sessionId: string, tabId: string, iconPath: string) => void;
 	setTabDirty: (sessionId: string, tabId: string, dirty: boolean) => void;
 	closeTab: (sessionId: string, tabId: string) => void;
 	show: (sessionId: string) => void;
@@ -169,6 +170,18 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 							if (tab.instanceId !== tabId || tab.title === title) return tab;
 							changed = true;
 							return { ...tab, title };
+						});
+						return changed ? { ...current, tabs } : current;
+					}),
+				})),
+			setTabIconPath: (sessionId, tabId, iconPath) =>
+				set((state) => ({
+					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
+						let changed = false;
+						const tabs = current.tabs.map((tab) => {
+							if (tab.instanceId !== tabId || tab.iconPath === iconPath) return tab;
+							changed = true;
+							return { ...tab, iconPath };
 						});
 						return changed ? { ...current, tabs } : current;
 					}),

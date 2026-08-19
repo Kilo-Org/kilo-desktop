@@ -25,6 +25,12 @@
 			"skillPath": "assistant-ui/skills/copilots/SKILL.md",
 			"computedHash": "60036a154b62e09cf6fb9d55a22696b42cc3396b63e1a21dfa65bfaf70b63f4f"
 		},
+		"diffs": {
+			"source": "pierrecomputer/pierre",
+			"sourceType": "github",
+			"skillPath": "skills/diffs/SKILL.md",
+			"computedHash": "e09cc280eca6d961db4be654705cbb8b0aa0ccdfcd4640739bda554204b09c17"
+		},
 		"markdown": {
 			"source": "assistant-ui/skills",
 			"sourceType": "github",
@@ -97,6 +103,12 @@
 			"sourceType": "github",
 			"skillPath": "assistant-ui/skills/tools/SKILL.md",
 			"computedHash": "2236be8f55e7938cd1176e5cb33a0654c655dee9037f31a9f95c09a2d2dbc046"
+		},
+		"trees": {
+			"source": "pierrecomputer/pierre",
+			"sourceType": "github",
+			"skillPath": "skills/trees/SKILL.md",
+			"computedHash": "7132a04dc1cb869f53db7fc01f34805d7c78a1089608d9df9b4839647e34b13a"
 		},
 		"typescript-magician": {
 			"source": "mcollina/skills",

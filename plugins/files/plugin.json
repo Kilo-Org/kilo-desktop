@@ -1,0 +1,23 @@
+{
+	"id": "files",
+	"displayName": "Files",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"providers": [],
+		"routes": [],
+		"nav": [],
+		"zones": [
+			{
+				"zone": "kilo-ui/chat-right-panel-tab",
+				"id": "files",
+				"component": "FilesView",
+				"label": "Files",
+				"description": "Browse and edit files in this chat's workspace.",
+				"icon": "FilesIcon",
+				"priority": 60
+			}
+		]
+	}
+}

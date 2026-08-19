@@ -1,0 +1,76 @@
+name: PR macOS Build
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: pr-macos-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS build (optional)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    environment: canary
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      RELEASE_CHANNEL: canary
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Setup macOS code signing
+        uses: ./.github/actions/setup-macos-codesign
+        with:
+          certificate_base64: ${{ secrets.OSX_BUILD_CERTIFICATE_BASE64 }}
+          certificate_password: ${{ secrets.OSX_P12_PASSWORD }}
+          notarization_key: ${{ secrets.OSX_NOTARIZATION_KEY }}
+          notarization_key_id: ${{ secrets.OSX_NOTARIZATION_KEY_ID }}
+          notarization_key_issuer: ${{ secrets.OSX_NOTARIZATION_KEY_ISSUER }}
+
+      - name: Require signing and notarization credentials
+        shell: bash
+        run: |
+          required=(APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER)
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing macOS signing configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/kilo-server/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
+
+      - name: Make signed and notarized macOS artifacts
+        run: pnpm run make
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mac-arm64-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            apps/desktop/out/make/**/*.dmg
+            apps/desktop/out/make/**/*.zip
+          if-no-files-found: error
+          retention-days: 7

@@ -290,7 +290,7 @@ const config: ForgeConfig = {
 	rebuildConfig: {
 		// E2E uses the packages' N-API prebuilds; releases retain Forge's rebuild
 		// pass and persist its default-off cache in-tree for CI restoration.
-		...(skipNativeRebuild ? { onlyModules: [] } : {}),
+		...(skipNativeRebuild ? { types: [] } : {}),
 		useCache: true,
 		cachePath: path.join(packageRoot, ".electron-rebuild-cache"),
 	},

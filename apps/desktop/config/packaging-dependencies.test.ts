@@ -196,7 +196,7 @@ describe("packaged production dependencies", () => {
 
 		expect(scripts?.["package:e2e"]).toContain("ELECTRON_SKIP_NATIVE_REBUILD=true");
 		expect(forge).toContain('process.env.ELECTRON_SKIP_NATIVE_REBUILD === "true"');
-		expect(forge).toContain("onlyModules: []");
+		expect(forge).toContain("types: []");
 	});
 
 	it("restores the Electron rebuild cache on release packaging hosts only", () => {

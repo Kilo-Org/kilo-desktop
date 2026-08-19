@@ -5,7 +5,7 @@ import {
 	findRuntimedArtifact,
 	getNteractMcpArtifact,
 	getRuntimedArtifact,
-	NTERACT_NOTEBOOK_SOURCE,
+	NTERACT_NOTEBOOK_UI,
 	NTERACT_RELEASE,
 	NTERACT_MCP_ARTIFACTS,
 	RUNTIMED_ARTIFACTS,
@@ -13,16 +13,18 @@ import {
 } from "./artifacts.js";
 
 describe("notebook distribution artifacts", () => {
-	it("pins every bundled nteract component to the same stable release", () => {
+	it("pins every bundled nteract component to the same nightly release", () => {
 		expect(NTERACT_RELEASE).toEqual({
-			tag: "v2.7.0-stable.202608172336",
-			commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
+			tag: "v2.7.0-nightly.202608182247",
+			version: "2.7.0-nightly.202608182247",
+			channel: "nightly",
+			commit: "de7a8ed1c658ca963d117a3abc046b4af9f12be0",
 			repository: "https://github.com/nteract/nteract.git",
 		});
-		expect(NTERACT_NOTEBOOK_SOURCE).toEqual({
-			tag: NTERACT_RELEASE.tag,
-			commit: "f28fa6666cf4aab0e7dd1c6f5364a810107566b6",
-			repository: "https://github.com/nteract/nteract.git",
+		expect(NTERACT_NOTEBOOK_UI).toEqual({
+			assetName: "nteract-nightly-notebook-ui.tar.gz",
+			bytes: 7_816_621,
+			sha256: "094f6a644b47542fa55e178ffdea96a3890cffb3ce286f84d16ff63d4a5c1d8b",
 		});
 	});
 
@@ -39,6 +41,19 @@ describe("notebook distribution artifacts", () => {
 				expect(binary.source.sha256).toMatch(/^[a-f0-9]{64}$/);
 				expect(binary.bytes).toBeGreaterThan(1_000_000);
 			}
+		}
+	});
+
+	it("keeps every native asset on the pinned nightly channel", () => {
+		expect(NTERACT_RELEASE.channel).toBe("nightly");
+		for (const artifact of NTERACT_MCP_ARTIFACTS) {
+			expect(artifact.nteractMcp.source.assetName).toContain("nightly");
+			expect(artifact.runt.source.assetName).toContain("nightly");
+			expect(artifact.runt.executable).toContain("nightly");
+		}
+		for (const artifact of RUNTIMED_ARTIFACTS) {
+			expect(artifact.assetName).toContain("nightly");
+			expect(artifact.executable).toContain("nightly");
 		}
 	});
 
@@ -67,7 +82,7 @@ describe("notebook distribution artifacts", () => {
 	});
 
 	it("selects runtimed by platform and rejects unsupported targets", () => {
-		expect(getRuntimedArtifact("win32", "x64").executable).toBe("runtimed.exe");
+		expect(getRuntimedArtifact("win32", "x64").executable).toBe("runtimed-nightly.exe");
 		expect(findRuntimedArtifact("linux", "arm64")).toBeUndefined();
 		expect(() => getRuntimedArtifact("linux", "arm64")).toThrow(
 			/runtimed is not configured for linux\/arm64/,

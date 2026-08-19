@@ -24,13 +24,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install Linux native build prerequisites
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install --yes build-essential libsecret-1-dev pkg-config
-
     # --with-deps is only needed on Linux. On Windows it runs a slow, silent
     # Media Foundation DISM install (~3min) that the e2e tests don't need.
     - name: Install Playwright browsers (Linux)
@@ -46,8 +39,6 @@ runs:
     - uses: ./plugins/notebook/actions/setup-native
 
     - uses: ./plugins/kilo-server/actions/setup-cli
-
-    - uses: ./.github/actions/cache-electron-rebuild
 
     - name: Package desktop for e2e
       shell: bash

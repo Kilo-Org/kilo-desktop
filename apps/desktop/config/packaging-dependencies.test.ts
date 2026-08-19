@@ -106,13 +106,9 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).toMatch(/--filter\s+"@anaconda-agentic-desktop\/plugin-\*"/);
 	});
 
-	it("does not prepare a source-built @runtimed/node on packaging hosts", () => {
+	it("does not source-build nteract artifacts on packaging hosts", () => {
 		const setupNative = readFileSync(
 			path.join(workspaceRoot, "plugins/notebook/actions/setup-native/action.yml"),
-			"utf8",
-		);
-		const buildUi = readFileSync(
-			path.join(workspaceRoot, "plugins/notebook/actions/build-ui/action.yml"),
 			"utf8",
 		);
 		const runE2e = readFileSync(
@@ -126,12 +122,34 @@ describe("packaged production dependencies", () => {
 		);
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
-		expect(buildUi).toContain("1.94.0");
-		expect(buildUi).not.toContain("./plugins/notebook/actions/setup-native");
-		expect(buildUi).not.toContain("NOTEBOOK_SKIP_NATIVE_BINDING");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("./plugins/notebook/actions/setup-native");
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");
+	});
+
+	it("stages the notebook UI through packaging hooks without a workflow fan-out job", () => {
+		const desktopPackage = JSON.parse(
+			readFileSync(path.join(desktopRoot, "package.json"), "utf8"),
+		) as { scripts?: Record<string, string> };
+		const notebookPackage = JSON.parse(
+			readFileSync(path.join(workspaceRoot, "plugins/notebook/package.json"), "utf8"),
+		) as { scripts?: Record<string, string> };
+		const workflowPaths = [
+			".github/workflows/build.yml",
+			".github/workflows/ci.yml",
+			".github/workflows/nightly.yml",
+			".github/workflows/publish_helper.yml",
+		];
+
+		expect(desktopPackage.scripts?.["prepare:build"]).toContain("prepare:plugins");
+		expect(desktopPackage.scripts?.["prepare:plugins"]).toContain("run prepare-assets");
+		expect(notebookPackage.scripts?.["prepare-assets"]).toContain("fetch-notebook-ui");
+		expect(notebookPackage.scripts).not.toHaveProperty("build-ui");
+		for (const workflowPath of workflowPaths) {
+			const workflow = readFileSync(path.join(workspaceRoot, workflowPath), "utf8");
+			expect(workflow).not.toContain("./plugins/notebook/actions/build-ui");
+			expect(workflow).not.toContain("notebook-ui-${{ github.sha }}");
+		}
 	});
 
 	it("points Windows Forge temp at a short path before Squirrel runs", () => {
@@ -169,7 +187,20 @@ describe("packaged production dependencies", () => {
 		expect(forge).toContain('.electron-rebuild-cache"');
 	});
 
-	it("restores the Electron rebuild cache on every packaging host", () => {
+	it("skips native addon rebuilds for e2e packages", () => {
+		const scripts = (
+			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
+				scripts?: Record<string, string>;
+			}
+		).scripts;
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+
+		expect(scripts?.["package:e2e"]).toContain("ELECTRON_SKIP_NATIVE_REBUILD=true");
+		expect(forge).toContain('process.env.ELECTRON_SKIP_NATIVE_REBUILD === "true"');
+		expect(forge).toContain("types: []");
+	});
+
+	it("restores the Electron rebuild cache on release packaging hosts only", () => {
 		const cacheElectronRebuild = readFileSync(
 			path.join(workspaceRoot, ".github/actions/cache-electron-rebuild/action.yml"),
 			"utf8",
@@ -187,7 +218,10 @@ describe("packaged production dependencies", () => {
 		expect(cacheElectronRebuild).toContain("runner.os");
 		expect(cacheElectronRebuild).toContain("pnpm-lock.yaml");
 		expect(cacheElectronRebuild).toContain("pnpm-workspace.yaml");
-		expect(runE2e).toContain("./.github/actions/cache-electron-rebuild");
+		expect(runE2e).not.toContain("./.github/actions/cache-electron-rebuild");
+		expect(runE2e).not.toContain("build-essential");
+		expect(runE2e).not.toContain("libsecret-1-dev");
+		expect(runE2e).not.toContain("pkg-config");
 		expect(build).toContain("./.github/actions/cache-electron-rebuild");
 		expect(publish).toContain("./.github/actions/cache-electron-rebuild");
 	});

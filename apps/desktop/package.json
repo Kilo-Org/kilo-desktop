@@ -24,7 +24,7 @@
 		"prepare:plugins": "pnpm --filter \"@anaconda-agentic-desktop/plugin-*\" -r --if-present run prepare-assets",
 		"make": "tsx config/run-packaging.ts make",
 		"package": "tsx config/run-packaging.ts package",
-		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true pnpm run package",
+		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true ELECTRON_SKIP_NATIVE_REBUILD=true pnpm run package",
 		"publish": "tsx config/run-packaging.ts publish",
 		"start": "electron-forge start -- --remote-debugging-port=9222",
 		"test": "vitest run",

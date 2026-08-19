@@ -316,6 +316,31 @@ describe("ElectronProtocol", () => {
 		expect(policy).toContain("object-src 'none'");
 	});
 
+	it("allows HoloViz CDN resources only in the sandboxed isolated output profile", () => {
+		const outputPolicy = createActiveUntrustedContentSecurityPolicy();
+		const scriptSrc = outputPolicy
+			.split(";")
+			.map((directive) => directive.trim())
+			.find((directive) => directive.startsWith("script-src"));
+		const styleSrc = outputPolicy
+			.split(";")
+			.map((directive) => directive.trim())
+			.find((directive) => directive.startsWith("style-src"));
+
+		expect(scriptSrc).toContain("https://cdn.bokeh.org");
+		expect(scriptSrc).toContain("https://cdn.holoviz.org");
+		expect(styleSrc).toContain("https://cdn.holoviz.org");
+
+		expect(createContentSecurityPolicy()).not.toContain("cdn.bokeh.org");
+		expect(createContentSecurityPolicy()).not.toContain("cdn.holoviz.org");
+		expect(createEmbeddedContentSecurityPolicy("anaconda-agentic-desktop://app")).not.toContain(
+			"cdn.bokeh.org",
+		);
+		expect(createEmbeddedContentSecurityPolicy("anaconda-agentic-desktop://app")).not.toContain(
+			"cdn.holoviz.org",
+		);
+	});
+
 	it("serves an embedded host from its own root under its own policy", async () => {
 		const appRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
 		const enclosing = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-enclosing-"));

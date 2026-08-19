@@ -14,9 +14,9 @@ import path from "node:path";
 
 import { extract as extractTar } from "tar";
 
-import { NTERACT_NOTEBOOK_UI, NTERACT_RELEASE, type ReleaseAsset } from "./artifacts.js";
+import { NTERACT_NOTEBOOK_UI, NTERACT_RELEASE, type ReleaseAsset } from "../artifacts.js";
 
-export const NOTEBOOK_BUILD_MANIFEST = "agentic-notebook-build.json";
+export const NOTEBOOK_STAGE_MANIFEST = "staged.json";
 export const NTERACT_LICENSE_FILE = "LICENSE.nteract";
 
 /** Marker on the style tag we inject into staged `index.html`. */
@@ -36,20 +36,20 @@ export const AGENTIC_EMBED_CHROME_CSS = [
 	'[data-testid="notebook-rail"]{display:none!important}',
 ].join("");
 
-interface NotebookBuildFile {
+interface NotebookStageFile {
 	readonly path: string;
 	readonly bytes: number;
 	readonly sha256: string;
 }
 
-export interface NotebookBuildManifest {
+export interface NotebookStageManifest {
 	readonly schemaVersion: 1;
 	readonly releaseTag: string;
 	readonly sourceCommit: string;
-	readonly files: readonly NotebookBuildFile[];
+	readonly files: readonly NotebookStageFile[];
 }
 
-export interface BuildNotebookUiOptions {
+export interface StageNotebookUiOptions {
 	readonly destinationDirectory: string;
 	readonly release?: NotebookUiRelease;
 	readonly artifact?: ReleaseAsset;
@@ -57,8 +57,8 @@ export interface BuildNotebookUiOptions {
 	readonly extract?: (archivePath: string, destinationDirectory: string) => Promise<void>;
 }
 
-export interface BuildNotebookUiResult {
-	readonly built: boolean;
+export interface StageNotebookUiResult {
+	readonly staged: boolean;
 	readonly destinationDirectory: string;
 }
 
@@ -107,7 +107,7 @@ async function collectFiles(root: string, relativeDirectory = ""): Promise<strin
 	return files.sort();
 }
 
-export async function validateNotebookBuildOutput(directory: string): Promise<void> {
+export async function validateNotebookUiBundle(directory: string): Promise<void> {
 	const indexPath = path.join(directory, "index.html");
 	if (!(await stat(indexPath)).isFile()) throw new Error("notebook dist has no index.html");
 	if (!(await readFile(indexPath, "utf8")).includes("/assets/")) {
@@ -153,25 +153,25 @@ async function applyAgenticEmbedChrome(directory: string): Promise<void> {
 	if (next !== html) await writeFile(indexPath, next);
 }
 
-async function writeBuildManifest(
+async function writeStageManifest(
 	directory: string,
 	release: Pick<NotebookUiRelease, "tag" | "commit"> = NTERACT_RELEASE,
 ): Promise<void> {
-	const files = (await collectFiles(directory)).filter((file) => file !== NOTEBOOK_BUILD_MANIFEST);
+	const files = (await collectFiles(directory)).filter((file) => file !== NOTEBOOK_STAGE_MANIFEST);
 	const records = await Promise.all(
-		files.map(async (relativePath): Promise<NotebookBuildFile> => {
+		files.map(async (relativePath): Promise<NotebookStageFile> => {
 			const bytes = await readFile(path.join(directory, relativePath));
 			return { path: relativePath, bytes: bytes.byteLength, sha256: digest(bytes) };
 		}),
 	);
-	const manifest: NotebookBuildManifest = {
+	const manifest: NotebookStageManifest = {
 		schemaVersion: 1,
 		releaseTag: release.tag,
 		sourceCommit: release.commit,
 		files: records,
 	};
 	await writeFile(
-		path.join(directory, NOTEBOOK_BUILD_MANIFEST),
+		path.join(directory, NOTEBOOK_STAGE_MANIFEST),
 		`${JSON.stringify(manifest, null, 2)}\n`,
 	);
 }
@@ -179,31 +179,31 @@ async function writeBuildManifest(
 export async function validateStagedNotebookBundle(
 	directory: string,
 	release: Pick<NotebookUiRelease, "tag" | "commit"> = NTERACT_RELEASE,
-): Promise<NotebookBuildManifest> {
-	await validateNotebookBuildOutput(directory);
+): Promise<NotebookStageManifest> {
+	await validateNotebookUiBundle(directory);
 	const indexHtml = await readFile(path.join(directory, "index.html"), "utf8");
 	if (!indexHtml.includes(AGENTIC_EMBED_CHROME_STYLE_TAG)) {
 		throw new Error("staged notebook index.html is missing agentic embed chrome CSS");
 	}
 	const manifest = JSON.parse(
-		await readFile(path.join(directory, NOTEBOOK_BUILD_MANIFEST), "utf8"),
-	) as NotebookBuildManifest;
+		await readFile(path.join(directory, NOTEBOOK_STAGE_MANIFEST), "utf8"),
+	) as NotebookStageManifest;
 	if (
 		manifest.schemaVersion !== 1 ||
 		manifest.releaseTag !== release.tag ||
 		manifest.sourceCommit !== release.commit ||
 		!Array.isArray(manifest.files)
 	) {
-		throw new Error("notebook build manifest does not match the pinned nteract release");
+		throw new Error("notebook staging manifest does not match the pinned nteract release");
 	}
 	const actualFiles = (await collectFiles(directory)).filter(
-		(file) => file !== NOTEBOOK_BUILD_MANIFEST,
+		(file) => file !== NOTEBOOK_STAGE_MANIFEST,
 	);
 	if (
 		actualFiles.length !== manifest.files.length ||
 		actualFiles.some((file, index) => manifest.files[index]?.path !== file)
 	) {
-		throw new Error("notebook build manifest does not exactly cover the staged bundle");
+		throw new Error("notebook staging manifest does not exactly cover the staged bundle");
 	}
 	for (const record of manifest.files) {
 		safeRelativePath(record.path);
@@ -212,7 +212,7 @@ export async function validateStagedNotebookBundle(
 			record.bytes < 0 ||
 			!/^[a-f0-9]{64}$/.test(record.sha256)
 		) {
-			throw new Error(`invalid notebook build manifest record: ${record.path}`);
+			throw new Error(`invalid notebook staging manifest record: ${record.path}`);
 		}
 		const bytes = await readFile(path.join(directory, record.path));
 		if (bytes.byteLength !== record.bytes || digest(bytes) !== record.sha256) {
@@ -223,11 +223,11 @@ export async function validateStagedNotebookBundle(
 }
 
 async function stagePublishedNotebookUi(
-	options: BuildNotebookUiOptions,
+	options: StageNotebookUiOptions,
 	release: NotebookUiRelease,
 	artifact: ReleaseAsset,
-	extract: NonNullable<BuildNotebookUiOptions["extract"]>,
-): Promise<BuildNotebookUiResult> {
+	extract: NonNullable<StageNotebookUiOptions["extract"]>,
+): Promise<StageNotebookUiResult> {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
 	let archive: Buffer;
@@ -279,15 +279,15 @@ async function stagePublishedNotebookUi(
 		) {
 			throw new Error("published notebook UI manifest does not match the pinned nteract release");
 		}
-		await validateNotebookBuildOutput(stagedDirectory);
+		await validateNotebookUiBundle(stagedDirectory);
 		await applyAgenticEmbedChrome(stagedDirectory);
-		await writeBuildManifest(stagedDirectory, release);
+		await writeStageManifest(stagedDirectory, release);
 		await validateStagedNotebookBundle(stagedDirectory, release);
 		await replaceDirectory(options.destinationDirectory, stagedDirectory);
 	} finally {
 		await rm(workingDirectory, { recursive: true, force: true });
 	}
-	return { built: true, destinationDirectory: options.destinationDirectory };
+	return { staged: true, destinationDirectory: options.destinationDirectory };
 }
 
 async function extractPublishedNotebookUiArchive(
@@ -349,8 +349,8 @@ async function tryPatchEmbedChrome(
 		const nextHtml = injectAgenticEmbedChromeHtml(html);
 		if (nextHtml === html) return false;
 		await writeFile(indexPath, nextHtml);
-		const manifestPath = path.join(directory, NOTEBOOK_BUILD_MANIFEST);
-		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as NotebookBuildManifest;
+		const manifestPath = path.join(directory, NOTEBOOK_STAGE_MANIFEST);
+		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as NotebookStageManifest;
 		const indexBytes = await readFile(indexPath);
 		const files = manifest.files.map((record) =>
 			record.path === "index.html"
@@ -361,7 +361,7 @@ async function tryPatchEmbedChrome(
 					}
 				: record,
 		);
-		const next: NotebookBuildManifest = { ...manifest, files };
+		const next: NotebookStageManifest = { ...manifest, files };
 		await writeFile(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
 		await validateStagedNotebookBundle(directory, release);
 		return true;
@@ -391,9 +391,9 @@ async function replaceDirectory(targetDirectory: string, stagedDirectory: string
 	}
 }
 
-export async function buildNotebookUi(
-	options: BuildNotebookUiOptions,
-): Promise<BuildNotebookUiResult> {
+export async function stageNotebookUi(
+	options: StageNotebookUiOptions,
+): Promise<StageNotebookUiResult> {
 	const release = options.release ?? NTERACT_RELEASE;
 	const artifact = options.artifact ?? NTERACT_NOTEBOOK_UI;
 	const uiIsCurrent = await currentBundleIsValid(options.destinationDirectory, release);
@@ -402,7 +402,7 @@ export async function buildNotebookUi(
 	const uiReady = uiIsCurrent || uiPatched;
 	if (uiReady) {
 		return {
-			built: uiPatched,
+			staged: uiPatched,
 			destinationDirectory: options.destinationDirectory,
 		};
 	}

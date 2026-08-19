@@ -19,10 +19,9 @@ export default defineConfig({
 				"src/main/index.ts",
 				"src/web/index.ts",
 				"src/test/**",
-				// Build-time binary staging and nteract UI checkout; exercised by
-				// prepare-assets and the notebook-ui job, not by unit coverage.
+				// Binary and notebook UI staging are exercised by prepare-assets,
+				// not by unit coverage.
 				"src/packaging/staging/**",
-				"src/packaging/notebook-ui-build.ts",
 				// Custom-protocol MessagePort handshake and desktop runtime status.
 				// Vitest Chromium is http://localhost; covered by e2e smoke.
 				"src/web/notebook/NotebookView.tsx",

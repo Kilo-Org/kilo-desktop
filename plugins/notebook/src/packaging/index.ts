@@ -64,7 +64,7 @@ export function createNotebookPackagingPlan(
 	}
 	const requiredAssets = [
 		path.join(stagedNotebookBundle, "index.html"),
-		path.join(stagedNotebookBundle, "agentic-notebook-build.json"),
+		path.join(stagedNotebookBundle, "staged.json"),
 		path.join(stagedNteractMcp, target, nteractMcpExecutables.nteractMcp),
 		path.join(stagedNteractMcp, target, nteractMcpExecutables.runt),
 		path.join(stagedNteractMcp, target, "staged.json"),
@@ -75,7 +75,7 @@ export function createNotebookPackagingPlan(
 	for (const requiredAsset of requiredAssets) {
 		if (!exists(requiredAsset)) {
 			throw new Error(
-				`Notebook build asset is missing: ${requiredAsset}. Run the notebook plugin's prepare-assets script.`,
+				`Staged notebook asset is missing: ${requiredAsset}. Run the notebook plugin's prepare-assets script.`,
 			);
 		}
 	}

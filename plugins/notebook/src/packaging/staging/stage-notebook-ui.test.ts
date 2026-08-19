@@ -6,17 +6,17 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { create as createTar } from "tar";
 
-import { NTERACT_RELEASE } from "./artifacts.js";
+import { NTERACT_RELEASE } from "../artifacts.js";
 import {
 	AGENTIC_EMBED_CHROME_CSS,
 	AGENTIC_EMBED_CHROME_STYLE_ATTR,
-	buildNotebookUi,
 	injectAgenticEmbedChromeHtml,
-	NOTEBOOK_BUILD_MANIFEST,
 	NTERACT_LICENSE_FILE,
-	validateNotebookBuildOutput,
+	NOTEBOOK_STAGE_MANIFEST,
+	stageNotebookUi,
+	validateNotebookUiBundle,
 	validateStagedNotebookBundle,
-} from "./notebook-ui-build.js";
+} from "./stage-notebook-ui.js";
 
 const directories: string[] = [];
 
@@ -29,7 +29,7 @@ const NIGHTLY_RELEASE = {
 } as const;
 
 async function temporaryDirectory(): Promise<string> {
-	const directory = await mkdtemp(path.join(os.tmpdir(), "notebook-ui-build-"));
+	const directory = await mkdtemp(path.join(os.tmpdir(), "notebook-ui-stage-"));
 	directories.push(directory);
 	return directory;
 }
@@ -77,7 +77,7 @@ async function publishedArchive(
 async function stageFixture(root: string, destinationDirectory: string): Promise<void> {
 	await mkdir(root, { recursive: true });
 	const archive = await publishedArchive(root);
-	await buildNotebookUi({
+	await stageNotebookUi({
 		destinationDirectory,
 		release: NIGHTLY_RELEASE,
 		artifact: {
@@ -95,7 +95,7 @@ afterEach(async () => {
 	);
 });
 
-describe("buildNotebookUi", () => {
+describe("stageNotebookUi", () => {
 	it("stages the pinned published notebook bundle", async () => {
 		const root = await temporaryDirectory();
 		const destinationDirectory = path.join(root, "build/notebook");
@@ -107,7 +107,7 @@ describe("buildNotebookUi", () => {
 		};
 		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
 
-		const result = await buildNotebookUi({
+		const result = await stageNotebookUi({
 			destinationDirectory,
 			release: NIGHTLY_RELEASE,
 			artifact,
@@ -117,7 +117,7 @@ describe("buildNotebookUi", () => {
 			},
 		});
 
-		expect(result.built).toBe(true);
+		expect(result.staged).toBe(true);
 		expect(fetchArchive).toHaveBeenCalledWith(
 			`https://github.com/nteract/nteract/releases/download/${NIGHTLY_RELEASE.tag}/${artifact.assetName}`,
 			expect.objectContaining({ redirect: "follow" }),
@@ -129,7 +129,7 @@ describe("buildNotebookUi", () => {
 			AGENTIC_EMBED_CHROME_CSS,
 		);
 		expect(
-			JSON.parse(await readFile(path.join(destinationDirectory, NOTEBOOK_BUILD_MANIFEST), "utf8")),
+			JSON.parse(await readFile(path.join(destinationDirectory, NOTEBOOK_STAGE_MANIFEST), "utf8")),
 		).toMatchObject({
 			releaseTag: NIGHTLY_RELEASE.tag,
 			sourceCommit: NIGHTLY_RELEASE.commit,
@@ -146,13 +146,13 @@ describe("buildNotebookUi", () => {
 		};
 
 		await expect(
-			buildNotebookUi({
+			stageNotebookUi({
 				destinationDirectory: path.join(root, "build/notebook"),
 				release: NIGHTLY_RELEASE,
 				artifact,
 				fetch: async () => new Response(new Uint8Array(archive)),
 			}),
-		).resolves.toMatchObject({ built: true });
+		).resolves.toMatchObject({ staged: true });
 	});
 
 	it("reuses or patches a current staged bundle without downloading it again", async () => {
@@ -169,15 +169,15 @@ describe("buildNotebookUi", () => {
 			},
 			fetch: fetchArchive,
 		};
-		await buildNotebookUi(options);
+		await stageNotebookUi(options);
 
-		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: false });
+		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: false });
 		const indexPath = path.join(options.destinationDirectory, "index.html");
 		await writeFile(
 			indexPath,
 			(await readFile(indexPath, "utf8")).replace(AGENTIC_EMBED_CHROME_CSS, "old{}"),
 		);
-		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
+		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
 		expect(await readFile(indexPath, "utf8")).toContain(AGENTIC_EMBED_CHROME_CSS);
 		expect(fetchArchive).toHaveBeenCalledOnce();
 	});
@@ -196,10 +196,10 @@ describe("buildNotebookUi", () => {
 			},
 			fetch: fetchArchive,
 		};
-		await buildNotebookUi(options);
+		await stageNotebookUi(options);
 		await writeFile(path.join(options.destinationDirectory, "assets/main-abcdef12.js"), "corrupt");
 
-		await expect(buildNotebookUi(options)).resolves.toMatchObject({ built: true });
+		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
 		expect(fetchArchive).toHaveBeenCalledTimes(2);
 	});
 
@@ -207,7 +207,7 @@ describe("buildNotebookUi", () => {
 		const root = await temporaryDirectory();
 		const archive = await publishedArchive(root);
 		await expect(
-			buildNotebookUi({
+			stageNotebookUi({
 				destinationDirectory: path.join(root, "build/notebook"),
 				release: NIGHTLY_RELEASE,
 				artifact: {
@@ -224,7 +224,7 @@ describe("buildNotebookUi", () => {
 		const root = await temporaryDirectory();
 		const archive = await publishedArchive(root, { includeWasm: false });
 		await expect(
-			buildNotebookUi({
+			stageNotebookUi({
 				destinationDirectory: path.join(root, "build/notebook"),
 				release: NIGHTLY_RELEASE,
 				artifact: {
@@ -241,7 +241,7 @@ describe("buildNotebookUi", () => {
 		const root = await temporaryDirectory();
 		const archive = await publishedArchive(root, { channel: "stable" });
 		await expect(
-			buildNotebookUi({
+			stageNotebookUi({
 				destinationDirectory: path.join(root, "build/notebook"),
 				release: NIGHTLY_RELEASE,
 				artifact: {
@@ -283,11 +283,11 @@ describe("notebook bundle validation", () => {
 		const root = await temporaryDirectory();
 		await mkdir(root, { recursive: true });
 		await writeFile(path.join(root, "index.html"), "<html>source</html>");
-		await expect(validateNotebookBuildOutput(root)).rejects.toThrow(/built \/assets/);
+		await expect(validateNotebookUiBundle(root)).rejects.toThrow(/built \/assets/);
 
 		const noWasm = path.join(root, "no-wasm");
 		await writePublishedBundle(noWasm, { includeWasm: false });
-		await expect(validateNotebookBuildOutput(noWasm)).rejects.toThrow(/no WASM/);
+		await expect(validateNotebookUiBundle(noWasm)).rejects.toThrow(/no WASM/);
 
 		const destination = path.join(root, "staged");
 		await stageFixture(path.join(root, "archive"), destination);
@@ -295,7 +295,7 @@ describe("notebook bundle validation", () => {
 		await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
 			/does not exactly cover/,
 		);
-		expect(await readFile(path.join(destination, NOTEBOOK_BUILD_MANIFEST), "utf8")).toContain(
+		expect(await readFile(path.join(destination, NOTEBOOK_STAGE_MANIFEST), "utf8")).toContain(
 			NTERACT_RELEASE.commit,
 		);
 	});

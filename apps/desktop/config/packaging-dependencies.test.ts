@@ -143,7 +143,8 @@ describe("packaged production dependencies", () => {
 
 		expect(desktopPackage.scripts?.["prepare:build"]).toContain("prepare:plugins");
 		expect(desktopPackage.scripts?.["prepare:plugins"]).toContain("run prepare-assets");
-		expect(notebookPackage.scripts?.["prepare-assets"]).toContain("build-ui");
+		expect(notebookPackage.scripts?.["prepare-assets"]).toContain("fetch-notebook-ui");
+		expect(notebookPackage.scripts).not.toHaveProperty("build-ui");
 		for (const workflowPath of workflowPaths) {
 			const workflow = readFileSync(path.join(workspaceRoot, workflowPath), "utf8");
 			expect(workflow).not.toContain("./plugins/notebook/actions/build-ui");

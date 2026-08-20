@@ -1,7 +1,5 @@
 "use client";
 
-import "@assistant-ui/react-markdown/styles/dot.css";
-
 import { markdownComponents as sharedMarkdownComponents } from "@anaconda-agentic-desktop/ui/components/markdown-content";
 import {
 	composeMarkdownRenderer,

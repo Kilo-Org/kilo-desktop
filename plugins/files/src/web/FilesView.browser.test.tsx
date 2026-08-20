@@ -24,19 +24,25 @@ function renderView(
 	const sdk = createFakeSdk({ featureId: "files", channels: filesContract, handlers });
 	const system = createFakeFeatureSystem({ sdks: { files: sdk } });
 	system.getSdk("kilo-ui").plugins.expose("chatRightPanel", {
-		setTabTitle: vi.fn(),
-		setTabIconKey: vi.fn(),
-		setTabDirty: vi.fn(),
+		getActiveTabId: vi.fn(() => props.instanceId ?? PROPS.instanceId),
+		updateTab: vi.fn(),
 		registerTabLifecycle: vi.fn(() => vi.fn()),
 		...panel,
 	});
-	return render(
+	const renderTree = (nextProps: Partial<FilesViewProps>) => (
 		<SdkProvider system={system}>
 			<div className="flex" style={{ height: 600, width }}>
-				<FilesView {...PROPS} {...props} />
+				<FilesView {...PROPS} {...nextProps} />
 			</div>
-		</SdkProvider>,
+		</SdkProvider>
 	);
+	const result = render(renderTree(props));
+	return {
+		...result,
+		rerenderView(nextProps: Partial<FilesViewProps>) {
+			result.rerender(renderTree(nextProps));
+		},
+	};
 }
 
 const handlers = (): FilesServiceContract => ({
@@ -95,11 +101,11 @@ describe("FilesView", () => {
 	});
 
 	it("removes the generated ordinal from the initial Files tab title", async () => {
-		const setTabTitle = vi.fn();
-		renderView(handlers(), {}, { setTabTitle });
+		const updateTab = vi.fn();
+		renderView(handlers(), {}, { updateTab });
 
 		await vi.waitFor(() =>
-			expect(setTabTitle).toHaveBeenCalledWith("session-1", "files-1", "Files"),
+			expect(updateTab).toHaveBeenCalledWith("session-1", "files-1", { title: "Files" }),
 		);
 	});
 
@@ -202,9 +208,8 @@ describe("FilesView", () => {
 	});
 
 	it("renders the real Trees explorer and opens a selected file with a breadcrumb", async () => {
-		const setTabTitle = vi.fn();
-		const setTabIconKey = vi.fn();
-		renderView(handlers(), {}, { setTabIconKey, setTabTitle });
+		const updateTab = vi.fn();
+		renderView(handlers(), {}, { updateTab });
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
 		await vi.waitFor(() => {
 			const host = document.querySelector('[data-qa-id="files-tree"]');
@@ -216,9 +221,34 @@ describe("FilesView", () => {
 
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 		await vi.waitFor(() =>
-			expect(setTabTitle).toHaveBeenCalledWith("session-1", "files-1", "readme.md"),
+			expect(updateTab).toHaveBeenCalledWith("session-1", "files-1", {
+				title: "readme.md",
+				iconKey: "docs/readme.md",
+				metadata: {
+					workspaceDirectory: "/workspace",
+					relativePath: "docs/readme.md",
+				},
+			}),
 		);
-		expect(setTabIconKey).toHaveBeenCalledWith("session-1", "files-1", "docs/readme.md");
+	});
+
+	it("opens the latest file request when a reused tab receives new metadata", async () => {
+		const view = renderView(handlers(), {
+			metadata: { workspaceDirectory: "/workspace", relativePath: "src/index.ts" },
+		});
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+
+		await openTreePath("docs/readme.md");
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
+		view.rerenderView({
+			metadata: {
+				workspaceDirectory: "/workspace",
+				relativePath: "src/index.ts",
+				line: "42",
+			},
+		});
+
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
 	});
 
 	it("opens the selected file in an available external editor and remembers the choice", async () => {
@@ -382,13 +412,15 @@ describe("FilesView", () => {
 	});
 
 	it("edits with Diffs, publishes dirty state, and saves manually", async () => {
-		const setTabDirty = vi.fn();
+		const updateTab = vi.fn();
 		const write = vi.fn(async () => ({ status: "saved" as const, revision: "b".repeat(64) }));
-		renderView({ ...handlers(), write }, {}, { setTabDirty });
+		renderView({ ...handlers(), write }, {}, { updateTab });
 		await openTreePath("src/index.ts");
 		await replaceEditorText("export const value = 2;");
 
-		await vi.waitFor(() => expect(setTabDirty).toHaveBeenCalledWith("session-1", "files-1", true));
+		await vi.waitFor(() =>
+			expect(updateTab).toHaveBeenCalledWith("session-1", "files-1", { dirty: true }),
+		);
 		fireEvent.click(document.querySelector('[data-qa-id="files-save"]')!);
 		await vi.waitFor(() =>
 			expect(write).toHaveBeenCalledWith(
@@ -398,7 +430,9 @@ describe("FilesView", () => {
 				}),
 			),
 		);
-		await vi.waitFor(() => expect(setTabDirty).toHaveBeenCalledWith("session-1", "files-1", false));
+		await vi.waitFor(() =>
+			expect(updateTab).toHaveBeenCalledWith("session-1", "files-1", { dirty: false }),
+		);
 	});
 
 	it("renders relative Markdown links as file chips that open in the same tab", async () => {
@@ -472,6 +506,25 @@ describe("FilesView", () => {
 		expect(document.querySelector('[data-qa-id="files-markdown-preview"]')?.textContent).toContain(
 			"Outside",
 		);
+	});
+
+	it("keeps a text fallback when a Markdown image cannot be read", async () => {
+		const read = vi.fn<FilesServiceContract["read"]>(async ({ relativePath }) => {
+			if (relativePath === "assets/missing.png") throw new Error("File not found");
+			return {
+				kind: "text",
+				contents: "![Missing diagram](../assets/missing.png)",
+				byteLength: 47,
+				truncated: false,
+				revision: "a".repeat(64),
+			};
+		});
+		renderView({ ...handlers(), read });
+		await openTreePath("docs/readme.md");
+		await page.getByTestId("files-markdown-toggle").click();
+
+		await expect.element(page.getByText("Missing diagram")).toBeVisible();
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
 	});
 
 	it("shows image and deferred preview states", async () => {
@@ -563,6 +616,34 @@ describe("FilesView", () => {
 		await openTreePath("docs/readme.md");
 		await page.getByTestId("files-unsaved-save").click();
 		await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
+	});
+
+	it("ignores the save shortcut while another right-panel tab is active", async () => {
+		const write = vi.fn(async () => ({ status: "saved" as const, revision: "b".repeat(64) }));
+		renderView({ ...handlers(), write }, {}, { getActiveTabId: () => "another-tab" });
+		await openTreePath("src/index.ts");
+		await replaceEditorText("background change");
+
+		await userEvent.keyboard("{Control>}s{/Control}");
+
+		expect(write).not.toHaveBeenCalled();
+	});
+
+	it("continues a guarded file switch after overwriting a conflict", async () => {
+		const write = vi
+			.fn<FilesServiceContract["write"]>()
+			.mockResolvedValueOnce({ status: "conflict", diskRevision: "c".repeat(64) })
+			.mockResolvedValueOnce({ status: "saved", revision: "d".repeat(64) });
+		renderView({ ...handlers(), write });
+		await openTreePath("src/index.ts");
+		await replaceEditorText("changed");
+		await openTreePath("docs/readme.md");
+		await page.getByTestId("files-unsaved-save").click();
+		await expect.element(page.getByTestId("files-conflict-dialog")).toBeVisible();
+
+		await page.getByTestId("files-conflict-overwrite").click();
+
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 	});
 

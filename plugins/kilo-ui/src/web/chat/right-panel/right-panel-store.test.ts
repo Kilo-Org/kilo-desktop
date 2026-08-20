@@ -86,7 +86,7 @@ describe("right-panel-store", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
 
-		useRightPanelStore.getState().setTabDirty(SESSION, tab.instanceId, true);
+		useRightPanelStore.getState().updateTab(SESSION, tab.instanceId, { dirty: true });
 
 		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.dirty).toBe(true);
 		const persisted = persistedRightPanelState(useRightPanelStore.getState());
@@ -108,7 +108,9 @@ describe("right-panel-store", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
 
-		useRightPanelStore.getState().setTabTitle(SESSION, tab.instanceId, "analysis.ipynb");
+		useRightPanelStore.getState().updateTab(SESSION, tab.instanceId, {
+			title: "analysis.ipynb",
+		});
 
 		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.title).toBe(
 			"analysis.ipynb",

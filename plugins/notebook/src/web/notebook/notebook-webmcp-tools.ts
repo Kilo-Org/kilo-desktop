@@ -44,8 +44,16 @@ export type ChatRightPanelCapability = {
 			readonly metadata?: Readonly<Record<string, string>>;
 		},
 	): { readonly instanceId: string; readonly title: string };
-	setTabTitle?(sessionId: string, instanceId: string, title: string): void;
-	setTabDirty?(sessionId: string, instanceId: string, dirty: boolean): void;
+	updateTab?(
+		sessionId: string,
+		instanceId: string,
+		update: {
+			readonly title?: string;
+			readonly iconKey?: string;
+			readonly metadata?: Readonly<Record<string, string>>;
+			readonly dirty?: boolean;
+		},
+	): void;
 	registerTabLifecycle?(
 		sessionId: string,
 		instanceId: string,

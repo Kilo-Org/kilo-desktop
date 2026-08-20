@@ -44,9 +44,14 @@ function MarkdownImage({
 	useEffect(() => {
 		let active = true;
 		if (!relativePath) return;
-		void read({ workspaceDirectory, relativePath }).then((result) => {
-			if (active) setImage(result);
-		});
+		void read({ workspaceDirectory, relativePath }).then(
+			(result) => {
+				if (active) setImage(result);
+			},
+			() => {
+				if (active) setImage(null);
+			},
+		);
 		return () => {
 			active = false;
 		};

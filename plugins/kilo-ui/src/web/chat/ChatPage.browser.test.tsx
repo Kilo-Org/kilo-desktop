@@ -620,7 +620,7 @@ describe("ChatPage", () => {
 			save,
 			discard,
 		});
-		chatRightPanelCapability.setTabDirty("draft", tab.instanceId, true);
+		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
 
 		await expect
 			.element(screen.getByTestId(`chat-right-panel-dirty-${tab.instanceId}`))
@@ -648,7 +648,7 @@ describe("ChatPage", () => {
 		await screen.getByTestId("chat-right-panel-toggle").click();
 		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
 		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
-		chatRightPanelCapability.setTabDirty("draft", tab.instanceId, true);
+		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
 
 		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
 
@@ -678,7 +678,7 @@ describe("ChatPage", () => {
 			save,
 			discard,
 		});
-		chatRightPanelCapability.setTabDirty("draft", tab.instanceId, true);
+		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
 		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
 
 		await screen.getByTestId("chat-right-panel-close-save").click();

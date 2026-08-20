@@ -1,7 +1,15 @@
 export interface ChatRightPanelCapability {
-	setTabTitle(sessionId: string, instanceId: string, title: string): void;
-	setTabIconKey(sessionId: string, instanceId: string, iconKey: string): void;
-	setTabDirty(sessionId: string, instanceId: string, dirty: boolean): void;
+	getActiveTabId(sessionId: string): string | null;
+	updateTab(
+		sessionId: string,
+		instanceId: string,
+		update: {
+			readonly title?: string;
+			readonly iconKey?: string;
+			readonly metadata?: Readonly<Record<string, string>>;
+			readonly dirty?: boolean;
+		},
+	): void;
 	registerTabLifecycle(
 		sessionId: string,
 		instanceId: string,

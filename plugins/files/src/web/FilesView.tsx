@@ -57,6 +57,7 @@ import { EXTERNAL_EDITOR_ICONS } from "./ExternalEditorIcons.js";
 import { FilesTree, type FilesWorkspaceFolder } from "./FilesTree.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import type { ChatRightPanelCapabilities } from "./files-capabilities.js";
+import { useFileDocument } from "./use-file-document.js";
 
 import "./files.css";
 
@@ -145,6 +146,15 @@ function positiveInteger(value: string | undefined): number | undefined {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function fileRequestKey(
+	workspaceDirectory: string,
+	relativePath: string,
+	line?: number,
+	column?: number,
+): string {
+	return JSON.stringify([workspaceDirectory, relativePath, line ?? null, column ?? null]);
+}
+
 export function FilesView({
 	sessionId,
 	instanceId,
@@ -176,31 +186,44 @@ export function FilesView({
 	const [listTruncated, setListTruncated] = useState(false);
 	const [listLoading, setListLoading] = useState(false);
 	const [listError, setListError] = useState<string | null>(null);
-	const [selectedPath, setSelectedPath] = useState<string | null>(null);
-	const [file, setFile] = useState<FileReadResult | null>(null);
-	const [fileLoading, setFileLoading] = useState(false);
-	const [fileError, setFileError] = useState<string | null>(null);
-	const [revealLine, setRevealLine] = useState(() => positiveInteger(metadata?.line));
 	const [externalEditorError, setExternalEditorError] = useState<string | null>(null);
 	const [availableExternalEditors, setAvailableExternalEditors] = useState<
 		readonly ExternalEditorId[] | null
 	>(null);
 	const [preferredEditor, setPreferredEditor] = useState<ExternalEditorId | null>(null);
-	const [draft, setDraft] = useState("");
-	const [originalContents, setOriginalContents] = useState("");
-	const [revision, setRevision] = useState<string | null>(null);
-	const [editorRevision, setEditorRevision] = useState<string | null>(null);
-	const [reloadVersion, setReloadVersion] = useState(0);
 	const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
 	const [explorerWidth, setExplorerWidth] = useState<number | null>(initialExplorerWidth);
-	const [renderMarkdown, setRenderMarkdown] = useState(false);
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
-	const [conflict, setConflict] = useState(false);
-	const [saving, setSaving] = useState(false);
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
+	const {
+		selectedPath,
+		file,
+		loading: fileLoading,
+		error: fileError,
+		revealLine,
+		draft,
+		revision,
+		editorRevision,
+		reloadVersion,
+		renderMarkdown,
+		conflict,
+		saving,
+		dirty,
+		startOpening,
+		finishOpening,
+		failOpening,
+		setDraft,
+		startSaving,
+		finishSaving,
+		failSaving,
+		setConflict,
+		discard,
+		setRenderMarkdown,
+		reset: resetDocument,
+	} = useFileDocument();
 	const editorRef = useRef<Editor<undefined> | null>(null);
-	const initialFileRequestRef = useRef(metadata?.relativePath ?? null);
+	const handledFileRequestRef = useRef<string | null>(null);
 	const openRequestRef = useRef(0);
 	const listRequestRef = useRef(0);
 	const splitPaneRef = useRef<HTMLDivElement>(null);
@@ -216,9 +239,8 @@ export function FilesView({
 				setDraft(changedFile.contents);
 			},
 		}),
-		[],
+		[setDraft],
 	);
-	const dirty = file?.kind === "text" && Boolean(file.revision) && draft !== originalContents;
 
 	const loadPaths = useCallback(
 		async (directory: string) => {
@@ -241,56 +263,74 @@ export function FilesView({
 	);
 
 	const openFileNow = useCallback(
-		async (relativePath: string, forceReload = false) => {
-			if (!activeWorkspaceDirectory) return;
+		async (
+			relativePath: string,
+			{
+				forceReload = false,
+				workspaceDirectory: requestedDirectory = activeWorkspaceDirectory,
+				line,
+				column,
+			}: {
+				readonly forceReload?: boolean;
+				readonly workspaceDirectory?: string;
+				readonly line?: number;
+				readonly column?: number;
+			} = {},
+		) => {
+			if (!requestedDirectory) return;
 			const request = ++openRequestRef.current;
-			setSelectedPath(relativePath);
-			setFileLoading(true);
-			setFileError(null);
-			setRenderMarkdown(false);
+			startOpening(relativePath, line);
 			try {
 				const result = await sdk.client.read({
-					workspaceDirectory: activeWorkspaceDirectory,
+					workspaceDirectory: requestedDirectory,
 					relativePath,
 				});
 				if (request !== openRequestRef.current) return;
-				setFile(result);
-				if (result.kind === "text") {
-					setDraft(result.contents);
-					setOriginalContents(result.contents);
-					setRevision(result.revision ?? null);
-					setEditorRevision(result.revision ?? null);
-				} else {
-					setDraft("");
-					setOriginalContents("");
-					setRevision(null);
-					setEditorRevision(null);
-				}
-				if (forceReload) setReloadVersion((value) => value + 1);
-				panel?.setTabTitle(sessionId, instanceId, basename(relativePath));
-				panel?.setTabIconKey(sessionId, instanceId, relativePath);
+				finishOpening(result, forceReload);
+				const nextMetadata = {
+					workspaceDirectory: requestedDirectory,
+					relativePath,
+					...(line !== undefined ? { line: String(line) } : {}),
+					...(column !== undefined ? { column: String(column) } : {}),
+				};
+				handledFileRequestRef.current = fileRequestKey(
+					requestedDirectory,
+					relativePath,
+					line,
+					column,
+				);
+				panel?.updateTab(sessionId, instanceId, {
+					title: basename(relativePath),
+					iconKey: relativePath,
+					metadata: nextMetadata,
+				});
 			} catch (error) {
 				if (request !== openRequestRef.current) return;
-				setFile(null);
-				setFileError(errorMessage(error));
+				failOpening(errorMessage(error));
 			}
-			if (request === openRequestRef.current) setFileLoading(false);
 		},
-		[activeWorkspaceDirectory, instanceId, panel, sdk, sessionId],
+		[
+			activeWorkspaceDirectory,
+			failOpening,
+			finishOpening,
+			instanceId,
+			panel,
+			sdk,
+			sessionId,
+			startOpening,
+		],
 	);
 
 	const discardCurrent = useCallback(async () => {
-		setDraft(originalContents);
-		setConflict(false);
-		setReloadVersion((value) => value + 1);
-	}, [originalContents]);
+		discard();
+	}, [discard]);
 
 	const saveCurrent = useCallback(
 		async (force = false): Promise<boolean> => {
 			if (!activeWorkspaceDirectory || !selectedPath || !revision || file?.kind !== "text")
 				return true;
 			const currentDraft = editorRef.current?.getText() ?? draft;
-			setSaving(true);
+			startSaving();
 			try {
 				const result = await sdk.client.write({
 					workspaceDirectory: activeWorkspaceDirectory,
@@ -303,19 +343,25 @@ export function FilesView({
 					setConflict(true);
 					return false;
 				}
-				setRevision(result.revision);
-				setDraft(currentDraft);
-				setOriginalContents(currentDraft);
-				setConflict(false);
+				finishSaving(currentDraft, result.revision);
 				return true;
 			} catch (error) {
-				setFileError(errorMessage(error));
+				failSaving(errorMessage(error));
 				return false;
-			} finally {
-				setSaving(false);
 			}
 		},
-		[activeWorkspaceDirectory, draft, file?.kind, revision, sdk, selectedPath],
+		[
+			activeWorkspaceDirectory,
+			draft,
+			failSaving,
+			file?.kind,
+			finishSaving,
+			revision,
+			sdk,
+			selectedPath,
+			setConflict,
+			startSaving,
+		],
 	);
 
 	const requestAction = useCallback(
@@ -325,35 +371,32 @@ export function FilesView({
 		},
 		[dirty],
 	);
+	const continuePendingAction = useCallback(async () => {
+		const action = pendingAction;
+		setPendingAction(null);
+		await action?.();
+	}, [pendingAction]);
 
 	const requestOpenFile = useCallback(
 		(relativePath: string) => {
 			if (relativePath === selectedPath) return;
-			setRevealLine(undefined);
 			requestAction(() => openFileNow(relativePath));
 		},
 		[openFileNow, requestAction, selectedPath],
 	);
 
-	const selectWorkspaceFolder = useCallback((directory: string) => {
-		openRequestRef.current += 1;
-		listRequestRef.current += 1;
-		setChosenWorkspaceDirectory(directory);
-		setPaths([]);
-		setListTruncated(false);
-		setListError(null);
-		setSelectedPath(null);
-		setFile(null);
-		setFileLoading(false);
-		setFileError(null);
-		setRevealLine(undefined);
-		setDraft("");
-		setOriginalContents("");
-		setRevision(null);
-		setEditorRevision(null);
-		setRenderMarkdown(false);
-		setConflict(false);
-	}, []);
+	const selectWorkspaceFolder = useCallback(
+		(directory: string) => {
+			openRequestRef.current += 1;
+			listRequestRef.current += 1;
+			setChosenWorkspaceDirectory(directory);
+			setPaths([]);
+			setListTruncated(false);
+			setListError(null);
+			resetDocument();
+		},
+		[resetDocument],
+	);
 
 	const clampExplorerWidth = useCallback((width: number) => {
 		const splitWidth = splitPaneRef.current?.getBoundingClientRect().width ?? 900;
@@ -420,11 +463,25 @@ export function FilesView({
 	}, [activeWorkspaceDirectory, loadPaths]);
 
 	useEffect(() => {
-		const relativePath = initialFileRequestRef.current;
-		if (!relativePath || !activeWorkspaceDirectory) return;
-		initialFileRequestRef.current = null;
-		void openFileNow(relativePath);
-	}, [activeWorkspaceDirectory, openFileNow]);
+		const relativePath = metadata?.relativePath;
+		const requestedDirectory = metadata?.workspaceDirectory ?? activeWorkspaceDirectory;
+		if (!relativePath || !requestedDirectory) return;
+		const line = positiveInteger(metadata?.line);
+		const column = positiveInteger(metadata?.column);
+		const requestKey = fileRequestKey(requestedDirectory, relativePath, line, column);
+		if (handledFileRequestRef.current === requestKey) return;
+		handledFileRequestRef.current = requestKey;
+		requestAction(async () => {
+			if (requestedDirectory !== activeWorkspaceDirectory) {
+				selectWorkspaceFolder(requestedDirectory);
+			}
+			await openFileNow(relativePath, {
+				workspaceDirectory: requestedDirectory,
+				...(line !== undefined ? { line } : {}),
+				...(column !== undefined ? { column } : {}),
+			});
+		});
+	}, [activeWorkspaceDirectory, metadata, openFileNow, requestAction, selectWorkspaceFolder]);
 
 	useEffect(() => {
 		let active = true;
@@ -447,7 +504,7 @@ export function FilesView({
 
 	useEffect(() => {
 		if (NUMBERED_FILES_TAB_TITLE.test(title)) {
-			panel?.setTabTitle(sessionId, instanceId, "Files");
+			panel?.updateTab(sessionId, instanceId, { title: "Files" });
 		}
 	}, [instanceId, panel, sessionId, title]);
 
@@ -456,7 +513,7 @@ export function FilesView({
 	useEffect(() => sdk.theme.subscribe(setTheme), [sdk]);
 
 	useEffect(() => {
-		panel?.setTabDirty(sessionId, instanceId, dirty);
+		panel?.updateTab(sessionId, instanceId, { dirty });
 	}, [dirty, instanceId, panel, sessionId]);
 
 	useEffect(() => {
@@ -474,13 +531,14 @@ export function FilesView({
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+				if (panel?.getActiveTabId(sessionId) !== instanceId) return;
 				event.preventDefault();
 				if (dirty) void saveCurrent();
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [dirty, saveCurrent]);
+	}, [dirty, instanceId, panel, saveCurrent, sessionId]);
 
 	const readForMarkdown = useCallback<FilesServiceContract["read"]>(
 		(args) => sdk.client.read(args),
@@ -624,7 +682,7 @@ export function FilesView({
 									renderMarkdown ? "bg-foreground/5 text-foreground" : "text-muted-foreground"
 								}
 								data-qa-id="files-markdown-toggle"
-								onClick={() => setRenderMarkdown((value) => !value)}
+								onClick={() => setRenderMarkdown(!renderMarkdown)}
 								size="icon-sm"
 								variant="ghost"
 							>
@@ -822,6 +880,7 @@ export function FilesView({
 								data-qa-id="files-unsaved-cancel"
 								onClick={() => {
 									setPendingAction(null);
+									handledFileRequestRef.current = null;
 									setSelectionSyncVersion((value) => value + 1);
 								}}
 								variant="outline"
@@ -831,9 +890,7 @@ export function FilesView({
 							<Button
 								data-qa-id="files-unsaved-discard"
 								onClick={() => {
-									const action = pendingAction;
-									setPendingAction(null);
-									void discardCurrent().then(() => action?.());
+									void discardCurrent().then(continuePendingAction);
 								}}
 								variant="destructive"
 							>
@@ -844,9 +901,7 @@ export function FilesView({
 								onClick={() => {
 									void saveCurrent().then((saved) => {
 										if (!saved) return;
-										const action = pendingAction;
-										setPendingAction(null);
-										void action?.();
+										void continuePendingAction();
 									});
 								}}
 							>
@@ -876,13 +931,24 @@ export function FilesView({
 								data-qa-id="files-conflict-reload"
 								onClick={() => {
 									setConflict(false);
-									if (selectedPath) void openFileNow(selectedPath, true);
+									if (pendingAction) {
+										void discardCurrent().then(continuePendingAction);
+									} else if (selectedPath) {
+										void openFileNow(selectedPath, { forceReload: true });
+									}
 								}}
 								variant="outline"
 							>
 								Reload
 							</Button>
-							<Button data-qa-id="files-conflict-overwrite" onClick={() => void saveCurrent(true)}>
+							<Button
+								data-qa-id="files-conflict-overwrite"
+								onClick={() => {
+									void saveCurrent(true).then((saved) => {
+										if (saved && pendingAction) void continuePendingAction();
+									});
+								}}
+							>
 								Overwrite
 							</Button>
 						</DialogFooter>

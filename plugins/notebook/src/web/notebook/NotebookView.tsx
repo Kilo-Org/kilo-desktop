@@ -144,7 +144,7 @@ export function NotebookView({
 			) {
 				return;
 			}
-			panel?.setTabDirty?.(sessionId, instanceId, parsed.data.dirty);
+			panel?.updateTab?.(sessionId, instanceId, { dirty: parsed.data.dirty });
 		});
 		const unsubscribeTitle = sdk.events.on(NOTEBOOK_TITLE_CHANGED_EVENT, (payload) => {
 			const parsed = notebookTitleChangedSchema.safeParse(payload);
@@ -155,7 +155,7 @@ export function NotebookView({
 			) {
 				return;
 			}
-			panel?.setTabTitle?.(sessionId, instanceId, parsed.data.title);
+			panel?.updateTab?.(sessionId, instanceId, { title: parsed.data.title });
 		});
 		return () => {
 			unsubscribeDirty();

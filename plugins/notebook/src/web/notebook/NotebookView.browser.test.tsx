@@ -162,8 +162,7 @@ describe("NotebookView", () => {
 
 	it("registers generic tab lifecycle and projects notebook dirty events", async () => {
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		const setTabDirty = vi.fn();
-		const setTabTitle = vi.fn();
+		const updateTab = vi.fn();
 		let lifecycle:
 			| Parameters<NonNullable<ChatRightPanelCapability["registerTabLifecycle"]>>[2]
 			| undefined;
@@ -175,7 +174,7 @@ describe("NotebookView", () => {
 		const { sdk } = renderView(
 			{ instanceId: notebookId },
 			{
-				panel: { setTabDirty, setTabTitle, registerTabLifecycle },
+				panel: { updateTab, registerTabLifecycle },
 				save,
 			},
 		);
@@ -186,14 +185,18 @@ describe("NotebookView", () => {
 			sessionId: "session-1",
 			dirty: true,
 		});
-		await vi.waitFor(() => expect(setTabDirty).toHaveBeenCalledWith("session-1", notebookId, true));
+		await vi.waitFor(() =>
+			expect(updateTab).toHaveBeenCalledWith("session-1", notebookId, { dirty: true }),
+		);
 		sdk.events.emit("title-changed", {
 			notebookId,
 			sessionId: "session-1",
 			title: "analysis.ipynb",
 		});
 		await vi.waitFor(() =>
-			expect(setTabTitle).toHaveBeenCalledWith("session-1", notebookId, "analysis.ipynb"),
+			expect(updateTab).toHaveBeenCalledWith("session-1", notebookId, {
+				title: "analysis.ipynb",
+			}),
 		);
 		await expect(lifecycle?.save?.()).resolves.toEqual({ outcome: "saved" });
 		await expect(lifecycle?.discard?.()).resolves.toBeUndefined();

@@ -18,6 +18,30 @@ describe("ExternalEditorService", () => {
 		await expect(service.listAvailable()).resolves.toEqual(["cursor", "vscode", "zed"]);
 	});
 
+	it("discovers editor commands from the login-shell path", async () => {
+		const resolveShellPath = vi.fn(async () => "/opt/homebrew/bin:/usr/local/bin:/usr/bin");
+		const resolveCommand = vi.fn(
+			async (commands: readonly string[], searchPath: string | undefined) =>
+				commands.includes("cursor") && searchPath?.includes("/usr/local/bin")
+					? "/usr/local/bin/cursor"
+					: null,
+		);
+		const service = new ExternalEditorService({
+			resolveShellPath,
+			resolveCommand,
+			launchDetached: vi.fn(),
+		});
+
+		await expect(service.listAvailable()).resolves.toEqual(["cursor"]);
+		await service.open("cursor", "/workspace/file.ts");
+
+		expect(resolveShellPath).toHaveBeenCalledOnce();
+		expect(resolveCommand).toHaveBeenCalledWith(
+			expect.any(Array),
+			"/opt/homebrew/bin:/usr/local/bin:/usr/bin",
+		);
+	});
+
 	it("launches an editor detached with arguments kept separate from the file path", async () => {
 		const launchDetached = vi.fn(async () => undefined);
 		const service = new ExternalEditorService({

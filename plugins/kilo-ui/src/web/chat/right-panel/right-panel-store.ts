@@ -9,6 +9,7 @@ import {
 	type CreateContributedTabOptions,
 	type RightPanelTab,
 	type RightPanelTabDefinition,
+	type RightPanelTabUpdate,
 } from "./right-panel-tab-registry.js";
 
 export type { RightPanelTab } from "./right-panel-tab-registry.js";
@@ -63,9 +64,7 @@ interface RightPanelStoreState {
 	) => void;
 	openPlan: (sessionId: string, options?: OpenPlanOptions) => void;
 	activateTab: (sessionId: string, tabId: string) => void;
-	setTabTitle: (sessionId: string, tabId: string, title: string) => void;
-	setTabIconKey: (sessionId: string, tabId: string, iconKey: string) => void;
-	setTabDirty: (sessionId: string, tabId: string, dirty: boolean) => void;
+	updateTab: (sessionId: string, tabId: string, update: RightPanelTabUpdate) => void;
 	closeTab: (sessionId: string, tabId: string) => void;
 	show: (sessionId: string) => void;
 	close: (sessionId: string) => void;
@@ -99,14 +98,28 @@ const upsertTab = (
 	current: SessionRightPanelState,
 	tab: RightPanelTab,
 	activate = true,
-): SessionRightPanelState => ({
-	...current,
-	isOpen: true,
-	tabs: current.tabs.some((entry) => entry.instanceId === tab.instanceId)
-		? current.tabs
-		: [...current.tabs, tab],
-	activeTabId: activate ? tab.instanceId : current.activeTabId,
-});
+	updates?: CreateContributedTabOptions,
+): SessionRightPanelState => {
+	const existing = current.tabs.find((entry) => entry.instanceId === tab.instanceId);
+	const tabs = existing
+		? current.tabs.map((entry) =>
+				entry.instanceId === tab.instanceId
+					? {
+							...entry,
+							...(updates?.title !== undefined ? { title: updates.title } : {}),
+							...(updates?.iconKey !== undefined ? { iconKey: updates.iconKey } : {}),
+							...(updates?.metadata !== undefined ? { metadata: { ...updates.metadata } } : {}),
+						}
+					: entry,
+			)
+		: [...current.tabs, tab];
+	return {
+		...current,
+		isOpen: true,
+		tabs,
+		activeTabId: activate ? tab.instanceId : current.activeTabId,
+	};
+};
 
 const updateSession = (
 	bySessionId: Record<string, SessionRightPanelState>,
@@ -144,7 +157,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 			openTab: (sessionId, definition, options) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
-						upsertTab(current, createContributedTab(current.tabs, definition, undefined, options)),
+						upsertTab(
+							current,
+							createContributedTab(current.tabs, definition, undefined, options),
+							true,
+							options,
+						),
 					),
 				})),
 			openPlan: (sessionId, options) =>
@@ -162,38 +180,29 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 							: current,
 					),
 				})),
-			setTabTitle: (sessionId, tabId, title) =>
+			updateTab: (sessionId, tabId, update) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
 						let changed = false;
 						const tabs = current.tabs.map((tab) => {
-							if (tab.instanceId !== tabId || tab.title === title) return tab;
+							if (tab.instanceId !== tabId) return tab;
+							const next = {
+								...tab,
+								...(update.title !== undefined ? { title: update.title } : {}),
+								...(update.iconKey !== undefined ? { iconKey: update.iconKey } : {}),
+								...(update.metadata !== undefined ? { metadata: { ...update.metadata } } : {}),
+								...(update.dirty !== undefined ? { dirty: update.dirty } : {}),
+							};
+							if (
+								next.title === tab.title &&
+								next.iconKey === tab.iconKey &&
+								next.metadata === tab.metadata &&
+								next.dirty === tab.dirty
+							) {
+								return tab;
+							}
 							changed = true;
-							return { ...tab, title };
-						});
-						return changed ? { ...current, tabs } : current;
-					}),
-				})),
-			setTabIconKey: (sessionId, tabId, iconKey) =>
-				set((state) => ({
-					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
-						let changed = false;
-						const tabs = current.tabs.map((tab) => {
-							if (tab.instanceId !== tabId || tab.iconKey === iconKey) return tab;
-							changed = true;
-							return { ...tab, iconKey };
-						});
-						return changed ? { ...current, tabs } : current;
-					}),
-				})),
-			setTabDirty: (sessionId, tabId, dirty) =>
-				set((state) => ({
-					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
-						let changed = false;
-						const tabs = current.tabs.map((tab) => {
-							if (tab.instanceId !== tabId || tab.dirty === dirty) return tab;
-							changed = true;
-							return { ...tab, dirty };
+							return next;
 						});
 						return changed ? { ...current, tabs } : current;
 					}),

@@ -58,6 +58,13 @@ export interface CreateContributedTabOptions {
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
+export interface RightPanelTabUpdate {
+	readonly title?: string;
+	readonly iconKey?: string;
+	readonly metadata?: Readonly<Record<string, string>>;
+	readonly dirty?: boolean;
+}
+
 const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
 	id: PLAN_TAB_DEFINITION_ID,
 	title: "Plan",

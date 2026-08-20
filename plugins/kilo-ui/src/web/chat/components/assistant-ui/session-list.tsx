@@ -487,6 +487,7 @@ const SessionListSearch: FC<{
 				title="Search"
 				description="Search chats and workspaces"
 				showCloseButton
+				className="top-1/2 -translate-y-1/2"
 			>
 				<Command label="Search chats and workspaces" filter={filterSearchItems}>
 					<CommandInput
@@ -509,7 +510,12 @@ const SessionListSearch: FC<{
 						}}
 					>
 						{SEARCH_SCOPES.map((item) => (
-							<ToggleGroupItem key={item} value={item} data-qa-id={`session-search-filter-${item}`}>
+							<ToggleGroupItem
+								key={item}
+								value={item}
+								data-qa-id={`session-search-filter-${item}`}
+								className="hover:bg-secondary hover:text-secondary-foreground"
+							>
 								{SEARCH_SCOPE_LABELS[item]}
 							</ToggleGroupItem>
 						))}

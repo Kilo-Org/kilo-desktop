@@ -230,6 +230,10 @@ describe("SessionList", () => {
 		await screen.getByRole("button", { name: "Search" }).click();
 		const dialog = page.getByRole("dialog");
 		await expect.element(dialog).toBeVisible();
+		expect(Number.parseFloat(getComputedStyle(dialog.element()).top)).toBeCloseTo(
+			window.innerHeight / 2,
+			0,
+		);
 		const list = dialog.element().querySelector("[data-slot='command-list']");
 		expect(list).toBeTruthy();
 		expect(getComputedStyle(list as Element).scrollbarWidth).not.toBe("none");
@@ -331,6 +335,8 @@ describe("SessionList", () => {
 		const chats = page.getByRole("button", { name: "Chats" });
 		expect(all.element().getAttribute("aria-pressed")).toBe("true");
 		expect(chats.element().getAttribute("aria-pressed")).toBe("false");
+		expect(all.element().className).not.toContain("border-input");
+		expect(all.element().className).toContain("hover:bg-secondary");
 		expect(all.element().className).toContain("aria-pressed:bg-secondary");
 
 		await page.getByRole("button", { name: "Workspaces" }).click();

@@ -3,6 +3,7 @@
 import "@assistant-ui/react-markdown/styles/dot.css";
 
 import { markdownComponents as sharedMarkdownComponents } from "@anaconda-agentic-desktop/ui/components/markdown-content";
+import type { MarkdownRendererComponents } from "@anaconda-agentic-desktop/ui/components/markdown-extension";
 import {
 	type CodeHeaderProps,
 	MarkdownTextPrimitive,
@@ -11,18 +12,40 @@ import {
 } from "@assistant-ui/react-markdown";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { type FC, memo, useState } from "react";
+import { type FC, memo, useMemo, useState } from "react";
 import remarkGfm from "remark-gfm";
 
+import { useChatMarkdownContext } from "../../ChatMarkdownContext.js";
+import {
+	composeChatMarkdownExtensions,
+	useChatMarkdownExtensions,
+	type ChatMarkdownExtensionContext,
+} from "../../chat-markdown-extensions.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { useShellCopyText } from "./use-shell-copy-text.js";
 
+const EMPTY_MARKDOWN_CONTEXT: ChatMarkdownExtensionContext = {
+	sessionId: "",
+	workspaceFolders: [],
+};
+
 const MarkdownTextImpl = () => {
+	const context = useChatMarkdownContext() ?? EMPTY_MARKDOWN_CONTEXT;
+	const extensions = useChatMarkdownExtensions(context);
+	const renderer = useMemo(
+		() =>
+			composeChatMarkdownExtensions(
+				markdownComponents as MarkdownRendererComponents,
+				extensions,
+				context,
+			),
+		[context, extensions],
+	);
 	return (
 		<MarkdownTextPrimitive
-			remarkPlugins={[remarkGfm]}
+			remarkPlugins={[remarkGfm, ...renderer.remarkPlugins]}
 			className="aui-md"
-			components={markdownComponents}
+			components={renderer.components}
 			defer
 		/>
 	);

@@ -63,6 +63,7 @@ describe("right-panel-tab-registry", () => {
 		const tab = createContributedTab([], definition!, undefined, {
 			instanceId: "file-notebook-id",
 			title: "analysis.ipynb",
+			iconKey: "projects/analysis.ipynb",
 			metadata: { notebookPath: "/projects/analysis.ipynb" },
 		});
 
@@ -71,6 +72,7 @@ describe("right-panel-tab-registry", () => {
 			definitionId: "canvas.canvas",
 			title: "analysis.ipynb",
 			ordinal: 1,
+			iconKey: "projects/analysis.ipynb",
 			metadata: { notebookPath: "/projects/analysis.ipynb" },
 		});
 		expect(isRightPanelTab(tab)).toBe(true);

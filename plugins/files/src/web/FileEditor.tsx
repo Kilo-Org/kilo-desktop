@@ -6,6 +6,7 @@ import { memo, useMemo, type ReactNode } from "react";
 interface FileEditorProps {
 	readonly relativePath: string;
 	readonly contents: string;
+	readonly revealLine: number | undefined;
 	readonly editable: boolean;
 	readonly theme: "dark" | "light";
 	readonly reloadVersion: number;
@@ -34,6 +35,7 @@ export function FilesEditProvider({ children }: { readonly children: ReactNode }
 export const FileEditor = memo(function FileEditor({
 	relativePath,
 	contents,
+	revealLine,
 	editable,
 	theme,
 	reloadVersion,
@@ -71,6 +73,9 @@ export const FileEditor = memo(function FileEditor({
 				editorOptions={editorOptions}
 				file={file}
 				options={options}
+				{...(revealLine === undefined
+					? {}
+					: { selectedLines: { start: revealLine, end: revealLine } })}
 			/>
 		</Virtualizer>
 	);

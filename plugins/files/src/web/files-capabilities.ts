@@ -1,6 +1,6 @@
 export interface ChatRightPanelCapability {
 	setTabTitle(sessionId: string, instanceId: string, title: string): void;
-	setTabIconPath(sessionId: string, instanceId: string, relativePath: string): void;
+	setTabIconKey(sessionId: string, instanceId: string, iconKey: string): void;
 	setTabDirty(sessionId: string, instanceId: string, dirty: boolean): void;
 	registerTabLifecycle(
 		sessionId: string,

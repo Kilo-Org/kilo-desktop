@@ -1,16 +1,22 @@
 import { cleanup, render } from "@testing-library/react";
-import { FilesIcon } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { RightPanelTabs } from "./RightPanelTabs.js";
-import type { RightPanelTabDefinition } from "./right-panel-tab-registry.js";
+import type {
+	RightPanelTabDefinition,
+	RightPanelTabIconProps,
+} from "./right-panel-tab-registry.js";
+
+function ContributedIcon({ className, iconKey }: RightPanelTabIconProps) {
+	return <svg className={className} data-contributed-icon-key={iconKey} />;
+}
 
 const FILES_DEFINITION: RightPanelTabDefinition = {
 	id: "files.files",
 	title: "Files",
 	description: "Browse workspace files.",
-	Icon: FilesIcon,
+	Icon: ContributedIcon,
 	addable: true,
 	Content: () => null,
 };
@@ -18,7 +24,7 @@ const FILES_DEFINITION: RightPanelTabDefinition = {
 afterEach(cleanup);
 
 describe("RightPanelTabs", () => {
-	it("uses the current file icon for a contributed tab", async () => {
+	it("passes the opaque icon key to the contributed tab icon", async () => {
 		render(
 			<RightPanelTabs
 				activeTabId="files-1"
@@ -31,7 +37,7 @@ describe("RightPanelTabs", () => {
 						instanceId: "files-1",
 						definitionId: FILES_DEFINITION.id,
 						title: "index.ts",
-						iconPath: "src/index.ts",
+						iconKey: "src/index.ts",
 						ordinal: 1,
 					},
 				]}
@@ -42,9 +48,8 @@ describe("RightPanelTabs", () => {
 
 		await expect.element(page.getByTestId("chat-right-panel-tab-files-1")).toBeVisible();
 		const icon = document.querySelector<SVGElement>(
-			'[data-qa-id="chat-right-panel-tab-files-1"] [data-pierre-file-icon]',
+			'[data-qa-id="chat-right-panel-tab-files-1"] [data-contributed-icon-key]',
 		);
-		expect(icon?.getAttribute("data-icon-token")).toBe("typescript");
-		expect(icon?.querySelector("use")?.getAttribute("href")).toBe("#file-tree-builtin-typescript");
+		expect(icon?.getAttribute("data-contributed-icon-key")).toBe("src/index.ts");
 	});
 });

@@ -10,12 +10,20 @@
 		"nav": [],
 		"zones": [
 			{
+				"zone": "kilo-ui/chat-markdown-extension",
+				"id": "file-links",
+				"component": "FilesMarkdownExtension",
+				"label": "Workspace file links",
+				"description": "Render workspace file references as interactive file chips.",
+				"priority": 100
+			},
+			{
 				"zone": "kilo-ui/chat-right-panel-tab",
 				"id": "files",
 				"component": "FilesView",
 				"label": "Files",
 				"description": "Browse and edit files in this chat's workspace.",
-				"icon": "FilesIcon",
+				"icon": "FilesTabIcon",
 				"priority": 60
 			}
 		]

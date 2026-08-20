@@ -24,7 +24,6 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { RightPanelMaximizeControl } from "./RightPanelControls.js";
-import { PierreFileIcon } from "./PierreFileIcon.js";
 import { type RightPanelTab, type RightPanelTabDefinition } from "./right-panel-tab-registry.js";
 
 type RightPanelTabsProps = {
@@ -152,11 +151,7 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 								)}
 							>
 								<span className="flex size-3 shrink-0 items-center justify-center">
-									{tab.iconPath ? (
-										<PierreFileIcon className="size-3" path={tab.iconPath} />
-									) : (
-										<Icon className="size-3" />
-									)}
+									<Icon className="size-3" {...(tab.iconKey ? { iconKey: tab.iconKey } : {})} />
 								</span>
 								<TooltipProvider>
 									<Tooltip>

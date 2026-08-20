@@ -232,4 +232,16 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 			}),
 		);
 	});
+
+	it("includes Files' contributed right-panel icon renderer", () => {
+		const contribution = PLUGIN_ZONE_CONTRIBUTIONS.find(
+			(c) => c.pluginId === "files" && c.zone === "kilo-ui/chat-right-panel-tab",
+		);
+		expect(contribution).toMatchObject({
+			pluginId: "files",
+			id: "files",
+			label: "Files",
+		});
+		expect(contribution?.icon).toBeTypeOf("function");
+	});
 });

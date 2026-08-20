@@ -25,7 +25,7 @@ function renderView(
 	const system = createFakeFeatureSystem({ sdks: { files: sdk } });
 	system.getSdk("kilo-ui").plugins.expose("chatRightPanel", {
 		setTabTitle: vi.fn(),
-		setTabIconPath: vi.fn(),
+		setTabIconKey: vi.fn(),
 		setTabDirty: vi.fn(),
 		registerTabLifecycle: vi.fn(() => vi.fn()),
 		...panel,
@@ -180,6 +180,42 @@ describe("FilesView", () => {
 		);
 	});
 
+	it("opens the workspace file requested by contributed tab metadata", async () => {
+		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
+			kind: "text",
+			contents: "first line\nsecond line\nthird line",
+			byteLength: 32,
+			truncated: false,
+			revision: "a".repeat(64),
+		}));
+		renderView(
+			{ ...handlers(), read },
+			{
+				metadata: {
+					workspaceDirectory: "/workspace",
+					relativePath: "src/index.ts",
+					line: "2",
+					column: "4",
+				},
+			},
+		);
+
+		await vi.waitFor(() =>
+			expect(read).toHaveBeenCalledWith({
+				workspaceDirectory: "/workspace",
+				relativePath: "src/index.ts",
+			}),
+		);
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		await vi.waitFor(() => {
+			const selectedLines = Array.from(document.querySelectorAll("diffs-container")).flatMap(
+				(host) =>
+					Array.from(host.shadowRoot?.querySelectorAll<HTMLElement>("[data-selected-line]") ?? []),
+			);
+			expect(selectedLines.some((line) => line.dataset.line === "2")).toBe(true);
+		});
+	});
+
 	it("does not show a folder selector for a single-folder workspace", async () => {
 		renderView(handlers(), {
 			workspaceFolders: [{ path: "/workspace", isPrimary: true }],
@@ -192,8 +228,8 @@ describe("FilesView", () => {
 
 	it("renders the real Trees explorer and opens a selected file with a breadcrumb", async () => {
 		const setTabTitle = vi.fn();
-		const setTabIconPath = vi.fn();
-		renderView(handlers(), {}, { setTabIconPath, setTabTitle });
+		const setTabIconKey = vi.fn();
+		renderView(handlers(), {}, { setTabIconKey, setTabTitle });
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
 		await vi.waitFor(() => {
 			const host = document.querySelector('[data-qa-id="files-tree"]');
@@ -207,7 +243,7 @@ describe("FilesView", () => {
 		await vi.waitFor(() =>
 			expect(setTabTitle).toHaveBeenCalledWith("session-1", "files-1", "readme.md"),
 		);
-		expect(setTabIconPath).toHaveBeenCalledWith("session-1", "files-1", "docs/readme.md");
+		expect(setTabIconKey).toHaveBeenCalledWith("session-1", "files-1", "docs/readme.md");
 	});
 
 	it("opens the selected file in an available external editor and remembers the choice", async () => {

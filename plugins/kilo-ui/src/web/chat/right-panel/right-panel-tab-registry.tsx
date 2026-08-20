@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, type ComponentType, type FC } from "react";
-import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon, type LucideIcon } from "lucide-react";
+import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
 
 import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
@@ -23,11 +23,17 @@ export interface ChatRightPanelContributionProps {
 
 export const PLAN_TAB_DEFINITION_ID = "kilo-ui.plan";
 
+export interface RightPanelTabIconProps {
+	readonly className?: string;
+	/** Contribution-owned value whose meaning is opaque to Kilo. */
+	readonly iconKey?: string;
+}
+
 export interface RightPanelTabDefinition {
 	id: string;
 	title: string;
 	description: string;
-	Icon: LucideIcon;
+	Icon: ComponentType<RightPanelTabIconProps>;
 	addable: boolean;
 	Content: ComponentType<ChatRightPanelContributionProps>;
 }
@@ -36,8 +42,8 @@ export interface RightPanelTab {
 	instanceId: string;
 	definitionId: string;
 	title: string;
-	/** Optional file path used to resolve a tab-specific icon. */
-	iconPath?: string;
+	/** Optional contribution-owned value used to render a tab-specific icon. */
+	iconKey?: string;
 	ordinal: number | null;
 	/** Contribution-owned, serializable state that must survive tab restoration. */
 	metadata?: Readonly<Record<string, string>>;
@@ -48,6 +54,7 @@ export interface RightPanelTab {
 export interface CreateContributedTabOptions {
 	readonly instanceId?: string;
 	readonly title?: string;
+	readonly iconKey?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
@@ -82,7 +89,7 @@ export function buildContributedTabDefinitions(
 				description:
 					contribution.description ?? `Open another ${contribution.label} for this chat.`,
 				Icon: isRenderableComponent(contribution.icon)
-					? (contribution.icon as LucideIcon)
+					? (contribution.icon as ComponentType<RightPanelTabIconProps>)
 					: LayoutTemplateIcon,
 				addable: true,
 				Content: contribution.component,
@@ -129,6 +136,7 @@ export function createContributedTab(
 		definitionId: definition.id,
 		title: options.title ?? `${definition.title} ${String(ordinal)}`,
 		ordinal,
+		...(options.iconKey ? { iconKey: options.iconKey } : {}),
 		...(options.metadata ? { metadata: { ...options.metadata } } : {}),
 	};
 }
@@ -150,7 +158,7 @@ export function isRightPanelTab(value: unknown): value is RightPanelTab {
 		typeof tab.definitionId === "string" &&
 		typeof tab.title === "string" &&
 		(tab.ordinal === null || (typeof tab.ordinal === "number" && Number.isInteger(tab.ordinal))) &&
-		(tab.iconPath === undefined || typeof tab.iconPath === "string") &&
+		(tab.iconKey === undefined || typeof tab.iconKey === "string") &&
 		(tab.metadata === undefined || isTabMetadata(tab.metadata))
 	);
 }

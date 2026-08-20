@@ -3,7 +3,7 @@ import { useInsertionEffect, useMemo } from "react";
 
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
-const PIERRE_ICON_SPRITE_ID = "kilo-ui-pierre-file-icon-sprite";
+const PIERRE_ICON_SPRITE_ID = "pierre-file-icon-sprite";
 const iconResolver = createFileTreeIconResolver("complete");
 
 const ICON_COLORS: Record<string, string> = {

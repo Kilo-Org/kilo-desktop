@@ -139,12 +139,19 @@ function unsupportedMessage(file: Extract<FileReadResult, { kind: "unsupported" 
 	}
 }
 
+function positiveInteger(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export function FilesView({
 	sessionId,
 	instanceId,
 	title,
 	workspaceDirectory,
 	workspaceFolders: providedWorkspaceFolders,
+	metadata,
 }: FilesViewProps) {
 	const sdk = useSdk<FilesServiceContract>("files");
 	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
@@ -156,8 +163,10 @@ export function FilesView({
 		workspaceDirectory ??
 		workspaceFolders.find((folder) => folder.isPrimary)?.path ??
 		workspaceFolders[0]?.path;
-	const [chosenWorkspaceDirectory, setChosenWorkspaceDirectory] =
-		useState(defaultWorkspaceDirectory);
+	const requestedWorkspaceDirectory = metadata?.workspaceDirectory;
+	const [chosenWorkspaceDirectory, setChosenWorkspaceDirectory] = useState(
+		requestedWorkspaceDirectory ?? defaultWorkspaceDirectory,
+	);
 	const activeWorkspaceDirectory = workspaceFolders.some(
 		(folder) => folder.path === chosenWorkspaceDirectory,
 	)
@@ -171,6 +180,7 @@ export function FilesView({
 	const [file, setFile] = useState<FileReadResult | null>(null);
 	const [fileLoading, setFileLoading] = useState(false);
 	const [fileError, setFileError] = useState<string | null>(null);
+	const [revealLine, setRevealLine] = useState(() => positiveInteger(metadata?.line));
 	const [externalEditorError, setExternalEditorError] = useState<string | null>(null);
 	const [availableExternalEditors, setAvailableExternalEditors] = useState<
 		readonly ExternalEditorId[] | null
@@ -190,6 +200,7 @@ export function FilesView({
 	const [saving, setSaving] = useState(false);
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
 	const editorRef = useRef<Editor<undefined> | null>(null);
+	const initialFileRequestRef = useRef(metadata?.relativePath ?? null);
 	const openRequestRef = useRef(0);
 	const listRequestRef = useRef(0);
 	const splitPaneRef = useRef<HTMLDivElement>(null);
@@ -257,7 +268,7 @@ export function FilesView({
 				}
 				if (forceReload) setReloadVersion((value) => value + 1);
 				panel?.setTabTitle(sessionId, instanceId, basename(relativePath));
-				panel?.setTabIconPath(sessionId, instanceId, relativePath);
+				panel?.setTabIconKey(sessionId, instanceId, relativePath);
 			} catch (error) {
 				if (request !== openRequestRef.current) return;
 				setFile(null);
@@ -318,6 +329,7 @@ export function FilesView({
 	const requestOpenFile = useCallback(
 		(relativePath: string) => {
 			if (relativePath === selectedPath) return;
+			setRevealLine(undefined);
 			requestAction(() => openFileNow(relativePath));
 		},
 		[openFileNow, requestAction, selectedPath],
@@ -334,6 +346,7 @@ export function FilesView({
 		setFile(null);
 		setFileLoading(false);
 		setFileError(null);
+		setRevealLine(undefined);
 		setDraft("");
 		setOriginalContents("");
 		setRevision(null);
@@ -405,6 +418,13 @@ export function FilesView({
 	useEffect(() => {
 		if (activeWorkspaceDirectory) void loadPaths(activeWorkspaceDirectory);
 	}, [activeWorkspaceDirectory, loadPaths]);
+
+	useEffect(() => {
+		const relativePath = initialFileRequestRef.current;
+		if (!relativePath || !activeWorkspaceDirectory) return;
+		initialFileRequestRef.current = null;
+		void openFileNow(relativePath);
+	}, [activeWorkspaceDirectory, openFileNow]);
 
 	useEffect(() => {
 		let active = true;
@@ -697,6 +717,7 @@ export function FilesView({
 									editable={Boolean(file.revision)}
 									editorOptions={editorOptions}
 									relativePath={selectedPath}
+									revealLine={revealLine}
 									reloadVersion={reloadVersion}
 									theme={theme}
 								/>

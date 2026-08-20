@@ -18,6 +18,7 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
+import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";
 import { resolveChatWorkspace, resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
@@ -373,7 +374,12 @@ export function ChatPage() {
 						data-chat-column-maximized-away={maximized && panelOpen ? "true" : "false"}
 					>
 						<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-							<Thread />
+							<ChatMarkdownProvider
+								sessionId={sessionId}
+								workspaceFolders={workspace?.folders ?? []}
+							>
+								<Thread />
+							</ChatMarkdownProvider>
 						</div>
 					</div>
 				</div>

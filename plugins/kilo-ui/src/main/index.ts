@@ -55,7 +55,7 @@ export function mainRegister(
 		remove: async ({ id }) => {
 			const before = service.remove(id);
 			mainSdk.events.emit("workspace-deleted", { before, after: null });
-			await cleanup.enqueue(id);
+			cleanup.enqueue(id);
 			return { deleted: true };
 		},
 	};

@@ -39,6 +39,20 @@ function createPersistentKvFactory(): KvStoreFactory {
 	};
 }
 
+function createFailingCleanupKvFactory(): KvStoreFactory {
+	const createKvStore = createPersistentKvFactory();
+	return (options) => {
+		const store = createKvStore(options);
+		if (options.namespace !== "workspace-session-cleanup") return store;
+		return {
+			...store,
+			set: () => {
+				throw new Error("Storage is unavailable.");
+			},
+		};
+	};
+}
+
 describe("kilo-ui mainRegister", () => {
 	const directories: string[] = [];
 	const disposables: Array<() => void> = [];
@@ -146,6 +160,74 @@ describe("kilo-ui mainRegister", () => {
 		})) as { id: string };
 		await expect(mainSdk.invoke("remove", { id: created.id })).resolves.toEqual({ deleted: true });
 		expect(unscopeWorkspaceSessions).toHaveBeenCalledWith(created.id);
+	});
+
+	it("keeps workspace deletion successful when pending cleanup cannot be persisted", async () => {
+		const unscopeWorkspaceSessions = vi.fn(async () => undefined);
+		const userData = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-ui-main-"));
+		const storageDir = path.join(userData, "plugins", "kilo-ui");
+		const project = path.join(userData, "Project");
+		fs.mkdirSync(storageDir, { recursive: true });
+		fs.mkdirSync(project);
+		directories.push(userData);
+
+		const mainSdk = createFakeMainSdk({
+			featureId: "kilo-ui",
+			storageDir,
+			pluginDir: PLUGIN_DIR,
+			createKvStore: createFailingCleanupKvFactory(),
+		});
+		disposables.push(() => mainSdk.dispose());
+		mainRegister(mainSdk, { unscopeWorkspaceSessions });
+
+		const created = (await mainSdk.invoke("create", {
+			folders: [{ path: project, isPrimary: true }],
+		})) as { id: string };
+		await expect(mainSdk.invoke("remove", { id: created.id })).resolves.toEqual({
+			deleted: true,
+		});
+		await vi.waitFor(() => expect(unscopeWorkspaceSessions).toHaveBeenCalledWith(created.id));
+	});
+
+	it("does not wait for chat cleanup before completing workspace deletion", async () => {
+		let finishCleanup!: () => void;
+		const unscopeWorkspaceSessions = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					finishCleanup = resolve;
+				}),
+		);
+		const userData = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-ui-main-"));
+		const storageDir = path.join(userData, "plugins", "kilo-ui");
+		const project = path.join(userData, "Project");
+		fs.mkdirSync(storageDir, { recursive: true });
+		fs.mkdirSync(project);
+		directories.push(userData);
+
+		const mainSdk = createFakeMainSdk({
+			featureId: "kilo-ui",
+			storageDir,
+			pluginDir: PLUGIN_DIR,
+			createKvStore: createPersistentKvFactory(),
+		});
+		disposables.push(() => mainSdk.dispose());
+		mainRegister(mainSdk, { unscopeWorkspaceSessions });
+
+		const created = (await mainSdk.invoke("create", {
+			folders: [{ path: project, isPrimary: true }],
+		})) as { id: string };
+		const removal = mainSdk.invoke("remove", { id: created.id });
+		await vi.waitFor(() => expect(unscopeWorkspaceSessions).toHaveBeenCalledWith(created.id));
+
+		let result: unknown;
+		void removal.then((value) => {
+			result = value;
+		});
+		try {
+			await vi.waitFor(() => expect(result).toEqual({ deleted: true }), { timeout: 200 });
+		} finally {
+			finishCleanup();
+		}
 	});
 
 	it("retries failed chat cleanup after the plugin restarts", async () => {

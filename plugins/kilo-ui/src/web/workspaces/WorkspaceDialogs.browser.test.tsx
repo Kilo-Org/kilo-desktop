@@ -197,7 +197,7 @@ describe("WorkspaceDialogs — create/edit form", () => {
 		await userEvent.keyboard("{ArrowLeft}");
 		await expect.element(page.getByRole("radio", { name: "Color #FBBF24" })).toBeChecked();
 		await userEvent.keyboard("{ArrowRight}");
-		await expect.element(page.getByRole("radio", { name: /Custom color/ })).toBeChecked();
+		await expect.element(page.getByRole("radio", { name: "Custom color #123456" })).toBeChecked();
 	});
 
 	it("cancels the form without saving", async () => {

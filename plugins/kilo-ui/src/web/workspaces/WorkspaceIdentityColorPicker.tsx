@@ -1,5 +1,5 @@
 import { PlusIcon } from "lucide-react";
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
@@ -40,7 +40,10 @@ export function WorkspaceIdentityColorPicker({
 	const normalized = normalizeWorkspaceIdentityColor(value);
 	const isPreset = normalized !== null && PRESET_SET.has(normalized);
 	const isCustom = normalized !== null && !isPreset;
-	const customColor = isCustom ? normalized : DEFAULT_CUSTOM_COLOR;
+	const [savedCustomColor, setSavedCustomColor] = useState(() =>
+		isCustom ? normalized : DEFAULT_CUSTOM_COLOR,
+	);
+	const customColor = isCustom ? normalized : savedCustomColor;
 
 	return (
 		<div
@@ -102,7 +105,9 @@ export function WorkspaceIdentityColorPicker({
 					className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
 					onChange={(event) => {
 						const next = normalizeWorkspaceIdentityColor(event.target.value);
-						if (next) onChange(next);
+						if (!next) return;
+						setSavedCustomColor(next);
+						onChange(next);
 					}}
 				/>
 			</span>

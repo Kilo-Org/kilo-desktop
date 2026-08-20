@@ -10,7 +10,8 @@ const NAMESPACE = "workspace-session-cleanup";
 /**
  * Owns durable, serialized cleanup of workspace stamps on Kilo sessions.
  * Workspace deletion remains successful when Kilo is temporarily unavailable,
- * while pending ids survive plugin restarts until cleanup succeeds.
+ * while pending ids survive plugin restarts until cleanup succeeds. Enqueue
+ * schedules cleanup in the background so network work never blocks deletion.
  */
 export class WorkspaceSessionCleanupQueue {
 	readonly #store: KvStore<PersistedCleanup>;
@@ -34,12 +35,19 @@ export class WorkspaceSessionCleanupQueue {
 		}
 	}
 
-	enqueue(workspaceId: string): Promise<void> {
+	enqueue(workspaceId: string): void {
 		const pending = this.#pending();
 		if (!pending.includes(workspaceId)) {
-			this.#store.set({ pendingWorkspaceIds: [...pending, workspaceId] });
+			try {
+				this.#store.set({ pendingWorkspaceIds: [...pending, workspaceId] });
+			} catch (error) {
+				this.#sdk.logger.warn("Could not persist pending workspace chat cleanup.", {
+					error: error instanceof Error ? error.message : String(error),
+					workspaceId,
+				});
+			}
 		}
-		return this.#schedule(workspaceId);
+		void this.#schedule(workspaceId);
 	}
 
 	#pending(): string[] {

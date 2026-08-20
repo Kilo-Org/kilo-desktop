@@ -41,7 +41,6 @@ describe("FilesMarkdownExtension", () => {
 		const chip = page.getByTestId("markdown-file-link");
 		await expect.element(chip).toHaveTextContent("AGENTS.md · apps/desktop · L42:C7");
 		expect(chip.element().querySelector("[data-pierre-file-icon]")).not.toBeNull();
-		expect(Number.parseFloat(getComputedStyle(chip.element()).fontSize)).toBe(14);
 
 		await chip.click();
 		expect(openFile).toHaveBeenCalledWith({

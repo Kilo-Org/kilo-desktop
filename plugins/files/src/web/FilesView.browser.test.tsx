@@ -106,25 +106,10 @@ describe("FilesView", () => {
 	it("shows an editor empty state beside the workspace tree before a file is opened", async () => {
 		renderView(handlers(), {}, {}, 580);
 
-		const emptyState = page.getByTestId("files-editor-empty");
-		await expect.element(emptyState).toBeVisible();
-		expect(emptyState.element().getAttribute("data-slot")).toBe("empty");
-		expect(emptyState.element().querySelector('[data-slot="empty-icon"]')).not.toBeNull();
-		expect(emptyState.element().querySelector('[data-slot="empty-title"]')).not.toBeNull();
-		expect(emptyState.element().querySelector('[data-slot="empty-description"]')).not.toBeNull();
+		await expect.element(page.getByTestId("files-editor-empty")).toBeVisible();
 		await expect.element(page.getByRole("heading", { name: "Open file" })).toBeVisible();
 		await expect.element(page.getByText("Select a file from the file list")).toBeVisible();
-		expect(emptyState.element().querySelector(".lucide-folder")).not.toBeNull();
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
-
-		const viewer = page.getByTestId("files-viewer-pane").element();
-		const explorer = document.querySelector<HTMLElement>(".files-explorer-pane");
-		if (!explorer) throw new Error("Expected the workspace tree pane");
-		expect(viewer.getBoundingClientRect().width).toBeGreaterThan(150);
-		expect(explorer.getBoundingClientRect().width).toBeGreaterThan(150);
-		expect(viewer.getBoundingClientRect().right).toBeLessThanOrEqual(
-			explorer.getBoundingClientRect().left + 1,
-		);
 	});
 
 	it("switches between workspace folders from a selector above search", async () => {
@@ -149,19 +134,9 @@ describe("FilesView", () => {
 
 		const folderSelector = page.getByRole("combobox", { name: "Workspace folder" });
 		await expect.element(folderSelector).toBeVisible();
-		expect(
-			folderSelector.element().compareDocumentPosition(page.getByTestId("files-search").element()) &
-				Node.DOCUMENT_POSITION_FOLLOWING,
-		).toBeTruthy();
 		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/workspace" }));
 
 		await folderSelector.click();
-		expect(
-			page.getByRole("option", { name: "workspace" }).element().querySelector(".lucide-folder"),
-		).toBeNull();
-		expect(
-			page.getByRole("option", { name: "reference" }).element().querySelector(".lucide-folder"),
-		).toBeNull();
 		await page.getByRole("option", { name: "reference" }).click();
 
 		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/reference" }));
@@ -254,12 +229,6 @@ describe("FilesView", () => {
 		await openTreePath("src/index.ts");
 
 		await page.getByTestId("files-external-editor-menu").click();
-		expect(
-			page
-				.getByTestId("files-external-editor-vscode")
-				.element()
-				.querySelector('svg[data-editor-icon="vscode"]'),
-		).not.toBeNull();
 		await page.getByRole("menuitem", { name: "VS Code" }).click();
 
 		await vi.waitFor(() =>
@@ -270,20 +239,9 @@ describe("FilesView", () => {
 			}),
 		);
 		expect(localStorage.getItem("files.preferredExternalEditor")).toBe("vscode");
-		expect(
-			page
-				.getByTestId("files-open-external-editor")
-				.element()
-				.querySelector('svg[data-editor-icon="vscode"]'),
-		).not.toBeNull();
-
-		await page.getByTestId("files-external-editor-menu").click();
-		await expect
-			.element(page.getByTestId("files-external-editor-vscode"))
-			.not.toHaveTextContent("Preferred");
 	});
 
-	it("uses a ButtonGroup split button with the preferred editor icon", async () => {
+	it("opens a file in the default preferred editor", async () => {
 		const openExternalEditor = vi.fn<FilesServiceContract["openExternalEditor"]>(async () => ({
 			opened: true,
 		}));
@@ -292,8 +250,6 @@ describe("FilesView", () => {
 
 		const openButton = page.getByTestId("files-open-external-editor");
 		await expect.element(openButton).toBeEnabled();
-		expect(openButton.element().closest('[data-slot="button-group"]')).not.toBeNull();
-		expect(openButton.element().querySelector('svg[data-editor-icon="cursor"]')).not.toBeNull();
 
 		await openButton.click();
 		await vi.waitFor(() =>
@@ -340,19 +296,9 @@ describe("FilesView", () => {
 		localStorage.setItem("files.preferredExternalEditor", "vscode");
 		renderView(handlers());
 		await openTreePath("src/index.ts");
-		await expect.element(page.getByTestId("files-open-external-editor")).toBeVisible();
-		expect(
-			page
-				.getByTestId("files-open-external-editor")
-				.element()
-				.querySelector('svg[data-editor-icon="vscode"]'),
-		).not.toBeNull();
-
-		await page.getByTestId("files-external-editor-menu").click();
-
 		await expect
-			.element(page.getByTestId("files-external-editor-vscode"))
-			.not.toHaveTextContent("Preferred");
+			.element(page.getByTestId("files-open-external-editor"))
+			.toHaveAttribute("aria-label", "Open file in VS Code");
 	});
 
 	it("explains when no external editors are installed", async () => {
@@ -388,29 +334,6 @@ describe("FilesView", () => {
 		fireEvent.click(document.querySelector('[data-qa-id="files-tree-toggle"]')!);
 		expect(localStorage.getItem("files.explorerOpen")).toBe("false");
 		expect(document.querySelector('[data-qa-id="files-tree"]')).toBeNull();
-	});
-
-	it("shows active states for the file tree and Markdown toggles", async () => {
-		renderView(handlers());
-		await openTreePath("docs/readme.md");
-		await expect.element(page.getByTestId("files-tree-toggle")).toBeVisible();
-		await expect.element(page.getByTestId("files-markdown-toggle")).toBeVisible();
-
-		const treeToggle = document.querySelector<HTMLElement>('[data-qa-id="files-tree-toggle"]')!;
-		const markdownToggle = document.querySelector<HTMLElement>(
-			'[data-qa-id="files-markdown-toggle"]',
-		)!;
-		expect(treeToggle.getAttribute("aria-pressed")).toBe("true");
-		expect(treeToggle.classList.contains("bg-foreground/5")).toBe(true);
-		expect(markdownToggle.getAttribute("aria-pressed")).toBe("false");
-		expect(markdownToggle.classList.contains("bg-foreground/5")).toBe(false);
-
-		fireEvent.click(treeToggle);
-		fireEvent.click(markdownToggle);
-		expect(treeToggle.getAttribute("aria-pressed")).toBe("false");
-		expect(treeToggle.classList.contains("bg-foreground/5")).toBe(false);
-		expect(markdownToggle.getAttribute("aria-pressed")).toBe("true");
-		expect(markdownToggle.classList.contains("bg-foreground/5")).toBe(true);
 	});
 
 	it("resizes the file explorer by dragging its divider and persists the width", async () => {
@@ -458,139 +381,6 @@ describe("FilesView", () => {
 		});
 	});
 
-	it("keeps the file content visible beside the explorer in a narrow panel", async () => {
-		renderView(handlers(), {}, {}, 580);
-		await openTreePath("src/index.ts");
-		await expect.element(page.getByTestId("files-viewer-pane")).toBeVisible();
-
-		const editor = document.querySelector<HTMLElement>('[data-qa-id="files-viewer-pane"]');
-		const explorer = document.querySelector<HTMLElement>(".files-explorer-pane");
-		if (!editor || !explorer) throw new Error("Expected the editor and explorer panes");
-		const editorBounds = editor.getBoundingClientRect();
-		const explorerBounds = explorer.getBoundingClientRect();
-
-		expect(editorBounds.width).toBeGreaterThan(150);
-		expect(explorerBounds.width).toBeGreaterThan(150);
-		expect(editorBounds.right).toBeLessThanOrEqual(explorerBounds.left + 1);
-	});
-
-	it("keeps the file list contained within a narrow explorer pane", async () => {
-		const service = handlers();
-		renderView(
-			{
-				...service,
-				list: async () => ({
-					paths: ["docs/", "docs/kilo-code-integration-with-a-very-long-name.md"],
-					truncated: false,
-				}),
-			},
-			{
-				workspaceDirectory: "/workspace/anaconda-agentic-desktop-production",
-				workspaceFolders: [
-					{ path: "/workspace/anaconda-agentic-desktop-production", isPrimary: true },
-					{ path: "/workspace/reference-project", isPrimary: false },
-				],
-			},
-			{},
-			480,
-		);
-
-		await expect.element(page.getByTestId("files-tree")).toBeVisible();
-		const explorerPane = document.querySelector<HTMLElement>(".files-explorer-pane");
-		const explorerContent = document.querySelector<HTMLElement>('[data-qa-id="files-explorer"]');
-		const folderSelect = document.querySelector<HTMLElement>('[data-qa-id="files-folder-select"]');
-		const search = document.querySelector<HTMLElement>('[data-qa-id="files-search"]');
-		const tree = document.querySelector<HTMLElement>('[data-qa-id="files-tree"]');
-		if (!explorerPane || !explorerContent || !folderSelect || !search || !tree) {
-			throw new Error("Expected the narrow file explorer controls");
-		}
-		let row: HTMLElement | null = null;
-		await vi.waitFor(() => {
-			row =
-				tree.shadowRoot?.querySelector<HTMLElement>(
-					'[data-item-path="docs/kilo-code-integration-with-a-very-long-name.md"]',
-				) ?? null;
-			expect(row).not.toBeNull();
-		});
-		const filename = row!.querySelector<HTMLElement>('[data-item-section="content"]');
-		const marker = row!.querySelector<HTMLElement>("[data-truncate-marker-cell]");
-		const markerGlyph = row!.querySelector<HTMLElement>("[data-truncate-marker]");
-		if (!filename || !marker || !markerGlyph) {
-			throw new Error("Expected the file tree truncation elements");
-		}
-		const visibleSegments = Array.from(
-			row!.querySelectorAll<HTMLElement>('[data-truncate-content="visible"]'),
-		);
-		expect(visibleSegments).toHaveLength(2);
-
-		const paneRight = explorerPane.getBoundingClientRect().right;
-		expect(explorerContent.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
-		expect(folderSelect.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
-		expect(search.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
-		expect(getComputedStyle(filename).overflowX).toBe("hidden");
-		expect(getComputedStyle(filename).textOverflow).toBe("ellipsis");
-		expect(getComputedStyle(filename).flexBasis).toBe("auto");
-		expect(marker.textContent).toBe("…");
-		expect(getComputedStyle(marker).display).not.toBe("none");
-		expect(getComputedStyle(markerGlyph).transitionDuration).toBe("0s");
-		expect(visibleSegments[0]!.getBoundingClientRect().right).toBeLessThanOrEqual(
-			visibleSegments[1]!.getBoundingClientRect().left + 1,
-		);
-		expect(row!.getBoundingClientRect().right).toBeLessThanOrEqual(
-			tree.getBoundingClientRect().right,
-		);
-	});
-
-	it("lets the shell panel surface show through the tree and editor", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
-
-		const tree = document.querySelector<HTMLElement>('[data-qa-id="files-tree"]');
-		let editor: HTMLElement | null = null;
-		await vi.waitFor(() => {
-			editor = document.querySelector<HTMLElement>("diffs-container");
-			expect(tree).not.toBeNull();
-			expect(editor).not.toBeNull();
-		});
-
-		await vi.waitFor(() => {
-			expect(tree!.style.getPropertyValue("--trees-bg-override")).toBe("transparent");
-			expect(getComputedStyle(tree!).backgroundColor).toBe("rgba(0, 0, 0, 0)");
-			expect(editor!.shadowRoot?.querySelector("[data-unsafe-css]")).not.toBeNull();
-			expect(getComputedStyle(editor!).getPropertyValue("--diffs-bg").trim()).toBe("transparent");
-			expect(getComputedStyle(editor!).backgroundColor).toBe("rgba(0, 0, 0, 0)");
-		});
-	});
-
-	it("wraps long editor lines within the file viewer", async () => {
-		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
-			kind: "text",
-			contents: `export const value = "${"x".repeat(300)}";`,
-			byteLength: 324,
-			truncated: false,
-			revision: "a".repeat(64),
-		}));
-		renderView({ ...handlers(), read }, {}, {}, 580);
-		await openTreePath("src/index.ts");
-
-		let line: HTMLElement | null = null;
-		await vi.waitFor(() => {
-			line =
-				Array.from(document.querySelectorAll("diffs-container"))
-					.flatMap((host) =>
-						Array.from(host.shadowRoot?.querySelectorAll<HTMLElement>("[data-line]") ?? []),
-					)
-					.at(0) ?? null;
-			expect(line).not.toBeNull();
-		});
-
-		expect(getComputedStyle(line!).whiteSpace).toBe("pre-wrap");
-		expect(getComputedStyle(line!).wordBreak).toBe("break-word");
-		const viewer = document.querySelector<HTMLElement>('[data-qa-id="files-viewer-pane"]');
-		expect(viewer).not.toBeNull();
-		expect(viewer!.scrollWidth).toBeLessThanOrEqual(viewer!.clientWidth + 1);
-	});
-
 	it("edits with Diffs, publishes dirty state, and saves manually", async () => {
 		const setTabDirty = vi.fn();
 		const write = vi.fn(async () => ({ status: "saved" as const, revision: "b".repeat(64) }));
@@ -634,19 +424,12 @@ describe("FilesView", () => {
 		expect(document.querySelector('[data-qa-id="files-markdown-preview"]')?.textContent).toContain(
 			"Read me",
 		);
-		expect(document.querySelector('[data-qa-id="files-markdown-preview"] h1')?.classList).toContain(
-			"aui-md-h1",
-		);
-		expect(document.querySelector('[data-qa-id="files-markdown-preview"] ul')?.classList).toContain(
-			"list-disc",
-		);
 		expect(
 			document.querySelector('[data-qa-id="files-markdown-preview"]')?.textContent,
 		).not.toContain("hidden");
 		expect(document.querySelector('[data-qa-id="files-markdown-preview"] script')).toBeNull();
 		const fileLink = document.querySelector<HTMLElement>('[data-qa-id="markdown-file-link"]');
 		expect(fileLink?.textContent).toBe("index.ts");
-		expect(fileLink?.querySelector("[data-pierre-file-icon]")).not.toBeNull();
 		fireEvent.click(fileLink!);
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
 	});

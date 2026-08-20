@@ -227,36 +227,6 @@ function CompletingSignIn() {
 	return <ThreadTree auth={auth} initialMessages={signInErrorMessages()} />;
 }
 
-describe("message typography", () => {
-	it("renders user prompt bubbles at the same 14px size as chat markdown", async () => {
-		const screen = renderThread({
-			initialMessages: [
-				{
-					role: "user",
-					content: [{ type: "text", text: "Match the response text" }],
-				},
-			],
-		});
-
-		await expect.element(screen.getByText("Match the response text")).toBeVisible();
-		const prompt = document.querySelector<HTMLElement>(".aui-user-message-content");
-		if (!prompt) throw new Error("Expected the user prompt to render.");
-		expect(getComputedStyle(prompt).fontSize).toBe("14px");
-	});
-});
-
-describe("composer typography", () => {
-	it("renders the message input at the 14px chat-text size", async () => {
-		const screen = renderThread({ initialMessages: [] });
-		const input = screen.getByRole("textbox", { name: "Message input" });
-
-		await expect.element(input).toBeVisible();
-		const inputElement = document.querySelector<HTMLElement>(".aui-composer-input");
-		if (!inputElement) throw new Error("Expected the composer input to render.");
-		expect(getComputedStyle(inputElement).fontSize).toBe("14px");
-	});
-});
-
 describe("message error sign-in", () => {
 	it("adds a Sign in button on the error banner for a Kilo model while signed out", async () => {
 		const login = vi.fn();

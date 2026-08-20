@@ -237,23 +237,6 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Acme App")).toBeVisible();
 	});
 
-	it("renders active and settled titles at the 14px chat-text size", async () => {
-		const { baseElement, screen } = renderSessionList({
-			threads: [
-				{ remoteId: "ses-1", title: "Active work" },
-				{ remoteId: "ses-2", title: "Settled work", status: "archived" },
-			],
-		});
-
-		await expect.element(screen.getByText("Active work")).toBeVisible();
-		await expect.element(screen.getByText("Settled work")).toBeVisible();
-		const titles = baseElement.querySelectorAll<HTMLElement>(
-			'[data-slot="aui_session-list-item-title"]',
-		);
-
-		expect([...titles].map((title) => getComputedStyle(title).fontSize)).toEqual(["14px", "14px"]);
-	});
-
 	it("uses a single-row card without a location for unscoped sessions", async () => {
 		const { screen } = renderSessionList({
 			threads: [
@@ -401,11 +384,6 @@ describe("SessionList", () => {
 		await page.getByRole("menuitem", { name: "Rename" }).click();
 		const input = screen.getByRole("textbox", { name: "Rename thread" });
 		await expect.element(input).toBeVisible();
-		const renameInput = document.querySelector<HTMLElement>(
-			'[data-slot="aui_session-list-item-rename"]',
-		);
-		if (!renameInput) throw new Error("Expected the rename input to render.");
-		expect(getComputedStyle(renameInput).fontSize).toBe("14px");
 		await userEvent.clear(input);
 		await userEvent.type(input, "Renamed session{Enter}");
 

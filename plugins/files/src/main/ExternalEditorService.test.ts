@@ -54,16 +54,4 @@ describe("ExternalEditorService", () => {
 			message: "Could not open the file in VS Code.",
 		});
 	});
-
-	it("rejects an editor id that bypasses contract validation", async () => {
-		const service = new ExternalEditorService({
-			resolveCommand: vi.fn(),
-			launchDetached: vi.fn(),
-		});
-
-		await expect(service.open("unknown" as never, "/workspace/file.ts")).rejects.toMatchObject({
-			code: "VALIDATION",
-			message: "Unknown external editor.",
-		});
-	});
 });

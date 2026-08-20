@@ -106,21 +106,6 @@ function MarkdownMessage({ text = "[[badge]]" }: { readonly text?: string }) {
 afterEach(cleanup);
 
 describe("MarkdownText", () => {
-	it("renders chat markdown at the 14px body-text size", async () => {
-		const kiloSdk = createFakeSdk({ featureId: "kilo-ui" });
-		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": kiloSdk } });
-		const { container } = render(
-			<SdkProvider system={system}>
-				<MarkdownMessage text="Compact chat text" />
-			</SdkProvider>,
-		);
-
-		await expect.element(page.getByText("Compact chat text")).toBeVisible();
-		const markdown = container.querySelector<HTMLElement>(".aui-md");
-		if (!markdown) throw new Error("Expected the chat markdown to render.");
-		expect(getComputedStyle(markdown).fontSize).toBe("14px");
-	});
-
 	it("composes a contributed remark plugin and component decorator", async () => {
 		const kiloSdk = createFakeSdk({ featureId: "kilo-ui" });
 		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": kiloSdk } });

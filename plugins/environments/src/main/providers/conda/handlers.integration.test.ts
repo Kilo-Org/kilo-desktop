@@ -2,22 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
-import { condaContract, type CondaService } from "../../../contracts/providers/conda.js";
+import { ENVIRONMENTS_EVENT_NAMES, type JobProgressEvent } from "../../../contracts/common.js";
+import { type CondaService } from "../../../contracts/providers/conda.js";
 import { JobQueue } from "../../JobQueue.js";
 import { registerCondaHandlers } from "./handlers.js";
 import type { CondaBackend } from "./CondaBackend.js";
 
 /**
- * Full-pipeline integration test: bind `conda.envs.list` via the same
- * `mainSdk.channels(condaContract).handle(...)` call used in production,
- * then invoke it through the renderer-side SDK. The `createLinkedFakeSdkPair`
+ * Full-pipeline integration test: bind the conda handlers via the same
+ * `mainSdk.channels(condaContract).handle(...)` calls used in production,
+ * then invoke them through the renderer-side SDK. `createLinkedFakeSdkPair`
  * shares one event bus + FeatureRouter across both sides, mirroring how
  * `sdk.invoke` reaches the main handler in browser mode.
  *
- * This is where sub-issue 4 proves the end-to-end wire: renderer client
- * -> validated router boundary -> handler -> backend method -> parsed
- * response back through the same schema. If the contract, handler, or
- * backend disagree on shape, this test fails.
+ * Sub-issue 4 proved `list` end-to-end; sub-issue 6 extends the same
+ * pattern to `create` and `delete`, plus the JobQueue progress-event
+ * side channel that the renderer live-progress banner subscribes to.
  */
 function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 	const notImpl = () => {
@@ -91,21 +91,85 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
-	it("does not bind write ops in this slice — invoking one throws NOT_FOUND at the router", async () => {
+	it("conda.envs.create returns { jobId, environment } and emits queued → running → succeeded on job-progress", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
-		const queue = new JobQueue({ emit: () => {} });
-		registerCondaHandlers(mainSdk, makeBackend(), queue);
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({
+			emit: (event) => {
+				events.push(event);
+				mainSdk.events.emit("job-progress", event);
+			},
+		});
+		const create = vi.fn().mockResolvedValue({
+			name: "dev",
+			prefix: "/tmp/conda-root/envs/dev",
+		});
+		registerCondaHandlers(mainSdk, makeBackend({ create }), queue);
 
-		// The router reports an unregistered channel as an error; the exact
-		// message is shell-owned but must exist and mention the channel.
-		await expect(rendererSdk.invoke("conda.envs.create", { name: "x" })).rejects.toThrow(
-			/conda\.envs\.create/,
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.create"]({ name: "dev" });
+
+		expect(result.environment).toEqual({ name: "dev", prefix: "/tmp/conda-root/envs/dev" });
+		expect(typeof result.jobId).toBe("string");
+		expect(result.jobId.startsWith("conda-")).toBe(true);
+		expect(create).toHaveBeenCalledWith(
+			{ name: "dev" },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
 		);
-		// Silence the "channel undefined at compile-time" concern — the
-		// contract knows about `conda.envs.create` so an accidental typo
-		// would still surface as a router error, not a silent no-op.
-		void condaContract;
+
+		// Every event carries the same jobId, and the ordering is the
+		// documented state machine: queued → running → succeeded.
+		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
+		expect(events.every((e) => e.jobId === result.jobId)).toBe(true);
+		expect(events.every((e) => e.provider === "conda" && e.kind === "envs.create")).toBe(true);
+
 		queue.dispose();
 		mainSdk.dispose();
+	});
+
+	it("conda.envs.delete returns { jobId, name } and emits terminal succeeded on job-progress", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({ emit: (event) => events.push(event) });
+		const remove = vi.fn().mockResolvedValue(undefined);
+		registerCondaHandlers(mainSdk, makeBackend({ remove }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.delete"]({ name: "dev" });
+
+		expect(result).toEqual({ jobId: expect.stringMatching(/^conda-/), name: "dev" });
+		expect(remove).toHaveBeenCalledWith(
+			{ name: "dev" },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
+		expect(events.every((e) => e.kind === "envs.delete")).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.create write invalidates the read cache — the next envs.list re-runs the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const list = vi.fn().mockResolvedValue([]);
+		const create = vi.fn().mockResolvedValue({ name: "dev", prefix: "/tmp/envs/dev" });
+		registerCondaHandlers(mainSdk, makeBackend({ list, create }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.envs.list"]();
+		expect(list).toHaveBeenCalledTimes(1);
+		await client["conda.envs.create"]({ name: "dev" });
+		await client["conda.envs.list"]();
+		expect(list).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("plugin-scoped job-progress events surface on the fully-qualified environments.job-progress name", async () => {
+		// Sanity check: the constant we advertise to renderer subscribers
+		// matches the featureId + local event name path.
+		expect(ENVIRONMENTS_EVENT_NAMES.JOB_PROGRESS).toBe("environments.job-progress");
 	});
 });

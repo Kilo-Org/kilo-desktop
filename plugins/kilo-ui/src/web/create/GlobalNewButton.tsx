@@ -16,7 +16,7 @@ import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { navigateToChat } from "../chat/chat-navigation.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 
-const newButtonSurfaceClassName = "bg-muted group-hover/new:bg-foreground/5";
+const newButtonHoverClassName = "group-hover/new:bg-foreground/5";
 
 export function GlobalNewButton() {
 	const aui = useAui();
@@ -34,7 +34,7 @@ export function GlobalNewButton() {
 				<Button
 					type="button"
 					variant="ghost"
-					className={cn("min-w-0 flex-1 justify-start", newButtonSurfaceClassName)}
+					className={cn("min-w-0 flex-1 justify-start", newButtonHoverClassName)}
 					aria-label="New Chat"
 					data-slot="aui_thread-list-new"
 					data-qa-id="global-new"
@@ -49,12 +49,7 @@ export function GlobalNewButton() {
 					data-slot="aui_thread-list-new-more"
 					data-qa-id="global-new-more"
 					render={
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon"
-							className={newButtonSurfaceClassName}
-						/>
+						<Button type="button" variant="ghost" size="icon" className={newButtonHoverClassName} />
 					}
 				>
 					<ChevronDownIcon data-slot="aui_thread-list-new-chevron" />

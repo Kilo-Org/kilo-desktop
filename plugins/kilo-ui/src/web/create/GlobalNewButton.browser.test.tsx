@@ -110,9 +110,10 @@ describe("GlobalNewButton", () => {
 
 		const primary = screen.getByRole("button", { name: "New Chat" }).element();
 		const more = screen.getByRole("button", { name: "Create new" }).element();
-		expect(primary.className).toContain("bg-muted");
+		expect(primary.className).not.toContain("bg-muted");
+		expect(primary.className).not.toContain("bg-secondary");
 		expect(primary.className).toContain("group-hover/new:bg-foreground/5");
-		expect(more.className).toContain("bg-muted");
+		expect(more.className).not.toContain("bg-muted");
 		expect(more.className).toContain("group-hover/new:bg-foreground/5");
 		expect(primary.getBoundingClientRect().height).toBeGreaterThanOrEqual(32);
 		const label = primary.querySelector('[data-slot="aui_thread-list-new-label"]');

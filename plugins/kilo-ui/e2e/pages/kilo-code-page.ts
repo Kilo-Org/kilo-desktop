@@ -155,7 +155,6 @@ export class KiloCodePage {
 		});
 		await page.getByTestId("kilo-chat-thread").waitFor({ state: "visible" });
 		await page.locator('[data-slot="aui_thread-list-new"]').click();
-		await page.getByRole("menuitem", { name: "Chat" }).click();
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		if (workspaceName) {
 			await page.getByText(workspaceName, { exact: true }).click();

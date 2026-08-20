@@ -65,6 +65,32 @@ export function FilesTree({
 		initialExpansion: 1,
 		fileTreeSearchMode: "hide-non-matches",
 		search: false,
+		unsafeCSS: `
+			[data-type="item"] {
+				--truncate-marker-background-color: var(--background, var(--trees-theme-sidebar-bg));
+				--truncate-marker-fade-in-duration: 0s;
+			}
+
+			button[data-type="item"][data-item-type="file"]::before {
+				display: none;
+			}
+
+			[data-file-tree-virtualized-scroll="true"] {
+				scrollbar-color: transparent transparent;
+			}
+
+			[data-file-tree-virtualized-scroll="true"]::-webkit-scrollbar-thumb {
+				background: transparent;
+			}
+
+			[data-file-tree-virtualized-scroll="true"]:is(:hover, :focus-within) {
+				scrollbar-color: var(--trees-scrollbar-thumb) transparent;
+			}
+
+			[data-file-tree-virtualized-scroll="true"]:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
+				background: var(--trees-scrollbar-thumb);
+			}
+		`,
 		onSelectionChange(selectedPaths) {
 			if (syncingSelectionRef.current) return;
 			const selected = selectedPaths.at(-1);
@@ -125,11 +151,11 @@ export function FilesTree({
 					>
 						<SelectTrigger
 							aria-label="Workspace folder"
-							className="w-full min-w-0"
+							className="w-full min-w-0 text-sm"
 							data-qa-id="files-folder-select"
 							size="sm"
 						>
-							<FolderIcon className="text-muted-foreground" />
+							<FolderIcon className="text-muted-foreground size-3.5" />
 							<SelectValue>
 								{(value) =>
 									folderOptions.find((option) => option.value === value)?.label ?? folderName(value)
@@ -140,7 +166,7 @@ export function FilesTree({
 							<SelectGroup>
 								{folderOptions.map((option) => (
 									<SelectItem key={option.value} value={option.value} title={option.value}>
-										{option.label}
+										<span className="min-w-0 truncate">{option.label}</span>
 									</SelectItem>
 								))}
 							</SelectGroup>
@@ -213,6 +239,7 @@ export function FilesTree({
 							"color-mix(in srgb, currentColor 12%, transparent)",
 						["--trees-border-color-override" as string]: "var(--border)",
 						["--trees-focus-ring-color-override" as string]: "var(--ring)",
+						["--trees-padding-inline-override" as string]: "8px",
 						["--trees-selected-focused-border-color-override" as string]: "var(--ring)",
 						["--trees-scrollbar-thumb-override" as string]: "var(--app-scrollbar-thumb)",
 					}}

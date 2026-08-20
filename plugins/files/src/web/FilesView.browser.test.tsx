@@ -51,6 +51,8 @@ const handlers = (): FilesServiceContract => ({
 		truncated: false,
 		revision: "a".repeat(64),
 	}),
+	listExternalEditors: async () => ({ editors: ["cursor", "vscode"] }),
+	openExternalEditor: async () => ({ opened: true }),
 	write: async () => ({ status: "saved", revision: "b".repeat(64) }),
 });
 
@@ -208,6 +210,141 @@ describe("FilesView", () => {
 		expect(setTabIconPath).toHaveBeenCalledWith("session-1", "files-1", "docs/readme.md");
 	});
 
+	it("opens the selected file in an available external editor and remembers the choice", async () => {
+		const openExternalEditor = vi.fn<FilesServiceContract["openExternalEditor"]>(async () => ({
+			opened: true,
+		}));
+		renderView({ ...handlers(), openExternalEditor });
+		await openTreePath("src/index.ts");
+
+		await page.getByTestId("files-external-editor-menu").click();
+		expect(
+			page
+				.getByTestId("files-external-editor-vscode")
+				.element()
+				.querySelector('svg[data-editor-icon="vscode"]'),
+		).not.toBeNull();
+		await page.getByRole("menuitem", { name: "VS Code" }).click();
+
+		await vi.waitFor(() =>
+			expect(openExternalEditor).toHaveBeenCalledWith({
+				workspaceDirectory: "/workspace",
+				relativePath: "src/index.ts",
+				editor: "vscode",
+			}),
+		);
+		expect(localStorage.getItem("files.preferredExternalEditor")).toBe("vscode");
+		expect(
+			page
+				.getByTestId("files-open-external-editor")
+				.element()
+				.querySelector('svg[data-editor-icon="vscode"]'),
+		).not.toBeNull();
+
+		await page.getByTestId("files-external-editor-menu").click();
+		await expect
+			.element(page.getByTestId("files-external-editor-vscode"))
+			.not.toHaveTextContent("Preferred");
+	});
+
+	it("uses a ButtonGroup split button with the preferred editor icon", async () => {
+		const openExternalEditor = vi.fn<FilesServiceContract["openExternalEditor"]>(async () => ({
+			opened: true,
+		}));
+		renderView({ ...handlers(), openExternalEditor });
+		await openTreePath("src/index.ts");
+
+		const openButton = page.getByTestId("files-open-external-editor");
+		await expect.element(openButton).toBeEnabled();
+		expect(openButton.element().closest('[data-slot="button-group"]')).not.toBeNull();
+		expect(openButton.element().querySelector('svg[data-editor-icon="cursor"]')).not.toBeNull();
+
+		await openButton.click();
+		await vi.waitFor(() =>
+			expect(openExternalEditor).toHaveBeenCalledWith({
+				workspaceDirectory: "/workspace",
+				relativePath: "src/index.ts",
+				editor: "cursor",
+			}),
+		);
+	});
+
+	it("shows an inline error when an external editor cannot be opened", async () => {
+		renderView({
+			...handlers(),
+			openExternalEditor: async () => {
+				throw new Error("VS Code could not be launched");
+			},
+		});
+		await openTreePath("src/index.ts");
+
+		await page.getByTestId("files-external-editor-menu").click();
+		await page.getByRole("menuitem", { name: "VS Code" }).click();
+
+		await expect
+			.element(page.getByTestId("files-external-editor-error"))
+			.toHaveTextContent("VS Code could not be launched");
+	});
+
+	it("uses the file-operation fallback for a non-Error launch rejection", async () => {
+		renderView({
+			...handlers(),
+			openExternalEditor: async () => Promise.reject("launch failed"),
+		});
+		await openTreePath("src/index.ts");
+
+		await page.getByTestId("files-open-external-editor").click();
+
+		await expect
+			.element(page.getByTestId("files-external-editor-error"))
+			.toHaveTextContent("The file operation failed.");
+	});
+
+	it("uses the stored available editor without adding a menu label", async () => {
+		localStorage.setItem("files.preferredExternalEditor", "vscode");
+		renderView(handlers());
+		await openTreePath("src/index.ts");
+		await expect.element(page.getByTestId("files-open-external-editor")).toBeVisible();
+		expect(
+			page
+				.getByTestId("files-open-external-editor")
+				.element()
+				.querySelector('svg[data-editor-icon="vscode"]'),
+		).not.toBeNull();
+
+		await page.getByTestId("files-external-editor-menu").click();
+
+		await expect
+			.element(page.getByTestId("files-external-editor-vscode"))
+			.not.toHaveTextContent("Preferred");
+	});
+
+	it("explains when no external editors are installed", async () => {
+		renderView({
+			...handlers(),
+			listExternalEditors: async () => ({ editors: [] }),
+		});
+		await openTreePath("src/index.ts");
+		await expect.element(page.getByTestId("files-open-external-editor")).toBeDisabled();
+
+		await page.getByTestId("files-external-editor-menu").click();
+
+		await expect.element(page.getByText("No installed editors found")).toBeVisible();
+	});
+
+	it("surfaces external editor discovery failures", async () => {
+		renderView({
+			...handlers(),
+			listExternalEditors: async () => {
+				throw new Error("Editor discovery failed");
+			},
+		});
+
+		await expect
+			.element(page.getByTestId("files-external-editor-error"))
+			.toHaveTextContent("Editor discovery failed");
+	});
+
 	it("persists the t3code-style explorer toggle", async () => {
 		renderView(handlers());
 		await openTreePath("src/index.ts");
@@ -327,14 +464,45 @@ describe("FilesView", () => {
 		const explorerContent = document.querySelector<HTMLElement>('[data-qa-id="files-explorer"]');
 		const folderSelect = document.querySelector<HTMLElement>('[data-qa-id="files-folder-select"]');
 		const search = document.querySelector<HTMLElement>('[data-qa-id="files-search"]');
-		if (!explorerPane || !explorerContent || !folderSelect || !search) {
+		const tree = document.querySelector<HTMLElement>('[data-qa-id="files-tree"]');
+		if (!explorerPane || !explorerContent || !folderSelect || !search || !tree) {
 			throw new Error("Expected the narrow file explorer controls");
 		}
+		let row: HTMLElement | null = null;
+		await vi.waitFor(() => {
+			row =
+				tree.shadowRoot?.querySelector<HTMLElement>(
+					'[data-item-path="docs/kilo-code-integration-with-a-very-long-name.md"]',
+				) ?? null;
+			expect(row).not.toBeNull();
+		});
+		const filename = row!.querySelector<HTMLElement>('[data-item-section="content"]');
+		const marker = row!.querySelector<HTMLElement>("[data-truncate-marker-cell]");
+		const markerGlyph = row!.querySelector<HTMLElement>("[data-truncate-marker]");
+		if (!filename || !marker || !markerGlyph) {
+			throw new Error("Expected the file tree truncation elements");
+		}
+		const visibleSegments = Array.from(
+			row!.querySelectorAll<HTMLElement>('[data-truncate-content="visible"]'),
+		);
+		expect(visibleSegments).toHaveLength(2);
 
 		const paneRight = explorerPane.getBoundingClientRect().right;
 		expect(explorerContent.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
 		expect(folderSelect.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
 		expect(search.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
+		expect(getComputedStyle(filename).overflowX).toBe("hidden");
+		expect(getComputedStyle(filename).textOverflow).toBe("ellipsis");
+		expect(getComputedStyle(filename).flexBasis).toBe("auto");
+		expect(marker.textContent).toBe("…");
+		expect(getComputedStyle(marker).display).not.toBe("none");
+		expect(getComputedStyle(markerGlyph).transitionDuration).toBe("0s");
+		expect(visibleSegments[0]!.getBoundingClientRect().right).toBeLessThanOrEqual(
+			visibleSegments[1]!.getBoundingClientRect().left + 1,
+		);
+		expect(row!.getBoundingClientRect().right).toBeLessThanOrEqual(
+			tree.getBoundingClientRect().right,
+		);
 	});
 
 	it("lets the shell panel surface show through the tree and editor", async () => {

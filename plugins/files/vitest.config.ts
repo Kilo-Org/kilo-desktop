@@ -39,6 +39,9 @@ export default defineConfig({
 				resolve: { dedupe: ["react", "react-dom"] },
 				optimizeDeps: {
 					include: [
+						"@base-ui/react/merge-props",
+						"@base-ui/react/separator",
+						"@base-ui/react/use-render",
 						"@pierre/diffs",
 						"@pierre/diffs/edit",
 						"@pierre/diffs/react",

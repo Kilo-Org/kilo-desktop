@@ -14,6 +14,32 @@ const fileRequestSchema = workspaceRequestSchema.extend({
 	relativePath: z.string().min(1).max(32_768),
 });
 
+export const EXTERNAL_EDITORS = [
+	{ id: "cursor", label: "Cursor", commands: ["cursor"] },
+	{ id: "trae", label: "Trae", commands: ["trae"] },
+	{ id: "kiro", label: "Kiro", commands: ["kiro"], baseArgs: ["ide"] },
+	{ id: "vscode", label: "VS Code", commands: ["code"] },
+	{ id: "vscode-insiders", label: "VS Code Insiders", commands: ["code-insiders"] },
+	{ id: "vscodium", label: "VSCodium", commands: ["codium"] },
+	{ id: "zed", label: "Zed", commands: ["zed", "zeditor"] },
+	{ id: "antigravity", label: "Antigravity", commands: ["agy"] },
+	{ id: "idea", label: "IntelliJ IDEA", commands: ["idea"] },
+	{ id: "aqua", label: "Aqua", commands: ["aqua"] },
+	{ id: "clion", label: "CLion", commands: ["clion"] },
+	{ id: "datagrip", label: "DataGrip", commands: ["datagrip"] },
+	{ id: "dataspell", label: "DataSpell", commands: ["dataspell"] },
+	{ id: "goland", label: "GoLand", commands: ["goland"] },
+	{ id: "phpstorm", label: "PhpStorm", commands: ["phpstorm"] },
+	{ id: "pycharm", label: "PyCharm", commands: ["pycharm"] },
+	{ id: "rider", label: "Rider", commands: ["rider"] },
+	{ id: "rubymine", label: "RubyMine", commands: ["rubymine"] },
+	{ id: "rustrover", label: "RustRover", commands: ["rustrover"] },
+	{ id: "webstorm", label: "WebStorm", commands: ["webstorm"] },
+] as const;
+
+export const externalEditorIdSchema = z.enum(EXTERNAL_EDITORS.map(({ id }) => id));
+export type ExternalEditorId = z.infer<typeof externalEditorIdSchema>;
+
 export const filesListResultSchema = z.object({
 	paths: z.array(z.string()),
 	truncated: z.boolean(),
@@ -48,6 +74,14 @@ export const fileWriteResultSchema = z.discriminatedUnion("status", [
 export const filesContract = defineContract({
 	list: defineMethod(workspaceRequestSchema, filesListResultSchema),
 	read: defineMethod(fileRequestSchema, fileReadResultSchema),
+	listExternalEditors: defineMethod(
+		z.undefined(),
+		z.object({ editors: z.array(externalEditorIdSchema) }),
+	),
+	openExternalEditor: defineMethod(
+		fileRequestSchema.extend({ editor: externalEditorIdSchema }),
+		z.object({ opened: z.literal(true) }),
+	),
 	write: defineMethod(
 		fileRequestSchema.extend({
 			contents: z.string(),

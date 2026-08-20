@@ -1,5 +1,6 @@
 import {
 	AlertTriangleIcon,
+	ChevronDownIcon,
 	Code2Icon,
 	EyeIcon,
 	FolderIcon,
@@ -21,6 +22,7 @@ import {
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { ButtonGroup } from "@anaconda-agentic-desktop/ui/components/button-group";
 import {
 	Dialog,
 	DialogContent,
@@ -36,9 +38,22 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@anaconda-agentic-desktop/ui/components/empty";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
 
-import type { FileReadResult, FilesServiceContract } from "../contracts/schemas.js";
+import {
+	EXTERNAL_EDITORS,
+	type ExternalEditorId,
+	type FileReadResult,
+	type FilesServiceContract,
+} from "../contracts/schemas.js";
 import { FileEditor, FilesEditProvider } from "./FileEditor.js";
+import { EXTERNAL_EDITOR_ICONS } from "./ExternalEditorIcons.js";
 import { FilesTree, type FilesWorkspaceFolder } from "./FilesTree.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import type { ChatRightPanelCapabilities } from "./files-capabilities.js";
@@ -47,6 +62,7 @@ import "./files.css";
 
 const EXPLORER_STORAGE_KEY = "files.explorerOpen";
 const EXPLORER_WIDTH_STORAGE_KEY = "files.explorerWidth";
+const PREFERRED_EXTERNAL_EDITOR_STORAGE_KEY = "files.preferredExternalEditor";
 const EXPLORER_MIN_WIDTH = 176;
 const VIEWER_MIN_WIDTH = 176;
 const NUMBERED_FILES_TAB_TITLE = /^Files \d+$/u;
@@ -93,6 +109,19 @@ function persistExplorerWidth(width: number): void {
 	} catch {
 		// Persistence failure does not block resizing in memory.
 	}
+}
+
+function preferredExternalEditor(
+	availableEditors: readonly ExternalEditorId[],
+): ExternalEditorId | null {
+	try {
+		const stored = localStorage.getItem(PREFERRED_EXTERNAL_EDITOR_STORAGE_KEY);
+		const storedEditor = EXTERNAL_EDITORS.find(({ id }) => id === stored)?.id;
+		if (storedEditor && availableEditors.includes(storedEditor)) return storedEditor;
+	} catch {
+		// An unavailable storage backend should not prevent launching an editor.
+	}
+	return EXTERNAL_EDITORS.find(({ id }) => availableEditors.includes(id))?.id ?? null;
 }
 
 function isMarkdown(relativePath: string): boolean {
@@ -142,6 +171,11 @@ export function FilesView({
 	const [file, setFile] = useState<FileReadResult | null>(null);
 	const [fileLoading, setFileLoading] = useState(false);
 	const [fileError, setFileError] = useState<string | null>(null);
+	const [externalEditorError, setExternalEditorError] = useState<string | null>(null);
+	const [availableExternalEditors, setAvailableExternalEditors] = useState<
+		readonly ExternalEditorId[] | null
+	>(null);
+	const [preferredEditor, setPreferredEditor] = useState<ExternalEditorId | null>(null);
 	const [draft, setDraft] = useState("");
 	const [originalContents, setOriginalContents] = useState("");
 	const [revision, setRevision] = useState<string | null>(null);
@@ -373,6 +407,25 @@ export function FilesView({
 	}, [activeWorkspaceDirectory, loadPaths]);
 
 	useEffect(() => {
+		let active = true;
+		void sdk.client
+			.listExternalEditors()
+			.then(({ editors }) => {
+				if (!active) return;
+				setAvailableExternalEditors(editors);
+				setPreferredEditor(preferredExternalEditor(editors));
+			})
+			.catch((error: unknown) => {
+				if (!active) return;
+				setAvailableExternalEditors([]);
+				setExternalEditorError(errorMessage(error));
+			});
+		return () => {
+			active = false;
+		};
+	}, [sdk]);
+
+	useEffect(() => {
 		if (NUMBERED_FILES_TAB_TITLE.test(title)) {
 			panel?.setTabTitle(sessionId, instanceId, "Files");
 		}
@@ -417,6 +470,28 @@ export function FilesView({
 		() => (file?.kind === "image" ? `data:${file.mimeType};base64,${file.base64}` : null),
 		[file],
 	);
+	const openInExternalEditor = useCallback(
+		async (editor: ExternalEditorId) => {
+			if (!activeWorkspaceDirectory || !selectedPath) return;
+			setExternalEditorError(null);
+			try {
+				await sdk.client.openExternalEditor({
+					workspaceDirectory: activeWorkspaceDirectory,
+					relativePath: selectedPath,
+					editor,
+				});
+				try {
+					localStorage.setItem(PREFERRED_EXTERNAL_EDITOR_STORAGE_KEY, editor);
+				} catch {
+					// Launch success does not depend on remembering the preference.
+				}
+				setPreferredEditor(editor);
+			} catch (error) {
+				setExternalEditorError(errorMessage(error));
+			}
+		},
+		[activeWorkspaceDirectory, sdk, selectedPath],
+	);
 
 	if (!activeWorkspaceDirectory) {
 		return (
@@ -430,6 +505,7 @@ export function FilesView({
 	}
 
 	const showExplorer = explorerOpen || selectedPath === null;
+	const PreferredEditorIcon = preferredEditor ? EXTERNAL_EDITOR_ICONS[preferredEditor] : null;
 	return (
 		<FilesEditProvider>
 			<div
@@ -458,6 +534,68 @@ export function FilesView({
 								</span>
 							))}
 						</div>
+						<ButtonGroup aria-label="Open in external editor">
+							<Button
+								aria-label={
+									preferredEditor
+										? `Open file in ${EXTERNAL_EDITORS.find(({ id }) => id === preferredEditor)?.label ?? "preferred editor"}`
+										: "Open file in preferred editor"
+								}
+								data-qa-id="files-open-external-editor"
+								disabled={!preferredEditor}
+								onClick={() => {
+									if (preferredEditor) void openInExternalEditor(preferredEditor);
+								}}
+								size="xs"
+								variant="outline"
+							>
+								{PreferredEditorIcon ? (
+									<PreferredEditorIcon
+										aria-hidden="true"
+										data-editor-icon={preferredEditor ?? undefined}
+										data-icon="inline-start"
+									/>
+								) : null}
+								<span className="sr-only">Open</span>
+							</Button>
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									render={
+										<Button
+											aria-label="Choose external editor"
+											data-qa-id="files-external-editor-menu"
+											disabled={availableExternalEditors === null}
+											size="icon-xs"
+											variant="outline"
+										/>
+									}
+								>
+									<ChevronDownIcon aria-hidden="true" />
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="min-w-48">
+									<DropdownMenuGroup>
+										{availableExternalEditors?.length === 0 ? (
+											<DropdownMenuItem disabled>No installed editors found</DropdownMenuItem>
+										) : null}
+										{EXTERNAL_EDITORS.filter(({ id }) =>
+											availableExternalEditors?.includes(id),
+										).map(({ id, label }) => {
+											const EditorIcon = EXTERNAL_EDITOR_ICONS[id];
+											return (
+												<DropdownMenuItem
+													key={id}
+													data-qa-id={`files-external-editor-${id}`}
+													onClick={() => void openInExternalEditor(id)}
+												>
+													<EditorIcon aria-hidden="true" data-editor-icon={id} />
+													{label}
+												</DropdownMenuItem>
+											);
+										})}
+									</DropdownMenuGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</ButtonGroup>
 						{file?.kind === "text" && isMarkdown(selectedPath) ? (
 							<Button
 								aria-label={renderMarkdown ? "Show Markdown source" : "Show rendered Markdown"}
@@ -506,6 +644,15 @@ export function FilesView({
 						>
 							<FolderTreeIcon />
 						</Button>
+					</div>
+				) : null}
+
+				{externalEditorError ? (
+					<div
+						className="text-destructive border-b px-3 py-1.5 text-[11px]"
+						data-qa-id="files-external-editor-error"
+					>
+						{externalEditorError}
 					</div>
 				) : null}
 

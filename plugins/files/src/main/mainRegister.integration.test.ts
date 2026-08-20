@@ -1,8 +1,8 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
@@ -38,13 +38,17 @@ describe("files mainRegister", () => {
 				],
 			});
 		}
-		mainRegister(mainSdk);
+		const editorLauncher = {
+			listAvailable: vi.fn(async () => ["cursor", "vscode"] as const),
+			open: vi.fn(async () => undefined),
+		};
+		mainRegister(mainSdk, { editorLauncher });
 		disposables.push(
 			() => harness.destroy(),
 			() => kiloSdk.dispose(),
 			() => mainSdk.dispose(),
 		);
-		return { mainSdk, workspace };
+		return { editorLauncher, mainSdk, workspace };
 	}
 
 	it("routes validated list and read requests through the real feature router", async () => {
@@ -68,5 +72,33 @@ describe("files mainRegister", () => {
 			code: "BUSINESS",
 			message: "Kilo workspace service is unavailable.",
 		});
+	});
+
+	it("opens only a canonical file inside a registered workspace", async () => {
+		const { editorLauncher, mainSdk, workspace } = await boot();
+
+		await expect(mainSdk.invoke("listExternalEditors")).resolves.toEqual({
+			editors: ["cursor", "vscode"],
+		});
+		await expect(
+			mainSdk.invoke("openExternalEditor", {
+				workspaceDirectory: workspace,
+				relativePath: "hello.txt",
+				editor: "vscode",
+			}),
+		).resolves.toEqual({ opened: true });
+		expect(editorLauncher.open).toHaveBeenCalledWith(
+			"vscode",
+			await realpath(path.join(workspace, "hello.txt")),
+		);
+
+		await expect(
+			mainSdk.invoke("openExternalEditor", {
+				workspaceDirectory: workspace,
+				relativePath: "../outside.txt",
+				editor: "vscode",
+			}),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+		expect(editorLauncher.open).toHaveBeenCalledTimes(1);
 	});
 });

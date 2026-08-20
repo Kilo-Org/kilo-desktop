@@ -152,6 +152,10 @@ export class FilesService {
 		};
 	}
 
+	async resolveFilePath(workspaceDirectory: string, relativePath: string): Promise<string> {
+		return this.fileTarget(workspaceDirectory, relativePath);
+	}
+
 	async write(
 		workspaceDirectory: string,
 		relativePath: string,

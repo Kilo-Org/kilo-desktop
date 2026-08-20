@@ -60,7 +60,10 @@ export const FileEditor = memo(function FileEditor({
 	);
 
 	return (
-		<Virtualizer className="min-h-0 flex-1 overflow-auto" data-qa-id="files-editor">
+		<Virtualizer
+			className="files-editor-scroll min-h-0 flex-1 overflow-auto"
+			data-qa-id="files-editor"
+		>
 			<File
 				className="min-h-full"
 				disableWorkerPool

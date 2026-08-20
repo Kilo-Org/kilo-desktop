@@ -206,7 +206,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						isDraft && "justify-center",
 					)}
 				>
-					<div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
+					<div data-slot="aui_message-group" className="mb-10 flex flex-col gap-y-4 empty:hidden">
 						<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
 					</div>
 
@@ -239,6 +239,11 @@ const ThreadMessage: FC = () => {
 	if (role === "user") return <UserMessage />;
 	return <AssistantMessageComponent />;
 };
+
+// The current turn and its preceding response stay measurable so the intrinsic
+// fallback used for older messages cannot distort their visual grouping.
+const useVirtualizeMessage = () =>
+	useAuiState((s) => s.message.index < s.thread.messages.length - 3);
 
 const ThreadScrollToBottom: FC = () => {
 	return (
@@ -737,6 +742,7 @@ const AssistantMessage: FC = () => {
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
+	const virtualize = useVirtualizeMessage();
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -746,7 +752,10 @@ const AssistantMessage: FC = () => {
 		<MessagePrimitive.Root
 			data-slot="aui_assistant-message-root"
 			data-role="assistant"
-			className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+			className={cn(
+				"fade-in slide-in-from-bottom-1 animate-in relative -mb-15 pb-7.5 duration-150",
+				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+			)}
 		>
 			<div
 				data-slot="aui_assistant-message-content"
@@ -904,10 +913,15 @@ const AssistantActionBar: FC = () => {
 };
 
 const UserMessage: FC = () => {
+	const virtualize = useVirtualizeMessage();
+
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
-			className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
+			className={cn(
+				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2",
+				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+			)}
 			data-role="user"
 		>
 			<UserMessageAttachments />

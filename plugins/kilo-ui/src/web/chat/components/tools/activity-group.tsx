@@ -219,7 +219,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	// Wrapping it in "N tools used" would force a second expand for the same row.
 	if (summary.segments.length <= 1) {
 		return (
-			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+			<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 				{children}
 			</div>
 		);
@@ -251,7 +251,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			loading: index === activeIndex && activeLoading,
 		}));
 		return (
-			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+			<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 				<button
 					type="button"
 					onClick={() => {
@@ -274,7 +274,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	}
 
 	return (
-		<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+		<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 			<Collapsible
 				ref={collapsibleRef}
 				open={open}

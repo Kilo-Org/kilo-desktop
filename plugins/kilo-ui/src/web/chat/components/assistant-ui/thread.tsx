@@ -426,7 +426,7 @@ const Composer: FC = () => {
 				<ComposerPrimitive.Input
 					ref={inputRef}
 					placeholder="Send a message..."
-					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
+					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none disabled:cursor-not-allowed"
 					minRows={2}
 					autoFocus
 					enterKeyHint="send"
@@ -862,7 +862,7 @@ const AssistantActionMoreTrigger: FC = () => {
 						/>
 					}
 				>
-					<MoreHorizontalIcon />
+					<MoreHorizontalIcon className="size-3.5" />
 					<span className="sr-only">More</span>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" className="pointer-events-none">
@@ -913,7 +913,7 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word empty:hidden">
 					<MessagePrimitive.Parts />
 				</div>
 			</div>

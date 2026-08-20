@@ -611,7 +611,7 @@ describe("FilesView", () => {
 		await vi.waitFor(() => expect(setTabDirty).toHaveBeenCalledWith("session-1", "files-1", false));
 	});
 
-	it("renders Markdown without raw HTML and opens relative file links in the same tab", async () => {
+	it("renders relative Markdown links as file chips that open in the same tab", async () => {
 		const markdownHandlers: FilesServiceContract = {
 			...handlers(),
 			read: async ({ relativePath }) => ({
@@ -644,7 +644,10 @@ describe("FilesView", () => {
 			document.querySelector('[data-qa-id="files-markdown-preview"]')?.textContent,
 		).not.toContain("hidden");
 		expect(document.querySelector('[data-qa-id="files-markdown-preview"] script')).toBeNull();
-		fireEvent.click(document.querySelector('[data-qa-id="files-markdown-preview"] a')!);
+		const fileLink = document.querySelector<HTMLElement>('[data-qa-id="markdown-file-link"]');
+		expect(fileLink?.textContent).toBe("index.ts");
+		expect(fileLink?.querySelector("[data-pierre-file-icon]")).not.toBeNull();
+		fireEvent.click(fileLink!);
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
 	});
 

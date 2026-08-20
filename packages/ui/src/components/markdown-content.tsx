@@ -2,9 +2,12 @@ import "@assistant-ui/react-markdown/styles/dot.css";
 
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ComponentProps } from "react";
+import { useMemo, type ComponentProps } from "react";
 
 import { cn } from "../lib/utils.js";
+import { composeMarkdownRenderer, type MarkdownRendererExtension } from "./markdown-extension.js";
+
+const NO_MARKDOWN_EXTENSIONS: readonly MarkdownRendererExtension[] = [];
 
 export function MarkdownAnchor({ className, ...props }: ComponentProps<"a">) {
 	return (
@@ -174,18 +177,28 @@ export function MarkdownContent({
 	text,
 	className,
 	components,
+	extensions = NO_MARKDOWN_EXTENSIONS,
 	skipHtml = true,
 	...props
 }: Omit<ComponentProps<"div">, "children"> & {
 	readonly text: string;
 	readonly components?: Components;
+	readonly extensions?: readonly MarkdownRendererExtension[];
 	readonly skipHtml?: boolean;
 }) {
+	const renderer = useMemo(
+		() =>
+			composeMarkdownRenderer(
+				components ? { ...markdownComponents, ...components } : markdownComponents,
+				extensions,
+			),
+		[components, extensions],
+	);
 	return (
 		<div className={cn("aui-md text-sm", className)} {...props}>
 			<ReactMarkdown
-				remarkPlugins={[remarkGfm]}
-				components={components ? { ...markdownComponents, ...components } : markdownComponents}
+				remarkPlugins={[remarkGfm, ...renderer.remarkPlugins]}
+				components={renderer.components}
 				skipHtml={skipHtml}
 			>
 				{text}

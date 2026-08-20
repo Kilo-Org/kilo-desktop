@@ -74,6 +74,7 @@ function workspaceTarget(
 export function resolveMarkdownFileLink(
 	href: string | undefined,
 	workspaceFolders: readonly MarkdownFileWorkspaceFolder[],
+	relativeTo?: string,
 ): MarkdownFileLinkTarget | null {
 	if (!href) return null;
 	const primary = workspaceFolders.find((folder) => folder.isPrimary) ?? workspaceFolders[0];
@@ -105,10 +106,13 @@ export function resolveMarkdownFileLink(
 		}
 	}
 
+	const relativeDirectory = relativeTo
+		? normalizePath(relativeTo).split("/").slice(0, -1).join("/")
+		: "";
 	const absolutePath =
 		decodedPath.startsWith("/") || WINDOWS_ABSOLUTE_PATH.test(decodedPath.replaceAll("\\", "/"))
 			? decodedPath
-			: `${primary.path}/${decodedPath}`;
+			: `${primary.path}/${relativeDirectory ? `${relativeDirectory}/` : ""}${decodedPath}`;
 	const target = workspaceTarget(absolutePath, workspaceFolders);
 	if (!target) return null;
 

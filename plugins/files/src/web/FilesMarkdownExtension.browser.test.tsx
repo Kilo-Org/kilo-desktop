@@ -24,7 +24,7 @@ describe("FilesMarkdownExtension", () => {
 		const extension = FilesMarkdownExtension(context);
 		const decorateComponents = extension.decorateComponents;
 		if (!decorateComponents) throw new Error("Expected a component decorator");
-		const components = decorateComponents({ a: MarkdownAnchor }, context);
+		const components = decorateComponents({ a: MarkdownAnchor });
 		const FileAnchor = components.a;
 		if (typeof FileAnchor !== "function") throw new Error("Expected an anchor component");
 
@@ -38,7 +38,7 @@ describe("FilesMarkdownExtension", () => {
 			</SdkProvider>,
 		);
 
-		const chip = page.getByTestId("chat-markdown-file-link");
+		const chip = page.getByTestId("markdown-file-link");
 		await expect.element(chip).toHaveTextContent("AGENTS.md · apps/desktop · L42:C7");
 		expect(chip.element().querySelector("[data-pierre-file-icon]")).not.toBeNull();
 		expect(Number.parseFloat(getComputedStyle(chip.element()).fontSize)).toBe(14);

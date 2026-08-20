@@ -89,12 +89,12 @@ const ActivityIconStack: FC<{
 	return (
 		<AvatarGroup className={className}>
 			{overflow ? (
-				<AvatarGroupCount className="size-7 text-xs">
+				<AvatarGroupCount className="size-6.5 text-xs">
 					+{items.length - MAX_VISIBLE_ICONS}
 				</AvatarGroupCount>
 			) : null}
 			{visible.map((item, index) => (
-				<Avatar key={index} title={item.label} className="size-7">
+				<Avatar key={index} title={item.label} className="size-6.5">
 					<AvatarFallback
 						className={cn(
 							"relative border-2",

@@ -3,7 +3,10 @@
 import "@assistant-ui/react-markdown/styles/dot.css";
 
 import { markdownComponents as sharedMarkdownComponents } from "@anaconda-agentic-desktop/ui/components/markdown-content";
-import type { MarkdownRendererComponents } from "@anaconda-agentic-desktop/ui/components/markdown-extension";
+import {
+	composeMarkdownRenderer,
+	type MarkdownRendererComponents,
+} from "@anaconda-agentic-desktop/ui/components/markdown-extension";
 import {
 	type CodeHeaderProps,
 	MarkdownTextPrimitive,
@@ -17,7 +20,6 @@ import remarkGfm from "remark-gfm";
 
 import { useChatMarkdownContext } from "../../ChatMarkdownContext.js";
 import {
-	composeChatMarkdownExtensions,
 	useChatMarkdownExtensions,
 	type ChatMarkdownExtensionContext,
 } from "../../chat-markdown-extensions.js";
@@ -33,18 +35,13 @@ const MarkdownTextImpl = () => {
 	const context = useChatMarkdownContext() ?? EMPTY_MARKDOWN_CONTEXT;
 	const extensions = useChatMarkdownExtensions(context);
 	const renderer = useMemo(
-		() =>
-			composeChatMarkdownExtensions(
-				markdownComponents as MarkdownRendererComponents,
-				extensions,
-				context,
-			),
+		() => composeMarkdownRenderer(markdownComponents as MarkdownRendererComponents, extensions),
 		[context, extensions],
 	);
 	return (
 		<MarkdownTextPrimitive
 			remarkPlugins={[remarkGfm, ...renderer.remarkPlugins]}
-			className="aui-md"
+			className="aui-md text-sm"
 			components={renderer.components}
 			defer
 		/>

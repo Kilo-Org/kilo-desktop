@@ -167,6 +167,34 @@ afterEach(() => {
 });
 
 describe("MessageCopyButton", () => {
+	it("renders chat action glyphs at the 14px chat text size", async () => {
+		renderThread({
+			initialMessages: [
+				{
+					role: "assistant",
+					content: [{ type: "text", text: "Size the message actions" }],
+				},
+			],
+		});
+		const screen = page.elementLocator(document.body);
+
+		await expect.element(screen.getByRole("button", { name: "Copy" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "More" })).toBeVisible();
+
+		const actionButtons = document.querySelectorAll<HTMLButtonElement>(
+			'[data-slot="aui_assistant-message-footer"] button',
+		);
+		const actionIcons = [...actionButtons].map((button) => button.querySelector<SVGElement>("svg"));
+
+		expect(actionButtons).toHaveLength(2);
+		expect([...actionButtons].map((button) => getComputedStyle(button).width)).toEqual([
+			"24px",
+			"24px",
+		]);
+		expect(actionIcons.every((icon) => icon !== null)).toBe(true);
+		expect(actionIcons.map((icon) => getComputedStyle(icon!).width)).toEqual(["14px", "14px"]);
+	});
+
 	it("copies assistant message text through sdk.shell.copyText", async () => {
 		const { copyText } = renderThread({
 			initialMessages: [

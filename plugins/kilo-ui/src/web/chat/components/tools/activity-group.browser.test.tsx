@@ -79,6 +79,20 @@ afterEach(() => {
 });
 
 describe("Reading activity subgroup", () => {
+	it("renders the 14px glyph inside a 26px avatar", () => {
+		const { baseElement } = renderActivity(
+			"reading",
+			[readPart("call-1", "/src/mark.svg")],
+			ReadActivity,
+		);
+		const avatar = baseElement.querySelector<HTMLElement>('[data-slot="avatar"]');
+		const icon = avatar?.querySelector<SVGElement>("svg");
+
+		if (!avatar || !icon) throw new Error("Expected the activity icon to render.");
+		expect(getComputedStyle(avatar).width).toBe("26px");
+		expect(getComputedStyle(icon).width).toBe("14px");
+	});
+
 	it("renders one read as a single non-collapsible line", () => {
 		const { baseElement, queryByRole } = renderActivity(
 			"reading",

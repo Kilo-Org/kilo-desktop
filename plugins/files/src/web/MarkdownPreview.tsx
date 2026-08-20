@@ -1,10 +1,8 @@
-import {
-	MarkdownAnchor,
-	MarkdownContent,
-} from "@anaconda-agentic-desktop/ui/components/markdown-content";
-import { useEffect, useState } from "react";
+import { MarkdownContent } from "@anaconda-agentic-desktop/ui/components/markdown-content";
+import { useEffect, useMemo, useState } from "react";
 
 import type { FileReadResult, FilesServiceContract } from "../contracts/schemas.js";
+import { createFilesPreviewMarkdownExtension } from "./FilesPreviewMarkdownExtension.js";
 
 function resolveRelativePath(currentPath: string, target: string): string | null {
 	const withoutFragment = target.split(/[?#]/u, 1)[0] ?? "";
@@ -76,26 +74,19 @@ export function MarkdownPreview({
 	readonly read: FilesServiceContract["read"];
 	readonly onOpenFile: (relativePath: string) => void;
 }) {
+	const fileLinks = useMemo(
+		() =>
+			createFilesPreviewMarkdownExtension({
+				workspaceDirectory,
+				relativePath,
+				onOpenFile,
+			}),
+		[onOpenFile, relativePath, workspaceDirectory],
+	);
 	return (
 		<MarkdownContent
 			className="max-w-none overflow-auto px-6 py-5"
 			components={{
-				a({ href, children, node: _node, ...props }) {
-					const target = href ? resolveRelativePath(relativePath, href) : null;
-					return (
-						<MarkdownAnchor
-							{...props}
-							href={href}
-							onClick={(event) => {
-								if (!target) return;
-								event.preventDefault();
-								onOpenFile(target);
-							}}
-						>
-							{children}
-						</MarkdownAnchor>
-					);
-				},
 				img: ({ alt, src }) => (
 					<MarkdownImage
 						currentPath={relativePath}
@@ -107,6 +98,7 @@ export function MarkdownPreview({
 				),
 			}}
 			data-qa-id="files-markdown-preview"
+			extensions={[fileLinks]}
 			text={contents}
 		/>
 	);

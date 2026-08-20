@@ -15,6 +15,7 @@ export interface MarkdownAstNode {
 
 interface RemarkWorkspaceFileLinksOptions {
 	readonly workspaceFolders: readonly MarkdownFileWorkspaceFolder[];
+	readonly relativeTo?: string;
 }
 
 const PROTECTED_NODE_TYPES = new Set(["code", "inlineCode", "link", "linkReference", "html"]);
@@ -74,6 +75,7 @@ function candidateBounds(token: string): { start: number; end: number } {
 function linkifyText(
 	value: string,
 	workspaceFolders: readonly MarkdownFileWorkspaceFolder[],
+	relativeTo: string | undefined,
 ): MarkdownAstNode[] | null {
 	const nodes: MarkdownAstNode[] = [];
 	let cursor = 0;
@@ -87,7 +89,7 @@ function linkifyText(
 		if (
 			!candidate ||
 			!isPlainFileCandidate(candidate) ||
-			!resolveMarkdownFileLink(candidate, workspaceFolders)
+			!resolveMarkdownFileLink(candidate, workspaceFolders, relativeTo)
 		) {
 			continue;
 		}
@@ -167,6 +169,7 @@ function browserSafeFileUrl(url: string): string {
 function annotateFileLinks(
 	tree: MarkdownAstNode,
 	workspaceFolders: readonly MarkdownFileWorkspaceFolder[],
+	relativeTo: string | undefined,
 ): void {
 	const links: Array<{
 		node: MarkdownAstNode;
@@ -174,7 +177,7 @@ function annotateFileLinks(
 	}> = [];
 	const collect = (node: MarkdownAstNode) => {
 		if (node.type === "link" && node.url) {
-			const target = resolveMarkdownFileLink(node.url, workspaceFolders);
+			const target = resolveMarkdownFileLink(node.url, workspaceFolders, relativeTo);
 			if (target) {
 				node.url = browserSafeFileUrl(node.url);
 				links.push({ node, relativePath: target.relativePath });
@@ -198,14 +201,17 @@ function annotateFileLinks(
 	}
 }
 
-export function remarkWorkspaceFileLinks({ workspaceFolders }: RemarkWorkspaceFileLinksOptions) {
+export function remarkWorkspaceFileLinks({
+	workspaceFolders,
+	relativeTo,
+}: RemarkWorkspaceFileLinksOptions) {
 	return (tree: MarkdownAstNode) => {
 		const visit = (node: MarkdownAstNode) => {
 			if (PROTECTED_NODE_TYPES.has(node.type) || !node.children) return;
 			const children: MarkdownAstNode[] = [];
 			for (const child of node.children) {
 				if (child.type === "text" && child.value !== undefined) {
-					children.push(...(linkifyText(child.value, workspaceFolders) ?? [child]));
+					children.push(...(linkifyText(child.value, workspaceFolders, relativeTo) ?? [child]));
 					continue;
 				}
 				visit(child);
@@ -215,6 +221,6 @@ export function remarkWorkspaceFileLinks({ workspaceFolders }: RemarkWorkspaceFi
 		};
 
 		visit(tree);
-		annotateFileLinks(tree, workspaceFolders);
+		annotateFileLinks(tree, workspaceFolders, relativeTo);
 	};
 }

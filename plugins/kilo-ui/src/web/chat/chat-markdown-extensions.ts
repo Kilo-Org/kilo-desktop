@@ -3,10 +3,8 @@ import { useMemo } from "react";
 import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
 import type {
-	MarkdownRendererComponents,
 	MarkdownRendererExtension,
 	MarkdownRendererExtensionFactory,
-	MarkdownRemarkPlugins,
 } from "@anaconda-agentic-desktop/ui/components/markdown-extension";
 
 export const CHAT_MARKDOWN_EXTENSION = "kilo-ui/chat-markdown-extension";
@@ -19,7 +17,7 @@ export interface ChatMarkdownExtensionContext {
 	}[];
 }
 
-export type ChatMarkdownExtension = MarkdownRendererExtension<ChatMarkdownExtensionContext>;
+export type ChatMarkdownExtension = MarkdownRendererExtension;
 export type ChatMarkdownExtensionFactory =
 	MarkdownRendererExtensionFactory<ChatMarkdownExtensionContext>;
 
@@ -41,24 +39,6 @@ function createExtension(
 		);
 		return null;
 	}
-}
-
-export function composeChatMarkdownExtensions(
-	baseComponents: MarkdownRendererComponents,
-	extensions: readonly ChatMarkdownExtension[],
-	context: ChatMarkdownExtensionContext,
-): {
-	readonly components: MarkdownRendererComponents;
-	readonly remarkPlugins: MarkdownRemarkPlugins;
-} {
-	let components = baseComponents;
-	for (let index = extensions.length - 1; index >= 0; index -= 1) {
-		components = extensions[index]?.decorateComponents?.(components, context) ?? components;
-	}
-	return {
-		components,
-		remarkPlugins: extensions.flatMap((extension) => extension.remarkPlugins ?? []),
-	};
 }
 
 export function useChatMarkdownExtensions(

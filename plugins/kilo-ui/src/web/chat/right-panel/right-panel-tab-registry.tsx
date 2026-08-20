@@ -14,6 +14,10 @@ export interface ChatRightPanelContributionProps {
 	readonly instanceId: string;
 	readonly title: string;
 	readonly workspaceDirectory?: string;
+	readonly workspaceFolders?: readonly {
+		readonly path: string;
+		readonly isPrimary: boolean;
+	}[];
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
@@ -169,7 +173,11 @@ export const RightPanelTabContent: FC<{
 	sessionId: string;
 	definitions: readonly RightPanelTabDefinition[];
 	workspaceDirectory?: string;
-}> = ({ tab, sessionId, definitions, workspaceDirectory }) => {
+	workspaceFolders?: readonly {
+		readonly path: string;
+		readonly isPrimary: boolean;
+	}[];
+}> = ({ tab, sessionId, definitions, workspaceDirectory, workspaceFolders }) => {
 	const definition = definitions.find(({ id }) => id === tab.definitionId);
 	const Content = definition?.Content ?? MissingContributionTab;
 	return (
@@ -179,6 +187,7 @@ export const RightPanelTabContent: FC<{
 				instanceId={tab.instanceId}
 				title={tab.title}
 				{...(workspaceDirectory ? { workspaceDirectory } : {})}
+				{...(workspaceFolders ? { workspaceFolders } : {})}
 				{...(tab.metadata ? { metadata: tab.metadata } : {})}
 			/>
 		</Suspense>

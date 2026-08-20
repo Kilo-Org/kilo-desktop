@@ -1,12 +1,25 @@
 import { resolveTheme } from "@pierre/diffs";
 import { themeToTreeStyles } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
-import { RefreshCwIcon, SearchIcon } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@anaconda-agentic-desktop/ui/components/select";
+
+export interface FilesWorkspaceFolder {
+	readonly path: string;
+	readonly isPrimary: boolean;
+}
 
 interface FilesTreeProps {
 	readonly sdk: SDK;
@@ -15,9 +28,17 @@ interface FilesTreeProps {
 	readonly truncated: boolean;
 	readonly error: string | null;
 	readonly activePath: string | null;
+	readonly workspaceDirectory: string;
+	readonly workspaceFolders: readonly FilesWorkspaceFolder[];
 	readonly selectionSyncVersion: number;
 	readonly onOpenFile: (relativePath: string) => void;
+	readonly onSelectWorkspaceFolder: (path: string) => void;
 	readonly onRefresh: () => void;
+}
+
+function folderName(path: string): string {
+	const withoutTrailingSeparators = path.replace(/[\\/]+$/u, "");
+	return withoutTrailingSeparators.split(/[\\/]/u).at(-1) || path;
 }
 
 export function FilesTree({
@@ -27,8 +48,11 @@ export function FilesTree({
 	truncated,
 	error,
 	activePath,
+	workspaceDirectory,
+	workspaceFolders,
 	selectionSyncVersion,
 	onOpenFile,
+	onSelectWorkspaceFolder,
 	onRefresh,
 }: FilesTreeProps) {
 	const openFileRef = useRef(onOpenFile);
@@ -49,6 +73,14 @@ export function FilesTree({
 	});
 	const search = useFileTreeSearch(model);
 	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
+	const folderOptions = useMemo(() => {
+		const names = workspaceFolders.map(({ path }) => folderName(path));
+		return workspaceFolders.map(({ path }, index) => ({
+			value: path,
+			label:
+				names.indexOf(names[index]!) === names.lastIndexOf(names[index]!) ? names[index]! : path,
+		}));
+	}, [workspaceFolders]);
 
 	useEffect(() => {
 		model.resetPaths(paths);
@@ -78,7 +110,44 @@ export function FilesTree({
 	);
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col bg-transparent" data-qa-id="files-explorer">
+		<div
+			className="flex min-h-0 min-w-0 flex-1 flex-col bg-transparent"
+			data-qa-id="files-explorer"
+		>
+			{folderOptions.length > 1 ? (
+				<div className="shrink-0 border-b px-2 py-1.5">
+					<Select
+						items={folderOptions}
+						value={workspaceDirectory}
+						onValueChange={(value) => {
+							if (value && value !== workspaceDirectory) onSelectWorkspaceFolder(value);
+						}}
+					>
+						<SelectTrigger
+							aria-label="Workspace folder"
+							className="w-full min-w-0"
+							data-qa-id="files-folder-select"
+							size="sm"
+						>
+							<FolderIcon className="text-muted-foreground" />
+							<SelectValue>
+								{(value) =>
+									folderOptions.find((option) => option.value === value)?.label ?? folderName(value)
+								}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent>
+							<SelectGroup>
+								{folderOptions.map((option) => (
+									<SelectItem key={option.value} value={option.value} title={option.value}>
+										{option.label}
+									</SelectItem>
+								))}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
+				</div>
+			) : null}
 			<div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
 				<div className="relative min-w-0 flex-1">
 					<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />

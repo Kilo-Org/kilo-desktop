@@ -18,7 +18,7 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
-import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
+import { resolveChatWorkspace, resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
 import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
@@ -81,12 +81,14 @@ export function ChatPage() {
 	const sessionWorkspaceId = useSessionActivity((state) =>
 		remoteId ? state.sessions[remoteId]?.workspaceId : undefined,
 	);
-	const workspaceDirectory = resolveChatWorkspaceDirectory({
+	const chatWorkspaceOptions = {
 		remoteId,
 		activeWorkspaceId,
 		sessionWorkspaceId,
 		workspaces,
-	});
+	};
+	const workspace = resolveChatWorkspace(chatWorkspaceOptions);
+	const workspaceDirectory = resolveChatWorkspaceDirectory(chatWorkspaceOptions);
 
 	const panelState = useRightPanelStore((state) =>
 		selectSessionRightPanelState(state.bySessionId, sessionId),
@@ -317,6 +319,7 @@ export function ChatPage() {
 							sessionId={sessionId}
 							definitions={rightPanelDefinitions}
 							{...(workspaceDirectory ? { workspaceDirectory } : {})}
+							{...(workspace?.folders ? { workspaceFolders: workspace.folders } : {})}
 						/>
 					</div>
 				);

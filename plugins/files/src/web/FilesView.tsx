@@ -2,6 +2,7 @@ import {
 	AlertTriangleIcon,
 	Code2Icon,
 	EyeIcon,
+	FolderIcon,
 	FolderTreeIcon,
 	ImageIcon,
 	LoaderCircleIcon,
@@ -28,10 +29,17 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@anaconda-agentic-desktop/ui/components/dialog";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@anaconda-agentic-desktop/ui/components/empty";
 
 import type { FileReadResult, FilesServiceContract } from "../contracts/schemas.js";
 import { FileEditor, FilesEditProvider } from "./FileEditor.js";
-import { FilesTree } from "./FilesTree.js";
+import { FilesTree, type FilesWorkspaceFolder } from "./FilesTree.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import type { ChatRightPanelCapabilities } from "./files-capabilities.js";
 
@@ -41,12 +49,14 @@ const EXPLORER_STORAGE_KEY = "files.explorerOpen";
 const EXPLORER_WIDTH_STORAGE_KEY = "files.explorerWidth";
 const EXPLORER_MIN_WIDTH = 176;
 const VIEWER_MIN_WIDTH = 176;
+const NUMBERED_FILES_TAB_TITLE = /^Files \d+$/u;
 
 export interface FilesViewProps {
 	readonly sessionId: string;
 	readonly instanceId: string;
 	readonly title: string;
 	readonly workspaceDirectory?: string | undefined;
+	readonly workspaceFolders?: readonly FilesWorkspaceFolder[] | undefined;
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
@@ -100,9 +110,30 @@ function unsupportedMessage(file: Extract<FileReadResult, { kind: "unsupported" 
 	}
 }
 
-export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesViewProps) {
+export function FilesView({
+	sessionId,
+	instanceId,
+	title,
+	workspaceDirectory,
+	workspaceFolders: providedWorkspaceFolders,
+}: FilesViewProps) {
 	const sdk = useSdk<FilesServiceContract>("files");
 	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
+	const workspaceFolders = useMemo<readonly FilesWorkspaceFolder[]>(() => {
+		if (providedWorkspaceFolders?.length) return providedWorkspaceFolders;
+		return workspaceDirectory ? [{ path: workspaceDirectory, isPrimary: true }] : [];
+	}, [providedWorkspaceFolders, workspaceDirectory]);
+	const defaultWorkspaceDirectory =
+		workspaceDirectory ??
+		workspaceFolders.find((folder) => folder.isPrimary)?.path ??
+		workspaceFolders[0]?.path;
+	const [chosenWorkspaceDirectory, setChosenWorkspaceDirectory] =
+		useState(defaultWorkspaceDirectory);
+	const activeWorkspaceDirectory = workspaceFolders.some(
+		(folder) => folder.path === chosenWorkspaceDirectory,
+	)
+		? chosenWorkspaceDirectory
+		: defaultWorkspaceDirectory;
 	const [paths, setPaths] = useState<readonly string[]>([]);
 	const [listTruncated, setListTruncated] = useState(false);
 	const [listLoading, setListLoading] = useState(false);
@@ -126,6 +157,7 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
 	const editorRef = useRef<Editor<undefined> | null>(null);
 	const openRequestRef = useRef(0);
+	const listRequestRef = useRef(0);
 	const splitPaneRef = useRef<HTMLDivElement>(null);
 	const explorerPaneRef = useRef<HTMLElement>(null);
 	const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -143,31 +175,39 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 	);
 	const dirty = file?.kind === "text" && Boolean(file.revision) && draft !== originalContents;
 
-	const loadPaths = useCallback(async () => {
-		if (!workspaceDirectory) return;
-		setListLoading(true);
-		setListError(null);
-		try {
-			const result = await sdk.client.list({ workspaceDirectory });
-			setPaths(result.paths);
-			setListTruncated(result.truncated);
-		} catch (error) {
-			setListError(errorMessage(error));
-		} finally {
-			setListLoading(false);
-		}
-	}, [sdk, workspaceDirectory]);
+	const loadPaths = useCallback(
+		async (directory: string) => {
+			const request = ++listRequestRef.current;
+			setListLoading(true);
+			setListError(null);
+			try {
+				const result = await sdk.client.list({ workspaceDirectory: directory });
+				if (request !== listRequestRef.current) return;
+				setPaths(result.paths);
+				setListTruncated(result.truncated);
+			} catch (error) {
+				if (request !== listRequestRef.current) return;
+				setListError(errorMessage(error));
+			} finally {
+				if (request === listRequestRef.current) setListLoading(false);
+			}
+		},
+		[sdk],
+	);
 
 	const openFileNow = useCallback(
 		async (relativePath: string, forceReload = false) => {
-			if (!workspaceDirectory) return;
+			if (!activeWorkspaceDirectory) return;
 			const request = ++openRequestRef.current;
 			setSelectedPath(relativePath);
 			setFileLoading(true);
 			setFileError(null);
 			setRenderMarkdown(false);
 			try {
-				const result = await sdk.client.read({ workspaceDirectory, relativePath });
+				const result = await sdk.client.read({
+					workspaceDirectory: activeWorkspaceDirectory,
+					relativePath,
+				});
 				if (request !== openRequestRef.current) return;
 				setFile(result);
 				if (result.kind === "text") {
@@ -191,7 +231,7 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 			}
 			if (request === openRequestRef.current) setFileLoading(false);
 		},
-		[instanceId, panel, sdk, sessionId, workspaceDirectory],
+		[activeWorkspaceDirectory, instanceId, panel, sdk, sessionId],
 	);
 
 	const discardCurrent = useCallback(async () => {
@@ -202,12 +242,13 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 
 	const saveCurrent = useCallback(
 		async (force = false): Promise<boolean> => {
-			if (!workspaceDirectory || !selectedPath || !revision || file?.kind !== "text") return true;
+			if (!activeWorkspaceDirectory || !selectedPath || !revision || file?.kind !== "text")
+				return true;
 			const currentDraft = editorRef.current?.getText() ?? draft;
 			setSaving(true);
 			try {
 				const result = await sdk.client.write({
-					workspaceDirectory,
+					workspaceDirectory: activeWorkspaceDirectory,
 					relativePath: selectedPath,
 					contents: currentDraft,
 					expectedRevision: revision,
@@ -229,7 +270,7 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 				setSaving(false);
 			}
 		},
-		[draft, file?.kind, revision, sdk, selectedPath, workspaceDirectory],
+		[activeWorkspaceDirectory, draft, file?.kind, revision, sdk, selectedPath],
 	);
 
 	const requestAction = useCallback(
@@ -247,6 +288,25 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 		},
 		[openFileNow, requestAction, selectedPath],
 	);
+
+	const selectWorkspaceFolder = useCallback((directory: string) => {
+		openRequestRef.current += 1;
+		listRequestRef.current += 1;
+		setChosenWorkspaceDirectory(directory);
+		setPaths([]);
+		setListTruncated(false);
+		setListError(null);
+		setSelectedPath(null);
+		setFile(null);
+		setFileLoading(false);
+		setFileError(null);
+		setDraft("");
+		setOriginalContents("");
+		setRevision(null);
+		setEditorRevision(null);
+		setRenderMarkdown(false);
+		setConflict(false);
+	}, []);
 
 	const clampExplorerWidth = useCallback((width: number) => {
 		const splitWidth = splitPaneRef.current?.getBoundingClientRect().width ?? 900;
@@ -309,8 +369,14 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 	);
 
 	useEffect(() => {
-		void loadPaths();
-	}, [loadPaths]);
+		if (activeWorkspaceDirectory) void loadPaths(activeWorkspaceDirectory);
+	}, [activeWorkspaceDirectory, loadPaths]);
+
+	useEffect(() => {
+		if (NUMBERED_FILES_TAB_TITLE.test(title)) {
+			panel?.setTabTitle(sessionId, instanceId, "Files");
+		}
+	}, [instanceId, panel, sessionId, title]);
 
 	useEffect(() => () => resizeCleanupRef.current?.(), []);
 
@@ -352,7 +418,7 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 		[file],
 	);
 
-	if (!workspaceDirectory) {
+	if (!activeWorkspaceDirectory) {
 		return (
 			<div
 				className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
@@ -368,7 +434,6 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 		<FilesEditProvider>
 			<div
 				className="files-panel relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent"
-				data-has-selection={selectedPath !== null}
 				data-qa-id="files-view"
 			>
 				{selectedPath ? (
@@ -454,10 +519,7 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 				) : null}
 
 				<div ref={splitPaneRef} className="relative flex min-h-0 flex-1 overflow-hidden">
-					<div
-						className={selectedPath ? "flex min-w-0 flex-1 flex-col" : "hidden"}
-						data-qa-id="files-viewer-pane"
-					>
+					<div className="flex min-w-0 flex-1 flex-col" data-qa-id="files-viewer-pane">
 						{fileLoading ? (
 							<div
 								className="text-muted-foreground flex flex-1 items-center justify-center"
@@ -479,7 +541,7 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 									onOpenFile={requestOpenFile}
 									read={readForMarkdown}
 									relativePath={selectedPath}
-									workspaceDirectory={workspaceDirectory}
+									workspaceDirectory={activeWorkspaceDirectory}
 								/>
 							) : (
 								<FileEditor
@@ -515,18 +577,26 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 								)}
 								{unsupportedMessage(file)}
 							</div>
-						) : null}
+						) : (
+							<Empty data-qa-id="files-editor-empty">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<FolderIcon />
+									</EmptyMedia>
+									<EmptyTitle aria-level={2} role="heading">
+										Open file
+									</EmptyTitle>
+									<EmptyDescription>Select a file from the file list</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						)}
 					</div>
 					{showExplorer ? (
 						<aside
 							ref={explorerPaneRef}
-							className={
-								selectedPath
-									? "files-explorer-pane relative flex min-h-0 w-[min(22rem,46%)] min-w-64 shrink-0 border-l"
-									: "flex min-h-0 min-w-0 flex-1"
-							}
+							className="files-explorer-pane relative flex min-h-0 w-[min(22rem,46%)] min-w-64 shrink-0 border-l"
 							style={
-								selectedPath && explorerWidth !== null
+								explorerWidth !== null
 									? {
 											width: explorerWidth,
 											minWidth: EXPLORER_MIN_WIDTH,
@@ -535,33 +605,36 @@ export function FilesView({ sessionId, instanceId, workspaceDirectory }: FilesVi
 									: undefined
 							}
 						>
-							{selectedPath ? (
-								<div
-									aria-label="Resize file explorer"
-									aria-orientation="vertical"
-									className="group absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none select-none"
-									data-qa-id="files-explorer-resize-handle"
-									onKeyDown={handleExplorerResizeKeyDown}
-									onPointerDown={handleExplorerResizePointerDown}
-									role="separator"
-									tabIndex={0}
-								>
-									<span
-										aria-hidden
-										className="group-hover:bg-ring/70 group-active:bg-ring pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors"
-									/>
-								</div>
-							) : null}
+							<div
+								aria-label="Resize file explorer"
+								aria-orientation="vertical"
+								className="group absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none select-none"
+								data-qa-id="files-explorer-resize-handle"
+								onKeyDown={handleExplorerResizeKeyDown}
+								onPointerDown={handleExplorerResizePointerDown}
+								role="separator"
+								tabIndex={0}
+							>
+								<span
+									aria-hidden
+									className="group-hover:bg-ring/70 group-active:bg-ring pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors"
+								/>
+							</div>
 							<FilesTree
 								activePath={selectedPath}
 								error={listError}
 								loading={listLoading}
 								onOpenFile={requestOpenFile}
-								onRefresh={() => requestAction(loadPaths)}
+								onRefresh={() => requestAction(() => loadPaths(activeWorkspaceDirectory))}
+								onSelectWorkspaceFolder={(directory) =>
+									requestAction(() => selectWorkspaceFolder(directory))
+								}
 								paths={paths}
 								sdk={sdk}
 								selectionSyncVersion={selectionSyncVersion}
 								truncated={listTruncated}
+								workspaceDirectory={activeWorkspaceDirectory}
+								workspaceFolders={workspaceFolders}
 							/>
 						</aside>
 					) : null}

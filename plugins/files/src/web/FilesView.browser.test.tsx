@@ -92,6 +92,102 @@ describe("FilesView", () => {
 		await expect.element(page.getByTestId("files-no-workspace")).toBeVisible();
 	});
 
+	it("removes the generated ordinal from the initial Files tab title", async () => {
+		const setTabTitle = vi.fn();
+		renderView(handlers(), {}, { setTabTitle });
+
+		await vi.waitFor(() =>
+			expect(setTabTitle).toHaveBeenCalledWith("session-1", "files-1", "Files"),
+		);
+	});
+
+	it("shows an editor empty state beside the workspace tree before a file is opened", async () => {
+		renderView(handlers(), {}, {}, 580);
+
+		const emptyState = page.getByTestId("files-editor-empty");
+		await expect.element(emptyState).toBeVisible();
+		expect(emptyState.element().getAttribute("data-slot")).toBe("empty");
+		expect(emptyState.element().querySelector('[data-slot="empty-icon"]')).not.toBeNull();
+		expect(emptyState.element().querySelector('[data-slot="empty-title"]')).not.toBeNull();
+		expect(emptyState.element().querySelector('[data-slot="empty-description"]')).not.toBeNull();
+		await expect.element(page.getByRole("heading", { name: "Open file" })).toBeVisible();
+		await expect.element(page.getByText("Select a file from the file list")).toBeVisible();
+		expect(emptyState.element().querySelector(".lucide-folder")).not.toBeNull();
+		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+
+		const viewer = page.getByTestId("files-viewer-pane").element();
+		const explorer = document.querySelector<HTMLElement>(".files-explorer-pane");
+		if (!explorer) throw new Error("Expected the workspace tree pane");
+		expect(viewer.getBoundingClientRect().width).toBeGreaterThan(150);
+		expect(explorer.getBoundingClientRect().width).toBeGreaterThan(150);
+		expect(viewer.getBoundingClientRect().right).toBeLessThanOrEqual(
+			explorer.getBoundingClientRect().left + 1,
+		);
+	});
+
+	it("switches between workspace folders from a selector above search", async () => {
+		const service = handlers();
+		const read = vi.fn(service.read);
+		const list = vi.fn<FilesServiceContract["list"]>(async ({ workspaceDirectory }) => ({
+			paths:
+				workspaceDirectory === "/reference"
+					? ["guides/", "guides/reference.md"]
+					: ["src/", "src/index.ts"],
+			truncated: false,
+		}));
+		renderView(
+			{ ...service, list, read },
+			{
+				workspaceFolders: [
+					{ path: "/workspace", isPrimary: true },
+					{ path: "/reference", isPrimary: false },
+				],
+			},
+		);
+
+		const folderSelector = page.getByRole("combobox", { name: "Workspace folder" });
+		await expect.element(folderSelector).toBeVisible();
+		expect(
+			folderSelector.element().compareDocumentPosition(page.getByTestId("files-search").element()) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/workspace" }));
+
+		await folderSelector.click();
+		expect(
+			page.getByRole("option", { name: "workspace" }).element().querySelector(".lucide-folder"),
+		).toBeNull();
+		expect(
+			page.getByRole("option", { name: "reference" }).element().querySelector(".lucide-folder"),
+		).toBeNull();
+		await page.getByRole("option", { name: "reference" }).click();
+
+		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/reference" }));
+		await vi.waitFor(() => {
+			const host = document.querySelector('[data-qa-id="files-tree"]');
+			expect(
+				host?.shadowRoot?.querySelector('[data-item-path="guides/reference.md"]'),
+			).not.toBeNull();
+		});
+		await openTreePath("guides/reference.md");
+		await vi.waitFor(() =>
+			expect(read).toHaveBeenCalledWith({
+				workspaceDirectory: "/reference",
+				relativePath: "guides/reference.md",
+			}),
+		);
+	});
+
+	it("does not show a folder selector for a single-folder workspace", async () => {
+		renderView(handlers(), {
+			workspaceFolders: [{ path: "/workspace", isPrimary: true }],
+		});
+
+		await expect
+			.element(page.getByRole("combobox", { name: "Workspace folder" }))
+			.not.toBeInTheDocument();
+	});
+
 	it("renders the real Trees explorer and opens a selected file with a breadcrumb", async () => {
 		const setTabTitle = vi.fn();
 		const setTabIconPath = vi.fn();
@@ -203,6 +299,42 @@ describe("FilesView", () => {
 		expect(editorBounds.width).toBeGreaterThan(150);
 		expect(explorerBounds.width).toBeGreaterThan(150);
 		expect(editorBounds.right).toBeLessThanOrEqual(explorerBounds.left + 1);
+	});
+
+	it("keeps the file list contained within a narrow explorer pane", async () => {
+		const service = handlers();
+		renderView(
+			{
+				...service,
+				list: async () => ({
+					paths: ["docs/", "docs/kilo-code-integration-with-a-very-long-name.md"],
+					truncated: false,
+				}),
+			},
+			{
+				workspaceDirectory: "/workspace/anaconda-agentic-desktop-production",
+				workspaceFolders: [
+					{ path: "/workspace/anaconda-agentic-desktop-production", isPrimary: true },
+					{ path: "/workspace/reference-project", isPrimary: false },
+				],
+			},
+			{},
+			480,
+		);
+
+		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+		const explorerPane = document.querySelector<HTMLElement>(".files-explorer-pane");
+		const explorerContent = document.querySelector<HTMLElement>('[data-qa-id="files-explorer"]');
+		const folderSelect = document.querySelector<HTMLElement>('[data-qa-id="files-folder-select"]');
+		const search = document.querySelector<HTMLElement>('[data-qa-id="files-search"]');
+		if (!explorerPane || !explorerContent || !folderSelect || !search) {
+			throw new Error("Expected the narrow file explorer controls");
+		}
+
+		const paneRight = explorerPane.getBoundingClientRect().right;
+		expect(explorerContent.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
+		expect(folderSelect.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
+		expect(search.getBoundingClientRect().right).toBeLessThanOrEqual(paneRight + 1);
 	});
 
 	it("lets the shell panel surface show through the tree and editor", async () => {

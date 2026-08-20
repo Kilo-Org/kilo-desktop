@@ -96,6 +96,7 @@ function CanvasPanel({
 	sessionId,
 	title,
 	workspaceDirectory,
+	workspaceFolders,
 }: ChatRightPanelContributionProps) {
 	return (
 		<div
@@ -103,6 +104,7 @@ function CanvasPanel({
 			data-instance-id={instanceId}
 			data-session-id={sessionId}
 			data-workspace-directory={workspaceDirectory}
+			data-workspace-folders={workspaceFolders?.map((folder) => folder.path).join("|")}
 		>
 			{title}
 		</div>
@@ -791,9 +793,21 @@ describe("ChatPage", () => {
 		).toBe(instanceBefore);
 	});
 
-	it("passes the draft chat's primary workspace directory to right-panel contributions", async () => {
-		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
-		const { baseElement } = renderChatPage({ workspaces: [workspace] });
+	it("passes all of the draft chat's workspace folders to right-panel contributions", async () => {
+		const multiFolderWorkspace: Workspace = {
+			...workspace,
+			folders: [
+				...workspace.folders,
+				{
+					id: "folder-2",
+					path: "/projects/reference",
+					isPrimary: false,
+					position: 1,
+				},
+			],
+		};
+		localStorage.setItem("kilo-ui.active-workspace", multiFolderWorkspace.id);
+		const { baseElement } = renderChatPage({ workspaces: [multiFolderWorkspace] });
 		const screen = page.elementLocator(baseElement);
 
 		await screen.getByTestId("chat-right-panel-toggle").click();
@@ -802,6 +816,9 @@ describe("ChatPage", () => {
 		await expect
 			.element(screen.getByTestId("test-canvas-panel"))
 			.toHaveAttribute("data-workspace-directory", "/projects/workspace-1");
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute("data-workspace-folders", "/projects/workspace-1|/projects/reference");
 	});
 
 	it("uses the latest workspace only when the runtime prepares a new session", async () => {

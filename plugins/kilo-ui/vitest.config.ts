@@ -75,6 +75,7 @@ export default defineConfig({
 						"@base-ui/react/collapsible",
 						"@base-ui/react/dialog",
 						"@base-ui/react/select",
+						"@base-ui/react/switch",
 						"@base-ui/react/toggle",
 						"@base-ui/react/toggle-group",
 						"zod",

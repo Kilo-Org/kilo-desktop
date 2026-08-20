@@ -81,12 +81,14 @@ export async function disconnectProvider(
 	await client.auth.remove({ providerID: id }, { throwOnError: true }).catch((error: unknown) => {
 		if (!custom) throw error instanceof Error ? error : new Error(`Failed to disconnect ${id}`);
 	});
-	if (custom) {
+	const disabled = without(global.disabled_providers, id);
+	const clearedDisabled = disabled.length !== (global.disabled_providers ?? []).length;
+	if (custom || clearedDisabled) {
 		await client.global.config.update(
 			{
 				config: {
-					provider: { [id]: null },
-					disabled_providers: without(global.disabled_providers, id),
+					...(custom ? { provider: { [id]: null } } : {}),
+					...(clearedDisabled ? { disabled_providers: disabled } : {}),
 				},
 			},
 			{ throwOnError: true },
@@ -95,6 +97,10 @@ export async function disconnectProvider(
 	await dispose(client);
 }
 
+/**
+ * Hide/show a connected provider in the composer model selector without
+ * removing credentials — re-enable restores it without reconnecting.
+ */
 export async function setDisabled(
 	client: KiloProviderClient,
 	providerID: string,

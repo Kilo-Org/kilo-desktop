@@ -90,6 +90,14 @@ describe("disconnectProvider", () => {
 		expect(calls.dispose).toBe(1);
 	});
 
+	it("clears disabled_providers when disconnecting a disabled catalog provider", async () => {
+		const { client, calls } = createClient({ disabled_providers: ["openai", "groq"] });
+		await disconnectProvider(client, "openai");
+		expect(calls.remove).toEqual([{ providerID: "openai" }]);
+		expect(calls.update[0]?.config).toEqual({ disabled_providers: ["groq"] });
+		expect(calls.dispose).toBe(1);
+	});
+
 	it("deletes a custom provider block with a null sentinel", async () => {
 		const { client, calls } = createClient({
 			disabled_providers: ["vllm"],

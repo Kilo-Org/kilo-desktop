@@ -60,8 +60,9 @@ function asProviderClient(connection: KiloGlobalConnection): KiloProviderClient 
 
 export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 	const queryClient = useQueryClient();
+	const queryKey = [...KILO_PROVIDERS_MANAGE_QUERY_KEY, connection?.baseUrl, connection?.version];
 	const query = useQuery({
-		queryKey: [...KILO_PROVIDERS_MANAGE_QUERY_KEY, connection?.baseUrl, connection?.version],
+		queryKey,
 		queryFn: () => fetchProviderManagement(connection),
 		enabled: connection !== undefined,
 		retry: false,

@@ -22,12 +22,15 @@ export function DeviceAuthPanel({
 	onRetry,
 	onOpenBrowser,
 	onCopy,
+	embedded = false,
 }: {
 	deviceAuth: DeviceAuthState;
 	onCancel: () => void;
 	onRetry: () => void;
 	onOpenBrowser: (url: string) => void;
 	onCopy: (text: string) => void;
+	/** Skip the outer frame when nested inside another bordered card. */
+	embedded?: boolean;
 }) {
 	const expiresIn = deviceAuth.expiresIn ?? 900;
 	const [remaining, setRemaining] = useState(expiresIn);
@@ -45,7 +48,7 @@ export function DeviceAuthPanel({
 
 	if (deviceAuth.status === "initiating") {
 		return (
-			<Panel state="initiating">
+			<Panel state="initiating" embedded={embedded}>
 				<div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
 					<Loader2Icon className="text-primary size-5 animate-spin" />
 					<p className="text-muted-foreground text-sm">Contacting Kilo…</p>
@@ -67,7 +70,11 @@ export function DeviceAuthPanel({
 
 	if (deviceAuth.status === "error") {
 		return (
-			<Panel state="error" className="border-destructive/40 bg-destructive/5">
+			<Panel
+				state="error"
+				embedded={embedded}
+				className={embedded ? "bg-destructive/5" : "border-destructive/40 bg-destructive/5"}
+			>
 				<div className="flex items-start gap-3 p-4">
 					<CircleAlertIcon className="text-destructive-foreground mt-0.5 size-4 shrink-0" />
 					<div className="min-w-0 flex-1">
@@ -102,10 +109,10 @@ export function DeviceAuthPanel({
 
 	if (deviceAuth.status === "finishing") {
 		return (
-			<Panel state="finishing">
+			<Panel state="finishing" embedded={embedded}>
 				<div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
 					<Loader2Icon className="text-primary size-5 animate-spin" />
-					<p className="text-muted-foreground text-sm">Finishing sign-in…</p>
+					<p className="text-muted-foreground text-sm">Finishing connection…</p>
 				</div>
 			</Panel>
 		);
@@ -114,9 +121,9 @@ export function DeviceAuthPanel({
 	if (deviceAuth.status !== "waiting") return null;
 
 	return (
-		<Panel state="waiting">
+		<Panel state="waiting" embedded={embedded}>
 			<div className="p-4">
-				<p className="text-sm font-medium">Approve sign-in in your browser</p>
+				<p className="text-sm font-medium">Approve connection in your browser</p>
 				<p className="text-muted-foreground mt-1 text-sm">
 					We opened a browser window for you. If it didn&rsquo;t open, use the link below and enter
 					this code.
@@ -184,15 +191,21 @@ export function DeviceAuthPanel({
 function Panel({
 	state,
 	className,
+	embedded = false,
 	children,
 }: {
 	state: string;
 	className?: string;
+	embedded?: boolean;
 	children: ReactNode;
 }) {
 	return (
 		<div
-			className={cn("border-border bg-card overflow-hidden rounded-xl border", className)}
+			className={cn(
+				"overflow-hidden",
+				!embedded && "border-border bg-card rounded-xl border",
+				className,
+			)}
 			data-qa-id="kilo-account-device-auth"
 			data-state={state}
 		>

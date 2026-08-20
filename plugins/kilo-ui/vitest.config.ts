@@ -72,6 +72,7 @@ export default defineConfig({
 						// them so Vite does not discover them mid-run, reload the page, and
 						// swap React instances (Invalid hook call in CheckboxRoot).
 						"@base-ui/react/checkbox",
+						"@base-ui/react/collapsible",
 						"@base-ui/react/dialog",
 						"@base-ui/react/select",
 						"@base-ui/react/toggle",

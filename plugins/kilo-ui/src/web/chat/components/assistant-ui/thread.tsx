@@ -722,7 +722,7 @@ const KiloMessageErrorBanner: FC = () => {
 					disabled={signingIn}
 					data-qa-id="kilo-message-error-signin"
 				>
-					{signingIn ? "Signing in…" : "Sign in"}
+					{signingIn ? "Connecting…" : "Connect"}
 				</Button>
 			) : null}
 		</ErrorPrimitive.Root>

@@ -14,7 +14,7 @@ describe("invalidateKiloProviderQueries", () => {
 			providers: [],
 		});
 		queryClient.setQueryData([...KILO_PROVIDERS_MANAGE_QUERY_KEY, "http://127.0.0.1", "1"], {
-			view: { connected: [], popular: [], disabled: [] },
+			view: { connected: [], popular: [] },
 		});
 
 		invalidateKiloProviderQueries(queryClient);

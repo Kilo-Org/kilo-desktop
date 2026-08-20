@@ -209,7 +209,7 @@ describe("OnboardingProvider", () => {
 			auth: { authenticated: true },
 		});
 
-		await expect.element(screen.getByRole("heading", { name: "Sign in to Kilo" })).toBeVisible();
+		await expect.element(screen.getByRole("heading", { name: "Connect to Kilo" })).toBeVisible();
 		await expect.element(screen.getByTestId("onboarding-signed-in")).toBeVisible();
 		await expect
 			.element(screen.getByTestId("onboarding-progress-label"))

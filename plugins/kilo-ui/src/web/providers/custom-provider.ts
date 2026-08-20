@@ -24,6 +24,17 @@ export const POPULAR_PROVIDER_IDS = [
 	"vercel",
 ] as const;
 
+/** Display names when `provider.list` omits a popular id (e.g. after disconnect clears models). */
+export const POPULAR_PROVIDER_NAMES: Record<(typeof POPULAR_PROVIDER_IDS)[number], string> = {
+	[KILO_PROVIDER_ID]: "Kilo Gateway",
+	anthropic: "Anthropic",
+	deepseek: "DeepSeek",
+	openai: "OpenAI",
+	google: "Google",
+	openrouter: "OpenRouter",
+	vercel: "Vercel",
+};
+
 const INVALID_PROVIDER_ID = "Invalid provider ID";
 const INVALID_BASE_URL = "Base URL must start with http:// or https://";
 

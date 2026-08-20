@@ -1,16 +1,25 @@
 import { useState, type ReactNode } from "react";
-import { PencilIcon, PlusIcon, UnplugIcon } from "lucide-react";
+import { PencilIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { useChatConnection } from "../chat/connection/ChatConnectionContext.js";
 import { ProviderIcon } from "../chat/model-selection/provider-icon.js";
 import { CustomProviderDialog } from "./CustomProviderDialog.js";
 import { isCustomProviderPackage, type SanitizedProviderConfig } from "./custom-provider.js";
+import { KiloGatewayProviderCard } from "./KiloGatewayProviderCard.js";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.js";
 import type { ProviderRow } from "./provider-list.js";
+import { PROVIDER_ROW_GRID } from "./provider-row-layout.js";
 import { useKiloProviders } from "./use-kilo-providers.js";
 
 type DialogState =
@@ -19,11 +28,10 @@ type DialogState =
 	| { type: "custom"; existing: ProviderRow | null };
 
 /**
- * Settings section: connect catalog providers and manage custom blocks in
+ * Settings section: Kilo Gateway account plus catalog / custom providers in
  * Desktop's app-owned kilo.jsonc. Contributed at `/settings/kilo-providers`.
  */
 export function KiloProvidersSettings() {
-	const sdk = useSdk("kilo-ui");
 	const connection = useChatConnection();
 	const providers = useKiloProviders(connection.connection);
 	const [dialog, setDialog] = useState<DialogState>(null);
@@ -39,27 +47,18 @@ export function KiloProvidersSettings() {
 		);
 	}
 
-	if (connection.isPending || providers.isLoading) {
-		return (
-			<PageShell state="loading">
-				<div className="flex flex-col gap-3">
-					<Skeleton className="h-16 w-full rounded-xl" />
-					<Skeleton className="h-16 w-full rounded-xl" />
-				</div>
-			</PageShell>
-		);
-	}
-
-	const view = providers.view ?? { connected: [], popular: [], disabled: [] };
 	const connectProvider = dialog?.type === "connect" ? dialog.provider : null;
 	const customOpen = dialog?.type === "custom";
+	const view = providers.view ?? { connected: [], popular: [] };
+	const connectedOthers = view.connected.filter((row) => !row.isKilo);
 	const customExisting =
 		customOpen && dialog.existing ? toExisting(dialog.existing, providers.config) : null;
+	const catalogLoading = connection.isPending || providers.isLoading;
 
 	return (
 		<PageShell
-			state="ready"
-			subtitle="API keys and custom providers used by Kilo chat."
+			state={catalogLoading ? "loading" : "ready"}
+			subtitle="Connect providers for Kilo chat. Toggle off to hide from the model selector without removing credentials."
 			action={
 				<Button
 					type="button"
@@ -79,64 +78,63 @@ export function KiloProvidersSettings() {
 				</p>
 			) : null}
 
-			<ProviderSection
-				title="Connected"
-				empty="No providers connected yet."
-				qa="kilo-providers-connected"
-			>
-				{view.connected.map((row) => (
-					<ProviderCard
-						key={row.id}
-						row={row}
-						{...(row.isKilo ? { onAccount: () => sdk.navigate("/settings/kilo-account") } : {})}
-						{...(row.canDisconnect
-							? {
-									onDisconnect: () => {
-										void (row.custom
-											? providers.deleteCustom(row.id)
-											: providers.disconnect(row.id));
-									},
-								}
-							: {})}
-						{...(row.custom ? { onEdit: () => setDialog({ type: "custom", existing: row }) } : {})}
-						{...(row.isKilo
-							? {}
-							: {
-									onDisable: () => {
-										void providers.setDisabled({ providerID: row.id, disabled: true });
-									},
-								})}
-					/>
-				))}
-			</ProviderSection>
+			<KiloGatewayProviderCard />
 
-			<ProviderSection
-				title="Popular"
-				empty="All popular providers are connected."
-				qa="kilo-providers-popular"
-			>
-				{view.popular.map((row) => (
-					<ProviderCard
-						key={row.id}
-						row={row}
-						onConnect={() => setDialog({ type: "connect", provider: row })}
-					/>
-				))}
-			</ProviderSection>
+			{catalogLoading ? (
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-16 w-full rounded-xl" />
+					<Skeleton className="h-16 w-full rounded-xl" />
+				</div>
+			) : (
+				<>
+					{connectedOthers.length > 0 ? (
+						<ProviderSection title="Connected" qa="kilo-providers-connected">
+							{connectedOthers.map((row) => (
+								<ProviderCard
+									key={row.id}
+									row={row}
+									{...(row.canDisconnect
+										? {
+												onDisconnect: () => {
+													void (row.custom
+														? providers.deleteCustom(row.id)
+														: providers.disconnect(row.id));
+												},
+											}
+										: {})}
+									{...(row.custom
+										? { onEdit: () => setDialog({ type: "custom", existing: row }) }
+										: {})}
+									{...(row.canDisable
+										? {
+												onEnabledChange: (enabled: boolean) => {
+													void providers.setDisabled({
+														providerID: row.id,
+														disabled: !enabled,
+													});
+												},
+											}
+										: {})}
+								/>
+							))}
+						</ProviderSection>
+					) : null}
 
-			{view.disabled.length > 0 ? (
-				<ProviderSection title="Disabled" qa="kilo-providers-disabled">
-					{view.disabled.map((row) => (
-						<ProviderCard
-							key={row.id}
-							row={row}
-							onEnable={() => {
-								void providers.setDisabled({ providerID: row.id, disabled: false });
-							}}
-						/>
-					))}
-				</ProviderSection>
-			) : null}
+					<ProviderSection
+						title="Popular"
+						empty="All popular providers are connected."
+						qa="kilo-providers-popular"
+					>
+						{view.popular.map((row) => (
+							<ProviderCard
+								key={row.id}
+								row={row}
+								onConnect={() => setDialog({ type: "connect", provider: row })}
+							/>
+						))}
+					</ProviderSection>
+				</>
+			)}
 
 			<ProviderConnectDialog
 				open={connectProvider !== null}
@@ -247,7 +245,7 @@ function ProviderSection({
 	);
 }
 
-function sourceLabel(row: ProviderRow): string | undefined {
+function statusLabel(row: ProviderRow): string | undefined {
 	if (row.isKilo) return undefined;
 	if (row.custom) return "Custom";
 	if (row.source === "env") return "Environment";
@@ -260,52 +258,31 @@ function ProviderCard({
 	onConnect,
 	onDisconnect,
 	onEdit,
-	onDisable,
-	onEnable,
-	onAccount,
+	onEnabledChange,
 }: {
 	row: ProviderRow;
 	onConnect?: () => void;
 	onDisconnect?: () => void;
 	onEdit?: () => void;
-	onDisable?: () => void;
-	onEnable?: () => void;
-	onAccount?: () => void;
+	onEnabledChange?: (enabled: boolean) => void;
 }) {
-	const tag = sourceLabel(row);
+	const tag = statusLabel(row);
 	return (
 		<div
-			className="border-border bg-card flex min-w-0 items-center gap-3 overflow-hidden rounded-xl border p-3"
+			className={cn(
+				PROVIDER_ROW_GRID,
+				"border-border bg-card overflow-hidden rounded-xl border p-3",
+				row.disabled && "opacity-70",
+			)}
 			data-qa-id={`kilo-providers-row-${row.id}`}
+			data-enabled={row.disabled ? "false" : "true"}
 		>
 			<ProviderIcon provider={row.id} variant="color" size={22} fallbackLabel={row.name} />
-			<div className="min-w-0 flex-1">
+			<div className="min-w-0">
 				<p className="truncate text-sm font-medium">{row.name}</p>
 				{tag ? <p className="text-muted-foreground truncate text-xs">{tag}</p> : null}
 			</div>
-			<div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-				{onAccount ? (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={onAccount}
-						data-qa-id="kilo-providers-manage-account"
-					>
-						Manage account
-					</Button>
-				) : null}
-				{onConnect ? (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={onConnect}
-						data-qa-id={`kilo-providers-add-${row.id}`}
-					>
-						Connect
-					</Button>
-				) : null}
+			<div className="flex justify-center">
 				{onEdit ? (
 					<Button
 						type="button"
@@ -318,39 +295,54 @@ function ProviderCard({
 						<PencilIcon />
 					</Button>
 				) : null}
+			</div>
+			<div className="flex justify-center">
+				{onConnect ? (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={onConnect}
+						data-qa-id={`kilo-providers-add-${row.id}`}
+					>
+						Connect
+					</Button>
+				) : null}
 				{onDisconnect ? (
 					<Button
 						type="button"
 						variant="ghost"
-						size="icon-sm"
-						aria-label={`Disconnect ${row.name}`}
+						size="sm"
 						onClick={onDisconnect}
 						data-qa-id={`kilo-providers-disconnect-${row.id}`}
 					>
-						<UnplugIcon />
+						Disconnect
 					</Button>
 				) : null}
-				{onDisable ? (
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						onClick={onDisable}
-						data-qa-id={`kilo-providers-disable-${row.id}`}
-					>
-						Disable
-					</Button>
-				) : null}
-				{onEnable ? (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={onEnable}
-						data-qa-id={`kilo-providers-enable-${row.id}`}
-					>
-						Enable
-					</Button>
+			</div>
+			<div className="flex justify-center">
+				{onEnabledChange ? (
+					<TooltipProvider delay={300} closeDelay={1500}>
+						<Tooltip>
+							<TooltipTrigger
+								render={
+									<Switch
+										checked={!row.disabled}
+										onCheckedChange={onEnabledChange}
+										aria-label={
+											row.disabled
+												? `Show ${row.name} in model selector`
+												: `Hide ${row.name} from model selector`
+										}
+										data-qa-id={`kilo-providers-enabled-${row.id}`}
+									/>
+								}
+							/>
+							<TooltipContent>
+								{row.disabled ? "Show in model selector" : "Hide from model selector"}
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
 				) : null}
 			</div>
 		</div>

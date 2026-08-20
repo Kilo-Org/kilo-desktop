@@ -30,18 +30,11 @@
 		],
 		"settings": [
 			{
-				"id": "kilo-account",
-				"title": "Kilo",
-				"component": "KiloAccountSettings",
-				"icon": "KiloAccountNavIcon",
-				"priority": 90
-			},
-			{
 				"id": "kilo-providers",
 				"title": "Providers",
 				"component": "KiloProvidersSettings",
 				"icon": "KiloProvidersNavIcon",
-				"priority": 80
+				"priority": 90
 			}
 		]
 	}

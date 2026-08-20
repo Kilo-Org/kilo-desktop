@@ -9,6 +9,7 @@ import {
 	ItemTitle,
 } from "@anaconda-agentic-desktop/ui/components/item";
 import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { KiloMark } from "./KiloMark.js";
 
@@ -19,10 +20,17 @@ const SIGN_IN_BENEFITS = [
 ] as const;
 
 /** Signed-out CTA used by Settings and the first-run onboarding wizard. */
-export function KiloSignInCard({ onLogin }: { onLogin: () => void }) {
+export function KiloSignInCard({
+	onLogin,
+	embedded = false,
+}: {
+	onLogin: () => void;
+	/** Skip the outer frame when nested inside another bordered card. */
+	embedded?: boolean;
+}) {
 	return (
 		<div
-			className="border-border bg-card overflow-hidden rounded-xl border"
+			className={cn("overflow-hidden", !embedded && "border-border bg-card rounded-xl border")}
 			data-qa-id="kilo-account-signed-out"
 		>
 			<div className="flex flex-col items-center px-6 pt-8 pb-6 text-center">
@@ -31,7 +39,7 @@ export function KiloSignInCard({ onLogin }: { onLogin: () => void }) {
 					Connect your Kilo account
 				</h2>
 				<p className="text-muted-foreground mt-1.5 max-w-sm text-sm text-balance">
-					One sign-in for frontier models, your credit balance, and team workspaces — without
+					One connection for frontier models, your credit balance, and team workspaces — without
 					leaving the app.
 				</p>
 				<Button
@@ -41,7 +49,7 @@ export function KiloSignInCard({ onLogin }: { onLogin: () => void }) {
 					onClick={onLogin}
 					data-qa-id="kilo-account-login"
 				>
-					Sign in to Kilo
+					Connect
 					<ArrowUpRightIcon data-icon="inline-end" />
 				</Button>
 			</div>

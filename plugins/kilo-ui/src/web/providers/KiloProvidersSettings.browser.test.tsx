@@ -7,6 +7,7 @@ import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import { kiloUiChatContract, type KiloGlobalConnection } from "../../contracts/chat/schemas.js";
+import { KiloAuthContext, type KiloAuthContextValue } from "../account/KiloAuthContext.js";
 import { ChatConnectionProvider } from "../chat/connection/ChatConnectionContext.js";
 import { createKiloDirectoryClient } from "../chat/runtime/create-kilo-runtime-client.js";
 import { KiloProvidersSettings } from "./KiloProvidersSettings.js";
@@ -61,11 +62,36 @@ function mockCatalog() {
 	authRemove.mockResolvedValue({ data: true });
 }
 
-function renderPage(status: {
-	isPending: boolean;
-	isError: boolean;
-	connection?: KiloGlobalConnection;
-}) {
+function idleAuth(overrides: Partial<KiloAuthContextValue> = {}): KiloAuthContextValue {
+	return {
+		isLoading: false,
+		connectionUnavailable: false,
+		authenticated: false,
+		profile: null,
+		deviceAuth: { status: "idle" },
+		isRefreshing: false,
+		isSwitchingOrg: false,
+		profileError: null,
+		orgError: null,
+		login: vi.fn(),
+		cancelLogin: vi.fn(),
+		logout: vi.fn(),
+		refreshProfile: vi.fn(),
+		setOrganization: vi.fn(),
+		dismissOrgError: vi.fn(),
+		openExternal: vi.fn(),
+		...overrides,
+	};
+}
+
+function renderPage(
+	status: {
+		isPending: boolean;
+		isError: boolean;
+		connection?: KiloGlobalConnection;
+	},
+	auth: KiloAuthContextValue = idleAuth(),
+) {
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
 		channels: kiloUiChatContract,
@@ -88,12 +114,14 @@ function renderPage(status: {
 						connectionPromise: Promise.resolve(connection),
 					}}
 				>
-					<KiloProvidersSettings />
+					<KiloAuthContext.Provider value={auth}>
+						<KiloProvidersSettings />
+					</KiloAuthContext.Provider>
 				</ChatConnectionProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { screen: page, sdk, queryClient };
+	return { screen: page, sdk, queryClient, auth };
 }
 
 describe("KiloProvidersSettings", () => {
@@ -104,13 +132,41 @@ describe("KiloProvidersSettings", () => {
 		expect(createKiloDirectoryClient).not.toHaveBeenCalled();
 	});
 
-	it("lists a connected gateway provider and popular add targets", async () => {
+	it("lists the expandable Kilo Gateway card and popular add targets", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
 		await expect.element(screen.getByTestId("kilo-providers-row-kilo")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-providers-manage-account")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-kilo"))
+			.toHaveAttribute("data-state", "collapsed");
+		await expect.element(screen.getByTestId("kilo-providers-kilo-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-login")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-providers-add-anthropic")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-providers-add-custom")).toBeVisible();
+	});
+
+	it("collapses the Kilo card when signed in", async () => {
+		mockCatalog();
+		const { screen } = renderPage(
+			{ isPending: false, isError: false, connection },
+			idleAuth({
+				authenticated: true,
+				profile: {
+					profile: { email: "dev@anaconda.com", name: "Dev User" },
+					balance: { balance: 1 },
+					kiloPass: null,
+					currentOrgId: null,
+				},
+			}),
+		);
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-kilo"))
+			.toHaveAttribute("data-state", "collapsed");
+		await expect
+			.element(screen.getByTestId("kilo-account-email"))
+			.toHaveTextContent("dev@anaconda.com");
+		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-login")).not.toBeInTheDocument();
 	});
 
 	it("connects a catalog provider with an API key", async () => {

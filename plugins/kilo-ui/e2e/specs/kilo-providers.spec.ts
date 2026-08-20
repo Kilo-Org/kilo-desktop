@@ -1,11 +1,14 @@
 import { test } from "../fixtures.js";
 
 test.describe("Kilo provider settings @smoke", () => {
-	test("opens the Providers settings section", async ({ appShellPage, kiloProvidersPage }) => {
+	test("opens Providers and shows the Kilo Gateway account card", async ({
+		appShellPage,
+		kiloProvidersPage,
+	}) => {
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();
 		await kiloProvidersPage.openFromSettings();
-		await kiloProvidersPage.verifyLoaded();
+		await kiloProvidersPage.verifyKiloLoginOrSignedIn();
 		await appShellPage.leaveSettings();
 		await appShellPage.verifyShellIsLoaded();
 	});

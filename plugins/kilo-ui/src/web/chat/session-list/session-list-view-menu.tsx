@@ -118,20 +118,22 @@ export const SessionListViewMenu: FC<{
 					<DropdownMenuSub>
 						<DropdownMenuSubTrigger className="w-full">Show</DropdownMenuSubTrigger>
 						<DropdownMenuSubContent>
-							{SESSION_LIST_SHOW_FIELDS.map((field) => (
-								<DropdownMenuCheckboxItem
-									key={field}
-									checked={view.show.includes(field)}
-									closeOnClick={false}
-									onCheckedChange={(checked) => {
-										onViewChange({
-											show: toggleShow(view.show, field, checked === true),
-										});
-									}}
-								>
-									{SESSION_LIST_SHOW_LABELS[field]}
-								</DropdownMenuCheckboxItem>
-							))}
+							<DropdownMenuGroup>
+								{SESSION_LIST_SHOW_FIELDS.map((field) => (
+									<DropdownMenuCheckboxItem
+										key={field}
+										checked={view.show.includes(field)}
+										closeOnClick={false}
+										onCheckedChange={(checked) => {
+											onViewChange({
+												show: toggleShow(view.show, field, checked === true),
+											});
+										}}
+									>
+										{SESSION_LIST_SHOW_LABELS[field]}
+									</DropdownMenuCheckboxItem>
+								))}
+							</DropdownMenuGroup>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
 				</DropdownMenuGroup>

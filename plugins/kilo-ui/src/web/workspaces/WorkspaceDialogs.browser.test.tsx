@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { SdkProvider, sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
@@ -163,7 +163,12 @@ describe("WorkspaceDialogs — create/edit form", () => {
 		});
 
 		await expect.element(page.getByRole("radiogroup", { name: "Identity color" })).toBeVisible();
-		await page.getByRole("radio", { name: "Color #34D399" }).click();
+		page
+			.getByRole("radio", { name: `Color ${DEFAULT_WORKSPACE_IDENTITY_COLOR}` })
+			.element()
+			.focus();
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.element(page.getByRole("radio", { name: "Color #34D399" })).toBeChecked();
 		await page.getByRole("button", { name: /Drop folders/ }).click();
 		await page.getByRole("button", { name: "Create workspace" }).click();
 
@@ -175,6 +180,24 @@ describe("WorkspaceDialogs — create/edit form", () => {
 				}),
 			),
 		);
+	});
+
+	it("keeps a custom identity color in the radio group", async () => {
+		renderDialogs({
+			dialog: {
+				mode: "edit",
+				workspace: { ...workspaceA, color: "#123456" },
+			},
+		});
+
+		const custom = page.getByRole("radio", { name: "Custom color #123456" });
+		await expect.element(custom).toBeChecked();
+
+		custom.element().focus();
+		await userEvent.keyboard("{ArrowLeft}");
+		await expect.element(page.getByRole("radio", { name: "Color #FBBF24" })).toBeChecked();
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.element(page.getByRole("radio", { name: /Custom color/ })).toBeChecked();
 	});
 
 	it("cancels the form without saving", async () => {

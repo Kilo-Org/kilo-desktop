@@ -2,13 +2,24 @@
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
+	Command,
+	CommandDialog,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+	CommandSeparator,
+} from "@anaconda-agentic-desktop/ui/components/command";
+import { ToggleGroup, ToggleGroupItem } from "@anaconda-agentic-desktop/ui/components/toggle-group";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { SidebarSearch, SidebarSeparator } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import { SidebarSeparator } from "@anaconda-agentic-desktop/ui/components/sidebar";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
 import {
 	Tooltip,
@@ -28,13 +39,15 @@ import {
 	CheckIcon,
 	ChevronDownIcon,
 	CircleAlertIcon,
-	CircleCheckIcon,
+	FolderIcon,
 	Loader2Icon,
 	MessageCircleQuestionIcon,
+	MessageSquareIcon,
 	MoreHorizontalIcon,
 	PencilIcon,
 	PinIcon,
 	PinOffIcon,
+	SearchIcon,
 	Trash2Icon,
 	Undo2Icon,
 } from "lucide-react";
@@ -52,13 +65,16 @@ import {
 	type ReactNode,
 } from "react";
 
+import type { Workspace } from "../../../../contracts/workspaces/schemas.js";
 import { GlobalNewButton } from "../../../create/GlobalNewButton.js";
 import { InboxWorkspaceFilter } from "../../../workspaces/InboxWorkspaceFilter.js";
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
+import { workspaceGlyphColor } from "../../../workspaces/workspace-glyph-style.js";
 import { navigateToChat } from "../../chat-navigation.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
 import {
 	deriveSessionRowState,
+	directoryBasename,
 	formatRelativeTimeLabel,
 	formatWorkingDurationLabel,
 	resolveSessionLocationLabel,
@@ -75,16 +91,18 @@ import {
 	useSessionListPins,
 	useSessionListView,
 } from "../../session-list/use-session-list-view.js";
-import { workspaceGlyphColor } from "../../../workspaces/workspace-glyph-style.js";
+/** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
+const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 
 /**
- * Shared glass surface states for Search and session rows.
- * Idle is clear; hover/focus and selected use the same translucent washes.
+ * Shared surface states for session rows.
+ * Idle is clear; hover/focus uses a translucent wash; selected matches the
+ * content/chat pane (`bg-muted`).
  */
 const sidebarSurfaceIdleClassName =
 	"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
 const sidebarSurfaceActiveClassName =
-	"bg-foreground/8 text-sidebar-foreground font-medium transition-colors hover:bg-foreground/8 focus-visible:bg-foreground/8";
+	"bg-muted text-sidebar-foreground font-medium transition-colors hover:bg-muted focus-visible:bg-muted";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -148,7 +166,6 @@ const SessionListItemSlot: FC<{
 };
 
 export const SessionList: FC = () => {
-	const [search, setSearch] = useState("");
 	const { view, update, reset } = useSessionListView();
 	const { ids: pinIds, toggle: togglePin } = useSessionListPins();
 	const pinnedIds = useMemo(() => new Set(pinIds), [pinIds]);
@@ -166,7 +183,6 @@ export const SessionList: FC = () => {
 		[focus, view],
 	);
 	const show = visibleShowFields(resolvedView);
-	const query = search.trim().toLowerCase();
 
 	const sections = useMemo(() => {
 		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
@@ -180,12 +196,10 @@ export const SessionList: FC = () => {
 				archived,
 			};
 		};
-		const matchesQuery = (title: string | undefined) =>
-			!query || (title || "New Chat").toLowerCase().includes(query);
 		const entries = [
 			...threadIds.map((id, index) => toEntry(id, index, false)),
 			...archivedThreadIds.map((id, index) => toEntry(id, index, true)),
-		].filter((entry) => matchesQuery(entry.title));
+		];
 		return buildSessionListSections({
 			entries,
 			activityBySessionId,
@@ -197,7 +211,6 @@ export const SessionList: FC = () => {
 		activityBySessionId,
 		archivedThreadIds,
 		pinnedIds,
-		query,
 		resolvedView,
 		threadIds,
 		threadItems,
@@ -212,11 +225,7 @@ export const SessionList: FC = () => {
 	const focusedWorkspace = focus
 		? workspaces.find((workspace) => workspace.id === focus)
 		: undefined;
-	const emptyLabel = query
-		? "No chats found"
-		: focusedWorkspace
-			? `No chats in ${focusedWorkspace.name}`
-			: null;
+	const emptyLabel = focusedWorkspace ? `No chats in ${focusedWorkspace.name}` : null;
 
 	const viewMenu = (
 		<SessionListViewMenu
@@ -242,7 +251,12 @@ export const SessionList: FC = () => {
 					className="flex min-h-0 flex-1 flex-col gap-0.5"
 				>
 					<GlobalNewButton />
-					<SessionListSearch value={search} onValueChange={setSearch} />
+					<SessionListSearch
+						onSelectWorkspace={(id) => {
+							update({ focus: id });
+							setActiveWorkspaceId(id);
+						}}
+					/>
 					<SidebarSeparator data-qa-id="session-list-chrome-divider" className="mx-0 mt-1 mb-3" />
 					<div
 						data-qa-id="session-list-inbox-header"
@@ -298,17 +312,246 @@ function useNavigateToChat(): () => void {
 	return useCallback(() => navigateToChat(sdk), [sdk]);
 }
 
-const SessionListSearch: FC<{
-	value: string;
-	onValueChange: (value: string) => void;
-}> = ({ value, onValueChange }) => {
+function filterSearchItems(value: string, search: string, keywords?: string[]): number {
+	const terms = keywords && keywords.length > 0 ? keywords : [value];
+	const query = search.trim().toLowerCase();
+	return terms.some((term) => term.toLowerCase().includes(query)) ? 1 : 0;
+}
+
+const SEARCH_SCOPES = ["all", "chats", "workspaces"] as const;
+type SearchScope = (typeof SEARCH_SCOPES)[number];
+
+const SEARCH_SCOPE_LABELS: Record<SearchScope, string> = {
+	all: "All",
+	chats: "Chats",
+	workspaces: "Workspaces",
+};
+
+function isSearchScope(value: string | undefined): value is SearchScope {
+	return value === "all" || value === "chats" || value === "workspaces";
+}
+
+function searchEmptyLabel(scope: SearchScope, emptyQuery: boolean, isLoading: boolean): string {
+	if (!emptyQuery) return "No results.";
+	if (scope !== "workspaces") return "No recent chats.";
+	if (isLoading) return "Loading workspaces…";
+	return "No workspaces yet.";
+}
+
+function workspacePrimaryFolderLabel(workspace: Workspace): string | null {
+	const path =
+		workspace.folders.find((folder) => folder.isPrimary)?.path ?? workspace.folders[0]?.path;
+	return path ? directoryBasename(path) : null;
+}
+
+type SearchRow = {
+	id: string;
+	title: string;
+	sublabel: string | null;
+	updatedAt: number | undefined;
+	archived: boolean;
+};
+
+function SearchChatItem({ row, onSelect }: { row: SearchRow; onSelect: (row: SearchRow) => void }) {
 	return (
-		<SidebarSearch
-			value={value}
-			onChange={(event) => onValueChange(event.target.value)}
-			aria-label="Search"
-			placeholder="Search"
-		/>
+		<CommandItem
+			value={`chat:${row.id}`}
+			keywords={row.sublabel ? [row.title, row.sublabel] : [row.title]}
+			onSelect={() => onSelect(row)}
+			className={HIDE_BUILTIN_CHECK}
+		>
+			<MessageSquareIcon />
+			<span className="min-w-0 flex-1 truncate">{row.title}</span>
+			<span className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
+				{row.sublabel ? <span className="max-w-36 truncate">{row.sublabel}</span> : null}
+				{row.updatedAt ? (
+					<span className="tabular-nums">{formatRelativeTimeLabel(row.updatedAt, Date.now())}</span>
+				) : null}
+			</span>
+		</CommandItem>
+	);
+}
+
+function SearchWorkspaceItem({
+	workspace,
+	onSelect,
+}: {
+	workspace: Workspace;
+	onSelect: (id: string) => void;
+}) {
+	const glyph = workspaceGlyphColor(workspace.color);
+	const sublabel = workspacePrimaryFolderLabel(workspace);
+	return (
+		<CommandItem
+			data-qa-id={`session-search-workspace-${workspace.id}`}
+			value={`workspace:${workspace.id}`}
+			keywords={sublabel ? [workspace.name, sublabel] : [workspace.name]}
+			onSelect={() => onSelect(workspace.id)}
+			className={HIDE_BUILTIN_CHECK}
+		>
+			<FolderIcon {...(glyph ? { color: glyph } : {})} />
+			<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+			{sublabel ? (
+				<span className="text-muted-foreground max-w-36 shrink-0 truncate text-xs">{sublabel}</span>
+			) : null}
+		</CommandItem>
+	);
+}
+
+const SessionListSearch: FC<{
+	onSelectWorkspace: (workspaceId: string) => void;
+}> = ({ onSelectWorkspace }) => {
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const [scope, setScope] = useState<SearchScope>("all");
+	const aui = useAui();
+	const sdk = useSdk("kilo-ui");
+	const threadIds = useAuiState((s) => s.threads.threadIds);
+	const archivedThreadIds = useAuiState((s) => s.threads.archivedThreadIds);
+	const threadItems = useAuiState((s) => s.threads.threadItems);
+	const activityBySessionId = useSessionActivity((s) => s.sessions);
+	const { isLoading, isUnavailable, workspaces } = useWorkspacesFeature();
+	const showChats = scope !== "workspaces";
+	const showWorkspaces = scope !== "chats" && !isUnavailable;
+
+	useEffect(() => {
+		if (open) return;
+		setQuery("");
+		setScope("all");
+	}, [open]);
+
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key.toLowerCase() !== "k") return;
+			if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+			event.preventDefault();
+			setOpen((current) => !current);
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, []);
+
+	const rows = useMemo(() => {
+		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
+		const toRow = (id: string, archived: boolean): SearchRow => {
+			const item = itemsById.get(id);
+			const remoteId = item?.remoteId;
+			const activity = remoteId ? activityBySessionId[remoteId] : undefined;
+			return {
+				id,
+				title: item?.title || "New Chat",
+				sublabel: resolveSessionLocationLabel(activity, workspaces),
+				updatedAt: activity?.updatedAt,
+				archived,
+			};
+		};
+		return [
+			...threadIds.map((id) => toRow(id, false)),
+			...archivedThreadIds.map((id) => toRow(id, true)),
+		];
+	}, [activityBySessionId, archivedThreadIds, threadIds, threadItems, workspaces]);
+
+	const chats = showChats ? rows.filter((row) => !row.archived) : [];
+	const settled = showChats ? rows.filter((row) => row.archived) : [];
+	const workspaceRows = showWorkspaces ? workspaces : [];
+	const emptyQuery = query.trim().length === 0;
+	const emptyLabel = searchEmptyLabel(scope, emptyQuery, isLoading);
+
+	const handleSelectChat = (row: SearchRow) => {
+		setOpen(false);
+		void aui.threads.switchToThread(row.id, { unarchive: !row.archived });
+		navigateToChat(sdk);
+	};
+
+	const handleSelectWorkspace = (id: string) => {
+		setOpen(false);
+		onSelectWorkspace(id);
+	};
+
+	return (
+		<>
+			<Button
+				type="button"
+				variant="ghost"
+				className={cn("w-full justify-start", sidebarNavRadiusClassName)}
+				data-slot="aui_thread-list-search"
+				data-qa-id="session-list-search"
+				onClick={() => setOpen(true)}
+			>
+				<SearchIcon data-icon="inline-start" />
+				Search
+			</Button>
+			<CommandDialog
+				open={open}
+				onOpenChange={setOpen}
+				title="Search"
+				description="Search chats and workspaces"
+				showCloseButton
+			>
+				<Command label="Search chats and workspaces" filter={filterSearchItems}>
+					<CommandInput
+						value={query}
+						onValueChange={setQuery}
+						placeholder="Search chats, workspaces…"
+						aria-label="Search chats and workspaces"
+						className="pe-10"
+					/>
+					<ToggleGroup
+						size="sm"
+						spacing={1}
+						value={[scope]}
+						aria-label="Search in"
+						className="px-4 pt-0.5 pb-3.5"
+						onMouseDown={(event) => event.preventDefault()}
+						onValueChange={(value) => {
+							const next = value[0];
+							if (isSearchScope(next)) setScope(next);
+						}}
+					>
+						{SEARCH_SCOPES.map((item) => (
+							<ToggleGroupItem key={item} value={item} data-qa-id={`session-search-filter-${item}`}>
+								{SEARCH_SCOPE_LABELS[item]}
+							</ToggleGroupItem>
+						))}
+					</ToggleGroup>
+					<CommandSeparator />
+					<CommandList>
+						<CommandEmpty>{emptyLabel}</CommandEmpty>
+						{chats.length > 0 ? (
+							<CommandGroup heading={emptyQuery ? "Recent chats" : "Chats"}>
+								{chats.map((row) => (
+									<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
+								))}
+							</CommandGroup>
+						) : null}
+						{settled.length > 0 ? (
+							<>
+								{chats.length > 0 ? <CommandSeparator /> : null}
+								<CommandGroup heading="Settled">
+									{settled.map((row) => (
+										<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
+									))}
+								</CommandGroup>
+							</>
+						) : null}
+						{workspaceRows.length > 0 ? (
+							<>
+								{chats.length > 0 || settled.length > 0 ? <CommandSeparator /> : null}
+								<CommandGroup heading="Workspaces">
+									{workspaceRows.map((workspace) => (
+										<SearchWorkspaceItem
+											key={workspace.id}
+											workspace={workspace}
+											onSelect={handleSelectWorkspace}
+										/>
+									))}
+								</CommandGroup>
+							</>
+						) : null}
+					</CommandList>
+				</Command>
+			</CommandDialog>
+		</>
 	);
 };
 
@@ -499,11 +742,9 @@ const SessionRowGlyph: FC<{
 	rowState: SessionRowState;
 	isActive: boolean;
 	workingSince: number | undefined;
-	identityColor?: string | undefined;
-}> = ({ rowState, isActive, workingSince, identityColor }) => {
+}> = ({ rowState, isActive, workingSince }) => {
 	if (rowState === null) return null;
 	const { label, className } = rowStateLabels[rowState];
-	const stroke = identityColor ? { color: identityColor } : {};
 	return (
 		<TooltipProvider delay={300}>
 			<Tooltip>
@@ -513,24 +754,26 @@ const SessionRowGlyph: FC<{
 							role="status"
 							aria-label={label}
 							className={cn(
-								"inline-flex shrink-0 items-center",
-								!identityColor && className,
+								"inline-flex size-3.5 shrink-0 items-center justify-center",
+								rowState !== "done" && className,
 								rowState === "working" && !isActive && "opacity-75",
 							)}
 						/>
 					}
 				>
 					{rowState === "working" ? (
-						<Loader2Icon aria-hidden className="size-3.5 animate-spin" {...stroke} />
+						<Loader2Icon aria-hidden className="size-3.5 animate-spin" />
 					) : null}
 					{rowState === "done" ? (
-						<CircleCheckIcon aria-hidden className="size-3.5" {...stroke} />
+						<span
+							data-qa-id="session-list-done-dot"
+							aria-hidden
+							className="bg-muted-foreground/40 size-1.5 rounded-full"
+						/>
 					) : null}
-					{rowState === "approval" ? (
-						<CircleAlertIcon aria-hidden className="size-3.5" {...stroke} />
-					) : null}
+					{rowState === "approval" ? <CircleAlertIcon aria-hidden className="size-3.5" /> : null}
 					{rowState === "input" ? (
-						<MessageCircleQuestionIcon aria-hidden className="size-3.5" {...stroke} />
+						<MessageCircleQuestionIcon aria-hidden className="size-3.5" />
 					) : null}
 				</TooltipTrigger>
 				<TooltipContent side="right">
@@ -621,9 +864,6 @@ const SessionRow: FC = () => {
 	const pinId = remoteId ?? threadId;
 	const isPinned = pinnedIds.has(pinId);
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
-	const identityColor = workspaceGlyphColor(
-		workspaces.find((workspace) => workspace.id === activity?.workspaceId)?.color,
-	);
 	const showUpdated = show.includes("updated");
 	const showWorkspace = show.includes("workspace") && locationLabel !== null;
 	const updatedAt = showUpdated ? activity?.updatedAt : undefined;
@@ -637,19 +877,14 @@ const SessionRow: FC = () => {
 							role="status"
 							aria-label="Settled"
 							className={cn(
-								"inline-flex shrink-0 items-center transition-opacity",
+								"inline-flex size-3.5 shrink-0 items-center justify-center transition-opacity",
 								!isActive &&
-									!identityColor &&
 									"opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
 							)}
 						/>
 					}
 				>
-					<CheckIcon
-						aria-hidden
-						className="size-3.5"
-						{...(identityColor ? { color: identityColor } : {})}
-					/>
+					<CheckIcon aria-hidden className="size-3.5" />
 				</TooltipTrigger>
 				<TooltipContent side="right">Settled</TooltipContent>
 			</Tooltip>
@@ -659,16 +894,9 @@ const SessionRow: FC = () => {
 			rowState={rowState}
 			isActive={isActive}
 			workingSince={activity?.workingSince}
-			identityColor={identityColor}
 		/>
 	) : (
-		<span className="inline-flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
-			<span
-				data-qa-id={identityColor ? "session-list-workspace-dot" : "session-list-idle-dot"}
-				className={cn("size-1.5 rounded-full", !identityColor && "bg-muted-foreground/40")}
-				style={identityColor ? { backgroundColor: identityColor } : undefined}
-			/>
-		</span>
+		<span className="inline-flex size-3.5 shrink-0" aria-hidden />
 	);
 
 	const rightSlot = updatedAt !== undefined ? <SessionRelativeTime timestamp={updatedAt} /> : null;

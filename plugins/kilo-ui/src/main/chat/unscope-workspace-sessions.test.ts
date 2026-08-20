@@ -118,21 +118,19 @@ describe("unscopeWorkspaceSessions", () => {
 });
 
 describe("createWorkspaceSessionUnscoper", () => {
-	it("no-ops when Kilo Server is unavailable", async () => {
+	it("reports when Kilo Server is unavailable so cleanup can be retried", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "kilo-ui" });
 		const createClient = vi.fn();
 		const unscope = createWorkspaceSessionUnscoper(mainSdk, createClient);
 
-		await expect(unscope("ws-1")).resolves.toBeUndefined();
+		await expect(unscope("ws-1")).rejects.toThrow("Kilo Server is unavailable.");
 		expect(createClient).not.toHaveBeenCalled();
 		mainSdk.dispose();
 	});
 
-	it("does not fail workspace deletion when session updates fail", async () => {
-		const warn = vi.fn();
+	it("reports session update failures so cleanup can be retried", async () => {
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
 			featureId: "kilo-ui",
-			main: { logger: { info: vi.fn(), warn, error: vi.fn() } },
 		});
 		const kiloServer = createMainSdk("kilo-server");
 		kiloServer.plugins.expose("connectionService", {
@@ -142,11 +140,7 @@ describe("createWorkspaceSessionUnscoper", () => {
 			throw new Error("Kilo is unreachable.");
 		});
 
-		await expect(unscope("ws-1")).resolves.toBeUndefined();
-		expect(warn).toHaveBeenCalledWith(
-			"Could not clear workspace from chats after deleting a workspace.",
-			expect.objectContaining({ error: "Kilo is unreachable." }),
-		);
+		await expect(unscope("ws-1")).rejects.toThrow("Kilo is unreachable.");
 		kiloServer.dispose();
 		mainSdk.dispose();
 	});

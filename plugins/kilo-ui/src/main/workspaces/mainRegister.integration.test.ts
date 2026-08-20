@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import type { KvStoreFactory } from "@anaconda-agentic-desktop/feature-sdk";
 
 import type { KiloGlobalConnection, KiloSessionPreparation } from "../../contracts/chat/schemas.js";
 import type { WorkspaceCapabilities } from "../../contracts/workspaces/schemas.js";
@@ -18,6 +19,25 @@ const SERVER_CONNECTION = {
 	version: "7.4.20",
 	globalDirectory: "/plugin-data/kilo-server/runtime",
 } satisfies KiloGlobalConnection;
+
+function createPersistentKvFactory(): KvStoreFactory {
+	const stores = new Map<string, Record<string, unknown>>();
+	return (options) => {
+		const namespace = options.namespace ?? "default";
+		const initial = stores.get(namespace) ?? { ...options.defaults };
+		stores.set(namespace, initial);
+		return {
+			snapshot: () => ({ ...stores.get(namespace) }) as typeof options.defaults,
+			get: (key) => stores.get(namespace)?.[String(key)] as (typeof options.defaults)[typeof key],
+			set: (patch) => {
+				const next = { ...stores.get(namespace), ...patch } as typeof options.defaults;
+				stores.set(namespace, next);
+				return { ...next };
+			},
+			clear: () => stores.set(namespace, { ...options.defaults }),
+		};
+	};
+}
 
 describe("kilo-ui mainRegister", () => {
 	const directories: string[] = [];
@@ -126,6 +146,48 @@ describe("kilo-ui mainRegister", () => {
 		})) as { id: string };
 		await expect(mainSdk.invoke("remove", { id: created.id })).resolves.toEqual({ deleted: true });
 		expect(unscopeWorkspaceSessions).toHaveBeenCalledWith(created.id);
+	});
+
+	it("retries failed chat cleanup after the plugin restarts", async () => {
+		const userData = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-ui-main-"));
+		const storageDir = path.join(userData, "plugins", "kilo-ui");
+		const project = path.join(userData, "Project");
+		fs.mkdirSync(storageDir, { recursive: true });
+		fs.mkdirSync(project);
+		directories.push(userData);
+
+		const failingCleanup = vi.fn(async () => {
+			throw new Error("Kilo is unavailable.");
+		});
+		const createKvStore = createPersistentKvFactory();
+		const firstSdk = createFakeMainSdk({
+			featureId: "kilo-ui",
+			storageDir,
+			pluginDir: PLUGIN_DIR,
+			createKvStore,
+		});
+		mainRegister(firstSdk, { unscopeWorkspaceSessions: failingCleanup });
+
+		const created = (await firstSdk.invoke("create", {
+			folders: [{ path: project, isPrimary: true }],
+		})) as { id: string };
+		await expect(firstSdk.invoke("remove", { id: created.id })).resolves.toEqual({
+			deleted: true,
+		});
+		expect(failingCleanup).toHaveBeenCalledWith(created.id);
+		firstSdk.dispose();
+
+		const recoveredCleanup = vi.fn(async () => undefined);
+		const secondSdk = createFakeMainSdk({
+			featureId: "kilo-ui",
+			storageDir,
+			pluginDir: PLUGIN_DIR,
+			createKvStore,
+		});
+		disposables.push(() => secondSdk.dispose());
+		mainRegister(secondSdk, { unscopeWorkspaceSessions: recoveredCleanup });
+
+		await vi.waitFor(() => expect(recoveredCleanup).toHaveBeenCalledWith(created.id));
 	});
 
 	it("validates channels and closes the database on disposal", async () => {

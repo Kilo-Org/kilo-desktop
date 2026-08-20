@@ -68,6 +68,8 @@ export default defineConfig({
 						"@anaconda-agentic-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
+						"@base-ui/react/toggle",
+						"@base-ui/react/toggle-group",
 						"zod",
 						"vitest",
 						"vitest/internal/browser",

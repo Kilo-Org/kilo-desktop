@@ -177,7 +177,7 @@ describe("buildSessionListSections", () => {
 
 		expect(sections.map((section) => section.key)).toEqual(["attention", "active", "settled"]);
 		expect(sections[0]?.label).toBe("Needs Attention");
-		expect(sections[0]?.rows).toEqual([{ id: "local-ses-4", archived: true, sourceIndex: 1 }]);
+		expect(sections[0]?.rows).toEqual([{ id: "local-ses-4", archived: true }]);
 		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-2", "local-ses-1"]);
 		expect(sections[2]?.rows.map((row) => row.id)).toEqual(["local-ses-3"]);
 	});
@@ -224,7 +224,7 @@ describe("buildSessionListSections", () => {
 				key: "settled",
 				label: "Settled",
 				tone: "settled",
-				rows: [{ id: "local-ses-3", archived: true, sourceIndex: 0 }],
+				rows: [{ id: "local-ses-3", archived: true }],
 			},
 		]);
 	});

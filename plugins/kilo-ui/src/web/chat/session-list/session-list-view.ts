@@ -83,7 +83,6 @@ export type SessionListSectionTone =
 export type SessionListSectionRow = {
 	id: string;
 	archived: boolean;
-	sourceIndex: number;
 };
 
 export type SessionListSection = {
@@ -260,7 +259,7 @@ function sortRows(rows: Enriched[], ordering: SessionListOrdering) {
 }
 
 function toRows(rows: Enriched[]): SessionListSectionRow[] {
-	return rows.map(({ id, archived, sourceIndex }) => ({ id, archived, sourceIndex }));
+	return rows.map(({ id, archived }) => ({ id, archived }));
 }
 
 function workspaceKey(row: Enriched): string {

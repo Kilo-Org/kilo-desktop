@@ -13,7 +13,6 @@ export {
 	normalizeWorkspaceIdentityColor,
 	WORKSPACE_IDENTITY_COLORS,
 	workspaceIdentityColorSchema,
-	type WorkspaceIdentityColor,
 } from "./identity-color.js";
 
 export const workspaceFolderInputSchema = z.object({

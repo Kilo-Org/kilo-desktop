@@ -104,14 +104,8 @@ export function createWorkspaceSessionUnscoper(
 	return async (workspaceId) => {
 		const connectionService =
 			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
-		if (!connectionService) return;
-		try {
-			const connection = await connectionService.getConnection();
-			await unscopeWorkspaceSessions(createClient(connection), workspaceId);
-		} catch (error) {
-			mainSdk.logger.warn("Could not clear workspace from chats after deleting a workspace.", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
+		if (!connectionService) throw new Error("Kilo Server is unavailable.");
+		const connection = await connectionService.getConnection();
+		await unscopeWorkspaceSessions(createClient(connection), workspaceId);
 	};
 }

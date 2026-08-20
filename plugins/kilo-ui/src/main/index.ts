@@ -16,6 +16,7 @@ import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
 import { createUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
 import { createWorkspaceSessionUnscoper } from "./chat/unscope-workspace-sessions.js";
+import { WorkspaceSessionCleanupQueue } from "./chat/workspace-session-cleanup-queue.js";
 
 type KiloServerCapabilities = {
 	connectionService: {
@@ -34,6 +35,8 @@ export function mainRegister(
 	const service = new WorkspaceService(db);
 	const unscopeWorkspaceSessions =
 		options.unscopeWorkspaceSessions ?? createWorkspaceSessionUnscoper(mainSdk);
+	const cleanup = new WorkspaceSessionCleanupQueue(mainSdk, unscopeWorkspaceSessions);
+	cleanup.retryPending();
 
 	const api: WorkspacesService = {
 		list: async () => service.list(),
@@ -52,7 +55,7 @@ export function mainRegister(
 		remove: async ({ id }) => {
 			const before = service.remove(id);
 			mainSdk.events.emit("workspace-deleted", { before, after: null });
-			await unscopeWorkspaceSessions(id);
+			await cleanup.enqueue(id);
 			return { deleted: true };
 		},
 	};

@@ -14,7 +14,6 @@ import {
 	formatWorkingDurationLabel,
 	hasAnacondaSessionMetadata,
 	needsAttention,
-	partitionSidebarThreads,
 	readAnacondaSessionMetadata,
 	readWorkspaceFoldersFromMetadata,
 	readSessionInfoPatch,
@@ -551,112 +550,5 @@ describe("resolveSessionLocationLabel", () => {
 
 	it("has no location without any location data", () => {
 		expect(resolveSessionLocationLabel(undefined, workspaces)).toBeNull();
-	});
-});
-
-describe("partitionSidebarThreads", () => {
-	it("partitions attention across regular and archived lists", () => {
-		const partition = partitionSidebarThreads({
-			regular: [
-				{ id: "local-1", remoteId: "ses-1" },
-				{ id: "local-2", remoteId: "ses-2" },
-			],
-			archived: [
-				{ id: "local-3", remoteId: "ses-3" },
-				{ id: "local-4", remoteId: "ses-4" },
-			],
-			activityBySessionId: {
-				"ses-1": { ...createEmptySessionActivity(), createdAt: 10 },
-				"ses-2": { ...createEmptySessionActivity(), createdAt: 20 },
-				"ses-3": { ...createEmptySessionActivity(), updatedAt: 30 },
-				"ses-4": {
-					...createEmptySessionActivity(),
-					pendingPermissionIds: ["perm-1"],
-					updatedAt: 40,
-				},
-			},
-		});
-
-		expect(partition.attention).toEqual([{ index: 1, archived: true }]);
-		expect(partition.sessions).toEqual([1, 0]);
-		expect(partition.settled).toEqual([0]);
-	});
-
-	it("sorts sessions by creation desc and settled by last-activity desc", () => {
-		const partition = partitionSidebarThreads({
-			regular: [
-				{ id: "local-1", remoteId: "ses-1" },
-				{ id: "local-2", remoteId: "ses-2" },
-				{ id: "local-3", remoteId: "ses-3" },
-			],
-			archived: [
-				{ id: "local-4", remoteId: "ses-4" },
-				{ id: "local-5", remoteId: "ses-5" },
-			],
-			activityBySessionId: {
-				"ses-1": { ...createEmptySessionActivity(), createdAt: 100 },
-				"ses-2": { ...createEmptySessionActivity(), createdAt: 300 },
-				"ses-3": { ...createEmptySessionActivity(), createdAt: 200 },
-				"ses-4": { ...createEmptySessionActivity(), updatedAt: 500 },
-				"ses-5": { ...createEmptySessionActivity(), updatedAt: 400 },
-			},
-		});
-
-		expect(partition.sessions).toEqual([1, 2, 0]);
-		expect(partition.settled).toEqual([0, 1]);
-	});
-
-	it("sorts attention by most recent activity", () => {
-		const partition = partitionSidebarThreads({
-			regular: [
-				{ id: "local-1", remoteId: "ses-1" },
-				{ id: "local-2", remoteId: "ses-2" },
-			],
-			archived: [],
-			activityBySessionId: {
-				"ses-1": {
-					...createEmptySessionActivity(),
-					pendingQuestionIds: ["q"],
-					updatedAt: 100,
-				},
-				"ses-2": {
-					...createEmptySessionActivity(),
-					pendingPermissionIds: ["p"],
-					updatedAt: 200,
-				},
-			},
-		});
-
-		expect(partition.attention).toEqual([
-			{ index: 1, archived: false },
-			{ index: 0, archived: false },
-		]);
-	});
-
-	it("keeps sessions without activity at the bottom in adapter order", () => {
-		const partition = partitionSidebarThreads({
-			regular: [
-				{ id: "local-1", remoteId: "ses-1" },
-				{ id: "local-2", remoteId: "ses-2" },
-				{ id: "local-3", remoteId: "ses-3" },
-			],
-			archived: [],
-			activityBySessionId: {
-				"ses-2": { ...createEmptySessionActivity(), createdAt: 50 },
-			},
-		});
-
-		expect(partition.sessions).toEqual([1, 0, 2]);
-	});
-
-	it("preserves source indices after callers filter entries", () => {
-		const partition = partitionSidebarThreads({
-			regular: [{ id: "local-2", remoteId: "ses-2", sourceIndex: 4 }],
-			archived: [{ id: "local-3", remoteId: "ses-3", sourceIndex: 7 }],
-			activityBySessionId: {},
-		});
-
-		expect(partition.sessions).toEqual([4]);
-		expect(partition.settled).toEqual([7]);
 	});
 });

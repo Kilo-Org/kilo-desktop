@@ -10,10 +10,7 @@ export const WORKSPACE_IDENTITY_COLORS = [
 	"#FBBF24",
 ] as const;
 
-export type WorkspaceIdentityColor = (typeof WORKSPACE_IDENTITY_COLORS)[number];
-
-export const DEFAULT_WORKSPACE_IDENTITY_COLOR: WorkspaceIdentityColor =
-	WORKSPACE_IDENTITY_COLORS[0];
+export const DEFAULT_WORKSPACE_IDENTITY_COLOR = WORKSPACE_IDENTITY_COLORS[0];
 
 /** Normalize to `#RRGGBB` when possible; otherwise null. */
 export function normalizeWorkspaceIdentityColor(value: string | null | undefined): string | null {

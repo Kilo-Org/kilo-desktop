@@ -416,7 +416,7 @@ describe("FilesView", () => {
 
 		for (const [testId, label] of [
 			["files-open-external-editor", "Open file in Cursor"],
-			["files-tree-toggle", "Hide file explorer"],
+			["files-tree-toggle", "Hide file list"],
 			["files-refresh", "Refresh files"],
 			["files-markdown-toggle", "Show rendered Markdown"],
 		] as const) {

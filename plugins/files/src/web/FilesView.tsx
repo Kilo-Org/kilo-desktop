@@ -624,7 +624,7 @@ export function FilesView({
 		? `Open file in ${EXTERNAL_EDITORS.find(({ id }) => id === preferredEditor)?.label ?? "preferred editor"}`
 		: "Open file in preferred editor";
 	const markdownToggleLabel = renderMarkdown ? "Show Markdown source" : "Show rendered Markdown";
-	const explorerToggleLabel = showExplorer ? "Hide file explorer" : "Show file explorer";
+	const explorerToggleLabel = showExplorer ? "Hide file list" : "Show file list";
 	return (
 		<FilesEditProvider>
 			<div

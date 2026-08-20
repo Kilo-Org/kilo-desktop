@@ -20,6 +20,29 @@
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 }
 
+.aui-composer-action-wrapper {
+	container: composer-actions / inline-size;
+}
+
+@container composer-actions (width <= 30rem) {
+	[data-slot="composer-agent-label"] {
+		display: none;
+	}
+}
+
+@container composer-actions (width <= 24rem) {
+	[data-slot="model-selector-effort"] {
+		display: none;
+	}
+}
+
+@container composer-actions (width <= 18rem) {
+	[data-slot="model-selector-name"],
+	[data-slot="model-selector-value"][data-model-selected="false"] {
+		display: none;
+	}
+}
+
 [data-theme="dark"] .chat-composer-glass {
 	--composer-glass-surface: var(--background);
 }

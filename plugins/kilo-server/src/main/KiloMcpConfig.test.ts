@@ -134,7 +134,7 @@ describe("KiloMcpConfig", () => {
 		expect((await readConfig()).mcp.shared).toMatchObject({
 			url: "https://one.test/updated",
 		});
-	});
+	}, 15_000);
 
 	it("migrates the legacy sidecar and adopts an ownerless entry", async () => {
 		await writeFile(

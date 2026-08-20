@@ -6,13 +6,19 @@ import { test as baseTest, type TestInfo } from "@playwright/test";
 import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 
-import { killStrayProcesses, packagedAppLaunchEnv } from "../utils/app-launcher.js";
+import {
+	killProcessTree,
+	killStrayProcesses,
+	packagedAppLaunchEnv,
+} from "../utils/app-launcher.js";
 import { ConsoleLogCollector } from "../utils/console-log-collector.js";
 import { packagedExecutable } from "../utils/paths.js";
 
 // Must match DESKTOP_PRODUCTION_SCHEME in apps/desktop ElectronProtocol.ts.
 const DESKTOP_URL_PREFIX = "anaconda-agentic-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
+const CLOSE_TIMEOUT_MS = 10_000;
+const CLOSE_FORCE_WAIT_MS = 5_000;
 
 /**
  * The app's first window is the splash screen — a `data:` URL with no preload,
@@ -55,6 +61,36 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 	return { app, userDataDir };
 }
 
+function wait(ms: number): { promise: Promise<void>; cancel: () => void } {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const promise = new Promise<void>((resolve) => {
+		timer = setTimeout(resolve, ms);
+	});
+	return {
+		promise,
+		cancel: () => {
+			if (timer !== undefined) clearTimeout(timer);
+		},
+	};
+}
+
+/** Close the packaged app; force-kill the process tree if graceful quit hangs. */
+async function stopApp(app: ElectronApplication): Promise<void> {
+	const pid = app.process().pid;
+	const closed = app.close().then(
+		() => undefined,
+		() => undefined,
+	);
+	const grace = wait(CLOSE_TIMEOUT_MS);
+	const timedOut = await Promise.race([closed.then(() => false), grace.promise.then(() => true)]);
+	grace.cancel();
+	if (timedOut && pid !== undefined) killProcessTree(pid);
+	const leftover = wait(CLOSE_FORCE_WAIT_MS);
+	await Promise.race([closed, leftover.promise]);
+	leftover.cancel();
+	killStrayProcesses();
+}
+
 /**
  * Worker-scoped packaged Electron app. Every test in the worker reuses one launch;
  * `electronApp` rebinds the page singleton and resets the hash between tests.
@@ -66,8 +102,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			await killStrayProcesses();
 			const { app, userDataDir } = await launchApp();
 			await use(app);
-			await app.close();
-			await killStrayProcesses();
+			await stopApp(app);
 			await rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 });
 		},
 		{ scope: "worker" },

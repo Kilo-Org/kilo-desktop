@@ -347,7 +347,10 @@ export function AppSidebarLayout({
 				<ShellInset>
 					{/* Flow spacer under the fixed ShellTitlebar */}
 					<div className="h-12 shrink-0" aria-hidden />
-					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-transparent">
+					<div
+						data-qa-id="shell-main"
+						className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-transparent"
+					>
 						{children}
 					</div>
 					{/* Status-bar contributions registered via sdk.contribute("status-bar", ...) */}

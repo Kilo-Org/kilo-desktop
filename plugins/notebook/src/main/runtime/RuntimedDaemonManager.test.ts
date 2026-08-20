@@ -167,6 +167,36 @@ describe("RuntimedDaemonManager", () => {
 		await manager.dispose();
 	});
 
+	it("does not hang dispose when the bundled daemon ignores signals", async () => {
+		class StickyChild extends FakeChild {
+			override kill(signal: NodeJS.Signals): boolean {
+				this.signals.push(signal);
+				return true;
+			}
+		}
+
+		const child = new StickyChild();
+		let listening = false;
+		const manager = new RuntimedDaemonManager({
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => listening,
+			spawnProcess: () => {
+				listening = true;
+				return child.asChildProcess();
+			},
+			sleep: async () => undefined,
+			readyTimeoutMs: 50,
+			pollIntervalMs: 1,
+			shutdownGraceMs: 20,
+			exitWaitMs: 20,
+		});
+
+		expect(await manager.ensureAvailable()).toEqual({ status: "bundled", pid: 4242 });
+		await manager.dispose();
+		expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
+		expect(manager.state).toEqual({ status: "stopped" });
+	});
+
 	it("stops only a child it owns", async () => {
 		let probes = 0;
 		const owned = build({ probe: async () => ++probes > 1 });

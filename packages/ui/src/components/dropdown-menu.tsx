@@ -19,18 +19,23 @@ function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
 function DropdownMenuContent({
 	align = "start",
 	alignOffset = 0,
+	collisionAvoidance,
 	side = "bottom",
 	sideOffset = 4,
 	className,
 	...props
 }: MenuPrimitive.Popup.Props &
-	Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
+	Pick<
+		MenuPrimitive.Positioner.Props,
+		"align" | "alignOffset" | "collisionAvoidance" | "side" | "sideOffset"
+	>) {
 	return (
 		<MenuPrimitive.Portal>
 			<MenuPrimitive.Positioner
 				className="isolate z-50 outline-none"
 				align={align}
 				alignOffset={alignOffset}
+				collisionAvoidance={collisionAvoidance}
 				side={side}
 				sideOffset={sideOffset}
 			>

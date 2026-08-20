@@ -57,7 +57,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 	}, [step, view.initialStep, view.status]);
 
 	const createWorkspace = useMutation({
-		mutationFn: () => workspacesSdk.client.create({ name: form.name, folders: form.folders }),
+		mutationFn: () =>
+			workspacesSdk.client.create({ name: form.name, color: form.color, folders: form.folders }),
 		onSuccess: async (saved: Workspace) => {
 			const listQueryKey = sdkQueryKey(workspacesSdk, "list");
 			queryClient.setQueryData<Workspace[]>(listQueryKey, (current) =>

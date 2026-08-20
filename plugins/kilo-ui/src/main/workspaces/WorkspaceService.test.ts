@@ -148,6 +148,40 @@ describe("WorkspaceService", () => {
 		expect(service.list()).toEqual([]);
 	});
 
+	it("defaults new workspaces to the first identity color and persists updates", () => {
+		const project = folder("Project");
+		const created = service.create({ folders: [{ path: project, isPrimary: true }] });
+		expect(created.color).toBe("#5EA0F7");
+		expect(service.get(created.id)?.color).toBe("#5EA0F7");
+
+		const custom = service.create({
+			name: "Custom",
+			color: "#34d",
+			folders: [{ path: folder("Other"), isPrimary: true }],
+		});
+		expect(custom.color).toBe("#3344DD");
+
+		expect(
+			service.update(custom.id, {
+				name: "Custom",
+				folders: custom.folders,
+			}).color,
+		).toBe("#3344DD");
+		expect(
+			service.update(custom.id, {
+				name: "Custom",
+				color: "#f87171",
+				folders: custom.folders,
+			}).color,
+		).toBe("#F87171");
+		expect(() =>
+			service.create({
+				color: "blue",
+				folders: [{ path: folder("Bad"), isPrimary: true }],
+			}),
+		).toThrow("Invalid identity color");
+	});
+
 	it("cascades folders when a workspace is removed", () => {
 		const created = service.create({ folders: [{ path: folder("Project"), isPrimary: true }] });
 		expect(service.remove(created.id)).toEqual(created);

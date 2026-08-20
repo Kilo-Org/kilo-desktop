@@ -25,6 +25,7 @@ describe("kiloUiBrowserRegister", () => {
 			folders: [{ path: "/projects/Project/", isPrimary: true }],
 		})) as Workspace;
 		expect(project.name).toBe("Project");
+		expect(project.color).toBe("#5EA0F7");
 		expect(createdEvent).toHaveBeenCalledWith({ before: null, after: project });
 		const capability = sdk.plugins.get<WorkspaceCapabilities>("kilo-ui")?.workspaceService;
 		expect(capability).toBeDefined();

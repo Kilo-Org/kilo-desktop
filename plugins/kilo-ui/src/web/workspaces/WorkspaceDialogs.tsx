@@ -27,6 +27,7 @@ import { sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
 
 import { WorkspaceFormFields } from "./WorkspaceFormFields.js";
 import { useWorkspaceForm } from "./useWorkspaceForm.js";
+import { workspaceGlyphStyle } from "./workspace-glyph-style.js";
 
 export type WorkspaceDialogState =
 	| null
@@ -85,7 +86,10 @@ function ManageWorkspacesDialog({
 								key={workspace.id}
 								className="border-border flex items-center gap-2 rounded-lg border px-3 py-2"
 							>
-								<FolderIcon className="text-muted-foreground size-4 shrink-0" />
+								<FolderIcon
+									className="text-muted-foreground size-4 shrink-0"
+									style={workspaceGlyphStyle(workspace.color)}
+								/>
 								<span className="min-w-0 flex-1 truncate text-sm font-medium">
 									{workspace.name}
 								</span>
@@ -138,8 +142,13 @@ function WorkspaceFormDialog({
 	const mutation = useMutation({
 		mutationFn: () =>
 			workspace
-				? sdk.client.update({ id: workspace.id, name: form.name, folders: form.folders })
-				: sdk.client.create({ name: form.name, folders: form.folders }),
+				? sdk.client.update({
+						id: workspace.id,
+						name: form.name,
+						color: form.color,
+						folders: form.folders,
+					})
+				: sdk.client.create({ name: form.name, color: form.color, folders: form.folders }),
 		onSuccess: async (saved) => {
 			const listQueryKey = sdkQueryKey(sdk, "list");
 			queryClient.setQueryData<Workspace[]>(listQueryKey, (current) => {

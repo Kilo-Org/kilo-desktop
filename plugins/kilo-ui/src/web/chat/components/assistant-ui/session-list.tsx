@@ -499,7 +499,7 @@ const SessionRowGlyph: FC<{
 	rowState: SessionRowState;
 	isActive: boolean;
 	workingSince: number | undefined;
-	identityColor?: string;
+	identityColor?: string | undefined;
 }> = ({ rowState, isActive, workingSince, identityColor }) => {
 	if (rowState === null) return null;
 	const { label, className } = rowStateLabels[rowState];

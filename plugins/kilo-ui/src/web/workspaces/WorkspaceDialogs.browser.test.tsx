@@ -8,6 +8,7 @@ import { SdkProvider, sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import {
+	DEFAULT_WORKSPACE_IDENTITY_COLOR,
 	workspacesContract,
 	type Workspace,
 	type WorkspacesService,
@@ -140,9 +141,40 @@ describe("WorkspaceDialogs — create/edit form", () => {
 
 		await page.getByRole("button", { name: "Create workspace" }).click();
 
-		await vi.waitFor(() => expect(create).toHaveBeenCalled());
+		await vi.waitFor(() =>
+			expect(create).toHaveBeenCalledWith({
+				name: "",
+				color: DEFAULT_WORKSPACE_IDENTITY_COLOR,
+				folders: [{ path: "/projects/two", isPrimary: true }],
+			}),
+		);
 		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith(workspaceA.id);
+	});
+
+	it("saves a selected identity color", async () => {
+		const create = vi.fn(async () => workspaceA);
+		renderDialogs({
+			dialog: { mode: "create" },
+			handlers: { create },
+			shell: {
+				showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, paths: ["/projects/one"] }),
+			},
+		});
+
+		await expect.element(page.getByRole("radiogroup", { name: "Identity color" })).toBeVisible();
+		await page.getByRole("radio", { name: "Color #34D399" }).click();
+		await page.getByRole("button", { name: /Drop folders/ }).click();
+		await page.getByRole("button", { name: "Create workspace" }).click();
+
+		await vi.waitFor(() =>
+			expect(create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					color: "#34D399",
+					folders: [{ path: "/projects/one", isPrimary: true }],
+				}),
+			),
+		);
 	});
 
 	it("cancels the form without saving", async () => {
@@ -177,6 +209,7 @@ describe("WorkspaceDialogs — create/edit form", () => {
 			expect(update).toHaveBeenCalledWith({
 				id: workspaceA.id,
 				name: workspaceA.name,
+				color: DEFAULT_WORKSPACE_IDENTITY_COLOR,
 				folders: [{ path: workspaceA.folders[0]!.path, isPrimary: true }],
 			}),
 		);

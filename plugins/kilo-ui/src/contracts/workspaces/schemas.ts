@@ -6,6 +6,16 @@ import {
 	type InferContract,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
+import { workspaceIdentityColorSchema } from "./identity-color.js";
+
+export {
+	DEFAULT_WORKSPACE_IDENTITY_COLOR,
+	normalizeWorkspaceIdentityColor,
+	WORKSPACE_IDENTITY_COLORS,
+	workspaceIdentityColorSchema,
+	type WorkspaceIdentityColor,
+} from "./identity-color.js";
+
 export const workspaceFolderInputSchema = z.object({
 	path: z.string().min(1),
 	isPrimary: z.boolean(),
@@ -19,6 +29,7 @@ export const workspaceFolderSchema = workspaceFolderInputSchema.extend({
 export const workspaceSchema = z.object({
 	id: z.string(),
 	name: z.string().min(1),
+	color: workspaceIdentityColorSchema.optional(),
 	folders: z.array(workspaceFolderSchema),
 	createdAt: z.number(),
 	updatedAt: z.number(),
@@ -36,6 +47,7 @@ export type WorkspaceChange = z.infer<typeof workspaceChangeSchema>;
 
 export const createWorkspaceInputSchema = z.object({
 	name: z.string().optional(),
+	color: workspaceIdentityColorSchema.optional(),
 	folders: z.array(workspaceFolderInputSchema).min(1),
 });
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceInputSchema>;

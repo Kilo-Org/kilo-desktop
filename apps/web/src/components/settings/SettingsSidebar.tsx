@@ -25,7 +25,7 @@ type SettingsSidebarProps = {
  * inside the content pane.
  *
  * Root `px-2` and the back+search stack (`gap-0.5`, shared `SidebarSearch`)
- * match the sidebar ZoneOutlet / New Chat + Search chats so the rail does
+ * match the sidebar ZoneOutlet / New + Search so the rail does
  * not jump on enter/leave.
  */
 export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarProps) {

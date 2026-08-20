@@ -28,6 +28,8 @@ export type SessionListView = {
 	ordering: SessionListOrdering;
 	show: readonly SessionListShowField[];
 	status: SessionListStatusFilter;
+	/** Workspace id to focus, or `null` for all workspaces. */
+	focus: string | null;
 };
 
 export const DEFAULT_SESSION_LIST_VIEW: SessionListView = {
@@ -35,18 +37,12 @@ export const DEFAULT_SESSION_LIST_VIEW: SessionListView = {
 	ordering: "recency",
 	show: [],
 	status: "all",
+	focus: null,
 };
 
 export const SESSION_LIST_GROUPING_LABELS: Record<SessionListGrouping, string> = {
 	lifecycle: "Status",
 	workspace: "Workspace",
-	updated: "Updated",
-};
-
-/** Sidebar heading for the current group-by. */
-export const SESSION_LIST_GROUPING_HEADERS: Record<SessionListGrouping, string> = {
-	lifecycle: "Status",
-	workspace: "Workspaces",
 	updated: "Updated",
 };
 
@@ -129,6 +125,7 @@ export function parseSessionListView(value: unknown): SessionListView {
 		status: isMember(record.status, SESSION_LIST_STATUS_FILTERS)
 			? record.status
 			: DEFAULT_SESSION_LIST_VIEW.status,
+		focus: typeof record.focus === "string" && record.focus.length > 0 ? record.focus : null,
 	};
 }
 
@@ -137,8 +134,15 @@ export function isDefaultSessionListView(view: SessionListView): boolean {
 		view.grouping === DEFAULT_SESSION_LIST_VIEW.grouping &&
 		view.ordering === DEFAULT_SESSION_LIST_VIEW.ordering &&
 		view.status === DEFAULT_SESSION_LIST_VIEW.status &&
-		view.show.length === 0
+		view.show.length === 0 &&
+		view.focus === DEFAULT_SESSION_LIST_VIEW.focus
 	);
+}
+
+/** Workspace grouping is only meaningful across all workspaces. */
+export function resolveSessionListGrouping(view: SessionListView): SessionListGrouping {
+	if (view.grouping === "workspace" && view.focus) return "lifecycle";
+	return view.grouping;
 }
 
 function getLocalStorage(): Storage | null {
@@ -364,12 +368,15 @@ export function buildSessionListSections(args: {
 	now?: number;
 }): SessionListSection[] {
 	const pinnedIds = args.pinnedIds ?? new Set<string>();
-	const rows = enrich(args.entries, args.activityBySessionId, args.workspaces).filter(
-		(row) => args.view.status === "all" || row.lifecycle === args.view.status,
-	);
+	const grouping = resolveSessionListGrouping(args.view);
+	const rows = enrich(args.entries, args.activityBySessionId, args.workspaces).filter((row) => {
+		if (args.view.status !== "all" && row.lifecycle !== args.view.status) return false;
+		if (args.view.focus && row.activity?.workspaceId !== args.view.focus) return false;
+		return true;
+	});
 	if (rows.length === 0) return [];
 
-	const pullAttention = args.view.grouping === "lifecycle";
+	const pullAttention = grouping === "lifecycle";
 	const attention = pullAttention
 		? sortRows(
 				rows.filter((row) => row.lifecycle === "attention"),
@@ -401,7 +408,7 @@ export function buildSessionListSections(args: {
 		});
 	}
 
-	switch (args.view.grouping) {
+	switch (grouping) {
 		case "lifecycle": {
 			const active = sortRows(
 				unpinned.filter((row) => row.lifecycle !== "settled"),
@@ -427,17 +434,18 @@ export function buildSessionListSections(args: {
 				...updatedSections(unpinned, args.view.ordering, args.now ?? Date.now()),
 			];
 		default: {
-			const _exhaustive: never = args.view.grouping;
+			const _exhaustive: never = grouping;
 			return _exhaustive;
 		}
 	}
 }
 
 export function visibleShowFields(view: SessionListView): SessionListShowField[] {
-	if (view.grouping === "workspace") {
+	const grouping = resolveSessionListGrouping(view);
+	if (grouping === "workspace") {
 		return view.show.filter((field) => field !== "workspace");
 	}
-	if (view.grouping === "updated") {
+	if (grouping === "updated") {
 		return SESSION_LIST_SHOW_FIELDS.filter(
 			(field) => field === "updated" || view.show.includes(field),
 		);

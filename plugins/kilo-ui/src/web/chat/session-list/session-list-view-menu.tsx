@@ -27,6 +27,7 @@ import {
 	SESSION_LIST_STATUS_FILTERS,
 	SESSION_LIST_STATUS_LABELS,
 	isDefaultSessionListView,
+	resolveSessionListGrouping,
 	type SessionListGrouping,
 	type SessionListOrdering,
 	type SessionListShowField,
@@ -44,6 +45,10 @@ export const SessionListViewMenu: FC<{
 	onExpandAll: () => void;
 }> = ({ view, onViewChange, onReset, canCollapse, allCollapsed, onCollapseAll, onExpandAll }) => {
 	const customized = !isDefaultSessionListView(view);
+	const grouping = resolveSessionListGrouping(view);
+	const groupings = view.focus
+		? SESSION_LIST_GROUPINGS.filter((entry) => entry !== "workspace")
+		: SESSION_LIST_GROUPINGS;
 
 	return (
 		<DropdownMenu>
@@ -52,32 +57,39 @@ export const SessionListViewMenu: FC<{
 					<Button
 						type="button"
 						variant="ghost"
-						size="icon-xs"
+						size="icon-sm"
 						aria-label="Session list options"
 						data-qa-id="session-list-view-menu"
 						data-active={customized || undefined}
+						className="h-7 w-7 shrink-0"
 					/>
 				}
 			>
-				<ListFilterIcon className="size-3.5" />
+				<ListFilterIcon className="size-4" />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="start" side="right" sideOffset={6} className="w-56">
+			<DropdownMenuContent
+				align="start"
+				side="right"
+				sideOffset={6}
+				collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
+				className="w-56"
+			>
 				<DropdownMenuGroup>
 					<DropdownMenuSub>
 						<SessionListSubTrigger
 							label="Grouping"
-							value={SESSION_LIST_GROUPING_LABELS[view.grouping]}
+							value={SESSION_LIST_GROUPING_LABELS[grouping]}
 						/>
 						<DropdownMenuSubContent>
 							<DropdownMenuRadioGroup
-								value={view.grouping}
+								value={grouping}
 								onValueChange={(value) => {
 									if (value) onViewChange({ grouping: value as SessionListGrouping });
 								}}
 							>
-								{SESSION_LIST_GROUPINGS.map((grouping) => (
-									<DropdownMenuRadioItem key={grouping} value={grouping}>
-										{SESSION_LIST_GROUPING_LABELS[grouping]}
+								{groupings.map((entry) => (
+									<DropdownMenuRadioItem key={entry} value={entry}>
+										{SESSION_LIST_GROUPING_LABELS[entry]}
 									</DropdownMenuRadioItem>
 								))}
 							</DropdownMenuRadioGroup>

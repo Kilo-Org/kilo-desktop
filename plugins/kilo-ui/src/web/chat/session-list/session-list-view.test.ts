@@ -9,6 +9,7 @@ import {
 	buildSessionListSections,
 	isDefaultSessionListView,
 	parseSessionListView,
+	resolveSessionListGrouping,
 	visibleShowFields,
 	writeSessionListPins,
 	writeSessionListView,
@@ -99,7 +100,14 @@ describe("parseSessionListView", () => {
 			ordering: "title",
 			show: ["workspace"],
 			status: "working",
+			focus: null,
 		});
+	});
+
+	it("keeps a focused workspace id", () => {
+		expect(parseSessionListView({ focus: "ws-1" }).focus).toBe("ws-1");
+		expect(parseSessionListView({ focus: "" }).focus).toBeNull();
+		expect(parseSessionListView({ focus: 1 }).focus).toBeNull();
 	});
 });
 
@@ -108,6 +116,19 @@ describe("isDefaultSessionListView", () => {
 		expect(isDefaultSessionListView(defaultView)).toBe(true);
 		expect(isDefaultSessionListView({ ...defaultView, grouping: "workspace" })).toBe(false);
 		expect(isDefaultSessionListView({ ...defaultView, show: ["workspace"] })).toBe(false);
+		expect(isDefaultSessionListView({ ...defaultView, focus: "ws-1" })).toBe(false);
+	});
+});
+
+describe("resolveSessionListGrouping", () => {
+	it("keeps workspace grouping across all workspaces", () => {
+		expect(resolveSessionListGrouping({ ...defaultView, grouping: "workspace" })).toBe("workspace");
+	});
+
+	it("falls back to status grouping while a workspace is focused", () => {
+		expect(
+			resolveSessionListGrouping({ ...defaultView, grouping: "workspace", focus: "ws-1" }),
+		).toBe("lifecycle");
 	});
 });
 
@@ -361,6 +382,51 @@ describe("buildSessionListSections", () => {
 
 		expect(sections.map((section) => [section.key, section.label])).toEqual([
 			["updated:older", "Older"],
+		]);
+	});
+
+	it("keeps only sessions in the focused workspace", () => {
+		const sections = buildSessionListSections({
+			entries,
+			activityBySessionId,
+			workspaces,
+			view: { ...defaultView, focus: "ws-1" },
+		});
+
+		expect(sections.flatMap((section) => section.rows.map((row) => row.id))).toEqual([
+			"local-ses-1",
+			"local-ses-3",
+		]);
+	});
+
+	it("hides unscoped sessions while a workspace is focused", () => {
+		const sections = buildSessionListSections({
+			entries: [entry("ses-unscoped", 0, false, "Unscoped greeting"), entry("ses-1", 1)],
+			activityBySessionId: {
+				"ses-unscoped": activity({ directory: "/chats/session-uSrBjH" }),
+				"ses-1": activity({ workspaceId: "ws-1" }),
+			},
+			workspaces,
+			view: { ...defaultView, focus: "ws-1" },
+		});
+
+		expect(sections.flatMap((section) => section.rows.map((row) => row.id))).toEqual([
+			"local-ses-1",
+		]);
+	});
+
+	it("uses status grouping while focused even if workspace grouping is stored", () => {
+		const sections = buildSessionListSections({
+			entries,
+			activityBySessionId,
+			workspaces,
+			view: { ...defaultView, grouping: "workspace", focus: "ws-1" },
+		});
+
+		expect(sections.map((section) => section.key)).toEqual(["active", "settled"]);
+		expect(sections.flatMap((section) => section.rows.map((row) => row.id))).toEqual([
+			"local-ses-1",
+			"local-ses-3",
 		]);
 	});
 });

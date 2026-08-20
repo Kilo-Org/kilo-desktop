@@ -10,10 +10,8 @@ import type { CondaService } from "../../../contracts/providers/conda.js";
  * production, calls `conda env list --json` inside the plugin-scoped base.
  *
  * v1 renders a read-only list: on-disk prefix + display name (base envs
- * surface as "base"). Create/delete controls arrive in sub-issue 6;
- * live-progress banners in sub-issue 6+. Keeping this component tight in
- * sub-issue 4 lets us verify the full pipeline end-to-end before layering
- * mutation UI on top.
+ * surface as "base"). Create/delete controls and live-progress banners
+ * arrive in a follow-up PR once the backend tools are proven end-to-end.
  *
  * The panel uses `data-qa-id` attributes for browser and e2e tests
  * following the repo convention (see `docs/TESTING.md`).

@@ -58,6 +58,11 @@ export type EnvironmentName = z.infer<typeof environmentNameSchema>;
  * non-empty, single-line, printable string; deeper validation
  * (`INVALID_MATCHSPEC`) is the provider's job because it needs the same
  * parser conda itself uses.
+ *
+ * Values whose first non-whitespace character is `-` are rejected so
+ * they cannot smuggle a conda CLI flag through as a positional argv —
+ * Python argparse accepts options interspersed with positionals, and
+ * MatchSpec strings never legitimately start with a dash.
  */
 export const matchSpecSchema = z
 	.string()
@@ -68,6 +73,9 @@ export const matchSpecSchema = z
 	})
 	.refine((value) => value.trim().length === value.length, {
 		message: "MatchSpec must not have leading or trailing whitespace.",
+	})
+	.refine((value) => !value.startsWith("-"), {
+		message: "MatchSpec must not start with '-' — that would look like a conda CLI flag.",
 	});
 export type MatchSpec = z.infer<typeof matchSpecSchema>;
 
@@ -76,6 +84,10 @@ export type MatchSpec = z.infer<typeof matchSpecSchema>;
  * (`"https://conda.anaconda.org/..."`), or a `file://` path. The contract
  * only checks for non-empty single-line input; provider-side validation
  * (`INVALID_CHANNEL`) applies conda's own rules.
+ *
+ * A leading `-` is rejected so a channel identifier cannot pass for a
+ * conda CLI flag when appended to argv. Legitimate channel names, URLs,
+ * and file paths never start with `-`.
  */
 export const channelSchema = z
 	.string()
@@ -86,6 +98,9 @@ export const channelSchema = z
 	})
 	.refine((value) => value.trim().length === value.length, {
 		message: "Channel must not have leading or trailing whitespace.",
+	})
+	.refine((value) => !value.startsWith("-"), {
+		message: "Channel must not start with '-' — that would look like a conda CLI flag.",
 	});
 export type Channel = z.infer<typeof channelSchema>;
 

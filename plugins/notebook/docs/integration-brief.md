@@ -8,11 +8,13 @@ another nteract client without creating a competing daemon or a private copy of 
 
 ## System boundary
 
-Agentic Desktop ships the nteract web application and a pinned, platform-specific `runtimed`
-executable as plugin assets. During app launch it probes the canonical channel endpoint in the
-background. A compatible daemon already listening there is reused without taking ownership;
-otherwise the app starts and supervises its bundled executable. It never searches `PATH`, replaces
-an existing singleton, or signals a process it did not start.
+Agentic Desktop stages nteract's published, platform-independent notebook UI bundle and a pinned,
+platform-specific `runtimed` executable as plugin assets. The release tag, UI archive checksum,
+archive manifest, and native executable checksums all identify the same nteract build. During app
+launch it probes that release channel's canonical endpoint in the background. A compatible daemon
+already listening there is reused without taking ownership; otherwise the app starts and
+supervises its bundled executable. It never searches `PATH`, replaces an existing singleton, or
+signals a process it did not start.
 
 Kilo uses nteract's matching `nteract-mcp` executable rather than invoking `runt mcp` directly.
 The proxy and its `runt` child are packaged in the same target directory, which makes the proxy
@@ -66,11 +68,13 @@ Electron port and retain runtimed's negotiated protocol number.
 
 ## Release verification
 
-1. Keep Agentic Desktop pinned to the published `@runtimed/node@0.5.0` package containing
+1. Pin the notebook UI, `runtimed`, `runt`, and `nteract-mcp` to one nteract release and use that
+   release's channel for the singleton endpoint and MCP proxy.
+2. Keep Agentic Desktop pinned to the published `@runtimed/node@0.5.0` package containing
    `@runtimed/node/electron` and its platform-native optional dependencies.
-2. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
+3. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
    against an already-running compatible singleton.
-3. Verify execution, Save, Save As, reopen, reconnect, concurrent attachment, and isolated rich
+4. Verify execution, Save, Save As, reopen, reconnect, concurrent attachment, and isolated rich
    output before promoting the plugin from draft.
 
 ## Current limitations

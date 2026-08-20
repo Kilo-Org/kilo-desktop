@@ -3,9 +3,7 @@ import type {
 	CondaChannelsListResult,
 	CondaEnv,
 	CondaEnvsCreateInput,
-	CondaEnvsCreateResult,
 	CondaEnvsDeleteInput,
-	CondaEnvsDeleteResult,
 	CondaPackage,
 	CondaPackagesInstallInput,
 	CondaPackagesInstallResult,
@@ -43,19 +41,27 @@ export interface CondaCallContext {
  * `SidecarCondaBackend` that speaks JSON-RPC to a PyInstaller sidecar
  * behind the same interface.
  *
- * Sub-issue 4 ships **only `list`** — every other op throws
- * `PROVIDER_NOT_READY` with a "not yet implemented" detail so that
- * accidentally routing a call through them fails loudly instead of
- * silently returning stale data. Sub-issues 6 – 9 fill them in.
+ * Sub-issue 4 shipped **only `list`**; sub-issue 6 layers `create` and
+ * `remove` on top of it. Every other op still throws `PROVIDER_NOT_READY`
+ * with a "not yet implemented" detail so accidentally routing a call
+ * through them fails loudly instead of silently returning stale data.
+ * Sub-issues 7 – 9 fill in the rest.
+ *
+ * Backend methods return the intrinsic domain result — an environment,
+ * a package list — never a `jobId`. The plugin's handlers wrap the
+ * backend call with `JobQueue.enqueue` and stamp the queue-assigned
+ * `jobId` onto the outbound response. Keeping the queue concern out of
+ * `CondaBackend` means the interface stays the same shape a hypothetical
+ * `SidecarCondaBackend` (backup epic B7) would satisfy.
  *
  * Every method takes {@link CondaCallContext} so cancellation and
- * progress-forwarding stay uniform once `JobQueue` lands.
+ * progress-forwarding stay uniform.
  */
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
 
-	create(input: CondaEnvsCreateInput, ctx?: CondaCallContext): Promise<CondaEnvsCreateResult>;
-	remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<CondaEnvsDeleteResult>;
+	create(input: CondaEnvsCreateInput, ctx?: CondaCallContext): Promise<CondaEnv>;
+	remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void>;
 
 	listPackages(envName: EnvironmentName, ctx?: CondaCallContext): Promise<CondaPackage[]>;
 	install(

@@ -10,25 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  notebook-ui:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          lfs: true
-      - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: ./plugins/notebook/actions/build-ui
-      - uses: actions/upload-artifact@v4
-        with:
-          name: notebook-ui-${{ github.sha }}
-          path: plugins/notebook/build/notebook
-          if-no-files-found: error
-
   lint-format:
     runs-on: ubuntu-latest
     env:
@@ -56,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, WinLatest-x64-8vCPU-32GB, macos-latest]
     runs-on: ${{ matrix.os }}
     concurrency:
       # Windows runners contend over native modules and SQLite files.
@@ -80,8 +61,7 @@ jobs:
 
   e2e-pr:
     if: github.event_name == 'pull_request'
-    needs: notebook-ui
-    runs-on: windows-latest
+    runs-on: WinLatest-x64-8vCPU-32GB
     timeout-minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
@@ -90,10 +70,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
-        with:
-          name: notebook-ui-${{ github.sha }}
-          path: plugins/notebook/build/notebook
       - uses: ./.github/actions/run-e2e
         with:
           script: test:e2e:smoke
@@ -103,11 +79,10 @@ jobs:
   # supported desktop platforms. This replaces, rather than repeats, PR smoke.
   e2e-merge:
     if: github.event_name == 'merge_group'
-    needs: notebook-ui
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, WinLatest-x64-8vCPU-32GB]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     concurrency:
@@ -120,10 +95,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
-        with:
-          name: notebook-ui-${{ github.sha }}
-          path: plugins/notebook/build/notebook
       - uses: ./.github/actions/run-e2e
         with:
           report-name: playwright-report-merge-${{ matrix.os }}

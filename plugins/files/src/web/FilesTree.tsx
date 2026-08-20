@@ -128,7 +128,7 @@ export function FilesTree({
 			) : (
 				<FileTree
 					aria-label="Workspace files"
-					className="min-h-0 flex-1 overflow-hidden"
+					className="min-h-0 flex-1 overflow-hidden py-2"
 					data-qa-id="files-tree"
 					model={model}
 					style={{

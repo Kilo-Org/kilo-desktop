@@ -4,10 +4,12 @@ import type { FileReadResult } from "../contracts/schemas.js";
 
 interface FileDocumentState {
 	readonly selectedPath: string | null;
+	readonly workspaceDirectory: string | null;
 	readonly file: FileReadResult | null;
 	readonly loading: boolean;
 	readonly error: string | null;
 	readonly revealLine: number | undefined;
+	readonly revealColumn: number | undefined;
 	readonly draft: string;
 	readonly originalContents: string;
 	readonly revision: string | null;
@@ -19,8 +21,18 @@ interface FileDocumentState {
 }
 
 type FileDocumentAction =
-	| { readonly type: "open-started"; readonly relativePath: string; readonly line?: number }
-	| { readonly type: "open-succeeded"; readonly file: FileReadResult; readonly reload: boolean }
+	| {
+			readonly type: "open-started";
+			readonly relativePath: string;
+			readonly line?: number;
+			readonly column?: number;
+	  }
+	| {
+			readonly type: "open-succeeded";
+			readonly file: FileReadResult;
+			readonly workspaceDirectory: string;
+			readonly reload: boolean;
+	  }
 	| { readonly type: "open-failed"; readonly message: string }
 	| { readonly type: "draft-changed"; readonly contents: string }
 	| { readonly type: "save-started" }
@@ -33,10 +45,12 @@ type FileDocumentAction =
 
 const INITIAL_FILE_DOCUMENT: FileDocumentState = {
 	selectedPath: null,
+	workspaceDirectory: null,
 	file: null,
 	loading: false,
 	error: null,
 	revealLine: undefined,
+	revealColumn: undefined,
 	draft: "",
 	originalContents: "",
 	revision: null,
@@ -50,12 +64,14 @@ const INITIAL_FILE_DOCUMENT: FileDocumentState = {
 function openedState(
 	state: FileDocumentState,
 	file: FileReadResult,
+	workspaceDirectory: string,
 	reload: boolean,
 ): FileDocumentState {
 	const text = file.kind === "text" ? file : null;
 	return {
 		...state,
 		file,
+		workspaceDirectory,
 		loading: false,
 		error: null,
 		draft: text?.contents ?? "",
@@ -77,16 +93,18 @@ function fileDocumentReducer(
 				...state,
 				selectedPath: action.relativePath,
 				revealLine: action.line,
+				revealColumn: action.column,
 				loading: true,
 				error: null,
 				renderMarkdown: false,
 			};
 		case "open-succeeded":
-			return openedState(state, action.file, action.reload);
+			return openedState(state, action.file, action.workspaceDirectory, action.reload);
 		case "open-failed":
 			return {
 				...state,
 				file: null,
+				workspaceDirectory: null,
 				loading: false,
 				error: action.message,
 				draft: "",
@@ -102,7 +120,6 @@ function fileDocumentReducer(
 		case "save-succeeded":
 			return {
 				...state,
-				draft: action.contents,
 				originalContents: action.contents,
 				revision: action.revision,
 				saving: false,
@@ -128,12 +145,20 @@ function fileDocumentReducer(
 
 export function useFileDocument() {
 	const [state, dispatch] = useReducer(fileDocumentReducer, INITIAL_FILE_DOCUMENT);
-	const startOpening = useCallback((relativePath: string, line?: number) => {
-		dispatch({ type: "open-started", relativePath, ...(line !== undefined ? { line } : {}) });
+	const startOpening = useCallback((relativePath: string, line?: number, column?: number) => {
+		dispatch({
+			type: "open-started",
+			relativePath,
+			...(line !== undefined ? { line } : {}),
+			...(column !== undefined ? { column } : {}),
+		});
 	}, []);
-	const finishOpening = useCallback((file: FileReadResult, reload = false) => {
-		dispatch({ type: "open-succeeded", file, reload });
-	}, []);
+	const finishOpening = useCallback(
+		(file: FileReadResult, workspaceDirectory: string, reload = false) => {
+			dispatch({ type: "open-succeeded", file, workspaceDirectory, reload });
+		},
+		[],
+	);
 	const failOpening = useCallback((message: string) => {
 		dispatch({ type: "open-failed", message });
 	}, []);

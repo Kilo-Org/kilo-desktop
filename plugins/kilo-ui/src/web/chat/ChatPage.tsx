@@ -43,7 +43,7 @@ import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js"
 const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 280;
-const PANEL_MAX_WIDTH_FRACTION = 0.5;
+const PANEL_MAX_WIDTH_FRACTION = 0.7;
 const PANEL_GAP_PX = 8; // matches w-2 gutter
 
 function readStoredPanelWidth(): number {

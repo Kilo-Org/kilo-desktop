@@ -41,6 +41,7 @@ export default defineConfig({
 					include: [
 						"@base-ui/react/merge-props",
 						"@base-ui/react/separator",
+						"@base-ui/react/tooltip",
 						"@base-ui/react/use-render",
 						"@pierre/diffs",
 						"@pierre/diffs/edit",

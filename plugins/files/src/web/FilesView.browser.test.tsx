@@ -197,6 +197,99 @@ describe("FilesView", () => {
 		});
 	});
 
+	it("scrolls to and places the caret at a requested source location", async () => {
+		const lines = Array.from({ length: 200 }, () => "0123456789");
+		const write = vi.fn<FilesServiceContract["write"]>(async () => ({
+			status: "saved",
+			revision: "b".repeat(64),
+		}));
+		renderView(
+			{
+				...handlers(),
+				read: async () => ({
+					kind: "text",
+					contents: lines.join("\n"),
+					byteLength: lines.join("\n").length,
+					truncated: false,
+					revision: "a".repeat(64),
+				}),
+				write,
+			},
+			{
+				metadata: {
+					workspaceDirectory: "/workspace",
+					relativePath: "src/index.ts",
+					line: "150",
+					column: "6",
+				},
+			},
+		);
+
+		let editorScroll: HTMLElement | null = null;
+		await vi.waitFor(() => {
+			editorScroll = document.querySelector<HTMLElement>(".files-editor-scroll");
+			expect(editorScroll).not.toBeNull();
+		});
+		await vi.waitFor(() => expect(editorScroll!.scrollTop).toBeGreaterThan(0));
+		await userEvent.keyboard("X");
+		await page.getByTestId("files-save").click();
+
+		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+		const savedContents = write.mock.calls[0]?.[0].contents;
+		expect(savedContents?.split("\n")[149]).toBe("01234X56789");
+	});
+
+	it("saves an open document back to the workspace it was read from", async () => {
+		const write = vi.fn<FilesServiceContract["write"]>(async () => ({
+			status: "saved",
+			revision: "b".repeat(64),
+		}));
+		const view = renderView(
+			{ ...handlers(), write },
+			{
+				workspaceDirectory: "/workspace",
+				workspaceFolders: [{ path: "/workspace", isPrimary: true }],
+				metadata: { workspaceDirectory: "/workspace", relativePath: "src/index.ts" },
+			},
+		);
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		view.rerenderView({
+			workspaceDirectory: "/reference",
+			workspaceFolders: [{ path: "/reference", isPrimary: true }],
+			metadata: { workspaceDirectory: "/workspace", relativePath: "src/index.ts" },
+		});
+		await replaceEditorText("changed after workspace switch");
+
+		await page.getByTestId("files-save").click();
+
+		await vi.waitFor(() =>
+			expect(write).toHaveBeenCalledWith(
+				expect.objectContaining({
+					workspaceDirectory: "/workspace",
+					contents: expect.stringContaining("changed after workspace switch"),
+				}),
+			),
+		);
+	});
+
+	it("ignores persisted file metadata from outside the current workspace", async () => {
+		const service = handlers();
+		const list = vi.fn(service.list);
+		const read = vi.fn(service.read);
+		renderView(
+			{ ...service, list, read },
+			{
+				workspaceDirectory: "/reference",
+				workspaceFolders: [{ path: "/reference", isPrimary: true }],
+				metadata: { workspaceDirectory: "/workspace", relativePath: "src/index.ts" },
+			},
+		);
+
+		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/reference" }));
+		expect(read).not.toHaveBeenCalled();
+		await expect.element(page.getByTestId("files-editor-empty")).toBeVisible();
+	});
+
 	it("does not show a folder selector for a single-folder workspace", async () => {
 		renderView(handlers(), {
 			workspaceFolders: [{ path: "/workspace", isPrimary: true }],
@@ -289,6 +382,49 @@ describe("FilesView", () => {
 				editor: "cursor",
 			}),
 		);
+	});
+
+	it("shows a labeled primary Save action before the external editor controls for dirty files", async () => {
+		renderView(handlers());
+		await openTreePath("src/index.ts");
+		await replaceEditorText("export const value = 2;");
+		await expect.element(page.getByTestId("files-save")).toBeVisible();
+
+		const editorControls = document.querySelector('[aria-label="Open in external editor"]');
+		const saveButton = document.querySelector('[data-qa-id="files-save"]');
+
+		expect(editorControls?.previousElementSibling).toBe(saveButton);
+		expect(saveButton).toHaveTextContent("Save");
+		expect(saveButton).toHaveClass("bg-primary", "text-primary-foreground");
+		expect(editorControls?.getBoundingClientRect().height).toBe(
+			saveButton?.getBoundingClientRect().height,
+		);
+	});
+
+	it("hides the Save action for a clean file", async () => {
+		renderView(handlers());
+		await openTreePath("src/index.ts");
+		await expect.element(page.getByRole("textbox", { name: "src/index.ts" })).toBeVisible();
+
+		expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull();
+	});
+
+	it("shows tooltips for the file toolbar controls", async () => {
+		renderView(handlers());
+		await openTreePath("docs/readme.md");
+		await expect.element(page.getByTestId("files-markdown-toggle")).toBeVisible();
+
+		for (const [testId, label] of [
+			["files-open-external-editor", "Open file in Cursor"],
+			["files-tree-toggle", "Hide file explorer"],
+			["files-refresh", "Refresh files"],
+			["files-markdown-toggle", "Show rendered Markdown"],
+		] as const) {
+			await page.getByTestId(testId).hover();
+			await expect
+				.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
+				.toBe(label);
+		}
 	});
 
 	it("shows an inline error when an external editor cannot be opened", async () => {
@@ -432,6 +568,36 @@ describe("FilesView", () => {
 		);
 		await vi.waitFor(() =>
 			expect(updateTab).toHaveBeenCalledWith("session-1", "files-1", { dirty: false }),
+		);
+	});
+
+	it("keeps edits made while a save is in flight dirty", async () => {
+		type SaveResult = {
+			status: "saved";
+			revision: string;
+		};
+		let resolveFirstSave: (result: SaveResult) => void = () => undefined;
+		const firstSave = new Promise<SaveResult>((resolve) => {
+			resolveFirstSave = resolve;
+		});
+		const write = vi
+			.fn<FilesServiceContract["write"]>()
+			.mockImplementationOnce(async () => firstSave)
+			.mockResolvedValue({ status: "saved", revision: "c".repeat(64) });
+		renderView({ ...handlers(), write });
+		await openTreePath("src/index.ts");
+		await replaceEditorText("first saved change");
+
+		await page.getByTestId("files-save").click();
+		await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+		await replaceEditorText("edit made during save");
+		resolveFirstSave({ status: "saved", revision: "b".repeat(64) });
+
+		await expect.element(page.getByTestId("files-save")).toBeEnabled();
+		await page.getByTestId("files-save").click();
+		await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+		expect(write).toHaveBeenLastCalledWith(
+			expect.objectContaining({ contents: expect.stringContaining("edit made during save") }),
 		);
 	});
 

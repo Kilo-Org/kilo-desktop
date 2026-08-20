@@ -15,6 +15,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@anaconda-agentic-desktop/ui/components/select";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 export interface FilesWorkspaceFolder {
 	readonly path: string;
@@ -190,16 +196,25 @@ export function FilesTree({
 						}}
 					/>
 				</div>
-				<Button
-					aria-label="Refresh files"
-					data-qa-id="files-refresh"
-					disabled={loading}
-					onClick={onRefresh}
-					size="icon-sm"
-					variant="ghost"
-				>
-					<RefreshCwIcon className={loading ? "animate-spin" : undefined} />
-				</Button>
+				<TooltipProvider>
+					<Tooltip disableHoverablePopup>
+						<TooltipTrigger
+							render={
+								<Button
+									aria-label="Refresh files"
+									data-qa-id="files-refresh"
+									disabled={loading}
+									onClick={onRefresh}
+									size="icon-sm"
+									variant="ghost"
+								/>
+							}
+						>
+							<RefreshCwIcon className={loading ? "animate-spin" : undefined} />
+						</TooltipTrigger>
+						<TooltipContent side="bottom">Refresh files</TooltipContent>
+					</Tooltip>
+				</TooltipProvider>
 			</div>
 			{truncated ? (
 				<p className="text-muted-foreground border-b px-3 py-1.5 text-[11px]">

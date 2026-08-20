@@ -578,6 +578,48 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("chat-right-panel-maximize")).toBeVisible();
 	});
 
+	it("resizes the right panel up to 70% of the chat view", async () => {
+		const { baseElement, container } = renderChatPage();
+		container.style.width = "1200px";
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		const chatPage = baseElement.querySelector<HTMLElement>("[data-qa-id='kilo-chat-page']");
+		const resizeHandle = baseElement.querySelector<HTMLElement>(
+			"[data-qa-id='chat-right-panel-resize']",
+		);
+		expect(chatPage).not.toBeNull();
+		expect(resizeHandle).not.toBeNull();
+
+		resizeHandle!.dispatchEvent(
+			new PointerEvent("pointerdown", {
+				bubbles: true,
+				clientX: chatPage!.clientWidth,
+				pointerId: 1,
+			}),
+		);
+		resizeHandle!.dispatchEvent(
+			new PointerEvent("pointermove", {
+				bubbles: true,
+				clientX: 0,
+				pointerId: 1,
+			}),
+		);
+		resizeHandle!.dispatchEvent(
+			new PointerEvent("pointerup", {
+				bubbles: true,
+				clientX: 0,
+				pointerId: 1,
+			}),
+		);
+
+		await vi.waitFor(() =>
+			expect(resizeHandle!.parentElement!.clientWidth - resizeHandle!.clientWidth).toBe(
+				Math.floor(chatPage!.clientWidth * 0.7),
+			),
+		);
+	});
+
 	it("adds multiple numbered instances from a live contribution", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);

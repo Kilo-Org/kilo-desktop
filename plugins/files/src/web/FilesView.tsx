@@ -45,6 +45,12 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 import {
 	EXTERNAL_EDITORS,
@@ -155,6 +161,14 @@ function fileRequestKey(
 	return JSON.stringify([workspaceDirectory, relativePath, line ?? null, column ?? null]);
 }
 
+function revealEditorLocation(editor: Editor<undefined>, line: number, column?: number): void {
+	const position = {
+		line: line - 1,
+		character: (column ?? 1) - 1,
+	};
+	editor.setSelections([{ start: position, end: position, direction: "none" }]);
+}
+
 export function FilesView({
 	sessionId,
 	instanceId,
@@ -198,10 +212,12 @@ export function FilesView({
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
 	const {
 		selectedPath,
+		workspaceDirectory: documentWorkspaceDirectory,
 		file,
 		loading: fileLoading,
 		error: fileError,
 		revealLine,
+		revealColumn,
 		draft,
 		revision,
 		editorRevision,
@@ -223,6 +239,7 @@ export function FilesView({
 		reset: resetDocument,
 	} = useFileDocument();
 	const editorRef = useRef<Editor<undefined> | null>(null);
+	const [attachedEditor, setAttachedEditor] = useState<Editor<undefined> | null>(null);
 	const handledFileRequestRef = useRef<string | null>(null);
 	const openRequestRef = useRef(0);
 	const listRequestRef = useRef(0);
@@ -234,6 +251,7 @@ export function FilesView({
 			persistState: true,
 			onAttach(editor) {
 				editorRef.current = editor;
+				setAttachedEditor(editor);
 			},
 			onChange(changedFile) {
 				setDraft(changedFile.contents);
@@ -279,14 +297,14 @@ export function FilesView({
 		) => {
 			if (!requestedDirectory) return;
 			const request = ++openRequestRef.current;
-			startOpening(relativePath, line);
+			startOpening(relativePath, line, column);
 			try {
 				const result = await sdk.client.read({
 					workspaceDirectory: requestedDirectory,
 					relativePath,
 				});
 				if (request !== openRequestRef.current) return;
-				finishOpening(result, forceReload);
+				finishOpening(result, requestedDirectory, forceReload);
 				const nextMetadata = {
 					workspaceDirectory: requestedDirectory,
 					relativePath,
@@ -327,13 +345,13 @@ export function FilesView({
 
 	const saveCurrent = useCallback(
 		async (force = false): Promise<boolean> => {
-			if (!activeWorkspaceDirectory || !selectedPath || !revision || file?.kind !== "text")
+			if (!documentWorkspaceDirectory || !selectedPath || !revision || file?.kind !== "text")
 				return true;
 			const currentDraft = editorRef.current?.getText() ?? draft;
 			startSaving();
 			try {
 				const result = await sdk.client.write({
-					workspaceDirectory: activeWorkspaceDirectory,
+					workspaceDirectory: documentWorkspaceDirectory,
 					relativePath: selectedPath,
 					contents: currentDraft,
 					expectedRevision: revision,
@@ -351,8 +369,8 @@ export function FilesView({
 			}
 		},
 		[
-			activeWorkspaceDirectory,
 			draft,
+			documentWorkspaceDirectory,
 			failSaving,
 			file?.kind,
 			finishSaving,
@@ -466,6 +484,7 @@ export function FilesView({
 		const relativePath = metadata?.relativePath;
 		const requestedDirectory = metadata?.workspaceDirectory ?? activeWorkspaceDirectory;
 		if (!relativePath || !requestedDirectory) return;
+		if (!workspaceFolders.some((folder) => folder.path === requestedDirectory)) return;
 		const line = positiveInteger(metadata?.line);
 		const column = positiveInteger(metadata?.column);
 		const requestKey = fileRequestKey(requestedDirectory, relativePath, line, column);
@@ -481,7 +500,14 @@ export function FilesView({
 				...(column !== undefined ? { column } : {}),
 			});
 		});
-	}, [activeWorkspaceDirectory, metadata, openFileNow, requestAction, selectWorkspaceFolder]);
+	}, [
+		activeWorkspaceDirectory,
+		metadata,
+		openFileNow,
+		requestAction,
+		selectWorkspaceFolder,
+		workspaceFolders,
+	]);
 
 	useEffect(() => {
 		let active = true;
@@ -511,6 +537,16 @@ export function FilesView({
 	useEffect(() => () => resizeCleanupRef.current?.(), []);
 
 	useEffect(() => sdk.theme.subscribe(setTheme), [sdk]);
+
+	useEffect(() => {
+		if (!attachedEditor || file?.kind !== "text" || !file.revision || revealLine === undefined)
+			return;
+		const frame = requestAnimationFrame(() => {
+			if (!attachedEditor.getFile()) return;
+			revealEditorLocation(attachedEditor, revealLine, revealColumn);
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [attachedEditor, file, reloadVersion, revealColumn, revealLine, selectedPath]);
 
 	useEffect(() => {
 		panel?.updateTab(sessionId, instanceId, { dirty });
@@ -550,11 +586,11 @@ export function FilesView({
 	);
 	const openInExternalEditor = useCallback(
 		async (editor: ExternalEditorId) => {
-			if (!activeWorkspaceDirectory || !selectedPath) return;
+			if (!documentWorkspaceDirectory || !selectedPath) return;
 			setExternalEditorError(null);
 			try {
 				await sdk.client.openExternalEditor({
-					workspaceDirectory: activeWorkspaceDirectory,
+					workspaceDirectory: documentWorkspaceDirectory,
 					relativePath: selectedPath,
 					editor,
 				});
@@ -568,7 +604,7 @@ export function FilesView({
 				setExternalEditorError(errorMessage(error));
 			}
 		},
-		[activeWorkspaceDirectory, sdk, selectedPath],
+		[documentWorkspaceDirectory, sdk, selectedPath],
 	);
 
 	if (!activeWorkspaceDirectory) {
@@ -584,6 +620,11 @@ export function FilesView({
 
 	const showExplorer = explorerOpen || selectedPath === null;
 	const PreferredEditorIcon = preferredEditor ? EXTERNAL_EDITOR_ICONS[preferredEditor] : null;
+	const openExternalEditorLabel = preferredEditor
+		? `Open file in ${EXTERNAL_EDITORS.find(({ id }) => id === preferredEditor)?.label ?? "preferred editor"}`
+		: "Open file in preferred editor";
+	const markdownToggleLabel = renderMarkdown ? "Show Markdown source" : "Show rendered Markdown";
+	const explorerToggleLabel = showExplorer ? "Hide file explorer" : "Show file explorer";
 	return (
 		<FilesEditProvider>
 			<div
@@ -612,30 +653,52 @@ export function FilesView({
 								</span>
 							))}
 						</div>
-						<ButtonGroup aria-label="Open in external editor">
+						{file?.kind === "text" && file.revision && (dirty || saving) ? (
 							<Button
-								aria-label={
-									preferredEditor
-										? `Open file in ${EXTERNAL_EDITORS.find(({ id }) => id === preferredEditor)?.label ?? "preferred editor"}`
-										: "Open file in preferred editor"
-								}
-								data-qa-id="files-open-external-editor"
-								disabled={!preferredEditor}
-								onClick={() => {
-									if (preferredEditor) void openInExternalEditor(preferredEditor);
-								}}
-								size="xs"
-								variant="outline"
+								aria-label="Save file"
+								data-qa-id="files-save"
+								disabled={!dirty || saving}
+								onClick={() => void saveCurrent()}
+								size="sm"
+								variant="default"
 							>
-								{PreferredEditorIcon ? (
-									<PreferredEditorIcon
-										aria-hidden="true"
-										data-editor-icon={preferredEditor ?? undefined}
-										data-icon="inline-start"
-									/>
-								) : null}
-								<span className="sr-only">Open</span>
+								{saving ? (
+									<LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+								) : (
+									<SaveIcon data-icon="inline-start" />
+								)}
+								{saving ? "Saving…" : "Save"}
 							</Button>
+						) : null}
+						<ButtonGroup aria-label="Open in external editor">
+							<TooltipProvider>
+								<Tooltip disableHoverablePopup>
+									<TooltipTrigger
+										render={
+											<Button
+												aria-label={openExternalEditorLabel}
+												data-qa-id="files-open-external-editor"
+												disabled={!preferredEditor}
+												onClick={() => {
+													if (preferredEditor) void openInExternalEditor(preferredEditor);
+												}}
+												size="sm"
+												variant="outline"
+											/>
+										}
+									>
+										{PreferredEditorIcon ? (
+											<PreferredEditorIcon
+												aria-hidden="true"
+												data-editor-icon={preferredEditor ?? undefined}
+												data-icon="inline-start"
+											/>
+										) : null}
+										<span className="sr-only">Open</span>
+									</TooltipTrigger>
+									<TooltipContent side="bottom">{openExternalEditorLabel}</TooltipContent>
+								</Tooltip>
+							</TooltipProvider>
 							<DropdownMenu>
 								<DropdownMenuTrigger
 									render={
@@ -643,7 +706,7 @@ export function FilesView({
 											aria-label="Choose external editor"
 											data-qa-id="files-external-editor-menu"
 											disabled={availableExternalEditors === null}
-											size="icon-xs"
+											size="icon-sm"
 											variant="outline"
 										/>
 									}
@@ -675,53 +738,63 @@ export function FilesView({
 							</DropdownMenu>
 						</ButtonGroup>
 						{file?.kind === "text" && isMarkdown(selectedPath) ? (
-							<Button
-								aria-label={renderMarkdown ? "Show Markdown source" : "Show rendered Markdown"}
-								aria-pressed={renderMarkdown}
-								className={
-									renderMarkdown ? "bg-foreground/5 text-foreground" : "text-muted-foreground"
-								}
-								data-qa-id="files-markdown-toggle"
-								onClick={() => setRenderMarkdown(!renderMarkdown)}
-								size="icon-sm"
-								variant="ghost"
-							>
-								{renderMarkdown ? <Code2Icon /> : <EyeIcon />}
-							</Button>
+							<TooltipProvider>
+								<Tooltip disableHoverablePopup>
+									<TooltipTrigger
+										render={
+											<Button
+												aria-label={markdownToggleLabel}
+												aria-pressed={renderMarkdown}
+												className={
+													renderMarkdown
+														? "bg-foreground/5 text-foreground"
+														: "text-muted-foreground"
+												}
+												data-qa-id="files-markdown-toggle"
+												onClick={() => setRenderMarkdown(!renderMarkdown)}
+												size="icon-sm"
+												variant="ghost"
+											/>
+										}
+									>
+										{renderMarkdown ? <Code2Icon /> : <EyeIcon />}
+									</TooltipTrigger>
+									<TooltipContent side="bottom">{markdownToggleLabel}</TooltipContent>
+								</Tooltip>
+							</TooltipProvider>
 						) : null}
-						{file?.kind === "text" && file.revision ? (
-							<Button
-								aria-label="Save file"
-								data-qa-id="files-save"
-								disabled={!dirty || saving}
-								onClick={() => void saveCurrent()}
-								size="icon-sm"
-								variant="ghost"
-							>
-								{saving ? <LoaderCircleIcon className="animate-spin" /> : <SaveIcon />}
-							</Button>
-						) : null}
-						<Button
-							aria-label={showExplorer ? "Hide file explorer" : "Show file explorer"}
-							aria-pressed={showExplorer}
-							className={showExplorer ? "bg-foreground/5 text-foreground" : "text-muted-foreground"}
-							data-qa-id="files-tree-toggle"
-							onClick={() => {
-								setExplorerOpen((value) => {
-									const next = !value;
-									try {
-										localStorage.setItem(EXPLORER_STORAGE_KEY, String(next));
-									} catch {
-										// Persistence failure does not block the in-memory toggle.
+						<TooltipProvider>
+							<Tooltip disableHoverablePopup>
+								<TooltipTrigger
+									render={
+										<Button
+											aria-label={explorerToggleLabel}
+											aria-pressed={showExplorer}
+											className={
+												showExplorer ? "bg-foreground/5 text-foreground" : "text-muted-foreground"
+											}
+											data-qa-id="files-tree-toggle"
+											onClick={() => {
+												setExplorerOpen((value) => {
+													const next = !value;
+													try {
+														localStorage.setItem(EXPLORER_STORAGE_KEY, String(next));
+													} catch {
+														// Persistence failure does not block the in-memory toggle.
+													}
+													return next;
+												});
+											}}
+											size="icon-sm"
+											variant="ghost"
+										/>
 									}
-									return next;
-								});
-							}}
-							size="icon-sm"
-							variant="ghost"
-						>
-							<FolderTreeIcon />
-						</Button>
+								>
+									<FolderTreeIcon />
+								</TooltipTrigger>
+								<TooltipContent side="bottom">{explorerToggleLabel}</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
 					</div>
 				) : null}
 
@@ -766,7 +839,7 @@ export function FilesView({
 									onOpenFile={requestOpenFile}
 									read={readForMarkdown}
 									relativePath={selectedPath}
-									workspaceDirectory={activeWorkspaceDirectory}
+									workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
 								/>
 							) : (
 								<FileEditor

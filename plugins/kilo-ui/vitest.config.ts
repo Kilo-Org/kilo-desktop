@@ -68,6 +68,12 @@ export default defineConfig({
 						"@anaconda-agentic-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
+						// Base UI primitives used by @anaconda-agentic-desktop/ui. Pre-bundle
+						// them so Vite does not discover them mid-run, reload the page, and
+						// swap React instances (Invalid hook call in CheckboxRoot).
+						"@base-ui/react/checkbox",
+						"@base-ui/react/dialog",
+						"@base-ui/react/select",
 						"zod",
 						"vitest",
 						"vitest/internal/browser",

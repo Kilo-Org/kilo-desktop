@@ -6,6 +6,7 @@ import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import type { KiloUiChatService } from "../../contracts/chat/schemas.js";
 import { useChatConnection } from "../chat/connection/ChatConnectionContext.js";
 import { createKiloDirectoryClient } from "../chat/runtime/create-kilo-runtime-client.js";
+import { invalidateKiloProviderQueries } from "../providers/provider-queries.js";
 import {
 	errorMessage,
 	parseDeviceCode,
@@ -23,7 +24,7 @@ const AUTH_STATUS_KEY = ["kilo-ui", "kilo.authStatus"] as const;
 const PROFILE_KEY = ["kilo-ui", "kilo.profile"] as const;
 
 function invalidateGatewayCatalogs(queryClient: ReturnType<typeof useQueryClient>): void {
-	void queryClient.invalidateQueries({ queryKey: ["kilo-ui", "provider.list"] });
+	invalidateKiloProviderQueries(queryClient);
 	void queryClient.invalidateQueries({ queryKey: ["kilo-ui", "app.agents"] });
 }
 

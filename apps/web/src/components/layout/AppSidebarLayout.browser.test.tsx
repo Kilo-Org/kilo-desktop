@@ -227,6 +227,7 @@ describe("AppSidebarLayout nav toggle", () => {
 
 		const rail = page.getByTestId("sidebar-resize");
 		await expect.element(rail).toBeInTheDocument();
+		expect(getComputedStyle(rail.element()).cursor).toBe("col-resize");
 
 		const wrapper = () =>
 			baseElement.querySelector('[data-slot="sidebar-wrapper"]') as HTMLElement | null;

@@ -30,7 +30,35 @@ function renderSelector(shell: Partial<SDK["shell"]> = {}) {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, sdk };
+	return { ...result, sdk, mainSdk };
+}
+
+async function renderSelectorWithWorkspaces(
+	workspaces: ReadonlyArray<{ name: string; color: string; path: string }>,
+	shell: Partial<SDK["shell"]> = {},
+) {
+	const sdk = createFakeSdk({ featureId: "kilo-ui", shell });
+	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	kiloUiBrowserRegister(mainSdk);
+	for (const workspace of workspaces) {
+		await mainSdk.invoke("create", {
+			name: workspace.name,
+			color: workspace.color,
+			folders: [{ path: workspace.path, isPrimary: true }],
+		});
+	}
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const result = render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<WorkspaceSelector />
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+	return { ...result, sdk, mainSdk };
 }
 
 afterEach(() => {
@@ -39,6 +67,28 @@ afterEach(() => {
 });
 
 describe("WorkspaceSelector", () => {
+	it("tints each workspace option with its identity color", async () => {
+		await renderSelectorWithWorkspaces([
+			{ name: "Acme App", color: "#F87171", path: "/repo/acme" },
+			{ name: "Beta", color: "#34D399", path: "/repo/beta" },
+		]);
+
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+
+		const acme = page.getByRole("option", { name: /Acme App/ }).element();
+		const beta = page.getByRole("option", { name: /Beta/ }).element();
+		const acmeGlyph = acme.querySelector("svg");
+		const betaGlyph = beta.querySelector("svg");
+		expect(acmeGlyph).not.toBeNull();
+		expect(betaGlyph).not.toBeNull();
+		expect(acmeGlyph!.getAttribute("stroke")).toBe("#F87171");
+		expect(betaGlyph!.getAttribute("stroke")).toBe("#34D399");
+
+		fireEvent.pointerMove(beta);
+		await waitFor(() => expect(beta).toHaveAttribute("aria-selected", "true"));
+		expect(betaGlyph!.getAttribute("stroke")).toBe("#34D399");
+	});
+
 	it("moves the workspace popover above the trigger when there is not enough room below", async () => {
 		renderSelector();
 		const trigger = page.getByRole("combobox", { name: "Select workspace" }).element();

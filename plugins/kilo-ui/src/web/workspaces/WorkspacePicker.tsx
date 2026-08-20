@@ -2,6 +2,7 @@ import {
 	CheckIcon,
 	FolderIcon,
 	FolderXIcon,
+	LayoutGridIcon,
 	MoreHorizontalIcon,
 	PencilIcon,
 	PlusIcon,
@@ -42,9 +43,11 @@ import {
 
 import type { Workspace } from "../../contracts/workspaces/schemas.js";
 import { useWorkspacesFeature } from "./WorkspacesFeatureContext";
+import { workspaceGlyphColor } from "./workspace-glyph-style";
 
 const NO_COMMAND_SELECTION = "__no-workspace-command-selection__";
 const UNSCOPED_COMMAND_VALUE = "dont-work-in-a-workspace";
+const ALL_WORKSPACES_COMMAND_VALUE = "all-workspaces";
 
 /** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
 const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
@@ -58,10 +61,14 @@ function filterWorkspaceItems(value: string, search: string, keywords?: string[]
 	return terms.some((term) => term.toLowerCase().includes(query)) ? 1 : 0;
 }
 
-function getWorkspaceTriggerLabel(active: Workspace | undefined, isLoading: boolean): string {
+function getWorkspaceTriggerLabel(
+	active: Workspace | undefined,
+	isLoading: boolean,
+	emptyLabel?: string,
+): string {
 	if (active) return active.name;
 	if (isLoading) return "Loading workspaces…";
-	return "Select workspace";
+	return emptyLabel ?? "Select workspace";
 }
 
 type WorkspacePickerContextValue = {
@@ -86,9 +93,17 @@ export function useWorkspacePicker(): WorkspacePickerContextValue {
 export function WorkspacePickerRoot({
 	children,
 	contentAlign = "start",
+	emptyLabel,
+	includeUnscoped = true,
+	value,
+	onValueChange,
 }: {
 	children: ReactNode;
 	contentAlign?: PopoverAlign;
+	emptyLabel?: string;
+	includeUnscoped?: boolean;
+	value?: string | null;
+	onValueChange?: (workspaceId: string | null) => void;
 }) {
 	const {
 		workspaces,
@@ -102,10 +117,17 @@ export function WorkspacePickerRoot({
 	} = useWorkspacesFeature();
 	const [open, setOpen] = useState(false);
 	const [commandValue, setCommandValue] = useState(NO_COMMAND_SELECTION);
-	const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
-	const isUnscoped = activeWorkspaceId === null;
+	const selectedId = onValueChange ? (value ?? null) : activeWorkspaceId;
+	const active = workspaces.find((workspace) => workspace.id === selectedId);
+	const isUnscoped = selectedId === null;
 	const stop = (event: MouseEvent | KeyboardEvent) => event.stopPropagation();
-	const triggerLabel = getWorkspaceTriggerLabel(active, isLoading);
+	const triggerLabel = getWorkspaceTriggerLabel(active, isLoading, emptyLabel);
+
+	const select = (workspaceId: string | null) => {
+		if (onValueChange) onValueChange(workspaceId);
+		else setActiveWorkspaceId(workspaceId);
+		setOpen(false);
+	};
 
 	const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
 		if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -154,6 +176,24 @@ export function WorkspacePickerRoot({
 						<CommandList className="scroll-fade max-h-[calc(2rem*4+0.5rem)]">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 							<CommandGroup>
+								{emptyLabel ? (
+									<CommandItem
+										data-qa-id="workspace-all-command"
+										value={ALL_WORKSPACES_COMMAND_VALUE}
+										keywords={[emptyLabel]}
+										onSelect={() => select(null)}
+										className={HIDE_BUILTIN_CHECK}
+										data-checked={isUnscoped}
+									>
+										<LayoutGridIcon />
+										<span className="min-w-0 flex-1 truncate">{emptyLabel}</span>
+										{isUnscoped ? (
+											<span className="flex size-6 shrink-0 items-center justify-center">
+												<CheckIcon className="size-3.5" />
+											</span>
+										) : null}
+									</CommandItem>
+								) : null}
 								{isLoading ? (
 									<div className="text-muted-foreground px-2 py-3 text-sm">Loading workspaces…</div>
 								) : null}
@@ -166,20 +206,26 @@ export function WorkspacePickerRoot({
 									<div className="text-muted-foreground px-2 py-3 text-sm">No workspaces yet.</div>
 								) : null}
 								{workspaces.map((workspace) => {
-									const isSelected = activeWorkspaceId === workspace.id;
+									const isSelected = selectedId === workspace.id;
+									const glyph = workspaceGlyphColor(workspace.color);
 									return (
 										<CommandItem
 											key={workspace.id}
 											value={workspace.id}
 											keywords={[workspace.name]}
-											onSelect={() => {
-												setActiveWorkspaceId(workspace.id);
-												setOpen(false);
-											}}
+											onSelect={() => select(workspace.id)}
 											className={HIDE_BUILTIN_CHECK}
 											data-checked={isSelected}
 										>
-											<FolderIcon />
+											<span
+												className="flex size-4 shrink-0 items-center justify-center"
+												aria-hidden
+											>
+												<FolderIcon
+													className={glyph ? "size-4" : "text-muted-foreground size-4"}
+													{...(glyph ? { color: glyph } : {})}
+												/>
+											</span>
 											<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
 											<span className="flex shrink-0 items-center gap-0.5">
 												<DropdownMenu>
@@ -251,25 +297,24 @@ export function WorkspacePickerRoot({
 								<PlusIcon />
 								Create workspace
 							</CommandItem>
-							<CommandItem
-								data-qa-id="workspace-unscoped-command"
-								value={UNSCOPED_COMMAND_VALUE}
-								keywords={["Don't work in a workspace", "unscoped"]}
-								className={HIDE_BUILTIN_CHECK}
-								onSelect={() => {
-									setActiveWorkspaceId(null);
-									setOpen(false);
-								}}
-								data-checked={isUnscoped}
-							>
-								<FolderXIcon />
-								<span className="whitespace-nowrap">Don't work in a workspace</span>
-								{isUnscoped ? (
-									<span className="flex size-6 shrink-0 items-center justify-center">
-										<CheckIcon className="size-3.5" />
-									</span>
-								) : null}
-							</CommandItem>
+							{includeUnscoped ? (
+								<CommandItem
+									data-qa-id="workspace-unscoped-command"
+									value={UNSCOPED_COMMAND_VALUE}
+									keywords={["Don't work in a workspace", "unscoped"]}
+									className={HIDE_BUILTIN_CHECK}
+									onSelect={() => select(null)}
+									data-checked={isUnscoped}
+								>
+									<FolderXIcon />
+									<span className="whitespace-nowrap">Don't work in a workspace</span>
+									{isUnscoped ? (
+										<span className="flex size-6 shrink-0 items-center justify-center">
+											<CheckIcon className="size-3.5" />
+										</span>
+									) : null}
+								</CommandItem>
+							) : null}
 						</CommandGroup>
 					</Command>
 				</PopoverContent>

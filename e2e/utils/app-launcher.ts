@@ -45,6 +45,28 @@ export function killStrayProcesses(): void {
 	}
 }
 
+export function killProcessTree(pid: number): void {
+	if (process.platform === "win32") {
+		try {
+			execFileSync("taskkill", ["/F", "/T", "/PID", String(pid)], { stdio: "ignore" });
+		} catch {
+			// Process not found — expected.
+		}
+		return;
+	}
+
+	try {
+		execFileSync("pkill", ["-P", String(pid)], { stdio: "ignore" });
+	} catch {
+		// No children — expected.
+	}
+	try {
+		process.kill(pid, "SIGKILL");
+	} catch {
+		// Process not found — expected.
+	}
+}
+
 /** Package the Electron app for Playwright (inspect fuse enabled). */
 export async function buildPackagedApp(): Promise<void> {
 	logger.info("Building packaged Electron app for e2e…");

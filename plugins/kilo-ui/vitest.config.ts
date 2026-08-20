@@ -74,6 +74,8 @@ export default defineConfig({
 						"@base-ui/react/checkbox",
 						"@base-ui/react/dialog",
 						"@base-ui/react/select",
+						"@base-ui/react/toggle",
+						"@base-ui/react/toggle-group",
 						"zod",
 						"vitest",
 						"vitest/internal/browser",

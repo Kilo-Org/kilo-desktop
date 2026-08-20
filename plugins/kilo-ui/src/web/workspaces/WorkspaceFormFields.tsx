@@ -27,6 +27,7 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import type { useWorkspaceForm } from "./useWorkspaceForm.js";
+import { WorkspaceIdentityColorPicker } from "./WorkspaceIdentityColorPicker.js";
 
 const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
@@ -37,6 +38,8 @@ type WorkspaceFormFieldsProps = ReturnType<typeof useWorkspaceForm> & {
 export function WorkspaceFormFields({
 	name,
 	setName,
+	color,
+	setColor,
 	folders,
 	error,
 	isDragging,
@@ -59,6 +62,10 @@ export function WorkspaceFormFields({
 					placeholder="e.g. My project"
 					data-qa-id="workspace-name"
 				/>
+			</Field>
+			<Field>
+				<FieldLabel>Identity color</FieldLabel>
+				<WorkspaceIdentityColorPicker value={color} onChange={setColor} />
 			</Field>
 			<Field>
 				<FieldLabel>Folders</FieldLabel>

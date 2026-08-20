@@ -2,18 +2,34 @@
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
+	Command,
+	CommandDialog,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+	CommandSeparator,
+} from "@anaconda-agentic-desktop/ui/components/command";
+import { ToggleGroup, ToggleGroupItem } from "@anaconda-agentic-desktop/ui/components/toggle-group";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { SidebarSearch } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import { SidebarSeparator } from "@anaconda-agentic-desktop/ui/components/sidebar";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import {
-	AuiIf,
 	ThreadListItemPrimitive,
 	ThreadListPrimitive,
 	useAui,
@@ -22,17 +38,23 @@ import {
 import {
 	CheckIcon,
 	ChevronDownIcon,
-	CircleCheckIcon,
+	CircleAlertIcon,
 	FolderIcon,
 	Loader2Icon,
+	MessageCircleQuestionIcon,
+	MessageSquareIcon,
 	MoreHorizontalIcon,
 	PencilIcon,
-	PlusIcon,
+	PinIcon,
+	PinOffIcon,
+	SearchIcon,
 	Trash2Icon,
 	Undo2Icon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+	createContext,
+	use,
 	useEffect,
 	useCallback,
 	useMemo,
@@ -40,34 +62,47 @@ import {
 	useState,
 	type ComponentPropsWithoutRef,
 	type FC,
+	type ReactNode,
 } from "react";
 
+import type { Workspace } from "../../../../contracts/workspaces/schemas.js";
+import { GlobalNewButton } from "../../../create/GlobalNewButton.js";
+import { InboxWorkspaceFilter } from "../../../workspaces/InboxWorkspaceFilter.js";
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
+import { workspaceGlyphColor } from "../../../workspaces/workspace-glyph-style.js";
 import { navigateToChat } from "../../chat-navigation.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
 import {
 	deriveSessionRowState,
+	directoryBasename,
 	formatRelativeTimeLabel,
 	formatWorkingDurationLabel,
-	partitionSidebarThreads,
 	resolveSessionLocationLabel,
 	type SessionRowState,
 } from "../../session-activity/session-activity-logic.js";
+import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
+import {
+	buildSessionListSections,
+	visibleShowFields,
+	type SessionListSection,
+	type SessionListShowField,
+} from "../../session-list/session-list-view.js";
+import {
+	useSessionListPins,
+	useSessionListView,
+} from "../../session-list/use-session-list-view.js";
+/** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
+const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 
 /**
- * Shared glass surface states for New Chat, Search, and session rows.
- * Idle is clear; hover/focus and selected use the same translucent washes.
+ * Shared surface states for session rows.
+ * Idle is clear; hover/focus uses a translucent wash; selected matches the
+ * content/chat pane (`bg-muted`).
  */
 const sidebarSurfaceIdleClassName =
 	"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
 const sidebarSurfaceActiveClassName =
-	"bg-foreground/8 text-sidebar-foreground font-medium transition-colors hover:bg-foreground/8 focus-visible:bg-foreground/8";
-
-/** Soft glass chrome for sidebar buttons (New Chat). */
-const sidebarNavItemClassName = cn(
-	sidebarSurfaceIdleClassName,
-	"rounded-md hover:text-sidebar-accent-foreground data-active:bg-foreground/8 data-active:text-sidebar-accent-foreground data-active:font-medium data-active:hover:bg-foreground/8 has-focus-visible:bg-foreground/5 has-data-[state=open]:bg-foreground/5",
-);
+	"bg-muted text-sidebar-foreground font-medium transition-colors hover:bg-muted focus-visible:bg-muted";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -78,7 +113,7 @@ const sidebarNavRadiusClassName = "rounded-md!";
  * fades out via the matching group classes on the label itself).
  */
 const rowHoverActionsClassName =
-	"pointer-events-none absolute flex items-center gap-0.5 opacity-0 transition-opacity group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100";
+	"pointer-events-none absolute flex items-center opacity-0 transition-opacity group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100";
 
 const rowHoverLabelFadeClassName =
 	"group-hover/sidebar-row:opacity-0 group-has-[:focus-visible]/sidebar-row:opacity-0 group-has-[[data-popup-open]]/sidebar-row:opacity-0";
@@ -91,12 +126,20 @@ const rowMotionProps: Pick<
 	ComponentPropsWithoutRef<typeof motion.li>,
 	"layout" | "initial" | "animate" | "exit" | "transition"
 > = {
-	layout: true,
+	layout: "position",
 	initial: { opacity: 0 },
 	animate: { opacity: 1 },
 	exit: { opacity: 0 },
 	transition: { duration: 0.15 },
 };
+
+const SessionListChromeContext = createContext<{
+	show: readonly SessionListShowField[];
+	pinnedIds: ReadonlySet<string>;
+	togglePin: (id: string) => void;
+}>({ show: [], pinnedIds: new Set(), togglePin: () => undefined });
+
+const SessionRowIndentContext = createContext(false);
 
 /**
  * Resolve ItemByIndex from a stable thread id. AnimatePresence keeps deleted
@@ -107,34 +150,159 @@ const rowMotionProps: Pick<
 const SessionListItemSlot: FC<{
 	id: string;
 	archived?: boolean;
-	components: ComponentPropsWithoutRef<typeof ThreadListPrimitive.ItemByIndex>["components"];
-}> = ({ id, archived = false, components }) => {
+}> = ({ id, archived = false }) => {
 	const index = useAuiState((s) => {
 		const ids = archived ? s.threads.archivedThreadIds : s.threads.threadIds;
 		return ids.indexOf(id);
 	});
 	if (index < 0) return null;
 	return (
-		<ThreadListPrimitive.ItemByIndex index={index} archived={archived} components={components} />
+		<ThreadListPrimitive.ItemByIndex
+			index={index}
+			archived={archived}
+			components={{ ThreadListItem: SessionRow }}
+		/>
 	);
 };
 
 export const SessionList: FC = () => {
-	const [search, setSearch] = useState("");
-	const hasThreads = useAuiState(
-		(s) => s.threads.threadIds.length > 0 || s.threads.archivedThreadIds.length > 0,
+	const { view, update, reset } = useSessionListView();
+	const { ids: pinIds, toggle: togglePin } = useSessionListPins();
+	const pinnedIds = useMemo(() => new Set(pinIds), [pinIds]);
+	const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+	const threadIds = useAuiState((s) => s.threads.threadIds);
+	const archivedThreadIds = useAuiState((s) => s.threads.archivedThreadIds);
+	const threadItems = useAuiState((s) => s.threads.threadItems);
+	const isLoading = useAuiState((s) => s.threads.isLoading);
+	const activityBySessionId = useSessionActivity((s) => s.sessions);
+	const { workspaces, setActiveWorkspaceId } = useWorkspacesFeature();
+	const focus =
+		view.focus && workspaces.some((workspace) => workspace.id === view.focus) ? view.focus : null;
+	const resolvedView = useMemo(
+		() => (focus === view.focus ? view : { ...view, focus }),
+		[focus, view],
+	);
+	const show = visibleShowFields(resolvedView);
+
+	const sections = useMemo(() => {
+		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
+		const toEntry = (id: string, sourceIndex: number, archived: boolean) => {
+			const item = itemsById.get(id);
+			return {
+				id,
+				remoteId: item?.remoteId,
+				title: item?.title,
+				sourceIndex,
+				archived,
+			};
+		};
+		const entries = [
+			...threadIds.map((id, index) => toEntry(id, index, false)),
+			...archivedThreadIds.map((id, index) => toEntry(id, index, true)),
+		];
+		return buildSessionListSections({
+			entries,
+			activityBySessionId,
+			workspaces,
+			view: resolvedView,
+			pinnedIds,
+		});
+	}, [
+		activityBySessionId,
+		archivedThreadIds,
+		pinnedIds,
+		resolvedView,
+		threadIds,
+		threadItems,
+		workspaces,
+	]);
+
+	const pinnedSections = sections.filter((section) => section.tone === "pinned");
+	const groupedSections = sections.filter((section) => section.tone !== "pinned");
+	const collapsibleKeys = sections.flatMap((section) => (section.label ? [section.key] : []));
+	const allCollapsed =
+		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
+	const focusedWorkspace = focus
+		? workspaces.find((workspace) => workspace.id === focus)
+		: undefined;
+	const emptyLabel = focusedWorkspace ? `No chats in ${focusedWorkspace.name}` : null;
+
+	const viewMenu = (
+		<SessionListViewMenu
+			view={resolvedView}
+			onViewChange={update}
+			onReset={reset}
+			canCollapse={collapsibleKeys.length > 0}
+			allCollapsed={allCollapsed}
+			onCollapseAll={() => {
+				setExpanded(Object.fromEntries(collapsibleKeys.map((key) => [key, false])));
+			}}
+			onExpandAll={() => {
+				setExpanded(Object.fromEntries(collapsibleKeys.map((key) => [key, true])));
+			}}
+		/>
 	);
 
 	return (
 		<div data-qa-id="kilo-thread-list" className="flex min-h-0 flex-1 flex-col">
-			<ThreadListPrimitive.Root
-				data-slot="aui_thread-list-root"
-				className="flex min-h-0 flex-1 flex-col gap-0.5"
-			>
-				<SessionListNewChat />
-				{hasThreads && <SessionListSearch value={search} onValueChange={setSearch} />}
-				<SessionListItems searchQuery={hasThreads ? search : ""} />
-			</ThreadListPrimitive.Root>
+			<SessionListChromeContext value={{ show, pinnedIds, togglePin }}>
+				<ThreadListPrimitive.Root
+					data-slot="aui_thread-list-root"
+					className="flex min-h-0 flex-1 flex-col gap-0.5"
+				>
+					<GlobalNewButton />
+					<SessionListSearch
+						onSelectWorkspace={(id) => {
+							update({ focus: id });
+							setActiveWorkspaceId(id);
+						}}
+					/>
+					<SidebarSeparator data-qa-id="session-list-chrome-divider" className="mx-0 mt-1 mb-3" />
+					<div
+						data-qa-id="session-list-inbox-header"
+						className="bg-foreground/5 flex h-8 shrink-0 items-center rounded-md pr-0.5"
+					>
+						<InboxWorkspaceFilter
+							value={focus}
+							onValueChange={(id) => {
+								update({ focus: id });
+								if (id) setActiveWorkspaceId(id);
+							}}
+						/>
+						<div className="flex h-full shrink-0 items-center">{viewMenu}</div>
+					</div>
+					<div
+						data-slot="aui_thread-list-items"
+						className="scroll-fade no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain"
+					>
+						{!isLoading && pinnedSections.length > 0 ? (
+							<SessionListSections
+								sections={pinnedSections}
+								expanded={expanded}
+								onExpandedChange={setExpanded}
+							/>
+						) : null}
+						{isLoading ? <SessionListSkeleton /> : null}
+						{!isLoading && emptyLabel && sections.length === 0 ? (
+							<div
+								data-slot="aui_thread-list-empty"
+								className="text-muted-foreground px-2.5 py-4 text-sm"
+							>
+								{emptyLabel}
+							</div>
+						) : null}
+						{!isLoading && groupedSections.length > 0 ? (
+							<div className={pinnedSections.length > 0 ? "mt-2" : undefined}>
+								<SessionListSections
+									sections={groupedSections}
+									expanded={expanded}
+									onExpandedChange={setExpanded}
+								/>
+							</div>
+						) : null}
+					</div>
+				</ThreadListPrimitive.Root>
+			</SessionListChromeContext>
 		</div>
 	);
 };
@@ -144,58 +312,252 @@ function useNavigateToChat(): () => void {
 	return useCallback(() => navigateToChat(sdk), [sdk]);
 }
 
-const SessionListNewChat: FC = () => {
-	const navigate = useNavigateToChat();
-	return (
-		<ThreadListPrimitive.New
-			onClick={navigate}
-			render={
-				<Button
-					variant="ghost"
-					data-slot="aui_thread-list-new"
-					className={cn(
-						"h-8 w-full justify-start gap-2 p-2 text-sm font-normal data-active:font-medium [&_svg]:size-4 [&_svg]:shrink-0",
-						sidebarNavItemClassName,
-						sidebarNavRadiusClassName,
-					)}
-				/>
-			}
-		>
-			<PlusIcon data-slot="aui_thread-list-new-icon" />
-			<span data-slot="aui_thread-list-new-label" className="truncate">
-				New Chat
-			</span>
-		</ThreadListPrimitive.New>
-	);
+function filterSearchItems(value: string, search: string, keywords?: string[]): number {
+	const terms = keywords && keywords.length > 0 ? keywords : [value];
+	const query = search.trim().toLowerCase();
+	return terms.some((term) => term.toLowerCase().includes(query)) ? 1 : 0;
+}
+
+const SEARCH_SCOPES = ["all", "chats", "workspaces"] as const;
+type SearchScope = (typeof SEARCH_SCOPES)[number];
+
+const SEARCH_SCOPE_LABELS: Record<SearchScope, string> = {
+	all: "All",
+	chats: "Chats",
+	workspaces: "Workspaces",
 };
+
+function isSearchScope(value: string | undefined): value is SearchScope {
+	return value === "all" || value === "chats" || value === "workspaces";
+}
+
+function searchEmptyLabel(scope: SearchScope, emptyQuery: boolean, isLoading: boolean): string {
+	if (!emptyQuery) return "No results.";
+	if (scope !== "workspaces") return "No recent chats.";
+	if (isLoading) return "Loading workspaces…";
+	return "No workspaces yet.";
+}
+
+function workspacePrimaryFolderLabel(workspace: Workspace): string | null {
+	const path =
+		workspace.folders.find((folder) => folder.isPrimary)?.path ?? workspace.folders[0]?.path;
+	return path ? directoryBasename(path) : null;
+}
+
+type SearchRow = {
+	id: string;
+	title: string;
+	sublabel: string | null;
+	updatedAt: number | undefined;
+	archived: boolean;
+};
+
+function SearchChatItem({ row, onSelect }: { row: SearchRow; onSelect: (row: SearchRow) => void }) {
+	return (
+		<CommandItem
+			value={`chat:${row.id}`}
+			keywords={row.sublabel ? [row.title, row.sublabel] : [row.title]}
+			onSelect={() => onSelect(row)}
+			className={HIDE_BUILTIN_CHECK}
+		>
+			<MessageSquareIcon />
+			<span className="min-w-0 flex-1 truncate">{row.title}</span>
+			<span className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
+				{row.sublabel ? <span className="max-w-36 truncate">{row.sublabel}</span> : null}
+				{row.updatedAt ? (
+					<span className="tabular-nums">{formatRelativeTimeLabel(row.updatedAt, Date.now())}</span>
+				) : null}
+			</span>
+		</CommandItem>
+	);
+}
+
+function SearchWorkspaceItem({
+	workspace,
+	onSelect,
+}: {
+	workspace: Workspace;
+	onSelect: (id: string) => void;
+}) {
+	const glyph = workspaceGlyphColor(workspace.color);
+	const sublabel = workspacePrimaryFolderLabel(workspace);
+	return (
+		<CommandItem
+			data-qa-id={`session-search-workspace-${workspace.id}`}
+			value={`workspace:${workspace.id}`}
+			keywords={sublabel ? [workspace.name, sublabel] : [workspace.name]}
+			onSelect={() => onSelect(workspace.id)}
+			className={HIDE_BUILTIN_CHECK}
+		>
+			<FolderIcon {...(glyph ? { color: glyph } : {})} />
+			<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+			{sublabel ? (
+				<span className="text-muted-foreground max-w-36 shrink-0 truncate text-xs">{sublabel}</span>
+			) : null}
+		</CommandItem>
+	);
+}
 
 const SessionListSearch: FC<{
-	value: string;
-	onValueChange: (value: string) => void;
-}> = ({ value, onValueChange }) => {
-	return (
-		<SidebarSearch
-			value={value}
-			onChange={(event) => onValueChange(event.target.value)}
-			aria-label="Search chats"
-			placeholder="Search chats"
-		/>
-	);
-};
+	onSelectWorkspace: (workspaceId: string) => void;
+}> = ({ onSelectWorkspace }) => {
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const [scope, setScope] = useState<SearchScope>("all");
+	const aui = useAui();
+	const sdk = useSdk("kilo-ui");
+	const threadIds = useAuiState((s) => s.threads.threadIds);
+	const archivedThreadIds = useAuiState((s) => s.threads.archivedThreadIds);
+	const threadItems = useAuiState((s) => s.threads.threadItems);
+	const activityBySessionId = useSessionActivity((s) => s.sessions);
+	const { isLoading, isUnavailable, workspaces } = useWorkspacesFeature();
+	const showChats = scope !== "workspaces";
+	const showWorkspaces = scope !== "chats" && !isUnavailable;
 
-const SessionListItems: FC<{ searchQuery: string }> = ({ searchQuery }) => {
+	useEffect(() => {
+		if (open) return;
+		setQuery("");
+		setScope("all");
+	}, [open]);
+
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key.toLowerCase() !== "k") return;
+			if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+			event.preventDefault();
+			setOpen((current) => !current);
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, []);
+
+	const rows = useMemo(() => {
+		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
+		const toRow = (id: string, archived: boolean): SearchRow => {
+			const item = itemsById.get(id);
+			const remoteId = item?.remoteId;
+			const activity = remoteId ? activityBySessionId[remoteId] : undefined;
+			return {
+				id,
+				title: item?.title || "New Chat",
+				sublabel: resolveSessionLocationLabel(activity, workspaces),
+				updatedAt: activity?.updatedAt,
+				archived,
+			};
+		};
+		return [
+			...threadIds.map((id) => toRow(id, false)),
+			...archivedThreadIds.map((id) => toRow(id, true)),
+		];
+	}, [activityBySessionId, archivedThreadIds, threadIds, threadItems, workspaces]);
+
+	const chats = showChats ? rows.filter((row) => !row.archived) : [];
+	const settled = showChats ? rows.filter((row) => row.archived) : [];
+	const workspaceRows = showWorkspaces ? workspaces : [];
+	const emptyQuery = query.trim().length === 0;
+	const emptyLabel = searchEmptyLabel(scope, emptyQuery, isLoading);
+
+	const handleSelectChat = (row: SearchRow) => {
+		setOpen(false);
+		void aui.threads.switchToThread(row.id, { unarchive: !row.archived });
+		navigateToChat(sdk);
+	};
+
+	const handleSelectWorkspace = (id: string) => {
+		setOpen(false);
+		onSelectWorkspace(id);
+	};
+
 	return (
-		<div
-			data-slot="aui_thread-list-items"
-			className="scroll-fade no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain"
-		>
-			<AuiIf condition={(s) => s.threads.isLoading}>
-				<SessionListSkeleton />
-			</AuiIf>
-			<AuiIf condition={(s) => !s.threads.isLoading}>
-				<SessionListSections searchQuery={searchQuery} />
-			</AuiIf>
-		</div>
+		<>
+			<Button
+				type="button"
+				variant="ghost"
+				className={cn("w-full justify-start", sidebarNavRadiusClassName)}
+				data-slot="aui_thread-list-search"
+				data-qa-id="session-list-search"
+				onClick={() => setOpen(true)}
+			>
+				<SearchIcon data-icon="inline-start" />
+				Search
+			</Button>
+			<CommandDialog
+				open={open}
+				onOpenChange={setOpen}
+				title="Search"
+				description="Search chats and workspaces"
+				showCloseButton
+				className="top-1/2 -translate-y-1/2"
+			>
+				<Command label="Search chats and workspaces" filter={filterSearchItems}>
+					<CommandInput
+						value={query}
+						onValueChange={setQuery}
+						placeholder="Search chats, workspaces…"
+						aria-label="Search chats and workspaces"
+						className="pe-10"
+					/>
+					<ToggleGroup
+						size="sm"
+						spacing={1}
+						value={[scope]}
+						aria-label="Search in"
+						className="px-4 pt-0.5 pb-3.5"
+						onMouseDown={(event) => event.preventDefault()}
+						onValueChange={(value) => {
+							const next = value[0];
+							if (isSearchScope(next)) setScope(next);
+						}}
+					>
+						{SEARCH_SCOPES.map((item) => (
+							<ToggleGroupItem
+								key={item}
+								value={item}
+								data-qa-id={`session-search-filter-${item}`}
+								className="hover:bg-secondary hover:text-secondary-foreground"
+							>
+								{SEARCH_SCOPE_LABELS[item]}
+							</ToggleGroupItem>
+						))}
+					</ToggleGroup>
+					<CommandSeparator />
+					<CommandList>
+						<CommandEmpty>{emptyLabel}</CommandEmpty>
+						{chats.length > 0 ? (
+							<CommandGroup heading={emptyQuery ? "Recent chats" : "Chats"}>
+								{chats.map((row) => (
+									<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
+								))}
+							</CommandGroup>
+						) : null}
+						{settled.length > 0 ? (
+							<>
+								{chats.length > 0 ? <CommandSeparator /> : null}
+								<CommandGroup heading="Settled">
+									{settled.map((row) => (
+										<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
+									))}
+								</CommandGroup>
+							</>
+						) : null}
+						{workspaceRows.length > 0 ? (
+							<>
+								{chats.length > 0 || settled.length > 0 ? <CommandSeparator /> : null}
+								<CommandGroup heading="Workspaces">
+									{workspaceRows.map((workspace) => (
+										<SearchWorkspaceItem
+											key={workspace.id}
+											workspace={workspace}
+											onSelect={handleSelectWorkspace}
+										/>
+									))}
+								</CommandGroup>
+							</>
+						) : null}
+					</CommandList>
+				</Command>
+			</CommandDialog>
+		</>
 	);
 };
 
@@ -220,182 +582,107 @@ const SessionListSkeleton: FC = () => {
 	);
 };
 
-const SessionListSections: FC<{ searchQuery: string }> = ({ searchQuery }) => {
-	const threadIds = useAuiState((s) => s.threads.threadIds);
-	const archivedThreadIds = useAuiState((s) => s.threads.archivedThreadIds);
-	const threadItems = useAuiState((s) => s.threads.threadItems);
-	const activityBySessionId = useSessionActivity((s) => s.sessions);
-	const [attentionExpanded, setAttentionExpanded] = useState(true);
-	const [activeExpanded, setActiveExpanded] = useState(true);
-	const [settledExpanded, setSettledExpanded] = useState(true);
-
-	const query = searchQuery.trim().toLowerCase();
-
-	const partition = useMemo(() => {
-		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
-		const toEntry = (id: string, sourceIndex: number) => {
-			const item = itemsById.get(id);
-			return { id, remoteId: item?.remoteId, title: item?.title, sourceIndex };
-		};
-		const matchesQuery = (entry: { title?: string | undefined }) =>
-			!query || (entry.title || "New Chat").toLowerCase().includes(query);
-		return partitionSidebarThreads({
-			regular: threadIds.map(toEntry).filter(matchesQuery),
-			archived: archivedThreadIds.map(toEntry).filter(matchesQuery),
-			activityBySessionId,
-		});
-	}, [activityBySessionId, archivedThreadIds, query, threadIds, threadItems]);
-
-	const isEmpty =
-		partition.attention.length === 0 &&
-		partition.sessions.length === 0 &&
-		partition.settled.length === 0;
-
-	if (query && isEmpty) {
-		return (
-			<div data-slot="aui_thread-list-empty" className="text-muted-foreground px-2.5 py-4 text-sm">
-				No chats found
-			</div>
-		);
-	}
-
-	if (isEmpty) return null;
+const SessionListSections: FC<{
+	sections: SessionListSection[];
+	expanded: Record<string, boolean>;
+	onExpandedChange: (value: Record<string, boolean>) => void;
+}> = ({ sections, expanded, onExpandedChange }) => {
+	if (sections.length === 0) return null;
 
 	return (
 		<ul role="list" className="relative flex flex-col gap-px">
 			<AnimatePresence initial={false} mode="popLayout">
-				{partition.attention.length > 0 && (
-					<SessionShelfHeader
-						key="attention-header"
-						tone="attention"
-						label="Needs Attention"
-						count={partition.attention.length}
-						alwaysShowCount
-						expanded={attentionExpanded}
-						onToggle={() => setAttentionExpanded((value) => !value)}
-					/>
-				)}
-				{attentionExpanded &&
-					partition.attention.map(({ index, archived }) => {
-						const id = (archived ? archivedThreadIds : threadIds)[index];
-						if (!id) return null;
-						return (
-							<motion.li
-								{...rowMotionProps}
-								key={id}
-								className="list-none [contain-intrinsic-size:auto_64px] [content-visibility:auto]"
-							>
-								<SessionListItemSlot
-									id={id}
-									archived={archived}
-									components={{ ThreadListItem: SessionCardRow }}
-								/>
-							</motion.li>
-						);
-					})}
-				{partition.sessions.length > 0 && (
-					<SessionShelfHeader
-						key="active-header"
-						tone="active"
-						label="Active"
-						count={partition.sessions.length}
-						expanded={activeExpanded}
-						onToggle={() => setActiveExpanded((value) => !value)}
-					/>
-				)}
-				{activeExpanded &&
-					partition.sessions.map((index) => {
-						const id = threadIds[index];
-						if (!id) return null;
-						return (
-							<motion.li
-								{...rowMotionProps}
-								key={id}
-								className="list-none [contain-intrinsic-size:auto_64px] [content-visibility:auto]"
-							>
-								<SessionListItemSlot id={id} components={{ ThreadListItem: SessionCardRow }} />
-							</motion.li>
-						);
-					})}
-				{partition.settled.length > 0 && (
-					<SessionShelfHeader
-						key="settled-header"
-						tone="settled"
-						label="Settled"
-						count={partition.settled.length}
-						expanded={settledExpanded}
-						onToggle={() => setSettledExpanded((value) => !value)}
-					/>
-				)}
-				{settledExpanded &&
-					partition.settled.map((index) => {
-						const id = archivedThreadIds[index];
-						if (!id) return null;
-						return (
-							<motion.li
-								{...rowMotionProps}
-								key={id}
-								className="list-none [contain-intrinsic-size:auto_28px] [content-visibility:auto]"
-							>
-								<SessionListItemSlot
-									id={id}
-									archived
-									components={{ ThreadListItem: SettledSessionRow }}
-								/>
-							</motion.li>
-						);
-					})}
+				{sections.flatMap((section, index) => {
+					const isExpanded = !section.label || expanded[section.key] !== false;
+					const header = section.label ? (
+						<SessionShelfHeader
+							key={`${section.key}-header`}
+							tone={section.tone}
+							label={section.label}
+							expanded={isExpanded}
+							spaced={sections.slice(0, index).some((entry) => entry.label)}
+							onToggle={() => onExpandedChange({ ...expanded, [section.key]: !isExpanded })}
+						/>
+					) : null;
+					const rows = isExpanded
+						? section.rows.map((row) => (
+								<motion.li {...rowMotionProps} key={row.id} className="list-none">
+									<SessionRowIndentContext value={Boolean(section.label)}>
+										<SessionListItemSlot id={row.id} archived={row.archived} />
+									</SessionRowIndentContext>
+								</motion.li>
+							))
+						: [];
+					return header ? [header, ...rows] : rows;
+				})}
 			</AnimatePresence>
 		</ul>
 	);
 };
+
+const shelfMutedTone = {
+	label: "text-muted-foreground/70",
+	chevron: "text-muted-foreground/70",
+} as const;
 
 const shelfHeaderTones = {
 	attention: {
 		label: "text-amber-600 dark:text-amber-400",
 		chevron: "text-amber-600 dark:text-amber-400",
 	},
-	active: {
-		label: "text-muted-foreground/70",
-		chevron: "text-muted-foreground/70",
-	},
-	settled: {
-		label: "text-muted-foreground/70",
-		chevron: "text-muted-foreground/70",
-	},
+	active: shelfMutedTone,
+	settled: shelfMutedTone,
+	workspace: shelfMutedTone,
+	pinned: shelfMutedTone,
+	updated: shelfMutedTone,
 } as const;
 
 const SessionShelfHeader: FC<{
-	tone: keyof typeof shelfHeaderTones;
+	tone: SessionListSection["tone"];
 	label: string;
-	count: number;
-	alwaysShowCount?: boolean;
 	expanded: boolean;
+	spaced?: boolean;
 	onToggle: () => void;
-}> = ({ tone, label, count, alwaysShowCount = false, expanded, onToggle }) => {
+}> = ({ tone, label, expanded, spaced = false, onToggle }) => {
 	const classes = shelfHeaderTones[tone];
+	const qaId =
+		tone === "workspace" ? "session-list-workspace-toggle" : `session-list-${tone}-toggle`;
 	return (
 		<motion.li
 			{...rowMotionProps}
 			className="list-none"
 			data-slot={`aui_session-list-${tone}-header`}
 		>
-			<button
+			<Button
 				type="button"
+				variant="ghost"
 				onClick={onToggle}
 				aria-expanded={expanded}
-				data-qa-id={`session-list-${tone}-toggle`}
-				className="mt-3 mb-1 flex w-full cursor-pointer items-center gap-2 px-2.5 text-left"
+				data-qa-id={qaId}
+				className={cn(
+					"group/shelf h-7 w-full justify-start gap-2 bg-transparent px-2 font-normal hover:bg-transparent aria-expanded:bg-transparent",
+					sidebarNavRadiusClassName,
+					spaced && "mt-2",
+				)}
 			>
-				<span className={cn("text-xs font-medium", classes.label)}>
-					{expanded && !alwaysShowCount ? label : `${label} (${count})`}
+				<span
+					className={cn(
+						"min-w-0 truncate font-medium",
+						tone === "pinned" ? "text-sm" : "text-[13px]",
+						classes.label,
+					)}
+				>
+					{label}
 				</span>
-				<span className="h-px flex-1" />
 				<ChevronDownIcon
 					aria-hidden
-					className={cn("size-3 transition-transform", classes.chevron, !expanded && "rotate-180")}
+					className={cn(
+						"size-3 opacity-0 transition-[opacity,transform] group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100",
+						classes.chevron,
+						!expanded && "-rotate-90",
+					)}
 				/>
-			</button>
+			</Button>
 		</motion.li>
 	);
 };
@@ -443,49 +730,96 @@ function useNow(intervalMs: number): number {
 	return now;
 }
 
-const WorkingDuration: FC<{ startedAt: number }> = ({ startedAt }) => {
-	const now = useNow(1_000);
-	return <>{formatWorkingDurationLabel(now - startedAt)}</>;
-};
-
 const SessionRelativeTime: FC<{ timestamp: number }> = ({ timestamp }) => {
 	const now = useNow(30_000);
 	return <>{formatRelativeTimeLabel(timestamp, now)}</>;
 };
 
-const SessionRowStatus: FC<{
-	rowState: SessionRowState;
-	workingSince: number | undefined;
-	updatedAt: number | undefined;
-	isActive: boolean;
-}> = ({ rowState, workingSince, updatedAt, isActive }) => {
-	if (rowState === null) {
-		return updatedAt !== undefined ? <SessionRelativeTime timestamp={updatedAt} /> : null;
-	}
-	const { label, className } = rowStateLabels[rowState];
+const WorkingTooltipLabel: FC<{ label: string; startedAt: number }> = ({ label, startedAt }) => {
+	const now = useNow(1_000);
 	return (
-		<span
-			className={cn(
-				"inline-flex items-center gap-1 font-medium",
-				className,
-				rowState === "working" && !isActive && "opacity-75",
-			)}
-		>
-			{rowState === "working" ? (
-				<Loader2Icon aria-hidden className="size-4 shrink-0 animate-spin" />
-			) : null}
-			{rowState === "done" ? <CircleCheckIcon aria-hidden className="size-4 shrink-0" /> : null}
-			{/* The label alone is the live region: wrapping the ticking duration
-			    would make screen readers announce every second. */}
-			<span role="status">{label}</span>
-			{rowState === "working" && workingSince !== undefined ? (
-				<span aria-hidden className="opacity-60">
-					<WorkingDuration startedAt={workingSince} />
-				</span>
-			) : null}
-		</span>
+		<>
+			{label} · {formatWorkingDurationLabel(now - startedAt)}
+		</>
 	);
 };
+
+const SessionRowGlyph: FC<{
+	rowState: SessionRowState;
+	isActive: boolean;
+	workingSince: number | undefined;
+}> = ({ rowState, isActive, workingSince }) => {
+	if (rowState === null) return null;
+	const { label, className } = rowStateLabels[rowState];
+	return (
+		<TooltipProvider delay={300}>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<span
+							role="status"
+							aria-label={label}
+							className={cn(
+								"inline-flex size-3.5 shrink-0 items-center justify-center",
+								rowState !== "done" && className,
+								rowState === "working" && !isActive && "opacity-75",
+							)}
+						/>
+					}
+				>
+					{rowState === "working" ? (
+						<Loader2Icon aria-hidden className="size-3.5 animate-spin" />
+					) : null}
+					{rowState === "done" ? (
+						<span
+							data-qa-id="session-list-done-dot"
+							aria-hidden
+							className="bg-muted-foreground/40 size-1.5 rounded-full"
+						/>
+					) : null}
+					{rowState === "approval" ? <CircleAlertIcon aria-hidden className="size-3.5" /> : null}
+					{rowState === "input" ? (
+						<MessageCircleQuestionIcon aria-hidden className="size-3.5" />
+					) : null}
+				</TooltipTrigger>
+				<TooltipContent side="right">
+					{rowState === "working" && workingSince !== undefined ? (
+						<WorkingTooltipLabel label={label} startedAt={workingSince} />
+					) : (
+						label
+					)}
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
+};
+
+const RowHoverAction: FC<{
+	label: string;
+	tooltip: string;
+	slot: string;
+	onClick: () => void;
+	children: ReactNode;
+}> = ({ label, tooltip, slot, onClick, children }) => (
+	<Tooltip>
+		<TooltipTrigger
+			render={
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					className="size-5"
+					aria-label={label}
+					data-slot={slot}
+					onClick={onClick}
+				/>
+			}
+		>
+			{children}
+		</TooltipTrigger>
+		<TooltipContent side="bottom">{tooltip}</TooltipContent>
+	</Tooltip>
+);
 
 function useRenameState(): {
 	isRenaming: boolean;
@@ -514,196 +848,195 @@ function useRenameState(): {
 	};
 }
 
-const SessionCardRow: FC = () => {
+const SessionRow: FC = () => {
 	const aui = useAui();
 	const navigate = useNavigateToChat();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
+	const threadId = useAuiState((s) => s.threadListItem.id);
+	const itemStatus = useAuiState((s) => s.threadListItem.status);
 	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
 	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
 	const lastVisitedAt = useSessionActivity((s) =>
 		remoteId ? s.lastVisitedAtBySessionId[remoteId] : undefined,
 	);
 	const { workspaces } = useWorkspacesFeature();
+	const { show, pinnedIds, togglePin } = use(SessionListChromeContext);
+	const indented = use(SessionRowIndentContext);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
 
 	const rowState = deriveSessionRowState(activity, lastVisitedAt);
-	const canSettle = rowState === null || rowState === "done";
+	const isSettled = itemStatus === "archived" && rowState !== "approval" && rowState !== "input";
+	const canSettle = !isSettled && (rowState === null || rowState === "done");
+	const pinId = remoteId ?? threadId;
+	const isPinned = pinnedIds.has(pinId);
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
+	const showUpdated = show.includes("updated");
+	const showWorkspace = show.includes("workspace") && locationLabel !== null;
+	const updatedAt = showUpdated ? activity?.updatedAt : undefined;
 
-	const status = (
-		<span
-			className={cn(
-				"ml-auto flex h-5 min-w-8 shrink-0 items-center justify-end tabular-nums text-xs text-muted-foreground transition-[opacity,min-width]",
-				// Expand only while hover actions are visible so the title/location
-				// truncates under Settle instead of always reserving room.
-				canSettle &&
-					"group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24",
-				rowHoverLabelFadeClassName,
-			)}
-		>
-			<SessionRowStatus
-				rowState={rowState}
-				workingSince={activity?.workingSince}
-				updatedAt={activity?.updatedAt}
-				isActive={isActive}
-			/>
+	const leadingIcon = isSettled ? (
+		<TooltipProvider delay={300}>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<span
+							role="status"
+							aria-label="Settled"
+							className={cn(
+								"inline-flex size-3.5 shrink-0 items-center justify-center transition-opacity",
+								!isActive &&
+									"opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
+							)}
+						/>
+					}
+				>
+					<CheckIcon aria-hidden className="size-3.5" />
+				</TooltipTrigger>
+				<TooltipContent side="right">Settled</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	) : rowState !== null ? (
+		<SessionRowGlyph
+			rowState={rowState}
+			isActive={isActive}
+			workingSince={activity?.workingSince}
+		/>
+	) : (
+		<span className="inline-flex size-3.5 shrink-0" aria-hidden />
+	);
+
+	const rightSlot = updatedAt !== undefined ? <SessionRelativeTime timestamp={updatedAt} /> : null;
+
+	const glyph = indented ? (
+		<span className="flex h-7 w-4 shrink-0 items-center justify-center">{leadingIcon}</span>
+	) : (
+		leadingIcon
+	);
+
+	const titleRow = (
+		<span className={cn("flex h-7 min-w-0 items-center", indented ? "gap-1.5" : glyph && "gap-2")}>
+			{glyph}
+			<span
+				data-slot="aui_session-list-item-title"
+				className={cn(
+					"min-w-0 flex-1 truncate text-[13px]",
+					// sidebar-accent-foreground is a muted storm step for filled
+					// accent chips; titles sit on a faint wash, so hover/selected
+					// use full sidebar-foreground.
+					isSettled && !isActive
+						? "text-muted-foreground group-hover/sidebar-row:text-sidebar-foreground"
+						: isActive
+							? "text-sidebar-foreground"
+							: "text-sidebar-foreground/70 group-hover/sidebar-row:text-sidebar-foreground",
+				)}
+			>
+				<ThreadListItemPrimitive.Title fallback="New Chat" />
+			</span>
+			<span
+				data-slot="aui_session-list-item-time"
+				className={cn(
+					"ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 tabular-nums text-xs text-muted-foreground transition-opacity",
+					canSettle || isSettled
+						? "group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24"
+						: "group-hover/sidebar-row:min-w-16 group-has-[:focus-visible]/sidebar-row:min-w-16 group-has-[[data-popup-open]]/sidebar-row:min-w-16",
+					rightSlot ? rowHoverLabelFadeClassName : null,
+				)}
+			>
+				{rightSlot}
+			</span>
 		</span>
 	);
 
+	const infoLine =
+		showWorkspace && locationLabel ? (
+			<span
+				data-slot="aui_session-list-item-info"
+				className={cn(
+					"text-muted-foreground flex min-w-0 items-center gap-1.5 truncate pb-1 text-xs",
+					indented && "ml-1.5 pl-4",
+				)}
+			>
+				<span className="truncate">{locationLabel}</span>
+			</span>
+		) : null;
+
+	const rowPad = indented ? "pl-2 pr-2.5" : "px-2.5";
+
 	return (
 		<ThreadListItemPrimitive.Root
-			data-slot="aui_session-list-item"
+			data-slot={isSettled ? "aui_session-list-settled-item" : "aui_session-list-item"}
 			className={cn(
-				"group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none",
+				"group/sidebar-row relative w-full cursor-pointer rounded-md text-left outline-none select-none",
 				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
 			)}
 		>
 			{isRenaming ? (
-				<div className={locationLabel ? "px-2.5 py-2" : "flex h-7 items-center px-2.5"}>
-					{locationLabel ? (
-						<div className="flex h-5 min-w-0 items-center gap-1.5">
-							<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-							<span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-								{locationLabel}
-							</span>
-						</div>
-					) : null}
-					<div className={locationLabel ? "mt-1 flex min-w-0" : "flex min-w-0 flex-1"}>
-						<SessionItemRename onDone={finishRename} />
-					</div>
+				<div className={cn("flex h-7 items-center", rowPad)}>
+					<SessionItemRename onDone={finishRename} />
 				</div>
-			) : (
-				<ThreadListItemPrimitive.Trigger
-					ref={triggerRef}
-					onClick={navigate}
-					data-slot="aui_session-list-item-trigger"
-					className={
-						locationLabel
-							? "block w-full px-2.5 py-2 text-left focus-visible:outline-none"
-							: "flex h-7 w-full items-center px-2.5 text-left focus-visible:outline-none"
-					}
-				>
-					{locationLabel ? (
-						<span className="flex h-5 min-w-0 items-center gap-1.5">
-							<FolderIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-							<span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-								{locationLabel}
-							</span>
-							{status}
-						</span>
-					) : null}
-					<span
-						className={locationLabel ? "mt-1 flex min-w-0" : "flex min-w-0 flex-1 items-center"}
-					>
-						<span
-							data-slot="aui_session-list-item-title"
-							className="min-w-0 flex-1 truncate text-sm font-medium"
-						>
-							<ThreadListItemPrimitive.Title fallback="New Chat" />
-						</span>
-						{locationLabel ? null : status}
-					</span>
-				</ThreadListItemPrimitive.Trigger>
-			)}
-			{!isRenaming && (
-				<span
-					className={cn(
-						rowHoverActionsClassName,
-						locationLabel ? "right-1.5 top-2 h-5" : "right-1.5 top-1/2 h-5 -translate-y-1/2",
-					)}
-				>
-					{canSettle && (
-						<Button
-							type="button"
-							variant="ghost"
-							size="xs"
-							aria-label="Settle thread"
-							data-slot="aui_session-list-item-settle"
-							onClick={() => void aui.threadListItem.archive()}
-						>
-							<CheckIcon aria-hidden className="size-3.5" />
-							Settle
-						</Button>
-					)}
-					<SessionRowMenu settleAction={canSettle ? "settle" : undefined} onRename={startRename} />
-				</span>
-			)}
-		</ThreadListItemPrimitive.Root>
-	);
-};
-
-const SettledSessionRow: FC = () => {
-	const aui = useAui();
-	const navigate = useNavigateToChat();
-	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
-	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
-	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
-	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
-
-	return (
-		<ThreadListItemPrimitive.Root
-			data-slot="aui_session-list-settled-item"
-			className={cn(
-				"group/sidebar-row relative flex h-7 w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-2.5 text-left outline-none select-none",
-				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
-			)}
-		>
-			{isRenaming ? (
-				<SessionItemRename onDone={finishRename} />
-			) : (
-				// Prefer a plain button over ThreadListItemPrimitive.Trigger: the
-				// primitive's switchTo auto-unarchives, which would yank settled
-				// sessions back into Active just from viewing them.
+			) : isSettled ? (
 				<button
 					ref={triggerRef}
 					type="button"
 					data-slot="aui_session-list-settled-trigger"
-					className="flex h-full min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none"
+					className={cn("flex w-full flex-col py-0 text-left focus-visible:outline-none", rowPad)}
 					onClick={() => {
 						navigate();
 						void aui.threadListItem.switchTo({ unarchive: false });
 					}}
 				>
-					<CheckIcon
-						aria-hidden
-						className={cn(
-							"size-3.5 shrink-0 transition-opacity",
-							!isActive &&
-								"opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
-						)}
-					/>
-					<span
-						data-slot="aui_session-list-item-title"
-						className="text-muted-foreground group-hover/sidebar-row:text-foreground min-w-0 flex-1 truncate text-sm"
-					>
-						<ThreadListItemPrimitive.Title fallback="New Chat" />
-					</span>
-					{activity?.updatedAt !== undefined && (
-						<span
-							data-slot="aui_session-list-item-time"
-							className={cn(
-								"ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end tabular-nums text-xs text-muted-foreground transition-opacity",
-								rowHoverLabelFadeClassName,
-							)}
-						>
-							<SessionRelativeTime timestamp={activity.updatedAt} />
-						</span>
-					)}
+					{titleRow}
+					{infoLine}
 				</button>
+			) : (
+				<ThreadListItemPrimitive.Trigger
+					ref={triggerRef}
+					onClick={navigate}
+					data-slot="aui_session-list-item-trigger"
+					className={cn("flex w-full flex-col py-0 text-left focus-visible:outline-none", rowPad)}
+				>
+					{titleRow}
+					{infoLine}
+				</ThreadListItemPrimitive.Trigger>
 			)}
 			{!isRenaming && (
-				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1/2 h-6 -translate-y-1/2")}>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-xs"
-						aria-label="Un-settle thread"
-						data-slot="aui_session-list-item-unsettle"
-						onClick={() => void aui.threadListItem.unarchive()}
-					>
-						<Undo2Icon aria-hidden className="mb-px size-3.5" />
-					</Button>
-					<SessionRowMenu settleAction="unsettle" onRename={startRename} />
+				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-6")}>
+					<TooltipProvider>
+						{canSettle ? (
+							<RowHoverAction
+								label="Settle thread"
+								tooltip="Settle"
+								slot="aui_session-list-item-settle"
+								onClick={() => void aui.threadListItem.archive()}
+							>
+								<CheckIcon aria-hidden />
+							</RowHoverAction>
+						) : null}
+						{isSettled ? (
+							<RowHoverAction
+								label="Un-settle thread"
+								tooltip="Un-settle"
+								slot="aui_session-list-item-unsettle"
+								onClick={() => void aui.threadListItem.unarchive()}
+							>
+								<Undo2Icon aria-hidden />
+							</RowHoverAction>
+						) : null}
+						<RowHoverAction
+							label={isPinned ? "Unpin thread" : "Pin thread"}
+							tooltip={isPinned ? "Unpin" : "Pin"}
+							slot="aui_session-list-item-pin"
+							onClick={() => togglePin(pinId)}
+						>
+							{isPinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
+						</RowHoverAction>
+						<SessionRowMenu
+							settleAction={isSettled ? "unsettle" : canSettle ? "settle" : undefined}
+							pinned={isPinned}
+							onPin={() => togglePin(pinId)}
+							onRename={startRename}
+						/>
+					</TooltipProvider>
 				</span>
 			)}
 		</ThreadListItemPrimitive.Root>
@@ -712,26 +1045,40 @@ const SettledSessionRow: FC = () => {
 
 const SessionRowMenu: FC<{
 	settleAction?: "settle" | "unsettle" | undefined;
+	pinned: boolean;
+	onPin: () => void;
 	onRename: () => void;
-}> = ({ settleAction, onRename }) => {
+}> = ({ settleAction, pinned, onPin, onRename }) => {
 	const aui = useAui();
 
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger
-				render={
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-xs"
-						data-slot="aui_session-list-item-more"
-						aria-label="Thread actions"
-					/>
-				}
-			>
-				<MoreHorizontalIcon />
-			</DropdownMenuTrigger>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<DropdownMenuTrigger
+							render={
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-xs"
+									className="size-5"
+									data-slot="aui_session-list-item-more"
+									aria-label="Thread actions"
+								/>
+							}
+						/>
+					}
+				>
+					<MoreHorizontalIcon />
+				</TooltipTrigger>
+				<TooltipContent side="bottom">More</TooltipContent>
+			</Tooltip>
 			<DropdownMenuContent align="end" side="right" sideOffset={6}>
+				<DropdownMenuItem onClick={onPin}>
+					{pinned ? <PinOffIcon /> : <PinIcon />}
+					{pinned ? "Unpin" : "Pin"}
+				</DropdownMenuItem>
 				{settleAction === "settle" && (
 					<DropdownMenuItem
 						onClick={() => {
@@ -818,7 +1165,7 @@ const SessionItemRename: FC<{
 			data-slot="aui_session-list-item-rename"
 			aria-label="Rename thread"
 			value={value}
-			className="h-7 min-w-0 flex-1 px-1 text-sm"
+			className="h-7 min-w-0 flex-1 px-1 text-[13px]"
 			onChange={(event) => setValue(event.target.value)}
 			onBlur={() => commit(false)}
 			onKeyDown={(event) => {

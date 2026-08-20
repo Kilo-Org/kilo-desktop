@@ -82,11 +82,10 @@ function resolveCatalog(
 		id in POPULAR_PROVIDER_NAMES
 			? POPULAR_PROVIDER_NAMES[id as keyof typeof POPULAR_PROVIDER_NAMES]
 			: undefined;
-	return {
-		id,
-		name: configuredName ?? popularName ?? id,
-		source: isCustom(config, id) ? "custom" : popularName ? "api" : undefined,
-	};
+	const name = configuredName ?? popularName ?? id;
+	if (isCustom(config, id)) return { id, name, source: "custom" };
+	if (popularName) return { id, name, source: "api" };
+	return { id, name };
 }
 
 function collectConnectedIds(connected: readonly string[], disabled: readonly string[]): string[] {

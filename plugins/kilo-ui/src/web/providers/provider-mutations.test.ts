@@ -189,6 +189,7 @@ describe("saveCustom", () => {
 		const patch = (first.config.provider as Record<string, { models: Record<string, unknown> }>)[
 			"my-provider"
 		];
+		if (!patch) throw new Error("expected a provider patch");
 		expect(patch.models["model-1"]).toEqual({ name: "Model One" });
 		expect(patch.models.gone).toBeNull();
 		expect(calls.set).toEqual([]);

@@ -15,10 +15,10 @@ export const MessageCopyButton: FC = () => {
 	return (
 		<TooltipIconButton tooltip="Copy" disabled={disabled} onClick={copy}>
 			<AuiIf condition={(s) => s.message.isCopied}>
-				<CheckIcon className="animate-in zoom-in-50 fade-in duration-200 ease-out" />
+				<CheckIcon className="animate-in zoom-in-50 fade-in size-3.5 duration-200 ease-out" />
 			</AuiIf>
 			<AuiIf condition={(s) => !s.message.isCopied}>
-				<CopyIcon className="animate-in zoom-in-75 fade-in duration-150" />
+				<CopyIcon className="animate-in zoom-in-75 fade-in size-3.5 duration-150" />
 			</AuiIf>
 		</TooltipIconButton>
 	);

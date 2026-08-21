@@ -8,6 +8,7 @@ import {
 	type RightPanelTab,
 } from "./right-panel-store.js";
 import type { CreateContributedTabOptions } from "./right-panel-tab-registry.js";
+import type { RightPanelTabUpdate } from "./right-panel-tab-registry.js";
 
 export type ChatRightPanelCapability = {
 	setFocusedSessionId(sessionId: string | null): void;
@@ -20,8 +21,7 @@ export type ChatRightPanelCapability = {
 		options?: CreateContributedTabOptions,
 	): RightPanelTab;
 	activateTab(sessionId: string, instanceId: string): void;
-	setTabTitle(sessionId: string, instanceId: string, title: string): void;
-	setTabDirty(sessionId: string, instanceId: string, dirty: boolean): void;
+	updateTab(sessionId: string, instanceId: string, update: RightPanelTabUpdate): void;
 	registerTabLifecycle(
 		sessionId: string,
 		instanceId: string,
@@ -100,11 +100,8 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 		activateTab(sessionId, instanceId) {
 			useRightPanelStore.getState().activateTab(sessionId, instanceId);
 		},
-		setTabTitle(sessionId, instanceId, title) {
-			useRightPanelStore.getState().setTabTitle(sessionId, instanceId, title);
-		},
-		setTabDirty(sessionId, instanceId, dirty) {
-			useRightPanelStore.getState().setTabDirty(sessionId, instanceId, dirty);
+		updateTab(sessionId, instanceId, update) {
+			useRightPanelStore.getState().updateTab(sessionId, instanceId, update);
 		},
 		registerTabLifecycle(sessionId, instanceId, lifecycle) {
 			const key = lifecycleKey(sessionId, instanceId);

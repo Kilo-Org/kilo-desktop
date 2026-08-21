@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, type ComponentType, type FC } from "react";
-import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon, type LucideIcon } from "lucide-react";
+import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
 
-import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
+import type { Contribution, ContributionMountPolicy } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
 
 const PlanTab = lazy(() => import("./PlanTab.js").then((module) => ({ default: module.PlanTab })));
@@ -14,17 +14,28 @@ export interface ChatRightPanelContributionProps {
 	readonly instanceId: string;
 	readonly title: string;
 	readonly workspaceDirectory?: string;
+	readonly workspaceFolders?: readonly {
+		readonly path: string;
+		readonly isPrimary: boolean;
+	}[];
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
 export const PLAN_TAB_DEFINITION_ID = "kilo-ui.plan";
 
+export interface RightPanelTabIconProps {
+	readonly className?: string;
+	/** Contribution-owned value whose meaning is opaque to Kilo. */
+	readonly iconKey?: string;
+}
+
 export interface RightPanelTabDefinition {
 	id: string;
 	title: string;
 	description: string;
-	Icon: LucideIcon;
+	Icon: ComponentType<RightPanelTabIconProps>;
 	addable: boolean;
+	mountPolicy: ContributionMountPolicy;
 	Content: ComponentType<ChatRightPanelContributionProps>;
 }
 
@@ -32,17 +43,31 @@ export interface RightPanelTab {
 	instanceId: string;
 	definitionId: string;
 	title: string;
+	/** Optional contribution-owned value used to render a tab-specific icon. */
+	iconKey?: string;
 	ordinal: number | null;
 	/** Contribution-owned, serializable state that must survive tab restoration. */
 	metadata?: Readonly<Record<string, string>>;
 	/** Transient unsaved-work state; intentionally excluded from persisted tab layout. */
 	dirty?: boolean;
+	/** Runtime-only placeholder state; transient tabs are omitted from persisted layout. */
+	transient?: boolean;
 }
 
 export interface CreateContributedTabOptions {
 	readonly instanceId?: string;
 	readonly title?: string;
+	readonly iconKey?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
+	readonly transient?: boolean;
+}
+
+export interface RightPanelTabUpdate {
+	readonly title?: string;
+	readonly iconKey?: string;
+	readonly metadata?: Readonly<Record<string, string>>;
+	readonly dirty?: boolean;
+	readonly transient?: boolean;
 }
 
 const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
@@ -51,6 +76,7 @@ const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
 	description: "Proposed plan from the plan agent.",
 	Icon: ListTodoIcon,
 	addable: false,
+	mountPolicy: "active-only",
 	Content: PlanTab,
 };
 
@@ -76,9 +102,10 @@ export function buildContributedTabDefinitions(
 				description:
 					contribution.description ?? `Open another ${contribution.label} for this chat.`,
 				Icon: isRenderableComponent(contribution.icon)
-					? (contribution.icon as LucideIcon)
+					? (contribution.icon as ComponentType<RightPanelTabIconProps>)
 					: LayoutTemplateIcon,
 				addable: true,
+				mountPolicy: contribution.mountPolicy ?? "active-only",
 				Content: contribution.component,
 			},
 		];
@@ -123,7 +150,9 @@ export function createContributedTab(
 		definitionId: definition.id,
 		title: options.title ?? `${definition.title} ${String(ordinal)}`,
 		ordinal,
+		...(options.iconKey ? { iconKey: options.iconKey } : {}),
 		...(options.metadata ? { metadata: { ...options.metadata } } : {}),
+		...(options.transient ? { transient: true } : {}),
 	};
 }
 
@@ -144,7 +173,9 @@ export function isRightPanelTab(value: unknown): value is RightPanelTab {
 		typeof tab.definitionId === "string" &&
 		typeof tab.title === "string" &&
 		(tab.ordinal === null || (typeof tab.ordinal === "number" && Number.isInteger(tab.ordinal))) &&
-		(tab.metadata === undefined || isTabMetadata(tab.metadata))
+		(tab.iconKey === undefined || typeof tab.iconKey === "string") &&
+		(tab.metadata === undefined || isTabMetadata(tab.metadata)) &&
+		(tab.transient === undefined || typeof tab.transient === "boolean")
 	);
 }
 
@@ -166,7 +197,11 @@ export const RightPanelTabContent: FC<{
 	sessionId: string;
 	definitions: readonly RightPanelTabDefinition[];
 	workspaceDirectory?: string;
-}> = ({ tab, sessionId, definitions, workspaceDirectory }) => {
+	workspaceFolders?: readonly {
+		readonly path: string;
+		readonly isPrimary: boolean;
+	}[];
+}> = ({ tab, sessionId, definitions, workspaceDirectory, workspaceFolders }) => {
 	const definition = definitions.find(({ id }) => id === tab.definitionId);
 	const Content = definition?.Content ?? MissingContributionTab;
 	return (
@@ -176,6 +211,7 @@ export const RightPanelTabContent: FC<{
 				instanceId={tab.instanceId}
 				title={tab.title}
 				{...(workspaceDirectory ? { workspaceDirectory } : {})}
+				{...(workspaceFolders ? { workspaceFolders } : {})}
 				{...(tab.metadata ? { metadata: tab.metadata } : {})}
 			/>
 		</Suspense>

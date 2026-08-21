@@ -36,6 +36,8 @@ const routePathSchema = z
 export const pluginPageSurfaceSchema = z.enum(["default", "transparent"]);
 export type PluginPageSurface = z.infer<typeof pluginPageSurfaceSchema>;
 
+export const contributionMountPolicySchema = z.enum(["active-only", "keep-alive"]);
+
 /**
  * A full-page route contributed by the plugin (`contributes.routes`). The HOST
  * owns route creation (Decision #19) — plugins never import the router; the
@@ -99,6 +101,8 @@ export const pluginZoneContributionSchema = z.strictObject({
 	description: z.string().min(1).optional(),
 	/** Optional component export used as the contribution icon. */
 	icon: z.string().min(1).optional(),
+	/** Hint for zone hosts that conditionally mount contribution content. */
+	mountPolicy: contributionMountPolicySchema.optional(),
 	/** Higher renders first within the zone. Default 0 — matches `sdk.contribute`. */
 	priority: z.number().int().optional(),
 });

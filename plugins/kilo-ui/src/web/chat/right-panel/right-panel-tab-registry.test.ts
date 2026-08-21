@@ -33,9 +33,16 @@ describe("right-panel-tab-registry", () => {
 				title: "Canvas",
 				description: "Scratch canvas",
 				addable: true,
+				mountPolicy: "active-only",
 				Content: Canvas,
 			},
 		]);
+	});
+
+	it("preserves a contribution's keep-alive mount policy", () => {
+		expect(
+			buildContributedTabDefinitions([{ ...contribution, mountPolicy: "keep-alive" }]),
+		).toMatchObject([{ mountPolicy: "keep-alive" }]);
 	});
 
 	it("creates unique, numbered instances for the same definition", () => {
@@ -63,6 +70,7 @@ describe("right-panel-tab-registry", () => {
 		const tab = createContributedTab([], definition!, undefined, {
 			instanceId: "file-notebook-id",
 			title: "analysis.ipynb",
+			iconKey: "projects/analysis.ipynb",
 			metadata: { notebookPath: "/projects/analysis.ipynb" },
 		});
 
@@ -71,6 +79,7 @@ describe("right-panel-tab-registry", () => {
 			definitionId: "canvas.canvas",
 			title: "analysis.ipynb",
 			ordinal: 1,
+			iconKey: "projects/analysis.ipynb",
 			metadata: { notebookPath: "/projects/analysis.ipynb" },
 		});
 		expect(isRightPanelTab(tab)).toBe(true);

@@ -29,6 +29,7 @@ import { SessionActivityProvider } from "./session-activity/SessionActivityProvi
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
 import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
+import { PierreDiffProvider } from "./PierreDiffProvider.js";
 
 import "./composer-glass.css";
 
@@ -278,20 +279,22 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	};
 
 	return (
-		<ChatConnectionProvider status={connectionStatus}>
-			<KiloAuthProvider>
-				<SessionActivityProvider store={sessionActivity}>
-					<KiloSuggestionProvider store={suggestions}>
-						<ChatAgentSelectionProvider value={agentSelection}>
-							<ChatModelSelectionProvider value={modelSelection}>
-								<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-									{children}
-								</AssistantRuntimeProvider>
-							</ChatModelSelectionProvider>
-						</ChatAgentSelectionProvider>
-					</KiloSuggestionProvider>
-				</SessionActivityProvider>
-			</KiloAuthProvider>
-		</ChatConnectionProvider>
+		<PierreDiffProvider>
+			<ChatConnectionProvider status={connectionStatus}>
+				<KiloAuthProvider>
+					<SessionActivityProvider store={sessionActivity}>
+						<KiloSuggestionProvider store={suggestions}>
+							<ChatAgentSelectionProvider value={agentSelection}>
+								<ChatModelSelectionProvider value={modelSelection}>
+									<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+										{children}
+									</AssistantRuntimeProvider>
+								</ChatModelSelectionProvider>
+							</ChatAgentSelectionProvider>
+						</KiloSuggestionProvider>
+					</SessionActivityProvider>
+				</KiloAuthProvider>
+			</ChatConnectionProvider>
+		</PierreDiffProvider>
 	);
 }

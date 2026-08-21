@@ -86,7 +86,7 @@ describe("right-panel-store", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
 
-		useRightPanelStore.getState().setTabDirty(SESSION, tab.instanceId, true);
+		useRightPanelStore.getState().updateTab(SESSION, tab.instanceId, { dirty: true });
 
 		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.dirty).toBe(true);
 		const persisted = persistedRightPanelState(useRightPanelStore.getState());
@@ -104,11 +104,28 @@ describe("right-panel-store", () => {
 		});
 	});
 
+	it("omits transient tabs from persisted state", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS, {
+			metadata: { notebookOpenState: "opening" },
+			transient: true,
+		});
+
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs).toHaveLength(1);
+		expect(
+			persistedRightPanelState(useRightPanelStore.getState()).bySessionId[SESSION],
+		).toMatchObject({
+			activeTabId: null,
+			tabs: [],
+		});
+	});
+
 	it("updates and persists a contribution-provided tab title", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
 
-		useRightPanelStore.getState().setTabTitle(SESSION, tab.instanceId, "analysis.ipynb");
+		useRightPanelStore.getState().updateTab(SESSION, tab.instanceId, {
+			title: "analysis.ipynb",
+		});
 
 		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.title).toBe(
 			"analysis.ipynb",

@@ -62,6 +62,42 @@ describe("createChatRightPanelCapability", () => {
 		});
 	});
 
+	it("reopens an existing contributed tab with the latest resource state", () => {
+		const panel = createChatRightPanelCapability();
+		panel.openContributedTab(
+			SESSION,
+			{ id: "files.files", title: "Files" },
+			{
+				instanceId: "file:/workspace/src/index.ts",
+				title: "index.ts",
+				iconKey: "src/index.ts",
+				metadata: { workspaceDirectory: "/workspace", relativePath: "src/index.ts" },
+			},
+		);
+
+		const reopened = panel.openContributedTab(
+			SESSION,
+			{ id: "files.files", title: "Files" },
+			{
+				instanceId: "file:/workspace/src/index.ts",
+				title: "index.ts",
+				iconKey: "src/index.ts",
+				metadata: {
+					workspaceDirectory: "/workspace",
+					relativePath: "src/index.ts",
+					line: "42",
+				},
+			},
+		);
+
+		expect(panel.listTabs(SESSION)).toHaveLength(1);
+		expect(reopened.metadata).toEqual({
+			workspaceDirectory: "/workspace",
+			relativePath: "src/index.ts",
+			line: "42",
+		});
+	});
+
 	it("show opens the panel without adding tabs", () => {
 		const panel = createChatRightPanelCapability();
 		panel.show(SESSION);
@@ -76,7 +112,7 @@ describe("createChatRightPanelCapability", () => {
 		const tab = panel.openContributedTab(SESSION, { id: "canvas.panel", title: "Canvas" });
 		const lifecycle = { save: async () => ({ outcome: "saved" as const }) };
 
-		panel.setTabDirty(SESSION, tab.instanceId, true);
+		panel.updateTab(SESSION, tab.instanceId, { dirty: true });
 		const unregister = panel.registerTabLifecycle(SESSION, tab.instanceId, lifecycle);
 
 		expect(panel.listTabs(SESSION)[0]?.dirty).toBe(true);
@@ -85,12 +121,20 @@ describe("createChatRightPanelCapability", () => {
 		expect(panel.getTabLifecycle(SESSION, tab.instanceId)).toBeUndefined();
 	});
 
-	it("updates a contributed tab title", () => {
+	it("updates a contributed tab through one state patch", () => {
 		const panel = createChatRightPanelCapability();
 		const tab = panel.openContributedTab(SESSION, { id: "notebook.notebook", title: "Notebook" });
 
-		panel.setTabTitle(SESSION, tab.instanceId, "analysis.ipynb");
+		panel.updateTab(SESSION, tab.instanceId, {
+			title: "analysis.ipynb",
+			iconKey: "notebooks/analysis.ipynb",
+			metadata: { notebookPath: "/projects/analysis.ipynb" },
+		});
 
-		expect(panel.listTabs(SESSION)[0]?.title).toBe("analysis.ipynb");
+		expect(panel.listTabs(SESSION)[0]).toMatchObject({
+			title: "analysis.ipynb",
+			iconKey: "notebooks/analysis.ipynb",
+			metadata: { notebookPath: "/projects/analysis.ipynb" },
+		});
 	});
 });

@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	memo,
 	useRef,
 	useState,
 	type PointerEvent as ReactPointerEvent,
@@ -18,7 +19,9 @@ import {
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
-import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
+import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";
+import type { ChatMarkdownExtensionContext } from "./chat-markdown-extensions.js";
+import { resolveChatWorkspace } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
 import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
@@ -42,8 +45,20 @@ import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js"
 const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 280;
-const PANEL_MAX_WIDTH_FRACTION = 0.5;
+const PANEL_MAX_WIDTH_FRACTION = 0.7;
 const PANEL_GAP_PX = 8; // matches w-2 gutter
+const EMPTY_WORKSPACE_FOLDERS: ChatMarkdownExtensionContext["workspaceFolders"] = [];
+
+const ChatThreadSurface = memo(function ChatThreadSurface({
+	sessionId,
+	workspaceFolders,
+}: ChatMarkdownExtensionContext) {
+	return (
+		<ChatMarkdownProvider sessionId={sessionId} workspaceFolders={workspaceFolders}>
+			<Thread />
+		</ChatMarkdownProvider>
+	);
+});
 
 function readStoredPanelWidth(): number {
 	try {
@@ -81,12 +96,15 @@ export function ChatPage() {
 	const sessionWorkspaceId = useSessionActivity((state) =>
 		remoteId ? state.sessions[remoteId]?.workspaceId : undefined,
 	);
-	const workspaceDirectory = resolveChatWorkspaceDirectory({
+	const chatWorkspaceOptions = {
 		remoteId,
 		activeWorkspaceId,
 		sessionWorkspaceId,
 		workspaces,
-	});
+	};
+	const workspace = resolveChatWorkspace(chatWorkspaceOptions);
+	const workspaceDirectory =
+		workspace?.folders.find((folder) => folder.isPrimary)?.path ?? workspace?.folders[0]?.path;
 
 	const panelState = useRightPanelStore((state) =>
 		selectSessionRightPanelState(state.bySessionId, sessionId),
@@ -110,6 +128,15 @@ export function ChatPage() {
 	} | null>(null);
 	const panelOpen = panelState.isOpen;
 	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
+	const workspaceFolders = workspace?.folders ?? EMPTY_WORKSPACE_FOLDERS;
+	const keepAliveDefinitionIds = new Set(
+		rightPanelDefinitions
+			.filter(({ mountPolicy }) => mountPolicy === "keep-alive")
+			.map(({ id }) => id),
+	);
+	const hasKeepAliveTabs = panelState.tabs.some(({ definitionId }) =>
+		keepAliveDefinitionIds.has(definitionId),
+	);
 
 	const panelSlotWidth = useMotionValue(0);
 
@@ -175,7 +202,7 @@ export function ChatPage() {
 	const targetPanelWidth = panelOpen ? openWidth : 0;
 
 	// Only the open/close toggle springs. Maximize, resize, and session changes snap.
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const openChanged = prevPanelOpenRef.current !== panelOpen;
 		prevPanelOpenRef.current = panelOpen;
 		previousSessionIdRef.current = sessionId;
@@ -204,13 +231,14 @@ export function ChatPage() {
 			shouldSpring ? SHELL_LAYOUT_SPRING : SHELL_LAYOUT_SNAP,
 		);
 		void controls.then(() => {
-			if (!panelOpen) setPanelMounted(false);
+			if (!panelOpen && !hasKeepAliveTabs) setPanelMounted(false);
 		});
 		return () => controls.stop();
 	}, [
 		panelSlotWidth,
 		targetPanelWidth,
 		panelOpen,
+		hasKeepAliveTabs,
 		sessionChanged,
 		sessionId,
 		reduceMotion,
@@ -291,18 +319,26 @@ export function ChatPage() {
 		[clampPanelWidth, panelWidth, panelSlotWidth],
 	);
 
+	// Clean active-only tabs can remount from their descriptors. Dirty tabs and contributions that
+	// own expensive state stay alive so switching cannot discard their state or reload their content.
+	const mountedTabs = panelState.tabs.filter(
+		(tab) =>
+			tab.instanceId === panelState.activeTabId ||
+			tab.dirty ||
+			keepAliveDefinitionIds.has(tab.definitionId),
+	);
 	const panel = (
 		<RightPanelTabs
 			maximized={maximized}
 			onToggleMaximized={toggleMaximized}
 			tabs={panelState.tabs}
 			definitions={rightPanelDefinitions}
-			activeTabId={panelOpen ? panelState.activeTabId : null}
+			activeTabId={panelState.activeTabId}
 			onActivate={handleActivate}
 			onCloseTab={handleCloseTab}
 			onAddTab={handleAddTab}
 		>
-			{panelState.tabs.map((tab) => {
+			{mountedTabs.map((tab) => {
 				const active = tab.instanceId === panelState.activeTabId;
 				return (
 					<div
@@ -317,6 +353,7 @@ export function ChatPage() {
 							sessionId={sessionId}
 							definitions={rightPanelDefinitions}
 							{...(workspaceDirectory ? { workspaceDirectory } : {})}
+							{...(workspace?.folders ? { workspaceFolders: workspace.folders } : {})}
 						/>
 					</div>
 				);
@@ -370,7 +407,7 @@ export function ChatPage() {
 						data-chat-column-maximized-away={maximized && panelOpen ? "true" : "false"}
 					>
 						<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-							<Thread />
+							<ChatThreadSurface sessionId={sessionId} workspaceFolders={workspaceFolders} />
 						</div>
 					</div>
 				</div>
@@ -380,9 +417,12 @@ export function ChatPage() {
 						"h-full min-w-0 overflow-hidden",
 						maximized && panelOpen ? "min-w-0 flex-1" : "shrink-0",
 					)}
+					aria-hidden={!panelOpen}
+					inert={!panelOpen}
+					data-qa-id="chat-right-panel-slot"
 					{...(maximized && panelOpen ? {} : { style: { width: panelSlotWidth } })}
 				>
-					{panelMounted ? (
+					{panelOpen || panelMounted ? (
 						<div
 							className={cn("flex h-full", maximized ? "w-full" : "shrink-0")}
 							style={maximized ? undefined : { width: openWidth }}

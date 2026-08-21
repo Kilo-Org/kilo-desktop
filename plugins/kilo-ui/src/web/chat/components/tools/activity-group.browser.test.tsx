@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
@@ -90,7 +90,7 @@ describe("Reading activity subgroup", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
-	it("collapses a multi-file read list and lets the user toggle it", () => {
+	it("collapses a multi-file read list and lets the user toggle it", async () => {
 		const { baseElement, getByRole, getByText, queryByText } = renderActivity(
 			"reading",
 			[readPart("call-1", "/src/mark.svg"), readPart("call-2", "/src/logo.svg")],
@@ -107,9 +107,11 @@ describe("Reading activity subgroup", () => {
 		expect(getByText("logo.svg")).toBeDefined();
 
 		fireEvent.click(trigger);
-		expect(baseElement.textContent?.trim()).toBe("Read 2 files");
-		expect(queryByText("mark.svg")).toBeNull();
-		expect(queryByText("logo.svg")).toBeNull();
+		await waitFor(() => {
+			expect(baseElement.textContent?.trim()).toBe("Read 2 files");
+			expect(queryByText("mark.svg")).toBeNull();
+			expect(queryByText("logo.svg")).toBeNull();
+		});
 	});
 });
 
@@ -125,7 +127,7 @@ describe("Skill activity subgroup", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
-	it("collapses multiple skill reads and lets the user toggle them", () => {
+	it("collapses multiple skill reads and lets the user toggle them", async () => {
 		const { getByRole, getByText, queryByText } = renderActivity(
 			"skill",
 			[skillPart("call-1", "write-vitest"), skillPart("call-2", "tools")],
@@ -141,8 +143,10 @@ describe("Skill activity subgroup", () => {
 		expect(getByText("tools")).toBeDefined();
 
 		fireEvent.click(trigger);
-		expect(queryByText("write-vitest")).toBeNull();
-		expect(queryByText("tools")).toBeNull();
+		await waitFor(() => {
+			expect(queryByText("write-vitest")).toBeNull();
+			expect(queryByText("tools")).toBeNull();
+		});
 	});
 });
 
@@ -187,7 +191,7 @@ describe("Subagent activity subgroup", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
-	it("collapses multiple tasks and lets the user toggle them", () => {
+	it("collapses multiple tasks and lets the user toggle them", async () => {
 		const { getByRole, getByText, queryByText } = renderActivity(
 			"subagent",
 			[
@@ -206,8 +210,10 @@ describe("Subagent activity subgroup", () => {
 		expect(getByText("Review the patch")).toBeDefined();
 
 		fireEvent.click(trigger);
-		expect(queryByText("Explore auth")).toBeNull();
-		expect(queryByText("Review the patch")).toBeNull();
+		await waitFor(() => {
+			expect(queryByText("Explore auth")).toBeNull();
+			expect(queryByText("Review the patch")).toBeNull();
+		});
 	});
 });
 
@@ -223,7 +229,7 @@ describe("Planning activity subgroup", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
-	it("collapses multiple plan updates and lets the user toggle them", () => {
+	it("collapses multiple plan updates and lets the user toggle them", async () => {
 		const { getByRole, getByText, queryByText } = renderActivity(
 			"planning",
 			[planningPart("call-1", "todowrite"), planningPart("call-2", "todoread")],
@@ -239,12 +245,49 @@ describe("Planning activity subgroup", () => {
 		expect(getByText("todoread")).toBeDefined();
 
 		fireEvent.click(trigger);
-		expect(queryByText("todowrite")).toBeNull();
-		expect(queryByText("todoread")).toBeNull();
+		await waitFor(() => {
+			expect(queryByText("todowrite")).toBeNull();
+			expect(queryByText("todoread")).toBeNull();
+		});
 	});
 });
 
 describe("Notebooks activity subgroup", () => {
+	it("expands the live tool group and collapses it when the tools finish", async () => {
+		const completedRead = readPart("call-1", "/src/mark.svg");
+		const runningNotebook = {
+			...toolPart("call-2", "notebooks_create_notebook", {}),
+			status: { type: "running" as const },
+		};
+		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...parts[0]!} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="mcp:notebooks">
+					<ToolCallFallback {...parts[1]!} />
+				</ActivitySubgroup>
+			</ActivityGroup>
+		);
+
+		runtime.message.parts = [completedRead, runningNotebook];
+		runtime.message.status = { type: "running" };
+		const { getByText, queryByText, rerender } = render(renderGroup(runtime.message.parts));
+
+		expect(getByText("Create notebook")).toBeDefined();
+
+		runtime.message.parts = [
+			completedRead,
+			{ ...runningNotebook, status: { type: "complete" as const } },
+		];
+		runtime.message.status = { type: "complete" };
+		rerender(renderGroup(runtime.message.parts));
+
+		await waitFor(() => {
+			expect(queryByText("Create notebook")).toBeNull();
+		});
+	});
+
 	it("shows notebook tool display names without the notebooks prefix", () => {
 		const { getByRole, getByText, queryByText } = renderActivity(
 			"mcp:notebooks",

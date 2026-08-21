@@ -6,7 +6,7 @@ import {
 } from "@assistant-ui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -92,6 +92,29 @@ const kiloModelSelection = {
 	isCatalogError: false,
 };
 
+type ChatModelSelectionValue = ComponentProps<typeof ChatModelSelectionProvider>["value"];
+
+const responsiveModelSelection = {
+	...kiloModelSelection,
+	model: { providerID: "spacexai", modelID: "grok-4.6" },
+	effort: "medium",
+	name: "SpaceXAI: Grok 4.6",
+	efforts: [{ id: "medium", name: "Med" }],
+	catalog: {
+		providers: [{ id: "spacexai", name: "SpaceXAI", connected: true }],
+		models: [
+			{
+				id: "spacexai/grok-4.6",
+				name: "SpaceXAI: Grok 4.6",
+				providerID: "spacexai",
+				modelID: "grok-4.6",
+				efforts: [{ id: "medium", name: "Med" }],
+			},
+		],
+		defaults: { spacexai: "grok-4.6" },
+	},
+} satisfies ChatModelSelectionValue;
+
 const anthropicModelSelection = {
 	...kiloModelSelection,
 	model: { providerID: "anthropic", modelID: "claude-sonnet" },
@@ -152,7 +175,7 @@ function ThreadTree({
 	adapter = stubChatModel,
 }: {
 	auth: KiloAuthContextValue;
-	selection?: typeof kiloModelSelection | typeof anthropicModelSelection;
+	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
 }) {
@@ -189,7 +212,7 @@ function renderThread({
 	adapter,
 }: {
 	auth?: KiloAuthContextValue;
-	selection?: typeof kiloModelSelection | typeof anthropicModelSelection;
+	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
 }) {
@@ -214,6 +237,44 @@ function renderThread({
 	);
 	return page.elementLocator(baseElement);
 }
+
+describe("composer responsiveness", () => {
+	it("drops labels by priority before the toolbar can overlap", async () => {
+		const screen = renderThread({
+			selection: responsiveModelSelection,
+			initialMessages: [],
+		});
+		const agentLabel = screen.getByText("Code");
+		const modelLabel = screen.getByText("SpaceXAI: Grok 4.6");
+		const reasoningLabel = screen.getByText("Med");
+		const agentTrigger = screen.getByTestId("kilo-agent-selector-trigger").element();
+		const toolbar = agentTrigger.closest<HTMLElement>(".aui-composer-action-wrapper");
+
+		if (!toolbar) throw new Error("Composer toolbar was not rendered");
+		toolbar.style.width = "520px";
+		await expect.element(agentLabel).toBeVisible();
+		await expect.element(modelLabel).toBeVisible();
+		await expect.element(reasoningLabel).toBeVisible();
+
+		toolbar.style.width = "440px";
+		await expect.element(agentLabel).not.toBeVisible();
+		await expect.element(modelLabel).toBeVisible();
+		await expect.element(reasoningLabel).toBeVisible();
+		expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
+
+		toolbar.style.width = "360px";
+		await expect.element(agentLabel).not.toBeVisible();
+		await expect.element(modelLabel).toBeVisible();
+		await expect.element(reasoningLabel).not.toBeVisible();
+		expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
+
+		toolbar.style.width = "270px";
+		await expect.element(agentLabel).not.toBeVisible();
+		await expect.element(modelLabel).not.toBeVisible();
+		await expect.element(reasoningLabel).not.toBeVisible();
+		expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
+	});
+});
 
 function CompletingSignIn() {
 	const [authenticated, setAuthenticated] = useState(false);

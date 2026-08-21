@@ -264,6 +264,8 @@ export interface SdkPlugins {
 
 // ─── Contributions ───────────────────────────────────────────────────────────
 
+export type ContributionMountPolicy = "active-only" | "keep-alive";
+
 export interface ContributionOptions {
 	/** Stable identifier within this feature and zone. */
 	id: string;
@@ -274,6 +276,8 @@ export interface ContributionOptions {
 	description?: string;
 	/** Optional React icon component; remains unknown so feature-sdk stays React-free. */
 	icon?: unknown;
+	/** Hint for hosts that conditionally mount contribution content. */
+	mountPolicy?: ContributionMountPolicy;
 	size?: string;
 	/** Higher priority renders first. Default 0. */
 	priority?: number;
@@ -287,6 +291,7 @@ export interface Contribution {
 	label: string;
 	description?: string;
 	icon?: unknown;
+	mountPolicy?: ContributionMountPolicy;
 	size?: string;
 	priority: number;
 }

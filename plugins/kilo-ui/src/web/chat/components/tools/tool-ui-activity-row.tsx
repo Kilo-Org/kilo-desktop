@@ -148,7 +148,7 @@ export const SoloAwareExpandableRow = memo(
 							<span className="border-muted-foreground/20 group-hover:border-muted-foreground/50 mt-0.5 min-w-4 flex-1 self-center border-b-[0.5px] transition-colors" />
 							<ChevronRightIcon
 								className={cn(
-									"stroke-muted-foreground/60 group-hover:stroke-foreground/60 mt-0.5 size-3.75 shrink-0 transition-[transform,stroke]",
+									"stroke-muted-foreground/60 group-hover:stroke-foreground/60 mt-0.5 size-3.75 shrink-0 transition-[transform,stroke] duration-100",
 									open && "rotate-90",
 								)}
 							/>
@@ -157,7 +157,7 @@ export const SoloAwareExpandableRow = memo(
 				</CollapsibleTrigger>
 
 				{hasDetail ? (
-					<CollapsibleContent className="data-closed:animate-collapsible-up data-open:animate-collapsible-down overflow-hidden data-closed:ease-out data-open:ease-in">
+					<CollapsibleContent className="data-closed:animate-collapsible-up data-open:animate-collapsible-down overflow-hidden data-closed:duration-100 data-closed:ease-out data-open:duration-100 data-open:ease-in">
 						<div className="mt-1 ml-5">{detail}</div>
 					</CollapsibleContent>
 				) : null}

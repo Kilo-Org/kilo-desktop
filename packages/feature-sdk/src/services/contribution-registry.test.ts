@@ -44,12 +44,14 @@ describe("ContributionRegistry", () => {
 			label: "Notebook",
 			description: "Scratch notebook",
 			icon,
+			mountPolicy: "keep-alive",
 		});
 		expect(registry.getForZone("chat-right-panel")[0]).toMatchObject({
 			featureId: "notebook",
 			id: "notebook",
 			description: "Scratch notebook",
 			icon,
+			mountPolicy: "keep-alive",
 		});
 	});
 

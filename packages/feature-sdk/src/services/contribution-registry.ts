@@ -43,6 +43,9 @@ export class ContributionRegistry {
 		if (options.icon !== undefined) {
 			contribution.icon = options.icon;
 		}
+		if (options.mountPolicy !== undefined) {
+			contribution.mountPolicy = options.mountPolicy;
+		}
 		if (options.size !== undefined) {
 			contribution.size = options.size;
 		}

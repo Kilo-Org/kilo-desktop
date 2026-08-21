@@ -12,7 +12,13 @@ import {
 	notebookTitleChangedSchema,
 	type NotebookService,
 } from "../../contracts/schemas.js";
-import { NOTEBOOK_PATH_METADATA_KEY, notebookIdFromInstanceId } from "./notebook-tabs.js";
+import {
+	NOTEBOOK_OPEN_ERROR_METADATA_KEY,
+	NOTEBOOK_PATH_METADATA_KEY,
+	notebookIdFromInstanceId,
+	notebookIdFromTab,
+	notebookOpenState,
+} from "./notebook-tabs.js";
 import type { ChatRightPanelCapabilities } from "./notebook-webmcp-tools.js";
 
 /**
@@ -95,9 +101,11 @@ export interface NotebookViewProps {
 export function notebookHostConnectionArgs(
 	props: Pick<NotebookViewProps, "instanceId" | "sessionId" | "title" | "metadata">,
 ) {
+	const notebookId = notebookIdFromTab(props.instanceId, props.metadata);
+	if (!notebookId) throw new Error("The notebook is still opening.");
 	const notebookPath = props.metadata?.[NOTEBOOK_PATH_METADATA_KEY];
 	return {
-		notebookId: notebookIdFromInstanceId(props.instanceId),
+		notebookId,
 		sessionId: props.sessionId,
 		title: props.title,
 		...(notebookPath ? { notebookPath } : {}),
@@ -112,9 +120,11 @@ export function NotebookView({
 	metadata,
 }: NotebookViewProps) {
 	const sdk = useSdk<NotebookService>("notebook");
-	const notebookId = notebookIdFromInstanceId(instanceId);
+	const fileOpenState = notebookOpenState(metadata);
+	const fileOpenError = metadata?.[NOTEBOOK_OPEN_ERROR_METADATA_KEY];
+	const notebookId = notebookIdFromTab(instanceId, metadata);
 	const frameRef = useRef<HTMLIFrameElement>(null);
-	const frameSrc = nteractSrc(instanceId);
+	const frameSrc = notebookId ? nteractSrc(notebookId) : undefined;
 	const desktopFrame = frameSrc?.startsWith(DESKTOP_SCHEME_PREFIX) ?? false;
 	const [retryVersion, setRetryVersion] = useState(0);
 	const [runtime, setRuntime] = useState<
@@ -124,12 +134,14 @@ export function NotebookView({
 	>(desktopFrame ? { status: "checking" } : { status: "available" });
 
 	useEffect(() => {
+		if (!notebookId) return;
 		void sdk.client
 			.setDefaultSaveDirectory({ notebookId, directory: workspaceDirectory ?? null })
 			.catch(() => undefined);
 	}, [notebookId, sdk, workspaceDirectory]);
 
 	useEffect(() => {
+		if (!notebookId) return;
 		const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
 		const unregisterLifecycle = panel?.registerTabLifecycle?.(sessionId, instanceId, {
 			save: () => sdk.client.save({ notebookId }),
@@ -144,7 +156,7 @@ export function NotebookView({
 			) {
 				return;
 			}
-			panel?.setTabDirty?.(sessionId, instanceId, parsed.data.dirty);
+			panel?.updateTab?.(sessionId, instanceId, { dirty: parsed.data.dirty });
 		});
 		const unsubscribeTitle = sdk.events.on(NOTEBOOK_TITLE_CHANGED_EVENT, (payload) => {
 			const parsed = notebookTitleChangedSchema.safeParse(payload);
@@ -155,7 +167,7 @@ export function NotebookView({
 			) {
 				return;
 			}
-			panel?.setTabTitle?.(sessionId, instanceId, parsed.data.title);
+			panel?.updateTab?.(sessionId, instanceId, { title: parsed.data.title });
 		});
 		return () => {
 			unsubscribeDirty();
@@ -194,7 +206,7 @@ export function NotebookView({
 	}, [desktopFrame, retryVersion, sdk]);
 
 	useEffect(() => {
-		if (!frameSrc) return;
+		if (!frameSrc || !notebookId) return;
 		const frameUrl = new URL(frameSrc);
 		if (!frameUrl.protocol.startsWith(DESKTOP_SCHEME_PREFIX)) return;
 		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
@@ -250,7 +262,21 @@ export function NotebookView({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
-			{!frameSrc ? (
+			{fileOpenState === "opening" ? (
+				<div
+					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
+					data-qa-id="notebook-file-opening"
+				>
+					Opening notebook…
+				</div>
+			) : fileOpenState === "error" ? (
+				<div
+					className="text-destructive flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
+					data-qa-id="notebook-file-open-error"
+				>
+					{fileOpenError ?? "The notebook file could not be opened."}
+				</div>
+			) : !frameSrc ? (
 				<div
 					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
 					data-qa-id="notebook-placeholder"

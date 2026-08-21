@@ -198,7 +198,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				turnAnchor="bottom"
 				autoScroll
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
+				className="relative flex flex-1 [scrollbar-gutter:stable] flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
 				<div
 					className={cn(
@@ -206,7 +206,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						isDraft && "justify-center",
 					)}
 				>
-					<div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
+					<div data-slot="aui_message-group" className="mb-10 flex flex-col gap-y-4 empty:hidden">
 						<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
 					</div>
 
@@ -239,6 +239,11 @@ const ThreadMessage: FC = () => {
 	if (role === "user") return <UserMessage />;
 	return <AssistantMessageComponent />;
 };
+
+// The current turn and its preceding response stay measurable so the intrinsic
+// fallback used for older messages cannot distort their visual grouping.
+const useVirtualizeMessage = () =>
+	useAuiState((s) => s.message.index < s.thread.messages.length - 3);
 
 const ThreadScrollToBottom: FC = () => {
 	return (
@@ -426,7 +431,7 @@ const Composer: FC = () => {
 				<ComposerPrimitive.Input
 					ref={inputRef}
 					placeholder="Send a message..."
-					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
+					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none disabled:cursor-not-allowed"
 					minRows={2}
 					autoFocus
 					enterKeyHint="send"
@@ -616,23 +621,35 @@ const ComposerAction: FC<{
 };
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
+const WORKING_INDICATOR_DELAY_MS = 200;
 
-const AssistantWorkingIndicator: FC = () => (
-	<span
-		data-slot="aui_assistant-message-indicator"
-		className="text-muted-foreground relative inline-block text-sm leading-none"
-		role="status"
-		aria-label={CONSIDERING_NEXT_STEPS}
-	>
-		<span>{CONSIDERING_NEXT_STEPS}</span>
+const AssistantWorkingIndicator: FC = () => {
+	const [visible, setVisible] = useState(false);
+
+	useEffect(() => {
+		const timeoutId = window.setTimeout(() => setVisible(true), WORKING_INDICATOR_DELAY_MS);
+		return () => window.clearTimeout(timeoutId);
+	}, []);
+
+	if (!visible) return null;
+
+	return (
 		<span
-			aria-hidden
-			className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
+			data-slot="aui_assistant-message-indicator"
+			className="text-muted-foreground relative inline-block text-sm leading-none"
+			role="status"
+			aria-label={CONSIDERING_NEXT_STEPS}
 		>
-			{CONSIDERING_NEXT_STEPS}
+			<span>{CONSIDERING_NEXT_STEPS}</span>
+			<span
+				aria-hidden
+				className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
+			>
+				{CONSIDERING_NEXT_STEPS}
+			</span>
 		</span>
-	</span>
-);
+	);
+};
 
 const MessageError: FC = () => {
 	return (
@@ -737,6 +754,7 @@ const AssistantMessage: FC = () => {
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
+	const virtualize = useVirtualizeMessage();
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -746,7 +764,10 @@ const AssistantMessage: FC = () => {
 		<MessagePrimitive.Root
 			data-slot="aui_assistant-message-root"
 			data-role="assistant"
-			className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+			className={cn(
+				"fade-in slide-in-from-bottom-1 animate-in relative -mb-15 pb-7.5 duration-150",
+				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+			)}
 		>
 			<div
 				data-slot="aui_assistant-message-content"
@@ -862,7 +883,7 @@ const AssistantActionMoreTrigger: FC = () => {
 						/>
 					}
 				>
-					<MoreHorizontalIcon />
+					<MoreHorizontalIcon className="size-3.5" />
 					<span className="sr-only">More</span>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" className="pointer-events-none">
@@ -904,16 +925,21 @@ const AssistantActionBar: FC = () => {
 };
 
 const UserMessage: FC = () => {
+	const virtualize = useVirtualizeMessage();
+
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
-			className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
+			className={cn(
+				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2",
+				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+			)}
 			data-role="user"
 		>
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word empty:hidden">
 					<MessagePrimitive.Parts />
 				</div>
 			</div>

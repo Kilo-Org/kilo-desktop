@@ -73,6 +73,7 @@ function makePluginOwnedZoneDiscovery(electronOnly = false): PluginDiscovery {
 								label: "Panel",
 								description: "Open panel.",
 								icon: "PanelIcon",
+								mountPolicy: "keep-alive",
 								priority: 10,
 							},
 						],
@@ -121,6 +122,7 @@ describe("buildPluginZoneContributions", () => {
 				description: "Open panel.",
 				component: Panel,
 				icon: PanelIcon,
+				mountPolicy: "keep-alive",
 				priority: 10,
 				browserSafe: true,
 			},
@@ -188,6 +190,7 @@ describe("registerPluginZoneContributions", () => {
 				description: "Open panel.",
 				component: Panel,
 				icon: PanelIcon,
+				mountPolicy: "keep-alive",
 				priority: 10,
 			},
 		]);
@@ -229,7 +232,20 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 				id: "notebook",
 				zone: "kilo-ui/chat-right-panel-tab",
 				label: "Notebook",
+				mountPolicy: "keep-alive",
 			}),
 		);
+	});
+
+	it("includes Files' contributed right-panel icon renderer", () => {
+		const contribution = PLUGIN_ZONE_CONTRIBUTIONS.find(
+			(c) => c.pluginId === "files" && c.zone === "kilo-ui/chat-right-panel-tab",
+		);
+		expect(contribution).toMatchObject({
+			pluginId: "files",
+			id: "files",
+			label: "Files",
+		});
+		expect(contribution?.icon).toBeTypeOf("function");
 	});
 });

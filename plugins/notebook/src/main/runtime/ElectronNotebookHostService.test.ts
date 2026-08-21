@@ -161,8 +161,95 @@ describe("ElectronNotebookHostService", () => {
 				peerLabel: "agentic-desktop:open-file",
 				description: "analysis.ipynb",
 			});
+			expect(nativeRelay.close).not.toHaveBeenCalled();
+		} finally {
+			await service.dispose();
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("hands the opened-file relay to a matching notebook connection", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const notebookPath = path.join(directory, "analysis.ipynb");
+		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
+		const canonicalNotebookPath = await realpath(notebookPath);
+		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
+		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+
+		try {
+			await service.openFile(notebookPath);
+			await service.connect(
+				port(),
+				{
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					sessionId: "kilo-1",
+					title: "analysis.ipynb",
+					notebookPath: canonicalNotebookPath,
+				},
+				42,
+			);
+
+			expect(mocks.openRelayPath).toHaveBeenCalledOnce();
+			expect(mocks.createRelay).not.toHaveBeenCalled();
+			expect(nativeRelay.close).not.toHaveBeenCalled();
+			expect(mocks.serve).toHaveBeenCalledWith(
+				expect.objectContaining({ port: expect.any(Object), handler: expect.any(Object) }),
+			);
+		} finally {
+			await service.dispose();
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("closes a previous pending opened-file relay when the same notebook is opened again", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const notebookPath = path.join(directory, "analysis.ipynb");
+		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
+		const canonicalNotebookPath = await realpath(notebookPath);
+		const firstRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
+		const secondRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
+		mocks.openRelayPath.mockResolvedValueOnce(firstRelay).mockResolvedValueOnce(secondRelay);
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+
+		try {
+			await service.openFile(notebookPath);
+			await service.openFile(notebookPath);
+			expect(firstRelay.close).toHaveBeenCalledOnce();
+			expect(secondRelay.close).not.toHaveBeenCalled();
+		} finally {
+			await service.dispose();
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("closes an unused opened-file relay after the handoff timeout", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const notebookPath = path.join(directory, "analysis.ipynb");
+		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
+		const canonicalNotebookPath = await realpath(notebookPath);
+		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
+		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
+		vi.useFakeTimers();
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+
+		try {
+			await service.openFile(notebookPath);
+			expect(nativeRelay.close).not.toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(30_000);
 			expect(nativeRelay.close).toHaveBeenCalledOnce();
 		} finally {
+			vi.useRealTimers();
+			await service.dispose();
 			await rm(directory, { recursive: true, force: true });
 		}
 	});
@@ -860,6 +947,27 @@ describe("ElectronNotebookHostService", () => {
 
 		await service.dispose();
 		expect(server.close).toHaveBeenCalledOnce();
+	});
+
+	it("closes a pending opened-file relay when disposed", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const notebookPath = path.join(directory, "analysis.ipynb");
+		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
+		const canonicalNotebookPath = await realpath(notebookPath);
+		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
+		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+
+		try {
+			await service.openFile(notebookPath);
+			await service.dispose();
+			expect(nativeRelay.close).toHaveBeenCalledOnce();
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
 	});
 
 	it("fails blob-port lookup when the daemon did not advertise one", async () => {

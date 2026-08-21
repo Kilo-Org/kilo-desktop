@@ -1,8 +1,10 @@
-import type {
-	Workspace,
-	WorkspaceCapabilityService,
-	WorkspaceFolderInput,
-	WorkspacesService,
+import {
+	DEFAULT_WORKSPACE_IDENTITY_COLOR,
+	normalizeWorkspaceIdentityColor,
+	type Workspace,
+	type WorkspaceCapabilityService,
+	type WorkspaceFolderInput,
+	type WorkspacesService,
 } from "../contracts/workspaces/schemas.js";
 import type { KiloUiChatService } from "../contracts/chat/schemas.js";
 import type { OnboardingService, OnboardingState } from "../contracts/onboarding/schemas.js";
@@ -68,6 +70,7 @@ function registerWorkspacesBrowser(mainSdk: MainSdk): void {
 			const after: Workspace = {
 				id: crypto.randomUUID(),
 				name: resolveName(input.name, folders[0]!.path),
+				color: normalizeWorkspaceIdentityColor(input.color) ?? DEFAULT_WORKSPACE_IDENTITY_COLOR,
 				folders: folders.map((folder, position) => ({
 					id: crypto.randomUUID(),
 					path: folder.path,
@@ -89,6 +92,10 @@ function registerWorkspacesBrowser(mainSdk: MainSdk): void {
 				...before,
 				name:
 					input.name === undefined ? before.name : resolveName(input.name, folders[0]!.path, id),
+				color:
+					input.color === undefined
+						? before.color
+						: (normalizeWorkspaceIdentityColor(input.color) ?? before.color),
 				folders: folders.map((folder, position) => ({
 					id: ids.get(folder.path) ?? crypto.randomUUID(),
 					path: folder.path,

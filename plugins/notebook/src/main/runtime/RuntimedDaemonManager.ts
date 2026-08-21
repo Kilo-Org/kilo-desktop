@@ -9,12 +9,14 @@ import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
  * daemon always wins. Only a child created here is restarted or stopped, and a
  * completed socket probe—not process creation or exit code—is the readiness
  * invariant. Concurrent callers share one ensure attempt so notebook tabs cannot
- * race into duplicate children.
+ * race into duplicate children. Dispose SIGTERMs, then SIGKILLs, then gives up
+ * so a stuck sidecar cannot block Electron quit.
  */
 
 const READY_POLL_INTERVAL_MS = 150;
 const READY_TIMEOUT_MS = 20_000;
 const SHUTDOWN_GRACE_MS = 5_000;
+const EXIT_WAIT_MS = 1_000;
 const INITIAL_RESTART_DELAY_MS = 500;
 const MAX_RESTART_DELAY_MS = 10_000;
 const MAX_RESTART_ATTEMPTS = 5;
@@ -40,6 +42,7 @@ export interface RuntimedDaemonManagerOptions {
 	readonly readyTimeoutMs?: number;
 	readonly pollIntervalMs?: number;
 	readonly shutdownGraceMs?: number;
+	readonly exitWaitMs?: number;
 	readonly maxRestartAttempts?: number;
 	readonly stableUptimeMs?: number;
 }
@@ -64,6 +67,7 @@ export class RuntimedDaemonManager {
 	readonly #readyTimeoutMs: number;
 	readonly #pollIntervalMs: number;
 	readonly #shutdownGraceMs: number;
+	readonly #exitWaitMs: number;
 	readonly #maxRestartAttempts: number;
 	readonly #stableUptimeMs: number;
 
@@ -92,6 +96,7 @@ export class RuntimedDaemonManager {
 		this.#readyTimeoutMs = options.readyTimeoutMs ?? READY_TIMEOUT_MS;
 		this.#pollIntervalMs = options.pollIntervalMs ?? READY_POLL_INTERVAL_MS;
 		this.#shutdownGraceMs = options.shutdownGraceMs ?? SHUTDOWN_GRACE_MS;
+		this.#exitWaitMs = options.exitWaitMs ?? EXIT_WAIT_MS;
 		this.#maxRestartAttempts = options.maxRestartAttempts ?? MAX_RESTART_ATTEMPTS;
 		this.#stableUptimeMs = options.stableUptimeMs ?? STABLE_UPTIME_MS;
 	}
@@ -240,15 +245,30 @@ export class RuntimedDaemonManager {
 		this.#child = undefined;
 		this.#state = { status: "stopped" };
 		if (!child || child.exitCode !== null || child.signalCode !== null) return;
+		await this.#waitForChildExit(child);
+	}
 
-		const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+	async #waitForChildExit(child: ChildProcess): Promise<void> {
+		if (child.exitCode !== null || child.signalCode !== null) return;
+
+		let settle!: () => void;
+		const done = new Promise<void>((resolve) => {
+			settle = resolve;
+		});
+		const onExit = () => settle();
+		child.once("exit", onExit);
 		child.kill("SIGTERM");
-		const timer = setTimeout(() => this.#killChild(child), this.#shutdownGraceMs);
-		timer.unref?.();
+
+		const killTimer = setTimeout(() => this.#killChild(child), this.#shutdownGraceMs);
+		const giveUpTimer = setTimeout(settle, this.#shutdownGraceMs + this.#exitWaitMs);
+		killTimer.unref?.();
+		giveUpTimer.unref?.();
 		try {
-			await exited;
+			await done;
 		} finally {
-			clearTimeout(timer);
+			clearTimeout(killTimer);
+			clearTimeout(giveUpTimer);
+			child.off("exit", onExit);
 		}
 	}
 

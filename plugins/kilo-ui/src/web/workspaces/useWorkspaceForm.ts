@@ -1,6 +1,10 @@
 import { useEffect, useState, type DragEvent } from "react";
 
-import type { Workspace, WorkspaceFolderInput } from "../../contracts/workspaces/schemas.js";
+import {
+	DEFAULT_WORKSPACE_IDENTITY_COLOR,
+	type Workspace,
+	type WorkspaceFolderInput,
+} from "../../contracts/workspaces/schemas.js";
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
 type WorkspaceFormShell = Pick<
@@ -14,6 +18,7 @@ export function useWorkspaceForm(options: {
 }) {
 	const workspace = options.workspace;
 	const [name, setName] = useState(workspace?.name ?? "");
+	const [color, setColor] = useState(workspace?.color ?? DEFAULT_WORKSPACE_IDENTITY_COLOR);
 	const [folders, setFolders] = useState<WorkspaceFolderInput[]>(
 		workspace?.folders.map(({ path, isPrimary }) => ({ path, isPrimary })) ?? [],
 	);
@@ -23,6 +28,7 @@ export function useWorkspaceForm(options: {
 
 	useEffect(() => {
 		setName(workspace?.name ?? "");
+		setColor(workspace?.color ?? DEFAULT_WORKSPACE_IDENTITY_COLOR);
 		setFolders(workspace?.folders.map(({ path, isPrimary }) => ({ path, isPrimary })) ?? []);
 		setError(null);
 		setIsDragging(false);
@@ -111,6 +117,8 @@ export function useWorkspaceForm(options: {
 	return {
 		name,
 		setName,
+		color,
+		setColor,
 		folders,
 		error,
 		setError,

@@ -98,8 +98,11 @@ export function readWorkspaceFoldersFromMetadata(metadata: unknown): AnacondaWor
 }
 
 export type SessionActivityPatch = Partial<
-	Pick<SessionActivity, "directory" | "workspaceId" | "createdAt" | "updatedAt">
->;
+	Pick<SessionActivity, "directory" | "createdAt" | "updatedAt">
+> & {
+	/** `null` clears a previously stamped workspace (deleted workspace). */
+	workspaceId?: string | null;
+};
 
 /** Reads directory/timestamps/workspace id off a Kilo `Session` (`session.updated` info, list rows). */
 export function readSessionInfoPatch(info: Record<string, unknown>): SessionActivityPatch {
@@ -111,8 +114,9 @@ export function readSessionInfoPatch(info: Record<string, unknown>): SessionActi
 	if (createdAt !== undefined) patch.createdAt = createdAt;
 	const updatedAt = asFiniteNumber(time?.updated);
 	if (updatedAt !== undefined) patch.updatedAt = updatedAt;
-	const workspaceId = readWorkspaceIdFromMetadata(info.metadata);
-	if (workspaceId) patch.workspaceId = workspaceId;
+	if ("metadata" in info) {
+		patch.workspaceId = readWorkspaceIdFromMetadata(info.metadata) ?? null;
+	}
 	return patch;
 }
 
@@ -122,11 +126,19 @@ export function applySessionPatch(
 	patch: SessionActivityPatch,
 ): SessionActivity | null {
 	let next = session;
-	for (const key of ["directory", "workspaceId", "createdAt", "updatedAt"] as const) {
+	for (const key of ["directory", "createdAt", "updatedAt"] as const) {
 		const value = patch[key];
 		if (value !== undefined && next[key] !== value) {
 			next = { ...next, [key]: value };
 		}
+	}
+	if (patch.workspaceId === null) {
+		if (next.workspaceId !== undefined) {
+			const { workspaceId: _workspaceId, ...rest } = next;
+			next = rest;
+		}
+	} else if (patch.workspaceId !== undefined && next.workspaceId !== patch.workspaceId) {
+		next = { ...next, workspaceId: patch.workspaceId };
 	}
 	return next === session ? null : next;
 }
@@ -411,60 +423,4 @@ export function resolveSessionLocationLabel(
 	if (workspace) return workspace.name;
 	const directory = activity?.directory;
 	return directory ? directoryBasename(directory) : null;
-}
-
-type SidebarThreadEntry = {
-	id: string;
-	remoteId?: string | undefined;
-	sourceIndex?: number | undefined;
-};
-
-/**
- * Splits the regular/archived lists into sidebar sections. Attention spans both
- * lists (a settled session that raises a permission/question resurfaces at the
- * top). Sessions keep static creation order; settled sorts by when work last
- * touched the session.
- */
-export function partitionSidebarThreads(args: {
-	regular: readonly SidebarThreadEntry[];
-	archived: readonly SidebarThreadEntry[];
-	activityBySessionId: Readonly<Record<string, SessionActivity>>;
-}): {
-	attention: { index: number; archived: boolean }[];
-	sessions: number[];
-	settled: number[];
-} {
-	const attention: { index: number; archived: boolean; updatedAt: number }[] = [];
-	const sessions: { index: number; createdAt: number }[] = [];
-	const settled: { index: number; updatedAt: number }[] = [];
-
-	args.regular.forEach((entry, position) => {
-		const index = entry.sourceIndex ?? position;
-		const activity = entry.remoteId ? args.activityBySessionId[entry.remoteId] : undefined;
-		if (needsAttention(activity)) {
-			attention.push({ index, archived: false, updatedAt: activity?.updatedAt ?? 0 });
-		} else {
-			sessions.push({ index, createdAt: activity?.createdAt ?? 0 });
-		}
-	});
-
-	args.archived.forEach((entry, position) => {
-		const index = entry.sourceIndex ?? position;
-		const activity = entry.remoteId ? args.activityBySessionId[entry.remoteId] : undefined;
-		if (needsAttention(activity)) {
-			attention.push({ index, archived: true, updatedAt: activity?.updatedAt ?? 0 });
-		} else {
-			settled.push({ index, updatedAt: activity?.updatedAt ?? 0 });
-		}
-	});
-
-	attention.sort((a, b) => b.updatedAt - a.updatedAt || a.index - b.index);
-	sessions.sort((a, b) => b.createdAt - a.createdAt || a.index - b.index);
-	settled.sort((a, b) => b.updatedAt - a.updatedAt || a.index - b.index);
-
-	return {
-		attention: attention.map(({ index, archived }) => ({ index, archived })),
-		sessions: sessions.map(({ index }) => index),
-		settled: settled.map(({ index }) => index),
-	};
 }

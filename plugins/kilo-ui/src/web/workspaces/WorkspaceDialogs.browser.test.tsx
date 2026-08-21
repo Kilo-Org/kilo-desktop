@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { SdkProvider, sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import {
+	DEFAULT_WORKSPACE_IDENTITY_COLOR,
 	workspacesContract,
 	type Workspace,
 	type WorkspacesService,
@@ -140,9 +141,63 @@ describe("WorkspaceDialogs — create/edit form", () => {
 
 		await page.getByRole("button", { name: "Create workspace" }).click();
 
-		await vi.waitFor(() => expect(create).toHaveBeenCalled());
+		await vi.waitFor(() =>
+			expect(create).toHaveBeenCalledWith({
+				name: "",
+				color: DEFAULT_WORKSPACE_IDENTITY_COLOR,
+				folders: [{ path: "/projects/two", isPrimary: true }],
+			}),
+		);
 		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith(workspaceA.id);
+	});
+
+	it("saves a selected identity color", async () => {
+		const create = vi.fn(async () => workspaceA);
+		renderDialogs({
+			dialog: { mode: "create" },
+			handlers: { create },
+			shell: {
+				showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, paths: ["/projects/one"] }),
+			},
+		});
+
+		await expect.element(page.getByRole("radiogroup", { name: "Identity color" })).toBeVisible();
+		page
+			.getByRole("radio", { name: `Color ${DEFAULT_WORKSPACE_IDENTITY_COLOR}` })
+			.element()
+			.focus();
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.element(page.getByRole("radio", { name: "Color #34D399" })).toBeChecked();
+		await page.getByRole("button", { name: /Drop folders/ }).click();
+		await page.getByRole("button", { name: "Create workspace" }).click();
+
+		await vi.waitFor(() =>
+			expect(create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					color: "#34D399",
+					folders: [{ path: "/projects/one", isPrimary: true }],
+				}),
+			),
+		);
+	});
+
+	it("keeps a custom identity color in the radio group", async () => {
+		renderDialogs({
+			dialog: {
+				mode: "edit",
+				workspace: { ...workspaceA, color: "#123456" },
+			},
+		});
+
+		const custom = page.getByRole("radio", { name: "Custom color #123456" });
+		await expect.element(custom).toBeChecked();
+
+		custom.element().focus();
+		await userEvent.keyboard("{ArrowLeft}");
+		await expect.element(page.getByRole("radio", { name: "Color #FBBF24" })).toBeChecked();
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.element(page.getByRole("radio", { name: "Custom color #123456" })).toBeChecked();
 	});
 
 	it("cancels the form without saving", async () => {
@@ -177,6 +232,7 @@ describe("WorkspaceDialogs — create/edit form", () => {
 			expect(update).toHaveBeenCalledWith({
 				id: workspaceA.id,
 				name: workspaceA.name,
+				color: DEFAULT_WORKSPACE_IDENTITY_COLOR,
 				folders: [{ path: workspaceA.folders[0]!.path, isPrimary: true }],
 			}),
 		);

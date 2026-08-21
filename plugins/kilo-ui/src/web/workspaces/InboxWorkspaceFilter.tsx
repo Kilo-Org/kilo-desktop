@@ -1,4 +1,4 @@
-import { ChevronsUpDownIcon, LayoutGridIcon } from "lucide-react";
+import { ChevronsUpDownIcon, FolderIcon, LayoutGridIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 
@@ -18,6 +18,7 @@ export function InboxWorkspaceFilter({
 		<div className="min-w-0 flex-1">
 			<WorkspacePickerRoot
 				contentAlign="start"
+				contentWidth="trigger"
 				emptyLabel={EMPTY_LABEL}
 				includeUnscoped={false}
 				value={value}
@@ -32,6 +33,7 @@ export function InboxWorkspaceFilter({
 function InboxWorkspaceFilterTrigger() {
 	const { triggerLabel, active } = useWorkspacePicker();
 	const glyph = workspaceGlyphColor(active?.color);
+	const Icon = active ? FolderIcon : LayoutGridIcon;
 
 	return (
 		<WorkspacePickerTrigger
@@ -39,15 +41,15 @@ function InboxWorkspaceFilterTrigger() {
 			render={
 				<Button
 					type="button"
-					variant="ghost"
+					variant="outline"
 					size="sm"
 					data-qa-id="session-list-workspace-filter"
-					className="h-8 w-full min-w-0 justify-start gap-2 px-2 text-sm font-normal"
+					className="border-border/60 bg-popover hover:bg-popover aria-expanded:bg-popover dark:border-border/50 dark:bg-popover h-9 w-full min-w-0 justify-start gap-2 px-2 text-sm font-normal shadow-none"
 					title="Filter by workspace"
 				/>
 			}
 		>
-			<LayoutGridIcon className="size-4 shrink-0" {...(glyph ? { color: glyph } : {})} />
+			<Icon className="size-4 shrink-0" {...(glyph ? { color: glyph } : {})} />
 			<span className="min-w-0 flex-1 truncate text-left font-medium">{triggerLabel}</span>
 			<ChevronsUpDownIcon className="text-muted-foreground size-3.5 shrink-0 opacity-70" />
 		</WorkspacePickerTrigger>

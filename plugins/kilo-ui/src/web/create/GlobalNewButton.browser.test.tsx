@@ -158,6 +158,11 @@ describe("GlobalNewButton", () => {
 			chat.element().compareDocumentPosition(workspace.element()) &
 				Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+		const field = screen.getByRole("group", { name: "New" }).element();
+		expect(screen.getByRole("menu").element().getBoundingClientRect().width).toBeCloseTo(
+			field.getBoundingClientRect().width,
+			0,
+		);
 	});
 
 	it("creates a chat from the New menu", async () => {

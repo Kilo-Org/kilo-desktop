@@ -84,13 +84,16 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 	const connect = useMutation({
 		mutationFn: ({ providerID, apiKey }: { providerID: string; apiKey: string }) =>
 			run((client) => connectApiKey(client, providerID, apiKey)),
+		onSuccess: () => resetErrors(),
 	});
 	const disconnect = useMutation({
 		mutationFn: (providerID: string) => run((client) => disconnectProvider(client, providerID)),
+		onSuccess: () => resetErrors(),
 	});
 	const disable = useMutation({
 		mutationFn: ({ providerID, disabled }: { providerID: string; disabled: boolean }) =>
 			run((client) => setDisabled(client, providerID, disabled)),
+		onSuccess: () => resetErrors(),
 	});
 	const save = useMutation({
 		mutationFn: (input: {
@@ -102,10 +105,20 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 			run((client) =>
 				saveCustom(client, input.providerID, input.provider, input.apiKey, input.apiKeyChanged),
 			),
+		onSuccess: () => resetErrors(),
 	});
 	const remove = useMutation({
 		mutationFn: (providerID: string) => run((client) => deleteCustom(client, providerID)),
+		onSuccess: () => resetErrors(),
 	});
+
+	const resetErrors = () => {
+		connect.reset();
+		disconnect.reset();
+		disable.reset();
+		save.reset();
+		remove.reset();
+	};
 
 	const error =
 		connect.error ?? disconnect.error ?? disable.error ?? save.error ?? remove.error ?? query.error;

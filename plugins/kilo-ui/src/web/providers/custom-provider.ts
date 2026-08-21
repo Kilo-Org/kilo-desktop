@@ -37,6 +37,13 @@ export const POPULAR_PROVIDER_NAMES: Record<(typeof POPULAR_PROVIDER_IDS)[number
 
 const INVALID_PROVIDER_ID = "Invalid provider ID";
 const INVALID_BASE_URL = "Base URL must start with http:// or https://";
+const INVALID_HEADER_VALUE =
+	"Header values must use an environment variable such as {env:MY_API_TOKEN}";
+const HEADER_ENV_PATTERN = /\{env:[A-Za-z_][A-Za-z0-9_]*\}/;
+
+export function isSecureHeaderValue(value: string): boolean {
+	return HEADER_ENV_PATTERN.test(value.trim());
+}
 
 export function isCustomProviderPackage(value: unknown): value is CustomProviderPackage {
 	return CUSTOM_PROVIDER_PACKAGES.includes(value as CustomProviderPackage);
@@ -77,7 +84,14 @@ export const CustomProviderConfigSchema = z
 					.refine((value) => value.startsWith("http://") || value.startsWith("https://"), {
 						message: INVALID_BASE_URL,
 					}),
-				headers: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional(),
+				headers: z
+					.record(
+						z.string().trim().min(1),
+						z.string().trim().min(1).refine(isSecureHeaderValue, {
+							message: INVALID_HEADER_VALUE,
+						}),
+					)
+					.optional(),
 			})
 			.strict(),
 		models: z

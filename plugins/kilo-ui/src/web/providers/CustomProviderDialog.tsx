@@ -41,6 +41,7 @@ import {
 	CUSTOM_PROVIDER_PACKAGE,
 	CUSTOM_PROVIDER_PACKAGES,
 	findDuplicate,
+	isSecureHeaderValue,
 	resolveModalities,
 	sanitizeCustomProviderConfig,
 	validateProviderID,
@@ -56,8 +57,9 @@ const EDITOR_ROW =
 	"grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-1.5";
 const EDITOR_ACTIONS = "-mr-1.5 flex shrink-0 items-center";
 
-type HeaderRow = { key: string; value: string };
+type HeaderRow = { rowID: string; key: string; value: string };
 type ModelRow = {
+	rowID: string;
 	id: string;
 	name: string;
 	reasoning: boolean;
@@ -81,7 +83,10 @@ type ExistingCustom = {
 	config: SanitizedProviderConfig | Record<string, unknown>;
 };
 
-type InvalidField = "id" | "models" | "headers" | "config" | null;
+type InvalidField =
+	| { field: "id" | "config" }
+	| { field: "models" | "headers"; rows: string[] }
+	| null;
 
 type CustomProviderDialogProps = {
 	open: boolean;
@@ -109,7 +114,11 @@ const PACKAGE_ITEMS = CUSTOM_PROVIDER_PACKAGES.map((value) => ({
 }));
 
 function emptyModel(): ModelRow {
-	return { id: "", name: "", reasoning: false, supportsImages: false };
+	return { rowID: crypto.randomUUID(), id: "", name: "", reasoning: false, supportsImages: false };
+}
+
+function emptyHeader(): HeaderRow {
+	return { rowID: crypto.randomUUID(), key: "", value: "" };
 }
 
 function modelsFromConfig(config: ExistingCustom["config"]): ModelRow[] {
@@ -120,6 +129,7 @@ function modelsFromConfig(config: ExistingCustom["config"]): ModelRow[] {
 	);
 	if (entries.length === 0) return [emptyModel()];
 	return entries.map(([id, model]) => ({
+		rowID: crypto.randomUUID(),
 		id,
 		name: model.name ?? id,
 		reasoning: model.reasoning === true,
@@ -132,8 +142,12 @@ function headersFromConfig(config: ExistingCustom["config"]): HeaderRow[] {
 	const options =
 		"options" in config ? (config.options as { headers?: Record<string, string> }) : undefined;
 	const headers = options?.headers;
-	if (!headers || Object.keys(headers).length === 0) return [{ key: "", value: "" }];
-	return Object.entries(headers).map(([key, value]) => ({ key, value }));
+	if (!headers || Object.keys(headers).length === 0) return [emptyHeader()];
+	return Object.entries(headers).map(([key, value]) => ({
+		rowID: crypto.randomUUID(),
+		key,
+		value,
+	}));
 }
 
 function initForm(existing: ExistingCustom | null): CustomProviderFormState {
@@ -144,7 +158,7 @@ function initForm(existing: ExistingCustom | null): CustomProviderFormState {
 			npm: CUSTOM_PROVIDER_PACKAGE,
 			baseURL: "",
 			apiKey: "",
-			headers: [{ key: "", value: "" }],
+			headers: [emptyHeader()],
 			models: [emptyModel()],
 		};
 	}
@@ -199,6 +213,23 @@ function toProvider(form: CustomProviderFormState): unknown {
 	};
 }
 
+function duplicateRows<T extends { rowID: string }>(
+	rows: T[],
+	value: (row: T) => string,
+	insensitive = false,
+): string[] {
+	const normalized = rows.map((row) => {
+		const text = value(row).trim();
+		return insensitive ? text.toLowerCase() : text;
+	});
+	return rows
+		.filter((_, index) => {
+			const text = normalized[index];
+			return text ? normalized.filter((candidate) => candidate === text).length > 1 : false;
+		})
+		.map((row) => row.rowID);
+}
+
 export function CustomProviderDialog({
 	open,
 	existing,
@@ -221,18 +252,26 @@ export function CustomProviderDialog({
 		const id = validateProviderID(form.providerID);
 		if ("error" in id) {
 			setLocalError(id.error);
-			setInvalid("id");
+			setInvalid({ field: "id" });
 			return;
 		}
 		if (!editing && blockedIds.includes(id.value)) {
 			setLocalError("Provider ID already exists");
-			setInvalid("id");
+			setInvalid({ field: "id" });
 			return;
 		}
 		const model = findDuplicate(form.models.map((row) => row.id));
 		if (model) {
 			setLocalError(`Model ID "${model}" is duplicated`);
-			setInvalid("models");
+			setInvalid({ field: "models", rows: duplicateRows(form.models, (row) => row.id) });
+			return;
+		}
+		const incompleteHeaders = form.headers.filter(
+			(row) => Boolean(row.key.trim()) !== Boolean(row.value.trim()),
+		);
+		if (incompleteHeaders.length > 0) {
+			setLocalError("Header name and value are both required");
+			setInvalid({ field: "headers", rows: incompleteHeaders.map((row) => row.rowID) });
 			return;
 		}
 		const header = findDuplicate(
@@ -241,14 +280,25 @@ export function CustomProviderDialog({
 		);
 		if (header) {
 			setLocalError(`Header "${header}" is duplicated`);
-			setInvalid("headers");
+			setInvalid({
+				field: "headers",
+				rows: duplicateRows(form.headers, (row) => row.key, true),
+			});
+			return;
+		}
+		const unsafeHeaders = form.headers.filter(
+			(row) => row.value.trim() && !isSecureHeaderValue(row.value),
+		);
+		if (unsafeHeaders.length > 0) {
+			setLocalError("Header values must use an environment variable such as {env:MY_API_TOKEN}");
+			setInvalid({ field: "headers", rows: unsafeHeaders.map((row) => row.rowID) });
 			return;
 		}
 		const provider = toProvider(form);
 		const sanitized = sanitizeCustomProviderConfig(provider);
 		if ("error" in sanitized) {
 			setLocalError(sanitized.error);
-			setInvalid("config");
+			setInvalid({ field: "config" });
 			return;
 		}
 		setLocalError(null);
@@ -304,14 +354,14 @@ export function CustomProviderDialog({
 					<FieldGroup>
 						<Field
 							data-disabled={editing || undefined}
-							data-invalid={invalid === "id" || undefined}
+							data-invalid={invalid?.field === "id" || undefined}
 						>
 							<FieldLabel htmlFor="kilo-custom-id">Provider ID</FieldLabel>
 							<Input
 								id="kilo-custom-id"
 								value={form.providerID}
 								disabled={editing}
-								aria-invalid={invalid === "id" || undefined}
+								aria-invalid={invalid?.field === "id" || undefined}
 								onChange={(event) =>
 									setForm((current) => ({ ...current, providerID: event.target.value }))
 								}
@@ -441,7 +491,7 @@ export function CustomProviderDialog({
 							</div>
 							<FieldGroup className="gap-2">
 								{form.models.map((model, index) => (
-									<div key={index} className={EDITOR_ROW}>
+									<div key={model.rowID} className={EDITOR_ROW}>
 										<div className="min-w-0 pr-1">
 											<FieldLabel htmlFor={`kilo-custom-model-id-${index}`} className="sr-only">
 												Model {index + 1} ID
@@ -450,7 +500,10 @@ export function CustomProviderDialog({
 												id={`kilo-custom-model-id-${index}`}
 												placeholder="model-id"
 												value={model.id}
-												aria-invalid={invalid === "models" || undefined}
+												aria-invalid={
+													(invalid?.field === "models" && invalid.rows.includes(model.rowID)) ||
+													undefined
+												}
 												onChange={(event) =>
 													setForm((current) => ({
 														...current,
@@ -555,7 +608,7 @@ export function CustomProviderDialog({
 							<FieldTitle>Headers (optional)</FieldTitle>
 							<FieldGroup className="gap-2">
 								{form.headers.map((header, index) => (
-									<div key={index} className={EDITOR_ROW}>
+									<div key={header.rowID} className={EDITOR_ROW}>
 										<div className="min-w-0 pr-1">
 											<FieldLabel htmlFor={`kilo-custom-header-key-${index}`} className="sr-only">
 												Header {index + 1} name
@@ -564,7 +617,10 @@ export function CustomProviderDialog({
 												id={`kilo-custom-header-key-${index}`}
 												placeholder="Header-Name"
 												value={header.key}
-												aria-invalid={invalid === "headers" || undefined}
+												aria-invalid={
+													(invalid?.field === "headers" && invalid.rows.includes(header.rowID)) ||
+													undefined
+												}
 												onChange={(event) =>
 													setForm((current) => ({
 														...current,
@@ -584,6 +640,10 @@ export function CustomProviderDialog({
 												id={`kilo-custom-header-value-${index}`}
 												placeholder="value"
 												value={header.value}
+												aria-invalid={
+													(invalid?.field === "headers" && invalid.rows.includes(header.rowID)) ||
+													undefined
+												}
 												onChange={(event) =>
 													setForm((current) => ({
 														...current,
@@ -624,7 +684,7 @@ export function CustomProviderDialog({
 								onClick={() =>
 									setForm((current) => ({
 										...current,
-										headers: [...current.headers, { key: "", value: "" }],
+										headers: [...current.headers, emptyHeader()],
 									}))
 								}
 								data-qa-id="kilo-providers-add-header"
@@ -632,6 +692,10 @@ export function CustomProviderDialog({
 								<PlusIcon data-icon="inline-start" />
 								Add header
 							</Button>
+							<FieldDescription>
+								Use environment references such as {"{env:MY_API_TOKEN}"} for header values.
+								Plaintext header secrets are not saved.
+							</FieldDescription>
 						</FieldSet>
 
 						{formError ? (

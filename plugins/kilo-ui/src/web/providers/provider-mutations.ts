@@ -137,15 +137,6 @@ export async function saveCustom(
 	const global = await readGlobal(client);
 	const existing = global.provider?.[id];
 	const patch = withCustomProviderDeletions(existing, sanitized.value);
-	await client.global.config.update(
-		{
-			config: {
-				provider: { [id]: patch as SanitizedProviderConfig },
-				disabled_providers: without(global.disabled_providers, id),
-			},
-		},
-		{ throwOnError: true },
-	);
 
 	const auth = resolveCustomProviderAuth(apiKey, apiKeyChanged);
 	if (auth.mode === "set") {
@@ -157,6 +148,16 @@ export async function saveCustom(
 	if (auth.mode === "clear") {
 		await client.auth.remove({ providerID: id }, { throwOnError: true });
 	}
+
+	await client.global.config.update(
+		{
+			config: {
+				provider: { [id]: patch as SanitizedProviderConfig },
+				disabled_providers: without(global.disabled_providers, id),
+			},
+		},
+		{ throwOnError: true },
+	);
 	await dispose(client);
 }
 

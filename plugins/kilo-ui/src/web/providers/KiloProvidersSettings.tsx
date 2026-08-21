@@ -83,7 +83,7 @@ export function KiloProvidersSettings() {
 					type="button"
 					variant="outline"
 					size="sm"
-					disabled={providers.pending}
+					disabled={catalogLoading || providers.pending}
 					onClick={() => {
 						providers.resetSave();
 						setDialog({ type: "custom", existing: null });

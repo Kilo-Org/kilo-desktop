@@ -20,6 +20,7 @@ function createClient(
 		remove: [] as Array<{ providerID: string }>,
 		update: [] as Array<{ config: Record<string, unknown> }>,
 		dispose: 0,
+		order: [] as string[],
 	};
 	let global = structuredClone(existing);
 
@@ -27,10 +28,12 @@ function createClient(
 		auth: {
 			set: async (input) => {
 				calls.set.push(input);
+				calls.order.push("auth.set");
 				return { data: true };
 			},
 			remove: async (input) => {
 				calls.remove.push(input);
+				calls.order.push("auth.remove");
 				return { data: true };
 			},
 		},
@@ -42,6 +45,7 @@ function createClient(
 				get: async () => ({ data: global }),
 				update: async (input) => {
 					calls.update.push(input);
+					calls.order.push("config.update");
 					global = {
 						...global,
 						...input.config,
@@ -169,7 +173,7 @@ describe("setDisabled", () => {
 });
 
 describe("saveCustom", () => {
-	it("writes the sanitized block then the api key, never putting the key in config", async () => {
+	it("stores the api key before writing the sanitized block and never puts the key in config", async () => {
 		const { client, calls } = createClient({ disabled_providers: ["my-provider"] });
 		await saveCustom(client, "my-provider", customBlock, " sk-test ", true);
 		expect(calls.update[0]?.config).toEqual({
@@ -187,7 +191,20 @@ describe("saveCustom", () => {
 		expect(calls.set).toEqual([
 			{ providerID: "my-provider", auth: { type: "api", key: "sk-test" } },
 		]);
+		expect(calls.order).toEqual(["auth.set", "config.update"]);
 		expect(calls.dispose).toBe(1);
+	});
+
+	it("does not write config when storing the credential fails", async () => {
+		const { client, calls } = createClient();
+		client.auth.set = async () => {
+			throw new Error("credential store unavailable");
+		};
+		await expect(saveCustom(client, "my-provider", customBlock, "sk-test", true)).rejects.toThrow(
+			"credential store unavailable",
+		);
+		expect(calls.update).toEqual([]);
+		expect(calls.dispose).toBe(0);
 	});
 
 	it("emits null for models removed on edit", async () => {

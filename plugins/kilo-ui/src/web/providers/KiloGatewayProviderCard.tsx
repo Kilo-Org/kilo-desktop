@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -33,11 +33,8 @@ export function KiloGatewayProviderCard() {
 		!auth.connectionUnavailable &&
 		auth.authenticated === false;
 
-	const [userOpen, setUserOpen] = useState<boolean | null>(null);
-	useEffect(() => {
-		setUserOpen(null);
-	}, [preferExpanded]);
-	const open = userOpen ?? preferExpanded;
+	const [userOpen, setUserOpen] = useState(false);
+	const open = preferExpanded || userOpen;
 
 	const status = gatewayStatusLabel({
 		isLoading: auth.isLoading && !showDeviceAuth,

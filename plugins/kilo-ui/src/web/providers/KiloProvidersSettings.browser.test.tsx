@@ -147,7 +147,7 @@ function renderPage(
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	render(
+	const mount = (value: KiloAuthContextValue) => (
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<ChatConnectionProvider
@@ -159,14 +159,21 @@ function renderPage(
 						connectionPromise: Promise.resolve(connection),
 					}}
 				>
-					<KiloAuthContext.Provider value={auth}>
+					<KiloAuthContext.Provider value={value}>
 						<KiloProvidersSettings />
 					</KiloAuthContext.Provider>
 				</ChatConnectionProvider>
 			</QueryClientProvider>
-		</SdkProvider>,
+		</SdkProvider>
 	);
-	return { screen: page, sdk, queryClient, auth };
+	const view = render(mount(auth));
+	return {
+		screen: page,
+		sdk,
+		queryClient,
+		auth,
+		rerenderAuth: (value: KiloAuthContextValue) => view.rerender(mount(value)),
+	};
 }
 
 describe("KiloProvidersSettings", () => {
@@ -201,6 +208,30 @@ describe("KiloProvidersSettings", () => {
 		await expect.element(screen.getByTestId("kilo-account-login")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-providers-add-anthropic")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-providers-add-custom")).toBeVisible();
+	});
+
+	it("disables custom provider creation until the catalog finishes loading", async () => {
+		const { screen } = renderPage({ isPending: true, isError: false });
+		await expect.element(screen.getByTestId("kilo-providers-add-custom")).toBeDisabled();
+	});
+
+	it("preserves a manual Kilo Gateway expansion across background auth refreshes", async () => {
+		mockCatalog();
+		const base = idleAuth();
+		const { screen, rerenderAuth } = renderPage(
+			{ isPending: false, isError: false, connection },
+			base,
+		);
+		await screen.getByTestId("kilo-providers-kilo-toggle").click();
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-kilo"))
+			.toHaveAttribute("data-state", "expanded");
+
+		rerenderAuth(idleAuth({ isLoading: true }));
+		rerenderAuth(idleAuth());
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-kilo"))
+			.toHaveAttribute("data-state", "expanded");
 	});
 
 	it("collapses the Kilo card when signed in", async () => {
@@ -277,6 +308,44 @@ describe("KiloProvidersSettings", () => {
 		expect(configUpdate).not.toHaveBeenCalled();
 	});
 
+	it("rejects a half-filled custom header row", async () => {
+		mockCatalog();
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-custom").click();
+		await screen.getByTestId("kilo-providers-custom-id").fill("vllm");
+		await screen.getByTestId("kilo-providers-custom-name").fill("Local vLLM");
+		await screen.getByTestId("kilo-providers-custom-url").fill("http://127.0.0.1:8000/v1");
+		await screen.getByTestId("kilo-providers-model-id-0").fill("qwen");
+		await screen.getByTestId("kilo-providers-header-key-0").fill("Authorization");
+		await screen.getByTestId("kilo-providers-custom-save").click();
+		await expect.element(screen.getByText("Header name and value are both required")).toBeVisible();
+		expect(configUpdate).not.toHaveBeenCalled();
+	});
+
+	it("marks only duplicated model ids as invalid", async () => {
+		mockCatalog();
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-custom").click();
+		await screen.getByTestId("kilo-providers-custom-id").fill("vllm");
+		await screen.getByTestId("kilo-providers-custom-name").fill("Local vLLM");
+		await screen.getByTestId("kilo-providers-custom-url").fill("http://127.0.0.1:8000/v1");
+		await screen.getByTestId("kilo-providers-model-id-0").fill("duplicate");
+		await screen.getByTestId("kilo-providers-add-model").click();
+		await screen.getByTestId("kilo-providers-model-id-1").fill("duplicate");
+		await screen.getByTestId("kilo-providers-add-model").click();
+		await screen.getByTestId("kilo-providers-model-id-2").fill("distinct");
+		await screen.getByTestId("kilo-providers-custom-save").click();
+		await expect
+			.element(screen.getByTestId("kilo-providers-model-id-0"))
+			.toHaveAttribute("aria-invalid", "true");
+		await expect
+			.element(screen.getByTestId("kilo-providers-model-id-1"))
+			.toHaveAttribute("aria-invalid", "true");
+		await expect
+			.element(screen.getByTestId("kilo-providers-model-id-2"))
+			.not.toHaveAttribute("aria-invalid", "true");
+	});
+
 	it("confirms before removing a custom provider definition", async () => {
 		mockCustomCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
@@ -332,5 +401,19 @@ describe("KiloProvidersSettings", () => {
 		await screen.getByTestId("kilo-providers-disconnect-openai").click();
 		await expect.element(screen.getByTestId("kilo-providers-disconnect-anthropic")).toBeDisabled();
 		await expect.element(screen.getByTestId("kilo-providers-enabled-anthropic")).toBeDisabled();
+	});
+
+	it("clears an earlier mutation error when a later provider action succeeds", async () => {
+		mockConnectedCatalog();
+		authRemove.mockRejectedValueOnce(new Error("credential store unavailable"));
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-disconnect-openai").click();
+		await expect
+			.element(screen.getByTestId("kilo-providers-error"))
+			.toHaveTextContent("credential store unavailable");
+
+		await screen.getByTestId("kilo-providers-enabled-anthropic").click();
+		await vi.waitFor(() => expect(configUpdate).toHaveBeenCalled());
+		await expect.element(screen.getByTestId("kilo-providers-error")).not.toBeInTheDocument();
 	});
 });

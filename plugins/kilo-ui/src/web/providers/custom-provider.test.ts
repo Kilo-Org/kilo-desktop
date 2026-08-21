@@ -99,8 +99,8 @@ describe("sanitizeCustomProviderConfig", () => {
 			options: {
 				baseURL: "https://example.com/v1 ",
 				headers: {
-					Authorization: " Bearer test ",
-					" X-Test ": " 123 ",
+					Authorization: " Bearer {env:AUTH_TOKEN} ",
+					" X-Test ": " {env:X_TEST} ",
 				},
 				apiKey: "sk-should-never-appear",
 			},
@@ -116,8 +116,8 @@ describe("sanitizeCustomProviderConfig", () => {
 				options: {
 					baseURL: "https://example.com/v1",
 					headers: {
-						Authorization: "Bearer test",
-						"X-Test": "123",
+						Authorization: "Bearer {env:AUTH_TOKEN}",
+						"X-Test": "{env:X_TEST}",
 					},
 				},
 				models: {
@@ -156,6 +156,42 @@ describe("sanitizeCustomProviderConfig", () => {
 			models: { "model-1": { name: "Model One" } },
 		});
 		expect("error" in result).toBe(true);
+	});
+
+	it("rejects plaintext custom header values", () => {
+		const result = sanitizeCustomProviderConfig({
+			name: "Unsafe headers",
+			options: {
+				baseURL: "https://example.com/v1",
+				headers: { Authorization: "Bearer secret" },
+			},
+			models: { "model-1": { name: "Model One" } },
+		});
+		expect(result).toEqual({
+			error: "Header values must use an environment variable such as {env:MY_API_TOKEN}",
+		});
+	});
+
+	it("allows custom header values that reference environment variables", () => {
+		const result = sanitizeCustomProviderConfig({
+			name: "Safe headers",
+			options: {
+				baseURL: "https://example.com/v1",
+				headers: { Authorization: "Bearer {env:MY_API_TOKEN}" },
+			},
+			models: { "model-1": { name: "Model One" } },
+		});
+		expect(result).toEqual({
+			value: {
+				npm: "@ai-sdk/openai-compatible",
+				name: "Safe headers",
+				options: {
+					baseURL: "https://example.com/v1",
+					headers: { Authorization: "Bearer {env:MY_API_TOKEN}" },
+				},
+				models: { "model-1": { name: "Model One" } },
+			},
+		});
 	});
 
 	it("defaults npm to openai-compatible", () => {

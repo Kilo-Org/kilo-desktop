@@ -168,6 +168,7 @@ async function openNotebookFileWithPanel(
 	sessionId: string,
 	panel: ChatRightPanelCapability,
 ): Promise<NotebookPanelOpenFileResult> {
+	panel.show(sessionId);
 	const existing = panel
 		.listTabs(sessionId)
 		.find(

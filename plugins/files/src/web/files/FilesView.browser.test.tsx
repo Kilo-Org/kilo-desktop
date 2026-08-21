@@ -901,6 +901,24 @@ describe("FilesView", () => {
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 	});
 
+	it("resets tree selection when the unsaved-changes dialog is dismissed with Escape", async () => {
+		renderView(handlers());
+		await openTreePath("src/index.ts");
+		await replaceEditorText("changed");
+		await openTreePath("docs/readme.md");
+		await expect.element(page.getByTestId("files-unsaved-dialog")).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		await vi.waitFor(() => {
+			const host = document.querySelector('[data-qa-id="files-tree"]');
+			expect(
+				host?.shadowRoot
+					?.querySelector('[data-item-path="src/index.ts"]')
+					?.hasAttribute("data-item-selected"),
+			).toBe(true);
+		});
+	});
+
 	it("saves from the keyboard and through the dirty-switch guard", async () => {
 		const write = vi.fn(async () => ({ status: "saved" as const, revision: "b".repeat(64) }));
 		renderView({ ...handlers(), write });

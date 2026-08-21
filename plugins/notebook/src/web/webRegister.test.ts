@@ -202,10 +202,12 @@ describe("notebook plugin webRegister", () => {
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("chat-1");
 
+		const show = vi.spyOn(panel, "show");
 		const result = await system.services.toolRegistry.invoke("notebook", "open_file", {
 			path: "/projects/analysis.ipynb",
 		});
 
+		expect(show).toHaveBeenCalledWith("chat-1");
 		expect(result).toEqual({
 			sessionId: "chat-1",
 			notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d",
@@ -230,6 +232,7 @@ describe("notebook plugin webRegister", () => {
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("another-chat");
 
+		const show = vi.spyOn(panel, "show");
 		const notebookViewer = system
 			.getSdk("files")
 			.plugins.get<NotebookCapabilities>("notebook")?.notebookViewer;
@@ -245,6 +248,7 @@ describe("notebook plugin webRegister", () => {
 			title: "analysis.ipynb",
 			path: "/projects/analysis.ipynb",
 		});
+		expect(show).toHaveBeenCalledWith("chat-1");
 		expect(panel.listTabs("chat-1")).toEqual([
 			expect.objectContaining({
 				instanceId: "nb-1",

@@ -338,6 +338,11 @@ export function FilesView({
 		setPendingAction(null);
 		await action?.();
 	}, [pendingAction]);
+	const cancelPendingAction = useCallback(() => {
+		setPendingAction(null);
+		handledFileRequestRef.current = null;
+		setSelectionSyncVersion((value) => value + 1);
+	}, []);
 
 	const requestOpenFile = useCallback(
 		(relativePath: string) => {
@@ -845,7 +850,9 @@ export function FilesView({
 
 				<Dialog
 					open={pendingAction !== null}
-					onOpenChange={(open) => !open && setPendingAction(null)}
+					onOpenChange={(open) => {
+						if (!open) cancelPendingAction();
+					}}
 				>
 					<DialogContent data-qa-id="files-unsaved-dialog" showCloseButton={false}>
 						<DialogHeader>
@@ -855,11 +862,7 @@ export function FilesView({
 						<DialogFooter>
 							<Button
 								data-qa-id="files-unsaved-cancel"
-								onClick={() => {
-									setPendingAction(null);
-									handledFileRequestRef.current = null;
-									setSelectionSyncVersion((value) => value + 1);
-								}}
+								onClick={cancelPendingAction}
 								variant="outline"
 							>
 								Cancel

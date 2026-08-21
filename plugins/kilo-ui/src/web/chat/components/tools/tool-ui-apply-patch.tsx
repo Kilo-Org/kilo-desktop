@@ -1,9 +1,8 @@
 import { memo, useMemo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { PatchDiff } from "@pierre/diffs/react";
 
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { PIERRE_DIFF_OPTIONS } from "./tool-ui-file-mutation.js";
+import { PierreDiffBody } from "./tool-ui-file-mutation.js";
 import { getPatchInfo, str } from "./tool-ui-shared.js";
 
 interface PatchBlock {
@@ -141,11 +140,7 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 			status={status}
 			hasDetail={hasDiff}
 			trailing={trailing}
-			detail={
-				<div className="overflow-hidden rounded-md border">
-					<PatchDiff patch={unifiedPatch} options={PIERRE_DIFF_OPTIONS} />
-				</div>
-			}
+			detail={<PierreDiffBody unifiedDiff={unifiedPatch} fileDiff={null} />}
 		/>
 	);
 });

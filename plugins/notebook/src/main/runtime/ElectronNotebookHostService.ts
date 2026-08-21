@@ -72,6 +72,13 @@ interface NotebookHostSession {
 }
 
 const SAVE_COMPLETION_TIMEOUT_MS = 30_000;
+const OPENED_FILE_RELAY_TIMEOUT_MS = 30_000;
+
+interface OpenedFileRelay {
+	readonly path: string;
+	readonly relay: RelaySession;
+	readonly timeout: ReturnType<typeof setTimeout>;
+}
 
 function notebookTitleState(title: string): { readonly dirty: boolean; readonly title: string } {
 	const dirty = title.startsWith("* ");
@@ -204,8 +211,10 @@ function normalizeDialogOptions(value: unknown): MainSdkHostDialogOptions | unde
  * Owns the main-process lifetime of notebook relay and Electron host sessions.
  * Each persisted tab UUID identifies one recoverable pathless room or the
  * daemon's stable identity for a file-backed notebook. Renderer connections
- * may be replaced as tabs remount. Dirty state and save operations remain
- * session-local and are always settled when that connection is removed.
+ * may be replaced as tabs remount. File opens retain their initial relay briefly
+ * so the renderer connection can adopt it instead of opening the same file
+ * twice. Dirty state and save operations remain session-local and are always
+ * settled when that connection is removed.
  */
 export class ElectronNotebookHostService {
 	readonly #mainSdk: MainSdk;
@@ -213,6 +222,7 @@ export class ElectronNotebookHostService {
 	readonly #daemonManager: RuntimedDaemonManagerLike;
 	readonly #sessions = new Map<string, NotebookHostSession>();
 	readonly #defaultSaveDirectories = new Map<string, string>();
+	readonly #openedFileRelays = new Map<string, OpenedFileRelay>();
 
 	constructor(options: ElectronNotebookHostServiceOptions) {
 		this.#mainSdk = options.mainSdk;
@@ -307,15 +317,25 @@ export class ElectronNotebookHostService {
 				"BUSINESS",
 			);
 		}
-		try {
-			return {
-				notebookId: relay.info.notebookId,
-				path: notebookPath,
-				title: path.basename(notebookPath),
-			};
-		} finally {
-			await relay.close();
+		const notebookId = relay.info.notebookId;
+		const previous = this.#openedFileRelays.get(notebookId);
+		if (previous) {
+			clearTimeout(previous.timeout);
+			void previous.relay.close();
 		}
+		const timeout = setTimeout(() => {
+			const pending = this.#openedFileRelays.get(notebookId);
+			if (pending?.relay !== relay) return;
+			this.#openedFileRelays.delete(notebookId);
+			void relay.close();
+		}, OPENED_FILE_RELAY_TIMEOUT_MS);
+		timeout.unref?.();
+		this.#openedFileRelays.set(notebookId, { path: notebookPath, relay, timeout });
+		return {
+			notebookId,
+			path: notebookPath,
+			title: path.basename(notebookPath),
+		};
 	}
 
 	async connect(
@@ -331,7 +351,13 @@ export class ElectronNotebookHostService {
 					: "The notebook runtime daemon is unavailable.",
 			);
 		}
+		let openedFileRelay = this.#takeOpenedFileRelay(args.notebookId, args.notebookPath);
 		const createSession = () => {
+			if (openedFileRelay) {
+				const relay = openedFileRelay;
+				openedFileRelay = undefined;
+				return Promise.resolve(relay);
+			}
 			const relayOptions = {
 				socketPath: this.#socketPath,
 				peerLabel: `agentic-desktop:${args.sessionId}`,
@@ -418,11 +444,26 @@ export class ElectronNotebookHostService {
 
 	async dispose(): Promise<void> {
 		const sessions = [...this.#sessions.values()];
+		const openedFileRelays = [...this.#openedFileRelays.values()];
 		for (const session of sessions) session.cleanup?.();
-		await Promise.all(sessions.map((session) => session.server?.close()));
+		for (const opened of openedFileRelays) clearTimeout(opened.timeout);
+		await Promise.all([
+			...sessions.map((session) => session.server?.close()),
+			...openedFileRelays.map(({ relay }) => relay.close()),
+		]);
 		this.#sessions.clear();
 		this.#defaultSaveDirectories.clear();
+		this.#openedFileRelays.clear();
 		await this.#daemonManager.dispose();
+	}
+
+	#takeOpenedFileRelay(notebookId: string, notebookPath?: string): RelaySession | undefined {
+		if (!notebookPath) return undefined;
+		const opened = this.#openedFileRelays.get(notebookId);
+		if (!opened || opened.path !== notebookPath) return undefined;
+		clearTimeout(opened.timeout);
+		this.#openedFileRelays.delete(notebookId);
+		return opened.relay;
 	}
 
 	setDefaultSaveDirectory(notebookId: string, directory: string | null): void {

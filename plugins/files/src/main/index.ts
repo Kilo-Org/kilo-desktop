@@ -57,6 +57,9 @@ export function mainRegister(
 
 	const handlers: FilesServiceContract = {
 		list: ({ workspaceDirectory }) => service.list(workspaceDirectory),
+		existingPaths: async ({ workspaceDirectory, relativePaths }) => ({
+			paths: await service.existingPaths(workspaceDirectory, relativePaths),
+		}),
 		read: ({ workspaceDirectory, relativePath }) => service.read(workspaceDirectory, relativePath),
 		listExternalEditors: async () => ({ editors: [...(await editorLauncher.listAvailable())] }),
 		openExternalEditor: async ({ workspaceDirectory, relativePath, editor }) => {

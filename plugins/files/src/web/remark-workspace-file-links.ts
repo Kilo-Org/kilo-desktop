@@ -1,4 +1,5 @@
 import {
+	resolveInlineCodeFileLink,
 	resolveMarkdownFileLink,
 	type MarkdownFileWorkspaceFolder,
 } from "./markdown-file-links.js";
@@ -16,54 +17,13 @@ export interface MarkdownAstNode {
 interface RemarkWorkspaceFileLinksOptions {
 	readonly workspaceFolders: readonly MarkdownFileWorkspaceFolder[];
 	readonly relativeTo?: string;
+	readonly linkifyPlainText?: boolean;
 }
 
 const PROTECTED_NODE_TYPES = new Set(["code", "inlineCode", "link", "linkReference", "html"]);
 const TOKEN_PATTERN = /\S+/gu;
 const LEADING_PUNCTUATION = /^[([{<'"`]+/u;
 const TRAILING_PUNCTUATION = /[\])}>,'"`;!?.]+$/u;
-const GENERIC_HOSTNAME_TLDS = new Set([
-	"ai",
-	"app",
-	"biz",
-	"cloud",
-	"co",
-	"com",
-	"dev",
-	"edu",
-	"gov",
-	"info",
-	"io",
-	"link",
-	"me",
-	"mil",
-	"net",
-	"online",
-	"org",
-	"site",
-	"store",
-	"tech",
-	"tv",
-	"xyz",
-]);
-
-function withoutPosition(value: string): string {
-	return value.replace(/(?:#L\d+(?:C\d+)?|:\d+(?::\d+)?)$/iu, "");
-}
-
-function looksLikeHostname(value: string): boolean {
-	const path = withoutPosition(value).replaceAll("\\", "/");
-	const firstSegment = path.split("/", 1)[0]?.toLowerCase() ?? "";
-	if (firstSegment === "localhost" || /^\d+(?:\.\d+)+$/u.test(firstSegment)) return true;
-	const labels = firstSegment.split(".");
-	const suffix = labels.at(-1);
-	return labels.length > 1 && suffix !== undefined && GENERIC_HOSTNAME_TLDS.has(suffix);
-}
-
-function isPlainFileCandidate(value: string): boolean {
-	if (value.includes("@") && !/[\\/]/u.test(value)) return false;
-	return !looksLikeHostname(value);
-}
 
 function candidateBounds(token: string): { start: number; end: number } {
 	const leading = token.match(LEADING_PUNCTUATION)?.[0].length ?? 0;
@@ -86,13 +46,7 @@ function linkifyText(
 		const tokenStart = match.index;
 		const { start, end } = candidateBounds(token);
 		const candidate = token.slice(start, end);
-		if (
-			!candidate ||
-			!isPlainFileCandidate(candidate) ||
-			!resolveMarkdownFileLink(candidate, workspaceFolders, relativeTo)
-		) {
-			continue;
-		}
+		if (!candidate || !resolveMarkdownFileLink(candidate, workspaceFolders, relativeTo)) continue;
 
 		const candidateStart = tokenStart + start;
 		const candidateEnd = tokenStart + end;
@@ -102,6 +56,7 @@ function linkifyText(
 		nodes.push({
 			type: "link",
 			url: candidate,
+			data: { hProperties: { "data-workspace-file-candidate": "" } },
 			children: [{ type: "text", value: candidate }],
 		});
 		cursor = candidateEnd;
@@ -166,29 +121,43 @@ function browserSafeFileUrl(url: string): string {
 	}
 }
 
-function annotateFileLinks(
+function annotateFileReferences(
 	tree: MarkdownAstNode,
 	workspaceFolders: readonly MarkdownFileWorkspaceFolder[],
 	relativeTo: string | undefined,
 ): void {
-	const links: Array<{
+	const references: Array<{
 		node: MarkdownAstNode;
 		relativePath: string;
 	}> = [];
-	const collect = (node: MarkdownAstNode) => {
+	const collect = (node: MarkdownAstNode, insideLink: boolean) => {
+		if (node.type === "inlineCode" && !insideLink) {
+			node.data = {
+				...node.data,
+				hProperties: {
+					...node.data?.hProperties,
+					dataInlineCode: "",
+				},
+			};
+			const target = node.value
+				? resolveInlineCodeFileLink(node.value, workspaceFolders, relativeTo)
+				: null;
+			if (target) references.push({ node, relativePath: target.relativePath });
+		}
 		if (node.type === "link" && node.url) {
 			const target = resolveMarkdownFileLink(node.url, workspaceFolders, relativeTo);
 			if (target) {
 				node.url = browserSafeFileUrl(node.url);
-				links.push({ node, relativePath: target.relativePath });
+				references.push({ node, relativePath: target.relativePath });
 			}
 		}
-		node.children?.forEach(collect);
+		const childInsideLink = insideLink || node.type === "link" || node.type === "linkReference";
+		node.children?.forEach((child) => collect(child, childInsideLink));
 	};
-	collect(tree);
+	collect(tree, false);
 
-	const suffixes = parentSuffixesByPath(links.map(({ relativePath }) => relativePath));
-	for (const { node, relativePath } of links) {
+	const suffixes = parentSuffixesByPath(references.map(({ relativePath }) => relativePath));
+	for (const { node, relativePath } of references) {
 		const suffix = suffixes.get(relativePath);
 		if (!suffix) continue;
 		node.data = {
@@ -204,6 +173,7 @@ function annotateFileLinks(
 export function remarkWorkspaceFileLinks({
 	workspaceFolders,
 	relativeTo,
+	linkifyPlainText = false,
 }: RemarkWorkspaceFileLinksOptions) {
 	return (tree: MarkdownAstNode) => {
 		const visit = (node: MarkdownAstNode) => {
@@ -220,7 +190,7 @@ export function remarkWorkspaceFileLinks({
 			node.children = children;
 		};
 
-		visit(tree);
-		annotateFileLinks(tree, workspaceFolders, relativeTo);
+		if (linkifyPlainText) visit(tree);
+		annotateFileReferences(tree, workspaceFolders, relativeTo);
 	};
 }

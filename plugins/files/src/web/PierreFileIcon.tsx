@@ -3,8 +3,14 @@ import { useInsertionEffect, useMemo } from "react";
 
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
+import {
+	FILE_ICON_CUSTOM_SPRITE_SHEET,
+	FILE_ICONS,
+	NOTEBOOK_FILE_ICON_NAME,
+} from "./file-icons.js";
+
 const PIERRE_ICON_SPRITE_ID = "pierre-file-icon-sprite";
-const iconResolver = createFileTreeIconResolver("complete");
+const iconResolver = createFileTreeIconResolver(FILE_ICONS);
 
 const ICON_COLORS: Record<string, string> = {
 	astro: "light-dark(#a631be, #d568ea)",
@@ -32,6 +38,7 @@ const ICON_COLORS: Record<string, string> = {
 	json: "light-dark(#d47628, #ffa359)",
 	markdown: "light-dark(#199f43, #5ecc71)",
 	mcp: "light-dark(#17a5af, #64d1db)",
+	[NOTEBOOK_FILE_ICON_NAME]: "light-dark(#d47628, #ffa359)",
 	nextjs: "light-dark(#84848a, #adadb1)",
 	npm: "light-dark(#d52c36, #ff6762)",
 	oxc: "light-dark(#1ca1c7, #68cdf2)",
@@ -63,7 +70,14 @@ const ICON_COLORS: Record<string, string> = {
 };
 
 function ensurePierreIconSprite(): void {
-	if (typeof document === "undefined" || document.getElementById(PIERRE_ICON_SPRITE_ID)) return;
+	if (typeof document === "undefined") return;
+	const spriteSheet = `${getBuiltInSpriteSheet("complete")}${FILE_ICON_CUSTOM_SPRITE_SHEET}`;
+	const existingContainer = document.getElementById(PIERRE_ICON_SPRITE_ID);
+	if (existingContainer) {
+		if (!document.getElementById(NOTEBOOK_FILE_ICON_NAME))
+			existingContainer.innerHTML = spriteSheet;
+		return;
+	}
 	const container = document.createElement("div");
 	container.id = PIERRE_ICON_SPRITE_ID;
 	container.setAttribute("aria-hidden", "true");
@@ -72,7 +86,7 @@ function ensurePierreIconSprite(): void {
 	container.style.height = "0";
 	container.style.overflow = "hidden";
 	container.style.pointerEvents = "none";
-	container.innerHTML = getBuiltInSpriteSheet("complete");
+	container.innerHTML = spriteSheet;
 	document.body.prepend(container);
 }
 
@@ -92,7 +106,7 @@ export function PierreFileIcon({
 			className={cn("shrink-0", className)}
 			data-icon-token={icon.token}
 			data-pierre-file-icon={icon.name}
-			style={{ color: ICON_COLORS[icon.token ?? "default"] ?? ICON_COLORS.default }}
+			style={{ color: ICON_COLORS[icon.token ?? icon.name] ?? ICON_COLORS.default }}
 			viewBox={icon.viewBox ?? "0 0 16 16"}
 		>
 			<use href={`#${icon.name}`} />

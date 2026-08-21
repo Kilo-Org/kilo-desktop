@@ -1,5 +1,5 @@
 import { resolveTheme } from "@pierre/diffs";
-import { themeToTreeStyles, type FileTreeIcons } from "@pierre/trees";
+import { themeToTreeStyles } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -22,18 +22,7 @@ import {
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
-const FILE_TREE_ICONS = {
-	set: "complete",
-	spriteSheet: `<svg data-icon-sprite aria-hidden="true" width="0" height="0" xmlns="http://www.w3.org/2000/svg">
-		<symbol id="file-tree-icon-notebook" viewBox="0 0 16 16">
-			<path fill="currentColor" d="M5 1h7.5A1.5 1.5 0 0 1 14 2.5v11a1.5 1.5 0 0 1-1.5 1.5H5a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2m0 1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h7.5a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5z"/>
-			<path fill="currentColor" d="M1.5 3.5h4v1h-4zm0 4h4v1h-4zm0 4h4v1h-4z"/>
-		</symbol>
-	</svg>`,
-	byFileExtension: {
-		ipynb: { name: "file-tree-icon-notebook", viewBox: "0 0 16 16" },
-	},
-} as const satisfies FileTreeIcons;
+import { FILE_ICONS } from "./file-icons.js";
 
 export interface FilesWorkspaceFolder {
 	readonly path: string;
@@ -80,7 +69,7 @@ export function FilesTree({
 	const { model } = useFileTree({
 		paths: [],
 		density: "compact",
-		icons: FILE_TREE_ICONS,
+		icons: FILE_ICONS,
 		flattenEmptyDirectories: true,
 		initialExpansion: 1,
 		fileTreeSearchMode: "hide-non-matches",

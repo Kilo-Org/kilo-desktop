@@ -143,22 +143,46 @@ export function openNotebookInPanel(sdk: SDK):
 	};
 }
 
-export async function openNotebookFileInPanel(
-	sdk: SDK,
-	notebookPath: string,
-): Promise<
+export type NotebookPanelOpenFileResult =
 	| {
 			readonly sessionId: string;
 			readonly notebook_id: string;
 			readonly title: string;
 			readonly path: string;
 	  }
-	| { readonly error: string }
-> {
-	const panelOrError = resolvePanel(sdk);
-	if ("error" in panelOrError) return panelOrError;
-	const sessionOrError = resolveFocusedSession(panelOrError);
-	if ("error" in sessionOrError) return sessionOrError;
+	| { readonly error: string };
+
+async function openNotebookFileWithPanel(
+	sdk: SDK,
+	notebookPath: string,
+	sessionId: string,
+	panel: ChatRightPanelCapability,
+): Promise<NotebookPanelOpenFileResult> {
+	panel.show(sessionId);
+	const existing = panel
+		.listTabs(sessionId)
+		.find(
+			(tab) =>
+				tab.definitionId === NOTEBOOK_TAB_DEFINITION_ID &&
+				tab.metadata?.[NOTEBOOK_PATH_METADATA_KEY] === notebookPath,
+		);
+	if (existing) {
+		const tab = panel.openContributedTab(
+			sessionId,
+			{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
+			{
+				instanceId: existing.instanceId,
+				title: existing.title,
+				...(existing.metadata ? { metadata: existing.metadata } : {}),
+			},
+		);
+		return {
+			sessionId,
+			notebook_id: tab.instanceId,
+			title: tab.title,
+			path: notebookPath,
+		};
+	}
 
 	let openedFile: NotebookOpenFileResult;
 	try {
@@ -171,9 +195,7 @@ export async function openNotebookFileInPanel(
 		};
 	}
 
-	const { sessionId } = sessionOrError;
-	panelOrError.show(sessionId);
-	const tab = panelOrError.openContributedTab(
+	const tab = panel.openContributedTab(
 		sessionId,
 		{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
 		{
@@ -188,6 +210,27 @@ export async function openNotebookFileInPanel(
 		title: tab.title,
 		path: openedFile.path,
 	};
+}
+
+export async function openNotebookFileInSession(
+	sdk: SDK,
+	notebookPath: string,
+	sessionId: string,
+): Promise<NotebookPanelOpenFileResult> {
+	const panelOrError = resolvePanel(sdk);
+	if ("error" in panelOrError) return panelOrError;
+	return openNotebookFileWithPanel(sdk, notebookPath, sessionId, panelOrError);
+}
+
+export async function openNotebookFileInPanel(
+	sdk: SDK,
+	notebookPath: string,
+): Promise<NotebookPanelOpenFileResult> {
+	const panelOrError = resolvePanel(sdk);
+	if ("error" in panelOrError) return panelOrError;
+	const sessionOrError = resolveFocusedSession(panelOrError);
+	if ("error" in sessionOrError) return sessionOrError;
+	return openNotebookFileWithPanel(sdk, notebookPath, sessionOrError.sessionId, panelOrError);
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 	FolderTreeIcon,
 	ImageIcon,
 	LoaderCircleIcon,
+	NotebookIcon,
 	SaveIcon,
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
@@ -33,6 +34,7 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/dialog";
 import {
 	Empty,
+	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
@@ -63,6 +65,7 @@ import { EXTERNAL_EDITOR_ICONS } from "./ExternalEditorIcons.js";
 import { FilesTree, type FilesWorkspaceFolder } from "./FilesTree.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
 import type { ChatRightPanelCapabilities } from "./files-capabilities.js";
+import { isNotebookFile, openNotebookFile } from "./notebook-files.js";
 import { useFileDocument } from "./use-file-document.js";
 
 import "./files.css";
@@ -201,6 +204,8 @@ export function FilesView({
 	const [listLoading, setListLoading] = useState(false);
 	const [listError, setListError] = useState<string | null>(null);
 	const [externalEditorError, setExternalEditorError] = useState<string | null>(null);
+	const [notebookOpenError, setNotebookOpenError] = useState<string | null>(null);
+	const [notebookOpening, setNotebookOpening] = useState(false);
 	const [availableExternalEditors, setAvailableExternalEditors] = useState<
 		readonly ExternalEditorId[] | null
 	>(null);
@@ -299,10 +304,16 @@ export function FilesView({
 			const request = ++openRequestRef.current;
 			startOpening(relativePath, line, column);
 			try {
-				const result = await sdk.client.read({
-					workspaceDirectory: requestedDirectory,
-					relativePath,
-				});
+				const result = isNotebookFile(relativePath)
+					? ({
+							kind: "unsupported",
+							reason: "preview-deferred",
+							byteLength: 0,
+						} satisfies FileReadResult)
+					: await sdk.client.read({
+							workspaceDirectory: requestedDirectory,
+							relativePath,
+						});
 				if (request !== openRequestRef.current) return;
 				finishOpening(result, requestedDirectory, forceReload);
 				const nextMetadata = {
@@ -606,6 +617,32 @@ export function FilesView({
 		},
 		[documentWorkspaceDirectory, sdk, selectedPath],
 	);
+	const openInNotebookPanel = useCallback(async () => {
+		if (!documentWorkspaceDirectory || !selectedPath) return;
+		setNotebookOpenError(null);
+		setNotebookOpening(true);
+		try {
+			const request = openNotebookFile(sdk, {
+				sessionId,
+				workspaceDirectory: documentWorkspaceDirectory,
+				relativePath: selectedPath,
+			});
+			if (!request) {
+				setNotebookOpenError("The Notebook panel is unavailable.");
+				return;
+			}
+			const result = await request;
+			if (result.error) setNotebookOpenError(result.error);
+		} catch (error) {
+			setNotebookOpenError(errorMessage(error));
+		} finally {
+			setNotebookOpening(false);
+		}
+	}, [documentWorkspaceDirectory, sdk, selectedPath, sessionId]);
+
+	useEffect(() => {
+		setNotebookOpenError(null);
+	}, [selectedPath]);
 
 	if (!activeWorkspaceDirectory) {
 		return (
@@ -832,6 +869,39 @@ export function FilesView({
 							>
 								{fileError}
 							</div>
+						) : selectedPath && isNotebookFile(selectedPath) ? (
+							<Empty data-qa-id="files-notebook-empty">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<NotebookIcon />
+									</EmptyMedia>
+									<EmptyTitle aria-level={2} role="heading">
+										Open as a notebook
+									</EmptyTitle>
+									<EmptyDescription>
+										Use the Notebook panel to view and edit this file.
+									</EmptyDescription>
+								</EmptyHeader>
+								<EmptyContent>
+									<Button
+										data-qa-id="files-open-notebook"
+										disabled={notebookOpening}
+										onClick={() => void openInNotebookPanel()}
+									>
+										{notebookOpening ? (
+											<LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+										) : (
+											<NotebookIcon data-icon="inline-start" />
+										)}
+										{notebookOpening ? "Opening…" : "Open in Notebook panel"}
+									</Button>
+									{notebookOpenError ? (
+										<p className="text-destructive text-xs" role="alert">
+											{notebookOpenError}
+										</p>
+									) : null}
+								</EmptyContent>
+							</Empty>
 						) : file?.kind === "text" && selectedPath ? (
 							renderMarkdown && isMarkdown(selectedPath) ? (
 								<MarkdownPreview

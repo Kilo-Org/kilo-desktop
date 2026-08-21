@@ -1,5 +1,7 @@
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
+import { isNotebookFile, openNotebookFile } from "./notebook-files.js";
+
 export { FilesView } from "./FilesView.js";
 export { FilesMarkdownExtension } from "./FilesMarkdownExtension.js";
 export { FilesTabIcon } from "./FilesTabIcon.js";
@@ -49,6 +51,10 @@ export function webRegister(sdk: SDK): void {
 			line,
 			column,
 		}: OpenWorkspaceFileOptions) {
+			if (isNotebookFile(relativePath)) {
+				void openNotebookFile(sdk, { sessionId, workspaceDirectory, relativePath });
+				return;
+			}
 			const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
 			if (!panel) return;
 			panel.openContributedTab(

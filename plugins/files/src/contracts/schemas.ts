@@ -14,6 +14,8 @@ const fileRequestSchema = workspaceRequestSchema.extend({
 	relativePath: z.string().min(1).max(32_768),
 });
 
+export const FILE_EXISTENCE_BATCH_LIMIT = 512;
+
 export const EXTERNAL_EDITORS = [
 	{ id: "cursor", label: "Cursor", commands: ["cursor"] },
 	{ id: "trae", label: "Trae", commands: ["trae"] },
@@ -73,6 +75,12 @@ export const fileWriteResultSchema = z.discriminatedUnion("status", [
 
 export const filesContract = defineContract({
 	list: defineMethod(workspaceRequestSchema, filesListResultSchema),
+	existingPaths: defineMethod(
+		workspaceRequestSchema.extend({
+			relativePaths: z.array(z.string().min(1).max(32_768)).min(1).max(FILE_EXISTENCE_BATCH_LIMIT),
+		}),
+		z.object({ paths: z.array(z.string()) }),
+	),
 	read: defineMethod(fileRequestSchema, fileReadResultSchema),
 	listExternalEditors: defineMethod(
 		z.undefined(),

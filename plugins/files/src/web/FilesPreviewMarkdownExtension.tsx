@@ -6,6 +6,27 @@ import {
 	type FileMarkdownLinkProps,
 } from "./file-markdown-extension.js";
 
+interface PreviewFileLinkContext {
+	readonly onOpenFile: (relativePath: string) => void;
+}
+
+function PreviewFileLink({
+	fileTarget,
+	linkContext,
+	parentSuffix,
+	requiresWorkspaceFile: _requiresWorkspaceFile,
+	...props
+}: FileMarkdownLinkProps<PreviewFileLinkContext>) {
+	return (
+		<FileLinkChip
+			{...props}
+			fileTarget={fileTarget}
+			onOpenFile={(file) => linkContext.onOpenFile(file.relativePath)}
+			{...(parentSuffix ? { parentSuffix } : {})}
+		/>
+	);
+}
+
 export function createFilesPreviewMarkdownExtension({
 	workspaceDirectory,
 	relativePath,
@@ -15,20 +36,10 @@ export function createFilesPreviewMarkdownExtension({
 	readonly relativePath: string;
 	readonly onOpenFile: (relativePath: string) => void;
 }): MarkdownRendererExtension {
-	function PreviewFileLink({ fileTarget, parentSuffix, ...props }: FileMarkdownLinkProps) {
-		return (
-			<FileLinkChip
-				{...props}
-				fileTarget={fileTarget}
-				onOpenFile={(file) => onOpenFile(file.relativePath)}
-				{...(parentSuffix ? { parentSuffix } : {})}
-			/>
-		);
-	}
-
 	return createFileMarkdownExtension({
 		workspaceFolders: [{ path: workspaceDirectory, isPrimary: true }],
 		relativeTo: relativePath,
+		linkContext: { onOpenFile },
 		Link: PreviewFileLink,
 	});
 }

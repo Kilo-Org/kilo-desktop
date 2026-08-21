@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, realpath, stat, symlink, writeFile } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 
@@ -54,6 +54,32 @@ describe("FilesService", () => {
 		const result = await service.list(workspace);
 		expect(result.paths).toHaveLength(3);
 		expect(result.truncated).toBe(true);
+	});
+
+	it("finds existing files in one authorized batch without scanning the workspace", async () => {
+		const workspace = await temporaryWorkspace();
+		const outside = await temporaryWorkspace();
+		await mkdir(path.join(workspace, "docs"));
+		await writeFile(path.join(workspace, "docs", "guide.md"), "guide");
+		await writeFile(path.join(workspace, ".gitignore"), "ignored.md\n");
+		await writeFile(path.join(workspace, "ignored.md"), "ignored but present");
+		await writeFile(path.join(outside, "secret.md"), "secret");
+		await symlink(path.join(outside, "secret.md"), path.join(workspace, "escaped.md"));
+		const authorize = vi.fn(async () => undefined);
+		const service = new FilesService({ authorize });
+
+		await expect(
+			service.existingPaths(workspace, [
+				"docs/guide.md",
+				"missing.md",
+				"docs",
+				"ignored.md",
+				"escaped.md",
+				"../secret.md",
+				"docs/guide.md",
+			]),
+		).resolves.toEqual(["docs/guide.md", "ignored.md"]);
+		expect(authorize).toHaveBeenCalledTimes(1);
 	});
 
 	it("rejects traversal, escaped symlinks, and unauthorized roots", async () => {

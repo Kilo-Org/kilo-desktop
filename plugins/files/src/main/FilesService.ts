@@ -68,6 +68,8 @@ function featureErrorForFilesystem(error: unknown, message: string): FeatureErro
  * root, and every file target is checked after realpath so symlinks cannot
  * escape. The service is intentionally stateless; revisions are content
  * hashes supplied by callers, which keeps concurrent agent edits observable.
+ * Batched existence checks authorize their root once, then canonicalize all
+ * independent candidates in parallel against that same security boundary.
  */
 export class FilesService {
 	private readonly scanLimit: number;
@@ -103,6 +105,27 @@ export class FilesService {
 
 		paths.sort((left, right) => left.localeCompare(right));
 		return { paths, truncated };
+	}
+
+	async existingPaths(
+		workspaceDirectory: string,
+		relativePaths: readonly string[],
+	): Promise<string[]> {
+		const root = await this.authorizedRoot(workspaceDirectory);
+		const uniquePaths = [...new Set(relativePaths)];
+		const results = await Promise.all(
+			uniquePaths.map(async (relativePath) => {
+				if (!validRelativePath(relativePath)) return null;
+				try {
+					const target = await realpath(path.resolve(root, ...relativePath.split(/[\\/]+/u)));
+					if (!inside(root, target) || !(await stat(target)).isFile()) return null;
+					return relativePath;
+				} catch {
+					return null;
+				}
+			}),
+		);
+		return results.filter((relativePath): relativePath is string => relativePath !== null);
 	}
 
 	async read(workspaceDirectory: string, relativePath: string): Promise<FileReadResult> {

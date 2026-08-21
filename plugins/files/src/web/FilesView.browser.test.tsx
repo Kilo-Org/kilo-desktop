@@ -39,6 +39,7 @@ function renderView(
 	const result = render(renderTree(props));
 	return {
 		...result,
+		system,
 		rerenderView(nextProps: Partial<FilesViewProps>) {
 			result.rerender(renderTree(nextProps));
 		},
@@ -50,6 +51,7 @@ const handlers = (): FilesServiceContract => ({
 		paths: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
 		truncated: false,
 	}),
+	existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
 	read: async ({ relativePath }) => ({
 		kind: "text",
 		contents: relativePath.endsWith(".md") ? "# Read me" : "export const value = 1;",
@@ -321,6 +323,46 @@ describe("FilesView", () => {
 					workspaceDirectory: "/workspace",
 					relativePath: "docs/readme.md",
 				},
+			}),
+		);
+	});
+
+	it("offers to open ipynb files in the notebook panel without reading their raw contents", async () => {
+		const service = handlers();
+		const read = vi.fn(service.read);
+		const openNotebookFile = vi.fn(async () => ({
+			sessionId: "session-1",
+			notebook_id: "notebook-1",
+			title: "analysis.ipynb",
+			path: "/workspace/notebooks/analysis.ipynb",
+		}));
+		const view = renderView({
+			...service,
+			list: async () => ({
+				paths: ["notebooks/", "notebooks/analysis.ipynb"],
+				truncated: false,
+			}),
+			read,
+		});
+		view.system.getSdk("notebook").plugins.expose("notebookViewer", {
+			openFile: openNotebookFile,
+		});
+
+		await openTreePath("notebooks/analysis.ipynb");
+
+		await expect.element(page.getByTestId("files-notebook-empty")).toBeVisible();
+		await expect.element(page.getByRole("heading", { name: "Open as a notebook" })).toBeVisible();
+		await expect
+			.element(page.getByText("Use the Notebook panel to view and edit this file."))
+			.toBeVisible();
+		expect(read).not.toHaveBeenCalled();
+		expect(document.querySelector("diffs-container")).toBeNull();
+
+		await page.getByTestId("files-open-notebook").click();
+		await vi.waitFor(() =>
+			expect(openNotebookFile).toHaveBeenCalledWith({
+				sessionId: "session-1",
+				path: "/workspace/notebooks/analysis.ipynb",
 			}),
 		);
 	});

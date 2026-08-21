@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import { notebookContract } from "../contracts/schemas.js";
-import { webRegister } from "./index.js";
+import { webRegister, type NotebookCapabilities } from "./index.js";
 import {
 	listOpenNotebooks,
 	openNotebookFileInPanel,
@@ -179,6 +179,36 @@ describe("notebook plugin webRegister", () => {
 				metadata: { notebookPath: "/projects/analysis.ipynb" },
 			}),
 		]);
+	});
+
+	it("exposes a notebook viewer capability that opens a file in the requested chat", async () => {
+		const { system, notebookSdk, panel } = makeSystem();
+		webRegister(notebookSdk);
+		panel.setFocusedSessionId("another-chat");
+
+		const notebookViewer = system
+			.getSdk("files")
+			.plugins.get<NotebookCapabilities>("notebook")?.notebookViewer;
+
+		await expect(
+			notebookViewer?.openFile({
+				sessionId: "chat-1",
+				path: "/projects/analysis.ipynb",
+			}),
+		).resolves.toEqual({
+			sessionId: "chat-1",
+			notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			title: "analysis.ipynb",
+			path: "/projects/analysis.ipynb",
+		});
+		expect(panel.listTabs("chat-1")).toEqual([
+			expect.objectContaining({
+				instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				title: "analysis.ipynb",
+				metadata: { notebookPath: "/projects/analysis.ipynb" },
+			}),
+		]);
+		expect(panel.listTabs("another-chat")).toEqual([]);
 	});
 
 	it("normalizes legacy notebook instance ids inside the notebook plugin", () => {

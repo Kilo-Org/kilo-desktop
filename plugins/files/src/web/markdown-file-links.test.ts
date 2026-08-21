@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveMarkdownFileLink } from "./markdown-file-links.js";
+import { resolveInlineCodeFileLink, resolveMarkdownFileLink } from "./markdown-file-links.js";
 import { remarkWorkspaceFileLinks, type MarkdownAstNode } from "./remark-workspace-file-links.js";
 
 describe("resolveMarkdownFileLink", () => {
@@ -50,6 +50,18 @@ describe("resolveMarkdownFileLink", () => {
 		});
 	});
 
+	it("normalizes t3code-style angle-bracketed and slash-prefixed Windows paths", () => {
+		const folders = [{ path: "D:/Programme/t3code", isPrimary: true }] as const;
+
+		expect(
+			resolveMarkdownFileLink("</D:/Programme/t3code/apps/web/src/ChatMarkdown.tsx:9>", folders),
+		).toEqual({
+			workspaceDirectory: "D:/Programme/t3code",
+			relativePath: "apps/web/src/ChatMarkdown.tsx",
+			line: 9,
+		});
+	});
+
 	it("parses Codex-style path line and column suffixes", () => {
 		expect(
 			resolveMarkdownFileLink("/workspace/project/src/App.tsx:42:7", [
@@ -64,8 +76,64 @@ describe("resolveMarkdownFileLink", () => {
 	});
 });
 
+describe("resolveInlineCodeFileLink", () => {
+	const workspaceFolders = [{ path: "/workspace/project", isPrimary: true }] as const;
+
+	it("matches t3code's conservative inline-code path detection", () => {
+		expect(resolveInlineCodeFileLink("src/analysis.ipynb", workspaceFolders)).toMatchObject({
+			workspaceDirectory: "/workspace/project",
+			relativePath: "src/analysis.ipynb",
+		});
+		expect(resolveInlineCodeFileLink("src\\analysis.ipynb", workspaceFolders)).toMatchObject({
+			relativePath: "src/analysis.ipynb",
+		});
+		expect(resolveInlineCodeFileLink("script.ts:10", workspaceFolders)).toMatchObject({
+			relativePath: "script.ts",
+			line: 10,
+		});
+		expect(resolveInlineCodeFileLink("Makefile:12", workspaceFolders)).toMatchObject({
+			relativePath: "Makefile",
+			line: 12,
+		});
+	});
+
+	it("rejects the same ambiguous inline-code shapes as t3code", () => {
+		expect(resolveInlineCodeFileLink("analysis.ipynb", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("node.meta", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("origin/main", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("apps/web", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("src/**/*.ts", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("127.0.0.1:3000", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("example.com/index.html", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("example.uk/index.html", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("localhost:3000", workspaceFolders)).toBeNull();
+		expect(resolveInlineCodeFileLink("git worktree list --porcelain", workspaceFolders)).toBeNull();
+	});
+
+	it("prefers file references over hostname-like extensions when t3code does", () => {
+		expect(resolveInlineCodeFileLink("src/setup.sh:3", workspaceFolders)).not.toBeNull();
+		expect(resolveInlineCodeFileLink("Makefile.in:12", workspaceFolders)).not.toBeNull();
+		expect(resolveInlineCodeFileLink("conf.d/nginx.conf", workspaceFolders)).not.toBeNull();
+		expect(resolveInlineCodeFileLink("script.pl:10", workspaceFolders)).toMatchObject({
+			relativePath: "script.pl",
+			line: 10,
+		});
+	});
+});
+
 describe("remarkWorkspaceFileLinks", () => {
-	it("linkifies plain workspace paths and disambiguates duplicate basenames", () => {
+	it("leaves plain text unchanged unless candidate verification is available", () => {
+		const text: MarkdownAstNode = { type: "text", value: "Open docs/TESTING.md." };
+		const tree: MarkdownAstNode = { type: "root", children: [text] };
+
+		remarkWorkspaceFileLinks({
+			workspaceFolders: [{ path: "/workspace/project", isPrimary: true }],
+		})(tree);
+
+		expect(tree.children).toEqual([text]);
+	});
+
+	it("marks plain path candidates for workspace existence checks", () => {
 		const tree: MarkdownAstNode = {
 			type: "root",
 			children: [
@@ -74,7 +142,7 @@ describe("remarkWorkspaceFileLinks", () => {
 					children: [
 						{
 							type: "text",
-							value: "Open apps/desktop/README.md and packages/sdk-react/README.md.",
+							value: "Open apps/desktop/README.md.",
 						},
 					],
 				},
@@ -83,16 +151,18 @@ describe("remarkWorkspaceFileLinks", () => {
 
 		remarkWorkspaceFileLinks({
 			workspaceFolders: [{ path: "/workspace/project", isPrimary: true }],
+			linkifyPlainText: true,
 		})(tree);
 
-		const links = tree.children?.[0]?.children?.filter((node) => node.type === "link") ?? [];
-		expect(links.map((link) => link.url)).toEqual([
-			"apps/desktop/README.md",
-			"packages/sdk-react/README.md",
-		]);
-		expect(links.map((link) => link.data?.hProperties?.["data-file-parent-suffix"])).toEqual([
-			"apps/desktop",
-			"packages/sdk-react",
+		expect(tree.children?.[0]?.children).toEqual([
+			{ type: "text", value: "Open " },
+			{
+				type: "link",
+				url: "apps/desktop/README.md",
+				data: { hProperties: { "data-workspace-file-candidate": "" } },
+				children: [{ type: "text", value: "apps/desktop/README.md" }],
+			},
+			{ type: "text", value: "." },
 		]);
 	});
 

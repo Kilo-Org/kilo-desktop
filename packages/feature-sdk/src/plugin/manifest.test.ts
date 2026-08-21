@@ -22,6 +22,7 @@ const validManifest = {
 				label: "Summary",
 				description: "Show a todo summary.",
 				icon: "SummaryIcon",
+				mountPolicy: "keep-alive",
 				priority: 5,
 			},
 		],
@@ -49,6 +50,7 @@ describe("pluginManifestSchema", () => {
 				label: "Summary",
 				description: "Show a todo summary.",
 				icon: "SummaryIcon",
+				mountPolicy: "keep-alive",
 				priority: 5,
 			},
 		]);
@@ -196,6 +198,16 @@ describe("pluginManifestSchema", () => {
 		const result = pluginManifestSchema.safeParse({
 			...validManifest,
 			contributes: { zones: [{ zone: "status-bar" }] },
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects unknown contribution mount policies", () => {
+		const result = pluginManifestSchema.safeParse({
+			...validManifest,
+			contributes: {
+				zones: [{ zone: "status-bar", component: "TodosStatusBarItem", mountPolicy: "reload" }],
+			},
 		});
 		expect(result.success).toBe(false);
 	});

@@ -1,5 +1,6 @@
 import {
 	pluginZoneContributions,
+	type ContributionMountPolicy,
 	type PluginDiscovery,
 } from "@anaconda-agentic-desktop/feature-sdk";
 import type { FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
@@ -21,6 +22,7 @@ export interface PluginZoneContribution {
 	description?: string | undefined;
 	component: unknown;
 	icon?: unknown | undefined;
+	mountPolicy?: ContributionMountPolicy | undefined;
 	priority: number;
 	/** False for Electron-only plugins — omitted in standalone browser mode. */
 	browserSafe: boolean;
@@ -36,6 +38,7 @@ export function buildPluginZoneContributions(discovery: PluginDiscovery): Plugin
 		...(contribution.description === undefined ? {} : { description: contribution.description }),
 		component: contribution.component,
 		...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
+		...(contribution.mountPolicy === undefined ? {} : { mountPolicy: contribution.mountPolicy }),
 		priority: contribution.priority,
 		browserSafe: contribution.browserSafe,
 	}));
@@ -67,6 +70,7 @@ export function registerPluginZoneContributions(
 			label: contribution.label,
 			...(contribution.description === undefined ? {} : { description: contribution.description }),
 			...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
+			...(contribution.mountPolicy === undefined ? {} : { mountPolicy: contribution.mountPolicy }),
 			priority: contribution.priority,
 		});
 		registered += 1;

@@ -16,9 +16,13 @@ import {
 } from "../../contracts/schemas.js";
 
 import {
+	NOTEBOOK_ID_METADATA_KEY,
+	NOTEBOOK_OPEN_ERROR_METADATA_KEY,
+	NOTEBOOK_OPEN_STATE_METADATA_KEY,
 	NOTEBOOK_PATH_METADATA_KEY,
 	NOTEBOOK_TAB_DEFINITION_ID,
 	NOTEBOOK_TAB_TITLE,
+	notebookIdFromTab,
 	selectNotebookTabs,
 	type ChatRightPanelNotebookTab,
 	type ChatRightPanelTabSnapshot,
@@ -44,7 +48,7 @@ export type ChatRightPanelCapability = {
 			readonly metadata?: Readonly<Record<string, string>>;
 		},
 	): { readonly instanceId: string; readonly title: string };
-	updateTab?(
+	updateTab(
 		sessionId: string,
 		instanceId: string,
 		update: {
@@ -77,6 +81,10 @@ const NO_FOCUSED_SESSION =
 
 const KILO_UI_UNAVAILABLE =
 	"kilo-ui chat right panel is unavailable. The chat UI plugin may not be loaded.";
+
+function basename(filePath: string): string {
+	return filePath.replaceAll("\\", "/").split("/").at(-1) ?? filePath;
+}
 
 function resolvePanel(sdk: SDK): ChatRightPanelCapability | { error: string } {
 	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
@@ -158,7 +166,6 @@ async function openNotebookFileWithPanel(
 	sessionId: string,
 	panel: ChatRightPanelCapability,
 ): Promise<NotebookPanelOpenFileResult> {
-	panel.show(sessionId);
 	const existing = panel
 		.listTabs(sessionId)
 		.find(
@@ -166,7 +173,10 @@ async function openNotebookFileWithPanel(
 				tab.definitionId === NOTEBOOK_TAB_DEFINITION_ID &&
 				tab.metadata?.[NOTEBOOK_PATH_METADATA_KEY] === notebookPath,
 		);
-	if (existing) {
+	const existingNotebookId = existing
+		? notebookIdFromTab(existing.instanceId, existing.metadata)
+		: undefined;
+	if (existing && existingNotebookId) {
 		const tab = panel.openContributedTab(
 			sessionId,
 			{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
@@ -178,11 +188,24 @@ async function openNotebookFileWithPanel(
 		);
 		return {
 			sessionId,
-			notebook_id: tab.instanceId,
+			notebook_id: existingNotebookId,
 			title: tab.title,
 			path: notebookPath,
 		};
 	}
+	const openingMetadata = {
+		[NOTEBOOK_PATH_METADATA_KEY]: notebookPath,
+		[NOTEBOOK_OPEN_STATE_METADATA_KEY]: "opening",
+	};
+	const tab = panel.openContributedTab(
+		sessionId,
+		{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
+		{
+			...(existing ? { instanceId: existing.instanceId } : {}),
+			title: existing?.title ?? basename(notebookPath),
+			metadata: openingMetadata,
+		},
+	);
 
 	let openedFile: NotebookOpenFileResult;
 	try {
@@ -190,24 +213,32 @@ async function openNotebookFileWithPanel(
 			await sdk.invoke("openFile", { path: notebookPath }),
 		);
 	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "The notebook file could not be opened.";
+		panel.updateTab(sessionId, tab.instanceId, {
+			metadata: {
+				[NOTEBOOK_PATH_METADATA_KEY]: notebookPath,
+				[NOTEBOOK_OPEN_STATE_METADATA_KEY]: "error",
+				[NOTEBOOK_OPEN_ERROR_METADATA_KEY]: message,
+			},
+		});
 		return {
-			error: error instanceof Error ? error.message : "The notebook file could not be opened.",
+			error: message,
 		};
 	}
 
-	const tab = panel.openContributedTab(
-		sessionId,
-		{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
-		{
-			instanceId: openedFile.notebookId,
-			title: openedFile.title,
-			metadata: { [NOTEBOOK_PATH_METADATA_KEY]: openedFile.path },
+	panel.updateTab(sessionId, tab.instanceId, {
+		title: openedFile.title,
+		metadata: {
+			[NOTEBOOK_PATH_METADATA_KEY]: openedFile.path,
+			[NOTEBOOK_ID_METADATA_KEY]: openedFile.notebookId,
+			[NOTEBOOK_OPEN_STATE_METADATA_KEY]: "ready",
 		},
-	);
+	});
 	return {
 		sessionId,
-		notebook_id: tab.instanceId,
-		title: tab.title,
+		notebook_id: openedFile.notebookId,
+		title: openedFile.title,
 		path: openedFile.path,
 	};
 }

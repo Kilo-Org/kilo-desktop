@@ -129,6 +129,14 @@ export function ChatPage() {
 	const panelOpen = panelState.isOpen;
 	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
 	const workspaceFolders = workspace?.folders ?? EMPTY_WORKSPACE_FOLDERS;
+	const keepAliveDefinitionIds = new Set(
+		rightPanelDefinitions
+			.filter(({ mountPolicy }) => mountPolicy === "keep-alive")
+			.map(({ id }) => id),
+	);
+	const hasKeepAliveTabs = panelState.tabs.some(({ definitionId }) =>
+		keepAliveDefinitionIds.has(definitionId),
+	);
 
 	const panelSlotWidth = useMotionValue(0);
 
@@ -223,13 +231,14 @@ export function ChatPage() {
 			shouldSpring ? SHELL_LAYOUT_SPRING : SHELL_LAYOUT_SNAP,
 		);
 		void controls.then(() => {
-			if (!panelOpen) setPanelMounted(false);
+			if (!panelOpen && !hasKeepAliveTabs) setPanelMounted(false);
 		});
 		return () => controls.stop();
 	}, [
 		panelSlotWidth,
 		targetPanelWidth,
 		panelOpen,
+		hasKeepAliveTabs,
 		sessionChanged,
 		sessionId,
 		reduceMotion,
@@ -310,10 +319,13 @@ export function ChatPage() {
 		[clampPanelWidth, panelWidth, panelSlotWidth],
 	);
 
-	// Clean tabs can remount from their descriptors; dirty tabs stay alive so switching cannot
-	// discard unsaved editor or contribution state.
+	// Clean active-only tabs can remount from their descriptors. Dirty tabs and contributions that
+	// own expensive state stay alive so switching cannot discard their state or reload their content.
 	const mountedTabs = panelState.tabs.filter(
-		(tab) => tab.instanceId === panelState.activeTabId || tab.dirty,
+		(tab) =>
+			tab.instanceId === panelState.activeTabId ||
+			tab.dirty ||
+			keepAliveDefinitionIds.has(tab.definitionId),
 	);
 	const panel = (
 		<RightPanelTabs
@@ -405,6 +417,9 @@ export function ChatPage() {
 						"h-full min-w-0 overflow-hidden",
 						maximized && panelOpen ? "min-w-0 flex-1" : "shrink-0",
 					)}
+					aria-hidden={!panelOpen}
+					inert={!panelOpen}
+					data-qa-id="chat-right-panel-slot"
 					{...(maximized && panelOpen ? {} : { style: { width: panelSlotWidth } })}
 				>
 					{panelOpen || panelMounted ? (

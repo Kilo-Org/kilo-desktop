@@ -144,27 +144,30 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 								onMouseDown={handleTabMouseDown}
 								onAuxClick={(event) => handleTabAuxClick(event, tab)}
 								className={cn(
-									"flex h-7 max-w-36 shrink-0 items-center gap-0.5 rounded-[min(var(--radius-md),12px)] pr-1 pl-1.5 text-xs",
+									"flex h-7 max-w-36 shrink-0 items-stretch rounded-[min(var(--radius-md),12px)] text-xs",
 									active
 										? "bg-foreground/5 text-foreground"
 										: "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
 								)}
 							>
-								<span className="flex size-3 shrink-0 items-center justify-center">
-									<Icon className="size-3" {...(tab.iconKey ? { iconKey: tab.iconKey } : {})} />
-								</span>
 								<TooltipProvider>
 									<Tooltip>
 										<TooltipTrigger
 											render={
 												<button
 													type="button"
-													className="flex min-w-0 flex-1 items-center"
+													className="flex min-w-0 flex-1 items-center gap-1 rounded-l-[min(var(--radius-md),12px)] pl-1.5 text-left"
 													aria-describedby={tab.dirty ? dirtyDescriptionId : undefined}
 													onClick={() => onActivate(tab)}
 												/>
 											}
 										>
+											<span className="flex size-3 shrink-0 items-center justify-center">
+												<Icon
+													className="size-3"
+													{...(tab.iconKey ? { iconKey: tab.iconKey } : {})}
+												/>
+											</span>
 											<span className="truncate">{title}</span>
 											{tab.dirty ? (
 												<>
@@ -184,12 +187,17 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 								</TooltipProvider>
 								<button
 									type="button"
-									className="text-muted-foreground hover:bg-muted hover:text-foreground ml-1 flex size-4 shrink-0 items-center justify-center rounded-sm"
+									className="group/close-tab text-muted-foreground flex h-full w-5 shrink-0 items-center justify-center rounded-l-sm rounded-r-[min(var(--radius-md),12px)]"
 									aria-label={`Close ${title}`}
 									data-qa-id={`chat-right-panel-close-tab-${tab.instanceId}`}
 									onClick={() => onCloseTab(tab)}
 								>
-									<XIcon className="size-3" />
+									<span
+										className="group-hover/close-tab:bg-muted group-hover/close-tab:text-foreground group-focus-visible/close-tab:bg-muted group-focus-visible/close-tab:text-foreground flex size-4 items-center justify-center rounded-sm transition-colors"
+										data-qa-id={`chat-right-panel-close-hover-${tab.instanceId}`}
+									>
+										<XIcon className="size-3" />
+									</span>
 								</button>
 							</div>
 						);

@@ -135,20 +135,61 @@ describe("NotebookView", () => {
 		);
 	});
 
-	it("passes a restored file tab's persisted path to the Electron host", () => {
-		expect(
-			notebookHostConnectionArgs({
-				instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "session-1",
-				title: "analysis.ipynb",
-				metadata: { notebookPath: "/projects/analysis.ipynb" },
-			}),
-		).toEqual({
+	it("shows an opening state before a file-backed notebook has a daemon id", async () => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
+		renderView({
+			instanceId: "panel-tab-1",
+			title: "analysis.ipynb",
+			metadata: {
+				notebookOpenState: "opening",
+				notebookPath: "/projects/analysis.ipynb",
+			},
+		});
+
+		await expect.element(page.getByTestId("notebook-file-opening")).toBeVisible();
+		expect(document.querySelector('[data-qa-id="notebook-frame"]')).toBeNull();
+	});
+
+	it("shows the file-open error in the notebook tab", async () => {
+		renderView({
+			instanceId: "panel-tab-1",
+			title: "analysis.ipynb",
+			metadata: {
+				notebookOpenError: "Could not open notebook: lock held",
+				notebookOpenState: "error",
+				notebookPath: "/projects/analysis.ipynb",
+			},
+		});
+
+		await expect
+			.element(page.getByTestId("notebook-file-open-error"))
+			.toHaveTextContent("Could not open notebook: lock held");
+	});
+
+	it("uses a file tab's daemon identity and persisted path for the Electron host", () => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
+		const props = {
+			instanceId: "panel-tab-1",
+			sessionId: "session-1",
+			title: "analysis.ipynb",
+			metadata: {
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				notebookOpenState: "ready",
+				notebookPath: "/projects/analysis.ipynb",
+			},
+		};
+
+		expect(notebookHostConnectionArgs(props)).toEqual({
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
 			sessionId: "session-1",
 			title: "analysis.ipynb",
 			notebookPath: "/projects/analysis.ipynb",
 		});
+		renderView(props);
+
+		expect(document.querySelector('[data-qa-id="notebook-frame"]')?.getAttribute("src")).toBe(
+			"http://localhost:8737/?notebook_id=669d39ec-39d6-4160-815c-b46e170cde8d",
+		);
 	});
 
 	it("strips a legacy notebook.notebook: prefix before framing nteract", () => {
@@ -162,6 +203,7 @@ describe("NotebookView", () => {
 
 	it("registers generic tab lifecycle and projects notebook dirty events", async () => {
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		const instanceId = "panel-tab-1";
 		const updateTab = vi.fn();
 		let lifecycle:
 			| Parameters<NonNullable<ChatRightPanelCapability["registerTabLifecycle"]>>[2]
@@ -172,7 +214,14 @@ describe("NotebookView", () => {
 		});
 		const save = vi.fn(async () => ({ outcome: "saved" as const }));
 		const { sdk } = renderView(
-			{ instanceId: notebookId },
+			{
+				instanceId,
+				metadata: {
+					notebookId,
+					notebookOpenState: "ready",
+					notebookPath: "/projects/analysis.ipynb",
+				},
+			},
 			{
 				panel: { updateTab, registerTabLifecycle },
 				save,
@@ -186,7 +235,7 @@ describe("NotebookView", () => {
 			dirty: true,
 		});
 		await vi.waitFor(() =>
-			expect(updateTab).toHaveBeenCalledWith("session-1", notebookId, { dirty: true }),
+			expect(updateTab).toHaveBeenCalledWith("session-1", instanceId, { dirty: true }),
 		);
 		sdk.events.emit("title-changed", {
 			notebookId,
@@ -194,7 +243,7 @@ describe("NotebookView", () => {
 			title: "analysis.ipynb",
 		});
 		await vi.waitFor(() =>
-			expect(updateTab).toHaveBeenCalledWith("session-1", notebookId, {
+			expect(updateTab).toHaveBeenCalledWith("session-1", instanceId, {
 				title: "analysis.ipynb",
 			}),
 		);

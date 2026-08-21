@@ -73,6 +73,7 @@ function makePluginOwnedZoneDiscovery(electronOnly = false): PluginDiscovery {
 								label: "Panel",
 								description: "Open panel.",
 								icon: "PanelIcon",
+								mountPolicy: "keep-alive",
 								priority: 10,
 							},
 						],
@@ -121,6 +122,7 @@ describe("buildPluginZoneContributions", () => {
 				description: "Open panel.",
 				component: Panel,
 				icon: PanelIcon,
+				mountPolicy: "keep-alive",
 				priority: 10,
 				browserSafe: true,
 			},
@@ -188,6 +190,7 @@ describe("registerPluginZoneContributions", () => {
 				description: "Open panel.",
 				component: Panel,
 				icon: PanelIcon,
+				mountPolicy: "keep-alive",
 				priority: 10,
 			},
 		]);
@@ -229,6 +232,7 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 				id: "notebook",
 				zone: "kilo-ui/chat-right-panel-tab",
 				label: "Notebook",
+				mountPolicy: "keep-alive",
 			}),
 		);
 	});

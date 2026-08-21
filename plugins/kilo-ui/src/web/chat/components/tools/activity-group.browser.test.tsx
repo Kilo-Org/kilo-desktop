@@ -253,6 +253,41 @@ describe("Planning activity subgroup", () => {
 });
 
 describe("Notebooks activity subgroup", () => {
+	it("expands the live tool group and collapses it when the tools finish", async () => {
+		const completedRead = readPart("call-1", "/src/mark.svg");
+		const runningNotebook = {
+			...toolPart("call-2", "notebooks_create_notebook", {}),
+			status: { type: "running" as const },
+		};
+		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...parts[0]!} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="mcp:notebooks">
+					<ToolCallFallback {...parts[1]!} />
+				</ActivitySubgroup>
+			</ActivityGroup>
+		);
+
+		runtime.message.parts = [completedRead, runningNotebook];
+		runtime.message.status = { type: "running" };
+		const { getByText, queryByText, rerender } = render(renderGroup(runtime.message.parts));
+
+		expect(getByText("Create notebook")).toBeDefined();
+
+		runtime.message.parts = [
+			completedRead,
+			{ ...runningNotebook, status: { type: "complete" as const } },
+		];
+		runtime.message.status = { type: "complete" };
+		rerender(renderGroup(runtime.message.parts));
+
+		await waitFor(() => {
+			expect(queryByText("Create notebook")).toBeNull();
+		});
+	});
+
 	it("shows notebook tool display names without the notebooks prefix", () => {
 		const { getByRole, getByText, queryByText } = renderActivity(
 			"mcp:notebooks",

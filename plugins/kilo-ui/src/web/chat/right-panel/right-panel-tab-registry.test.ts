@@ -33,9 +33,16 @@ describe("right-panel-tab-registry", () => {
 				title: "Canvas",
 				description: "Scratch canvas",
 				addable: true,
+				mountPolicy: "active-only",
 				Content: Canvas,
 			},
 		]);
+	});
+
+	it("preserves a contribution's keep-alive mount policy", () => {
+		expect(
+			buildContributedTabDefinitions([{ ...contribution, mountPolicy: "keep-alive" }]),
+		).toMatchObject([{ mountPolicy: "keep-alive" }]);
 	});
 
 	it("creates unique, numbered instances for the same definition", () => {

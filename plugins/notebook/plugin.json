@@ -16,6 +16,7 @@
 				"label": "Notebook",
 				"description": "Analyze data with interactive Python notebooks.",
 				"icon": "NotebookIcon",
+				"mountPolicy": "keep-alive",
 				"priority": 50
 			}
 		]

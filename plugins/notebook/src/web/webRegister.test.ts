@@ -40,8 +40,19 @@ function createFakeChatRightPanel(): ChatRightPanelCapability & {
 				? tabsBySession.get(sessionId)?.find((entry) => entry.instanceId === options.instanceId)
 				: undefined;
 			if (existing) {
+				const updated = {
+					...existing,
+					...(options?.title !== undefined ? { title: options.title } : {}),
+					...(options?.metadata !== undefined ? { metadata: options.metadata } : {}),
+				};
+				tabsBySession.set(
+					sessionId,
+					(tabsBySession.get(sessionId) ?? []).map((tab) =>
+						tab.instanceId === existing.instanceId ? updated : tab,
+					),
+				);
 				activeBySession.set(sessionId, existing.instanceId);
-				return existing;
+				return updated;
 			}
 			ordinal += 1;
 			const instanceId = options?.instanceId ?? `nb-${String(ordinal)}`;
@@ -56,11 +67,35 @@ function createFakeChatRightPanel(): ChatRightPanelCapability & {
 			activeBySession.set(sessionId, instanceId);
 			return { instanceId, title };
 		},
+		updateTab: (sessionId, instanceId, update) => {
+			const tabs = tabsBySession.get(sessionId) ?? [];
+			tabsBySession.set(
+				sessionId,
+				tabs.map((tab) =>
+					tab.instanceId === instanceId
+						? {
+								...tab,
+								...(update.title !== undefined ? { title: update.title } : {}),
+								...(update.metadata !== undefined ? { metadata: update.metadata } : {}),
+							}
+						: tab,
+				),
+			);
+		},
 	};
 }
 
 function makeSystem(
 	panel: ReturnType<typeof createFakeChatRightPanel> = createFakeChatRightPanel(),
+	openFile: ({ path }: { path: string }) => Promise<{
+		notebookId: string;
+		path: string;
+		title: string;
+	}> = async ({ path }) => ({
+		notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+		path,
+		title: "analysis.ipynb",
+	}),
 ) {
 	const notebookSdk = createFakeSdk({
 		featureId: "notebook",
@@ -76,11 +111,7 @@ function makeSystem(
 					blobPort: null,
 				},
 			}),
-			openFile: async ({ path }: { path: string }) => ({
-				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				path,
-				title: "analysis.ipynb",
-			}),
+			openFile,
 			save: async () => ({ outcome: "saved" as const }),
 			setDefaultSaveDirectory: async () => undefined,
 		},
@@ -125,18 +156,27 @@ describe("notebook plugin webRegister", () => {
 		const { system, notebookSdk, panel } = makeSystem();
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("chat-1");
-		panel.openContributedTab("chat-1", {
-			id: NOTEBOOK_TAB_DEFINITION_ID,
-			title: NOTEBOOK_TAB_TITLE,
-		});
+		panel.openContributedTab(
+			"chat-1",
+			{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
+			{
+				instanceId: "panel-tab-1",
+				title: "analysis.ipynb",
+				metadata: {
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					notebookOpenState: "ready",
+					notebookPath: "/projects/analysis.ipynb",
+				},
+			},
+		);
 
 		const result = await system.services.toolRegistry.invoke("notebook", "list_open", {});
 		expect(result).toEqual({
 			sessionId: "chat-1",
 			notebooks: [
 				{
-					notebook_id: "nb-1",
-					title: "Notebook 1",
+					notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					title: "analysis.ipynb",
 					active: true,
 				},
 			],
@@ -174,9 +214,13 @@ describe("notebook plugin webRegister", () => {
 		});
 		expect(panel.listTabs("chat-1")).toEqual([
 			expect.objectContaining({
-				instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				instanceId: "nb-1",
 				title: "analysis.ipynb",
-				metadata: { notebookPath: "/projects/analysis.ipynb" },
+				metadata: {
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					notebookOpenState: "ready",
+					notebookPath: "/projects/analysis.ipynb",
+				},
 			}),
 		]);
 	});
@@ -203,12 +247,72 @@ describe("notebook plugin webRegister", () => {
 		});
 		expect(panel.listTabs("chat-1")).toEqual([
 			expect.objectContaining({
-				instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				instanceId: "nb-1",
 				title: "analysis.ipynb",
-				metadata: { notebookPath: "/projects/analysis.ipynb" },
+				metadata: {
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					notebookOpenState: "ready",
+					notebookPath: "/projects/analysis.ipynb",
+				},
 			}),
 		]);
 		expect(panel.listTabs("another-chat")).toEqual([]);
+	});
+
+	it("opens a pending file tab immediately and resolves it in place", async () => {
+		let resolveOpenFile!: (result: { notebookId: string; path: string; title: string }) => void;
+		const openFile = () =>
+			new Promise<{
+				notebookId: string;
+				path: string;
+				title: string;
+			}>((resolve) => {
+				resolveOpenFile = resolve;
+			});
+		const { system, notebookSdk, panel } = makeSystem(createFakeChatRightPanel(), openFile);
+		webRegister(notebookSdk);
+		const notebookViewer = system
+			.getSdk("files")
+			.plugins.get<NotebookCapabilities>("notebook")?.notebookViewer;
+
+		const opening = notebookViewer?.openFile({
+			sessionId: "chat-1",
+			path: "/projects/analysis.ipynb",
+		});
+
+		expect(panel.listTabs("chat-1")).toEqual([
+			expect.objectContaining({
+				instanceId: "nb-1",
+				title: "analysis.ipynb",
+				metadata: {
+					notebookOpenState: "opening",
+					notebookPath: "/projects/analysis.ipynb",
+				},
+			}),
+		]);
+
+		resolveOpenFile({
+			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			path: "/projects/analysis.ipynb",
+			title: "analysis.ipynb",
+		});
+		await expect(opening).resolves.toEqual({
+			sessionId: "chat-1",
+			notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			title: "analysis.ipynb",
+			path: "/projects/analysis.ipynb",
+		});
+		expect(panel.listTabs("chat-1")).toEqual([
+			expect.objectContaining({
+				instanceId: "nb-1",
+				title: "analysis.ipynb",
+				metadata: {
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					notebookOpenState: "ready",
+					notebookPath: "/projects/analysis.ipynb",
+				},
+			}),
+		]);
 	});
 
 	it("normalizes legacy notebook instance ids inside the notebook plugin", () => {
@@ -279,6 +383,16 @@ describe("notebook plugin webRegister", () => {
 		await expect(openNotebookFileInPanel(notebookSdk, "/projects/notes.txt")).resolves.toEqual({
 			error: "not an ipynb",
 		});
+		expect(panel.listTabs("chat-1")).toEqual([
+			expect.objectContaining({
+				title: "notes.txt",
+				metadata: {
+					notebookOpenError: "not an ipynb",
+					notebookOpenState: "error",
+					notebookPath: "/projects/notes.txt",
+				},
+			}),
+		]);
 	});
 
 	it("falls back when opening a notebook file fails with a non-Error", async () => {

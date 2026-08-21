@@ -205,6 +205,7 @@ function renderChatPage(options?: {
 	prepareSession?: KiloUiChatService["chat.prepareSession"];
 	workspaces?: Workspace[];
 	children?: ReactNode;
+	canvasMountPolicy?: Contribution["mountPolicy"];
 }) {
 	const getConnection = options?.getConnection ?? (async () => connection);
 	const prepareSession =
@@ -234,6 +235,7 @@ function renderChatPage(options?: {
 			label: "Canvas",
 			description: "Scratch canvas",
 			component: CanvasPanel,
+			...(options?.canvasMountPolicy ? { mountPolicy: options.canvasMountPolicy } : {}),
 		});
 	const queryClient = testClient();
 	const result = render(
@@ -679,6 +681,35 @@ describe("ChatPage", () => {
 		await vi.waitFor(() => {
 			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(2);
 		});
+	});
+
+	it("keeps a keep-alive contribution mounted across tab switches and panel closure", async () => {
+		const { baseElement } = renderChatPage({ canvasMountPolicy: "keep-alive" });
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		const firstTab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		const firstCanvas = baseElement.querySelector<HTMLElement>("[data-qa-id='test-canvas-panel']")!;
+
+		await screen.getByTestId("chat-right-panel-add-tab").click();
+		await screen.getByTestId("chat-right-panel-add-canvas-canvas").click();
+		await vi.waitFor(() => {
+			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(2);
+		});
+		expect(firstCanvas.isConnected).toBe(true);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await vi.waitFor(() => {
+			expect(
+				baseElement.querySelector<HTMLElement>("[data-qa-id='chat-right-panel-slot']")?.style.width,
+			).toBe("0px");
+		});
+		expect(firstCanvas.isConnected).toBe(true);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId(`chat-right-panel-tab-${firstTab.instanceId}`).click();
+		expect(firstCanvas.isConnected).toBe(true);
 	});
 
 	it("shows generic dirty state and keeps the tab after Save is cancelled", async () => {

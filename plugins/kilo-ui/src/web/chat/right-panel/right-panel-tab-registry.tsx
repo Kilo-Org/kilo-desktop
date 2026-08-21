@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, type ComponentType, type FC } from "react";
 import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
 
-import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
+import type { Contribution, ContributionMountPolicy } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
 
 const PlanTab = lazy(() => import("./PlanTab.js").then((module) => ({ default: module.PlanTab })));
@@ -35,6 +35,7 @@ export interface RightPanelTabDefinition {
 	description: string;
 	Icon: ComponentType<RightPanelTabIconProps>;
 	addable: boolean;
+	mountPolicy: ContributionMountPolicy;
 	Content: ComponentType<ChatRightPanelContributionProps>;
 }
 
@@ -71,6 +72,7 @@ const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
 	description: "Proposed plan from the plan agent.",
 	Icon: ListTodoIcon,
 	addable: false,
+	mountPolicy: "active-only",
 	Content: PlanTab,
 };
 
@@ -99,6 +101,7 @@ export function buildContributedTabDefinitions(
 					? (contribution.icon as ComponentType<RightPanelTabIconProps>)
 					: LayoutTemplateIcon,
 				addable: true,
+				mountPolicy: contribution.mountPolicy ?? "active-only",
 				Content: contribution.component,
 			},
 		];

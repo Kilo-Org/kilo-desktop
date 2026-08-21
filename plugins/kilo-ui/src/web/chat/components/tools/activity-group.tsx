@@ -163,6 +163,8 @@ const ActivityLabel: FC<{
 const contentAnimation =
 	"data-closed:animate-collapsible-up data-open:animate-collapsible-down overflow-hidden data-closed:ease-out data-open:ease-in";
 
+const ActivityStreamContext = createContext(false);
+
 export type ActivitySubgroupContextValue = {
 	kind: ActivityKind;
 	size: number;
@@ -266,6 +268,9 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					</span>
 					<ChevronDownIcon className="size-3.5 shrink-0" />
 				</button>
+				<ActivityStreamContext.Provider value={true}>
+					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
+				</ActivityStreamContext.Provider>
 			</div>
 		);
 	}
@@ -345,13 +350,15 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	);
 
 	const [toggled, setToggled] = useState<boolean | null>(null);
-	const open = segment.requiresAction || hasPendingAsk || (toggled ?? false);
+	const open = segment.requiresAction || hasPendingAsk || (toggled ?? segment.running);
 	// Status-driven panels close immediately so their measured height never shifts
 	// later response content; user-triggered disclosure changes still animate.
 	const shouldAnimatePanelTransition = toggled !== null || open;
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const lockScroll = useScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
+
+	const streamCollapsed = useContext(ActivityStreamContext);
 
 	const meta = getKindMeta(kind);
 	const stats = useMemo(() => getSegmentStats(parts, segment), [parts, segment]);
@@ -362,14 +369,18 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	const active = segment.running || segment.requiresAction || hasPendingAsk;
 
+	if (streamCollapsed && !active) return null;
+
 	// A single label-only activity is fully described by its header. Multiple
 	// items need a disclosure for their child list; asking is the exception
 	// because its questionnaire renders outside the activity group.
+	// While the stream row is collapsed, the parent ActivityGroup owns the icon.
 	const labelOnly =
 		(LABEL_ONLY_ACTIVITY_KINDS.has(kind) &&
 			(kind === "asking" || kind === "suggesting" || stats.count === 1)) ||
 		(kind === "subagent" && stats.count === 1 && segment.running);
 	if (labelOnly) {
+		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
 		const showChildren = kind !== "asking" && kind !== "suggesting" && group.indices.length > 1;
 		return (
@@ -399,6 +410,21 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						{children}
 					</div>
 				) : null}
+			</ActivitySubgroupContext.Provider>
+		);
+	}
+
+	if (streamCollapsed) {
+		return (
+			<ActivitySubgroupContext.Provider value={subgroupContext}>
+				<div
+					className={cn(
+						"border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3",
+						kind === "thinking" && "text-muted-foreground text-sm",
+					)}
+				>
+					{children}
+				</div>
 			</ActivitySubgroupContext.Provider>
 		);
 	}

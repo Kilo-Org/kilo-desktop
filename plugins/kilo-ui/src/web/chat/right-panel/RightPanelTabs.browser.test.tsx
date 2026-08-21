@@ -18,6 +18,7 @@ const FILES_DEFINITION: RightPanelTabDefinition = {
 	description: "Browse workspace files.",
 	Icon: ContributedIcon,
 	addable: true,
+	mountPolicy: "active-only",
 	Content: () => null,
 };
 
@@ -51,5 +52,50 @@ describe("RightPanelTabs", () => {
 			'[data-qa-id="chat-right-panel-tab-files-1"] [data-contributed-icon-key]',
 		);
 		expect(icon?.getAttribute("data-contributed-icon-key")).toBe("src/index.ts");
+	});
+
+	it("activates a tab from its icon while keeping close as a separate action", async () => {
+		const tab = {
+			instanceId: "files-1",
+			definitionId: FILES_DEFINITION.id,
+			title: "Files",
+			iconKey: "src",
+			ordinal: 1,
+		};
+		const onActivate = vi.fn();
+		const onCloseTab = vi.fn();
+		render(
+			<RightPanelTabs
+				activeTabId={null}
+				definitions={[FILES_DEFINITION]}
+				onActivate={onActivate}
+				onAddTab={vi.fn()}
+				onCloseTab={onCloseTab}
+				tabs={[tab]}
+			>
+				<div>File contents</div>
+			</RightPanelTabs>,
+		);
+
+		const icon = document.querySelector<SVGElement>(
+			'[data-qa-id="chat-right-panel-tab-files-1"] [data-contributed-icon-key]',
+		);
+		expect(icon).not.toBeNull();
+		expect(getComputedStyle(icon!.closest("button")!).columnGap).toBe("4px");
+		icon!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(onActivate).toHaveBeenCalledWith(tab);
+
+		const closeButton = document.querySelector<HTMLElement>(
+			'[data-qa-id="chat-right-panel-close-tab-files-1"]',
+		)!;
+		const closeHoverTarget = document.querySelector<HTMLElement>(
+			'[data-qa-id="chat-right-panel-close-hover-files-1"]',
+		)!;
+		expect(closeButton.getBoundingClientRect().height).toBe(28);
+		expect(closeHoverTarget.getBoundingClientRect().height).toBe(16);
+
+		await page.getByTestId("chat-right-panel-close-tab-files-1").click();
+		expect(onCloseTab).toHaveBeenCalledWith(tab);
+		expect(onActivate).toHaveBeenCalledTimes(1);
 	});
 });

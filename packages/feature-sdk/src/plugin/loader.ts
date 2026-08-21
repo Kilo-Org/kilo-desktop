@@ -7,7 +7,7 @@ import {
 
 import { SHELL_ZONES } from "../types/zones.js";
 
-import type { FeatureRegistration, MainSdk, SDK } from "../types/sdk.js";
+import type { ContributionMountPolicy, FeatureRegistration, MainSdk, SDK } from "../types/sdk.js";
 
 /**
  * URL namespace that every plugin-declared route is mounted under.
@@ -229,6 +229,8 @@ export interface ResolvedPluginZoneContribution {
 	component: unknown;
 	/** Optional resolved icon component. */
 	icon?: unknown | undefined;
+	/** Hint for zone hosts that conditionally mount contribution content. */
+	mountPolicy?: ContributionMountPolicy | undefined;
 	/** Higher renders first within the zone. Default 0. */
 	priority: number;
 	browserSafe: boolean;
@@ -551,6 +553,7 @@ function resolveContributions(
 			...(contribution.description === undefined ? {} : { description: contribution.description }),
 			component,
 			...(hasRenderableIcon ? { icon } : {}),
+			...(contribution.mountPolicy === undefined ? {} : { mountPolicy: contribution.mountPolicy }),
 			priority: contribution.priority ?? 0,
 			browserSafe,
 		});

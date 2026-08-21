@@ -5,6 +5,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type CSSProperties,
 	type FC,
 	type PropsWithChildren,
 } from "react";
@@ -64,7 +65,8 @@ const ownsPendingAsk = (
 	return lastAsk >= 0 && indices.includes(lastAsk);
 };
 
-const ANIMATION_DURATION = 200;
+const GROUP_ANIMATION_DURATION = 100;
+const SUBGROUP_ANIMATION_DURATION = 100;
 const MAX_VISIBLE_ICONS = 5;
 
 /** Header is the whole story — expanding would reveal nothing (or a duplicate label). */
@@ -194,7 +196,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	const [streamExpanded, setStreamExpanded] = useState(false);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
-	const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
+	const lockScroll = useScrollLock(collapsibleRef, GROUP_ANIMATION_DURATION);
 
 	const startIndex = group.indices[0] ?? 0;
 	const endIndex = group.indices.at(-1) ?? 0;
@@ -278,6 +280,11 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			<Collapsible
 				ref={collapsibleRef}
 				open={open}
+				style={
+					{
+						"--animation-duration": `${GROUP_ANIMATION_DURATION}ms`,
+					} as CSSProperties
+				}
 				onOpenChange={(next) => {
 					lockScroll();
 					setOpen(next);
@@ -300,7 +307,12 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 						</>
 					)}
 				</CollapsibleTrigger>
-				<CollapsibleContent className={contentAnimation}>
+				<CollapsibleContent
+					className={cn(
+						contentAnimation,
+						"data-closed:duration-(--animation-duration) data-open:duration-(--animation-duration)",
+					)}
+				>
 					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
 				</CollapsibleContent>
 			</Collapsible>
@@ -341,7 +353,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const open = segment.requiresAction || hasPendingAsk || (toggled ?? segment.running);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
-	const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
+	const lockScroll = useScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
 
 	const streamCollapsed = useContext(ActivityStreamContext);
 
@@ -421,6 +433,11 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 			<Collapsible
 				ref={collapsibleRef}
 				open={open}
+				style={
+					{
+						"--animation-duration": `${SUBGROUP_ANIMATION_DURATION}ms`,
+					} as CSSProperties
+				}
 				onOpenChange={(next) => {
 					lockScroll();
 					setToggled(next);
@@ -442,10 +459,18 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						<ActivityLabel label={label} shimmer={segment.running} />
 					</span>
 					<ChevronRightIcon
-						className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")}
+						className={cn(
+							"size-3.5 shrink-0 transition-transform duration-(--animation-duration)",
+							open && "rotate-90",
+						)}
 					/>
 				</CollapsibleTrigger>
-				<CollapsibleContent className={contentAnimation}>
+				<CollapsibleContent
+					className={cn(
+						contentAnimation,
+						"data-closed:duration-(--animation-duration) data-open:duration-(--animation-duration)",
+					)}
+				>
 					<div
 						className={cn(
 							"border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3",

@@ -21,12 +21,17 @@ import {
 export type ProviderManagementData = {
 	view: ProviderListView;
 	config: GlobalProviderConfig;
+	ids: string[];
 };
 
 type ProviderListResponse = {
 	all: CatalogProvider[];
 	connected: string[];
 };
+
+function message(error: unknown): string | null {
+	return error instanceof Error ? error.message : error ? String(error) : null;
+}
 
 export async function fetchProviderManagement(
 	connection: KiloGlobalConnection | undefined,
@@ -48,6 +53,7 @@ export async function fetchProviderManagement(
 			config,
 		}),
 		config,
+		ids: payload.all?.map((provider) => provider.id) ?? [],
 	};
 }
 
@@ -70,8 +76,9 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 
 	const run = async (task: (client: KiloProviderClient) => Promise<void>) => {
 		if (!connection) throw new Error("Kilo is not connected");
-		await task(asProviderClient(connection));
-		invalidateKiloProviderQueries(queryClient);
+		await task(asProviderClient(connection)).finally(() => {
+			invalidateKiloProviderQueries(queryClient);
+		});
 	};
 
 	const connect = useMutation({
@@ -114,10 +121,16 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 		() => ({
 			view: query.data?.view,
 			config: query.data?.config,
+			ids: query.data?.ids ?? [],
 			isLoading: query.isPending,
 			isError: query.isError,
-			error: error instanceof Error ? error.message : error ? String(error) : null,
+			error: message(error),
+			connectError: message(connect.error),
+			saveError: message(save.error),
 			pending,
+			reload: query.refetch,
+			resetConnect: connect.reset,
+			resetSave: save.reset,
 			connect: connect.mutateAsync,
 			disconnect: disconnect.mutateAsync,
 			setDisabled: disable.mutateAsync,
@@ -126,16 +139,20 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 		}),
 		[
 			connect.mutateAsync,
+			connect.reset,
 			disconnect.mutateAsync,
 			disable.mutateAsync,
 			save.mutateAsync,
+			save.reset,
 			remove.mutateAsync,
 			error,
 			pending,
 			query.data?.config,
+			query.data?.ids,
 			query.data?.view,
 			query.isError,
 			query.isPending,
+			query.refetch,
 		],
 	);
 }

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	findDuplicate,
 	isCustomProviderPackage,
 	MASKED_CUSTOM_PROVIDER_KEY,
 	resolveCustomProviderAuth,
 	resolveCustomProviderKey,
+	resolveModalities,
 	sanitizeCustomProviderConfig,
 	validateProviderID,
 	withCustomProviderDeletions,
@@ -19,6 +21,16 @@ describe("isCustomProviderPackage", () => {
 	});
 });
 
+describe("findDuplicate", () => {
+	it("finds duplicate normalized model ids", () => {
+		expect(findDuplicate([" model-1 ", "model-1"])).toBe("model-1");
+	});
+
+	it("treats header names as case insensitive", () => {
+		expect(findDuplicate(["Authorization", " authorization "], true)).toBe("authorization");
+	});
+});
+
 describe("validateProviderID", () => {
 	it("accepts a trimmed lowercase id", () => {
 		expect(validateProviderID(" my-provider_1 ")).toEqual({ value: "my-provider_1" });
@@ -27,6 +39,11 @@ describe("validateProviderID", () => {
 	it("rejects ids with a slash", () => {
 		const result = validateProviderID("bad/id");
 		expect("error" in result ? result.error : "").toBe("Invalid provider ID");
+	});
+
+	it("rejects the reserved Kilo Gateway id", () => {
+		const result = validateProviderID("kilo");
+		expect("error" in result ? result.error : "").toBe("Provider ID is reserved");
 	});
 });
 
@@ -51,6 +68,26 @@ describe("resolveCustomProviderKey", () => {
 
 	it("hides oauth credentials from the edit form", () => {
 		expect(resolveCustomProviderKey("oauth")).toBe("");
+	});
+});
+
+describe("resolveModalities", () => {
+	it("preserves non-image modalities when the image toggle is unchanged", () => {
+		expect(
+			resolveModalities({ input: ["text", "audio", "pdf"], output: ["text", "audio"] }, false),
+		).toEqual({
+			input: ["text", "audio", "pdf"],
+			output: ["text", "audio"],
+		});
+	});
+
+	it("removes only image input when image support is disabled", () => {
+		expect(resolveModalities({ input: ["text", "image", "pdf"], output: ["text"] }, false)).toEqual(
+			{
+				input: ["text", "pdf"],
+				output: ["text"],
+			},
+		);
 	});
 });
 
@@ -175,5 +212,35 @@ describe("withCustomProviderDeletions", () => {
 			name: "Keep",
 			reasoning: null,
 		});
+	});
+
+	it("emits null for headers removed from the next config", () => {
+		const existing = {
+			options: {
+				baseURL: "https://example.com/v1",
+				headers: { Authorization: "Bearer secret", "X-Keep": "old" },
+			},
+		};
+		const result = withCustomProviderDeletions(existing, {
+			...next,
+			options: {
+				...next.options,
+				headers: { "X-Keep": "new" },
+			},
+		});
+		expect(result.options.headers).toEqual({
+			Authorization: null,
+			"X-Keep": "new",
+		});
+	});
+
+	it("clears the headers object when every header is removed", () => {
+		const existing = {
+			options: {
+				baseURL: "https://example.com/v1",
+				headers: { Authorization: "Bearer secret" },
+			},
+		};
+		expect(withCustomProviderDeletions(existing, next).options.headers).toBeNull();
 	});
 });

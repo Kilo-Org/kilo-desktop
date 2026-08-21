@@ -21,7 +21,7 @@ const COPY: Record<OnboardingStepId, { title: string; subtitle: string }> = {
 	"kilo-sign-in": {
 		title: "Connect to Kilo",
 		subtitle:
-			"Connect your Kilo account for frontier models, credits, and organization settings. You can skip this and connect later from Settings → Providers.",
+			"Connect your Kilo account for frontier models, credits, and organization settings. You can skip this and connect later from Settings → AI Providers.",
 	},
 	workspace: {
 		title: "Create a workspace",

@@ -7,7 +7,7 @@ export const KILO_PASS_URL = "https://kilo.ai/pricing/kilo-pass";
 /** In-app settings section that hosts the Kilo Gateway account panel. */
 export const KILO_ACCOUNT_PATH = "/settings/kilo-providers";
 
-/** Start device OAuth and open Providers so the user sees the Kilo panel. */
+/** Start device OAuth and open AI Providers so the user sees the Kilo panel. */
 export function startKiloDeviceAuth(login: () => void, navigate: (path: string) => void): void {
 	login();
 	navigate(KILO_ACCOUNT_PATH);

@@ -1,7 +1,7 @@
 import { test } from "../fixtures.js";
 
 test.describe("Kilo provider settings @smoke", () => {
-	test("opens Providers and shows the Kilo Gateway account card", async ({
+	test("opens AI Providers and shows the Kilo Gateway account card", async ({
 		appShellPage,
 		kiloProvidersPage,
 	}) => {

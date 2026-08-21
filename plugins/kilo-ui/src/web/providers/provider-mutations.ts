@@ -78,9 +78,7 @@ export async function disconnectProvider(
 	const id = requireId(providerID);
 	const global = await readGlobal(client);
 	const custom = isCustomEntry(global.provider?.[id]);
-	await client.auth.remove({ providerID: id }, { throwOnError: true }).catch((error: unknown) => {
-		if (!custom) throw error instanceof Error ? error : new Error(`Failed to disconnect ${id}`);
-	});
+	await client.auth.remove({ providerID: id }, { throwOnError: true });
 	const disabled = without(global.disabled_providers, id);
 	const clearedDisabled = disabled.length !== (global.disabled_providers ?? []).length;
 	if (custom || clearedDisabled) {
@@ -165,6 +163,7 @@ export async function saveCustom(
 export async function deleteCustom(client: KiloProviderClient, providerID: string): Promise<void> {
 	const id = requireId(providerID);
 	const global = await readGlobal(client);
+	await client.auth.remove({ providerID: id }, { throwOnError: true });
 	await client.global.config.update(
 		{
 			config: {
@@ -174,6 +173,5 @@ export async function deleteCustom(client: KiloProviderClient, providerID: strin
 		},
 		{ throwOnError: true },
 	);
-	await client.auth.remove({ providerID: id }, { throwOnError: true }).catch(() => undefined);
 	await dispose(client);
 }

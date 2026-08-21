@@ -127,6 +127,22 @@ describe("disconnectProvider", () => {
 		expect(calls.update).toEqual([]);
 		expect(calls.dispose).toBe(0);
 	});
+
+	it("does not delete custom config when credential removal fails", async () => {
+		const { client, calls } = createClient({
+			provider: {
+				vllm: { npm: "@ai-sdk/openai-compatible" },
+			},
+		});
+		client.auth.remove = async () => {
+			throw new Error("credential store unavailable");
+		};
+		await expect(disconnectProvider(client, "vllm")).rejects.toThrow(
+			"credential store unavailable",
+		);
+		expect(calls.update).toEqual([]);
+		expect(calls.dispose).toBe(0);
+	});
 });
 
 describe("setDisabled", () => {
@@ -219,5 +235,19 @@ describe("deleteCustom", () => {
 		});
 		expect(calls.remove).toEqual([{ providerID: "vllm" }]);
 		expect(calls.dispose).toBe(1);
+	});
+
+	it("does not delete config when credential removal fails", async () => {
+		const { client, calls } = createClient({
+			provider: {
+				vllm: { npm: "@ai-sdk/openai-compatible" },
+			},
+		});
+		client.auth.remove = async () => {
+			throw new Error("credential store unavailable");
+		};
+		await expect(deleteCustom(client, "vllm")).rejects.toThrow("credential store unavailable");
+		expect(calls.update).toEqual([]);
+		expect(calls.dispose).toBe(0);
 	});
 });

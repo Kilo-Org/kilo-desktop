@@ -42,6 +42,17 @@ export function isCustomProviderPackage(value: unknown): value is CustomProvider
 	return CUSTOM_PROVIDER_PACKAGES.includes(value as CustomProviderPackage);
 }
 
+export function findDuplicate(values: readonly string[], insensitive = false): string | undefined {
+	const seen = new Set<string>();
+	for (const value of values) {
+		const key = insensitive ? value.trim().toLowerCase() : value.trim();
+		if (!key) continue;
+		if (seen.has(key)) return key;
+		seen.add(key);
+	}
+	return undefined;
+}
+
 export const ProviderIDSchema = z.string().trim().regex(PROVIDER_ID_PATTERN, INVALID_PROVIDER_ID);
 
 const ModalitySchema = z.enum(["text", "audio", "image", "video", "pdf"]);
@@ -116,8 +127,9 @@ function fail(error: string): Issue {
 
 export function validateProviderID(providerID: string): { value: string } | Issue {
 	const result = ProviderIDSchema.safeParse(providerID);
-	if (result.success) return { value: result.data };
-	return fail(result.error.issues[0]?.message ?? INVALID_PROVIDER_ID);
+	if (!result.success) return fail(result.error.issues[0]?.message ?? INVALID_PROVIDER_ID);
+	if (result.data === KILO_PROVIDER_ID) return fail("Provider ID is reserved");
+	return { value: result.data };
 }
 
 export function resolveCustomProviderAuth(
@@ -133,6 +145,23 @@ export function resolveCustomProviderAuth(
 export function resolveCustomProviderKey(auth: "api" | "oauth" | "wellknown" | undefined) {
 	if (auth !== "api") return "";
 	return MASKED_CUSTOM_PROVIDER_KEY;
+}
+
+export function resolveModalities(
+	existing: ModelModalities | undefined,
+	images: boolean,
+): ModelModalities | undefined {
+	if (images) {
+		return {
+			input: [...new Set([...(existing?.input ?? []), "text" as const, "image" as const])],
+			output: existing?.output ?? ["text"],
+		};
+	}
+	if (!existing) return undefined;
+	return {
+		...(existing.input ? { input: existing.input.filter((value) => value !== "image") } : {}),
+		...(existing.output ? { output: existing.output } : {}),
+	};
 }
 
 function stripSecrets(provider: unknown): unknown {
@@ -188,7 +217,10 @@ export function sanitizeCustomProviderConfig(
 }
 
 type AnyRecord = Record<string, unknown>;
-type ProviderPatch = Omit<SanitizedProviderConfig, "models"> & {
+type ProviderPatch = Omit<SanitizedProviderConfig, "models" | "options"> & {
+	options: Omit<SanitizedProviderConfig["options"], "headers"> & {
+		headers?: Record<string, string | null> | null;
+	};
 	models: Record<
 		string,
 		null | {
@@ -210,10 +242,24 @@ function isRecord(value: unknown): value is AnyRecord {
 export function withCustomProviderDeletions(
 	existing: unknown,
 	next: SanitizedProviderConfig,
-): SanitizedProviderConfig {
+): ProviderPatch {
 	if (!isRecord(existing)) return next;
 	const oldModels = isRecord(existing.models) ? existing.models : {};
 	const patched: ProviderPatch["models"] = { ...next.models };
+	const oldOptions = isRecord(existing.options) ? existing.options : {};
+	const oldHeaders = isRecord(oldOptions.headers) ? oldOptions.headers : {};
+	const headers = (() => {
+		if (Object.keys(oldHeaders).length === 0) return next.options.headers;
+		if (!next.options.headers || Object.keys(next.options.headers).length === 0) return null;
+		return {
+			...next.options.headers,
+			...Object.fromEntries(
+				Object.keys(oldHeaders)
+					.filter((key) => !(key in next.options.headers!))
+					.map((key) => [key, null]),
+			),
+		};
+	})();
 
 	for (const id of Object.keys(oldModels)) {
 		if (!(id in patched)) {
@@ -234,5 +280,12 @@ export function withCustomProviderDeletions(
 		};
 	}
 
-	return { ...next, models: patched } as SanitizedProviderConfig;
+	return {
+		...next,
+		options: {
+			...next.options,
+			...(headers !== undefined ? { headers } : {}),
+		},
+		models: patched,
+	};
 }

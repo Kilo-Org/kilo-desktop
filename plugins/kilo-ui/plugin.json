@@ -31,7 +31,7 @@
 		"settings": [
 			{
 				"id": "kilo-providers",
-				"title": "Providers",
+				"title": "AI Providers",
 				"component": "KiloProvidersSettings",
 				"icon": "KiloProvidersNavIcon",
 				"priority": 90

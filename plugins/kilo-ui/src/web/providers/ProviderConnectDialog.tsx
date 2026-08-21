@@ -51,6 +51,7 @@ export function ProviderConnectDialog({
 		<Dialog
 			open={open}
 			onOpenChange={(next) => {
+				if (!next && pending) return;
 				if (!next) {
 					setApiKey("");
 					setLocalError(null);
@@ -64,12 +65,13 @@ export function ProviderConnectDialog({
 						<DialogTitle>Connect {providerName}</DialogTitle>
 					</DialogHeader>
 					<FieldGroup>
-						<Field>
+						<Field data-invalid={Boolean(localError || error) || undefined}>
 							<FieldLabel htmlFor="kilo-provider-api-key">API key</FieldLabel>
 							<Input
 								id="kilo-provider-api-key"
 								type="password"
 								autoComplete="off"
+								aria-invalid={Boolean(localError || error) || undefined}
 								value={apiKey}
 								onChange={(event) => setApiKey(event.target.value)}
 								data-qa-id="kilo-providers-api-key"
@@ -78,7 +80,12 @@ export function ProviderConnectDialog({
 						</Field>
 					</FieldGroup>
 					<DialogFooter>
-						<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+						<Button
+							type="button"
+							variant="outline"
+							disabled={pending}
+							onClick={() => onOpenChange(false)}
+						>
 							Cancel
 						</Button>
 						<Button type="submit" disabled={pending} data-qa-id="kilo-providers-connect">

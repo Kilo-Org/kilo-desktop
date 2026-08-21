@@ -37,6 +37,7 @@ export type ProviderRow = {
 
 export type ProviderListView = {
 	connected: ProviderRow[];
+	environment: ProviderRow[];
 	popular: ProviderRow[];
 };
 
@@ -110,9 +111,10 @@ function byConnectedName(left: ProviderRow, right: ProviderRow): number {
 }
 
 /**
- * Connected means credentials are present. `provider.list` drops disabled
- * providers from `connected`; Settings still lists them there (`disabled`
- * is only “hidden from the model selector”).
+ * Connected means credentials are present. Env-sourced rows go in
+ * `environment` instead. `provider.list` drops disabled providers from
+ * `connected`; Settings still lists them (`disabled` is only “hidden from
+ * the model selector”).
  */
 export function groupProviderList(input: {
 	all: readonly CatalogProvider[];
@@ -123,11 +125,11 @@ export function groupProviderList(input: {
 	const disabledIds = new Set(input.config.disabled_providers ?? []);
 	const seen = new Set(collectConnectedIds(input.connected, [...disabledIds]));
 
-	const connected = [...seen]
-		.map((id) =>
-			row(resolveCatalog(byId, id, input.config), true, disabledIds.has(id), input.config),
-		)
-		.toSorted(byConnectedName);
+	const rows = [...seen].map((id) =>
+		row(resolveCatalog(byId, id, input.config), true, disabledIds.has(id), input.config),
+	);
+	const connected = rows.filter((item) => item.source !== "env").toSorted(byConnectedName);
+	const environment = rows.filter((item) => item.source === "env").toSorted(byConnectedName);
 
 	const popular: ProviderRow[] = [];
 	for (const id of POPULAR_PROVIDER_IDS) {
@@ -136,5 +138,5 @@ export function groupProviderList(input: {
 		popular.push(row(resolveCatalog(byId, id, input.config), false, false, input.config));
 	}
 
-	return { connected, popular };
+	return { connected, environment, popular };
 }

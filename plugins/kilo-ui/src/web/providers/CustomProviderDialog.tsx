@@ -1,8 +1,7 @@
-import { PlusIcon, Trash2Icon } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { BrainIcon, ImageIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -22,7 +21,12 @@ import {
 	FieldTitle,
 } from "@anaconda-agentic-desktop/ui/components/field";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Item, ItemContent, ItemGroup } from "@anaconda-agentic-desktop/ui/components/item";
+import { Toggle } from "@anaconda-agentic-desktop/ui/components/toggle";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 import {
 	Select,
 	SelectContent,
@@ -36,18 +40,30 @@ import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import {
 	CUSTOM_PROVIDER_PACKAGE,
 	CUSTOM_PROVIDER_PACKAGES,
-	MASKED_CUSTOM_PROVIDER_KEY,
+	findDuplicate,
+	resolveModalities,
 	sanitizeCustomProviderConfig,
 	validateProviderID,
 	type CustomProviderPackage,
+	type ModelModalities,
 	type SanitizedProviderConfig,
 } from "./custom-provider.js";
 
 /** Same docs deep-link as Kilo VS Code / Cursor custom provider UI. */
 const CUSTOM_PROVIDER_DOCS_URL = "https://kilo.ai/docs/ai-providers#custom-provider";
 
+const EDITOR_ROW =
+	"grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-1.5";
+const EDITOR_ACTIONS = "-mr-1.5 flex shrink-0 items-center";
+
 type HeaderRow = { key: string; value: string };
-type ModelRow = { id: string; name: string; reasoning: boolean; supportsImages: boolean };
+type ModelRow = {
+	id: string;
+	name: string;
+	reasoning: boolean;
+	supportsImages: boolean;
+	modalities?: ModelModalities;
+};
 
 export type CustomProviderFormState = {
 	providerID: string;
@@ -63,12 +79,14 @@ type ExistingCustom = {
 	providerID: string;
 	name: string;
 	config: SanitizedProviderConfig | Record<string, unknown>;
-	hasApiKey: boolean;
 };
+
+type InvalidField = "id" | "models" | "headers" | "config" | null;
 
 type CustomProviderDialogProps = {
 	open: boolean;
 	existing: ExistingCustom | null;
+	blockedIds: readonly string[];
 	pending: boolean;
 	error: string | null;
 	onOpenChange(open: boolean): void;
@@ -98,10 +116,7 @@ function modelsFromConfig(config: ExistingCustom["config"]): ModelRow[] {
 	const models =
 		"models" in config && config.models && typeof config.models === "object" ? config.models : {};
 	const entries = Object.entries(
-		models as Record<
-			string,
-			{ name?: string; reasoning?: boolean; modalities?: { input?: string[] } }
-		>,
+		models as Record<string, { name?: string; reasoning?: boolean; modalities?: ModelModalities }>,
 	);
 	if (entries.length === 0) return [emptyModel()];
 	return entries.map(([id, model]) => ({
@@ -109,6 +124,7 @@ function modelsFromConfig(config: ExistingCustom["config"]): ModelRow[] {
 		name: model.name ?? id,
 		reasoning: model.reasoning === true,
 		supportsImages: model.modalities?.input?.includes("image") === true,
+		...(model.modalities ? { modalities: model.modalities } : {}),
 	}));
 }
 
@@ -145,7 +161,7 @@ function initForm(existing: ExistingCustom | null): CustomProviderFormState {
 			? (npm as CustomProviderPackage)
 			: CUSTOM_PROVIDER_PACKAGE,
 		baseURL: options?.baseURL ?? "",
-		apiKey: existing.hasApiKey ? MASKED_CUSTOM_PROVIDER_KEY : "",
+		apiKey: "",
 		headers: headersFromConfig(existing.config),
 		models: modelsFromConfig(existing.config),
 	};
@@ -160,16 +176,17 @@ function toProvider(form: CustomProviderFormState): unknown {
 	const models = Object.fromEntries(
 		form.models
 			.filter((model) => model.id.trim().length > 0)
-			.map((model) => [
-				model.id.trim(),
-				{
-					name: model.name.trim() || model.id.trim(),
-					...(model.reasoning ? { reasoning: true } : {}),
-					...(model.supportsImages
-						? { modalities: { input: ["text", "image"], output: ["text"] } }
-						: {}),
-				},
-			]),
+			.map((model) => {
+				const modalities = resolveModalities(model.modalities, model.supportsImages);
+				return [
+					model.id.trim(),
+					{
+						name: model.name.trim() || model.id.trim(),
+						...(model.reasoning ? { reasoning: true } : {}),
+						...(modalities ? { modalities } : {}),
+					},
+				] as const;
+			}),
 	);
 	return {
 		npm: form.npm,
@@ -185,6 +202,7 @@ function toProvider(form: CustomProviderFormState): unknown {
 export function CustomProviderDialog({
 	open,
 	existing,
+	blockedIds,
 	pending,
 	error,
 	onOpenChange,
@@ -194,31 +212,47 @@ export function CustomProviderDialog({
 	const editing = existing !== null;
 	const [form, setForm] = useState<CustomProviderFormState>(() => initForm(existing));
 	const [localError, setLocalError] = useState<string | null>(null);
+	const [invalid, setInvalid] = useState<InvalidField>(null);
 	const [apiKeyChanged, setApiKeyChanged] = useState(false);
-	const existingId = existing?.providerID ?? "";
 	const formError = localError ?? error;
-
-	useEffect(() => {
-		if (!open) return;
-		setForm(initForm(existing));
-		setLocalError(null);
-		setApiKeyChanged(false);
-	}, [open, existingId]);
 
 	const submit = (event: FormEvent) => {
 		event.preventDefault();
 		const id = validateProviderID(form.providerID);
 		if ("error" in id) {
 			setLocalError(id.error);
+			setInvalid("id");
+			return;
+		}
+		if (!editing && blockedIds.includes(id.value)) {
+			setLocalError("Provider ID already exists");
+			setInvalid("id");
+			return;
+		}
+		const model = findDuplicate(form.models.map((row) => row.id));
+		if (model) {
+			setLocalError(`Model ID "${model}" is duplicated`);
+			setInvalid("models");
+			return;
+		}
+		const header = findDuplicate(
+			form.headers.map((row) => row.key),
+			true,
+		);
+		if (header) {
+			setLocalError(`Header "${header}" is duplicated`);
+			setInvalid("headers");
 			return;
 		}
 		const provider = toProvider(form);
 		const sanitized = sanitizeCustomProviderConfig(provider);
 		if ("error" in sanitized) {
 			setLocalError(sanitized.error);
+			setInvalid("config");
 			return;
 		}
 		setLocalError(null);
+		setInvalid(null);
 		const key = form.apiKey.trim();
 		void onSubmit({
 			providerID: id.value,
@@ -239,16 +273,22 @@ export function CustomProviderDialog({
 	};
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!next && pending) return;
+				onOpenChange(next);
+			}}
+		>
 			<DialogContent
 				data-qa-id="kilo-providers-custom-dialog"
 				className="max-h-[90vh] overflow-y-auto sm:max-w-lg"
 			>
 				<form onSubmit={submit} className="contents">
 					<DialogHeader>
-						<DialogTitle>{editing ? "Edit provider" : "Custom provider"}</DialogTitle>
+						<DialogTitle>{editing ? "Edit AI Provider" : "Custom AI Provider"}</DialogTitle>
 						<DialogDescription>
-							Configure a custom provider. See the{" "}
+							Configure a custom AI provider. See the{" "}
 							<a
 								href={CUSTOM_PROVIDER_DOCS_URL}
 								onClick={(event) => {
@@ -256,18 +296,22 @@ export function CustomProviderDialog({
 									void sdk.shell.openExternal(CUSTOM_PROVIDER_DOCS_URL).catch(() => undefined);
 								}}
 							>
-								provider config docs
+								AI provider config docs
 							</a>
 							.
 						</DialogDescription>
 					</DialogHeader>
 					<FieldGroup>
-						<Field data-disabled={editing || undefined}>
+						<Field
+							data-disabled={editing || undefined}
+							data-invalid={invalid === "id" || undefined}
+						>
 							<FieldLabel htmlFor="kilo-custom-id">Provider ID</FieldLabel>
 							<Input
 								id="kilo-custom-id"
 								value={form.providerID}
 								disabled={editing}
+								aria-invalid={invalid === "id" || undefined}
 								onChange={(event) =>
 									setForm((current) => ({ ...current, providerID: event.target.value }))
 								}
@@ -291,7 +335,7 @@ export function CustomProviderDialog({
 							/>
 						</Field>
 						<Field>
-							<FieldLabel>Provider API</FieldLabel>
+							<FieldLabel htmlFor="kilo-custom-npm">Provider API</FieldLabel>
 							<Select
 								items={PACKAGE_ITEMS}
 								value={form.npm}
@@ -300,7 +344,11 @@ export function CustomProviderDialog({
 									setForm((current) => ({ ...current, npm: value as CustomProviderPackage }));
 								}}
 							>
-								<SelectTrigger className="w-full" data-qa-id="kilo-providers-custom-npm">
+								<SelectTrigger
+									id="kilo-custom-npm"
+									className="w-full"
+									data-qa-id="kilo-providers-custom-npm"
+								>
 									<SelectValue>
 										{(value) => PACKAGE_ITEMS.find((item) => item.value === value)?.label ?? value}
 									</SelectValue>
@@ -336,15 +384,34 @@ export function CustomProviderDialog({
 								autoComplete="off"
 								value={form.apiKey}
 								onChange={(event) => {
-									setApiKeyChanged(true);
+									setApiKeyChanged(event.target.value.trim().length > 0);
 									setForm((current) => ({ ...current, apiKey: event.target.value }));
 								}}
-								placeholder="API key"
+								placeholder={editing ? "Leave blank to keep stored key" : "API key"}
 								data-qa-id="kilo-providers-custom-key"
 							/>
 							<FieldDescription>
-								Optional. Leave empty if you manage auth via headers.
+								{apiKeyChanged && !form.apiKey.trim()
+									? "The stored API key will be removed when you save."
+									: editing
+										? "Enter a value to replace the stored key, or leave blank to preserve it."
+										: "Optional. Leave empty if you manage auth via headers."}
 							</FieldDescription>
+							{editing ? (
+								<Button
+									type="button"
+									variant="ghost"
+									size="xs"
+									className="self-start"
+									onClick={() => {
+										setApiKeyChanged(true);
+										setForm((current) => ({ ...current, apiKey: "" }));
+									}}
+									data-qa-id="kilo-providers-custom-key-remove"
+								>
+									Remove stored API key
+								</Button>
+							) : null}
 						</Field>
 
 						<FieldSet>
@@ -372,125 +439,104 @@ export function CustomProviderDialog({
 									</Button>
 								</div>
 							</div>
-							<ItemGroup>
+							<FieldGroup className="gap-2">
 								{form.models.map((model, index) => (
-									<Item key={index} variant="outline" className="flex-col items-stretch">
-										<ItemContent className="w-full gap-3">
-											<div className="flex min-w-0 items-center gap-2">
-												<FieldLabel htmlFor={`kilo-custom-model-id-${index}`} className="sr-only">
-													ID
-												</FieldLabel>
-												<Input
-													id={`kilo-custom-model-id-${index}`}
-													className="min-w-0 flex-1"
-													placeholder="model-id"
-													value={model.id}
-													onChange={(event) =>
-														setForm((current) => ({
-															...current,
-															models: current.models.map((row, rowIndex) =>
-																rowIndex === index ? { ...row, id: event.target.value } : row,
-															),
-														}))
-													}
-													data-qa-id={`kilo-providers-model-id-${index}`}
-												/>
-												<FieldLabel htmlFor={`kilo-custom-model-name-${index}`} className="sr-only">
-													Name
-												</FieldLabel>
-												<Input
-													id={`kilo-custom-model-name-${index}`}
-													className="min-w-0 flex-1"
-													placeholder="Display Name"
-													value={model.name}
-													onChange={(event) =>
-														setForm((current) => ({
-															...current,
-															models: current.models.map((row, rowIndex) =>
-																rowIndex === index ? { ...row, name: event.target.value } : row,
-															),
-														}))
-													}
-													data-qa-id={`kilo-providers-model-name-${index}`}
-												/>
-												<Button
-													type="button"
-													variant="ghost"
-													size="icon-sm"
-													className="shrink-0"
-													aria-label="Remove model"
-													disabled={form.models.length <= 1}
-													onClick={() =>
-														setForm((current) => ({
-															...current,
-															models: current.models.filter((_, rowIndex) => rowIndex !== index),
-														}))
-													}
-													data-qa-id={`kilo-providers-model-remove-${index}`}
-												>
-													<Trash2Icon />
-												</Button>
-											</div>
-											<FieldGroup
-												className="flex-row flex-wrap gap-x-4 gap-y-2"
-												data-slot="checkbox-group"
+									<div key={index} className={EDITOR_ROW}>
+										<div className="min-w-0 pr-1">
+											<FieldLabel htmlFor={`kilo-custom-model-id-${index}`} className="sr-only">
+												Model {index + 1} ID
+											</FieldLabel>
+											<Input
+												id={`kilo-custom-model-id-${index}`}
+												placeholder="model-id"
+												value={model.id}
+												aria-invalid={invalid === "models" || undefined}
+												onChange={(event) =>
+													setForm((current) => ({
+														...current,
+														models: current.models.map((row, rowIndex) =>
+															rowIndex === index ? { ...row, id: event.target.value } : row,
+														),
+													}))
+												}
+												data-qa-id={`kilo-providers-model-id-${index}`}
+											/>
+										</div>
+										<div className="min-w-0">
+											<FieldLabel htmlFor={`kilo-custom-model-name-${index}`} className="sr-only">
+												Model {index + 1} name
+											</FieldLabel>
+											<Input
+												id={`kilo-custom-model-name-${index}`}
+												placeholder="Display Name"
+												value={model.name}
+												onChange={(event) =>
+													setForm((current) => ({
+														...current,
+														models: current.models.map((row, rowIndex) =>
+															rowIndex === index ? { ...row, name: event.target.value } : row,
+														),
+													}))
+												}
+												data-qa-id={`kilo-providers-model-name-${index}`}
+											/>
+										</div>
+										<div className={EDITOR_ACTIONS}>
+											<ModelFlag
+												pressed={model.reasoning}
+												label={`Reasoning for ${model.name || model.id || `model ${index + 1}`}`}
+												hint="Reasoning"
+												qaId={`kilo-providers-model-reasoning-${index}`}
+												icon={<BrainIcon />}
+												onPressedChange={(pressed) =>
+													setForm((current) => ({
+														...current,
+														models: current.models.map((row, rowIndex) =>
+															rowIndex === index ? { ...row, reasoning: pressed } : row,
+														),
+													}))
+												}
+											/>
+											<ModelFlag
+												pressed={model.supportsImages}
+												label={`Image support for ${model.name || model.id || `model ${index + 1}`}`}
+												hint="Image"
+												qaId={`kilo-providers-model-images-${index}`}
+												icon={<ImageIcon />}
+												onPressedChange={(pressed) =>
+													setForm((current) => ({
+														...current,
+														models: current.models.map((row, rowIndex) =>
+															rowIndex === index ? { ...row, supportsImages: pressed } : row,
+														),
+													}))
+												}
+											/>
+											<Button
+												type="button"
+												variant="ghost"
+												size="icon-xs"
+												aria-label={`Remove model ${index + 1}`}
+												disabled={form.models.length <= 1}
+												onClick={() =>
+													setForm((current) => ({
+														...current,
+														models: current.models.filter((_, rowIndex) => rowIndex !== index),
+													}))
+												}
+												data-qa-id={`kilo-providers-model-remove-${index}`}
 											>
-												<Field orientation="horizontal" className="w-auto">
-													<Checkbox
-														id={`kilo-custom-model-reasoning-${index}`}
-														checked={model.reasoning}
-														onCheckedChange={(checked) =>
-															setForm((current) => ({
-																...current,
-																models: current.models.map((row, rowIndex) =>
-																	rowIndex === index
-																		? { ...row, reasoning: checked === true }
-																		: row,
-																),
-															}))
-														}
-														data-qa-id={`kilo-providers-model-reasoning-${index}`}
-													/>
-													<FieldLabel
-														htmlFor={`kilo-custom-model-reasoning-${index}`}
-														className="font-normal"
-													>
-														Reasoning
-													</FieldLabel>
-												</Field>
-												<Field orientation="horizontal" className="w-auto">
-													<Checkbox
-														id={`kilo-custom-model-images-${index}`}
-														checked={model.supportsImages}
-														onCheckedChange={(checked) =>
-															setForm((current) => ({
-																...current,
-																models: current.models.map((row, rowIndex) =>
-																	rowIndex === index
-																		? { ...row, supportsImages: checked === true }
-																		: row,
-																),
-															}))
-														}
-														data-qa-id={`kilo-providers-model-images-${index}`}
-													/>
-													<FieldLabel
-														htmlFor={`kilo-custom-model-images-${index}`}
-														className="font-normal"
-													>
-														Image
-													</FieldLabel>
-												</Field>
-											</FieldGroup>
-										</ItemContent>
-									</Item>
+												<Trash2Icon />
+											</Button>
+										</div>
+									</div>
 								))}
-							</ItemGroup>
+							</FieldGroup>
 							<Button
 								type="button"
 								variant="ghost"
 								size="sm"
-								className="self-start"
+								className="-ml-1.5 self-start"
 								onClick={() =>
 									setForm((current) => ({
 										...current,
@@ -505,82 +551,87 @@ export function CustomProviderDialog({
 						</FieldSet>
 
 						<FieldSet>
-							<FieldLegend variant="label">Headers (optional)</FieldLegend>
-							<FieldGroup className="gap-3">
+							<FieldLegend className="sr-only">Headers</FieldLegend>
+							<FieldTitle>Headers (optional)</FieldTitle>
+							<FieldGroup className="gap-2">
 								{form.headers.map((header, index) => (
-									<div key={index} className="flex min-w-0 items-center gap-2">
-										<FieldLabel htmlFor={`kilo-custom-header-key-${index}`} className="sr-only">
-											Header
-										</FieldLabel>
-										<Input
-											id={`kilo-custom-header-key-${index}`}
-											className="min-w-0 flex-1"
-											placeholder="Header-Name"
-											value={header.key}
-											onChange={(event) =>
-												setForm((current) => ({
-													...current,
-													headers: current.headers.map((row, rowIndex) =>
-														rowIndex === index ? { ...row, key: event.target.value } : row,
-													),
-												}))
-											}
-											data-qa-id={`kilo-providers-header-key-${index}`}
-										/>
-										<FieldLabel htmlFor={`kilo-custom-header-value-${index}`} className="sr-only">
-											Value
-										</FieldLabel>
-										<Input
-											id={`kilo-custom-header-value-${index}`}
-											className="min-w-0 flex-1"
-											placeholder="value"
-											value={header.value}
-											onChange={(event) =>
-												setForm((current) => ({
-													...current,
-													headers: current.headers.map((row, rowIndex) =>
-														rowIndex === index ? { ...row, value: event.target.value } : row,
-													),
-												}))
-											}
-											data-qa-id={`kilo-providers-header-value-${index}`}
-										/>
-										<Button
-											type="button"
-											variant="ghost"
-											size="icon-sm"
-											className="shrink-0"
-											aria-label="Remove header"
-											disabled={form.headers.length <= 1}
-											onClick={() =>
-												setForm((current) => ({
-													...current,
-													headers: current.headers.filter((_, rowIndex) => rowIndex !== index),
-												}))
-											}
-											data-qa-id={`kilo-providers-header-remove-${index}`}
-										>
-											<Trash2Icon />
-										</Button>
+									<div key={index} className={EDITOR_ROW}>
+										<div className="min-w-0 pr-1">
+											<FieldLabel htmlFor={`kilo-custom-header-key-${index}`} className="sr-only">
+												Header {index + 1} name
+											</FieldLabel>
+											<Input
+												id={`kilo-custom-header-key-${index}`}
+												placeholder="Header-Name"
+												value={header.key}
+												aria-invalid={invalid === "headers" || undefined}
+												onChange={(event) =>
+													setForm((current) => ({
+														...current,
+														headers: current.headers.map((row, rowIndex) =>
+															rowIndex === index ? { ...row, key: event.target.value } : row,
+														),
+													}))
+												}
+												data-qa-id={`kilo-providers-header-key-${index}`}
+											/>
+										</div>
+										<div className="min-w-0">
+											<FieldLabel htmlFor={`kilo-custom-header-value-${index}`} className="sr-only">
+												Header {index + 1} value
+											</FieldLabel>
+											<Input
+												id={`kilo-custom-header-value-${index}`}
+												placeholder="value"
+												value={header.value}
+												onChange={(event) =>
+													setForm((current) => ({
+														...current,
+														headers: current.headers.map((row, rowIndex) =>
+															rowIndex === index ? { ...row, value: event.target.value } : row,
+														),
+													}))
+												}
+												data-qa-id={`kilo-providers-header-value-${index}`}
+											/>
+										</div>
+										<div className={EDITOR_ACTIONS}>
+											<Button
+												type="button"
+												variant="ghost"
+												size="icon-xs"
+												aria-label={`Remove header ${index + 1}`}
+												disabled={form.headers.length <= 1}
+												onClick={() =>
+													setForm((current) => ({
+														...current,
+														headers: current.headers.filter((_, rowIndex) => rowIndex !== index),
+													}))
+												}
+												data-qa-id={`kilo-providers-header-remove-${index}`}
+											>
+												<Trash2Icon />
+											</Button>
+										</div>
 									</div>
 								))}
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									className="self-start"
-									onClick={() =>
-										setForm((current) => ({
-											...current,
-											headers: [...current.headers, { key: "", value: "" }],
-										}))
-									}
-									data-qa-id="kilo-providers-add-header"
-								>
-									<PlusIcon data-icon="inline-start" />
-									Add header
-								</Button>
 							</FieldGroup>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="-ml-1.5 self-start"
+								onClick={() =>
+									setForm((current) => ({
+										...current,
+										headers: [...current.headers, { key: "", value: "" }],
+									}))
+								}
+								data-qa-id="kilo-providers-add-header"
+							>
+								<PlusIcon data-icon="inline-start" />
+								Add header
+							</Button>
 						</FieldSet>
 
 						{formError ? (
@@ -590,15 +641,60 @@ export function CustomProviderDialog({
 						) : null}
 					</FieldGroup>
 					<DialogFooter>
-						<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+						<Button
+							type="button"
+							variant="outline"
+							disabled={pending}
+							onClick={() => onOpenChange(false)}
+						>
 							Cancel
 						</Button>
 						<Button type="submit" disabled={pending} data-qa-id="kilo-providers-custom-save">
-							{pending ? "Saving…" : editing ? "Save" : "Add"}
+							{pending ? "Saving…" : editing ? "Save" : "Connect"}
 						</Button>
 					</DialogFooter>
 				</form>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function ModelFlag({
+	pressed,
+	label,
+	hint,
+	qaId,
+	icon,
+	onPressedChange,
+}: {
+	pressed: boolean;
+	label: string;
+	hint: string;
+	qaId: string;
+	icon: ReactNode;
+	onPressedChange: (pressed: boolean) => void;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				delay={300}
+				closeDelay={400}
+				render={
+					<Toggle
+						type="button"
+						size="sm"
+						pressed={pressed}
+						aria-label={label}
+						onPressedChange={onPressedChange}
+						className="size-6 min-w-6 p-0"
+						data-qa-id={qaId}
+					/>
+				}
+			>
+				{icon}
+				<span className="sr-only">{hint}</span>
+			</TooltipTrigger>
+			<TooltipContent>{hint}</TooltipContent>
+		</Tooltip>
 	);
 }

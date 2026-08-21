@@ -56,13 +56,8 @@ describe("groupProviderList", () => {
 			config,
 		});
 
-		expect(view.connected.map((row) => row.id)).toEqual([
-			"kilo",
-			"anthropic",
-			"groq",
-			"vllm",
-			"openai",
-		]);
+		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic", "vllm", "openai"]);
+		expect(view.environment.map((row) => row.id)).toEqual(["groq"]);
 		expect(view.connected.find((row) => row.id === "openai")).toMatchObject({
 			name: "OpenAI",
 			connected: true,
@@ -79,7 +74,28 @@ describe("groupProviderList", () => {
 			connected: ["openai", "kilo", "groq", "anthropic"],
 			config: {},
 		});
-		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic", "groq", "openai"]);
+		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic", "openai"]);
+		expect(view.environment.map((row) => row.id)).toEqual(["groq"]);
+	});
+
+	it("lists env-sourced providers under Environment, not Connected", () => {
+		const view = groupProviderList({
+			all: [kilo, anthropic, groq],
+			connected: ["kilo", "anthropic", "groq"],
+			config: {},
+		});
+		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic"]);
+		expect(view.environment).toEqual([
+			expect.objectContaining({
+				id: "groq",
+				name: "Groq",
+				connected: true,
+				source: "env",
+				canDisconnect: false,
+				canDisable: true,
+			}),
+		]);
+		expect(view.popular.map((row) => row.id)).not.toContain("groq");
 	});
 
 	it("keeps a disabled provider in Connected in alphabetical order", () => {
@@ -88,7 +104,8 @@ describe("groupProviderList", () => {
 			connected: ["kilo", "anthropic", "groq"],
 			config: { disabled_providers: ["openai"] },
 		});
-		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic", "groq", "openai"]);
+		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic", "openai"]);
+		expect(view.environment.map((row) => row.id)).toEqual(["groq"]);
 		expect(view.connected.find((row) => row.id === "openai")?.disabled).toBe(true);
 	});
 
@@ -173,7 +190,7 @@ describe("groupProviderList", () => {
 			connected: ["groq", "vllm"],
 			config,
 		});
-		const groqRow = view.connected.find((row) => row.id === "groq");
+		const groqRow = view.environment.find((row) => row.id === "groq");
 		const vllmRow = view.connected.find((row) => row.id === "vllm");
 		expect(groqRow?.canDisconnect).toBe(false);
 		expect(groqRow?.custom).toBe(false);

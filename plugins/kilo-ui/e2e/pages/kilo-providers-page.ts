@@ -2,7 +2,7 @@ import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/p
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 /**
- * Page object for the kilo-ui Providers settings section, including the
+ * Page object for the kilo-ui AI Providers settings section, including the
  * expandable Kilo Gateway account card.
  */
 export class KiloProvidersPage {
@@ -18,7 +18,7 @@ export class KiloProvidersPage {
 	}
 
 	async verifyLoaded(): Promise<void> {
-		await expectElementToBeVisible(this.section(), "Providers settings should be visible");
+		await expectElementToBeVisible(this.section(), "AI Providers settings should be visible");
 	}
 
 	/**

@@ -198,7 +198,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				turnAnchor="bottom"
 				autoScroll
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
+				className="relative flex flex-1 [scrollbar-gutter:stable] flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
 				<div
 					className={cn(
@@ -621,23 +621,35 @@ const ComposerAction: FC<{
 };
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
+const WORKING_INDICATOR_DELAY_MS = 200;
 
-const AssistantWorkingIndicator: FC = () => (
-	<span
-		data-slot="aui_assistant-message-indicator"
-		className="text-muted-foreground relative inline-block text-sm leading-none"
-		role="status"
-		aria-label={CONSIDERING_NEXT_STEPS}
-	>
-		<span>{CONSIDERING_NEXT_STEPS}</span>
+const AssistantWorkingIndicator: FC = () => {
+	const [visible, setVisible] = useState(false);
+
+	useEffect(() => {
+		const timeoutId = window.setTimeout(() => setVisible(true), WORKING_INDICATOR_DELAY_MS);
+		return () => window.clearTimeout(timeoutId);
+	}, []);
+
+	if (!visible) return null;
+
+	return (
 		<span
-			aria-hidden
-			className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
+			data-slot="aui_assistant-message-indicator"
+			className="text-muted-foreground relative inline-block text-sm leading-none"
+			role="status"
+			aria-label={CONSIDERING_NEXT_STEPS}
 		>
-			{CONSIDERING_NEXT_STEPS}
+			<span>{CONSIDERING_NEXT_STEPS}</span>
+			<span
+				aria-hidden
+				className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
+			>
+				{CONSIDERING_NEXT_STEPS}
+			</span>
 		</span>
-	</span>
-);
+	);
+};
 
 const MessageError: FC = () => {
 	return (

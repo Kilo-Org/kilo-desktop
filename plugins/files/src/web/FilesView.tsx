@@ -3,7 +3,6 @@ import {
 	ChevronDownIcon,
 	Code2Icon,
 	EyeIcon,
-	FolderIcon,
 	FolderTreeIcon,
 	ImageIcon,
 	LoaderCircleIcon,
@@ -946,19 +945,7 @@ export function FilesView({
 								)}
 								{unsupportedMessage(file)}
 							</div>
-						) : (
-							<Empty data-qa-id="files-editor-empty">
-								<EmptyHeader>
-									<EmptyMedia variant="icon">
-										<FolderIcon />
-									</EmptyMedia>
-									<EmptyTitle aria-level={2} role="heading">
-										Open file
-									</EmptyTitle>
-									<EmptyDescription>Select a file from the file list</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
-						)}
+						) : null}
 					</div>
 					{showExplorer ? (
 						<aside

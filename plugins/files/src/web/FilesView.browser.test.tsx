@@ -111,13 +111,13 @@ describe("FilesView", () => {
 		);
 	});
 
-	it("shows an editor empty state beside the workspace tree before a file is opened", async () => {
-		renderView(handlers(), {}, {}, 580);
+	it("leaves the viewer blank beside the workspace tree before a file is opened", async () => {
+		const { queryByText } = renderView(handlers(), {}, {}, 580);
 
-		await expect.element(page.getByTestId("files-editor-empty")).toBeVisible();
-		await expect.element(page.getByRole("heading", { name: "Open file" })).toBeVisible();
-		await expect.element(page.getByText("Select a file from the file list")).toBeVisible();
+		await expect.element(page.getByTestId("files-viewer-pane")).toBeVisible();
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+		expect(queryByText("Open file")).toBeNull();
+		expect(queryByText("Select a file from the file list")).toBeNull();
 	});
 
 	it("switches between workspace folders from a selector above search", async () => {
@@ -289,7 +289,7 @@ describe("FilesView", () => {
 
 		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/reference" }));
 		expect(read).not.toHaveBeenCalled();
-		await expect.element(page.getByTestId("files-editor-empty")).toBeVisible();
+		await expect.element(page.getByTestId("files-viewer-pane")).toBeVisible();
 	});
 
 	it("does not show a folder selector for a single-folder workspace", async () => {

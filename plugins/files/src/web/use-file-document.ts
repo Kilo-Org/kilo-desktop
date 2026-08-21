@@ -20,6 +20,13 @@ interface FileDocumentState {
 	readonly saving: boolean;
 }
 
+export interface InitialFileDocument {
+	readonly relativePath: string;
+	readonly workspaceDirectory: string;
+	readonly revealLine?: number;
+	readonly revealColumn?: number;
+}
+
 type FileDocumentAction =
 	| {
 			readonly type: "open-started";
@@ -60,6 +67,18 @@ const INITIAL_FILE_DOCUMENT: FileDocumentState = {
 	conflict: false,
 	saving: false,
 };
+
+function initialFileDocument(request: InitialFileDocument | undefined): FileDocumentState {
+	if (!request) return INITIAL_FILE_DOCUMENT;
+	return {
+		...INITIAL_FILE_DOCUMENT,
+		selectedPath: request.relativePath,
+		workspaceDirectory: request.workspaceDirectory,
+		loading: true,
+		revealLine: request.revealLine,
+		revealColumn: request.revealColumn,
+	};
+}
 
 function openedState(
 	state: FileDocumentState,
@@ -143,8 +162,8 @@ function fileDocumentReducer(
 	}
 }
 
-export function useFileDocument() {
-	const [state, dispatch] = useReducer(fileDocumentReducer, INITIAL_FILE_DOCUMENT);
+export function useFileDocument(initialRequest?: InitialFileDocument) {
+	const [state, dispatch] = useReducer(fileDocumentReducer, initialFileDocument(initialRequest));
 	const startOpening = useCallback((relativePath: string, line?: number, column?: number) => {
 		dispatch({
 			type: "open-started",

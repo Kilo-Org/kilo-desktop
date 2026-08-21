@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -23,6 +24,7 @@ function renderView(
 ) {
 	const sdk = createFakeSdk({ featureId: "files", channels: filesContract, handlers });
 	const system = createFakeFeatureSystem({ sdks: { files: sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	system.getSdk("kilo-ui").plugins.expose("chatRightPanel", {
 		getActiveTabId: vi.fn(() => props.instanceId ?? PROPS.instanceId),
 		updateTab: vi.fn(),
@@ -31,15 +33,18 @@ function renderView(
 	});
 	const renderTree = (nextProps: Partial<FilesViewProps>) => (
 		<SdkProvider system={system}>
-			<div className="flex" style={{ height: 600, width }}>
-				<FilesView {...PROPS} {...nextProps} />
-			</div>
+			<QueryClientProvider client={queryClient}>
+				<div className="flex" style={{ height: 600, width }}>
+					<FilesView key={nextProps.instanceId ?? PROPS.instanceId} {...PROPS} {...nextProps} />
+				</div>
+			</QueryClientProvider>
 		</SdkProvider>
 	);
 	const result = render(renderTree(props));
 	return {
 		...result,
 		system,
+		queryClient,
 		rerenderView(nextProps: Partial<FilesViewProps>) {
 			result.rerender(renderTree(nextProps));
 		},
@@ -111,11 +116,18 @@ describe("FilesView", () => {
 		);
 	});
 
-	it("leaves the viewer blank beside the workspace tree before a file is opened", async () => {
+	it("uses the full content width for the workspace tree before a file is opened", async () => {
 		const { queryByText } = renderView(handlers(), {}, {}, 580);
 
-		await expect.element(page.getByTestId("files-viewer-pane")).toBeVisible();
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+		const explorer = document.querySelector<HTMLElement>(".files-explorer-pane");
+		expect(document.querySelector('[data-qa-id="files-viewer-pane"]')).toBeNull();
+		expect(document.querySelector('[data-qa-id="files-explorer-resize-handle"]')).toBeNull();
+		expect(explorer).not.toBeNull();
+		expect(explorer!.getBoundingClientRect().width).toBeCloseTo(
+			explorer!.parentElement!.getBoundingClientRect().width,
+			0,
+		);
 		expect(queryByText("Open file")).toBeNull();
 		expect(queryByText("Select a file from the file list")).toBeNull();
 	});
@@ -197,6 +209,60 @@ describe("FilesView", () => {
 			);
 			expect(selectedLines.some((line) => line.dataset.line === "2")).toBe(true);
 		});
+	});
+
+	it("reads a requested file before loading and caching its workspace list", async () => {
+		let finishRead!: (result: Awaited<ReturnType<FilesServiceContract["read"]>>) => void;
+		const read = vi.fn<FilesServiceContract["read"]>(
+			() =>
+				new Promise((resolve) => {
+					finishRead = resolve;
+				}),
+		);
+		const service = handlers();
+		const list = vi.fn(service.list);
+		const listExternalEditors = vi.fn(service.listExternalEditors);
+		const view = renderView(
+			{ ...service, list, listExternalEditors, read },
+			{
+				metadata: {
+					workspaceDirectory: "/workspace",
+					relativePath: "docs/readme.md",
+				},
+			},
+		);
+
+		await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+		expect(list).not.toHaveBeenCalled();
+		expect(document.querySelector('[data-qa-id="files-breadcrumb"]')?.textContent).toContain(
+			"readme.md",
+		);
+		expect(document.querySelector('[data-qa-id="files-markdown-toggle"]')).not.toBeNull();
+		expect(document.querySelector('[data-qa-id="files-tree-toggle"]')).not.toBeNull();
+		finishRead({
+			kind: "text",
+			contents: "export const value = 1;",
+			byteLength: 23,
+			truncated: false,
+			revision: "a".repeat(64),
+		});
+		await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(listExternalEditors).toHaveBeenCalledOnce());
+
+		view.rerenderView({
+			instanceId: "files-2",
+			title: "Files 2",
+			metadata: {
+				workspaceDirectory: "/workspace",
+				relativePath: "src/index.ts",
+			},
+		});
+		expect(document.querySelector('[data-qa-id="files-open-external-editor"]')).not.toHaveAttribute(
+			"disabled",
+		);
+		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+		expect(list).toHaveBeenCalledOnce();
+		expect(listExternalEditors).toHaveBeenCalledOnce();
 	});
 
 	it("scrolls to and places the caret at a requested source location", async () => {
@@ -289,7 +355,7 @@ describe("FilesView", () => {
 
 		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/reference" }));
 		expect(read).not.toHaveBeenCalled();
-		await expect.element(page.getByTestId("files-viewer-pane")).toBeVisible();
+		expect(document.querySelector('[data-qa-id="files-viewer-pane"]')).toBeNull();
 	});
 
 	it("does not show a folder selector for a single-folder workspace", async () => {

@@ -10,6 +10,7 @@ import {
 	SaveIcon,
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
+import { useQuery } from "@tanstack/react-query";
 import {
 	useCallback,
 	useEffect,
@@ -198,19 +199,35 @@ export function FilesView({
 	)
 		? chosenWorkspaceDirectory
 		: defaultWorkspaceDirectory;
-	const [paths, setPaths] = useState<readonly string[]>([]);
-	const [listTruncated, setListTruncated] = useState(false);
-	const [listLoading, setListLoading] = useState(false);
-	const [listError, setListError] = useState<string | null>(null);
-	const [externalEditorError, setExternalEditorError] = useState<string | null>(null);
+	const initialRequestedWorkspaceDirectory =
+		requestedWorkspaceDirectory ?? activeWorkspaceDirectory;
+	const initialRevealLine = positiveInteger(metadata?.line);
+	const initialRevealColumn = positiveInteger(metadata?.column);
+	const initialFileRequest =
+		metadata?.relativePath &&
+		initialRequestedWorkspaceDirectory &&
+		workspaceFolders.some((folder) => folder.path === initialRequestedWorkspaceDirectory)
+			? {
+					relativePath: metadata.relativePath,
+					workspaceDirectory: initialRequestedWorkspaceDirectory,
+					...(initialRevealLine !== undefined ? { revealLine: initialRevealLine } : {}),
+					...(initialRevealColumn !== undefined ? { revealColumn: initialRevealColumn } : {}),
+				}
+			: undefined;
+	const [externalEditorActionError, setExternalEditorActionError] = useState<string | null>(null);
 	const [notebookOpenError, setNotebookOpenError] = useState<string | null>(null);
 	const [notebookOpening, setNotebookOpening] = useState(false);
-	const [availableExternalEditors, setAvailableExternalEditors] = useState<
-		readonly ExternalEditorId[] | null
-	>(null);
-	const [preferredEditor, setPreferredEditor] = useState<ExternalEditorId | null>(null);
+	const [preferredEditorOverride, setPreferredEditorOverride] = useState<ExternalEditorId | null>(
+		null,
+	);
 	const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
 	const [explorerWidth, setExplorerWidth] = useState<number | null>(initialExplorerWidth);
+	const [deferWorkspaceList, setDeferWorkspaceList] = useState(
+		() =>
+			Boolean(metadata?.relativePath) &&
+			Boolean(initialRequestedWorkspaceDirectory) &&
+			workspaceFolders.some((folder) => folder.path === initialRequestedWorkspaceDirectory),
+	);
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
@@ -241,12 +258,11 @@ export function FilesView({
 		discard,
 		setRenderMarkdown,
 		reset: resetDocument,
-	} = useFileDocument();
+	} = useFileDocument(initialFileRequest);
 	const editorRef = useRef<Editor<undefined> | null>(null);
 	const [attachedEditor, setAttachedEditor] = useState<Editor<undefined> | null>(null);
 	const handledFileRequestRef = useRef<string | null>(null);
 	const openRequestRef = useRef(0);
-	const listRequestRef = useRef(0);
 	const splitPaneRef = useRef<HTMLDivElement>(null);
 	const explorerPaneRef = useRef<HTMLElement>(null);
 	const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -262,26 +278,6 @@ export function FilesView({
 			},
 		}),
 		[setDraft],
-	);
-
-	const loadPaths = useCallback(
-		async (directory: string) => {
-			const request = ++listRequestRef.current;
-			setListLoading(true);
-			setListError(null);
-			try {
-				const result = await sdk.client.list({ workspaceDirectory: directory });
-				if (request !== listRequestRef.current) return;
-				setPaths(result.paths);
-				setListTruncated(result.truncated);
-			} catch (error) {
-				if (request !== listRequestRef.current) return;
-				setListError(errorMessage(error));
-			} finally {
-				if (request === listRequestRef.current) setListLoading(false);
-			}
-		},
-		[sdk],
 	);
 
 	const openFileNow = useCallback(
@@ -335,6 +331,8 @@ export function FilesView({
 			} catch (error) {
 				if (request !== openRequestRef.current) return;
 				failOpening(errorMessage(error));
+			} finally {
+				if (request === openRequestRef.current) setDeferWorkspaceList(false);
 			}
 		},
 		[
@@ -416,11 +414,7 @@ export function FilesView({
 	const selectWorkspaceFolder = useCallback(
 		(directory: string) => {
 			openRequestRef.current += 1;
-			listRequestRef.current += 1;
 			setChosenWorkspaceDirectory(directory);
-			setPaths([]);
-			setListTruncated(false);
-			setListError(null);
 			resetDocument();
 		},
 		[resetDocument],
@@ -487,10 +481,6 @@ export function FilesView({
 	);
 
 	useEffect(() => {
-		if (activeWorkspaceDirectory) void loadPaths(activeWorkspaceDirectory);
-	}, [activeWorkspaceDirectory, loadPaths]);
-
-	useEffect(() => {
 		const relativePath = metadata?.relativePath;
 		const requestedDirectory = metadata?.workspaceDirectory ?? activeWorkspaceDirectory;
 		if (!relativePath || !requestedDirectory) return;
@@ -519,24 +509,40 @@ export function FilesView({
 		workspaceFolders,
 	]);
 
-	useEffect(() => {
-		let active = true;
-		void sdk.client
-			.listExternalEditors()
-			.then(({ editors }) => {
-				if (!active) return;
-				setAvailableExternalEditors(editors);
-				setPreferredEditor(preferredExternalEditor(editors));
-			})
-			.catch((error: unknown) => {
-				if (!active) return;
-				setAvailableExternalEditors([]);
-				setExternalEditorError(errorMessage(error));
-			});
-		return () => {
-			active = false;
-		};
-	}, [sdk]);
+	const showExplorer = explorerOpen || selectedPath === null;
+	const workspaceListDirectory = activeWorkspaceDirectory ?? "";
+	const shouldLoadWorkspaceList =
+		Boolean(activeWorkspaceDirectory) && showExplorer && !deferWorkspaceList;
+	const workspaceListQuery = useQuery({
+		queryKey: [sdk.featureId, "workspace-list", workspaceListDirectory],
+		queryFn: () =>
+			sdk.client.list({
+				workspaceDirectory: workspaceListDirectory,
+			}),
+		enabled: shouldLoadWorkspaceList,
+		staleTime: 30_000,
+		gcTime: 5 * 60_000,
+	});
+	const paths = workspaceListQuery.data?.paths ?? [];
+	const listTruncated = workspaceListQuery.data?.truncated ?? false;
+	const listLoading =
+		Boolean(activeWorkspaceDirectory) &&
+		showExplorer &&
+		(deferWorkspaceList || workspaceListQuery.isPending);
+	const listError = workspaceListQuery.error ? errorMessage(workspaceListQuery.error) : null;
+	const externalEditorsQuery = useQuery({
+		queryKey: [sdk.featureId, "external-editors"],
+		queryFn: () => sdk.client.listExternalEditors(),
+		staleTime: Number.POSITIVE_INFINITY,
+		gcTime: 5 * 60_000,
+	});
+	const availableExternalEditors = externalEditorsQuery.data?.editors ?? null;
+	const preferredEditor =
+		preferredEditorOverride ??
+		(availableExternalEditors ? preferredExternalEditor(availableExternalEditors) : null);
+	const externalEditorError =
+		externalEditorActionError ??
+		(externalEditorsQuery.error ? errorMessage(externalEditorsQuery.error) : null);
 
 	useEffect(() => {
 		if (NUMBERED_FILES_TAB_TITLE.test(title)) {
@@ -597,7 +603,7 @@ export function FilesView({
 	const openInExternalEditor = useCallback(
 		async (editor: ExternalEditorId) => {
 			if (!documentWorkspaceDirectory || !selectedPath) return;
-			setExternalEditorError(null);
+			setExternalEditorActionError(null);
 			try {
 				await sdk.client.openExternalEditor({
 					workspaceDirectory: documentWorkspaceDirectory,
@@ -609,9 +615,9 @@ export function FilesView({
 				} catch {
 					// Launch success does not depend on remembering the preference.
 				}
-				setPreferredEditor(editor);
+				setPreferredEditorOverride(editor);
 			} catch (error) {
-				setExternalEditorError(errorMessage(error));
+				setExternalEditorActionError(errorMessage(error));
 			}
 		},
 		[documentWorkspaceDirectory, sdk, selectedPath],
@@ -654,7 +660,6 @@ export function FilesView({
 		);
 	}
 
-	const showExplorer = explorerOpen || selectedPath === null;
 	const PreferredEditorIcon = preferredEditor ? EXTERNAL_EDITOR_ICONS[preferredEditor] : null;
 	const openExternalEditorLabel = preferredEditor
 		? `Open file in ${EXTERNAL_EDITORS.find(({ id }) => id === preferredEditor)?.label ?? "preferred editor"}`
@@ -773,7 +778,7 @@ export function FilesView({
 								</DropdownMenuContent>
 							</DropdownMenu>
 						</ButtonGroup>
-						{file?.kind === "text" && isMarkdown(selectedPath) ? (
+						{(fileLoading || file?.kind === "text") && isMarkdown(selectedPath) ? (
 							<TooltipProvider>
 								<Tooltip disableHoverablePopup>
 									<TooltipTrigger
@@ -853,106 +858,112 @@ export function FilesView({
 				) : null}
 
 				<div ref={splitPaneRef} className="relative flex min-h-0 flex-1 overflow-hidden">
-					<div className="flex min-w-0 flex-1 flex-col" data-qa-id="files-viewer-pane">
-						{fileLoading ? (
-							<div
-								className="text-muted-foreground flex flex-1 items-center justify-center"
-								data-qa-id="files-file-loading"
-							>
-								<LoaderCircleIcon className="size-5 animate-spin" />
-							</div>
-						) : fileError ? (
-							<div
-								className="text-destructive flex flex-1 items-center justify-center p-6 text-center text-xs"
-								data-qa-id="files-file-error"
-							>
-								{fileError}
-							</div>
-						) : selectedPath && isNotebookFile(selectedPath) ? (
-							<Empty data-qa-id="files-notebook-empty">
-								<EmptyHeader>
-									<EmptyMedia variant="icon">
-										<NotebookIcon />
-									</EmptyMedia>
-									<EmptyTitle aria-level={2} role="heading">
-										Open as a notebook
-									</EmptyTitle>
-									<EmptyDescription>
-										Use the Notebook panel to view and edit this file.
-									</EmptyDescription>
-								</EmptyHeader>
-								<EmptyContent>
-									<Button
-										data-qa-id="files-open-notebook"
-										disabled={notebookOpening}
-										onClick={() => void openInNotebookPanel()}
-									>
-										{notebookOpening ? (
-											<LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
-										) : (
-											<NotebookIcon data-icon="inline-start" />
-										)}
-										{notebookOpening ? "Opening…" : "Open in Notebook panel"}
-									</Button>
-									{notebookOpenError ? (
-										<p className="text-destructive text-xs" role="alert">
-											{notebookOpenError}
-										</p>
-									) : null}
-								</EmptyContent>
-							</Empty>
-						) : file?.kind === "text" && selectedPath ? (
-							renderMarkdown && isMarkdown(selectedPath) ? (
-								<MarkdownPreview
-									contents={draft}
-									onOpenFile={requestOpenFile}
-									read={readForMarkdown}
-									relativePath={selectedPath}
-									workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
-								/>
-							) : (
-								<FileEditor
-									contents={draft}
-									documentRevision={editorRevision}
-									editable={Boolean(file.revision)}
-									editorOptions={editorOptions}
-									relativePath={selectedPath}
-									revealLine={revealLine}
-									reloadVersion={reloadVersion}
-									theme={theme}
-								/>
-							)
-						) : file?.kind === "image" && imageSrc ? (
-							<div
-								className="flex flex-1 items-center justify-center overflow-auto p-6"
-								data-qa-id="files-image-preview"
-							>
-								<img
-									alt={selectedPath ?? "Workspace image"}
-									className="max-h-full max-w-full object-contain"
-									src={imageSrc}
-								/>
-							</div>
-						) : file?.kind === "unsupported" ? (
-							<div
-								className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-xs"
-								data-qa-id="files-unsupported"
-							>
-								{file.reason === "binary" ? (
-									<ImageIcon className="size-6" />
+					{selectedPath ? (
+						<div className="flex min-w-0 flex-1 flex-col" data-qa-id="files-viewer-pane">
+							{fileLoading ? (
+								<div
+									className="text-muted-foreground flex flex-1 items-center justify-center"
+									data-qa-id="files-file-loading"
+								>
+									<LoaderCircleIcon className="size-5 animate-spin" />
+								</div>
+							) : fileError ? (
+								<div
+									className="text-destructive flex flex-1 items-center justify-center p-6 text-center text-xs"
+									data-qa-id="files-file-error"
+								>
+									{fileError}
+								</div>
+							) : selectedPath && isNotebookFile(selectedPath) ? (
+								<Empty data-qa-id="files-notebook-empty">
+									<EmptyHeader>
+										<EmptyMedia variant="icon">
+											<NotebookIcon />
+										</EmptyMedia>
+										<EmptyTitle aria-level={2} role="heading">
+											Open as a notebook
+										</EmptyTitle>
+										<EmptyDescription>
+											Use the Notebook panel to view and edit this file.
+										</EmptyDescription>
+									</EmptyHeader>
+									<EmptyContent>
+										<Button
+											data-qa-id="files-open-notebook"
+											disabled={notebookOpening}
+											onClick={() => void openInNotebookPanel()}
+										>
+											{notebookOpening ? (
+												<LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+											) : (
+												<NotebookIcon data-icon="inline-start" />
+											)}
+											{notebookOpening ? "Opening…" : "Open in Notebook panel"}
+										</Button>
+										{notebookOpenError ? (
+											<p className="text-destructive text-xs" role="alert">
+												{notebookOpenError}
+											</p>
+										) : null}
+									</EmptyContent>
+								</Empty>
+							) : file?.kind === "text" && selectedPath ? (
+								renderMarkdown && isMarkdown(selectedPath) ? (
+									<MarkdownPreview
+										contents={draft}
+										onOpenFile={requestOpenFile}
+										read={readForMarkdown}
+										relativePath={selectedPath}
+										workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
+									/>
 								) : (
-									<AlertTriangleIcon className="size-6" />
-								)}
-								{unsupportedMessage(file)}
-							</div>
-						) : null}
-					</div>
+									<FileEditor
+										contents={draft}
+										documentRevision={editorRevision}
+										editable={Boolean(file.revision)}
+										editorOptions={editorOptions}
+										relativePath={selectedPath}
+										revealLine={revealLine}
+										reloadVersion={reloadVersion}
+										theme={theme}
+									/>
+								)
+							) : file?.kind === "image" && imageSrc ? (
+								<div
+									className="flex flex-1 items-center justify-center overflow-auto p-6"
+									data-qa-id="files-image-preview"
+								>
+									<img
+										alt={selectedPath ?? "Workspace image"}
+										className="max-h-full max-w-full object-contain"
+										src={imageSrc}
+									/>
+								</div>
+							) : file?.kind === "unsupported" ? (
+								<div
+									className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-xs"
+									data-qa-id="files-unsupported"
+								>
+									{file.reason === "binary" ? (
+										<ImageIcon className="size-6" />
+									) : (
+										<AlertTriangleIcon className="size-6" />
+									)}
+									{unsupportedMessage(file)}
+								</div>
+							) : null}
+						</div>
+					) : null}
 					{showExplorer ? (
 						<aside
 							ref={explorerPaneRef}
-							className="files-explorer-pane relative flex min-h-0 w-[min(22rem,46%)] min-w-64 shrink-0 border-l"
+							className={
+								selectedPath
+									? "files-explorer-pane relative flex min-h-0 w-[min(22rem,46%)] min-w-64 shrink-0 border-l"
+									: "files-explorer-pane relative flex min-h-0 min-w-0 flex-1"
+							}
 							style={
-								explorerWidth !== null
+								selectedPath && explorerWidth !== null
 									? {
 											width: explorerWidth,
 											minWidth: EXPLORER_MIN_WIDTH,
@@ -961,27 +972,33 @@ export function FilesView({
 									: undefined
 							}
 						>
-							<div
-								aria-label="Resize file explorer"
-								aria-orientation="vertical"
-								className="group absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none select-none"
-								data-qa-id="files-explorer-resize-handle"
-								onKeyDown={handleExplorerResizeKeyDown}
-								onPointerDown={handleExplorerResizePointerDown}
-								role="separator"
-								tabIndex={0}
-							>
-								<span
-									aria-hidden
-									className="group-hover:bg-ring/70 group-active:bg-ring pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors"
-								/>
-							</div>
+							{selectedPath ? (
+								<div
+									aria-label="Resize file explorer"
+									aria-orientation="vertical"
+									className="group absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none select-none"
+									data-qa-id="files-explorer-resize-handle"
+									onKeyDown={handleExplorerResizeKeyDown}
+									onPointerDown={handleExplorerResizePointerDown}
+									role="separator"
+									tabIndex={0}
+								>
+									<span
+										aria-hidden
+										className="group-hover:bg-ring/70 group-active:bg-ring pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors"
+									/>
+								</div>
+							) : null}
 							<FilesTree
 								activePath={selectedPath}
 								error={listError}
 								loading={listLoading}
 								onOpenFile={requestOpenFile}
-								onRefresh={() => requestAction(() => loadPaths(activeWorkspaceDirectory))}
+								onRefresh={() =>
+									requestAction(async () => {
+										await workspaceListQuery.refetch();
+									})
+								}
 								onSelectWorkspaceFolder={(directory) =>
 									requestAction(() => selectWorkspaceFolder(directory))
 								}

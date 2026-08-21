@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	memo,
 	useRef,
 	useState,
 	type PointerEvent as ReactPointerEvent,
@@ -19,6 +20,7 @@ import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";
+import type { ChatMarkdownExtensionContext } from "./chat-markdown-extensions.js";
 import { resolveChatWorkspace } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
@@ -45,6 +47,18 @@ const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH_FRACTION = 0.7;
 const PANEL_GAP_PX = 8; // matches w-2 gutter
+const EMPTY_WORKSPACE_FOLDERS: ChatMarkdownExtensionContext["workspaceFolders"] = [];
+
+const ChatThreadSurface = memo(function ChatThreadSurface({
+	sessionId,
+	workspaceFolders,
+}: ChatMarkdownExtensionContext) {
+	return (
+		<ChatMarkdownProvider sessionId={sessionId} workspaceFolders={workspaceFolders}>
+			<Thread />
+		</ChatMarkdownProvider>
+	);
+});
 
 function readStoredPanelWidth(): number {
 	try {
@@ -114,6 +128,7 @@ export function ChatPage() {
 	} | null>(null);
 	const panelOpen = panelState.isOpen;
 	const maximized = panelOpen && maximizedBySession[maximizeSessionId] === true;
+	const workspaceFolders = workspace?.folders ?? EMPTY_WORKSPACE_FOLDERS;
 
 	const panelSlotWidth = useMotionValue(0);
 
@@ -179,7 +194,7 @@ export function ChatPage() {
 	const targetPanelWidth = panelOpen ? openWidth : 0;
 
 	// Only the open/close toggle springs. Maximize, resize, and session changes snap.
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const openChanged = prevPanelOpenRef.current !== panelOpen;
 		prevPanelOpenRef.current = panelOpen;
 		previousSessionIdRef.current = sessionId;
@@ -295,18 +310,23 @@ export function ChatPage() {
 		[clampPanelWidth, panelWidth, panelSlotWidth],
 	);
 
+	// Clean tabs can remount from their descriptors; dirty tabs stay alive so switching cannot
+	// discard unsaved editor or contribution state.
+	const mountedTabs = panelState.tabs.filter(
+		(tab) => tab.instanceId === panelState.activeTabId || tab.dirty,
+	);
 	const panel = (
 		<RightPanelTabs
 			maximized={maximized}
 			onToggleMaximized={toggleMaximized}
 			tabs={panelState.tabs}
 			definitions={rightPanelDefinitions}
-			activeTabId={panelOpen ? panelState.activeTabId : null}
+			activeTabId={panelState.activeTabId}
 			onActivate={handleActivate}
 			onCloseTab={handleCloseTab}
 			onAddTab={handleAddTab}
 		>
-			{panelState.tabs.map((tab) => {
+			{mountedTabs.map((tab) => {
 				const active = tab.instanceId === panelState.activeTabId;
 				return (
 					<div
@@ -375,12 +395,7 @@ export function ChatPage() {
 						data-chat-column-maximized-away={maximized && panelOpen ? "true" : "false"}
 					>
 						<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-							<ChatMarkdownProvider
-								sessionId={sessionId}
-								workspaceFolders={workspace?.folders ?? []}
-							>
-								<Thread />
-							</ChatMarkdownProvider>
+							<ChatThreadSurface sessionId={sessionId} workspaceFolders={workspaceFolders} />
 						</div>
 					</div>
 				</div>
@@ -392,7 +407,7 @@ export function ChatPage() {
 					)}
 					{...(maximized && panelOpen ? {} : { style: { width: panelSlotWidth } })}
 				>
-					{panelMounted ? (
+					{panelOpen || panelMounted ? (
 						<div
 							className={cn("flex h-full", maximized ? "w-full" : "shrink-0")}
 							style={maximized ? undefined : { width: openWidth }}

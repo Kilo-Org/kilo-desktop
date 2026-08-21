@@ -1,8 +1,8 @@
 import { memo, useMemo } from "react";
 import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { useAuiState } from "@assistant-ui/react";
-import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
-import { FileDiff, PatchDiff } from "@pierre/diffs/react";
+import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { FileDiff } from "@pierre/diffs/react";
 
 import {
 	parseChatPatchFiles,
@@ -54,10 +54,23 @@ export const PierreDiffBody = ({
 	unifiedDiff?: string | undefined;
 	fileDiff: FileDiffMetadata | null;
 }) => {
+	const patchFileDiffs = useMemo(
+		() => (unifiedDiff ? parsePatchFiles(unifiedDiff).flatMap((patch) => patch.files) : []),
+		[unifiedDiff],
+	);
+
 	if (unifiedDiff) {
+		if (patchFileDiffs.length === 0) return null;
+
 		return (
 			<div className="overflow-hidden rounded-md border">
-				<PatchDiff patch={unifiedDiff} options={PIERRE_DIFF_OPTIONS} />
+				{patchFileDiffs.map((patchFileDiff, index) => (
+					<FileDiff
+						key={`${patchFileDiff.name}-${index}`}
+						fileDiff={patchFileDiff}
+						options={PIERRE_DIFF_OPTIONS}
+					/>
+				))}
 			</div>
 		);
 	}

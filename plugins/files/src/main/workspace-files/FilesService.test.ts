@@ -211,9 +211,10 @@ describe("FilesService", () => {
 		const opened = await service.read(workspace, "script.sh");
 		if (opened.kind !== "text" || !opened.revision) throw new Error("Expected editable text");
 
+		const originalMode = (await stat(file)).mode & 0o777;
 		const saved = await service.write(workspace, "script.sh", "two\n", opened.revision);
 		expect(saved.status).toBe("saved");
-		expect((await stat(file)).mode & 0o777).toBe(0o755);
+		expect((await stat(file)).mode & 0o777).toBe(originalMode);
 		await writeFile(file, "external\n", { mode: 0o755 });
 
 		const conflict = await service.write(

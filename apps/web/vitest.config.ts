@@ -22,6 +22,23 @@ export default defineConfig({
 		]),
 		projects: [
 			{
+				plugins: [
+					{
+						name: "stub-vite-workers",
+						enforce: "pre",
+						resolveId(id) {
+							// Renderer plugin graphs import Vite `?worker` modules. Node
+							// unit tests evaluate those as ordinary ESM, where `self` is
+							// undefined.
+							if (id.includes("?worker")) return "\0stub-vite-worker";
+						},
+						load(id) {
+							if (id === "\0stub-vite-worker") {
+								return "export default class Worker {}\n";
+							}
+						},
+					},
+				],
 				resolve: { alias },
 				test: {
 					name: "unit",

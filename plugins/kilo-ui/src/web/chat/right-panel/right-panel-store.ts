@@ -76,13 +76,15 @@ export function persistedRightPanelState(
 ): Pick<RightPanelStoreState, "bySessionId"> {
 	return {
 		bySessionId: Object.fromEntries(
-			Object.entries(state.bySessionId).map(([sessionId, session]) => [
-				sessionId,
-				{
-					...session,
-					tabs: session.tabs.map(({ dirty: _dirty, ...tab }) => tab),
-				},
-			]),
+			Object.entries(state.bySessionId).map(([sessionId, session]) => {
+				const tabs = session.tabs
+					.filter((tab) => !tab.transient)
+					.map(({ dirty: _dirty, transient: _transient, ...tab }) => tab);
+				const activeTabId = tabs.some((tab) => tab.instanceId === session.activeTabId)
+					? session.activeTabId
+					: (tabs.at(-1)?.instanceId ?? null);
+				return [sessionId, { ...session, tabs, activeTabId }];
+			}),
 		),
 	};
 }
@@ -109,6 +111,7 @@ const upsertTab = (
 							...(updates?.title !== undefined ? { title: updates.title } : {}),
 							...(updates?.iconKey !== undefined ? { iconKey: updates.iconKey } : {}),
 							...(updates?.metadata !== undefined ? { metadata: { ...updates.metadata } } : {}),
+							...(updates?.transient !== undefined ? { transient: updates.transient } : {}),
 						}
 					: entry,
 			)
@@ -192,12 +195,14 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 								...(update.iconKey !== undefined ? { iconKey: update.iconKey } : {}),
 								...(update.metadata !== undefined ? { metadata: { ...update.metadata } } : {}),
 								...(update.dirty !== undefined ? { dirty: update.dirty } : {}),
+								...(update.transient !== undefined ? { transient: update.transient } : {}),
 							};
 							if (
 								next.title === tab.title &&
 								next.iconKey === tab.iconKey &&
 								next.metadata === tab.metadata &&
-								next.dirty === tab.dirty
+								next.dirty === tab.dirty &&
+								next.transient === tab.transient
 							) {
 								return tab;
 							}

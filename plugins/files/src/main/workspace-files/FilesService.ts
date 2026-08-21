@@ -160,7 +160,7 @@ export class FilesService {
 
 		let text: string;
 		try {
-			const decoder = new TextDecoder("utf-8", { fatal: true });
+			const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 			text = decoder.decode(contents, { stream: truncated });
 		} catch {
 			return { kind: "unsupported", reason: "binary", byteLength };

@@ -104,6 +104,21 @@ describe("right-panel-store", () => {
 		});
 	});
 
+	it("omits transient tabs from persisted state", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS, {
+			metadata: { notebookOpenState: "opening" },
+			transient: true,
+		});
+
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs).toHaveLength(1);
+		expect(
+			persistedRightPanelState(useRightPanelStore.getState()).bySessionId[SESSION],
+		).toMatchObject({
+			activeTabId: null,
+			tabs: [],
+		});
+	});
+
 	it("updates and persists a contribution-provided tab title", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;

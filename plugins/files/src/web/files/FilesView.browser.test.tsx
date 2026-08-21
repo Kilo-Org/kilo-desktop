@@ -709,6 +709,30 @@ describe("FilesView", () => {
 		);
 	});
 
+	it("ignores a save completion after navigating to another file", async () => {
+		type SaveResult = {
+			status: "saved";
+			revision: string;
+		};
+		let resolveSave: (result: SaveResult) => void = () => undefined;
+		const pendingSave = new Promise<SaveResult>((resolve) => {
+			resolveSave = resolve;
+		});
+		const write = vi.fn<FilesServiceContract["write"]>(async () => pendingSave);
+		renderView({ ...handlers(), write });
+		await openTreePath("src/index.ts");
+		await replaceEditorText("saved source change");
+
+		await page.getByTestId("files-save").click();
+		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+		await openTreePath("docs/readme.md");
+		await page.getByTestId("files-unsaved-discard").click();
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
+
+		resolveSave({ status: "saved", revision: "b".repeat(64) });
+		await vi.waitFor(() => expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull());
+	});
+
 	it("renders relative Markdown links as file chips that open in the same tab", async () => {
 		const markdownHandlers: FilesServiceContract = {
 			...handlers(),

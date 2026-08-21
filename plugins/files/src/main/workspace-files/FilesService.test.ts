@@ -150,6 +150,27 @@ describe("FilesService", () => {
 		});
 	});
 
+	it("preserves a UTF-8 BOM through an edit", async () => {
+		const workspace = await temporaryWorkspace();
+		const file = path.join(workspace, "bom.txt");
+		await writeFile(file, Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from("value\n")]));
+		const service = new FilesService({ authorize: async () => undefined });
+
+		const opened = await service.read(workspace, "bom.txt");
+		if (opened.kind !== "text" || !opened.revision) throw new Error("Expected editable text");
+		expect(opened.contents).toBe("\ufeffvalue\n");
+
+		await service.write(
+			workspace,
+			"bom.txt",
+			opened.contents.replace("value", "changed"),
+			opened.revision,
+		);
+		expect(await readFile(file)).toEqual(
+			Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from("changed\n")]),
+		);
+	});
+
 	it("previews supported images and defers HTML and PDF previews", async () => {
 		const workspace = await temporaryWorkspace();
 		await writeFile(path.join(workspace, "pixel.png"), Buffer.from([1, 2, 3]));

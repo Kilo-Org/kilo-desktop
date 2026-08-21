@@ -140,11 +140,7 @@ function fileRequestKey(
 }
 
 function revealEditorLocation(editor: Editor<undefined>, line: number, column?: number): void {
-	const position = {
-		line: line - 1,
-		character: (column ?? 1) - 1,
-	};
-	editor.setSelections([{ start: position, end: position, direction: "none" }]);
+	editor.focus({ lineNumber: line, character: (column ?? 1) - 1 });
 }
 
 export function FilesView({

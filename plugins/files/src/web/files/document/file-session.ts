@@ -105,6 +105,7 @@ function openedState(
 		editorRevision: text?.revision ?? null,
 		reloadVersion: reload ? state.reloadVersion + 1 : state.reloadVersion,
 		conflict: false,
+		saving: false,
 	};
 }
 
@@ -235,6 +236,7 @@ export function useFileSession({
 			) {
 				return true;
 			}
+			const documentRequest = openRequestRef.current;
 			dispatch({ type: "save-started" });
 			try {
 				const result = await write({
@@ -244,6 +246,9 @@ export function useFileSession({
 					expectedRevision: state.revision,
 					...(force ? { force: true } : {}),
 				});
+				if (documentRequest !== openRequestRef.current) {
+					return result.status === "saved";
+				}
 				if (result.status === "conflict") {
 					dispatch({ type: "conflict-changed", conflict: true });
 					return false;
@@ -251,6 +256,7 @@ export function useFileSession({
 				dispatch({ type: "save-succeeded", contents, revision: result.revision });
 				return true;
 			} catch (error) {
+				if (documentRequest !== openRequestRef.current) return false;
 				dispatch({ type: "save-failed", message: errorMessage(error) });
 				return false;
 			}

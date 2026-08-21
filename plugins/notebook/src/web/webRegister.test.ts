@@ -270,6 +270,8 @@ describe("notebook plugin webRegister", () => {
 				resolveOpenFile = resolve;
 			});
 		const { system, notebookSdk, panel } = makeSystem(createFakeChatRightPanel(), openFile);
+		const openContributedTab = vi.spyOn(panel, "openContributedTab");
+		const updateTab = vi.spyOn(panel, "updateTab");
 		webRegister(notebookSdk);
 		const notebookViewer = system
 			.getSdk("files")
@@ -290,6 +292,11 @@ describe("notebook plugin webRegister", () => {
 				},
 			}),
 		]);
+		expect(openContributedTab).toHaveBeenCalledWith(
+			"chat-1",
+			expect.anything(),
+			expect.objectContaining({ transient: true }),
+		);
 
 		resolveOpenFile({
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
@@ -313,6 +320,11 @@ describe("notebook plugin webRegister", () => {
 				},
 			}),
 		]);
+		expect(updateTab).toHaveBeenCalledWith(
+			"chat-1",
+			"nb-1",
+			expect.objectContaining({ transient: false }),
+		);
 	});
 
 	it("normalizes legacy notebook instance ids inside the notebook plugin", () => {

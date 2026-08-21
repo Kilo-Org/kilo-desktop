@@ -46,6 +46,7 @@ export type ChatRightPanelCapability = {
 			readonly instanceId?: string;
 			readonly title?: string;
 			readonly metadata?: Readonly<Record<string, string>>;
+			readonly transient?: boolean;
 		},
 	): { readonly instanceId: string; readonly title: string };
 	updateTab(
@@ -56,6 +57,7 @@ export type ChatRightPanelCapability = {
 			readonly iconKey?: string;
 			readonly metadata?: Readonly<Record<string, string>>;
 			readonly dirty?: boolean;
+			readonly transient?: boolean;
 		},
 	): void;
 	registerTabLifecycle?(
@@ -204,6 +206,7 @@ async function openNotebookFileWithPanel(
 			...(existing ? { instanceId: existing.instanceId } : {}),
 			title: existing?.title ?? basename(notebookPath),
 			metadata: openingMetadata,
+			transient: true,
 		},
 	);
 
@@ -216,6 +219,7 @@ async function openNotebookFileWithPanel(
 		const message =
 			error instanceof Error ? error.message : "The notebook file could not be opened.";
 		panel.updateTab(sessionId, tab.instanceId, {
+			transient: false,
 			metadata: {
 				[NOTEBOOK_PATH_METADATA_KEY]: notebookPath,
 				[NOTEBOOK_OPEN_STATE_METADATA_KEY]: "error",
@@ -229,6 +233,7 @@ async function openNotebookFileWithPanel(
 
 	panel.updateTab(sessionId, tab.instanceId, {
 		title: openedFile.title,
+		transient: false,
 		metadata: {
 			[NOTEBOOK_PATH_METADATA_KEY]: openedFile.path,
 			[NOTEBOOK_ID_METADATA_KEY]: openedFile.notebookId,

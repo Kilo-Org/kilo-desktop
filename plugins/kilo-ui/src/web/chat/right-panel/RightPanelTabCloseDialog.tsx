@@ -77,8 +77,7 @@ export function RightPanelTabCloseDialog({
 						{lifecycle?.save ? "Save" : "Discard"} changes to {tab.title}?
 					</AlertDialogTitle>
 					<AlertDialogDescription>
-						Your changes will remain recoverable if you close the app, but closing this tab will
-						discard them.
+						Closing this tab will discard your unsaved changes.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				{error ? (
@@ -90,29 +89,31 @@ export function RightPanelTabCloseDialog({
 						{error}
 					</p>
 				) : null}
-				<AlertDialogFooter>
+				<AlertDialogFooter className="sm:justify-between">
 					<AlertDialogCancel disabled={pending !== null} data-qa-id="chat-right-panel-close-cancel">
 						Cancel
 					</AlertDialogCancel>
-					<AlertDialogAction
-						type="button"
-						variant="destructive"
-						disabled={pending !== null}
-						data-qa-id="chat-right-panel-close-discard"
-						onClick={() => void discard()}
-					>
-						{pending === "discard" ? "Discarding…" : "Discard"}
-					</AlertDialogAction>
-					{lifecycle?.save ? (
+					<div className="flex items-center gap-2">
 						<AlertDialogAction
 							type="button"
+							variant="destructive"
 							disabled={pending !== null}
-							data-qa-id="chat-right-panel-close-save"
-							onClick={() => void save()}
+							data-qa-id="chat-right-panel-close-discard"
+							onClick={() => void discard()}
 						>
-							{pending === "save" ? "Saving…" : "Save"}
+							{pending === "discard" ? "Discarding…" : "Discard"}
 						</AlertDialogAction>
-					) : null}
+						{lifecycle?.save ? (
+							<AlertDialogAction
+								type="button"
+								disabled={pending !== null}
+								data-qa-id="chat-right-panel-close-save"
+								onClick={() => void save()}
+							>
+								{pending === "save" ? "Saving…" : "Save"}
+							</AlertDialogAction>
+						) : null}
+					</div>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>

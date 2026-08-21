@@ -50,6 +50,8 @@ export interface RightPanelTab {
 	metadata?: Readonly<Record<string, string>>;
 	/** Transient unsaved-work state; intentionally excluded from persisted tab layout. */
 	dirty?: boolean;
+	/** Runtime-only placeholder state; transient tabs are omitted from persisted layout. */
+	transient?: boolean;
 }
 
 export interface CreateContributedTabOptions {
@@ -57,6 +59,7 @@ export interface CreateContributedTabOptions {
 	readonly title?: string;
 	readonly iconKey?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
+	readonly transient?: boolean;
 }
 
 export interface RightPanelTabUpdate {
@@ -64,6 +67,7 @@ export interface RightPanelTabUpdate {
 	readonly iconKey?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
 	readonly dirty?: boolean;
+	readonly transient?: boolean;
 }
 
 const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
@@ -148,6 +152,7 @@ export function createContributedTab(
 		ordinal,
 		...(options.iconKey ? { iconKey: options.iconKey } : {}),
 		...(options.metadata ? { metadata: { ...options.metadata } } : {}),
+		...(options.transient ? { transient: true } : {}),
 	};
 }
 
@@ -169,7 +174,8 @@ export function isRightPanelTab(value: unknown): value is RightPanelTab {
 		typeof tab.title === "string" &&
 		(tab.ordinal === null || (typeof tab.ordinal === "number" && Number.isInteger(tab.ordinal))) &&
 		(tab.iconKey === undefined || typeof tab.iconKey === "string") &&
-		(tab.metadata === undefined || isTabMetadata(tab.metadata))
+		(tab.metadata === undefined || isTabMetadata(tab.metadata)) &&
+		(tab.transient === undefined || typeof tab.transient === "boolean")
 	);
 }
 

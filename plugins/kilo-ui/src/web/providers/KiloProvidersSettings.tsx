@@ -77,7 +77,7 @@ export function KiloProvidersSettings() {
 	return (
 		<PageShell
 			state={catalogLoading ? "loading" : "ready"}
-			subtitle="Connect AI providers for Kilo chat. Toggle off to hide from the model selector without removing credentials."
+			subtitle="Connect AI providers for Kilo chat. Temporarily disable with the toggle without removing credentials."
 			action={
 				<Button
 					type="button"
@@ -486,15 +486,11 @@ function EnabledSwitch({
 					checked={enabled}
 					disabled={pending}
 					onCheckedChange={onEnabledChange}
-					aria-label={
-						enabled ? `Hide ${name} from model selector` : `Show ${name} in model selector`
-					}
+					aria-label={`Enable/Disable ${name}`}
 					data-qa-id={qaId}
 				/>
 			</TooltipTrigger>
-			<TooltipContent side="left">
-				{enabled ? "Hide from model selector" : "Show in model selector"}
-			</TooltipContent>
+			<TooltipContent side="left">Enable/Disable</TooltipContent>
 		</Tooltip>
 	);
 }

@@ -288,7 +288,7 @@ export function CustomProviderDialog({
 					<DialogHeader>
 						<DialogTitle>{editing ? "Edit AI Provider" : "Custom AI Provider"}</DialogTitle>
 						<DialogDescription>
-							Configure a custom AI provider. See the{" "}
+							Configure a custom AI provider.{" "}
 							<a
 								href={CUSTOM_PROVIDER_DOCS_URL}
 								onClick={(event) => {
@@ -296,7 +296,7 @@ export function CustomProviderDialog({
 									void sdk.shell.openExternal(CUSTOM_PROVIDER_DOCS_URL).catch(() => undefined);
 								}}
 							>
-								AI provider config docs
+								See the documentation
 							</a>
 							.
 						</DialogDescription>

@@ -213,7 +213,7 @@ export function KiloProvidersSettings() {
 			)}
 
 			<ProviderConnectDialog
-				key={connectProvider?.id ?? "closed"}
+				key={`connect:${connectProvider?.id ?? "closed"}`}
 				open={connectProvider !== null}
 				providerName={connectProvider?.name ?? ""}
 				pending={providers.pending}
@@ -231,7 +231,7 @@ export function KiloProvidersSettings() {
 			/>
 
 			<CustomProviderDialog
-				key={customOpen ? (customExisting?.providerID ?? "new") : "closed"}
+				key={`custom:${customOpen ? (customExisting?.providerID ?? "new") : "closed"}`}
 				open={customOpen}
 				existing={customExisting}
 				blockedIds={blockedIds}

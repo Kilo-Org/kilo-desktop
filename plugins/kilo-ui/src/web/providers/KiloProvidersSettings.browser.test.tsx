@@ -197,6 +197,22 @@ describe("KiloProvidersSettings", () => {
 		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(2));
 	});
 
+	it("does not reuse the same React key for closed connect and custom dialogs", async () => {
+		mockCatalog();
+		const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		try {
+			const { screen } = renderPage({ isPending: false, isError: false, connection });
+			await expect.element(screen.getByTestId("kilo-providers-page")).toBeVisible();
+			expect(
+				error.mock.calls.some((args) =>
+					args.some((arg) => typeof arg === "string" && arg.includes("the same key")),
+				),
+			).toBe(false);
+		} finally {
+			error.mockRestore();
+		}
+	});
+
 	it("lists the expandable Kilo Gateway card and popular add targets", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });

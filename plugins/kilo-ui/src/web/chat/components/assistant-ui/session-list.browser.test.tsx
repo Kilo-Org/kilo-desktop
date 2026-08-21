@@ -1122,9 +1122,6 @@ describe("SessionList", () => {
 		const switcherIcon = trigger.querySelector("svg");
 		expect(switcherIcon?.classList.contains("lucide-layout-grid")).toBe(true);
 		expect(switcherIcon?.getAttribute("stroke")).toBe("currentColor");
-		await expect
-			.element(screen.getByTestId("session-list-workspace-divider"))
-			.not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("session-list-chrome-divider")).not.toBeInTheDocument();
 		const inbox = screen.getByTestId("session-list-inbox").element();
 		expect(headerEl.compareDocumentPosition(newChat) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(

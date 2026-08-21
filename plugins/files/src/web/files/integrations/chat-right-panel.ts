@@ -1,5 +1,15 @@
 export interface ChatRightPanelCapability {
 	getActiveTabId(sessionId: string): string | null;
+	openContributedTab(
+		sessionId: string,
+		definition: { readonly id: string; readonly title: string },
+		options: {
+			readonly instanceId: string;
+			readonly title: string;
+			readonly iconKey?: string;
+			readonly metadata: Readonly<Record<string, string>>;
+		},
+	): unknown;
 	updateTab(
 		sessionId: string,
 		instanceId: string,

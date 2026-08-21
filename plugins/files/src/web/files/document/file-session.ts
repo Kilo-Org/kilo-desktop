@@ -1,6 +1,6 @@
-import { useCallback, useReducer } from "react";
+import { useCallback, useReducer, useRef } from "react";
 
-import type { FileReadResult } from "../contracts/schemas.js";
+import type { FileReadResult, FilesServiceContract } from "../../../contracts/schemas.js";
 
 interface FileDocumentState {
 	readonly selectedPath: string | null;
@@ -26,6 +26,12 @@ export interface InitialFileDocument {
 	readonly revealLine?: number;
 	readonly revealColumn?: number;
 }
+
+export interface FileOpenRequest extends InitialFileDocument {
+	readonly forceReload?: boolean;
+}
+
+export type FileOpenOutcome = "opened" | "failed" | "superseded";
 
 type FileDocumentAction =
 	| {
@@ -162,35 +168,95 @@ function fileDocumentReducer(
 	}
 }
 
-export function useFileDocument(initialRequest?: InitialFileDocument) {
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : "The file operation failed.";
+}
+
+/**
+ * Owns one file tab's document lifecycle. Open requests are latest-wins, edits
+ * remain dirty when they race a save, and revision conflicts stay explicit
+ * until the caller chooses reload or overwrite. FilesView consumes commands
+ * and observable state without coordinating reducer transitions itself.
+ */
+export function useFileSession({
+	initialRequest,
+	read,
+	write,
+}: {
+	readonly initialRequest?: InitialFileDocument;
+	readonly read: FilesServiceContract["read"];
+	readonly write: FilesServiceContract["write"];
+}) {
 	const [state, dispatch] = useReducer(fileDocumentReducer, initialFileDocument(initialRequest));
-	const startOpening = useCallback((relativePath: string, line?: number, column?: number) => {
-		dispatch({
-			type: "open-started",
+	const openRequestRef = useRef(0);
+	const open = useCallback(
+		async ({
+			workspaceDirectory,
 			relativePath,
-			...(line !== undefined ? { line } : {}),
-			...(column !== undefined ? { column } : {}),
-		});
-	}, []);
-	const finishOpening = useCallback(
-		(file: FileReadResult, workspaceDirectory: string, reload = false) => {
-			dispatch({ type: "open-succeeded", file, workspaceDirectory, reload });
+			revealLine,
+			revealColumn,
+			forceReload = false,
+		}: FileOpenRequest): Promise<FileOpenOutcome> => {
+			const request = ++openRequestRef.current;
+			dispatch({
+				type: "open-started",
+				relativePath,
+				...(revealLine !== undefined ? { line: revealLine } : {}),
+				...(revealColumn !== undefined ? { column: revealColumn } : {}),
+			});
+			try {
+				const file = await read({ workspaceDirectory, relativePath });
+				if (request !== openRequestRef.current) return "superseded";
+				dispatch({
+					type: "open-succeeded",
+					file,
+					workspaceDirectory,
+					reload: forceReload,
+				});
+				return "opened";
+			} catch (error) {
+				if (request !== openRequestRef.current) return "superseded";
+				dispatch({ type: "open-failed", message: errorMessage(error) });
+				return "failed";
+			}
 		},
-		[],
+		[read],
 	);
-	const failOpening = useCallback((message: string) => {
-		dispatch({ type: "open-failed", message });
-	}, []);
 	const setDraft = useCallback((contents: string) => {
 		dispatch({ type: "draft-changed", contents });
 	}, []);
-	const startSaving = useCallback(() => dispatch({ type: "save-started" }), []);
-	const finishSaving = useCallback((contents: string, revision: string) => {
-		dispatch({ type: "save-succeeded", contents, revision });
-	}, []);
-	const failSaving = useCallback((message: string) => {
-		dispatch({ type: "save-failed", message });
-	}, []);
+	const save = useCallback(
+		async (contents: string, force = false): Promise<boolean> => {
+			if (
+				!state.workspaceDirectory ||
+				!state.selectedPath ||
+				!state.revision ||
+				state.file?.kind !== "text"
+			) {
+				return true;
+			}
+			dispatch({ type: "save-started" });
+			try {
+				const result = await write({
+					workspaceDirectory: state.workspaceDirectory,
+					relativePath: state.selectedPath,
+					contents,
+					expectedRevision: state.revision,
+					...(force ? { force: true } : {}),
+				});
+				if (result.status === "conflict") {
+					dispatch({ type: "conflict-changed", conflict: true });
+					return false;
+				}
+				dispatch({ type: "save-succeeded", contents, revision: result.revision });
+				return true;
+			} catch (error) {
+				dispatch({ type: "save-failed", message: errorMessage(error) });
+				return false;
+			}
+		},
+		[state.file?.kind, state.revision, state.selectedPath, state.workspaceDirectory, write],
+	);
 	const setConflict = useCallback((conflict: boolean) => {
 		dispatch({ type: "conflict-changed", conflict });
 	}, []);
@@ -198,7 +264,10 @@ export function useFileDocument(initialRequest?: InitialFileDocument) {
 	const setRenderMarkdown = useCallback((render: boolean) => {
 		dispatch({ type: "markdown-changed", render });
 	}, []);
-	const reset = useCallback(() => dispatch({ type: "reset" }), []);
+	const reset = useCallback(() => {
+		openRequestRef.current += 1;
+		dispatch({ type: "reset" });
+	}, []);
 
 	return {
 		...state,
@@ -206,13 +275,9 @@ export function useFileDocument(initialRequest?: InitialFileDocument) {
 			state.file?.kind === "text" &&
 			Boolean(state.file.revision) &&
 			state.draft !== state.originalContents,
-		startOpening,
-		finishOpening,
-		failOpening,
+		open,
+		save,
 		setDraft,
-		startSaving,
-		finishSaving,
-		failSaving,
 		setConflict,
 		discard,
 		setRenderMarkdown,

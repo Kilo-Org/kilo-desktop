@@ -22,7 +22,7 @@ import {
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
-import { FILE_ICONS } from "./file-icons.js";
+import { FILE_ICONS } from "../file-icons/file-icons.js";
 
 export interface FilesWorkspaceFolder {
 	readonly path: string;

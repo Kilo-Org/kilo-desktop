@@ -2,7 +2,7 @@ import { type FC, type SVGProps, useId } from "react";
 
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
-import type { ExternalEditorId } from "../contracts/schemas.js";
+import type { ExternalEditorId } from "../../../contracts/schemas.js";
 
 export type ExternalEditorIcon = FC<SVGProps<SVGSVGElement>>;
 

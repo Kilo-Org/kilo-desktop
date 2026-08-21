@@ -7,7 +7,7 @@ import { globbyStream } from "globby";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 
-import type { FileReadResult } from "../contracts/schemas.js";
+import type { FileReadResult } from "../../contracts/schemas.js";
 
 const DEFAULT_SCAN_LIMIT = 25_000;
 const DEFAULT_TEXT_LIMIT_BYTES = 1024 * 1024;

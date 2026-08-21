@@ -1,7 +1,7 @@
 import { MarkdownContent } from "@anaconda-agentic-desktop/ui/components/markdown-content";
 import { useEffect, useMemo, useState } from "react";
 
-import type { FileReadResult, FilesServiceContract } from "../contracts/schemas.js";
+import type { FileReadResult, FilesServiceContract } from "../../../contracts/schemas.js";
 import { createFilesPreviewMarkdownExtension } from "./FilesPreviewMarkdownExtension.js";
 
 function resolveRelativePath(currentPath: string, target: string): string | null {

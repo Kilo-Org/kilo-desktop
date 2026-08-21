@@ -4,7 +4,7 @@ import which from "which";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { EXTERNAL_EDITORS, type ExternalEditorId } from "../contracts/schemas.js";
+import { EXTERNAL_EDITORS, type ExternalEditorId } from "../../contracts/schemas.js";
 
 export interface ExternalEditorServiceOptions {
 	readonly resolveCommand?: (

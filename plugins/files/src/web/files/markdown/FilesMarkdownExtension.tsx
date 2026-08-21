@@ -3,14 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import type { MarkdownRendererExtensionFactory } from "@anaconda-agentic-desktop/ui/components/markdown-extension";
 
-import { type FilesServiceContract } from "../contracts/schemas.js";
+import { type FilesServiceContract } from "../../../contracts/schemas.js";
 import { FileLinkChip } from "./FileLinkChip.js";
 import {
 	createFileMarkdownExtension,
 	type FileMarkdownLinkProps,
 	type UnresolvedInlineCodeProps,
 } from "./file-markdown-extension.js";
-import type { FilesCapabilities } from "./index.js";
+import type { FilesCapabilities } from "../integrations/file-viewer.js";
 import {
 	resolveMarkdownFileLink,
 	type MarkdownFileLinkTarget,

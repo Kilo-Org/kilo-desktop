@@ -3,7 +3,7 @@ import type { ComponentProps } from "react";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import type { MarkdownFileLinkTarget } from "./markdown-file-links.js";
-import { PierreFileIcon } from "./PierreFileIcon.js";
+import { PierreFileIcon } from "../file-icons/PierreFileIcon.js";
 
 export type FileLinkChipProps = ComponentProps<"a"> & {
 	readonly fileTarget: MarkdownFileLinkTarget;

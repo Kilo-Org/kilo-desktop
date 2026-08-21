@@ -1,6 +1,5 @@
 import {
 	AlertTriangleIcon,
-	ChevronDownIcon,
 	Code2Icon,
 	EyeIcon,
 	FolderTreeIcon,
@@ -23,7 +22,6 @@ import {
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { ButtonGroup } from "@anaconda-agentic-desktop/ui/components/button-group";
 import {
 	Dialog,
 	DialogContent,
@@ -41,38 +39,28 @@ import {
 	EmptyTitle,
 } from "@anaconda-agentic-desktop/ui/components/empty";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuGroup,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
+import { type FileReadResult, type FilesServiceContract } from "../../contracts/schemas.js";
+import { FileEditor, FilesEditProvider } from "./document/FileEditor.js";
+import { useFileSession } from "./document/file-session.js";
+import { FilesTree, type FilesWorkspaceFolder } from "./explorer/FilesTree.js";
 import {
-	EXTERNAL_EDITORS,
-	type ExternalEditorId,
-	type FileReadResult,
-	type FilesServiceContract,
-} from "../contracts/schemas.js";
-import { FileEditor, FilesEditProvider } from "./FileEditor.js";
-import { EXTERNAL_EDITOR_ICONS } from "./ExternalEditorIcons.js";
-import { FilesTree, type FilesWorkspaceFolder } from "./FilesTree.js";
-import { MarkdownPreview } from "./MarkdownPreview.js";
-import type { ChatRightPanelCapabilities } from "./files-capabilities.js";
-import { isNotebookFile, openNotebookFile } from "./notebook-files.js";
-import { useFileDocument } from "./use-file-document.js";
+	ExternalEditorActions,
+	useExternalEditorActions,
+} from "./external-editors/ExternalEditorActions.js";
+import type { ChatRightPanelCapabilities } from "./integrations/chat-right-panel.js";
+import { isNotebookFile, openNotebookFile } from "./integrations/notebook-viewer.js";
+import { MarkdownPreview } from "./markdown/MarkdownPreview.js";
 
 import "./files.css";
 
 const EXPLORER_STORAGE_KEY = "files.explorerOpen";
 const EXPLORER_WIDTH_STORAGE_KEY = "files.explorerWidth";
-const PREFERRED_EXTERNAL_EDITOR_STORAGE_KEY = "files.preferredExternalEditor";
 const EXPLORER_MIN_WIDTH = 176;
 const VIEWER_MIN_WIDTH = 176;
 const NUMBERED_FILES_TAB_TITLE = /^Files \d+$/u;
@@ -119,19 +107,6 @@ function persistExplorerWidth(width: number): void {
 	} catch {
 		// Persistence failure does not block resizing in memory.
 	}
-}
-
-function preferredExternalEditor(
-	availableEditors: readonly ExternalEditorId[],
-): ExternalEditorId | null {
-	try {
-		const stored = localStorage.getItem(PREFERRED_EXTERNAL_EDITOR_STORAGE_KEY);
-		const storedEditor = EXTERNAL_EDITORS.find(({ id }) => id === stored)?.id;
-		if (storedEditor && availableEditors.includes(storedEditor)) return storedEditor;
-	} catch {
-		// An unavailable storage backend should not prevent launching an editor.
-	}
-	return EXTERNAL_EDITORS.find(({ id }) => availableEditors.includes(id))?.id ?? null;
 }
 
 function isMarkdown(relativePath: string): boolean {
@@ -214,12 +189,8 @@ export function FilesView({
 					...(initialRevealColumn !== undefined ? { revealColumn: initialRevealColumn } : {}),
 				}
 			: undefined;
-	const [externalEditorActionError, setExternalEditorActionError] = useState<string | null>(null);
 	const [notebookOpenError, setNotebookOpenError] = useState<string | null>(null);
 	const [notebookOpening, setNotebookOpening] = useState(false);
-	const [preferredEditorOverride, setPreferredEditorOverride] = useState<ExternalEditorId | null>(
-		null,
-	);
 	const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
 	const [explorerWidth, setExplorerWidth] = useState<number | null>(initialExplorerWidth);
 	const [deferWorkspaceList, setDeferWorkspaceList] = useState(
@@ -231,6 +202,22 @@ export function FilesView({
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
+	const editorRef = useRef<Editor<undefined> | null>(null);
+	const readFile = useCallback<FilesServiceContract["read"]>(
+		async ({ workspaceDirectory: requestedDirectory, relativePath }) =>
+			isNotebookFile(relativePath)
+				? ({
+						kind: "unsupported",
+						reason: "preview-deferred",
+						byteLength: 0,
+					} satisfies FileReadResult)
+				: sdk.client.read({ workspaceDirectory: requestedDirectory, relativePath }),
+		[sdk],
+	);
+	const writeFile = useCallback<FilesServiceContract["write"]>(
+		(args) => sdk.client.write(args),
+		[sdk],
+	);
 	const {
 		selectedPath,
 		workspaceDirectory: documentWorkspaceDirectory,
@@ -240,29 +227,33 @@ export function FilesView({
 		revealLine,
 		revealColumn,
 		draft,
-		revision,
 		editorRevision,
 		reloadVersion,
 		renderMarkdown,
 		conflict,
 		saving,
 		dirty,
-		startOpening,
-		finishOpening,
-		failOpening,
+		open: openDocument,
+		save: saveDocument,
 		setDraft,
-		startSaving,
-		finishSaving,
-		failSaving,
 		setConflict,
 		discard,
 		setRenderMarkdown,
 		reset: resetDocument,
-	} = useFileDocument(initialFileRequest);
-	const editorRef = useRef<Editor<undefined> | null>(null);
+	} = useFileSession({
+		...(initialFileRequest ? { initialRequest: initialFileRequest } : {}),
+		read: readFile,
+		write: writeFile,
+	});
+	const externalEditorWorkspaceDirectory = documentWorkspaceDirectory ?? activeWorkspaceDirectory;
+	const externalEditors = useExternalEditorActions({
+		...(externalEditorWorkspaceDirectory
+			? { workspaceDirectory: externalEditorWorkspaceDirectory }
+			: {}),
+		relativePath: selectedPath,
+	});
 	const [attachedEditor, setAttachedEditor] = useState<Editor<undefined> | null>(null);
 	const handledFileRequestRef = useRef<string | null>(null);
-	const openRequestRef = useRef(0);
 	const splitPaneRef = useRef<HTMLDivElement>(null);
 	const explorerPaneRef = useRef<HTMLElement>(null);
 	const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -296,21 +287,14 @@ export function FilesView({
 			} = {},
 		) => {
 			if (!requestedDirectory) return;
-			const request = ++openRequestRef.current;
-			startOpening(relativePath, line, column);
-			try {
-				const result = isNotebookFile(relativePath)
-					? ({
-							kind: "unsupported",
-							reason: "preview-deferred",
-							byteLength: 0,
-						} satisfies FileReadResult)
-					: await sdk.client.read({
-							workspaceDirectory: requestedDirectory,
-							relativePath,
-						});
-				if (request !== openRequestRef.current) return;
-				finishOpening(result, requestedDirectory, forceReload);
+			const outcome = await openDocument({
+				workspaceDirectory: requestedDirectory,
+				relativePath,
+				...(line !== undefined ? { revealLine: line } : {}),
+				...(column !== undefined ? { revealColumn: column } : {}),
+				...(forceReload ? { forceReload: true } : {}),
+			});
+			if (outcome === "opened") {
 				const nextMetadata = {
 					workspaceDirectory: requestedDirectory,
 					relativePath,
@@ -328,23 +312,10 @@ export function FilesView({
 					iconKey: relativePath,
 					metadata: nextMetadata,
 				});
-			} catch (error) {
-				if (request !== openRequestRef.current) return;
-				failOpening(errorMessage(error));
-			} finally {
-				if (request === openRequestRef.current) setDeferWorkspaceList(false);
 			}
+			if (outcome !== "superseded") setDeferWorkspaceList(false);
 		},
-		[
-			activeWorkspaceDirectory,
-			failOpening,
-			finishOpening,
-			instanceId,
-			panel,
-			sdk,
-			sessionId,
-			startOpening,
-		],
+		[activeWorkspaceDirectory, instanceId, openDocument, panel, sessionId],
 	);
 
 	const discardCurrent = useCallback(async () => {
@@ -353,41 +324,10 @@ export function FilesView({
 
 	const saveCurrent = useCallback(
 		async (force = false): Promise<boolean> => {
-			if (!documentWorkspaceDirectory || !selectedPath || !revision || file?.kind !== "text")
-				return true;
 			const currentDraft = editorRef.current?.getText() ?? draft;
-			startSaving();
-			try {
-				const result = await sdk.client.write({
-					workspaceDirectory: documentWorkspaceDirectory,
-					relativePath: selectedPath,
-					contents: currentDraft,
-					expectedRevision: revision,
-					...(force ? { force: true } : {}),
-				});
-				if (result.status === "conflict") {
-					setConflict(true);
-					return false;
-				}
-				finishSaving(currentDraft, result.revision);
-				return true;
-			} catch (error) {
-				failSaving(errorMessage(error));
-				return false;
-			}
+			return saveDocument(currentDraft, force);
 		},
-		[
-			draft,
-			documentWorkspaceDirectory,
-			failSaving,
-			file?.kind,
-			finishSaving,
-			revision,
-			sdk,
-			selectedPath,
-			setConflict,
-			startSaving,
-		],
+		[draft, saveDocument],
 	);
 
 	const requestAction = useCallback(
@@ -413,7 +353,6 @@ export function FilesView({
 
 	const selectWorkspaceFolder = useCallback(
 		(directory: string) => {
-			openRequestRef.current += 1;
 			setChosenWorkspaceDirectory(directory);
 			resetDocument();
 		},
@@ -530,19 +469,6 @@ export function FilesView({
 		showExplorer &&
 		(deferWorkspaceList || workspaceListQuery.isPending);
 	const listError = workspaceListQuery.error ? errorMessage(workspaceListQuery.error) : null;
-	const externalEditorsQuery = useQuery({
-		queryKey: [sdk.featureId, "external-editors"],
-		queryFn: () => sdk.client.listExternalEditors(),
-		staleTime: Number.POSITIVE_INFINITY,
-		gcTime: 5 * 60_000,
-	});
-	const availableExternalEditors = externalEditorsQuery.data?.editors ?? null;
-	const preferredEditor =
-		preferredEditorOverride ??
-		(availableExternalEditors ? preferredExternalEditor(availableExternalEditors) : null);
-	const externalEditorError =
-		externalEditorActionError ??
-		(externalEditorsQuery.error ? errorMessage(externalEditorsQuery.error) : null);
 
 	useEffect(() => {
 		if (NUMBERED_FILES_TAB_TITLE.test(title)) {
@@ -600,28 +526,6 @@ export function FilesView({
 		() => (file?.kind === "image" ? `data:${file.mimeType};base64,${file.base64}` : null),
 		[file],
 	);
-	const openInExternalEditor = useCallback(
-		async (editor: ExternalEditorId) => {
-			if (!documentWorkspaceDirectory || !selectedPath) return;
-			setExternalEditorActionError(null);
-			try {
-				await sdk.client.openExternalEditor({
-					workspaceDirectory: documentWorkspaceDirectory,
-					relativePath: selectedPath,
-					editor,
-				});
-				try {
-					localStorage.setItem(PREFERRED_EXTERNAL_EDITOR_STORAGE_KEY, editor);
-				} catch {
-					// Launch success does not depend on remembering the preference.
-				}
-				setPreferredEditorOverride(editor);
-			} catch (error) {
-				setExternalEditorActionError(errorMessage(error));
-			}
-		},
-		[documentWorkspaceDirectory, sdk, selectedPath],
-	);
 	const openInNotebookPanel = useCallback(async () => {
 		if (!documentWorkspaceDirectory || !selectedPath) return;
 		setNotebookOpenError(null);
@@ -660,10 +564,6 @@ export function FilesView({
 		);
 	}
 
-	const PreferredEditorIcon = preferredEditor ? EXTERNAL_EDITOR_ICONS[preferredEditor] : null;
-	const openExternalEditorLabel = preferredEditor
-		? `Open file in ${EXTERNAL_EDITORS.find(({ id }) => id === preferredEditor)?.label ?? "preferred editor"}`
-		: "Open file in preferred editor";
 	const markdownToggleLabel = renderMarkdown ? "Show Markdown source" : "Show rendered Markdown";
 	const explorerToggleLabel = showExplorer ? "Hide file list" : "Show file list";
 	return (
@@ -711,73 +611,7 @@ export function FilesView({
 								{saving ? "Saving…" : "Save"}
 							</Button>
 						) : null}
-						<ButtonGroup aria-label="Open in external editor">
-							<TooltipProvider>
-								<Tooltip disableHoverablePopup>
-									<TooltipTrigger
-										render={
-											<Button
-												aria-label={openExternalEditorLabel}
-												data-qa-id="files-open-external-editor"
-												disabled={!preferredEditor}
-												onClick={() => {
-													if (preferredEditor) void openInExternalEditor(preferredEditor);
-												}}
-												size="sm"
-												variant="outline"
-											/>
-										}
-									>
-										{PreferredEditorIcon ? (
-											<PreferredEditorIcon
-												aria-hidden="true"
-												data-editor-icon={preferredEditor ?? undefined}
-												data-icon="inline-start"
-											/>
-										) : null}
-										<span className="sr-only">Open</span>
-									</TooltipTrigger>
-									<TooltipContent side="bottom">{openExternalEditorLabel}</TooltipContent>
-								</Tooltip>
-							</TooltipProvider>
-							<DropdownMenu>
-								<DropdownMenuTrigger
-									render={
-										<Button
-											aria-label="Choose external editor"
-											data-qa-id="files-external-editor-menu"
-											disabled={availableExternalEditors === null}
-											size="icon-sm"
-											variant="outline"
-										/>
-									}
-								>
-									<ChevronDownIcon aria-hidden="true" />
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end" className="min-w-48">
-									<DropdownMenuGroup>
-										{availableExternalEditors?.length === 0 ? (
-											<DropdownMenuItem disabled>No installed editors found</DropdownMenuItem>
-										) : null}
-										{EXTERNAL_EDITORS.filter(({ id }) =>
-											availableExternalEditors?.includes(id),
-										).map(({ id, label }) => {
-											const EditorIcon = EXTERNAL_EDITOR_ICONS[id];
-											return (
-												<DropdownMenuItem
-													key={id}
-													data-qa-id={`files-external-editor-${id}`}
-													onClick={() => void openInExternalEditor(id)}
-												>
-													<EditorIcon aria-hidden="true" data-editor-icon={id} />
-													{label}
-												</DropdownMenuItem>
-											);
-										})}
-									</DropdownMenuGroup>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</ButtonGroup>
+						<ExternalEditorActions model={externalEditors} />
 						{(fileLoading || file?.kind === "text") && isMarkdown(selectedPath) ? (
 							<TooltipProvider>
 								<Tooltip disableHoverablePopup>
@@ -839,12 +673,12 @@ export function FilesView({
 					</div>
 				) : null}
 
-				{externalEditorError ? (
+				{externalEditors.error ? (
 					<div
 						className="text-destructive border-b px-3 py-1.5 text-[11px]"
 						data-qa-id="files-external-editor-error"
 					>
-						{externalEditorError}
+						{externalEditors.error}
 					</div>
 				) : null}
 

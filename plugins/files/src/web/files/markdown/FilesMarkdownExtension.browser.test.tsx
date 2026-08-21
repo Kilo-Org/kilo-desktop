@@ -11,7 +11,7 @@ import {
 	MarkdownContent,
 } from "@anaconda-agentic-desktop/ui/components/markdown-content";
 
-import { filesContract } from "../contracts/schemas.js";
+import { filesContract } from "../../../contracts/schemas.js";
 import { FilesMarkdownExtension } from "./FilesMarkdownExtension.js";
 
 afterEach(cleanup);

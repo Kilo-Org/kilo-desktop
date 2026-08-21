@@ -1,24 +1,13 @@
-import { realpath } from "node:fs/promises";
-
-import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import {
 	filesContract,
 	type ExternalEditorId,
 	type FilesServiceContract,
 } from "../contracts/schemas.js";
-import { FilesService } from "./FilesService.js";
-import { ExternalEditorService } from "./ExternalEditorService.js";
-
-interface WorkspaceCapabilityLike extends Record<string, unknown> {
-	workspaceService: {
-		list(): Promise<readonly { folders: readonly { path: string; isPrimary: boolean }[] }[]>;
-	};
-}
-
-function comparablePath(value: string): string {
-	return process.platform === "win32" ? value.toLocaleLowerCase() : value;
-}
+import { ExternalEditorService } from "./external-editors/ExternalEditorService.js";
+import { createKiloWorkspaceAuthorization } from "./integrations/kilo-workspace-authorization.js";
+import { FilesService } from "./workspace-files/FilesService.js";
 
 export interface ExternalEditorLauncher {
 	listAvailable(): Promise<readonly ExternalEditorId[]>;
@@ -32,27 +21,7 @@ export function mainRegister(
 	}: { editorLauncher?: ExternalEditorLauncher } = {},
 ): void {
 	const service = new FilesService({
-		authorize: async (workspaceDirectory) => {
-			const capability = mainSdk.plugins.get<WorkspaceCapabilityLike>("kilo-ui")?.workspaceService;
-			if (!capability) {
-				throw new FeatureError("Kilo workspace service is unavailable.", "BUSINESS");
-			}
-			const workspaces = await capability.list();
-			const registeredPaths = await Promise.all(
-				workspaces
-					.flatMap(({ folders }) => folders)
-					.map(async ({ path }) => {
-						try {
-							return comparablePath(await realpath(path));
-						} catch {
-							return null;
-						}
-					}),
-			);
-			if (!registeredPaths.includes(comparablePath(workspaceDirectory))) {
-				throw new FeatureError("Workspace directory is not registered.", "VALIDATION");
-			}
-		},
+		authorize: createKiloWorkspaceAuthorization(mainSdk),
 	});
 
 	const handlers: FilesServiceContract = {

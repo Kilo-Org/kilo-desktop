@@ -1,6 +1,9 @@
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { FILE_EXISTENCE_BATCH_LIMIT, type FilesServiceContract } from "../contracts/schemas.js";
+import {
+	FILE_EXISTENCE_BATCH_LIMIT,
+	type FilesServiceContract,
+} from "../../../contracts/schemas.js";
 
 interface PendingCheck {
 	readonly resolve: (exists: boolean) => void;

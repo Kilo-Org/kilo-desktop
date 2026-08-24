@@ -1,37 +1,12 @@
 import { builtinModules } from "node:module";
+import path from "node:path";
 import { readFileSync } from "node:fs";
 
 import { type Plugin } from "vite";
 
-export interface ExternalizeDepsOptions {
-	/**
-	 * Absolute path to the package.json whose dependencies become external.
-	 *
-	 * @default `${process.cwd()}/package.json`
-	 */
-	packageJsonPath?: string;
-	/**
-	 * Externalize Node built-ins (with and without the `node:` prefix).
-	 *
-	 * @default true
-	 */
-	nodeBuiltins?: boolean;
-	/**
-	 * Extra externals not present in package.json (e.g. `electron`, or a
-	 * transitive dependency pulled in by a bundled workspace package).
-	 */
-	include?: Array<string | RegExp>;
-	/**
-	 * Dependencies to keep bundled (e.g. workspace-internal packages that are
-	 * `workspace:*` / `link:` and not resolvable runtime modules on disk).
-	 */
+export interface ExternalOptions {
 	exclude?: Array<string | RegExp>;
-}
-
-interface DependencySections {
-	dependencies?: Record<string, string>;
-	optionalDependencies?: Record<string, string>;
-	peerDependencies?: Record<string, string>;
+	include?: Array<string | RegExp>;
 }
 
 function matches(matchers: Array<string | RegExp>, id: string): boolean {
@@ -41,41 +16,53 @@ function matches(matchers: Array<string | RegExp>, id: string): boolean {
 }
 
 /**
- * Automatically externalize a package.json's dependencies.
+ * Automatically externalize a package.json's `dependencies`.
  *
- * Sets `build.rollupOptions.external` to an **array** of `string | RegExp`
- * (dependency names, their `dep/subpath` forms, and optionally Node built-ins).
- * The array shape is deliberate: electron-forge's `@electron-forge/plugin-vite`
- * concatenates its own `external` array with the user config's, and Vite 8 /
- * Rolldown rejects a function element inside a concatenated `external` array —
- * so a function-valued `external` (as some externalize plugins emit) fails to
- * build. Adapted from electron-vite's `externalizeDepsPlugin`.
+ * A port of electron-vite's `externalizeDepsPlugin`, keeping its option shape
+ * (`{ include, exclude }`) and external output — with three deliberate
+ * differences forced by our toolchain:
+ *
+ *   1. Node built-ins are externalized here. Upstream leaves this to
+ *      electron-vite's runtime; this repo builds via electron-forge's
+ *      `@electron-forge/plugin-vite`, which does not auto-externalize built-ins.
+ *   2. `external` is emitted as an array of `string | RegExp`. The array shape
+ *      is deliberate: `@electron-forge/plugin-vite` concatenates its own
+ *      `external` array with the user config's, and Vite 8 / Rolldown rejects a
+ *      function element inside a concatenated `external` array.
+ *   3. `include` / `exclude` accept `RegExp` in addition to exact names, so a
+ *      family of packages (e.g. all `@anaconda-agentic-desktop/*` workspace
+ *      deps) can be matched with one pattern. String `include` entries are
+ *      treated as dependency names (and get `<name>/<subpath>` externalized);
+ *      `RegExp` includes are externalized verbatim.
+ *
+ * To keep third-party deps bundled (e.g. the **preload**, whose isolated
+ * context cannot `require` from `node_modules`), do not use this plugin —
+ * externalize only `electron` + built-ins directly, as electron-vite documents
+ * for `build.externalizeDeps: false`.
  */
-export function externalizeDeps(options: ExternalizeDepsOptions = {}): Plugin {
-	const {
-		packageJsonPath = `${process.cwd()}/package.json`,
-		nodeBuiltins = true,
-		include = [],
-		exclude = [],
-	} = options;
+export function externalizeDeps(options: ExternalOptions = {}): Plugin {
+	const { exclude = [], include = [] } = options;
 
-	const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as DependencySections;
-	const depNames = [
-		...Object.keys(pkg.dependencies ?? {}),
-		...Object.keys(pkg.optionalDependencies ?? {}),
-		...Object.keys(pkg.peerDependencies ?? {}),
-	].filter((name) => !matches(exclude, name));
+	const pkg = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as {
+		dependencies?: Record<string, string>;
+	};
+	// Named deps get a `<name>/<subpath>` regex; RegExp includes are externalized
+	// verbatim (they are patterns, not resolvable dependency names).
+	const stringIncludes = include.filter(
+		(entry): entry is string => typeof entry === "string" && entry.trim() !== "",
+	);
+	const regexpIncludes = include.filter((entry): entry is RegExp => entry instanceof RegExp);
+	const deps = [...new Set([...Object.keys(pkg.dependencies ?? {}), ...stringIncludes])].filter(
+		(dep) => !matches(exclude, dep),
+	);
 
-	const external: Array<string | RegExp> = [];
-	for (const name of new Set(depNames)) {
-		external.push(name, new RegExp(`^${name}/.+`));
-	}
-	if (nodeBuiltins) {
-		for (const builtin of builtinModules) {
-			external.push(builtin, new RegExp(`^node:${builtin}$`));
-		}
-	}
-	external.push(...include);
+	const external: Array<string | RegExp> = [
+		...deps,
+		...(deps.length > 0 ? [new RegExp(`^(${deps.join("|")})/.+`)] : []),
+		...regexpIncludes,
+		...builtinModules,
+		...builtinModules.map((builtin) => `node:${builtin}`),
+	];
 
 	return {
 		name: "vite:externalize-deps",

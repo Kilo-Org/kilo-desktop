@@ -1,19 +1,21 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { builtinModules } from "node:module";
 
 import { defineConfig } from "vite";
-import { externalizeDeps } from "@anaconda-agentic-desktop/vite-plugin-externalize-deps";
 
-const root = path.dirname(fileURLToPath(import.meta.url));
-
+// The preload runs in Electron's isolated preload context, where a bare
+// `require("<dep>")` does not resolve (unlike the Node main process). It must
+// bundle its dependencies (e.g. `zod`, pulled in transitively via
+// `@anaconda-agentic-desktop/contracts`) inline and externalize only `electron`
+// + Node built-ins. This is electron-vite's documented `build.externalizeDeps:
+// false` case: do not run the externalize plugin here.
 export default defineConfig({
-	plugins: [
-		externalizeDeps({
-			packageJsonPath: path.resolve(root, "package.json"),
-			// `electron` is a devDependency, so it is added via `include`.
-			include: ["electron"],
-			// Workspace packages are `workspace:*` / `link:` deps that must stay bundled.
-			exclude: [/^@anaconda-agentic-desktop\/.+$/],
-		}),
-	],
+	build: {
+		rollupOptions: {
+			external: [
+				"electron",
+				...builtinModules,
+				...builtinModules.map((builtin) => `node:${builtin}`),
+			],
+		},
+	},
 });

@@ -26,12 +26,13 @@ export default defineConfig(({ command }) => {
 	return {
 		plugins: [
 			externalizeDeps({
-				packageJsonPath: path.resolve(root, "package.json"),
 				// Not in `dependencies`: `electron` (devDep), `@vscode/windows-ca-certs`
 				// (uninstalled optional native dep of `@vscode/proxy-agent`), and
 				// `better-sqlite3` (transitive via the bundled kilo-ui / todos plugins).
-				include: ["electron", /^better-sqlite3(?:\/.+)?$/, "@vscode/windows-ca-certs"],
-				// Workspace packages are `workspace:*` / `link:` deps that must stay bundled.
+				// The plugin externalizes each name plus its `<name>/<subpath>` forms.
+				include: ["electron", "better-sqlite3", "@vscode/windows-ca-certs"],
+				// Workspace packages are `workspace:*` / `link:` deps that must stay
+				// bundled (not resolvable runtime modules on disk).
 				exclude: [/^@anaconda-agentic-desktop\/.+$/],
 			}),
 			sentryVitePlugin({

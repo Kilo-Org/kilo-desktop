@@ -1,5 +1,6 @@
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import { JOB_PROGRESS_LOCAL_EVENT, JobQueue } from "./JobQueue.js";
 import { ProviderRegistry } from "./ProviderRegistry.js";
 import { CondaProvider } from "./providers/conda/index.js";
 
@@ -41,13 +42,19 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  * first-launch work), then binds their handlers. Async so the shell can
  * await staging and deliver progress to the splash throughout.
  *
+ * A single {@link JobQueue} is created here and shared across every
+ * registered provider — sub-issue 5's shared write-serialization + read
+ * cache primitive. Every provider's write handlers funnel through
+ * `queue.enqueue` (per-provider FIFO + progress events); reads funnel
+ * through `queue.read` (5 s TTL cache invalidated on any successful
+ * write for the same provider). Job-progress events surface on the SDK
+ * event bus under `environments.job-progress`.
+ *
  * The gate reads the real LaunchDarkly value at boot because
  * `Application#registerIpc` awaits `FeatureFlagService.initialize()` before
  * `bootFeatures` runs. Flipping the flag while the app is running does NOT
  * re-run staging or dispose of providers — a flag toggle only takes effect
- * on next launch. The `feature-flag.changed` reconcile pattern used by
- * anaconda-mcp is intentionally not adopted here because conda staging is a
- * one-shot boot-time pipeline.
+ * on next launch.
  */
 export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	const featureFlag = mainSdk.plugins.get<FeatureFlagCapability>("feature-flag");
@@ -60,6 +67,12 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	const registry = new ProviderRegistry();
 	registry.register(new CondaProvider());
 
+	const queue = new JobQueue({
+		emit: (event) => mainSdk.events.emit(JOB_PROGRESS_LOCAL_EVENT, event),
+		logger: mainSdk.logger,
+	});
+	mainSdk.onDispose(() => queue.dispose());
+
 	for (const provider of registry.list()) {
 		if (provider.boot) {
 			await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
@@ -69,7 +82,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	// Handlers are registered AFTER all providers have booted so they never
 	// serve requests against a not-yet-staged conda binary.
 	for (const provider of registry.list()) {
-		provider.registerHandlers({ mainSdk });
+		provider.registerHandlers({ mainSdk, queue });
 	}
 
 	mainSdk.logger.info(`boot: ${registry.list().length} provider(s) registered`);

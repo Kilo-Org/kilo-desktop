@@ -8,6 +8,7 @@ import {
 	type FeatureEvent,
 	type FeatureRegistration,
 	type MainSdkFetch,
+	type MainSdkHost,
 	type MainSdkLogger,
 } from "@anaconda-agentic-desktop/feature-sdk";
 import type {
@@ -36,6 +37,8 @@ export interface BootFeaturesOptions {
 	createLogger?: (featureId: string) => MainSdkLogger;
 	/** Host networking implementation shared by main-process features. */
 	fetch?: MainSdkFetch;
+	/** Narrow shell-owned desktop capabilities shared with main-process plugins. */
+	host?: MainSdkHost;
 	/**
 	 * Base data path (Electron `app.getPath("userData")`). Each feature gets
 	 * `${storageRoot}/plugins/<id>` as its `mainSdk.storageDir`, created
@@ -80,7 +83,7 @@ export interface BootFeaturesOptions {
 export async function bootFeatures(
 	features: readonly FeatureRegistration[],
 	options?: BootFeaturesOptions,
-): Promise<() => void> {
+): Promise<() => Promise<void>> {
 	const storageRoot = options?.storageRoot;
 	const onFeatureProgress = options?.onFeatureProgress;
 	// One flag per bootFeatures call — flipping it after the loop turns every
@@ -94,9 +97,6 @@ export async function bootFeatures(
 			continue;
 		}
 		options?.onBeforeFeatureBoot?.(feature.id);
-		// Share one resolver between `resolveStorageDir` and the KV factory so
-		// the directory is created lazily at most once per feature, and both
-		// facades observe the same path.
 		const resolveStorageDir =
 			storageRoot === undefined
 				? undefined
@@ -109,6 +109,7 @@ export async function bootFeatures(
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
 			...(options?.fetch ? { fetch: options.fetch } : {}),
+			...(options?.host ? { host: options.host } : {}),
 			...(resolveStorageDir
 				? {
 						resolveStorageDir,
@@ -140,13 +141,13 @@ export async function bootFeatures(
 			console.error(`[FeatureRegistry] mainRegister failed for "${feature.id}":`, error);
 			Sentry.captureException(error, { tags: { feature_id: feature.id } });
 			// Roll back partial registration so the feature is not half-alive.
-			featureRouter.destroyFeature(feature.id);
+			await featureRouter.destroyFeatureAsync(feature.id);
 		}
 	}
 	bootWindowOpen = false;
-	return () => {
+	return async () => {
 		for (const id of booted.reverse()) {
-			featureRouter.destroyFeature(id);
+			await featureRouter.destroyFeatureAsync(id);
 			bootedFeatureIds.delete(id);
 		}
 	};
@@ -195,6 +196,8 @@ export function createFeatureHandlers(): Pick<IpcHandlers, "feature:invoke"> {
 export function createFeaturePortHandlers(): Pick<IpcPortHandlers, "feature:port"> {
 	return {
 		"feature:port": (input, context) =>
-			featureRouter.connectPort(input.featureId, input.channel, context.port, input.args),
+			featureRouter.connectPort(input.featureId, input.channel, context.port, input.args, {
+				senderId: context.senderId,
+			}),
 	};
 }

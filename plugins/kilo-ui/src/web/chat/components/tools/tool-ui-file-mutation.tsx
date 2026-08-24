@@ -1,24 +1,18 @@
 import { memo, useMemo } from "react";
 import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { useAuiState } from "@assistant-ui/react";
-import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
-import { FileDiff, PatchDiff } from "@pierre/diffs/react";
+import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { FileDiff } from "@pierre/diffs/react";
 
+import {
+	parseChatPatchFiles,
+	PIERRE_DIFF_OPTIONS,
+	withChatDiffCacheKey,
+} from "../../pierre-diff.js";
+import { usePrimePierreDiffs } from "../../use-prime-pierre-diffs.js";
 import type { ActivitySubgroupContextValue } from "./activity-group.js";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
 import { basename, str } from "./tool-ui-shared.js";
-
-export const PIERRE_DIFF_OPTIONS = {
-	theme: { dark: "pierre-dark" as const, light: "pierre-light" as const },
-	diffStyle: "unified" as const,
-	overflow: "wrap" as const,
-	unsafeCSS: `
-		:host {
-			--diffs-light-bg: var(--background);
-			--diffs-dark-bg: var(--background);
-		}
-	`,
-};
 
 const FILE_PATH_KEYS = ["file_path", "filePath", "path", "file"] as const;
 
@@ -60,10 +54,23 @@ export const PierreDiffBody = ({
 	unifiedDiff?: string | undefined;
 	fileDiff: FileDiffMetadata | null;
 }) => {
+	const patchFileDiffs = useMemo(
+		() => (unifiedDiff ? parsePatchFiles(unifiedDiff).flatMap((patch) => patch.files) : []),
+		[unifiedDiff],
+	);
+
 	if (unifiedDiff) {
+		if (patchFileDiffs.length === 0) return null;
+
 		return (
 			<div className="overflow-hidden rounded-md border">
-				<PatchDiff patch={unifiedDiff} options={PIERRE_DIFF_OPTIONS} />
+				{patchFileDiffs.map((patchFileDiff, index) => (
+					<FileDiff
+						key={`${patchFileDiff.name}-${index}`}
+						fileDiff={patchFileDiff}
+						options={PIERRE_DIFF_OPTIONS}
+					/>
+				))}
 			</div>
 		);
 	}
@@ -111,9 +118,15 @@ export const createFileMutationDiff = (
 		);
 
 		const fileDiff = useMemo(() => {
-			if (unifiedDiff) return null;
-			return config.buildFallbackFileDiff({ args: record, path, fileName });
-		}, [unifiedDiff, record, path, fileName]);
+			if (unifiedDiff) {
+				const parsedFiles = parseChatPatchFiles(unifiedDiff, toolCallId);
+				return parsedFiles.length === 1 ? parsedFiles[0]! : null;
+			}
+			const fallback = config.buildFallbackFileDiff({ args: record, path, fileName });
+			return fallback ? withChatDiffCacheKey(fallback, toolCallId) : null;
+		}, [unifiedDiff, record, path, fileName, toolCallId]);
+		const primedFileDiffs = useMemo(() => (fileDiff ? [fileDiff] : []), [fileDiff]);
+		usePrimePierreDiffs(primedFileDiffs);
 
 		const hasDiff = Boolean(unifiedDiff || fileDiff);
 
@@ -125,7 +138,9 @@ export const createFileMutationDiff = (
 				object={fileName || undefined}
 				status={status}
 				hasDetail={hasDiff}
-				detail={<PierreDiffBody unifiedDiff={unifiedDiff} fileDiff={fileDiff} />}
+				detail={
+					<PierreDiffBody unifiedDiff={fileDiff ? undefined : unifiedDiff} fileDiff={fileDiff} />
+				}
 			/>
 		);
 	});

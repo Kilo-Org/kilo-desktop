@@ -1,21 +1,21 @@
-/**
- * Per-session right-panel tab state (t3code-inspired).
- * Owns open/active/tabs; tab kinds are registered in `right-panel-tab-registry.tsx`.
- */
+/** Per-session right-panel tab state (t3code-inspired). */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
-	createRightPanelTab,
-	PLAN_TAB_KIND,
+	createContributedTab,
+	createPlanTab,
+	PLAN_TAB_DEFINITION_ID,
+	type CreateContributedTabOptions,
 	type RightPanelTab,
-	type RightPanelTabKind,
+	type RightPanelTabDefinition,
+	type RightPanelTabUpdate,
 } from "./right-panel-tab-registry.js";
 
-export type { RightPanelTab, RightPanelTabKind } from "./right-panel-tab-registry.js";
+export type { RightPanelTab } from "./right-panel-tab-registry.js";
 
 export const DRAFT_RIGHT_PANEL_SESSION_KEY = "draft";
-export const RIGHT_PANEL_STORAGE_KEY = "kilo-ui:right-panel-state:v1";
+export const RIGHT_PANEL_STORAGE_KEY = "kilo-ui:right-panel-state:v2";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -57,13 +57,36 @@ export type OpenPlanOptions = {
 interface RightPanelStoreState {
 	bySessionId: Record<string, SessionRightPanelState>;
 	moveSessionState: (sourceSessionId: string, targetSessionId: string) => void;
-	openTab: (sessionId: string, kind: RightPanelTabKind) => void;
+	openTab: (
+		sessionId: string,
+		definition: Pick<RightPanelTabDefinition, "id" | "title">,
+		options?: CreateContributedTabOptions,
+	) => void;
 	openPlan: (sessionId: string, options?: OpenPlanOptions) => void;
 	activateTab: (sessionId: string, tabId: string) => void;
+	updateTab: (sessionId: string, tabId: string, update: RightPanelTabUpdate) => void;
 	closeTab: (sessionId: string, tabId: string) => void;
 	show: (sessionId: string) => void;
 	close: (sessionId: string) => void;
 	toggleVisibility: (sessionId: string) => void;
+}
+
+export function persistedRightPanelState(
+	state: RightPanelStoreState,
+): Pick<RightPanelStoreState, "bySessionId"> {
+	return {
+		bySessionId: Object.fromEntries(
+			Object.entries(state.bySessionId).map(([sessionId, session]) => {
+				const tabs = session.tabs
+					.filter((tab) => !tab.transient)
+					.map(({ dirty: _dirty, transient: _transient, ...tab }) => tab);
+				const activeTabId = tabs.some((tab) => tab.instanceId === session.activeTabId)
+					? session.activeTabId
+					: (tabs.at(-1)?.instanceId ?? null);
+				return [sessionId, { ...session, tabs, activeTabId }];
+			}),
+		),
+	};
 }
 
 export const EMPTY_SESSION_RIGHT_PANEL_STATE: SessionRightPanelState = {
@@ -77,12 +100,29 @@ const upsertTab = (
 	current: SessionRightPanelState,
 	tab: RightPanelTab,
 	activate = true,
-): SessionRightPanelState => ({
-	...current,
-	isOpen: true,
-	tabs: current.tabs.some((entry) => entry.id === tab.id) ? current.tabs : [...current.tabs, tab],
-	activeTabId: activate ? tab.id : current.activeTabId,
-});
+	updates?: CreateContributedTabOptions,
+): SessionRightPanelState => {
+	const existing = current.tabs.find((entry) => entry.instanceId === tab.instanceId);
+	const tabs = existing
+		? current.tabs.map((entry) =>
+				entry.instanceId === tab.instanceId
+					? {
+							...entry,
+							...(updates?.title !== undefined ? { title: updates.title } : {}),
+							...(updates?.iconKey !== undefined ? { iconKey: updates.iconKey } : {}),
+							...(updates?.metadata !== undefined ? { metadata: { ...updates.metadata } } : {}),
+							...(updates?.transient !== undefined ? { transient: updates.transient } : {}),
+						}
+					: entry,
+			)
+		: [...current.tabs, tab];
+	return {
+		...current,
+		isOpen: true,
+		tabs,
+		activeTabId: activate ? tab.instanceId : current.activeTabId,
+	};
+};
 
 const updateSession = (
 	bySessionId: Record<string, SessionRightPanelState>,
@@ -117,45 +157,81 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 						},
 					};
 				}),
-			openTab: (sessionId, kind) =>
+			openTab: (sessionId, definition, options) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
-						upsertTab(current, createRightPanelTab(kind)),
+						upsertTab(
+							current,
+							createContributedTab(current.tabs, definition, undefined, options),
+							true,
+							options,
+						),
 					),
 				})),
 			openPlan: (sessionId, options) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) => ({
-						...upsertTab(current, createRightPanelTab(PLAN_TAB_KIND)),
+						...upsertTab(current, createPlanTab()),
 						planAnchorCallId: options?.anchorCallId?.trim() || null,
 					})),
 				})),
 			activateTab: (sessionId, tabId) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
-						current.tabs.some((tab) => tab.id === tabId)
+						current.tabs.some((tab) => tab.instanceId === tabId)
 							? { ...current, isOpen: true, activeTabId: tabId }
 							: current,
 					),
 				})),
+			updateTab: (sessionId, tabId, update) =>
+				set((state) => ({
+					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
+						let changed = false;
+						const tabs = current.tabs.map((tab) => {
+							if (tab.instanceId !== tabId) return tab;
+							const next = {
+								...tab,
+								...(update.title !== undefined ? { title: update.title } : {}),
+								...(update.iconKey !== undefined ? { iconKey: update.iconKey } : {}),
+								...(update.metadata !== undefined ? { metadata: { ...update.metadata } } : {}),
+								...(update.dirty !== undefined ? { dirty: update.dirty } : {}),
+								...(update.transient !== undefined ? { transient: update.transient } : {}),
+							};
+							if (
+								next.title === tab.title &&
+								next.iconKey === tab.iconKey &&
+								next.metadata === tab.metadata &&
+								next.dirty === tab.dirty &&
+								next.transient === tab.transient
+							) {
+								return tab;
+							}
+							changed = true;
+							return next;
+						});
+						return changed ? { ...current, tabs } : current;
+					}),
+				})),
 			closeTab: (sessionId, tabId) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) => {
-						const index = current.tabs.findIndex((tab) => tab.id === tabId);
+						const index = current.tabs.findIndex((tab) => tab.instanceId === tabId);
 						if (index < 0) return current;
-						const tabs = current.tabs.filter((tab) => tab.id !== tabId);
+						const closing = current.tabs[index];
+						const tabs = current.tabs.filter((tab) => tab.instanceId !== tabId);
 						const planAnchorCallId =
-							tabId === PLAN_TAB_KIND ? null : (current.planAnchorCallId ?? null);
+							closing?.definitionId === PLAN_TAB_DEFINITION_ID
+								? null
+								: (current.planAnchorCallId ?? null);
 						if (current.activeTabId !== tabId) {
 							return { ...current, tabs, planAnchorCallId };
 						}
 						const fallback = tabs[Math.min(index, tabs.length - 1)] ?? null;
 						return {
 							...current,
-							// Keep the panel open on the empty state when the last tab closes.
 							isOpen: true,
 							tabs,
-							activeTabId: fallback?.id ?? null,
+							activeTabId: fallback?.instanceId ?? null,
 							planAnchorCallId,
 						};
 					}),
@@ -182,9 +258,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 		}),
 		{
 			name: RIGHT_PANEL_STORAGE_KEY,
-			version: 1,
+			version: 2,
 			storage: createJSONStorage(resolveStorage),
-			partialize: (state) => ({ bySessionId: state.bySessionId }),
+			partialize: persistedRightPanelState,
 		},
 	),
 );
@@ -203,7 +279,7 @@ export function selectActiveRightPanelTab(
 ): RightPanelTab | null {
 	const state = selectSessionRightPanelState(bySessionId, sessionId);
 	if (!state.isOpen) return null;
-	return state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
+	return state.tabs.find((tab) => tab.instanceId === state.activeTabId) ?? null;
 }
 
 export function resolveRightPanelSessionKey(

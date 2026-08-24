@@ -1,10 +1,7 @@
-# Mirror the checks from .github/workflows/ci.yml so pushes don't fail in CI.
-# lint/format stay full (sub-2s; global config changes can affect any file).
-# check/test are scoped to changed packages (+ dependents) for speed; a git
-# fetch keeps origin/main current for tightest scoping. The workspace root is
-# excluded from the filter so its recursive check/test scripts cannot nest a
-# second full suite (which races Vitest browser mode). Full suite runs in CI.
+# Mirror CI checks locally. Lint/format run directly (sub-2s).
+# Typecheck and test use turbo caching to skip unchanged packages;
+# output is suppressed unless a task fails.
 pnpm lint
 pnpm format:check
-pnpm check:changed
-pnpm test:changed
+pnpm check --output-logs=errors-only
+pnpm test --output-logs=errors-only

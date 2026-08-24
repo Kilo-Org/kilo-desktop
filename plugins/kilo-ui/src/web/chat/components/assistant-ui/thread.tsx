@@ -51,6 +51,7 @@ import {
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
+	CheckCircle2Icon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
 	DownloadIcon,
@@ -71,13 +72,29 @@ import {
 	type KeyboardEvent,
 } from "react";
 
+import {
+	displayChatError,
+	isKiloSignInError,
+	offerKiloSignIn,
+} from "../../../account/kilo-auth.js";
+import { useKiloAuth } from "../../../account/KiloAuthContext.js";
 import { useChatAgentSelection } from "../../agent-selection/ChatAgentSelectionContext.js";
 import {
 	cycleCatalogAgent,
 	OPTIMISTIC_AGENT_CATALOG,
 } from "../../agent-selection/agent-catalog.js";
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
+import { useChatModelSelection } from "../../model-selection/ChatModelSelectionContext.js";
+import { isKiloGatewayProvider } from "../../model-selection/model-catalog.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
+import { useOptionalOpenCodeRuntimeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
+import { usePendingKiloSuggestion } from "../../suggestions/KiloSuggestionContext.js";
+import {
+	assistantWorkingIndicatorMode,
+	isComposerPromptBusy,
+	messageHasInFlightActivity,
+} from "../../suggestions/kilo-suggestion-logic.js";
+import { retryFailedPrompt } from "./retry-failed-prompt.js";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
@@ -181,7 +198,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				turnAnchor="bottom"
 				autoScroll
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
+				className="relative flex flex-1 [scrollbar-gutter:stable] flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
 				<div
 					className={cn(
@@ -189,7 +206,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						isDraft && "justify-center",
 					)}
 				>
-					<div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
+					<div data-slot="aui_message-group" className="mb-10 flex flex-col gap-y-4 empty:hidden">
 						<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
 					</div>
 
@@ -222,6 +239,11 @@ const ThreadMessage: FC = () => {
 	if (role === "user") return <UserMessage />;
 	return <AssistantMessageComponent />;
 };
+
+// The current turn and its preceding response stay measurable so the intrinsic
+// fallback used for older messages cannot distort their visual grouping.
+const useVirtualizeMessage = () =>
+	useAuiState((s) => s.message.index < s.thread.messages.length - 3);
 
 const ThreadScrollToBottom: FC = () => {
 	return (
@@ -285,8 +307,14 @@ const Composer: FC = () => {
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const { refine, submitting, canReply } = useApprovePlan();
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
+	const pendingSuggestion = usePendingKiloSuggestion();
 
 	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
+
+	const sendFollowup = () => {
+		if (isComposerEmpty) return;
+		aui.composer.send();
+	};
 
 	useEffect(() => {
 		if (!isDraft || isConnecting) return;
@@ -330,6 +358,13 @@ const Composer: FC = () => {
 			handlePlanRefineSubmit();
 			return;
 		}
+		// Suggest keeps thread.isRunning true, so ComposerPrimitive.Send is
+		// disabled — send through the runtime instead, matching VS Code.
+		if (pendingSuggestion) {
+			event.preventDefault();
+			sendFollowup();
+			return;
+		}
 		// When Kilo is still starting, wait before composer.send() so the draft
 		// stays visible and the send button can show a spinner. preventDefault
 		// skips ComposerPrimitive.Root's built-in send handler (Enter key).
@@ -363,10 +398,15 @@ const Composer: FC = () => {
 		}
 
 		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-		if (!showPlanFollowupActions) return;
-		// ComposerInput returns early while isRunning — intercept before that.
+		if (showPlanFollowupActions) {
+			// ComposerInput returns early while isRunning — intercept before that.
+			event.preventDefault();
+			handlePlanRefineSubmit();
+			return;
+		}
+		if (!pendingSuggestion) return;
 		event.preventDefault();
-		handlePlanRefineSubmit();
+		sendFollowup();
 	};
 
 	return (
@@ -391,18 +431,20 @@ const Composer: FC = () => {
 				<ComposerPrimitive.Input
 					ref={inputRef}
 					placeholder="Send a message..."
-					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none disabled:cursor-not-allowed"
+					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none disabled:cursor-not-allowed"
 					minRows={2}
 					autoFocus
 					enterKeyHint="send"
 					aria-label="Message input"
 					disabled={isConnecting}
+					cancelOnEscape={!pendingSuggestion}
 					onKeyDown={handleInputKeyDown}
 				/>
 				<ComposerAction
 					isConnecting={isConnecting}
 					isConnectionPending={isPending}
 					onSendWhenConnected={sendWhenConnected}
+					onSendFollowup={sendFollowup}
 					showPlanFollowupActions={showPlanFollowupActions}
 					planActionPending={submitting}
 					onRefine={refine}
@@ -416,6 +458,7 @@ const ComposerAction: FC<{
 	isConnecting: boolean;
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
+	onSendFollowup: () => void;
 	showPlanFollowupActions: boolean;
 	planActionPending: boolean;
 	onRefine: () => void;
@@ -423,6 +466,7 @@ const ComposerAction: FC<{
 	isConnecting,
 	isConnectionPending,
 	onSendWhenConnected,
+	onSendFollowup,
 	showPlanFollowupActions,
 	planActionPending,
 	onRefine,
@@ -430,6 +474,8 @@ const ComposerAction: FC<{
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const canSend = useAuiState((s) => s.composer.canSend);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
+	const pendingSuggestion = usePendingKiloSuggestion();
+	const isPromptBusy = isComposerPromptBusy(isRunning, pendingSuggestion);
 
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
@@ -466,7 +512,7 @@ const ComposerAction: FC<{
 									type="button"
 									variant="ghost"
 									size="icon"
-									className="aui-composer-stop-dictation text-destructive size-7 rounded-full"
+									className="aui-composer-stop-dictation text-destructive-foreground size-7 rounded-full"
 									aria-label="Stop voice input"
 								/>
 							}
@@ -490,7 +536,7 @@ const ComposerAction: FC<{
 						<Loader2Icon className="aui-composer-connecting-icon size-4.5 animate-spin" />
 					</TooltipIconButton>
 				) : null}
-				{!isConnecting && !isRunning && isConnectionPending ? (
+				{!isConnecting && !isPromptBusy && isConnectionPending ? (
 					<TooltipIconButton
 						tooltip="Send message"
 						side="bottom"
@@ -520,24 +566,41 @@ const ComposerAction: FC<{
 						Refine
 					</Button>
 				) : null}
-				{!showPlanFollowupActions && !isConnecting && !isRunning && !isConnectionPending ? (
-					<ComposerPrimitive.Send
-						render={
-							<TooltipIconButton
-								tooltip="Send message"
-								side="bottom"
-								type="button"
-								variant="default"
-								size="icon"
-								className="aui-composer-send size-7 rounded-full"
-								aria-label="Send message"
-							/>
-						}
-					>
-						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
-					</ComposerPrimitive.Send>
+				{!showPlanFollowupActions && !isConnecting && !isPromptBusy && !isConnectionPending ? (
+					pendingSuggestion ? (
+						<TooltipIconButton
+							tooltip="Send message"
+							side="bottom"
+							type="button"
+							variant="default"
+							size="icon"
+							disabled={!canSend}
+							className="aui-composer-send size-7 rounded-full"
+							aria-label="Send message"
+							data-qa-id="kilo-composer-send"
+							onClick={onSendFollowup}
+						>
+							<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
+						</TooltipIconButton>
+					) : (
+						<ComposerPrimitive.Send
+							render={
+								<TooltipIconButton
+									tooltip="Send message"
+									side="bottom"
+									type="button"
+									variant="default"
+									size="icon"
+									className="aui-composer-send size-7 rounded-full"
+									aria-label="Send message"
+								/>
+							}
+						>
+							<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
+						</ComposerPrimitive.Send>
+					)
 				) : null}
-				{!showPlanFollowupActions && !isConnecting && isRunning ? (
+				{!showPlanFollowupActions && !isConnecting && isPromptBusy ? (
 					<ComposerPrimitive.Cancel
 						render={
 							<Button
@@ -558,31 +621,128 @@ const ComposerAction: FC<{
 };
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
+const WORKING_INDICATOR_DELAY_MS = 200;
 
-const AssistantWorkingIndicator: FC = () => (
-	<span
-		data-slot="aui_assistant-message-indicator"
-		className="text-muted-foreground relative inline-block text-sm leading-none"
-		role="status"
-		aria-label={CONSIDERING_NEXT_STEPS}
-	>
-		<span>{CONSIDERING_NEXT_STEPS}</span>
+const AssistantWorkingIndicator: FC = () => {
+	const [visible, setVisible] = useState(false);
+
+	useEffect(() => {
+		const timeoutId = window.setTimeout(() => setVisible(true), WORKING_INDICATOR_DELAY_MS);
+		return () => window.clearTimeout(timeoutId);
+	}, []);
+
+	if (!visible) return null;
+
+	return (
 		<span
-			aria-hidden
-			className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
+			data-slot="aui_assistant-message-indicator"
+			className="text-muted-foreground relative inline-block text-sm leading-none"
+			role="status"
+			aria-label={CONSIDERING_NEXT_STEPS}
 		>
-			{CONSIDERING_NEXT_STEPS}
+			<span>{CONSIDERING_NEXT_STEPS}</span>
+			<span
+				aria-hidden
+				className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
+			>
+				{CONSIDERING_NEXT_STEPS}
+			</span>
 		</span>
-	</span>
-);
+	);
+};
 
 const MessageError: FC = () => {
 	return (
 		<MessagePrimitive.Error>
-			<ErrorPrimitive.Root className="aui-message-error-root border-destructive bg-destructive/10 text-destructive dark:bg-destructive/5 mt-2 rounded-md border p-3 text-sm dark:text-red-200">
-				<ErrorPrimitive.Message className="aui-message-error-message line-clamp-2" />
-			</ErrorPrimitive.Root>
+			<KiloMessageErrorBanner />
 		</MessagePrimitive.Error>
+	);
+};
+
+function messageErrorText(status: { type?: string; reason?: string; error?: unknown } | undefined) {
+	if (status?.type !== "incomplete" || status.reason !== "error") return undefined;
+	const error = status.error;
+	if (typeof error === "string") return error;
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"message" in error &&
+		typeof error.message === "string"
+	) {
+		return error.message;
+	}
+	return error === undefined ? undefined : String(error);
+}
+
+const KiloMessageErrorBanner: FC = () => {
+	const auth = useKiloAuth();
+	const aui = useAui();
+	const extras = useOptionalOpenCodeRuntimeExtras();
+	const { model } = useChatModelSelection();
+	const errorText = useAuiState((s) => messageErrorText(s.message.status));
+	const isKiloModel = model !== undefined && isKiloGatewayProvider({ id: model.providerID });
+	const offerSignIn = offerKiloSignIn(auth, isKiloModel);
+	const signedIn = auth.authenticated === true && isKiloSignInError(errorText);
+	const signingIn = auth.deviceAuth.status === "initiating" || auth.deviceAuth.status === "waiting";
+	const retrying = useRef(false);
+
+	if (signedIn) {
+		return (
+			<div
+				role="status"
+				className="border-border bg-background mt-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
+				data-qa-id="kilo-message-error-signed-in"
+			>
+				<span className="flex min-w-0 items-center gap-2">
+					<CheckCircle2Icon className="text-primary size-4 shrink-0" />
+					<span>You&rsquo;re signed in to Kilo.</span>
+				</span>
+				<Button
+					type="button"
+					size="sm"
+					onClick={() => {
+						if (retrying.current) return;
+						retrying.current = true;
+						const thread = aui.thread();
+						void retryFailedPrompt({
+							messages: thread.getState().messages,
+							assistantId: aui.message().getState().id,
+							...(extras ? { revert: extras.revert } : {}),
+							append: (text) => {
+								thread.append(text);
+							},
+						}).finally(() => {
+							retrying.current = false;
+						});
+					}}
+					data-qa-id="kilo-message-error-retry"
+				>
+					Retry
+				</Button>
+			</div>
+		);
+	}
+
+	return (
+		<ErrorPrimitive.Root className="aui-message-error-root border-border bg-background mt-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+			<span className="aui-message-error-message text-destructive-foreground line-clamp-2 min-w-0 flex-1">
+				{displayChatError(errorText)}
+			</span>
+			{offerSignIn ? (
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					onClick={() => {
+						auth.login();
+					}}
+					disabled={signingIn}
+					data-qa-id="kilo-message-error-signin"
+				>
+					{signingIn ? "Connecting…" : "Connect"}
+				</Button>
+			) : null}
+		</ErrorPrimitive.Root>
 	);
 };
 
@@ -592,6 +752,9 @@ const AssistantMessage: FC = () => {
 	const messageId = useAuiState((s) => s.message.id);
 	const planThread = usePlanThreadProjection();
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
+	const pendingSuggestion = usePendingKiloSuggestion();
+	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
+	const virtualize = useVirtualizeMessage();
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -601,13 +764,17 @@ const AssistantMessage: FC = () => {
 		<MessagePrimitive.Root
 			data-slot="aui_assistant-message-root"
 			data-role="assistant"
-			className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+			className={cn(
+				"fade-in slide-in-from-bottom-1 animate-in relative -mb-15 pb-7.5 duration-150",
+				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+			)}
 		>
 			<div
 				data-slot="aui_assistant-message-content"
 				className="text-foreground px-2 leading-relaxed wrap-break-word"
 			>
 				<MessagePrimitive.GroupedParts
+					indicator={assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity)}
 					groupBy={(part, context) => {
 						if (part.type === "reasoning") {
 							return ["group-activity", "group-thinking"] as const;
@@ -644,7 +811,9 @@ const AssistantMessage: FC = () => {
 							case "group-terminal":
 							case "group-planning":
 							case "group-asking":
+							case "group-suggesting":
 							case "group-skill":
+							case "group-subagent":
 							case "group-tools": {
 								const kind = activityKindFromGroupKey(part.type);
 								if (!kind) return null;
@@ -714,7 +883,7 @@ const AssistantActionMoreTrigger: FC = () => {
 						/>
 					}
 				>
-					<MoreHorizontalIcon />
+					<MoreHorizontalIcon className="size-3.5" />
 					<span className="sr-only">More</span>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" className="pointer-events-none">
@@ -756,16 +925,21 @@ const AssistantActionBar: FC = () => {
 };
 
 const UserMessage: FC = () => {
+	const virtualize = useVirtualizeMessage();
+
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
-			className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
+			className={cn(
+				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2",
+				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+			)}
 			data-role="user"
 		>
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word empty:hidden">
 					<MessagePrimitive.Parts />
 				</div>
 			</div>

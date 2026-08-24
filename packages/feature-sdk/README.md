@@ -229,9 +229,9 @@ const workspace = workspaces?.workspaceService.get(id);
 **Use when:** feature B needs to actively call feature A (not just hear about its events).
 **Don't use for:** your own feature's backend (use `invoke`). Never import another feature's source — `plugins.get` returning `null` is the contract that keeps features independently loadable.
 
-### `sdk.contribute(zone, options)` — UI in shell zones
+### `sdk.contribute(zone, options)` — UI zones
 
-Register a React component into a named shell zone. The shell renders only the canonical `ShellZone` ids (`"sidebar"`, `"status-bar"`, `"dashboard"`, `"home-composer-leading-action"`, `"header-leading"`, `"header-trailing"`; import the exported zone constants so a typo can't render nowhere). Contributions are priority-ordered (higher first). Returns an unregister handle; contributions are also cleaned up when the SDK instance is destroyed.
+Register a React component into a named zone. Shell zones have exported constants; plugin-owned hosts declare zones in their manifests and consumers target the qualified `<plugin-id>/<zone-id>` name through `contributes.zones`. Contributions have stable IDs, are priority-ordered (higher first), and return an unregister handle; they are also cleaned up when the SDK instance is destroyed.
 
 `sdk.contribute` is the **imperative, page-scoped** path — the contribution exists only while the calling component is mounted, so it is right for _conditional_ UI that appears in certain app states:
 
@@ -240,6 +240,7 @@ import { STATUS_BAR_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 
 // Only while this component is mounted:
 const remove = sdk.contribute(STATUS_BAR_ZONE, {
+	id: "sync-status",
 	component: SyncingBadge,
 	label: "Syncing",
 	priority: 10,
@@ -247,13 +248,15 @@ const remove = sdk.contribute(STATUS_BAR_ZONE, {
 remove(); // e.g. when syncing finishes
 ```
 
-For a widget whose registration should last for the plugin lifetime, declare it in `plugin.json` `contributes.zones`. It renders whenever the shell exposes that zone's outlet:
+For a contribution whose registration should last for the plugin lifetime, declare it in `plugin.json` `contributes.zones`. Shell zones render their components directly; plugin-owned zones may interpret the same entries as richer definitions:
 
 ```jsonc
 "contributes": {
   "zones": [{ "zone": "status-bar", "component": "TodosStatusBarItem" }]
 }
 ```
+
+A plugin declares an owned zone at the manifest root as `{ "zones": [{ "id": "detail-panel" }] }`; contributors then target `"<plugin-id>/detail-panel"` through the same `contributes.zones` array.
 
 For lifecycle behavior that must remain mounted across every route—capability
 exposure, shared observable state, global dialogs, or event listeners—declare a

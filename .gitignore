@@ -147,6 +147,7 @@ vite.config.ts.timestamp-*
 
 # Electron-Forge
 out/
+apps/desktop/.electron-rebuild-cache/
 
 # OS
 .DS_Store
@@ -171,3 +172,6 @@ test-results/
 
 # LaunchDarkly offline cache
 ldclient-user-cache/
+
+# turborepo
+.turbo

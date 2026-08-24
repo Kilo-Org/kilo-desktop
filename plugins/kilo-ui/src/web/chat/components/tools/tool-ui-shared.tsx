@@ -71,7 +71,11 @@ export const ToolStatusIcon = ({
 	}
 
 	if (statusType === "incomplete") {
-		return <XCircleIcon className={cn("size-3 shrink-0", !isCancelled && "text-destructive")} />;
+		return (
+			<XCircleIcon
+				className={cn("size-3 shrink-0", !isCancelled && "text-destructive-foreground")}
+			/>
+		);
 	}
 
 	return completeIcon ?? <CheckIcon className="size-3 shrink-0" />;

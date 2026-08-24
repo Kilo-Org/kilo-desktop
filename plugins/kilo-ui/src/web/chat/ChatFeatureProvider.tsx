@@ -14,14 +14,22 @@ import toolkit from "./components/tools/toolkit.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
+import { KiloAuthProvider } from "../account/KiloAuthProvider.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
 import { modelRefToId } from "./model-selection/model-catalog.js";
 import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
 import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
+import {
+	chatRightPanelCapability,
+	type ChatRightPanelCapabilities,
+} from "./right-panel/chat-right-panel-capability.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
+import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
+import { PierreDiffProvider } from "./PierreDiffProvider.js";
 
 import "./composer-glass.css";
 
@@ -33,6 +41,11 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const queryClient = useQueryClient();
 	const { activeWorkspaceId } = useWorkspacesFeature();
+
+	useEffect(() => {
+		if (sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel) return;
+		sdk.plugins.expose("chatRightPanel", chatRightPanelCapability);
+	}, [sdk]);
 	const connectionOptions = useMemo(
 		() =>
 			({
@@ -166,6 +179,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
+	const suggestions = useMemo(() => createKiloSuggestionStore(), []);
 
 	const catalogQuery = useKiloModelCatalog(connection.data);
 	const { model, validatedModel, setModel, name, effort, efforts, setEffort } =
@@ -204,6 +218,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		onThreadIdChange,
 		onError: refreshConnection,
 		sessionActivity,
+		suggestions,
 	});
 
 	const aui = useAui({
@@ -259,20 +274,27 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		isPending: connection.isPending,
 		isError: connection.isError,
 		error: connection.error instanceof Error ? connection.error : null,
+		connection: connection.data,
 		connectionPromise,
 	};
 
 	return (
-		<ChatConnectionProvider status={connectionStatus}>
-			<SessionActivityProvider store={sessionActivity}>
-				<ChatAgentSelectionProvider value={agentSelection}>
-					<ChatModelSelectionProvider value={modelSelection}>
-						<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-							{children}
-						</AssistantRuntimeProvider>
-					</ChatModelSelectionProvider>
-				</ChatAgentSelectionProvider>
-			</SessionActivityProvider>
-		</ChatConnectionProvider>
+		<PierreDiffProvider>
+			<ChatConnectionProvider status={connectionStatus}>
+				<KiloAuthProvider>
+					<SessionActivityProvider store={sessionActivity}>
+						<KiloSuggestionProvider store={suggestions}>
+							<ChatAgentSelectionProvider value={agentSelection}>
+								<ChatModelSelectionProvider value={modelSelection}>
+									<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+										{children}
+									</AssistantRuntimeProvider>
+								</ChatModelSelectionProvider>
+							</ChatAgentSelectionProvider>
+						</KiloSuggestionProvider>
+					</SessionActivityProvider>
+				</KiloAuthProvider>
+			</ChatConnectionProvider>
+		</PierreDiffProvider>
 	);
 }

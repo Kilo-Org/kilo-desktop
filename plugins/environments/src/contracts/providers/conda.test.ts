@@ -75,6 +75,15 @@ describe("matchSpecSchema", () => {
 		expect(matchSpecSchema.safeParse(" numpy").success).toBe(false);
 		expect(matchSpecSchema.safeParse("numpy ").success).toBe(false);
 	});
+
+	it("rejects values that could be mistaken for a conda CLI flag", () => {
+		// argparse in conda accepts options interspersed with positionals, so
+		// any packages arg starting with `-` can smuggle a flag through the
+		// argv boundary. Reject at the schema level.
+		expect(matchSpecSchema.safeParse("--prefix").success).toBe(false);
+		expect(matchSpecSchema.safeParse("--dry-run").success).toBe(false);
+		expect(matchSpecSchema.safeParse("-c").success).toBe(false);
+	});
 });
 
 describe("channelSchema", () => {
@@ -93,6 +102,15 @@ describe("channelSchema", () => {
 		expect(channelSchema.safeParse("").success).toBe(false);
 		expect(channelSchema.safeParse("conda-forge\nextras").success).toBe(false);
 		expect(channelSchema.safeParse(" conda-forge").success).toBe(false);
+	});
+
+	it("rejects values that could be mistaken for a conda CLI flag", () => {
+		// Same rationale as matchSpecSchema — a channel arg starting with
+		// `-` would smuggle a flag through the argv boundary. Legitimate
+		// channels are short names, URLs, or file:// paths — none start
+		// with a dash.
+		expect(channelSchema.safeParse("--override-channels").success).toBe(false);
+		expect(channelSchema.safeParse("-c").success).toBe(false);
 	});
 });
 

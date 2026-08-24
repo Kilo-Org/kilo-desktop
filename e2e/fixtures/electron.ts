@@ -6,22 +6,32 @@ import { test as baseTest, type TestInfo } from "@playwright/test";
 import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 
-import { buildPackagedApp, killStrayProcesses } from "../utils/app-launcher.js";
+import {
+	killProcessTree,
+	killStrayProcesses,
+	packagedAppLaunchEnv,
+} from "../utils/app-launcher.js";
 import { ConsoleLogCollector } from "../utils/console-log-collector.js";
 import { packagedExecutable } from "../utils/paths.js";
 
 // Must match DESKTOP_PRODUCTION_SCHEME in apps/desktop ElectronProtocol.ts.
 const DESKTOP_URL_PREFIX = "anaconda-agentic-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
+const CLOSE_TIMEOUT_MS = 10_000;
+const CLOSE_FORCE_WAIT_MS = 5_000;
 
 /**
  * The app's first window is the splash screen — a `data:` URL with no preload,
- * destroyed once boot finishes. `firstWindow()` can race it and return a page
- * without `desktopApi`, or one that closes mid-evaluate. The main window is
- * the one loaded over the desktop protocol.
+ * destroyed once boot finishes. `firstWindow()` / `waitForEvent("window")` can
+ * race it and return a page without `desktopApi`, or miss the main window when
+ * the same BrowserWindow navigates from `data:` / `about:blank` onto the
+ * desktop protocol (no second "window" event). Poll until a protocol URL exists.
  */
-async function mainWindow(app: ElectronApplication): Promise<Page> {
-	const deadline = Date.now() + MAIN_WINDOW_TIMEOUT_MS;
+export async function waitForMainWindow(
+	app: ElectronApplication,
+	timeoutMs = MAIN_WINDOW_TIMEOUT_MS,
+): Promise<Page> {
+	const deadline = Date.now() + timeoutMs;
 	for (;;) {
 		const match = app.windows().find((page) => page.url().startsWith(DESKTOP_URL_PREFIX));
 		if (match) return match;
@@ -46,16 +56,39 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 	const app = await electron.launch({
 		executablePath: packagedExecutable(),
 		args: [`--user-data-dir=${userDataDir}`],
-		env: {
-			...process.env,
-			// Skip conda staging in e2e — prevents 150 MB downloads and multi-second
-			// detection delays. E2e specs that test conda ops stub it separately.
-			ANACONDA_SKIP_CONDA_STAGING: "1",
-			// --user-data-dir does not isolate the host Anaconda keychain.
-			ANACONDA_SKIP_KEYRING: "1",
-		},
+		env: packagedAppLaunchEnv(),
 	});
 	return { app, userDataDir };
+}
+
+function wait(ms: number): { promise: Promise<void>; cancel: () => void } {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const promise = new Promise<void>((resolve) => {
+		timer = setTimeout(resolve, ms);
+	});
+	return {
+		promise,
+		cancel: () => {
+			if (timer !== undefined) clearTimeout(timer);
+		},
+	};
+}
+
+/** Close the packaged app; force-kill the process tree if graceful quit hangs. */
+async function stopApp(app: ElectronApplication): Promise<void> {
+	const pid = app.process().pid;
+	const closed = app.close().then(
+		() => undefined,
+		() => undefined,
+	);
+	const grace = wait(CLOSE_TIMEOUT_MS);
+	const timedOut = await Promise.race([closed.then(() => false), grace.promise.then(() => true)]);
+	grace.cancel();
+	if (timedOut && pid !== undefined) killProcessTree(pid);
+	const leftover = wait(CLOSE_FORCE_WAIT_MS);
+	await Promise.race([closed, leftover.promise]);
+	leftover.cancel();
+	killStrayProcesses();
 }
 
 /**
@@ -65,22 +98,18 @@ async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: str
 export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerFixtures>({
 	sharedApp: [
 		// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
-		async ({}, use, workerInfo) => {
+		async ({}, use) => {
 			await killStrayProcesses();
-			if (workerInfo.workerIndex === 0 && process.env.SKIP_BUILD !== "true") {
-				await buildPackagedApp();
-			}
 			const { app, userDataDir } = await launchApp();
 			await use(app);
-			await app.close();
-			await killStrayProcesses();
+			await stopApp(app);
 			await rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 });
 		},
 		{ scope: "worker" },
 	],
 
 	electronApp: async ({ sharedApp }, use) => {
-		const page = await mainWindow(sharedApp);
+		const page = await waitForMainWindow(sharedApp);
 		setPage(page);
 		await page.evaluate(() => {
 			globalThis.location.hash = "#/";
@@ -90,7 +119,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 
 	diagnostics: [
 		async ({ electronApp }, use, testInfo: TestInfo) => {
-			const page = await mainWindow(electronApp);
+			const page = await waitForMainWindow(electronApp);
 			const logs = new ConsoleLogCollector(page);
 			logs.start();
 			await use();

@@ -13,6 +13,7 @@ const isCI = Boolean(process.env.CI);
  * is still parsing the config leaves `test` undefined (CI: "reading 'extend'").
  */
 export default defineConfig({
+	globalSetup: "./global-setup.ts",
 	testDir: repoRoot,
 	testMatch: ["e2e/specs/**/*.spec.ts", "plugins/*/e2e/specs/**/*.spec.ts"],
 	outputDir: path.join(repoRoot, "test-results"),

@@ -8,8 +8,8 @@ import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
-import { PLUGIN_NAV, useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
-import { isSettingsPath } from "@/features/plugin-settings";
+import { useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
+import { isSettingsPath, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 import { useSdk, useTelemetry } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
@@ -56,10 +56,15 @@ function resolveSidebarToggleLeft(): string {
 	return DEFAULT_SIDEBAR_TOGGLE_LEFT;
 }
 
+const EMPTY_NAV: readonly PluginNavEntry[] = [];
+const EMPTY_SETTINGS: readonly PluginSettingsSection[] = [];
+
 type AppSidebarLayoutProps = {
 	children: ReactNode;
-	/** Injectable for tests; defaults to the bundled plugin nav entries. */
+	/** Injectable for tests; the app shell passes bundled plugin nav entries. */
 	navEntries?: readonly PluginNavEntry[];
+	/** Injectable for tests; the app shell passes bundled settings sections. */
+	settingsSections?: readonly PluginSettingsSection[];
 };
 
 /**
@@ -130,9 +135,11 @@ function ShellTitlebar({
 			</div>
 
 			<motion.div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft }}>
-				{/* Leading header contributions (e.g. chat session breadcrumb) */}
-				<ZoneOutlet zone="header-leading" className="flex min-w-0 flex-1 items-center gap-1" />
-				<div className="flex shrink-0 items-center justify-end gap-2">
+				{/* Persistent flex-1 so empty ZoneOutlet (null) cannot collapse this slot. */}
+				<div className="flex min-w-0 flex-1 items-center gap-1">
+					<ZoneOutlet zone="header-leading" className="flex min-w-0 items-center gap-1" />
+				</div>
+				<div className="ml-auto flex shrink-0 items-center justify-end gap-2">
 					{/* Trailing header contributions (e.g. chat right-panel toggle) */}
 					<ZoneOutlet zone="header-trailing" className="flex items-center gap-1" />
 					{session.status !== "authenticated" && (
@@ -150,10 +157,10 @@ function ShellTitlebar({
 							</Button>
 							<Button
 								onClick={onLogin}
-								aria-label="Log in"
+								aria-label="Sign In"
 								className="[-webkit-app-region:no-drag]"
 							>
-								Log in
+								Sign In
 							</Button>
 						</>
 					)}
@@ -171,7 +178,11 @@ function ShellInset({ children }: { children: ReactNode }) {
 	);
 }
 
-export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSidebarLayoutProps) {
+export function AppSidebarLayout({
+	children,
+	navEntries = EMPTY_NAV,
+	settingsSections = EMPTY_SETTINGS,
+}: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const navigate = useNavigate();
 	// PAGE_VISIT is a shell-level, cross-feature concern, so it uses the
@@ -235,7 +246,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 					<SidebarHeader className="pointer-events-none h-12 shrink-0 p-0" />
 					<SidebarContent>
 						{settings ? (
-							<SettingsSidebar />
+							<SettingsSidebar sections={settingsSections} />
 						) : (
 							<>
 								{visibleNav.length > 0 ? (
@@ -248,7 +259,7 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 									</SidebarGroup>
 								) : null}
 								{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-								<ZoneOutlet zone="sidebar" className="flex flex-col gap-2 px-2" />
+								<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
 							</>
 						)}
 					</SidebarContent>
@@ -336,7 +347,10 @@ export function AppSidebarLayout({ children, navEntries = PLUGIN_NAV }: AppSideb
 				<ShellInset>
 					{/* Flow spacer under the fixed ShellTitlebar */}
 					<div className="h-12 shrink-0" aria-hidden />
-					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-transparent">
+					<div
+						data-qa-id="shell-main"
+						className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-transparent"
+					>
 						{children}
 					</div>
 					{/* Status-bar contributions registered via sdk.contribute("status-bar", ...) */}

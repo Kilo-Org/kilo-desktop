@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","linux"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
-    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || 'ubuntu-latest' }}
     timeout-minutes: 90
     environment: canary
     permissions:
@@ -78,6 +78,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/kilo-server/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
 
       - name: Make
         run: pnpm run make

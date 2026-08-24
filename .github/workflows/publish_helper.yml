@@ -33,7 +33,7 @@ jobs:
             runner: macos-latest
             timeout_minutes: 90
           - target: windows
-            runner: windows-latest
+            runner: WinLatest-x64-8vCPU-32GB
             timeout_minutes: 60
           - target: linux
             runner: ubuntu-latest
@@ -41,6 +41,7 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       RELEASE_CHANNEL: ${{ inputs.release_channel }}
+      CANARY_BUILD_TIME: ${{ github.event.head_commit.timestamp || github.run_started_at }}
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       UPDATE_S3_BUCKET: ${{ vars.UPDATE_S3_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
@@ -87,6 +88,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/kilo-server/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
 
       - name: Publish
         run: pnpm run publish

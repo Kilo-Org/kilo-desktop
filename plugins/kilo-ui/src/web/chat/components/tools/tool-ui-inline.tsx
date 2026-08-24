@@ -3,6 +3,7 @@ import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
+import { formatToolDisplayName } from "./tool-categories.js";
 import {
 	ToolStatusIcon,
 	isCancelledToolStatus,
@@ -30,7 +31,7 @@ const ToolCallShell = ({
 					isCancelled && "line-through opacity-50",
 				)}
 			>
-				<span className="font-medium">{toolName}</span>
+				<span className="font-medium">{formatToolDisplayName(toolName)}</span>
 				{children}
 			</span>
 		</div>

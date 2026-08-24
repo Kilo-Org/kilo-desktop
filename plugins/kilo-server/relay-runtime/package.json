@@ -1,0 +1,9 @@
+{
+	"name": "@anaconda-agentic-desktop/webmcp-relay-runtime",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Lockfile-pinned runtime closure for the packaged WebMCP relay child process",
+	"dependencies": {
+		"@mcp-b/webmcp-local-relay": "4.0.0"
+	}
+}

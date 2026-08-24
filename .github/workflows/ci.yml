@@ -31,13 +31,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - run: pnpm check
 
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, WinLatest-x64-8vCPU-32GB, macos-latest]
     runs-on: ${{ matrix.os }}
     concurrency:
       # Windows runners contend over native modules and SQLite files.
@@ -50,6 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       # --with-deps is only needed on Linux (apt system libraries). On Windows
       # it runs a slow, silent Media Foundation DISM install (~3min) that
       # headless tests don't need; on macOS it is a no-op.
@@ -61,8 +63,8 @@ jobs:
 
   e2e-pr:
     if: github.event_name == 'pull_request'
-    runs-on: windows-latest
-    timeout-minutes: 45
+    runs-on: WinLatest-x64-8vCPU-32GB
+    timeout-minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
@@ -82,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, WinLatest-x64-8vCPU-32GB]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     concurrency:

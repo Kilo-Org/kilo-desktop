@@ -6,6 +6,7 @@ import {
 	type KiloModelCatalog,
 	type KiloProviderListPayload,
 } from "./model-catalog.js";
+import { KILO_PROVIDER_LIST_QUERY_KEY } from "../../providers/provider-queries.js";
 import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
 
 /**
@@ -26,7 +27,7 @@ export async function fetchModelCatalogForConnection(
 
 export function useKiloModelCatalog(connection: KiloGlobalConnection | undefined) {
 	return useQuery({
-		queryKey: ["kilo-ui", "provider.list", connection?.baseUrl, connection?.version],
+		queryKey: [...KILO_PROVIDER_LIST_QUERY_KEY, connection?.baseUrl, connection?.version],
 		queryFn: () => fetchModelCatalogForConnection(connection),
 		enabled: connection !== undefined,
 		retry: false,

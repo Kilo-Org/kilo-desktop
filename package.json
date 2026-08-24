@@ -4,13 +4,12 @@
 	"private": true,
 	"type": "module",
 	"description": "Anaconda Agentic Desktop",
-	"packageManager": "pnpm@11.21.0",
+	"packageManager": "pnpm@11.22.0",
 	"engines": {
 		"node": ">=24"
 	},
 	"scripts": {
-		"check": "pnpm -r --if-present check",
-		"check:changed": "pnpm --filter \"...[origin/main]\" --filter \"!anaconda-agentic-desktop\" -r --if-present check",
+		"check": "turbo run check",
 		"dev": "pnpm dev:desktop",
 		"dev:web": "pnpm --filter @anaconda-agentic-desktop/web dev",
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env ANACONDA_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @anaconda-agentic-desktop/desktop start\"",
@@ -21,18 +20,17 @@
 		"make": "pnpm --filter @anaconda-agentic-desktop/desktop run make",
 		"package": "pnpm --filter @anaconda-agentic-desktop/desktop run package",
 		"package:e2e": "pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e",
-		"postinstall": "node -e \"if (process.platform !== 'win32') require('node:fs').chmodSync('node_modules/@electron-forge/cli/dist/electron-forge.js', 0o755)\"",
+		"postinstall": "node -e \"try { if (process.platform !== 'win32') require('node:fs').chmodSync('node_modules/@electron-forge/cli/dist/electron-forge.js', 0o755) } catch (error) { if (error.code !== 'ENOENT') throw error }\"",
 		"publish": "pnpm --filter @anaconda-agentic-desktop/desktop run publish",
 		"start": "pnpm dev:desktop",
 		"prepare": "husky",
-		"test": "pnpm -r --if-present test",
-		"test:changed": "pnpm --filter \"...[origin/main]\" --filter \"!anaconda-agentic-desktop\" -r --if-present test",
+		"test": "turbo run test",
 		"test:web": "pnpm --filter @anaconda-agentic-desktop/web test",
 		"test:desktop": "pnpm --filter @anaconda-agentic-desktop/desktop test",
 		"test:contracts": "pnpm --filter @anaconda-agentic-desktop/contracts test",
 		"test:e2e": "pnpm --filter @anaconda-agentic-desktop/e2e run test:e2e",
 		"test:e2e:smoke": "pnpm --filter @anaconda-agentic-desktop/e2e run test:e2e:smoke",
-		"coverage": "pnpm -r --if-present coverage"
+		"coverage": "turbo run coverage"
 	},
 	"lint-staged": {
 		"*.{js,mjs,cjs,ts,tsx}": [
@@ -49,16 +47,17 @@
 		"@anaconda-agentic-desktop/ui": "workspace:*",
 		"@opencode-ai/sdk": "workspace:*",
 		"@types/node": "^24.13.3",
-		"@vitest/coverage-v8": "5.0.0-rc.1",
+		"@vitest/coverage-v8": "5.0.0-rc.2",
 		"concurrently": "^10.0.0",
 		"cross-env": "^10.1.0",
 		"globals": "^17.7.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.2.0",
-		"oxfmt": "^0.63.0",
+		"oxfmt": "^0.64.0",
 		"oxlint": "^1.76.0",
-		"typescript": "catalog:",
 		"tsx": "^4.23.1",
+		"turbo": "^2.10.11",
+		"typescript": "catalog:",
 		"vitest": "catalog:",
 		"wait-on": "^9.0.3"
 	}

@@ -1,9 +1,10 @@
 import { memo, useMemo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { PatchDiff } from "@pierre/diffs/react";
+import { FileDiff, PatchDiff } from "@pierre/diffs/react";
 
+import { parseChatPatchFiles, PIERRE_DIFF_OPTIONS } from "../../pierre-diff.js";
+import { usePrimePierreDiffs } from "../../use-prime-pierre-diffs.js";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { PIERRE_DIFF_OPTIONS } from "./tool-ui-file-mutation.js";
 import { getPatchInfo, str } from "./tool-ui-shared.js";
 
 interface PatchBlock {
@@ -103,7 +104,7 @@ function claudeBlockToUnifiedDiff(block: PatchBlock): string {
 	return `${gitHeader}\n${fileHeader}\n${hunkHeader}\n${diffLines.join("\n")}`;
 }
 
-export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status }) => {
+export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status, toolCallId }) => {
 	const patchText = str(args?.patchText);
 
 	const patchInfo = useMemo(() => getPatchInfo(patchText), [patchText]);
@@ -116,6 +117,11 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 
 	const isRunning = status?.type === "running";
 	const hasDiff = unifiedPatch.length > 0 && !isRunning;
+	const fileDiffs = useMemo(
+		() => (hasDiff ? parseChatPatchFiles(unifiedPatch, toolCallId) : []),
+		[hasDiff, toolCallId, unifiedPatch],
+	);
+	usePrimePierreDiffs(fileDiffs);
 
 	const object =
 		patchInfo.files.length === 0
@@ -143,7 +149,17 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 			trailing={trailing}
 			detail={
 				<div className="overflow-hidden rounded-md border">
-					<PatchDiff patch={unifiedPatch} options={PIERRE_DIFF_OPTIONS} />
+					{fileDiffs.length > 0 ? (
+						fileDiffs.map((fileDiff) => (
+							<FileDiff
+								key={fileDiff.cacheKey ?? fileDiff.name}
+								fileDiff={fileDiff}
+								options={PIERRE_DIFF_OPTIONS}
+							/>
+						))
+					) : (
+						<PatchDiff patch={unifiedPatch} options={PIERRE_DIFF_OPTIONS} />
+					)}
 				</div>
 			}
 		/>

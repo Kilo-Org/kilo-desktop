@@ -86,4 +86,9 @@ describe("PLUGIN_PAGES", () => {
 		const chat = findPluginPage(PLUGIN_PAGES, "/plugins/chat");
 		expect(chat?.surface).toBe("transparent");
 	});
+
+	it("contains the Kilo chat route without shell-owned companion UI", () => {
+		const chat = findPluginPage(PLUGIN_PAGES, "/plugins/chat");
+		expect(chat?.pluginId).toBe("kilo-ui");
+	});
 });

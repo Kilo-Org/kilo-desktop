@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../contracts/chat/schemas.js";
+import type { OnboardingService } from "../contracts/onboarding/schemas.js";
 import type {
 	WorkspaceCapabilityService,
 	WorkspacesService,
@@ -8,10 +9,14 @@ import type {
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
+import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import { OnboardingStore } from "./onboarding/OnboardingStore.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
 import { createUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
+import { createWorkspaceSessionUnscoper } from "./chat/unscope-workspace-sessions.js";
+import { WorkspaceSessionCleanupQueue } from "./chat/workspace-session-cleanup-queue.js";
 
 type KiloServerCapabilities = {
 	connectionService: {
@@ -19,12 +24,19 @@ type KiloServerCapabilities = {
 	};
 };
 
-export function mainRegister(mainSdk: MainSdk): void {
+export function mainRegister(
+	mainSdk: MainSdk,
+	options: { unscopeWorkspaceSessions?: (workspaceId: string) => Promise<void> } = {},
+): void {
 	const db = createWorkspacesDatabase(
 		path.join(mainSdk.storageDir, "data.db"),
 		mainSdk.resolvePluginAsset("drizzle"),
 	);
 	const service = new WorkspaceService(db);
+	const unscopeWorkspaceSessions =
+		options.unscopeWorkspaceSessions ?? createWorkspaceSessionUnscoper(mainSdk);
+	const cleanup = new WorkspaceSessionCleanupQueue(mainSdk, unscopeWorkspaceSessions);
+	cleanup.retryPending();
 
 	const api: WorkspacesService = {
 		list: async () => service.list(),
@@ -43,6 +55,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 		remove: async ({ id }) => {
 			const before = service.remove(id);
 			mainSdk.events.emit("workspace-deleted", { before, after: null });
+			cleanup.enqueue(id);
 			return { deleted: true };
 		},
 	};
@@ -90,8 +103,16 @@ export function mainRegister(mainSdk: MainSdk): void {
 		},
 	};
 
+	const onboarding = new OnboardingStore(mainSdk);
+	const onboardingApi: OnboardingService = {
+		"onboarding.get": async () => onboarding.get(),
+		"onboarding.complete": async () => onboarding.complete(),
+		"onboarding.skip": async () => onboarding.skip(),
+	};
+
 	mainSdk.plugins.expose("workspaceService", workspaceService);
 	mainSdk.channels(workspacesContract).handleAll(api);
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
+	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
 	mainSdk.onDispose(() => db.$client.close());
 }

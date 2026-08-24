@@ -1,12 +1,15 @@
 import type { LucideIcon } from "lucide-react";
 import {
 	BookOpenIcon,
+	BotIcon,
 	BrainIcon,
 	CircleHelpIcon,
 	FilePenIcon,
 	FilePlusIcon,
 	GlobeIcon,
+	LightbulbIcon,
 	ListTodoIcon,
+	NotebookIcon,
 	SearchIcon,
 	SparklesIcon,
 	TerminalIcon,
@@ -18,7 +21,8 @@ import { basename, getCommandSummary, getPatchInfo, str, truncate } from "./tool
  * Tool grouping for the activity view. Categories mirror the built-in tool
  * set of Kilo (the opencode fork used as the backend). MCP tools are named
  * `{server}_{tool}` and group by server; anything else unmapped lands in the
- * generic tools group.
+ * generic tools group. Known MCP servers can override their display label and
+ * icon (e.g. notebooks → Notebooks, matching the chat right-panel notebook tab).
  */
 
 export type ToolCategory =
@@ -30,7 +34,9 @@ export type ToolCategory =
 	| "terminal"
 	| "planning"
 	| "asking"
-	| "skill";
+	| "suggesting"
+	| "skill"
+	| "subagent";
 
 /** Dynamic subgroup for an MCP server, e.g. `mcp:atlassian`. */
 export type McpActivityKind = `mcp:${string}`;
@@ -61,7 +67,9 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	ask_question: "asking",
 	request_user_input: "asking",
 	requestuserinput: "asking",
+	suggest: "suggesting",
 	skill: "skill",
+	task: "subagent",
 };
 
 export const getToolCategory = (toolName: string): ToolCategory | undefined =>
@@ -70,7 +78,12 @@ export const getToolCategory = (toolName: string): ToolCategory | undefined =>
 export const isAskQuestionTool = (toolName: string): boolean =>
 	getToolCategory(toolName) === "asking";
 
+export const isSuggestTool = (toolName: string): boolean =>
+	getToolCategory(toolName) === "suggesting";
+
 export const isSkillTool = (toolName: string): boolean => getToolCategory(toolName) === "skill";
+
+export const isTaskTool = (toolName: string): boolean => getToolCategory(toolName) === "subagent";
 
 /**
  * OpenCode/Kilo MCP tools are named `{server}_{toolName}`. Built-in tools with
@@ -98,6 +111,12 @@ export const formatMcpServerLabel = (serverId: string): string =>
 		.filter(Boolean)
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
 		.join(" ");
+
+/** Local tool name after the `{server}_` MCP prefix, if this is an MCP tool. */
+export const getMcpToolLocalName = (toolName: string): string | undefined => {
+	if (!getMcpServerFromToolName(toolName)) return undefined;
+	return toolName.slice(toolName.indexOf("_") + 1);
+};
 
 export type ActivityGroupKey =
 	| `group-${ToolCategory | "tools" | "thinking"}`
@@ -130,7 +149,9 @@ export const activityKindFromGroupKey = (groupKey: string): ActivityKind | undef
 		rest === "terminal" ||
 		rest === "planning" ||
 		rest === "asking" ||
-		rest === "skill"
+		rest === "suggesting" ||
+		rest === "skill" ||
+		rest === "subagent"
 	) {
 		return rest;
 	}
@@ -240,10 +261,14 @@ export type KindStats = {
 	file?: string | undefined;
 	/** Short question prompt for asking subgroups. */
 	question?: string | undefined;
+	/** Suggestion text for a suggesting subgroup. */
+	suggestion?: string | undefined;
 	/** Description or abbreviated command for a single terminal tool call. */
 	commandSummary?: string | undefined;
 	/** Skill id for a skill subgroup that loaded exactly one skill. */
 	skill?: string | undefined;
+	/** Short task description (or agent type) for a single subagent call. */
+	task?: string | undefined;
 };
 
 type KindMeta = {
@@ -340,6 +365,15 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 		circleClassName:
 			"border-indigo-600/40 bg-indigo-100 text-indigo-600 dark:border-indigo-400/40 dark:bg-indigo-950 dark:text-indigo-400",
 	},
+	suggesting: {
+		icon: LightbulbIcon,
+		label: "Suggestion",
+		liveLabel: () => "Suggesting",
+		doneLabel: ({ suggestion, count }) =>
+			suggestion ? `Suggested ${suggestion}` : `Suggested ${plural(count, "action")}`,
+		circleClassName:
+			"border-amber-600/40 bg-amber-100 text-amber-600 dark:border-amber-400/40 dark:bg-amber-950 dark:text-amber-400",
+	},
 	skill: {
 		icon: SparklesIcon,
 		label: "Skill",
@@ -348,6 +382,19 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 			skill || count <= 1 ? "Read Skill" : `Read ${plural(count, "Skill")}`,
 		circleClassName:
 			"border-fuchsia-600/40 bg-fuchsia-100 text-fuchsia-600 dark:border-fuchsia-400/40 dark:bg-fuchsia-950 dark:text-fuchsia-400",
+	},
+	subagent: {
+		icon: BotIcon,
+		label: "Subagent",
+		liveLabel: ({ task }) => (task ? `Delegating ${task}` : "Delegating..."),
+		doneLabel: ({ task, count }) =>
+			task
+				? `Delegated ${task}`
+				: count <= 1
+					? "Delegated"
+					: `Delegated ${plural(count, "subagent")}`,
+		circleClassName:
+			"border-purple-600/40 bg-purple-100 text-purple-600 dark:border-purple-400/40 dark:bg-purple-950 dark:text-purple-400",
 	},
 	tools: {
 		icon: WrenchIcon,
@@ -359,14 +406,84 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 	},
 };
 
+type McpKindOverride = Pick<KindMeta, "icon" | "label" | "circleClassName"> & {
+	/** Local MCP tool name → label shown inside the group. */
+	toolLabels?: Record<string, string>;
+};
+
+/**
+ * Presentation for MCP servers that should look like first-class product
+ * groups rather than a title-cased server id with the generic wrench.
+ * Grouping still keys off `mcp:{server}` / `group-mcp-{server}`.
+ */
+const MCP_KIND_OVERRIDES: Record<string, McpKindOverride> = {
+	notebooks: {
+		icon: NotebookIcon,
+		label: "Notebooks",
+		circleClassName:
+			"border-teal-600/40 bg-teal-100 text-teal-600 dark:border-teal-400/40 dark:bg-teal-950 dark:text-teal-400",
+		toolLabels: {
+			create_notebook: "Create notebook",
+			connect_notebook: "Connect notebook",
+			save_notebook: "Save notebook",
+			show_notebook: "Show notebook",
+			disconnect_notebook: "Disconnect notebook",
+			list_active_notebooks: "List notebooks",
+			list_notebooks: "List notebooks",
+			create_cell: "Create cell",
+			set_cell: "Edit cell",
+			delete_cell: "Delete cell",
+			move_cell: "Move cell",
+			get_cell: "Read cell",
+			get_all_cells: "List cells",
+			execute_cell: "Run cell",
+			run_all_cells: "Run all cells",
+			get_results: "Get results",
+			interrupt_kernel: "Interrupt kernel",
+			restart_kernel: "Restart kernel",
+			manage_dependencies: "Manage dependencies",
+			replace_match: "Replace text",
+			replace_regex: "Replace regex",
+			create_comment: "Create comment",
+			reply_comment: "Reply to comment",
+			resolve_comment: "Resolve comment",
+			reopen_comment: "Reopen comment",
+		},
+	},
+};
+
+const sentenceCaseToolName = (name: string): string => {
+	const words = name
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.split(/[-_\s]+/)
+		.filter(Boolean);
+	if (words.length === 0) return name;
+	return words
+		.map((word, index) => {
+			const lower = word.toLowerCase();
+			return index === 0 ? `${lower.charAt(0).toUpperCase()}${lower.slice(1)}` : lower;
+		})
+		.join(" ");
+};
+
+/** User-facing tool label: MCP server prefix stripped, then a display name. */
+export const formatToolDisplayName = (toolName: string): string => {
+	const server = getMcpServerFromToolName(toolName);
+	const localName = getMcpToolLocalName(toolName);
+	if (!server || !localName) return toolName;
+	return MCP_KIND_OVERRIDES[server]?.toolLabels?.[localName] ?? sentenceCaseToolName(localName);
+};
+
 const mcpKindMeta = (kind: McpActivityKind): KindMeta => {
-	const label = formatMcpServerLabel(getMcpServerId(kind));
+	const serverId = getMcpServerId(kind);
+	const override = MCP_KIND_OVERRIDES[serverId];
+	const label = override?.label ?? formatMcpServerLabel(serverId);
 	return {
-		icon: WrenchIcon,
+		icon: override?.icon ?? WrenchIcon,
 		label,
 		liveLabel: () => `${label}...`,
 		doneLabel: () => label,
-		circleClassName: KIND_META.tools.circleClassName,
+		circleClassName: override?.circleClassName ?? KIND_META.tools.circleClassName,
 	};
 };
 
@@ -431,6 +548,16 @@ export const getPartQuestionSummary = (part: ActivityPart): string | undefined =
 	return questionSummaryFromArgs(part.args);
 };
 
+/** OpenCode/Kilo `suggest` tool takes `{ suggest, actions }`. */
+export const getPartSuggestionSummary = (part: ActivityPart): string | undefined => {
+	if (part.type !== "tool-call" || !part.toolName || !isSuggestTool(part.toolName)) {
+		return undefined;
+	}
+	if (!part.args || typeof part.args !== "object") return undefined;
+	const text = str((part.args as Record<string, unknown>).suggest);
+	return text ? truncate(text, 48) : undefined;
+};
+
 /** OpenCode/Kilo `skill` tool takes `{ name }`. */
 export const getPartSkillName = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isSkillTool(part.toolName)) {
@@ -441,12 +568,39 @@ export const getPartSkillName = (part: ActivityPart): string | undefined => {
 	return name ? truncate(name, 48) : undefined;
 };
 
+/** OpenCode/Kilo `task` tool takes `{ description, prompt, subagent_type }`. */
+export const getPartTaskDescription = (part: ActivityPart): string | undefined => {
+	if (part.type !== "tool-call" || !part.toolName || !isTaskTool(part.toolName)) {
+		return undefined;
+	}
+	if (!part.args || typeof part.args !== "object") return undefined;
+	const record = part.args as Record<string, unknown>;
+	const description = str(record.description).replace(/\s+/g, " ").trim();
+	if (description) return truncate(description, 72);
+	const agent = str(record.subagent_type).trim();
+	return agent ? truncate(agent, 48) : undefined;
+};
+
 const uniqueSkillNames = (parts: readonly ActivityPart[], indices: readonly number[]): string[] => {
 	const names = new Set<string>();
 	for (const index of indices) {
 		const part = parts[index];
 		if (!part) continue;
 		const name = getPartSkillName(part);
+		if (name) names.add(name);
+	}
+	return [...names];
+};
+
+const uniqueTaskDescriptions = (
+	parts: readonly ActivityPart[],
+	indices: readonly number[],
+): string[] => {
+	const names = new Set<string>();
+	for (const index of indices) {
+		const part = parts[index];
+		if (!part) continue;
+		const name = getPartTaskDescription(part);
 		if (name) names.add(name);
 	}
 	return [...names];
@@ -466,19 +620,32 @@ export const getSegmentStats = (
 			if (question) break;
 		}
 	}
+	let suggestion: string | undefined;
+	if (segment.kind === "suggesting") {
+		for (const index of segment.indices) {
+			const part = parts[index];
+			if (!part) continue;
+			suggestion = getPartSuggestionSummary(part);
+			if (suggestion) break;
+		}
+	}
 	const commandSummary =
 		segment.kind === "terminal" && segment.indices.length === 1
 			? getCommandSummary(parts[segment.indices[0]!]?.args as Record<string, unknown> | undefined)
 			: undefined;
 	const skills =
 		segment.kind === "skill" ? uniqueSkillNames(parts, segment.indices) : ([] as string[]);
+	const tasks =
+		segment.kind === "subagent" ? uniqueTaskDescriptions(parts, segment.indices) : ([] as string[]);
 	return {
 		count: segment.indices.length,
 		files: files.length,
 		file: files.length === 1 ? basename(files[0]!) : undefined,
 		question,
+		suggestion,
 		commandSummary: commandSummary || undefined,
 		skill: skills.length === 1 ? skills[0] : undefined,
+		task: tasks.length === 1 ? tasks[0] : undefined,
 	};
 };
 

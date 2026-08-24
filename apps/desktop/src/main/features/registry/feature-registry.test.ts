@@ -65,10 +65,10 @@ describe("feature registration", () => {
 		expect(createLogger).toHaveBeenCalledOnce();
 		expect(createLogger).toHaveBeenCalledWith(featureId);
 		expect(warning).toHaveBeenCalledWith(expect.stringContaining("is already booted"));
-		duplicateDispose();
+		await duplicateDispose();
 		expect(disposed).not.toHaveBeenCalled();
 
-		dispose();
+		await dispose();
 		expect(disposed).toHaveBeenCalledOnce();
 	});
 
@@ -93,12 +93,12 @@ describe("feature registration", () => {
 			error,
 		);
 		expect(disposed).toHaveBeenCalledOnce();
-		failedDispose();
+		await failedDispose();
 
 		const registered = vi.fn();
 		const retryDispose = await bootFeatures([{ id: featureId, mainRegister: registered }]);
 		expect(registered).toHaveBeenCalledOnce();
-		retryDispose();
+		await retryDispose();
 	});
 
 	it("invokes onBeforeFeatureBoot callback for each feature before mainRegister", async () => {
@@ -125,7 +125,7 @@ describe("feature registration", () => {
 
 		expect(progress).toHaveBeenCalledWith(featureId);
 		expect(registerOrder).toEqual(["progress", "register"]);
-		dispose();
+		await dispose();
 	});
 
 	it("routes mainSdk.boot.reportProgress to onFeatureProgress during boot and no-ops after", async () => {
@@ -154,7 +154,7 @@ describe("feature registration", () => {
 		capturedSdk?.boot.reportProgress("late — should be ignored");
 		expect(onFeatureProgress).toHaveBeenCalledTimes(2);
 
-		dispose();
+		await dispose();
 	});
 
 	it("awaits async mainRegister and delivers progress throughout", async () => {
@@ -177,7 +177,33 @@ describe("feature registration", () => {
 
 		expect(onFeatureProgress).toHaveBeenNthCalledWith(1, featureId, "Starting async boot…");
 		expect(onFeatureProgress).toHaveBeenNthCalledWith(2, featureId, "Async boot done.");
-		dispose();
+		await dispose();
+	});
+
+	it("waits for async feature cleanup before its disposer resolves", async () => {
+		const featureId = "registry-async-dispose-test";
+		let release!: () => void;
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const cleanupFinished = vi.fn();
+		const dispose = await bootFeatures([
+			{
+				id: featureId,
+				mainRegister(mainSdk) {
+					mainSdk.onDispose(async () => {
+						await blocked;
+						cleanupFinished();
+					});
+				},
+			},
+		]);
+
+		const disposing = dispose();
+		expect(cleanupFinished).not.toHaveBeenCalled();
+		release();
+		await disposing;
+		expect(cleanupFinished).toHaveBeenCalledOnce();
 	});
 
 	it("rolls back async mainRegister that rejects", async () => {
@@ -198,13 +224,13 @@ describe("feature registration", () => {
 			expect.stringContaining(`mainRegister failed for "${featureId}"`),
 			expect.any(Error),
 		);
-		dispose();
+		await dispose();
 
 		// Feature can be retried after async failure
 		const registered = vi.fn();
 		const retryDispose = await bootFeatures([{ id: featureId, mainRegister: registered }]);
 		expect(registered).toHaveBeenCalledOnce();
-		retryDispose();
+		await retryDispose();
 	});
 });
 
@@ -297,7 +323,7 @@ describe("feature invoke bridge", () => {
 				unexpected,
 			);
 		} finally {
-			dispose();
+			await dispose();
 		}
 	});
 });
@@ -306,7 +332,8 @@ describe("feature port bridge", () => {
 	it("attaches the transferred port to the owning feature handler", async () => {
 		const featureId = "feature-port-bridge-test";
 		const attached = vi.fn();
-		const port = {} as never;
+		const close = vi.fn();
+		const port = { close } as never;
 		const dispose = await bootFeatures([
 			{
 				id: featureId,
@@ -326,9 +353,10 @@ describe("feature port bridge", () => {
 				},
 				{ senderId: 42, port },
 			);
-			expect(attached).toHaveBeenCalledWith(port, { notebookId: "nb-1" });
+			expect(attached).toHaveBeenCalledWith(port, { notebookId: "nb-1" }, { senderId: 42 });
 		} finally {
 			await dispose();
 		}
+		expect(close).toHaveBeenCalledOnce();
 	});
 });

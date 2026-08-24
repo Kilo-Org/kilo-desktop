@@ -7,10 +7,15 @@ import type {
 	OpenCodeQuestionRequest,
 } from "@assistant-ui/react-opencode";
 
+import type { KiloSuggestionRequest } from "../../suggestions/kilo-suggestion-logic.js";
+
 const runtime = vi.hoisted(() => ({
 	permissions: [] as OpenCodePermissionRequest[],
 	questions: [] as OpenCodeQuestionRequest[],
+	suggestion: null as KiloSuggestionRequest | null,
 	replyToPermission: vi.fn(async () => undefined),
+	acceptSuggestion: vi.fn(async () => undefined),
+	dismissSuggestion: vi.fn(async () => undefined),
 }));
 
 vi.mock("@assistant-ui/react-opencode", () => ({
@@ -23,6 +28,14 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 		replyToPermission: runtime.replyToPermission,
 		replyToQuestion: vi.fn(async () => undefined),
 		rejectQuestion: vi.fn(async () => undefined),
+	}),
+}));
+
+vi.mock("../../suggestions/KiloSuggestionContext.js", () => ({
+	usePendingKiloSuggestion: () => runtime.suggestion,
+	useKiloSuggestionActions: () => ({
+		accept: runtime.acceptSuggestion,
+		dismiss: runtime.dismissSuggestion,
 	}),
 }));
 
@@ -63,7 +76,10 @@ afterEach(() => {
 	cleanup();
 	runtime.permissions.length = 0;
 	runtime.questions.length = 0;
+	runtime.suggestion = null;
 	runtime.replyToPermission.mockClear();
+	runtime.acceptSuggestion.mockClear();
+	runtime.dismissSuggestion.mockClear();
 });
 
 describe("OpenCodeComposerInteraction", () => {
@@ -128,5 +144,41 @@ describe("OpenCodeComposerInteraction", () => {
 
 		await expect.element(screen.getByText("Message composer")).toBeVisible();
 		await expect.element(screen.getByText("Ready to implement?")).not.toBeInTheDocument();
+	});
+
+	it("shows a pending suggestion above the composer", async () => {
+		runtime.suggestion = {
+			id: "sug-1",
+			sessionID: "session-1",
+			text: "Run a local review?",
+			actions: [{ label: "Start review", prompt: "/local-review-uncommitted" }],
+		};
+		const { baseElement } = render(
+			<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("Run a local review?")).toBeVisible();
+		await expect.element(screen.getByText("Message composer")).toBeVisible();
+
+		await screen.getByRole("button", { name: "Start review" }).click();
+		await expect.poll(() => runtime.acceptSuggestion.mock.calls).toEqual([[runtime.suggestion, 0]]);
+	});
+
+	it("dismisses a pending suggestion without hiding the composer", async () => {
+		runtime.suggestion = {
+			id: "sug-1",
+			sessionID: "session-1",
+			text: "Run a local review?",
+			actions: [{ label: "Start review", prompt: "/local-review-uncommitted" }],
+		};
+		const { baseElement } = render(
+			<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByRole("button", { name: "Dismiss suggestion" }).click();
+		await expect.poll(() => runtime.dismissSuggestion.mock.calls).toEqual([[runtime.suggestion]]);
+		await expect.element(screen.getByText("Message composer")).toBeVisible();
 	});
 });

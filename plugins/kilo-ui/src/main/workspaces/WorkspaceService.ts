@@ -7,13 +7,19 @@ import { asc, eq } from "drizzle-orm";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import type { Workspace, WorkspaceFolderInput } from "../../contracts/workspaces/schemas.js";
+import {
+	DEFAULT_WORKSPACE_IDENTITY_COLOR,
+	normalizeWorkspaceIdentityColor,
+	type Workspace,
+	type WorkspaceFolderInput,
+} from "../../contracts/workspaces/schemas.js";
 
 import type { WorkspacesDatabase } from "./db.js";
 import { workspaceFolders, workspaces } from "./schema.js";
 
 type SaveWorkspaceInput = {
 	name?: string | undefined;
+	color?: string | undefined;
 	folders: WorkspaceFolderInput[];
 };
 
@@ -55,6 +61,7 @@ export class WorkspaceService {
 	create(input: SaveWorkspaceInput): Workspace {
 		const folders = this.validateFolders(input.folders);
 		const name = this.resolveName(input.name, folders[0]!.path);
+		const color = this.resolveColor(input.color, DEFAULT_WORKSPACE_IDENTITY_COLOR);
 		const timestamp = this.now();
 		const workspaceId = this.createId();
 
@@ -63,6 +70,7 @@ export class WorkspaceService {
 				.values({
 					id: workspaceId,
 					name,
+					color,
 					createdAt: timestamp,
 					updatedAt: timestamp,
 				})
@@ -88,12 +96,16 @@ export class WorkspaceService {
 		const folders = this.validateFolders(input.folders);
 		const name =
 			input.name === undefined ? before.name : this.resolveName(input.name, folders[0]!.path, id);
+		const color = this.resolveColor(input.color, before.color ?? null);
 		const retainedIds = new Map(
 			before.folders.map((folder) => [comparablePath(folder.path), folder.id]),
 		);
 
 		this.db.transaction((tx) => {
-			tx.update(workspaces).set({ name, updatedAt: this.now() }).where(eq(workspaces.id, id)).run();
+			tx.update(workspaces)
+				.set({ name, color, updatedAt: this.now() })
+				.where(eq(workspaces.id, id))
+				.run();
 			tx.delete(workspaceFolders).where(eq(workspaceFolders.workspaceId, id)).run();
 			tx.insert(workspaceFolders)
 				.values(
@@ -133,7 +145,24 @@ export class WorkspaceService {
 			.orderBy(asc(workspaceFolders.position))
 			.all()
 			.map(({ workspaceId: _workspaceId, ...folder }) => folder);
-		return { ...workspace, folders };
+		const color = normalizeWorkspaceIdentityColor(workspace.color) ?? undefined;
+		return {
+			id: workspace.id,
+			name: workspace.name,
+			...(color ? { color } : {}),
+			folders,
+			createdAt: workspace.createdAt,
+			updatedAt: workspace.updatedAt,
+		};
+	}
+
+	private resolveColor(raw: string | undefined, fallback: string | null): string | null {
+		if (raw === undefined) return fallback;
+		const trimmed = raw.trim();
+		if (!trimmed) return fallback;
+		const hex = normalizeWorkspaceIdentityColor(trimmed);
+		if (!hex) throw new FeatureError("Invalid identity color.", "VALIDATION");
+		return hex;
 	}
 
 	private validateFolders(input: WorkspaceFolderInput[]): WorkspaceFolderInput[] {

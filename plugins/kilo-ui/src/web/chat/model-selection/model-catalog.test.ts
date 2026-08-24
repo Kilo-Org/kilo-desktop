@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	buildCatalogFromProviderList,
+	isKiloGatewayProvider,
 	modelRefToId,
 	parseModelId,
 	pickDefaultModel,
@@ -61,6 +62,13 @@ describe("model-catalog", () => {
 		expect(parseModelId("bad")).toBeNull();
 	});
 
+	it("recognizes the Kilo Gateway provider by id or name", () => {
+		expect(isKiloGatewayProvider({ id: "kilo" })).toBe(true);
+		expect(isKiloGatewayProvider({ id: "kilo", name: "Kilo Gateway" })).toBe(true);
+		expect(isKiloGatewayProvider({ id: "other", name: "Kilo Gateway" })).toBe(true);
+		expect(isKiloGatewayProvider({ id: "anthropic", name: "Anthropic" })).toBe(false);
+	});
+
 	it("builds a connected-only catalog by default", () => {
 		const catalog = buildCatalogFromProviderList(payload);
 		expect(catalog.providers).toEqual([{ id: "anthropic", name: "Anthropic", connected: true }]);
@@ -80,6 +88,104 @@ describe("model-catalog", () => {
 	it("picks the provider default when available", () => {
 		const catalog = buildCatalogFromProviderList(payload);
 		expect(pickDefaultModel(catalog)).toEqual({
+			providerID: "anthropic",
+			modelID: "claude-sonnet",
+		});
+	});
+
+	it("ignores Kilo Gateway's provider.list default when it ranks a Gemini image model first", () => {
+		const withGeminiDefault: KiloProviderListPayload = {
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						"kilo-auto/frontier": {
+							id: "kilo-auto/frontier",
+							name: "Auto Frontier",
+							providerID: "kilo",
+						},
+						"google/gemini-3-pro-image": {
+							id: "google/gemini-3-pro-image",
+							name: "Google: Nano Banana Pro (Gemini 3 Pro Image)",
+							providerID: "kilo",
+						},
+					},
+				},
+			],
+			default: { kilo: "google/gemini-3-pro-image" },
+			connected: ["kilo"],
+		};
+		expect(pickDefaultModel(buildCatalogFromProviderList(withGeminiDefault))).toEqual({
+			providerID: "kilo",
+			modelID: "kilo-auto/frontier",
+		});
+	});
+
+	it("prefers Auto Free over the provider-marked default", () => {
+		const withAutoFree: KiloProviderListPayload = {
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						auto: { id: "auto", name: "Auto", providerID: "kilo" },
+						"kilo-auto/free": {
+							id: "kilo-auto/free",
+							name: "Auto Free",
+							providerID: "kilo",
+						},
+						"kilo-auto/frontier": {
+							id: "kilo-auto/frontier",
+							name: "Auto Frontier",
+							providerID: "kilo",
+						},
+					},
+				},
+			],
+			default: { kilo: "auto" },
+			connected: ["kilo"],
+		};
+		expect(pickDefaultModel(buildCatalogFromProviderList(withAutoFree))).toEqual({
+			providerID: "kilo",
+			modelID: "kilo-auto/free",
+		});
+	});
+
+	it("does not pick a disconnected Auto Free model", () => {
+		const disconnectedAutoFree: KiloProviderListPayload = {
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						"kilo-auto/free": {
+							id: "kilo-auto/free",
+							name: "Auto Free",
+							providerID: "kilo",
+						},
+					},
+				},
+				{
+					id: "anthropic",
+					name: "Anthropic",
+					models: {
+						"claude-sonnet": {
+							id: "claude-sonnet",
+							name: "Claude Sonnet",
+							providerID: "anthropic",
+						},
+					},
+				},
+			],
+			default: { anthropic: "claude-sonnet" },
+			connected: ["anthropic"],
+		};
+		expect(
+			pickDefaultModel(
+				buildCatalogFromProviderList(disconnectedAutoFree, { connectedOnly: false }),
+			),
+		).toEqual({
 			providerID: "anthropic",
 			modelID: "claude-sonnet",
 		});

@@ -1,0 +1,24 @@
+{
+	"id": "notebook",
+	"displayName": "Notebook",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"providers": [],
+		"routes": [],
+		"nav": [],
+		"zones": [
+			{
+				"zone": "kilo-ui/chat-right-panel-tab",
+				"id": "notebook",
+				"component": "NotebookView",
+				"label": "Notebook",
+				"description": "Analyze data with interactive Python notebooks.",
+				"icon": "NotebookIcon",
+				"mountPolicy": "keep-alive",
+				"priority": 50
+			}
+		]
+	}
+}

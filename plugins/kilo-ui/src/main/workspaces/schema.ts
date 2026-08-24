@@ -3,6 +3,7 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 export const workspaces = sqliteTable("workspaces", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
+	color: text("color"),
 	createdAt: integer("created_at").notNull(),
 	updatedAt: integer("updated_at").notNull(),
 });

@@ -11,7 +11,7 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
-const ANIMATION_DURATION = 200;
+const ANIMATION_DURATION = 120;
 
 const toolGroupVariants = cva("aui-tool-group-root group/tool-group w-full", {
 	variants: {
@@ -173,10 +173,10 @@ function ToolGroupContent({
 					"group-data-[variant=muted]/tool-group-root:mt-3 group-data-[variant=muted]/tool-group-root:border-t group-data-[variant=muted]/tool-group-root:px-4 group-data-[variant=muted]/tool-group-root:pt-3",
 					"[&>*]:animate-in [&>*]:fade-in-0 [&>*]:blur-in-[2px] [&>*]:slide-in-from-top-1 [&>*]:duration-(--animation-duration) [&>*]:ease-[cubic-bezier(0.32,0.72,0,1)]",
 					"[&>*]:motion-reduce:animate-none",
-					"[&>*:nth-child(2)]:[animation-delay:40ms]",
-					"[&>*:nth-child(3)]:[animation-delay:80ms]",
-					"[&>*:nth-child(4)]:[animation-delay:120ms]",
-					"[&>*:nth-child(n+5)]:[animation-delay:160ms]",
+					"[&>*:nth-child(2)]:[animation-delay:20ms]",
+					"[&>*:nth-child(3)]:[animation-delay:40ms]",
+					"[&>*:nth-child(4)]:[animation-delay:60ms]",
+					"[&>*:nth-child(n+5)]:[animation-delay:80ms]",
 				)}
 			>
 				{children}

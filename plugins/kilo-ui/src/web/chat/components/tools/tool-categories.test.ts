@@ -1,9 +1,11 @@
+import { NotebookIcon } from "lucide-react";
 import { describe, expect, it } from "vitest";
 
 import {
 	activityKindFromGroupKey,
 	buildActivitySegments,
 	formatMcpServerLabel,
+	formatToolDisplayName,
 	getActivityKind,
 	getGroupKeyForTool,
 	getKindMeta,
@@ -20,6 +22,7 @@ describe("getMcpServerFromToolName", () => {
 		expect(getMcpServerFromToolName("atlassian_getJiraIssue")).toBe("atlassian");
 		expect(getMcpServerFromToolName("atlassian_getAccessibleAtlassianResources")).toBe("atlassian");
 		expect(getMcpServerFromToolName("my-server_search")).toBe("my-server");
+		expect(getMcpServerFromToolName("notebooks_create_cell")).toBe("notebooks");
 	});
 
 	it("ignores built-in tools even when they contain underscores", () => {
@@ -92,6 +95,45 @@ describe("asking activity grouping", () => {
 		expect(indicesHavePendingAsk(parts, [0], new Set(["call-new"]))).toBe(false);
 		expect(indicesHavePendingAsk(parts, [2], new Set(["call-new"]))).toBe(true);
 		expect(lastAskingPartIndex(parts)).toBe(2);
+	});
+});
+
+describe("suggesting activity grouping", () => {
+	it("maps the suggest tool into its own subgroup", () => {
+		expect(getGroupKeyForTool("suggest")).toBe("group-suggesting");
+		expect(getGroupKeyForTool("Suggest")).toBe("group-suggesting");
+		expect(activityKindFromGroupKey("group-suggesting")).toBe("suggesting");
+		expect(getActivityKind({ type: "tool-call", toolName: "suggest" })).toBe("suggesting");
+		expect(getMcpServerFromToolName("suggest")).toBeUndefined();
+	});
+
+	it("labels live and completed suggestion states", () => {
+		expect(getKindMeta("suggesting").liveLabel({ count: 1, files: 0 })).toBe("Suggesting");
+		expect(
+			getKindMeta("suggesting").doneLabel({
+				count: 1,
+				files: 0,
+				suggestion: "Run a local review?",
+			}),
+		).toBe("Suggested Run a local review?");
+	});
+
+	it("pulls the suggestion text into segment stats", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "suggest",
+				args: { suggest: "Run a local review?", actions: [{ label: "Start" }] },
+				status: { type: "complete" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "suggesting",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.suggestion).toBe("Run a local review?");
 	});
 });
 
@@ -176,7 +218,7 @@ describe("skill activity grouping", () => {
 	it("keeps skill calls out of the generic tools group", () => {
 		const parts: ActivityPart[] = [
 			{ type: "tool-call", toolName: "skill", args: { name: "write-vitest" } },
-			{ type: "tool-call", toolName: "task" },
+			{ type: "tool-call", toolName: "mystery" },
 		];
 		expect(parts.map(getActivityKind)).toEqual(["skill", "tools"]);
 		const summary = summarizeActivity(
@@ -185,6 +227,98 @@ describe("skill activity grouping", () => {
 		);
 		expect(summary.segments.map((s) => s.kind)).toEqual(["skill", "tools"]);
 		expect(summary.iconItems.map((i) => i.label)).toEqual(["Skill", "Tools"]);
+	});
+});
+
+describe("subagent activity grouping", () => {
+	it("maps the task tool into its own subgroup", () => {
+		expect(getGroupKeyForTool("task")).toBe("group-subagent");
+		expect(getGroupKeyForTool("Task")).toBe("group-subagent");
+		expect(activityKindFromGroupKey("group-subagent")).toBe("subagent");
+		expect(getActivityKind({ type: "tool-call", toolName: "task" })).toBe("subagent");
+	});
+
+	it("does not treat task as an MCP server prefix", () => {
+		expect(getMcpServerFromToolName("task")).toBeUndefined();
+	});
+
+	it("labels live and completed subagent states", () => {
+		expect(getKindMeta("subagent").liveLabel({ count: 1, files: 0 })).toBe("Delegating...");
+		expect(
+			getKindMeta("subagent").liveLabel({ count: 1, files: 0, task: "Explore auth flow" }),
+		).toBe("Delegating Explore auth flow");
+		expect(
+			getKindMeta("subagent").doneLabel({ count: 1, files: 0, task: "Explore auth flow" }),
+		).toBe("Delegated Explore auth flow");
+		expect(getKindMeta("subagent").doneLabel({ count: 2, files: 0 })).toBe("Delegated 2 subagents");
+	});
+
+	it("pulls the task description into segment stats", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "task",
+				args: {
+					description: "Explore auth flow",
+					prompt: "Find how login works.",
+					subagent_type: "explore",
+				},
+				status: { type: "complete" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "subagent",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.task).toBe("Explore auth flow");
+	});
+
+	it("falls back to the agent type when the description is missing", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "task",
+				args: { prompt: "Review the diff.", subagent_type: "code-reviewer" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "subagent",
+			indices: [0],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.task).toBe("code-reviewer");
+	});
+
+	it("omits a task description when the subgroup launched more than one", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "task", args: { description: "Explore auth" } },
+			{ type: "tool-call", toolName: "task", args: { description: "Review the patch" } },
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "subagent",
+			indices: [0, 1],
+			running: false,
+			requiresAction: false,
+		});
+		expect(stats.task).toBeUndefined();
+		expect(getKindMeta("subagent").doneLabel(stats)).toBe("Delegated 2 subagents");
+	});
+
+	it("keeps task calls out of the generic tools group", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "skill", args: { name: "write-vitest" } },
+			{ type: "tool-call", toolName: "task", args: { description: "Explore auth" } },
+		];
+		expect(parts.map(getActivityKind)).toEqual(["skill", "subagent"]);
+		const summary = summarizeActivity(
+			parts,
+			parts.map((_, i) => i),
+		);
+		expect(summary.segments.map((s) => s.kind)).toEqual(["skill", "subagent"]);
+		expect(summary.iconItems.map((i) => i.label)).toEqual(["Skill", "Subagent"]);
 	});
 });
 
@@ -218,6 +352,29 @@ describe("MCP activity grouping", () => {
 		expect(formatMcpServerLabel("atlassian")).toBe("Atlassian");
 		expect(formatMcpServerLabel("my-server")).toBe("My Server");
 		expect(getKindMeta("mcp:atlassian").doneLabel({ count: 2, files: 0 })).toBe("Atlassian");
+		expect(getKindMeta("mcp:atlassian").icon).not.toBe(NotebookIcon);
+	});
+
+	it("presents notebooks as a Notebooks group with the notebook tab icon", () => {
+		expect(getGroupKeyForTool("notebooks_create_cell")).toBe("group-mcp-notebooks");
+		expect(getActivityKind({ type: "tool-call", toolName: "notebooks_create_cell" })).toBe(
+			"mcp:notebooks",
+		);
+		const meta = getKindMeta("mcp:notebooks");
+		expect(meta.label).toBe("Notebooks");
+		expect(meta.icon).toBe(NotebookIcon);
+		expect(meta.liveLabel({ count: 1, files: 0 })).toBe("Notebooks...");
+		expect(meta.doneLabel({ count: 1, files: 0 })).toBe("Notebooks");
+		expect(meta.circleClassName).toContain("teal");
+	});
+
+	it("gives notebooks tools display names without the server prefix", () => {
+		expect(formatToolDisplayName("notebooks_create_notebook")).toBe("Create notebook");
+		expect(formatToolDisplayName("notebooks_connect_notebook")).toBe("Connect notebook");
+		expect(formatToolDisplayName("notebooks_execute_cell")).toBe("Run cell");
+		expect(formatToolDisplayName("notebooks_brand_new_tool")).toBe("Brand new tool");
+		expect(formatToolDisplayName("atlassian_getJiraIssue")).toBe("Get jira issue");
+		expect(formatToolDisplayName("bash")).toBe("bash");
 	});
 
 	it("coalesces thinking / Atlassian / thinking / Atlassian into four segments", () => {

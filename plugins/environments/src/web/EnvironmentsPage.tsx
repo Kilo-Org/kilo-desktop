@@ -1,5 +1,7 @@
 import { useFeatureFlag } from "@anaconda-agentic-desktop/sdk-react";
 
+import { EnvironmentsPanel as CondaEnvironmentsPanel } from "./providers/conda/EnvironmentsPanel.js";
+
 /**
  * LaunchDarkly feature-flag key that gates the entire environments plugin.
  * Kept in sync with `FEATURE_FLAG_KEY` in
@@ -14,16 +16,15 @@ const FEATURE_FLAG_KEY = "environments-feature";
  *
  * Gated on the `environments-feature` flag. When off (default), a
  * "not enabled" placeholder renders instead of the page — no data
- * fetching, no provider tabs. The nav entry contributed by the plugin
- * manifest stays visible, matching the anaconda-mcp precedent.
+ * fetching, no provider tabs.
  *
- * v1 scaffold (sub-issue 1): the plugin ships with no registered
- * environment providers yet, so the page renders the empty state. Sub-issue
- * 4 introduces the provider tab strip driven by the registered providers,
- * along with the props (and cross-boundary `RegisteredProviderInfo` shape)
- * needed to feed it. Keeping the empty state as the only rendering path in
- * this slice keeps the surface tight — no unreachable JSX or unused public
- * prop types shipping ahead of their real consumer.
+ * v1 ships a single provider (Conda). Rather than pretending to be a
+ * multi-tab strip before there is a second provider, the page renders the
+ * Conda tab as a labelled section — the structure that graduates to a
+ * true tab strip once a second provider (uv, pip, ...) is registered.
+ * When that happens, this component reads the providers registered in a
+ * renderer-side registry (a mirror of `main/ProviderRegistry`) and maps
+ * each entry to its panel component.
  */
 export function EnvironmentsPage() {
 	const featureEnabled = useFeatureFlag<boolean>(FEATURE_FLAG_KEY, false);
@@ -49,13 +50,27 @@ export function EnvironmentsPage() {
 	}
 
 	return (
-		<div className="mx-auto max-w-xl px-5 py-8" data-qa-id="environments-page">
+		<div className="mx-auto max-w-3xl px-5 py-8" data-qa-id="environments-page">
 			<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="environments-heading">
 				Environments
 			</h1>
-			<p className="text-muted-foreground mt-2 text-sm" data-qa-id="environments-empty-state">
-				No environment providers available yet. Conda support is on the way.
+			<p className="text-muted-foreground mt-1 text-sm">
+				Manage conda environments installed in the plugin-scoped base.
 			</p>
+
+			<section
+				className="mt-6"
+				aria-labelledby="environments-provider-conda-heading"
+				data-qa-id="environments-provider-conda"
+			>
+				<h2
+					id="environments-provider-conda-heading"
+					className="mb-3 text-sm font-medium tracking-wide uppercase"
+				>
+					Conda
+				</h2>
+				<CondaEnvironmentsPanel />
+			</section>
 		</div>
 	);
 }

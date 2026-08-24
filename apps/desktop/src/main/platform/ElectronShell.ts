@@ -6,8 +6,11 @@ import {
 	type Clipboard,
 	type Dialog,
 	type OpenDialogOptions,
+	type SaveDialogOptions,
 	type Shell,
 } from "electron";
+
+import type { MainSdkHostDialogOptions } from "@anaconda-agentic-desktop/feature-sdk";
 
 const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
@@ -55,5 +58,58 @@ export class ElectronShell {
 			? await this.electronDialog.showOpenDialog(parentWindow, dialogOptions)
 			: await this.electronDialog.showOpenDialog(dialogOptions);
 		return { canceled: result.canceled, paths: result.filePaths };
+	}
+
+	async showOpenFileDialog(
+		senderId: number,
+		options?: MainSdkHostDialogOptions,
+	): Promise<string | null> {
+		const dialogOptions: OpenDialogOptions = {
+			properties: ["openFile"],
+			...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
+			...(options?.filters
+				? {
+						filters: options.filters.map((filter) => ({
+							name: filter.name,
+							extensions: [...filter.extensions],
+						})),
+					}
+				: {}),
+		};
+		const parentWindow = this.#windowForSender(senderId);
+		const result = parentWindow
+			? await this.electronDialog.showOpenDialog(parentWindow, dialogOptions)
+			: await this.electronDialog.showOpenDialog(dialogOptions);
+		return result.canceled ? null : (result.filePaths[0] ?? null);
+	}
+
+	async showSaveFileDialog(
+		senderId: number,
+		options?: MainSdkHostDialogOptions,
+	): Promise<string | null> {
+		const dialogOptions: SaveDialogOptions = {
+			...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
+			...(options?.filters
+				? {
+						filters: options.filters.map((filter) => ({
+							name: filter.name,
+							extensions: [...filter.extensions],
+						})),
+					}
+				: {}),
+		};
+		const parentWindow = this.#windowForSender(senderId);
+		const result = parentWindow
+			? await this.electronDialog.showSaveDialog(parentWindow, dialogOptions)
+			: await this.electronDialog.showSaveDialog(dialogOptions);
+		return result.canceled ? null : (result.filePath ?? null);
+	}
+
+	#windowForSender(senderId: number): BrowserWindow | undefined {
+		return (
+			BrowserWindow.getAllWindows().find((window) => window.webContents.id === senderId) ??
+			BrowserWindow.getFocusedWindow() ??
+			BrowserWindow.getAllWindows()[0]
+		);
 	}
 }

@@ -172,3 +172,6 @@ test-results/
 
 # LaunchDarkly offline cache
 ldclient-user-cache/
+
+# turborepo
+.turbo

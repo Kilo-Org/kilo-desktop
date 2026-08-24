@@ -31,6 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       - run: pnpm check
 
   test:
@@ -50,6 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
       # --with-deps is only needed on Linux (apt system libraries). On Windows
       # it runs a slow, silent Media Foundation DISM install (~3min) that
       # headless tests don't need; on macOS it is a no-op.

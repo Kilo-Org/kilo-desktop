@@ -34,7 +34,7 @@ Project skills live under [`.agents/skills/`](./.agents/skills/).
 | `migrate-to-plugin` | `.agents/skills/migrate-to-plugin/SKILL.md` | Moving an existing feature into `plugins/<id>/` as a self-contained plugin                 |
 | `write-vitest`      | `.agents/skills/write-vitest/SKILL.md`      | Choosing Vitest tiers and writing unit / integration / browser / app-level tests           |
 | `write-e2e-test`    | `.agents/skills/write-e2e-test/SKILL.md`    | Writing Playwright/Electron e2e page objects, fixtures, and `@smoke` specs                 |
-| `tdd`               | `.agents/skills/tdd/SKILL.md`               | Adding new code or retroactively testing existing code (red-green-refactor, test-first)    |
+| `tdd`               | `.agents/skills/tdd/SKILL.md`               | New features, logic-heavy bug fixes, and refactors (not minor UI/cosmetic changes)         |
 
 ## Key rules for AI agents
 
@@ -48,4 +48,4 @@ Project skills live under [`.agents/skills/`](./.agents/skills/).
 8. **Prefer Vitest over e2e** when Electron IPC / the packaged binary is not required — see `.agents/skills/write-vitest/SKILL.md`.
 9. **Strive for self-documenting code** — clear names and small functions over comments. Add comments only for what code cannot express: non-obvious rationale, surprising edge cases, or otherwise ambiguous intent. Do not narrate what the code plainly does.
 10. **Stateful services carry a module-level design comment** — a class that owns a lifecycle or state machine (reconcilers, managers, stores) gets one block comment at the top explaining ownership, invariants, and the "why" of its design (see `AnacondaMcpService.ts` for the shape). Keep it current when behavior changes; it substitutes for the narration rule 9 forbids inline.
-11. **Use TDD when adding new code or retroactively testing** — follow the `tdd` skill (`.agents/skills/tdd/SKILL.md`): write a failing test first (red), make it pass (green), then refactor. Applies to new features/bug fixes and to backfilling tests for existing code.
+11. **Use TDD for substantial logic changes** — follow the `tdd` skill (`.agents/skills/tdd/SKILL.md`) for new features, logic-heavy bug fixes, and refactors. TDD is not required for minor/cosmetic UI changes (copy edits, class names, spacing, style tweaks) that introduce no new logic. Always fix broken tests regardless of change size. UI tests should verify behaviors, not cosmetic details. Coverage target is 80% — do not add tests solely to inflate coverage.

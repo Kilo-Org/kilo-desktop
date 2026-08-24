@@ -113,8 +113,11 @@ export function parseModelId(id: string): KiloModelRef | null {
 }
 
 /** Kilo's built-in OAuth gateway — keep first in the provider rail (below favorites). */
-function isKiloGatewayProvider(provider: { id: string; name: string }): boolean {
-	return provider.id === "kilo" || /^kilo\s*gateway$/i.test(provider.name.trim());
+export function isKiloGatewayProvider(provider: { id: string; name?: string }): boolean {
+	if (provider.id === "kilo") {
+		return true;
+	}
+	return provider.name !== undefined && /^kilo\s*gateway$/i.test(provider.name.trim());
 }
 
 function sortProvidersForRail(providers: KiloProviderGroup[]): KiloProviderGroup[] {
@@ -168,9 +171,50 @@ export function buildCatalogFromProviderList(
 	};
 }
 
+/** Kilo Gateway Auto Free virtual model — preferred first-run default. */
+export const AUTO_FREE_MODEL_ID = "kilo-auto/free";
+
+/** Same hardcoded fallback the VS Code extension uses (`KILO_AUTO`). */
+export const KILO_AUTO_DEFAULT: KiloModelRef = {
+	providerID: "kilo",
+	modelID: AUTO_FREE_MODEL_ID,
+};
+
+function isConnectedAutoFree(model: KiloCatalogModel): boolean {
+	if (model.disabled) {
+		return false;
+	}
+	return (
+		model.modelID === AUTO_FREE_MODEL_ID ||
+		model.id === AUTO_FREE_MODEL_ID ||
+		/^auto\s*free$/i.test(model.name.trim())
+	);
+}
+
+function isConnectedKiloAuto(model: KiloCatalogModel): boolean {
+	if (model.disabled) {
+		return false;
+	}
+	return model.modelID.startsWith("kilo-auto/") || model.id.startsWith("kilo-auto/");
+}
+
 export function pickDefaultModel(catalog: KiloModelCatalog | undefined): KiloModelRef | undefined {
 	if (!catalog) {
 		return undefined;
+	}
+	const autoFree = catalog.models.find(isConnectedAutoFree);
+	if (autoFree) {
+		return { providerID: autoFree.providerID, modelID: autoFree.modelID };
+	}
+	const kiloAuto = catalog.models.find(isConnectedKiloAuto);
+	if (kiloAuto) {
+		return { providerID: kiloAuto.providerID, modelID: kiloAuto.modelID };
+	}
+	const kilo = catalog.providers.find(
+		(provider) => provider.connected && isKiloGatewayProvider(provider),
+	);
+	if (kilo) {
+		return { providerID: kilo.id, modelID: KILO_AUTO_DEFAULT.modelID };
 	}
 	const firstConnected = catalog.providers.find((provider) => provider.connected);
 	if (!firstConnected) {

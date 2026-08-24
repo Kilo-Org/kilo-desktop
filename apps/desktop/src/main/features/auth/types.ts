@@ -80,7 +80,7 @@ export type OAuthFetch = (url: string, options: RequestInit) => Promise<Response
  * Opens the authorization URL in the system browser and resolves with the full
  * callback URL once the loopback server receives the redirect. Rejects on
  * browser-open failure or after the authorize timeout; the caller maps that to
- * an `error` session so the UI can re-enable the Log in button.
+ * an `error` session so the UI can re-enable the Sign In button.
  */
 export type Authorize = (authorizationUrl: string) => Promise<string>;
 

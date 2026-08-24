@@ -8,11 +8,13 @@ import { FeatureError } from "../errors.js";
 import type {
 	ChannelHandlers,
 	HostMessagePort,
+	HostPortContext,
 	KvStore,
 	KvStoreFactory,
 	KvStoreOptions,
 	MainSdk,
 	MainSdkFetch,
+	MainSdkHost,
 	MainSdkLogger,
 	MainSdkStorage,
 } from "../types/sdk.js";
@@ -20,14 +22,6 @@ import type { SchemaLike } from "../types/schema.js";
 import { CapabilityRegistry } from "./capability-registry.js";
 import { emitFeatureEvent, EventBus, type FeatureEvent } from "./event-bus.js";
 
-/**
- * Namespace pattern accepted by `mainSdk.storage.kv({ namespace })`. Path
- * separators and `..` segments would let a caller escape the per-feature
- * sandbox on disk (see `createFeatureKvStoreFactory` in apps/desktop) or
- * spoof another feature's cache slot in this router; restricting to
- * identifier-safe characters removes that class of misuse at the SDK
- * boundary rather than trusting every plugin.
- */
 const KV_NAMESPACE_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 function assertValidKvNamespace(namespace: string): void {
@@ -43,7 +37,7 @@ type Handler = (args: unknown) => unknown | Promise<unknown>;
 type FeatureDisposer = () => unknown;
 interface PortHandlerEntry {
 	argsSchema: SchemaLike;
-	handler: (port: HostMessagePort, args: unknown) => void | Promise<void>;
+	handler: (port: HostMessagePort, args: unknown, context: HostPortContext) => void | Promise<void>;
 }
 
 interface HandlerEntry {
@@ -77,6 +71,8 @@ export interface CreateMainSdkOptions {
 	logger?: MainSdkLogger;
 	/** Host fetch implementation. Defaults to the current runtime's global fetch. */
 	fetch?: MainSdkFetch;
+	/** Narrow shell-owned desktop capabilities. Browser mode omits this. */
+	host?: MainSdkHost;
 	/**
 	 * Resolve (and create, if needed) the feature's storage directory.
 	 * Called lazily on first `mainSdk.storageDir` access and cached.
@@ -90,12 +86,7 @@ export interface CreateMainSdkOptions {
 	 * `resolvePluginAsset` then throws.
 	 */
 	resolvePluginAsset?: (subpath: string) => string;
-	/**
-	 * Open a typed, feature-scoped key/value store. Backs
-	 * `mainSdk.storage.kv(...)`. The host binds the feature's storage
-	 * directory so the returned store cannot write outside it. Omit in
-	 * environments without persistent storage — `storage.kv` then throws.
-	 */
+	/** Open a typed key/value store scoped to this feature. */
 	createKvStore?: KvStoreFactory;
 	/**
 	 * Receive boot-time progress messages from this feature's `mainRegister`.
@@ -267,10 +258,6 @@ export class FeatureRouter {
 			},
 		};
 
-		// One live KV store per (feature, namespace). Reusing avoids opening two
-		// electron-store handles onto the same file — every read would then race
-		// against write-then-rename and could observe partial state — and keeps
-		// snapshot()/set() consistent across call sites within a feature.
 		const kvStores = new Map<string, KvStore<Record<string, unknown>>>();
 		const storage: MainSdkStorage = {
 			kv: <T extends Record<string, unknown>>(kvOptions: KvStoreOptions<T>): KvStore<T> => {
@@ -281,12 +268,6 @@ export class FeatureRouter {
 					);
 				}
 				const namespace = kvOptions.namespace ?? "kv";
-				// Validate here (not just in the concrete factory) so a
-				// malformed namespace like "../shared" can never poison the
-				// per-namespace cache under a spoofed key — otherwise a
-				// second `kv({ namespace: "../shared" })` call from another
-				// feature would resolve the same cache slot even though the
-				// factory itself would reject the open.
 				assertValidKvNamespace(namespace);
 				const cached = kvStores.get(namespace);
 				if (cached) return cached as KvStore<T>;
@@ -305,6 +286,7 @@ export class FeatureRouter {
 			boot,
 			storage,
 			ports,
+			host: options?.host,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(
@@ -326,7 +308,7 @@ export class FeatureRouter {
 				return resolvePluginAsset(subpath);
 			},
 			channels,
-			onDispose: (fn: () => void) => {
+			onDispose: (fn: () => unknown) => {
 				this.disposables.get(featureId)!.push(fn);
 			},
 		};
@@ -379,6 +361,7 @@ export class FeatureRouter {
 		channel: string,
 		port: HostMessagePort,
 		args?: unknown,
+		context: HostPortContext = { senderId: -1 },
 	): Promise<void> {
 		const entry = this.portHandlers.get(featureId)?.get(channel);
 		if (!entry) {
@@ -408,7 +391,7 @@ export class FeatureRouter {
 		};
 		this.disposables.get(featureId)!.push(closePort);
 		try {
-			await entry.handler(port, parsedArgs);
+			await entry.handler(port, parsedArgs, context);
 		} catch (error) {
 			const disposables = this.disposables.get(featureId);
 			const index = disposables?.indexOf(closePort) ?? -1;
@@ -425,22 +408,39 @@ export class FeatureRouter {
 	}
 
 	/**
-	 * Destroy a feature: run its disposables and remove all handlers.
-	 * Shell-owned — called on feature/plugin unload or app shutdown.
+	 * Destroy a feature synchronously. Promise-returning cleanup continues in
+	 * the background; Electron shutdown uses destroyFeatureAsync instead.
 	 */
 	destroyFeature(featureId: string): void {
-		const disposables = this.disposables.get(featureId);
-		if (disposables) {
-			for (const fn of [...disposables].reverse()) {
-				try {
-					fn();
-				} catch (error) {
-					console.warn(`[FeatureRouter] Dispose callback for "${featureId}" threw:`, error);
-				}
+		for (const fn of this.#takeDisposables(featureId)) {
+			try {
+				void Promise.resolve(fn()).catch((error: unknown) => this.#warnDispose(featureId, error));
+			} catch (error) {
+				this.#warnDispose(featureId, error);
 			}
 		}
+	}
+
+	/** Destroy a feature and await each disposer in reverse registration order. */
+	async destroyFeatureAsync(featureId: string): Promise<void> {
+		for (const fn of this.#takeDisposables(featureId)) {
+			try {
+				await fn();
+			} catch (error) {
+				this.#warnDispose(featureId, error);
+			}
+		}
+	}
+
+	#takeDisposables(featureId: string): FeatureDisposer[] {
+		const disposables = [...(this.disposables.get(featureId) ?? [])].reverse();
 		this.handlers.delete(featureId);
 		this.portHandlers.delete(featureId);
 		this.disposables.delete(featureId);
+		return disposables;
+	}
+
+	#warnDispose(featureId: string, error: unknown): void {
+		console.warn(`[FeatureRouter] Dispose callback for "${featureId}" threw:`, error);
 	}
 }

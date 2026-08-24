@@ -4,10 +4,12 @@
 	"version": "1.0.0",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
+	"zones": [{ "id": "chat-right-panel-tab" }, { "id": "chat-markdown-extension" }],
 	"contributes": {
 		"providers": [
 			{ "component": "WorkspacesFeatureProvider", "priority": 20 },
-			{ "component": "ChatFeatureProvider", "priority": 10 }
+			{ "component": "ChatFeatureProvider", "priority": 10 },
+			{ "component": "OnboardingProvider", "priority": 5 }
 		],
 		"routes": [
 			{
@@ -24,6 +26,15 @@
 				"component": "SessionList",
 				"label": "Chats",
 				"priority": 10
+			}
+		],
+		"settings": [
+			{
+				"id": "kilo-providers",
+				"title": "AI Providers",
+				"component": "KiloProvidersSettings",
+				"icon": "KiloProvidersNavIcon",
+				"priority": 90
 			}
 		]
 	}

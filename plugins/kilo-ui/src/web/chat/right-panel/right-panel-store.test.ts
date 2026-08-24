@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { PLAN_TAB_DEFINITION_ID } from "./right-panel-tab-registry.js";
 import {
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	EMPTY_SESSION_RIGHT_PANEL_STATE,
+	persistedRightPanelState,
 	resolveRightPanelSessionKey,
 	selectActiveRightPanelTab,
 	selectSessionRightPanelState,
@@ -10,23 +12,15 @@ import {
 } from "./right-panel-store.js";
 
 const SESSION = "session-1";
+const CANVAS = { id: "canvas.canvas", title: "Canvas" };
 
 beforeEach(() => {
 	useRightPanelStore.setState({ bySessionId: {} });
 });
 
 describe("resolveRightPanelSessionKey", () => {
-	it("falls back to draft when remote id is missing", () => {
+	it("uses a stable local id until a remote session exists", () => {
 		expect(resolveRightPanelSessionKey(undefined)).toBe(DRAFT_RIGHT_PANEL_SESSION_KEY);
-		expect(resolveRightPanelSessionKey("")).toBe(DRAFT_RIGHT_PANEL_SESSION_KEY);
-		expect(resolveRightPanelSessionKey("  ")).toBe(DRAFT_RIGHT_PANEL_SESSION_KEY);
-	});
-
-	it("uses the remote id when present", () => {
-		expect(resolveRightPanelSessionKey("abc")).toBe("abc");
-	});
-
-	it("uses the stable local id before a remote session exists", () => {
 		expect(resolveRightPanelSessionKey(undefined, "local-1")).toBe("local-1");
 		expect(resolveRightPanelSessionKey("remote-1", "local-1")).toBe("remote-1");
 	});
@@ -37,12 +31,7 @@ describe("right-panel-store", () => {
 		useRightPanelStore.getState().toggleVisibility(SESSION);
 		expect(
 			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION),
-		).toEqual({
-			isOpen: true,
-			activeTabId: null,
-			tabs: [],
-			planAnchorCallId: null,
-		});
+		).toMatchObject({ isOpen: true, activeTabId: null, tabs: [] });
 
 		useRightPanelStore.getState().toggleVisibility(SESSION);
 		expect(
@@ -50,100 +39,106 @@ describe("right-panel-store", () => {
 		).toEqual(EMPTY_SESSION_RIGHT_PANEL_STATE);
 	});
 
-	it("opens the placeholder tab and selects it", () => {
-		useRightPanelStore.getState().openTab(SESSION, "placeholder");
+	it("opens multiple numbered contributions and selects the newest", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const state = selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION);
-		expect(state.isOpen).toBe(true);
-		expect(state.tabs).toEqual([{ id: "placeholder", kind: "placeholder" }]);
-		expect(state.activeTabId).toBe("placeholder");
-		expect(selectActiveRightPanelTab(useRightPanelStore.getState().bySessionId, SESSION)).toEqual({
-			id: "placeholder",
-			kind: "placeholder",
-		});
+
+		expect(state.tabs.map(({ title }) => title)).toEqual(["Canvas 1", "Canvas 2"]);
+		expect(new Set(state.tabs.map(({ instanceId }) => instanceId)).size).toBe(2);
+		expect(
+			selectActiveRightPanelTab(useRightPanelStore.getState().bySessionId, SESSION)?.title,
+		).toBe("Canvas 2");
 	});
 
-	it("opens the plan tab and selects it", () => {
-		useRightPanelStore.getState().openPlan(SESSION);
-		const state = selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION);
-		expect(state.isOpen).toBe(true);
-		expect(state.tabs).toEqual([{ id: "plan", kind: "plan" }]);
-		expect(state.activeTabId).toBe("plan");
-		expect(state.planAnchorCallId).toBeNull();
-		expect(selectActiveRightPanelTab(useRightPanelStore.getState().bySessionId, SESSION)).toEqual({
-			id: "plan",
-			kind: "plan",
-		});
-	});
-
-	it("stores the plan anchor when opening a historical snapshot", () => {
+	it("keeps Plan singleton and maintains its historical anchor", () => {
 		useRightPanelStore.getState().openPlan(SESSION, { anchorCallId: "write-1" });
-		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION)
-				.planAnchorCallId,
-		).toBe("write-1");
-
 		useRightPanelStore.getState().openPlan(SESSION, { anchorCallId: "edit-2" });
-		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION)
-				.planAnchorCallId,
-		).toBe("edit-2");
-
-		useRightPanelStore.getState().closeTab(SESSION, "plan");
-		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION)
-				.planAnchorCallId,
-		).toBeNull();
-	});
-
-	it("does not duplicate the placeholder tab", () => {
-		useRightPanelStore.getState().openTab(SESSION, "placeholder");
-		useRightPanelStore.getState().openTab(SESSION, "placeholder");
 		const state = selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION);
-		expect(state.tabs).toHaveLength(1);
+		expect(state.tabs).toEqual([
+			{
+				instanceId: "plan",
+				definitionId: PLAN_TAB_DEFINITION_ID,
+				title: "Plan",
+				ordinal: null,
+			},
+		]);
+		expect(state.planAnchorCallId).toBe("edit-2");
 	});
 
-	it("keeps the panel open on the empty state after closing the last tab", () => {
-		useRightPanelStore.getState().openTab(SESSION, "placeholder");
-		useRightPanelStore.getState().closeTab(SESSION, "placeholder");
+	it("keeps the panel open after closing the last tab", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		const [tab] = useRightPanelStore.getState().bySessionId[SESSION]!.tabs;
+		useRightPanelStore.getState().closeTab(SESSION, tab!.instanceId);
 		expect(
 			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION),
-		).toEqual({
-			isOpen: true,
-			activeTabId: null,
-			tabs: [],
-			planAnchorCallId: null,
-		});
+		).toEqual({ isOpen: true, activeTabId: null, tabs: [], planAnchorCallId: null });
 	});
 
-	it("scopes state per session", () => {
-		useRightPanelStore.getState().openTab(SESSION, "placeholder");
+	it("isolates tabs by chat session", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		useRightPanelStore.getState().show("session-2");
-		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION).tabs,
-		).toHaveLength(1);
-		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, "session-2"),
-		).toEqual({
-			isOpen: true,
-			activeTabId: null,
-			tabs: [],
-			planAnchorCallId: null,
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs).toHaveLength(1);
+		expect(useRightPanelStore.getState().bySessionId["session-2"]?.tabs).toHaveLength(0);
+	});
+
+	it("updates dirty state without persisting it", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
+
+		useRightPanelStore.getState().updateTab(SESSION, tab.instanceId, { dirty: true });
+
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.dirty).toBe(true);
+		const persisted = persistedRightPanelState(useRightPanelStore.getState());
+		expect(persisted.bySessionId[SESSION]?.tabs[0]).not.toHaveProperty("dirty");
+	});
+
+	it("persists contribution metadata needed to restore backing resources", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS, {
+			metadata: { notebookPath: "/projects/analysis.ipynb" },
+		});
+
+		const persisted = persistedRightPanelState(useRightPanelStore.getState());
+		expect(persisted.bySessionId[SESSION]?.tabs[0]?.metadata).toEqual({
+			notebookPath: "/projects/analysis.ipynb",
 		});
 	});
 
-	it("moves draft state from the local thread id to the assigned remote id", () => {
-		useRightPanelStore.getState().openPlan("local-1", { anchorCallId: "write-1" });
-
-		useRightPanelStore.getState().moveSessionState("local-1", "session-1");
-
-		expect(useRightPanelStore.getState().bySessionId["local-1"]).toBeUndefined();
-		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, "session-1"),
-		).toEqual({
-			isOpen: true,
-			activeTabId: "plan",
-			tabs: [{ id: "plan", kind: "plan" }],
-			planAnchorCallId: "write-1",
+	it("omits transient tabs from persisted state", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS, {
+			metadata: { notebookOpenState: "opening" },
+			transient: true,
 		});
+
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs).toHaveLength(1);
+		expect(
+			persistedRightPanelState(useRightPanelStore.getState()).bySessionId[SESSION],
+		).toMatchObject({
+			activeTabId: null,
+			tabs: [],
+		});
+	});
+
+	it("updates and persists a contribution-provided tab title", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		const tab = useRightPanelStore.getState().bySessionId[SESSION]!.tabs[0]!;
+
+		useRightPanelStore.getState().updateTab(SESSION, tab.instanceId, {
+			title: "analysis.ipynb",
+		});
+
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs[0]?.title).toBe(
+			"analysis.ipynb",
+		);
+		expect(
+			persistedRightPanelState(useRightPanelStore.getState()).bySessionId[SESSION]?.tabs[0]?.title,
+		).toBe("analysis.ipynb");
+	});
+
+	it("moves draft tabs to the assigned remote session", () => {
+		useRightPanelStore.getState().openTab("local-1", CANVAS);
+		useRightPanelStore.getState().moveSessionState("local-1", "remote-1");
+		expect(useRightPanelStore.getState().bySessionId["local-1"]).toBeUndefined();
+		expect(useRightPanelStore.getState().bySessionId["remote-1"]?.tabs[0]?.title).toBe("Canvas 1");
 	});
 });

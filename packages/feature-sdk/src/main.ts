@@ -1,19 +1,30 @@
 // Main-process entry — exported from "@anaconda-agentic-desktop/feature-sdk/main"
+export {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	type EmbeddedWebHost,
+	type EmbeddedWebHostRouteContext,
+	type EmbeddedWebHostSecurityProfile,
+} from "./types/embedded-web-host.js";
+
 export type {
 	MainSdk,
 	MainSdkBoot,
 	MainSdkPorts,
 	HostMessagePort,
+	HostPortContext,
+	MainSdkHost,
+	MainSdkHostDialogOptions,
+	KvStore,
+	KvStoreOptions,
+	KvStoreFactory,
+	MainSdkStorage,
 	MainSdkFetch,
 	MainSdkLogger,
 	MainSdkNet,
 	ChannelHandlers,
 	FeatureRegistration,
 	SchemaLike,
-	KvStore,
-	KvStoreOptions,
-	KvStoreFactory,
-	MainSdkStorage,
 } from "./types/sdk.js";
 export {
 	defineMethod,

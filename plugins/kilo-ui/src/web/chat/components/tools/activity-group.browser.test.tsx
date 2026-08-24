@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
@@ -24,6 +24,7 @@ import { ActivityGroup, ActivitySubgroup } from "./activity-group.js";
 import { ToolCallFallback } from "./tool-ui-inline.js";
 import { ReadActivity } from "./tool-ui-read-search.js";
 import { SkillActivity } from "./tool-ui-skill.js";
+import { TaskActivity } from "./tool-ui-task.js";
 import type { ActivityKind } from "./tool-categories.js";
 
 const toolPart = (
@@ -45,6 +46,14 @@ const toolPart = (
 const readPart = (id: string, path: string) => toolPart(id, "read", { file_path: path });
 const skillPart = (id: string, name: string) => toolPart(id, "skill", { name });
 const planningPart = (id: string, toolName: "todowrite" | "todoread") => toolPart(id, toolName, {});
+const taskPart = (
+	id: string,
+	args: { description?: string; prompt?: string; subagent_type?: string },
+	result?: unknown,
+): ToolCallMessagePartProps => ({
+	...toolPart(id, "task", args),
+	result,
+});
 
 const renderActivity = (
 	kind: ActivityKind,
@@ -81,7 +90,7 @@ describe("Reading activity subgroup", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
-	it("collapses a multi-file read list and lets the user toggle it", () => {
+	it("collapses a multi-file read list and lets the user toggle it", async () => {
 		const { baseElement, getByRole, getByText, queryByText } = renderActivity(
 			"reading",
 			[readPart("call-1", "/src/mark.svg"), readPart("call-2", "/src/logo.svg")],
@@ -98,9 +107,11 @@ describe("Reading activity subgroup", () => {
 		expect(getByText("logo.svg")).toBeDefined();
 
 		fireEvent.click(trigger);
-		expect(baseElement.textContent?.trim()).toBe("Read 2 files");
-		expect(queryByText("mark.svg")).toBeNull();
-		expect(queryByText("logo.svg")).toBeNull();
+		await waitFor(() => {
+			expect(baseElement.textContent?.trim()).toBe("Read 2 files");
+			expect(queryByText("mark.svg")).toBeNull();
+			expect(queryByText("logo.svg")).toBeNull();
+		});
 	});
 });
 
@@ -116,7 +127,7 @@ describe("Skill activity subgroup", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
-	it("collapses multiple skill reads and lets the user toggle them", () => {
+	it("collapses multiple skill reads and lets the user toggle them", async () => {
 		const { getByRole, getByText, queryByText } = renderActivity(
 			"skill",
 			[skillPart("call-1", "write-vitest"), skillPart("call-2", "tools")],
@@ -132,8 +143,77 @@ describe("Skill activity subgroup", () => {
 		expect(getByText("tools")).toBeDefined();
 
 		fireEvent.click(trigger);
-		expect(queryByText("write-vitest")).toBeNull();
-		expect(queryByText("tools")).toBeNull();
+		await waitFor(() => {
+			expect(queryByText("write-vitest")).toBeNull();
+			expect(queryByText("tools")).toBeNull();
+		});
+	});
+});
+
+describe("Subagent activity subgroup", () => {
+	it("renders one completed task as a collapsible header with hidden detail", () => {
+		const { baseElement, getByRole, getByText, queryByText } = renderActivity(
+			"subagent",
+			[
+				taskPart(
+					"call-1",
+					{
+						description: "Explore auth flow",
+						prompt: "Find how login works.",
+						subagent_type: "explore",
+					},
+					"<task_result>\nLogin lives in `auth.ts`.\n</task_result>",
+				),
+			],
+			TaskActivity,
+		);
+		const trigger = getByRole("button", { name: "Delegated Explore auth flow" });
+
+		expect(queryByText("Find how login works.")).toBeNull();
+		expect(queryByText("Login lives in", { exact: false })).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(queryByText("Find how login works.")).toBeNull();
+		expect(getByText("Login lives in", { exact: false })).toBeDefined();
+		expect(baseElement.querySelector("code")?.textContent).toBe("auth.ts");
+		expect(getByText("@explore")).toBeDefined();
+	});
+
+	it("shows a solo running task once in the subgroup header", () => {
+		const part = {
+			...taskPart("call-1", { description: "Explore auth flow", subagent_type: "explore" }),
+			status: { type: "running" as const },
+		};
+		const { baseElement, queryByRole } = renderActivity("subagent", [part], TaskActivity);
+
+		expect(baseElement.textContent).toContain("Delegating Explore auth flow");
+		expect(baseElement.textContent?.match(/Explore auth flow/g)).toHaveLength(1);
+		expect(queryByRole("button")).toBeNull();
+	});
+
+	it("collapses multiple tasks and lets the user toggle them", async () => {
+		const { getByRole, getByText, queryByText } = renderActivity(
+			"subagent",
+			[
+				taskPart("call-1", { description: "Explore auth", subagent_type: "explore" }),
+				taskPart("call-2", { description: "Review the patch", subagent_type: "code-reviewer" }),
+			],
+			TaskActivity,
+		);
+		const trigger = getByRole("button", { name: "Delegated 2 subagents" });
+
+		expect(queryByText("Explore auth")).toBeNull();
+		expect(queryByText("Review the patch")).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(getByText("Explore auth")).toBeDefined();
+		expect(getByText("Review the patch")).toBeDefined();
+
+		fireEvent.click(trigger);
+		await waitFor(() => {
+			expect(queryByText("Explore auth")).toBeNull();
+			expect(queryByText("Review the patch")).toBeNull();
+		});
 	});
 });
 
@@ -149,7 +229,7 @@ describe("Planning activity subgroup", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
-	it("collapses multiple plan updates and lets the user toggle them", () => {
+	it("collapses multiple plan updates and lets the user toggle them", async () => {
 		const { getByRole, getByText, queryByText } = renderActivity(
 			"planning",
 			[planningPart("call-1", "todowrite"), planningPart("call-2", "todoread")],
@@ -165,7 +245,67 @@ describe("Planning activity subgroup", () => {
 		expect(getByText("todoread")).toBeDefined();
 
 		fireEvent.click(trigger);
-		expect(queryByText("todowrite")).toBeNull();
-		expect(queryByText("todoread")).toBeNull();
+		await waitFor(() => {
+			expect(queryByText("todowrite")).toBeNull();
+			expect(queryByText("todoread")).toBeNull();
+		});
+	});
+});
+
+describe("Notebooks activity subgroup", () => {
+	it("expands the live tool group and collapses it when the tools finish", async () => {
+		const completedRead = readPart("call-1", "/src/mark.svg");
+		const runningNotebook = {
+			...toolPart("call-2", "notebooks_create_notebook", {}),
+			status: { type: "running" as const },
+		};
+		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...parts[0]!} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="mcp:notebooks">
+					<ToolCallFallback {...parts[1]!} />
+				</ActivitySubgroup>
+			</ActivityGroup>
+		);
+
+		runtime.message.parts = [completedRead, runningNotebook];
+		runtime.message.status = { type: "running" };
+		const { getByText, queryByText, rerender } = render(renderGroup(runtime.message.parts));
+
+		expect(getByText("Create notebook")).toBeDefined();
+
+		runtime.message.parts = [
+			completedRead,
+			{ ...runningNotebook, status: { type: "complete" as const } },
+		];
+		runtime.message.status = { type: "complete" };
+		rerender(renderGroup(runtime.message.parts));
+
+		await waitFor(() => {
+			expect(queryByText("Create notebook")).toBeNull();
+		});
+	});
+
+	it("shows notebook tool display names without the notebooks prefix", () => {
+		const { getByRole, getByText, queryByText } = renderActivity(
+			"mcp:notebooks",
+			[
+				toolPart("call-1", "notebooks_create_notebook", {}),
+				toolPart("call-2", "notebooks_connect_notebook", {}),
+			],
+			ToolCallFallback,
+		);
+		const trigger = getByRole("button", { name: "Notebooks" });
+
+		expect(queryByText("notebooks_create_notebook")).toBeNull();
+		expect(queryByText("Create notebook")).toBeNull();
+
+		fireEvent.click(trigger);
+		expect(getByText("Create notebook")).toBeDefined();
+		expect(getByText("Connect notebook")).toBeDefined();
+		expect(queryByText("notebooks_create_notebook")).toBeNull();
+		expect(queryByText("notebooks_connect_notebook")).toBeNull();
 	});
 });

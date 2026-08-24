@@ -43,7 +43,7 @@ describe("createWorkspacesDatabase", () => {
 			.all();
 		expect(tables).toEqual([{ name: "workspace_folders" }, { name: "workspaces" }]);
 		expect(db.$client.prepare("select count(*) as count from __drizzle_migrations").get()).toEqual({
-			count: 1,
+			count: 2,
 		});
 		db.$client.close();
 	});

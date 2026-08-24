@@ -25,6 +25,7 @@ describe("kiloUiBrowserRegister", () => {
 			folders: [{ path: "/projects/Project/", isPrimary: true }],
 		})) as Workspace;
 		expect(project.name).toBe("Project");
+		expect(project.color).toBe("#5EA0F7");
 		expect(createdEvent).toHaveBeenCalledWith({ before: null, after: project });
 		const capability = sdk.plugins.get<WorkspaceCapabilities>("kilo-ui")?.workspaceService;
 		expect(capability).toBeDefined();
@@ -113,6 +114,19 @@ describe("kiloUiBrowserRegister", () => {
 			code: "BUSINESS",
 			message: "Kilo Server requires the desktop app.",
 		});
+		sdk.dispose();
+	});
+
+	it("tracks onboarding complete and skip in memory", async () => {
+		const sdk = boot();
+		await expect(sdk.invoke("onboarding.get")).resolves.toEqual({
+			outcome: null,
+			closedAt: null,
+		});
+		const completed = await sdk.invoke("onboarding.complete");
+		expect(completed).toMatchObject({ outcome: "completed" });
+		await expect(sdk.invoke("onboarding.get")).resolves.toEqual(completed);
+		await expect(sdk.invoke("onboarding.skip")).resolves.toMatchObject({ outcome: "skipped" });
 		sdk.dispose();
 	});
 });

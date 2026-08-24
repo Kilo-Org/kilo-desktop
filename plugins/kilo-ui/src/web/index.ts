@@ -1,6 +1,9 @@
 export { kiloUiBrowserRegister as browserRegister } from "./browserRegister.js";
+export { KiloProvidersNavIcon } from "./providers/KiloProvidersNavIcon.js";
+export { KiloProvidersSettings } from "./providers/KiloProvidersSettings.js";
 export { ChatFeatureProvider } from "./chat/ChatFeatureProvider.js";
 export { ChatPage } from "./chat/ChatPage.js";
+export { OnboardingProvider } from "./onboarding/OnboardingProvider.js";
 export { SessionList } from "./chat/components/assistant-ui/session-list.js";
 export { WorkspacesFeatureProvider } from "./workspaces/WorkspacesFeatureProvider.js";
 export { WorkspaceSelector } from "./workspaces/WorkspaceSelector.js";

@@ -31,13 +31,6 @@ const noopMainSdkLogger = {
 	error: noop,
 } satisfies MainSdkLogger;
 
-/**
- * In-memory `mainSdk.storage.kv` factory for tests. Mirrors the production
- * contract — snapshot backfills defaults for missing keys; `set` returns the
- * new snapshot; `clear` resets to defaults — without touching the filesystem.
- * State is per factory instance, so distinct `createFakeMainSdk` calls get
- * distinct persistence, matching the per-feature isolation of the real store.
- */
 function createInMemoryKvStoreFactory(): KvStoreFactory {
 	return <T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T> => {
 		const defaults = { ...options.defaults } as T;
@@ -501,6 +494,8 @@ export type FakeMainSdk = MainSdk & {
 	has(channel: string): boolean;
 	/** Tear the feature down like the shell does on unload/shutdown. */
 	dispose(): void;
+	/** Tear the feature down and await asynchronous cleanup. */
+	disposeAsync(): Promise<void>;
 };
 
 export interface FakeMainSdkOptions {
@@ -511,13 +506,9 @@ export interface FakeMainSdkOptions {
 	logger?: MainSdkLogger;
 	/** Network fake. Defaults to the current runtime's global fetch. */
 	fetch?: MainSdkFetch;
-	/**
-	 * KV factory for `mainSdk.storage.kv(...)`. Defaults to an in-memory
-	 * store that mirrors the production contract — snapshot backfills
-	 * defaults, `set` returns the new snapshot, `clear` resets to defaults —
-	 * without touching the filesystem. Pass a custom factory to inject
-	 * pre-seeded state or to spy on writes.
-	 */
+	/** Optional desktop host capabilities for main-process plugin tests. */
+	host?: MainSdk["host"];
+	/** Optional KV factory; defaults to an isolated in-memory implementation. */
 	createKvStore?: KvStoreFactory;
 	/**
 	 * Receive `mainSdk.boot.reportProgress(msg)` calls. Defaults to a no-op
@@ -537,6 +528,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 	const mainSdk = router.createMainSdk(featureId, {
 		logger: options?.logger ?? noopMainSdkLogger,
 		fetch: options?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+		...(options?.host ? { host: options.host } : {}),
 		createKvStore,
 		resolveStorageDir: () => {
 			if (options?.storageDir !== undefined) return options.storageDir;
@@ -567,6 +559,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		boot: mainSdk.boot,
 		storage: mainSdk.storage,
 		ports: mainSdk.ports,
+		host: mainSdk.host,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {
@@ -578,6 +571,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		invoke: (channel, args) => router.invoke(featureId, channel, args),
 		has: (channel) => router.has(featureId, channel),
 		dispose: () => router.destroyFeature(featureId),
+		disposeAsync: () => router.destroyFeatureAsync(featureId),
 	};
 }
 
@@ -585,15 +579,9 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
  * Create renderer and main SDKs backed by one real EventBus, capability
  * registry, and FeatureRouter. Use this for cross-boundary feature tests that
  * should exercise the browser-mode semantics without hand-wiring services.
- *
- * The `main` and `createMainSdk` options let tests configure the initial
- * pair's mainSdk and per-call additional mainSdks (e.g. `storageDir`,
- * `reportBootProgress`, `fetch`) without losing the shared services that
- * make cross-feature capabilities work.
  */
 export function createLinkedFakeSdkPair(options?: {
 	featureId?: string;
-	/** Extra options forwarded to the initial pair's mainSdk. */
 	main?: Omit<FakeMainSdkOptions, "featureId" | "services">;
 }): {
 	rendererSdk: FakeSdk;

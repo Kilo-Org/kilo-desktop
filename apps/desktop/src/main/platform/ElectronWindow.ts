@@ -103,6 +103,31 @@ export class ElectronWindow {
 		return BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
 	}
 
+	getTitle(senderId: number): string {
+		return this.#forSender(senderId)?.getTitle() ?? "";
+	}
+
+	setTitle(senderId: number, title: string): void {
+		this.#forSender(senderId)?.setTitle(title);
+	}
+
+	isFocused(senderId: number): boolean {
+		return this.#forSender(senderId)?.isFocused() ?? false;
+	}
+
+	onFocusChange(senderId: number, listener: (focused: boolean) => void): () => void {
+		const window = this.#forSender(senderId);
+		if (!window) return () => {};
+		const onFocus = () => listener(true);
+		const onBlur = () => listener(false);
+		window.on("focus", onFocus);
+		window.on("blur", onBlur);
+		return () => {
+			window.off("focus", onFocus);
+			window.off("blur", onBlur);
+		};
+	}
+
 	reveal(window = this.main): void {
 		if (!window || window.isDestroyed()) return;
 		if (window.isMinimized()) window.restore();
@@ -141,6 +166,10 @@ export class ElectronWindow {
 	destroyAll(): void {
 		for (const window of this.liveWindows) window.destroy();
 		this.#mainWindow = undefined;
+	}
+
+	#forSender(senderId: number): BrowserWindow | undefined {
+		return this.liveWindows.find((window) => window.webContents.id === senderId);
 	}
 }
 

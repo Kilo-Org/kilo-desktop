@@ -12,7 +12,7 @@
 	},
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",
-		"test": "vitest run --passWithNoTests"
+		"test": "vitest run"
 	},
 	"peerDependencies": {
 		"react": "^19.0.0",
@@ -20,6 +20,7 @@
 	},
 	"dependencies": {
 		"@assistant-ui/react": "0.15.4",
+		"@assistant-ui/react-markdown": "^0.14.8",
 		"@base-ui/react": "^1.6.0",
 		"@shadcn/react": "^0.3.0",
 		"class-variance-authority": "^0.7.1",
@@ -27,6 +28,8 @@
 		"cmdk": "^1.1.1",
 		"lucide-react": "^1.27.0",
 		"motion": "^13.0.0",
+		"react-markdown": "^10.1.0",
+		"remark-gfm": "^4.0.1",
 		"sonner": "^2.0.7",
 		"tailwind-merge": "^3.6.0"
 	},

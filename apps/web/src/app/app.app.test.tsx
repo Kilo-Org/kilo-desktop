@@ -55,6 +55,7 @@ describe("AppProviders (app-level)", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("app-sidebar")).toBeVisible();
+		await expect.element(screen.getByTestId("global-new")).toBeVisible();
 
 		// The todos nav entry is derived from the plugin manifest route.
 		await screen.getByTestId("nav-todos").click();
@@ -77,13 +78,16 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByTestId("settings-page")).toBeVisible();
 		await expect.element(screen.getByTestId("appearance-settings")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-appearance")).toBeVisible();
+		await expect.element(screen.getByTestId("settings-section-kilo-providers")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-empty")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("settings-back")).toBeVisible();
 		await expect.element(screen.getByTestId("nav-settings")).toBeVisible();
 		await expect.element(screen.getByTestId("zone-sidebar")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("global-new")).not.toBeInTheDocument();
 
 		await screen.getByTestId("settings-back").click();
 		await expect.element(screen.getByTestId("nav-settings")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-back")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("global-new")).toBeVisible();
 	});
 });

@@ -60,7 +60,9 @@ export const KiloAgentSelector: FC = () => {
 						className={cn("flex min-w-0 items-center gap-2", !accent && "dark:text-foreground/90")}
 					>
 						<AgentIcon icon={selected.icon} size={14} />
-						<span className="font-medium whitespace-nowrap">{selected.displayName}</span>
+						<span data-slot="composer-agent-label" className="font-medium whitespace-nowrap">
+							{selected.displayName}
+						</span>
 					</span>
 				) : (
 					<span className="text-muted-foreground">Select agent</span>

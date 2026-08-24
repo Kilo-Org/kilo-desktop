@@ -147,6 +147,7 @@ vite.config.ts.timestamp-*
 
 # Electron-Forge
 out/
+apps/desktop/.electron-rebuild-cache/
 
 # OS
 .DS_Store

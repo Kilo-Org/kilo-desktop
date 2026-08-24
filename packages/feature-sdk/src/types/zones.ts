@@ -1,11 +1,9 @@
 /**
  * Canonical shell zone ids (Decision #21).
  *
- * `sdk.contribute(zone, ...)` accepts any string so plugins can target zones
- * the shell has not defined yet, but the shell renders ONLY canonical ids —
- * a contribution to an unknown zone silently renders nowhere. Import these
- * constants instead of retyping the strings so drift (e.g. "statusbar" vs
- * "status-bar") cannot creep back in.
+ * `SHELL_ZONES` contains only outlets owned by the app shell. Plugin-owned
+ * zones are declared by their owning plugin manifests instead of being added
+ * here.
  */
 export const SHELL_ZONES = [
 	"sidebar",

@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_RELEASE_CHANNEL,
 	getArtifactKey,
+	getCanaryBuildTime,
+	getNativeAppVersion,
+	getPublishAppVersion,
 	getReleaseChannel,
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
@@ -121,5 +124,68 @@ describe("release configuration", () => {
 		expect(
 			getUpdateFeedUrl({ publishUrl: "", channel: "canary", platform: "darwin", arch: "arm64" }),
 		).toBeUndefined();
+	});
+
+	it("stamps canary as the next patch plus a UTC timestamp so each publish is newer", () => {
+		expect(
+			getPublishAppVersion({
+				version: "0.1.0",
+				channel: "canary",
+				now: new Date("2026-08-18T14:30:52.000Z"),
+			}),
+		).toBe("0.1.1-canary.20260818.143052");
+		expect(
+			getPublishAppVersion({
+				version: "0.1.0",
+				channel: "canary",
+				now: new Date("2026-08-18T00:05:03.000Z"),
+			}),
+		).toBe("0.1.1-canary.20260818.503");
+		expect(
+			getPublishAppVersion({
+				version: "0.1.0",
+				channel: "staging",
+				now: new Date("2026-08-18T14:30:52.000Z"),
+			}),
+		).toBe("0.1.0");
+		expect(
+			getPublishAppVersion({
+				version: "0.1.0",
+				channel: "prod",
+				now: new Date("2026-08-18T14:30:52.000Z"),
+			}),
+		).toBe("0.1.0");
+	});
+
+	it("does not restamp an already-stamped canary version", () => {
+		expect(
+			getPublishAppVersion({
+				version: "0.1.1-canary.20260818.143052",
+				channel: "canary",
+				now: new Date("2026-08-18T15:00:00.000Z"),
+			}),
+		).toBe("0.1.1-canary.20260818.143052");
+	});
+
+	it("reads a shared canary build time so matrix legs publish the same version", () => {
+		expect(getCanaryBuildTime({ CANARY_BUILD_TIME: "2026-08-18T14:30:52.000Z" })).toEqual(
+			new Date("2026-08-18T14:30:52.000Z"),
+		);
+		expect(() => getCanaryBuildTime({ CANARY_BUILD_TIME: "not-a-date" })).toThrow(
+			"Invalid CANARY_BUILD_TIME",
+		);
+		expect(() =>
+			getPublishAppVersion({
+				version: "latest",
+				channel: "canary",
+				now: new Date("2026-08-18T14:30:52.000Z"),
+			}),
+		).toThrow("Invalid app version");
+	});
+
+	it("strips prerelease so Windows PE file versions stay at most four numeric components", () => {
+		expect(getNativeAppVersion("0.1.1-canary.20260818.143052")).toBe("0.1.1");
+		expect(getNativeAppVersion("0.1.0")).toBe("0.1.0");
+		expect(() => getNativeAppVersion("latest")).toThrow("Invalid app version");
 	});
 });

@@ -87,7 +87,7 @@ const PlanTabContent: FC<{
 					<p className="text-muted-foreground text-sm">Loading plan…</p>
 				) : null}
 				{isError ? (
-					<p className="text-destructive text-sm" role="alert">
+					<p className="text-destructive-foreground text-sm" role="alert">
 						Could not load the plan file.
 					</p>
 				) : null}

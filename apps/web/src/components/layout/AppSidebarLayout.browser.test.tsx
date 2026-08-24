@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import {
 	createMemoryHistory,
 	createRootRoute,
@@ -11,10 +11,36 @@ import { page } from "vitest/browser";
 import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import type { PluginNavEntry } from "@/features/plugin-nav";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 import { AppSidebarLayout } from "./AppSidebarLayout";
+
+const flaggedNav: readonly PluginNavEntry[] = [
+	{
+		pluginId: "todos",
+		to: "/plugins/todos",
+		label: "Todos",
+		icon: undefined,
+		iconComponent: undefined,
+		priority: 1,
+		splat: "todos",
+		navQaId: "nav-todos",
+		featureFlag: "todo-feature",
+	},
+	{
+		pluginId: "environments",
+		to: "/plugins/environments",
+		label: "Environments",
+		icon: undefined,
+		iconComponent: undefined,
+		priority: 1,
+		splat: "environments",
+		navQaId: "nav-environments",
+		featureFlag: "environments-feature",
+	},
+];
 
 type AuthOverrides = Partial<LocalApi["auth"]>;
 
@@ -65,11 +91,12 @@ function renderLayout(
 	api: LocalApi,
 	path = "/",
 	setup?: (system: ReturnType<typeof createAppFeatureSystem>) => void,
+	navEntries: readonly PluginNavEntry[] = [],
 ) {
 	const system = createAppFeatureSystem(api);
 	setup?.(system);
 	const rootRoute = createRootRoute({
-		component: () => <AppSidebarLayout>content</AppSidebarLayout>,
+		component: () => <AppSidebarLayout navEntries={navEntries}>content</AppSidebarLayout>,
 	});
 	const router = createRouter({
 		routeTree: rootRoute,
@@ -92,6 +119,7 @@ function FakeNewChat() {
 
 function contributeFakeNewChat(system: ReturnType<typeof createAppFeatureSystem>) {
 	system.getSdk("auth").contribute("sidebar", {
+		id: "fake-new-chat",
 		label: "Chats",
 		priority: 10,
 		component: FakeNewChat,
@@ -105,21 +133,21 @@ describe("AppSidebarLayout login button", () => {
 		renderLayout(fakeLocalApi({ status: "anonymous" }));
 
 		await expect.element(page.getByRole("button", { name: "Settings" })).toBeVisible();
-		await expect.element(page.getByRole("button", { name: "Log in" })).toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
 		await expect
 			.element(page.getByTestId("app-sidebar").getByTestId("nav-settings"))
 			.not.toBeInTheDocument();
 		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
 	});
 
-	it("hides the Log in button and app-bar Settings icon when authenticated", async () => {
+	it("hides the Sign In button and app-bar Settings icon when authenticated", async () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
 		// Give the async auth delegate a tick to resolve to authenticated.
 		await expect
 			.element(page.getByRole("button", { name: "Account menu for ada" }))
 			.toBeInTheDocument();
-		await expect.element(page.getByRole("button", { name: "Log in" })).not.toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: "Sign In" })).not.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Settings" })).not.toBeInTheDocument();
 	});
 
@@ -127,7 +155,7 @@ describe("AppSidebarLayout login button", () => {
 		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		expect(login).toHaveBeenCalledTimes(1);
 	});
@@ -140,7 +168,7 @@ describe("AppSidebarLayout login button", () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		await vi.waitFor(() => {
 			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_IN" }));
@@ -152,7 +180,7 @@ describe("AppSidebarLayout login button", () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
 
-		await page.getByRole("button", { name: "Log in" }).click();
+		await page.getByRole("button", { name: "Sign In" }).click();
 
 		await vi.waitFor(() => {
 			expect(login).toHaveBeenCalledTimes(1);
@@ -171,7 +199,10 @@ describe("AppSidebarLayout login button", () => {
 });
 
 describe("AppSidebarLayout nav toggle", () => {
-	afterEach(cleanup);
+	afterEach(() => {
+		cleanup();
+		localStorage.removeItem("shell:sidebar-width");
+	});
 
 	it("toggles the left nav open and closed", async () => {
 		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
@@ -189,6 +220,45 @@ describe("AppSidebarLayout nav toggle", () => {
 		await page.getByRole("button", { name: "Toggle navigation" }).click();
 		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
 	});
+
+	it("resizes the left nav when the rail is dragged", async () => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		const rail = page.getByTestId("sidebar-resize");
+		await expect.element(rail).toBeInTheDocument();
+		expect(getComputedStyle(rail.element()).cursor).toBe("col-resize");
+
+		const wrapper = () =>
+			baseElement.querySelector('[data-slot="sidebar-wrapper"]') as HTMLElement | null;
+		expect(parseFloat(wrapper()?.style.getPropertyValue("--sidebar-width") ?? "")).toBe(256);
+
+		const handle = rail.element();
+		fireEvent.pointerDown(handle, { button: 0, clientX: 256, pointerId: 1 });
+		fireEvent(
+			window,
+			new PointerEvent("pointermove", { bubbles: true, clientX: 336, pointerId: 1 }),
+		);
+		fireEvent(window, new PointerEvent("pointerup", { bubbles: true, clientX: 336, pointerId: 1 }));
+
+		expect(parseFloat(wrapper()?.style.getPropertyValue("--sidebar-width") ?? "")).toBe(336);
+		expect(localStorage.getItem("shell:sidebar-width")).toBe("336");
+		expect(baseElement.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state")).toBe(
+			"expanded",
+		);
+	});
+
+	it("restores the last dragged sidebar width on remount", async () => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+		localStorage.setItem("shell:sidebar-width", "320");
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		await expect.element(page.getByTestId("sidebar-resize")).toBeInTheDocument();
+		const wrapper = baseElement.querySelector(
+			'[data-slot="sidebar-wrapper"]',
+		) as HTMLElement | null;
+		expect(parseFloat(wrapper?.style.getPropertyValue("--sidebar-width") ?? "")).toBe(320);
+	});
 });
 
 describe("AppSidebarLayout plugin nav flag gating", () => {
@@ -201,6 +271,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 				{},
 				apiWithFlags({ "environments-feature": false, "todo-feature": true }),
 			),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		// Todos declares `featureFlag: "todo-feature"` — visible when the
@@ -214,6 +287,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 	it("hides a flag-gated plugin nav entry when the flag is missing entirely", async () => {
 		const { baseElement } = renderLayout(
 			fakeLocalApi({ status: "anonymous" }, {}, apiWithFlags({})),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		// Both nav entries carry a `featureFlag` now, so an empty flag map
@@ -231,6 +307,9 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 				{},
 				apiWithFlags({ "environments-feature": true, "todo-feature": true }),
 			),
+			"/",
+			undefined,
+			flaggedNav,
 		);
 
 		await expect.element(page.getByTestId("nav-environments")).toBeInTheDocument();
@@ -306,6 +385,19 @@ describe("AppSidebarLayout settings takeover", () => {
 		await expect.element(page.getByTestId("settings-back")).toBeVisible();
 		await expect.element(page.getByRole("button", { name: "Settings" })).toBeVisible();
 		await expect.element(page.getByTestId("zone-sidebar")).not.toBeInTheDocument();
+	});
+
+	it("keeps Settings and Sign In right-aligned when header zones are empty", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
+
+		await expect.element(page.getByRole("button", { name: "Sign In" })).toBeVisible();
+		const header = baseElement.querySelector("header");
+		expect(header).not.toBeNull();
+		const login = page.getByRole("button", { name: "Sign In" }).element();
+		const headerRect = header!.getBoundingClientRect();
+		const loginRect = login.getBoundingClientRect();
+		expect(loginRect.left).toBeGreaterThan(headerRect.width / 2);
+		expect(headerRect.right - loginRect.right).toBeLessThan(48);
 	});
 
 	it("aligns Back to app with the first sidebar zone row", async () => {

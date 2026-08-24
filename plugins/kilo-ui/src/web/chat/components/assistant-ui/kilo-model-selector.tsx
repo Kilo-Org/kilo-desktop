@@ -1,7 +1,7 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CheckIcon, StarIcon } from "lucide-react";
+import { ArrowRightIcon, CheckIcon, StarIcon } from "lucide-react";
 import { motion } from "motion/react";
 import {
 	useMemo,
@@ -23,10 +23,15 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { CommandItem } from "@anaconda-agentic-desktop/ui/components/command";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
+import { needsKiloSignIn, startKiloDeviceAuth } from "../../../account/kilo-auth.js";
+import { useKiloAuth } from "../../../account/KiloAuthContext.js";
 import { useChatModelSelection } from "../../model-selection/ChatModelSelectionContext.js";
 import {
+	isKiloGatewayProvider,
 	modelRefToId,
 	parseModelId,
 	type KiloCatalogModel,
@@ -54,6 +59,8 @@ import {
 } from "./model-selector.js";
 
 type RailSelection = "favorites" | (string & {});
+
+const SIGN_IN_ITEM_ID = "kilo-sign-in";
 
 /** Approximate row height for name + description + padding; measureElement corrects drift. */
 const MODEL_ROW_ESTIMATE_PX = 52;
@@ -113,6 +120,9 @@ function nextHighlightIndex(
  * provider rail (favorites + providers) and searchable list.
  */
 export const KiloModelSelector: FC = () => {
+	const sdk = useSdk("kilo-ui");
+	const auth = useKiloAuth();
+	const needsSignIn = needsKiloSignIn(auth);
 	const {
 		model,
 		setModel,
@@ -129,7 +139,7 @@ export const KiloModelSelector: FC = () => {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [highlightId, setHighlightId] = useState<string | undefined>(undefined);
 	const scrollToHighlightedRef = useRef<(id: string) => void>(() => {});
-	const visibleModelsRef = useRef<readonly KiloCatalogModel[]>([]);
+	const navIdsRef = useRef<readonly string[]>([]);
 
 	const providers = catalog?.providers ?? [];
 	const models = catalog?.models ?? [];
@@ -170,13 +180,25 @@ export const KiloModelSelector: FC = () => {
 		return isSearching ? filterModelsBySearchQuery(scoped, searchQuery) : scoped;
 	}, [activeRail, favoriteIds, isSearching, models, searchQuery]);
 
-	visibleModelsRef.current = visibleModels;
+	const kiloRailSelected = providers.some(
+		(provider) => provider.id === activeRail && isKiloGatewayProvider(provider),
+	);
+	const showSignInItem = needsSignIn && !isCatalogPending && !isSearching && kiloRailSelected;
+	const navIds = useMemo(
+		() =>
+			showSignInItem
+				? [SIGN_IN_ITEM_ID, ...visibleModels.map((entry) => entry.id)]
+				: visibleModels.map((entry) => entry.id),
+		[showSignInItem, visibleModels],
+	);
+
+	navIdsRef.current = navIds;
 
 	const selectedId = model ? modelRefToId(model) : undefined;
 	const commandValue =
-		highlightId && visibleModels.some((entry) => entry.id === highlightId)
+		highlightId && navIds.includes(highlightId)
 			? highlightId
-			: (visibleModels.find((entry) => entry.id === selectedId)?.id ?? visibleModels[0]?.id);
+			: (visibleModels.find((entry) => entry.id === selectedId)?.id ?? navIds[0]);
 
 	// ModelSelectorValue reads `selectedModel.icon` for the trigger — attach an icon
 	// only for the selected row so we don't rebuild JSX for the whole catalog.
@@ -223,6 +245,7 @@ export const KiloModelSelector: FC = () => {
 	const showSidebar = isCatalogPending || (!isSearching && providers.length > 0);
 	const disabled = isCatalogError || (!isCatalogPending && models.length === 0);
 	const showLoadingPlaceholder = isCatalogPending && !model;
+	const triggerLabel = showLoadingPlaceholder ? "Loading models" : "Select model";
 
 	return (
 		<ModelSelectorRoot
@@ -251,7 +274,7 @@ export const KiloModelSelector: FC = () => {
 				disabled={disabled}
 				className="shrink-0"
 				data-qa-id="kilo-model-selector-trigger"
-				aria-label={showLoadingPlaceholder ? "Loading models" : "Select model"}
+				aria-label={triggerLabel}
 				aria-busy={isCatalogPending || undefined}
 			>
 				<ModelSelectorValue
@@ -291,21 +314,19 @@ export const KiloModelSelector: FC = () => {
 					) {
 						return;
 					}
-					const list = visibleModelsRef.current;
+					const list = navIdsRef.current;
 					if (list.length === 0) {
 						return;
 					}
 					event.preventDefault();
-					const currentIndex = commandValue
-						? list.findIndex((entry) => entry.id === commandValue)
-						: -1;
+					const currentIndex = commandValue ? list.indexOf(commandValue) : -1;
 					const nextIndex = nextHighlightIndex(list.length, currentIndex, event.key);
 					const next = list[nextIndex];
 					if (!next) {
 						return;
 					}
-					setHighlightId(next.id);
-					scrollToHighlightedRef.current(next.id);
+					setHighlightId(next);
+					scrollToHighlightedRef.current(next);
 				}}
 			>
 				<div
@@ -358,6 +379,12 @@ export const KiloModelSelector: FC = () => {
 							<VirtualizedCatalogList
 								models={visibleModels}
 								favoriteIds={favoriteIds}
+								showSignInItem={showSignInItem}
+								onSignIn={() => {
+									startKiloDeviceAuth(auth.login, (path) => {
+										sdk.navigate(path);
+									});
+								}}
 								emptyLabel={
 									activeRail === "favorites" && !isSearching
 										? "No favorite models yet."
@@ -379,6 +406,34 @@ export const KiloModelSelector: FC = () => {
 		</ModelSelectorRoot>
 	);
 };
+
+function GatewaySignInItem({ onSignIn }: { onSignIn: () => void }) {
+	const { setOpen } = useModelSelectorContext();
+
+	return (
+		<CommandItem
+			value={SIGN_IN_ITEM_ID}
+			keywords={["connect", "login", "kilo"]}
+			data-qa-id="kilo-model-selector-signin"
+			onSelect={() => {
+				setOpen(false);
+				onSignIn();
+			}}
+			className="group/model-item items-start gap-2 rounded-md py-2 ps-3 pe-3 [&>svg:last-child]:hidden"
+		>
+			<span className="mt-0.5 shrink-0 [&_svg]:size-3.5">
+				<ProviderIcon provider="kilo" variant="color" size={14} fallbackLabel="Kilo" />
+			</span>
+			<span className="flex min-w-0 flex-1 flex-col">
+				<span className="truncate font-medium">Connect to Kilo</span>
+				<span className="text-muted-foreground truncate text-xs">Use your models and credits</span>
+			</span>
+			<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center">
+				<ArrowRightIcon className="text-muted-foreground size-3.5" />
+			</span>
+		</CommandItem>
+	);
+}
 
 const MODEL_CATALOG_SKELETON_ROWS = 5;
 const MODEL_CATALOG_SKELETON_RAIL_SLOTS = 4;
@@ -438,10 +493,20 @@ const ModelListSkeleton: FC = () => {
 const VirtualizedCatalogList: FC<{
 	models: readonly KiloCatalogModel[];
 	favoriteIds: ReadonlySet<string>;
+	showSignInItem: boolean;
+	onSignIn: () => void;
 	emptyLabel: string;
 	scrollToHighlightedRef: MutableRefObject<(id: string) => void>;
 	onToggleFavorite: (model: KiloCatalogModel) => void;
-}> = ({ models, favoriteIds, emptyLabel, scrollToHighlightedRef, onToggleFavorite }) => {
+}> = ({
+	models,
+	favoriteIds,
+	showSignInItem,
+	onSignIn,
+	emptyLabel,
+	scrollToHighlightedRef,
+	onToggleFavorite,
+}) => {
 	const listRef = useRef<HTMLDivElement>(null);
 	const modelsRef = useRef(models);
 	modelsRef.current = models;
@@ -456,6 +521,10 @@ const VirtualizedCatalogList: FC<{
 
 	// Keep highlight→scroll wiring current without an effect (ref update during render).
 	scrollToHighlightedRef.current = (id) => {
+		if (id === SIGN_IN_ITEM_ID) {
+			listRef.current?.scrollTo({ top: 0 });
+			return;
+		}
 		const index = modelsRef.current.findIndex((entry) => entry.id === id);
 		if (index >= 0) {
 			virtualizer.scrollToIndex(index, { align: "auto" });
@@ -466,6 +535,7 @@ const VirtualizedCatalogList: FC<{
 
 	return (
 		<ModelSelectorList ref={listRef} className="scroll-fade max-h-52 px-1 py-1">
+			{showSignInItem ? <GatewaySignInItem onSignIn={onSignIn} /> : null}
 			{models.length === 0 ? <ModelSelectorEmpty>{emptyLabel}</ModelSelectorEmpty> : null}
 			{models.length > 0 ? (
 				<div
@@ -652,6 +722,11 @@ const CatalogModelItem: FC<{
 				) : null}
 			</span>
 			<span className="mt-0.5 flex shrink-0 items-center gap-0.5">
+				{isSelected ? (
+					<span className="flex size-6 items-center justify-center">
+						<CheckIcon className="size-3.5" />
+					</span>
+				) : null}
 				<Tooltip>
 					<TooltipTrigger
 						render={
@@ -690,11 +765,6 @@ const CatalogModelItem: FC<{
 						{isFavorite ? "Remove from favorites" : "Add to favorites"}
 					</TooltipContent>
 				</Tooltip>
-				{isSelected ? (
-					<span className="flex size-6 items-center justify-center">
-						<CheckIcon className="size-3.5" />
-					</span>
-				) : null}
 			</span>
 		</ModelSelectorItem>
 	);

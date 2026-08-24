@@ -54,6 +54,7 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 	"version": "1.0.0",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
+	"zones": [],
 	"contributes": {
 		"providers": [],
 		"routes": [{ "path": "/<id>", "component": "<WebEntryExportName>", "title": "<Human Name>" }],
@@ -66,12 +67,13 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 
 - `main` — main-process entry; the module must export `mainRegister(mainSdk)`. Omit for renderer-only plugins.
 - `web` — renderer entry; may export `browserRegister(mainSdk)` for standalone browser mode (omit the export for Electron-only plugins — browser mode then skips the plugin with a warning). Omit the field for headless plugins.
+- `zones` — plugin-owned UI outlets, declared as stable `{ "id": "..." }` entries. Other plugins target them as `"<plugin-id>/<zone-id>"`; the owning plugin renders the outlet and owns its component context contract. Requires `web`.
 - `contributes` — everything the plugin adds to the shell, declared statically (VS Code–style):
   - `providers` — app-lifetime React providers (`component` export name plus optional `priority`). The shell composes them inside `SdkProvider` and `QueryClientProvider`, so plugin capabilities, state, dialogs, and event listeners can remain active independently of the current route. Higher priority wraps lower priority. Requires `web`.
-  - `routes` — full pages (`path` → `component` export). The shell mounts the component on its catch-all route and passes it `PluginPageProps` (`path`, `search`); optional `title` is used for the browser-mode unavailable state. Routes require `web`.
-  - `nav` — sidebar entries (pure data): `to` (any path), `label`, optional `icon` (kebab-case lucide name) and `priority` (higher first). Optional `featureFlag` (LaunchDarkly key) hides the entry when the flag resolves to `false` (default when missing) — the shell filters entries via `useVisiblePluginNav` before rendering the sidebar. Decoupled from routes — a route can have no nav entry, and a nav entry can point anywhere.
-  - `zones` — plugin-lifetime zone registrations (`zone` + `component` export), rendered whenever the shell exposes that zone's outlet. Canonical zones: `"sidebar"`, `"status-bar"`, `"dashboard"`, `"home-composer-leading-action"`. Use this for visible widgets; use `providers` for lifecycle work that must remain mounted across routes, and imperative `sdk.contribute` for conditional UI. Requires `web`.
-  - `settings` — settings-page sections (`id` kebab-case unique across plugins, `title`, `component` export, optional `icon` / `priority` / `featureFlag`). The shell owns `/settings` and mounts one section at a time — this is a contribution point, not a zone. Flag semantics match `nav`. Requires `web`.
+  - `routes` — full pages (`path` → `component` export). The shell mounts the component on its catch-all route and passes it `PluginPageProps` (`path`, `search`); optional `title` is used for the browser-mode unavailable state and optional `surface` selects the shell-owned page surface. Routes require `web`.
+  - `nav` — sidebar entries (pure data): `to` (any path), `label`, optional `icon` (kebab-case lucide name), `priority` (higher first), and `featureFlag`. Decoupled from routes — a route can have no nav entry, and a nav entry can point anywhere.
+  - `zones` — plugin-lifetime zone registrations. Target canonical shell zones by bare id or plugin-owned zones by `"<plugin-id>/<zone-id>"`. Each entry provides `zone` and `component`, plus optional stable `id`, `label`, `description`, `icon` export, and `priority`. The zone owner decides whether to render components directly or interpret them as richer definitions. Use `providers` for lifecycle work that must remain mounted across routes, and imperative `sdk.contribute` for conditional UI. Requires `web`; undeclared targets are reported and skipped.
+  - `settings` — settings-page sections (`id`, `title`, and `component`, plus optional `icon`, `priority`, and `featureFlag`). The shell owns `/settings` and mounts one section at a time. Requires `web`.
 - At least one of `main` / `web` is required.
 
 ### Step 4: Create package.json

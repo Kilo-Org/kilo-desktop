@@ -15,13 +15,37 @@ export class ContributionRegistry {
 
 	/** Register a contribution. Returns an unregister function. */
 	register(featureId: string, zone: string, options: ContributionOptions): () => void {
+		if (options.id.trim().length === 0) {
+			throw new Error(`Feature "${featureId}" contributed an empty id to zone "${zone}".`);
+		}
+		const duplicate = this.contributions.some(
+			(contribution) =>
+				contribution.featureId === featureId &&
+				contribution.zone === zone &&
+				contribution.id === options.id,
+		);
+		if (duplicate) {
+			throw new Error(
+				`Feature "${featureId}" already contributed "${options.id}" to zone "${zone}".`,
+			);
+		}
 		const contribution: Contribution = {
+			id: options.id,
 			featureId,
 			zone,
 			component: options.component,
 			label: options.label,
 			priority: options.priority ?? 0,
 		};
+		if (options.description !== undefined) {
+			contribution.description = options.description;
+		}
+		if (options.icon !== undefined) {
+			contribution.icon = options.icon;
+		}
+		if (options.mountPolicy !== undefined) {
+			contribution.mountPolicy = options.mountPolicy;
+		}
 		if (options.size !== undefined) {
 			contribution.size = options.size;
 		}

@@ -48,15 +48,15 @@ const workspace: Workspace = {
 	updatedAt: 1,
 };
 
-function renderBreadcrumb() {
+function renderBreadcrumb(
+	session: { id: string; workspaceId?: string; directory?: string } = {
+		id: "session-1",
+		workspaceId: workspace.id,
+		directory: "/tmp/Alpha",
+	},
+) {
 	const store = createSessionActivityStore({ storage: null });
-	store.getState().hydrateSessions([
-		{
-			id: "session-1",
-			workspaceId: workspace.id,
-			directory: "/tmp/Alpha",
-		},
-	]);
+	store.getState().hydrateSessions([session]);
 
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
@@ -122,5 +122,22 @@ describe("ChatSessionBreadcrumb", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByText("New Chat")).toBeVisible();
+	});
+
+	it("shows only the session title for an unscoped session", async () => {
+		threadListItem.status = "regular";
+		threadListItem.remoteId = "session-unscoped";
+		threadListItem.title = "Greeting";
+
+		const { baseElement } = renderBreadcrumb({
+			id: "session-unscoped",
+			directory: "/chats/session-uSrBjH",
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("chat-session-breadcrumb")).toBeVisible();
+		await expect.element(screen.getByText("Greeting")).toBeVisible();
+		await expect.element(screen.getByText("session-uSrBjH")).not.toBeInTheDocument();
+		await expect.element(screen.getByText("Alpha Workspace")).not.toBeInTheDocument();
 	});
 });

@@ -97,6 +97,79 @@ describe("resolveWebMcpRelayEntry", () => {
 		expect(resolved.entry).toBe(devCliEntry);
 	});
 
+	it("resolves from the isolated packaged runtime", () => {
+		const runtimeRoot = nativePath(
+			"App",
+			"Contents",
+			"Resources",
+			"app.asar",
+			"node_modules",
+			"@anaconda-agentic-desktop",
+			"plugin-kilo-server",
+			"relay-runtime",
+		);
+		const expectedPackageRoot = nativePath(
+			"App",
+			"Contents",
+			"Resources",
+			"app.asar.unpacked",
+			"node_modules",
+			"@anaconda-agentic-desktop",
+			"plugin-kilo-server",
+			"relay-runtime",
+			"node_modules",
+			"@mcp-b",
+			"webmcp-local-relay",
+		);
+		let packageJsonPath: string | undefined;
+		const resolved = resolveWebMcpRelayEntry({
+			runtimeRoot,
+			exists: () => true,
+			requireResolve: () => {
+				throw new Error("runtimeRoot should bypass workspace resolution");
+			},
+			readPackageJson: (candidate) => {
+				packageJsonPath = candidate;
+				return { version: "4.0.0", bin: "./dist/cli.mjs" };
+			},
+		});
+
+		expect(packageJsonPath).toBe(path.join(expectedPackageRoot, "package.json"));
+		expect(resolved).toEqual({
+			entry: path.join(expectedPackageRoot, "dist/cli.mjs"),
+			version: "4.0.0",
+		});
+	});
+
+	it("falls back to workspace resolution when the dev runtime has no local node_modules", () => {
+		const resolved = resolveWebMcpRelayEntry({
+			runtimeRoot: nativePath("repo", "plugins", "kilo-server", "relay-runtime"),
+			exists: () => false,
+			requireResolve: () => devMainEntry,
+			readPackageJson: () => ({ version: "4.0.0", bin: "./dist/cli.mjs" }),
+		});
+
+		expect(resolved.entry).toBe(devCliEntry);
+	});
+
+	it("fails loud when the isolated packaged runtime is missing", () => {
+		expect(() =>
+			resolveWebMcpRelayEntry({
+				runtimeRoot: nativePath(
+					"App",
+					"Contents",
+					"Resources",
+					"app.asar",
+					"node_modules",
+					"@anaconda-agentic-desktop",
+					"plugin-kilo-server",
+					"relay-runtime",
+				),
+				exists: () => false,
+			}),
+		).toThrow(/Packaged WebMCP runtime is missing/);
+	});
+
 	it("rewrites asar-embedded paths to the unpacked location", () => {
 		const packagedMainEntry = nativePath(
 			"App",

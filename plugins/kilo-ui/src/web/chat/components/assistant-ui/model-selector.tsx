@@ -330,7 +330,11 @@ function ModelSelectorValue({
 
 	if (!selectedModel) {
 		return (
-			<span data-slot="model-selector-value" className={cn("text-muted-foreground", className)}>
+			<span
+				data-slot="model-selector-value"
+				data-model-selected="false"
+				className={cn("text-muted-foreground", className)}
+			>
 				{placeholder}
 			</span>
 		);
@@ -342,12 +346,20 @@ function ModelSelectorValue({
 	return (
 		<span
 			data-slot="model-selector-value"
+			data-model-selected="true"
 			className={cn("flex items-center gap-2 dark:text-foreground/90", className)}
 		>
 			{selectedModel.icon && <ModelIcon>{selectedModel.icon}</ModelIcon>}
-			<span className="font-medium whitespace-nowrap">{selectedModel.name}</span>
+			<span data-slot="model-selector-name" className="font-medium whitespace-nowrap">
+				{selectedModel.name}
+			</span>
 			{effortName && (
-				<span className="text-muted-foreground min-w-7.5 shrink-0 text-center">{effortName}</span>
+				<span
+					data-slot="model-selector-effort"
+					className="text-muted-foreground min-w-7.5 shrink-0 text-center"
+				>
+					{effortName}
+				</span>
 			)}
 		</span>
 	);

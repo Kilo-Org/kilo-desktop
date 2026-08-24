@@ -35,6 +35,10 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 		isVisible: ReturnType<typeof vi.fn>;
 		setBackgroundColor: ReturnType<typeof vi.fn>;
 		setTitleBarOverlay: ReturnType<typeof vi.fn>;
+		getTitle: ReturnType<typeof vi.fn>;
+		setTitle: ReturnType<typeof vi.fn>;
+		isFocused: ReturnType<typeof vi.fn>;
+		off: ReturnType<typeof vi.fn>;
 	}
 
 	return {
@@ -73,6 +77,10 @@ vi.mock("electron", () => ({
 		readonly isVisible = vi.fn(() => false);
 		readonly setBackgroundColor = vi.fn();
 		readonly setTitleBarOverlay = vi.fn();
+		readonly getTitle = vi.fn(() => "Agentic Desktop");
+		readonly setTitle = vi.fn();
+		readonly isFocused = vi.fn(() => true);
+		readonly off = vi.fn();
 
 		constructor(readonly options: (typeof createdWindows)[number]["options"]) {
 			createdWindows.push(this as unknown as (typeof createdWindows)[number]);
@@ -251,6 +259,27 @@ describe("ElectronWindow theme chrome", () => {
 
 		expect(origin?.webContents.send).not.toHaveBeenCalled();
 		expect(other?.webContents.send).toHaveBeenCalledWith("feature:event", event);
+	});
+
+	it("scopes title and focus capabilities to the requesting renderer", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		windows.create({ isDevelopment: false });
+		const [first, second] = createdWindows;
+
+		expect(windows.getTitle(second!.webContents.id)).toBe("Agentic Desktop");
+		windows.setTitle(second!.webContents.id, "Analysis");
+		expect(first?.setTitle).not.toHaveBeenCalled();
+		expect(second?.setTitle).toHaveBeenCalledWith("Analysis");
+		expect(windows.isFocused(second!.webContents.id)).toBe(true);
+
+		const listener = vi.fn();
+		const unlisten = windows.onFocusChange(second!.webContents.id, listener);
+		const focus = second?.on.mock.calls.find((call) => call[0] === "focus")?.[1];
+		focus?.();
+		expect(listener).toHaveBeenCalledWith(true);
+		unlisten();
+		expect(second?.off).toHaveBeenCalledWith("focus", focus);
 	});
 
 	it("does not auto-show a deferred window and resolves whenReady once it paints", async () => {

@@ -5,6 +5,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type CSSProperties,
 	type FC,
 	type PropsWithChildren,
 } from "react";
@@ -64,12 +65,14 @@ const ownsPendingAsk = (
 	return lastAsk >= 0 && indices.includes(lastAsk);
 };
 
-const ANIMATION_DURATION = 200;
+const GROUP_ANIMATION_DURATION = 100;
+const SUBGROUP_ANIMATION_DURATION = 100;
 const MAX_VISIBLE_ICONS = 5;
 
 /** Header is the whole story — expanding would reveal nothing (or a duplicate label). */
 const LABEL_ONLY_ACTIVITY_KINDS: ReadonlySet<ActivityKind> = new Set([
 	"asking",
+	"suggesting",
 	"skill",
 	"reading",
 	"planning",
@@ -88,12 +91,12 @@ const ActivityIconStack: FC<{
 	return (
 		<AvatarGroup className={className}>
 			{overflow ? (
-				<AvatarGroupCount className="size-7 text-xs">
+				<AvatarGroupCount className="size-6.5 text-xs">
 					+{items.length - MAX_VISIBLE_ICONS}
 				</AvatarGroupCount>
 			) : null}
 			{visible.map((item, index) => (
-				<Avatar key={index} title={item.label} className="size-7">
+				<Avatar key={index} title={item.label} className="size-6.5">
 					<AvatarFallback
 						className={cn(
 							"relative border-2",
@@ -193,7 +196,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	const [streamExpanded, setStreamExpanded] = useState(false);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
-	const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
+	const lockScroll = useScrollLock(collapsibleRef, GROUP_ANIMATION_DURATION);
 
 	const startIndex = group.indices[0] ?? 0;
 	const endIndex = group.indices.at(-1) ?? 0;
@@ -218,7 +221,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	// Wrapping it in "N tools used" would force a second expand for the same row.
 	if (summary.segments.length <= 1) {
 		return (
-			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+			<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 				{children}
 			</div>
 		);
@@ -250,7 +253,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			loading: index === activeIndex && activeLoading,
 		}));
 		return (
-			<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+			<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 				<button
 					type="button"
 					onClick={() => {
@@ -273,10 +276,15 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	}
 
 	return (
-		<div data-slot="activity-group" className={cn(textBefore && "mt-4", textAfter && "mb-4")}>
+		<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 			<Collapsible
 				ref={collapsibleRef}
 				open={open}
+				style={
+					{
+						"--animation-duration": `${GROUP_ANIMATION_DURATION}ms`,
+					} as CSSProperties
+				}
 				onOpenChange={(next) => {
 					lockScroll();
 					setOpen(next);
@@ -299,7 +307,12 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 						</>
 					)}
 				</CollapsibleTrigger>
-				<CollapsibleContent className={contentAnimation}>
+				<CollapsibleContent
+					className={cn(
+						contentAnimation,
+						"data-closed:duration-(--animation-duration) data-open:duration-(--animation-duration)",
+					)}
+				>
 					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
 				</CollapsibleContent>
 			</Collapsible>
@@ -338,9 +351,12 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	const [toggled, setToggled] = useState<boolean | null>(null);
 	const open = segment.requiresAction || hasPendingAsk || (toggled ?? segment.running);
+	// Status-driven panels close immediately so their measured height never shifts
+	// later response content; user-triggered disclosure changes still animate.
+	const shouldAnimatePanelTransition = toggled !== null || open;
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
-	const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
+	const lockScroll = useScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
 
 	const streamCollapsed = useContext(ActivityStreamContext);
 
@@ -359,11 +375,14 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	// items need a disclosure for their child list; asking is the exception
 	// because its questionnaire renders outside the activity group.
 	// While the stream row is collapsed, the parent ActivityGroup owns the icon.
-	const labelOnly = LABEL_ONLY_ACTIVITY_KINDS.has(kind) && (kind === "asking" || stats.count === 1);
+	const labelOnly =
+		(LABEL_ONLY_ACTIVITY_KINDS.has(kind) &&
+			(kind === "asking" || kind === "suggesting" || stats.count === 1)) ||
+		(kind === "subagent" && stats.count === 1 && segment.running);
 	if (labelOnly) {
 		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
-		const showChildren = kind !== "asking" && group.indices.length > 1;
+		const showChildren = kind !== "asking" && kind !== "suggesting" && group.indices.length > 1;
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
 				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
@@ -417,6 +436,11 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 			<Collapsible
 				ref={collapsibleRef}
 				open={open}
+				style={
+					{
+						"--animation-duration": `${SUBGROUP_ANIMATION_DURATION}ms`,
+					} as CSSProperties
+				}
 				onOpenChange={(next) => {
 					lockScroll();
 					setToggled(next);
@@ -438,10 +462,19 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						<ActivityLabel label={label} shimmer={segment.running} />
 					</span>
 					<ChevronRightIcon
-						className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")}
+						className={cn(
+							"size-3.5 shrink-0 transition-transform duration-(--animation-duration)",
+							open && "rotate-90",
+						)}
 					/>
 				</CollapsibleTrigger>
-				<CollapsibleContent className={contentAnimation}>
+				<CollapsibleContent
+					className={cn(
+						"overflow-hidden",
+						shouldAnimatePanelTransition &&
+							"data-closed:animate-collapsible-up data-open:animate-collapsible-down data-closed:duration-(--animation-duration) data-open:duration-(--animation-duration) data-closed:ease-out data-open:ease-in",
+					)}
+				>
 					<div
 						className={cn(
 							"border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3",

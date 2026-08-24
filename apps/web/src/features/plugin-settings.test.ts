@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { discoverPlugins, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
 
+import { PLUGIN_SETTINGS } from "./plugin-settings-entries";
 import {
 	buildPluginSettings,
 	filterVisiblePluginSettings,
 	findSettingsSection,
 	isSettingsPath,
-	PLUGIN_SETTINGS,
 	type PluginSettingsSection,
 } from "./plugin-settings";
 
@@ -142,6 +142,15 @@ describe("PLUGIN_SETTINGS", () => {
 			id: "appearance",
 			title: "Appearance",
 			browserSafe: true,
+		});
+	});
+
+	it("includes the kilo-ui AI Providers section", () => {
+		expect(PLUGIN_SETTINGS.some((section) => section.id === "kilo-providers")).toBe(true);
+		expect(PLUGIN_SETTINGS.find((section) => section.id === "kilo-providers")).toMatchObject({
+			pluginId: "kilo-ui",
+			title: "AI Providers",
+			priority: 90,
 		});
 	});
 });

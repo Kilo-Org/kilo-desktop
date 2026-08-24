@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { discoverPlugins, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { buildPluginNav, filterVisiblePluginNav, PLUGIN_NAV } from "./plugin-nav";
+import { PLUGIN_NAV } from "./plugin-nav-entries";
+import { buildPluginNav, filterVisiblePluginNav } from "./plugin-nav";
 
 const Page = () => null;
 const DemoNavIcon = () => null;

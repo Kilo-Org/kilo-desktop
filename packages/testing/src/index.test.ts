@@ -130,6 +130,35 @@ describe("createFakeMainSdk", () => {
 		await expect(mainSdk.invoke("list")).rejects.toMatchObject({ code: "NOT_FOUND" });
 	});
 
+	it("disposeAsync awaits onDispose callbacks in reverse order and clears handlers", async () => {
+		const mainSdk = createFakeMainSdk({ featureId: "todos" });
+		const order: string[] = [];
+
+		function mainRegister(sdk: MainSdk) {
+			sdk.channels(todosChannels).handleAll({
+				list: () => [],
+				add: ({ title }) => ({ id: "1", title, completed: false }),
+			});
+			sdk.onDispose(async () => {
+				await Promise.resolve();
+				order.push("first");
+			});
+			sdk.onDispose(async () => {
+				await Promise.resolve();
+				order.push("second");
+			});
+		}
+
+		mainRegister(mainSdk);
+		expect(mainSdk.has("list")).toBe(true);
+
+		await mainSdk.disposeAsync();
+
+		expect(order).toEqual(["second", "first"]);
+		expect(mainSdk.has("list")).toBe(false);
+		await expect(mainSdk.invoke("list")).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+
 	it("provides real events and plugins surfaces", () => {
 		const mainSdk = createFakeMainSdk({ featureId: "producer" });
 		const listener = vi.fn();
@@ -385,7 +414,7 @@ describe("createFakeSdk", () => {
 
 		await expect(sdk.invoke("anything")).resolves.toBe("custom");
 		expect(customInvoke).toHaveBeenCalled();
-		sdk.contribute("zone", { component: "X", label: "Label" });
+		sdk.contribute("zone", { id: "label", component: "X", label: "Label" });
 		expect(customContribute).toHaveBeenCalled();
 		expect(sdk.state.peek("x")).toBe(42);
 		sdk.destroy();

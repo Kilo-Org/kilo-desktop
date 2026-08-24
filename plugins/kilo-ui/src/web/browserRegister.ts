@@ -1,13 +1,17 @@
-import type {
-	Workspace,
-	WorkspaceCapabilityService,
-	WorkspaceFolderInput,
-	WorkspacesService,
+import {
+	DEFAULT_WORKSPACE_IDENTITY_COLOR,
+	normalizeWorkspaceIdentityColor,
+	type Workspace,
+	type WorkspaceCapabilityService,
+	type WorkspaceFolderInput,
+	type WorkspacesService,
 } from "../contracts/workspaces/schemas.js";
 import type { KiloUiChatService } from "../contracts/chat/schemas.js";
+import type { OnboardingService, OnboardingState } from "../contracts/onboarding/schemas.js";
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
+import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 
 const basename = (folderPath: string) =>
@@ -66,6 +70,7 @@ function registerWorkspacesBrowser(mainSdk: MainSdk): void {
 			const after: Workspace = {
 				id: crypto.randomUUID(),
 				name: resolveName(input.name, folders[0]!.path),
+				color: normalizeWorkspaceIdentityColor(input.color) ?? DEFAULT_WORKSPACE_IDENTITY_COLOR,
 				folders: folders.map((folder, position) => ({
 					id: crypto.randomUUID(),
 					path: folder.path,
@@ -87,6 +92,10 @@ function registerWorkspacesBrowser(mainSdk: MainSdk): void {
 				...before,
 				name:
 					input.name === undefined ? before.name : resolveName(input.name, folders[0]!.path, id),
+				color:
+					input.color === undefined
+						? before.color
+						: (normalizeWorkspaceIdentityColor(input.color) ?? before.color),
 				folders: folders.map((folder, position) => ({
 					id: ids.get(folder.path) ?? crypto.randomUUID(),
 					path: folder.path,
@@ -131,7 +140,24 @@ function registerChatBrowser(mainSdk: MainSdk): void {
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 }
 
+function registerOnboardingBrowser(mainSdk: MainSdk): void {
+	let state: OnboardingState = { outcome: null, closedAt: null };
+	const onboardingApi: OnboardingService = {
+		"onboarding.get": async () => state,
+		"onboarding.complete": async () => {
+			state = { outcome: "completed", closedAt: Date.now() };
+			return state;
+		},
+		"onboarding.skip": async () => {
+			state = { outcome: "skipped", closedAt: Date.now() };
+			return state;
+		},
+	};
+	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
+}
+
 export function kiloUiBrowserRegister(mainSdk: MainSdk): void {
 	registerWorkspacesBrowser(mainSdk);
 	registerChatBrowser(mainSdk);
+	registerOnboardingBrowser(mainSdk);
 }

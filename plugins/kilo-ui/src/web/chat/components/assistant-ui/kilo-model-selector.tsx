@@ -413,7 +413,7 @@ function GatewaySignInItem({ onSignIn }: { onSignIn: () => void }) {
 	return (
 		<CommandItem
 			value={SIGN_IN_ITEM_ID}
-			keywords={["sign in", "login", "kilo"]}
+			keywords={["connect", "login", "kilo"]}
 			data-qa-id="kilo-model-selector-signin"
 			onSelect={() => {
 				setOpen(false);
@@ -425,7 +425,7 @@ function GatewaySignInItem({ onSignIn }: { onSignIn: () => void }) {
 				<ProviderIcon provider="kilo" variant="color" size={14} fallbackLabel="Kilo" />
 			</span>
 			<span className="flex min-w-0 flex-1 flex-col">
-				<span className="truncate font-medium">Sign in to Kilo</span>
+				<span className="truncate font-medium">Connect to Kilo</span>
 				<span className="text-muted-foreground truncate text-xs">Use your models and credits</span>
 			</span>
 			<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center">

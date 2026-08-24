@@ -297,11 +297,11 @@ describe("message error sign-in", () => {
 		});
 
 		await expect
-			.element(screen.getByText("You need to sign in to Kilo to use this model"))
+			.element(screen.getByText("You need to connect to Kilo to use this model"))
 			.toBeVisible();
 		const button = screen.getByTestId("kilo-message-error-signin");
 		await expect.element(button).toBeVisible();
-		await expect.element(button).toHaveTextContent("Sign in");
+		await expect.element(button).toHaveTextContent("Connect");
 
 		await button.click();
 		expect(login).toHaveBeenCalledOnce();
@@ -325,14 +325,14 @@ describe("message error sign-in", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect
-			.element(screen.getByText("You need to sign in to Kilo to use this model"))
+			.element(screen.getByText("You need to connect to Kilo to use this model"))
 			.toBeVisible();
 		await screen.getByTestId("kilo-message-error-signin").click();
 
 		await expect.element(screen.getByTestId("kilo-message-error-signed-in")).toBeVisible();
 		await expect.element(screen.getByText(/signed in to Kilo/)).toBeVisible();
 		await expect
-			.element(screen.getByText("You need to sign in to Kilo to use this model"))
+			.element(screen.getByText("You need to connect to Kilo to use this model"))
 			.not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("kilo-message-error-signin")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("kilo-message-error-retry")).toBeVisible();
@@ -369,7 +369,7 @@ describe("message error sign-in", () => {
 		});
 
 		await expect
-			.element(screen.getByText("You need to sign in to Kilo to use this model"))
+			.element(screen.getByText("You need to connect to Kilo to use this model"))
 			.toBeVisible();
 		await expect.element(screen.getByTestId("kilo-message-error-signin")).toBeVisible();
 		await expect.element(screen.getByText(/PAID_MODEL_AUTH_REQUIRED/)).not.toBeInTheDocument();
@@ -384,7 +384,7 @@ describe("message error sign-in", () => {
 		});
 
 		await expect
-			.element(screen.getByText("You need to sign in to Kilo to use this model"))
+			.element(screen.getByText("You need to connect to Kilo to use this model"))
 			.toBeVisible();
 		await expect.element(screen.getByTestId("kilo-message-error-signin")).not.toBeInTheDocument();
 		await expect

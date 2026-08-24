@@ -4,10 +4,10 @@ export const PERSONAL_ORG_VALUE = "personal";
 export const KILO_PROFILE_URL = "https://app.kilo.ai/profile";
 export const KILO_CREDITS_URL = "https://app.kilo.ai/credits";
 export const KILO_PASS_URL = "https://kilo.ai/pricing/kilo-pass";
-/** In-app settings section that hosts the device-auth panel. */
-export const KILO_ACCOUNT_PATH = "/settings/kilo-account";
+/** In-app settings section that hosts the Kilo Gateway account panel. */
+export const KILO_ACCOUNT_PATH = "/settings/kilo-providers";
 
-/** Start device OAuth and open the account page so the user sees the panel. */
+/** Start device OAuth and open AI Providers so the user sees the Kilo panel. */
 export function startKiloDeviceAuth(login: () => void, navigate: (path: string) => void): void {
 	login();
 	navigate(KILO_ACCOUNT_PATH);
@@ -171,7 +171,7 @@ export function offerKiloSignIn(
 
 const KILO_SIGN_IN_ERROR = "You need to sign in to use this model";
 const KILO_SIGN_UP_ERROR = "You need to sign up to keep going";
-const KILO_SIGN_IN_TITLE = "You need to sign in to Kilo to use this model";
+const KILO_SIGN_IN_TITLE = "You need to connect to Kilo to use this model";
 const KILO_SIGN_UP_TITLE = "You need to sign up for Kilo to keep going";
 
 const KILO_ERROR_TITLES: Record<string, string> = {

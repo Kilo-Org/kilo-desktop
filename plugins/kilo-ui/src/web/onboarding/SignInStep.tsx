@@ -46,7 +46,7 @@ export function SignInStep({
 					<CheckIcon className="size-4" />
 				</div>
 				<div className="min-w-0">
-					<p className="text-sm font-medium">Signed in as {name}</p>
+					<p className="text-sm font-medium">Connected as {name}</p>
 					<p className="text-muted-foreground text-sm">Continue to create your first workspace.</p>
 				</div>
 			</div>

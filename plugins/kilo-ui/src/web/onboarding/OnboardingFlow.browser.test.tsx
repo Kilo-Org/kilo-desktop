@@ -30,7 +30,7 @@ describe("OnboardingFlow", () => {
 
 		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
 		await expect.element(screen.getByTestId("onboarding-wordmark")).not.toBeInTheDocument();
-		await expect.element(screen.getByRole("heading", { name: "Sign in to Kilo" })).toBeVisible();
+		await expect.element(screen.getByRole("heading", { name: "Connect to Kilo" })).toBeVisible();
 		await expect
 			.element(screen.getByTestId("onboarding-progress-label"))
 			.toHaveTextContent("1 of 2");

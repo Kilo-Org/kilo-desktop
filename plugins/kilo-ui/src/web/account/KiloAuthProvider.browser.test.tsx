@@ -9,7 +9,7 @@ import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-deskto
 import { kiloUiChatContract, type KiloGlobalConnection } from "../../contracts/chat/schemas.js";
 import { ChatConnectionProvider } from "../chat/connection/ChatConnectionContext.js";
 import { createKiloDirectoryClient } from "../chat/runtime/create-kilo-runtime-client.js";
-import { KiloAccountSettings } from "./KiloAccountSettings.js";
+import { KiloGatewayAccountPanel } from "./KiloGatewayAccountPanel.js";
 import { KiloAuthProvider } from "./KiloAuthProvider.js";
 import type { KiloProfileData } from "./kilo-auth.js";
 
@@ -111,7 +111,7 @@ function renderAccount({
 					}}
 				>
 					<KiloAuthProvider>
-						<KiloAccountSettings />
+						<KiloGatewayAccountPanel />
 					</KiloAuthProvider>
 				</ChatConnectionProvider>
 			</QueryClientProvider>
@@ -167,13 +167,13 @@ describe("KiloAuthProvider login", () => {
 		// While the profile is still in flight the panel shows the finishing
 		// spinner — never a "Signed in to Kilo" success card.
 		await expect.element(panel).toHaveAttribute("data-state", "finishing");
-		await expect.element(page.getByText("Finishing sign-in…")).toBeVisible();
+		await expect.element(page.getByText("Finishing connection…")).toBeVisible();
 		expect(page.getByText("Signed in to Kilo").elements()).toHaveLength(0);
-		await expect.element(screen.getByTestId("kilo-account-name")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-account-logout")).not.toBeInTheDocument();
 
 		resolveProfile({ data: signedInProfile });
 
-		await expect.element(screen.getByTestId("kilo-account-name")).toHaveTextContent("mchilvers");
+		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
 		await expect.element(panel).not.toBeInTheDocument();
 		await expect
 			.element(screen.getByTestId("kilo-account-settings"))
@@ -220,7 +220,7 @@ describe("KiloAuthProvider logout", () => {
 		const { screen } = renderAccount();
 
 		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-account-name")).toHaveTextContent("mchilvers");
+		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
 
 		await screen.getByTestId("kilo-account-logout").click();
 
@@ -257,7 +257,7 @@ describe("KiloAuthProvider profile errors", () => {
 		profile.mockResolvedValue({ data: signedInProfile });
 		await screen.getByTestId("kilo-account-profile-retry").click();
 
-		await expect.element(screen.getByTestId("kilo-account-name")).toHaveTextContent("mchilvers");
+		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-profile-error")).not.toBeInTheDocument();
 	});
 });
@@ -266,7 +266,7 @@ describe("KiloAuthProvider org switch", () => {
 	it("keeps the signed-in view and does not open the login error panel", async () => {
 		const { screen } = renderAccount();
 
-		await expect.element(screen.getByTestId("kilo-account-name")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
 		organizationSet.mockRejectedValue(new Error("cannot switch"));
 		await screen.getByTestId("kilo-account-org").click();
 		const personal = page.getByRole("option", { name: "Personal" });
@@ -275,7 +275,7 @@ describe("KiloAuthProvider org switch", () => {
 
 		await expect.element(screen.getByTestId("kilo-account-org-error")).toBeVisible();
 		await expect.element(screen.getByText("cannot switch")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-account-name")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-device-auth")).not.toBeInTheDocument();
 		expect(authorize).not.toHaveBeenCalled();
 

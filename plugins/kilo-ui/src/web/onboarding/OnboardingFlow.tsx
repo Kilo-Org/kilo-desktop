@@ -19,9 +19,9 @@ import { ONBOARDING_STEPS, type OnboardingStepId } from "./resolve-onboarding.js
 
 const COPY: Record<OnboardingStepId, { title: string; subtitle: string }> = {
 	"kilo-sign-in": {
-		title: "Sign in to Kilo",
+		title: "Connect to Kilo",
 		subtitle:
-			"Connect your Kilo account for frontier models, credits, and organization settings. You can skip this and sign in later from Settings.",
+			"Connect your Kilo account for frontier models, credits, and organization settings. You can skip this and connect later from Settings → AI Providers.",
 	},
 	workspace: {
 		title: "Create a workspace",
@@ -30,7 +30,7 @@ const COPY: Record<OnboardingStepId, { title: string; subtitle: string }> = {
 };
 
 const STEP_LABELS: Record<OnboardingStepId, string> = {
-	"kilo-sign-in": "Kilo account",
+	"kilo-sign-in": "Kilo Gateway",
 	workspace: "Workspace",
 };
 

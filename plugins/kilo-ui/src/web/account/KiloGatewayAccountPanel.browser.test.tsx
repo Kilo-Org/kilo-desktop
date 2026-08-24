@@ -6,7 +6,7 @@ import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import { kiloUiChatContract } from "../../contracts/chat/schemas.js";
-import { KiloAccountSettings } from "./KiloAccountSettings.js";
+import { KiloGatewayAccountPanel } from "./KiloGatewayAccountPanel.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "./KiloAuthContext.js";
 import type { DeviceAuthState, KiloProfileData } from "./kilo-auth.js";
 
@@ -69,14 +69,14 @@ function renderSettings(auth: KiloAuthContextValue) {
 	const { baseElement } = render(
 		<SdkProvider system={system}>
 			<KiloAuthContext.Provider value={auth}>
-				<KiloAccountSettings />
+				<KiloGatewayAccountPanel />
 			</KiloAuthContext.Provider>
 		</SdkProvider>,
 	);
 	return { screen: page.elementLocator(baseElement), auth };
 }
 
-describe("KiloAccountSettings", () => {
+describe("KiloGatewayAccountPanel", () => {
 	it("shows desktop-unavailable copy when the connection is unavailable", async () => {
 		const { screen } = renderSettings(idleAuth({ connectionUnavailable: true }));
 		await expect.element(screen.getByTestId("kilo-account-settings")).toBeVisible();
@@ -128,10 +128,6 @@ describe("KiloAccountSettings", () => {
 				profile: signedInProfile,
 			}),
 		);
-		await expect.element(screen.getByTestId("kilo-account-name")).toHaveTextContent("Dev User");
-		await expect
-			.element(screen.getByTestId("kilo-account-email"))
-			.toHaveTextContent("dev@anaconda.com");
 		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
 		await expect
 			.element(screen.getByTestId("kilo-account-balance-value"))
@@ -180,7 +176,7 @@ describe("KiloAccountSettings", () => {
 				orgError: { message: "cannot switch", organizationId: "org-2" },
 			}),
 		);
-		await expect.element(screen.getByTestId("kilo-account-name")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-org-error")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-device-auth")).not.toBeInTheDocument();
 

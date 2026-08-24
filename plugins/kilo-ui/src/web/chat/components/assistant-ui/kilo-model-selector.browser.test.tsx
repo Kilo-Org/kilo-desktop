@@ -175,11 +175,11 @@ describe("KiloModelSelector", () => {
 
 		await trigger.click();
 		await expect.element(screen.getByTestId("kilo-model-selector-signin")).toBeVisible();
-		await expect.element(screen.getByText("Sign in to Kilo")).toBeVisible();
+		await expect.element(screen.getByText("Connect to Kilo")).toBeVisible();
 
 		await screen.getByTestId("kilo-model-selector-signin").click();
 		expect(login).toHaveBeenCalledOnce();
-		expect(navigate).toHaveBeenCalledWith("/settings/kilo-account", undefined);
+		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
 	});
 
 	it("hides the sign-in row unless the Kilo Gateway rail is selected", async () => {

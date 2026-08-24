@@ -200,7 +200,7 @@ describe("isKiloSignInError", () => {
 
 describe("displayChatError", () => {
 	it("unwraps Gateway JSON dumps into tidy titles", () => {
-		expect(displayChatError(gatewayAuthDump)).toBe("You need to sign in to Kilo to use this model");
+		expect(displayChatError(gatewayAuthDump)).toBe("You need to connect to Kilo to use this model");
 		expect(
 			displayChatError(
 				'Unauthorized: {"error":{"code":"PROMOTION_MODEL_LIMIT_REACHED","message":"limit"}}',
@@ -210,7 +210,7 @@ describe("displayChatError", () => {
 
 	it("keeps already-tidy titles and unwraps other JSON messages", () => {
 		expect(displayChatError("You need to sign in to use this model")).toBe(
-			"You need to sign in to Kilo to use this model",
+			"You need to connect to Kilo to use this model",
 		);
 		expect(
 			displayChatError('Unauthorized: {"error":{"message":"Provider rate limit exceeded"}}'),

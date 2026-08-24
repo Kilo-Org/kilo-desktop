@@ -1,4 +1,5 @@
 import { ChevronDownIcon, FolderIcon, MessageSquareIcon, PlusIcon } from "lucide-react";
+import { useRef } from "react";
 
 import { useAui } from "@assistant-ui/react";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
@@ -22,6 +23,7 @@ export function GlobalNewButton() {
 	const aui = useAui();
 	const sdk = useSdk("kilo-ui");
 	const { openCreate } = useWorkspacesFeature();
+	const field = useRef<HTMLDivElement>(null);
 
 	const createChat = () => {
 		void aui.threads.switchToNewThread();
@@ -30,7 +32,7 @@ export function GlobalNewButton() {
 
 	return (
 		<DropdownMenu>
-			<ButtonGroup className="group/new w-full" aria-label="New">
+			<ButtonGroup ref={field} className="group/new w-full" aria-label="New">
 				<Button
 					type="button"
 					variant="ghost"
@@ -55,7 +57,7 @@ export function GlobalNewButton() {
 					<ChevronDownIcon data-slot="aui_thread-list-new-chevron" />
 				</DropdownMenuTrigger>
 			</ButtonGroup>
-			<DropdownMenuContent align="end">
+			<DropdownMenuContent align="start" anchor={field}>
 				<DropdownMenuGroup>
 					<DropdownMenuItem data-qa-id="global-new-chat" onClick={createChat}>
 						<MessageSquareIcon />

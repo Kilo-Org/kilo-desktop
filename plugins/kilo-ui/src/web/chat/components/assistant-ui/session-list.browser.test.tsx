@@ -403,8 +403,11 @@ describe("SessionList", () => {
 			.toBeVisible();
 		await expect
 			.element(inboxHeader.getByRole("button", { name: "Session list options" }))
-			.toBeVisible();
+			.not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).toBeVisible();
+		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
+		expect(activeRow).not.toBeNull();
+		expect(activeRow!.querySelector('[data-qa-id="session-list-view-menu"]')).not.toBeNull();
 		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
 		const activeHeader = screen.getByTestId("session-list-active-toggle").element();
 		const activeLabel = screen
@@ -1087,7 +1090,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 	});
 
-	it("shows All workspaces and group options at the top of the inbox", async () => {
+	it("shows the workspace switcher at the top of the siderail", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
 		});
@@ -1102,41 +1105,55 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		const headerEl = header.element();
 		const trigger = header.getByRole("combobox", { name: "Filter by workspace" }).element();
-		const filter = header.getByRole("button", { name: "Session list options" }).element();
+		const filter = screen.getByRole("button", { name: "Session list options" }).element();
 		const newChat = screen.getByRole("button", { name: "New Chat" }).element();
 		const search = screen.getByRole("button", { name: "Search" }).element();
-		const session = screen.getByText("Fix the bug").element();
+		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
 		expect(headerEl.contains(trigger)).toBe(true);
-		expect(headerEl.contains(filter)).toBe(true);
-		expect(headerEl.className).toContain("bg-foreground/5");
-		expect(headerEl.className).toContain("rounded-md");
+		expect(headerEl.contains(filter)).toBe(false);
+		expect(activeRow?.contains(filter)).toBe(true);
+		expect(headerEl.className).not.toContain("bg-foreground/5");
+		expect(trigger.className).toContain("border-border/60");
+		expect(trigger.className).toContain("bg-popover");
+		expect(trigger.className).not.toContain("bg-background");
+		expect(trigger.className).not.toContain("bg-input/30");
+		expect(Number.parseFloat(getComputedStyle(trigger).borderTopWidth)).toBeGreaterThan(0);
 		expect(headerEl.contains(newChat)).toBe(false);
-		const divider = screen.getByTestId("session-list-chrome-divider").element();
+		const switcherIcon = trigger.querySelector("svg");
+		expect(switcherIcon?.classList.contains("lucide-layout-grid")).toBe(true);
+		expect(switcherIcon?.getAttribute("stroke")).toBe("currentColor");
+		await expect.element(screen.getByTestId("session-list-chrome-divider")).not.toBeInTheDocument();
+		const inbox = screen.getByTestId("session-list-inbox").element();
+		expect(headerEl.compareDocumentPosition(newChat) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 		expect(newChat.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(search.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+		expect(search.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(divider.compareDocumentPosition(headerEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
-		);
-		expect(
-			headerEl.getBoundingClientRect().top - divider.getBoundingClientRect().bottom,
-		).toBeGreaterThanOrEqual(12);
-		expect(headerEl.compareDocumentPosition(session) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
-		);
+		const afterSwitcher =
+			newChat.getBoundingClientRect().top - headerEl.getBoundingClientRect().bottom;
+		const beforeInbox = inbox.getBoundingClientRect().top - search.getBoundingClientRect().bottom;
+		expect(afterSwitcher).toBeGreaterThan(beforeInbox);
+		expect(afterSwitcher - beforeInbox).toBeGreaterThanOrEqual(3);
 		expect(getComputedStyle(trigger).fontSize).toBe(getComputedStyle(newChat).fontSize);
-		expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(32);
+		expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(36);
 		expect(Number.parseFloat(getComputedStyle(trigger).paddingLeft)).toBe(8);
 		expect(Number.parseFloat(getComputedStyle(trigger).paddingRight)).toBe(8);
 		await expect
-			.element(header.getByRole("button", { name: "Session list options" }))
+			.element(screen.getByRole("button", { name: "Session list options" }))
 			.toBeVisible();
 
 		await header.getByRole("combobox", { name: "Filter by workspace" }).click();
 		await expect.element(page.getByRole("option", { name: "All workspaces" })).toBeVisible();
+		const popover = document.querySelector('[data-slot="popover-content"]');
+		expect(popover).not.toBeNull();
+		expect(popover!.getBoundingClientRect().width).toBeCloseTo(
+			trigger.getBoundingClientRect().width,
+			0,
+		);
 		await expect.element(page.getByRole("option", { name: /Acme App/ })).toBeVisible();
 		await expect.element(page.getByRole("option", { name: /Beta/ })).toBeVisible();
 		await expect
@@ -1168,7 +1185,9 @@ describe("SessionList", () => {
 			.element(screen.getByRole("combobox", { name: "Filter by workspace" }))
 			.toHaveTextContent("Acme App");
 		const trigger = screen.getByRole("combobox", { name: "Filter by workspace" }).element();
-		expect(trigger.querySelector("svg")!.getAttribute("stroke")).toBe("#F87171");
+		const switcherIcon = trigger.querySelector("svg");
+		expect(switcherIcon?.classList.contains("lucide-folder")).toBe(true);
+		expect(switcherIcon?.getAttribute("stroke")).toBe("#F87171");
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).not.toBeInTheDocument();
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-1");
@@ -1188,5 +1207,11 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 		expect(setActiveWorkspaceId).toHaveBeenCalledTimes(1);
+		const allIcon = screen
+			.getByRole("combobox", { name: "Filter by workspace" })
+			.element()
+			.querySelector("svg");
+		expect(allIcon?.classList.contains("lucide-layout-grid")).toBe(true);
+		expect(allIcon?.getAttribute("stroke")).toBe("currentColor");
 	});
 });

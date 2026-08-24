@@ -93,6 +93,7 @@ export function useWorkspacePicker(): WorkspacePickerContextValue {
 export function WorkspacePickerRoot({
 	children,
 	contentAlign = "start",
+	contentWidth = "max",
 	emptyLabel,
 	includeUnscoped = true,
 	value,
@@ -100,6 +101,7 @@ export function WorkspacePickerRoot({
 }: {
 	children: ReactNode;
 	contentAlign?: PopoverAlign;
+	contentWidth?: "max" | "trigger";
 	emptyLabel?: string;
 	includeUnscoped?: boolean;
 	value?: string | null;
@@ -160,7 +162,9 @@ export function WorkspacePickerRoot({
 					side="bottom"
 					sideOffset={6}
 					collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-					className="w-max min-w-64 gap-0 p-0"
+					className={
+						contentWidth === "trigger" ? "w-(--anchor-width) gap-0 p-0" : "w-max min-w-64 gap-0 p-0"
+					}
 					onKeyDown={(event) => {
 						if (event.key === "Escape") setOpen(false);
 					}}
@@ -173,7 +177,7 @@ export function WorkspacePickerRoot({
 					>
 						<CommandInput placeholder="Search workspaces…" />
 						<CommandSeparator />
-						<CommandList className="scroll-fade max-h-[calc(2rem*4+0.5rem)]">
+						<CommandList className="scroll-fade max-h-[calc(2rem*5+0.5rem)]">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 							<CommandGroup>
 								{emptyLabel ? (

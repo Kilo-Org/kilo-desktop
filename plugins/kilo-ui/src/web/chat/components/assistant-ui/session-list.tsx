@@ -19,7 +19,6 @@ import {
 	DropdownMenuTrigger,
 } from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { SidebarSeparator } from "@anaconda-agentic-desktop/ui/components/sidebar";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
 import {
 	Tooltip,
@@ -219,6 +218,7 @@ export const SessionList: FC = () => {
 
 	const pinnedSections = sections.filter((section) => section.tone === "pinned");
 	const groupedSections = sections.filter((section) => section.tone !== "pinned");
+	const hasShelf = sections.some((section) => section.label);
 	const collapsibleKeys = sections.flatMap((section) => (section.label ? [section.key] : []));
 	const allCollapsed =
 		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
@@ -248,19 +248,11 @@ export const SessionList: FC = () => {
 			<SessionListChromeContext value={{ show, pinnedIds, togglePin }}>
 				<ThreadListPrimitive.Root
 					data-slot="aui_thread-list-root"
-					className="flex min-h-0 flex-1 flex-col gap-0.5"
+					className="flex min-h-0 flex-1 flex-col"
 				>
-					<GlobalNewButton />
-					<SessionListSearch
-						onSelectWorkspace={(id) => {
-							update({ focus: id });
-							setActiveWorkspaceId(id);
-						}}
-					/>
-					<SidebarSeparator data-qa-id="session-list-chrome-divider" className="mx-0 mt-1 mb-3" />
 					<div
 						data-qa-id="session-list-inbox-header"
-						className="bg-foreground/5 flex h-8 shrink-0 items-center rounded-md pr-0.5"
+						className="mb-4 flex h-9 shrink-0 items-center"
 					>
 						<InboxWorkspaceFilter
 							value={focus}
@@ -269,17 +261,35 @@ export const SessionList: FC = () => {
 								if (id) setActiveWorkspaceId(id);
 							}}
 						/>
-						<div className="flex h-full shrink-0 items-center">{viewMenu}</div>
+					</div>
+					<div className="mb-3 flex shrink-0 flex-col gap-0.5">
+						<GlobalNewButton />
+						<SessionListSearch
+							onSelectWorkspace={(id) => {
+								update({ focus: id });
+								setActiveWorkspaceId(id);
+							}}
+						/>
 					</div>
 					<div
 						data-slot="aui_thread-list-items"
+						data-qa-id="session-list-inbox"
 						className="scroll-fade no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain"
 					>
+						{hasShelf ? null : (
+							<div
+								data-qa-id="session-list-inbox-actions"
+								className="flex h-7 shrink-0 items-center justify-end"
+							>
+								{viewMenu}
+							</div>
+						)}
 						{!isLoading && pinnedSections.length > 0 ? (
 							<SessionListSections
 								sections={pinnedSections}
 								expanded={expanded}
 								onExpandedChange={setExpanded}
+								actions={viewMenu}
 							/>
 						) : null}
 						{isLoading ? <SessionListSkeleton /> : null}
@@ -297,6 +307,7 @@ export const SessionList: FC = () => {
 									sections={groupedSections}
 									expanded={expanded}
 									onExpandedChange={setExpanded}
+									actions={pinnedSections.length > 0 ? undefined : viewMenu}
 								/>
 							</div>
 						) : null}
@@ -586,8 +597,10 @@ const SessionListSections: FC<{
 	sections: SessionListSection[];
 	expanded: Record<string, boolean>;
 	onExpandedChange: (value: Record<string, boolean>) => void;
-}> = ({ sections, expanded, onExpandedChange }) => {
+	actions?: ReactNode;
+}> = ({ sections, expanded, onExpandedChange, actions }) => {
 	if (sections.length === 0) return null;
+	const firstLabel = sections.findIndex((section) => section.label);
 
 	return (
 		<ul role="list" className="relative flex flex-col gap-px">
@@ -601,6 +614,7 @@ const SessionListSections: FC<{
 							label={section.label}
 							expanded={isExpanded}
 							spaced={sections.slice(0, index).some((entry) => entry.label)}
+							actions={index === firstLabel ? actions : undefined}
 							onToggle={() => onExpandedChange({ ...expanded, [section.key]: !isExpanded })}
 						/>
 					) : null;
@@ -642,15 +656,16 @@ const SessionShelfHeader: FC<{
 	label: string;
 	expanded: boolean;
 	spaced?: boolean;
+	actions?: ReactNode;
 	onToggle: () => void;
-}> = ({ tone, label, expanded, spaced = false, onToggle }) => {
+}> = ({ tone, label, expanded, spaced = false, actions, onToggle }) => {
 	const classes = shelfHeaderTones[tone];
 	const qaId =
 		tone === "workspace" ? "session-list-workspace-toggle" : `session-list-${tone}-toggle`;
 	return (
 		<motion.li
 			{...rowMotionProps}
-			className="list-none"
+			className={cn("flex list-none items-center", spaced && "mt-2")}
 			data-slot={`aui_session-list-${tone}-header`}
 		>
 			<Button
@@ -660,9 +675,8 @@ const SessionShelfHeader: FC<{
 				aria-expanded={expanded}
 				data-qa-id={qaId}
 				className={cn(
-					"group/shelf h-7 w-full justify-start gap-2 bg-transparent px-2 font-normal hover:bg-transparent aria-expanded:bg-transparent",
+					"group/shelf h-7 min-w-0 flex-1 justify-start gap-2 bg-transparent px-2 font-normal hover:bg-transparent aria-expanded:bg-transparent",
 					sidebarNavRadiusClassName,
-					spaced && "mt-2",
 				)}
 			>
 				<span
@@ -683,6 +697,7 @@ const SessionShelfHeader: FC<{
 					)}
 				/>
 			</Button>
+			{actions ? <div className="flex shrink-0 items-center">{actions}</div> : null}
 		</motion.li>
 	);
 };

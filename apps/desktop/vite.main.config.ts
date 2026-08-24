@@ -11,7 +11,6 @@ import {
 	requireViteEnvironmentVariable,
 } from "./config/build-environment.js";
 import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
-import { NOTEBOOK_MAIN_EXTERNALS } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
 import appInfo from "./package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));

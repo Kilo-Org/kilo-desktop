@@ -119,7 +119,7 @@ describe("SettingsSidebar", () => {
 		await expect.element(screen.getByTestId("settings-group-personal")).toBeVisible();
 		await expect.element(screen.getByTestId("alpha-panel")).toBeVisible();
 		expect(screen.getByTestId("settings-section-alpha").element().className).toContain(
-			"data-active:bg-muted",
+			"data-active:bg-foreground/5",
 		);
 
 		await screen.getByTestId("settings-section-beta").click();

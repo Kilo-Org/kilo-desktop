@@ -40,7 +40,6 @@ import NvidiaMono from "@lobehub/icons/es/Nvidia/components/Mono.js";
 import OllamaMono from "@lobehub/icons/es/Ollama/components/Mono.js";
 import OpenAIMono from "@lobehub/icons/es/OpenAI/components/Mono.js";
 import OpenCodeMono from "@lobehub/icons/es/OpenCode/components/Mono.js";
-import OpenRouterColor from "@lobehub/icons/es/OpenRouter/components/Color.js";
 import OpenRouterMono from "@lobehub/icons/es/OpenRouter/components/Mono.js";
 import PerplexityColor from "@lobehub/icons/es/Perplexity/components/Color.js";
 import PerplexityMono from "@lobehub/icons/es/Perplexity/components/Mono.js";
@@ -108,7 +107,7 @@ const PROVIDER_ICONS: Record<string, ProviderIconEntry> = {
 	ollama: { mono: OllamaMono },
 	openai: { mono: OpenAIMono },
 	opencode: { mono: OpenCodeMono },
-	openrouter: { mono: OpenRouterMono, color: OpenRouterColor },
+	openrouter: { mono: OpenRouterMono },
 	perplexity: { mono: PerplexityMono, color: PerplexityColor },
 	snowflake: { mono: SnowflakeMono, color: SnowflakeColor },
 	together: { mono: TogetherMono, color: TogetherColor },

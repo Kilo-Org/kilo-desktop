@@ -60,8 +60,8 @@ describe("org helpers", () => {
 		const options = buildOrgOptions(baseProfile().profile);
 		expect(options).toEqual([
 			{ value: PERSONAL_ORG_VALUE, label: "Personal" },
-			{ value: "org-1", label: "Acme", description: "admin" },
-			{ value: "org-2", label: "Beta", description: "member" },
+			{ value: "org-1", label: "Acme", description: "Admin" },
+			{ value: "org-2", label: "Beta", description: "Member" },
 		]);
 	});
 

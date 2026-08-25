@@ -37,13 +37,6 @@ export const POPULAR_PROVIDER_NAMES: Record<(typeof POPULAR_PROVIDER_IDS)[number
 
 const INVALID_PROVIDER_ID = "Invalid provider ID";
 const INVALID_BASE_URL = "Base URL must start with http:// or https://";
-const INVALID_HEADER_VALUE =
-	"Header values must use an environment variable such as {env:MY_API_TOKEN}";
-const HEADER_ENV_PATTERN = /\{env:[A-Za-z_][A-Za-z0-9_]*\}/;
-
-export function isSecureHeaderValue(value: string): boolean {
-	return HEADER_ENV_PATTERN.test(value.trim());
-}
 
 export function isCustomProviderPackage(value: unknown): value is CustomProviderPackage {
 	return CUSTOM_PROVIDER_PACKAGES.includes(value as CustomProviderPackage);
@@ -84,14 +77,7 @@ export const CustomProviderConfigSchema = z
 					.refine((value) => value.startsWith("http://") || value.startsWith("https://"), {
 						message: INVALID_BASE_URL,
 					}),
-				headers: z
-					.record(
-						z.string().trim().min(1),
-						z.string().trim().min(1).refine(isSecureHeaderValue, {
-							message: INVALID_HEADER_VALUE,
-						}),
-					)
-					.optional(),
+				headers: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional(),
 			})
 			.strict(),
 		models: z
@@ -144,6 +130,22 @@ export function validateProviderID(providerID: string): { value: string } | Issu
 	if (!result.success) return fail(result.error.issues[0]?.message ?? INVALID_PROVIDER_ID);
 	if (result.data === KILO_PROVIDER_ID) return fail("Provider ID is reserved");
 	return { value: result.data };
+}
+
+export function generateProviderID(name: string, blockedIds: readonly string[]): string {
+	const normalized = name
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	const base = normalized || "custom-provider";
+	const blocked = new Set([...blockedIds, KILO_PROVIDER_ID]);
+	if (!blocked.has(base)) return base;
+
+	let suffix = 2;
+	while (blocked.has(`${base}-${suffix}`)) suffix += 1;
+	return `${base}-${suffix}`;
 }
 
 export function resolveCustomProviderAuth(

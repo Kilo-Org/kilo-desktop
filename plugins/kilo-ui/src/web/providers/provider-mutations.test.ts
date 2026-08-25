@@ -5,13 +5,11 @@ import {
 	deleteCustom,
 	disconnectProvider,
 	saveCustom,
-	setDisabled,
 	type KiloProviderClient,
 } from "./provider-mutations.js";
 
 function createClient(
 	existing: {
-		disabled_providers?: string[];
 		provider?: Record<string, unknown>;
 	} = {},
 ) {
@@ -94,17 +92,8 @@ describe("disconnectProvider", () => {
 		expect(calls.dispose).toBe(1);
 	});
 
-	it("clears disabled_providers when disconnecting a disabled catalog provider", async () => {
-		const { client, calls } = createClient({ disabled_providers: ["openai", "groq"] });
-		await disconnectProvider(client, "openai");
-		expect(calls.remove).toEqual([{ providerID: "openai" }]);
-		expect(calls.update[0]?.config).toEqual({ disabled_providers: ["groq"] });
-		expect(calls.dispose).toBe(1);
-	});
-
 	it("deletes a custom provider block with a null sentinel", async () => {
 		const { client, calls } = createClient({
-			disabled_providers: ["vllm"],
 			provider: {
 				vllm: {
 					npm: "@ai-sdk/openai-compatible",
@@ -117,7 +106,6 @@ describe("disconnectProvider", () => {
 		expect(calls.remove).toEqual([{ providerID: "vllm" }]);
 		expect(calls.update[0]?.config).toEqual({
 			provider: { vllm: null },
-			disabled_providers: [],
 		});
 		expect(calls.dispose).toBe(1);
 	});
@@ -149,32 +137,9 @@ describe("disconnectProvider", () => {
 	});
 });
 
-describe("setDisabled", () => {
-	it("adds a provider to disabled_providers then disposes", async () => {
-		const { client, calls } = createClient({ disabled_providers: [] });
-		await setDisabled(client, "openai", true);
-		expect(calls.update[0]?.config).toEqual({ disabled_providers: ["openai"] });
-		expect(calls.dispose).toBe(1);
-	});
-
-	it("removes a provider from disabled_providers then disposes", async () => {
-		const { client, calls } = createClient({ disabled_providers: ["openai", "groq"] });
-		await setDisabled(client, "openai", false);
-		expect(calls.update[0]?.config).toEqual({ disabled_providers: ["groq"] });
-		expect(calls.dispose).toBe(1);
-	});
-
-	it("does not rewrite config when the disabled list is unchanged", async () => {
-		const { client, calls } = createClient({ disabled_providers: ["openai"] });
-		await setDisabled(client, "openai", true);
-		expect(calls.update).toEqual([]);
-		expect(calls.dispose).toBe(1);
-	});
-});
-
 describe("saveCustom", () => {
 	it("stores the api key before writing the sanitized block and never puts the key in config", async () => {
-		const { client, calls } = createClient({ disabled_providers: ["my-provider"] });
+		const { client, calls } = createClient();
 		await saveCustom(client, "my-provider", customBlock, " sk-test ", true);
 		expect(calls.update[0]?.config).toEqual({
 			provider: {
@@ -185,7 +150,6 @@ describe("saveCustom", () => {
 					models: { "model-1": { name: "Model One" } },
 				},
 			},
-			disabled_providers: [],
 		});
 		expect(JSON.stringify(calls.update)).not.toContain("sk-test");
 		expect(calls.set).toEqual([
@@ -248,7 +212,6 @@ describe("deleteCustom", () => {
 		await deleteCustom(client, "vllm");
 		expect(calls.update[0]?.config).toEqual({
 			provider: { vllm: null },
-			disabled_providers: [],
 		});
 		expect(calls.remove).toEqual([{ providerID: "vllm" }]);
 		expect(calls.dispose).toBe(1);

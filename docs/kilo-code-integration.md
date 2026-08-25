@@ -532,7 +532,7 @@ Route: `/settings` (new — **no settings page exists today**; `apps/web/src/rou
 Four sub-panels:
 
 1. **Providers** (`providers.*` channels)
-   - List available providers with connection state (connected providers from the Kilo server; `disabled_providers`/`enabled_providers` respected).
+   - List available providers with connection state from the Kilo server.
    - **Kilo Gateway**: OAuth connect — button starts the Kilo auth flow (main opens the auth URL via the shell `openExternal` delegate, polls/listens for completion, shows the Gateway profile on success). Disconnect clears stored auth.
    - **OpenAI / Anthropic / others**: API-key form → stored via the kilo server's auth store (`auth.set`), which uses the shared global data dir (`~/.local/share/kilo/auth.json`, §3.2). Secrets never touch our SQLite, electron-store, or localStorage (§4.4). Validate by listing models after save.
    - Default model picker (writes `model` to global config).

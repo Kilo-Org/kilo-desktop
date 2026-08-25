@@ -149,6 +149,19 @@ describe("AppSidebarLayout login button", () => {
 			.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Sign In" })).not.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("app-sidebar").getByTestId("nav-settings")).toBeVisible();
+	});
+
+	it("opens settings from the sidebar icon without opening the account menu", async () => {
+		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
+
+		await expect
+			.element(page.getByRole("button", { name: "Account menu for ada" }))
+			.toBeInTheDocument();
+		await page.getByTestId("app-sidebar").getByTestId("nav-settings").click();
+
+		await expect.element(page.getByTestId("settings-back")).toBeVisible();
+		await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
 	});
 
 	it("calls auth.login on click", async () => {
@@ -384,7 +397,9 @@ describe("AppSidebarLayout settings takeover", () => {
 
 		await expect.element(page.getByTestId("settings-back")).toBeVisible();
 		await expect.element(page.getByRole("button", { name: "Settings" })).toBeVisible();
-		await expect.element(page.getByTestId("zone-sidebar")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByTestId("app-sidebar-primary"))
+			.toHaveAttribute("aria-hidden", "true");
 	});
 
 	it("keeps Settings and Sign In right-aligned when header zones are empty", async () => {

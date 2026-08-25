@@ -245,90 +245,101 @@ export function AppSidebarLayout({
 					    drag region here intercepts app-bar clicks on Windows Electron. */}
 					<SidebarHeader className="pointer-events-none h-12 shrink-0 p-0" />
 					<SidebarContent>
-						{settings ? (
-							<SettingsSidebar sections={settingsSections} />
-						) : (
-							<>
-								{visibleNav.length > 0 ? (
-									<SidebarGroup className="pt-0">
-										<SidebarMenu>
-											{visibleNav.map((entry) => (
-												<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
-											))}
-										</SidebarMenu>
-									</SidebarGroup>
-								) : null}
-								{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-								<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
-							</>
-						)}
+						{settings ? <SettingsSidebar sections={settingsSections} /> : null}
+						<div
+							style={{ display: settings ? "none" : "contents" }}
+							aria-hidden={settings}
+							inert={settings}
+							data-qa-id="app-sidebar-primary"
+						>
+							{visibleNav.length > 0 ? (
+								<SidebarGroup className="pt-0">
+									<SidebarMenu>
+										{visibleNav.map((entry) => (
+											<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
+										))}
+									</SidebarMenu>
+								</SidebarGroup>
+							) : null}
+							{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
+							<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
+						</div>
 					</SidebarContent>
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-3">
 							<SidebarMenu>
 								<SidebarMenuItem>
-									<DropdownMenu>
-										<DropdownMenuTrigger
-											render={
-												<SidebarMenuButton
-													aria-label={`Account menu for ${accountName}`}
-													size="lg"
-													className="data-open:bg-foreground/5 data-open:text-sidebar-accent-foreground"
-												/>
-											}
-										>
-											<Avatar className="size-8">
-												<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-											</Avatar>
-											<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-												<span className="truncate font-medium">{accountName}</span>
-												{accountEmail && (
-													<span className="text-muted-foreground truncate text-xs">
-														{accountEmail}
-													</span>
-												)}
-											</div>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
-											<DropdownMenuGroup>
-												<DropdownMenuLabel className="p-0 font-normal">
-													<div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-														<Avatar>
-															<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-														</Avatar>
-														<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-															<span className="truncate font-medium">{accountName}</span>
-															{accountEmail && (
-																<span className="text-muted-foreground truncate text-xs">
-																	{accountEmail}
-																</span>
-															)}
+									<div className="has-data-open:bg-foreground/5 hover:bg-foreground/5 flex w-full items-center rounded-md">
+										<DropdownMenu>
+											<DropdownMenuTrigger
+												render={
+													<SidebarMenuButton
+														aria-label={`Account menu for ${accountName}`}
+														size="lg"
+														className="data-open:text-sidebar-accent-foreground w-auto min-w-0 flex-1 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
+													/>
+												}
+											>
+												<Avatar className="size-8">
+													<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
+												</Avatar>
+												<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+													<span className="truncate font-medium">{accountName}</span>
+													{accountEmail && (
+														<span className="text-muted-foreground truncate text-xs">
+															{accountEmail}
+														</span>
+													)}
+												</div>
+											</DropdownMenuTrigger>
+											<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
+												<DropdownMenuGroup>
+													<DropdownMenuLabel className="p-0 font-normal">
+														<div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+															<Avatar>
+																<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
+															</Avatar>
+															<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+																<span className="truncate font-medium">{accountName}</span>
+																{accountEmail && (
+																	<span className="text-muted-foreground truncate text-xs">
+																		{accountEmail}
+																	</span>
+																)}
+															</div>
 														</div>
-													</div>
-												</DropdownMenuLabel>
-											</DropdownMenuGroup>
-											<DropdownMenuSeparator />
-											<DropdownMenuGroup>
-												<DropdownMenuItem
-													data-qa-id="nav-settings"
-													onClick={() => {
-														void navigate({ to: "/settings" });
-													}}
-												>
-													<SettingsIcon />
-													Settings
-												</DropdownMenuItem>
-												<DropdownMenuItem
-													onClick={() => {
-														void handleLogout();
-													}}
-												>
-													<LogOutIcon />
-													Log out
-												</DropdownMenuItem>
-											</DropdownMenuGroup>
-										</DropdownMenuContent>
-									</DropdownMenu>
+													</DropdownMenuLabel>
+												</DropdownMenuGroup>
+												<DropdownMenuSeparator />
+												<DropdownMenuGroup>
+													<DropdownMenuItem
+														onClick={() => {
+															void navigate({ to: "/settings" });
+														}}
+													>
+														<SettingsIcon />
+														Settings
+													</DropdownMenuItem>
+													<DropdownMenuItem
+														onClick={() => {
+															void handleLogout();
+														}}
+													>
+														<LogOutIcon />
+														Log out
+													</DropdownMenuItem>
+												</DropdownMenuGroup>
+											</DropdownMenuContent>
+										</DropdownMenu>
+										<Link
+											to="/settings"
+											aria-label="Settings"
+											data-qa-id="nav-settings"
+											className="text-sidebar-foreground hover:bg-foreground/5 mr-1 flex size-8 shrink-0 items-center justify-center rounded-md [&_svg]:size-4"
+										>
+											<SettingsIcon />
+										</Link>
+									</div>
 								</SidebarMenuItem>
 							</SidebarMenu>
 						</SidebarFooter>

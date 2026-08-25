@@ -82,12 +82,19 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByTestId("settings-empty")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("settings-back")).toBeVisible();
 		await expect.element(screen.getByTestId("nav-settings")).toBeVisible();
-		await expect.element(screen.getByTestId("zone-sidebar")).not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("global-new")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("app-sidebar-primary"))
+			.toHaveAttribute("aria-hidden", "true");
+		await expect.element(screen.getByTestId("zone-sidebar")).toBeInTheDocument();
+		await expect.element(screen.getByTestId("global-new")).toBeInTheDocument();
 
 		await screen.getByTestId("settings-back").click();
 		await expect.element(screen.getByTestId("nav-settings")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-back")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("app-sidebar-primary"))
+			.toHaveAttribute("aria-hidden", "false");
 		await expect.element(screen.getByTestId("global-new")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-page")).toBeVisible();
 	});
 });

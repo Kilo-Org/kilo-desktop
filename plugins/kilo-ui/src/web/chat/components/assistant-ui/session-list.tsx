@@ -66,7 +66,7 @@ import {
 
 import type { Workspace } from "../../../../contracts/workspaces/schemas.js";
 import { GlobalNewButton } from "../../../create/GlobalNewButton.js";
-import { InboxWorkspaceFilter } from "../../../workspaces/InboxWorkspaceFilter.js";
+import { WorkspaceFilter } from "../../../workspaces/WorkspaceFilter.js";
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { workspaceGlyphColor } from "../../../workspaces/workspace-glyph-style.js";
 import { navigateToChat } from "../../chat-navigation.js";
@@ -95,13 +95,12 @@ const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 
 /**
  * Shared surface states for session rows.
- * Idle is clear; hover/focus uses a translucent wash; selected matches the
- * content/chat pane (`bg-muted`).
+ * Idle is clear; hover, focus, and selected states use the same translucent wash.
  */
 const sidebarSurfaceIdleClassName =
 	"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
 const sidebarSurfaceActiveClassName =
-	"bg-muted text-sidebar-foreground font-medium transition-colors hover:bg-muted focus-visible:bg-muted";
+	"bg-foreground/5 text-sidebar-foreground font-medium transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -252,9 +251,9 @@ export const SessionList: FC = () => {
 				>
 					<div
 						data-qa-id="session-list-inbox-header"
-						className="mb-4 flex h-9 shrink-0 items-center"
+						className="mb-2 flex h-9 shrink-0 items-center"
 					>
-						<InboxWorkspaceFilter
+						<WorkspaceFilter
 							value={focus}
 							onValueChange={(id) => {
 								update({ focus: id });
@@ -262,7 +261,7 @@ export const SessionList: FC = () => {
 							}}
 						/>
 					</div>
-					<div className="mb-3 flex shrink-0 flex-col gap-0.5">
+					<div className="mb-2 flex shrink-0 flex-col gap-0.5">
 						<GlobalNewButton />
 						<SessionListSearch
 							onSelectWorkspace={(id) => {
@@ -635,8 +634,8 @@ const SessionListSections: FC<{
 };
 
 const shelfMutedTone = {
-	label: "text-muted-foreground/70",
-	chevron: "text-muted-foreground/70",
+	label: "text-muted-foreground",
+	chevron: "text-muted-foreground",
 } as const;
 
 const shelfHeaderTones = {

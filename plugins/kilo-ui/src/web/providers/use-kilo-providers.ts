@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import type { KiloGlobalConnection } from "../../contracts/chat/schemas.js";
 import { createKiloDirectoryClient } from "../chat/runtime/create-kilo-runtime-client.js";
+import { POPULAR_PROVIDER_IDS, sanitizeCustomProviderConfig } from "./custom-provider.js";
 import type { CatalogProvider, GlobalProviderConfig, ProviderListView } from "./provider-list.js";
 import { groupProviderList } from "./provider-list.js";
 import {
@@ -14,7 +15,6 @@ import {
 	deleteCustom,
 	disconnectProvider,
 	saveCustom,
-	setDisabled,
 	type KiloProviderClient,
 } from "./provider-mutations.js";
 
@@ -29,15 +29,134 @@ type ProviderListResponse = {
 	connected: string[];
 };
 
+type SaveCustomInput = {
+	providerID: string;
+	provider: unknown;
+	apiKey: string | undefined;
+	apiKeyChanged: boolean;
+};
+
 function message(error: unknown): string | null {
 	return error instanceof Error ? error.message : error ? String(error) : null;
+}
+
+function byConnectedName(
+	left: ProviderListView["connected"][number],
+	right: ProviderListView["connected"][number],
+) {
+	if (left.isKilo !== right.isKilo) return left.isKilo ? -1 : 1;
+	return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+}
+
+function withConnectedProvider(
+	current: ProviderManagementData,
+	providerID: string,
+): ProviderManagementData {
+	const provider = current.view.popular.find((row) => row.id === providerID);
+	if (!provider) return current;
+	return {
+		...current,
+		view: {
+			...current.view,
+			connected: [
+				...current.view.connected.filter((row) => row.id !== providerID),
+				{ ...provider, connected: true },
+			].toSorted(byConnectedName),
+			popular: current.view.popular.filter((row) => row.id !== providerID),
+		},
+	};
+}
+
+function withDisconnectedProvider(
+	current: ProviderManagementData,
+	providerID: string,
+): ProviderManagementData {
+	const provider = [...current.view.connected, ...current.view.environment].find(
+		(row) => row.id === providerID,
+	);
+	const popular = current.view.popular.filter((row) => row.id !== providerID);
+	if (provider && POPULAR_PROVIDER_IDS.some((id) => id === providerID)) {
+		popular.push({
+			...provider,
+			connected: false,
+		});
+		popular.sort(
+			(left, right) =>
+				POPULAR_PROVIDER_IDS.findIndex((id) => id === left.id) -
+				POPULAR_PROVIDER_IDS.findIndex((id) => id === right.id),
+		);
+	}
+	return {
+		...current,
+		view: {
+			connected: current.view.connected.filter((row) => row.id !== providerID),
+			environment: current.view.environment.filter((row) => row.id !== providerID),
+			popular,
+		},
+	};
+}
+
+function withoutCustomProvider(
+	current: ProviderManagementData,
+	providerID: string,
+): ProviderManagementData {
+	const configuredProviders = Object.fromEntries(
+		Object.entries(current.config.provider ?? {}).filter(([id]) => id !== providerID),
+	);
+	return {
+		...current,
+		config: {
+			...current.config,
+			provider: configuredProviders,
+		},
+		ids: current.ids.filter((id) => id !== providerID),
+		view: {
+			connected: current.view.connected.filter((row) => row.id !== providerID),
+			environment: current.view.environment.filter((row) => row.id !== providerID),
+			popular: current.view.popular.filter((row) => row.id !== providerID),
+		},
+	};
+}
+
+function withSavedCustomProvider(
+	current: ProviderManagementData,
+	input: SaveCustomInput,
+): ProviderManagementData {
+	const sanitized = sanitizeCustomProviderConfig(input.provider);
+	if ("error" in sanitized) return current;
+	const provider = sanitized.value;
+	const row = {
+		id: input.providerID,
+		name: provider.name,
+		connected: true,
+		source: "custom" as const,
+		custom: true,
+		canDisconnect: true,
+		isKilo: false,
+	};
+	return {
+		...current,
+		config: {
+			...current.config,
+			provider: { ...current.config.provider, [input.providerID]: provider },
+		},
+		ids: current.ids.includes(input.providerID) ? current.ids : [...current.ids, input.providerID],
+		view: {
+			connected: [
+				...current.view.connected.filter((item) => item.id !== input.providerID),
+				row,
+			].toSorted(byConnectedName),
+			environment: current.view.environment.filter((item) => item.id !== input.providerID),
+			popular: current.view.popular.filter((item) => item.id !== input.providerID),
+		},
+	};
 }
 
 export async function fetchProviderManagement(
 	connection: KiloGlobalConnection | undefined,
 ): Promise<ProviderManagementData> {
 	if (!connection) {
-		throw new Error("Cannot load providers before Kilo is connected");
+		throw new Error("Cannot load providers before the provider service is connected");
 	}
 	const client = createKiloDirectoryClient(connection, connection.globalDirectory);
 	const [{ data: list }, { data: global }] = await Promise.all([
@@ -75,60 +194,68 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 	});
 
 	const run = async (task: (client: KiloProviderClient) => Promise<void>) => {
-		if (!connection) throw new Error("Kilo is not connected");
-		await task(asProviderClient(connection)).finally(() => {
-			invalidateKiloProviderQueries(queryClient);
-		});
+		if (!connection) throw new Error("The provider service is not connected");
+		await task(asProviderClient(connection));
 	};
+	const updateCache = async (
+		update: (current: ProviderManagementData) => ProviderManagementData,
+	) => {
+		await queryClient.cancelQueries({ queryKey });
+		const previous = queryClient.getQueryData<ProviderManagementData>(queryKey);
+		queryClient.setQueryData<ProviderManagementData>(queryKey, (current) =>
+			current ? update(current) : current,
+		);
+		return { previous };
+	};
+	const restoreCache = (context: { previous: ProviderManagementData | undefined } | undefined) => {
+		if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+	};
+	const reconcile = () => invalidateKiloProviderQueries(queryClient);
 
 	const connect = useMutation({
 		mutationFn: ({ providerID, apiKey }: { providerID: string; apiKey: string }) =>
 			run((client) => connectApiKey(client, providerID, apiKey)),
+		onMutate: (input) => updateCache((current) => withConnectedProvider(current, input.providerID)),
+		onError: (_error, _input, context) => restoreCache(context),
 		onSuccess: () => resetErrors(),
+		onSettled: reconcile,
 	});
 	const disconnect = useMutation({
 		mutationFn: (providerID: string) => run((client) => disconnectProvider(client, providerID)),
+		onMutate: (providerID) =>
+			updateCache((current) => withDisconnectedProvider(current, providerID)),
+		onError: (_error, _providerID, context) => restoreCache(context),
 		onSuccess: () => resetErrors(),
-	});
-	const disable = useMutation({
-		mutationFn: ({ providerID, disabled }: { providerID: string; disabled: boolean }) =>
-			run((client) => setDisabled(client, providerID, disabled)),
-		onSuccess: () => resetErrors(),
+		onSettled: reconcile,
 	});
 	const save = useMutation({
-		mutationFn: (input: {
-			providerID: string;
-			provider: unknown;
-			apiKey: string | undefined;
-			apiKeyChanged: boolean;
-		}) =>
+		mutationFn: (input: SaveCustomInput) =>
 			run((client) =>
 				saveCustom(client, input.providerID, input.provider, input.apiKey, input.apiKeyChanged),
 			),
+		onMutate: (input) => updateCache((current) => withSavedCustomProvider(current, input)),
+		onError: (_error, _input, context) => restoreCache(context),
 		onSuccess: () => resetErrors(),
+		onSettled: reconcile,
 	});
 	const remove = useMutation({
 		mutationFn: (providerID: string) => run((client) => deleteCustom(client, providerID)),
+		onMutate: (providerID) => updateCache((current) => withoutCustomProvider(current, providerID)),
+		onError: (_error, _providerID, context) => restoreCache(context),
 		onSuccess: () => resetErrors(),
+		onSettled: reconcile,
 	});
 
 	const resetErrors = () => {
 		connect.reset();
 		disconnect.reset();
-		disable.reset();
 		save.reset();
 		remove.reset();
 	};
 
-	const error =
-		connect.error ?? disconnect.error ?? disable.error ?? save.error ?? remove.error ?? query.error;
+	const error = connect.error ?? disconnect.error ?? save.error ?? remove.error ?? query.error;
 
-	const pending =
-		connect.isPending ||
-		disconnect.isPending ||
-		disable.isPending ||
-		save.isPending ||
-		remove.isPending;
+	const pending = connect.isPending || disconnect.isPending || save.isPending || remove.isPending;
 
 	return useMemo(
 		() => ({
@@ -146,7 +273,6 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 			resetSave: save.reset,
 			connect: connect.mutateAsync,
 			disconnect: disconnect.mutateAsync,
-			setDisabled: disable.mutateAsync,
 			saveCustom: save.mutateAsync,
 			deleteCustom: remove.mutateAsync,
 		}),
@@ -154,7 +280,6 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 			connect.mutateAsync,
 			connect.reset,
 			disconnect.mutateAsync,
-			disable.mutateAsync,
 			save.mutateAsync,
 			save.reset,
 			remove.mutateAsync,

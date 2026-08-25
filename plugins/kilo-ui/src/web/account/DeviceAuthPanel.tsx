@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { CircleAlertIcon, CopyIcon, Loader2Icon } from "lucide-react";
+import { ArrowUpRightIcon, CircleAlertIcon, CopyIcon, Loader2Icon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
@@ -49,11 +49,11 @@ export function DeviceAuthPanel({
 	if (deviceAuth.status === "initiating") {
 		return (
 			<Panel state="initiating" embedded={embedded}>
-				<div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
-					<Loader2Icon className="text-primary size-5 animate-spin" />
-					<p className="text-muted-foreground text-sm">Contacting Kilo…</p>
-				</div>
-				<PanelFooter>
+				<div className={cn("flex items-center justify-between gap-3", !embedded && "p-4")}>
+					<div className="text-muted-foreground flex items-center gap-2 text-sm">
+						<Loader2Icon className="text-primary size-4 animate-spin" />
+						<span>Contacting Kilo…</span>
+					</div>
 					<Button
 						type="button"
 						variant="ghost"
@@ -63,7 +63,7 @@ export function DeviceAuthPanel({
 					>
 						Cancel
 					</Button>
-				</PanelFooter>
+				</div>
 			</Panel>
 		);
 	}
@@ -87,22 +87,22 @@ export function DeviceAuthPanel({
 								{deviceAuth.error}
 							</p>
 						) : null}
+						<div className="mt-3 flex flex-wrap items-center gap-2">
+							<Button type="button" size="sm" onClick={onRetry} data-qa-id="kilo-account-retry">
+								Try again
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								onClick={onCancel}
+								data-qa-id="kilo-account-cancel"
+							>
+								Cancel
+							</Button>
+						</div>
 					</div>
 				</div>
-				<PanelFooter className="justify-start">
-					<Button type="button" size="sm" onClick={onRetry} data-qa-id="kilo-account-retry">
-						Try again
-					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						onClick={onCancel}
-						data-qa-id="kilo-account-cancel"
-					>
-						Cancel
-					</Button>
-				</PanelFooter>
 			</Panel>
 		);
 	}
@@ -110,9 +110,14 @@ export function DeviceAuthPanel({
 	if (deviceAuth.status === "finishing") {
 		return (
 			<Panel state="finishing" embedded={embedded}>
-				<div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
-					<Loader2Icon className="text-primary size-5 animate-spin" />
-					<p className="text-muted-foreground text-sm">Finishing connection…</p>
+				<div
+					className={cn(
+						"text-muted-foreground flex items-center gap-2 text-sm",
+						!embedded && "p-4",
+					)}
+				>
+					<Loader2Icon className="text-primary size-4 animate-spin" />
+					<span>Finishing connection…</span>
 				</div>
 			</Panel>
 		);
@@ -122,68 +127,82 @@ export function DeviceAuthPanel({
 
 	return (
 		<Panel state="waiting" embedded={embedded}>
-			<div className="p-4">
-				<p className="text-sm font-medium">Approve connection in your browser</p>
-				<p className="text-muted-foreground mt-1 text-sm">
-					We opened a browser window for you. If it didn&rsquo;t open, use the link below and enter
-					this code.
-				</p>
+			<div className={cn("flex flex-col gap-4", !embedded && "p-4")}>
+				<div className="flex flex-col gap-1">
+					<p className="text-sm font-medium">Approve in your browser</p>
+					<p className="text-muted-foreground text-sm">
+						We opened a browser window for you. If it didn’t open, use the link below and enter this
+						code.
+					</p>
+				</div>
 
-				<button
-					type="button"
-					title="Click to copy"
-					onClick={() => deviceAuth.code && onCopy(deviceAuth.code)}
-					data-qa-id="kilo-account-device-code"
-					className="group border-border hover:border-primary/60 hover:bg-primary/5 focus-visible:ring-ring/50 mt-4 flex w-full items-center justify-center gap-3 rounded-lg border border-dashed px-4 py-4 transition-colors outline-none focus-visible:ring-3"
-				>
-					<span className="font-mono text-2xl font-semibold tracking-[0.3em]">
-						{deviceAuth.code ?? "————"}
-					</span>
-					<CopyIcon className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100" />
-				</button>
-
-				{deviceAuth.verificationUrl ? (
-					<div className="mt-3 flex items-center gap-2">
-						<code className="bg-muted text-muted-foreground min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-xs">
-							{deviceAuth.verificationUrl}
+				<div className="border-border bg-muted/40 flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
+					<div className="min-w-0">
+						<p className="text-muted-foreground text-xs font-medium">Confirmation code</p>
+						<code
+							className="mt-0.5 block truncate text-xl font-semibold tracking-[0.18em]"
+							data-qa-id="kilo-account-device-code"
+						>
+							{deviceAuth.code ?? "————"}
 						</code>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							onClick={() => onCopy(deviceAuth.verificationUrl!)}
-							data-qa-id="kilo-account-copy-url"
-						>
-							Copy
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							onClick={() => onOpenBrowser(deviceAuth.verificationUrl!)}
-							data-qa-id="kilo-account-open-browser"
-						>
-							Open
-						</Button>
 					</div>
-				) : null}
-			</div>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={!deviceAuth.code}
+						onClick={() => deviceAuth.code && onCopy(deviceAuth.code)}
+						data-qa-id="kilo-account-copy-code"
+					>
+						<CopyIcon data-icon="inline-start" />
+						Copy code
+					</Button>
+				</div>
 
-			<PanelFooter>
-				<span className="text-muted-foreground flex items-center gap-2 text-xs">
-					<Loader2Icon className="size-3.5 animate-spin" />
-					Waiting for approval… <span className="tabular-nums">{formatTime(remaining)}</span>
-				</span>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					onClick={onCancel}
-					data-qa-id="kilo-account-cancel"
-				>
-					Cancel
-				</Button>
-			</PanelFooter>
+				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+					<span className="text-muted-foreground flex items-center gap-2 text-xs">
+						<Loader2Icon className="size-3.5 animate-spin" />
+						<span>Waiting for approval</span>
+						<span aria-hidden="true">·</span>
+						<span className="tabular-nums">{formatTime(remaining)} remaining</span>
+					</span>
+
+					<div className="flex flex-wrap items-center gap-2 sm:justify-end">
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={onCancel}
+							data-qa-id="kilo-account-cancel"
+						>
+							Cancel
+						</Button>
+						{deviceAuth.verificationUrl ? (
+							<>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => onCopy(deviceAuth.verificationUrl!)}
+									data-qa-id="kilo-account-copy-url"
+								>
+									<CopyIcon data-icon="inline-start" />
+									Copy link
+								</Button>
+								<Button
+									type="button"
+									size="sm"
+									onClick={() => onOpenBrowser(deviceAuth.verificationUrl!)}
+									data-qa-id="kilo-account-open-browser"
+								>
+									Open browser
+									<ArrowUpRightIcon data-icon="inline-end" />
+								</Button>
+							</>
+						) : null}
+					</div>
+				</div>
+			</div>
 		</Panel>
 	);
 }
@@ -208,19 +227,6 @@ function Panel({
 			)}
 			data-qa-id="kilo-account-device-auth"
 			data-state={state}
-		>
-			{children}
-		</div>
-	);
-}
-
-function PanelFooter({ className, children }: { className?: string; children: ReactNode }) {
-	return (
-		<div
-			className={cn(
-				"bg-muted/50 border-border flex items-center justify-between gap-2 border-t px-4 py-2.5",
-				className,
-			)}
 		>
 			{children}
 		</div>

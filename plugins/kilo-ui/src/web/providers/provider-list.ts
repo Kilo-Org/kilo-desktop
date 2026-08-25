@@ -15,7 +15,6 @@ export type CatalogProvider = {
 };
 
 export type GlobalProviderConfig = {
-	disabled_providers?: string[];
 	provider?: Record<
 		string,
 		{ npm?: string; name?: string; options?: unknown; models?: unknown } | null | undefined
@@ -26,12 +25,9 @@ export type ProviderRow = {
 	id: string;
 	name: string;
 	connected: boolean;
-	disabled: boolean;
 	source: ProviderSource | undefined;
 	custom: boolean;
 	canDisconnect: boolean;
-	/** Enable/disable toggle — only for Connected rows (not Popular). */
-	canDisable: boolean;
 	isKilo: boolean;
 };
 
@@ -49,7 +45,6 @@ function isCustom(config: GlobalProviderConfig, id: string): boolean {
 function row(
 	provider: CatalogProvider,
 	connected: boolean,
-	disabled: boolean,
 	config: GlobalProviderConfig,
 ): ProviderRow {
 	const kilo = provider.id === KILO_PROVIDER_ID;
@@ -58,11 +53,9 @@ function row(
 		id: provider.id,
 		name: provider.name,
 		connected,
-		disabled,
 		source: provider.source,
 		custom,
 		canDisconnect: !kilo && provider.source !== "env",
-		canDisable: connected && !kilo,
 		isKilo: kilo,
 	};
 }
@@ -89,22 +82,6 @@ function resolveCatalog(
 	return { id, name };
 }
 
-function collectConnectedIds(connected: readonly string[], disabled: readonly string[]): string[] {
-	const ids: string[] = [];
-	const seen = new Set<string>();
-	for (const id of connected) {
-		if (seen.has(id)) continue;
-		seen.add(id);
-		ids.push(id);
-	}
-	for (const id of disabled) {
-		if (seen.has(id) || id === KILO_PROVIDER_ID) continue;
-		seen.add(id);
-		ids.push(id);
-	}
-	return ids;
-}
-
 function byConnectedName(left: ProviderRow, right: ProviderRow): number {
 	if (left.isKilo !== right.isKilo) return left.isKilo ? -1 : 1;
 	return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
@@ -112,9 +89,7 @@ function byConnectedName(left: ProviderRow, right: ProviderRow): number {
 
 /**
  * Connected means credentials are present. Env-sourced rows go in
- * `environment` instead. `provider.list` drops disabled providers from
- * `connected`; Settings still lists them (`disabled` is only “hidden from
- * the model selector”).
+ * `environment` instead.
  */
 export function groupProviderList(input: {
 	all: readonly CatalogProvider[];
@@ -122,11 +97,10 @@ export function groupProviderList(input: {
 	config: GlobalProviderConfig;
 }): ProviderListView {
 	const byId = new Map(input.all.map((provider) => [provider.id, provider]));
-	const disabledIds = new Set(input.config.disabled_providers ?? []);
-	const seen = new Set(collectConnectedIds(input.connected, [...disabledIds]));
+	const seen = new Set(input.connected);
 
 	const rows = [...seen].map((id) =>
-		row(resolveCatalog(byId, id, input.config), true, disabledIds.has(id), input.config),
+		row(resolveCatalog(byId, id, input.config), true, input.config),
 	);
 	const connected = rows.filter((item) => item.source !== "env").toSorted(byConnectedName);
 	const environment = rows.filter((item) => item.source === "env").toSorted(byConnectedName);
@@ -135,7 +109,7 @@ export function groupProviderList(input: {
 	for (const id of POPULAR_PROVIDER_IDS) {
 		if (id === KILO_PROVIDER_ID) continue;
 		if (seen.has(id)) continue;
-		popular.push(row(resolveCatalog(byId, id, input.config), false, false, input.config));
+		popular.push(row(resolveCatalog(byId, id, input.config), false, input.config));
 	}
 
 	return { connected, environment, popular };

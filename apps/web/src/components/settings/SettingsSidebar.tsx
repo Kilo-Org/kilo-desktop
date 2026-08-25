@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
 
+import { HOME_PLUGIN_SPLAT } from "@/features/home-route";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { useVisiblePluginSettings, type PluginSettingsSection } from "@/features/plugin-settings";
 import {
@@ -40,12 +41,12 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col px-2" data-qa-id="settings-sidebar">
-			<div className="flex flex-col gap-0.5">
+			<div className="mb-2 flex flex-col gap-0.5">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton
 							tooltip="Back to app"
-							render={<Link to="/" />}
+							render={<Link to="/plugins/$" params={{ _splat: HOME_PLUGIN_SPLAT }} />}
 							data-qa-id="settings-back"
 						>
 							<ArrowLeftIcon />
@@ -64,15 +65,15 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 				) : null}
 			</div>
 			{filtered.length > 0 ? (
-				<>
+				<div className="flex min-h-0 flex-1 flex-col gap-px">
 					<SidebarGroupLabel
-						className="text-sidebar-foreground/60 mt-3 mb-1 h-auto px-2 py-1 text-xs font-medium"
+						className="text-sidebar-foreground/60 h-7 px-2 text-[13px] font-medium"
 						data-qa-id="settings-group-personal"
 					>
 						Personal
 					</SidebarGroupLabel>
 					<SidebarMenu
-						className="min-h-0 flex-1 gap-0.5 overflow-y-auto"
+						className="min-h-0 flex-1 gap-px overflow-y-auto"
 						data-qa-id="settings-section-nav"
 						aria-label="Settings sections"
 					>
@@ -85,7 +86,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 										isActive={pathname === href}
 										tooltip={section.title}
 										render={<Link to="/settings/$section" params={{ section: section.id }} />}
-										className="h-9 rounded-lg"
+										className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 h-9 rounded-lg"
 										data-qa-id={`settings-section-${section.id}`}
 									>
 										<Icon />
@@ -95,7 +96,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 							);
 						})}
 					</SidebarMenu>
-				</>
+				</div>
 			) : null}
 		</div>
 	);

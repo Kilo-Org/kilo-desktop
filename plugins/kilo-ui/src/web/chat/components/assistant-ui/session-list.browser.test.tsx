@@ -264,7 +264,7 @@ describe("SessionList", () => {
 		await vi.waitFor(() =>
 			expect(
 				row.element().querySelector('[data-slot="aui_session-list-settled-item"]')?.className,
-			).toContain("bg-muted"),
+			).toContain("bg-foreground/5"),
 		);
 		expect(adapter.unarchiveCalls).toEqual([]);
 	});
@@ -416,7 +416,12 @@ describe("SessionList", () => {
 			.element();
 		expect(activeLabel.className).toContain("text-[13px]");
 		expect(activeLabel.className).toContain("font-medium");
-		expect(activeLabel.className).toContain("text-muted-foreground/70");
+		expect(activeLabel.className.split(/\s+/)).toContain("text-muted-foreground");
+		const settledLabel = screen
+			.getByTestId("session-list-settled-toggle")
+			.getByText("Settled")
+			.element();
+		expect(settledLabel.className.split(/\s+/)).toContain("text-muted-foreground");
 		expect(activeHeader.className).toContain("hover:bg-transparent");
 		expect(activeHeader.className).toContain("aria-expanded:bg-transparent");
 		expect(getComputedStyle(activeHeader).backgroundColor).toMatch(
@@ -479,9 +484,9 @@ describe("SessionList", () => {
 		const idleRow = idle.element().querySelector('[data-slot="aui_session-list-item"]');
 		const selectedRowClasses = selectedRow?.className.split(/\s+/) ?? [];
 		const idleRowClasses = idleRow?.className.split(/\s+/) ?? [];
-		expect(selectedRowClasses).toContain("bg-muted");
-		expect(selectedRowClasses).not.toContain("bg-foreground/8");
-		expect(idleRowClasses).not.toContain("bg-muted");
+		expect(selectedRowClasses).toContain("bg-foreground/5");
+		expect(selectedRowClasses).not.toContain("bg-muted");
+		expect(idleRowClasses).not.toContain("bg-foreground/5");
 	});
 
 	it("uses a single-row card without a location for unscoped sessions", async () => {
@@ -1114,7 +1119,7 @@ describe("SessionList", () => {
 		expect(activeRow?.contains(filter)).toBe(true);
 		expect(headerEl.className).not.toContain("bg-foreground/5");
 		expect(trigger.className).toContain("border-border/60");
-		expect(trigger.className).toContain("bg-popover");
+		expect(trigger.className).toContain("bg-foreground/5");
 		expect(trigger.className).not.toContain("bg-background");
 		expect(trigger.className).not.toContain("bg-input/30");
 		expect(Number.parseFloat(getComputedStyle(trigger).borderTopWidth)).toBeGreaterThan(0);
@@ -1136,8 +1141,8 @@ describe("SessionList", () => {
 		const afterSwitcher =
 			newChat.getBoundingClientRect().top - headerEl.getBoundingClientRect().bottom;
 		const beforeInbox = inbox.getBoundingClientRect().top - search.getBoundingClientRect().bottom;
-		expect(afterSwitcher).toBeGreaterThan(beforeInbox);
-		expect(afterSwitcher - beforeInbox).toBeGreaterThanOrEqual(3);
+		expect(afterSwitcher).toBeCloseTo(beforeInbox, 0);
+		expect(afterSwitcher).toBeLessThanOrEqual(8);
 		expect(getComputedStyle(trigger).fontSize).toBe(getComputedStyle(newChat).fontSize);
 		expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(36);
 		expect(Number.parseFloat(getComputedStyle(trigger).paddingLeft)).toBe(8);
@@ -1159,6 +1164,17 @@ describe("SessionList", () => {
 		await expect
 			.element(page.getByRole("option", { name: "Don't work in a workspace" }))
 			.not.toBeInTheDocument();
+		const workspaceItemHeight = page
+			.getByRole("option", { name: "All workspaces" })
+			.element()
+			.getBoundingClientRect().height;
+		await userEvent.keyboard("{Escape}");
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		const sessionFilterItemHeight = page
+			.getByRole("menuitem", { name: /Grouping/ })
+			.element()
+			.getBoundingClientRect().height;
+		expect(workspaceItemHeight).toBeCloseTo(sessionFilterItemHeight, 0);
 	});
 
 	it("focuses the inbox on a workspace and sets it as the new-chat target", async () => {

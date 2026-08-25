@@ -174,10 +174,11 @@ export function WorkspacePickerRoot({
 						value={commandValue}
 						onValueChange={setCommandValue}
 						filter={filterWorkspaceItems}
+						className="[&_[data-slot=command-input-wrapper]]:gap-1.5 [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:py-2 [&_[data-slot=command-item]]:gap-1.5 [&_[data-slot=command-item]]:rounded-md [&_[data-slot=command-item]]:px-1.5 [&_[data-slot=command-item]]:py-1 [&_[data-slot=command-item]_[data-slot=button]]:size-5 [&_[data-slot=command-item]_span:has(>svg.lucide-check)]:size-5"
 					>
 						<CommandInput placeholder="Search workspaces…" />
 						<CommandSeparator />
-						<CommandList className="scroll-fade max-h-[calc(2rem*5+0.5rem)]">
+						<CommandList className="scroll-fade max-h-[calc(1.75rem*5+0.5rem)]">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 							<CommandGroup>
 								{emptyLabel ? (

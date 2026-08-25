@@ -7,7 +7,7 @@ import { workspaceGlyphColor } from "./workspace-glyph-style";
 
 const EMPTY_LABEL = "All workspaces";
 
-export function InboxWorkspaceFilter({
+export function WorkspaceFilter({
 	value,
 	onValueChange,
 }: {
@@ -24,13 +24,13 @@ export function InboxWorkspaceFilter({
 				value={value}
 				onValueChange={onValueChange}
 			>
-				<InboxWorkspaceFilterTrigger />
+				<WorkspaceFilterTrigger />
 			</WorkspacePickerRoot>
 		</div>
 	);
 }
 
-function InboxWorkspaceFilterTrigger() {
+function WorkspaceFilterTrigger() {
 	const { triggerLabel, active } = useWorkspacePicker();
 	const glyph = workspaceGlyphColor(active?.color);
 	const Icon = active ? FolderIcon : LayoutGridIcon;
@@ -41,10 +41,10 @@ function InboxWorkspaceFilterTrigger() {
 			render={
 				<Button
 					type="button"
-					variant="outline"
+					variant="ghost"
 					size="sm"
 					data-qa-id="session-list-workspace-filter"
-					className="border-border/60 bg-popover hover:bg-popover aria-expanded:bg-popover dark:border-border/50 dark:bg-popover h-9 w-full min-w-0 justify-start gap-2 px-2 text-sm font-normal shadow-none"
+					className="border-border/60 bg-foreground/5 hover:bg-foreground/5 aria-expanded:bg-foreground/5 dark:border-border/50 h-9 w-full min-w-0 justify-start gap-1.5 px-2 text-sm font-normal shadow-none"
 					title="Filter by workspace"
 				/>
 			}

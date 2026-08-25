@@ -1,0 +1,28 @@
+.assistant-working-pixel {
+	opacity: 0.15;
+	animation: assistant-working-pixel 650ms ease-in-out infinite;
+}
+
+@keyframes assistant-working-pixel {
+	0%,
+	100% {
+		opacity: 0.15;
+	}
+	18%,
+	42% {
+		opacity: 1;
+	}
+	62% {
+		opacity: 0.15;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.assistant-working-pixel {
+		animation: none;
+	}
+
+	.assistant-working-pixel:nth-child(5) {
+		opacity: 1;
+	}
+}

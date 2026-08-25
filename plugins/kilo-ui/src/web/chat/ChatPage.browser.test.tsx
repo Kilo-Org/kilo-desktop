@@ -683,6 +683,28 @@ describe("ChatPage", () => {
 		});
 	});
 
+	it("keeps a dirty contribution mounted across panel closure", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		const canvas = baseElement.querySelector<HTMLElement>("[data-qa-id='test-canvas-panel']")!;
+		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		await vi.waitFor(() => {
+			expect(
+				baseElement.querySelector<HTMLElement>("[data-qa-id='chat-right-panel-slot']")?.style.width,
+			).toBe("0px");
+		});
+		expect(canvas.isConnected).toBe(true);
+
+		await screen.getByTestId("chat-right-panel-toggle").click();
+		expect(canvas.isConnected).toBe(true);
+	});
+
 	it("keeps a keep-alive contribution mounted across tab switches and panel closure", async () => {
 		const { baseElement } = renderChatPage({ canvasMountPolicy: "keep-alive" });
 		const screen = page.elementLocator(baseElement);

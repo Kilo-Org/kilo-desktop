@@ -24,6 +24,11 @@ import {
 	shouldExcludeToolCallFromActivityGroup,
 } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
+import {
+	Avatar,
+	AvatarFallback,
+	AvatarGroup,
+} from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
 	Tooltip,
@@ -95,6 +100,8 @@ import {
 	messageHasInFlightActivity,
 } from "../../suggestions/kilo-suggestion-logic.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
+
+import "./assistant-working-indicator.css";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 
@@ -622,32 +629,79 @@ const ComposerAction: FC<{
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
 const WORKING_INDICATOR_DELAY_MS = 200;
+const WORKING_INDICATOR_PIXEL_DELAYS = Array.from({ length: 9 }, (_, index) => {
+	const row = Math.floor(index / 3);
+	return ((index % 3) + Math.abs(row - 1)) * 90;
+});
+
+function formatElapsedTime(deciseconds: number) {
+	const seconds = deciseconds / 10;
+	if (seconds < 60) return `${seconds.toFixed(1)}s`;
+	return `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(1)}s`;
+}
+
+function elapsedDecisecondsSince(startedAt: number) {
+	return Math.max(0, Math.floor((Date.now() - startedAt) / 100));
+}
 
 const AssistantWorkingIndicator: FC = () => {
+	const turnStartedAt = useAuiState((s) => {
+		for (let index = s.message.index - 1; index >= 0; index--) {
+			const message = s.thread.messages[index];
+			if (message?.role === "user") return message.createdAt.getTime();
+		}
+		return s.message.createdAt.getTime();
+	});
 	const [visible, setVisible] = useState(false);
+	const [elapsedDeciseconds, setElapsedDeciseconds] = useState(() =>
+		elapsedDecisecondsSince(turnStartedAt),
+	);
 
 	useEffect(() => {
 		const timeoutId = window.setTimeout(() => setVisible(true), WORKING_INDICATOR_DELAY_MS);
-		return () => window.clearTimeout(timeoutId);
-	}, []);
+		const updateElapsedTime = () => setElapsedDeciseconds(elapsedDecisecondsSince(turnStartedAt));
+		updateElapsedTime();
+		const intervalId = window.setInterval(updateElapsedTime, 100);
+		return () => {
+			window.clearTimeout(timeoutId);
+			window.clearInterval(intervalId);
+		};
+	}, [turnStartedAt]);
 
 	if (!visible) return null;
 
 	return (
-		<span
+		<div
 			data-slot="aui_assistant-message-indicator"
-			className="text-muted-foreground relative inline-block text-sm leading-none"
+			className="text-muted-foreground flex w-fit items-center gap-2 py-1 text-sm [&:not(:first-child)]:mt-3"
 			role="status"
 			aria-label={CONSIDERING_NEXT_STEPS}
 		>
-			<span>{CONSIDERING_NEXT_STEPS}</span>
-			<span
-				aria-hidden
-				className="shimmer shimmer-color-foreground pointer-events-none absolute inset-0 motion-reduce:animate-none"
-			>
+			<AvatarGroup aria-hidden className="-space-x-1">
+				<Avatar className="size-6.5">
+					<AvatarFallback className="border-2 border-transparent">
+						<span className="grid grid-cols-[repeat(3,3px)] gap-[2.5px]">
+							{WORKING_INDICATOR_PIXEL_DELAYS.map((delay, index) => (
+								<span
+									key={index}
+									className="assistant-working-pixel size-[3px] rounded-[1px] bg-current"
+									style={{ animationDelay: `${delay}ms` }}
+								/>
+							))}
+						</span>
+					</AvatarFallback>
+				</Avatar>
+			</AvatarGroup>
+			<span aria-hidden className="relative inline-block font-normal">
 				{CONSIDERING_NEXT_STEPS}
+				<span className="shimmer shimmer-color-foreground pointer-events-none absolute top-0 left-0 motion-reduce:animate-none">
+					{CONSIDERING_NEXT_STEPS}
+				</span>
 			</span>
-		</span>
+			<span aria-hidden className="font-mono text-xs tabular-nums opacity-60">
+				{formatElapsedTime(elapsedDeciseconds)}
+			</span>
+		</div>
 	);
 };
 

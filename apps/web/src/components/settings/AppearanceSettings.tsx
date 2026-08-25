@@ -33,13 +33,15 @@ export function AppearanceSettings() {
 			<h1 className="text-xl font-semibold tracking-tight" data-qa-id="settings-section-heading">
 				Appearance
 			</h1>
-			<FieldSet className="mt-6">
-				<FieldLegend>Theme</FieldLegend>
+			<FieldSet className="mt-6 gap-0">
+				<FieldLegend variant="label" className="mb-0">
+					Theme
+				</FieldLegend>
 				<FieldDescription>Light, dark, or match your system.</FieldDescription>
 				<div
 					role="radiogroup"
 					aria-label="Theme"
-					className="grid grid-cols-3 gap-3"
+					className="mt-4 grid grid-cols-3 gap-3"
 					data-qa-id="appearance-theme"
 				>
 					{THEME_OPTIONS.map((option) => (
@@ -88,7 +90,7 @@ function ThemeChoice({
 			)}
 		>
 			{preview}
-			<span className="flex items-center justify-center gap-1.5 pb-0.5 text-sm font-medium">
+			<span className="flex items-center justify-center gap-1.5 pb-0.5 text-sm font-normal">
 				<Icon className="size-3.5" />
 				{label}
 			</span>

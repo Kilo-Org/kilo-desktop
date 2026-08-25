@@ -63,6 +63,15 @@ export type OrgOption = {
 	description?: string;
 };
 
+function formatOrganizationRole(role: string): string {
+	return role
+		.trim()
+		.split(/[\s_-]+/)
+		.filter(Boolean)
+		.map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1).toLowerCase()}`)
+		.join(" ");
+}
+
 /** Parse the user-enterable device code from OAuth authorize instructions. */
 export function parseDeviceCode(instructions: string | undefined): string | undefined {
 	if (!instructions) return undefined;
@@ -115,7 +124,7 @@ export function buildOrgOptions(
 		...orgs.map((org) => ({
 			value: org.id,
 			label: org.name,
-			description: org.role,
+			description: formatOrganizationRole(org.role),
 		})),
 	];
 }

@@ -8,7 +8,6 @@ import {
 } from "./custom-provider.js";
 
 export type GlobalConfigSnapshot = {
-	disabled_providers?: string[];
 	provider?: Record<string, unknown>;
 };
 
@@ -36,10 +35,6 @@ function requireId(providerID: string): string {
 	const result = validateProviderID(providerID);
 	if ("error" in result) throw new Error(result.error);
 	return result.value;
-}
-
-function without(list: string[] | undefined, id: string): string[] {
-	return (list ?? []).filter((item) => item !== id);
 }
 
 async function readGlobal(client: KiloProviderClient): Promise<GlobalConfigSnapshot> {
@@ -79,47 +74,12 @@ export async function disconnectProvider(
 	const global = await readGlobal(client);
 	const custom = isCustomEntry(global.provider?.[id]);
 	await client.auth.remove({ providerID: id }, { throwOnError: true });
-	const disabled = without(global.disabled_providers, id);
-	const clearedDisabled = disabled.length !== (global.disabled_providers ?? []).length;
-	if (custom || clearedDisabled) {
+	if (custom) {
 		await client.global.config.update(
-			{
-				config: {
-					...(custom ? { provider: { [id]: null } } : {}),
-					...(clearedDisabled ? { disabled_providers: disabled } : {}),
-				},
-			},
+			{ config: { provider: { [id]: null } } },
 			{ throwOnError: true },
 		);
 	}
-	await dispose(client);
-}
-
-/**
- * Hide/show a connected provider in the composer model selector without
- * removing credentials — re-enable restores it without reconnecting.
- */
-export async function setDisabled(
-	client: KiloProviderClient,
-	providerID: string,
-	disabled: boolean,
-): Promise<void> {
-	const id = requireId(providerID);
-	const global = await readGlobal(client);
-	const current = global.disabled_providers ?? [];
-	const next = disabled
-		? current.includes(id)
-			? current
-			: [...current, id]
-		: without(current, id);
-	if (next.length === current.length && next.every((item, index) => item === current[index])) {
-		await dispose(client);
-		return;
-	}
-	await client.global.config.update(
-		{ config: { disabled_providers: next } },
-		{ throwOnError: true },
-	);
 	await dispose(client);
 }
 
@@ -153,7 +113,6 @@ export async function saveCustom(
 		{
 			config: {
 				provider: { [id]: patch as SanitizedProviderConfig },
-				disabled_providers: without(global.disabled_providers, id),
 			},
 		},
 		{ throwOnError: true },
@@ -163,15 +122,9 @@ export async function saveCustom(
 
 export async function deleteCustom(client: KiloProviderClient, providerID: string): Promise<void> {
 	const id = requireId(providerID);
-	const global = await readGlobal(client);
 	await client.auth.remove({ providerID: id }, { throwOnError: true });
 	await client.global.config.update(
-		{
-			config: {
-				provider: { [id]: null },
-				disabled_providers: without(global.disabled_providers, id),
-			},
-		},
+		{ config: { provider: { [id]: null } } },
 		{ throwOnError: true },
 	);
 	await dispose(client);

@@ -2,8 +2,8 @@ import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/p
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 /**
- * Page object for the kilo-ui AI Providers settings section, including the
- * expandable Kilo Gateway account card.
+ * Page object for the kilo-ui AI Providers settings section and its primary
+ * Kilo Gateway connection.
  */
 export class KiloProvidersPage {
 	private readonly section = () => getLocatorByTestId("kilo-providers-page");
@@ -23,7 +23,7 @@ export class KiloProvidersPage {
 
 	/**
 	 * Asserts the Kilo Gateway card finished loading: either the signed-out
-	 * Connect button (collapsed header) or the signed-in Disconnect control.
+	 * Sign In button or the signed-in Log Out control.
 	 * Does not complete OAuth in CI.
 	 */
 	async verifyKiloLoginOrSignedIn(): Promise<void> {
@@ -36,13 +36,13 @@ export class KiloProvidersPage {
 		if (await this.login().isVisible()) {
 			await expectElementToBeVisible(
 				this.login(),
-				"Kilo Connect button should be visible when signed out",
+				"Kilo Sign In button should be visible when signed out",
 			);
 			return;
 		}
 		await expectElementToBeVisible(
 			this.logout(),
-			"Kilo Disconnect button should be visible in the card header when signed in",
+			"Kilo Log Out button should be visible in the card header when signed in",
 		);
 	}
 }

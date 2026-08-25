@@ -38,7 +38,6 @@ const vllm: CatalogProvider = {
 };
 
 const config: GlobalProviderConfig = {
-	disabled_providers: ["openai"],
 	provider: {
 		vllm: {
 			npm: "@ai-sdk/openai-compatible",
@@ -49,25 +48,6 @@ const config: GlobalProviderConfig = {
 };
 
 describe("groupProviderList", () => {
-	it("keeps disabled providers in Connected when provider.list drops them from connected", () => {
-		const view = groupProviderList({
-			all: [kilo, anthropic, groq, vllm],
-			connected: ["kilo", "anthropic", "groq", "vllm"],
-			config,
-		});
-
-		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic", "vllm", "openai"]);
-		expect(view.environment.map((row) => row.id)).toEqual(["groq"]);
-		expect(view.connected.find((row) => row.id === "openai")).toMatchObject({
-			name: "OpenAI",
-			connected: true,
-			disabled: true,
-			canDisable: true,
-			source: "api",
-		});
-		expect(view.popular.every((row) => !row.canDisable && !row.disabled)).toBe(true);
-	});
-
 	it("lists connected providers alphabetically by name", () => {
 		const view = groupProviderList({
 			all: [kilo, openai, groq, anthropic],
@@ -92,32 +72,9 @@ describe("groupProviderList", () => {
 				connected: true,
 				source: "env",
 				canDisconnect: false,
-				canDisable: true,
 			}),
 		]);
 		expect(view.popular.map((row) => row.id)).not.toContain("groq");
-	});
-
-	it("keeps a disabled provider in Connected in alphabetical order", () => {
-		const view = groupProviderList({
-			all: [kilo, anthropic, openai, groq],
-			connected: ["kilo", "anthropic", "groq"],
-			config: { disabled_providers: ["openai"] },
-		});
-		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic", "openai"]);
-		expect(view.environment.map((row) => row.id)).toEqual(["groq"]);
-		expect(view.connected.find((row) => row.id === "openai")?.disabled).toBe(true);
-	});
-
-	it("marks a still-listed connected provider as disabled without moving it", () => {
-		const view = groupProviderList({
-			all: [kilo, anthropic],
-			connected: ["kilo", "anthropic"],
-			config: { disabled_providers: ["anthropic"] },
-		});
-		expect(view.connected.map((row) => row.id)).toEqual(["kilo", "anthropic"]);
-		expect(view.connected.find((row) => row.id === "anthropic")?.disabled).toBe(true);
-		expect(view.popular.map((row) => row.id)).not.toContain("anthropic");
 	});
 
 	it("keeps Kilo Gateway first in connected even when the catalog lists it later", () => {
@@ -144,7 +101,6 @@ describe("groupProviderList", () => {
 			"vercel",
 		]);
 		expect(view.popular.every((row) => row.id !== "kilo")).toBe(true);
-		expect(view.popular.every((row) => !row.disabled && !row.canDisable)).toBe(true);
 	});
 
 	it("keeps popular providers reconnectable when provider.list omits them after disconnect", () => {
@@ -164,24 +120,8 @@ describe("groupProviderList", () => {
 		expect(view.popular.find((row) => row.id === "openai")).toMatchObject({
 			name: "OpenAI",
 			connected: false,
-			disabled: false,
 			canDisconnect: true,
 		});
-	});
-
-	it("does not list disabled providers under Popular", () => {
-		const view = groupProviderList({
-			all: [kilo],
-			connected: ["kilo"],
-			config: { disabled_providers: ["openai"] },
-		});
-		expect(view.connected.find((row) => row.id === "openai")).toMatchObject({
-			name: "OpenAI",
-			disabled: true,
-			connected: true,
-			source: "api",
-		});
-		expect(view.popular.map((row) => row.id)).not.toContain("openai");
 	});
 
 	it("tags custom npm packages and blocks disconnect on env-sourced providers", () => {
@@ -208,9 +148,7 @@ describe("groupProviderList", () => {
 			id: "kilo",
 			isKilo: true,
 			canDisconnect: false,
-			canDisable: false,
 			custom: false,
-			disabled: false,
 		});
 	});
 });

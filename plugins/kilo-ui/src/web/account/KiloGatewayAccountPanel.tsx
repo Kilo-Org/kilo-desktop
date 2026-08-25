@@ -36,13 +36,13 @@ import {
 
 /**
  * Kilo Gateway account body: device OAuth, profile, org, balance / Kilo Pass,
- * and logout. Composed into the Providers expandable card (and kept free of a
- * settings PageShell so onboarding can keep using the shared sign-in pieces).
+ * and logout. Kept free of a settings PageShell so the Providers page can
+ * reuse its authorization and recovery states without duplicating the flow.
  */
 export function KiloGatewayAccountPanel({
 	showSignOut = true,
 }: {
-	/** When false, the host (e.g. Providers card header) owns the sign-out control. */
+	/** When false, the host owns the sign-out control. */
 	showSignOut?: boolean;
 } = {}) {
 	const sdk = useSdk("kilo-ui");
@@ -82,12 +82,7 @@ export function KiloGatewayAccountPanel({
 	const showDeviceAuth = auth.deviceAuth.status !== "idle";
 
 	if (auth.isLoading && !showDeviceAuth) {
-		return (
-			<div className="flex flex-col gap-4" data-qa-id="kilo-account-settings" data-state="loading">
-				<Skeleton className="h-20 w-full rounded-xl" />
-				<Skeleton className="h-40 w-full rounded-xl" />
-			</div>
-		);
+		return <KiloGatewayAccountLoadingState />;
 	}
 
 	const signedIn = auth.authenticated === true && auth.profile;
@@ -133,6 +128,56 @@ export function KiloGatewayAccountPanel({
 	);
 }
 
+export function KiloGatewayAccountLoadingState() {
+	return (
+		<div className="flex flex-col gap-4" data-qa-id="kilo-account-settings" data-state="loading">
+			<div className="grid gap-5 sm:grid-cols-2">
+				<section className="min-w-0">
+					<Skeleton className="bg-muted-foreground/25 flex w-fit">
+						<span className="invisible text-xs font-medium">Available balance</span>
+					</Skeleton>
+					<div className="mt-1 flex items-center gap-1.5">
+						<Skeleton className="bg-muted-foreground/25 flex w-fit">
+							<span className="font-heading invisible text-2xl font-semibold tracking-tight">
+								$000.00
+							</span>
+						</Skeleton>
+						<Skeleton className="bg-muted-foreground/25 size-7 rounded-lg" />
+					</div>
+					<div className="mt-3 flex flex-wrap items-center gap-2">
+						<AccountActionSkeleton variant="outline">Top up</AccountActionSkeleton>
+						<AccountActionSkeleton>Kilo Dashboard</AccountActionSkeleton>
+					</div>
+				</section>
+
+				<div className="min-w-0">
+					<Skeleton className="bg-muted-foreground/25 flex w-fit">
+						<span className="invisible text-xs font-medium">Organization</span>
+					</Skeleton>
+					<Skeleton className="bg-muted-foreground/25 mt-1 h-9 w-full rounded-lg" />
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function AccountActionSkeleton({
+	variant = "ghost",
+	children,
+}: {
+	variant?: "ghost" | "outline";
+	children: string;
+}) {
+	return (
+		<Skeleton className="bg-muted-foreground/25 flex shrink-0 rounded-lg">
+			<Button type="button" variant={variant} size="sm" className="invisible" disabled>
+				{children}
+				<ArrowUpRightIcon data-icon="inline-end" />
+			</Button>
+		</Skeleton>
+	);
+}
+
 function SignedInView({
 	auth,
 	profile,
@@ -149,7 +194,7 @@ function SignedInView({
 	const orgError = auth.orgError;
 
 	return (
-		<div className="flex flex-col gap-5">
+		<div className="flex flex-col gap-4">
 			{orgError ? (
 				<AccountError
 					qa="kilo-account-org-error"
@@ -163,121 +208,123 @@ function SignedInView({
 				/>
 			) : null}
 
-			{orgOptions.length > 0 ? (
-				<div className="flex items-center justify-between gap-4">
-					<div className="min-w-0">
-						<p className="text-sm font-medium">Organization</p>
-						<p className="text-muted-foreground mt-0.5 text-xs">
-							Models and credits are billed to this account.
-						</p>
-					</div>
-					<Select
-						items={orgOptions.map((o) => ({ value: o.value, label: o.label }))}
-						value={currentOrgValue}
-						disabled={auth.isSwitchingOrg}
-						onValueChange={(next) => {
-							if (next == null) return;
-							const id = organizationIdFromValue(next);
-							const current =
-								currentOrgValue === PERSONAL_ORG_VALUE ? null : (currentOrgValue ?? null);
-							if (id === current) return;
-							auth.setOrganization(id);
-						}}
-					>
-						<SelectTrigger aria-label="Organization" data-qa-id="kilo-account-org" className="w-44">
-							<SelectValue>
-								{(value) => orgOptions.find((o) => o.value === value)?.label ?? "Personal"}
-							</SelectValue>
-						</SelectTrigger>
-						<SelectContent>
-							<SelectGroup>
-								{orgOptions.map((option) => (
-									<SelectItem
-										key={option.value}
-										value={option.value}
-										className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-0.5"
-									>
-										<span className="max-w-full truncate">{option.label}</span>
-										{option.description ? (
-											<span className="text-muted-foreground text-xs">{option.description}</span>
-										) : null}
-									</SelectItem>
-								))}
-							</SelectGroup>
-						</SelectContent>
-					</Select>
-				</div>
-			) : null}
-
-			{profile.balance ? (
-				<section className="flex flex-col gap-4" data-qa-id="kilo-account-balance">
-					<div>
-						<p className="text-sm font-medium">Balance</p>
-						<div className="mt-2 flex items-center justify-between gap-4">
+			<div className="grid gap-5 sm:grid-cols-2">
+				{profile.balance ? (
+					<section className="min-w-0" data-qa-id="kilo-account-balance">
+						<p className="text-muted-foreground text-xs font-medium">Available balance</p>
+						<div className="mt-1 flex items-center gap-1.5">
 							<p
-								className="font-heading text-3xl font-semibold tracking-tight tabular-nums"
+								className="font-heading text-2xl font-semibold tracking-tight tabular-nums"
 								data-qa-id="kilo-account-balance-value"
 							>
 								{formatBalance(profile.balance.balance)}
 							</p>
-							<div className="flex shrink-0 items-center gap-2">
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									aria-label="Refresh balance"
-									disabled={auth.isRefreshing}
-									onClick={auth.refreshProfile}
-									data-qa-id="kilo-account-refresh"
-								>
-									<RefreshCwIcon className={cn(auth.isRefreshing && "animate-spin")} />
-								</Button>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => auth.openExternal(KILO_CREDITS_URL)}
-									data-qa-id="kilo-account-top-up"
-								>
-									Top up
-									<ArrowUpRightIcon data-icon="inline-end" />
-								</Button>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => auth.openExternal(KILO_PROFILE_URL)}
-									data-qa-id="kilo-account-dashboard"
-								>
-									Kilo Dashboard
-									<ArrowUpRightIcon data-icon="inline-end" />
-								</Button>
-							</div>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Refresh balance"
+								disabled={auth.isRefreshing}
+								onClick={auth.refreshProfile}
+								data-qa-id="kilo-account-refresh"
+							>
+								<RefreshCwIcon className={cn(auth.isRefreshing && "animate-spin")} />
+							</Button>
 						</div>
-					</div>
-
-					{isPersonalAccount(profile) && profile.kiloPass ? (
-						<KiloPassUsage pass={profile.kiloPass} />
-					) : null}
-
-					{isPersonalAccount(profile) && !profile.kiloPass ? (
-						<div className="flex items-center justify-between gap-4">
-							<div className="min-w-0">
-								<p className="text-sm font-medium">Kilo Pass</p>
-								<p className="text-muted-foreground mt-0.5 text-xs">
-									Monthly credits at a flat rate for heavy usage.
-								</p>
-							</div>
+						<div className="mt-3 flex flex-wrap items-center gap-2">
 							<Button
 								type="button"
 								variant="outline"
-								onClick={() => auth.openExternal(KILO_PASS_URL)}
-								data-qa-id="kilo-account-get-pass"
+								size="sm"
+								onClick={() => auth.openExternal(KILO_CREDITS_URL)}
+								data-qa-id="kilo-account-top-up"
 							>
-								Get Kilo Pass
+								Top up
+								<ArrowUpRightIcon data-icon="inline-end" />
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								onClick={() => auth.openExternal(KILO_PROFILE_URL)}
+								data-qa-id="kilo-account-dashboard"
+							>
+								Kilo Dashboard
 								<ArrowUpRightIcon data-icon="inline-end" />
 							</Button>
 						</div>
-					) : null}
-				</section>
+					</section>
+				) : null}
+
+				{orgOptions.length > 0 ? (
+					<div className="min-w-0">
+						<p className="text-muted-foreground text-xs font-medium">Organization</p>
+						<Select
+							items={orgOptions.map((o) => ({ value: o.value, label: o.label }))}
+							value={currentOrgValue}
+							disabled={auth.isSwitchingOrg}
+							onValueChange={(next) => {
+								if (next == null) return;
+								const id = organizationIdFromValue(next);
+								const current =
+									currentOrgValue === PERSONAL_ORG_VALUE ? null : (currentOrgValue ?? null);
+								if (id === current) return;
+								auth.setOrganization(id);
+							}}
+						>
+							<SelectTrigger
+								aria-label="Organization"
+								data-qa-id="kilo-account-org"
+								className="mt-1 w-full"
+							>
+								<SelectValue>
+									{(value) => orgOptions.find((o) => o.value === value)?.label ?? "Personal"}
+								</SelectValue>
+							</SelectTrigger>
+							<SelectContent>
+								<SelectGroup>
+									{orgOptions.map((option) => (
+										<SelectItem
+											key={option.value}
+											value={option.value}
+											className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-0.5"
+										>
+											<span className="max-w-full truncate">{option.label}</span>
+											{option.description ? (
+												<span className="text-muted-foreground text-xs">{option.description}</span>
+											) : null}
+										</SelectItem>
+									))}
+								</SelectGroup>
+							</SelectContent>
+						</Select>
+					</div>
+				) : null}
+			</div>
+
+			{isPersonalAccount(profile) && profile.kiloPass ? (
+				<KiloPassUsage pass={profile.kiloPass} />
+			) : null}
+
+			{isPersonalAccount(profile) && !profile.kiloPass ? (
+				<div className="flex items-center justify-between gap-4">
+					<div className="min-w-0">
+						<p className="text-sm font-medium">Kilo Pass</p>
+						<p className="text-muted-foreground mt-0.5 text-xs">
+							Monthly credits at a flat rate for heavy usage.
+						</p>
+					</div>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => auth.openExternal(KILO_PASS_URL)}
+						data-qa-id="kilo-account-get-pass"
+					>
+						Get Kilo Pass
+						<ArrowUpRightIcon data-icon="inline-end" />
+					</Button>
+				</div>
 			) : null}
 
 			{showSignOut ? <SignOutButton onLogout={auth.logout} /> : null}

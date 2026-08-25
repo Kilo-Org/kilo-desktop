@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveHomeSplat } from "./index";
+import { deriveHomeSplat } from "@/features/home-route";
 
 describe("deriveHomeSplat", () => {
 	it("strips the leading slash from the contributed route path", () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	findDuplicate,
+	generateProviderID,
 	isCustomProviderPackage,
 	MASKED_CUSTOM_PROVIDER_KEY,
 	resolveCustomProviderAuth,
@@ -11,6 +12,18 @@ import {
 	validateProviderID,
 	withCustomProviderDeletions,
 } from "./custom-provider.js";
+
+describe("generateProviderID", () => {
+	it("creates a stable provider key from the display name", () => {
+		expect(generateProviderID(" Local vLLM ", [])).toBe("local-vllm");
+		expect(generateProviderID("Mistrál Cloud", [])).toBe("mistral-cloud");
+	});
+
+	it("avoids reserved and existing provider keys", () => {
+		expect(generateProviderID("Kilo", [])).toBe("kilo-2");
+		expect(generateProviderID("Anthropic", ["anthropic", "anthropic-2"])).toBe("anthropic-3");
+	});
+});
 
 describe("isCustomProviderPackage", () => {
 	it("recognizes supported custom provider packages", () => {
@@ -158,17 +171,25 @@ describe("sanitizeCustomProviderConfig", () => {
 		expect("error" in result).toBe(true);
 	});
 
-	it("rejects plaintext custom header values", () => {
+	it("allows plaintext custom header values", () => {
 		const result = sanitizeCustomProviderConfig({
-			name: "Unsafe headers",
+			name: "Literal headers",
 			options: {
 				baseURL: "https://example.com/v1",
-				headers: { Authorization: "Bearer secret" },
+				headers: { "X-Title": " My desktop app " },
 			},
 			models: { "model-1": { name: "Model One" } },
 		});
 		expect(result).toEqual({
-			error: "Header values must use an environment variable such as {env:MY_API_TOKEN}",
+			value: {
+				npm: "@ai-sdk/openai-compatible",
+				name: "Literal headers",
+				options: {
+					baseURL: "https://example.com/v1",
+					headers: { "X-Title": "My desktop app" },
+				},
+				models: { "model-1": { name: "Model One" } },
+			},
 		});
 	});
 

@@ -107,6 +107,19 @@ function mockConnectedCatalog() {
 	dispose.mockResolvedValue(undefined);
 }
 
+function mockAllPopularProvidersConnected() {
+	providerList.mockResolvedValue({
+		data: {
+			all: [{ id: "kilo", name: "Kilo Gateway", source: "custom" }],
+			connected: ["kilo", "anthropic", "deepseek", "openai", "google", "openrouter", "vercel"],
+			default: {},
+		},
+	});
+	configGet.mockResolvedValue({ data: {} });
+	configUpdate.mockResolvedValue({ data: {} });
+	dispose.mockResolvedValue(undefined);
+}
+
 function idleAuth(overrides: Partial<KiloAuthContextValue> = {}): KiloAuthContextValue {
 	return {
 		isLoading: false,
@@ -166,13 +179,12 @@ function renderPage(
 			</QueryClientProvider>
 		</SdkProvider>
 	);
-	const view = render(mount(auth));
+	render(mount(auth));
 	return {
 		screen: page,
 		sdk,
 		queryClient,
 		auth,
-		rerenderAuth: (value: KiloAuthContextValue) => view.rerender(mount(value)),
 	};
 }
 
@@ -197,89 +209,123 @@ describe("KiloProvidersSettings", () => {
 		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(2));
 	});
 
-	it("does not reuse the same React key for closed connect and custom dialogs", async () => {
+	it("keeps one dialog shell mounted across provider setup steps", async () => {
 		mockCatalog();
-		const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-		try {
-			const { screen } = renderPage({ isPending: false, isError: false, connection });
-			await expect.element(screen.getByTestId("kilo-providers-page")).toBeVisible();
-			expect(
-				error.mock.calls.some((args) =>
-					args.some((arg) => typeof arg === "string" && arg.includes("the same key")),
-				),
-			).toBe(false);
-		} finally {
-			error.mockRestore();
-		}
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-provider").click();
+		await expect.element(screen.getByTestId("kilo-providers-add-dialog")).toBeVisible();
+		const dialog = document.querySelector('[data-slot="dialog-content"]');
+		expect(dialog).not.toBeNull();
+		const dialogWidth = dialog!.getBoundingClientRect().width;
+
+		await screen.getByTestId("kilo-providers-add-anthropic").click();
+		await expect.element(screen.getByTestId("kilo-providers-connect-dialog")).toBeVisible();
+		expect(document.querySelector('[data-slot="dialog-content"]')).toBe(dialog);
+		expect(document.querySelectorAll('[data-slot="dialog-content"]')).toHaveLength(1);
+
+		await screen.getByRole("button", { name: "Back" }).click();
+		await screen.getByTestId("kilo-providers-add-custom").click();
+		await expect.element(screen.getByTestId("kilo-providers-custom-dialog")).toBeVisible();
+		expect(document.querySelector('[data-slot="dialog-content"]')).toBe(dialog);
+		expect(document.querySelectorAll('[data-slot="dialog-content"]')).toHaveLength(1);
+		expect(dialog!.getBoundingClientRect().width).toBe(dialogWidth);
+		expect(
+			dialog!.getAnimations().filter((animation) => {
+				const effect = animation.effect;
+				return effect instanceof KeyframeEffect && effect.target === dialog;
+			}),
+		).toHaveLength(0);
 	});
 
-	it("lists the expandable Kilo Gateway card and popular add targets", async () => {
+	it("presents Kilo Gateway as the primary connection and lists provider choices", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
 		await expect.element(screen.getByTestId("kilo-providers-row-kilo")).toBeVisible();
+		await expect.element(screen.getByText("Recommended", { exact: true })).not.toBeInTheDocument();
 		await expect
 			.element(screen.getByTestId("kilo-providers-row-kilo"))
-			.toHaveAttribute("data-state", "collapsed");
-		await expect.element(screen.getByTestId("kilo-providers-kilo-toggle")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-account-login")).toBeVisible();
+			.toHaveAttribute("data-state", "summary");
+		await expect.element(screen.getByRole("button", { name: "Sign In" })).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-popular")).not.toBeInTheDocument();
+		await screen.getByTestId("kilo-providers-add-provider").click();
+		await expect.element(screen.getByTestId("kilo-providers-add-dialog")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-providers-add-progress-label"))
+			.toHaveTextContent("1 of 2");
 		await expect.element(screen.getByTestId("kilo-providers-add-anthropic")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-providers-add-custom")).toBeVisible();
 	});
 
-	it("disables custom provider creation until the catalog finishes loading", async () => {
+	it("opens custom provider configuration directly when every popular provider is added", async () => {
+		mockAllPopularProvidersConnected();
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-provider").click();
+		await expect.element(screen.getByTestId("kilo-providers-custom-dialog")).toBeVisible();
+		await expect
+			.element(screen.getByRole("heading", { name: "Add custom provider" }))
+			.toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-providers-add-progress-label"))
+			.not.toBeInTheDocument();
+		await expect.element(screen.getByRole("button", { name: "Back" })).not.toBeInTheDocument();
+		await expect.element(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
+	});
+
+	it("disables adding providers while the catalog is loading", async () => {
 		const { screen } = renderPage({ isPending: true, isError: false });
-		await expect.element(screen.getByTestId("kilo-providers-add-custom")).toBeDisabled();
+		await expect.element(screen.getByTestId("kilo-providers-add-provider")).toBeDisabled();
 	});
 
-	it("preserves a manual Kilo Gateway expansion across background auth refreshes", async () => {
-		mockCatalog();
-		const base = idleAuth();
-		const { screen, rerenderAuth } = renderPage(
-			{ isPending: false, isError: false, connection },
-			base,
-		);
-		await screen.getByTestId("kilo-providers-kilo-toggle").click();
-		await expect
-			.element(screen.getByTestId("kilo-providers-row-kilo"))
-			.toHaveAttribute("data-state", "expanded");
-
-		rerenderAuth(idleAuth({ isLoading: true }));
-		rerenderAuth(idleAuth());
-		await expect
-			.element(screen.getByTestId("kilo-providers-row-kilo"))
-			.toHaveAttribute("data-state", "expanded");
-	});
-
-	it("collapses the Kilo card when signed in", async () => {
+	it("shows the connected Kilo account details inside the gateway card", async () => {
 		mockCatalog();
 		const { screen } = renderPage(
 			{ isPending: false, isError: false, connection },
 			idleAuth({
 				authenticated: true,
 				profile: {
-					profile: { email: "dev@anaconda.com", name: "Dev User" },
+					profile: {
+						email: "dev@anaconda.com",
+						name: "Dev User",
+						organizations: [{ id: "org-1", name: "Anaconda", role: "admin" }],
+						hasPersonalAccount: true,
+					},
 					balance: { balance: 1 },
-					kiloPass: null,
+					kiloPass: {
+						currentPeriodBaseCreditsUsd: 100,
+						currentPeriodUsageUsd: 25,
+						currentPeriodBonusCreditsUsd: 0,
+						nextBillingAt: null,
+					},
 					currentOrgId: null,
 				},
 			}),
 		);
 		await expect
 			.element(screen.getByTestId("kilo-providers-row-kilo"))
-			.toHaveAttribute("data-state", "collapsed");
+			.toHaveAttribute("data-state", "expanded");
 		await expect
 			.element(screen.getByTestId("kilo-account-email"))
 			.toHaveTextContent("dev@anaconda.com");
-		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
+		await expect.element(screen.getByText("Connected", { exact: true })).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("kilo-account-balance-value"))
+			.toHaveTextContent("$1.00");
+		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-pass-bar")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Log Out" })).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-login")).not.toBeInTheDocument();
 	});
 
 	it("connects a catalog provider with an API key", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-provider").click();
 		await expect.element(screen.getByTestId("kilo-providers-add-anthropic")).toBeVisible();
 		await screen.getByTestId("kilo-providers-add-anthropic").click();
 		await expect.element(screen.getByTestId("kilo-providers-connect-dialog")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-providers-add-progress-label"))
+			.toHaveTextContent("2 of 2");
 		await screen.getByTestId("kilo-providers-api-key").fill("sk-ant");
 		await screen.getByTestId("kilo-providers-connect").click();
 		await vi.waitFor(() => expect(authSet).toHaveBeenCalled());
@@ -294,72 +340,71 @@ describe("KiloProvidersSettings", () => {
 	it("saves a custom provider after validation", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-provider").click();
 		await screen.getByTestId("kilo-providers-add-custom").click();
 		await expect.element(screen.getByTestId("kilo-providers-custom-dialog")).toBeVisible();
-		await screen.getByTestId("kilo-providers-custom-id").fill("vllm");
 		await screen.getByTestId("kilo-providers-custom-name").fill("Local vLLM");
 		await screen.getByTestId("kilo-providers-custom-url").fill("http://127.0.0.1:8000/v1");
-		await screen.getByTestId("kilo-providers-model-id-0").fill("qwen");
-		await screen.getByTestId("kilo-providers-model-name-0").fill("Qwen");
+		await screen.getByTestId("kilo-providers-model-id-input").fill("qwen");
 		await screen.getByTestId("kilo-providers-custom-save").click();
 		await vi.waitFor(() => expect(configUpdate).toHaveBeenCalled());
 		const payload = configUpdate.mock.calls[0]?.[0] as {
-			config: { provider: Record<string, { options: { baseURL: string } }> };
+			config: {
+				provider: Record<string, { options: { baseURL: string }; models: Record<string, unknown> }>;
+			};
 		};
-		expect(payload.config.provider.vllm?.options.baseURL).toBe("http://127.0.0.1:8000/v1");
+		expect(payload.config.provider["local-vllm"]?.options.baseURL).toBe("http://127.0.0.1:8000/v1");
+		expect(payload.config.provider["local-vllm"]?.models).toEqual({ qwen: { name: "qwen" } });
 		expect(JSON.stringify(payload)).not.toContain("apiKey");
 		expect(dispose).toHaveBeenCalled();
 	});
 
-	it("does not overwrite an existing provider id from the custom dialog", async () => {
+	it("generates a unique provider id when the provider name is already in use", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-provider").click();
 		await screen.getByTestId("kilo-providers-add-custom").click();
-		await screen.getByTestId("kilo-providers-custom-id").fill("anthropic");
-		await screen.getByTestId("kilo-providers-custom-name").fill("Replacement");
+		await screen.getByTestId("kilo-providers-custom-name").fill("Anthropic");
 		await screen.getByTestId("kilo-providers-custom-url").fill("https://example.com/v1");
-		await screen.getByTestId("kilo-providers-model-id-0").fill("model");
+		await screen.getByTestId("kilo-providers-model-id-input").fill("model");
 		await screen.getByTestId("kilo-providers-custom-save").click();
-		await expect.element(screen.getByText("Provider ID already exists")).toBeVisible();
-		expect(configUpdate).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(configUpdate).toHaveBeenCalled());
+		const payload = configUpdate.mock.calls[0]?.[0] as {
+			config: { provider: Record<string, unknown> };
+		};
+		expect(payload.config.provider["anthropic-2"]).toBeDefined();
+		expect(payload.config.provider.anthropic).toBeUndefined();
 	});
 
 	it("rejects a half-filled custom header row", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-provider").click();
 		await screen.getByTestId("kilo-providers-add-custom").click();
-		await screen.getByTestId("kilo-providers-custom-id").fill("vllm");
 		await screen.getByTestId("kilo-providers-custom-name").fill("Local vLLM");
 		await screen.getByTestId("kilo-providers-custom-url").fill("http://127.0.0.1:8000/v1");
-		await screen.getByTestId("kilo-providers-model-id-0").fill("qwen");
-		await screen.getByTestId("kilo-providers-header-key-0").fill("Authorization");
+		await screen.getByTestId("kilo-providers-model-id-input").fill("qwen");
+		await screen.getByTestId("kilo-providers-custom-advanced").click();
+		await screen.getByTestId("kilo-providers-header-key-input").fill("Authorization");
 		await screen.getByTestId("kilo-providers-custom-save").click();
 		await expect.element(screen.getByText("Header name and value are both required")).toBeVisible();
 		expect(configUpdate).not.toHaveBeenCalled();
 	});
 
-	it("marks only duplicated model ids as invalid", async () => {
+	it("rejects a duplicated model id from the add row", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await screen.getByTestId("kilo-providers-add-provider").click();
 		await screen.getByTestId("kilo-providers-add-custom").click();
-		await screen.getByTestId("kilo-providers-custom-id").fill("vllm");
-		await screen.getByTestId("kilo-providers-custom-name").fill("Local vLLM");
-		await screen.getByTestId("kilo-providers-custom-url").fill("http://127.0.0.1:8000/v1");
-		await screen.getByTestId("kilo-providers-model-id-0").fill("duplicate");
+		await screen.getByTestId("kilo-providers-model-id-input").fill("duplicate");
 		await screen.getByTestId("kilo-providers-add-model").click();
-		await screen.getByTestId("kilo-providers-model-id-1").fill("duplicate");
+		await expect.element(screen.getByTestId("kilo-providers-model-row-0")).toBeVisible();
+		await screen.getByTestId("kilo-providers-model-id-input").fill("duplicate");
 		await screen.getByTestId("kilo-providers-add-model").click();
-		await screen.getByTestId("kilo-providers-model-id-2").fill("distinct");
-		await screen.getByTestId("kilo-providers-custom-save").click();
 		await expect
-			.element(screen.getByTestId("kilo-providers-model-id-0"))
+			.element(screen.getByTestId("kilo-providers-model-id-input"))
 			.toHaveAttribute("aria-invalid", "true");
-		await expect
-			.element(screen.getByTestId("kilo-providers-model-id-1"))
-			.toHaveAttribute("aria-invalid", "true");
-		await expect
-			.element(screen.getByTestId("kilo-providers-model-id-2"))
-			.not.toHaveAttribute("aria-invalid", "true");
+		await expect.element(screen.getByText('Model ID "duplicate" is already added')).toBeVisible();
 	});
 
 	it("confirms before removing a custom provider definition", async () => {
@@ -377,7 +422,7 @@ describe("KiloProvidersSettings", () => {
 		expect(configUpdate).toHaveBeenCalled();
 	});
 
-	it("lists env-sourced providers under Connected from your environment variables, not Connected", async () => {
+	it("includes environment-sourced credentials in the unified provider list", async () => {
 		providerList.mockResolvedValue({
 			data: {
 				all: [
@@ -391,22 +436,20 @@ describe("KiloProvidersSettings", () => {
 		});
 		configGet.mockResolvedValue({ data: {} });
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
-		await expect.element(screen.getByTestId("kilo-providers-environment")).toBeVisible();
 		await expect
-			.element(screen.getByRole("heading", { name: "Connected from your environment variables" }))
+			.element(screen.getByRole("heading", { name: "Connected providers" }))
 			.toBeVisible();
 		await expect.element(screen.getByTestId("kilo-providers-row-amazon-bedrock")).toBeVisible();
 		await expect
 			.element(screen.getByTestId("kilo-providers-disconnect-amazon-bedrock"))
 			.not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("kilo-providers-enabled-amazon-bedrock")).toBeVisible();
 		await expect
 			.element(
 				screen
 					.getByTestId("kilo-providers-connected")
 					.getByTestId("kilo-providers-row-amazon-bedrock"),
 			)
-			.not.toBeInTheDocument();
+			.toBeVisible();
 	});
 
 	it("disables provider actions while a mutation is pending", async () => {
@@ -416,7 +459,6 @@ describe("KiloProvidersSettings", () => {
 		await expect.element(screen.getByTestId("kilo-providers-disconnect-openai")).toBeVisible();
 		await screen.getByTestId("kilo-providers-disconnect-openai").click();
 		await expect.element(screen.getByTestId("kilo-providers-disconnect-anthropic")).toBeDisabled();
-		await expect.element(screen.getByTestId("kilo-providers-enabled-anthropic")).toBeDisabled();
 	});
 
 	it("clears an earlier mutation error when a later provider action succeeds", async () => {
@@ -428,8 +470,8 @@ describe("KiloProvidersSettings", () => {
 			.element(screen.getByTestId("kilo-providers-error"))
 			.toHaveTextContent("credential store unavailable");
 
-		await screen.getByTestId("kilo-providers-enabled-anthropic").click();
-		await vi.waitFor(() => expect(configUpdate).toHaveBeenCalled());
+		await screen.getByTestId("kilo-providers-disconnect-anthropic").click();
+		await vi.waitFor(() => expect(authRemove).toHaveBeenCalledTimes(2));
 		await expect.element(screen.getByTestId("kilo-providers-error")).not.toBeInTheDocument();
 	});
 });

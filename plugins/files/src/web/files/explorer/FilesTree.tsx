@@ -256,9 +256,9 @@ export function FilesTree({
 						["--trees-fg-override" as string]: "var(--foreground)",
 						["--trees-bg-override" as string]: "transparent",
 						["--trees-bg-muted-override" as string]:
-							"color-mix(in srgb, currentColor 7%, transparent)",
+							"color-mix(in oklab, var(--foreground) 5%, transparent)",
 						["--trees-selected-bg-override" as string]:
-							"color-mix(in srgb, currentColor 12%, transparent)",
+							"color-mix(in oklab, var(--foreground) 5%, transparent)",
 						["--trees-border-color-override" as string]: "var(--border)",
 						["--trees-focus-ring-color-override" as string]: "var(--ring)",
 						["--trees-padding-inline-override" as string]: "8px",

@@ -137,6 +137,7 @@ export function ChatPage() {
 	const hasKeepAliveTabs = panelState.tabs.some(({ definitionId }) =>
 		keepAliveDefinitionIds.has(definitionId),
 	);
+	const hasDirtyTabs = panelState.tabs.some(({ dirty }) => dirty);
 
 	const panelSlotWidth = useMotionValue(0);
 
@@ -231,7 +232,7 @@ export function ChatPage() {
 			shouldSpring ? SHELL_LAYOUT_SPRING : SHELL_LAYOUT_SNAP,
 		);
 		void controls.then(() => {
-			if (!panelOpen && !hasKeepAliveTabs) setPanelMounted(false);
+			if (!panelOpen && !hasKeepAliveTabs && !hasDirtyTabs) setPanelMounted(false);
 		});
 		return () => controls.stop();
 	}, [
@@ -239,6 +240,7 @@ export function ChatPage() {
 		targetPanelWidth,
 		panelOpen,
 		hasKeepAliveTabs,
+		hasDirtyTabs,
 		sessionChanged,
 		sessionId,
 		reduceMotion,

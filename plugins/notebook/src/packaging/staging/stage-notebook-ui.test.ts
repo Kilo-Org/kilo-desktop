@@ -184,7 +184,7 @@ describe("stageNotebookUi", () => {
 
 	it("downloads a fresh bundle when staged bytes no longer match", async () => {
 		const root = await temporaryDirectory();
-		const archive = await publishedArchive(root);
+		const archive = Buffer.from("published nightly notebook archive");
 		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
 		const options = {
 			destinationDirectory: path.join(root, "build/notebook"),
@@ -195,6 +195,9 @@ describe("stageNotebookUi", () => {
 				sha256: createHash("sha256").update(archive).digest("hex"),
 			},
 			fetch: fetchArchive,
+			extract: async (_archivePath: string, extractedDirectory: string) => {
+				await writePublishedBundle(extractedDirectory);
+			},
 		};
 		await stageNotebookUi(options);
 		await writeFile(path.join(options.destinationDirectory, "assets/main-abcdef12.js"), "corrupt");

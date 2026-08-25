@@ -17,7 +17,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^24.13.3",
-		"@vitest/coverage-v8": "5.0.0-rc.1",
+		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"

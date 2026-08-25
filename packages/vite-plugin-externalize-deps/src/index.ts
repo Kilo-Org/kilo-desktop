@@ -9,6 +9,10 @@ export interface ExternalOptions {
 	include?: Array<string | RegExp>;
 }
 
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function matches(matchers: Array<string | RegExp>, id: string): boolean {
 	return matchers.some((matcher) =>
 		typeof matcher === "string" ? matcher === id : matcher.test(id),
@@ -58,14 +62,14 @@ export function externalizeDeps(options: ExternalOptions = {}): Plugin {
 
 	const external: Array<string | RegExp> = [
 		...deps,
-		...(deps.length > 0 ? [new RegExp(`^(${deps.join("|")})/.+`)] : []),
+		...(deps.length > 0 ? [new RegExp(`^(${deps.map(escapeRegExp).join("|")})/.+`)] : []),
 		...regexpIncludes,
 		...builtinModules,
 		...builtinModules.map((builtin) => `node:${builtin}`),
 	];
 
 	return {
-		name: "vite:externalize-deps",
+		name: "anaconda:externalize-deps",
 		enforce: "pre",
 		config() {
 			return { build: { rollupOptions: { external } } };

@@ -1,9 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { builtinModules } from "node:module";
 
 import { defineConfig, loadEnv } from "vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
+import { externalizeDeps } from "@anaconda-agentic-desktop/vite-plugin-externalize-deps";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -11,7 +11,6 @@ import {
 	requireViteEnvironmentVariable,
 } from "./config/build-environment.js";
 import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
-import { NOTEBOOK_MAIN_EXTERNALS } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
 import appInfo from "./package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -26,6 +25,16 @@ export default defineConfig(({ command }) => {
 
 	return {
 		plugins: [
+			externalizeDeps({
+				// Not in `dependencies`: `electron` (devDep), `@vscode/windows-ca-certs`
+				// (uninstalled optional native dep of `@vscode/proxy-agent`), and
+				// `better-sqlite3` (transitive via the bundled kilo-ui / todos plugins).
+				// The plugin externalizes each name plus its `<name>/<subpath>` forms.
+				include: ["electron", "better-sqlite3", "@vscode/windows-ca-certs"],
+				// Workspace packages are `workspace:*` / `link:` deps that must stay
+				// bundled (not resolvable runtime modules on disk).
+				exclude: [/^@anaconda-agentic-desktop\/.+$/],
+			}),
 			sentryVitePlugin({
 				authToken: process.env.SENTRY_AUTH_TOKEN,
 				org: "anaconda-nq",
@@ -72,45 +81,6 @@ export default defineConfig(({ command }) => {
 				// in by `@mcp-b/webmcp-local-relay`) then throw on `require("events")`
 				// via Rolldown's `__require` shim. Pin Node so those requires resolve.
 				platform: "node",
-				external: [
-					"electron",
-					...NOTEBOOK_MAIN_EXTERNALS,
-					"better-sqlite3",
-					"@github/keytar",
-					// LaunchDarkly's Node SDK is CommonJS and lazily `require`s Node
-					// built-ins (e.g. `require("url")`); bundling it into the ESM main
-					// bundle turns those into the `__require` shim, which throws at
-					// runtime. Keep it external so Electron requires it from
-					// node_modules (shipped via `pnpm deploy --prod`).
-					"@launchdarkly/node-client-sdk",
-					"@sentry/electron",
-					"electron-store",
-					"electron-log",
-					"electron-squirrel-startup",
-					"update-electron-app",
-					"electron-debug",
-					"execa",
-					// shell-env resolves its own nested execa@5 (CJS default export);
-					// keep it external so bundling does not rewrite that import onto
-					// the workspace's execa@9 (ESM, no default export).
-					"shell-env",
-					// Bundle-external: @vscode/proxy-agent conditionally requires the
-					// optional native addon @vscode/windows-ca-certs, which we do not
-					// install (addCertificatesV2 → false, so it is never reached at
-					// runtime). Keep the package external so its own require resolves
-					// from node_modules and the bundler does not try to inline the
-					// missing optional dep.
-					"@vscode/proxy-agent",
-					"@vscode/windows-ca-certs",
-					// Must also be a direct desktop dependency: the bundled main
-					// imports `ws` at runtime, and `pnpm deploy --prod` only hoists
-					// packages declared on this package (not transitive deps of
-					// linked plugins such as kilo-server).
-					"ws",
-					"anaconda-opentelemetry",
-					...builtinModules,
-					...builtinModules.map((module) => `node:${module}`),
-				],
 			},
 		},
 	};

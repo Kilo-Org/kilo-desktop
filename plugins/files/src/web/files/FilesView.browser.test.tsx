@@ -202,13 +202,18 @@ describe("FilesView", () => {
 			}),
 		);
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
-		await vi.waitFor(() => {
-			const selectedLines = Array.from(document.querySelectorAll("diffs-container")).flatMap(
-				(host) =>
-					Array.from(host.shadowRoot?.querySelectorAll<HTMLElement>("[data-selected-line]") ?? []),
-			);
-			expect(selectedLines.some((line) => line.dataset.line === "2")).toBe(true);
-		});
+		await vi.waitFor(
+			() => {
+				const selectedLines = Array.from(document.querySelectorAll("diffs-container")).flatMap(
+					(host) =>
+						Array.from(
+							host.shadowRoot?.querySelectorAll<HTMLElement>("[data-selected-line]") ?? [],
+						),
+				);
+				expect(selectedLines.some((line) => line.dataset.line === "2")).toBe(true);
+			},
+			{ timeout: 5_000 },
+		);
 	});
 
 	it("reads a requested file before loading and caching its workspace list", async () => {

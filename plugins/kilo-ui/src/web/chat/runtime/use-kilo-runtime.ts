@@ -96,6 +96,7 @@ export function useKiloRuntime({
 		...(defaultModel === undefined ? {} : { defaultModel }),
 		...(isSendDisabled === undefined ? {} : { isSendDisabled }),
 		...(onError === undefined ? {} : { onError }),
+		messageQueue: { cancelBehavior: "pause" },
 		adapters,
 	});
 }

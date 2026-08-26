@@ -144,20 +144,15 @@ describe("AppSidebarLayout login button", () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
 		// Give the async auth delegate a tick to resolve to authenticated.
-		await expect
-			.element(page.getByRole("button", { name: "Account menu for ada" }))
-			.toBeInTheDocument();
+		await expect.element(page.getByTestId("account-menu")).toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Sign In" })).not.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Settings" })).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("app-sidebar").getByTestId("nav-settings")).toBeVisible();
 	});
 
-	it("opens settings from the sidebar icon without opening the account menu", async () => {
+	it("opens settings from the embedded gear without opening the account menu", async () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
-		await expect
-			.element(page.getByRole("button", { name: "Account menu for ada" }))
-			.toBeInTheDocument();
 		await page.getByTestId("app-sidebar").getByTestId("nav-settings").click();
 
 		await expect.element(page.getByTestId("settings-back")).toBeVisible();
@@ -359,7 +354,7 @@ describe("AppSidebarLayout account menu", () => {
 		const menu = page.getByRole("menu");
 		await expect.element(menu.getByText("Ada Lovelace")).toBeVisible();
 		await expect.element(menu.getByText("ada@example.com")).toBeVisible();
-		await expect.element(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+		await expect.element(page.getByRole("menuitem", { name: "Settings" })).not.toBeInTheDocument();
 		await page.getByRole("menuitem", { name: "Log out" }).click();
 
 		expect(logout).toHaveBeenCalledTimes(1);

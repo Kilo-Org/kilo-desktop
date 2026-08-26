@@ -1,14 +1,19 @@
 import {
+	AuiProvider,
 	AssistantRuntimeProvider,
+	ExternalThread,
+	useAui,
 	useLocalRuntime,
 	type ChatModelAdapter,
+	type ExternalThreadQueueAdapter,
+	type QueueItemState,
 	type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import {
@@ -173,13 +178,18 @@ function ThreadTree({
 	selection = kiloModelSelection,
 	initialMessages,
 	adapter = stubChatModel,
+	enableMessageQueue = false,
 }: {
 	auth: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
+	enableMessageQueue?: boolean;
 }) {
-	const runtime = useLocalRuntime(adapter, { initialMessages });
+	const runtime = useLocalRuntime(adapter, {
+		initialMessages,
+		unstable_enableMessageQueue: enableMessageQueue,
+	});
 	return (
 		<KiloAuthContext.Provider value={auth}>
 			<AssistantRuntimeProvider runtime={runtime}>
@@ -210,11 +220,13 @@ function renderThread({
 	selection = kiloModelSelection,
 	initialMessages,
 	adapter,
+	enableMessageQueue,
 }: {
 	auth?: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
+	enableMessageQueue?: boolean;
 }) {
 	const sdk = createFakeSdk({ featureId: "kilo-ui" });
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
@@ -229,8 +241,64 @@ function renderThread({
 						auth={auth}
 						selection={selection}
 						initialMessages={initialMessages}
+						{...(enableMessageQueue === undefined ? {} : { enableMessageQueue })}
 						{...(adapter ? { adapter } : {})}
 					/>
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+	return page.elementLocator(baseElement);
+}
+
+type QueueItemWithAttachmentPreview = QueueItemState & {
+	readonly attachmentPreview?: {
+		readonly name: string;
+		readonly src?: string;
+	};
+};
+
+function ExternalQueueThreadTree({ queue }: { queue: ExternalThreadQueueAdapter }) {
+	const aui = useAui({
+		thread: ExternalThread({ messages: [], isRunning: true, queue }),
+	});
+
+	return (
+		<KiloAuthContext.Provider value={signedInAuth}>
+			<AuiProvider value={aui}>
+				<ChatConnectionProvider
+					status={{
+						isPending: false,
+						isError: false,
+						error: null,
+						connection,
+						connectionPromise: Promise.resolve(connection),
+					}}
+				>
+					<ChatAgentSelectionProvider value={agentSelection}>
+						<ChatModelSelectionProvider value={kiloModelSelection}>
+							<div className="h-[480px]">
+								<Thread />
+							</div>
+						</ChatModelSelectionProvider>
+					</ChatAgentSelectionProvider>
+				</ChatConnectionProvider>
+			</AuiProvider>
+		</KiloAuthContext.Provider>
+	);
+}
+
+function renderExternalQueueThread(queue: ExternalThreadQueueAdapter) {
+	const sdk = createFakeSdk({ featureId: "kilo-ui" });
+	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	kiloUiBrowserRegister(mainSdk);
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const { baseElement } = render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<ExternalQueueThreadTree queue={queue} />
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
@@ -273,6 +341,101 @@ describe("composer responsiveness", () => {
 		await expect.element(modelLabel).not.toBeVisible();
 		await expect.element(reasoningLabel).not.toBeVisible();
 		expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
+	});
+});
+
+describe("composer message queue", () => {
+	const createBlockingAdapter = () =>
+		({
+			run: vi.fn(
+				({ abortSignal }) =>
+					new Promise<never>((_resolve, reject) => {
+						const abort = () =>
+							reject(abortSignal.reason ?? new DOMException("Aborted", "AbortError"));
+						if (abortSignal.aborted) {
+							abort();
+							return;
+						}
+						abortSignal.addEventListener("abort", abort, { once: true });
+					}),
+			),
+		}) satisfies ChatModelAdapter;
+
+	it("keeps the composer usable and renders queued prompts while a run is active", async () => {
+		const adapter = createBlockingAdapter();
+		const screen = renderThread({
+			initialMessages: [],
+			adapter,
+			enableMessageQueue: true,
+		});
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await input.fill("Start the long task");
+		await screen.getByRole("button", { name: "Send message" }).click();
+		await expect.poll(() => adapter.run.mock.calls.length).toBe(1);
+
+		await input.fill("Queue this follow-up");
+		await expect
+			.element(screen.getByRole("button", { name: "Add message to queue" }))
+			.toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Stop generating" })).toBeVisible();
+		await userEvent.type(input, "{Enter}");
+
+		await expect.element(screen.getByText("1 queued")).toBeVisible();
+		await expect.element(screen.getByText("Queue this follow-up")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Send now" })).toBeVisible();
+		await expect
+			.element(screen.getByRole("button", { name: "Delete queued message" }))
+			.toBeVisible();
+	});
+
+	it("shows the first attachment thumbnail beside a queued prompt", async () => {
+		const attachmentPreviewSrc = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+		const itemWithAttachment: QueueItemWithAttachmentPreview = {
+			id: "queued-with-attachment",
+			prompt: "Review this image",
+			attachmentPreview: {
+				name: "diagram.png",
+				src: attachmentPreviewSrc,
+			},
+		};
+		const queue: ExternalThreadQueueAdapter = {
+			items: [itemWithAttachment, { id: "queued-without-attachment", prompt: "Then explain it" }],
+			enqueue: vi.fn(),
+			steer: vi.fn(),
+			remove: vi.fn(),
+			clear: vi.fn(),
+		};
+
+		const screen = renderExternalQueueThread(queue);
+		const thumbnail = screen.getByRole("img", { name: "diagram.png attachment preview" });
+
+		await expect.element(thumbnail).toBeVisible();
+		await expect.element(thumbnail).toHaveAttribute("src", attachmentPreviewSrc);
+		expect(screen.getByTestId("kilo-composer-queue-attachment").elements()).toHaveLength(1);
+	});
+
+	it("collapses and deletes queued prompts", async () => {
+		const adapter = createBlockingAdapter();
+		const screen = renderThread({
+			initialMessages: [],
+			adapter,
+			enableMessageQueue: true,
+		});
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await input.fill("Start the long task");
+		await screen.getByRole("button", { name: "Send message" }).click();
+		await expect.poll(() => adapter.run.mock.calls.length).toBe(1);
+		await input.fill("Delete this follow-up");
+		await screen.getByRole("button", { name: "Add message to queue" }).click();
+
+		await screen.getByTestId("kilo-composer-queue-toggle").click();
+		await expect.element(screen.getByText("Delete this follow-up")).not.toBeInTheDocument();
+		await screen.getByTestId("kilo-composer-queue-toggle").click();
+		await screen.getByRole("button", { name: "Delete queued message" }).click();
+
+		await expect.element(screen.getByTestId("kilo-composer-queue")).not.toBeInTheDocument();
 	});
 });
 

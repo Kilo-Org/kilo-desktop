@@ -1,6 +1,6 @@
 import { motion, useTransform } from "motion/react";
 import { useEffect, type CSSProperties, type ReactNode } from "react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
@@ -184,7 +184,6 @@ export function AppSidebarLayout({
 	settingsSections = EMPTY_SETTINGS,
 }: AppSidebarLayoutProps) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
-	const navigate = useNavigate();
 	// PAGE_VISIT is a shell-level, cross-feature concern, so it uses the
 	// untagged useTelemetry() hook rather than the "auth" sdk instance below.
 	const { track } = useTelemetry();
@@ -268,78 +267,69 @@ export function AppSidebarLayout({
 					{session.status === "authenticated" && (
 						<SidebarFooter className="px-2 pb-3">
 							<SidebarMenu>
-								<SidebarMenuItem>
-									<div className="has-data-open:bg-foreground/5 hover:bg-foreground/5 flex w-full items-center rounded-md">
-										<DropdownMenu>
-											<DropdownMenuTrigger
-												render={
-													<SidebarMenuButton
-														aria-label={`Account menu for ${accountName}`}
-														size="lg"
-														className="data-open:text-sidebar-accent-foreground w-auto min-w-0 flex-1 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
-													/>
-												}
-											>
-												<Avatar className="size-8">
-													<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-												</Avatar>
-												<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-													<span className="truncate font-medium">{accountName}</span>
-													{accountEmail && (
-														<span className="text-muted-foreground truncate text-xs">
-															{accountEmail}
-														</span>
-													)}
-												</div>
-											</DropdownMenuTrigger>
-											<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
-												<DropdownMenuGroup>
-													<DropdownMenuLabel className="p-0 font-normal">
-														<div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-															<Avatar>
-																<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-															</Avatar>
-															<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-																<span className="truncate font-medium">{accountName}</span>
-																{accountEmail && (
-																	<span className="text-muted-foreground truncate text-xs">
-																		{accountEmail}
-																	</span>
-																)}
-															</div>
-														</div>
-													</DropdownMenuLabel>
-												</DropdownMenuGroup>
-												<DropdownMenuSeparator />
-												<DropdownMenuGroup>
-													<DropdownMenuItem
-														onClick={() => {
-															void navigate({ to: "/settings" });
-														}}
-													>
-														<SettingsIcon />
-														Settings
-													</DropdownMenuItem>
-													<DropdownMenuItem
-														onClick={() => {
-															void handleLogout();
-														}}
-													>
-														<LogOutIcon />
-														Log out
-													</DropdownMenuItem>
-												</DropdownMenuGroup>
-											</DropdownMenuContent>
-										</DropdownMenu>
-										<Link
-											to="/settings"
-											aria-label="Settings"
-											data-qa-id="nav-settings"
-											className="text-sidebar-foreground hover:bg-foreground/5 mr-1 flex size-8 shrink-0 items-center justify-center rounded-md [&_svg]:size-4"
+								<SidebarMenuItem className="has-data-open:bg-foreground/5 hover:bg-foreground/5 rounded-md transition-colors">
+									<DropdownMenu>
+										<DropdownMenuTrigger
+											render={
+												<SidebarMenuButton
+													aria-label={`Account menu for ${accountName}`}
+													size="lg"
+													className="data-open:text-sidebar-accent-foreground w-full min-w-0 pr-12 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
+													data-qa-id="account-menu"
+												/>
+											}
 										>
-											<SettingsIcon />
-										</Link>
-									</div>
+											<Avatar className="size-8">
+												<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
+											</Avatar>
+											<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+												<span className="truncate font-medium">{accountName}</span>
+												{accountEmail && (
+													<span className="text-muted-foreground truncate text-xs">
+														{accountEmail}
+													</span>
+												)}
+											</div>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
+											<DropdownMenuGroup>
+												<DropdownMenuLabel className="p-0 font-normal">
+													<div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+														<Avatar>
+															<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
+														</Avatar>
+														<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+															<span className="truncate font-medium">{accountName}</span>
+															{accountEmail && (
+																<span className="text-muted-foreground truncate text-xs">
+																	{accountEmail}
+																</span>
+															)}
+														</div>
+													</div>
+												</DropdownMenuLabel>
+											</DropdownMenuGroup>
+											<DropdownMenuSeparator />
+											<DropdownMenuGroup>
+												<DropdownMenuItem
+													onClick={() => {
+														void handleLogout();
+													}}
+												>
+													<LogOutIcon />
+													Log out
+												</DropdownMenuItem>
+											</DropdownMenuGroup>
+										</DropdownMenuContent>
+									</DropdownMenu>
+									<Link
+										to="/settings"
+										aria-label="Settings"
+										data-qa-id="nav-settings"
+										className="text-muted-foreground hover:bg-foreground/8 hover:text-sidebar-foreground absolute top-1/2 right-1 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-md transition-colors [&_svg]:size-4"
+									>
+										<SettingsIcon />
+									</Link>
 								</SidebarMenuItem>
 							</SidebarMenu>
 						</SidebarFooter>

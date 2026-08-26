@@ -60,6 +60,7 @@ describe("useKiloRuntime", () => {
 			backend: expect.objectContaining({ globalClient: {} }),
 			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
 			onError,
+			messageQueue: { cancelBehavior: "pause" },
 			adapters: { attachments: expect.objectContaining({ accept: "image/png,text/plain" }) },
 		});
 		expect(OpenCodeAttachmentAdapter).toHaveBeenCalledOnce();
@@ -134,6 +135,7 @@ describe("useKiloRuntime", () => {
 		expect(createKiloRuntimeBackend).not.toHaveBeenCalled();
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			client: expect.anything(),
+			messageQueue: { cancelBehavior: "pause" },
 			adapters: { attachments: expect.objectContaining({ accept: "image/png,text/plain" }) },
 		});
 	});

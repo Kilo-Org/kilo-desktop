@@ -47,8 +47,10 @@ import {
 	ErrorPrimitive,
 	getMcpAppFromToolPart,
 	MessagePrimitive,
+	QueueItemPrimitive,
 	SuggestionPrimitive,
 	ThreadPrimitive,
+	type QueueItemState,
 	type ToolCallMessagePartComponent,
 	useAui,
 	useAuiState,
@@ -57,13 +59,16 @@ import {
 	ArrowDownIcon,
 	ArrowUpIcon,
 	CheckCircle2Icon,
+	ChevronDownIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
 	DownloadIcon,
+	FileTextIcon,
 	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
 	SquareIcon,
+	Trash2Icon,
 } from "lucide-react";
 import {
 	createContext,
@@ -204,6 +209,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 			<ThreadPrimitive.Viewport
 				turnAnchor="bottom"
 				autoScroll
+				scrollToBottomOnRunStart={false}
 				data-slot="aui_thread-viewport"
 				className="relative flex flex-1 [scrollbar-gutter:stable] flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
@@ -303,11 +309,127 @@ const ThreadSuggestionItem: FC = () => {
 	);
 };
 
+type QueueItemAttachmentPreview = {
+	readonly name: string;
+	readonly src?: string;
+};
+
+type QueueItemWithAttachmentPreview = QueueItemState & {
+	readonly attachmentPreview?: QueueItemAttachmentPreview;
+};
+
+const QueueAttachmentPreview: FC<{ attachment: QueueItemAttachmentPreview }> = ({ attachment }) => {
+	return (
+		<div
+			className="border-border/60 bg-muted flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-md border"
+			data-qa-id="kilo-composer-queue-attachment"
+		>
+			{attachment.src ? (
+				<img
+					src={attachment.src}
+					alt={`${attachment.name} attachment preview`}
+					className="size-full object-cover"
+				/>
+			) : (
+				<FileTextIcon
+					role="img"
+					aria-label={`${attachment.name} attachment`}
+					className="text-muted-foreground size-3.5"
+				/>
+			)}
+		</div>
+	);
+};
+
+const ComposerQueue: FC = () => {
+	const queueLength = useAuiState((s) => s.composer.queue.length);
+	const [collapsed, setCollapsed] = useState(false);
+
+	if (queueLength === 0) return null;
+
+	return (
+		<div
+			className="border-border/60 bg-card/88 dark:bg-background/88 overflow-hidden rounded-xl border shadow-[0_8px_24px_-20px_rgba(0,0,0,0.7)] backdrop-blur-xl"
+			data-qa-id="kilo-composer-queue"
+		>
+			<button
+				type="button"
+				className={cn(
+					"text-muted-foreground hover:bg-muted/35 focus-visible:ring-ring/50 flex h-8 w-full items-center justify-between px-3 text-xs font-medium outline-none transition-colors focus-visible:ring-2",
+					!collapsed && "border-border/40 border-b",
+				)}
+				aria-expanded={!collapsed}
+				aria-controls="kilo-composer-queue-items"
+				onClick={() => setCollapsed((value) => !value)}
+				data-qa-id="kilo-composer-queue-toggle"
+			>
+				<span>{queueLength} queued</span>
+				<ChevronDownIcon
+					className={cn("size-3.5 transition-transform duration-150", collapsed && "-rotate-90")}
+				/>
+			</button>
+			{!collapsed ? (
+				<div id="kilo-composer-queue-items" className="flex max-h-36 flex-col overflow-y-auto p-1">
+					<ComposerPrimitive.Queue>
+						{({ queueItem }) => {
+							const attachmentPreview = (queueItem as QueueItemWithAttachmentPreview)
+								.attachmentPreview;
+
+							return (
+								<div
+									className="group hover:bg-muted/45 after:bg-border/35 relative flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-md pr-[3px] pl-2 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:content-[''] last:after:hidden"
+									data-qa-id="kilo-composer-queue-item"
+									data-queue-item-id={queueItem.id}
+								>
+									{attachmentPreview ? (
+										<QueueAttachmentPreview attachment={attachmentPreview} />
+									) : null}
+									<QueueItemPrimitive.Text className="text-foreground/90 min-w-0 flex-1 truncate text-[13px]" />
+									<QueueItemPrimitive.Steer
+										render={
+											<Button
+												type="button"
+												size="xs"
+												variant="ghost"
+												className="text-muted-foreground hover:text-foreground h-6 px-2 text-[11px] opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+												data-qa-id="kilo-composer-queue-send-now"
+											/>
+										}
+									>
+										Send now
+									</QueueItemPrimitive.Steer>
+									<QueueItemPrimitive.Remove
+										render={
+											<TooltipIconButton
+												tooltip="Delete queued message"
+												side="bottom"
+												type="button"
+												variant="ghost"
+												size="icon-xs"
+												className="text-muted-foreground hover:text-destructive-foreground size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+												aria-label="Delete queued message"
+												data-qa-id="kilo-composer-queue-delete"
+											/>
+										}
+									>
+										<Trash2Icon className="size-3" />
+									</QueueItemPrimitive.Remove>
+								</div>
+							);
+						}}
+					</ComposerPrimitive.Queue>
+				</div>
+			) : null}
+		</div>
+	);
+};
+
 const Composer: FC = () => {
 	const aui = useAui();
 	const isDraft = useAuiState(isDraftView);
 	const activeThreadId = useAuiState((s) => s.threadListItem.id);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
+	const hasMessageQueue = useAuiState((s) => s.thread.capabilities.queue);
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
@@ -320,7 +442,7 @@ const Composer: FC = () => {
 
 	const sendFollowup = () => {
 		if (isComposerEmpty) return;
-		aui.composer.send();
+		aui.composer.send(hasMessageQueue ? { startRun: false } : undefined);
 	};
 
 	useEffect(() => {
@@ -418,9 +540,10 @@ const Composer: FC = () => {
 
 	return (
 		<ComposerPrimitive.Root
-			className="aui-composer-root relative flex w-full flex-col"
+			className="aui-composer-root relative flex w-full flex-col gap-2"
 			onSubmit={handleSubmit}
 		>
+			<ComposerQueue />
 			<ComposerPrimitive.AttachmentDropzone
 				render={
 					<div
@@ -481,6 +604,7 @@ const ComposerAction: FC<{
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const canSend = useAuiState((s) => s.composer.canSend);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
+	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const isPromptBusy = isComposerPromptBusy(isRunning, pendingSuggestion);
 
@@ -608,19 +732,37 @@ const ComposerAction: FC<{
 					)
 				) : null}
 				{!showPlanFollowupActions && !isConnecting && isPromptBusy ? (
-					<ComposerPrimitive.Cancel
-						render={
-							<Button
-								type="button"
-								variant="default"
-								size="icon"
-								className="aui-composer-cancel size-7 rounded-full"
-								aria-label="Stop generating"
-							/>
-						}
-					>
-						<SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
-					</ComposerPrimitive.Cancel>
+					<>
+						{canQueue && !isComposerEmpty ? (
+							<ComposerPrimitive.Send
+								render={
+									<Button
+										type="button"
+										variant="default"
+										size="sm"
+										className="h-7 rounded-full px-3"
+										aria-label="Add message to queue"
+										data-qa-id="kilo-composer-queue-submit"
+									/>
+								}
+							>
+								Queue
+							</ComposerPrimitive.Send>
+						) : null}
+						<ComposerPrimitive.Cancel
+							render={
+								<Button
+									type="button"
+									variant={canQueue && !isComposerEmpty ? "outline" : "default"}
+									size="icon"
+									className="aui-composer-cancel size-7 rounded-full"
+									aria-label="Stop generating"
+								/>
+							}
+						>
+							<SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
+						</ComposerPrimitive.Cancel>
+					</>
 				) : null}
 			</div>
 		</div>

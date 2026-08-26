@@ -94,7 +94,7 @@ export function passportToUser(response: WhoamiResponse): AuthUser {
 }
 
 /**
- * `GET /api/auth/userinfo` passport. Every field is nullish/optional so server
+ * `GET /api/auth/oauth2/userinfo` passport. Every field is nullish/optional so server
  * shape drift never fails parsing; only `passport.attributes` is consumed today,
  * but the full shape is modeled for future consumers.
  */
@@ -167,7 +167,7 @@ export async function getUserPassport(
 	fetchImpl: OAuthFetch,
 	userAgent: string,
 ): Promise<UserInfoPassport> {
-	const response = await fetchImpl(`https://${domain}/api/auth/userinfo`, {
+	const response = await fetchImpl(`https://${domain}/api/auth/oauth2/userinfo`, {
 		method: "GET",
 		headers: {
 			Authorization: `Bearer ${apiKey}`,

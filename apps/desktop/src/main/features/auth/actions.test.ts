@@ -200,7 +200,7 @@ describe("getUserPassport", () => {
 
 		expect(result).toEqual(passport);
 		expect(fetch).toHaveBeenCalledWith(
-			`https://${DOMAIN}/api/auth/userinfo`,
+			`https://${DOMAIN}/api/auth/oauth2/userinfo`,
 			expect.objectContaining({
 				method: "GET",
 				headers: {

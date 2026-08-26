@@ -77,6 +77,20 @@ index 83999a844ee6224522f040e2281fe2f43be8641a..2100a39c0c3776f36738dfbd38128f0e
  					this.emit(normalized);
  				}
  				if (abortController.signal.aborted || this.stopped) return;
+diff --git a/dist/OpenCodeThreadController.js b/dist/OpenCodeThreadController.js
+index 81f121b24a9c1e80b42c52859e76dae3faae7512..c6ab3cd1de6720dc77576afd7dee140a60ce083b 100644
+--- a/dist/OpenCodeThreadController.js
++++ b/dist/OpenCodeThreadController.js
+@@ -450,7 +450,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	async replyToPermission(permissionId, response) {
+ 		await this.client.permission.reply({
+ 			requestID: permissionId,
+-			reply: response
++			reply: response,
++			...response !== "reject" ? { interactive: true } : {}
+ 		}, OPEN_CODE_REQUEST_OPTIONS);
+ 		this.dispatch({
+ 			type: "permission.replied",
 diff --git a/dist/index.d.ts b/dist/index.d.ts
 index e97bb56c8e35b317dd2f110c82bac096db44148b..b4ce506c2b1a698b01584a5f98041a619f669a9c 100644
 --- a/dist/index.d.ts
@@ -240,7 +254,7 @@ index 20262e54e37b2c694e6caecab2638b54af58045a..7beb4f39f89ddc3508817e5d89210c03
  //# sourceMappingURL=types.d.ts.map
 \ No newline at end of file
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d5799d059d01327a3edbcd998fdbeeae317c..48fc031ddb2953eae6aec19ec5a417b9b201ed91 100644
+index d795d5799d059d01327a3edbcd998fdbeeae317c..8806a9527cc8cc982cde5a44cad84511e6a5d37d 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
 @@ -6,17 +6,18 @@ import { openCodeExtras } from "./openCodeExtras.js";
@@ -584,6 +598,24 @@ index 4acaaa7b21bf048f9e10320e26d006da2bab91fd..857633231e7dfa679065c1612665a04e
            this.emit(normalized);
          }
          if (abortController.signal.aborted || this.stopped) {
+diff --git a/src/OpenCodeThreadController.ts b/src/OpenCodeThreadController.ts
+index 5ebfe4f59ba04cdfb9a4c5fc324b98e99716e850..7899373c25732af64c1dbd14ed68056106c5f622 100644
+--- a/src/OpenCodeThreadController.ts
++++ b/src/OpenCodeThreadController.ts
+@@ -719,6 +719,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+       {
+         requestID: permissionId,
+         reply: response,
++        // A human answered this prompt. The server refuses non-reject
++        // approvals of sensitive (skill-shell / sandbox-escalation)
++        // permissions unless `interactive` is set, silently leaving them
++        // pending — which later gets swept to "rejected" when a sibling
++        // permission in the same session is answered. Mirror the TUI, which
++        // sets interactive:true on Allow/Always and omits it on reject.
++        ...(response !== "reject" ? { interactive: true } : {}),
+       },
+       OPEN_CODE_REQUEST_OPTIONS,
+     );
 diff --git a/src/index.ts b/src/index.ts
 index 4ac43be38eb0337ed7fe9408ebd8ad6a0c2cb380..a2c9d2c083e8eb4a4139b42e59d7b444b52ab410 100644
 --- a/src/index.ts
@@ -1234,8 +1266,7 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..d5fb6b6240f9457dfaa78c62ce57b515
 +    }),
 +    [optimisticRepository, options, threadStatus],
 +  );
--
-+
+ 
 -  if (!sessionId) return fallbackRuntime;
 -  return threadRuntime;
 +  // One runtime whose store CONTENT switches. Alternating runtime instances

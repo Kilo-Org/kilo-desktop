@@ -2,6 +2,7 @@ import {
 	createContext,
 	memo,
 	useContext,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -28,6 +29,7 @@ import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import {
 	getKindMeta,
+	getActivityKind,
 	getSegmentStats,
 	indicesHavePendingAsk,
 	lastAskingPartIndex,
@@ -65,8 +67,9 @@ const ownsPendingAsk = (
 	return lastAsk >= 0 && indices.includes(lastAsk);
 };
 
-const GROUP_ANIMATION_DURATION = 100;
-const SUBGROUP_ANIMATION_DURATION = 100;
+const AUTO_COLLAPSE_DELAY = 1600;
+const GROUP_ANIMATION_DURATION = 200;
+const SUBGROUP_ANIMATION_DURATION = 200;
 const MAX_VISIBLE_ICONS = 5;
 
 /** Header is the whole story — expanding would reveal nothing (or a duplicate label). */
@@ -161,9 +164,41 @@ const ActivityLabel: FC<{
 };
 
 const contentAnimation =
-	"data-closed:animate-collapsible-up data-open:animate-collapsible-down overflow-hidden data-closed:ease-out data-open:ease-in";
+	"h-(--collapsible-panel-height) overflow-hidden transition-[height] ease-[cubic-bezier(0.32,0.72,0,1)] data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none";
+
+const useDelayedActivityOpen = (
+	active: boolean,
+	enabled: boolean,
+	onCollapse: () => void,
+): boolean => {
+	const [heldOpen, setHeldOpen] = useState(active);
+	const onCollapseRef = useRef(onCollapse);
+	onCollapseRef.current = onCollapse;
+
+	useEffect(() => {
+		if (!enabled) {
+			setHeldOpen(false);
+			return;
+		}
+		if (active) {
+			setHeldOpen(true);
+			return;
+		}
+		if (!heldOpen) return;
+
+		const timeout = setTimeout(() => {
+			onCollapseRef.current();
+			setHeldOpen(false);
+		}, AUTO_COLLAPSE_DELAY);
+
+		return () => clearTimeout(timeout);
+	}, [active, enabled, heldOpen]);
+
+	return enabled && (active || heldOpen);
+};
 
 const ActivityStreamContext = createContext(false);
+const ActivitySettlingKindContext = createContext<ActivityKind | null>(null);
 
 export type ActivitySubgroupContextValue = {
 	kind: ActivityKind;
@@ -192,11 +227,28 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		[parts, group.indices, pendingQuestions, messageStatusType],
 	);
 
-	const [open, setOpen] = useState(false);
+	const [userOpen, setUserOpen] = useState<boolean | null>(null);
 	const [streamExpanded, setStreamExpanded] = useState(false);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const lockScroll = useScrollLock(collapsibleRef, GROUP_ANIMATION_DURATION);
+	const activeSegment = [...summary.segments]
+		.reverse()
+		.find(
+			(segment) =>
+				segment.running || segment.requiresAction || (hasPendingAsk && segment.kind === "asking"),
+		);
+	// Only the activity group that owns the in-flight questionnaire should look
+	// "live". The message can remain running between tools while it considers
+	// its next step, but that gap should settle the tool group that just finished.
+	const streaming = activeSegment !== undefined;
+	const automaticOpen = useDelayedActivityOpen(
+		streaming,
+		summary.segments.length > 1 && userOpen === null,
+		lockScroll,
+	);
+	const open = userOpen ?? automaticOpen;
+	const lastActiveKindRef = useRef<ActivityKind | null>(null);
 
 	const startIndex = group.indices[0] ?? 0;
 	const endIndex = group.indices.at(-1) ?? 0;
@@ -227,20 +279,18 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		);
 	}
 
-	// Only the activity group that owns the in-flight questionnaire should look
-	// "live". Message-level requires-action alone would spin every prior Asking.
-	const streaming = messageStatusType === "running" || summary.requiresAction || hasPendingAsk;
-	const activeSegment = [...summary.segments]
-		.reverse()
-		.find(
-			(segment) =>
-				segment.running || segment.requiresAction || (hasPendingAsk && segment.kind === "asking"),
-		);
 	const activeLoading = Boolean(
 		activeSegment?.running ||
 		activeSegment?.requiresAction ||
 		(hasPendingAsk && activeSegment?.kind === "asking"),
 	);
+	if (activeSegment) lastActiveKindRef.current = activeSegment.kind;
+	const compactKind = !streaming && userOpen !== true ? lastActiveKindRef.current : null;
+	const settlingKind = automaticOpen ? compactKind : null;
+	const settlingSegment = settlingKind
+		? summary.segments.find((segment) => segment.kind === settlingKind)
+		: undefined;
+	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
 
 	if (streaming && !streamExpanded) {
 		const label = activeSegment
@@ -258,7 +308,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					type="button"
 					onClick={() => {
 						setStreamExpanded(true);
-						setOpen(true);
+						setUserOpen(true);
 					}}
 					className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
 				>
@@ -287,12 +337,31 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 				}
 				onOpenChange={(next) => {
 					lockScroll();
-					setOpen(next);
+					setUserOpen(next);
 					if (!next) setStreamExpanded(false);
 				}}
 			>
 				<CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors">
-					{open ? (
+					{settlingSegment ? (
+						<>
+							<ActivityIconStack
+								items={summary.iconItems.map((item, index) => ({
+									...item,
+									colored: index === settlingIndex,
+									loading: false,
+								}))}
+								className="-space-x-1"
+							/>
+							<span className="font-medium">
+								<ActivityLabel
+									label={getKindMeta(settlingSegment.kind).doneLabel(
+										getSegmentStats(parts, settlingSegment),
+									)}
+								/>
+							</span>
+							<ChevronDownIcon className="size-3.5 shrink-0" />
+						</>
+					) : open ? (
 						<>
 							<span className="font-medium">Show less</span>
 							<ChevronUpIcon className="size-3.5 shrink-0" />
@@ -307,13 +376,12 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 						</>
 					)}
 				</CollapsibleTrigger>
-				<CollapsibleContent
-					className={cn(
-						contentAnimation,
-						"data-closed:duration-(--animation-duration) data-open:duration-(--animation-duration)",
-					)}
-				>
-					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
+				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
+					<ActivitySettlingKindContext.Provider value={compactKind}>
+						<ActivityStreamContext.Provider value={compactKind !== null}>
+							<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
+						</ActivityStreamContext.Provider>
+					</ActivitySettlingKindContext.Provider>
 				</CollapsibleContent>
 			</Collapsible>
 		</div>
@@ -332,7 +400,10 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
 	const pendingQuestions = useOpenCodeQuestions();
 	const segment = useMemo<ActivitySegment>(() => {
-		const indices = [...group.indices];
+		const indices = group.indices.filter((index) => {
+			const part = parts[index];
+			return part !== undefined && getActivityKind(part) === kind;
+		});
 		let running = false;
 		let requiresAction = false;
 		for (const index of indices) {
@@ -345,31 +416,34 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const hasPendingAsk = useMemo(
 		() =>
 			kind === "asking" &&
-			ownsPendingAsk(parts, group.indices, pendingQuestions, messageRequiresAction),
-		[kind, parts, group.indices, pendingQuestions, messageRequiresAction],
+			ownsPendingAsk(parts, segment.indices, pendingQuestions, messageRequiresAction),
+		[kind, parts, segment.indices, pendingQuestions, messageRequiresAction],
 	);
 
 	const [toggled, setToggled] = useState<boolean | null>(null);
-	const open = segment.requiresAction || hasPendingAsk || (toggled ?? segment.running);
-	// Status-driven panels close immediately so their measured height never shifts
-	// later response content; user-triggered disclosure changes still animate.
-	const shouldAnimatePanelTransition = toggled !== null || open;
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const lockScroll = useScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
+	const statusActive = segment.running || segment.requiresAction || hasPendingAsk;
+	const automaticOpen = useDelayedActivityOpen(statusActive, toggled === null, lockScroll);
+	const settlingKind = useContext(ActivitySettlingKindContext);
+	const open =
+		segment.requiresAction ||
+		hasPendingAsk ||
+		(toggled ?? (settlingKind === kind || automaticOpen));
 
 	const streamCollapsed = useContext(ActivityStreamContext);
 
 	const meta = getKindMeta(kind);
 	const stats = useMemo(() => getSegmentStats(parts, segment), [parts, segment]);
 	const subgroupContext = useMemo<ActivitySubgroupContextValue>(
-		() => ({ kind, size: group.indices.length }),
-		[kind, group.indices.length],
+		() => ({ kind, size: segment.indices.length }),
+		[kind, segment.indices.length],
 	);
 
 	const active = segment.running || segment.requiresAction || hasPendingAsk;
 
-	if (streamCollapsed && !active) return null;
+	if (streamCollapsed && !active && settlingKind !== kind) return null;
 
 	// A single label-only activity is fully described by its header. Multiple
 	// items need a disclosure for their child list; asking is the exception
@@ -382,7 +456,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	if (labelOnly) {
 		if (streamCollapsed) return null;
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
-		const showChildren = kind !== "asking" && kind !== "suggesting" && group.indices.length > 1;
+		const showChildren = kind !== "asking" && kind !== "suggesting" && segment.indices.length > 1;
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
 				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
@@ -468,13 +542,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						)}
 					/>
 				</CollapsibleTrigger>
-				<CollapsibleContent
-					className={cn(
-						"overflow-hidden",
-						shouldAnimatePanelTransition &&
-							"data-closed:animate-collapsible-up data-open:animate-collapsible-down data-closed:duration-(--animation-duration) data-open:duration-(--animation-duration) data-closed:ease-out data-open:ease-in",
-					)}
-				>
+				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
 					<div
 						className={cn(
 							"border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3",

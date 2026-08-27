@@ -33,9 +33,6 @@ export const FallbackTool = ToolCallFallback;
 export const AskQuestionTool: ToolCallMessagePartComponent = memo(() => null);
 AskQuestionTool.displayName = "AskQuestionTool";
 
-/**
- * Suggestions surface as an activity subgroup plus the composer SuggestBar.
- * The picker lives outside the tool-call chrome.
- */
+/** Suggestions surface only in the composer SuggestBar. */
 export const SuggestTool: ToolCallMessagePartComponent = memo(() => null);
 SuggestTool.displayName = "SuggestTool";

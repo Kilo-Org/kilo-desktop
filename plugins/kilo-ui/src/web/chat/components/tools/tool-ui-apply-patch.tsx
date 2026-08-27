@@ -5,7 +5,7 @@ import { FileDiff, PatchDiff } from "@pierre/diffs/react";
 import { parseChatPatchFiles, PIERRE_DIFF_OPTIONS } from "../../pierre-diff.js";
 import { usePrimePierreDiffs } from "../../use-prime-pierre-diffs.js";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { getPatchInfo, str } from "./tool-ui-shared.js";
+import { basename, getPatchInfo, str } from "./tool-ui-shared.js";
 
 interface PatchBlock {
 	type: string;
@@ -137,6 +137,30 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 				{patchInfo.removed > 0 ? <span className="text-red-500">-{patchInfo.removed}</span> : null}
 			</span>
 		) : null;
+
+	if (fileDiffs.length > 1) {
+		return (
+			<div className="flex flex-col gap-0.5">
+				{fileDiffs.map((fileDiff) => (
+					<SoloAwareExpandableRow
+						key={fileDiff.cacheKey ?? fileDiff.name}
+						kind="editing"
+						liveVerb="Editing"
+						doneVerb="Edited"
+						object={basename(fileDiff.name)}
+						status={status}
+						hasDetail
+						forceRow
+						detail={
+							<div className="overflow-hidden rounded-md border">
+								<FileDiff fileDiff={fileDiff} options={PIERRE_DIFF_OPTIONS} />
+							</div>
+						}
+					/>
+				))}
+			</div>
+		);
+	}
 
 	return (
 		<SoloAwareExpandableRow

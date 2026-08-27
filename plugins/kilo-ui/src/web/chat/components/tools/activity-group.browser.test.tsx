@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
@@ -21,10 +21,12 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 }));
 
 import { ActivityGroup, ActivitySubgroup } from "./activity-group.js";
+import { ApplyPatchDiff } from "./tool-ui-apply-patch.js";
 import { ToolCallFallback } from "./tool-ui-inline.js";
 import { ReadActivity } from "./tool-ui-read-search.js";
 import { SkillActivity } from "./tool-ui-skill.js";
 import { TaskActivity } from "./tool-ui-task.js";
+import { WebFetchActivity, WebSearchActivity } from "./tool-ui-web.js";
 import type { ActivityKind } from "./tool-categories.js";
 
 const toolPart = (
@@ -76,6 +78,7 @@ const renderActivity = (
 
 afterEach(() => {
 	cleanup();
+	vi.useRealTimers();
 });
 
 describe("Reading activity subgroup", () => {
@@ -252,8 +255,67 @@ describe("Planning activity subgroup", () => {
 	});
 });
 
+describe("Editing activity subgroup", () => {
+	it("renders a multi-file patch as collapsed per-file rows", () => {
+		const patchText = `*** Begin Patch
+*** Update File: first.txt
+@@
+-before
++after
+*** Update File: second.txt
+@@
+-old
++new
+*** End Patch`;
+		const { container, getByRole, queryByText } = renderActivity(
+			"editing",
+			[toolPart("patch-1", "apply_patch", { patchText })],
+			ApplyPatchDiff,
+		);
+		fireEvent.click(getByRole("button", { name: "Edited 2 files" }));
+		const firstRow = getByRole("button", { name: "Edited first.txt" });
+
+		expect(getByRole("button", { name: "Edited second.txt" })).toBeDefined();
+		expect(container.querySelectorAll("diffs-container")).toHaveLength(0);
+		expect(queryByText("after")).toBeNull();
+
+		fireEvent.click(firstRow);
+
+		expect(container.querySelectorAll("diffs-container")).toHaveLength(1);
+	});
+});
+
+describe("Web activity subgroup", () => {
+	it("does not count hidden OpenCode lifecycle parts as web requests", () => {
+		const search = toolPart("web-1", "websearch", { query: "Numba" });
+		const fetch = toolPart("web-2", "webfetch", { url: "https://example.com" });
+		runtime.message.parts = [
+			search,
+			{
+				type: "data",
+				name: "opencode-step-finish",
+				data: {},
+			} as unknown as ToolCallMessagePartProps,
+			fetch,
+		];
+
+		const { getByRole, queryByRole } = render(
+			<ActivityGroup group={{ indices: [0, 1, 2] }}>
+				<ActivitySubgroup group={{ indices: [0, 1, 2] }} kind="web">
+					<WebSearchActivity {...search} />
+					<WebFetchActivity {...fetch} />
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+
+		expect(getByRole("button", { name: "2 web requests" })).toBeDefined();
+		expect(queryByRole("button", { name: "3 web requests" })).toBeNull();
+	});
+});
+
 describe("Notebooks activity subgroup", () => {
-	it("expands the live tool group and collapses it when the tools finish", async () => {
+	it("keeps the completed tool group open briefly, then collapses it", async () => {
+		vi.useFakeTimers();
 		const completedRead = readPart("call-1", "/src/mark.svg");
 		const runningNotebook = {
 			...toolPart("call-2", "notebooks_create_notebook", {}),
@@ -272,7 +334,9 @@ describe("Notebooks activity subgroup", () => {
 
 		runtime.message.parts = [completedRead, runningNotebook];
 		runtime.message.status = { type: "running" };
-		const { getByText, queryByText, rerender } = render(renderGroup(runtime.message.parts));
+		const { container, getByRole, getByText, queryByText, rerender } = render(
+			renderGroup(runtime.message.parts),
+		);
 
 		expect(getByText("Create notebook")).toBeDefined();
 
@@ -280,12 +344,27 @@ describe("Notebooks activity subgroup", () => {
 			completedRead,
 			{ ...runningNotebook, status: { type: "complete" as const } },
 		];
-		runtime.message.status = { type: "complete" };
+		// The message stays running while GroupedParts renders "Considering next steps".
+		runtime.message.status = { type: "running" };
 		rerender(renderGroup(runtime.message.parts));
 
-		await waitFor(() => {
-			expect(queryByText("Create notebook")).toBeNull();
+		expect(getByText("Create notebook")).toBeDefined();
+		expect(queryByText("Read mark.svg")).toBeNull();
+		expect(queryByText("Show less")).toBeNull();
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1599);
 		});
+		expect(getByText("Create notebook")).toBeDefined();
+		expect(queryByText("Read mark.svg")).toBeNull();
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1);
+		});
+		expect(getByRole("button", { name: /tools used/ })).toBeDefined();
+		expect(queryByText("Show less")).toBeNull();
+		expect(container.querySelector('[data-slot="collapsible-content"]')?.className).toContain(
+			"transition-[height]",
+		);
 	});
 
 	it("shows notebook tool display names without the notebooks prefix", () => {

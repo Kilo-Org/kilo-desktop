@@ -15,14 +15,11 @@ import { MessageCopyButton } from "./message-copy-button.js";
 import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
-import { isHiddenOpenCodeDataPart } from "../tools/opencode-data-part.js";
+import { createActivityGroupBy } from "../tools/activity-grouping.js";
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
-import { getGroupKeyForTool, activityKindFromGroupKey } from "../tools/tool-categories.js";
-import {
-	getPlanProjectionForMessage,
-	shouldExcludeToolCallFromActivityGroup,
-} from "../../plan/index.js";
+import { activityKindFromGroupKey } from "../tools/tool-categories.js";
+import { getPlanProjectionForMessage } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
 import {
 	Avatar,
@@ -45,7 +42,6 @@ import {
 	BranchPickerPrimitive,
 	ComposerPrimitive,
 	ErrorPrimitive,
-	getMcpAppFromToolPart,
 	MessagePrimitive,
 	QueueItemPrimitive,
 	SuggestionPrimitive,
@@ -946,11 +942,13 @@ const AssistantMessage: FC = () => {
 	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
 		useContext(ThreadComponentsContext);
 	const messageId = useAuiState((s) => s.message.id);
+	const messageParts = useAuiState((s) => s.message.parts);
 	const planThread = usePlanThreadProjection();
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
 	const virtualize = useVirtualizeMessage();
+	const groupActivityParts = createActivityGroupBy(messageParts, { hiddenPlanCallIds });
 
 	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -971,28 +969,7 @@ const AssistantMessage: FC = () => {
 			>
 				<MessagePrimitive.GroupedParts
 					indicator={assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity)}
-					groupBy={(part, context) => {
-						if (part.type === "reasoning") {
-							return ["group-activity", "group-thinking"] as const;
-						}
-						if (part.type === "tool-call") {
-							if (getMcpAppFromToolPart(part)) return [];
-							if (context.toolUIs?.[part.toolName]?.[0]?.standalone) return [];
-							if (
-								shouldExcludeToolCallFromActivityGroup(part, {
-									hiddenPlanCallIds,
-								})
-							) {
-								return [];
-							}
-							return ["group-activity", getGroupKeyForTool(part.toolName)] as const;
-						}
-						// Hidden step markers stay in the activity run so they don't fragment groups.
-						if (part.type === "data" && isHiddenOpenCodeDataPart(part.name)) {
-							return ["group-activity"] as const;
-						}
-						return [];
-					}}
+					groupBy={groupActivityParts}
 				>
 					{({ part, children }) => {
 						switch (part.type) {

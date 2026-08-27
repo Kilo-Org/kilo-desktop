@@ -94,6 +94,7 @@ export const SoloAwareExpandableRow = memo(
 		detail,
 		completeIcon,
 		trailing,
+		forceRow = false,
 		hideSoloWithoutDetail = false,
 	}: {
 		kind: ActivitySubgroupContextValue["kind"];
@@ -105,11 +106,13 @@ export const SoloAwareExpandableRow = memo(
 		detail: ReactNode;
 		completeIcon?: ReactNode;
 		trailing?: ReactNode;
+		/** Render the trigger even when one tool expands into multiple logical rows. */
+		forceRow?: boolean;
 		/** Hide a redundant solo label when the subgroup header already describes it. */
 		hideSoloWithoutDetail?: boolean;
 	}) => {
 		const [open, setOpen] = useState(false);
-		const solo = useSoloInSubgroup(kind);
+		const solo = useSoloInSubgroup(kind) && !forceRow;
 
 		const label = (
 			<VerbObjectLabel liveVerb={liveVerb} doneVerb={doneVerb} object={object} status={status} />

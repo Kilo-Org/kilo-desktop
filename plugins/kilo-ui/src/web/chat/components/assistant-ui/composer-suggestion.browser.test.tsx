@@ -240,6 +240,7 @@ describe("composer while a suggestion is pending", () => {
 		await expect
 			.element(screen.getByRole("button", { name: "Stop generating" }))
 			.not.toBeInTheDocument();
+		await expect.element(screen.getByText("Suggesting")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("Considering next steps")).not.toBeInTheDocument();
 	});
 

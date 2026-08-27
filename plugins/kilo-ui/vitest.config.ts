@@ -22,6 +22,13 @@ export default defineConfig({
 				// Drizzle table definitions; behavior is covered by workspaces
 				// integration tests, not by unit-testing the schema declarations.
 				"src/main/workspaces/schema.ts",
+				// MCP Apps contract schema declarations (zod), no behavior to unit test.
+				"src/contracts/mcp-apps/schemas.ts",
+				// Thin TAP-resource hook that forwards MCP App data-plane calls to
+				// sdk.client; exercised in the browser/e2e, not unit-testable in
+				// isolation. The proxy logic it targets lives in (and is tested via)
+				// main/mcp-apps/mcp-apps-handlers.ts.
+				"src/web/chat/runtime/mcp-apps-host.ts",
 			]),
 			include: ["src/**"],
 		},

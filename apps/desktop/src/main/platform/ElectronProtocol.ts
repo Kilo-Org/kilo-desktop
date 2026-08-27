@@ -91,10 +91,20 @@ export function createContentSecurityPolicy(
 	frameOrigins: readonly string[] = [],
 ): string {
 	const developmentSources = developmentOrigin ? ` ${new URL(developmentOrigin).origin} ws:` : "";
-	const trustedInlineScripts = inlineScriptHashes.map((hash) => ` 'sha256-${hash}'`).join("");
+	// NOTE: MCP App widgets render in sandboxed blob-URL iframes, which inherit
+	// this document's CSP. Their bundled inline scripts therefore require
+	// `'unsafe-inline'` here. Because CSP ignores `'unsafe-inline'` whenever a
+	// hash/nonce source is also present, we cannot combine it with the previous
+	// per-response `inlineScriptHashes` allowlist — the two are mutually
+	// exclusive. This trades the main window's hash-based inline-script defense
+	// for blanket inline execution. TODO(#<mcp-apps-csp>): serve MCP App HTML
+	// under a dedicated embedded custom-scheme origin (see
+	// `createEmbeddedContentSecurityPolicy`) so the main window keeps its strict
+	// hash-based policy.
+	void inlineScriptHashes;
 	return [
 		"default-src 'self'",
-		`script-src 'self'${developmentSources}${trustedInlineScripts}`,
+		`script-src 'self' 'unsafe-inline'${developmentSources}`,
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' data: blob:",
 		"font-src 'self' data:",
@@ -103,12 +113,13 @@ export function createContentSecurityPolicy(
 		// the loopback WebSockets the self-hosted WebMCP relay widget uses to
 		// reach the `@mcp-b/webmcp-local-relay` daemon.
 		`connect-src 'self' ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
-		// `frame-src 'self'`: the app embeds the WebMCP relay widget in a hidden
-		// same-origin iframe. `frame-ancestors 'self'`: the widget response must
+		// `frame-src 'self' blob:`: the app embeds the WebMCP relay widget in a
+		// hidden same-origin iframe, and MCP App widgets render in sandboxed
+		// blob-URL iframes. `frame-ancestors 'self'`: the widget response must
 		// permit being framed by the same-origin app (a `'none'` here blocks the
 		// relay iframe and breaks tool discovery). No cross-origin embedders exist
 		// under the custom scheme, so `'self'` still blocks external framing.
-		`frame-src 'self'${frameOrigins.length > 0 ? ` ${frameOrigins.join(" ")}` : ""}`,
+		`frame-src 'self' blob:${frameOrigins.length > 0 ? ` ${frameOrigins.join(" ")}` : ""}`,
 		"object-src 'none'",
 		"base-uri 'none'",
 		"frame-ancestors 'self'",

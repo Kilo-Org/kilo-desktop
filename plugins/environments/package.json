@@ -10,6 +10,7 @@
 		"./web": "./src/web/index.ts"
 	},
 	"scripts": {
+		"prepare-assets": "vite build --config src/mcp-app/vite.config.ts",
 		"check": "tsc --noEmit -p tsconfig.json",
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
@@ -18,6 +19,8 @@
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
 		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
 		"@anaconda-agentic-desktop/ui": "workspace:*",
+		"@modelcontextprotocol/ext-apps": "^1.7.4",
+		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@tanstack/react-query": "^5.101.4",
 		"execa": "^9.6.0",
 		"lodash": "catalog:",
@@ -44,6 +47,7 @@
 		"tailwindcss": "^4.3.3",
 		"typescript": "catalog:",
 		"vite": "catalog:",
+		"vite-plugin-singlefile": "^2.0.0",
 		"vitest": "catalog:"
 	}
 }

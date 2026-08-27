@@ -1,0 +1,191 @@
+/*
+ * Anaconda Design System Tokens for MCP App
+ * Extracted from @anaconda/shadcn-theme
+ */
+
+/* ─── Color Primitives ─── */
+:root {
+	/* Green */
+	--green-50: oklch(0.967 0.027 157.384);
+	--green-100: oklch(0.943 0.04 160.09);
+	--green-150: oklch(0.917 0.058 159.106);
+	--green-200: oklch(0.9 0.083 155.65);
+	--green-300: oklch(0.867 0.1 153.614);
+	--green-400: oklch(0.856 0.12 154.325);
+	--green-500: oklch(0.825 0.146 153.097);
+	--green-600: oklch(0.799 0.166 151.903);
+	--green-700: oklch(0.731 0.217 146.818);
+	--green-750: oklch(0.682 0.202 146.855);
+	--green-800: oklch(0.599 0.174 147.562);
+	--green-850: oklch(0.567 0.165 147.295);
+	--green-900: oklch(0.473 0.136 147.669);
+	--green-925: oklch(0.393 0.112 148.064);
+	--green-950: oklch(0.319 0.087 149.629);
+
+	/* Lime */
+	--lime-50: oklch(0.964 0.011 136.559);
+	--lime-100: oklch(0.945 0.024 139.438);
+	--lime-150: oklch(0.927 0.041 138.46);
+	--lime-200: oklch(0.913 0.064 138.083);
+	--lime-300: oklch(0.9 0.09 138.221);
+	--lime-400: oklch(0.892 0.12 138.608);
+	--lime-500: oklch(0.888 0.153 138.539);
+	--lime-600: oklch(0.888 0.188 138.763);
+	--lime-700: oklch(0.853 0.225 139.192);
+	--lime-750: oklch(0.823 0.249 139.905);
+	--lime-800: oklch(0.745 0.233 140.243);
+	--lime-850: oklch(0.624 0.191 139.921);
+	--lime-900: oklch(0.503 0.149 139.755);
+	--lime-925: oklch(0.38 0.106 139.388);
+	--lime-950: oklch(0.253 0.062 138.719);
+
+	/* Blue */
+	--blue-50: oklch(0.971 0.014 258.345);
+	--blue-100: oklch(0.931 0.031 261.744);
+	--blue-150: oklch(0.858 0.067 262.495);
+	--blue-200: oklch(0.724 0.143 264.174);
+	--blue-300: oklch(0.639 0.193 263.29);
+	--blue-400: oklch(0.601 0.216 262.881);
+	--blue-500: oklch(0.572 0.221 261.072);
+	--blue-600: oklch(0.529 0.203 261.052);
+	--blue-700: oklch(0.486 0.186 261.118);
+	--blue-750: oklch(0.465 0.175 261.008);
+	--blue-800: oklch(0.398 0.146 260.771);
+	--blue-850: oklch(0.329 0.115 260.631);
+	--blue-900: oklch(0.28 0.093 260.508);
+	--blue-950: oklch(0.251 0.112 261.525);
+
+	/* Red */
+	--red-50: oklch(0.941 0.022 17.548);
+	--red-100: oklch(0.936 0.032 20.107);
+	--red-150: oklch(0.911 0.046 19.683);
+	--red-200: oklch(0.885 0.06 19.619);
+	--red-300: oklch(0.807 0.11 19.739);
+	--red-400: oklch(0.682 0.148 21.753);
+	--red-500: oklch(0.633 0.174 23.878);
+	--red-600: oklch(0.594 0.191 25.141);
+	--red-700: oklch(0.539 0.221 29.282);
+	--red-750: oklch(0.502 0.205 29.294);
+	--red-800: oklch(0.459 0.189 29.234);
+	--red-850: oklch(0.419 0.171 29.337);
+	--red-900: oklch(0.381 0.156 29.234);
+	--red-925: oklch(0.347 0.142 29.415);
+	--red-950: oklch(0.287 0.118 29.234);
+
+	/* Yellow */
+	--yellow-50: oklch(0.98 0.025 89.209);
+	--yellow-100: oklch(0.956 0.039 78.586);
+	--yellow-150: oklch(0.941 0.075 89.902);
+	--yellow-200: oklch(0.913 0.108 89.112);
+	--yellow-300: oklch(0.875 0.133 84.083);
+	--yellow-400: oklch(0.879 0.146 88.02);
+	--yellow-500: oklch(0.859 0.161 86.219);
+	--yellow-600: oklch(0.841 0.167 83.074);
+	--yellow-700: oklch(0.831 0.171 81.41);
+	--yellow-750: oklch(0.774 0.159 81.462);
+	--yellow-800: oklch(0.742 0.152 81.742);
+	--yellow-850: oklch(0.644 0.132 82.07);
+	--yellow-900: oklch(0.609 0.124 87.599);
+	--yellow-925: oklch(0.535 0.109 82.632);
+	--yellow-950: oklch(0.443 0.09 83.413);
+
+	/* Storm */
+	--storm-50: oklch(0.985 0 0);
+	--storm-100: oklch(0.969 0.005 258.325);
+	--storm-150: oklch(0.947 0.01 252.813);
+	--storm-200: oklch(0.928 0.013 251.564);
+	--storm-250: oklch(0.901 0.016 253.91);
+	--storm-300: oklch(0.87 0.019 255.543);
+	--storm-400: oklch(0.711 0.04 258.371);
+	--storm-450: oklch(0.633 0.043 257.949);
+	--storm-500: oklch(0.554 0.046 257.526);
+	--storm-600: oklch(0.446 0.037 257.281);
+	--storm-700: oklch(0.372 0.028 256.819);
+	--storm-750: oklch(0.327 0.026 260.067);
+	--storm-800: oklch(0.279 0.023 259.355);
+	--storm-825: oklch(0.263 0.019 258.363);
+	--storm-850: oklch(0.243 0.015 261.655);
+	--storm-900: oklch(0.209 0.017 264.101);
+	--storm-950: oklch(0.129 0 0);
+
+	/* Neutral (referenced by --secondary / --secondary-foreground) */
+	--neutral-50: oklch(0.985 0 0);
+	--neutral-100: oklch(0.97 0 0);
+	--neutral-200: oklch(0.922 0 0);
+	--neutral-300: oklch(0.87 0 0);
+	--neutral-400: oklch(0.708 0 0);
+	--neutral-500: oklch(0.556 0 0);
+	--neutral-600: oklch(0.439 0 0);
+	--neutral-700: oklch(0.371 0 0);
+	--neutral-800: oklch(0.269 0 0);
+	--neutral-900: oklch(0.205 0 0);
+	--neutral-950: oklch(0.145 0 0);
+}
+
+/* ─── Semantic Tokens (Light) ─── */
+:root {
+	--background: var(--storm-100);
+	--foreground: var(--storm-900);
+	--ring: var(--blue-600);
+	--input: var(--storm-300);
+	--border: var(--storm-200);
+	--destructive: var(--red-100);
+	--accent: var(--storm-150);
+	--accent-foreground: var(--storm-750);
+	--muted: var(--storm-50);
+	--muted-foreground: var(--storm-450);
+	--secondary: var(--neutral-800);
+	--secondary-foreground: var(--neutral-100);
+	--primary: var(--green-700);
+	--primary-foreground: var(--storm-900);
+	--popover: var(--storm-50);
+	--popover-foreground: var(--storm-900);
+	--card: var(--storm-50);
+	--card-foreground: var(--storm-900);
+	--font-sans: Inter, sans-serif;
+	--font-mono: "Source Code Pro", "SF Mono", monospace;
+	--radius: 0.625rem;
+}
+
+/* ─── Semantic Tokens (Dark) ─── */
+[data-theme="dark"] {
+	--background: var(--storm-900);
+	--foreground: var(--storm-50);
+	--ring: var(--lime-700);
+	--input: var(--storm-600);
+	--border: var(--storm-700);
+	--destructive: var(--red-900);
+	--accent: var(--storm-950);
+	--accent-foreground: var(--storm-300);
+	--muted: var(--storm-850);
+	--muted-foreground: var(--storm-400);
+	--secondary: var(--neutral-50);
+	--secondary-foreground: var(--neutral-800);
+	--primary: var(--lime-600);
+	--primary-foreground: var(--storm-900);
+	--popover: var(--storm-850);
+	--popover-foreground: var(--storm-50);
+	--card: var(--storm-850);
+	--card-foreground: var(--storm-50);
+}
+
+/* ─── Base Resets ─── */
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	background: var(--background);
+	color: var(--foreground);
+	font-family:
+		Inter,
+		-apple-system,
+		BlinkMacSystemFont,
+		"Segoe UI",
+		sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+	padding: 12px;
+}

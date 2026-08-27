@@ -5,6 +5,18 @@ import { ProviderRegistry } from "./ProviderRegistry.js";
 import { CondaProvider } from "./providers/conda/index.js";
 
 /**
+ * Capability shape exposed by kilo-ui for local MCP App resource registration.
+ * Plugins call `register(uri, html)` to make their MCP App HTML available to
+ * the MCP Apps renderer without hitting the network.
+ */
+interface LocalMcpAppsCapability extends Record<string, unknown> {
+	localMcpApps: {
+		register(uri: string, html: string): void;
+		unregister(uri: string): void;
+	};
+}
+
+/**
  * LaunchDarkly feature-flag key gating the entire environments plugin.
  *
  * When this evaluates to `false` (the default, used when the flag is missing,
@@ -86,4 +98,18 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	}
 
 	mainSdk.logger.info(`boot: ${registry.list().length} provider(s) registered`);
+
+	// Register the environments list MCP App HTML with kilo-ui's local
+	// resource registry so it renders as an interactive iframe in chat.
+	const kiloUi = mainSdk.plugins.get<LocalMcpAppsCapability>("kilo-ui");
+	if (kiloUi?.localMcpApps) {
+		try {
+			const { default: envListAppHtml } = await import("../mcp-app/dist/index.html?raw");
+			kiloUi.localMcpApps.register("ui://environments/conda-envs-list", envListAppHtml);
+			mainSdk.onDispose(() => kiloUi.localMcpApps.unregister("ui://environments/conda-envs-list"));
+			mainSdk.logger.info("mcp-app: registered ui://environments/conda-envs-list");
+		} catch (error) {
+			mainSdk.logger.warn("mcp-app: failed to load environments MCP App HTML", { error });
+		}
+	}
 }

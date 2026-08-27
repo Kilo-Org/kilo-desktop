@@ -1,0 +1,87 @@
+/* Component styles for the environments list MCP App widget. */
+
+.empty-state {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 80px;
+	color: var(--muted-foreground);
+	font-style: italic;
+	font-size: 13px;
+}
+
+.error-state {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 80px;
+	padding: 12px;
+	color: var(--destructive-foreground, var(--foreground));
+	background: var(--destructive);
+	border-radius: var(--radius);
+	font-size: 13px;
+	text-align: center;
+}
+
+.env-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.env-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 2px;
+}
+
+.env-title {
+	font-weight: 600;
+	font-size: 14px;
+	color: var(--foreground);
+}
+
+.env-count {
+	font-size: 12px;
+	color: var(--muted-foreground);
+	font-weight: 400;
+}
+
+.env-cards {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.env-card {
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 12px;
+	transition:
+		background-color 0.15s,
+		border-color 0.15s;
+	cursor: default;
+}
+
+.env-card:hover {
+	background: var(--accent);
+}
+
+.env-name {
+	font-weight: 500;
+	font-size: 14px;
+	color: var(--foreground);
+	margin-bottom: 2px;
+}
+
+.env-prefix {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	color: var(--muted-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}

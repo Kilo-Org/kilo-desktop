@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -100,9 +99,15 @@ describe("ElectronProtocol", () => {
 		expect(policy).not.toContain("frame-ancestors 'none'");
 	});
 
-	it("allows only the inline scripts present in an HTML response", async () => {
+	it("allows inline scripts via 'unsafe-inline' for sandboxed MCP App iframes", async () => {
+		// MCP App widgets render in sandboxed blob-URL iframes, which inherit this
+		// document's CSP and ship bundled inline scripts. Because CSP ignores
+		// 'unsafe-inline' when a hash/nonce is also present, the main window's
+		// script-src uses blanket 'unsafe-inline' rather than the per-response hash
+		// allowlist. This is a deliberate tradeoff; TODO(#<mcp-apps-csp>) moves MCP
+		// App HTML onto a dedicated embedded custom-scheme origin so the main
+		// window can return to a hash-based policy.
 		const inlineScript = "window.startDesktop()";
-		const expectedHash = createHash("sha256").update(inlineScript).digest("base64");
 		fetch.mockResolvedValue(
 			new Response(`<script>${inlineScript}</script>`, {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -118,13 +123,13 @@ describe("ElectronProtocol", () => {
 
 		const response = await protocolHandler(new Request("anaconda-agentic-desktop-dev://app/"));
 
-		expect(response.headers.get("Content-Security-Policy")).toContain(`'sha256-${expectedHash}'`);
-		expect(
-			response.headers
-				.get("Content-Security-Policy")
-				?.split(";")
-				.find((directive) => directive.trimStart().startsWith("script-src")),
-		).not.toContain("'unsafe-inline'");
+		const scriptSrc = response.headers
+			.get("Content-Security-Policy")
+			?.split(";")
+			.find((directive) => directive.trimStart().startsWith("script-src"));
+		expect(scriptSrc).toContain("'unsafe-inline'");
+		// The relaxation is scoped to inline scripts only — eval remains blocked.
+		expect(scriptSrc).not.toContain("unsafe-eval");
 	});
 
 	it("proxies development requests without forwarding custom-scheme headers", async () => {
@@ -406,9 +411,10 @@ describe("ElectronProtocol", () => {
 		});
 
 		// The app keeps its strict policy and only learns to frame the sibling host.
+		// `blob:` is present so MCP App widgets can render in sandboxed blob-URL iframes.
 		const appShell = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));
 		const appPolicy = appShell.headers.get("Content-Security-Policy") ?? "";
-		expect(appPolicy).toContain("frame-src 'self' anaconda-agentic-desktop://canvas");
+		expect(appPolicy).toContain("frame-src 'self' blob: anaconda-agentic-desktop://canvas");
 		expect(appPolicy).toContain("frame-ancestors 'self'");
 		expect(appPolicy).not.toContain("wasm-unsafe-eval");
 

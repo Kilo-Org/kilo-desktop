@@ -1,5 +1,6 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
 import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import * as reactOpenCode from "@assistant-ui/react-opencode";
 import { useMemo, useRef } from "react";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
@@ -11,7 +12,15 @@ import type {
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import type { KiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
+import { LOCAL_MCP_APPS } from "./mcp-app-registry.js";
 import { withPromptOptions, type PromptModelRef } from "./with-prompt-options.js";
+
+// Inject the Desktop-local MCP App registry into the patched
+// openCodeMessageProjection. Uses a namespace import + optional call rather
+// than a named import so a bundler/optimizer that hasn't picked up the patched
+// export (e.g. the Vitest browser dep-optimizer) degrades gracefully instead of
+// hard-failing module evaluation. In the app the export is present and runs.
+reactOpenCode.setLocalMcpApps?.(LOCAL_MCP_APPS);
 
 export interface UseKiloRuntimeOptions {
 	connectionPromise?: Promise<KiloGlobalConnection>;

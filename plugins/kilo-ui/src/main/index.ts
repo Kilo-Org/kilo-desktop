@@ -9,8 +9,14 @@ import type {
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
+import { mcpAppsContract } from "../contracts/mcp-apps/schemas.js";
 import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import {
+	createMcpAppsHandlers,
+	registerLocalMcpAppResource,
+	unregisterLocalMcpAppResource,
+} from "./mcp-apps/mcp-apps-handlers.js";
 import { OnboardingStore } from "./onboarding/OnboardingStore.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
@@ -68,15 +74,19 @@ export function mainRegister(
 		remove: (id) => api.remove({ id }),
 	} satisfies WorkspaceCapabilityService;
 
+	// Single source for resolving the Kilo Server connection — shared by the
+	// chat contract and the MCP Apps handlers so the error semantics stay in sync.
+	const getConnection = async (): Promise<KiloGlobalConnection> => {
+		const connectionService =
+			mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
+		if (!connectionService) {
+			throw new FeatureError("Kilo Server is unavailable.", "BUSINESS");
+		}
+		return connectionService.getConnection();
+	};
+
 	const chatApi: KiloUiChatService = {
-		"chat.getConnection": async () => {
-			const connectionService =
-				mainSdk.plugins.get<KiloServerCapabilities>("kilo-server")?.connectionService;
-			if (!connectionService) {
-				throw new FeatureError("Kilo Server is unavailable.", "BUSINESS");
-			}
-			return connectionService.getConnection();
-		},
+		"chat.getConnection": async () => getConnection(),
 		"chat.prepareSession": async ({ workspaceId }) => {
 			if (workspaceId) {
 				const workspace = service.get(workspaceId);
@@ -111,8 +121,16 @@ export function mainRegister(
 	};
 
 	mainSdk.plugins.expose("workspaceService", workspaceService);
+	mainSdk.plugins.expose("localMcpApps", {
+		register: registerLocalMcpAppResource,
+		unregister: unregisterLocalMcpAppResource,
+	});
 	mainSdk.channels(workspacesContract).handleAll(api);
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
+
+	const mcpAppsApi = createMcpAppsHandlers(getConnection, mainSdk.net.fetch);
+	mainSdk.channels(mcpAppsContract).handleAll(mcpAppsApi);
+
 	mainSdk.onDispose(() => db.$client.close());
 }

@@ -25,6 +25,8 @@ import {
 	type ChatRightPanelCapabilities,
 } from "./right-panel/chat-right-panel-capability.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
+import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
+import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
@@ -223,7 +225,14 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 
 	const aui = useAui({
 		dataRenderers: DataRenderers(),
-		tools: Tools({ toolkit }),
+		tools: Tools({
+			toolkit,
+			mcpApp: ElectronMcpAppRenderer({
+				host: KiloMcpAppsHost(),
+				hostInfo: { name: "Anaconda Desktop", version: "1.0.0" },
+				hostContext: { displayMode: "inline", availableDisplayModes: ["inline"] },
+			}),
+		}),
 	});
 
 	useEffect(() => aui.dataRenderers.setFallbackDataUI(OpenCodeDataPart), [aui]);

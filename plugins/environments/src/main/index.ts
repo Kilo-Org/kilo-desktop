@@ -97,6 +97,16 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 		provider.registerHandlers({ mainSdk, queue });
 	}
 
+	// Wire each provider's optional teardown into app shutdown. Without this,
+	// a provider holding a long-lived resource (e.g. CondaProvider's
+	// SidecarCondaBackend, which spawns the Python bridge) would leak it on a
+	// normal app quit — dispose() is otherwise never reached.
+	for (const provider of registry.list()) {
+		if (provider.onDispose) {
+			mainSdk.onDispose(() => provider.onDispose!());
+		}
+	}
+
 	mainSdk.logger.info(`boot: ${registry.list().length} provider(s) registered`);
 
 	// Register the environments list MCP App HTML with kilo-ui's local

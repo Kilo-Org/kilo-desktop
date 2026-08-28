@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import { JobQueue } from "../../JobQueue.js";
 import { CondaProvider } from "./index.js";
+import * as resolveBridge from "./resolveBridgePath.js";
+import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import * as staging from "./staging/index.js";
 
 /**
@@ -17,6 +19,10 @@ import * as staging from "./staging/index.js";
  * - `webComponents` exposes the placeholder shape the interface requires.
  */
 describe("CondaProvider", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it("exposes id/displayName + webComponents required by the interface", () => {
 		const provider = new CondaProvider();
 		expect(provider.id).toBe("conda");
@@ -72,5 +78,47 @@ describe("CondaProvider", () => {
 		provider.registerTools(sdk);
 		const names = sdk.services.toolRegistry.all().map((tool) => tool.name);
 		expect(names.sort()).toEqual(["conda.envs.create", "conda.envs.delete", "conda.envs.list"]);
+	});
+
+	it("onDispose() tears down the sidecar backend (kills the bridge process)", async () => {
+		// Force the sidecar path via the BRIDGE_PAYLOAD override and confirm
+		// onDispose forwards to the backend's dispose — the hook mainRegister
+		// wires into app shutdown to stop the spawned Python bridge leaking.
+		vi.stubEnv("BRIDGE_PAYLOAD", "1");
+		const dispose = vi.spyOn(SidecarCondaBackend.prototype, "dispose").mockImplementation(() => {});
+		vi.spyOn(resolveBridge, "resolveBridgeLaunchInfo").mockReturnValue({
+			command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+			payloadRoot: "/fake/bridge",
+			version: "9.9.9",
+		});
+		const stageConda = vi.spyOn(staging, "stageConda");
+
+		const provider = new CondaProvider();
+		const mainSdk = createFakeMainSdk({ featureId: "environments" });
+
+		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+		// Sidecar path must not fall through to conda staging.
+		expect(stageConda).not.toHaveBeenCalled();
+
+		provider.onDispose();
+		expect(dispose).toHaveBeenCalledTimes(1);
+
+		vi.unstubAllEnvs();
+		mainSdk.dispose();
+	});
+
+	it("onDispose() is a safe no-op when the backend has no dispose (CondaService)", async () => {
+		vi.spyOn(staging, "stageConda").mockResolvedValue({
+			condaBinPath: "/opt/conda/bin/conda",
+			strategy: "system",
+			condaFilesRoot: "/tmp/conda-root",
+		});
+		const provider = new CondaProvider();
+		const mainSdk = createFakeMainSdk({ featureId: "environments" });
+
+		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+		expect(() => provider.onDispose()).not.toThrow();
+
+		mainSdk.dispose();
 	});
 });

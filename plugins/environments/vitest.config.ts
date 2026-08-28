@@ -17,6 +17,8 @@ const coverage = {
 		"src/test/**",
 		// Nav icon — trivial JSX that ships one SVG.
 		"src/web/EnvironmentsNavIcon.tsx",
+		// Build-time packaging tooling — runs during prepare-assets / forge, not at runtime.
+		"src/packaging/**",
 		// MCP App widget — a separately-built (vite-plugin-singlefile) iframe
 		// bundle, not part of the plugin's node/browser sources. Its entry uses
 		// top-level await and ships an index.html the coverage parser can't read.

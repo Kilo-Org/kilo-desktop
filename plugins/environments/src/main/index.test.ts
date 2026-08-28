@@ -10,6 +10,7 @@ import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 import type { FakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
 import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
+import { CondaProvider } from "./providers/conda/index.js";
 
 vi.mock("execa", () => ({
 	execa: vi.fn(),
@@ -21,6 +22,11 @@ vi.mock("./providers/conda/staging/artifacts.js", () => ({
 
 vi.mock("./providers/conda/staging/detectSystemConda.js", () => ({
 	detectSystemConda: vi.fn(),
+}));
+
+vi.mock("./providers/conda/resolveBridgePath.js", () => ({
+	resolveBridgeLaunchInfo: vi.fn(() => null),
+	resolveBridgeBinaryPath: vi.fn(() => null),
 }));
 
 import { getMinicondaInstaller } from "./providers/conda/staging/artifacts.js";
@@ -198,5 +204,20 @@ describe("environments plugin main entry", () => {
 			expect(mockedDetectSystem).not.toHaveBeenCalled();
 			expect(fs.existsSync(path.join(storageDir, "providers", "conda", "staged.json"))).toBe(false);
 		});
+	});
+
+	it("wires provider teardown into app shutdown (mainSdk.onDispose)", async () => {
+		// Regression guard: without the onDispose wiring in mainRegister, a
+		// provider's dispose (which for the sidecar backend kills the spawned
+		// bridge process) is never reached on a normal app quit.
+		const { storageDir } = setupFakeStaging();
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true, storageDir });
+		const onDispose = vi.spyOn(CondaProvider.prototype, "onDispose");
+
+		await mainRegister(mainSdk);
+		expect(onDispose).not.toHaveBeenCalled();
+
+		mainSdk.dispose();
+		expect(onDispose).toHaveBeenCalledTimes(1);
 	});
 });

@@ -656,6 +656,9 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
+      vscode-jsonrpc:
+        specifier: ^9.0.1
+        version: 9.0.1
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -708,6 +711,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -720,6 +726,10 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.0-rc.2(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-rc.2)(@vitest/coverage-v8@5.0.0-rc.2)(@vitest/ui@5.0.0-rc.2)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+    optionalDependencies:
+      '@anaconda/desktop-bridge-payload-darwin-arm64':
+        specifier: 0.1.1
+        version: 0.1.1
 
   plugins/files:
     dependencies:
@@ -1226,6 +1236,11 @@ packages:
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
+
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.1':
+    resolution: {integrity: sha512-m1GDhD8Pc1aS4ScHNpl+r6xNCWyMhGVzaSK8THjQ2kbJnEPdRG5liozS5jXUkVIyMyKbw5wrXjcBxRaxDvJmlQ==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.1/a172472d4f5c63ec418913d29598e1c03aec20c5}
+    cpu: [arm64]
+    os: [darwin]
 
   '@anaconda/playwright-utils@1.17.1':
     resolution: {integrity: sha512-82tFlYV2K/KtAqfYdCg7F2d2R0RS/95/YzGhAo/SmLHpoPlVD61ueSVuewi2O4bXFtjfVmkVa7xIDiaWzyy9lw==, tarball: https://npm.pkg.github.com/download/@anaconda/playwright-utils/1.17.1/3cbc5f2acbc5b7c1f34b5a1421c0a9a40ceca511}
@@ -8853,6 +8868,10 @@ packages:
       jsdom:
         optional: true
 
+  vscode-jsonrpc@9.0.1:
+    resolution: {integrity: sha512-rfuA6T75H6m5EkbhtEPzre9pT0HPcDI2MMy4+nPFIBks5J8JBAUHD4tRYSgaBOijIEC7SRkC1kKyXTLqbmh9jw==}
+    engines: {node: '>=14.0.0'}
+
   wait-on@9.1.0:
     resolution: {integrity: sha512-PymrLXHLBM1Ju/Xspb2ADUhbPSMvbnuNvy/mN2hWtpbJ3da0h3Ky1LqwKPG5QSVR57liyO0iUpfipYl/s5qNvA==}
     engines: {node: '>=20.0.0'}
@@ -9089,6 +9108,9 @@ snapshots:
       - redis
       - supports-color
       - use-sync-external-store
+
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.1':
+    optional: true
 
   '@anaconda/playwright-utils@1.17.1(@playwright/test@1.62.1)(jiti@2.7.0)(supports-color@10.2.2)':
     dependencies:
@@ -10516,7 +10538,7 @@ snapshots:
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
       zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:
@@ -17356,6 +17378,8 @@ snapshots:
       '@vitest/ui': 5.0.0-rc.2(vitest@5.0.0-rc.2)
     transitivePeerDependencies:
       - msw
+
+  vscode-jsonrpc@9.0.1: {}
 
   wait-on@9.1.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2):
     dependencies:

@@ -54,6 +54,13 @@ export default defineConfig(({ command }) => {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_CHANNEL: JSON.stringify(channel),
 			UPDATE_PUBLISH_URL: JSON.stringify(getUpdatePublishUrl(process.env)),
+			// The environments plugin resolves bridge resources relative to its
+			// own package root. After bundling, import.meta.dirname no longer
+			// reflects the original source tree, so we inject the absolute path
+			// at build time (dev-only; packaged mode uses process.resourcesPath).
+			__ENVIRONMENTS_PLUGIN_ROOT__: JSON.stringify(
+				path.resolve(root, "../../plugins/environments"),
+			),
 		},
 		resolve: {
 			alias: {

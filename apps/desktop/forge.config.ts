@@ -25,6 +25,7 @@ import { resolvePackagedWebMcpRelayDirectory } from "./config/packaged-webmcp-re
 import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-temp.js";
 import { signWindowsFile } from "./config/windows-sign.js";
 import { createNotebookPackagingPlan } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
+import { createBridgePackagingPlan } from "@anaconda-agentic-desktop/plugin-environments/packaging";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -58,6 +59,7 @@ const appIcon =
 		: path.join(packageRoot, "assets/icon");
 
 const notebookPackaging = createNotebookPackagingPlan();
+const bridgePackaging = createBridgePackagingPlan();
 const asarUnpackPackages = [
 	"better-sqlite3",
 	"@github/keytar",
@@ -69,6 +71,7 @@ const extraResources = [
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
 	path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
 	...notebookPackaging.extraResources,
+	...bridgePackaging.extraResources,
 ];
 
 function updateFeed(platform: string, arch: string): string | undefined {
@@ -108,6 +111,19 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 				"e2e",
 				"node_modules",
 				"resources",
+			]),
+		},
+		{
+			packageName: "@anaconda-agentic-desktop/plugin-environments",
+			source: path.join(workspaceRoot, "plugins/environments"),
+			excludedDirectories: new Set([
+				".git",
+				".vitest",
+				"coverage",
+				"e2e",
+				"node_modules",
+				"resources",
+				"scripts",
 			]),
 		},
 	] as const;

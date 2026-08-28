@@ -7,10 +7,26 @@ import type {
 	ProviderWebComponents,
 } from "../../EnvironmentProvider.js";
 
+import type { CondaBackend } from "./CondaBackend.js";
 import { CondaService } from "./CondaService.js";
+import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import { registerCondaHandlers } from "./handlers.js";
+import { resolveBridgeLaunchInfo } from "./resolveBridgePath.js";
 import { stageConda } from "./staging/index.js";
 import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
+
+/**
+ * LaunchDarkly feature-flag key gating the anaconda-bridge-sidecar
+ * backend. When `true`, the provider uses `SidecarCondaBackend`
+ * (JSON-RPC to the PyInstaller anaconda-bridge-sidecar binary) instead
+ * of `CondaService` (execa to staged conda). The existing `CondaService`
+ * remains the default.
+ *
+ * NOTE: the key is `bridge-sidecar` (matching the LD dashboard) even
+ * though the component's full name is "anaconda-bridge-sidecar" — the
+ * flag was created before the naming convention was tightened.
+ */
+export const BRIDGE_SIDECAR_FLAG_KEY = "bridge-sidecar";
 
 /**
  * Conda environment provider — v1 provider for the environments plugin.
@@ -30,10 +46,12 @@ import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
  * lack of cross-directory imports.
  *
  * State transitions:
- * - Constructed: `#service` is `undefined`; handlers registered before
+ * - Constructed: `#backend` is `undefined`; handlers registered before
  *   `boot()` completes would fail loudly.
- * - After `boot()`: `#service` is a live {@link CondaService} pointing at
- *   the resolved `condaBinPath` — bundled or system-detected.
+ * - After `boot()`: `#backend` is a live {@link CondaBackend} — either
+ *   `CondaService` (execa, default) or `SidecarCondaBackend` (JSON-RPC
+ *   to the anaconda-bridge-sidecar binary, behind the
+ *   `anaconda-bridge-sidecar` feature flag).
  * - After `registerHandlers()`: `conda.envs.list` is served.
  */
 export class CondaProvider implements EnvironmentProvider {
@@ -45,16 +63,39 @@ export class CondaProvider implements EnvironmentProvider {
 		PackagesPanel: () => null,
 	};
 
-	#service: CondaService | undefined;
+	#backend: CondaBackend | undefined;
 
 	async boot(ctx: ProviderBootContext): Promise<void> {
+		// BRIDGE_PAYLOAD env var forces sidecar mode regardless of the feature flag.
+		/* v8 ignore next -- dev-only env override, tested manually */
+		const envOverride = !!process.env["BRIDGE_PAYLOAD"]?.trim();
+		const useSidecar = envOverride || this.#shouldUseSidecar(ctx);
+
+		if (useSidecar) {
+			const launchInfo = resolveBridgeLaunchInfo();
+			if (launchInfo) {
+				ctx.logger.info(
+					`[conda-provider] Using anaconda-bridge-sidecar v${launchInfo.version}: ${launchInfo.command.join(" ")}`,
+				);
+				this.#backend = new SidecarCondaBackend({
+					command: launchInfo.command,
+					logger: ctx.logger,
+				});
+				return;
+			}
+			ctx.logger.warn(
+				"[conda-provider] anaconda-bridge-sidecar flag is on but bridge payload not found — falling back to CondaService.",
+			);
+		}
+
+		// Default: stage conda and use CondaService (execa)
 		const { condaBinPath, condaFilesRoot } = await stageConda({
 			storageDir: ctx.mainSdk.storageDir,
 			fetch: ctx.mainSdk.net.fetch,
 			logger: ctx.logger,
 			reportProgress: (msg) => ctx.boot.reportProgress(msg),
 		});
-		this.#service = new CondaService({
+		this.#backend = new CondaService({
 			condaBinPath,
 			condaFilesRoot,
 			logger: ctx.logger,
@@ -62,17 +103,39 @@ export class CondaProvider implements EnvironmentProvider {
 	}
 
 	registerHandlers(ctx: ProviderRegisterContext): void {
-		if (!this.#service) {
+		if (!this.#backend) {
 			// Defensive: `mainRegister` calls `boot()` before `registerHandlers()`
 			// for every provider (see `main/index.ts`), so hitting this branch
 			// means a caller wired things out of order — fail loudly instead
 			// of silently registering handlers with no backend.
 			throw new Error("CondaProvider.registerHandlers called before boot() resolved.");
 		}
-		registerCondaHandlers(ctx.mainSdk, this.#service, ctx.queue);
+		registerCondaHandlers(ctx.mainSdk, this.#backend, ctx.queue);
 	}
 
 	registerTools(sdk: SDK): void {
 		registerCondaTools(sdk);
+	}
+
+	/**
+	 * Teardown wired into app shutdown (`mainRegister` registers this via
+	 * `mainSdk.onDispose`). Releases the backend's long-lived resources —
+	 * critically, `SidecarCondaBackend.dispose()` kills the spawned bridge
+	 * process, which would otherwise be orphaned on a normal app quit.
+	 * `CondaService` has no `dispose`, so the optional call is a no-op there.
+	 */
+	onDispose(): void {
+		this.#backend?.dispose?.();
+	}
+
+	#shouldUseSidecar(ctx: ProviderBootContext): boolean {
+		try {
+			const featureFlag = ctx.mainSdk.plugins.get<{
+				featureFlag: { getFlag<T>(key: string, defaultValue: T): T };
+			}>("feature-flag");
+			return featureFlag?.featureFlag.getFlag<boolean>(BRIDGE_SIDECAR_FLAG_KEY, false) ?? false;
+		} catch {
+			return false;
+		}
 	}
 }

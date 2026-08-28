@@ -76,4 +76,12 @@ export interface CondaBackend {
 	listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	removeChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
+
+	/**
+	 * Optional teardown — release long-lived resources. `SidecarCondaBackend`
+	 * implements it to kill the spawned bridge process; `CondaService` (execa,
+	 * one-shot processes) has nothing to release and omits it. Wired into app
+	 * shutdown via `CondaProvider.onDispose` → `mainSdk.onDispose`.
+	 */
+	dispose?(): void;
 }

@@ -2,3 +2,4 @@
 
 declare const RELEASE_CHANNEL: "canary" | "prod" | "staging";
 declare const UPDATE_PUBLISH_URL: string;
+declare const __ENVIRONMENTS_PLUGIN_ROOT__: string;

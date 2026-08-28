@@ -93,7 +93,9 @@ describe("EnvironmentsPage", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByRole("heading", { name: "Environments" })).toBeVisible();
-		await expect.element(screen.getByRole("heading", { name: "Conda" })).toBeVisible();
+		// The provider section carries an accessible name even though a single
+		// provider ships no visible sub-heading.
+		await expect.element(screen.getByRole("region", { name: "Conda" })).toBeInTheDocument();
 	});
 
 	it("renders the empty state when no envs are reported", async () => {
@@ -103,7 +105,7 @@ describe("EnvironmentsPage", () => {
 		await expect.element(screen.getByText(/no conda environments found/i)).toBeVisible();
 	});
 
-	it("renders envs — base surfaces as 'base' and named envs surface with their name + prefix", async () => {
+	it("renders envs — nameless envs show their directory and named envs show their name + prefix", async () => {
 		const { baseElement } = renderPage({
 			list: async () => [
 				{ name: "", prefix: "/opt/conda" },
@@ -112,7 +114,8 @@ describe("EnvironmentsPage", () => {
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByText("base")).toBeVisible();
+		// Nameless envs display their directory basename ("conda"), not "base".
+		await expect.element(screen.getByText("conda")).toBeVisible();
 		await expect.element(screen.getByText("dev")).toBeVisible();
 		await expect.element(screen.getByText("/opt/conda/envs/dev")).toBeVisible();
 	});

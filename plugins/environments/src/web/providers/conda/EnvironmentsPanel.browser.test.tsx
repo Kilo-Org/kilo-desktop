@@ -1,0 +1,243 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { page, userEvent } from "vitest/browser";
+
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+
+import { condaContract, type CondaService } from "../../../contracts/providers/conda.js";
+import { EnvironmentsPanel } from "./EnvironmentsPanel.js";
+
+const mockEnvironments = [
+	{ name: "alpha", prefix: "/opt/conda/envs/alpha" },
+	{ name: "bravo", prefix: "/opt/conda/envs/bravo" },
+	{ name: "charlie", prefix: "/opt/conda/envs/charlie" },
+	{ name: "delta", prefix: "/home/user/envs/delta" },
+	{ name: "echo", prefix: "/home/user/envs/echo" },
+	{ name: "", prefix: "/opt/conda" },
+];
+
+function renderPanel(
+	options: {
+		list?: CondaService["conda.envs.list"];
+	} = {},
+) {
+	const list = options.list ?? (async () => mockEnvironments);
+	const sdk = createFakeSdk({
+		featureId: "environments",
+		channels: condaContract,
+		handlers: {
+			"conda.envs.list": list,
+			"conda.envs.create": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.envs.delete": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.packages.list": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.packages.install": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.packages.remove": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.channels.list": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.channels.add": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.channels.remove": async () => {
+				throw new Error("not implemented in test");
+			},
+			"conda.jobs.cancel": async () => {
+				throw new Error("not implemented in test");
+			},
+		},
+	});
+	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+
+	return render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<EnvironmentsPanel />
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+}
+
+afterEach(() => {
+	cleanup();
+});
+
+describe("EnvironmentsPanel — search, sort, pagination", () => {
+	it("renders the table with controls", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-search-input")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-sort-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-results-info")).toBeVisible();
+
+		const rows = screen.getByTestId("environments-conda-row");
+		await expect.element(rows.first()).toBeVisible();
+	});
+
+	it("filters environments by search query (case-insensitive, matches name)", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		const searchInput = screen.getByTestId("environments-search-input");
+		await userEvent.fill(searchInput.element(), "ALPHA");
+
+		// Scope to the name column so a prefix that merely contains the query
+		// cannot satisfy the assertion.
+		await expect.element(screen.getByTestId("environments-conda-name")).toHaveTextContent("alpha");
+		expect(screen.getByTestId("environments-conda-row").elements()).toHaveLength(1);
+	});
+
+	it("filters environments by search query (matches prefix)", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		const searchInput = screen.getByTestId("environments-search-input");
+		await userEvent.fill(searchInput.element(), "/home/user");
+
+		// delta + echo live under /home/user; the other four do not.
+		await expect
+			.element(screen.getByTestId("environments-conda-name").first())
+			.toHaveTextContent("delta");
+		expect(screen.getByTestId("environments-conda-row").elements()).toHaveLength(2);
+	});
+
+	it("hides the pager and shows the empty message when nothing matches", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		const searchInput = screen.getByTestId("environments-search-input");
+		await userEvent.fill(searchInput.element(), "nonexistent");
+
+		await expect.element(screen.getByTestId("environments-conda-empty-filtered")).toBeVisible();
+		// A pager over zero results would render a nonsensical "1 – 0 of 0" range.
+		await expect.element(screen.getByTestId("environments-pagination")).not.toBeInTheDocument();
+	});
+
+	it("sorts environments alphabetically — default ascending, toggle to descending", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		// Default sort is ascending: first name should be "alpha"
+		const firstRow = screen.getByTestId("environments-conda-name").first();
+		await expect.element(firstRow).toHaveTextContent("alpha");
+
+		// Click the Name column header to toggle sort
+		const sortButton = screen.getByTestId("environments-sort-toggle");
+		await sortButton.click();
+
+		// Now "echo" should be first (descending)
+		const firstRowAfter = screen.getByTestId("environments-conda-name").first();
+		await expect.element(firstRowAfter).toHaveTextContent("echo");
+	});
+
+	it("handles base environments (empty name) in sorting", async () => {
+		const { baseElement } = renderPanel({
+			list: async () => [
+				{ name: "", prefix: "/opt/anaconda" },
+				{ name: "zulu", prefix: "/opt/conda/envs/zulu" },
+			],
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		// Empty name → displays directory basename "anaconda", which sorts before "zulu".
+		const firstRow = screen.getByTestId("environments-conda-name").first();
+		await expect.element(firstRow).toHaveTextContent("anaconda");
+	});
+
+	it("correctly displays an env nested inside another env's prefix", async () => {
+		const { baseElement } = renderPanel({
+			list: async () => [
+				{ name: "", prefix: "/opt/conda" },
+				{ name: "dev", prefix: "/opt/conda/envs/dev" },
+				{ name: "", prefix: "/opt/conda/envs/dev/nested" },
+			],
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		// All three environments should render with distinct display names.
+		const names = screen.getByTestId("environments-conda-name");
+		expect(names.elements()).toHaveLength(3);
+		// Sorted: "conda" < "dev" < "nested"
+		await expect.element(names.first()).toHaveTextContent("conda");
+		await expect.element(names.nth(1)).toHaveTextContent("dev");
+		await expect.element(names.nth(2)).toHaveTextContent("nested");
+	});
+
+	it("shows an accessible spinner while the query is pending", async () => {
+		let resolve: ((envs: typeof mockEnvironments) => void) | undefined;
+		const pending = new Promise<typeof mockEnvironments>((r) => {
+			resolve = r;
+		});
+
+		const { baseElement } = renderPanel({ list: () => pending });
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-conda-loading")).toBeVisible();
+		// The dots are decorative; the status role carries the announcement.
+		await expect
+			.element(screen.getByRole("status", { name: "Loading environments" }))
+			.toBeVisible();
+
+		resolve?.(mockEnvironments);
+
+		// Spinner is torn down once data lands.
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+		expect(screen.getByTestId("environments-conda-loading").elements()).toHaveLength(0);
+	});
+
+	it("displays the item count", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-results-info")).toBeVisible();
+		await expect.element(screen.getByText("6 items")).toBeVisible();
+	});
+
+	it("shows pagination and navigates pages when items exceed page size", async () => {
+		// Create 15 environments to trigger pagination at page size 10
+		const manyEnvs = Array.from({ length: 15 }, (_, i) => ({
+			name: `env-${String(i).padStart(2, "0")}`,
+			prefix: `/opt/conda/envs/env-${String(i).padStart(2, "0")}`,
+		}));
+
+		const { baseElement } = renderPanel({ list: async () => manyEnvs });
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-pagination")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-pagination-next")).toBeVisible();
+
+		// Click next page
+		await screen.getByTestId("environments-pagination-next").click();
+
+		// Should now show remaining items
+		await expect.element(screen.getByText("env-10")).toBeVisible();
+	});
+});

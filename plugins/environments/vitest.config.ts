@@ -69,6 +69,15 @@ export default defineConfig({
 						"@anaconda-agentic-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
+						// Base UI primitives + icons reached through
+						// @anaconda-agentic-desktop/ui. Pre-bundle them so Vite does not
+						// discover them mid-run, re-optimize, and reload the page — that
+						// reload serves `use-sync-external-store` un-prebundled and every
+						// browser test in this project dies on its CJS named exports.
+						"@base-ui/react/button",
+						"@base-ui/react/input",
+						"@base-ui/react/select",
+						"lucide-react",
 						"zod",
 						"vitest",
 						"vitest/internal/browser",

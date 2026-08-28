@@ -9,6 +9,7 @@
 @import "@fontsource-variable/inter";
 @import "shadcn/tailwind.css";
 @import "tw-shimmer";
+@import "@anaconda-agentic-desktop/ui/styles/animations.css";
 
 :root {
 	--font-sans: "Inter Variable", sans-serif;

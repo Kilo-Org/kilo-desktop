@@ -2,4 +2,5 @@
    components use so browser tests get real layout/visibility. In the app,
    the shell's globals.css scans plugin + design-system sources via @source. */
 @import "tailwindcss";
+@import "../../../../packages/ui/src/styles/animations.css";
 @source "../../../../packages/ui";

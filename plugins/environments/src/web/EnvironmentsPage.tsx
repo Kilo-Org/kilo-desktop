@@ -50,25 +50,25 @@ export function EnvironmentsPage() {
 	}
 
 	return (
-		<div className="mx-auto max-w-3xl px-5 py-8" data-qa-id="environments-page">
+		<div
+			className="mx-auto flex h-full max-w-5xl flex-col px-5 py-8"
+			data-qa-id="environments-page"
+		>
 			<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="environments-heading">
 				Environments
 			</h1>
-			<p className="text-muted-foreground mt-1 text-sm">
-				Manage conda environments installed in the plugin-scoped base.
-			</p>
 
+			{/*
+			 * Labelled via `aria-label` rather than `aria-labelledby`: the visual
+			 * "Conda" heading is gone (a single provider needs no sub-heading), so
+			 * there is no element left to point at. When a second provider lands
+			 * this becomes a tab strip and each panel regains a visible label.
+			 */}
 			<section
-				className="mt-6"
-				aria-labelledby="environments-provider-conda-heading"
+				className="mt-6 flex min-h-0 flex-1 flex-col"
+				aria-label="Conda"
 				data-qa-id="environments-provider-conda"
 			>
-				<h2
-					id="environments-provider-conda-heading"
-					className="mb-3 text-sm font-medium tracking-wide uppercase"
-				>
-					Conda
-				</h2>
 				<CondaEnvironmentsPanel />
 			</section>
 		</div>

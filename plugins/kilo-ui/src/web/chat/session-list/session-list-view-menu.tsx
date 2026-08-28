@@ -88,7 +88,7 @@ export const SessionListViewMenu: FC<{
 								}}
 							>
 								{groupings.map((entry) => (
-									<DropdownMenuRadioItem key={entry} value={entry}>
+									<DropdownMenuRadioItem key={entry} value={entry} closeOnClick={false}>
 										{SESSION_LIST_GROUPING_LABELS[entry]}
 									</DropdownMenuRadioItem>
 								))}
@@ -108,7 +108,7 @@ export const SessionListViewMenu: FC<{
 								}}
 							>
 								{SESSION_LIST_ORDERINGS.map((ordering) => (
-									<DropdownMenuRadioItem key={ordering} value={ordering}>
+									<DropdownMenuRadioItem key={ordering} value={ordering} closeOnClick={false}>
 										{SESSION_LIST_ORDERING_LABELS[ordering]}
 									</DropdownMenuRadioItem>
 								))}
@@ -150,7 +150,7 @@ export const SessionListViewMenu: FC<{
 								}}
 							>
 								{SESSION_LIST_STATUS_FILTERS.map((status) => (
-									<DropdownMenuRadioItem key={status} value={status}>
+									<DropdownMenuRadioItem key={status} value={status} closeOnClick={false}>
 										{SESSION_LIST_STATUS_LABELS[status]}
 									</DropdownMenuRadioItem>
 								))}

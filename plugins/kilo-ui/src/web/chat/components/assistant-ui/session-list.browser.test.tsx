@@ -1,5 +1,6 @@
 import {
 	AssistantRuntimeProvider,
+	ComposerPrimitive,
 	useLocalRuntime,
 	useRemoteThreadListRuntime,
 	type ChatModelAdapter,
@@ -128,11 +129,13 @@ function SessionListHarness({
 	store,
 	system,
 	workspaces,
+	includeComposer,
 }: {
 	adapter: SeededThreadListAdapter;
 	store: ReturnType<typeof createSessionActivityStore>;
 	system: ReturnType<typeof createFakeFeatureSystem>;
 	workspaces: WorkspacesContextValue;
+	includeComposer: boolean;
 }) {
 	const runtime = useRemoteThreadListRuntime({
 		adapter,
@@ -144,7 +147,14 @@ function SessionListHarness({
 			<AssistantRuntimeProvider runtime={runtime}>
 				<SessionActivityProvider store={store}>
 					<WorkspacesContext.Provider value={workspaces}>
-						<SessionList />
+						<div className="flex h-[420px] flex-col">
+							<SessionList />
+						</div>
+						{includeComposer ? (
+							<ComposerPrimitive.Root>
+								<ComposerPrimitive.Input aria-label="Test composer" />
+							</ComposerPrimitive.Root>
+						) : null}
 					</WorkspacesContext.Provider>
 				</SessionActivityProvider>
 			</AssistantRuntimeProvider>
@@ -156,10 +166,12 @@ function renderSessionList({
 	threads,
 	hydrate,
 	activeWorkspaceId = null,
+	includeComposer = false,
 }: {
 	threads: SeededThread[];
 	hydrate?: (store: ReturnType<typeof createSessionActivityStore>) => void;
 	activeWorkspaceId?: string | null;
+	includeComposer?: boolean;
 }) {
 	const adapter = new SeededThreadListAdapter(threads);
 	const navigate = vi.fn();
@@ -178,7 +190,13 @@ function renderSessionList({
 	);
 	hydrate?.(store);
 	const result = render(
-		<SessionListHarness adapter={adapter} store={store} system={system} workspaces={workspaces} />,
+		<SessionListHarness
+			adapter={adapter}
+			store={store}
+			system={system}
+			workspaces={workspaces}
+			includeComposer={includeComposer}
+		/>,
 	);
 	return {
 		adapter,
@@ -196,6 +214,103 @@ afterEach(() => {
 });
 
 describe("SessionList", () => {
+	it("keeps a large session history reachable without mounting offscreen sessions", async () => {
+		const threads = Array.from({ length: 500 }, (_, index) => ({
+			remoteId: `ses-${index}`,
+			title: `Session ${index}`,
+		}));
+		const { navigate, screen } = renderSessionList({ threads });
+
+		await expect.element(screen.getByText("Session 499")).toBeVisible();
+		await expect.element(screen.getByText("Session 0")).not.toBeInTheDocument();
+
+		const inbox = screen.getByTestId("session-list-inbox").element();
+		act(() => {
+			inbox.scrollTop = inbox.scrollHeight;
+			inbox.dispatchEvent(new Event("scroll"));
+		});
+
+		await expect.element(screen.getByText("Session 0")).toBeVisible();
+		await expect.element(screen.getByText("Session 499")).not.toBeInTheDocument();
+		await screen.getByText("Session 0").click();
+		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
+	});
+
+	it("keeps keyboard navigation working across virtualized ranges", async () => {
+		const threads = Array.from({ length: 40 }, (_, index) => ({
+			remoteId: `ses-${index}`,
+			title: `Session ${index}`,
+		}));
+		const { screen } = renderSessionList({ threads });
+
+		const firstSession = screen.getByRole("button", { name: "Session 39" });
+		await expect.element(firstSession).toBeVisible();
+		firstSession.element().focus();
+		for (let index = 0; index < 25; index += 1) {
+			await userEvent.keyboard("{ArrowDown}");
+		}
+
+		await expect.element(screen.getByRole("button", { name: "Session 14" })).toHaveFocus();
+	});
+
+	it("keeps view controls visible when regrouping and reordering a large history", async () => {
+		const threads = Array.from({ length: 500 }, (_, index) => ({
+			remoteId: `ses-${index}`,
+			title: `Session ${index.toString().padStart(3, "0")}`,
+		}));
+		const { screen } = renderSessionList({ threads });
+		const inbox = screen.getByTestId("session-list-inbox");
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Updated" }).click();
+
+		await expect
+			.element(screen.getByRole("button", { name: "Session list options" }))
+			.toBeVisible();
+		expect(inbox.element().scrollTop).toBe(0);
+		await expect.element(screen.getByRole("button", { name: "Older" })).toBeVisible();
+		await expect.element(page.getByRole("menuitem", { name: /Grouping/ })).toBeVisible();
+		await userEvent.keyboard("{Escape}{Escape}");
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Ordering/ }).click();
+		await page.getByRole("menuitemradio", { name: "Title" }).click();
+
+		await expect
+			.element(screen.getByRole("button", { name: "Session list options" }))
+			.toBeVisible();
+		expect(inbox.element().scrollTop).toBe(0);
+		await expect.element(screen.getByRole("button", { name: "Older" })).toBeVisible();
+		await expect.element(page.getByRole("menuitem", { name: /Ordering/ })).toBeVisible();
+	});
+
+	it("keeps composer input working with a virtualized session history", async () => {
+		const threads = Array.from({ length: 500 }, (_, index) => ({
+			remoteId: `ses-${index}`,
+			title: `Session ${index}`,
+		}));
+		const { screen } = renderSessionList({ threads, includeComposer: true });
+
+		await expect.element(screen.getByText("Session 499")).toBeVisible();
+		await expect.element(screen.getByText("Session 0")).not.toBeInTheDocument();
+		const composer = screen.getByRole("textbox", { name: "Test composer" });
+		const element = composer.element() as HTMLTextAreaElement;
+		const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+		if (!setValue) throw new Error("HTMLTextAreaElement.value setter is unavailable");
+		Array.from({ length: 10 }, (_, index) => {
+			const character = String.fromCharCode(97 + index);
+			const value = element.value + character;
+			setValue.call(element, value);
+			element.dispatchEvent(
+				new InputEvent("input", { bubbles: true, data: character, inputType: "insertText" }),
+			);
+		});
+
+		await expect.element(composer).toHaveValue("abcdefghij");
+		await expect.element(screen.getByText("Session 0")).not.toBeInTheDocument();
+	});
+
 	it("creates a chat from the New Chat split button", async () => {
 		const { baseElement, navigate, screen } = renderSessionList({ threads: [] });
 
@@ -407,7 +522,10 @@ describe("SessionList", () => {
 		await expect.element(screen.getByTestId("session-list-active-toggle")).toBeVisible();
 		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
 		expect(activeRow).not.toBeNull();
-		expect(activeRow!.querySelector('[data-qa-id="session-list-view-menu"]')).not.toBeNull();
+		expect(activeRow!.querySelector('[data-qa-id="session-list-view-menu"]')).toBeNull();
+		await expect
+			.element(screen.getByRole("button", { name: "Session list options" }))
+			.toBeVisible();
 		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
 		const activeHeader = screen.getByTestId("session-list-active-toggle").element();
 		const activeLabel = screen
@@ -1045,13 +1163,17 @@ describe("SessionList", () => {
 		const pinnedCard = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		const activeCard = screen.getByRole("listitem").filter({ hasText: "Add tests" });
 		const settledHeader = screen.getByTestId("session-list-settled-toggle").element();
-		const afterPinned =
-			activeHeader.getBoundingClientRect().top -
-			pinnedCard.element().getBoundingClientRect().bottom;
-		const betweenSections =
-			settledHeader.getBoundingClientRect().top -
-			activeCard.element().getBoundingClientRect().bottom;
-		expect(Math.abs(afterPinned - betweenSections)).toBeLessThan(3);
+		await expect
+			.poll(() => {
+				const afterPinned =
+					activeHeader.getBoundingClientRect().top -
+					pinnedCard.element().getBoundingClientRect().bottom;
+				const betweenSections =
+					settledHeader.getBoundingClientRect().top -
+					activeCard.element().getBoundingClientRect().bottom;
+				return Math.abs(afterPinned - betweenSections);
+			})
+			.toBeLessThan(3);
 
 		await userEvent.hover(card);
 		const unpin = card.getByRole("button", { name: "Unpin thread" });
@@ -1114,9 +1236,11 @@ describe("SessionList", () => {
 		const newChat = screen.getByRole("button", { name: "New Chat" }).element();
 		const search = screen.getByRole("button", { name: "Search" }).element();
 		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
+		const inbox = screen.getByTestId("session-list-inbox").element();
 		expect(headerEl.contains(trigger)).toBe(true);
 		expect(headerEl.contains(filter)).toBe(false);
-		expect(activeRow?.contains(filter)).toBe(true);
+		expect(activeRow?.contains(filter)).toBe(false);
+		expect(inbox.contains(filter)).toBe(true);
 		expect(headerEl.className).not.toContain("bg-foreground/5");
 		expect(trigger.className).toContain("border-border/60");
 		expect(trigger.className).toContain("bg-foreground/5");
@@ -1128,7 +1252,6 @@ describe("SessionList", () => {
 		expect(switcherIcon?.classList.contains("lucide-layout-grid")).toBe(true);
 		expect(switcherIcon?.getAttribute("stroke")).toBe("currentColor");
 		await expect.element(screen.getByTestId("session-list-chrome-divider")).not.toBeInTheDocument();
-		const inbox = screen.getByTestId("session-list-inbox").element();
 		expect(headerEl.compareDocumentPosition(newChat) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);

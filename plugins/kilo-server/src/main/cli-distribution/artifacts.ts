@@ -1,5 +1,5 @@
 /** Pinned native packages distributed with the desktop application. */
-export const KILO_CLI_VERSION = "7.4.21";
+export const KILO_CLI_VERSION = "7.5.5";
 
 export interface KiloCliArtifact {
 	readonly target: string;
@@ -15,7 +15,7 @@ export const KILO_CLI_ARTIFACTS = [
 		target: "darwin-arm64",
 		packageName: "@kilocode/cli-darwin-arm64",
 		integrity:
-			"sha512-rFm+Pn6RqlwHsx5dxdg3W9t2uZ3JZG1InHlqbu2IKGMwHqEk3vZpL6q3z+s0cVvA0awJxCsY2KH5iV/j10rAPw==",
+			"sha512-9jY1PZYFYqTEz2eyDBLFCIgHnZZ3fwM5zxi5hes0EjqEyhUUayz6bdLpYVq/J5LvkRkImmdd7LVhULcb8NWpgA==",
 		platform: "darwin",
 		arch: "arm64",
 		executable: "kilo",
@@ -24,7 +24,7 @@ export const KILO_CLI_ARTIFACTS = [
 		target: "windows-x64-baseline",
 		packageName: "@kilocode/cli-windows-x64-baseline",
 		integrity:
-			"sha512-20W/3I84VO7UlDc6C7o0tGmI8XBlqL9hvb8WKBoLbrmmhCzJ/x7JTA6bCZqxNAAG09ZUicYqeP94OkdxusnEVw==",
+			"sha512-UocGe8J3xB0cLyRfTsIAuvqExaFcppGtXOoZ5PdoTm6ItwxiV4H+rzz+uHOrNGeb86/5B5VlOpbWv2IuAHGyrg==",
 		platform: "win32",
 		arch: "x64",
 		executable: "kilo.exe",
@@ -33,7 +33,7 @@ export const KILO_CLI_ARTIFACTS = [
 		target: "linux-x64-baseline",
 		packageName: "@kilocode/cli-linux-x64-baseline",
 		integrity:
-			"sha512-T+dM0D4jpJpWir99uvpl+CajMwnIF5UkPHeAI+PM/TIkee8ThI6WZf55KCaz8fQmDsVJHdgKE+OOLcG6qjamXA==",
+			"sha512-BPcHloQkKjexx3RNUaB+Ae3KKDibSWLMNByAoDvcb10yrtDD3JPLnFL97JIhTS0BaDSNKyla8oEtf41Kg6Wqdw==",
 		platform: "linux",
 		arch: "x64",
 		executable: "kilo",

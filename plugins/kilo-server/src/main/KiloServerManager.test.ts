@@ -53,7 +53,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 		},
 	);
 	const fetch = vi.fn(async () =>
-		Response.json({ healthy: true, version: "7.4.21" }),
+		Response.json({ healthy: true, version: "7.5.5" }),
 	) as unknown as typeof globalThis.fetch;
 	const statuses: KiloServerStatus[] = [];
 	const manager = new KiloServerManager({
@@ -93,7 +93,7 @@ describe("KiloServerManager", () => {
 		expect(first).toMatchObject({
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
-			version: "7.4.21",
+			version: "7.5.5",
 			globalDirectory: "/tmp/kilo-test-runtime",
 		});
 		expect(first.password).toMatch(/^[a-f0-9]{64}$/);
@@ -107,7 +107,7 @@ describe("KiloServerManager", () => {
 		);
 		expect(statuses).toEqual([
 			{ status: "starting" },
-			{ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.4.21" },
+			{ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.5.5" },
 		]);
 		await expect(manager.ensureRunning()).resolves.toEqual(first);
 		expect(spawn).toHaveBeenCalledOnce();
@@ -146,6 +146,7 @@ describe("KiloServerManager", () => {
 		expect(options.env).toMatchObject({
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
+			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: "/vendor/tree-sitter",
 			// Desktop owns Kilo config, rather than merging the host's ~/.config/kilo.
 			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
@@ -229,7 +230,7 @@ describe("KiloServerManager", () => {
 		) as unknown as typeof fetch;
 		const strict = createHarness({ fetch: mismatchFetch });
 		await expect(strict.manager.ensureRunning()).rejects.toThrow(
-			"Kilo server version mismatch: expected 7.4.21, got 9.0.0-dev.",
+			"Kilo server version mismatch: expected 7.5.5, got 9.0.0-dev.",
 		);
 
 		const override = createHarness({ fetch: mismatchFetch, allowVersionMismatch: true });
@@ -257,7 +258,7 @@ describe("KiloServerManager", () => {
 
 	it("rejects invalid and unhealthy health responses", async () => {
 		const invalid = createHarness({
-			fetch: vi.fn(async () => Response.json({ healthy: false, version: "7.4.21" })),
+			fetch: vi.fn(async () => Response.json({ healthy: false, version: "7.5.5" })),
 		});
 		await expect(invalid.manager.ensureRunning()).rejects.toThrow(
 			"Kilo server returned an invalid health response.",

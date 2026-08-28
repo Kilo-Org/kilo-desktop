@@ -435,6 +435,7 @@ export class KiloServerManager {
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
 			KILO_ENABLE_QUESTION_TOOL: "true",
+			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
 			// KILO_CONFIG_DIR is additive in Kilo 7.4.21. Isolate the base config
 			// root instead so ~/.config/kilo is not merged into Desktop.

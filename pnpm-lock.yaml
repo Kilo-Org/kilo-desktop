@@ -897,8 +897,8 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@kilocode/sdk':
-        specifier: 7.4.22
-        version: 7.4.22
+        specifier: 7.5.5
+        version: 7.5.5
       '@lobehub/icons':
         specifier: ^5.15.0
         version: 5.15.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
@@ -1021,8 +1021,8 @@ importers:
   plugins/kilo-ui/opencode-sdk-compat:
     dependencies:
       '@kilocode/sdk':
-        specifier: 7.4.22
-        version: 7.4.22
+        specifier: 7.5.5
+        version: 7.5.5
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2401,8 +2401,8 @@ packages:
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
 
-  '@kilocode/sdk@7.4.22':
-    resolution: {integrity: sha512-ufJIY4+3ssujYCDDcosY1Pw40O4oJ+7hy1pMnTj1mxRcdR4kimWoG5+o88PVJijnm4BX/oMnc2qf7cio7pYWGA==}
+  '@kilocode/sdk@7.5.5':
+    resolution: {integrity: sha512-qoJjNZpFxGQ5abXmtNEXFpcp1lDigam0zFSh3h6B4sC9IUY19XSplJsSAGbvoPhYAwQcgxvbW/qlCLwFTcowOA==}
 
   '@launchdarkly/js-client-sdk-common@1.30.2':
     resolution: {integrity: sha512-qpO5gSNX5WbqM03LMCKxOh8dR7Rl1iPxcsXXY//XUNlVbZ1YLrJfqVkSrOYfZHxO8PQMSPa/GFwNWSCwfapjPw==}
@@ -10434,7 +10434,7 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
-  '@kilocode/sdk@7.4.22':
+  '@kilocode/sdk@7.5.5':
     dependencies:
       cross-spawn: 7.0.6
 

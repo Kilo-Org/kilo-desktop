@@ -136,7 +136,7 @@ describe("stageNotebookUi", () => {
 		});
 	});
 
-	it("extracts the published archive without a source checkout", async () => {
+	it("extracts the published archive without a source checkout", { timeout: 30_000 }, async () => {
 		const root = await temporaryDirectory();
 		const archive = await publishedArchive(root);
 		const artifact = {

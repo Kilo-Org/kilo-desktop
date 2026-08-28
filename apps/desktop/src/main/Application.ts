@@ -27,6 +27,7 @@ import {
 	createThemeHandlers,
 	restoreNativeThemeFromPreferences,
 } from "./features/theme/handlers.js";
+import { createUpdateHandlers } from "./features/updates/handlers.js";
 import { BootProgressReporter } from "./platform/BootProgressReporter.js";
 import { AwaitedShutdownBarrier } from "./platform/AwaitedShutdownBarrier.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
@@ -43,7 +44,7 @@ import { PreferencesStore } from "./platform/PreferencesStore.js";
 import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { SplashWindow } from "./platform/SplashWindow.js";
-import { configureUpdater } from "./platform/Updater.js";
+import { DesktopUpdaterService } from "./platform/Updater.js";
 import { flushSentry } from "./platform/sentry.js";
 import * as Sentry from "@sentry/electron/main";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
@@ -76,6 +77,7 @@ export class Application {
 	});
 	#featureFlags: FeatureFlagService | undefined;
 	#telemetry: TelemetryService | undefined;
+	#updates: DesktopUpdaterService | undefined;
 	#disposePromise: Promise<void> | undefined;
 
 	async start(): Promise<void> {
@@ -112,7 +114,20 @@ export class Application {
 
 		try {
 			reporter.report("updates", "Checking for updates\u2026");
-			this.#disposers.push(configureUpdater());
+			const updates = new DesktopUpdaterService({
+				isPackaged: this.#app.metadata.isPackaged,
+				platform: process.platform,
+				arch: process.arch,
+				channel: RELEASE_CHANNEL,
+				currentVersion: this.#app.metadata.appVersion,
+				publishUrl: UPDATE_PUBLISH_URL,
+				fetch: this.#http.fetch,
+				installWithShutdown: (install) => this.#shutdown.requestExternalQuit(install),
+				broadcast: (state) => this.#windows.broadcast("updates:state-changed", state),
+				logger: createLogger("updates"),
+			});
+			this.#updates = updates;
+			this.#disposers.push(updates.start());
 
 			reporter.report("initializing", "Configuring protocols\u2026");
 			const developmentOrigin = getWebDevServerUrl();
@@ -285,6 +300,7 @@ export class Application {
 			...createTelemetryHandlers(telemetry),
 			...createFeatureHandlers(),
 			...createFeatureFlagHandlers(featureFlags),
+			...createUpdateHandlers(this.#updates!),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(
 			handlers,

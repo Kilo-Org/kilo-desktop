@@ -8,6 +8,7 @@ import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
 import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
+import { updateEvents, updateMethods } from "./features/updates.js";
 
 /**
  * Throws if any two channel maps share a key. A plain object spread already
@@ -36,8 +37,9 @@ assertNoDuplicateChannels(
 	fsMethods,
 	featureFlagMethods,
 	telemetryMethods,
+	updateMethods,
 );
-assertNoDuplicateChannels(featureEvents, authEvents, featureFlagEvents);
+assertNoDuplicateChannels(featureEvents, authEvents, featureFlagEvents, updateEvents);
 assertNoDuplicateChannels(featureMessages);
 assertNoDuplicateChannels(featurePorts);
 assertNoDuplicateChannels(featurePorts, {
@@ -48,9 +50,11 @@ assertNoDuplicateChannels(featurePorts, {
 	...notificationsMethods,
 	...fsMethods,
 	...featureFlagMethods,
+	...updateMethods,
 	...authEvents,
 	...featureEvents,
 	...featureFlagEvents,
+	...updateEvents,
 	...featureMessages,
 });
 
@@ -63,8 +67,9 @@ export const ipcMethods = {
 	...notificationsMethods,
 	...fsMethods,
 	...featureFlagMethods,
+	...updateMethods,
 };
-export const ipcEvents = { ...authEvents, ...featureEvents, ...featureFlagEvents };
+export const ipcEvents = { ...authEvents, ...featureEvents, ...featureFlagEvents, ...updateEvents };
 // feature:event is intentionally duplex: the same validated envelope is a
 // renderer-to-main message and a main-to-renderer event.
 export const ipcMessages = { ...featureMessages };

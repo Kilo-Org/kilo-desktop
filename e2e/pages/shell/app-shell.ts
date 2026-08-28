@@ -71,6 +71,21 @@ export class AppShellPage {
 		);
 	}
 
+	async openAboutSettings(): Promise<void> {
+		await click(getLocatorByTestId("settings-section-about"));
+	}
+
+	async verifyAboutSettings(): Promise<void> {
+		await expectElementToBeVisible(
+			getLocatorByTestId("about-settings"),
+			"About settings should be visible in the packaged desktop app",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("update-status-message"),
+			"About settings should report why updates are unavailable without a configured feed",
+		);
+	}
+
 	async leaveSettings(): Promise<void> {
 		await click(getLocatorByTestId("settings-back"));
 	}

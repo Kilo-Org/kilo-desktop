@@ -10,6 +10,7 @@ import { notificationsMethods } from "./features/notifications.js";
 import { shellMethods } from "./features/shell.js";
 import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
+import { updateEvents, updateMethods } from "./features/updates.js";
 import {
 	assertNoDuplicateChannels,
 	ipcEvents,
@@ -28,7 +29,8 @@ describe("IPC registry", () => {
 				Object.keys(notificationsMethods).length +
 				Object.keys(fsMethods).length +
 				Object.keys(featureFlagMethods).length +
-				Object.keys(telemetryMethods).length,
+				Object.keys(telemetryMethods).length +
+				Object.keys(updateMethods).length,
 		);
 	});
 
@@ -36,7 +38,8 @@ describe("IPC registry", () => {
 		expect(Object.keys(ipcEvents)).toHaveLength(
 			Object.keys(authEvents).length +
 				Object.keys(featureEvents).length +
-				Object.keys(featureFlagEvents).length,
+				Object.keys(featureFlagEvents).length +
+				Object.keys(updateEvents).length,
 		);
 		expect(Object.keys(ipcMessages)).toHaveLength(Object.keys(featureMessages).length);
 		expect(Object.keys(ipcPorts)).toHaveLength(Object.keys(featurePorts).length);

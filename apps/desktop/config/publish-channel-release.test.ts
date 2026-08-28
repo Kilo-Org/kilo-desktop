@@ -1,0 +1,108 @@
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { describe, expect, it, vi } from "vitest";
+
+import { publishChannelObjects } from "./publish-channel-release.js";
+
+describe("channel object publication", () => {
+	it("publishes immutable notes, stable aliases, the note pointer, then the manifest", async () => {
+		const workingDirectory = await mkdtemp(path.join(tmpdir(), "channel-publication-test-"));
+		const artifactDirectory = path.join(workingDirectory, "make", "deb", "linux", "x64");
+		await mkdir(artifactDirectory, { recursive: true });
+		const artifact = path.join(artifactDirectory, "anaconda-agentic-desktop_1.2.3_amd64.deb");
+		const notesFile = path.join(workingDirectory, "1.2.3.json");
+		await writeFile(artifact, "artifact");
+		await writeFile(notesFile, '{"schemaVersion":1}\n');
+		const copies: Array<{
+			source: string;
+			key: string;
+			cacheControl: string;
+			contentType: string;
+		}> = [];
+		const copy = vi.fn(
+			async (
+				source: string,
+				_bucket: string,
+				key: string,
+				cacheControl: string,
+				contentType: string,
+			) => {
+				copies.push({ source, key, cacheControl, contentType });
+			},
+		);
+
+		const manifest = await publishChannelObjects(
+			{
+				artifactFiles: [artifact, path.join(workingDirectory, "RELEASES.json")],
+				bucket: "desktop-releases",
+				channel: "prod",
+				notesFile,
+				publishedAt: "2026-08-26T12:00:00.000Z",
+				publishUrl: "https://downloads.example.test/",
+				version: "1.2.3",
+				workingDirectory,
+			},
+			copy,
+		);
+
+		expect(copies.map(({ key }) => key)).toEqual([
+			"anaconda-agentic-desktop/prod/release-notes/1.2.3.json",
+			"anaconda-agentic-desktop/prod/latest/linux/x64/anaconda-agentic-desktop.deb",
+			"anaconda-agentic-desktop/prod/release-notes/latest.json",
+			"anaconda-agentic-desktop/prod/latest.json",
+		]);
+		expect(copies[0]).toMatchObject({
+			cacheControl: "public,max-age=31536000,immutable",
+			contentType: "application/json",
+		});
+		expect(copies.slice(1).every(({ cacheControl }) => cacheControl.includes("max-age=60"))).toBe(
+			true,
+		);
+		expect(manifest).toMatchObject({
+			schemaVersion: 1,
+			channel: "prod",
+			version: "1.2.3",
+			releaseNotesUrl:
+				"https://downloads.example.test/anaconda-agentic-desktop/prod/release-notes/1.2.3.json",
+			downloads: [
+				{
+					arch: "x64",
+					fileName: "anaconda-agentic-desktop.deb",
+					platform: "linux",
+					sha256: "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
+					size: 8,
+					type: "deb",
+					url: "https://downloads.example.test/anaconda-agentic-desktop/prod/linux/x64/anaconda-agentic-desktop_1.2.3_amd64.deb",
+				},
+			],
+		});
+		const writtenManifest = JSON.parse(await readFile(copies.at(-1)!.source, "utf8"));
+		expect(writtenManifest).toEqual(manifest);
+	});
+
+	it("refuses to advance pointers when no downloadable artifact exists", async () => {
+		const workingDirectory = await mkdtemp(path.join(tmpdir(), "channel-publication-test-"));
+		const notesFile = path.join(workingDirectory, "1.2.3.json");
+		await writeFile(notesFile, "{}\n");
+		const copy = vi.fn(async () => {});
+
+		await expect(
+			publishChannelObjects(
+				{
+					artifactFiles: [path.join(workingDirectory, "RELEASES.json")],
+					bucket: "desktop-releases",
+					channel: "staging",
+					notesFile,
+					publishedAt: "2026-08-26T12:00:00.000Z",
+					publishUrl: "https://downloads.example.test",
+					version: "1.2.3",
+					workingDirectory,
+				},
+				copy,
+			),
+		).rejects.toThrow("No user-downloadable release artifacts");
+		expect(copy).toHaveBeenCalledOnce();
+	});
+});

@@ -4,6 +4,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
+import { SidebarUpdatePill } from "@/components/updates/SidebarUpdatePill";
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
@@ -264,8 +265,9 @@ export function AppSidebarLayout({
 							<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
 						</div>
 					</SidebarContent>
-					{session.status === "authenticated" && (
-						<SidebarFooter className="px-2 pb-3">
+					<SidebarFooter className="gap-2 px-2 pb-3">
+						<SidebarUpdatePill />
+						{session.status === "authenticated" ? (
 							<SidebarMenu>
 								<SidebarMenuItem className="has-data-open:bg-foreground/5 hover:bg-foreground/5 rounded-md transition-colors">
 									<DropdownMenu>
@@ -332,8 +334,8 @@ export function AppSidebarLayout({
 									</Link>
 								</SidebarMenuItem>
 							</SidebarMenu>
-						</SidebarFooter>
-					)}
+						) : null}
+					</SidebarFooter>
 				</Sidebar>
 
 				<ShellTitlebar

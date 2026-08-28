@@ -6,6 +6,7 @@ import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
 import { PluginProviderStack } from "@/features/plugin-providers";
 import { createDesktopQueryClient } from "@/lib/query/client";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
+import { UpdateProvider } from "@/platform/updates/UpdateProvider";
 import { SdkProvider, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
 import { router } from "@/router";
 
@@ -24,13 +25,15 @@ export function AppProviders({ localApi, system, children }: AppProvidersProps) 
 
 	return (
 		<LocalApiProvider api={localApi}>
-			<SdkProvider system={system}>
-				<QueryClientProvider client={queryClient}>
-					<PluginProviderStack>
-						{children ?? <RouterProvider router={router} />}
-					</PluginProviderStack>
-				</QueryClientProvider>
-			</SdkProvider>
+			<UpdateProvider>
+				<SdkProvider system={system}>
+					<QueryClientProvider client={queryClient}>
+						<PluginProviderStack>
+							{children ?? <RouterProvider router={router} />}
+						</PluginProviderStack>
+					</QueryClientProvider>
+				</SdkProvider>
+			</UpdateProvider>
 		</LocalApiProvider>
 	);
 }

@@ -57,4 +57,50 @@ describe("AwaitedShutdownBarrier", () => {
 		await barrier.handleBeforeQuit({ preventDefault: vi.fn() });
 		expect(quit).toHaveBeenCalledOnce();
 	});
+
+	it("retries an external installer quit only after asynchronous cleanup", async () => {
+		const cleanup = deferred();
+		const dispose = vi.fn(() => cleanup.promise);
+		const quit = vi.fn();
+		const barrier = new AwaitedShutdownBarrier({ dispose, quit, logger: silentLogger });
+		const event = { preventDefault: vi.fn() };
+		let shutdown: Promise<void> | undefined;
+		const externalQuit = vi.fn(() => {
+			if (externalQuit.mock.calls.length === 1) shutdown = barrier.handleBeforeQuit(event);
+		});
+
+		barrier.requestExternalQuit(externalQuit);
+
+		expect(externalQuit).toHaveBeenCalledOnce();
+		expect(event.preventDefault).toHaveBeenCalledOnce();
+		expect(quit).not.toHaveBeenCalled();
+		cleanup.resolve();
+		await shutdown;
+		expect(dispose).toHaveBeenCalledOnce();
+		expect(externalQuit).toHaveBeenCalledTimes(2);
+		expect(quit).not.toHaveBeenCalled();
+	});
+
+	it("uses an external installer quit requested while cleanup is in flight", async () => {
+		const cleanup = deferred();
+		const dispose = vi.fn(() => cleanup.promise);
+		const quit = vi.fn();
+		const barrier = new AwaitedShutdownBarrier({ dispose, quit, logger: silentLogger });
+		const initialEvent = { preventDefault: vi.fn() };
+		const externalEvent = { preventDefault: vi.fn() };
+		const shutdown = barrier.handleBeforeQuit(initialEvent);
+		const externalQuit = vi.fn(() => {
+			if (externalQuit.mock.calls.length === 1) barrier.handleBeforeQuit(externalEvent);
+		});
+
+		barrier.requestExternalQuit(externalQuit);
+
+		expect(externalQuit).toHaveBeenCalledOnce();
+		expect(externalEvent.preventDefault).toHaveBeenCalledOnce();
+		cleanup.resolve();
+		await shutdown;
+		expect(dispose).toHaveBeenCalledOnce();
+		expect(externalQuit).toHaveBeenCalledTimes(2);
+		expect(quit).not.toHaveBeenCalled();
+	});
 });

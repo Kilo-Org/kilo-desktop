@@ -2,6 +2,7 @@ import type { AuthSession } from "./features/auth.js";
 import type { NotificationDeliveryResult } from "./features/notifications.js";
 import type { TelemetryTrackInput } from "./features/telemetry.js";
 import type { ThemeState } from "./features/theme.js";
+import type { DesktopUpdateActionResult, DesktopUpdateState } from "./features/updates.js";
 import type { IpcError } from "./result.js";
 
 /**
@@ -60,6 +61,12 @@ export interface LocalApi {
 	telemetry: {
 		/** Fire-and-forget product event; gated on `allowDataCollection` in the main process. */
 		track(input: TelemetryTrackInput): Promise<void>;
+	};
+	updates: {
+		getState(): Promise<DesktopUpdateState>;
+		check(): Promise<DesktopUpdateActionResult>;
+		install(): Promise<DesktopUpdateActionResult>;
+		onChanged(listener: (state: DesktopUpdateState) => void): () => void;
 	};
 }
 

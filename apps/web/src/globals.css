@@ -17,6 +17,9 @@
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
 	--shell-glass-opacity: 64%;
+	--update: var(--primary);
+	--update-surface: color-mix(in oklch, var(--update) 12%, transparent);
+	--update-surface-hover: color-mix(in oklch, var(--update) 18%, transparent);
 }
 
 [data-theme="dark"] {

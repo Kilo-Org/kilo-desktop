@@ -125,6 +125,20 @@ export function getUpdateFeedUrl(input: {
 	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.channel)}/${input.platform}/${input.arch}`;
 }
 
+export function getReleaseNotesUrl(input: {
+	readonly publishUrl: string;
+	readonly channel: string;
+	readonly version?: string;
+}): string | undefined {
+	if (!input.publishUrl) return undefined;
+	const url = new URL(input.publishUrl);
+	if (url.protocol !== "https:") {
+		throw new Error("UPDATE_PUBLISH_URL must use HTTPS.");
+	}
+	const fileName = input.version ? `${encodeURIComponent(input.version)}.json` : "latest.json";
+	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.channel)}/release-notes/${fileName}`;
+}
+
 function requiresSignedPublish(channel: PublishableReleaseChannel): boolean {
 	return channel === "staging" || channel === "prod";
 }

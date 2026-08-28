@@ -88,6 +88,35 @@ The runtime update feed URL uses the same `channel/platform/arch` path, so a bui
 looks for updates where its own artifacts were uploaded. `UPDATE_PUBLISH_URL` must use
 HTTPS.
 
+After every successful publish matrix, the workflow also creates or updates a private
+GitHub Release tagged `desktop/<channel>/v<version>`. Generated notes are sanitized to
+remove pull-request numbers and links before the same body is used by GitHub and the
+public in-app release-note document.
+
+Each channel exposes stable public download pointers in addition to its immutable maker
+artifacts:
+
+```text
+anaconda-agentic-desktop/<channel>/latest.json
+anaconda-agentic-desktop/<channel>/latest/<platform>/<arch>/<installer>
+anaconda-agentic-desktop/<channel>/release-notes/<version>.json
+anaconda-agentic-desktop/<channel>/release-notes/latest.json
+```
+
+`latest.json` contains the version, publication time, immutable release-note URL, and
+download records with platform, architecture, artifact type, size, SHA-256, and the
+immutable Forge artifact URL for that release. Stable installer aliases and moving JSON
+pointers use short-lived cache headers; versioned artifacts and release notes are
+immutable. The workflow uploads aliases before `latest.json`, whose immutable download
+URLs make the manifest the final atomic publication pointer. Native auto-update feeds
+remain at their existing `channel/platform/arch` paths.
+
+Each immutable release-note document includes the previous release version for its
+channel. Canary clients follow that chain back to their installed version and display up
+to six release groups, so skipping Canary builds does not hide their changes. Staging and
+Production show only the target release. Missing or legacy documents simply stop the
+history lookup and never block the binary update.
+
 ## Build-time variables
 
 The desktop main bundle loads committed Vite variables from

@@ -58,5 +58,11 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 				await invoke("telemetry:track", input);
 			},
 		},
+		updates: {
+			getState: () => invoke("updates:get-state"),
+			check: () => invoke("updates:check"),
+			install: () => invoke("updates:install"),
+			onChanged: (listener) => bridge.on("updates:state-changed", listener),
+		},
 	};
 }

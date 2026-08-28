@@ -127,5 +127,29 @@ export function createBrowserLocalApi(): LocalApi {
 			// No main-process telemetry service outside Electron — drop events.
 			async track() {},
 		},
+		updates: {
+			async getState() {
+				return {
+					enabled: false,
+					status: "disabled",
+					channel: "canary",
+					currentVersion: "development",
+					availableVersion: null,
+					downloadedVersion: null,
+					releaseNotes: [],
+					checkedAt: null,
+					message: "Automatic updates are available in the desktop app.",
+				};
+			},
+			async check() {
+				return { accepted: false, state: await this.getState() };
+			},
+			async install() {
+				return { accepted: false, state: await this.getState() };
+			},
+			onChanged() {
+				return () => {};
+			},
+		},
 	};
 }

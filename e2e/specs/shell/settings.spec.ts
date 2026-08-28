@@ -8,4 +8,11 @@ test.describe("Settings @smoke", () => {
 		await appShellPage.leaveSettings();
 		await appShellPage.verifyShellIsLoaded();
 	});
+
+	test("reads automatic update state over the desktop bridge", async ({ appShellPage }) => {
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appShellPage.openAboutSettings();
+		await appShellPage.verifyAboutSettings();
+	});
 });

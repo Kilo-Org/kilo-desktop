@@ -7,6 +7,7 @@ import {
 	getNativeAppVersion,
 	getPublishAppVersion,
 	getReleaseChannel,
+	getReleaseNotesUrl,
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 	validatePublishEnvironment,
@@ -36,6 +37,18 @@ describe("release configuration", () => {
 
 		expect(artifactKey).toBe("anaconda-agentic-desktop/staging/darwin/arm64/Anaconda.zip");
 		expect(feedUrl).toBe("https://cdn.example.com/anaconda-agentic-desktop/staging/darwin/arm64");
+		expect(getReleaseNotesUrl({ publishUrl: "https://cdn.example.com", channel: "staging" })).toBe(
+			"https://cdn.example.com/anaconda-agentic-desktop/staging/release-notes/latest.json",
+		);
+		expect(
+			getReleaseNotesUrl({
+				publishUrl: "https://cdn.example.com",
+				channel: "canary",
+				version: "1.2.3-canary.1",
+			}),
+		).toBe(
+			"https://cdn.example.com/anaconda-agentic-desktop/canary/release-notes/1.2.3-canary.1.json",
+		);
 	});
 
 	it("rejects unknown channels and non-HTTPS feeds", () => {

@@ -88,10 +88,12 @@ The runtime update feed URL uses the same `channel/platform/arch` path, so a bui
 looks for updates where its own artifacts were uploaded. `UPDATE_PUBLISH_URL` must use
 HTTPS.
 
-After every successful publish matrix, the workflow also creates or updates a private
-GitHub Release tagged `desktop/<channel>/v<version>`. Generated notes are sanitized to
-remove pull-request numbers and links before the same body is used by GitHub and the
-public in-app release-note document.
+After the publish matrix completes without cancellation, the workflow gathers the
+artifacts from successful platform jobs and creates or updates a private GitHub Release
+tagged `desktop/<channel>/v<version>`. The finalizer still runs when another platform job
+fails so release notes remain available for native update feeds that were already
+published. Generated notes are sanitized to remove pull-request numbers and links before
+the same body is used by GitHub and the public in-app release-note document.
 
 Each channel exposes stable public download pointers in addition to its immutable maker
 artifacts:

@@ -108,6 +108,7 @@ jobs:
 
   release:
     needs: publish
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: ${{ inputs.release_channel }}

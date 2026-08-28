@@ -1,0 +1,32 @@
+## Problem
+
+<!-- What problem does this solve? Why does it matter? Link the issue/ticket. -->
+
+## Solution
+
+<!-- What approach did you choose? Describe the high-level design, not a line-by-line narration of the diff. -->
+
+## Alternatives Considered
+
+<!-- What other approaches were evaluated? Why were they rejected? If none, say so. -->
+
+## Risk & Tradeoffs
+
+<!-- What assumptions does this rely on? What could go wrong? What was intentionally left out or deferred? -->
+
+## Testing
+
+<!-- How was this verified? Describe the testing strategy: unit, integration, e2e, manual. -->
+
+## Reviewer Focus
+
+<!-- Where should the reviewer spend their time? Flag areas of uncertainty, new patterns, or sensitive paths. -->
+
+## Change Classification
+
+<!-- Check one. This helps the reviewer calibrate depth. -->
+
+- [ ] **Routine** — small, well-tested, low-risk (typo, config, dependency bump)
+- [ ] **Standard** — normal feature/bugfix work with tests
+- [ ] **Architectural** — introduces new patterns, changes system boundaries, or affects multiple packages
+- [ ] **Sensitive** — touches auth, permissions, data deletion, migrations, security boundaries

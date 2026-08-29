@@ -1,6 +1,7 @@
 import { getMcpAppFromToolPart, type GroupByContext, type PartState } from "@assistant-ui/react";
 
 import { shouldExcludeToolCallFromActivityGroup } from "../../plan/plan-projection.js";
+import { isHostableMcpAppTool } from "../../runtime/mcp-app-registry.js";
 import { isHiddenOpenCodeDataPart } from "./opencode-data-part.js";
 import { getGroupKeyForTool, isSuggestTool } from "./tool-categories.js";
 
@@ -31,7 +32,7 @@ const getDirectActivityPath = (
 	}
 	if (part.type !== "tool-call") return undefined;
 	if (isSuggestTool(part.toolName)) return undefined;
-	if (getMcpAppFromToolPart(part)) return undefined;
+	if (getMcpAppFromToolPart(part) && isHostableMcpAppTool(part.toolName)) return undefined;
 	if (context.toolUIs?.[part.toolName]?.[0]?.standalone) return undefined;
 	if (shouldExcludeToolCallFromActivityGroup(part, options)) return undefined;
 	return ["group-activity", getGroupKeyForTool(part.toolName)];

@@ -4,15 +4,19 @@ export interface LocalMcpApp {
 }
 
 /**
- * Desktop-local MCP App declarations for tools where the Desktop provides
- * both the tool and its UI. Bypasses the need for relay-level _meta.ui support.
+ * Desktop-hosted MCP Apps that chat is allowed to render as widgets.
+ *
+ * Remote servers (including notebooks) may still advertise `_meta.ui`, but the
+ * chat host only has a complete renderer for entries in this map. Anything else
+ * is not rendered as a widget, so we do not reserve an empty iframe.
  *
  * Key = MCP wire tool name as seen by Kilo. The WebMCP relay registers as the
  * "desktop" MCP server, so tool names are prefixed: `desktop_<featureId>_<name>`
  * (all sanitized to [A-Za-z0-9_] by McpCatalog.toolName).
  *
- * This map is injected into the patched openCodeMessageProjection via
- * setLocalMcpApps() at runtime startup.
+ * This map is also injected into the patched openCodeMessageProjection via
+ * setLocalMcpApps() so Desktop-owned tools get `mcp.app` even without wire
+ * `_meta.ui`.
  */
 export const LOCAL_MCP_APPS: Record<string, LocalMcpApp> = {
 	desktop_environments_conda_envs_list: {
@@ -20,3 +24,8 @@ export const LOCAL_MCP_APPS: Record<string, LocalMcpApp> = {
 		serverId: "desktop",
 	},
 };
+
+/** True when chat has a hostable MCP App widget for this tool name. */
+export function isHostableMcpAppTool(toolName: string): boolean {
+	return Object.hasOwn(LOCAL_MCP_APPS, toolName);
+}

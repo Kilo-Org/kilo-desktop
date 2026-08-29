@@ -85,8 +85,8 @@ describe("AppProviders (app-level)", () => {
 		await expect
 			.element(screen.getByTestId("app-sidebar-primary"))
 			.toHaveAttribute("aria-hidden", "true");
-		await expect.element(screen.getByTestId("zone-sidebar")).toBeInTheDocument();
-		await expect.element(screen.getByTestId("global-new")).toBeInTheDocument();
+		await expect.element(screen.getByTestId("zone-sidebar")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("global-new")).not.toBeInTheDocument();
 
 		await screen.getByTestId("settings-back").click();
 		await expect.element(screen.getByTestId("nav-settings")).toBeVisible();

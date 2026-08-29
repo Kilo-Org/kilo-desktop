@@ -985,7 +985,16 @@ describe("SessionList", () => {
 
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
+		await expect.element(page.getByRole("menuitemradio", { name: "Updated" })).toBeVisible();
 		await page.getByRole("menuitemradio", { name: "Updated" }).click();
+		await expect.element(screen.getByRole("button", { name: "Today" })).toBeVisible();
+		await expect
+			.element(screen.getByTestId("session-list-workspace-toggle"))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByRole("menuitemradio", { name: "Workspace" })).toBeVisible();
 
 		await expect
 			.element(screen.getByTestId("session-list-grouping-header"))

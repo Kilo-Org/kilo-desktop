@@ -53,7 +53,6 @@ import {
 	Undo2Icon,
 } from "lucide-react";
 import isEqual from "lodash/isEqual.js";
-import { motion } from "motion/react";
 import {
 	createContext,
 	memo,
@@ -430,10 +429,7 @@ export const SessionListContent = memo(function SessionListContent({
 											)}
 											style={{ transform: `translateY(${virtualItem.start}px)` }}
 										>
-											<motion.div
-												layout="position"
-												transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
-											>
+											<div>
 												{entry.kind === "actions" ? (
 													<div data-qa-id="session-list-inbox-actions" className="h-7" />
 												) : entry.kind === "header" ? (
@@ -458,7 +454,7 @@ export const SessionListContent = memo(function SessionListContent({
 														<SessionListItemSlot id={entry.row.id} archived={entry.row.archived} />
 													</SessionRowIndentContext>
 												)}
-											</motion.div>
+											</div>
 										</li>
 									);
 								})}

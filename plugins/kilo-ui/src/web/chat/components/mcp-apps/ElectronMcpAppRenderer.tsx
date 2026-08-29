@@ -10,6 +10,7 @@ import type {
 } from "@assistant-ui/react";
 import type { ToolCallMessagePartProps } from "@assistant-ui/core/react";
 
+import { isHostableMcpAppTool } from "../../runtime/mcp-app-registry.js";
 import { type KiloMcpAppsHost } from "../../runtime/mcp-apps-host.js";
 
 interface ElectronMcpAppRendererOptions {
@@ -287,9 +288,10 @@ function InlineRenderer({
 function useElectronMcpAppRenderer(options: ElectronMcpAppRendererOptions) {
 	const host = useResource(options.host);
 	const render = useMemo(() => {
-		const Render = (props: ToolCallMessagePartProps) => (
-			<InlineRenderer part={props} host={host} options={options} />
-		);
+		const Render = (props: ToolCallMessagePartProps) => {
+			if (!isHostableMcpAppTool(props.toolName)) return null;
+			return <InlineRenderer part={props} host={host} options={options} />;
+		};
 		Render.displayName = "ElectronMcpAppRenderer";
 		return Render;
 	}, [host, options]);

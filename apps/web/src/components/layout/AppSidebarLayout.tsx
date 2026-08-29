@@ -262,7 +262,9 @@ export function AppSidebarLayout({
 								</SidebarGroup>
 							) : null}
 							{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-							<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
+							{settings ? null : (
+								<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
+							)}
 						</div>
 					</SidebarContent>
 					<SidebarFooter className="gap-2 px-2 pb-3">

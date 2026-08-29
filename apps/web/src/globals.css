@@ -17,15 +17,16 @@
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
 	--shell-glass-opacity: 64%;
-	--update: var(--primary);
-	--update-surface: color-mix(in oklch, var(--update) 12%, transparent);
-	--update-surface-hover: color-mix(in oklch, var(--update) 18%, transparent);
+	--update: var(--success-foreground);
+	--update-surface: color-mix(in oklch, var(--primary) 12%, transparent);
+	--update-surface-hover: color-mix(in oklch, var(--primary) 18%, transparent);
 }
 
 [data-theme="dark"] {
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 70%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
 	--shell-glass-opacity: 90%;
+	--update: var(--primary);
 }
 
 @layer base {

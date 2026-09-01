@@ -30,6 +30,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import {
 	CancellationTokenSource,
 	createMessageConnection,
+	ResponseError,
 	StreamMessageReader,
 	StreamMessageWriter,
 	type MessageConnection,
@@ -41,6 +42,7 @@ import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
 import {
 	environmentsErrorCodeToFeatureErrorCode,
 	formatEnvironmentsErrorMessage,
+	type EnvironmentsErrorCode,
 } from "../../../contracts/common.js";
 import type {
 	Channel,
@@ -61,6 +63,24 @@ const MAX_RESTART_ATTEMPTS = 3;
 const BASE_RESTART_DELAY_MS = 1000;
 /** Ceiling on the startup health-check so a wedged spawn never hangs callers. */
 const HEALTH_CHECK_TIMEOUT_MS = 10_000;
+
+/** Shape of the `data` field on JSON-RPC errors from the bridge. */
+interface BridgeErrorData {
+	code?: string;
+	message?: string;
+	details?: Record<string, unknown>;
+}
+
+/** Map bridge domain codes to the granular EnvironmentsErrorCode. */
+const DOMAIN_CODE_MAP: Record<string, EnvironmentsErrorCode> = {
+	"conda:environment:not-found": "ENV_NOT_FOUND",
+	"conda:environment:already-exists": "ENV_EXISTS",
+	"conda:package:not-found": "PACKAGE_NOT_FOUND",
+	"conda:package:not-allowed": "PACKAGE_NOT_FOUND",
+	"conda:validation": "INVALID_MATCHSPEC",
+	"conda:environment:failed-to-clone": "SOLVE_FAILED",
+	"conda:environment-file:invalid": "INVALID_MATCHSPEC",
+};
 
 export interface SidecarCondaBackendOptions {
 	/** Launch command for the bridge (first element is the binary, rest are args). */
@@ -126,11 +146,12 @@ export class SidecarCondaBackend implements CondaBackend {
 			},
 			ctx,
 		);
+		this.#assertTransactionSuccess(result);
 		return { name: input.name, prefix: result.prefix };
 	}
 
 	async remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void> {
-		await this.#call<TransactionResult>(
+		const result = await this.#call<TransactionResult>(
 			"conda.remove",
 			{
 				name: input.name,
@@ -139,6 +160,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			},
 			ctx,
 		);
+		this.#assertTransactionSuccess(result);
 	}
 
 	async listPackages(
@@ -163,7 +185,7 @@ export class SidecarCondaBackend implements CondaBackend {
 		input: CondaPackagesInstallInput,
 		ctx?: CondaCallContext,
 	): Promise<CondaPackagesInstallResult> {
-		await this.#call<TransactionResult>(
+		const result = await this.#call<TransactionResult>(
 			"conda.install",
 			{
 				name: input.envName,
@@ -173,6 +195,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			},
 			ctx,
 		);
+		this.#assertTransactionSuccess(result);
 		// After install, fetch the updated package list to report what was installed
 		const packages = await this.listPackages(input.envName, ctx);
 		const installedNames = new Set(input.packages.map((p) => parsePackageName(p)));
@@ -184,7 +207,7 @@ export class SidecarCondaBackend implements CondaBackend {
 		input: CondaPackagesRemoveInput,
 		ctx?: CondaCallContext,
 	): Promise<CondaPackagesRemoveResult> {
-		await this.#call<TransactionResult>(
+		const result = await this.#call<TransactionResult>(
 			"conda.remove",
 			{
 				name: input.envName,
@@ -193,6 +216,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			},
 			ctx,
 		);
+		this.#assertTransactionSuccess(result);
 		return { jobId: "", envName: input.envName, removed: input.packages };
 	}
 
@@ -232,6 +256,33 @@ export class SidecarCondaBackend implements CondaBackend {
 
 	// ─── Private ──────────────────────────────────────────────────────────
 
+	#classifyRpcError(error: unknown): FeatureError {
+		if (error instanceof ResponseError) {
+			const data = error.data as BridgeErrorData | undefined;
+			const domainCode = data?.code;
+			const detail = data?.message ?? error.message;
+
+			if (domainCode) {
+				const mapped = DOMAIN_CODE_MAP[domainCode];
+				if (mapped) {
+					return featureError(mapped, detail);
+				}
+				this.#logger.warn(`[anaconda-bridge-sidecar] Unmapped domain_code: ${domainCode}`);
+			}
+
+			return featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${detail}`);
+		}
+
+		const message = error instanceof Error ? error.message : String(error);
+		return featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${message}`);
+	}
+
+	#assertTransactionSuccess(result: TransactionResult): void {
+		if (result.success === false) {
+			throw featureError("SOLVE_FAILED", result.message ?? "transaction failed");
+		}
+	}
+
 	async #call<T>(method: string, params: unknown, ctx?: CondaCallContext): Promise<T> {
 		const connection = await this.#ensureConnection();
 
@@ -262,8 +313,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			if (ctx?.signal?.aborted) {
 				throw featureError("JOB_CANCELLED", "Operation was cancelled.");
 			}
-			const message = error instanceof Error ? error.message : String(error);
-			throw featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${message}`);
+			throw this.#classifyRpcError(error);
 		} finally {
 			if (abortHandler && ctx?.signal) {
 				ctx.signal.removeEventListener("abort", abortHandler);
@@ -440,8 +490,6 @@ export class SidecarCondaBackend implements CondaBackend {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-import type { EnvironmentsErrorCode } from "../../../contracts/common.js";
 
 function featureError(code: EnvironmentsErrorCode, detail?: string): FeatureError {
 	return new FeatureError(

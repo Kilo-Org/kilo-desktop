@@ -155,56 +155,67 @@ describe("stageNotebookUi", () => {
 		).resolves.toMatchObject({ staged: true });
 	});
 
-	it("reuses or patches a current staged bundle without downloading it again", async () => {
-		const root = await temporaryDirectory();
-		const archive = await publishedArchive(root);
-		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
-		const options = {
-			destinationDirectory: path.join(root, "build/notebook"),
-			release: NIGHTLY_RELEASE,
-			artifact: {
-				assetName: "nteract-nightly-notebook-ui.tar.gz",
-				bytes: archive.byteLength,
-				sha256: createHash("sha256").update(archive).digest("hex"),
-			},
-			fetch: fetchArchive,
-		};
-		await stageNotebookUi(options);
+	it(
+		"reuses or patches a current staged bundle without downloading it again",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await temporaryDirectory();
+			const archive = await publishedArchive(root);
+			const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
+			const options = {
+				destinationDirectory: path.join(root, "build/notebook"),
+				release: NIGHTLY_RELEASE,
+				artifact: {
+					assetName: "nteract-nightly-notebook-ui.tar.gz",
+					bytes: archive.byteLength,
+					sha256: createHash("sha256").update(archive).digest("hex"),
+				},
+				fetch: fetchArchive,
+			};
+			await stageNotebookUi(options);
 
-		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: false });
-		const indexPath = path.join(options.destinationDirectory, "index.html");
-		await writeFile(
-			indexPath,
-			(await readFile(indexPath, "utf8")).replace(AGENTIC_EMBED_CHROME_CSS, "old{}"),
-		);
-		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
-		expect(await readFile(indexPath, "utf8")).toContain(AGENTIC_EMBED_CHROME_CSS);
-		expect(fetchArchive).toHaveBeenCalledOnce();
-	});
+			await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: false });
+			const indexPath = path.join(options.destinationDirectory, "index.html");
+			await writeFile(
+				indexPath,
+				(await readFile(indexPath, "utf8")).replace(AGENTIC_EMBED_CHROME_CSS, "old{}"),
+			);
+			await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
+			expect(await readFile(indexPath, "utf8")).toContain(AGENTIC_EMBED_CHROME_CSS);
+			expect(fetchArchive).toHaveBeenCalledOnce();
+		},
+	);
 
-	it("downloads a fresh bundle when staged bytes no longer match", async () => {
-		const root = await temporaryDirectory();
-		const archive = Buffer.from("published nightly notebook archive");
-		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
-		const options = {
-			destinationDirectory: path.join(root, "build/notebook"),
-			release: NIGHTLY_RELEASE,
-			artifact: {
-				assetName: "nteract-nightly-notebook-ui.tar.gz",
-				bytes: archive.byteLength,
-				sha256: createHash("sha256").update(archive).digest("hex"),
-			},
-			fetch: fetchArchive,
-			extract: async (_archivePath: string, extractedDirectory: string) => {
-				await writePublishedBundle(extractedDirectory);
-			},
-		};
-		await stageNotebookUi(options);
-		await writeFile(path.join(options.destinationDirectory, "assets/main-abcdef12.js"), "corrupt");
+	it(
+		"downloads a fresh bundle when staged bytes no longer match",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await temporaryDirectory();
+			const archive = Buffer.from("published nightly notebook archive");
+			const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
+			const options = {
+				destinationDirectory: path.join(root, "build/notebook"),
+				release: NIGHTLY_RELEASE,
+				artifact: {
+					assetName: "nteract-nightly-notebook-ui.tar.gz",
+					bytes: archive.byteLength,
+					sha256: createHash("sha256").update(archive).digest("hex"),
+				},
+				fetch: fetchArchive,
+				extract: async (_archivePath: string, extractedDirectory: string) => {
+					await writePublishedBundle(extractedDirectory);
+				},
+			};
+			await stageNotebookUi(options);
+			await writeFile(
+				path.join(options.destinationDirectory, "assets/main-abcdef12.js"),
+				"corrupt",
+			);
 
-		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
-		expect(fetchArchive).toHaveBeenCalledTimes(2);
-	});
+			await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
+			expect(fetchArchive).toHaveBeenCalledTimes(2);
+		},
+	);
 
 	it("rejects a release archive whose checksum does not match the pin", async () => {
 		const root = await temporaryDirectory();

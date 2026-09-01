@@ -25,10 +25,19 @@ vi.mock("vscode-jsonrpc/node", () => ({
 		cancel() {}
 		dispose() {}
 	},
+	ResponseError: class ResponseError extends Error {
+		code: number;
+		data: unknown;
+		constructor(code: number, message: string, data?: unknown) {
+			super(message);
+			this.code = code;
+			this.data = data;
+		}
+	},
 }));
 
 import { spawn } from "node:child_process";
-import { createMessageConnection } from "vscode-jsonrpc/node";
+import { createMessageConnection, ResponseError } from "vscode-jsonrpc/node";
 
 const silentLogger: MainSdkLogger = {
 	info: () => {},
@@ -292,15 +301,178 @@ describe("SidecarCondaBackend", () => {
 	});
 
 	describe("error handling", () => {
-		it("wraps JSON-RPC errors as FeatureError with PROVIDER_NOT_READY", async () => {
+		it("maps ResponseError with known domain_code to granular EnvironmentsErrorCode", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
 				if (method === "conda.info") return Promise.resolve({});
-				return Promise.reject(new Error("method not found"));
+				throw new ResponseError(-32000, "env not found", {
+					code: "conda:environment:not-found",
+					message: "Requested conda environment not found",
+				});
+			});
+
+			const backend = createBackend();
+			await expect(backend.list()).rejects.toThrow("ENV_NOT_FOUND");
+		});
+
+		it("maps conda:environment:already-exists to ENV_EXISTS", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				throw new ResponseError(-32000, "already exists", {
+					code: "conda:environment:already-exists",
+					message: "Environment 'myenv' already exists",
+				});
+			});
+
+			const backend = createBackend();
+			await expect(backend.create({ name: "myenv", packages: [] })).rejects.toThrow("ENV_EXISTS");
+		});
+
+		it("maps conda:package:not-found to PACKAGE_NOT_FOUND", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				throw new ResponseError(-32000, "not found", {
+					code: "conda:package:not-found",
+					message: "Package 'foobar' not found",
+				});
+			});
+
+			const backend = createBackend();
+			await expect(backend.list()).rejects.toThrow("PACKAGE_NOT_FOUND");
+		});
+
+		it("falls back to PROVIDER_NOT_READY for unknown domain_code and logs warning", async () => {
+			const warnSpy = vi.fn();
+			const loggerWithSpy: MainSdkLogger = { ...silentLogger, warn: warnSpy };
+
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				throw new ResponseError(-32000, "something novel", {
+					code: "conda:unknown:thing",
+					message: "Something unexpected",
+				});
+			});
+
+			const backend = new SidecarCondaBackend({
+				bridgeBinaryPath: "/path/to/anaconda-desktop-bridge",
+				logger: loggerWithSpy,
+			});
+			await expect(backend.list()).rejects.toThrow("PROVIDER_NOT_READY");
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Unmapped domain_code: conda:unknown:thing"),
+			);
+		});
+
+		it("falls back to PROVIDER_NOT_READY for ResponseError without data", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				throw new ResponseError(-32601, "method not found");
 			});
 
 			const backend = createBackend();
 			await expect(backend.list()).rejects.toThrow("PROVIDER_NOT_READY");
 			await expect(backend.list()).rejects.toThrow("anaconda-bridge-sidecar error");
+		});
+
+		it("wraps non-ResponseError exceptions as PROVIDER_NOT_READY", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				return Promise.reject(new Error("connection reset"));
+			});
+
+			const backend = createBackend();
+			await expect(backend.list()).rejects.toThrow("PROVIDER_NOT_READY");
+			await expect(backend.list()).rejects.toThrow("anaconda-bridge-sidecar error");
+		});
+
+		it("throws SOLVE_FAILED when bridge returns success=false on create", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: false,
+						message: "UnsatisfiableError: conflict for numpy",
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.create({ name: "test", packages: ["numpy>=99"] })).rejects.toThrow(
+				"SOLVE_FAILED",
+			);
+		});
+
+		it("throws SOLVE_FAILED when bridge returns success=false on install", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.install") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: false,
+						message: "UnsatisfiableError: conflict",
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.install({ envName: "myenv", packages: ["numpy>=99"] })).rejects.toThrow(
+				"SOLVE_FAILED",
+			);
+		});
+
+		it("throws SOLVE_FAILED when bridge returns success=false on uninstall", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.remove") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: false,
+						message: "removal failed",
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.uninstall({ envName: "myenv", packages: ["numpy"] })).rejects.toThrow(
+				"SOLVE_FAILED",
+			);
+		});
+
+		it("includes bridge error message in SOLVE_FAILED detail", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: false,
+						message: "UnsatisfiableError: conflict for numpy",
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.create({ name: "test", packages: ["numpy>=99"] })).rejects.toThrow(
+				"UnsatisfiableError: conflict for numpy",
+			);
+		});
+
+		it("uses bridge data.message over error.message for detail", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				throw new ResponseError(-32000, "generic rpc message", {
+					code: "conda:environment:not-found",
+					message: "Detailed: environment 'foo' not found at /path",
+				});
+			});
+
+			const backend = createBackend();
+			await expect(backend.list()).rejects.toThrow(
+				"Detailed: environment 'foo' not found at /path",
+			);
 		});
 	});
 

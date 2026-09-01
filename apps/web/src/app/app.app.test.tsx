@@ -59,12 +59,12 @@ describe("AppProviders (app-level)", () => {
 
 		// The todos nav entry is derived from the plugin manifest route.
 		await screen.getByTestId("nav-todos").click();
-		await expect.element(screen.getByTestId("plugin-page-heading")).toBeVisible();
+		await expect.element(screen.getByRole("heading", { name: "Todo List" })).toBeVisible();
 		// Todos is Electron-only — browser mode renders an explicit unavailable state.
 		await expect.element(screen.getByTestId("plugin-page-unavailable")).toBeVisible();
 	});
 
-	it("opens Appearance settings from the app bar", async () => {
+	it("opens Appearance settings from the sidebar footer", async () => {
 		const localApi = createBrowserLocalApi();
 		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
 		registerPluginZoneContributions(system, PLUGIN_ZONE_CONTRIBUTIONS, {
@@ -76,6 +76,7 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByTestId("nav-settings")).toBeVisible();
 		await screen.getByTestId("nav-settings").click();
 		await expect.element(screen.getByTestId("settings-page")).toBeVisible();
+		await expect.element(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
 		await expect.element(screen.getByTestId("appearance-settings")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-appearance")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-kilo-providers")).toBeVisible();
@@ -96,5 +97,6 @@ describe("AppProviders (app-level)", () => {
 			.toHaveAttribute("aria-hidden", "false");
 		await expect.element(screen.getByTestId("global-new")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-chat-page")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-right-panel-toggle")).toBeVisible();
 	});
 });

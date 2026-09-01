@@ -10,9 +10,9 @@ import {
 	type FC,
 	type PropsWithChildren,
 } from "react";
-import { useAuiState, useScrollLock } from "@assistant-ui/react";
+import { useAuiState } from "@assistant-ui/react";
 import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
-import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from "lucide-react";
+import { ChevronRightIcon } from "lucide-react";
 
 import {
 	Avatar,
@@ -26,6 +26,8 @@ import {
 	CollapsibleTrigger,
 } from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+
+import { useStableGutterScrollLock } from "../use-stable-gutter-scroll-lock.js";
 
 import {
 	getKindMeta,
@@ -163,6 +165,16 @@ const ActivityLabel: FC<{
 	);
 };
 
+const ActivityDisclosureIcon: FC<{ open: boolean }> = ({ open }) => (
+	<ChevronRightIcon
+		aria-hidden
+		className={cn(
+			"size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
+			open && "rotate-90",
+		)}
+	/>
+);
+
 const contentAnimation =
 	"h-(--collapsible-panel-height) overflow-hidden transition-[height] ease-[cubic-bezier(0.32,0.72,0,1)] data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none";
 
@@ -231,7 +243,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	const [streamExpanded, setStreamExpanded] = useState(false);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
-	const lockScroll = useScrollLock(collapsibleRef, GROUP_ANIMATION_DURATION);
+	const lockScroll = useStableGutterScrollLock(collapsibleRef, GROUP_ANIMATION_DURATION);
 	const activeSegment = [...summary.segments]
 		.reverse()
 		.find(
@@ -316,7 +328,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					<span className="font-medium">
 						<ActivityLabel label={label} shimmer={activeLoading} />
 					</span>
-					<ChevronDownIcon className="size-3.5 shrink-0" />
+					<ActivityDisclosureIcon open />
 				</button>
 				<ActivityStreamContext.Provider value={true}>
 					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
@@ -359,12 +371,12 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 									)}
 								/>
 							</span>
-							<ChevronDownIcon className="size-3.5 shrink-0" />
+							<ActivityDisclosureIcon open />
 						</>
 					) : open ? (
 						<>
 							<span className="font-medium">Show less</span>
-							<ChevronUpIcon className="size-3.5 shrink-0" />
+							<ActivityDisclosureIcon open />
 						</>
 					) : (
 						<>
@@ -372,7 +384,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 							<span className="font-medium">
 								<ActivityLabel label={summary.label} />
 							</span>
-							<ChevronDownIcon className="size-3.5 shrink-0" />
+							<ActivityDisclosureIcon open={false} />
 						</>
 					)}
 				</CollapsibleTrigger>
@@ -423,7 +435,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const [toggled, setToggled] = useState<boolean | null>(null);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
-	const lockScroll = useScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
+	const lockScroll = useStableGutterScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
 	const statusActive = segment.running || segment.requiresAction || hasPendingAsk;
 	const automaticOpen = useDelayedActivityOpen(statusActive, toggled === null, lockScroll);
 	const settlingKind = useContext(ActivitySettlingKindContext);
@@ -535,12 +547,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 					<span className="font-medium">
 						<ActivityLabel label={label} shimmer={segment.running} />
 					</span>
-					<ChevronRightIcon
-						className={cn(
-							"size-3.5 shrink-0 transition-transform duration-(--animation-duration)",
-							open && "rotate-90",
-						)}
-					/>
+					<ActivityDisclosureIcon open={open} />
 				</CollapsibleTrigger>
 				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
 					<div

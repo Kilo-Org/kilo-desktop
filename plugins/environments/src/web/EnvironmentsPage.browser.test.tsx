@@ -5,6 +5,7 @@ import { page } from "vitest/browser";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
 import { condaContract, type CondaService } from "../contracts/providers/conda.js";
 import { EnvironmentsPage } from "./EnvironmentsPage";
@@ -76,9 +77,11 @@ function renderPage(
 
 	return render(
 		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<EnvironmentsPage />
-			</QueryClientProvider>
+			<SidebarProvider>
+				<QueryClientProvider client={queryClient}>
+					<EnvironmentsPage />
+				</QueryClientProvider>
+			</SidebarProvider>
 		</SdkProvider>,
 	);
 }
@@ -88,11 +91,10 @@ afterEach(() => {
 });
 
 describe("EnvironmentsPage", () => {
-	it("renders the heading and the Conda section", async () => {
+	it("renders the Conda section", async () => {
 		const { baseElement } = renderPage({ list: async () => [] });
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByRole("heading", { name: "Environments" })).toBeVisible();
 		// The provider section carries an accessible name even though a single
 		// provider ships no visible sub-heading.
 		await expect.element(screen.getByRole("region", { name: "Conda" })).toBeInTheDocument();

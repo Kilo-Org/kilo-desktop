@@ -13,6 +13,8 @@
 
 :root {
 	--font-sans: "Inter Variable", sans-serif;
+	--foreground: var(--storm-800);
+	--sidebar-foreground: var(--storm-800);
 	--app-scrollbar-width: 6px;
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
@@ -23,6 +25,8 @@
 }
 
 [data-theme="dark"] {
+	--foreground: var(--storm-200);
+	--sidebar-foreground: var(--storm-200);
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 70%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
 	--shell-glass-opacity: 90%;

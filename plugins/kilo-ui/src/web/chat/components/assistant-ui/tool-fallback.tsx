@@ -3,7 +3,6 @@
 import { memo, useCallback, useRef, useState } from "react";
 import { AlertCircleIcon, CheckIcon, ChevronDownIcon, LoaderIcon, XCircleIcon } from "lucide-react";
 import {
-	useScrollLock,
 	useToolCallElapsed,
 	type ToolApprovalOption,
 	type ToolCallMessagePart,
@@ -18,6 +17,8 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+
+import { useStableGutterScrollLock } from "../use-stable-gutter-scroll-lock.js";
 
 const ANIMATION_DURATION = 200;
 
@@ -42,7 +43,7 @@ function ToolFallbackRoot({
 }: ToolFallbackRootProps) {
 	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
-	const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
+	const lockScroll = useStableGutterScrollLock(collapsibleRef, ANIMATION_DURATION);
 
 	const isControlled = controlledOpen !== undefined;
 	const isOpen = isControlled ? controlledOpen : uncontrolledOpen;

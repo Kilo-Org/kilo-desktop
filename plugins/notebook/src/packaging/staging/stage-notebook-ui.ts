@@ -26,13 +26,13 @@ export const AGENTIC_EMBED_CHROME_STYLE_ATTR = "data-agentic-embed-chrome";
  * Host-side chrome overrides for the embedded notebook SPA. nteract has no
  * embed flag to hide the rail; we own the staged bytes, so we inject CSS.
  *
- * `--background` matches chat `bg-muted` (storm-50 / storm-850) so the iframe
- * page shares the same surface as the surrounding thread.
+ * `--background` matches the host `--background` token (storm-100 / storm-900)
+ * so the iframe page shares the same surface as the surrounding thread.
  */
 export const AGENTIC_EMBED_CHROME_CSS = [
-	":root,.light{--background:oklch(0.985 0 0)}",
-	".dark,[data-theme=dark]{--background:oklch(0.243 0.015 261.655)}",
-	"@media (prefers-color-scheme:dark){:root:not(.light){--background:oklch(0.243 0.015 261.655)}}",
+	":root,.light{--background:oklch(0.969 0.005 258.325)}",
+	".dark,[data-theme=dark]{--background:oklch(0.209 0.017 264.101)}",
+	"@media (prefers-color-scheme:dark){:root:not(.light){--background:oklch(0.209 0.017 264.101)}}",
 	'[data-testid="notebook-rail"]{display:none!important}',
 ].join("");
 

@@ -19,7 +19,8 @@ import {
 } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { SessionActivityProvider } from "../../session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "../../session-activity/session-activity-store.js";
-import { SessionList } from "./session-list.js";
+import { SessionListViewProvider } from "../../session-list/use-session-list-view.js";
+import { SessionList, SessionListHeaderSearch } from "./session-list.js";
 
 const stubChatModel: ChatModelAdapter = {
 	async run() {
@@ -147,14 +148,19 @@ function SessionListHarness({
 			<AssistantRuntimeProvider runtime={runtime}>
 				<SessionActivityProvider store={store}>
 					<WorkspacesContext.Provider value={workspaces}>
-						<div className="flex h-[420px] flex-col">
-							<SessionList />
-						</div>
-						{includeComposer ? (
-							<ComposerPrimitive.Root>
-								<ComposerPrimitive.Input aria-label="Test composer" />
-							</ComposerPrimitive.Root>
-						) : null}
+						<SessionListViewProvider>
+							<div data-qa-id="sidebar-header-actions">
+								<SessionListHeaderSearch />
+							</div>
+							<div className="flex h-[420px] flex-col">
+								<SessionList />
+							</div>
+							{includeComposer ? (
+								<ComposerPrimitive.Root>
+									<ComposerPrimitive.Input aria-label="Test composer" />
+								</ComposerPrimitive.Root>
+							) : null}
+						</SessionListViewProvider>
 					</WorkspacesContext.Provider>
 				</SessionActivityProvider>
 			</AssistantRuntimeProvider>
@@ -508,9 +514,8 @@ describe("SessionList", () => {
 			.element()
 			.querySelector('[data-slot="aui_session-list-item-title"]');
 		expect(sessionTitle?.className).toContain("text-[13px]");
-		await expect
-			.element(screen.getByTestId("session-list-grouping-header"))
-			.not.toBeInTheDocument();
+		const groupingHeader = screen.getByTestId("session-list-grouping-header");
+		await expect.element(groupingHeader.getByRole("heading", { name: "Status" })).toBeVisible();
 		const inboxHeader = screen.getByTestId("session-list-inbox-header");
 		await expect.element(inboxHeader).toBeVisible();
 		await expect
@@ -519,6 +524,9 @@ describe("SessionList", () => {
 		await expect
 			.element(inboxHeader.getByRole("button", { name: "Session list options" }))
 			.not.toBeInTheDocument();
+		await expect
+			.element(groupingHeader.getByRole("button", { name: "Session list options" }))
+			.toBeVisible();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).toBeVisible();
 		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
 		expect(activeRow).not.toBeNull();
@@ -965,6 +973,9 @@ describe("SessionList", () => {
 		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		const info = card.getByText("Acme App");
 		await expect.element(info).toBeVisible();
+		const icon = card.element().querySelector('[data-slot="aui_session-list-workspace-icon"]');
+		expect(icon?.getAttribute("stroke")).toBe("#F87171");
+		expect(info.element().previousElementSibling).toBe(icon);
 		expect(info.element().getBoundingClientRect().height).toBeGreaterThan(8);
 		expect(card.element().getBoundingClientRect().height).toBeGreaterThan(36);
 	});
@@ -986,6 +997,7 @@ describe("SessionList", () => {
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await expect.element(screen.getByRole("heading", { name: "Workspace" })).toBeVisible();
 		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 		await expect.element(page.getByRole("menuitemradio", { name: "Updated" })).toBeVisible();
@@ -996,9 +1008,7 @@ describe("SessionList", () => {
 			.not.toBeInTheDocument();
 		await expect.element(page.getByRole("menuitemradio", { name: "Workspace" })).toBeVisible();
 
-		await expect
-			.element(screen.getByTestId("session-list-grouping-header"))
-			.not.toBeInTheDocument();
+		await expect.element(screen.getByRole("heading", { name: "Updated" })).toBeVisible();
 		await expect.element(screen.getByRole("button", { name: "Today" })).toBeVisible();
 		await expect.element(screen.getByRole("button", { name: "Last 7 Days" })).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
@@ -1028,16 +1038,67 @@ describe("SessionList", () => {
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
 
-		await expect
-			.element(screen.getByTestId("session-list-grouping-header"))
-			.not.toBeInTheDocument();
+		const groupingHeader = screen.getByTestId("session-list-grouping-header");
+		await expect.element(groupingHeader.getByRole("heading", { name: "Workspace" })).toBeVisible();
 		await expect
 			.element(screen.getByTestId("session-list-attention-toggle"))
 			.not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
+		const workspaceToggle = screen.getByTestId("session-list-workspace-toggle");
+		await expect.element(workspaceToggle).toBeVisible();
+		expect(
+			workspaceToggle.element().querySelector('[data-qa-id="session-list-view-menu"]'),
+		).toBeNull();
+		const workspaceIcon = workspaceToggle
+			.element()
+			.querySelector('[data-slot="aui_session-list-workspace-icon"]');
+		expect(workspaceIcon?.getAttribute("stroke")).toBe("#F87171");
 		await expect.element(screen.getByText("Acme App")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+	});
+
+	it("creates a new chat in a workspace from its group header", async () => {
+		const { navigate, screen, setActiveWorkspaceId } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([
+					{ id: "ses-1", workspaceId: "ws-1" },
+					{ id: "ses-2", workspaceId: "ws-2" },
+				]);
+			},
+		});
+
+		await expect
+			.element(screen.getByRole("button", { name: "New chat in Acme App" }))
+			.not.toBeInTheDocument();
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+
+		const createChat = screen.getByRole("button", { name: "New chat in Acme App" });
+		await expect.element(createChat).toBeVisible();
+		expect(createChat.element().querySelector("svg")?.classList.contains("lucide-plus")).toBe(true);
+		await screen.getByRole("heading", { name: "Workspace" }).hover();
+		await expect.poll(() => getComputedStyle(createChat.element()).opacity).toBe("0");
+		const workspaceRow = screen.getByRole("button", { name: "Acme App" });
+		await workspaceRow.hover();
+		await expect.poll(() => getComputedStyle(createChat.element()).opacity).toBe("1");
+		await createChat.hover();
+		await expect.element(page.getByText("New chat", { exact: true })).toBeVisible();
+		await workspaceRow.click();
+		await expect.element(workspaceRow).toHaveAttribute("aria-expanded", "false");
+		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
+		await workspaceRow.click();
+		await expect.element(workspaceRow).toHaveAttribute("aria-expanded", "true");
+		await createChat.click();
+
+		expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-1");
+		expect(navigate).toHaveBeenLastCalledWith("/plugins/chat", undefined);
 	});
 
 	it("keeps grouping values next to their submenu chevrons", async () => {
@@ -1231,6 +1292,7 @@ describe("SessionList", () => {
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
 		});
 
+		const titlebarActions = screen.getByTestId("sidebar-header-actions");
 		const header = screen.getByTestId("session-list-inbox-header");
 		await expect
 			.element(header.getByRole("combobox", { name: "Filter by workspace" }))
@@ -1245,11 +1307,13 @@ describe("SessionList", () => {
 		const newChat = screen.getByRole("button", { name: "New Chat" }).element();
 		const search = screen.getByRole("button", { name: "Search" }).element();
 		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
+		const groupingHeader = screen.getByTestId("session-list-grouping-header").element();
 		const inbox = screen.getByTestId("session-list-inbox").element();
 		expect(headerEl.contains(trigger)).toBe(true);
 		expect(headerEl.contains(filter)).toBe(false);
 		expect(activeRow?.contains(filter)).toBe(false);
-		expect(inbox.contains(filter)).toBe(true);
+		expect(groupingHeader.contains(filter)).toBe(true);
+		expect(inbox.contains(filter)).toBe(false);
 		expect(headerEl.className).not.toContain("bg-foreground/5");
 		expect(trigger.className).toContain("border-border/60");
 		expect(trigger.className).toContain("bg-foreground/5");
@@ -1257,6 +1321,8 @@ describe("SessionList", () => {
 		expect(trigger.className).not.toContain("bg-input/30");
 		expect(Number.parseFloat(getComputedStyle(trigger).borderTopWidth)).toBeGreaterThan(0);
 		expect(headerEl.contains(newChat)).toBe(false);
+		expect(titlebarActions.element().contains(search)).toBe(true);
+		expect(screen.getByTestId("kilo-thread-list").element().contains(search)).toBe(false);
 		const switcherIcon = trigger.querySelector("svg");
 		expect(switcherIcon?.classList.contains("lucide-layout-grid")).toBe(true);
 		expect(switcherIcon?.getAttribute("stroke")).toBe("currentColor");
@@ -1264,19 +1330,10 @@ describe("SessionList", () => {
 		expect(headerEl.compareDocumentPosition(newChat) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(newChat.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+		expect(newChat.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(search.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
-		);
-		const afterSwitcher =
-			newChat.getBoundingClientRect().top - headerEl.getBoundingClientRect().bottom;
-		const beforeInbox = inbox.getBoundingClientRect().top - search.getBoundingClientRect().bottom;
-		expect(afterSwitcher).toBeCloseTo(beforeInbox, 0);
-		expect(afterSwitcher).toBeLessThanOrEqual(8);
 		expect(getComputedStyle(trigger).fontSize).toBe(getComputedStyle(newChat).fontSize);
-		expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(36);
 		expect(Number.parseFloat(getComputedStyle(trigger).paddingLeft)).toBe(8);
 		expect(Number.parseFloat(getComputedStyle(trigger).paddingRight)).toBe(8);
 		await expect

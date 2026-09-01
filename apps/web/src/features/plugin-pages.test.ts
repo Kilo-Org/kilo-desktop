@@ -87,8 +87,10 @@ describe("PLUGIN_PAGES", () => {
 		expect(chat?.surface).toBe("transparent");
 	});
 
-	it("contains the Kilo chat route without shell-owned companion UI", () => {
+	it("contains the Kilo chat route with route-scoped shell header components", () => {
 		const chat = findPluginPage(PLUGIN_PAGES, "/plugins/chat");
 		expect(chat?.pluginId).toBe("kilo-ui");
+		expect(chat?.headerLeading).toEqual(expect.any(Function));
+		expect(chat?.headerActions).toEqual(expect.any(Function));
 	});
 });

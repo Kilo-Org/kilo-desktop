@@ -32,29 +32,21 @@ export function EnvironmentsPage() {
 	if (!featureEnabled) {
 		return (
 			<div
-				className="mx-auto max-w-xl px-5 py-8"
+				className="flex h-full min-h-0 flex-col"
 				data-qa-id="environments-page"
 				data-state="flag-off"
 			>
-				<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="environments-heading">
-					Environments
-				</h1>
-				<p
-					className="text-muted-foreground mt-2 text-sm"
-					data-qa-id="environments-flag-off-message"
-				>
-					This feature is not enabled for your account.
-				</p>
+				<div className="mx-auto w-full max-w-xl px-5 py-8">
+					<p className="text-muted-foreground text-sm" data-qa-id="environments-flag-off-message">
+						This feature is not enabled for your account.
+					</p>
+				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="flex h-full flex-col" data-qa-id="environments-page">
-			<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="environments-heading">
-				Environments
-			</h1>
-
+		<div className="flex h-full min-h-0 flex-col" data-qa-id="environments-page">
 			{/*
 			 * Labelled via `aria-label` rather than `aria-labelledby`: the visual
 			 * "Conda" heading is gone (a single provider needs no sub-heading), so
@@ -62,7 +54,7 @@ export function EnvironmentsPage() {
 			 * this becomes a tab strip and each panel regains a visible label.
 			 */}
 			<section
-				className="mt-6 flex min-h-0 flex-1 flex-col"
+				className="flex min-h-0 flex-1 flex-col"
 				aria-label="Conda"
 				data-qa-id="environments-provider-conda"
 			>

@@ -1,17 +1,19 @@
-import { motion, useTransform } from "motion/react";
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
+import { LogInIcon, LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
+import { ShellPageHeader } from "@/components/layout/ShellPageHeader";
 import { SidebarUpdatePill } from "@/components/updates/SidebarUpdatePill";
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 import { getUserInitials } from "@/features/auth/getUserInitials";
 import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
+import { findPluginPage, type PluginPage } from "@/features/plugin-pages";
 import { isSettingsPath, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
+import { SIDEBAR_HEADER_ACTIONS_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
 import { useSdk, useTelemetry } from "@anaconda-agentic-desktop/sdk-react";
 import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -35,16 +37,9 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
-	SidebarTrigger,
-	useSidebar,
 } from "@anaconda-agentic-desktop/ui/components/sidebar";
 import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 /** Clears macOS traffic lights (x:16 + three lights) so the toggle sits just to their right. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "90px";
@@ -58,6 +53,7 @@ function resolveSidebarToggleLeft(): string {
 }
 
 const EMPTY_NAV: readonly PluginNavEntry[] = [];
+const EMPTY_PAGES: readonly PluginPage[] = [];
 const EMPTY_SETTINGS: readonly PluginSettingsSection[] = [];
 
 type AppSidebarLayoutProps = {
@@ -66,6 +62,8 @@ type AppSidebarLayoutProps = {
 	navEntries?: readonly PluginNavEntry[];
 	/** Injectable for tests; the app shell passes bundled settings sections. */
 	settingsSections?: readonly PluginSettingsSection[];
+	/** Injectable for tests; the shell passes the discovered plugin routes. */
+	pages?: readonly PluginPage[];
 };
 
 /**
@@ -93,81 +91,112 @@ function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: s
 	);
 }
 
-/**
- * Fixed shell titlebar. The nav toggle is absolutely pinned after the traffic
- * lights so it never moves when the sidebar opens/closes. Header contributions
- * shift to track the inset; the toggle does not. Must be a `.drag-region` so
- * Electron `no-drag` on the toggle punches a clickable hole.
- */
-function ShellTitlebar({
+function SidebarSettingsAction({ inline = false }: { inline?: boolean }) {
+	return (
+		<Button
+			variant="ghost"
+			size="icon"
+			aria-label="Settings"
+			className={
+				inline
+					? "text-muted-foreground shrink-0 active:not-aria-[haspopup]:translate-y-0"
+					: "text-muted-foreground absolute top-1/2 right-1 z-10 -translate-y-1/2 active:not-aria-[haspopup]:-translate-y-1/2"
+			}
+			nativeButton={false}
+			render={<Link to="/settings" />}
+			data-qa-id="nav-settings"
+		>
+			<SettingsIcon />
+		</Button>
+	);
+}
+
+function SidebarAccountDock({
 	session,
 	onLogin,
+	onLogout,
 }: {
 	session: ReturnType<typeof useAuthSession>;
 	onLogin: () => void;
+	onLogout: () => void;
 }) {
-	const { open, progress } = useSidebar();
-	const label = open ? "Hide navigation" : "Show navigation";
-	const paddingLeft = useTransform(
-		progress,
-		(value) =>
-			`calc((var(--shell-sidebar-toggle-left) + 2.5rem) * ${1 - value} + var(--sidebar-width) * ${value})`,
-	);
+	if (session.status !== "authenticated") {
+		return (
+			<div className="flex items-center gap-1" data-qa-id="anonymous-account-dock">
+				<Button
+					type="button"
+					aria-label="Sign In"
+					className="min-w-0 flex-1"
+					onClick={onLogin}
+					data-qa-id="account-login"
+				>
+					<LogInIcon data-icon="inline-start" />
+					Sign In
+				</Button>
+				<SidebarSettingsAction inline />
+			</div>
+		);
+	}
+
+	const initials = getUserInitials(session.user);
+	const accountName =
+		[session.user.firstName?.trim(), session.user.lastName?.trim()].filter(Boolean).join(" ") ||
+		session.user.username?.trim() ||
+		"Anaconda user";
+	const accountEmail = session.user.email?.trim();
 
 	return (
-		<header className="drag-region fixed inset-x-0 top-0 z-50 flex h-12 items-center pr-[calc(0.75rem+env(titlebar-area-width,0px))]">
-			<div
-				className="absolute top-0 flex h-12 items-center"
-				style={{ left: "var(--shell-sidebar-toggle-left)" }}
-			>
-				<Tooltip>
-					<TooltipTrigger
+		<SidebarMenu>
+			<SidebarMenuItem className="has-data-open:bg-foreground/5 hover:bg-foreground/5 rounded-md transition-colors">
+				<DropdownMenu>
+					<DropdownMenuTrigger
 						render={
-							<SidebarTrigger
-								aria-label="Toggle navigation"
-								aria-pressed={open}
-								data-qa-id="sidebar-nav-toggle"
-								className="[-webkit-app-region:no-drag]"
+							<SidebarMenuButton
+								aria-label={`Account menu for ${accountName}`}
+								size="lg"
+								className="data-open:text-sidebar-accent-foreground w-full min-w-0 pr-12 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
+								data-qa-id="account-menu"
 							/>
 						}
-					/>
-					<TooltipContent side="bottom">{label}</TooltipContent>
-				</Tooltip>
-			</div>
-
-			<motion.div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft }}>
-				{/* Persistent flex-1 so empty ZoneOutlet (null) cannot collapse this slot. */}
-				<div className="flex min-w-0 flex-1 items-center gap-1">
-					<ZoneOutlet zone="header-leading" className="flex min-w-0 items-center gap-1" />
-				</div>
-				<div className="ml-auto flex shrink-0 items-center justify-end gap-2">
-					{/* Trailing header contributions (e.g. chat right-panel toggle) */}
-					<ZoneOutlet zone="header-trailing" className="flex items-center gap-1" />
-					{session.status !== "authenticated" && (
-						<>
-							<Button
-								variant="ghost"
-								size="icon"
-								aria-label="Settings"
-								className="[-webkit-app-region:no-drag]"
-								nativeButton={false}
-								render={<Link to="/settings" />}
-								data-qa-id="nav-settings"
-							>
-								<SettingsIcon />
-							</Button>
-							<Button
-								onClick={onLogin}
-								aria-label="Sign In"
-								className="[-webkit-app-region:no-drag]"
-							>
-								Sign In
-							</Button>
-						</>
-					)}
-				</div>
-			</motion.div>
-		</header>
+					>
+						<Avatar className="size-8">
+							<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
+						</Avatar>
+						<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+							<span className="truncate font-medium">{accountName}</span>
+							{accountEmail && (
+								<span className="text-muted-foreground truncate text-xs">{accountEmail}</span>
+							)}
+						</div>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
+						<DropdownMenuGroup>
+							<DropdownMenuLabel className="p-0 font-normal">
+								<div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+									<Avatar>
+										<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
+									</Avatar>
+									<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+										<span className="truncate font-medium">{accountName}</span>
+										{accountEmail && (
+											<span className="text-muted-foreground truncate text-xs">{accountEmail}</span>
+										)}
+									</div>
+								</div>
+							</DropdownMenuLabel>
+						</DropdownMenuGroup>
+						<DropdownMenuSeparator />
+						<DropdownMenuGroup>
+							<DropdownMenuItem onClick={onLogout}>
+								<LogOutIcon />
+								Log out
+							</DropdownMenuItem>
+						</DropdownMenuGroup>
+					</DropdownMenuContent>
+				</DropdownMenu>
+				<SidebarSettingsAction />
+			</SidebarMenuItem>
+		</SidebarMenu>
 	);
 }
 
@@ -175,7 +204,7 @@ function ShellInset({ children }: { children: ReactNode }) {
 	return (
 		// Keep overflow off SidebarInset — Electron ignores drag regions inside
 		// overflow:hidden ancestors, which would break titlebar dragging.
-		<SidebarInset className="min-h-0 min-w-0 bg-transparent pr-3 pb-3">{children}</SidebarInset>
+		<SidebarInset className="bg-background h-svh min-h-0 min-w-0">{children}</SidebarInset>
 	);
 }
 
@@ -183,8 +212,10 @@ export function AppSidebarLayout({
 	children,
 	navEntries = EMPTY_NAV,
 	settingsSections = EMPTY_SETTINGS,
+	pages = EMPTY_PAGES,
 }: AppSidebarLayoutProps) {
-	const pathname = useRouterState({ select: (state) => state.location.pathname });
+	const location = useRouterState({ select: (state) => state.location });
+	const pathname = location.pathname;
 	// PAGE_VISIT is a shell-level, cross-feature concern, so it uses the
 	// untagged useTelemetry() hook rather than the "auth" sdk instance below.
 	const { track } = useTelemetry();
@@ -200,14 +231,14 @@ export function AppSidebarLayout({
 	// underlying route.
 	const visibleNav = useVisiblePluginNav(navEntries);
 	const settings = isSettingsPath(pathname);
-	const initials = session.status === "authenticated" ? getUserInitials(session.user) : "";
-	const accountName =
-		session.status === "authenticated"
-			? [session.user.firstName?.trim(), session.user.lastName?.trim()].filter(Boolean).join(" ") ||
-				session.user.username?.trim() ||
-				"Anaconda user"
-			: "";
-	const accountEmail = session.status === "authenticated" ? session.user.email?.trim() : undefined;
+	const pluginPage = findPluginPage(pages, pathname);
+	const pageTitle = settings
+		? "Settings"
+		: (pluginPage?.title ?? (pathname.startsWith("/plugins/") ? "Page not found" : undefined));
+	const pageProps = {
+		path: pathname,
+		search: location.search as Record<string, unknown>,
+	};
 	const sidebarProviderStyle = {
 		"--shell-sidebar-toggle-left": resolveSidebarToggleLeft(),
 	} as CSSProperties;
@@ -238,12 +269,20 @@ export function AppSidebarLayout({
 			<SidebarProvider className="app-shell-glass h-svh min-h-0" style={sidebarProviderStyle}>
 				<Sidebar
 					collapsible="offcanvas"
-					className="h-svh border-none bg-transparent! group-data-[side=left]:border-none [&_[data-sidebar=sidebar]]:bg-transparent"
+					className="border-border dark:border-muted-foreground/15 h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
 					data-qa-id="app-sidebar"
 				>
-					{/* Flow spacer under the fixed ShellTitlebar. No drag/hit target — a
-					    drag region here intercepts app-bar clicks on Windows Electron. */}
-					<SidebarHeader className="pointer-events-none h-12 shrink-0 p-0" />
+					<SidebarHeader
+						className="drag-region relative h-12 shrink-0 p-0"
+						data-qa-id="sidebar-titlebar"
+					>
+						{settings ? null : (
+							<ZoneOutlet
+								zone={SIDEBAR_HEADER_ACTIONS_ZONE}
+								className="absolute top-0 right-2 flex h-12 items-center [-webkit-app-region:no-drag]"
+							/>
+						)}
+					</SidebarHeader>
 					<SidebarContent>
 						{settings ? <SettingsSidebar sections={settingsSections} /> : null}
 						<div
@@ -269,92 +308,29 @@ export function AppSidebarLayout({
 					</SidebarContent>
 					<SidebarFooter className="gap-2 px-2 pb-3">
 						<SidebarUpdatePill />
-						{session.status === "authenticated" ? (
-							<SidebarMenu>
-								<SidebarMenuItem className="has-data-open:bg-foreground/5 hover:bg-foreground/5 rounded-md transition-colors">
-									<DropdownMenu>
-										<DropdownMenuTrigger
-											render={
-												<SidebarMenuButton
-													aria-label={`Account menu for ${accountName}`}
-													size="lg"
-													className="data-open:text-sidebar-accent-foreground w-full min-w-0 pr-12 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
-													data-qa-id="account-menu"
-												/>
-											}
-										>
-											<Avatar className="size-8">
-												<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-											</Avatar>
-											<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-												<span className="truncate font-medium">{accountName}</span>
-												{accountEmail && (
-													<span className="text-muted-foreground truncate text-xs">
-														{accountEmail}
-													</span>
-												)}
-											</div>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
-											<DropdownMenuGroup>
-												<DropdownMenuLabel className="p-0 font-normal">
-													<div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-														<Avatar>
-															<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-														</Avatar>
-														<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-															<span className="truncate font-medium">{accountName}</span>
-															{accountEmail && (
-																<span className="text-muted-foreground truncate text-xs">
-																	{accountEmail}
-																</span>
-															)}
-														</div>
-													</div>
-												</DropdownMenuLabel>
-											</DropdownMenuGroup>
-											<DropdownMenuSeparator />
-											<DropdownMenuGroup>
-												<DropdownMenuItem
-													onClick={() => {
-														void handleLogout();
-													}}
-												>
-													<LogOutIcon />
-													Log out
-												</DropdownMenuItem>
-											</DropdownMenuGroup>
-										</DropdownMenuContent>
-									</DropdownMenu>
-									<Link
-										to="/settings"
-										aria-label="Settings"
-										data-qa-id="nav-settings"
-										className="text-muted-foreground hover:bg-foreground/8 hover:text-sidebar-foreground absolute top-1/2 right-1 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-md transition-colors [&_svg]:size-4"
-									>
-										<SettingsIcon />
-									</Link>
-								</SidebarMenuItem>
-							</SidebarMenu>
-						) : null}
+						<SidebarAccountDock
+							session={session}
+							onLogin={() => {
+								void handleLogin();
+							}}
+							onLogout={() => {
+								void handleLogout();
+							}}
+						/>
 					</SidebarFooter>
 				</Sidebar>
-
-				<ShellTitlebar
-					session={session}
-					onLogin={() => {
-						void handleLogin();
-					}}
-				/>
-
 				{/* Keep overflow off SidebarInset — Electron ignores drag regions inside
 				    overflow:hidden ancestors, which would break titlebar dragging. */}
 				<ShellInset>
-					{/* Flow spacer under the fixed ShellTitlebar */}
-					<div className="h-12 shrink-0" aria-hidden />
+					<ShellPageHeader
+						title={pageTitle}
+						leading={pluginPage?.headerLeading}
+						actions={pluginPage?.headerActions}
+						pageProps={pageProps}
+					/>
 					<div
 						data-qa-id="shell-main"
-						className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-transparent"
+						className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain"
 					>
 						{children}
 					</div>

@@ -97,9 +97,6 @@ describe("SettingsSidebar", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("settings-page")).toBeVisible();
-		const settingsPage = screen.getByTestId("settings-page").query();
-		expect(settingsPage?.classList.contains("bg-muted")).toBe(true);
-		expect(settingsPage?.classList.contains("border")).toBe(true);
 		await expect.element(screen.getByTestId("settings-empty")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-back")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-nav")).not.toBeInTheDocument();

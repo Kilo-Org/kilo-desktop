@@ -1,17 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, renderHook } from "@testing-library/react";
-import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider, useFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	FeatureError,
-	HEADER_LEADING_ZONE,
-	HEADER_TRAILING_ZONE,
-	type Contribution,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { FeatureError, type Contribution } from "@anaconda-agentic-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
 import type * as AssistantUiReact from "@assistant-ui/react";
 
@@ -32,7 +28,7 @@ import {
 	useChatConnection,
 } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
-import { ChatPage } from "./ChatPage.js";
+import { ChatPage, ChatPageHeaderActions } from "./ChatPage.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 import {
@@ -49,50 +45,6 @@ import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js
 import { useChatAgentSelection } from "./agent-selection/ChatAgentSelectionContext.js";
 import { KILO_PROVIDER_LIST_QUERY_KEY } from "../providers/provider-queries.js";
 import { HammerIcon, ListTodoIcon } from "lucide-react";
-
-/** Stand-in for a shell ZoneOutlet so page contributions render in tests. */
-function ZoneOutletStandIn({
-	zone,
-	qaId,
-}: {
-	zone: typeof HEADER_LEADING_ZONE | typeof HEADER_TRAILING_ZONE;
-	qaId: string;
-}) {
-	const registry = useFeatureSystem().services.contributionRegistry;
-	const [contributions, setContributions] = useState<readonly Contribution[]>(() =>
-		registry.getForZone(zone),
-	);
-
-	useEffect(() => {
-		setContributions(registry.getForZone(zone));
-		return registry.onChange(() => {
-			setContributions(registry.getForZone(zone));
-		});
-	}, [registry, zone]);
-
-	if (contributions.length === 0) return null;
-
-	return (
-		<div data-qa-id={qaId}>
-			{contributions.map((contribution, index) => {
-				if (typeof contribution.component !== "function") return null;
-				const Component = contribution.component as ComponentType;
-				return (
-					<Component key={`${contribution.featureId}:${contribution.label}:${String(index)}`} />
-				);
-			})}
-		</div>
-	);
-}
-
-function HeaderOutlets() {
-	return (
-		<>
-			<ZoneOutletStandIn zone={HEADER_LEADING_ZONE} qaId="zone-header-leading" />
-			<ZoneOutletStandIn zone={HEADER_TRAILING_ZONE} qaId="zone-header-trailing" />
-		</>
-	);
-}
 
 function CanvasPanel({
 	instanceId,
@@ -118,7 +70,11 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 	const actual = await importOriginal<typeof AssistantUiReact>();
 	const fakeState = {
 		thread: { messages: [], isRunning: false, isEmpty: true, suggestions: [] },
-		threadListItem: { remoteId: undefined as string | undefined, status: "new" as const },
+		threadListItem: {
+			remoteId: undefined as string | undefined,
+			status: "regular" as const,
+			title: "Session",
+		},
 	};
 	return {
 		...actual,
@@ -256,13 +212,15 @@ function renderChatPage(options?: {
 	const result = render(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
-				<WorkspacesFeatureProvider>
-					<ChatFeatureProvider>
-						<HeaderOutlets />
-						<ChatPage />
-						{options?.children}
-					</ChatFeatureProvider>
-				</WorkspacesFeatureProvider>
+				<SidebarProvider>
+					<WorkspacesFeatureProvider>
+						<ChatFeatureProvider>
+							<ChatPageHeaderActions />
+							<ChatPage />
+							{options?.children}
+						</ChatFeatureProvider>
+					</WorkspacesFeatureProvider>
+				</SidebarProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
@@ -330,13 +288,15 @@ describe("ChatPage error rendering", () => {
 		return render(
 			<SdkProvider system={system}>
 				<QueryClientProvider client={queryClient}>
-					<WorkspacesFeatureProvider>
-						<SessionActivityProvider store={sessionActivity}>
-							<ChatConnectionProvider status={status}>
-								<ChatPage />
-							</ChatConnectionProvider>
-						</SessionActivityProvider>
-					</WorkspacesFeatureProvider>
+					<SidebarProvider>
+						<WorkspacesFeatureProvider>
+							<SessionActivityProvider store={sessionActivity}>
+								<ChatConnectionProvider status={status}>
+									<ChatPage />
+								</ChatConnectionProvider>
+							</SessionActivityProvider>
+						</WorkspacesFeatureProvider>
+					</SidebarProvider>
 				</QueryClientProvider>
 			</SdkProvider>,
 		);
@@ -787,9 +747,9 @@ describe("ChatPage", () => {
 		);
 
 		await vi.waitFor(() =>
-			expect(resizeHandle!.parentElement!.clientWidth - resizeHandle!.clientWidth).toBe(
-				Math.floor(chatPage!.clientWidth * 0.7),
-			),
+			expect(
+				baseElement.querySelector<HTMLElement>("[data-qa-id='chat-right-panel-slot']")?.clientWidth,
+			).toBe(Math.floor(chatPage!.clientWidth * 0.7)),
 		);
 	});
 

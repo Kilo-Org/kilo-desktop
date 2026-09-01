@@ -313,6 +313,49 @@ describe("Web activity subgroup", () => {
 	});
 });
 
+describe("Activity group scrolling", () => {
+	it("keeps the viewport fixed while the outer group and Thought expand", () => {
+		const thoughtText = "I'm looking for notebook files in the workspace.";
+		const thought = {
+			type: "reasoning",
+			text: thoughtText,
+			status: { type: "complete" as const },
+		} as unknown as ToolCallMessagePartProps;
+		const search = toolPart("search-1", "glob", { pattern: "**/*.ipynb" });
+		runtime.message.parts = [thought, search];
+
+		const { getByRole, getByTestId } = render(
+			<div
+				data-testid="scroll-viewport"
+				style={{ height: 100, overflowY: "auto", scrollBehavior: "smooth" }}
+			>
+				<div style={{ height: 400 }}>
+					<ActivityGroup group={{ indices: [0, 1] }}>
+						<ActivitySubgroup group={{ indices: [0] }} kind="thinking">
+							<div>{thoughtText}</div>
+						</ActivitySubgroup>
+						<ActivitySubgroup group={{ indices: [1] }} kind="searching">
+							<ToolCallFallback {...search} />
+						</ActivitySubgroup>
+					</ActivityGroup>
+				</div>
+			</div>,
+		);
+		const viewport = getByTestId("scroll-viewport");
+		viewport.style.scrollBehavior = "auto";
+		viewport.scrollTop = 40;
+		viewport.style.scrollBehavior = "smooth";
+
+		fireEvent.click(getByRole("button", { name: "1 tool used" }));
+		viewport.scrollTo({ top: 160, behavior: "instant" });
+		expect(viewport.scrollTop).toBe(40);
+
+		fireEvent.click(getByRole("button", { name: "Thought" }));
+		viewport.scrollTo({ top: 220, behavior: "instant" });
+		expect(viewport.scrollTop).toBe(40);
+	});
+});
+
 describe("Notebooks activity subgroup", () => {
 	it("keeps the completed tool group open briefly, then collapses it", async () => {
 		vi.useFakeTimers();

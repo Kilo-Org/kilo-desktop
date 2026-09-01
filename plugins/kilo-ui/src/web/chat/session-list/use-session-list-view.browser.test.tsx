@@ -8,7 +8,11 @@ import {
 	readSessionListPins,
 	readSessionListView,
 } from "./session-list-view.js";
-import { useSessionListPins, useSessionListView } from "./use-session-list-view.js";
+import {
+	SessionListViewProvider,
+	useSessionListPins,
+	useSessionListView,
+} from "./use-session-list-view.js";
 
 afterEach(() => {
 	cleanup();
@@ -18,7 +22,9 @@ afterEach(() => {
 
 describe("useSessionListView", () => {
 	it("composes sequential patches and persists the merged view", () => {
-		const { result } = renderHook(() => useSessionListView());
+		const { result } = renderHook(() => useSessionListView(), {
+			wrapper: SessionListViewProvider,
+		});
 
 		act(() => {
 			result.current.update({ grouping: "workspace" });
@@ -34,7 +40,9 @@ describe("useSessionListView", () => {
 	});
 
 	it("persists the default view on reset", () => {
-		const { result } = renderHook(() => useSessionListView());
+		const { result } = renderHook(() => useSessionListView(), {
+			wrapper: SessionListViewProvider,
+		});
 
 		act(() => {
 			result.current.update({ grouping: "updated", status: "working" });

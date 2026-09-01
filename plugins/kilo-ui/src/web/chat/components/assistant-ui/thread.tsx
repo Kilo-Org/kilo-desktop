@@ -158,10 +158,9 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 const ComposerDockMask: FC = () => {
 	return (
 		<>
-			{/* Opaque floor under the shell — covers bottom inset without overflowing (no w-screen). */}
 			<div
 				aria-hidden
-				className="bg-muted pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
+				className="bg-background pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
 			/>
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-tl" />
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-tr" />
@@ -184,7 +183,7 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				{isDraft ? (
 					<div
 						aria-hidden="true"
-						className="fade-in zoom-in-40 blur-in-[90px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+10rem)] w-[calc(100%+11rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[90px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+						className="fade-in zoom-in-40 blur-in-[56px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+5rem)] w-[calc(100%+6rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[56px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
 					/>
 				) : null}
 				<div className="relative z-10 flex flex-col">
@@ -201,9 +200,9 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
-			className="aui-root aui-thread-root bg-muted @container flex h-full flex-col [--composer-bg:var(--color-muted)] dark:[--composer-bg:var(--color-background)]"
+			className="aui-root aui-thread-root bg-background @container flex h-full flex-col [--composer-bg:var(--color-card)]"
 			style={{
-				["--thread-max-width" as string]: "44rem",
+				["--thread-max-width" as string]: "48rem",
 				["--composer-radius" as string]: "1.5rem",
 				["--composer-padding" as string]: "8px",
 			}}
@@ -213,7 +212,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				autoScroll
 				scrollToBottomOnRunStart={false}
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 [scrollbar-gutter:stable] flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
+				className="relative flex flex-1 [scrollbar-gutter:stable_both-edges] flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
 				<div
 					className={cn(
@@ -351,7 +350,7 @@ const ComposerQueue: FC = () => {
 
 	return (
 		<div
-			className="border-border/60 bg-card/88 dark:bg-background/88 overflow-hidden rounded-xl border shadow-[0_8px_24px_-20px_rgba(0,0,0,0.7)] backdrop-blur-xl"
+			className="border-border/60 chat-composer-glass chat-composer-surface overflow-hidden rounded-xl border shadow-[0_8px_24px_-20px_rgba(0,0,0,0.7)]"
 			data-qa-id="kilo-composer-queue"
 		>
 			<button
@@ -565,7 +564,7 @@ const Composer: FC = () => {
 					<div
 						data-slot="aui_composer-shell"
 						className={cn(
-							"border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+							"border-border chat-composer-surface data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
 							isDraft
 								? "border-b-0 bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]"
 								: "chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
@@ -1145,7 +1144,7 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content border-border/60 bg-background text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border bg-card text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word empty:hidden">
 					<MessagePrimitive.Parts />
 				</div>
 			</div>

@@ -42,16 +42,19 @@ function WorkspaceFilterTrigger() {
 				<Button
 					type="button"
 					variant="ghost"
-					size="sm"
+					size="default"
 					data-qa-id="session-list-workspace-filter"
-					className="border-border/60 bg-foreground/5 hover:bg-foreground/5 aria-expanded:bg-foreground/5 dark:border-border/50 h-9 w-full min-w-0 justify-start gap-1.5 px-2 text-sm font-normal shadow-none"
+					className="border-border/60 bg-foreground/5 hover:bg-foreground/5 aria-expanded:bg-foreground/5 dark:border-border/50 w-full min-w-0 justify-start gap-1.5 px-2 text-sm font-normal shadow-none"
 					title="Filter by workspace"
 				/>
 			}
 		>
-			<Icon className="size-4 shrink-0" {...(glyph ? { color: glyph } : {})} />
-			<span className="min-w-0 flex-1 truncate text-left font-medium">{triggerLabel}</span>
-			<ChevronsUpDownIcon className="text-muted-foreground size-3.5 shrink-0 opacity-70" />
+			<Icon data-icon="inline-start" className="shrink-0" {...(glyph ? { color: glyph } : {})} />
+			<span className="min-w-0 flex-1 truncate text-left">{triggerLabel}</span>
+			<ChevronsUpDownIcon
+				data-icon="inline-end"
+				className="text-muted-foreground group-hover/button:text-foreground group-aria-expanded/button:text-foreground -mr-px shrink-0"
+			/>
 		</WorkspacePickerTrigger>
 	);
 }

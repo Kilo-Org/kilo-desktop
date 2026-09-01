@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
 import type { PluginPageProps } from "@anaconda-agentic-desktop/feature-sdk";
+import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
 import { PluginPageView } from "./PluginPageView";
 
@@ -33,9 +34,13 @@ function makePage(overrides: Partial<PluginPage> = {}): PluginPage {
 	};
 }
 
+function renderPageView(view: React.ReactNode) {
+	return render(<SidebarProvider>{view}</SidebarProvider>);
+}
+
 describe("PluginPageView", () => {
 	it("mounts the plugin page component with path and search props", async () => {
-		const { baseElement } = render(
+		const { baseElement } = renderPageView(
 			<PluginPageView
 				splat="demo"
 				search={{ filter: "open" }}
@@ -55,7 +60,7 @@ describe("PluginPageView", () => {
 	});
 
 	it("allows split-pane pages to opt out of the default shell surface", async () => {
-		const { baseElement } = render(
+		const { baseElement } = renderPageView(
 			<PluginPageView
 				splat="demo"
 				search={{}}
@@ -72,7 +77,7 @@ describe("PluginPageView", () => {
 	});
 
 	it("renders a not-found state for unknown paths", async () => {
-		const { baseElement } = render(
+		const { baseElement } = renderPageView(
 			<PluginPageView splat="nope" search={{}} pages={[makePage()]} desktopAvailable={true} />,
 		);
 		const screen = page.elementLocator(baseElement);
@@ -80,7 +85,7 @@ describe("PluginPageView", () => {
 	});
 
 	it("treats an undefined splat as the root path", async () => {
-		const { baseElement } = render(
+		const { baseElement } = renderPageView(
 			<PluginPageView splat={undefined} search={{}} pages={[]} desktopAvailable={true} />,
 		);
 		const screen = page.elementLocator(baseElement);
@@ -88,7 +93,7 @@ describe("PluginPageView", () => {
 	});
 
 	it("renders an unavailable state for Electron-only pages in browser mode", async () => {
-		const { baseElement } = render(
+		const { baseElement } = renderPageView(
 			<PluginPageView
 				splat="demo"
 				search={{}}
@@ -103,7 +108,7 @@ describe("PluginPageView", () => {
 	});
 
 	it("mounts Electron-only pages when the desktop bridge is available", async () => {
-		const { baseElement } = render(
+		const { baseElement } = renderPageView(
 			<PluginPageView
 				splat="demo"
 				search={{}}

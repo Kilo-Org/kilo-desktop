@@ -13,7 +13,6 @@ import {
 import { cva, type VariantProps } from "class-variance-authority";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import {
-	useScrollLock,
 	useAuiState,
 	type ReasoningMessagePartComponent,
 	type ReasoningGroupComponent,
@@ -25,6 +24,8 @@ import {
 	CollapsibleTrigger,
 } from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+
+import { useStableGutterScrollLock } from "../use-stable-gutter-scroll-lock.js";
 
 const ANIMATION_DURATION = 200;
 
@@ -76,7 +77,7 @@ function ReasoningRoot({
 	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const initialOpenRef = useRef(defaultOpen);
 	const [userOpen, setUserOpen] = useState<boolean | null>(null);
-	const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
+	const lockScroll = useStableGutterScrollLock(collapsibleRef, ANIMATION_DURATION);
 
 	const isControlled = controlledOpen !== undefined;
 	const isOpen = isControlled

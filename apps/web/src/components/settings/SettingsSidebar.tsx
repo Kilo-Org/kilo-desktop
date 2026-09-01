@@ -25,9 +25,10 @@ type SettingsSidebarProps = {
  * optional section search, and the settings section list. Not a nested nav
  * inside the content pane.
  *
- * Root `px-2` and the back+search stack (`gap-0.5`, shared `SidebarSearch`)
- * match the sidebar ZoneOutlet / New + Search so the rail does
- * not jump on enter/leave.
+ * Root `px-2` matches the sidebar ZoneOutlet. The back+search stack uses
+ * four-pixel spacing because SidebarSearch contributes another four pixels of
+ * vertical padding, producing the same visible eight-pixel rhythm as the
+ * session sidebar.
  */
 export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarProps) {
 	const visible = useVisiblePluginSettings(sections);
@@ -41,7 +42,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col px-2" data-qa-id="settings-sidebar">
-			<div className="mb-2 flex flex-col gap-0.5">
+			<div className="mb-1 flex flex-col gap-1">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton
@@ -86,7 +87,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 										isActive={pathname === href}
 										tooltip={section.title}
 										render={<Link to="/settings/$section" params={{ section: section.id }} />}
-										className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 h-9 rounded-lg"
+										className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 rounded-lg"
 										data-qa-id={`settings-section-${section.id}`}
 									>
 										<Icon />

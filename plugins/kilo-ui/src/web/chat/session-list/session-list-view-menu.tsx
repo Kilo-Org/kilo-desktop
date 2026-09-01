@@ -57,15 +57,15 @@ export const SessionListViewMenu: FC<{
 					<Button
 						type="button"
 						variant="ghost"
-						size="icon-sm"
+						size="icon"
 						aria-label="Session list options"
 						data-qa-id="session-list-view-menu"
 						data-active={customized || undefined}
-						className="h-7 w-7 shrink-0"
+						className="text-muted-foreground shrink-0"
 					/>
 				}
 			>
-				<ListFilterIcon className="size-4" />
+				<ListFilterIcon />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
 				align="start"

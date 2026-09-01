@@ -11,7 +11,14 @@ const validManifest = {
 	zones: [{ id: "detail-panel" }],
 	contributes: {
 		providers: [{ component: "TodosProvider", priority: 10 }],
-		routes: [{ path: "/todos", component: "TodoList", title: "Todo List" }],
+		routes: [
+			{
+				path: "/todos",
+				component: "TodoList",
+				title: "Todo List",
+				header: { leading: "TodoBreadcrumb", actions: "TodoHeaderActions" },
+			},
+		],
 		nav: [{ to: "/todos", label: "Todos", icon: "list-checks" }],
 		zones: [
 			{ zone: "status-bar", component: "TodosStatusBarItem" },
@@ -36,7 +43,12 @@ describe("pluginManifestSchema", () => {
 		expect(manifest.id).toBe("todos");
 		expect(manifest.contributes.providers).toEqual([{ component: "TodosProvider", priority: 10 }]);
 		expect(manifest.contributes.routes).toEqual([
-			{ path: "/todos", component: "TodoList", title: "Todo List" },
+			{
+				path: "/todos",
+				component: "TodoList",
+				title: "Todo List",
+				header: { leading: "TodoBreadcrumb", actions: "TodoHeaderActions" },
+			},
 		]);
 		expect(manifest.contributes.nav).toEqual([
 			{ to: "/todos", label: "Todos", icon: "list-checks" },

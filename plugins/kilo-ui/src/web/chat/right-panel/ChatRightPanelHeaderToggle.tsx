@@ -9,9 +9,8 @@ import {
 } from "./right-panel-store.js";
 
 /**
- * Chat-page contribution for the shell `header-trailing` zone. Reads session
- * panel state from the shared store so it can live outside ChatPage while the
- * page is mounted (and unregister when the route leaves).
+ * Chat-page header action. Reads session panel state from the shared store so
+ * the control stays independent from the panel layout itself.
  */
 export const ChatRightPanelHeaderToggle: FC = () => {
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);

@@ -37,7 +37,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.events` / `mainSdk.events` — symmetric, namespaced, cross-process pub/sub
 - `sdk.state` — observable stores
 - `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
-- `sdk.contribute` — imperatively register dynamic UI in a stable zone. The shell owns canonical `ShellZone` outlets. Plugin-owned hosts declare zones in `plugin.json`, and other plugins target qualified names through declarative `contributes.zones`; `useSdkContributions(zone)` lets those hosts consume the live priority-ordered registry.
+- `sdk.contribute` — imperatively register dynamic UI in a stable zone. The shell owns canonical `ShellZone` outlets, including the app-wide `page-header-actions` outlet. Plugin-owned hosts declare zones in `plugin.json`, and other plugins target qualified names through declarative `contributes.zones`; `useSdkContributions(zone)` lets those hosts consume the live priority-ordered registry.
 - `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
 - `contributes.settings` — declarative settings-page sections (`id` + `component` export). The shell owns `/settings`; optional `featureFlag` uses the same visibility semantics as `contributes.nav`
 - `sdk.commands` — command palette entries

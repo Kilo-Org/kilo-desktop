@@ -10,8 +10,6 @@ import {
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { HEADER_LEADING_ZONE, HEADER_TRAILING_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import {
 	SHELL_LAYOUT_SNAP,
 	SHELL_LAYOUT_SPRING,
@@ -46,7 +44,6 @@ const PANEL_WIDTH_STORAGE_KEY = "kilo-ui:chat-right-panel-width";
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH_FRACTION = 0.7;
-const PANEL_GAP_PX = 8; // matches w-2 gutter
 const EMPTY_WORKSPACE_FOLDERS: ChatMarkdownExtensionContext["workspaceFolders"] = [];
 
 const ChatThreadSurface = memo(function ChatThreadSurface({
@@ -78,13 +75,24 @@ function writeStoredPanelWidth(width: number): void {
 	}
 }
 
+export function ChatPageHeaderLeading() {
+	return (
+		<div className="flex min-w-0 flex-1 items-center gap-1">
+			<ChatSessionBreadcrumb />
+		</div>
+	);
+}
+
+export function ChatPageHeaderActions() {
+	return <ChatRightPanelHeaderToggle />;
+}
+
 /**
  * Full-page chat surface contributed by kilo-ui (`/plugins/chat`).
  * Connection and `AssistantRuntimeProvider` live in `ChatFeatureProvider`
  * so the shell sidebar SessionList shares the same runtime.
  */
 export function ChatPage() {
-	const sdk = useSdk("kilo-ui");
 	const connection = useChatConnection();
 	const rightPanelDefinitions = useRightPanelTabDefinitions();
 	const reduceMotion = useReducedMotion();
@@ -141,27 +149,6 @@ export function ChatPage() {
 
 	const panelSlotWidth = useMotionValue(0);
 
-	// Page-scoped shell contributions: breadcrumb + panel toggle live in the app
-	// header only while the chat route is mounted.
-	useEffect(() => {
-		const removeBreadcrumb = sdk.contribute(HEADER_LEADING_ZONE, {
-			id: "chat-session-breadcrumb",
-			component: ChatSessionBreadcrumb,
-			label: "Chat session breadcrumb",
-			priority: 10,
-		});
-		const removeToggle = sdk.contribute(HEADER_TRAILING_ZONE, {
-			id: "chat-right-panel-toggle",
-			component: ChatRightPanelHeaderToggle,
-			label: "Chat right panel toggle",
-			priority: 10,
-		});
-		return () => {
-			removeBreadcrumb();
-			removeToggle();
-		};
-	}, [sdk]);
-
 	// WebMCP tools resolve "current session" from this focused key.
 	useEffect(() => {
 		chatRightPanelCapability.setFocusedSessionId(sessionId);
@@ -199,8 +186,7 @@ export function ChatPage() {
 		setPanelWidth((current) => clampPanelWidth(current));
 	}, [clampPanelWidth, panelOpen]);
 
-	const openWidth = panelWidth + PANEL_GAP_PX;
-	const targetPanelWidth = panelOpen ? openWidth : 0;
+	const targetPanelWidth = panelOpen ? panelWidth : 0;
 
 	// Only the open/close toggle springs. Maximize, resize, and session changes snap.
 	useLayoutEffect(() => {
@@ -298,7 +284,7 @@ export function ChatPage() {
 				const delta = startX - moveEvent.clientX;
 				const next = clampPanelWidth(startWidth + delta);
 				setPanelWidth(next);
-				panelSlotWidth.set(next + PANEL_GAP_PX);
+				panelSlotWidth.set(next);
 			};
 			const onUp = (upEvent: PointerEvent) => {
 				handle.releasePointerCapture(upEvent.pointerId);
@@ -309,7 +295,7 @@ export function ChatPage() {
 				setPanelWidth((current) => {
 					const next = clampPanelWidth(current);
 					writeStoredPanelWidth(next);
-					panelSlotWidth.set(next + PANEL_GAP_PX);
+					panelSlotWidth.set(next);
 					return next;
 				});
 			};
@@ -364,7 +350,7 @@ export function ChatPage() {
 	);
 
 	return (
-		<>
+		<div className="flex h-full min-h-0 w-full min-w-0 flex-col">
 			{closeRequest ? (
 				<RightPanelTabCloseDialog
 					key={`${closeRequest.sessionId}:${closeRequest.tab.instanceId}`}
@@ -389,7 +375,7 @@ export function ChatPage() {
 			) : null}
 			<div
 				ref={containerRef}
-				className="relative flex h-full min-h-0 overflow-hidden"
+				className="relative flex min-h-0 flex-1 overflow-hidden"
 				data-qa-id="kilo-chat-page"
 			>
 				{/*
@@ -404,7 +390,7 @@ export function ChatPage() {
 					)}
 				>
 					<div
-						className="bg-muted border-border relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border"
+						className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
 						data-qa-id="kilo-chat-thread"
 						data-chat-column-maximized-away={maximized && panelOpen ? "true" : "false"}
 					>
@@ -417,7 +403,7 @@ export function ChatPage() {
 				<motion.div
 					className={cn(
 						"h-full min-w-0 overflow-hidden",
-						maximized && panelOpen ? "min-w-0 flex-1" : "shrink-0",
+						maximized && panelOpen ? "relative min-w-0 flex-1" : "shrink-0",
 					)}
 					aria-hidden={!panelOpen}
 					inert={!panelOpen}
@@ -426,8 +412,8 @@ export function ChatPage() {
 				>
 					{panelOpen || panelMounted ? (
 						<div
-							className={cn("flex h-full", maximized ? "w-full" : "shrink-0")}
-							style={maximized ? undefined : { width: openWidth }}
+							className={cn("relative h-full", maximized ? "w-full" : "shrink-0")}
+							style={maximized ? undefined : { width: panelWidth }}
 						>
 							{maximized ? null : (
 								<div
@@ -435,15 +421,16 @@ export function ChatPage() {
 									aria-orientation="vertical"
 									aria-label="Resize right panel"
 									data-qa-id="chat-right-panel-resize"
-									className="w-2 shrink-0 cursor-col-resize touch-none bg-transparent"
+									data-resizing={isResizing ? "true" : "false"}
+									className="hover:before:bg-primary/70 active:before:bg-primary data-[resizing=true]:before:bg-primary absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:bg-transparent before:transition-colors before:duration-150 before:content-[''] motion-reduce:before:transition-none"
 									onPointerDown={handleResizePointerDown}
 								/>
 							)}
-							<div className="h-full min-w-0 flex-1 overflow-hidden">{panel}</div>
+							<div className="h-full min-w-0 overflow-hidden">{panel}</div>
 						</div>
 					) : null}
 				</motion.div>
 			</div>
-		</>
+		</div>
 	);
 }

@@ -47,7 +47,6 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
-const SIDEBAR_COLLAPSED_GAP_PX = 12;
 
 type SidebarContextProps = {
 	state: "expanded" | "collapsed";
@@ -218,9 +217,7 @@ function Sidebar({
 	const { isMobile, state, openMobile, setOpenMobile, progress, widthPx } = useSidebar();
 	const gapWidth = useTransform(
 		[progress, widthPx],
-		([nextProgress, nextWidth]) =>
-			SIDEBAR_COLLAPSED_GAP_PX +
-			((nextWidth as number) - SIDEBAR_COLLAPSED_GAP_PX) * (nextProgress as number),
+		([nextProgress, nextWidth]) => (nextWidth as number) * (nextProgress as number),
 	);
 	const offcanvasOffset = useTransform(
 		[progress, widthPx],
@@ -386,7 +383,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"div">) {
 			title="Drag to resize"
 			className={cn(
 				"absolute inset-y-0 z-20 flex w-4 touch-none select-none group-data-[side=left]:-right-4 group-data-[side=right]:left-0 ltr:-translate-x-1/2 rtl:-translate-x-1/2",
-				"cursor-col-resize",
+				"before:bg-transparent hover:before:bg-primary/70 active:before:bg-primary cursor-col-resize before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:transition-colors before:duration-150 before:content-[''] motion-reduce:before:transition-none",
 				"group-data-[collapsible=offcanvas]:translate-x-0",
 				"[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
 				"[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",

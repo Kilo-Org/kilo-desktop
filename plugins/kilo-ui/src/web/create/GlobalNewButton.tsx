@@ -36,7 +36,7 @@ export function GlobalNewButton() {
 				<Button
 					type="button"
 					variant="ghost"
-					className={cn("min-w-0 flex-1 justify-start", newButtonHoverClassName)}
+					className={cn("min-w-0 flex-1 justify-start font-normal", newButtonHoverClassName)}
 					aria-label="New Chat"
 					data-slot="aui_thread-list-new"
 					data-qa-id="global-new"
@@ -51,7 +51,12 @@ export function GlobalNewButton() {
 					data-slot="aui_thread-list-new-more"
 					data-qa-id="global-new-more"
 					render={
-						<Button type="button" variant="ghost" size="icon" className={newButtonHoverClassName} />
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							className={cn("text-muted-foreground", newButtonHoverClassName)}
+						/>
 					}
 				>
 					<ChevronDownIcon data-slot="aui_thread-list-new-chevron" />

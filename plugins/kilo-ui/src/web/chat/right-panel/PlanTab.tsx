@@ -70,7 +70,7 @@ const PlanTabContent: FC<{
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="chat-right-panel-plan">
-			<div className="border-border/60 flex h-11 shrink-0 items-center gap-3 border-b px-4">
+			<div className="border-border dark:border-border/60 flex h-11 shrink-0 items-center gap-3 border-b px-4">
 				<p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
 				<ApprovePlanButton
 					enabled={canApprove}

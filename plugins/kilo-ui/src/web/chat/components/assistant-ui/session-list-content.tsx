@@ -48,6 +48,7 @@ import {
 	PencilIcon,
 	PinIcon,
 	PinOffIcon,
+	PlusIcon,
 	SearchIcon,
 	Trash2Icon,
 	Undo2Icon,
@@ -88,6 +89,8 @@ import {
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
 import {
 	buildSessionListSections,
+	SESSION_LIST_GROUPING_LABELS,
+	resolveSessionListGrouping,
 	visibleShowFields,
 	type SessionListSection,
 	type SessionListSectionRow,
@@ -175,15 +178,14 @@ type SessionListThreadItem = ReturnType<
 >["threadItems"][number];
 
 type VirtualSessionListEntry =
-	| { kind: "actions"; key: "actions"; spaceBefore: false }
 	| {
 			kind: "header";
 			key: string;
 			sectionKey: string;
 			tone: SessionListSection["tone"];
 			label: string;
+			workspaceId: string | undefined;
 			expanded: boolean;
-			showActions: boolean;
 			spaceBefore: boolean;
 	  }
 	| {
@@ -197,12 +199,11 @@ type VirtualSessionListEntry =
 function flattenSessionListSections(
 	sections: readonly SessionListSection[],
 	expanded: Readonly<Record<string, boolean>>,
-	options: { spaceBeforeFirst: boolean; showActions: boolean },
+	options: { spaceBeforeFirst: boolean },
 ): VirtualSessionListEntry[] {
 	const entries: VirtualSessionListEntry[] = [];
 	let firstEntry = true;
 	let hasHeader = false;
-	let actionsAvailable = options.showActions;
 
 	for (const section of sections) {
 		const isExpanded = !section.label || expanded[section.key] !== false;
@@ -213,13 +214,12 @@ function flattenSessionListSections(
 				sectionKey: section.key,
 				tone: section.tone,
 				label: section.label,
+				workspaceId: section.workspaceId,
 				expanded: isExpanded,
-				showActions: actionsAvailable,
 				spaceBefore: (firstEntry && options.spaceBeforeFirst) || hasHeader,
 			});
 			firstEntry = false;
 			hasHeader = true;
-			actionsAvailable = false;
 		}
 
 		if (!isExpanded) continue;
@@ -252,6 +252,8 @@ export const SessionListContent = memo(function SessionListContent({
 	workspaces,
 	setActiveWorkspaceId,
 }: SessionListContentProps) {
+	const aui = useAui();
+	const navigate = useNavigateToChat();
 	const pinnedIds = useMemo(() => new Set(pinIds), [pinIds]);
 	const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 	const focus =
@@ -303,7 +305,6 @@ export const SessionListContent = memo(function SessionListContent({
 		],
 		[sections],
 	);
-	const hasShelf = sections.some((section) => section.label);
 	const collapsibleKeys = sections.flatMap((section) => (section.label ? [section.key] : []));
 	const allCollapsed =
 		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
@@ -311,23 +312,28 @@ export const SessionListContent = memo(function SessionListContent({
 		? workspaces.find((workspace) => workspace.id === focus)
 		: undefined;
 	const emptyLabel = focusedWorkspace ? `No chats in ${focusedWorkspace.name}` : null;
+	const groupingLabel = SESSION_LIST_GROUPING_LABELS[resolveSessionListGrouping(resolvedView)];
+	const createChatInWorkspace = useCallback(
+		(workspaceId: string) => {
+			setActiveWorkspaceId(workspaceId);
+			void aui.threads.switchToNewThread();
+			navigate();
+		},
+		[aui, navigate, setActiveWorkspaceId],
+	);
 	const listRef = useRef<HTMLDivElement>(null);
 	const virtualEntries = useMemo(() => {
-		const entries: VirtualSessionListEntry[] = hasShelf
-			? []
-			: [{ kind: "actions", key: "actions", spaceBefore: false }];
+		const entries: VirtualSessionListEntry[] = [];
 		entries.push(
 			...flattenSessionListSections(pinnedSections, expanded, {
 				spaceBeforeFirst: false,
-				showActions: true,
 			}),
 			...flattenSessionListSections(groupedSections, expanded, {
 				spaceBeforeFirst: pinnedSections.length > 0,
-				showActions: pinnedSections.length === 0,
 			}),
 		);
 		return entries;
-	}, [expanded, groupedSections, hasShelf, pinnedSections]);
+	}, [expanded, groupedSections, pinnedSections]);
 	const virtualizer = useVirtualizer({
 		count: virtualEntries.length,
 		getScrollElement: () => listRef.current,
@@ -369,7 +375,7 @@ export const SessionListContent = memo(function SessionListContent({
 				>
 					<div
 						data-qa-id="session-list-inbox-header"
-						className="mb-2 flex h-9 shrink-0 items-center"
+						className="mb-2 flex h-8 shrink-0 items-center"
 					>
 						<WorkspaceFilter
 							value={focus}
@@ -381,12 +387,13 @@ export const SessionListContent = memo(function SessionListContent({
 					</div>
 					<div className="mb-2 flex shrink-0 flex-col gap-0.5">
 						<GlobalNewButton />
-						<SessionListSearch
-							onSelectWorkspace={(id) => {
-								updateView({ focus: id });
-								setActiveWorkspaceId(id);
-							}}
-						/>
+					</div>
+					<div
+						data-qa-id="session-list-grouping-header"
+						className="mb-1 flex h-7 shrink-0 items-center pl-2"
+					>
+						<h2 className="text-muted-foreground text-[13px] font-medium">{groupingLabel}</h2>
+						<div className="ml-auto flex items-center">{viewMenu}</div>
 					</div>
 					<div
 						ref={listRef}
@@ -394,18 +401,7 @@ export const SessionListContent = memo(function SessionListContent({
 						data-qa-id="session-list-inbox"
 						className="scroll-fade no-scrollbar relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
 					>
-						<div className="absolute top-0 right-0 z-10 flex h-7 items-center">{viewMenu}</div>
-						{isLoading ? (
-							<>
-								{hasShelf ? null : (
-									<div
-										data-qa-id="session-list-inbox-actions"
-										className="flex h-7 items-center justify-end"
-									/>
-								)}
-								<SessionListSkeleton />
-							</>
-						) : null}
+						{isLoading ? <SessionListSkeleton /> : null}
 						{!isLoading && virtualEntries.length > 0 ? (
 							<ul
 								role="list"
@@ -430,18 +426,17 @@ export const SessionListContent = memo(function SessionListContent({
 											style={{ transform: `translateY(${virtualItem.start}px)` }}
 										>
 											<div>
-												{entry.kind === "actions" ? (
-													<div data-qa-id="session-list-inbox-actions" className="h-7" />
-												) : entry.kind === "header" ? (
+												{entry.kind === "header" ? (
 													<SessionShelfHeader
 														tone={entry.tone}
 														label={entry.label}
-														expanded={entry.expanded}
-														actions={
-															entry.showActions ? (
-																<span aria-hidden className="block size-7" />
-															) : undefined
+														workspace={
+															entry.workspaceId
+																? workspaces.find((workspace) => workspace.id === entry.workspaceId)
+																: undefined
 														}
+														onCreateChatInWorkspace={createChatInWorkspace}
+														expanded={entry.expanded}
 														onToggle={() => {
 															setExpanded((current) => ({
 																...current,
@@ -566,7 +561,7 @@ function SearchWorkspaceItem({
 	);
 }
 
-const SessionListSearch: FC<{
+export const SessionListSearch: FC<{
 	onSelectWorkspace: (workspaceId: string) => void;
 }> = ({ onSelectWorkspace }) => {
 	const [open, setOpen] = useState(false);
@@ -638,17 +633,25 @@ const SessionListSearch: FC<{
 
 	return (
 		<>
-			<Button
-				type="button"
-				variant="ghost"
-				className={cn("w-full justify-start", sidebarNavRadiusClassName)}
-				data-slot="aui_thread-list-search"
-				data-qa-id="session-list-search"
-				onClick={() => setOpen(true)}
-			>
-				<SearchIcon data-icon="inline-start" />
-				Search
-			</Button>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							aria-label="Search"
+							className={sidebarNavRadiusClassName}
+							data-slot="aui_thread-list-search"
+							data-qa-id="session-list-search"
+							onClick={() => setOpen(true)}
+						/>
+					}
+				>
+					<SearchIcon />
+				</TooltipTrigger>
+				<TooltipContent side="bottom">Search</TooltipContent>
+			</Tooltip>
 			<CommandDialog
 				open={open}
 				onOpenChange={setOpen}
@@ -770,15 +773,24 @@ const shelfHeaderTones = {
 const SessionShelfHeader: FC<{
 	tone: SessionListSection["tone"];
 	label: string;
+	workspace?: Workspace | undefined;
+	onCreateChatInWorkspace: (workspaceId: string) => void;
 	expanded: boolean;
-	actions?: ReactNode;
 	onToggle: () => void;
-}> = ({ tone, label, expanded, actions, onToggle }) => {
+}> = ({ tone, label, workspace, onCreateChatInWorkspace, expanded, onToggle }) => {
 	const classes = shelfHeaderTones[tone];
+	const glyph = workspaceGlyphColor(workspace?.color);
 	const qaId =
 		tone === "workspace" ? "session-list-workspace-toggle" : `session-list-${tone}-toggle`;
 	return (
-		<div className="flex items-center" data-slot={`aui_session-list-${tone}-header`}>
+		<div
+			className={cn(
+				"flex items-center",
+				tone === "workspace" &&
+					"group/workspace-row rounded-md transition-colors hover:bg-foreground/5 focus-within:bg-foreground/5",
+			)}
+			data-slot={`aui_session-list-${tone}-header`}
+		>
 			<Button
 				type="button"
 				variant="ghost"
@@ -790,6 +802,14 @@ const SessionShelfHeader: FC<{
 					sidebarNavRadiusClassName,
 				)}
 			>
+				{tone === "workspace" ? (
+					<FolderIcon
+						aria-hidden
+						data-slot="aui_session-list-workspace-icon"
+						className="size-3.5 shrink-0"
+						{...(glyph ? { color: glyph } : {})}
+					/>
+				) : null}
 				<span
 					className={cn(
 						"min-w-0 truncate font-medium",
@@ -802,13 +822,34 @@ const SessionShelfHeader: FC<{
 				<ChevronDownIcon
 					aria-hidden
 					className={cn(
-						"size-3 opacity-0 transition-[opacity,transform] group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100",
+						"size-3 opacity-0 transition-[opacity,transform] group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100 group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:opacity-100",
 						classes.chevron,
 						!expanded && "-rotate-90",
 					)}
 				/>
 			</Button>
-			{actions ? <div className="flex shrink-0 items-center">{actions}</div> : null}
+			{tone === "workspace" && workspace ? (
+				<TooltipProvider delay={300}>
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-xs"
+									aria-label={`New chat in ${workspace.name}`}
+									data-qa-id={`session-list-workspace-new-${workspace.id}`}
+									className="text-muted-foreground pointer-events-none mr-1 size-5 shrink-0 opacity-0 transition-opacity group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100"
+									onClick={() => onCreateChatInWorkspace(workspace.id)}
+								/>
+							}
+						>
+							<PlusIcon aria-hidden className="size-3.5" />
+						</TooltipTrigger>
+						<TooltipContent side="bottom">New chat</TooltipContent>
+					</Tooltip>
+				</TooltipProvider>
+			) : null}
 		</div>
 	);
 };
@@ -1083,6 +1124,10 @@ const SessionRowContent = memo(function SessionRowContent({
 	const pinId = remoteId ?? threadId;
 	const isPinned = pinnedIds.has(pinId);
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
+	const workspace = activity?.workspaceId
+		? workspaces.find((candidate) => candidate.id === activity.workspaceId)
+		: undefined;
+	const workspaceColor = workspaceGlyphColor(workspace?.color);
 	const showUpdated = show.includes("updated");
 	const showWorkspace = show.includes("workspace") && locationLabel !== null;
 	const updatedAt = showUpdated ? activity?.updatedAt : undefined;
@@ -1169,6 +1214,12 @@ const SessionRowContent = memo(function SessionRowContent({
 					indented && "ml-1.5 pl-4",
 				)}
 			>
+				<FolderIcon
+					aria-hidden
+					data-slot="aui_session-list-workspace-icon"
+					className="size-3.5 shrink-0"
+					{...(workspaceColor ? { color: workspaceColor } : {})}
+				/>
 				<span className="truncate">{locationLabel}</span>
 			</span>
 		) : null;
@@ -1213,7 +1264,7 @@ const SessionRowContent = memo(function SessionRowContent({
 				</ThreadListItemPrimitive.Trigger>
 			)}
 			{!isRenaming && (
-				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-6")}>
+				<span className={cn(rowHoverActionsClassName, "right-1.5 top-0 h-7")}>
 					<TooltipProvider>
 						{canSettle ? (
 							<RowHoverAction

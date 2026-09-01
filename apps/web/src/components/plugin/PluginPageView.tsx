@@ -29,14 +29,26 @@ function PluginPageSurface({
 	return (
 		<div
 			className={
-				surface === "transparent"
-					? "h-full min-h-0 bg-transparent"
-					: "bg-muted border-border h-full min-h-0 rounded-md border"
+				surface === "transparent" ? "h-full min-h-0 bg-transparent" : "bg-background h-full min-h-0"
 			}
 			data-qa-id="plugin-page-surface"
 			data-surface={surface}
 		>
 			{children}
+		</div>
+	);
+}
+
+function PluginFallbackPage({
+	headingQaId,
+	children,
+}: {
+	headingQaId: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className="flex h-full min-h-0 flex-col" data-qa-id={headingQaId}>
+			<div className="mx-auto w-full max-w-xl px-5 py-8">{children}</div>
 		</div>
 	);
 }
@@ -60,14 +72,11 @@ export function PluginPageView({
 	if (!page) {
 		return (
 			<PluginPageSurface>
-				<div className="mx-auto max-w-xl px-5 py-8">
-					<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-not-found">
-						Page not found
-					</h1>
+				<PluginFallbackPage headingQaId="plugin-page-not-found">
 					<p className="text-muted-foreground mt-1 text-sm">
 						No plugin provides a page at <code className="bg-muted rounded px-1">{path}</code>.
 					</p>
-				</div>
+				</PluginFallbackPage>
 			</PluginPageSurface>
 		);
 	}
@@ -78,14 +87,11 @@ export function PluginPageView({
 		const title = page.title ?? page.path;
 		return (
 			<PluginPageSurface surface={page.surface}>
-				<div className="mx-auto max-w-xl px-5 py-8">
-					<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="plugin-page-heading">
-						{title}
-					</h1>
+				<PluginFallbackPage headingQaId="plugin-page-heading">
 					<p className="text-muted-foreground mt-1 text-sm" data-qa-id="plugin-page-unavailable">
 						{title} is not available in browser mode. Run the desktop app to use this feature.
 					</p>
-				</div>
+				</PluginFallbackPage>
 			</PluginPageSurface>
 		);
 	}

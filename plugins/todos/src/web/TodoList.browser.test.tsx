@@ -8,6 +8,7 @@ import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import type { ChannelHandlerMap } from "@anaconda-agentic-desktop/feature-sdk";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
 import { TodoList } from "./TodoList";
 
@@ -62,9 +63,11 @@ function renderTodoList(handlers: Partial<TodoHandlers>, options: { flagEnabled?
 	const system = createFakeFeatureSystem({ sdks: { todos: sdk } });
 	return render(
 		<SdkProvider system={system}>
-			<QueryClientProvider client={testClient()}>
-				<TodoList />
-			</QueryClientProvider>
+			<SidebarProvider>
+				<QueryClientProvider client={testClient()}>
+					<TodoList />
+				</QueryClientProvider>
+			</SidebarProvider>
 		</SdkProvider>,
 	);
 }

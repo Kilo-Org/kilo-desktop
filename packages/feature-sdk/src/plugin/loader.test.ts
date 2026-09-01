@@ -225,6 +225,8 @@ describe("pluginRegistrations", () => {
 
 describe("contribution resolution", () => {
 	const PingPage = () => null;
+	const PingBreadcrumb = () => null;
+	const PingHeaderActions = () => null;
 	const PingStatus = () => null;
 	const routedManifest = {
 		...manifest,
@@ -236,8 +238,25 @@ describe("contribution resolution", () => {
 	};
 
 	it("resolves routes against the web entry module's exports (paths prefixed with /plugins)", () => {
+		const headerManifest = {
+			...routedManifest,
+			contributes: {
+				...routedManifest.contributes,
+				routes: [
+					{
+						path: "/ping",
+						component: "PingPage",
+						title: "Ping",
+						header: { leading: "PingBreadcrumb", actions: "PingHeaderActions" },
+					},
+				],
+			},
+		};
 		const bundled: BundledPlugin[] = [
-			{ manifest: routedManifest, module: { browserRegister, PingPage, PingStatus } },
+			{
+				manifest: headerManifest,
+				module: { browserRegister, PingPage, PingBreadcrumb, PingHeaderActions, PingStatus },
+			},
 		];
 		const discovery = discoverPlugins(bundled, "web");
 
@@ -247,6 +266,8 @@ describe("contribution resolution", () => {
 				pluginId: "ping",
 				path: "/plugins/ping",
 				title: "Ping",
+				headerLeading: PingBreadcrumb,
+				headerActions: PingHeaderActions,
 				component: PingPage,
 				browserSafe: true,
 			},

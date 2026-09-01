@@ -90,6 +90,7 @@ export type SessionListSection = {
 	label: string | null;
 	tone: SessionListSectionTone;
 	rows: SessionListSectionRow[];
+	workspaceId?: string | undefined;
 };
 
 type Lifecycle = Exclude<SessionListStatusFilter, "all">;
@@ -323,6 +324,7 @@ function workspaceSections(rows: Enriched[], ordering: SessionListOrdering): Ses
 			label: group.label,
 			tone: "workspace" as const,
 			rows: toRows(sortAttentionFirst(group.rows, ordering)),
+			...(key === "unknown" ? {} : { workspaceId: key }),
 		}));
 }
 

@@ -21,10 +21,14 @@ export interface PluginPage {
 	pluginId: string;
 	/** Full resolved route path, e.g. "/plugins/todos". */
 	path: string;
-	/** Optional page title for the browser-mode unavailable state. */
+	/** Optional human-readable title rendered by the shell for this page. */
 	title: string | undefined;
 	/** Shell-owned surface around the contributed page. */
 	surface: PluginPageSurface;
+	/** Optional route-scoped content rendered in place of the static title. */
+	headerLeading?: ComponentType<PluginPageProps> | undefined;
+	/** Optional route-scoped controls rendered before app-wide header actions. */
+	headerActions?: ComponentType<PluginPageProps> | undefined;
 	component: ComponentType<PluginPageProps>;
 	/**
 	 * False for Electron-only plugins (main entry, no browserRegister): in
@@ -46,6 +50,12 @@ export function buildPluginPages(discovery: PluginDiscovery): PluginPage[] {
 		path: route.path,
 		title: route.title,
 		surface: route.surface ?? "default",
+		...(typeof route.headerLeading === "function"
+			? { headerLeading: route.headerLeading as ComponentType<PluginPageProps> }
+			: {}),
+		...(typeof route.headerActions === "function"
+			? { headerActions: route.headerActions as ComponentType<PluginPageProps> }
+			: {}),
 		// The loader verified this export is a function; the shell owns the
 		// React-specific interpretation (feature-sdk stays React-free).
 		component: route.component as ComponentType<PluginPageProps>,

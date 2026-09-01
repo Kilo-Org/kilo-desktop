@@ -12,6 +12,7 @@ import type { ToolCallMessagePartProps } from "@assistant-ui/core/react";
 
 import { isHostableMcpAppTool } from "../../runtime/mcp-app-registry.js";
 import { type KiloMcpAppsHost } from "../../runtime/mcp-apps-host.js";
+import { ToolCallFallback } from "../tools/tool-ui-inline.js";
 
 interface ElectronMcpAppRendererOptions {
 	host: ReturnType<typeof KiloMcpAppsHost>;
@@ -289,7 +290,7 @@ function useElectronMcpAppRenderer(options: ElectronMcpAppRendererOptions) {
 	const host = useResource(options.host);
 	const render = useMemo(() => {
 		const Render = (props: ToolCallMessagePartProps) => {
-			if (!isHostableMcpAppTool(props.toolName)) return null;
+			if (!isHostableMcpAppTool(props.toolName)) return <ToolCallFallback {...props} />;
 			return <InlineRenderer part={props} host={host} options={options} />;
 		};
 		Render.displayName = "ElectronMcpAppRenderer";

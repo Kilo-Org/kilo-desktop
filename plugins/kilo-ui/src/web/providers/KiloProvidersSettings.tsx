@@ -334,14 +334,14 @@ function PageShell({
 }) {
 	return (
 		<div
-			className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-5"
+			className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-6"
 			data-qa-id="kilo-providers-page"
 			data-state={state}
 		>
 			<header className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					<h1
-						className="text-xl font-semibold tracking-tight"
+						className="text-lg font-semibold tracking-tight"
 						data-qa-id="settings-section-heading"
 					>
 						AI Providers

@@ -98,7 +98,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 			data-slot="aui_composer-shell"
 			data-qa-id="kilo-question-questionnaire"
 			className={cn(
-				"border-border/60 dark:border-muted-foreground/15 chat-composer-glass flex w-full flex-col gap-4 rounded-(--composer-radius) border p-4 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
+				"border-border dark:border-muted-foreground/15 chat-composer-glass chat-composer-surface flex w-full flex-col gap-4 rounded-(--composer-radius) border p-4 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
 			)}
 		>
 			<Questionnaire

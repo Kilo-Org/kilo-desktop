@@ -16,9 +16,8 @@ import { resolveSessionLocationLabel } from "./session-activity/session-activity
 import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
 
 /**
- * Chat-page contribution for the shell `header-leading` zone. Shows
- * workspace → session when a non-draft session is in a workspace; unscoped
- * sessions show only the title.
+ * Chat-page breadcrumb. Shows workspace → session when a non-draft session
+ * is in a workspace; unscoped sessions show only the title.
  */
 export const ChatSessionBreadcrumb: FC = () => {
 	const status = useAuiState((s) => s.threadListItem.status);

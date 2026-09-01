@@ -3,6 +3,7 @@ import { Outlet } from "@tanstack/react-router";
 
 import { AppSidebarLayout } from "@/components/layout/AppSidebarLayout";
 import { PLUGIN_NAV } from "@/features/plugin-nav-entries";
+import { PLUGIN_PAGES } from "@/features/plugin-pages";
 import { PLUGIN_SETTINGS } from "@/features/plugin-settings-entries";
 import { ThemeProvider, useColorScheme } from "@/platform/theme/ThemeProvider";
 
@@ -14,7 +15,11 @@ function ThemedToaster() {
 export function App() {
 	return (
 		<ThemeProvider>
-			<AppSidebarLayout navEntries={PLUGIN_NAV} settingsSections={PLUGIN_SETTINGS}>
+			<AppSidebarLayout
+				navEntries={PLUGIN_NAV}
+				pages={PLUGIN_PAGES}
+				settingsSections={PLUGIN_SETTINGS}
+			>
 				<Outlet />
 				<ThemedToaster />
 			</AppSidebarLayout>

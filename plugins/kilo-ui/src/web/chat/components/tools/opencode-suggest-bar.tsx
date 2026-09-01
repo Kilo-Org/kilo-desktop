@@ -31,7 +31,7 @@ export const OpenCodeSuggestBar = ({ request }: { request: KiloSuggestionRequest
 			data-slot="aui_composer-shell"
 			data-qa-id="kilo-suggest-bar"
 			className={cn(
-				"border-border/60 dark:border-muted-foreground/15 chat-composer-glass flex w-full flex-col gap-3 rounded-(--composer-radius) border p-3 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
+				"border-border dark:border-muted-foreground/15 chat-composer-glass chat-composer-surface flex w-full flex-col gap-3 rounded-(--composer-radius) border p-3 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
 			)}
 		>
 			<div className="flex min-w-0 items-start gap-3">

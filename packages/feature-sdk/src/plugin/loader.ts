@@ -159,10 +159,14 @@ export interface ResolvedPluginRoute {
 	 * shell and plugin routes cannot collide by construction.
 	 */
 	path: string;
-	/** Optional human-readable page title (browser-mode unavailable state). */
+	/** Optional human-readable title rendered by the shell for this page. */
 	title?: string | undefined;
 	/** Optional override for the shell-owned page surface. */
 	surface?: PluginPageSurface | undefined;
+	/** Optional route-scoped component rendered in place of the static title. */
+	headerLeading?: unknown | undefined;
+	/** Optional route-scoped component rendered before app-wide header actions. */
+	headerActions?: unknown | undefined;
 	/** The resolved page component export (a React component to the shell). */
 	component: unknown;
 	/**
@@ -486,12 +490,34 @@ function resolveContributions(
 			continue;
 		}
 
+		const headerLeadingExport = route.header?.leading;
+		const headerLeading =
+			headerLeadingExport === undefined ? undefined : module[headerLeadingExport];
+		if (headerLeadingExport !== undefined && typeof headerLeading !== "function") {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" route "${route.path}" names header leading export "${headerLeadingExport}" but the web entry does not export a component with that name — using the route title.`,
+			});
+		}
+
+		const headerActionsExport = route.header?.actions;
+		const headerActions =
+			headerActionsExport === undefined ? undefined : module[headerActionsExport];
+		if (headerActionsExport !== undefined && typeof headerActions !== "function") {
+			issues.push({
+				pluginId: manifest.id,
+				message: `Plugin "${manifest.id}" route "${route.path}" names header actions export "${headerActionsExport}" but the web entry does not export a component with that name — omitting the route actions.`,
+			});
+		}
+
 		seenRoutePaths.set(resolvedPath, manifest.id);
 		routes.push({
 			pluginId: manifest.id,
 			path: resolvedPath,
 			title: route.title,
 			...(route.surface === undefined ? {} : { surface: route.surface }),
+			...(typeof headerLeading === "function" ? { headerLeading } : {}),
+			...(typeof headerActions === "function" ? { headerActions } : {}),
 			component,
 			browserSafe,
 		});

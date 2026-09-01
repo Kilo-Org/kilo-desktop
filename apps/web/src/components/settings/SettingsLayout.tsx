@@ -8,11 +8,10 @@ import { Outlet } from "@tanstack/react-router";
  */
 export function SettingsLayout({ children }: { children?: ReactNode }) {
 	return (
-		<div
-			className="bg-muted border-border flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden rounded-md border p-6"
-			data-qa-id="settings-page"
-		>
-			{children ?? <Outlet />}
+		<div className="bg-background flex min-h-0 min-w-0 flex-1 flex-col" data-qa-id="settings-page">
+			<div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-6">
+				{children ?? <Outlet />}
+			</div>
 		</div>
 	);
 }

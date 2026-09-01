@@ -63,9 +63,11 @@ function RightPanelEmptyState({
 							type="button"
 							onClick={() => onAddTab(definition)}
 							data-qa-id={`chat-right-panel-open-${definitionQaId(definition)}`}
-							className="bg-card hover:bg-accent/60 border-border/80 hover:border-border flex w-full items-start gap-3 rounded-lg border p-3 text-left transition"
+							className="bg-card hover:bg-accent/60 border-border dark:border-border/80 flex w-full items-start gap-2 rounded-lg border p-3 text-left transition"
 						>
-							<Icon className="mt-0.5 size-5 shrink-0" />
+							<span className="flex h-5 shrink-0 items-center">
+								<Icon className="size-3.5" />
+							</span>
 							<span className="flex min-w-0 flex-col gap-0.5">
 								<span className="text-sm font-medium">{definition.title}</span>
 								<span className="text-muted-foreground text-xs leading-relaxed">
@@ -114,14 +116,14 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 	return (
 		<div
 			className={cn(
-				"bg-muted border-border relative flex h-full min-h-0 min-w-0 flex-col self-stretch overflow-hidden rounded-md border",
+				"border-border dark:border-muted-foreground/15 relative flex h-full min-h-0 min-w-0 flex-col self-stretch overflow-hidden border-l bg-background",
 				maximized ? "flex-1" : "shrink-0",
 			)}
 			data-qa-id="chat-right-panel"
 			data-right-panel-maximized={maximized ? "true" : "false"}
 		>
 			<div
-				className="border-border flex h-11 shrink-0 items-center gap-1 border-b pr-2 pl-2"
+				className="border-border dark:border-muted-foreground/15 flex h-11 shrink-0 items-center gap-1 border-b pr-[calc(0.75rem+env(titlebar-area-width,0px))] pl-2"
 				data-qa-id="chat-right-panel-tabbar"
 			>
 				<div

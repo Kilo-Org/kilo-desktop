@@ -12,6 +12,7 @@ import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts"
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import type { PluginNavEntry } from "@/features/plugin-nav";
+import type { PluginPage } from "@/features/plugin-pages";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 
@@ -92,11 +93,16 @@ function renderLayout(
 	path = "/",
 	setup?: (system: ReturnType<typeof createAppFeatureSystem>) => void,
 	navEntries: readonly PluginNavEntry[] = [],
+	pages: readonly PluginPage[] = [],
 ) {
 	const system = createAppFeatureSystem(api);
 	setup?.(system);
 	const rootRoute = createRootRoute({
-		component: () => <AppSidebarLayout navEntries={navEntries}>content</AppSidebarLayout>,
+		component: () => (
+			<AppSidebarLayout navEntries={navEntries} pages={pages}>
+				content
+			</AppSidebarLayout>
+		),
 	});
 	const router = createRouter({
 		routeTree: rootRoute,
@@ -108,6 +114,78 @@ function renderLayout(
 		</SdkProvider>,
 	);
 }
+
+function DemoHeaderLeading() {
+	return <span data-qa-id="demo-header-leading">Demo breadcrumb</span>;
+}
+
+function DemoHeaderActions() {
+	return (
+		<button type="button" data-qa-id="demo-header-actions">
+			Route action
+		</button>
+	);
+}
+
+function GlobalHeaderAction() {
+	return (
+		<button type="button" data-qa-id="global-header-action">
+			Global action
+		</button>
+	);
+}
+
+const demoPages: readonly PluginPage[] = [
+	{
+		pluginId: "demo",
+		path: "/plugins/demo",
+		title: "Demo",
+		surface: "default",
+		component: () => null,
+		headerLeading: DemoHeaderLeading,
+		headerActions: DemoHeaderActions,
+		browserSafe: true,
+		splat: "demo",
+	},
+];
+
+describe("AppSidebarLayout page header", () => {
+	afterEach(cleanup);
+
+	it("owns the page header and composes route and global plugin actions", async () => {
+		renderLayout(
+			fakeLocalApi({ status: "anonymous" }),
+			"/plugins/demo",
+			(system) => {
+				system.getSdk("demo").contribute("page-header-actions", {
+					id: "global-action",
+					label: "Global action",
+					component: GlobalHeaderAction,
+				});
+			},
+			[],
+			demoPages,
+		);
+
+		const header = page.getByTestId("shell-page-header");
+		await expect.element(header).toBeVisible();
+		await expect.element(header.getByTestId("demo-header-leading")).toBeVisible();
+		await expect.element(header.getByTestId("demo-header-actions")).toBeVisible();
+		await expect.element(header.getByTestId("global-header-action")).toBeVisible();
+	});
+
+	it("uses shell route metadata for a page title", async () => {
+		renderLayout(
+			fakeLocalApi({ status: "anonymous" }),
+			"/plugins/demo",
+			undefined,
+			[],
+			[{ ...demoPages[0]!, headerLeading: undefined, headerActions: undefined }],
+		);
+
+		await expect.element(page.getByRole("heading", { name: "Demo" })).toBeVisible();
+	});
+});
 
 function FakeNewChat() {
 	return (
@@ -129,24 +207,29 @@ function contributeFakeNewChat(system: ReturnType<typeof createAppFeatureSystem>
 describe("AppSidebarLayout login button", () => {
 	afterEach(cleanup);
 
-	it("shows the Settings icon in the app bar when anonymous", async () => {
+	it("shows Settings and Sign In in the sidebar footer when anonymous", async () => {
 		renderLayout(fakeLocalApi({ status: "anonymous" }));
 
-		await expect.element(page.getByRole("button", { name: "Settings" })).toBeVisible();
-		await expect.element(page.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
-		await expect
-			.element(page.getByTestId("app-sidebar").getByTestId("nav-settings"))
-			.not.toBeInTheDocument();
+		const sidebar = page.getByTestId("app-sidebar");
+		const accountDock = sidebar.getByTestId("anonymous-account-dock");
+		await expect.element(accountDock).toBeVisible();
+		expect(
+			accountDock.element().contains(page.getByRole("button", { name: "Sign In" }).element()),
+		).toBe(true);
+		expect(accountDock.element().contains(sidebar.getByTestId("nav-settings").element())).toBe(
+			true,
+		);
+		await expect.element(page.getByTestId("shell-anonymous-actions")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
 	});
 
-	it("hides the Sign In button and app-bar Settings icon when authenticated", async () => {
+	it("replaces the anonymous account dock with the authenticated account menu", async () => {
 		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
 
 		// Give the async auth delegate a tick to resolve to authenticated.
 		await expect.element(page.getByTestId("account-menu")).toBeInTheDocument();
+		await expect.element(page.getByTestId("anonymous-account-dock")).not.toBeInTheDocument();
 		await expect.element(page.getByRole("button", { name: "Sign In" })).not.toBeInTheDocument();
-		await expect.element(page.getByRole("button", { name: "Settings" })).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("app-sidebar").getByTestId("nav-settings")).toBeVisible();
 	});
 
@@ -215,9 +298,8 @@ describe("AppSidebarLayout nav toggle", () => {
 	it("toggles the left nav open and closed", async () => {
 		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
 
-		await expect
-			.element(page.getByRole("button", { name: "Toggle navigation" }))
-			.toBeInTheDocument();
+		const toggle = page.getByRole("button", { name: "Toggle navigation" });
+		await expect.element(toggle).toBeInTheDocument();
 
 		const sidebar = () => baseElement.querySelector('[data-slot="sidebar"]');
 		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
@@ -227,6 +309,16 @@ describe("AppSidebarLayout nav toggle", () => {
 
 		await page.getByRole("button", { name: "Toggle navigation" }).click();
 		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
+	});
+
+	it("keeps the collapsed nav toggle inside the active title-bar drag region", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }));
+
+		const toggle = page.getByRole("button", { name: "Toggle navigation" });
+		await toggle.click();
+
+		const pageHeader = page.getByTestId("shell-page-header");
+		expect(pageHeader.element().contains(toggle.element())).toBe(true);
 	});
 
 	it("resizes the left nav when the rail is dragged", async () => {
@@ -391,23 +483,25 @@ describe("AppSidebarLayout settings takeover", () => {
 		renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
 
 		await expect.element(page.getByTestId("settings-back")).toBeVisible();
-		await expect.element(page.getByRole("button", { name: "Settings" })).toBeVisible();
+		await expect.element(page.getByTestId("app-sidebar").getByTestId("nav-settings")).toBeVisible();
 		await expect
 			.element(page.getByTestId("app-sidebar-primary"))
 			.toHaveAttribute("aria-hidden", "true");
 	});
 
-	it("keeps Settings and Sign In right-aligned when header zones are empty", async () => {
-		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
+	it("keeps Settings and Sign In in the sidebar footer under the shell-owned page header", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
 
-		await expect.element(page.getByRole("button", { name: "Sign In" })).toBeVisible();
-		const header = baseElement.querySelector("header");
-		expect(header).not.toBeNull();
+		const sidebar = page.getByTestId("app-sidebar");
+		const accountDock = sidebar.getByTestId("anonymous-account-dock");
+		await expect.element(accountDock).toBeVisible();
 		const login = page.getByRole("button", { name: "Sign In" }).element();
-		const headerRect = header!.getBoundingClientRect();
-		const loginRect = login.getBoundingClientRect();
-		expect(loginRect.left).toBeGreaterThan(headerRect.width / 2);
-		expect(headerRect.right - loginRect.right).toBeLessThan(48);
+		const settings = sidebar.getByTestId("nav-settings").element();
+		expect(accountDock.element().contains(settings)).toBe(true);
+		expect(accountDock.element().contains(login)).toBe(true);
+		await expect.element(page.getByTestId("shell-anonymous-actions")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("shell-page-header")).toBeVisible();
+		await expect.element(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 	});
 
 	it("aligns Back to app with the first sidebar zone row", async () => {

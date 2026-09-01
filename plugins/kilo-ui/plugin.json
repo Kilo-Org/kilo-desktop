@@ -16,7 +16,11 @@
 				"path": "/chat",
 				"component": "ChatPage",
 				"title": "Chat",
-				"surface": "transparent"
+				"surface": "transparent",
+				"header": {
+					"leading": "ChatPageHeaderLeading",
+					"actions": "ChatPageHeaderActions"
+				}
 			}
 		],
 		"nav": [],
@@ -25,6 +29,12 @@
 				"zone": "sidebar",
 				"component": "SessionList",
 				"label": "Chats",
+				"priority": 10
+			},
+			{
+				"zone": "sidebar-header-actions",
+				"component": "SessionListHeaderSearch",
+				"label": "Search chats and workspaces",
 				"priority": 10
 			}
 		],

@@ -38,6 +38,19 @@ export type PluginPageSurface = z.infer<typeof pluginPageSurfaceSchema>;
 
 export const contributionMountPolicySchema = z.enum(["active-only", "keep-alive"]);
 
+/** Contextual content rendered by the shell for one contributed route. */
+export const pluginRouteHeaderSchema = z
+	.strictObject({
+		/** Optional component export replacing the route's static title. */
+		leading: z.string().min(1).optional(),
+		/** Optional component export rendered before app-wide header actions. */
+		actions: z.string().min(1).optional(),
+	})
+	.refine((header) => header.leading !== undefined || header.actions !== undefined, {
+		message: "Route header must declare a leading or actions component.",
+	});
+export type PluginRouteHeader = z.infer<typeof pluginRouteHeaderSchema>;
+
 /**
  * A full-page route contributed by the plugin (`contributes.routes`). The HOST
  * owns route creation (Decision #19) — plugins never import the router; the
@@ -56,10 +69,12 @@ export const pluginRouteSchema = z.strictObject({
 	 * (e.g. "TodoList") — resolved by the host at discovery (B1).
 	 */
 	component: z.string().min(1),
-	/** Optional human-readable page title (used for the browser-mode unavailable state). */
+	/** Optional human-readable title rendered by the shell for this page. */
 	title: z.string().min(1).optional(),
 	/** Optional shell-owned surface around the page. */
 	surface: pluginPageSurfaceSchema.optional(),
+	/** Optional route-scoped components rendered inside the shell-owned page header. */
+	header: pluginRouteHeaderSchema.optional(),
 });
 export type PluginRoute = z.infer<typeof pluginRouteSchema>;
 

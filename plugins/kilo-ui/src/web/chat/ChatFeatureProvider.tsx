@@ -36,6 +36,7 @@ import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
 import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import { SessionListViewProvider } from "./session-list/use-session-list-view.js";
 import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
 import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
 import { PierreDiffProvider } from "./PierreDiffProvider.js";
@@ -353,7 +354,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 							<ChatAgentSelectionProvider value={agentSelection}>
 								<ChatModelSelectionProvider value={modelSelection}>
 									<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-										{children}
+										<SessionListViewProvider>{children}</SessionListViewProvider>
 									</AssistantRuntimeProvider>
 								</ChatModelSelectionProvider>
 							</ChatAgentSelectionProvider>

@@ -1,6 +1,5 @@
 /* Frosted glass surfaces (composer). Recipe matches t3code: translucent
-   surface tint + blur + slight saturate. Light uses muted; dark uses the
-   shell surface (`--background` / #141820). */
+   card tint + blur + slight saturate in both color schemes. */
 
 :root {
 	--glass-blur: 12px;
@@ -14,10 +13,14 @@
 }
 
 .chat-composer-glass {
-	--composer-glass-surface: var(--muted);
+	--composer-glass-surface: var(--card);
 	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+.chat-composer-surface {
+	--glass-opacity: 94%;
 }
 
 .aui-composer-action-wrapper {
@@ -43,25 +46,20 @@
 	}
 }
 
-[data-theme="dark"] .chat-composer-glass {
-	--composer-glass-surface: var(--background);
-}
-
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
 	.chat-composer-glass {
 		background: var(--composer-glass-surface);
 	}
 }
 
-/* Opaque wedges in the docked composer's rounded-corner cutouts so scrolled
-   messages don't show through the gaps. Masked to the outside of the radius
-   so the glass fill itself stays unchanged. */
+/* Opaque wedges cover the docked composer's rounded-corner cutouts so
+   scrolled messages cannot show through around the glass surface. */
 .composer-corner-fill {
 	pointer-events: none;
 	position: absolute;
 	width: var(--composer-radius);
 	height: var(--composer-radius);
-	background-color: var(--muted);
+	background-color: var(--background);
 	-webkit-mask: var(--composer-corner-mask);
 	mask: var(--composer-corner-mask);
 }
@@ -97,8 +95,8 @@
 }
 
 .composer-corner-fill-br {
-	bottom: 0;
 	right: 0;
+	bottom: 0;
 	--composer-corner-mask: radial-gradient(
 		circle at 0 0,
 		transparent calc(var(--composer-radius) - 1px),

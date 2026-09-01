@@ -2,11 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
 	DASHBOARD_ZONE,
-	HEADER_LEADING_ZONE,
-	HEADER_TRAILING_ZONE,
-	HOME_COMPOSER_LEADING_ACTION_ZONE,
 	isShellZone,
+	PAGE_HEADER_ACTIONS_ZONE,
 	SHELL_ZONES,
+	SIDEBAR_HEADER_ACTIONS_ZONE,
 	SIDEBAR_ZONE,
 	STATUS_BAR_ZONE,
 } from "./zones.js";
@@ -15,27 +14,26 @@ describe("shell zones (Decision #21)", () => {
 	it("exposes the canonical kebab-case zone ids", () => {
 		expect(SHELL_ZONES).toEqual([
 			"sidebar",
+			"sidebar-header-actions",
 			"status-bar",
 			"dashboard",
-			"home-composer-leading-action",
-			"header-leading",
-			"header-trailing",
+			"page-header-actions",
 		]);
 		expect(SIDEBAR_ZONE).toBe("sidebar");
+		expect(SIDEBAR_HEADER_ACTIONS_ZONE).toBe("sidebar-header-actions");
 		expect(STATUS_BAR_ZONE).toBe("status-bar");
 		expect(DASHBOARD_ZONE).toBe("dashboard");
-		expect(HOME_COMPOSER_LEADING_ACTION_ZONE).toBe("home-composer-leading-action");
-		expect(HEADER_LEADING_ZONE).toBe("header-leading");
-		expect(HEADER_TRAILING_ZONE).toBe("header-trailing");
+		expect(PAGE_HEADER_ACTIONS_ZONE).toBe("page-header-actions");
 	});
 
 	it("isShellZone accepts canonical ids and rejects drifted ones", () => {
+		expect(isShellZone("sidebar-header-actions")).toBe(true);
 		expect(isShellZone("status-bar")).toBe(true);
 		expect(isShellZone("sidebar")).toBe(true);
 		expect(isShellZone("dashboard")).toBe(true);
-		expect(isShellZone("home-composer-leading-action")).toBe(true);
-		expect(isShellZone("header-leading")).toBe(true);
-		expect(isShellZone("header-trailing")).toBe(true);
+		expect(isShellZone("page-header-actions")).toBe(true);
+		expect(isShellZone("header-leading")).toBe(false);
+		expect(isShellZone("header-trailing")).toBe(false);
 		// The historical drift this union exists to prevent:
 		expect(isShellZone("statusbar")).toBe(false);
 		expect(isShellZone("")).toBe(false);

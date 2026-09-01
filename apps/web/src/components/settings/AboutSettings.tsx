@@ -49,8 +49,8 @@ export function AboutSettings() {
 	};
 
 	return (
-		<div className="mx-auto w-full max-w-2xl" data-qa-id="about-settings">
-			<h1 className="text-xl font-semibold tracking-tight" data-qa-id="settings-section-heading">
+		<div className="mx-auto w-full max-w-3xl" data-qa-id="about-settings">
+			<h1 className="text-lg font-semibold tracking-tight" data-qa-id="settings-section-heading">
 				About
 			</h1>
 

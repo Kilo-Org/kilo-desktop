@@ -9,7 +9,21 @@ import {
 	useSessionListPins,
 	useSessionListView,
 } from "../../session-list/use-session-list-view.js";
-import { SessionListContent } from "./session-list-content.js";
+import { SessionListContent, SessionListSearch } from "./session-list-content.js";
+
+export const SessionListHeaderSearch: FC = () => {
+	const { update } = useSessionListView();
+	const { setActiveWorkspaceId } = useWorkspacesFeature();
+
+	return (
+		<SessionListSearch
+			onSelectWorkspace={(id) => {
+				update({ focus: id });
+				setActiveWorkspaceId(id);
+			}}
+		/>
+	);
+};
 
 export const SessionList: FC = () => {
 	const { view, update, reset } = useSessionListView();

@@ -9,7 +9,7 @@ import {
 } from "@anaconda/playwright-utils";
 
 export class TodosPage {
-	private readonly heading = () => getLocatorByTestId("todos-heading");
+	private readonly heading = () => getLocatorByTestId("shell-page-heading");
 	private readonly input = () => getLocatorByTestId("todo-input");
 	private readonly addButton = () => getLocatorByTestId("todo-add");
 	private readonly unavailable = () => getLocatorByTestId("todos-unavailable");

@@ -101,7 +101,7 @@ describe("OpenCode message queue", () => {
 		expect(driver.send.mock.calls[1]?.[0]).toMatchObject({ content: message("first").content });
 	});
 
-	it("pauses on Stop until Send now resumes the queue", async () => {
+	it("resumes the queue after Stop once the run finishes", async () => {
 		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
 		const driver = createDriver();
 		queue.setDriver(driver);
@@ -111,16 +111,39 @@ describe("OpenCode message queue", () => {
 
 		queue.adapter.clear("cancel-run");
 		queue.setRunning(false);
-		await Promise.resolve();
-		expect(driver.send).not.toHaveBeenCalled();
-
-		queue.adapter.steer(queue.adapter.items[1]!.id);
 		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
-		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("second").content });
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("first").content });
 
 		finishStartedRun(queue);
 		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledTimes(2));
-		expect(driver.send.mock.calls[1]?.[0]).toMatchObject({ content: message("first").content });
+		expect(driver.send.mock.calls[1]?.[0]).toMatchObject({ content: message("second").content });
+	});
+
+	it("does not auto-resume when cancel-run follows a failed send", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const failingDriver = {
+			send: vi.fn(async (_message: AppendMessage) => Promise.reject(new Error("send failed"))),
+			cancel: vi.fn(async () => undefined),
+		};
+		queue.setDriver(failingDriver);
+
+		// Enqueue two messages; the first dispatch fails, pausing the queue.
+		queue.adapter.enqueue(message("will-fail"), { steer: false });
+		queue.adapter.enqueue(message("second"), { steer: false });
+		await vi.waitFor(() => expect(failingDriver.send).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(queue.adapter.items).toHaveLength(2));
+
+		// Now the user presses Stop on an unrelated running turn.
+		queue.setRunning(true);
+		queue.adapter.clear("cancel-run");
+		queue.setRunning(false);
+
+		// The queue must stay paused because the original pause was from a failed
+		// send, not from cancel-run. Auto-resume would silently retry the rejected
+		// message without user intent.
+		await Promise.resolve();
+		expect(failingDriver.send).toHaveBeenCalledOnce();
+		expect(queue.adapter.items).toHaveLength(2);
 	});
 
 	it("deletes waiting messages without affecting the active run", () => {

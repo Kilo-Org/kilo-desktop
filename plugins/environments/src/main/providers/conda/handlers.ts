@@ -5,6 +5,8 @@ import type {
 	CondaEnvsCreateResult,
 	CondaEnvsDeleteInput,
 	CondaEnvsDeleteResult,
+	CondaPackagesListInput,
+	CondaPackagesListResult,
 } from "../../../contracts/providers/conda.js";
 import { condaContract } from "../../../contracts/providers/conda.js";
 import type { JobQueue } from "../../JobQueue.js";
@@ -55,9 +57,31 @@ export function registerCondaHandlers(
 		(input: CondaEnvsDeleteInput): Promise<CondaEnvsDeleteResult> =>
 			enqueueEnvsDelete(queue, backend, input),
 	);
-	// conda.packages.* / channels.* / jobs.cancel are wired in sub-issues
-	// 7 – 9 alongside their CondaService implementations, enqueued through
-	// `queue.enqueue(...)` (writes) or `queue.read(...)` (reads).
+
+	handlers.handle(
+		"conda.packages.list",
+		(input: CondaPackagesListInput): Promise<CondaPackagesListResult> =>
+			queue.read({
+				providerId: "conda",
+				opName: "packages.list",
+				args: { envName: input.envName, prefix: input.prefix },
+				run: (ctx) =>
+					backend
+						.listPackages(
+							input.envName,
+							{ signal: ctx.signal },
+							input.prefix ? { prefix: input.prefix } : undefined,
+						)
+						.then((packages) => ({
+							envName: input.envName,
+							packages,
+						})),
+			}),
+	);
+
+	// conda.packages.install / packages.remove / channels.* / jobs.cancel
+	// are wired in sub-issues 7 – 9 alongside their CondaService
+	// implementations, enqueued through `queue.enqueue(...)` (writes).
 }
 
 async function enqueueEnvsCreate(

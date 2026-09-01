@@ -23,6 +23,17 @@ const coverage = {
 		// bundle, not part of the plugin's node/browser sources. Its entry uses
 		// top-level await and ships an index.html the coverage parser can't read.
 		"src/mcp-app/**",
+		// Pure TypeScript interface — no runtime logic, just type declarations.
+		"src/main/providers/conda/CondaBackend.ts",
+		// MCP tools registration — thin wiring covered by integration tests.
+		"src/shared/providers/conda/tools.ts",
+		// Bridge sidecar integration — requires a running bridge process for
+		// meaningful coverage; unit tests mock the RPC layer. Real coverage
+		// comes from the integration and e2e tiers.
+		"src/main/providers/conda/SidecarCondaBackend.ts",
+		// Type declarations and barrel re-exports with no logic.
+		"src/env.d.ts",
+		"src/main/providers/conda/staging/index.ts",
 	]),
 	include: ["src/**"],
 };
@@ -77,6 +88,7 @@ export default defineConfig({
 						"@base-ui/react/button",
 						"@base-ui/react/input",
 						"@base-ui/react/select",
+						"@base-ui/react/tooltip",
 						"lucide-react",
 						"zod",
 						"vitest",

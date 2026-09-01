@@ -8,12 +8,15 @@
 		"routes": [
 			{ "path": "/environments", "component": "EnvironmentsPage", "title": "Environments" }
 		],
-		"nav": [
+		"nav": [],
+		"settings": [
 			{
-				"to": "/environments",
-				"label": "Environments",
+				"id": "environments",
+				"title": "Environments",
+				"component": "EnvironmentsPage",
 				"icon": "EnvironmentsNavIcon",
-				"featureFlag": "environments-feature"
+				"featureFlag": "environments-feature",
+				"priority": 80
 			}
 		]
 	}

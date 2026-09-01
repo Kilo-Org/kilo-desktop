@@ -141,8 +141,16 @@ export class SidecarCondaBackend implements CondaBackend {
 		);
 	}
 
-	async listPackages(envName: EnvironmentName, ctx?: CondaCallContext): Promise<CondaPackage[]> {
-		const result = await this.#call<ListPackagesResult>("conda.list", { name: envName }, ctx);
+	async listPackages(
+		envName: EnvironmentName,
+		ctx?: CondaCallContext,
+		options?: { prefix?: string },
+	): Promise<CondaPackage[]> {
+		// Prefer prefix over name for resolution — the bridge's conda context
+		// may not have all envs_dirs configured, so name-based resolution can
+		// fail for environments outside the bridge's own envs directories.
+		const params = options?.prefix ? { prefix: options.prefix } : { name: envName };
+		const result = await this.#call<ListPackagesResult>("conda.list", params, ctx);
 		return result.packages.map((pkg) => ({
 			name: pkg.name,
 			version: pkg.version,

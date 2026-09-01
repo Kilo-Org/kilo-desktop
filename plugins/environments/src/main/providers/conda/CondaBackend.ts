@@ -63,7 +63,11 @@ export interface CondaBackend {
 	create(input: CondaEnvsCreateInput, ctx?: CondaCallContext): Promise<CondaEnv>;
 	remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void>;
 
-	listPackages(envName: EnvironmentName, ctx?: CondaCallContext): Promise<CondaPackage[]>;
+	listPackages(
+		envName: EnvironmentName,
+		ctx?: CondaCallContext,
+		options?: { prefix?: string },
+	): Promise<CondaPackage[]>;
 	install(
 		input: CondaPackagesInstallInput,
 		ctx?: CondaCallContext,

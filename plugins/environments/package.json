@@ -33,7 +33,7 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.1"
+		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.2"
 	},
 	"devDependencies": {
 		"@anaconda-agentic-desktop/e2e": "workspace:*",

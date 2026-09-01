@@ -167,8 +167,17 @@ export class CondaService implements CondaBackend {
 		ctx?.onProgress?.(`Environment "${input.name}" removed.`);
 	}
 
-	listPackages(_envName: EnvironmentName, _ctx?: CondaCallContext): Promise<CondaPackage[]> {
-		return notImplemented("conda.packages.list");
+	async listPackages(
+		envName: EnvironmentName,
+		ctx?: CondaCallContext,
+		options?: { prefix?: string },
+	): Promise<CondaPackage[]> {
+		this.#assertStaged();
+		const args = options?.prefix
+			? ["list", "--prefix", options.prefix, "--json"]
+			: ["list", "--name", envName, "--json"];
+		const raw = await this.#runConda(args, ctx);
+		return parsePackageList(raw);
 	}
 
 	install(
@@ -451,4 +460,34 @@ export function parseEnvList(stdout: string): CondaEnv[] {
 			const name = isNamed ? path.basename(prefix) : "";
 			return condaEnvSchema.parse({ name, prefix });
 		});
+}
+
+/**
+ * Parse the JSON array returned by `conda list --json`.
+ *
+ * Each element is an object with at least `name`, `version`, `build_string`,
+ * and `channel`. We map `build_string` → `build` to match the
+ * `CondaPackage` contract.
+ */
+export function parsePackageList(stdout: string): CondaPackage[] {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(stdout) as unknown;
+	} catch (error) {
+		throw featureError(
+			"PROVIDER_NOT_READY",
+			`conda list returned non-JSON output: ${(error as Error).message}`,
+		);
+	}
+	if (!Array.isArray(parsed)) {
+		throw featureError("PROVIDER_NOT_READY", "conda list output is not a JSON array.");
+	}
+	return (parsed as Array<Record<string, unknown>>)
+		.filter((entry) => typeof entry["name"] === "string" && typeof entry["version"] === "string")
+		.map((entry) => ({
+			name: entry["name"] as string,
+			version: entry["version"] as string,
+			build: (entry["build_string"] as string) || "unknown",
+			channel: (entry["channel"] as string) || "unknown",
+		}));
 }

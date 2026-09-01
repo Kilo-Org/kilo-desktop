@@ -12,8 +12,8 @@
  *   resources/bridge/...
  */
 
-import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { accessSync, constants, existsSync } from "node:fs";
+import { chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { resolveInstalledPayload, type BridgePayloadManifest } from "./bridge-artifacts.js";
@@ -65,7 +65,16 @@ async function isAlreadyStaged(resourceRoot: string, version: string): Promise<b
 		const manifest: BridgePayloadManifest = JSON.parse(await readFile(manifestPath, "utf8"));
 		const launchEntry = manifest.launch?.[0];
 		if (!launchEntry) return false;
-		return existsSync(path.join(resourceRoot, launchEntry));
+		const launchPath = path.join(resourceRoot, launchEntry);
+		if (!existsSync(launchPath)) return false;
+		// Verify the binary is executable — pnpm can strip +x bits during
+		// install, which would leave a "staged" payload that cannot launch.
+		try {
+			accessSync(launchPath, constants.X_OK);
+		} catch {
+			return false;
+		}
+		return true;
 	} catch {
 		return false;
 	}
@@ -122,6 +131,28 @@ export async function stageBridge(options: StageBridgeOptions): Promise<StageBri
 	await rm(options.resourceRoot, { recursive: true, force: true });
 	await mkdir(options.resourceRoot, { recursive: true });
 	await cp(payloadRoot, options.resourceRoot, { recursive: true });
+
+	// Restore executable permissions on binaries. pnpm's content-addressable
+	// store and hardlinking can strip the +x bit from files in npm packages,
+	// so we explicitly chmod the entries listed in the manifest's `macho` array
+	// (which enumerates all native binaries and shared objects).
+	const stagedManifestPath = path.join(options.resourceRoot, "manifest.json");
+	const stagedManifest: BridgePayloadManifest = JSON.parse(
+		await readFile(stagedManifestPath, "utf8"),
+	);
+	const executables = [
+		...(stagedManifest.launch?.[0] ? [stagedManifest.launch[0]] : []),
+		...(stagedManifest.macho ?? []),
+	];
+	const seen = new Set<string>();
+	for (const relative of executables) {
+		if (seen.has(relative)) continue;
+		seen.add(relative);
+		const abs = path.join(options.resourceRoot, relative);
+		if (existsSync(abs)) {
+			await chmod(abs, 0o755);
+		}
+	}
 
 	// Write state file for idempotency
 	const state: StagedState = {

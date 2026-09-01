@@ -50,10 +50,7 @@ export function EnvironmentsPage() {
 	}
 
 	return (
-		<div
-			className="mx-auto flex h-full max-w-5xl flex-col px-5 py-8"
-			data-qa-id="environments-page"
-		>
+		<div className="flex h-full flex-col" data-qa-id="environments-page">
 			<h1 className="text-2xl font-semibold tracking-tight" data-qa-id="environments-heading">
 				Environments
 			</h1>

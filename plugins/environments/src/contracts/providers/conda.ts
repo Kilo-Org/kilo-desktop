@@ -169,7 +169,16 @@ export type CondaEnvsDeleteResult = z.infer<typeof condaEnvsDeleteResultSchema>;
 /* Method I/O — packages                                                 */
 /* --------------------------------------------------------------------- */
 
-export const condaPackagesListInputSchema = z.object({ envName: environmentNameSchema });
+export const condaPackagesListInputSchema = z.object({
+	envName: environmentNameSchema,
+	prefix: z
+		.string()
+		.min(1)
+		.refine((v) => !v.startsWith("-"), {
+			message: "Prefix must not start with '-' — that would look like a conda CLI flag.",
+		})
+		.optional(),
+});
 export type CondaPackagesListInput = z.infer<typeof condaPackagesListInputSchema>;
 
 export const condaPackagesListResultSchema = z.object({

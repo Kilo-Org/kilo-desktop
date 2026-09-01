@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import {
@@ -20,8 +21,9 @@ import {
 	SearchIcon,
 } from "lucide-react";
 
-import type { CondaService } from "../../../contracts/providers/conda.js";
+import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
 import { environmentDisplayName } from "./environment-display.js";
+import { EnvironmentDetail } from "./EnvironmentDetail.js";
 
 const PAGE_SIZE_OPTIONS = [
 	{ value: "10", label: "10" },
@@ -42,6 +44,10 @@ const PAGE_SIZE_OPTIONS = [
  * and configurable pagination. All processing is client-side since the
  * full dataset is fetched in a single RPC call.
  *
+ * Clicking an environment row opens the detail view, which shows the
+ * installed packages for that environment. The "Back" button returns to
+ * the list.
+ *
  * Layout follows the Anaconda Desktop table pattern: search bar, item
  * count, data table with sortable headers, and a pagination bar.
  *
@@ -51,6 +57,11 @@ const PAGE_SIZE_OPTIONS = [
 export function EnvironmentsPanel() {
 	const sdk = useSdk<CondaService>("environments");
 	const envs = useSdkQuery(sdk, "conda.envs.list");
+	const [selectedEnv, setSelectedEnv] = useState<CondaEnv | null>(null);
+
+	if (selectedEnv) {
+		return <EnvironmentDetail env={selectedEnv} onBack={() => setSelectedEnv(null)} />;
+	}
 
 	if (envs.isPending) {
 		return (
@@ -82,14 +93,15 @@ export function EnvironmentsPanel() {
 		);
 	}
 
-	return <EnvironmentsTable rows={rows} />;
+	return <EnvironmentsTable rows={rows} onSelectEnv={setSelectedEnv} />;
 }
 
 interface EnvironmentsTableProps {
 	rows: Array<{ name: string; prefix: string }>;
+	onSelectEnv: (env: CondaEnv) => void;
 }
 
-function EnvironmentsTable({ rows }: EnvironmentsTableProps) {
+function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 	const [currentPage, setCurrentPage] = useState(1);
@@ -233,8 +245,17 @@ function EnvironmentsTable({ rows }: EnvironmentsTableProps) {
 							{paginatedEnvs.map((env) => (
 								<tr
 									key={env.prefix}
-									className="hover:bg-foreground/10 group transition-colors"
+									role="button"
+									tabIndex={0}
+									className="hover:bg-foreground/10 group cursor-pointer transition-colors"
 									data-qa-id="environments-conda-row"
+									onClick={() => onSelectEnv(env)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter" || e.key === " ") {
+											e.preventDefault();
+											onSelectEnv(env);
+										}
+									}}
 								>
 									<td
 										className="border-b px-4 py-3 font-medium group-last:border-b-0"

@@ -116,14 +116,8 @@ describe("PLUGIN_NAV", () => {
 		expect(todos?.featureFlag).toBe("todo-feature");
 	});
 
-	it("contains the bundled environments nav entry under the /plugins namespace", () => {
+	it("does not contain an environments nav entry (moved to settings)", () => {
 		const environments = PLUGIN_NAV.find((entry) => entry.to === "/plugins/environments");
-		expect(environments).toBeDefined();
-		expect(environments?.pluginId).toBe("environments");
-		expect(environments?.label).toBe("Environments");
-		expect(environments?.icon).toBe("EnvironmentsNavIcon");
-		expect(environments?.iconComponent).toBeDefined();
-		expect(environments?.navQaId).toBe("nav-environments");
-		expect(environments?.featureFlag).toBe("environments-feature");
+		expect(environments).toBeUndefined();
 	});
 });

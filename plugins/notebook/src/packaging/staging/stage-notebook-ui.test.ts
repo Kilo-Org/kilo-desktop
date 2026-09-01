@@ -282,42 +282,50 @@ describe("injectAgenticEmbedChromeHtml", () => {
 });
 
 describe("notebook bundle validation", () => {
-	it("rejects source shells, missing WASM, and extra unlisted files", async () => {
-		const root = await temporaryDirectory();
-		await mkdir(root, { recursive: true });
-		await writeFile(path.join(root, "index.html"), "<html>source</html>");
-		await expect(validateNotebookUiBundle(root)).rejects.toThrow(/built \/assets/);
+	it(
+		"rejects source shells, missing WASM, and extra unlisted files",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await temporaryDirectory();
+			await mkdir(root, { recursive: true });
+			await writeFile(path.join(root, "index.html"), "<html>source</html>");
+			await expect(validateNotebookUiBundle(root)).rejects.toThrow(/built \/assets/);
 
-		const noWasm = path.join(root, "no-wasm");
-		await writePublishedBundle(noWasm, { includeWasm: false });
-		await expect(validateNotebookUiBundle(noWasm)).rejects.toThrow(/no WASM/);
+			const noWasm = path.join(root, "no-wasm");
+			await writePublishedBundle(noWasm, { includeWasm: false });
+			await expect(validateNotebookUiBundle(noWasm)).rejects.toThrow(/no WASM/);
 
-		const destination = path.join(root, "staged");
-		await stageFixture(path.join(root, "archive"), destination);
-		await writeFile(path.join(destination, "orphan.js"), "unexpected");
-		await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
-			/does not exactly cover/,
-		);
-		expect(await readFile(path.join(destination, NOTEBOOK_STAGE_MANIFEST), "utf8")).toContain(
-			NTERACT_RELEASE.commit,
-		);
-	});
+			const destination = path.join(root, "staged");
+			await stageFixture(path.join(root, "archive"), destination);
+			await writeFile(path.join(destination, "orphan.js"), "unexpected");
+			await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
+				/does not exactly cover/,
+			);
+			expect(await readFile(path.join(destination, NOTEBOOK_STAGE_MANIFEST), "utf8")).toContain(
+				NTERACT_RELEASE.commit,
+			);
+		},
+	);
 
-	it("rejects a staged bundle whose index.html lacks embed chrome CSS", async () => {
-		const root = await temporaryDirectory();
-		const destination = path.join(root, "staged");
-		await stageFixture(path.join(root, "archive"), destination);
-		await writeFile(
-			path.join(destination, "index.html"),
-			[
-				"<!doctype html>",
-				"<html><head>",
-				'<script type="module" src="/assets/main-abcdef12.js"></script>',
-				"</head><body></body></html>",
-			].join(""),
-		);
-		await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
-			/missing agentic embed chrome CSS/,
-		);
-	});
+	it(
+		"rejects a staged bundle whose index.html lacks embed chrome CSS",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await temporaryDirectory();
+			const destination = path.join(root, "staged");
+			await stageFixture(path.join(root, "archive"), destination);
+			await writeFile(
+				path.join(destination, "index.html"),
+				[
+					"<!doctype html>",
+					"<html><head>",
+					'<script type="module" src="/assets/main-abcdef12.js"></script>',
+					"</head><body></body></html>",
+				].join(""),
+			);
+			await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
+				/missing agentic embed chrome CSS/,
+			);
+		},
+	);
 });

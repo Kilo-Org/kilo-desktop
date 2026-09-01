@@ -52,7 +52,7 @@ export function getCanaryBuildTime(environment: ReleaseEnvironment = {}, now = n
 	return parsed;
 }
 
-const CANARY_PUBLISH_VERSION = /^\d+\.\d+\.\d+-canary\.\d{8}\.\d+$/;
+const CANARY_PUBLISH_VERSION = /^\d+\.\d+\.\d+-canary-\d{8}-\d{6}$/;
 
 export function getPublishAppVersion(input: {
 	readonly version: string;
@@ -69,7 +69,7 @@ export function getPublishAppVersion(input: {
 	if (Number.isNaN(now.getTime())) {
 		throw new Error("Canary build time must be a valid date.");
 	}
-	return `${nextPatchVersion(input.version)}-canary.${formatCanaryTimestamp(now)}`;
+	return `${nextPatchVersion(input.version)}-canary-${formatCanaryTimestamp(now)}`;
 }
 
 export function getNativeAppVersion(version: string): string {
@@ -95,7 +95,11 @@ function formatCanaryTimestamp(now: Date): string {
 	const month = String(now.getUTCMonth() + 1).padStart(2, "0");
 	const day = String(now.getUTCDate()).padStart(2, "0");
 	const time = now.getUTCHours() * 10_000 + now.getUTCMinutes() * 100 + now.getUTCSeconds();
-	return `${year}${month}${day}.${time}`;
+	// Squirrel's legacy NuGet comparator parses a trailing prerelease number as
+	// Int32. Separate the fixed-width timestamp segments with hyphens so it falls
+	// back to an ordinal comparison instead of parsing NuGet's normalized
+	// YYYYMMDDHHMMSS suffix as a number.
+	return `${year}${month}${day}-${String(time).padStart(6, "0")}`;
 }
 
 export function getReleasePrefix(channel: string): string {

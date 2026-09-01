@@ -18,8 +18,8 @@ describe("channel release publishing", () => {
 			"Anaconda Agentic Desktop Production v1.2.3",
 		);
 		expect(
-			getChannelReleaseVersionFromTag("canary", "desktop/canary/v1.2.3-canary.20260826.120000"),
-		).toBe("1.2.3-canary.20260826.120000");
+			getChannelReleaseVersionFromTag("canary", "desktop/canary/v1.2.3-canary-20260826-120000"),
+		).toBe("1.2.3-canary-20260826-120000");
 		expect(getChannelReleaseVersionFromTag("canary", "desktop/prod/v1.2.3")).toBeNull();
 	});
 

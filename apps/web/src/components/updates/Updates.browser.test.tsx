@@ -147,7 +147,7 @@ describe("update UI", () => {
 				{
 					...downloadedState.releaseNotes[0]!,
 					channel: "canary" as const,
-					version: "1.2.2-canary.20260825.120000",
+					version: "1.2.2-canary-20260825-120000",
 					items: ["Improved retry behavior"],
 				},
 			],
@@ -163,7 +163,7 @@ describe("update UI", () => {
 			.element(page.getByText("1.2.4-without-notes", { exact: true }))
 			.not.toBeInTheDocument();
 		await expect
-			.element(page.getByText("1.2.2-canary.20260825.120000", { exact: true }))
+			.element(page.getByText("1.2.2-canary-20260825-120000", { exact: true }))
 			.toBeVisible();
 		await expect.element(page.getByText("Improved retry behavior", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("Release channel")).not.toBeInTheDocument();

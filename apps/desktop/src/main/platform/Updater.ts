@@ -219,13 +219,7 @@ export class DesktopUpdaterService {
 		this.#checkInFlight = false;
 		const releaseVersion = extractVersion(releaseName);
 		const latestReleaseNotesVersion = this.#latestReleaseNotes?.version;
-		const version =
-			this.#options.platform === "win32" &&
-			releaseVersion &&
-			latestReleaseNotesVersion &&
-			releaseVersion === toSquirrelPackageVersion(latestReleaseNotesVersion)
-				? latestReleaseNotesVersion
-				: (releaseVersion ?? latestReleaseNotesVersion ?? null);
+		const version = releaseVersion ?? latestReleaseNotesVersion ?? null;
 		let targetReleaseNotes = this.#latestReleaseNotes;
 		if (version && targetReleaseNotes?.version !== version) {
 			targetReleaseNotes = await this.#fetchReleaseNotes(version);
@@ -308,12 +302,6 @@ export class DesktopUpdaterService {
 function extractVersion(releaseName: string | undefined): string | null {
 	if (!releaseName) return null;
 	return /\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/.exec(releaseName)?.[0] ?? null;
-}
-
-function toSquirrelPackageVersion(version: string): string {
-	const withoutBuildMetadata = version.split("+", 1)[0] ?? version;
-	const [core = withoutBuildMetadata, ...prerelease] = withoutBuildMetadata.split("-");
-	return prerelease.length === 0 ? core : `${core}-${prerelease.join("-").replaceAll(".", "")}`;
 }
 
 function truncate(value: string, maxLength: number): string {

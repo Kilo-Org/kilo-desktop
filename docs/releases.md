@@ -64,7 +64,7 @@ Squirrel.Windows uses a legacy NuGet comparator that parses a prerelease's trail
 numeric suffix as a 32-bit integer, while its bundled NuGet limits that suffix to 20
 characters. The two-digit year keeps the suffix within that limit, and hyphens keep the
 fixed-width date and time separate, so Windows packages and the app can share a version
-such as `0.1.1-canary-260818-143052` without overflowing the comparator.
+such as `0.1.2-canary-260818-143052` without overflowing the comparator.
 
 Squirrel.Windows packs with a bundled `nuget.exe` that still enforces the 260-character
 `MAX_PATH` limit, and `--releasify` extracts each nupkg entry to `{TEMP}\{guid}\{entry}`

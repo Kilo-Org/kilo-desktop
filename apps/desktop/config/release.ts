@@ -52,7 +52,7 @@ export function getCanaryBuildTime(environment: ReleaseEnvironment = {}, now = n
 	return parsed;
 }
 
-const CANARY_PUBLISH_VERSION = /^\d+\.\d+\.\d+-canary-\d{8}-\d{6}$/;
+const CANARY_PUBLISH_VERSION = /^\d+\.\d+\.\d+-canary-\d{6}-\d{6}$/;
 
 export function getPublishAppVersion(input: {
 	readonly version: string;
@@ -91,14 +91,13 @@ function parseVersionCore(version: string): string {
 }
 
 function formatCanaryTimestamp(now: Date): string {
-	const year = now.getUTCFullYear();
+	const year = String(now.getUTCFullYear() % 100).padStart(2, "0");
 	const month = String(now.getUTCMonth() + 1).padStart(2, "0");
 	const day = String(now.getUTCDate()).padStart(2, "0");
 	const time = now.getUTCHours() * 10_000 + now.getUTCMinutes() * 100 + now.getUTCSeconds();
 	// Squirrel's legacy NuGet comparator parses a trailing prerelease number as
-	// Int32. Separate the fixed-width timestamp segments with hyphens so it falls
-	// back to an ordinal comparison instead of parsing NuGet's normalized
-	// YYYYMMDDHHMMSS suffix as a number.
+	// Int32, while its bundled NuGet caps the entire prerelease part at 20
+	// characters. A two-digit year and hyphen-separated timestamp satisfy both.
 	return `${year}${month}${day}-${String(time).padStart(6, "0")}`;
 }
 

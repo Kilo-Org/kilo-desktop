@@ -51,7 +51,7 @@ application startup.
 
 Canary packaging stamps the desktop `package.json` version (then restores it) so every
 Forge maker — DMG, ZIP, `RELEASES.json`, Squirrel nupkg/`RELEASES`, and DEB — names
-artifacts `{nextPatch}-canary-{YYYYMMDD}-{HHmmss}` from the committed desktop version and
+artifacts `{nextPatch}-canary-{YYMMDD}-{HHmmss}` from the committed desktop version and
 a UTC timestamp (shared via `CANARY_BUILD_TIME` in CI so macOS/Windows/Linux publish the
 same version). The packaged app `package.json` is stamped to the same value. The patch
 increment makes each canary sort above the committed version, so already-installed
@@ -61,9 +61,10 @@ prefix because Windows PE versions allow at most four integer components. Stagin
 prod keep the committed version and still require an explicit bump.
 
 Squirrel.Windows uses a legacy NuGet comparator that parses a prerelease's trailing
-numeric suffix as a 32-bit integer. Hyphens keep the fixed-width date and time separate,
-so Windows packages and the app can share a version such as
-`0.1.1-canary-20260818-143052` without overflowing that comparator.
+numeric suffix as a 32-bit integer, while its bundled NuGet limits that suffix to 20
+characters. The two-digit year keeps the suffix within that limit, and hyphens keep the
+fixed-width date and time separate, so Windows packages and the app can share a version
+such as `0.1.1-canary-260818-143052` without overflowing the comparator.
 
 Squirrel.Windows packs with a bundled `nuget.exe` that still enforces the 260-character
 `MAX_PATH` limit, and `--releasify` extracts each nupkg entry to `{TEMP}\{guid}\{entry}`

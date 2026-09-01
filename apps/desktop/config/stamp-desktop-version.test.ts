@@ -33,7 +33,7 @@ describe("withStampedDesktopPackageJson", () => {
 			{ RELEASE_CHANNEL: "canary", CANARY_BUILD_TIME: "2026-08-18T14:30:52.000Z" },
 			async () => {
 				const stamped = JSON.parse(await readFile(file, "utf8")) as { version: string };
-				expect(stamped.version).toBe("0.1.1-canary-20260818-143052");
+				expect(stamped.version).toBe("0.1.1-canary-260818-143052");
 			},
 		);
 

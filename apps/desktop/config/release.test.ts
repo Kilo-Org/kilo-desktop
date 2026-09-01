@@ -139,21 +139,21 @@ describe("release configuration", () => {
 		).toBeUndefined();
 	});
 
-	it("stamps canary with a Squirrel-compatible fixed-width UTC timestamp", () => {
-		expect(
-			getPublishAppVersion({
-				version: "0.1.0",
-				channel: "canary",
-				now: new Date("2026-08-18T14:30:52.000Z"),
-			}),
-		).toBe("0.1.1-canary-20260818-143052");
+	it("stamps canary with a NuGet-compatible fixed-width UTC timestamp", () => {
+		const version = getPublishAppVersion({
+			version: "0.1.0",
+			channel: "canary",
+			now: new Date("2026-08-18T14:30:52.000Z"),
+		});
+		expect(version).toBe("0.1.1-canary-260818-143052");
+		expect(version.slice(version.indexOf("-") + 1)).toHaveLength(20);
 		expect(
 			getPublishAppVersion({
 				version: "0.1.0",
 				channel: "canary",
 				now: new Date("2026-08-18T00:05:03.000Z"),
 			}),
-		).toBe("0.1.1-canary-20260818-000503");
+		).toBe("0.1.1-canary-260818-000503");
 		expect(
 			getPublishAppVersion({
 				version: "0.1.0",
@@ -173,11 +173,11 @@ describe("release configuration", () => {
 	it("does not restamp an already-stamped canary version", () => {
 		expect(
 			getPublishAppVersion({
-				version: "0.1.1-canary-20260818-143052",
+				version: "0.1.1-canary-260818-143052",
 				channel: "canary",
 				now: new Date("2026-08-18T15:00:00.000Z"),
 			}),
-		).toBe("0.1.1-canary-20260818-143052");
+		).toBe("0.1.1-canary-260818-143052");
 	});
 
 	it("reads a shared canary build time so matrix legs publish the same version", () => {
@@ -197,7 +197,7 @@ describe("release configuration", () => {
 	});
 
 	it("strips prerelease so Windows PE file versions stay at most four numeric components", () => {
-		expect(getNativeAppVersion("0.1.1-canary-20260818-143052")).toBe("0.1.1");
+		expect(getNativeAppVersion("0.1.1-canary-260818-143052")).toBe("0.1.1");
 		expect(getNativeAppVersion("0.1.0")).toBe("0.1.0");
 		expect(() => getNativeAppVersion("latest")).toThrow("Invalid app version");
 	});

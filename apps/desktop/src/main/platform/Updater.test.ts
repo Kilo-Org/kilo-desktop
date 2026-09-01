@@ -19,7 +19,7 @@ class FakeNativeUpdater extends EventEmitter {
 const notes = {
 	schemaVersion: 1 as const,
 	channel: "canary" as const,
-	version: "1.2.3-canary-20260826-120000",
+	version: "1.2.3-canary-260826-120000",
 	title: "Canary update",
 	publishedAt: "2026-08-26T12:00:00.000Z",
 	bodyMarkdown: "* Faster startup",
@@ -99,14 +99,14 @@ describe("DesktopUpdaterService", () => {
 		vi.useFakeTimers();
 		const target: DesktopReleaseNotes = {
 			...notes,
-			version: "1.2.5-canary-20260826-150000",
-			previousVersion: "1.2.4-canary-20260826-140000",
+			version: "1.2.5-canary-260826-150000",
+			previousVersion: "1.2.4-canary-260826-140000",
 			items: ["Newest change"],
 		};
 		const skipped: DesktopReleaseNotes = {
 			...notes,
 			version: target.previousVersion!,
-			previousVersion: "1.2.3-canary-20260826-130000",
+			previousVersion: "1.2.3-canary-260826-130000",
 			items: ["Skipped change"],
 		};
 		const fetchNotes = vi.fn(async (input: string | URL | Request) => {

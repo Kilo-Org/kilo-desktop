@@ -31,9 +31,8 @@ const coverage = {
 		// meaningful coverage; unit tests mock the RPC layer. Real coverage
 		// comes from the integration and e2e tiers.
 		"src/main/providers/conda/SidecarCondaBackend.ts",
-		// Type declarations and barrel re-exports with no logic.
+		// Type declarations with no logic.
 		"src/env.d.ts",
-		"src/main/providers/conda/staging/index.ts",
 	]),
 	include: ["src/**"],
 };

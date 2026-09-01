@@ -387,8 +387,8 @@ describe("JobQueue.cancel — queued vs running", () => {
 			kind: "envs.create",
 			run: async ({ signal }) => {
 				capturedSignal = signal;
-				// Reject when the signal aborts — CondaService models this
-				// via `mapCondaError` on execa's `isCanceled` flag.
+				// Reject when the signal aborts — SidecarCondaBackend models this
+				// via a FeatureError with JOB_CANCELLED code.
 				signal.addEventListener("abort", () => {
 					gate.reject(featureError("JOB_CANCELLED", "aborted."));
 				});

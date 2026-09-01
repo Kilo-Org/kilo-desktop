@@ -6,7 +6,7 @@ import { JOB_PROGRESS_LOCAL_EVENT, JobQueue } from "./JobQueue.js";
 import { ProviderRegistry } from "./ProviderRegistry.js";
 import { CondaRuntime } from "./providers/conda/CondaRuntime.js";
 import { CondaProvider } from "./providers/conda/index.js";
-import { stageConda } from "./providers/conda/staging/index.js";
+import { resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
 
 /**
  * Capability shape exposed by kilo-ui for local MCP App resource registration.
@@ -53,8 +53,8 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  * The environments UI provider is gated on the `environments-feature`
  * LaunchDarkly flag. A main-process conda runtime capability is always exposed
  * before the gate so headless consumers can request an isolated environment.
- * Constructing and exposing it performs no I/O; when the flag is off, boot
- * still returns before staging conda.
+ * Constructing and exposing it performs no I/O; when the flag is off, the
+ * bridge is not started until a consumer actually calls `ensureEnvironment`.
  *
  * When enabled: boots registered providers sequentially (staging is one-time,
  * first-launch work), then binds their handlers. Async so the shell can
@@ -76,13 +76,7 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  */
 export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	const runtime = new CondaRuntime({
-		stage: () =>
-			stageConda({
-				storageDir: mainSdk.storageDir,
-				fetch: mainSdk.net.fetch,
-				logger: mainSdk.logger,
-				reportProgress: (message) => mainSdk.boot.reportProgress(message),
-			}),
+		resolveBridge: resolveBridgeLaunchInfo,
 		logger: mainSdk.logger,
 	});
 	const condaRuntime = {
@@ -99,7 +93,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	}
 
 	const registry = new ProviderRegistry();
-	registry.register(new CondaProvider(runtime));
+	registry.register(new CondaProvider());
 
 	const queue = new JobQueue({
 		emit: (event) => mainSdk.events.emit(JOB_PROGRESS_LOCAL_EVENT, event),

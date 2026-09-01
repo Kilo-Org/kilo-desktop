@@ -19,7 +19,7 @@ import type { CondaBackend } from "./CondaBackend.js";
  * Semantics (per delivery plan sub-issues 4 – 6):
  * - **Reads** (`conda.envs.list`) go through {@link JobQueue.read} — a
  *   5 s TTL cache keyed on `(providerId, opName, args)` bypasses the
- *   `execa` round-trip on repeat calls and is cleared automatically by
+ *   backend round-trip on repeat calls and is cleared automatically by
  *   any successful write for the same provider.
  * - **Writes** (`conda.envs.create`, `conda.envs.delete`) go through
  *   {@link JobQueue.enqueue} — a per-provider FIFO worker with
@@ -80,7 +80,7 @@ export function registerCondaHandlers(
 	);
 
 	// conda.packages.install / packages.remove / channels.* / jobs.cancel
-	// are wired in sub-issues 7 – 9 alongside their CondaService
+	// are wired in sub-issues 7 – 9 alongside their CondaBackend
 	// implementations, enqueued through `queue.enqueue(...)` (writes).
 }
 

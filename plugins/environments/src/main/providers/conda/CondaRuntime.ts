@@ -1,8 +1,6 @@
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { execa } from "execa";
-
 import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import type {
@@ -12,7 +10,8 @@ import type {
 } from "../../../contracts/capabilities.js";
 import { environmentNameSchema, matchSpecSchema } from "../../../contracts/providers/conda.js";
 
-import type { StagingResult } from "./staging/index.js";
+import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
+import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 
 // Anaconda publishes the supported llama.cpp builds on `anaconda`; `defaults`
 // supplies fallback dependencies without leaking the user's channel config.
@@ -22,25 +21,25 @@ const FALLBACK_CHANNELS = ["anaconda", "defaults"] as const;
 const EXECUTABLE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const STAMP_NAME = "anaconda-ensure.json";
 
-interface ExecuteOptions {
-	readonly env: Record<string, string>;
-}
-
-type Execute = (file: string, args: readonly string[], options: ExecuteOptions) => Promise<unknown>;
-
 type Paths = typeof path.posix | typeof path.win32;
 
 export interface CondaRuntimeOptions {
-	readonly stage: () => Promise<StagingResult>;
+	readonly resolveBridge: () => BridgeLaunchInfo | null;
 	readonly logger: MainSdkLogger;
-	readonly execute?: Execute;
 	readonly platform?: NodeJS.Platform;
+	/**
+	 * Root for conda working state (envs, package cache). The sidecar's
+	 * default isolation root is `~/.anaconda-agentic-desktop/conda`.
+	 */
+	readonly condaFilesRoot?: string;
 }
 
 /**
- * Owns lazy conda staging and serialized environment reconciliation for
- * main-process consumers. Staging starts only when a caller requests an
- * environment (or the environments UI explicitly boots its provider).
+ * Owns lazy bridge resolution and serialized environment reconciliation
+ * for main-process consumers. The bridge is resolved lazily on first
+ * use; when the feature flag is off the bridge binary is never spawned
+ * until a consumer actually calls `ensureEnvironment`.
+ *
  * A prefix that already has `conda-meta` is reused when its recorded
  * package pin still matches the request, so startup does not re-run
  * `conda create`. A different pin recreates the prefix. An incomplete
@@ -50,32 +49,19 @@ export interface CondaRuntimeOptions {
  * isolated package cache.
  */
 export class CondaRuntime implements CondaEnvironmentRuntime {
-	readonly #stageConda: () => Promise<StagingResult>;
+	readonly #resolveBridge: () => BridgeLaunchInfo | null;
 	readonly #logger: MainSdkLogger;
-	readonly #execute: Execute;
 	readonly #platform: NodeJS.Platform;
+	readonly #condaFilesRoot: string;
 	readonly #jobs = new Map<string, Promise<EnsureEnvironmentResult>>();
-	#staging: Promise<StagingResult> | undefined;
+	#backend: SidecarCondaBackend | undefined;
 	#tail: Promise<void> = Promise.resolve();
 
 	constructor(options: CondaRuntimeOptions) {
-		this.#stageConda = options.stage;
+		this.#resolveBridge = options.resolveBridge;
 		this.#logger = options.logger;
-		this.#execute =
-			options.execute ?? ((file, args, executeOptions) => execa(file, [...args], executeOptions));
 		this.#platform = options.platform ?? process.platform;
-	}
-
-	stage(): Promise<StagingResult> {
-		if (this.#staging) return this.#staging;
-
-		const pending = this.#stageConda();
-		const staging = pending.catch((error: unknown) => {
-			if (this.#staging === staging) this.#staging = undefined;
-			throw error;
-		});
-		this.#staging = staging;
-		return staging;
+		this.#condaFilesRoot = options.condaFilesRoot ?? resolveDefaultCondaFilesRoot(this.#platform);
 	}
 
 	async ensureEnvironment(input: EnsureEnvironmentInput): Promise<EnsureEnvironmentResult> {
@@ -108,38 +94,51 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 		return path.posix.join(prefixPath, "bin", name);
 	}
 
+	#ensureBackend(): SidecarCondaBackend {
+		if (this.#backend) return this.#backend;
+		const launchInfo = this.#resolveBridge();
+		if (!launchInfo) {
+			throw new Error(
+				"[conda-runtime] anaconda-bridge-sidecar payload not found. " +
+					"Ensure the bridge is packaged or BRIDGE_PAYLOAD is set.",
+			);
+		}
+		this.#logger.info(
+			`[conda-runtime] Using anaconda-bridge-sidecar v${launchInfo.version}: ${launchInfo.command.join(" ")}`,
+		);
+		this.#backend = new SidecarCondaBackend({
+			command: launchInfo.command,
+			logger: this.#logger,
+		});
+		return this.#backend;
+	}
+
 	async #ensure(name: string, packages: readonly string[]): Promise<EnsureEnvironmentResult> {
-		const staged = await this.stage();
 		const paths = this.#platform === "win32" ? path.win32 : path.posix;
-		const prefixPath = paths.join(staged.condaFilesRoot, "envs", name);
+		const prefixPath = paths.join(this.#condaFilesRoot, "envs", name);
 		if (await ready(prefixPath, paths)) {
 			const stamp = await readStamp(prefixPath, paths);
 			if (stamp === undefined || samePin(stamp, packages)) {
 				if (stamp === undefined) await writeStamp(prefixPath, packages, paths);
 				this.#logger.info(`Reusing conda environment "${name}" at ${prefixPath}.`);
-				return { condaBinPath: staged.condaBinPath, prefixPath };
+				return { condaBinPath: "", prefixPath };
 			}
 		}
 		await rm(prefixPath, { recursive: true, force: true });
-		const channels = resolveChannels(packages);
-		const args = [
-			"create",
-			"--prefix",
-			prefixPath,
-			"--yes",
-			"--override-channels",
-			"--strict-channel-priority",
-			...channels.flatMap((channel) => ["--channel", channel]),
-			...(packages.length > 0 ? ["--", ...packages] : []),
-		];
 
+		const backend = this.#ensureBackend();
+		const channels = resolveChannels(packages);
 		this.#logger.info(`Creating conda environment "${name}" at ${prefixPath}.`);
-		await this.#execute(staged.condaBinPath, args, {
-			env: isolationEnvironment(staged.condaFilesRoot, this.#platform),
-		});
+		await backend.create({ name, packages: packages as string[], channels });
 		if (await ready(prefixPath, paths)) await writeStamp(prefixPath, packages, paths);
-		return { condaBinPath: staged.condaBinPath, prefixPath };
+		return { condaBinPath: "", prefixPath };
 	}
+}
+
+function resolveDefaultCondaFilesRoot(platform: NodeJS.Platform): string {
+	const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+	const paths = platform === "win32" ? path.win32 : path.posix;
+	return paths.join(home, ".anaconda-agentic-desktop", "conda");
 }
 
 async function ready(prefixPath: string, paths: Paths): Promise<boolean> {
@@ -191,14 +190,4 @@ function resolveChannels(packages: readonly string[]): string[] {
 		return separator > 0 ? [spec.slice(0, separator)] : [];
 	});
 	return [...new Set([...explicit, ...FALLBACK_CHANNELS])];
-}
-
-function isolationEnvironment(root: string, platform: NodeJS.Platform): Record<string, string> {
-	const paths = platform === "win32" ? path.win32 : path.posix;
-	return {
-		CONDA_ENVS_PATH: paths.join(root, "envs"),
-		CONDA_PKGS_DIRS: paths.join(root, "pkgs"),
-		CONDARC: paths.join(root, ".condarc"),
-		CONDA_PLUGINS_AUTO_ACCEPT_TOS: "yes",
-	};
 }

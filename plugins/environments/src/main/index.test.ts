@@ -1,9 +1,3 @@
-// oxlint-disable no-explicit-any -- execa mocks require dynamic casts
-import { createHash } from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
@@ -14,35 +8,14 @@ import type { EnvironmentsCapabilities } from "../contracts/capabilities.js";
 import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
 import { CondaProvider } from "./providers/conda/index.js";
 
-vi.mock("execa", () => ({
-	execa: vi.fn(),
-}));
-
-vi.mock("./providers/conda/staging/artifacts.js", () => ({
-	getMinicondaInstaller: vi.fn(),
-}));
-
-vi.mock("./providers/conda/staging/detectSystemConda.js", () => ({
-	detectSystemConda: vi.fn(),
-}));
-
 vi.mock("./providers/conda/resolveBridgePath.js", () => ({
 	resolveBridgeLaunchInfo: vi.fn(() => null),
 	resolveBridgeBinaryPath: vi.fn(() => null),
 }));
 
-import { execa } from "execa";
+import { resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
 
-import { getMinicondaInstaller } from "./providers/conda/staging/artifacts.js";
-import { detectSystemConda } from "./providers/conda/staging/detectSystemConda.js";
-
-const mockedExecute = vi.mocked(execa);
-const mockedGetInstaller = vi.mocked(getMinicondaInstaller);
-const mockedDetectSystem = vi.mocked(detectSystemConda);
-
-function sha256(buf: Buffer): string {
-	return createHash("sha256").update(buf).digest("hex");
-}
+const mockedResolveBridge = vi.mocked(resolveBridgeLaunchInfo);
 
 /**
  * Build a linked SDK pair and (optionally) expose the shell-side
@@ -51,21 +24,12 @@ function sha256(buf: Buffer): string {
  * `apps/desktop/src/main/features/anaconda-mcp/AnacondaMcpService.integration.test.ts`
  * so the flag-off path can be exercised.
  */
-function createSdkWithFlag(options: {
-	featureFlagEnabled: boolean | null;
-	storageDir?: string;
-	reportBootProgress?: (message: string) => void;
-	fetch?: typeof globalThis.fetch;
-}): { mainSdk: FakeMainSdk; getFlag: ReturnType<typeof vi.fn> } {
+function createSdkWithFlag(options: { featureFlagEnabled: boolean | null }): {
+	mainSdk: FakeMainSdk;
+	getFlag: ReturnType<typeof vi.fn>;
+} {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
 		featureId: "environments",
-		main: {
-			...(options.storageDir !== undefined ? { storageDir: options.storageDir } : {}),
-			...(options.reportBootProgress !== undefined
-				? { reportBootProgress: options.reportBootProgress }
-				: {}),
-			...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
-		},
 	});
 
 	const getFlag = vi.fn(<T>(_key: string, defaultValue: T): T => {
@@ -81,179 +45,86 @@ function createSdkWithFlag(options: {
 	return { mainSdk, getFlag };
 }
 
-describe("environments plugin main entry", () => {
-	const directories: string[] = [];
+/** Configure `resolveBridgeLaunchInfo` to return a valid bridge payload. */
+function setupFakeBridge(): void {
+	mockedResolveBridge.mockReturnValue({
+		command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+		payloadRoot: "/fake/bridge",
+		version: "1.0.0",
+	});
+}
 
+describe("environments plugin main entry", () => {
 	afterEach(() => {
-		for (const dir of directories.splice(0)) {
-			fs.rmSync(dir, { recursive: true, force: true });
-		}
+		vi.restoreAllMocks();
+		// Reset the module-level vi.fn mock so a previous test's
+		// `mockReturnValue` does not leak into the next test.
+		mockedResolveBridge.mockReset();
 	});
 
-	function setupFakeStaging(): { storageDir: string } {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "env-main-test-"));
-		directories.push(storageDir);
-
-		mockedGetInstaller.mockReturnValue({
-			target: "darwin-arm64",
-			platform: "darwin",
-			arch: "arm64",
-			installerUrl: "https://repo.anaconda.com/miniconda/Miniconda3-test.sh",
-			installerSha256: sha256(Buffer.from("fake")),
-			condaBinRelPath: "bin/conda",
-		});
-
-		// Default: system conda detected (avoids bundled path touching real $HOME)
-		mockedDetectSystem.mockResolvedValue({
-			condaBinPath: "/usr/local/bin/conda",
-			version: "25.3.1",
-		});
-
-		return { storageDir };
-	}
-
 	it("returns a Promise (async mainRegister for provider boot)", async () => {
-		const { storageDir } = setupFakeStaging();
-		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true, storageDir });
+		setupFakeBridge();
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
 		const result = mainRegister(mainSdk);
 		expect(result).toBeInstanceOf(Promise);
 		await result;
 	});
 
-	it("boots the conda provider and writes staged.json on success", async () => {
-		const { storageDir } = setupFakeStaging();
-		const reportBootProgress = vi.fn();
-		const { mainSdk } = createSdkWithFlag({
-			featureFlagEnabled: true,
-			storageDir,
-			reportBootProgress,
-		});
+	it("boots the conda provider via the bridge sidecar", async () => {
+		setupFakeBridge();
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
 
 		await mainRegister(mainSdk);
 
-		const manifest = JSON.parse(
-			fs.readFileSync(path.join(storageDir, "providers", "conda", "staged.json"), "utf8"),
+		expect(mockedResolveBridge).toHaveBeenCalled();
+	});
+
+	it("propagates boot failures (bridge payload not found)", async () => {
+		// resolveBridgeLaunchInfo returns null by default (mock above)
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
+
+		await expect(mainRegister(mainSdk)).rejects.toThrow(
+			/anaconda-bridge-sidecar payload not found/,
 		);
-		expect(manifest.type).toBe("system");
-		expect(manifest.condaBinPath).toBe("/usr/local/bin/conda");
-		expect(manifest.target).toBe("darwin-arm64");
-	});
-
-	it("delivers boot progress messages during staging", async () => {
-		const { storageDir } = setupFakeStaging();
-		const reportBootProgress = vi.fn();
-		const { mainSdk } = createSdkWithFlag({
-			featureFlagEnabled: true,
-			storageDir,
-			reportBootProgress,
-		});
-
-		await mainRegister(mainSdk);
-
-		const messages = reportBootProgress.mock.calls.map((call: unknown[]) => call[0] as string);
-		expect(messages).toContain("[1/3] Checking for existing conda\u2026");
-		expect(messages).toContain("Using existing conda installation.");
-	});
-
-	it("propagates boot failures (staging errors)", async () => {
-		const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "env-main-fail-"));
-		directories.push(storageDir);
-
-		mockedGetInstaller.mockReturnValue({
-			target: "darwin-arm64",
-			platform: "darwin",
-			arch: "arm64",
-			installerUrl: "https://repo.anaconda.com/miniconda/Miniconda3-test.sh",
-			installerSha256: sha256(Buffer.from("fake")),
-			condaBinRelPath: "bin/conda",
-		});
-
-		mockedDetectSystem.mockResolvedValue(null);
-		const fetch = vi.fn().mockRejectedValue(new Error("offline"));
-		const { mainSdk } = createSdkWithFlag({
-			featureFlagEnabled: true,
-			storageDir,
-			fetch: fetch as unknown as typeof globalThis.fetch,
-		});
-
-		await expect(mainRegister(mainSdk)).rejects.toThrow("offline");
 	});
 
 	describe("feature-flag gate (environments-feature)", () => {
-		it("exposes a lazy conda runtime capability while the UI feature is off", async () => {
-			const { storageDir } = setupFakeStaging();
-			const { mainSdk } = createSdkWithFlag({
-				featureFlagEnabled: false,
-				storageDir,
-			});
-			mockedExecute.mockResolvedValue({ stdout: "" } as never);
+		it("exposes conda runtime capability even when the UI feature is off", async () => {
+			const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: false });
 
 			await mainRegister(mainSdk);
 
 			const capabilities = mainSdk.plugins.get<EnvironmentsCapabilities>("environments");
 			expect(capabilities?.condaRuntime).toBeDefined();
-			expect(mockedDetectSystem).not.toHaveBeenCalled();
-
-			const input = {
-				name: "local-inference",
-				packages: ["llama.cpp=1.2"],
-			};
-			const [first, second] = await Promise.all([
-				capabilities!.condaRuntime.ensureEnvironment(input),
-				capabilities!.condaRuntime.ensureEnvironment(input),
-			]);
-
-			expect(first).toEqual(second);
-			expect(first.prefixPath).toBe(
-				path.join(
-					process.env.HOME ?? process.env.USERPROFILE ?? "",
-					".anaconda-agentic-desktop",
-					"conda",
-					"envs",
-					"local-inference",
-				),
-			);
-			expect(mockedDetectSystem).toHaveBeenCalledTimes(1);
-			expect(mockedExecute).toHaveBeenCalledTimes(1);
+			expect(typeof capabilities?.condaRuntime.ensureEnvironment).toBe("function");
+			expect(typeof capabilities?.condaRuntime.executable).toBe("function");
+			// Bridge should NOT be resolved yet — lazy initialization
+			expect(mockedResolveBridge).not.toHaveBeenCalled();
 		});
 
-		it("skips provider boot and staging when the flag is off", async () => {
-			const { storageDir } = setupFakeStaging();
-			const { mainSdk, getFlag } = createSdkWithFlag({
-				featureFlagEnabled: false,
-				storageDir,
-			});
+		it("skips provider boot when the flag is off", async () => {
+			setupFakeBridge();
+			const { mainSdk, getFlag } = createSdkWithFlag({ featureFlagEnabled: false });
 
 			await mainRegister(mainSdk);
 
-			expect(mockedDetectSystem).not.toHaveBeenCalled();
-			expect(mockedGetInstaller).not.toHaveBeenCalled();
-			expect(fs.existsSync(path.join(storageDir, "providers", "conda", "staged.json"))).toBe(false);
+			expect(mockedResolveBridge).not.toHaveBeenCalled();
 			expect(getFlag).toHaveBeenCalledWith(FEATURE_FLAG_KEY, false);
 		});
 
 		it("defaults to OFF when the feature-flag capability is unavailable", async () => {
-			// Guards two paths at once: (1) when the shell hasn't registered
-			// the `feature-flag` capability at all, and (2) when a plain
-			// `createFakeMainSdk` is passed in with no capabilities. Both
-			// resolve `plugins.get("feature-flag")` to `null`, and the gate
-			// must default to OFF rather than fail open.
-			const { storageDir } = setupFakeStaging();
-			const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: null, storageDir });
+			setupFakeBridge();
+			const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: null });
 
 			await mainRegister(mainSdk);
 
-			expect(mockedDetectSystem).not.toHaveBeenCalled();
-			expect(fs.existsSync(path.join(storageDir, "providers", "conda", "staged.json"))).toBe(false);
+			expect(mockedResolveBridge).not.toHaveBeenCalled();
 		});
 	});
 
 	it("wires provider teardown into app shutdown (mainSdk.onDispose)", async () => {
-		// Regression guard: without the onDispose wiring in mainRegister, a
-		// provider's dispose (which for the sidecar backend kills the spawned
-		// bridge process) is never reached on a normal app quit.
-		const { storageDir } = setupFakeStaging();
-		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true, storageDir });
+		setupFakeBridge();
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
 		const onDispose = vi.spyOn(CondaProvider.prototype, "onDispose");
 
 		await mainRegister(mainSdk);

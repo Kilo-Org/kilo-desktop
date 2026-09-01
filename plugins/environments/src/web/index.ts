@@ -14,7 +14,7 @@
  *
  * Browser mode: tool calls that route through `sdk.invoke` require the
  * matching main-side handler to exist. This plugin's `mainRegister` is
- * Electron-only (spawns `conda` via `execa`), so tools registered here
+ * Electron-only (talks to the bridge sidecar via JSON-RPC), so tools registered here
  * will reject in standalone browser mode — the same failure mode as the
  * todos plugin (Decision #7). The tools are still registered so that MCP
  * introspection sees a consistent surface across modes.

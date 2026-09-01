@@ -36,23 +36,16 @@ export interface CondaCallContext {
 
 /**
  * Swap seam between the plugin's handlers/tools and the concrete conda
- * implementation. v1 has one impl (`CondaService`, which shells out to the
- * staged `conda` binary via `execa`); the backup epic B7 introduces a
- * `SidecarCondaBackend` that speaks JSON-RPC to a PyInstaller sidecar
- * behind the same interface.
- *
- * Sub-issue 4 shipped **only `list`**; sub-issue 6 layers `create` and
- * `remove` on top of it. Every other op still throws `PROVIDER_NOT_READY`
- * with a "not yet implemented" detail so accidentally routing a call
- * through them fails loudly instead of silently returning stale data.
- * Sub-issues 7 – 9 fill in the rest.
+ * implementation. The sole impl is {@link SidecarCondaBackend}, which
+ * speaks JSON-RPC to the anaconda-bridge-sidecar PyInstaller binary
+ * over stdio.
  *
  * Backend methods return the intrinsic domain result — an environment,
  * a package list — never a `jobId`. The plugin's handlers wrap the
  * backend call with `JobQueue.enqueue` and stamp the queue-assigned
  * `jobId` onto the outbound response. Keeping the queue concern out of
- * `CondaBackend` means the interface stays the same shape a hypothetical
- * `SidecarCondaBackend` (backup epic B7) would satisfy.
+ * `CondaBackend` means the interface stays testable and open for a
+ * future second provider (e.g. uv).
  *
  * Every method takes {@link CondaCallContext} so cancellation and
  * progress-forwarding stay uniform.
@@ -83,9 +76,9 @@ export interface CondaBackend {
 
 	/**
 	 * Optional teardown — release long-lived resources. `SidecarCondaBackend`
-	 * implements it to kill the spawned bridge process; `CondaService` (execa,
-	 * one-shot processes) has nothing to release and omits it. Wired into app
-	 * shutdown via `CondaProvider.onDispose` → `mainSdk.onDispose`.
+	 * implements it to kill the spawned bridge process. Wired into app
+	 * shutdown via `CondaProvider.onDispose` → `mainSdk.onDispose`. The `?`
+	 * stays because the interface is generic and future impls may not need it.
 	 */
 	dispose?(): void;
 }

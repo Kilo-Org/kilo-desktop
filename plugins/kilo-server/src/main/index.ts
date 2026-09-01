@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 
 import { FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
@@ -81,6 +82,13 @@ interface RegisterKiloServerOptions {
 export type KiloServerCapabilities = {
 	connectionService: {
 		getConnection(): Promise<KiloServerConnection>;
+		/**
+		 * Resolve the Kilo config directory (`<runtime>/config/kilo`) without
+		 * spawning the server. Awaits the same config-readiness promise as
+		 * `getConnection` so callers that write into it (e.g. config sync) cannot
+		 * race the initial relay-config reconcile, but never triggers a lazy spawn.
+		 */
+		getConfigDirectory(): Promise<string>;
 	};
 	kiloService: KiloServerCapabilityService;
 };
@@ -96,6 +104,22 @@ function resolveKiloServerDirectories(storageDirectory: string): {
 	};
 }
 
+/**
+ * Resolve the user's global Kilo config directory following the same
+ * conventions the Kilo CLI uses: `$XDG_CONFIG_HOME/kilo` on macOS/Linux,
+ * `%APPDATA%/kilo` on Windows.
+ */
+export function resolveUserConfigDirectory(
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	if (platform === "win32") {
+		return path.join(env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "kilo");
+	}
+	const xdgConfig = env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
+	return path.join(xdgConfig, "kilo");
+}
+
 export function createKiloServerManagerOptions(
 	mainSdk: MainSdk,
 	onStatusChange: (status: KiloServerStatus) => void,
@@ -108,6 +132,7 @@ export function createKiloServerManagerOptions(
 			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
 		}),
 		...directories,
+		userConfigDirectory: resolveUserConfigDirectory(),
 		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
 		stateDirectory: mainSdk.storageDir,
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
@@ -297,6 +322,14 @@ export function registerKiloServer(
 		// (renderer mount + `server.getConnection` RPC) await `configReady` and
 		// cannot spawn Kilo before the atomic config update lands.
 		getConnection: async () => ensureRunningAfterConfig(),
+		// Non-spawning accessor: the config dir is a deterministic path, so
+		// callers that only need to read/write config (config sync, incl. its
+		// startup auto-sync) must not force a lazy spawn. Still awaits
+		// `configReady` so writes land after the relay-config reconcile.
+		getConfigDirectory: async () => {
+			await configReady;
+			return configDirectory;
+		},
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {

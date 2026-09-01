@@ -18,7 +18,8 @@ export async function fetchAgentCatalogForConnection(
 	}
 	const client = createKiloDirectoryClient(connection, connection.globalDirectory);
 	const { data } = await client.app.agents({}, { throwOnError: true });
-	return buildAgentCatalog(data as Agent[]);
+	const agents = data as Agent[];
+	return buildAgentCatalog(agents);
 }
 
 export function useKiloAgentCatalog(

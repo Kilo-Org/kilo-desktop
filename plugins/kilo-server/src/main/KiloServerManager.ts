@@ -57,6 +57,13 @@ export interface KiloServerManagerOptions {
 	 * credentials away from the CLI / VS Code extension.
 	 */
 	readonly configDirectory: string;
+	/**
+	 * The user's global Kilo config directory (`~/.config/kilo` on
+	 * macOS/Linux, `%APPDATA%/kilo` on Windows). Passed as `KILO_CONFIG_DIR`
+	 * so the embedded server additively merges user-installed agents,
+	 * commands, and skills from the host configuration.
+	 */
+	readonly userConfigDirectory?: string;
 	/** App-local XDG state root. Honors an inherited `XDG_STATE_HOME`. */
 	readonly stateDirectory: string;
 	readonly expectedVersion?: string;
@@ -163,7 +170,7 @@ export class KiloServerManager {
 		Pick<
 			KiloServerManagerOptions,
 			"installation" | "runtimeDirectory" | "configDirectory" | "stateDirectory"
-		>;
+		> & { userConfigDirectory: string | undefined };
 	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	readonly #status: ObservableValue<KiloServerStatus>;
@@ -184,6 +191,7 @@ export class KiloServerManager {
 			installation: options.installation,
 			runtimeDirectory: options.runtimeDirectory,
 			configDirectory: options.configDirectory,
+			userConfigDirectory: options.userConfigDirectory,
 			stateDirectory: options.stateDirectory,
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
@@ -275,11 +283,53 @@ export class KiloServerManager {
 	}
 
 	async restart(): Promise<KiloServerConnection> {
+		if (this.#disposed) {
+			return Promise.reject(new FeatureError("Kilo Code has shut down.", "BUSINESS"));
+		}
 		if (this.#startPromise) {
 			await this.#startPromise.catch(() => undefined);
 		}
+		// Reuse the port AND credentials the running server is bound to so the
+		// renderer's cached connection (baseUrl + password) stays fully valid
+		// across the restart and the chat runtime does not have to reconnect.
+		const previousPort = this.#currentPort();
+		const previousPassword = this.#connection?.password;
 		await this.#stop();
-		return this.ensureRunning();
+		return this.#startOnce(previousPort, previousPassword);
+	}
+
+	/** Port of the running connection, if any, parsed from its baseUrl. */
+	#currentPort(): number | undefined {
+		if (!this.#connection) return undefined;
+		const port = Number.parseInt(new URL(this.#connection.baseUrl).port, 10);
+		return Number.isInteger(port) && port > 0 ? port : undefined;
+	}
+
+	/**
+	 * Start the server once, reusing `preferredPort` and `preferredPassword` when
+	 * provided. If a start that requested a preferred port fails for any reason,
+	 * retry once on an OS-assigned port with fresh credentials so a restart can
+	 * never get wedged on an unavailable port. A non-port failure (version
+	 * mismatch, broken binary) simply fails again on the retry rather than being
+	 * masked, and the retry log does not claim the cause was port-specific.
+	 */
+	#startOnce(preferredPort?: number, preferredPassword?: string): Promise<KiloServerConnection> {
+		if (this.#connection) return Promise.resolve(this.#publicConnection(this.#connection));
+		if (this.#startPromise) return this.#startPromise;
+
+		this.#startPromise = this.#start(preferredPort, preferredPassword)
+			.catch(async (error) => {
+				if (preferredPort === undefined || this.#disposed) throw error;
+				this.#options.logger.warn(
+					`Kilo server failed to start on preferred port ${preferredPort}; retrying once on a new OS-assigned port.`,
+				);
+				await this.#stop();
+				return this.#start();
+			})
+			.finally(() => {
+				this.#startPromise = undefined;
+			});
+		return this.#startPromise;
 	}
 
 	dispose(): void {
@@ -290,9 +340,9 @@ export class KiloServerManager {
 		void this.#stop();
 	}
 
-	async #start(): Promise<KiloServerConnection> {
+	async #start(preferredPort?: number, preferredPassword?: string): Promise<KiloServerConnection> {
 		this.#setStatus({ status: "starting" });
-		const password = randomBytes(32).toString("hex");
+		const password = preferredPassword ?? randomBytes(32).toString("hex");
 		const authHeader = `Basic ${Buffer.from(`kilo:${password}`).toString("base64")}`;
 		let child: KiloChildProcess | undefined;
 		try {
@@ -302,7 +352,7 @@ export class KiloServerManager {
 			const args = [
 				"serve",
 				"--hostname=127.0.0.1",
-				"--port=0",
+				`--port=${preferredPort ?? 0}`,
 				...this.#options.corsOrigins.map((origin) => `--cors=${origin}`),
 			];
 			child = this.#options.spawn(this.#options.installation.executablePath, args, {
@@ -437,9 +487,13 @@ export class KiloServerManager {
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
-			// KILO_CONFIG_DIR is additive in Kilo 7.4.21. Isolate the base config
-			// root instead so ~/.config/kilo is not merged into Desktop.
+			// Isolate the base config root so the Desktop owns its primary config.
 			XDG_CONFIG_HOME: path.dirname(this.#options.configDirectory),
+			// KILO_CONFIG_DIR is additive in Kilo 7.4.21: it merges agents,
+			// commands, and skills from the user's global config into Desktop.
+			...(this.#options.userConfigDirectory
+				? { KILO_CONFIG_DIR: this.#options.userConfigDirectory }
+				: {}),
 			// Match OpenCode desktop: isolate state under Electron storage.
 			XDG_STATE_HOME: this.#options.environment.XDG_STATE_HOME ?? this.#options.stateDirectory,
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
@@ -449,8 +503,16 @@ export class KiloServerManager {
 		// survived the spread from process.env.
 		for (const name of Object.keys(environment)) {
 			const upper = name.toUpperCase();
-			if (upper === "KILO_CONFIG_DIR" || upper === "KILO_CONFIG_CONTENT") {
+			if (upper === "KILO_CONFIG_CONTENT") {
 				delete environment[name];
+				continue;
+			}
+			if (upper === "KILO_CONFIG_DIR") {
+				// Keep our explicitly-set KILO_CONFIG_DIR; remove any inherited or
+				// case-variant entry that leaked through the process.env spread.
+				if (!this.#options.userConfigDirectory || name !== "KILO_CONFIG_DIR") {
+					delete environment[name];
+				}
 				continue;
 			}
 			if (upper === "XDG_CONFIG_HOME" && name !== "XDG_CONFIG_HOME") {

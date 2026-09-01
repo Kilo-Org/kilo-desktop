@@ -170,6 +170,26 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		});
 	}, [connectionOptions.queryKey, queryClient]);
 
+	// The embedded Kilo server reuses its port and credentials across restart, so
+	// the cached connection normally stays valid. It can still fall back to a new
+	// port if the old one is unavailable, so refetch the cached connection when it
+	// reports ready again to rebuild the runtime against the current baseUrl.
+	// Guarded on an existing connection so the initial cold-start "ready" does
+	// not disrupt the first connection fetch.
+	const hasConnection = connection.data !== undefined;
+	useEffect(() => {
+		if (!hasConnection) return;
+		return sdk.events.on("kilo-server.server-status-changed", (status: unknown) => {
+			if (
+				typeof status === "object" &&
+				status !== null &&
+				(status as { status?: unknown }).status === "ready"
+			) {
+				refreshConnection();
+			}
+		});
+	}, [sdk, refreshConnection, hasConnection]);
+
 	const activeWorkspaceIdRef = useRef(activeWorkspaceId);
 	activeWorkspaceIdRef.current = activeWorkspaceId;
 	const prepareSession = useMemo(

@@ -1,5 +1,6 @@
 import type { Agent } from "@kilocode/sdk/v2/client";
 import {
+	BotIcon,
 	BugIcon,
 	HammerIcon,
 	ListTodoIcon,
@@ -53,15 +54,55 @@ function isSelectableAgent(agent: Pick<Agent, "mode" | "hidden" | "deprecated">)
 	return agent.mode === "primary" || agent.mode === "all";
 }
 
-/** Keep only Code / Plan / Ask / Debug, in that order. */
-export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
-	const available = new Set(
-		agents.filter(isSelectableAgent).map((agent) => canonicalizeAgentName(agent.name)),
-	);
+const HEX_COLOR_RE = /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i;
+const FUNCTIONAL_COLOR_RE = /^(?:rgb|hsl|okl(?:ab|ch)|lab|lch|color|hwb)a?\([^)]*\)$/i;
+const VAR_COLOR_RE = /^var\(--[^)]*\)$/i;
 
-	return {
-		agents: SWITCHER_AGENTS.filter((agent) => available.has(agent.name)),
-	};
+/** Returns true when a color string is a CSS-resolvable value the renderer can use. */
+export function isCssColor(value: string | undefined): value is string {
+	if (!value) return false;
+	return HEX_COLOR_RE.test(value) || FUNCTIONAL_COLOR_RE.test(value) || VAR_COLOR_RE.test(value);
+}
+
+/**
+ * Prettify a kebab/snake/space-delimited agent id into a display name.
+ * "docs-writer" → "Docs Writer", "my_agent" → "My Agent"
+ */
+export function prettifyAgentId(id: string): string {
+	return id
+		.split(/[-_\s]+/)
+		.map((word) => (word.length > 0 ? word[0]!.toUpperCase() + word.slice(1) : ""))
+		.join(" ");
+}
+
+/**
+ * Build the catalog from the server's agent list.
+ * Curated built-ins appear first in their fixed order, followed by any
+ * additional selectable custom agents in server order.
+ */
+export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
+	const selectable = agents.filter(isSelectableAgent);
+	const available = new Set(selectable.map((agent) => canonicalizeAgentName(agent.name)));
+	const builtInNames: Set<string> = new Set(SWITCHER_AGENTS.map((entry) => entry.name));
+
+	const builtIns = SWITCHER_AGENTS.filter((agent) => available.has(agent.name));
+
+	const seen: Set<string> = new Set(builtInNames);
+	const custom: KiloCatalogAgent[] = [];
+	for (const agent of selectable) {
+		const name = canonicalizeAgentName(agent.name);
+		if (seen.has(name)) continue;
+		seen.add(name);
+		const color = isCssColor(agent.color) ? agent.color : undefined;
+		custom.push({
+			name,
+			displayName: agent.displayName || prettifyAgentId(name),
+			icon: BotIcon,
+			...(color ? { color } : {}),
+		});
+	}
+
+	return { agents: [...builtIns, ...custom] };
 }
 
 export function findCatalogAgent(

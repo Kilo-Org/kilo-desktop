@@ -189,6 +189,36 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
+	it("passes KILO_CONFIG_DIR when userConfigDirectory is provided", async () => {
+		const { manager, spawn } = createHarness({
+			userConfigDirectory: "/home/user/.config/kilo",
+			environment: {
+				PATH: "/bin",
+				KILO_CONFIG_DIR: "/inherited/should/be/overridden",
+			},
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		expect(environment.KILO_CONFIG_DIR).toBe("/home/user/.config/kilo");
+		expect(environment.XDG_CONFIG_HOME).toBe("/tmp/kilo-test-runtime/config");
+		manager.dispose();
+	});
+
+	it("scrubs inherited KILO_CONFIG_DIR when userConfigDirectory is not set", async () => {
+		const { manager, spawn } = createHarness({
+			environment: {
+				PATH: "/bin",
+				KILO_CONFIG_DIR: "/inherited/should/be/removed",
+			},
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		expect(environment.KILO_CONFIG_DIR).toBeUndefined();
+		manager.dispose();
+	});
+
 	it("removes inherited macOS dynamic-loader overrides", async () => {
 		const { manager, spawn } = createHarness({
 			platform: "darwin",
@@ -327,8 +357,101 @@ describe("KiloServerManager", () => {
 
 		expect(signalProcessGroup).toHaveBeenCalledWith(2200, "SIGTERM");
 		expect(children).toHaveLength(2);
-		expect(second.password).not.toBe(first.password);
+		// Restart preserves the credentials so the renderer's cached connection
+		// (baseUrl + password) stays valid without a reconnect.
+		expect(second.password).toBe(first.password);
+		expect(second.baseUrl).toBe(first.baseUrl);
 		expect(harness.manager.status.status).toBe("ready");
+		harness.manager.dispose();
+	});
+
+	it("rejects restart after dispose without spawning or flickering status", async () => {
+		const { manager, spawn, statuses } = createHarness();
+		await manager.ensureRunning();
+		const spawnCallsBefore = spawn.mock.calls.length;
+		manager.dispose();
+		const statusesBefore = statuses.length;
+
+		await expect(manager.restart()).rejects.toMatchObject({ code: "BUSINESS" });
+		expect(spawn.mock.calls.length).toBe(spawnCallsBefore);
+		// No "starting" flicker after dispose; status stays stopped.
+		expect(statuses.slice(statusesBefore)).toEqual([]);
+		expect(manager.status.status).toBe("stopped");
+	});
+
+	it("reuses the current port and credentials on restart so the connection stays stable", async () => {
+		const children: FakeChild[] = [];
+		const requestedPorts: string[] = [];
+		const spawn = vi.fn((_executablePath: string, args: readonly string[]) => {
+			const portArg = args.find((arg) => arg.startsWith("--port="))!;
+			const requested = portArg.slice("--port=".length);
+			requestedPorts.push(requested);
+			// port=0 → OS assigns 4321; a specific port is honored verbatim.
+			const boundPort = requested === "0" ? "4321" : requested;
+			const child = new FakeChild(3300 + children.length);
+			children.push(child);
+			queueMicrotask(() =>
+				child.stdout.write(`kilo server listening on http://127.0.0.1:${boundPort}\n`),
+			);
+			return child;
+		});
+		const harness = createHarness({
+			spawn,
+			signalProcessGroup: (_pid, signal) => {
+				if (signal === "SIGTERM") children.at(-1)?.exit(0, signal);
+			},
+		});
+
+		const first = await harness.manager.ensureRunning();
+		expect(first.baseUrl).toBe("http://127.0.0.1:4321");
+
+		const second = await harness.manager.restart();
+		expect(requestedPorts).toEqual(["0", "4321"]);
+		expect(second.baseUrl).toBe("http://127.0.0.1:4321");
+		expect(second.password).toBe(first.password);
+		harness.manager.dispose();
+	});
+
+	it("falls back to a fresh port and fresh credentials when the previous port cannot be rebound", async () => {
+		const children: FakeChild[] = [];
+		const requestedPorts: string[] = [];
+		let firstBoot = true;
+		const spawn = vi.fn((_executablePath: string, args: readonly string[]) => {
+			const requested = args.find((arg) => arg.startsWith("--port="))!.slice("--port=".length);
+			requestedPorts.push(requested);
+			const child = new FakeChild(3400 + children.length);
+			children.push(child);
+			if (firstBoot) {
+				// Initial OS-assigned port lands on 4321.
+				firstBoot = false;
+				queueMicrotask(() =>
+					child.stdout.write("kilo server listening on http://127.0.0.1:4321\n"),
+				);
+			} else if (requested === "4321") {
+				// Restart tries to rebind 4321 but the port is still held: the
+				// process exits before it can report a listening URL.
+				queueMicrotask(() => child.exit(1, null));
+			} else {
+				// Fallback spawn with port=0 lands on a new port.
+				queueMicrotask(() =>
+					child.stdout.write("kilo server listening on http://127.0.0.1:5555\n"),
+				);
+			}
+			return child;
+		});
+		const harness = createHarness({
+			spawn,
+			signalProcessGroup: (_pid, signal) => {
+				if (signal === "SIGTERM") children.at(-1)?.exit(0, signal);
+			},
+		});
+
+		const first = await harness.manager.ensureRunning();
+		expect(first.baseUrl).toBe("http://127.0.0.1:4321");
+		const restarted = await harness.manager.restart();
+		expect(requestedPorts).toEqual(["0", "4321", "0"]);
+		expect(restarted.baseUrl).toBe("http://127.0.0.1:5555");
+		expect(restarted.password).not.toBe(first.password);
 		harness.manager.dispose();
 	});
 

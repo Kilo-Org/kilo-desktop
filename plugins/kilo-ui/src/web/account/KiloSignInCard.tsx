@@ -49,7 +49,7 @@ export function KiloSignInCard({
 					onClick={onLogin}
 					data-qa-id="kilo-account-login"
 				>
-					Connect
+					Sign In
 					<ArrowUpRightIcon data-icon="inline-end" />
 				</Button>
 			</div>

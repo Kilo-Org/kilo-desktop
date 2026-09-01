@@ -23,6 +23,8 @@ import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plu
 import * as kiloServerWeb from "@anaconda-agentic-desktop/plugin-kilo-server/web";
 import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
 import * as kiloUiWeb from "@anaconda-agentic-desktop/plugin-kilo-ui/web";
+import localInferenceManifest from "@anaconda-agentic-desktop/plugin-local-inference/plugin.json" with { type: "json" };
+import * as localInferenceWeb from "@anaconda-agentic-desktop/plugin-local-inference/web";
 import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.json" with { type: "json" };
 import * as notebookWeb from "@anaconda-agentic-desktop/plugin-notebook/web";
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
@@ -35,4 +37,5 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: filesManifest, module: filesWeb },
 	{ manifest: todosManifest, module: todosWeb },
 	{ manifest: environmentsManifest, module: environmentsWeb },
+	{ manifest: localInferenceManifest, module: localInferenceWeb },
 ];

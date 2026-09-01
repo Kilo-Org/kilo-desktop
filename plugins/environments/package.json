@@ -8,6 +8,7 @@
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
+		"./capabilities": "./src/contracts/capabilities.ts",
 		"./packaging": "./src/packaging/index.ts"
 	},
 	"scripts": {

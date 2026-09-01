@@ -57,11 +57,12 @@ afterEach(() => {
 describe("useKiloModelCatalog", () => {
 	it("waits for a resolved connection and fetches the catalog once", async () => {
 		providerList.mockResolvedValue({ data: payload });
-		type Props = { connection: KiloGlobalConnection | undefined };
+		type Props = { connection: KiloGlobalConnection | undefined; connectionUpdatedAt: number };
 		const { result, rerender } = renderHook(
-			({ connection: currentConnection }: Props) => useKiloModelCatalog(currentConnection),
+			({ connection: currentConnection, connectionUpdatedAt }: Props) =>
+				useKiloModelCatalog(currentConnection, connectionUpdatedAt),
 			{
-				initialProps: { connection: undefined } as Props,
+				initialProps: { connection: undefined, connectionUpdatedAt: 0 } as Props,
 				wrapper: createWrapper(),
 			},
 		);
@@ -69,7 +70,7 @@ describe("useKiloModelCatalog", () => {
 		expect(result.current.fetchStatus).toBe("idle");
 		expect(createKiloDirectoryClient).not.toHaveBeenCalled();
 
-		rerender({ connection });
+		rerender({ connection, connectionUpdatedAt: 1 });
 		await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(createKiloDirectoryClient).toHaveBeenCalledExactlyOnceWith(
@@ -78,12 +79,17 @@ describe("useKiloModelCatalog", () => {
 		);
 		expect(providerList).toHaveBeenCalledOnce();
 
-		rerender({ connection: { ...connection, globalDirectory: "/other" } });
-		await Promise.resolve();
-		expect(providerList).toHaveBeenCalledOnce();
-
-		rerender({ connection: { ...connection, baseUrl: "http://127.0.0.1:5096" } });
+		rerender({
+			connection: { ...connection, password: "rotated-password" },
+			connectionUpdatedAt: 2,
+		});
 		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(2));
+
+		rerender({
+			connection: { ...connection, baseUrl: "http://127.0.0.1:5096" },
+			connectionUpdatedAt: 3,
+		});
+		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(3));
 	});
 
 	it("throws when asked to fetch the catalog before a connection is available", async () => {

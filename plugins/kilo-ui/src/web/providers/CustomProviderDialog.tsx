@@ -45,6 +45,7 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/select";
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
+import { ApiKeyField } from "./ApiKeyField.js";
 import {
 	CUSTOM_PROVIDER_PACKAGE,
 	CUSTOM_PROVIDER_PACKAGES,
@@ -364,7 +365,7 @@ export function CustomProviderForm({
 			<DialogHeader className="gap-4 px-4 pt-4 pr-12">
 				{stepIndicator}
 				<div className="flex flex-col gap-2">
-					<DialogTitle>{editing ? "Edit custom provider" : "Add custom provider"}</DialogTitle>
+					<DialogTitle>{editing ? "Edit custom provider" : "Add custom AI Provider"}</DialogTitle>
 					<DialogDescription>
 						Add an OpenAI- or Anthropic-compatible endpoint.{" "}
 						<a
@@ -454,17 +455,15 @@ export function CustomProviderForm({
 										: "Optional"}
 							</Badge>
 						</div>
-						<Input
+						<ApiKeyField
 							id="kilo-custom-key"
-							type="password"
-							autoComplete="off"
 							value={form.apiKey}
-							onChange={(event) => {
-								setApiKeyChanged(event.target.value.trim().length > 0);
-								setForm((current) => ({ ...current, apiKey: event.target.value }));
-							}}
 							placeholder={editing ? "Enter a new API key" : "Enter an API key"}
-							data-qa-id="kilo-providers-custom-key"
+							qaId="kilo-providers-custom-key"
+							onChange={(value) => {
+								setApiKeyChanged(value.trim().length > 0);
+								setForm((current) => ({ ...current, apiKey: value }));
+							}}
 						/>
 						<div className="flex items-center justify-between gap-3">
 							<FieldDescription className="min-w-0">
@@ -856,10 +855,10 @@ export function CustomProviderForm({
 					{pending
 						? editing
 							? "Saving…"
-							: "Connecting…"
+							: "Adding…"
 						: editing
 							? "Save changes"
-							: "Connect provider"}
+							: "Add AI Provider"}
 				</Button>
 			</DialogFooter>
 		</form>

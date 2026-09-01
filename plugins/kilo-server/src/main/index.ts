@@ -15,7 +15,7 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
-import { KiloMcpConfig, type KiloMcpMutationOutcome } from "./KiloMcpConfig.js";
+import { KiloConfigManager, type KiloConfigMutationOutcome } from "./KiloConfigManager.js";
 import { resolveKiloInstallation } from "./installation.js";
 import {
 	reconcileWebMcpRelayConfig,
@@ -61,7 +61,10 @@ interface RegisterKiloServerOptions {
 		enabled: boolean,
 	) => Promise<WebMcpRelayConfigOutcome>;
 	/** Injected serialized config writer for tests. */
-	kiloMcpConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
+	kiloConfig?: Pick<
+		KiloConfigManager,
+		"setMcpEntry" | "removeMcpEntry" | "setProviderEntry" | "removeProviderEntry"
+	>;
 	/** Anaconda Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
 	/**
@@ -172,23 +175,25 @@ function configLeftRelayEntry(outcome: WebMcpRelayConfigOutcome): boolean {
 	);
 }
 
-function assertMcpConfigMutationAccepted(
+function assertConfigMutationAccepted(
+	section: "MCP" | "provider",
 	sourceId: string,
 	entryId: string,
-	outcome: KiloMcpMutationOutcome,
+	outcome: KiloConfigMutationOutcome,
 	action: "set" | "remove",
 ): void {
 	if (outcome.kind === "skipped-error") {
-		throw new Error(`Could not ${action} Desktop-owned MCP "${entryId}": ${outcome.reason}`);
+		throw new Error(`Could not ${action} Desktop-owned ${section} "${entryId}": ${outcome.reason}`);
 	}
 	if (outcome.kind === "skipped" && outcome.reason === "owned-by-other-source") {
 		throw new Error(
-			`Could not ${action} Desktop-owned MCP "${entryId}": it is owned by another source, not "${sourceId}".`,
+			`Could not ${action} Desktop-owned ${section} "${entryId}": it is owned by another source, not "${sourceId}".`,
 		);
 	}
 	if (action === "set" && outcome.kind === "skipped" && outcome.reason === "entry-not-owned") {
+		const subject = section === "MCP" ? "an entry" : "a provider entry";
 		throw new Error(
-			`Could not set MCP "${entryId}": an entry not owned by Desktop already uses that id.`,
+			`Could not set ${section} "${entryId}": ${subject} not owned by Desktop already uses that id.`,
 		);
 	}
 }
@@ -248,7 +253,7 @@ export function registerKiloServer(
 		options.createServer ??
 		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
 			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
-	const kiloMcpConfig = options.kiloMcpConfig ?? new KiloMcpConfig(configDirectory, mainSdk.logger);
+	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(configDirectory, mainSdk.logger);
 
 	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Initialize
 	// the Desktop-owned `mcp` entry before `kilo serve` boots so its first read of
@@ -263,7 +268,7 @@ export function registerKiloServer(
 				relayRuntimeRoot: mainSdk.resolvePluginAsset("relay-runtime"),
 				enabled,
 				logger: mainSdk.logger,
-				kiloMcpConfig,
+				kiloConfig,
 			}));
 
 	const server = createServer(
@@ -350,14 +355,28 @@ export function registerKiloServer(
 		mcpConfig: {
 			set: async (sourceId, entryId, entry) => {
 				await configReady;
-				const outcome = await kiloMcpConfig.setMcpEntry(sourceId, entryId, entry);
-				assertMcpConfigMutationAccepted(sourceId, entryId, outcome, "set");
+				const outcome = await kiloConfig.setMcpEntry(sourceId, entryId, entry);
+				assertConfigMutationAccepted("MCP", sourceId, entryId, outcome, "set");
 				if (outcome.kind === "written") requestConfigRestart();
 			},
 			remove: async (sourceId, entryId) => {
 				await configReady;
-				const outcome = await kiloMcpConfig.removeMcpEntry(sourceId, entryId);
-				assertMcpConfigMutationAccepted(sourceId, entryId, outcome, "remove");
+				const outcome = await kiloConfig.removeMcpEntry(sourceId, entryId);
+				assertConfigMutationAccepted("MCP", sourceId, entryId, outcome, "remove");
+				if (outcome.kind === "removed") requestConfigRestart();
+			},
+		},
+		providerConfig: {
+			set: async (sourceId, entryId, entry) => {
+				await configReady;
+				const outcome = await kiloConfig.setProviderEntry(sourceId, entryId, entry);
+				assertConfigMutationAccepted("provider", sourceId, entryId, outcome, "set");
+				if (outcome.kind === "written") requestConfigRestart();
+			},
+			remove: async (sourceId, entryId) => {
+				await configReady;
+				const outcome = await kiloConfig.removeProviderEntry(sourceId, entryId);
+				assertConfigMutationAccepted("provider", sourceId, entryId, outcome, "remove");
 				if (outcome.kind === "removed") requestConfigRestart();
 			},
 		},

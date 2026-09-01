@@ -8,10 +8,12 @@ import {
 } from "../contracts/workspaces/schemas.js";
 import type { KiloUiChatService } from "../contracts/chat/schemas.js";
 import type { OnboardingService, OnboardingState } from "../contracts/onboarding/schemas.js";
+import type { KiloUiProvidersService } from "../contracts/providers/schemas.js";
 import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { onboardingContract } from "../contracts/onboarding/schemas.js";
+import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 
 const basename = (folderPath: string) =>
@@ -140,6 +142,14 @@ function registerChatBrowser(mainSdk: MainSdk): void {
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 }
 
+function registerProvidersBrowser(mainSdk: MainSdk): void {
+	const providersApi: KiloUiProvidersService = {
+		"providers.getApiKey": async () => ({ key: null }),
+		"providers.presentEnv": async () => ({ names: [] }),
+	};
+	mainSdk.channels(kiloUiProvidersContract).handleAll(providersApi);
+}
+
 function registerOnboardingBrowser(mainSdk: MainSdk): void {
 	let state: OnboardingState = { outcome: null, closedAt: null };
 	const onboardingApi: OnboardingService = {
@@ -159,5 +169,6 @@ function registerOnboardingBrowser(mainSdk: MainSdk): void {
 export function kiloUiBrowserRegister(mainSdk: MainSdk): void {
 	registerWorkspacesBrowser(mainSdk);
 	registerChatBrowser(mainSdk);
+	registerProvidersBrowser(mainSdk);
 	registerOnboardingBrowser(mainSdk);
 }

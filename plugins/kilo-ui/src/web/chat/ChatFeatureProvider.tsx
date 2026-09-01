@@ -11,15 +11,22 @@ import { navigateToChat } from "./chat-navigation.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { OpenCodeDataPart } from "./components/tools/opencode-data-part.js";
 import toolkit from "./components/tools/toolkit.js";
+import { LocalModelLoadingToast } from "./LocalModelLoadingToast.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
 import { KiloAuthProvider } from "../account/KiloAuthProvider.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
-import { modelRefToId } from "./model-selection/model-catalog.js";
-import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
+import { modelRefToId, type KiloModelRef } from "./model-selection/model-catalog.js";
+import {
+	isModelCatalogPending,
+	useKiloModelCatalog,
+} from "./model-selection/use-kilo-model-catalog.js";
 import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
+import { resolveLocalInferenceCapability } from "../providers/local-inference/capability.js";
+import { invalidateKiloProviderQueries } from "../providers/provider-queries.js";
+import { isStaleKiloConnectionError } from "./kilo-connection-error.js";
 import {
 	chatRightPanelCapability,
 	type ChatRightPanelCapabilities,
@@ -43,6 +50,11 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const queryClient = useQueryClient();
 	const { activeWorkspaceId } = useWorkspacesFeature();
+	const localInference = resolveLocalInferenceCapability(sdk.plugins.get("local-inference"));
+	const prepareModel = useMemo(
+		() => (localInference ? (modelId: string) => localInference.prepareModel(modelId) : undefined),
+		[localInference],
+	);
 
 	useEffect(() => {
 		if (sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel) return;
@@ -61,6 +73,28 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			}) as const,
 		[sdk],
 	);
+	const refreshConnection = useCallback(async () => {
+		await queryClient.invalidateQueries({
+			queryKey: connectionOptions.queryKey,
+			exact: true,
+		});
+		invalidateKiloProviderQueries(queryClient);
+	}, [connectionOptions.queryKey, queryClient]);
+	useEffect(() => {
+		const stopServer = sdk.events.on("kilo-server.server-status-changed", (payload) => {
+			if (!payload || typeof payload !== "object") return;
+			const status = payload as { status?: unknown; baseUrl?: unknown };
+			if (status.status !== "ready" || typeof status.baseUrl !== "string") return;
+			void refreshConnection();
+		});
+		const stopModels = sdk.events.on("local-inference.models-changed", () => {
+			invalidateKiloProviderQueries(queryClient);
+		});
+		return () => {
+			stopServer();
+			stopModels();
+		};
+	}, [queryClient, refreshConnection, sdk]);
 	const connection = useQuery(connectionOptions);
 	// One deferred covers the cold-start pending→ready transition so the promise
 	// identity (and thus useKiloRuntime's backend / OpenCode SSE) stays fixed.
@@ -163,12 +197,12 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connectionOptions,
 		queryClient,
 	]);
-	const refreshConnection = useCallback(() => {
-		void queryClient.invalidateQueries({
-			queryKey: connectionOptions.queryKey,
-			exact: true,
-		});
-	}, [connectionOptions.queryKey, queryClient]);
+	const onRuntimeError = useCallback(
+		(error: unknown) => {
+			if (isStaleKiloConnectionError(error)) void refreshConnection();
+		},
+		[refreshConnection],
+	);
 
 	// The embedded Kilo server reuses its port and credentials across restart, so
 	// the cached connection normally stays valid. It can still fall back to a new
@@ -203,9 +237,10 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
 	const suggestions = useMemo(() => createKiloSuggestionStore(), []);
 
-	const catalogQuery = useKiloModelCatalog(connection.data);
+	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
 	const { model, validatedModel, setModel, name, effort, efforts, setEffort } =
 		usePersistedModelSelection(catalogQuery.data);
+	const selectModel = useCallback((next: KiloModelRef) => setModel(next), [setModel]);
 	const activeEffort = resolveModelEffort(
 		catalogQuery.data?.models ?? [],
 		validatedModel ? modelRefToId(validatedModel) : undefined,
@@ -236,9 +271,10 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		...(agent ? { defaultAgent: agent } : {}),
 		getAgent,
 		...(validatedModel ? { defaultModel: validatedModel } : {}),
+		...(prepareModel ? { prepareModel } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
-		onError: refreshConnection,
+		onError: onRuntimeError,
 		sessionActivity,
 		suggestions,
 	});
@@ -260,25 +296,26 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const modelSelection = useMemo(
 		() => ({
 			model,
-			setModel,
+			setModel: selectModel,
 			effort,
 			setEffort,
 			name,
 			efforts,
 			catalog: catalogQuery.data,
-			isCatalogPending: catalogQuery.isPending,
+			isCatalogPending: isModelCatalogPending(catalogQuery),
 			isCatalogError: catalogQuery.isError,
 		}),
 		[
 			catalogQuery.data,
 			catalogQuery.isError,
+			catalogQuery.isFetching,
 			catalogQuery.isPending,
 			effort,
 			efforts,
 			model,
 			name,
 			setEffort,
-			setModel,
+			selectModel,
 		],
 	);
 
@@ -324,6 +361,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 					</SessionActivityProvider>
 				</KiloAuthProvider>
 			</ChatConnectionProvider>
+			<LocalModelLoadingToast models={catalogQuery.data?.models ?? []} />
 		</PierreDiffProvider>
 	);
 }

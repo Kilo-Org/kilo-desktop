@@ -1013,8 +1013,8 @@ index d795d5799d059d01327a3edbcd998fdbeeae317c..fae7d2f6a047dcb4c99576b6e14214cc
 +			let initialized = false;
 +			try {
 +				const initializedController = await initializeController();
-+				initialized = true;
 +				await sendMessage(initializedController, message, options);
++				initialized = true;
 +			} catch (error) {
 +				setOptimisticMessages((messages) => messages.filter((entry) => entry !== optimistic));
 +				if (!initialized && !scheduledRestorationsRef.current.has(message)) {
@@ -2297,8 +2297,8 @@ index 66a324b9fd650a6d396ea30064377a07e49218a7..4434b9de6c6834de8a8d265751c19bbd
 +        let initialized = false;
 +        try {
 +          const initializedController = await initializeController();
-+          initialized = true;
 +          await sendMessage(initializedController, message, options);
++          initialized = true;
 +          // Optimistics clear once the live controller projects the user
 +          // message — clearing earlier blanks the thread across remount.
 +        } catch (error) {

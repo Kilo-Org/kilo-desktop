@@ -14,6 +14,7 @@ describe("resolveProviderIconId", () => {
 		expect(resolveProviderIconId("cloudflare-workers-ai")).toBe("workersai");
 		expect(resolveProviderIconId("github-copilot")).toBe("githubcopilot");
 		expect(resolveProviderIconId("vercel-ai-gateway")).toBe("vercel");
+		expect(resolveProviderIconId("anaconda-local")).toBe("local");
 	});
 
 	it("passes through unknown ids lowercased", () => {

@@ -37,9 +37,20 @@ export default defineConfig({
 			{
 				plugins: [react(), tailwindcss()],
 				resolve: { dedupe: ["react", "react-dom"] },
+				// Pre-bundle deps that Vite otherwise discovers mid-run. A re-optimize
+				// reloads the tester iframe and the orchestrator times out waiting for ready.
 				optimizeDeps: {
 					include: [
+						"react",
+						"react-dom",
+						"react/jsx-runtime",
+						"react/jsx-dev-runtime",
+						"@anaconda-agentic-desktop/feature-sdk",
+						"@anaconda-agentic-desktop/sdk-react",
+						"@base-ui/react/dialog",
+						"@base-ui/react/menu",
 						"@base-ui/react/merge-props",
+						"@base-ui/react/select",
 						"@base-ui/react/separator",
 						"@base-ui/react/tooltip",
 						"@base-ui/react/use-render",
@@ -56,6 +67,11 @@ export default defineConfig({
 						"use-sync-external-store/shim",
 						"use-sync-external-store/shim/with-selector",
 						"zod",
+						"vitest",
+						"vitest/internal/browser",
+						"vitest/internal/traces",
+						"@vitest/browser/client",
+						"@vitest/browser/locators",
 					],
 				},
 				test: {

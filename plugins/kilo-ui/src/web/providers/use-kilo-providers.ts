@@ -1,10 +1,20 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 
 import type { KiloGlobalConnection } from "../../contracts/chat/schemas.js";
+import {
+	isStaleKiloConnectionError,
+	shouldRetryStaleKiloQuery,
+	STALE_KILO_QUERY_RETRY_DELAY_MS,
+} from "../chat/kilo-connection-error.js";
 import { createKiloDirectoryClient } from "../chat/runtime/create-kilo-runtime-client.js";
 import { POPULAR_PROVIDER_IDS, sanitizeCustomProviderConfig } from "./custom-provider.js";
-import type { CatalogProvider, GlobalProviderConfig, ProviderListView } from "./provider-list.js";
+import type {
+	CatalogProvider,
+	GlobalProviderConfig,
+	ProviderListView,
+	ProviderRow,
+} from "./provider-list.js";
 import { groupProviderList } from "./provider-list.js";
 import {
 	invalidateKiloProviderQueries,
@@ -54,13 +64,19 @@ function withConnectedProvider(
 ): ProviderManagementData {
 	const provider = current.view.popular.find((row) => row.id === providerID);
 	if (!provider) return current;
+	const connectedProvider: ProviderRow = {
+		...provider,
+		connected: true,
+		source: "api",
+		canDisconnect: true,
+	};
 	return {
 		...current,
 		view: {
 			...current.view,
 			connected: [
 				...current.view.connected.filter((row) => row.id !== providerID),
-				{ ...provider, connected: true },
+				connectedProvider,
 			].toSorted(byConnectedName),
 			popular: current.view.popular.filter((row) => row.id !== providerID),
 		},
@@ -133,6 +149,9 @@ function withSavedCustomProvider(
 		custom: true,
 		canDisconnect: true,
 		isKilo: false,
+		isLocal: false,
+		managed: false,
+		env: [],
 	};
 	return {
 		...current,
@@ -190,8 +209,25 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 		queryKey,
 		queryFn: () => fetchProviderManagement(connection),
 		enabled: connection !== undefined,
-		retry: false,
+		placeholderData: keepPreviousData,
+		retry: shouldRetryStaleKiloQuery,
+		retryDelay: STALE_KILO_QUERY_RETRY_DELAY_MS,
 	});
+	const queryIdentity = `${connection?.baseUrl ?? ""}\0${connection?.version ?? ""}`;
+	const [heldQueryError, setHeldQueryError] = useState<
+		{ readonly queryIdentity: string; readonly error: unknown } | undefined
+	>(undefined);
+	useEffect(() => {
+		if (!query.error) {
+			if (query.data !== undefined) setHeldQueryError(undefined);
+			return;
+		}
+		if (query.data !== undefined && isStaleKiloConnectionError(query.error)) return;
+		setHeldQueryError({ queryIdentity, error: query.error });
+	}, [query.data, query.error, queryIdentity]);
+
+	const queryError =
+		heldQueryError?.queryIdentity === queryIdentity ? heldQueryError.error : undefined;
 
 	const run = async (task: (client: KiloProviderClient) => Promise<void>) => {
 		if (!connection) throw new Error("The provider service is not connected");
@@ -247,13 +283,14 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 	});
 
 	const resetErrors = () => {
+		setHeldQueryError(undefined);
 		connect.reset();
 		disconnect.reset();
 		save.reset();
 		remove.reset();
 	};
 
-	const error = connect.error ?? disconnect.error ?? save.error ?? remove.error ?? query.error;
+	const error = connect.error ?? disconnect.error ?? save.error ?? remove.error ?? queryError;
 
 	const pending = connect.isPending || disconnect.isPending || save.isPending || remove.isPending;
 
@@ -262,13 +299,14 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 			view: query.data?.view,
 			config: query.data?.config,
 			ids: query.data?.ids ?? [],
-			isLoading: query.isPending,
-			isError: query.isError,
+			isLoading: query.isPending && !query.isPlaceholderData,
+			isError: Boolean(queryError) && query.data === undefined,
 			error: message(error),
 			connectError: message(connect.error),
 			saveError: message(save.error),
 			pending,
 			reload: query.refetch,
+			dismissError: resetErrors,
 			resetConnect: connect.reset,
 			resetSave: save.reset,
 			connect: connect.mutateAsync,
@@ -288,8 +326,10 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 			query.data?.config,
 			query.data?.ids,
 			query.data?.view,
-			query.isError,
+			queryError,
+			query.data,
 			query.isPending,
+			query.isPlaceholderData,
 			query.refetch,
 		],
 	);

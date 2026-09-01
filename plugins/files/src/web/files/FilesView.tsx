@@ -143,6 +143,8 @@ function revealEditorLocation(editor: Editor<undefined>, line: number, column?: 
 	editor.focus({ lineNumber: line, character: (column ?? 1) - 1 });
 }
 
+const REVEAL_FILE_FRAMES = 60;
+
 export function FilesView({
 	sessionId,
 	instanceId,
@@ -484,10 +486,18 @@ export function FilesView({
 	useEffect(() => {
 		if (!attachedEditor || file?.kind !== "text" || !file.revision || revealLine === undefined)
 			return;
-		const frame = requestAnimationFrame(() => {
-			if (!attachedEditor.getFile()) return;
-			revealEditorLocation(attachedEditor, revealLine, revealColumn);
-		});
+		let frame = 0;
+		let attempts = 0;
+		const reveal = () => {
+			if (attachedEditor.getFile()) {
+				revealEditorLocation(attachedEditor, revealLine, revealColumn);
+				return;
+			}
+			if (attempts++ < REVEAL_FILE_FRAMES) {
+				frame = requestAnimationFrame(reveal);
+			}
+		};
+		frame = requestAnimationFrame(reveal);
 		return () => cancelAnimationFrame(frame);
 	}, [attachedEditor, file, reloadVersion, revealColumn, revealLine, selectedPath]);
 

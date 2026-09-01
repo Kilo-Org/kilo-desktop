@@ -58,6 +58,11 @@ describe("validateProviderID", () => {
 		const result = validateProviderID("kilo");
 		expect("error" in result ? result.error : "").toBe("Provider ID is reserved");
 	});
+
+	it("rejects the managed local inference provider id", () => {
+		const result = validateProviderID("anaconda-local");
+		expect("error" in result ? result.error : "").toBe("Provider ID is reserved");
+	});
 });
 
 describe("resolveCustomProviderAuth", () => {

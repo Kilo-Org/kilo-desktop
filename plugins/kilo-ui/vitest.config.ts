@@ -78,13 +78,19 @@ export default defineConfig({
 						// Base UI primitives used by @anaconda-agentic-desktop/ui. Pre-bundle
 						// them so Vite does not discover them mid-run, reload the page, and
 						// swap React instances (Invalid hook call in CheckboxRoot).
+						"@base-ui/react/accordion",
 						"@base-ui/react/checkbox",
 						"@base-ui/react/collapsible",
 						"@base-ui/react/dialog",
+						"@base-ui/react/input",
+						"@base-ui/react/scroll-area",
 						"@base-ui/react/select",
+						"@base-ui/react/separator",
+						"@base-ui/react/slider",
 						"@base-ui/react/switch",
 						"@base-ui/react/toggle",
 						"@base-ui/react/toggle-group",
+						"@base-ui/react/tooltip",
 						"zod",
 						"vitest",
 						"vitest/internal/browser",

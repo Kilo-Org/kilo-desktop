@@ -160,14 +160,16 @@ export function DeviceAuthPanel({
 				</div>
 
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-					<span className="text-muted-foreground flex items-center gap-2 text-xs">
+					<span className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs whitespace-nowrap">
 						<Loader2Icon className="size-3.5 animate-spin" />
 						<span>Waiting for approval</span>
 						<span aria-hidden="true">·</span>
-						<span className="tabular-nums">{formatTime(remaining)} remaining</span>
+						<span className="tabular-nums" aria-label={`${formatTime(remaining)} remaining`}>
+							{formatTime(remaining)}
+						</span>
 					</span>
 
-					<div className="flex flex-wrap items-center gap-2 sm:justify-end">
+					<div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap sm:justify-end">
 						<Button
 							type="button"
 							variant="ghost"

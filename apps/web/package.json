@@ -21,6 +21,7 @@
 		"@anaconda-agentic-desktop/plugin-files": "link:../../plugins/files",
 		"@anaconda-agentic-desktop/plugin-kilo-server": "link:../../plugins/kilo-server",
 		"@anaconda-agentic-desktop/plugin-kilo-ui": "link:../../plugins/kilo-ui",
+		"@anaconda-agentic-desktop/plugin-local-inference": "link:../../plugins/local-inference",
 		"@anaconda-agentic-desktop/plugin-notebook": "link:../../plugins/notebook",
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
 		"@anaconda-agentic-desktop/sdk-react": "workspace:*",

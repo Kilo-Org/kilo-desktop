@@ -62,10 +62,10 @@ describe("reconcileWebMcpRelayConfig", () => {
 		return JSON.parse(raw) as Record<string, unknown>;
 	}
 
-	async function readOwnedEntryIds(): Promise<readonly string[]> {
+	async function readOwnedEntryKeys(): Promise<readonly string[]> {
 		const raw = await readFile(sidecarFile, "utf8");
-		const parsed = JSON.parse(raw) as { ownedEntryIds: string[] };
-		return parsed.ownedEntryIds;
+		const parsed = JSON.parse(raw) as { ownedEntryKeys: string[] };
+		return parsed.ownedEntryKeys;
 	}
 
 	it("writes to kilo.jsonc (not kilo.json)", async () => {
@@ -93,11 +93,11 @@ describe("reconcileWebMcpRelayConfig", () => {
 		expect(Object.keys(config)).toEqual(["mcp"]);
 		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
 		// The sidecar records ownership.
-		expect(await readOwnedEntryIds()).toEqual([MCP_ENTRY_NAME]);
+		expect(await readOwnedEntryKeys()).toEqual([`mcp:${MCP_ENTRY_NAME}`]);
 		const sidecar = JSON.parse(await readFile(sidecarFile, "utf8")) as {
 			owners: Record<string, string>;
 		};
-		expect(sidecar.owners).toEqual({ [MCP_ENTRY_NAME]: MCP_ENTRY_SOURCE_ID });
+		expect(sidecar.owners).toEqual({ [`mcp:${MCP_ENTRY_NAME}`]: MCP_ENTRY_SOURCE_ID });
 	});
 
 	it("writes an entry that matches Kilo's McpLocalConfig schema shape", async () => {
@@ -362,7 +362,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 		const config = await readConfig();
 		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
-		expect(await readOwnedEntryIds()).toEqual([MCP_ENTRY_NAME]);
+		expect(await readOwnedEntryKeys()).toEqual([`mcp:${MCP_ENTRY_NAME}`]);
 	});
 
 	it("creates the config directory when it does not exist", async () => {
@@ -376,7 +376,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		const raw = await readFile(path.join(deepDir, KILO_CONFIG_FILENAME), "utf8");
 		expect(raw).toContain(MCP_ENTRY_NAME);
 		const sidecar = await readFile(path.join(deepDir, OWNERSHIP_SIDECAR_FILENAME), "utf8");
-		expect(JSON.parse(sidecar).ownedEntryIds).toEqual([MCP_ENTRY_NAME]);
+		expect(JSON.parse(sidecar).ownedEntryKeys).toEqual([`mcp:${MCP_ENTRY_NAME}`]);
 	});
 
 	it("recovers when a prior initialization crashed after writing the sidecar but before writing kilo.jsonc", async () => {

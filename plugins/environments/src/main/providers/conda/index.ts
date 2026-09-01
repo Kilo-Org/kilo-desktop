@@ -8,6 +8,7 @@ import type {
 } from "../../EnvironmentProvider.js";
 
 import type { CondaBackend } from "./CondaBackend.js";
+import type { CondaRuntime } from "./CondaRuntime.js";
 import { CondaService } from "./CondaService.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import { registerCondaHandlers } from "./handlers.js";
@@ -47,7 +48,8 @@ export const BRIDGE_SIDECAR_FLAG_KEY = "bridge-sidecar";
  *
  * State transitions:
  * - Constructed: `#backend` is `undefined`; handlers registered before
- *   `boot()` completes would fail loudly.
+ *   `boot()` completes would fail loudly. An optional {@link CondaRuntime}
+ *   shares staging with headless consumers (local inference).
  * - After `boot()`: `#backend` is a live {@link CondaBackend} — either
  *   `CondaService` (execa, default) or `SidecarCondaBackend` (JSON-RPC
  *   to the anaconda-bridge-sidecar binary, behind the
@@ -63,7 +65,12 @@ export class CondaProvider implements EnvironmentProvider {
 		PackagesPanel: () => null,
 	};
 
+	readonly #runtime: CondaRuntime | undefined;
 	#backend: CondaBackend | undefined;
+
+	constructor(runtime?: CondaRuntime) {
+		this.#runtime = runtime;
+	}
 
 	async boot(ctx: ProviderBootContext): Promise<void> {
 		// BRIDGE_PAYLOAD env var forces sidecar mode regardless of the feature flag.
@@ -88,13 +95,14 @@ export class CondaProvider implements EnvironmentProvider {
 			);
 		}
 
-		// Default: stage conda and use CondaService (execa)
-		const { condaBinPath, condaFilesRoot } = await stageConda({
-			storageDir: ctx.mainSdk.storageDir,
-			fetch: ctx.mainSdk.net.fetch,
-			logger: ctx.logger,
-			reportProgress: (msg) => ctx.boot.reportProgress(msg),
-		});
+		const { condaBinPath, condaFilesRoot } = this.#runtime
+			? await this.#runtime.stage()
+			: await stageConda({
+					storageDir: ctx.mainSdk.storageDir,
+					fetch: ctx.mainSdk.net.fetch,
+					logger: ctx.logger,
+					reportProgress: (msg) => ctx.boot.reportProgress(msg),
+				});
 		this.#backend = new CondaService({
 			condaBinPath,
 			condaFilesRoot,

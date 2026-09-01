@@ -19,6 +19,16 @@ const connection: KiloGlobalConnection = {
 	globalDirectory: "/kilo/runtime",
 };
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason: unknown) => void;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
+}
+
 describe("createKiloRuntimeBackend", () => {
 	afterEach(() => {
 		vi.clearAllMocks();
@@ -332,6 +342,161 @@ describe("createKiloRuntimeBackend", () => {
 				model: { providerID: "anthropic", modelID: "claude" },
 			}),
 		);
+	});
+
+	it("prepares a local model before creating the session and again before prompt", async () => {
+		const order: string[] = [];
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/local",
+			workspaceFolders: [],
+		}));
+		const create = vi.fn(async () => {
+			order.push("create");
+			return { data: { id: "session-local" } };
+		});
+		const prepareModel = vi.fn(async () => {
+			order.push("prepare");
+		});
+		const prompt = vi.fn(async () => {
+			order.push("prompt");
+			return { data: {} };
+		});
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({
+			session: { create, prompt },
+		} as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			prepareModel,
+		});
+
+		const ref = await backend.initializeSession();
+		expect(order).toEqual(["prepare", "create"]);
+		expect(prepareModel).toHaveBeenCalledWith("qwen-3");
+
+		await backend.getSessionClient(ref).session.prompt({
+			sessionID: ref.id,
+			parts: [{ type: "text", text: "hello" }],
+		});
+
+		expect(order).toEqual(["prepare", "create", "prepare", "prompt"]);
+	});
+
+	it("does not create a local session when model preparation fails", async () => {
+		const create = vi.fn(async () => ({ data: { id: "session-local" } }));
+		const prepareModel = vi.fn(async () => {
+			throw new Error("model not ready");
+		});
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({
+			session: { create },
+		} as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: async () => ({
+				directory: "/workspace/local",
+				workspaceFolders: [],
+			}),
+			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			prepareModel,
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/model not ready/);
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("creates a local session on the current Kilo connection after a slow prepare", async () => {
+		const restarted: KiloGlobalConnection = {
+			...connection,
+			baseUrl: "http://127.0.0.1:5096",
+		};
+		let current = Promise.resolve(connection);
+		const gate = deferred<void>();
+		const createdOn = vi.fn();
+		const prepareModel = vi.fn(async () => {
+			await gate.promise;
+		});
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockImplementation((next) => {
+			return {
+				session: {
+					create: async () => {
+						createdOn(next.baseUrl);
+						return { data: { id: "session-local" } };
+					},
+				},
+			} as never;
+		});
+		const backend = createKiloRuntimeBackend({
+			getConnection: () => current,
+			prepareSession: async () => ({
+				directory: "/workspace/local",
+				workspaceFolders: [],
+			}),
+			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			prepareModel,
+		});
+
+		const pending = backend.initializeSession();
+		await vi.waitFor(() => expect(prepareModel).toHaveBeenCalledOnce());
+		current = Promise.resolve(restarted);
+		gate.resolve();
+
+		await expect(pending).resolves.toEqual({
+			id: "session-local",
+			directory: "/workspace/local",
+		});
+		expect(createdOn).toHaveBeenCalledWith("http://127.0.0.1:5096");
+	});
+
+	it("recreates cached clients when Kilo rotates credentials on the same endpoint", async () => {
+		const restarted = { ...connection, password: "rotated-secret" };
+		let current = Promise.resolve(connection);
+		const globalList = vi.fn<(password: string) => void>();
+		const directoryGet = vi.fn<(password: string) => void>();
+		vi.mocked(createKiloGlobalClient).mockImplementation((next) => {
+			return {
+				experimental: {
+					session: {
+						list: async () => {
+							globalList(next.password);
+							return { data: [] };
+						},
+					},
+				},
+			} as never;
+		});
+		vi.mocked(createKiloDirectoryClient).mockImplementation((next) => {
+			return {
+				session: {
+					get: async () => {
+						directoryGet(next.password);
+						return { data: {} };
+					},
+				},
+			} as never;
+		});
+		const backend = createKiloRuntimeBackend({
+			getConnection: () => current,
+			prepareSession: vi.fn(),
+		});
+		const sessionClient = backend.getSessionClient({
+			id: "rotating-session",
+			directory: "/workspace/rotating",
+		});
+
+		await backend.globalClient.experimental.session.list({}, { throwOnError: true });
+		await sessionClient.session.get({ sessionID: "rotating-session" }, { throwOnError: true });
+		current = Promise.resolve(restarted);
+		await backend.globalClient.experimental.session.list({}, { throwOnError: true });
+		await sessionClient.session.get({ sessionID: "rotating-session" }, { throwOnError: true });
+
+		expect(globalList.mock.calls).toEqual([["secret"], ["rotated-secret"]]);
+		expect(directoryGet.mock.calls).toEqual([["secret"], ["rotated-secret"]]);
+		expect(createKiloGlobalClient).toHaveBeenCalledTimes(2);
+		expect(createKiloDirectoryClient).toHaveBeenCalledTimes(2);
 	});
 
 	it("applies streamed events into the activity store and re-hydrates on reconnect", async () => {

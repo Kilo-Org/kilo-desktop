@@ -37,6 +37,7 @@ export const kiloGetConnectionInputSchema = z.object({
 export type KiloGetConnectionInput = z.infer<typeof kiloGetConnectionInputSchema>;
 
 export type KiloMcpEntry = Readonly<Record<string, unknown>>;
+export type KiloProviderEntry = Readonly<Record<string, unknown>>;
 
 // ─── Contract ───────────────────────────────────────────────────────────────────
 
@@ -52,8 +53,8 @@ export type KiloServerService = InferContract<typeof kiloServerContract>;
 
 /**
  * The service object exposed by the kilo-server plugin as a main-side capability.
- * Contains methods for env contribution, MCP config persistence, and server
- * restart.
+ * Contains methods for env contribution, owned MCP/provider config persistence,
+ * and server restart.
  */
 export interface KiloServerCapabilityService {
 	readonly [key: string]: unknown;
@@ -75,6 +76,16 @@ export interface KiloServerCapabilityService {
 		/** Remove an entry only when the ownership sidecar assigns it to this source. */
 		remove(sourceId: string, entryId: string): Promise<void>;
 	};
+	readonly providerConfig: {
+		/**
+		 * Persist a Desktop-owned provider in the app-owned Kilo config while
+		 * preserving user entries and JSONC. A running server is restarted
+		 * through the shared debouncer only when the provider changes.
+		 */
+		set(sourceId: string, entryId: string, entry: KiloProviderEntry): Promise<void>;
+		/** Remove a provider only when this source owns its section-qualified entry. */
+		remove(sourceId: string, entryId: string): Promise<void>;
+	};
 	/**
 	 * Restart the Kilo server. Resolves when the server is ready again.
 	 * Useful after environment or config changes that require a full respawn.
@@ -92,6 +103,9 @@ export interface KiloServerCapabilityService {
  * await kilo?.kiloService.mcpConfig.set("my-plugin", "my-mcp", {
  *   type: "remote",
  *   url: "https://...",
+ * });
+ * await kilo?.kiloService.providerConfig.set("my-plugin", "my-provider", {
+ *   name: "My provider",
  * });
  * await kilo?.kiloService.restartServer();
  * ```

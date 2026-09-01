@@ -117,6 +117,17 @@ describe("kiloUiBrowserRegister", () => {
 		sdk.dispose();
 	});
 
+	it("does not expose stored API keys in the browser", async () => {
+		const sdk = boot();
+		await expect(sdk.invoke("providers.getApiKey", { providerID: "openai" })).resolves.toEqual({
+			key: null,
+		});
+		await expect(sdk.invoke("providers.presentEnv", { names: ["AWS_PROFILE"] })).resolves.toEqual({
+			names: [],
+		});
+		sdk.dispose();
+	});
+
 	it("tracks onboarding complete and skip in memory", async () => {
 		const sdk = boot();
 		await expect(sdk.invoke("onboarding.get")).resolves.toEqual({

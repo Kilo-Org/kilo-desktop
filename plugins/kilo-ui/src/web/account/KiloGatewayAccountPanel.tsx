@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { ArrowUpRightIcon, CircleAlertIcon, RefreshCwIcon, ZapIcon } from "lucide-react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -82,7 +82,7 @@ export function KiloGatewayAccountPanel({
 	const showDeviceAuth = auth.deviceAuth.status !== "idle";
 
 	if (auth.isLoading && !showDeviceAuth) {
-		return <KiloGatewayAccountLoadingState />;
+		return <KiloGatewayAccountLoadingState showSignOut={showSignOut} />;
 	}
 
 	const signedIn = auth.authenticated === true && auth.profile;
@@ -128,7 +128,9 @@ export function KiloGatewayAccountPanel({
 	);
 }
 
-export function KiloGatewayAccountLoadingState() {
+export function KiloGatewayAccountLoadingState({
+	showSignOut = true,
+}: { showSignOut?: boolean } = {}) {
 	return (
 		<div className="flex flex-col gap-4" data-qa-id="kilo-account-settings" data-state="loading">
 			<div className="grid gap-5 sm:grid-cols-2">
@@ -144,10 +146,6 @@ export function KiloGatewayAccountLoadingState() {
 						</Skeleton>
 						<Skeleton className="bg-muted-foreground/25 size-7 rounded-lg" />
 					</div>
-					<div className="mt-3 flex flex-wrap items-center gap-2">
-						<AccountActionSkeleton variant="outline">Top up</AccountActionSkeleton>
-						<AccountActionSkeleton>Kilo Dashboard</AccountActionSkeleton>
-					</div>
 				</section>
 
 				<div className="min-w-0">
@@ -157,22 +155,38 @@ export function KiloGatewayAccountLoadingState() {
 					<Skeleton className="bg-muted-foreground/25 mt-1 h-9 w-full rounded-lg" />
 				</div>
 			</div>
+			<div className="flex flex-wrap items-center gap-2">
+				<AccountActionSkeleton variant="outline">
+					Top up
+					<ArrowUpRightIcon data-icon="inline-end" />
+				</AccountActionSkeleton>
+				<AccountActionSkeleton>
+					Kilo Dashboard
+					<ArrowUpRightIcon data-icon="inline-end" />
+				</AccountActionSkeleton>
+				{showSignOut ? (
+					<AccountActionSkeleton variant="outline" className="ml-auto">
+						Sign Out
+					</AccountActionSkeleton>
+				) : null}
+			</div>
 		</div>
 	);
 }
 
 function AccountActionSkeleton({
 	variant = "ghost",
+	className,
 	children,
 }: {
 	variant?: "ghost" | "outline";
-	children: string;
+	className?: string;
+	children: ReactNode;
 }) {
 	return (
-		<Skeleton className="bg-muted-foreground/25 flex shrink-0 rounded-lg">
+		<Skeleton className={cn("bg-muted-foreground/25 flex shrink-0 rounded-lg", className)}>
 			<Button type="button" variant={variant} size="sm" className="invisible" disabled>
 				{children}
-				<ArrowUpRightIcon data-icon="inline-end" />
 			</Button>
 		</Skeleton>
 	);
@@ -231,28 +245,6 @@ function SignedInView({
 								<RefreshCwIcon className={cn(auth.isRefreshing && "animate-spin")} />
 							</Button>
 						</div>
-						<div className="mt-3 flex flex-wrap items-center gap-2">
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={() => auth.openExternal(KILO_CREDITS_URL)}
-								data-qa-id="kilo-account-top-up"
-							>
-								Top up
-								<ArrowUpRightIcon data-icon="inline-end" />
-							</Button>
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								onClick={() => auth.openExternal(KILO_PROFILE_URL)}
-								data-qa-id="kilo-account-dashboard"
-							>
-								Kilo Dashboard
-								<ArrowUpRightIcon data-icon="inline-end" />
-							</Button>
-						</div>
 					</section>
 				) : null}
 
@@ -302,6 +294,36 @@ function SignedInView({
 				) : null}
 			</div>
 
+			{profile.balance || showSignOut ? (
+				<div className="flex flex-wrap items-center gap-2" data-qa-id="kilo-account-actions">
+					{profile.balance ? (
+						<>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={() => auth.openExternal(KILO_CREDITS_URL)}
+								data-qa-id="kilo-account-top-up"
+							>
+								Top up
+								<ArrowUpRightIcon data-icon="inline-end" />
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								onClick={() => auth.openExternal(KILO_PROFILE_URL)}
+								data-qa-id="kilo-account-dashboard"
+							>
+								Kilo Dashboard
+								<ArrowUpRightIcon data-icon="inline-end" />
+							</Button>
+						</>
+					) : null}
+					{showSignOut ? <SignOutButton onLogout={auth.logout} /> : null}
+				</div>
+			) : null}
+
 			{isPersonalAccount(profile) && profile.kiloPass ? (
 				<KiloPassUsage pass={profile.kiloPass} />
 			) : null}
@@ -326,8 +348,6 @@ function SignedInView({
 					</Button>
 				</div>
 			) : null}
-
-			{showSignOut ? <SignOutButton onLogout={auth.logout} /> : null}
 		</div>
 	);
 }
@@ -416,11 +436,11 @@ function SignOutButton({ onLogout }: { onLogout: () => void }) {
 			type="button"
 			variant="outline"
 			size="sm"
-			className="self-end"
+			className="ml-auto"
 			onClick={onLogout}
 			data-qa-id="kilo-account-logout"
 		>
-			Disconnect
+			Sign Out
 		</Button>
 	);
 }

@@ -1,11 +1,15 @@
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-export function createDeferredKiloRuntimeClient(clientPromise: Promise<KiloClient>): KiloClient {
-	const ready = clientPromise;
-	// Callers still observe rejections via await; attach a handler so a rejected
-	// client does not become an unhandled rejection when it is unused.
-	void ready.catch(() => undefined);
-	return createAwaitingProxy(() => ready) as KiloClient;
+export function createDeferredKiloRuntimeClient(
+	client: Promise<KiloClient> | (() => Promise<KiloClient>),
+): KiloClient {
+	const resolve = typeof client === "function" ? client : () => client;
+	if (typeof client !== "function") {
+		// Callers still observe rejections via await; attach a handler so a rejected
+		// client does not become an unhandled rejection when it is unused.
+		void client.catch(() => undefined);
+	}
+	return createAwaitingProxy(() => resolve()) as KiloClient;
 }
 
 function createAwaitingProxy(

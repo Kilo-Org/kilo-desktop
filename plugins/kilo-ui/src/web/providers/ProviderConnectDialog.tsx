@@ -13,7 +13,8 @@ import {
 	FieldGroup,
 	FieldLabel,
 } from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+
+import { ApiKeyField } from "./ApiKeyField.js";
 
 type ProviderConnectFormProps = {
 	providerName: string;
@@ -24,15 +25,34 @@ type ProviderConnectFormProps = {
 	onSubmit(apiKey: string): Promise<void>;
 };
 
-export function ProviderConnectForm({
-	providerName,
+type ProviderApiKeyFormProps = {
+	title: string;
+	description: string;
+	pending: boolean;
+	error: string | null;
+	secondaryAction: ReactNode;
+	submitLabel: string;
+	pendingLabel: string;
+	inputQaId: string;
+	submitQaId: string;
+	initialApiKey?: string;
+	onSubmit(apiKey: string): Promise<void>;
+};
+
+export function ProviderApiKeyForm({
+	title,
+	description,
 	pending,
 	error,
-	stepIndicator,
-	onBack,
+	secondaryAction,
+	submitLabel,
+	pendingLabel,
+	inputQaId,
+	submitQaId,
+	initialApiKey = "",
 	onSubmit,
-}: ProviderConnectFormProps) {
-	const [apiKey, setApiKey] = useState("");
+}: ProviderApiKeyFormProps) {
+	const [apiKey, setApiKey] = useState(initialApiKey);
 	const [localError, setLocalError] = useState<string | null>(null);
 
 	const submit = (event: FormEvent) => {
@@ -48,34 +68,60 @@ export function ProviderConnectForm({
 
 	return (
 		<form onSubmit={submit} className="contents">
-			{stepIndicator}
 			<DialogHeader>
-				<DialogTitle>{`Connect ${providerName}`}</DialogTitle>
-				<DialogDescription>Enter the API key to connect this provider.</DialogDescription>
+				<DialogTitle>{title}</DialogTitle>
+				<DialogDescription>{description}</DialogDescription>
 			</DialogHeader>
 			<FieldGroup>
 				<Field data-invalid={Boolean(localError || error) || undefined}>
 					<FieldLabel htmlFor="kilo-provider-api-key">API key</FieldLabel>
-					<Input
+					<ApiKeyField
 						id="kilo-provider-api-key"
-						type="password"
-						autoComplete="off"
-						aria-invalid={Boolean(localError || error) || undefined}
+						invalid={Boolean(localError || error)}
 						value={apiKey}
-						onChange={(event) => setApiKey(event.target.value)}
-						data-qa-id="kilo-providers-api-key"
+						onChange={setApiKey}
+						qaId={inputQaId}
 					/>
 					{localError || error ? <FieldError>{localError ?? error}</FieldError> : null}
 				</Field>
 			</FieldGroup>
 			<DialogFooter>
-				<Button type="button" variant="outline" disabled={pending} onClick={onBack}>
-					Back
-				</Button>
-				<Button type="submit" disabled={pending} data-qa-id="kilo-providers-connect">
-					{pending ? "Connecting…" : "Connect provider"}
+				{secondaryAction}
+				<Button type="submit" disabled={pending} data-qa-id={submitQaId}>
+					{pending ? pendingLabel : submitLabel}
 				</Button>
 			</DialogFooter>
 		</form>
+	);
+}
+
+export function ProviderConnectForm({
+	providerName,
+	pending,
+	error,
+	stepIndicator,
+	onBack,
+	onSubmit,
+}: ProviderConnectFormProps) {
+	return (
+		<>
+			{stepIndicator}
+			<ProviderApiKeyForm
+				title={`Add ${providerName}`}
+				description="Enter the API key to add this provider."
+				pending={pending}
+				error={error}
+				secondaryAction={
+					<Button type="button" variant="outline" disabled={pending} onClick={onBack}>
+						Back
+					</Button>
+				}
+				submitLabel="Add AI Provider"
+				pendingLabel="Adding…"
+				inputQaId="kilo-providers-api-key"
+				submitQaId="kilo-providers-connect"
+				onSubmit={onSubmit}
+			/>
+		</>
 	);
 }

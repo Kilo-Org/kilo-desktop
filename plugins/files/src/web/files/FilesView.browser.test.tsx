@@ -78,15 +78,26 @@ async function openTreePath(relativePath: string): Promise<void> {
 	host?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${relativePath}"]`)?.click();
 }
 
+function diffsContentEditable(): HTMLElement | null {
+	return (
+		Array.from(document.querySelectorAll("diffs-container"))
+			.map((host) =>
+				host.shadowRoot?.querySelector<HTMLElement>('[data-content][contenteditable="true"]'),
+			)
+			.find((candidate) => candidate != null) ?? null
+	);
+}
+
+function diffsEditorHasFocus(): boolean {
+	return Array.from(document.querySelectorAll("diffs-container")).some((host) =>
+		Boolean(host.shadowRoot?.activeElement?.matches('[data-content][contenteditable="true"]')),
+	);
+}
+
 async function replaceEditorText(contents: string): Promise<void> {
 	let editor: HTMLElement | null = null;
 	await vi.waitFor(() => {
-		editor =
-			Array.from(document.querySelectorAll("diffs-container"))
-				.map((host) =>
-					host.shadowRoot?.querySelector<HTMLElement>('[data-content][contenteditable="true"]'),
-				)
-				.find((candidate) => candidate != null) ?? null;
+		editor = diffsContentEditable();
 		expect(editor).not.toBeNull();
 	});
 	if (!editor) throw new Error("Diffs editor was not mounted");
@@ -304,7 +315,16 @@ describe("FilesView", () => {
 			expect(editorScroll).not.toBeNull();
 		});
 		await vi.waitFor(() => expect(editorScroll!.scrollTop).toBeGreaterThan(0));
+		await vi.waitFor(() => {
+			const selectedLines = Array.from(document.querySelectorAll("diffs-container")).flatMap(
+				(host) =>
+					Array.from(host.shadowRoot?.querySelectorAll<HTMLElement>("[data-selected-line]") ?? []),
+			);
+			expect(selectedLines.some((line) => line.dataset.line === "150")).toBe(true);
+		});
+		await vi.waitFor(() => expect(diffsEditorHasFocus()).toBe(true));
 		await userEvent.keyboard("X");
+		await expect.element(page.getByTestId("files-save")).toBeVisible();
 		await page.getByTestId("files-save").click();
 
 		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());

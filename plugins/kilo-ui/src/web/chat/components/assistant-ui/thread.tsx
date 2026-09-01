@@ -90,6 +90,10 @@ import {
 	OPTIMISTIC_AGENT_CATALOG,
 } from "../../agent-selection/agent-catalog.js";
 import { useChatConnection } from "../../connection/ChatConnectionContext.js";
+import {
+	isLocalModelLoadingStatus,
+	LOCAL_MODEL_LOADING_TITLE,
+} from "../../local-model-loading-copy.js";
 import { useChatModelSelection } from "../../model-selection/ChatModelSelectionContext.js";
 import { isKiloGatewayProvider } from "../../model-selection/model-catalog.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
@@ -100,6 +104,8 @@ import {
 	isComposerPromptBusy,
 	messageHasInFlightActivity,
 } from "../../suggestions/kilo-suggestion-logic.js";
+import { useLocalInferenceStatus } from "../../use-local-inference-status.js";
+import { ANACONDA_LOCAL_PROVIDER_ID } from "../../../providers/provider-ids.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
 
 import "./assistant-working-indicator.css";
@@ -433,11 +439,17 @@ const Composer: FC = () => {
 	const { refine, submitting, canReply } = useApprovePlan();
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
 	const pendingSuggestion = usePendingKiloSuggestion();
+	const inferenceStatus = useLocalInferenceStatus();
+	const { model } = useChatModelSelection();
+	const isLoadingModel =
+		model?.providerID === ANACONDA_LOCAL_PROVIDER_ID &&
+		isLocalModelLoadingStatus(inferenceStatus) &&
+		inferenceStatus.modelId === model.modelID;
 
-	const showPlanFollowupActions = canReply && !isConnecting && !isPending;
+	const showPlanFollowupActions = canReply && !isConnecting && !isPending && !isLoadingModel;
 
 	const sendFollowup = () => {
-		if (isComposerEmpty) return;
+		if (isLoadingModel || isComposerEmpty) return;
 		aui.composer.send(hasMessageQueue ? { startRun: false } : undefined);
 	};
 
@@ -447,7 +459,7 @@ const Composer: FC = () => {
 	}, [activeThreadId, isConnecting, isDraft]);
 
 	const sendWhenConnected = () => {
-		if (isConnectingRef.current) {
+		if (isConnectingRef.current || isLoadingModel) {
 			return;
 		}
 		const composer = aui.composer.getState();
@@ -476,6 +488,10 @@ const Composer: FC = () => {
 	};
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+		if (isLoadingModel) {
+			event.preventDefault();
+			return;
+		}
 		// Plan follow-up keeps the thread running, so ComposerInput ignores Enter.
 		// Route submit to Refine instead of composer.send().
 		if (showPlanFollowupActions) {
@@ -523,6 +539,10 @@ const Composer: FC = () => {
 		}
 
 		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+		if (isLoadingModel) {
+			event.preventDefault();
+			return;
+		}
 		if (showPlanFollowupActions) {
 			// ComposerInput returns early while isRunning — intercept before that.
 			event.preventDefault();
@@ -568,6 +588,7 @@ const Composer: FC = () => {
 				/>
 				<ComposerAction
 					isConnecting={isConnecting}
+					isLoadingModel={isLoadingModel}
 					isConnectionPending={isPending}
 					onSendWhenConnected={sendWhenConnected}
 					onSendFollowup={sendFollowup}
@@ -582,6 +603,7 @@ const Composer: FC = () => {
 
 const ComposerAction: FC<{
 	isConnecting: boolean;
+	isLoadingModel: boolean;
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
 	onSendFollowup: () => void;
@@ -590,6 +612,7 @@ const ComposerAction: FC<{
 	onRefine: () => void;
 }> = ({
 	isConnecting,
+	isLoadingModel,
 	isConnectionPending,
 	onSendWhenConnected,
 	onSendFollowup,
@@ -603,6 +626,8 @@ const ComposerAction: FC<{
 	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const isPromptBusy = isComposerPromptBusy(isRunning, pendingSuggestion);
+	const isSendLocked = isConnecting || isLoadingModel;
+	const lockLabel = isConnecting ? "Connecting to Kilo" : LOCAL_MODEL_LOADING_TITLE;
 
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
@@ -648,22 +673,30 @@ const ComposerAction: FC<{
 						</ComposerPrimitive.StopDictation>
 					</AuiIf>
 				</AuiIf>
-				{isConnecting ? (
+				{isSendLocked ? (
 					<TooltipIconButton
-						tooltip="Connecting to Kilo"
+						tooltip={lockLabel}
 						side="bottom"
 						type="button"
 						variant="default"
 						size="icon"
 						disabled
-						className="aui-composer-connecting size-7 rounded-full"
-						aria-label="Connecting to Kilo"
-						data-qa-id="kilo-composer-connecting"
+						className={cn(
+							"size-7 rounded-full",
+							isConnecting ? "aui-composer-connecting" : "aui-composer-loading-model",
+						)}
+						aria-label={lockLabel}
+						data-qa-id={isConnecting ? "kilo-composer-connecting" : "kilo-composer-loading-model"}
 					>
-						<Loader2Icon className="aui-composer-connecting-icon size-4.5 animate-spin" />
+						<Loader2Icon
+							className={cn(
+								"size-4.5 animate-spin",
+								isConnecting ? "aui-composer-connecting-icon" : "aui-composer-loading-model-icon",
+							)}
+						/>
 					</TooltipIconButton>
 				) : null}
-				{!isConnecting && !isPromptBusy && isConnectionPending ? (
+				{!isSendLocked && !isPromptBusy && isConnectionPending ? (
 					<TooltipIconButton
 						tooltip="Send message"
 						side="bottom"
@@ -693,7 +726,7 @@ const ComposerAction: FC<{
 						Refine
 					</Button>
 				) : null}
-				{!showPlanFollowupActions && !isConnecting && !isPromptBusy && !isConnectionPending ? (
+				{!showPlanFollowupActions && !isSendLocked && !isPromptBusy && !isConnectionPending ? (
 					pendingSuggestion ? (
 						<TooltipIconButton
 							tooltip="Send message"
@@ -727,7 +760,7 @@ const ComposerAction: FC<{
 						</ComposerPrimitive.Send>
 					)
 				) : null}
-				{!showPlanFollowupActions && !isConnecting && isPromptBusy ? (
+				{!showPlanFollowupActions && !isSendLocked && isPromptBusy ? (
 					<>
 						{canQueue && !isComposerEmpty ? (
 							<ComposerPrimitive.Send

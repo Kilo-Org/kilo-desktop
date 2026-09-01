@@ -2,16 +2,16 @@ import type { KiloLogger } from "./KiloServerManager.js";
 import {
 	KILO_CONFIG_FILENAME,
 	OWNERSHIP_SIDECAR_FILENAME,
-	KiloMcpConfig,
-	type KiloMcpMutationOutcome,
-} from "./KiloMcpConfig.js";
+	KiloConfigManager,
+	type KiloConfigMutationOutcome,
+} from "./KiloConfigManager.js";
 import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
 
 /**
  * Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
  *
  * Reconciles the bundled WebMCP relay in Desktop's Kilo config. Generic
- * JSONC mutation and ownership tracking live in `KiloMcpConfig`; this
+ * JSONC mutation and ownership tracking live in `KiloConfigManager`; this
  * module only resolves and builds the relay-specific entry.
  */
 
@@ -38,7 +38,7 @@ export interface ReconcileWebMcpRelayConfigOptions {
 	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
 	readonly resolveRelay?: () => { entry: string; version: string };
 	/** Shares the registration's serialized writer with runtime MCP updates. */
-	readonly kiloMcpConfig?: Pick<KiloMcpConfig, "setMcpEntry" | "removeMcpEntry">;
+	readonly kiloConfig?: Pick<KiloConfigManager, "setMcpEntry" | "removeMcpEntry">;
 }
 
 /** Builds the CLI argv for Kilo's Desktop-provided stdio MCP relay child. */
@@ -90,7 +90,7 @@ function buildEntry(appExecutablePath: string, relayEntry: string): WebMcpRelayE
 	};
 }
 
-function mapRemovalOutcome(outcome: KiloMcpMutationOutcome): WebMcpRelayConfigOutcome {
+function mapRemovalOutcome(outcome: KiloConfigMutationOutcome): WebMcpRelayConfigOutcome {
 	if (outcome.kind === "removed") return { kind: "removed", reason: "fuse-off" };
 	if (outcome.kind === "written") {
 		return { kind: "skipped-error", reason: "unexpected write while removing WebMCP relay" };
@@ -102,12 +102,10 @@ export async function reconcileWebMcpRelayConfig(
 	options: ReconcileWebMcpRelayConfigOptions,
 ): Promise<WebMcpRelayConfigOutcome> {
 	const logger = options.logger ?? { info() {}, warn() {}, error() {} };
-	const kiloMcpConfig = options.kiloMcpConfig ?? new KiloMcpConfig(options.configDirectory, logger);
+	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(options.configDirectory, logger);
 
 	if (options.enabled === false) {
-		return mapRemovalOutcome(
-			await kiloMcpConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME),
-		);
+		return mapRemovalOutcome(await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME));
 	}
 
 	let relay: { entry: string; version: string };
@@ -124,7 +122,7 @@ export async function reconcileWebMcpRelayConfig(
 	}
 
 	const entry = buildEntry(options.appExecutablePath, relay.entry);
-	const outcome = await kiloMcpConfig.setMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, entry);
+	const outcome = await kiloConfig.setMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, entry);
 	if (outcome.kind !== "written") return outcome;
 	logger.info(
 		`Initialized WebMCP relay entry (${outcome.reason}) using @mcp-b/webmcp-local-relay@${relay.version}.`,

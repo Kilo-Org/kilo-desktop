@@ -191,14 +191,32 @@ describe("model-catalog", () => {
 		});
 	});
 
-	it("sorts Kilo Gateway first among providers", () => {
-		const withGateway: KiloProviderListPayload = {
+	it("orders providers like the AI providers page: Kilo, Local, then others by name", () => {
+		const scrambled: KiloProviderListPayload = {
 			all: [
 				{
-					id: "amazon-bedrock",
-					name: "Amazon Bedrock",
+					id: "openai",
+					name: "OpenAI",
 					models: {
-						nova: { id: "nova", name: "Nova", providerID: "amazon-bedrock" },
+						"gpt-5": { id: "gpt-5", name: "GPT-5", providerID: "openai" },
+					},
+				},
+				{
+					id: "anaconda-local",
+					name: "Anaconda Local",
+					models: {
+						"qwen-3": { id: "qwen-3", name: "Qwen 3", providerID: "anaconda-local" },
+					},
+				},
+				{
+					id: "anthropic",
+					name: "Anthropic",
+					models: {
+						"claude-sonnet": {
+							id: "claude-sonnet",
+							name: "Claude Sonnet",
+							providerID: "anthropic",
+						},
 					},
 				},
 				{
@@ -206,6 +224,56 @@ describe("model-catalog", () => {
 					name: "Kilo Gateway",
 					models: {
 						auto: { id: "auto", name: "Auto", providerID: "kilo" },
+					},
+				},
+			],
+			default: { kilo: "auto" },
+			connected: ["openai", "anaconda-local", "anthropic", "kilo"],
+		};
+		const catalog = buildCatalogFromProviderList(scrambled);
+		expect(catalog.providers.map((provider) => provider.id)).toEqual([
+			"kilo",
+			"anaconda-local",
+			"anthropic",
+			"openai",
+		]);
+	});
+
+	it("omits Local from the selector when it has no models", () => {
+		const emptyLocal: KiloProviderListPayload = {
+			all: [
+				{
+					id: "anaconda-local",
+					name: "Anaconda Local",
+					models: {},
+				},
+				{
+					id: "anthropic",
+					name: "Anthropic",
+					models: {
+						"claude-sonnet": {
+							id: "claude-sonnet",
+							name: "Claude Sonnet",
+							providerID: "anthropic",
+						},
+					},
+				},
+			],
+			default: { anthropic: "claude-sonnet" },
+			connected: ["anaconda-local", "anthropic"],
+		};
+		const catalog = buildCatalogFromProviderList(emptyLocal);
+		expect(catalog.providers.map((provider) => provider.id)).toEqual(["anthropic"]);
+	});
+
+	it("omits Local from the selector when the local server is not connected", () => {
+		const disconnectedLocal: KiloProviderListPayload = {
+			all: [
+				{
+					id: "anaconda-local",
+					name: "Anaconda Local",
+					models: {
+						"qwen-3": { id: "qwen-3", name: "Qwen 3", providerID: "anaconda-local" },
 					},
 				},
 				{
@@ -220,15 +288,12 @@ describe("model-catalog", () => {
 					},
 				},
 			],
-			default: { kilo: "auto" },
-			connected: ["amazon-bedrock", "kilo", "anthropic"],
+			default: { anthropic: "claude-sonnet" },
+			connected: ["anthropic"],
 		};
-		const catalog = buildCatalogFromProviderList(withGateway);
-		expect(catalog.providers.map((provider) => provider.id)).toEqual([
-			"kilo",
-			"amazon-bedrock",
-			"anthropic",
-		]);
+		const catalog = buildCatalogFromProviderList(disconnectedLocal, { connectedOnly: false });
+		expect(catalog.providers.map((provider) => provider.id)).toEqual(["anthropic"]);
+		expect(catalog.models.map((model) => model.id)).toEqual(["anthropic/claude-sonnet"]);
 	});
 
 	it("maps reasoning effort levels onto catalog models", () => {

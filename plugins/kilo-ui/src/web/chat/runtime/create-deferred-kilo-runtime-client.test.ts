@@ -46,6 +46,21 @@ describe("createDeferredKiloRuntimeClient", () => {
 		await Promise.resolve();
 	});
 
+	it("uses the latest client when given a factory", async () => {
+		const firstCreate = async () => ({ data: { id: "first" } });
+		const secondCreate = async () => ({ data: { id: "second" } });
+		let current: KiloClient = { session: { create: firstCreate } } as never;
+		const client = createDeferredKiloRuntimeClient(async () => current);
+
+		await expect(client.session.create({}, { throwOnError: true })).resolves.toEqual({
+			data: { id: "first" },
+		});
+		current = { session: { create: secondCreate } } as never;
+		await expect(client.session.create({}, { throwOnError: true })).resolves.toEqual({
+			data: { id: "second" },
+		});
+	});
+
 	it("rejects when a traversed property is not an object", async () => {
 		const client = createDeferredKiloRuntimeClient(Promise.resolve({ session: 42 } as never));
 

@@ -1,9 +1,9 @@
 import {
 	isCustomProviderPackage,
-	KILO_PROVIDER_ID,
 	POPULAR_PROVIDER_IDS,
 	POPULAR_PROVIDER_NAMES,
 } from "./custom-provider.js";
+import { ANACONDA_LOCAL_PROVIDER_ID, KILO_PROVIDER_ID } from "./provider-ids.js";
 
 export type ProviderSource = "env" | "api" | "config" | "custom";
 
@@ -29,6 +29,9 @@ export type ProviderRow = {
 	custom: boolean;
 	canDisconnect: boolean;
 	isKilo: boolean;
+	isLocal: boolean;
+	managed: boolean;
+	env: readonly string[];
 };
 
 export type ProviderListView = {
@@ -42,21 +45,55 @@ function isCustom(config: GlobalProviderConfig, id: string): boolean {
 	return !!entry && isCustomProviderPackage(entry.npm);
 }
 
+/**
+ * Kilo autoloads some catalog providers (notably Amazon Bedrock via
+ * AWS_PROFILE / the credential chain) with source "custom" or "config"
+ * even when the user never stored an API key. Those are not disconnectable
+ * through auth.remove — they come back on the next provider.list.
+ */
+export function isEnvironmentSourced(
+	row: Pick<ProviderRow, "custom" | "managed" | "source">,
+): boolean {
+	if (row.managed || row.custom) return false;
+	return row.source === "env" || row.source === "custom" || row.source === "config";
+}
+
+export function providerSourceLabel(row: Pick<ProviderRow, "custom" | "source">): string {
+	if (row.source === "env") return "Environment Variables";
+	if (row.custom) return "Custom";
+	if (row.source === "api") return "API key";
+	return "System credentials";
+}
+
+function relatedEnv(provider: CatalogProvider): readonly string[] {
+	const env = [...(provider.env ?? [])];
+	if (provider.id !== "amazon-bedrock") return env;
+	for (const name of ["AWS_PROFILE", "AWS_SSO_START_URL"]) {
+		if (!env.includes(name)) env.push(name);
+	}
+	return env;
+}
+
 function row(
 	provider: CatalogProvider,
 	connected: boolean,
 	config: GlobalProviderConfig,
 ): ProviderRow {
 	const kilo = provider.id === KILO_PROVIDER_ID;
-	const custom = isCustom(config, provider.id);
+	const local = provider.id === ANACONDA_LOCAL_PROVIDER_ID;
+	const managed = kilo || local;
+	const custom = !managed && isCustom(config, provider.id);
 	return {
 		id: provider.id,
 		name: provider.name,
 		connected,
 		source: provider.source,
 		custom,
-		canDisconnect: !kilo && provider.source !== "env",
+		canDisconnect: !managed && (custom || provider.source === "api"),
 		isKilo: kilo,
+		isLocal: local,
+		managed,
+		env: relatedEnv(provider),
 	};
 }
 
@@ -88,8 +125,8 @@ function byConnectedName(left: ProviderRow, right: ProviderRow): number {
 }
 
 /**
- * Connected means credentials are present. Env-sourced rows go in
- * `environment` instead.
+ * Connected means a stored API key or a user-defined custom endpoint.
+ * Environment / credential-chain rows go in `environment` instead.
  */
 export function groupProviderList(input: {
 	all: readonly CatalogProvider[];
@@ -97,13 +134,13 @@ export function groupProviderList(input: {
 	config: GlobalProviderConfig;
 }): ProviderListView {
 	const byId = new Map(input.all.map((provider) => [provider.id, provider]));
-	const seen = new Set(input.connected);
+	const seen = new Set(input.connected.filter((id) => id !== ANACONDA_LOCAL_PROVIDER_ID));
 
 	const rows = [...seen].map((id) =>
 		row(resolveCatalog(byId, id, input.config), true, input.config),
 	);
-	const connected = rows.filter((item) => item.source !== "env").toSorted(byConnectedName);
-	const environment = rows.filter((item) => item.source === "env").toSorted(byConnectedName);
+	const connected = rows.filter((item) => !isEnvironmentSourced(item)).toSorted(byConnectedName);
+	const environment = rows.filter((item) => isEnvironmentSourced(item)).toSorted(byConnectedName);
 
 	const popular: ProviderRow[] = [];
 	for (const id of POPULAR_PROVIDER_IDS) {

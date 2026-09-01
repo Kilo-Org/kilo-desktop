@@ -1,6 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
+import {
+	shouldRetryStaleKiloQuery,
+	STALE_KILO_QUERY_RETRY_DELAY_MS,
+} from "../kilo-connection-error.js";
 import {
 	buildCatalogFromProviderList,
 	type KiloModelCatalog,
@@ -25,12 +29,39 @@ export async function fetchModelCatalogForConnection(
 	return buildCatalogFromProviderList(data as KiloProviderListPayload);
 }
 
-export function useKiloModelCatalog(connection: KiloGlobalConnection | undefined) {
+/**
+ * Composer treats an empty catalog as "no models" and disables the picker.
+ * While a refetch is in flight the previous empty list is still cached
+ * (`keepPreviousData`), so `isPending` is false — treat that as pending so
+ * the trigger shows loading instead of the no-entry cursor.
+ */
+export function isModelCatalogPending(query: {
+	readonly isPending: boolean;
+	readonly isFetching?: boolean;
+	readonly data?: { readonly models: readonly unknown[] } | undefined;
+}): boolean {
+	if (query.isPending) return true;
+	if (!query.isFetching) return false;
+	return (query.data?.models.length ?? 0) === 0;
+}
+
+export function useKiloModelCatalog(
+	connection: KiloGlobalConnection | undefined,
+	connectionUpdatedAt = 0,
+) {
 	return useQuery({
-		queryKey: [...KILO_PROVIDER_LIST_QUERY_KEY, connection?.baseUrl, connection?.version],
+		queryKey: [
+			...KILO_PROVIDER_LIST_QUERY_KEY,
+			connection?.baseUrl,
+			connection?.version,
+			connection?.globalDirectory,
+			connectionUpdatedAt,
+		],
 		queryFn: () => fetchModelCatalogForConnection(connection),
 		enabled: connection !== undefined,
-		retry: false,
+		placeholderData: keepPreviousData,
+		retry: shouldRetryStaleKiloQuery,
+		retryDelay: STALE_KILO_QUERY_RETRY_DELAY_MS,
 		staleTime: Number.POSITIVE_INFINITY,
 		gcTime: Number.POSITIVE_INFINITY,
 		refetchOnMount: false,

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Pay the contracts transform cost at file load so the first dynamic
+// `import("./preload.js")` is not racing the default 5s unit timeout when
+// turbo is transforming every package at once.
+import "@anaconda-agentic-desktop/contracts";
+
 const { contextBridge, ipcRenderer, getPathForFile } = vi.hoisted(() => ({
 	contextBridge: {
 		exposeInMainWorld: vi.fn(),
@@ -20,7 +25,7 @@ vi.mock("electron", () => ({
 	webUtils: { getPathForFile },
 }));
 
-describe("preload desktopApi", () => {
+describe("preload desktopApi", { timeout: 15_000 }, () => {
 	beforeEach(() => {
 		vi.resetModules();
 		vi.clearAllMocks();

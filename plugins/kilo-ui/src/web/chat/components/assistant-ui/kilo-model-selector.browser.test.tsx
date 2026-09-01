@@ -223,6 +223,36 @@ describe("KiloModelSelector", () => {
 		await expect.element(screen.getByTestId("kilo-model-selector-signin")).toBeVisible();
 	});
 
+	it("disables the trigger when the catalog has loaded with no models", async () => {
+		const screen = renderSelector({
+			selection: {
+				model: undefined,
+				catalog: { providers: [], models: [], defaults: {} },
+				isCatalogPending: false,
+			},
+		});
+		const trigger = screen.getByTestId("kilo-model-selector-trigger");
+
+		await expect.element(trigger).toBeVisible();
+		await expect.element(trigger).toBeDisabled();
+		await expect.element(trigger).toHaveClass("disabled:cursor-not-allowed");
+	});
+
+	it("keeps the trigger enabled while an empty catalog is still loading", async () => {
+		const screen = renderSelector({
+			selection: {
+				model: undefined,
+				catalog: { providers: [], models: [], defaults: {} },
+				isCatalogPending: true,
+			},
+		});
+		const trigger = screen.getByTestId("kilo-model-selector-trigger");
+
+		await expect.element(trigger).toBeVisible();
+		await expect.element(trigger).toBeEnabled();
+		await expect.element(trigger).toHaveAttribute("aria-label", "Loading models");
+	});
+
 	it("does not show a sign-in hint when already signed in", async () => {
 		const screen = renderSelector({
 			selection: {

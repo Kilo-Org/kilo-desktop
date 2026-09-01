@@ -2,6 +2,7 @@ import path from "node:path";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../contracts/chat/schemas.js";
 import type { OnboardingService } from "../contracts/onboarding/schemas.js";
+import type { KiloUiProvidersService } from "../contracts/providers/schemas.js";
 import type {
 	WorkspaceCapabilityService,
 	WorkspacesService,
@@ -11,6 +12,7 @@ import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sd
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { mcpAppsContract } from "../contracts/mcp-apps/schemas.js";
 import { onboardingContract } from "../contracts/onboarding/schemas.js";
+import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 import {
 	createMcpAppsHandlers,
@@ -18,6 +20,8 @@ import {
 	unregisterLocalMcpAppResource,
 } from "./mcp-apps/mcp-apps-handlers.js";
 import { OnboardingStore } from "./onboarding/OnboardingStore.js";
+import { presentEnvNames } from "./providers/present-env.js";
+import { readStoredApiKey } from "./providers/stored-api-key.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
 import { createUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
@@ -120,6 +124,15 @@ export function mainRegister(
 		"onboarding.skip": async () => onboarding.skip(),
 	};
 
+	const providersApi: KiloUiProvidersService = {
+		"providers.getApiKey": async ({ providerID }) => ({
+			key: await readStoredApiKey(providerID),
+		}),
+		"providers.presentEnv": async ({ names }) => ({
+			names: presentEnvNames(names),
+		}),
+	};
+
 	mainSdk.plugins.expose("workspaceService", workspaceService);
 	mainSdk.plugins.expose("localMcpApps", {
 		register: registerLocalMcpAppResource,
@@ -128,6 +141,7 @@ export function mainRegister(
 	mainSdk.channels(workspacesContract).handleAll(api);
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
+	mainSdk.channels(kiloUiProvidersContract).handleAll(providersApi);
 
 	const mcpAppsApi = createMcpAppsHandlers(getConnection, mainSdk.net.fetch);
 	mainSdk.channels(mcpAppsContract).handleAll(mcpAppsApi);

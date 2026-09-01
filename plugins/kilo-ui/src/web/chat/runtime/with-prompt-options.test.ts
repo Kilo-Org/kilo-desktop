@@ -91,6 +91,79 @@ describe("withPromptOptions", () => {
 		);
 	});
 
+	it("waits for local model preparation before promptAsync reaches Kilo", async () => {
+		let release!: () => void;
+		const preparation = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const prepareModel = vi.fn(() => preparation);
+		const promptAsync = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync, prompt: vi.fn() },
+		} as unknown as KiloClient;
+		const wrapped = withPromptOptions(client, {
+			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			prepareModel,
+		});
+
+		const pending = wrapped.session.promptAsync({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "hi" }],
+		});
+		await Promise.resolve();
+
+		expect(prepareModel).toHaveBeenCalledWith("qwen-3");
+		expect(promptAsync).not.toHaveBeenCalled();
+		release();
+		await pending;
+		expect(promptAsync).toHaveBeenCalledOnce();
+	});
+
+	it("waits for local model preparation before prompt reaches Kilo", async () => {
+		const order: string[] = [];
+		const prepareModel = vi.fn(async () => {
+			order.push("prepare");
+		});
+		const prompt = vi.fn(async () => {
+			order.push("prompt");
+		});
+		const client = {
+			session: { promptAsync: vi.fn(), prompt },
+		} as unknown as KiloClient;
+		const wrapped = withPromptOptions(client, {
+			getModel: () => ({ providerID: "anaconda-local", modelID: "llama-3" }),
+			prepareModel,
+		});
+
+		await wrapped.session.prompt({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "hi" }],
+		});
+
+		expect(order).toEqual(["prepare", "prompt"]);
+		expect(prepareModel).toHaveBeenCalledWith("llama-3");
+	});
+
+	it("forwards non-local prompts without preparing a model", async () => {
+		const prepareModel = vi.fn(async () => undefined);
+		const prompt = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync: vi.fn(), prompt },
+		} as unknown as KiloClient;
+		const wrapped = withPromptOptions(client, {
+			getModel: () => ({ providerID: "anthropic", modelID: "claude" }),
+			prepareModel,
+		});
+
+		await wrapped.session.prompt({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "hi" }],
+		});
+
+		expect(prepareModel).not.toHaveBeenCalled();
+		expect(prompt).toHaveBeenCalledOnce();
+	});
+
 	it("injects agent and model into prompt as well", async () => {
 		const prompt = vi.fn(async () => undefined);
 		const client = {

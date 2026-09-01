@@ -46,4 +46,12 @@ describe("ProviderIcon", () => {
 		await expect.element(screen.getByText("?", { exact: true })).toBeVisible();
 		await expect.element(screen.getByText("UN", { exact: true })).toBeVisible();
 	});
+
+	it("renders the server icon used on Local provider settings", async () => {
+		const { baseElement } = render(<ProviderIcon provider="anaconda-local" title="Local" />);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByRole("img", { name: "Local" })).toBeVisible();
+		expect(baseElement.querySelector(".lucide-server")).not.toBeNull();
+	});
 });

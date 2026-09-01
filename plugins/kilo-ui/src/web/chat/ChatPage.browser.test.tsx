@@ -43,8 +43,11 @@ import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capabil
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
+import type * as KiloModelCatalogModule from "./model-selection/use-kilo-model-catalog.js";
+import { useChatModelSelection } from "./model-selection/ChatModelSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useChatAgentSelection } from "./agent-selection/ChatAgentSelectionContext.js";
+import { KILO_PROVIDER_LIST_QUERY_KEY } from "../providers/provider-queries.js";
 import { HammerIcon, ListTodoIcon } from "lucide-react";
 
 /** Stand-in for a shell ZoneOutlet so page contributions render in tests. */
@@ -140,13 +143,17 @@ vi.mock("../account/KiloAuthProvider.js", () => ({
 	KiloAuthProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
-vi.mock("./model-selection/use-kilo-model-catalog.js", () => ({
-	useKiloModelCatalog: vi.fn(() => ({
-		data: undefined,
-		isPending: false,
-		isError: false,
-	})),
-}));
+vi.mock("./model-selection/use-kilo-model-catalog.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof KiloModelCatalogModule>();
+	return {
+		...actual,
+		useKiloModelCatalog: vi.fn(() => ({
+			data: undefined,
+			isPending: false,
+			isError: false,
+		})),
+	};
+});
 
 vi.mock("./agent-selection/use-kilo-agent-catalog.js", () => ({
 	useKiloAgentCatalog: vi.fn(() => ({
@@ -206,6 +213,7 @@ function renderChatPage(options?: {
 	workspaces?: Workspace[];
 	children?: ReactNode;
 	canvasMountPolicy?: Contribution["mountPolicy"];
+	prepareModel?: (modelId: string) => Promise<void>;
 }) {
 	const getConnection = options?.getConnection ?? (async () => connection);
 	const prepareSession =
@@ -228,6 +236,13 @@ function renderChatPage(options?: {
 	const system = createFakeFeatureSystem({
 		sdks: { "kilo-ui": kiloUi },
 	});
+	const localInference = system.getSdk("local-inference");
+	const kiloServer = system.getSdk("kilo-server");
+	if (options?.prepareModel) {
+		localInference.plugins.expose("localInference", {
+			prepareModel: options.prepareModel,
+		});
+	}
 	const removeCanvasContribution = system
 		.getSdk("canvas")
 		.contribute(CHAT_RIGHT_PANEL_TAB_EXTENSION, {
@@ -251,7 +266,14 @@ function renderChatPage(options?: {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, queryClient, sdk: kiloUi, removeCanvasContribution };
+	return {
+		...result,
+		queryClient,
+		sdk: kiloUi,
+		localInference,
+		kiloServer,
+		removeCanvasContribution,
+	};
 }
 
 afterEach(() => {
@@ -417,6 +439,73 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 		});
 	});
 
+	it("does not prepare a local model on select and still passes prepareModel to the runtime", async () => {
+		vi.mocked(useKiloModelCatalog).mockReturnValue({
+			data: {
+				providers: [{ id: "anaconda-local", name: "Anaconda Local", connected: true }],
+				models: [
+					{
+						id: "anaconda-local/qwen-3",
+						name: "Qwen 3",
+						providerID: "anaconda-local",
+						modelID: "qwen-3",
+					},
+				],
+				defaults: { "anaconda-local": "qwen-3" },
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+		const prepareModel = vi.fn(async () => undefined);
+		let selectModel!: ReturnType<typeof useChatModelSelection>["setModel"];
+		function CaptureModelControls() {
+			selectModel = useChatModelSelection().setModel;
+			return null;
+		}
+
+		renderChatPage({
+			getConnection: async () => connection,
+			prepareModel,
+			children: <CaptureModelControls />,
+		});
+		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+
+		selectModel({ providerID: "anaconda-local", modelID: "qwen-3" });
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(prepareModel).not.toHaveBeenCalled();
+		expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].prepareModel).toBeTypeOf("function");
+	});
+
+	it("refetches the Kilo catalog when local models change", async () => {
+		const { queryClient, localInference } = renderChatPage({
+			getConnection: async () => connection,
+		});
+		const key = [...KILO_PROVIDER_LIST_QUERY_KEY, connection.baseUrl, connection.version];
+		queryClient.setQueryData(key, { providers: [], models: [], defaults: {} });
+
+		localInference.events.emit("models-changed");
+
+		await vi.waitFor(() => expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true));
+	});
+
+	it("refetches the Kilo catalog when Kilo becomes ready on a new endpoint", async () => {
+		const { queryClient, kiloServer } = renderChatPage({
+			getConnection: async () => connection,
+		});
+		const key = [...KILO_PROVIDER_LIST_QUERY_KEY, connection.baseUrl, connection.version];
+		queryClient.setQueryData(key, { providers: [], models: [], defaults: {} });
+		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+
+		kiloServer.events.emit("server-status-changed", {
+			status: "ready",
+			baseUrl: "http://127.0.0.1:56049",
+			version: connection.version,
+		});
+
+		await vi.waitFor(() => expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true));
+	});
+
 	it("holds the connection promise identity while a refresh is in flight", async () => {
 		vi.mocked(useKiloModelCatalog).mockReturnValue({
 			data: undefined,
@@ -548,6 +637,86 @@ describe("ChatPage", () => {
 			const refreshedPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
 			expect(refreshedPromise).not.toBe(initialRuntimeOptions!.connectionPromise);
 		});
+		await expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).resolves.toEqual(
+			refreshedConnection,
+		);
+	});
+
+	it("does not refresh the global connection when local model preparation fails", async () => {
+		const getConnection = vi.fn<KiloUiChatService["chat.getConnection"]>(async () => connection);
+		renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalled());
+		const initialRuntimeOptions = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+		const callsBefore = getConnection.mock.calls.length;
+		const promiseBefore = initialRuntimeOptions!.connectionPromise;
+
+		initialRuntimeOptions!.onError!(new Error("The local model could not be prepared."));
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(getConnection.mock.calls.length).toBe(callsBefore);
+		expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).toBe(promiseBefore);
+	});
+
+	it("refreshes the global connection when Kilo restarts on a new endpoint", async () => {
+		const refreshedConnection = {
+			...connection,
+			baseUrl: "http://127.0.0.1:56049",
+		};
+		const getConnection = vi
+			.fn<KiloUiChatService["chat.getConnection"]>()
+			.mockResolvedValueOnce(connection)
+			.mockResolvedValue(refreshedConnection);
+		const { kiloServer } = renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		const initialPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+		await expect(initialPromise).resolves.toEqual(connection);
+
+		kiloServer.events.emit("server-status-changed", {
+			status: "ready",
+			baseUrl: refreshedConnection.baseUrl,
+			version: refreshedConnection.version,
+		});
+
+		await vi.waitFor(() => expect(getConnection.mock.calls.length).toBeGreaterThan(1));
+		await vi.waitFor(() =>
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).not.toBe(
+				initialPromise,
+			),
+		);
+		await expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).resolves.toEqual(
+			refreshedConnection,
+		);
+	});
+
+	it("refreshes the global connection when Kilo rotates credentials on the same endpoint", async () => {
+		const refreshedConnection = {
+			...connection,
+			password: "rotated-secret",
+		};
+		const getConnection = vi
+			.fn<KiloUiChatService["chat.getConnection"]>()
+			.mockResolvedValueOnce(connection)
+			.mockResolvedValue(refreshedConnection);
+		const { kiloServer } = renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		const initialPromise = vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise;
+		await expect(initialPromise).resolves.toEqual(connection);
+
+		kiloServer.events.emit("server-status-changed", {
+			status: "ready",
+			baseUrl: connection.baseUrl,
+			version: connection.version,
+		});
+
+		await vi.waitFor(() => expect(getConnection.mock.calls.length).toBeGreaterThan(1));
+		await vi.waitFor(() =>
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).not.toBe(
+				initialPromise,
+			),
+		);
 		await expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).resolves.toEqual(
 			refreshedConnection,
 		);

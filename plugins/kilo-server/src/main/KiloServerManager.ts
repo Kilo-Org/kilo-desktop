@@ -601,7 +601,7 @@ export class KiloServerManager {
 	async #waitForHealthy(baseUrl: string, authorization: string): Promise<string> {
 		const deadline = Date.now() + this.#options.healthTimeoutMs;
 		let lastError: unknown = new KiloOperationalError("Kilo health check did not complete.");
-		while (Date.now() <= deadline) {
+		for (;;) {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), this.#options.healthRequestTimeoutMs);
 			try {

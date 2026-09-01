@@ -1,3 +1,4 @@
+import { ANACONDA_LOCAL_PROVIDER_ID } from "../../providers/provider-ids.js";
 import type {
 	ModelOption,
 	ModelSelectorEffortOption,
@@ -120,11 +121,22 @@ export function isKiloGatewayProvider(provider: { id: string; name?: string }): 
 	return provider.name !== undefined && /^kilo\s*gateway$/i.test(provider.name.trim());
 }
 
+function isAnacondaLocalProvider(provider: { id: string }): boolean {
+	return provider.id === ANACONDA_LOCAL_PROVIDER_ID;
+}
+
+/** Match the AI providers page: Kilo, then Local, then everyone else by name. */
+function railRank(provider: KiloProviderGroup): number {
+	if (isKiloGatewayProvider(provider)) return 0;
+	if (isAnacondaLocalProvider(provider)) return 1;
+	return 2;
+}
+
 function sortProvidersForRail(providers: KiloProviderGroup[]): KiloProviderGroup[] {
 	return providers.toSorted((a, b) => {
-		const aFirst = isKiloGatewayProvider(a) ? 0 : 1;
-		const bFirst = isKiloGatewayProvider(b) ? 0 : 1;
-		return aFirst - bFirst;
+		const rank = railRank(a) - railRank(b);
+		if (rank !== 0) return rank;
+		return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 	});
 }
 
@@ -142,12 +154,16 @@ export function buildCatalogFromProviderList(
 		if (connectedOnly && !isConnected) {
 			continue;
 		}
+		const modelEntries = Object.values(provider.models);
+		if (isAnacondaLocalProvider(provider) && (!isConnected || modelEntries.length === 0)) {
+			continue;
+		}
 		providers.push({
 			id: provider.id,
 			name: provider.name,
 			connected: isConnected,
 		});
-		for (const model of Object.values(provider.models)) {
+		for (const model of modelEntries) {
 			const modelID = model.id;
 			const providerID = model.providerID || provider.id;
 			const efforts = effortsFromProviderModel(model);

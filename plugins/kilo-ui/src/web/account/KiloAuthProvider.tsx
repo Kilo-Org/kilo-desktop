@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
@@ -63,6 +63,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 			return data as KiloAuthStatus;
 		},
 		enabled: client !== null,
+		placeholderData: keepPreviousData,
 		retry: false,
 		staleTime: 30_000,
 	});
@@ -81,6 +82,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		queryKey: profileQueryKey,
 		queryFn: fetchProfile,
 		enabled: client !== null && authStatusQuery.data?.authenticated === true,
+		placeholderData: keepPreviousData,
 		retry: false,
 		staleTime: 30_000,
 	});
@@ -243,20 +245,19 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 
 	const authenticated = useMemo(() => {
 		if (client === null) return null;
+		if (authStatusQuery.data) return authStatusQuery.data.authenticated === true;
 		if (authStatusQuery.isPending) return null;
 		if (authStatusQuery.isError) return false;
-		return authStatusQuery.data?.authenticated === true;
-	}, [
-		authStatusQuery.data?.authenticated,
-		authStatusQuery.isError,
-		authStatusQuery.isPending,
-		client,
-	]);
+		return null;
+	}, [authStatusQuery.data, authStatusQuery.isError, authStatusQuery.isPending, client]);
 
 	const isLoading =
 		isPending ||
-		(client !== null && authStatusQuery.isPending) ||
-		(authenticated === true && profileQuery.isPending && !profileQuery.data);
+		(client !== null && authStatusQuery.isPending && !authStatusQuery.isPlaceholderData) ||
+		(authenticated === true &&
+			profileQuery.isPending &&
+			!profileQuery.isPlaceholderData &&
+			!profileQuery.data);
 
 	const profileError =
 		authenticated === true && !profileQuery.data && profileQuery.isError

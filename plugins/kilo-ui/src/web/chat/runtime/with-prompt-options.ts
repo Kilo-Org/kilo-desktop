@@ -1,5 +1,7 @@
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
+import { ANACONDA_LOCAL_PROVIDER_ID } from "../../providers/provider-ids.js";
+
 export type PromptModelRef = {
 	providerID: string;
 	modelID: string;
@@ -10,7 +12,17 @@ export type PromptOptionGetters = {
 	getAgent?: () => string | undefined;
 	getModel?: () => PromptModelRef | undefined;
 	getSystem?: (prompt: Readonly<Record<string, unknown>>) => string | undefined;
+	prepareModel?: (modelId: string) => Promise<void>;
 };
+
+function isPromptModelRef(value: unknown): value is PromptModelRef {
+	return (
+		!!value &&
+		typeof value === "object" &&
+		typeof (value as PromptModelRef).providerID === "string" &&
+		typeof (value as PromptModelRef).modelID === "string"
+	);
+}
 
 /**
  * Wraps a Kilo client so `session.prompt` / `session.promptAsync` receive the
@@ -64,8 +76,17 @@ export function withPromptOptions(client: KiloClient, getters: PromptOptionGette
 						(sessionProp === "prompt" || sessionProp === "promptAsync") &&
 						typeof sessionValue === "function"
 					) {
-						return (args: Record<string, unknown>, ...rest: unknown[]) =>
-							Reflect.apply(sessionValue, sessionTarget, [injectPromptOptions(args), ...rest]);
+						return async (args: Record<string, unknown>, ...rest: unknown[]) => {
+							const next = injectPromptOptions(args);
+							if (
+								getters.prepareModel &&
+								isPromptModelRef(next.model) &&
+								next.model.providerID === ANACONDA_LOCAL_PROVIDER_ID
+							) {
+								await getters.prepareModel(next.model.modelID);
+							}
+							return Reflect.apply(sessionValue, sessionTarget, [next, ...rest]);
+						};
 					}
 					return sessionValue;
 				},

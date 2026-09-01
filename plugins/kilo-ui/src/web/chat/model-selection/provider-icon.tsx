@@ -57,6 +57,7 @@ import WorkersAIColor from "@lobehub/icons/es/WorkersAI/components/Color.js";
 import WorkersAIMono from "@lobehub/icons/es/WorkersAI/components/Mono.js";
 import XAIMono from "@lobehub/icons/es/XAI/components/Mono.js";
 import ZenMuxMono from "@lobehub/icons/es/ZenMux/components/Mono.js";
+import { ServerIcon } from "lucide-react";
 
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
@@ -100,6 +101,7 @@ const PROVIDER_ICONS: Record<string, ProviderIconEntry> = {
 	inception: { mono: InceptionMono },
 	kilocode: { mono: KiloCodeMono },
 	lmstudio: { mono: LmStudioMono },
+	local: { mono: ServerIcon },
 	minimax: { mono: MinimaxMono, color: MinimaxColor },
 	mistral: { mono: MistralMono, color: MistralColor },
 	moonshot: { mono: MoonshotMono },

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export const KILO_PROVIDER_ID = "kilo";
+import { ANACONDA_LOCAL_PROVIDER_ID, KILO_PROVIDER_ID } from "./provider-ids.js";
+
+export { ANACONDA_LOCAL_PROVIDER_ID, KILO_PROVIDER_ID } from "./provider-ids.js";
+
+const RESERVED_PROVIDER_IDS = new Set([KILO_PROVIDER_ID, ANACONDA_LOCAL_PROVIDER_ID]);
 
 export const CUSTOM_PROVIDER_PACKAGES = [
 	"@ai-sdk/openai-compatible",
@@ -128,7 +132,7 @@ function fail(error: string): Issue {
 export function validateProviderID(providerID: string): { value: string } | Issue {
 	const result = ProviderIDSchema.safeParse(providerID);
 	if (!result.success) return fail(result.error.issues[0]?.message ?? INVALID_PROVIDER_ID);
-	if (result.data === KILO_PROVIDER_ID) return fail("Provider ID is reserved");
+	if (RESERVED_PROVIDER_IDS.has(result.data)) return fail("Provider ID is reserved");
 	return { value: result.data };
 }
 

@@ -383,6 +383,35 @@ describe("patched OpenCode lazy session initialization", () => {
 		await waitFor(() => expect(fake.promptAsync).toHaveBeenCalledOnce());
 	});
 
+	it("restores the draft when the first prompt fails after session creation", async () => {
+		const promptError = new Error("Local model unavailable");
+		const fake = createFakeClient();
+		fake.promptAsync.mockRejectedValueOnce(promptError);
+		const onError = vi.fn();
+		const { baseElement } = renderRuntime({ client: fake.client, onError });
+		const screen = page.elementLocator(baseElement);
+		const input = screen.getByRole("textbox", { name: "Message" });
+
+		await input.fill("Prompt a local model");
+
+		const suppressPromptFailure = (event: PromiseRejectionEvent) => {
+			if (event.reason === promptError) {
+				event.preventDefault();
+			}
+		};
+		window.addEventListener("unhandledrejection", suppressPromptFailure);
+		try {
+			await screen.getByRole("button", { name: "Send" }).click();
+			await waitFor(() => expect(fake.create).toHaveBeenCalledOnce());
+			await waitFor(() => expect(onError).toHaveBeenCalledWith(promptError));
+		} finally {
+			window.removeEventListener("unhandledrejection", suppressPromptFailure);
+		}
+
+		await expect.element(input).toHaveValue("Prompt a local model");
+		expect(fake.promptAsync).toHaveBeenCalledOnce();
+	});
+
 	it("uses an existing session without creating another one", async () => {
 		const fake = createFakeClient();
 		const { baseElement } = renderRuntime({

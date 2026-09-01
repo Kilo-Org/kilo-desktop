@@ -134,11 +134,12 @@ describe("KiloGatewayAccountPanel", () => {
 			.toHaveTextContent("$42.50");
 		await expect.element(screen.getByTestId("kilo-account-pass-bar")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-dashboard")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Sign Out" })).toBeVisible();
 
-		const balance = document.querySelector("[data-qa-id=kilo-account-balance]");
-		const dashboard = document.querySelector("[data-qa-id=kilo-account-dashboard]");
-		expect(balance?.contains(dashboard)).toBe(true);
+		const actions = document.querySelector("[data-qa-id=kilo-account-actions]");
+		for (const qa of ["kilo-account-top-up", "kilo-account-dashboard", "kilo-account-logout"]) {
+			expect(actions?.contains(document.querySelector(`[data-qa-id=${qa}]`))).toBe(true);
+		}
 
 		await screen.getByTestId("kilo-account-dashboard").click();
 		expect(auth.openExternal).toHaveBeenCalledWith("https://app.kilo.ai/profile");
@@ -200,7 +201,7 @@ describe("KiloGatewayAccountPanel", () => {
 		expect(auth.openExternal).toHaveBeenCalledWith("https://kilo.ai/pricing/kilo-pass");
 	});
 
-	it("keeps balance actions grouped with the amount", async () => {
+	it("keeps top up, dashboard, and sign out on one row", async () => {
 		const { screen } = renderSettings(
 			idleAuth({
 				authenticated: true,
@@ -209,18 +210,17 @@ describe("KiloGatewayAccountPanel", () => {
 		);
 		await expect.element(screen.getByTestId("kilo-account-balance")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-refresh")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-account-top-up")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-account-dashboard")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-account-actions")).toBeVisible();
 
-		const balance = document.querySelector("[data-qa-id=kilo-account-balance]");
-		for (const qa of [
-			"kilo-account-balance-value",
-			"kilo-account-refresh",
-			"kilo-account-top-up",
-			"kilo-account-dashboard",
-		]) {
-			const control = document.querySelector(`[data-qa-id=${qa}]`);
-			expect(balance?.contains(control)).toBe(true);
-		}
+		const actions = document.querySelector("[data-qa-id=kilo-account-actions]");
+		const topUp = document.querySelector("[data-qa-id=kilo-account-top-up]");
+		const dashboard = document.querySelector("[data-qa-id=kilo-account-dashboard]");
+		const logout = document.querySelector("[data-qa-id=kilo-account-logout]");
+		expect(actions?.contains(topUp)).toBe(true);
+		expect(actions?.contains(dashboard)).toBe(true);
+		expect(actions?.contains(logout)).toBe(true);
+		const row = topUp?.getBoundingClientRect().top;
+		expect(dashboard?.getBoundingClientRect().top).toBe(row);
+		expect(logout?.getBoundingClientRect().top).toBe(row);
 	});
 });

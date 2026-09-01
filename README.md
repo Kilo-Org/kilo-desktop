@@ -150,6 +150,9 @@ desktop ──→ apps/web/dist          (build artifact, not a package dependen
   `zod`) and are referenced as `catalog:` so both apps can never drift apart.
 - `nodeLinker: hoisted` and `injectWorkspacePackages: true` exist for Electron and Forge;
   packaging deploys a frozen production dependency tree instead of relying on symlinks.
+- Local consumers of `@anaconda-agentic-desktop/ui` use explicit `link:` dependencies so
+  renderer and plugin imports always resolve the live workspace source. Plugins keep UI as
+  a peer dependency at runtime to preserve the shared singleton design.
 - There are no TypeScript project references. Each package owns a `tsconfig.json` that
   extends `tsconfig.base.json` with `noEmit`, and `pnpm check` type-checks them
   independently. Path aliases are per package (`@/*` → `apps/web/src`, `$config/*` →

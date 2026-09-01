@@ -51,7 +51,7 @@ overrides:
   '@assistant-ui/tap': 0.9.12
 
 patchedDependencies:
-  '@assistant-ui/react-opencode@0.2.17': 7936bd22b6d619a7c1d470eb55ede10f637ed9c0af343c632411fffd978256ab
+  '@assistant-ui/react-opencode@0.2.17': a568116568b7dd98cdbf25c8ff5a2564e2b869467829d8341405822ddb2dca8c
 
 importers:
 
@@ -64,8 +64,8 @@ importers:
         specifier: workspace:*
         version: link:packages/sdk-react
       '@anaconda-agentic-desktop/ui':
-        specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(use-sync-external-store@1.6.0(react@19.2.8))
+        specifier: link:./packages/ui
+        version: link:packages/ui
       '@opencode-ai/sdk':
         specifier: workspace:*
         version: link:plugins/kilo-ui/opencode-sdk-compat
@@ -132,6 +132,9 @@ importers:
       '@anaconda-agentic-desktop/plugin-kilo-ui':
         specifier: link:../../plugins/kilo-ui
         version: link:../../plugins/kilo-ui
+      '@anaconda-agentic-desktop/plugin-local-inference':
+        specifier: link:../../plugins/local-inference
+        version: link:../../plugins/local-inference
       '@anaconda-agentic-desktop/plugin-notebook':
         specifier: link:../../plugins/notebook
         version: link:../../plugins/notebook
@@ -298,6 +301,9 @@ importers:
       '@anaconda-agentic-desktop/plugin-kilo-ui':
         specifier: link:../../plugins/kilo-ui
         version: link:../../plugins/kilo-ui
+      '@anaconda-agentic-desktop/plugin-local-inference':
+        specifier: link:../../plugins/local-inference
+        version: link:../../plugins/local-inference
       '@anaconda-agentic-desktop/plugin-notebook':
         specifier: link:../../plugins/notebook
         version: link:../../plugins/notebook
@@ -631,7 +637,7 @@ importers:
         version: link:../../packages/sdk-react
       '@anaconda-agentic-desktop/ui':
         specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(use-sync-external-store@1.6.0(react@19.2.8))
+        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.4
         version: 1.7.5(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.4.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
@@ -768,8 +774,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@anaconda-agentic-desktop/ui':
-        specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(use-sync-external-store@1.6.0(react@19.2.8))
+        specifier: link:../../packages/ui
+        version: link:../../packages/ui
       '@anaconda/playwright-utils':
         specifier: 1.17.1
         version: 1.17.1(@playwright/test@1.62.1)(jiti@2.7.0)(supports-color@10.2.2)
@@ -899,7 +905,7 @@ importers:
         version: 0.14.8(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
       '@assistant-ui/react-opencode':
         specifier: 0.2.17
-        version: 0.2.17(patch_hash=7936bd22b6d619a7c1d470eb55ede10f637ed9c0af343c632411fffd978256ab)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+        version: 0.2.17(patch_hash=a568116568b7dd98cdbf25c8ff5a2564e2b869467829d8341405822ddb2dca8c)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
       '@base-ui/react':
         specifier: ^1.6.0
         version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -959,7 +965,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@anaconda-agentic-desktop/ui':
-        specifier: workspace:*
+        specifier: link:../../packages/ui
         version: link:../../packages/ui
       '@anaconda/playwright-utils':
         specifier: 1.17.1
@@ -1041,6 +1047,34 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  plugins/local-inference:
+    dependencies:
+      execa:
+        specifier: ^9.6.0
+        version: 9.6.1
+      systeminformation:
+        specifier: 5.33.1
+        version: 5.33.1
+    devDependencies:
+      '@anaconda-agentic-desktop/feature-sdk':
+        specifier: workspace:*
+        version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.0-rc.2(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-rc.2)(@vitest/coverage-v8@5.0.0-rc.2)(@vitest/ui@5.0.0-rc.2)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+
   plugins/notebook:
     dependencies:
       lucide-react:
@@ -1063,8 +1097,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@anaconda-agentic-desktop/ui':
-        specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(use-sync-external-store@1.6.0(react@19.2.8))
+        specifier: link:../../packages/ui
+        version: link:../../packages/ui
       '@anaconda/playwright-utils':
         specifier: 1.17.1
         version: 1.17.1(@playwright/test@1.62.1)(jiti@2.7.0)(supports-color@10.2.2)
@@ -1148,7 +1182,7 @@ importers:
         version: link:../../packages/sdk-react
       '@anaconda-agentic-desktop/ui':
         specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(use-sync-external-store@1.6.0(react@19.2.8))
+        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.2.8)
@@ -9075,7 +9109,7 @@ snapshots:
 
   7zip-bin-full@26.2.1: {}
 
-  '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(use-sync-external-store@1.6.0(react@19.2.8))':
+  '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)':
     dependencies:
       '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
       '@assistant-ui/react-markdown': 0.14.8(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
@@ -9208,7 +9242,7 @@ snapshots:
       - react-dom
       - supports-color
 
-  '@assistant-ui/react-opencode@0.2.17(patch_hash=7936bd22b6d619a7c1d470eb55ede10f637ed9c0af343c632411fffd978256ab)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
+  '@assistant-ui/react-opencode@0.2.17(patch_hash=a568116568b7dd98cdbf25c8ff5a2564e2b869467829d8341405822ddb2dca8c)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
     dependencies:
       '@assistant-ui/core': 0.3.5(@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8))
       '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -10532,7 +10566,7 @@ snapshots:
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
       zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@4.4.3)
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:

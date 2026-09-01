@@ -98,7 +98,8 @@ function renderAccount({
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	const { baseElement } = render(
+	let current = connection;
+	const mount = () => (
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<ChatConnectionProvider
@@ -106,8 +107,8 @@ function renderAccount({
 						isPending: false,
 						isError: false,
 						error: null,
-						connection,
-						connectionPromise: Promise.resolve(connection),
+						connection: current,
+						connectionPromise: Promise.resolve(current),
 					}}
 				>
 					<KiloAuthProvider>
@@ -115,9 +116,16 @@ function renderAccount({
 					</KiloAuthProvider>
 				</ChatConnectionProvider>
 			</QueryClientProvider>
-		</SdkProvider>,
+		</SdkProvider>
 	);
-	return { screen: page.elementLocator(baseElement) };
+	const view = render(mount());
+	return {
+		screen: page.elementLocator(view.baseElement),
+		rerenderConnection: (next: KiloGlobalConnection) => {
+			current = next;
+			view.rerender(mount());
+		},
+	};
 }
 
 describe("KiloAuthProvider login", () => {
@@ -285,5 +293,19 @@ describe("KiloAuthProvider org switch", () => {
 			{ organizationId: null, directory: connection.globalDirectory },
 			{ throwOnError: true },
 		);
+	});
+
+	it("keeps the signed-in view when the Kilo connection URL changes", async () => {
+		const { screen, rerenderConnection } = renderAccount();
+		await expect
+			.element(screen.getByTestId("kilo-account-settings"))
+			.toHaveAttribute("data-state", "signed-in");
+		authStatus.mockImplementation(() => new Promise(() => undefined));
+		profile.mockImplementation(() => new Promise(() => undefined));
+		rerenderConnection({ ...connection, baseUrl: "http://127.0.0.1:5096", version: "7.4.21" });
+		await expect
+			.element(screen.getByTestId("kilo-account-settings"))
+			.toHaveAttribute("data-state", "signed-in");
+		await expect.element(screen.getByTestId("kilo-account-balance")).toBeVisible();
 	});
 });

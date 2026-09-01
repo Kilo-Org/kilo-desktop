@@ -12,7 +12,7 @@ import {
 	type KiloServerCapabilities,
 	type KiloServerController,
 } from "./index.js";
-import type { KiloMcpMutationOutcome } from "./KiloMcpConfig.js";
+import type { KiloConfigMutationOutcome } from "./KiloConfigManager.js";
 import type { WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
@@ -700,14 +700,22 @@ describe("kilo-server main registration", () => {
 	});
 });
 
-describe("kilo-server MCP config capability", () => {
-	function fakeKiloMcpConfig() {
+describe("kilo-server owned config capability", () => {
+	function fakeKiloConfig() {
 		return {
-			setMcpEntry: vi.fn(async (): Promise<KiloMcpMutationOutcome> => ({
+			setMcpEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
 				kind: "written",
 				reason: "updated",
 			})),
-			removeMcpEntry: vi.fn(async (): Promise<KiloMcpMutationOutcome> => ({
+			removeMcpEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
+				kind: "removed",
+				reason: "explicit",
+			})),
+			setProviderEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
+				kind: "written",
+				reason: "updated",
+			})),
+			removeProviderEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
 				kind: "removed",
 				reason: "explicit",
 			})),
@@ -717,10 +725,10 @@ describe("kilo-server MCP config capability", () => {
 	it("persists and removes Desktop-owned entries for other features", async () => {
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		const kiloMcpConfig = fakeKiloMcpConfig();
+		const kiloConfig = fakeKiloConfig();
 		registerKiloServer(mainSdk, {
 			createServer: () => server,
-			kiloMcpConfig,
+			kiloConfig,
 			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 		});
 
@@ -733,11 +741,103 @@ describe("kilo-server MCP config capability", () => {
 			url: "https://example.test/mcp",
 		});
 		await capability!.kiloService.mcpConfig.remove("anaconda-mcp", "anaconda-remote");
-		expect(kiloMcpConfig.setMcpEntry).toHaveBeenCalledWith("anaconda-mcp", "anaconda-remote", {
+		expect(kiloConfig.setMcpEntry).toHaveBeenCalledWith("anaconda-mcp", "anaconda-remote", {
 			type: "remote",
 			url: "https://example.test/mcp",
 		});
-		expect(kiloMcpConfig.removeMcpEntry).toHaveBeenCalledWith("anaconda-mcp", "anaconda-remote");
+		expect(kiloConfig.removeMcpEntry).toHaveBeenCalledWith("anaconda-mcp", "anaconda-remote");
+		mainSdk.dispose();
+	});
+
+	it("persists and removes Desktop-owned providers for other features", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const kiloConfig = fakeKiloConfig();
+		registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			kiloConfig,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+
+		const consumer = createMainSdk("local-inference");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+		const entry = {
+			name: "Local",
+			npm: "@ai-sdk/openai-compatible",
+			options: { baseURL: "http://127.0.0.1:43123/v1" },
+		};
+
+		await capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", entry);
+		await capability!.kiloService.providerConfig.remove("local-inference", "anaconda-local");
+		expect(kiloConfig.setProviderEntry).toHaveBeenCalledWith(
+			"local-inference",
+			"anaconda-local",
+			entry,
+		);
+		expect(kiloConfig.removeProviderEntry).toHaveBeenCalledWith(
+			"local-inference",
+			"anaconda-local",
+		);
+		mainSdk.dispose();
+	});
+
+	it("restarts after a provider changes and skips restart for a no-op", async () => {
+		vi.useFakeTimers();
+		try {
+			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const server = fakeServer();
+			server.isRunning = true;
+			const kiloConfig = fakeKiloConfig();
+			registerKiloServer(mainSdk, {
+				createServer: () => server,
+				kiloConfig,
+				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			});
+			const consumer = createMainSdk("local-inference");
+			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+			const entry = { name: "Local" };
+
+			await capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", entry);
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).toHaveBeenCalledOnce();
+			server.restart.mockClear();
+			kiloConfig.setProviderEntry.mockResolvedValue({
+				kind: "skipped",
+				reason: "up-to-date",
+			});
+
+			await capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", entry);
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).not.toHaveBeenCalled();
+
+			await capability!.kiloService.providerConfig.remove("local-inference", "anaconda-local");
+			await vi.advanceTimersByTimeAsync(500);
+			expect(server.restart).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("rejects a provider write that would overwrite a user-owned entry", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const kiloConfig = fakeKiloConfig();
+		kiloConfig.setProviderEntry.mockResolvedValue({
+			kind: "skipped",
+			reason: "entry-not-owned",
+		});
+		registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			kiloConfig,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+		const consumer = createMainSdk("local-inference");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		await expect(
+			capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", {
+				name: "Local",
+			}),
+		).rejects.toThrow(/provider entry not owned by Desktop already uses that id/);
 		mainSdk.dispose();
 	});
 
@@ -749,7 +849,7 @@ describe("kilo-server MCP config capability", () => {
 			server.isRunning = true;
 			registerKiloServer(mainSdk, {
 				createServer: () => server,
-				kiloMcpConfig: fakeKiloMcpConfig(),
+				kiloConfig: fakeKiloConfig(),
 				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			});
 
@@ -776,7 +876,7 @@ describe("kilo-server MCP config capability", () => {
 			server.isRunning = false;
 			registerKiloServer(mainSdk, {
 				createServer: () => server,
-				kiloMcpConfig: fakeKiloMcpConfig(),
+				kiloConfig: fakeKiloConfig(),
 				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			});
 
@@ -802,11 +902,11 @@ describe("kilo-server MCP config capability", () => {
 			const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 			const server = fakeServer();
 			server.isRunning = true;
-			const kiloMcpConfig = fakeKiloMcpConfig();
-			kiloMcpConfig.setMcpEntry.mockResolvedValue({ kind: "skipped", reason: "up-to-date" });
+			const kiloConfig = fakeKiloConfig();
+			kiloConfig.setMcpEntry.mockResolvedValue({ kind: "skipped", reason: "up-to-date" });
 			registerKiloServer(mainSdk, {
 				createServer: () => server,
-				kiloMcpConfig,
+				kiloConfig,
 				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			});
 
@@ -827,14 +927,14 @@ describe("kilo-server MCP config capability", () => {
 
 	it("rejects a Desktop-owned write that would overwrite a user-owned entry", async () => {
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const kiloMcpConfig = fakeKiloMcpConfig();
-		kiloMcpConfig.setMcpEntry.mockResolvedValue({
+		const kiloConfig = fakeKiloConfig();
+		kiloConfig.setMcpEntry.mockResolvedValue({
 			kind: "skipped",
 			reason: "entry-not-owned",
 		});
 		registerKiloServer(mainSdk, {
 			createServer: () => fakeServer(),
-			kiloMcpConfig,
+			kiloConfig,
 			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 		});
 		const consumer = createMainSdk("anaconda-mcp");
@@ -851,18 +951,18 @@ describe("kilo-server MCP config capability", () => {
 
 	it("rejects updates and removals owned by another source", async () => {
 		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		const kiloMcpConfig = fakeKiloMcpConfig();
-		kiloMcpConfig.setMcpEntry.mockResolvedValue({
+		const kiloConfig = fakeKiloConfig();
+		kiloConfig.setMcpEntry.mockResolvedValue({
 			kind: "skipped",
 			reason: "owned-by-other-source",
 		});
-		kiloMcpConfig.removeMcpEntry.mockResolvedValue({
+		kiloConfig.removeMcpEntry.mockResolvedValue({
 			kind: "skipped",
 			reason: "owned-by-other-source",
 		});
 		registerKiloServer(mainSdk, {
 			createServer: () => fakeServer(),
-			kiloMcpConfig,
+			kiloConfig,
 			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 		});
 		const consumer = createMainSdk("other-feature");
@@ -888,7 +988,7 @@ describe("kilo-server MCP config capability", () => {
 			server.isRunning = true;
 			registerKiloServer(mainSdk, {
 				createServer: () => server,
-				kiloMcpConfig: fakeKiloMcpConfig(),
+				kiloConfig: fakeKiloConfig(),
 				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			});
 

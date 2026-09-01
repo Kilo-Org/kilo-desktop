@@ -34,6 +34,8 @@ export interface UseKiloRuntimeOptions {
 	/** Reads the current agent synchronously for prompt dispatch. */
 	getAgent?: () => string | undefined;
 	defaultModel?: PromptModelRef;
+	/** Ensures a managed local model is ready before its prompt is forwarded. */
+	prepareModel?: (modelId: string) => Promise<void>;
 	/** Reasoning effort / OpenCode variant injected into prompt requests. */
 	variant?: string;
 	isSendDisabled?: boolean;
@@ -53,6 +55,7 @@ export function useKiloRuntime({
 	defaultAgent,
 	getAgent,
 	defaultModel,
+	prepareModel,
 	variant,
 	isSendDisabled,
 	onError,
@@ -68,11 +71,19 @@ export function useKiloRuntime({
 	const modelRef = useRef(defaultModel);
 	modelRef.current = defaultModel;
 
+	const prepareModelRef = useRef(prepareModel);
+	prepareModelRef.current = prepareModel;
+	const connectionRef = useRef(connectionPromise);
+	connectionRef.current = connectionPromise;
+
 	const promptGetters = useMemo(
 		() => ({
 			getVariant: () => variantRef.current,
 			getAgent: getAgent ?? (() => agentRef.current),
 			getModel: () => modelRef.current,
+			prepareModel: async (modelId: string) => {
+				await prepareModelRef.current?.(modelId);
+			},
 		}),
 		[getAgent],
 	);
@@ -83,17 +94,23 @@ export function useKiloRuntime({
 	);
 	const backend = useMemo(() => {
 		if (client) return undefined;
-		if (!connectionPromise || !prepareSession) {
+		if (!connectionRef.current || !prepareSession) {
 			throw new Error("useKiloRuntime requires a client, or connectionPromise with prepareSession");
 		}
 		return createKiloRuntimeBackend({
-			connectionPromise,
+			getConnection: () => {
+				const next = connectionRef.current;
+				if (!next) {
+					throw new Error("useKiloRuntime requires a connectionPromise");
+				}
+				return next;
+			},
 			prepareSession,
 			...promptGetters,
 			...(sessionActivity ? { sessionActivity } : {}),
 			...(suggestions ? { suggestions } : {}),
 		});
-	}, [client, connectionPromise, prepareSession, promptGetters, sessionActivity, suggestions]);
+	}, [client, prepareSession, promptGetters, sessionActivity, suggestions]);
 	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 
 	return useOpenCodeRuntime({

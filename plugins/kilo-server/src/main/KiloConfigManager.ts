@@ -11,11 +11,14 @@ import type { KiloLogger } from "./KiloServerManager.js";
 export const KILO_CONFIG_FILENAME = "kilo.jsonc";
 export const OWNERSHIP_SIDECAR_FILENAME = ".anaconda-desktop-ownership.json";
 const LEGACY_SIDECAR_FILENAME = ".anaconda-desktop-managed.json";
-const SIDECAR_SCHEMA_VERSION = 3;
+const SIDECAR_SCHEMA_VERSION = 4;
 
-export type KiloMcpEntry = Readonly<Record<string, unknown>>;
+export type KiloConfigEntry = Readonly<Record<string, unknown>>;
+export type KiloMcpEntry = KiloConfigEntry;
+export type KiloProviderEntry = KiloConfigEntry;
+type KiloConfigSection = "mcp" | "provider";
 
-export type KiloMcpMutationOutcome =
+export type KiloConfigMutationOutcome =
 	| { readonly kind: "written"; readonly reason: "created" | "updated" }
 	| { readonly kind: "removed"; readonly reason: "explicit" }
 	| {
@@ -30,13 +33,13 @@ export type KiloMcpMutationOutcome =
 
 interface Sidecar {
 	readonly version: number;
-	readonly ownedEntryIds: readonly string[];
+	readonly ownedEntryKeys: readonly string[];
 	readonly owners: Readonly<Record<string, string>>;
 }
 
 interface SidecarReadResult {
 	readonly sidecar: Sidecar;
-	readonly source: "current" | "legacy" | "none";
+	readonly requiresMigration: boolean;
 }
 
 interface ExistingConfig {
@@ -46,36 +49,68 @@ interface ExistingConfig {
 
 function noOwnership(): SidecarReadResult {
 	return {
-		sidecar: { version: SIDECAR_SCHEMA_VERSION, ownedEntryIds: [], owners: {} },
-		source: "none",
+		sidecar: { version: SIDECAR_SCHEMA_VERSION, ownedEntryKeys: [], owners: {} },
+		requiresMigration: false,
 	};
 }
 
-function parseSidecar(raw: string, entryIdsKey: "ownedEntryIds" | "managed"): Sidecar | undefined {
+function ownershipKey(section: KiloConfigSection, entryId: string): string {
+	return `${section}:${entryId}`;
+}
+
+function sidecarFromKeys(
+	keys: readonly string[],
+	ownersValue: unknown,
+	transformOwnerKey: (key: string) => string,
+): Sidecar {
+	const ownedEntryKeys = Array.from(new Set(keys));
+	const ownedEntryKeySet = new Set(ownedEntryKeys);
+	const owners =
+		ownersValue && typeof ownersValue === "object" && !Array.isArray(ownersValue)
+			? Object.fromEntries(
+					Object.entries(ownersValue)
+						.map(([key, owner]) => [transformOwnerKey(key), owner] as const)
+						.filter(
+							(entry): entry is readonly [string, string] =>
+								ownedEntryKeySet.has(entry[0]) && typeof entry[1] === "string",
+						),
+				)
+			: {};
+	return {
+		version: SIDECAR_SCHEMA_VERSION,
+		ownedEntryKeys,
+		owners,
+	};
+}
+
+function parseSidecar(
+	raw: string,
+	flatKey: "ownedEntryIds" | "managed",
+): { sidecar: Sidecar; requiresMigration: boolean } | undefined {
 	try {
 		const parsed: unknown = JSON.parse(raw);
 		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
 		const parsedRecord = parsed as Record<string, unknown>;
-		const entryIdsValue = parsedRecord[entryIdsKey];
+		const keysValue = parsedRecord.ownedEntryKeys;
+		if (Array.isArray(keysValue)) {
+			const keys = keysValue.filter((entry): entry is string => typeof entry === "string");
+			return {
+				sidecar: sidecarFromKeys(keys, parsedRecord.owners, (key) => key),
+				requiresMigration: parsedRecord.version !== SIDECAR_SCHEMA_VERSION,
+			};
+		}
+		const entryIdsValue = parsedRecord[flatKey];
 		if (!Array.isArray(entryIdsValue)) return undefined;
 		const ownedEntryIds = entryIdsValue.filter(
 			(entry): entry is string => typeof entry === "string",
 		);
-		const ownedEntryIdSet = new Set(ownedEntryIds);
-		const ownersValue = parsedRecord.owners;
-		const owners =
-			ownersValue && typeof ownersValue === "object" && !Array.isArray(ownersValue)
-				? Object.fromEntries(
-						Object.entries(ownersValue).filter(
-							(entry): entry is [string, string] =>
-								ownedEntryIdSet.has(entry[0]) && typeof entry[1] === "string",
-						),
-					)
-				: {};
 		return {
-			version: SIDECAR_SCHEMA_VERSION,
-			ownedEntryIds,
-			owners,
+			sidecar: sidecarFromKeys(
+				ownedEntryIds.map((entryId) => ownershipKey("mcp", entryId)),
+				parsedRecord.owners,
+				(entryId) => ownershipKey("mcp", entryId),
+			),
+			requiresMigration: true,
 		};
 	} catch {
 		return undefined;
@@ -86,7 +121,7 @@ async function readSidecar(configDirectory: string): Promise<SidecarReadResult> 
 	const ownershipPath = path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME);
 	try {
 		const current = parseSidecar(await readFile(ownershipPath, "utf8"), "ownedEntryIds");
-		if (current) return { sidecar: current, source: "current" };
+		if (current) return current;
 		return noOwnership();
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
@@ -95,7 +130,7 @@ async function readSidecar(configDirectory: string): Promise<SidecarReadResult> 
 	const legacyPath = path.join(configDirectory, LEGACY_SIDECAR_FILENAME);
 	try {
 		const legacy = parseSidecar(await readFile(legacyPath, "utf8"), "managed");
-		if (legacy) return { sidecar: legacy, source: "legacy" };
+		if (legacy) return { sidecar: legacy.sidecar, requiresMigration: true };
 		return noOwnership();
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
@@ -115,7 +150,7 @@ async function unlinkIfPresent(filePath: string): Promise<void> {
 }
 
 async function writeSidecar(sidecarPath: string, sidecar: Sidecar): Promise<void> {
-	if (sidecar.ownedEntryIds.length === 0) {
+	if (sidecar.ownedEntryKeys.length === 0) {
 		try {
 			await unlink(sidecarPath);
 		} catch (error) {
@@ -128,7 +163,7 @@ async function writeSidecar(sidecarPath: string, sidecar: Sidecar): Promise<void
 	});
 }
 
-async function migrateLegacySidecar(configDirectory: string, sidecar: Sidecar): Promise<void> {
+async function migrateSidecar(configDirectory: string, sidecar: Sidecar): Promise<void> {
 	const ownershipPath = path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME);
 	const legacyPath = path.join(configDirectory, LEGACY_SIDECAR_FILENAME);
 	await writeSidecar(ownershipPath, sidecar);
@@ -184,17 +219,17 @@ function nodeToValue(node: Node | undefined): unknown {
 	return node.value;
 }
 
-function readMcpEntry(root: Node | undefined, name: string): unknown {
+function readEntry(root: Node | undefined, section: KiloConfigSection, name: string): unknown {
 	if (!root?.children) return undefined;
-	const mcpProperty = root.children.find(
+	const sectionProperty = root.children.find(
 		(child) =>
 			child.type === "property" &&
 			child.children?.[0]?.type === "string" &&
-			child.children[0].value === "mcp",
+			child.children[0].value === section,
 	);
-	const mcpNode = mcpProperty?.children?.[1];
-	if (mcpNode?.type !== "object" || !mcpNode.children) return undefined;
-	const entryProperty = mcpNode.children.find(
+	const sectionNode = sectionProperty?.children?.[1];
+	if (sectionNode?.type !== "object" || !sectionNode.children) return undefined;
+	const entryProperty = sectionNode.children.find(
 		(child) =>
 			child.type === "property" &&
 			child.children?.[0]?.type === "string" &&
@@ -203,9 +238,14 @@ function readMcpEntry(root: Node | undefined, name: string): unknown {
 	return nodeToValue(entryProperty?.children?.[1]);
 }
 
-function applyModification(text: string, entryName: string, value: unknown): string {
+function applyModification(
+	text: string,
+	section: KiloConfigSection,
+	entryName: string,
+	value: unknown,
+): string {
 	let result = text || "{}\n";
-	const edits = modify(result, ["mcp", entryName], value, {
+	const edits = modify(result, [section, entryName], value, {
 		formattingOptions: { insertSpaces: true, tabSize: 2 },
 	});
 	result = applyEdits(result, edits);
@@ -214,11 +254,12 @@ function applyModification(text: string, entryName: string, value: unknown): str
 
 function tryApplyModification(
 	text: string,
+	section: KiloConfigSection,
 	entryName: string,
 	value: unknown,
 ): { ok: true; text: string } | { ok: false; reason: string } {
 	try {
-		return { ok: true, text: applyModification(text, entryName, value) };
+		return { ok: true, text: applyModification(text, section, entryName, value) };
 	} catch (error) {
 		return {
 			ok: false,
@@ -230,12 +271,12 @@ function tryApplyModification(
 /**
  * Owns serialized mutations of Desktop's Kilo config and its ownership sidecar.
  * Unknown entries and JSONC formatting remain user-owned; only sidecar-owned
- * MCP entries may be updated or removed, and each entry is bound to the source
- * that first claimed it. Ownerless schema-v1 entries are adopted on their next
- * successful write for backward compatibility. The queue prevents independent
- * features and the boot-time WebMCP initialization from losing each other's writes.
+ * MCP and provider entries may be updated or removed, and each section-qualified
+ * entry is bound to the source that first claimed it. Flat historical ownership
+ * records are migrated as MCP ownership. The queue prevents independent features
+ * and the boot-time WebMCP initialization from losing each other's writes.
  */
-export class KiloMcpConfig {
+export class KiloConfigManager {
 	readonly #configDirectory: string;
 	readonly #logger: Pick<KiloLogger, "info" | "warn" | "error">;
 	#pending: Promise<void> = Promise.resolve();
@@ -256,16 +297,31 @@ export class KiloMcpConfig {
 		sourceId: string,
 		entryName: string,
 		entry: KiloMcpEntry,
-	): Promise<KiloMcpMutationOutcome> {
+	): Promise<KiloConfigMutationOutcome> {
 		const snapshot = structuredClone(entry);
-		return this.#enqueue(() => this.#updateMcpEntry(sourceId, entryName, snapshot));
+		return this.#enqueue(() => this.#updateEntry("mcp", sourceId, entryName, snapshot));
 	}
 
-	removeMcpEntry(sourceId: string, entryName: string): Promise<KiloMcpMutationOutcome> {
-		return this.#enqueue(() => this.#updateMcpEntry(sourceId, entryName, undefined));
+	removeMcpEntry(sourceId: string, entryName: string): Promise<KiloConfigMutationOutcome> {
+		return this.#enqueue(() => this.#updateEntry("mcp", sourceId, entryName, undefined));
 	}
 
-	#enqueue(operation: () => Promise<KiloMcpMutationOutcome>): Promise<KiloMcpMutationOutcome> {
+	setProviderEntry(
+		sourceId: string,
+		entryName: string,
+		entry: KiloProviderEntry,
+	): Promise<KiloConfigMutationOutcome> {
+		const snapshot = structuredClone(entry);
+		return this.#enqueue(() => this.#updateEntry("provider", sourceId, entryName, snapshot));
+	}
+
+	removeProviderEntry(sourceId: string, entryName: string): Promise<KiloConfigMutationOutcome> {
+		return this.#enqueue(() => this.#updateEntry("provider", sourceId, entryName, undefined));
+	}
+
+	#enqueue(
+		operation: () => Promise<KiloConfigMutationOutcome>,
+	): Promise<KiloConfigMutationOutcome> {
 		const result = this.#pending.then(operation, operation);
 		this.#pending = result.then(
 			() => undefined,
@@ -274,13 +330,18 @@ export class KiloMcpConfig {
 		return result;
 	}
 
-	async #updateMcpEntry(
+	async #updateEntry(
+		section: KiloConfigSection,
 		sourceId: string,
 		entryName: string,
-		entry: KiloMcpEntry | undefined,
-	): Promise<KiloMcpMutationOutcome> {
-		if (!sourceId.trim()) return { kind: "skipped-error", reason: "MCP source id is empty" };
-		if (!entryName.trim()) return { kind: "skipped-error", reason: "MCP entry name is empty" };
+		entry: KiloConfigEntry | undefined,
+	): Promise<KiloConfigMutationOutcome> {
+		if (!sourceId.trim()) {
+			return { kind: "skipped-error", reason: `${section} source id is empty` };
+		}
+		if (!entryName.trim()) {
+			return { kind: "skipped-error", reason: `${section} entry name is empty` };
+		}
 
 		await mkdir(this.#configDirectory, { recursive: true });
 		const filePath = path.join(this.#configDirectory, KILO_CONFIG_FILENAME);
@@ -295,14 +356,15 @@ export class KiloMcpConfig {
 
 		const sidecarResult = await readSidecar(this.#configDirectory);
 		const sidecar = sidecarResult.sidecar;
-		if (sidecarResult.source === "legacy") {
-			await migrateLegacySidecar(this.#configDirectory, sidecar);
+		if (sidecarResult.requiresMigration) {
+			await migrateSidecar(this.#configDirectory, sidecar);
 		}
 		const root = existing.kind === "ok" ? existing.config.root : undefined;
 		const text = existing.kind === "ok" ? existing.config.text : "";
-		const currentEntry = readMcpEntry(root, entryName);
-		const isOwnedByDesktop = sidecar.ownedEntryIds.includes(entryName);
-		const owner = sidecar.owners[entryName];
+		const currentEntry = readEntry(root, section, entryName);
+		const key = ownershipKey(section, entryName);
+		const isOwnedByDesktop = sidecar.ownedEntryKeys.includes(key);
+		const owner = sidecar.owners[key];
 
 		if (isOwnedByDesktop && owner !== undefined && owner !== sourceId) {
 			return { kind: "skipped", reason: "owned-by-other-source" };
@@ -311,35 +373,37 @@ export class KiloMcpConfig {
 		if (entry === undefined) {
 			if (currentEntry === undefined) {
 				if (isOwnedByDesktop) {
-					await writeSidecar(sidecarPath, removeOwnership(sidecar, entryName));
+					await writeSidecar(sidecarPath, removeOwnership(sidecar, key));
 				}
 				return { kind: "skipped", reason: "nothing-to-remove" };
 			}
 			if (!isOwnedByDesktop) {
-				this.#logger.info(`Leaving mcp["${entryName}"] alone: entry is not owned by Desktop.`);
+				this.#logger.info(
+					`Leaving ${section}["${entryName}"] alone: entry is not owned by Desktop.`,
+				);
 				return { kind: "skipped", reason: "entry-not-owned" };
 			}
-			const removed = tryApplyModification(text, entryName, undefined);
+			const removed = tryApplyModification(text, section, entryName, undefined);
 			if (!removed.ok) return { kind: "skipped-error", reason: removed.reason };
 			await atomicWriteFile(filePath, removed.text, { encoding: "utf8" });
-			await writeSidecar(sidecarPath, removeOwnership(sidecar, entryName));
+			await writeSidecar(sidecarPath, removeOwnership(sidecar, key));
 			return { kind: "removed", reason: "explicit" };
 		}
 
 		if (currentEntry !== undefined && !isOwnedByDesktop) {
-			this.#logger.info(`Leaving mcp["${entryName}"] alone: entry is not owned by Desktop.`);
+			this.#logger.info(`Leaving ${section}["${entryName}"] alone: entry is not owned by Desktop.`);
 			return { kind: "skipped", reason: "entry-not-owned" };
 		}
 		if (isOwnedByDesktop && isEqual(currentEntry, entry)) {
 			if (owner === undefined) {
-				await writeSidecar(sidecarPath, assignOwnership(sidecar, entryName, sourceId));
+				await writeSidecar(sidecarPath, assignOwnership(sidecar, key, sourceId));
 			}
 			return { kind: "skipped", reason: "up-to-date" };
 		}
 
-		const nextConfig = tryApplyModification(text, entryName, entry);
+		const nextConfig = tryApplyModification(text, section, entryName, entry);
 		if (!nextConfig.ok) return { kind: "skipped-error", reason: nextConfig.reason };
-		await writeSidecar(sidecarPath, assignOwnership(sidecar, entryName, sourceId));
+		await writeSidecar(sidecarPath, assignOwnership(sidecar, key, sourceId));
 		await atomicWriteFile(filePath, nextConfig.text, { encoding: "utf8" });
 		return {
 			kind: "written",
@@ -348,20 +412,20 @@ export class KiloMcpConfig {
 	}
 }
 
-function assignOwnership(sidecar: Sidecar, entryName: string, sourceId: string): Sidecar {
+function assignOwnership(sidecar: Sidecar, key: string, sourceId: string): Sidecar {
 	return {
 		version: SIDECAR_SCHEMA_VERSION,
-		ownedEntryIds: Array.from(new Set([...sidecar.ownedEntryIds, entryName])),
-		owners: { ...sidecar.owners, [entryName]: sourceId },
+		ownedEntryKeys: Array.from(new Set([...sidecar.ownedEntryKeys, key])),
+		owners: { ...sidecar.owners, [key]: sourceId },
 	};
 }
 
-function removeOwnership(sidecar: Sidecar, entryName: string): Sidecar {
+function removeOwnership(sidecar: Sidecar, key: string): Sidecar {
 	const owners = { ...sidecar.owners };
-	delete owners[entryName];
+	delete owners[key];
 	return {
 		version: SIDECAR_SCHEMA_VERSION,
-		ownedEntryIds: sidecar.ownedEntryIds.filter((name) => name !== entryName),
+		ownedEntryKeys: sidecar.ownedEntryKeys.filter((entry) => entry !== key),
 		owners,
 	};
 }

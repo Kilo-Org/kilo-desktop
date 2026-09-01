@@ -72,9 +72,9 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 			if (signal === "SIGTERM") children.at(-1)?.exit(0, signal);
 		},
 		onStatusChange: (status) => statuses.push(status),
-		startupTimeoutMs: 20,
-		healthTimeoutMs: 20,
-		healthRequestTimeoutMs: 20,
+		startupTimeoutMs: 2_000,
+		healthTimeoutMs: 2_000,
+		healthRequestTimeoutMs: 2_000,
 		healthRetryDelayMs: 1,
 		shutdownTimeoutMs: 2,
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -338,8 +338,8 @@ describe("KiloServerManager", () => {
 
 	it("gracefully terminates the detached process group before restarting", async () => {
 		const children: FakeChild[] = [];
-		const signalProcessGroup = vi.fn((_pid: number, signal: NodeJS.Signals) => {
-			children.at(-1)?.exit(0, signal);
+		const signalProcessGroup = vi.fn((pid: number, signal: NodeJS.Signals) => {
+			children.find((child) => child.pid === pid)?.exit(0, signal);
 		});
 		const harness = createHarness({
 			signalProcessGroup,

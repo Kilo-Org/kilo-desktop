@@ -1,6 +1,7 @@
-import { Fragment, useState, type ReactNode } from "react";
-import { PencilIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 
+import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -11,34 +12,39 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@anaconda-agentic-desktop/ui/components/alert-dialog";
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemGroup,
-	ItemMedia,
-	ItemSeparator,
-	ItemTitle,
-} from "@anaconda-agentic-desktop/ui/components/item";
+	Collapsible,
+	CollapsibleContent,
+} from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
+import { SummaryCard } from "@anaconda-agentic-desktop/ui/components/summary-card";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 
+import type { KiloUiProvidersService } from "../../contracts/providers/schemas.js";
 import { useKiloAuth } from "../account/KiloAuthContext.js";
-import { KiloGatewayAccountLoadingState } from "../account/KiloGatewayAccountPanel.js";
 import { useChatConnection } from "../chat/connection/ChatConnectionContext.js";
 import { ProviderIcon } from "../chat/model-selection/provider-icon.js";
 import { AddProviderDialog } from "./AddProviderDialog.js";
 import { CustomProviderDialog } from "./CustomProviderDialog.js";
 import type { SanitizedProviderConfig } from "./custom-provider.js";
-import { KiloGatewayProviderCard } from "./KiloGatewayProviderCard.js";
-import type { ProviderRow } from "./provider-list.js";
+import { EditProviderApiKeyDialog } from "./EditProviderApiKeyDialog.js";
+import { KiloGatewayProviderDisclosure } from "./KiloGatewayProviderCard.js";
+import { resolveLocalInferenceCapability } from "./local-inference/capability.js";
+import { LocalProviderSettingsCard } from "./local-inference/LocalProviderSettingsCard.js";
+import { isEnvironmentSourced, providerSourceLabel, type ProviderRow } from "./provider-list.js";
 import { useKiloProviders } from "./use-kilo-providers.js";
 
 type DialogState =
 	| null
 	| { type: "add" }
 	| { type: "custom"; existing: ProviderRow }
+	| { type: "edit-api"; provider: ProviderRow }
 	| { type: "remove"; provider: ProviderRow };
 
 async function settle(task: () => Promise<unknown>): Promise<boolean> {
@@ -48,15 +54,38 @@ async function settle(task: () => Promise<unknown>): Promise<boolean> {
 	);
 }
 
+function ProviderEntrySurface({ children }: { children: ReactNode }) {
+	return (
+		<div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
+			{children}
+		</div>
+	);
+}
+
+function useLocalInferenceAvailable(): boolean {
+	const sdk = useSdk("kilo-ui");
+	return resolveLocalInferenceCapability(sdk.plugins.get("local-inference")) !== null;
+}
+
+function LocalInferenceProviderCard() {
+	return (
+		<ProviderEntrySurface>
+			<LocalProviderSettingsCard />
+		</ProviderEntrySurface>
+	);
+}
+
 /**
  * A focused provider switchboard for Kilo chat. Kilo Gateway is the primary
  * path; direct API keys and custom endpoints remain available without exposing
- * the underlying provider config file as product UI.
+ * the underlying provider config file as product UI. Local inference renders
+ * its own card when the headless local-inference plugin is available.
  */
 export function KiloProvidersSettings() {
 	const connection = useChatConnection();
 	const auth = useKiloAuth();
 	const providers = useKiloProviders(connection.connection);
+	const localInference = useLocalInferenceAvailable();
 	const [dialog, setDialog] = useState<DialogState>(null);
 
 	if (connection.isError) {
@@ -65,17 +94,22 @@ export function KiloProvidersSettings() {
 				<p className="text-muted-foreground text-sm" data-qa-id="kilo-providers-unavailable">
 					Provider management is available in Anaconda Agentic Desktop.
 				</p>
+				{localInference ? <LocalInferenceProviderCard /> : null}
 			</PageShell>
 		);
 	}
 
 	const addOpen = dialog?.type === "add";
 	const customOpen = dialog?.type === "custom";
+	const editProvider = dialog?.type === "edit-api" ? dialog.provider : null;
 	const removeProvider = dialog?.type === "remove" ? dialog.provider : null;
 	const view = providers.view ?? { connected: [], environment: [], popular: [] };
 	const providerShapeKnown = providers.view !== undefined;
-	const connected = [...view.connected.filter((row) => !row.isKilo), ...view.environment].toSorted(
-		(left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+	const connected = [
+		...view.connected.filter((row) => !row.isKilo && !row.isLocal),
+		...view.environment,
+	].toSorted((left, right) =>
+		left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
 	);
 	const blockedIds = [...providers.ids, ...Object.keys(providers.config?.provider ?? {})];
 	const customExisting =
@@ -87,6 +121,10 @@ export function KiloProvidersSettings() {
 	const openCustomProvider = (existing: ProviderRow) => {
 		providers.resetSave();
 		setDialog({ type: "custom", existing });
+	};
+	const openApiProvider = (provider: ProviderRow) => {
+		providers.resetConnect();
+		setDialog({ type: "edit-api", provider });
 	};
 
 	return (
@@ -101,7 +139,7 @@ export function KiloProvidersSettings() {
 					data-qa-id="kilo-providers-add-provider"
 				>
 					<PlusIcon data-icon="inline-start" />
-					Connect provider
+					Add AI Provider
 				</Button>
 			}
 		>
@@ -109,11 +147,43 @@ export function KiloProvidersSettings() {
 				<ProvidersContentLoadingState
 					connected={connected}
 					shapeKnown={providerShapeKnown}
-					gatewayExpanded={auth.authenticated === true}
+					localInference={localInference}
 				/>
 			) : (
 				<>
-					<KiloGatewayProviderCard />
+					<section
+						className="flex min-w-0 flex-col gap-2"
+						aria-label="Providers"
+						data-qa-id="kilo-providers-inventory"
+					>
+						<ProviderEntrySurface>
+							<KiloGatewayProviderDisclosure />
+						</ProviderEntrySurface>
+						{localInference ? <LocalInferenceProviderCard /> : null}
+						{connected.map((row) => (
+							<ProviderEntrySurface key={row.id}>
+								{isEnvironmentSourced(row) ? (
+									<EnvironmentProvider row={row} />
+								) : (
+									<ConnectedProvider
+										row={row}
+										pending={providers.pending}
+										{...(row.canDisconnect && !row.custom
+											? { onDisconnect: () => void settle(() => providers.disconnect(row.id)) }
+											: {})}
+										{...(row.custom
+											? { onEdit: () => openCustomProvider(row) }
+											: row.canDisconnect
+												? { onEdit: () => openApiProvider(row) }
+												: {})}
+										{...(row.custom
+											? { onRemove: () => setDialog({ type: "remove", provider: row }) }
+											: {})}
+									/>
+								)}
+							</ProviderEntrySurface>
+						))}
+					</section>
 
 					{providers.error ? (
 						<div
@@ -139,29 +209,6 @@ export function KiloProvidersSettings() {
 							<RotateCcwIcon data-icon="inline-start" />
 							Try again
 						</Button>
-					) : null}
-
-					{connected.length > 0 ? (
-						<ProviderSection title="Connected providers" qa="kilo-providers-connected">
-							<ItemGroup className="border-border bg-card gap-0 overflow-hidden rounded-xl border has-data-[size=sm]:gap-0">
-								{connected.map((row, index) => (
-									<Fragment key={row.id}>
-										{index > 0 ? <ItemSeparator className="my-0" /> : null}
-										<ConnectedProvider
-											row={row}
-											pending={providers.pending}
-											{...(row.canDisconnect && !row.custom
-												? { onDisconnect: () => void settle(() => providers.disconnect(row.id)) }
-												: {})}
-											{...(row.custom ? { onEdit: () => openCustomProvider(row) } : {})}
-											{...(row.custom
-												? { onRemove: () => setDialog({ type: "remove", provider: row }) }
-												: {})}
-										/>
-									</Fragment>
-								))}
-							</ItemGroup>
-						</ProviderSection>
 					) : null}
 				</>
 			)}
@@ -207,6 +254,24 @@ export function KiloProvidersSettings() {
 				}}
 			/>
 
+			<EditProviderApiKeyDialog
+				key={`edit-api:${editProvider?.id ?? "closed"}`}
+				open={editProvider !== null}
+				provider={editProvider}
+				pending={providers.pending}
+				error={providers.connectError}
+				onOpenChange={(open) => {
+					if (!open) setDialog(null);
+				}}
+				onSubmit={async (apiKey) => {
+					if (!editProvider) return;
+					const didSave = await settle(() =>
+						providers.connect({ providerID: editProvider.id, apiKey }),
+					);
+					if (didSave) setDialog(null);
+				}}
+			/>
+
 			<AlertDialog
 				open={removeProvider !== null}
 				onOpenChange={(open) => {
@@ -233,7 +298,7 @@ export function KiloProvidersSettings() {
 								void settle(() => providers.deleteCustom(providerID));
 							}}
 						>
-							{providers.pending ? "Deleting…" : "Delete provider"}
+							{providers.pending ? "Deleting…" : "Delete AI Provider"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -269,7 +334,7 @@ function PageShell({
 }) {
 	return (
 		<div
-			className="mx-auto flex w-full max-w-2xl min-w-0 flex-col gap-6"
+			className="mx-auto flex w-full max-w-xl min-w-0 flex-col gap-5"
 			data-qa-id="kilo-providers-page"
 			data-state={state}
 		>
@@ -290,131 +355,165 @@ function PageShell({
 	);
 }
 
-function ProviderSection({
-	title,
-	qa,
-	children,
-}: {
-	title: string;
-	qa: string;
-	children: ReactNode;
-}) {
-	return (
-		<section className="flex min-w-0 flex-col gap-4" data-qa-id={qa}>
-			<div className="min-w-0">
-				<h2 className="text-sm font-medium">{title}</h2>
-			</div>
-			{children}
-		</section>
-	);
-}
-
 function ProvidersContentLoadingState({
 	connected,
 	shapeKnown,
-	gatewayExpanded,
+	localInference,
 }: {
 	connected: ProviderRow[];
 	shapeKnown: boolean;
-	gatewayExpanded: boolean;
+	localInference: boolean;
 }) {
 	return (
-		<div className="flex min-w-0 flex-col gap-6" data-qa-id="kilo-providers-loading">
+		<section
+			className="flex min-w-0 flex-col gap-2"
+			aria-label="Loading providers"
+			data-qa-id="kilo-providers-loading"
+		>
 			<span className="sr-only" role="status">
 				Loading providers
 			</span>
-			<GatewayProviderLoadingState expanded={gatewayExpanded} />
-			{shapeKnown && connected.length > 0 ? (
-				<ConnectedProvidersLoadingState connected={connected} />
+			<ProviderEntrySurface>
+				<GatewayProviderLoadingState />
+			</ProviderEntrySurface>
+			{localInference ? (
+				<ProviderEntrySurface>
+					<LocalProviderLoadingState />
+				</ProviderEntrySurface>
 			) : null}
-		</div>
-	);
-}
-
-function GatewayProviderLoadingState({ expanded }: { expanded: boolean }) {
-	return (
-		<section
-			className="border-border bg-card min-w-0 overflow-hidden rounded-xl border"
-			aria-hidden="true"
-		>
-			<div className="flex min-w-0 items-center gap-3 p-4">
-				<Skeleton className="bg-muted-foreground/25 size-10 shrink-0 rounded-lg" />
-				<div className="flex min-w-0 flex-1 flex-col gap-2">
-					<Skeleton className="bg-muted-foreground/25 h-4 w-32" />
-					<Skeleton className="bg-muted-foreground/25 h-3.5 w-56 max-w-full" />
-				</div>
-				<Skeleton className="bg-muted-foreground/25 h-7 w-20 shrink-0 rounded-lg" />
-			</div>
-			{expanded ? (
-				<div className="border-border bg-background/60 border-t p-4">
-					<KiloGatewayAccountLoadingState />
-				</div>
-			) : null}
+			{shapeKnown
+				? connected.map((row) => (
+						<ProviderEntrySurface key={row.id}>
+							<ConnectedProviderLoadingState row={row} />
+						</ProviderEntrySurface>
+					))
+				: null}
 		</section>
 	);
 }
 
-function ConnectedProvidersLoadingState({ connected }: { connected: ProviderRow[] }) {
+function GatewayProviderLoadingState() {
 	return (
-		<section className="flex min-w-0 flex-col gap-4" aria-hidden="true">
-			<div className="min-w-0">
-				<Skeleton className="bg-muted-foreground/25 flex w-fit">
-					<span className="invisible text-sm font-medium">Connected providers</span>
-				</Skeleton>
-			</div>
-			<ItemGroup className="border-border bg-card gap-0 overflow-hidden rounded-xl border has-data-[size=sm]:gap-0">
-				{connected.map((row, index) => (
-					<Fragment key={row.id}>
-						{index > 0 ? <ItemSeparator className="my-0" /> : null}
-						<ConnectedProviderLoadingState row={row} />
-					</Fragment>
-				))}
-			</ItemGroup>
-		</section>
+		<ProviderLoadingRow>
+			<Skeleton className="bg-muted-foreground/25 h-7 w-14 rounded-lg" />
+		</ProviderLoadingRow>
+	);
+}
+
+function LocalProviderLoadingState() {
+	return (
+		<ProviderLoadingRow qaId="kilo-providers-local-loading">
+			<Skeleton className="bg-muted-foreground/25 size-7 rounded-lg" />
+		</ProviderLoadingRow>
+	);
+}
+
+function ProviderLoadingRow({ children, qaId }: { children?: ReactNode; qaId?: string }) {
+	return (
+		<SummaryCard.Row aria-hidden="true" {...(qaId ? { "data-qa-id": qaId } : {})}>
+			<SummaryCard.Icon>
+				<Skeleton className="bg-muted-foreground/25 size-[18px] rounded-sm" />
+			</SummaryCard.Icon>
+			<SummaryCard.Content className="group-data-[size=xs]/item:gap-1.5">
+				<Skeleton className="bg-muted-foreground/25 h-3.5 w-32" />
+				<Skeleton className="bg-muted-foreground/25 h-3 w-64 max-w-full" />
+			</SummaryCard.Content>
+			{children ? <SummaryCard.Actions>{children}</SummaryCard.Actions> : null}
+		</SummaryCard.Row>
 	);
 }
 
 function ConnectedProviderLoadingState({ row }: { row: ProviderRow }) {
 	return (
-		<Item size="sm" className="min-w-0 flex-nowrap rounded-none border-0">
-			<ItemMedia className="border-border bg-background size-8 rounded-lg border">
-				<Skeleton className="bg-muted-foreground/25 size-full rounded-md" />
-			</ItemMedia>
-			<ItemContent className="min-w-0">
-				<div className="flex min-w-0 items-center gap-2">
-					<Skeleton className="bg-muted-foreground/25 flex min-w-0">
-						<ItemTitle className="invisible min-w-0">{row.name}</ItemTitle>
-					</Skeleton>
-					<Skeleton className="bg-muted-foreground/25 flex shrink-0 rounded-full">
-						<Badge variant="outline" className="invisible">
-							{providerBadgeLabel(row)}
-						</Badge>
-					</Skeleton>
-				</div>
-			</ItemContent>
-			<ItemActions className="shrink-0">
-				{row.custom ? (
-					<ProviderActionSkeleton icon={<PencilIcon data-icon="inline-start" />}>
-						Edit
-					</ProviderActionSkeleton>
-				) : null}
-				{row.canDisconnect && !row.custom ? (
-					<ProviderActionSkeleton>Disconnect</ProviderActionSkeleton>
-				) : null}
-				{row.custom ? <ProviderActionSkeleton>Delete</ProviderActionSkeleton> : null}
-			</ItemActions>
-		</Item>
+		<SummaryCard.Row aria-hidden="true">
+			<SummaryCard.Icon>
+				<Skeleton className="bg-muted-foreground/25 size-[18px] rounded-sm" />
+			</SummaryCard.Icon>
+			<SummaryCard.Content className="group-data-[size=xs]/item:gap-1.5">
+				<Skeleton className="bg-muted-foreground/25 flex h-3.5 min-w-0">
+					<span className="invisible text-sm font-medium">{row.name}</span>
+				</Skeleton>
+				<Skeleton className="bg-muted-foreground/25 flex h-3 min-w-0">
+					<span className="invisible text-xs">{providerSourceLabel(row)}</span>
+				</Skeleton>
+			</SummaryCard.Content>
+			<SummaryCard.Actions>
+				{isEnvironmentSourced(row) ? <ProviderActionSkeleton /> : null}
+				{row.custom || row.canDisconnect ? <ProviderActionSkeleton /> : null}
+				{row.canDisconnect && !row.custom ? <ProviderActionSkeleton /> : null}
+				{row.custom ? <ProviderActionSkeleton /> : null}
+			</SummaryCard.Actions>
+		</SummaryCard.Row>
 	);
 }
 
-function ProviderActionSkeleton({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+function ProviderActionSkeleton() {
 	return (
-		<Skeleton className="bg-muted-foreground/25 flex shrink-0 rounded-lg">
-			<Button type="button" variant="outline" size="sm" className="invisible" disabled>
-				{icon}
-				{children}
-			</Button>
+		<Skeleton className="bg-muted-foreground/25 size-7 shrink-0 rounded-lg">
+			<Button type="button" variant="ghost" size="icon-sm" className="invisible" disabled />
 		</Skeleton>
+	);
+}
+
+function EnvironmentProvider({ row }: { row: ProviderRow }) {
+	const sdk = useSdk<KiloUiProvidersService>("kilo-ui");
+	const present = useSdkQuery(sdk, "providers.presentEnv", { names: [...row.env] });
+	const [detailsOpen, setDetailsOpen] = useState(false);
+	const label = `Toggle ${row.name} details`;
+	const names = present.data?.names ?? [];
+
+	return (
+		<Collapsible
+			className="min-w-0"
+			open={detailsOpen}
+			onOpenChange={setDetailsOpen}
+			data-qa-id={`kilo-providers-row-${row.id}`}
+			data-state={detailsOpen ? "expanded" : "summary"}
+		>
+			<SummaryCard.Row>
+				<SummaryCard.Trigger
+					type="button"
+					aria-label={label}
+					data-qa-id={`kilo-providers-row-trigger-${row.id}`}
+				>
+					<SummaryCard.Icon>
+						<ProviderIcon provider={row.id} variant="color" size={18} fallbackLabel={row.name} />
+					</SummaryCard.Icon>
+					<SummaryCard.Content>
+						<SummaryCard.Title>{row.name}</SummaryCard.Title>
+						<SummaryCard.Description>{providerSourceLabel(row)}</SummaryCard.Description>
+					</SummaryCard.Content>
+				</SummaryCard.Trigger>
+				<SummaryCard.Actions>
+					<SummaryCard.Toggle
+						label={label}
+						open={detailsOpen}
+						data-qa-id={`kilo-providers-toggle-${row.id}`}
+					/>
+				</SummaryCard.Actions>
+			</SummaryCard.Row>
+			<CollapsibleContent>
+				<div
+					className="border-border bg-background/60 border-t p-3"
+					data-qa-id={`kilo-providers-env-details-${row.id}`}
+				>
+					<p className="text-muted-foreground text-sm">
+						{row.source === "env"
+							? `${row.name} is connected using these environment variables.`
+							: `${row.name} is connected using credentials already available on this machine, not a stored API key.`}
+					</p>
+					{present.isSuccess && names.length > 0 ? (
+						<ul className="mt-3 flex flex-col gap-1">
+							{names.map((name) => (
+								<li key={name} className="font-mono text-xs break-all">
+									{name}
+								</li>
+							))}
+						</ul>
+					) : null}
+				</div>
+			</CollapsibleContent>
+		</Collapsible>
 	);
 }
 
@@ -432,67 +531,90 @@ function ConnectedProvider({
 	onRemove?: () => void;
 }) {
 	return (
-		<Item
-			size="sm"
-			className="min-w-0 flex-nowrap rounded-none border-0"
-			data-qa-id={`kilo-providers-row-${row.id}`}
-		>
-			<ItemMedia className="border-border bg-background size-8 rounded-lg border">
-				<ProviderIcon provider={row.id} variant="color" size={18} fallbackLabel={row.name} />
-			</ItemMedia>
-			<ItemContent className="min-w-0">
-				<div className="flex min-w-0 items-center gap-2">
-					<ItemTitle className="min-w-0">{row.name}</ItemTitle>
-					<Badge variant="outline" className="text-muted-foreground">
-						{providerBadgeLabel(row)}
-					</Badge>
-				</div>
-			</ItemContent>
-			<ItemActions className="shrink-0">
-				{onEdit ? (
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						disabled={pending}
-						onClick={onEdit}
-						data-qa-id={`kilo-providers-edit-${row.id}`}
+		<TooltipProvider>
+			<SummaryCard.Row data-qa-id={`kilo-providers-row-${row.id}`}>
+				<SummaryCard.Icon>
+					<ProviderIcon provider={row.id} variant="color" size={18} fallbackLabel={row.name} />
+				</SummaryCard.Icon>
+				<SummaryCard.Content>
+					<SummaryCard.Title>{row.name}</SummaryCard.Title>
+					<SummaryCard.Description>{providerSourceLabel(row)}</SummaryCard.Description>
+				</SummaryCard.Content>
+				<SummaryCard.Actions>
+					<div
+						className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover/summary-card:opacity-100 group-has-[:focus-visible]/summary-card:opacity-100"
+						data-qa-id={`kilo-providers-actions-${row.id}`}
 					>
-						<PencilIcon data-icon="inline-start" />
-						Edit
-					</Button>
-				) : null}
-				{onDisconnect ? (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={pending}
-						onClick={onDisconnect}
-						data-qa-id={`kilo-providers-disconnect-${row.id}`}
-					>
-						Disconnect
-					</Button>
-				) : null}
-				{onRemove ? (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={pending}
-						onClick={onRemove}
-						data-qa-id={`kilo-providers-remove-${row.id}`}
-					>
-						Delete
-					</Button>
-				) : null}
-			</ItemActions>
-		</Item>
+						{onEdit ? (
+							<ProviderIconAction
+								label={`Edit ${row.name}`}
+								pending={pending}
+								onClick={onEdit}
+								qaId={`kilo-providers-edit-${row.id}`}
+								icon={<PencilIcon />}
+							/>
+						) : null}
+						{onDisconnect ? (
+							<ProviderIconAction
+								label={`Delete ${row.name}`}
+								pending={pending}
+								onClick={onDisconnect}
+								qaId={`kilo-providers-disconnect-${row.id}`}
+								icon={<Trash2Icon />}
+								destructive
+							/>
+						) : null}
+						{onRemove ? (
+							<ProviderIconAction
+								label={`Delete ${row.name}`}
+								pending={pending}
+								onClick={onRemove}
+								qaId={`kilo-providers-remove-${row.id}`}
+								icon={<Trash2Icon />}
+								destructive
+							/>
+						) : null}
+					</div>
+				</SummaryCard.Actions>
+			</SummaryCard.Row>
+		</TooltipProvider>
 	);
 }
 
-function providerBadgeLabel(row: ProviderRow): string {
-	if (row.source === "env") return "Environment Variables";
-	if (row.custom) return "Custom";
-	return "API key";
+function ProviderIconAction({
+	label,
+	pending,
+	onClick,
+	qaId,
+	icon,
+	destructive = false,
+}: {
+	label: string;
+	pending: boolean;
+	onClick: () => void;
+	qaId: string;
+	icon: ReactNode;
+	destructive?: boolean;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						className={destructive ? "hover:text-destructive" : undefined}
+						aria-label={label}
+						disabled={pending}
+						onClick={onClick}
+						data-qa-id={qaId}
+					/>
+				}
+			>
+				{icon}
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
+	);
 }

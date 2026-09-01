@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 import type { FakeMainSdk } from "@anaconda-agentic-desktop/testing";
 
+import type { EnvironmentsCapabilities } from "../contracts/capabilities.js";
+
 import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
 import { CondaProvider } from "./providers/conda/index.js";
 
@@ -29,9 +31,12 @@ vi.mock("./providers/conda/resolveBridgePath.js", () => ({
 	resolveBridgeBinaryPath: vi.fn(() => null),
 }));
 
+import { execa } from "execa";
+
 import { getMinicondaInstaller } from "./providers/conda/staging/artifacts.js";
 import { detectSystemConda } from "./providers/conda/staging/detectSystemConda.js";
 
+const mockedExecute = vi.mocked(execa);
 const mockedGetInstaller = vi.mocked(getMinicondaInstaller);
 const mockedDetectSystem = vi.mocked(detectSystemConda);
 
@@ -175,6 +180,43 @@ describe("environments plugin main entry", () => {
 	});
 
 	describe("feature-flag gate (environments-feature)", () => {
+		it("exposes a lazy conda runtime capability while the UI feature is off", async () => {
+			const { storageDir } = setupFakeStaging();
+			const { mainSdk } = createSdkWithFlag({
+				featureFlagEnabled: false,
+				storageDir,
+			});
+			mockedExecute.mockResolvedValue({ stdout: "" } as never);
+
+			await mainRegister(mainSdk);
+
+			const capabilities = mainSdk.plugins.get<EnvironmentsCapabilities>("environments");
+			expect(capabilities?.condaRuntime).toBeDefined();
+			expect(mockedDetectSystem).not.toHaveBeenCalled();
+
+			const input = {
+				name: "local-inference",
+				packages: ["llama.cpp=1.2"],
+			};
+			const [first, second] = await Promise.all([
+				capabilities!.condaRuntime.ensureEnvironment(input),
+				capabilities!.condaRuntime.ensureEnvironment(input),
+			]);
+
+			expect(first).toEqual(second);
+			expect(first.prefixPath).toBe(
+				path.join(
+					process.env.HOME ?? process.env.USERPROFILE ?? "",
+					".anaconda-agentic-desktop",
+					"conda",
+					"envs",
+					"local-inference",
+				),
+			);
+			expect(mockedDetectSystem).toHaveBeenCalledTimes(1);
+			expect(mockedExecute).toHaveBeenCalledTimes(1);
+		});
+
 		it("skips provider boot and staging when the flag is off", async () => {
 			const { storageDir } = setupFakeStaging();
 			const { mainSdk, getFlag } = createSdkWithFlag({

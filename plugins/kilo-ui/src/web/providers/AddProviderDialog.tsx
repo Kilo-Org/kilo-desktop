@@ -5,7 +5,6 @@ import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogContent,
-	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
@@ -131,8 +130,7 @@ export function AddProviderDialog({
 					<>
 						{stepIndicator}
 						<DialogHeader>
-							<DialogTitle>Connect provider</DialogTitle>
-							<DialogDescription>Choose a provider to connect.</DialogDescription>
+							<DialogTitle>Add AI Provider</DialogTitle>
 						</DialogHeader>
 
 						<div className="flex flex-col gap-3">
@@ -166,7 +164,7 @@ export function AddProviderDialog({
 									<PlusIcon className="size-4" />
 								</ItemMedia>
 								<ItemContent>
-									<ItemTitle>Custom provider</ItemTitle>
+									<ItemTitle>Custom AI Provider</ItemTitle>
 								</ItemContent>
 								<ItemActions>
 									<ArrowRightIcon className="text-muted-foreground size-4" />

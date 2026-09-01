@@ -50,11 +50,12 @@ describe("useKiloRuntime", () => {
 
 		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
 		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
-			connectionPromise,
+			getConnection: expect.any(Function),
 			prepareSession,
 			getVariant: expect.any(Function),
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
+			prepareModel: expect.any(Function),
 		});
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			backend: expect.objectContaining({ globalClient: {} }),
@@ -64,6 +65,31 @@ describe("useKiloRuntime", () => {
 			adapters: { attachments: expect.objectContaining({ accept: "image/png,text/plain" }) },
 		});
 		expect(OpenCodeAttachmentAdapter).toHaveBeenCalledOnce();
+	});
+
+	it("keeps the same backend when the connection promise identity changes", async () => {
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
+		const first = Promise.resolve(connection);
+		const second = Promise.resolve({
+			...connection,
+			baseUrl: "http://127.0.0.1:5096",
+		});
+
+		const { rerender } = renderHook(
+			({ connectionPromise }: { connectionPromise: Promise<KiloGlobalConnection> }) =>
+				useKiloRuntime({
+					connectionPromise,
+					prepareSession,
+				}),
+			{ initialProps: { connectionPromise: first } },
+		);
+
+		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
+		rerender({ connectionPromise: second });
+		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
+		await expect(
+			vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0].getConnection?.(),
+		).resolves.toEqual(expect.objectContaining({ baseUrl: "http://127.0.0.1:5096" }));
 	});
 
 	it("forwards live agent and model getters that track selection changes", () => {
@@ -127,6 +153,34 @@ describe("useKiloRuntime", () => {
 		expect(backendArgs?.getAgent?.()).toBe("code");
 	});
 
+	it("forwards local model preparation into the runtime backend", async () => {
+		const connectionPromise = Promise.resolve(connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
+		const prepareModel = vi.fn(async () => undefined);
+
+		renderHook(() =>
+			useKiloRuntime({
+				connectionPromise,
+				prepareSession,
+				prepareModel,
+			}),
+		);
+
+		const forwarded = vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0];
+		expect(forwarded).toEqual(
+			expect.objectContaining({
+				getConnection: expect.any(Function),
+				prepareSession,
+				prepareModel: expect.any(Function),
+				getVariant: expect.any(Function),
+				getAgent: expect.any(Function),
+				getModel: expect.any(Function),
+			}),
+		);
+		await forwarded?.prepareModel?.("qwen-3");
+		expect(prepareModel).toHaveBeenCalledWith("qwen-3");
+	});
+
 	it("accepts an injected client for focused tests", () => {
 		const client = { session: {} } as KiloClient;
 
@@ -156,11 +210,12 @@ describe("useKiloRuntime", () => {
 		);
 
 		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
-			connectionPromise,
+			getConnection: expect.any(Function),
 			prepareSession,
 			getVariant: expect.any(Function),
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
+			prepareModel: expect.any(Function),
 			sessionActivity,
 			suggestions,
 		});

@@ -99,6 +99,24 @@ const kiloModelSelection = {
 
 type ChatModelSelectionValue = ComponentProps<typeof ChatModelSelectionProvider>["value"];
 
+const localModelSelection = {
+	...kiloModelSelection,
+	model: { providerID: "anaconda-local", modelID: "qwen-3" },
+	name: "Qwen 3",
+	catalog: {
+		providers: [{ id: "anaconda-local", name: "Local", connected: true }],
+		models: [
+			{
+				id: "anaconda-local/qwen-3",
+				name: "Qwen 3",
+				providerID: "anaconda-local",
+				modelID: "qwen-3",
+			},
+		],
+		defaults: { "anaconda-local": "qwen-3" },
+	},
+} satisfies ChatModelSelectionValue;
+
 const responsiveModelSelection = {
 	...kiloModelSelection,
 	model: { providerID: "spacexai", modelID: "grok-4.6" },
@@ -251,6 +269,31 @@ function renderThread({
 	return page.elementLocator(baseElement);
 }
 
+function renderThreadWithInference({
+	initialMessages = [],
+	selection = kiloModelSelection,
+}: {
+	initialMessages?: readonly ThreadMessageLike[];
+	selection?: ChatModelSelectionValue;
+} = {}) {
+	const sdk = createFakeSdk({ featureId: "kilo-ui" });
+	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	kiloUiBrowserRegister(mainSdk);
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	const localInference = system.getSdk("local-inference");
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const { baseElement } = render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<ThreadTree auth={signedInAuth} selection={selection} initialMessages={initialMessages} />
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+	return { screen: page.elementLocator(baseElement), localInference };
+}
+
 type QueueItemWithAttachmentPreview = QueueItemState & {
 	readonly attachmentPreview?: {
 		readonly name: string;
@@ -305,6 +348,72 @@ function renderExternalQueueThread(queue: ExternalThreadQueueAdapter) {
 	);
 	return page.elementLocator(baseElement);
 }
+
+describe("composer local model send lock", () => {
+	it("keeps the composer writable and replaces send while the model loads", async () => {
+		const { screen, localInference } = renderThreadWithInference({
+			selection: localModelSelection,
+		});
+
+		await expect.element(screen.getByRole("button", { name: "Send message" })).toBeVisible();
+		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toBeEnabled();
+
+		localInference.events.emit("status-changed", {
+			status: "loading-model",
+			modelId: "qwen-3",
+		});
+
+		await expect.element(screen.getByRole("button", { name: "Loading model..." })).toBeVisible();
+		await expect
+			.element(screen.getByRole("button", { name: "Send message" }))
+			.not.toBeInTheDocument();
+		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toBeEnabled();
+
+		localInference.events.emit("status-changed", {
+			status: "ready",
+			loadedModelId: "qwen-3",
+		});
+
+		await expect.element(screen.getByRole("button", { name: "Send message" })).toBeVisible();
+		await expect
+			.element(screen.getByRole("button", { name: "Loading model..." }))
+			.not.toBeInTheDocument();
+	});
+
+	it("does not send on Enter while the model is loading", async () => {
+		const { screen, localInference } = renderThreadWithInference({
+			selection: localModelSelection,
+		});
+		const input = screen.getByRole("textbox", { name: "Message input" });
+		await input.fill("Hello from the composer");
+
+		localInference.events.emit("status-changed", {
+			status: "loading-model",
+			modelId: "qwen-3",
+		});
+		await expect.element(screen.getByRole("button", { name: "Loading model..." })).toBeVisible();
+
+		await userEvent.keyboard("{Enter}");
+		await expect.element(input).toHaveValue("Hello from the composer");
+		await expect
+			.element(screen.getByRole("button", { name: "Send message" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("does not lock a non-local composer while a local model loads", async () => {
+		const { screen, localInference } = renderThreadWithInference();
+
+		localInference.events.emit("status-changed", {
+			status: "loading-model",
+			modelId: "qwen-3",
+		});
+
+		await expect.element(screen.getByRole("button", { name: "Send message" })).toBeVisible();
+		await expect
+			.element(screen.getByRole("button", { name: "Loading model..." }))
+			.not.toBeInTheDocument();
+	});
+});
 
 describe("composer responsiveness", () => {
 	it("drops labels by priority before the toolbar can overlap", async () => {

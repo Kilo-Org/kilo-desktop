@@ -1,8 +1,12 @@
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import type { CondaEnvironmentRuntime } from "../contracts/capabilities.js";
+
 import { JOB_PROGRESS_LOCAL_EVENT, JobQueue } from "./JobQueue.js";
 import { ProviderRegistry } from "./ProviderRegistry.js";
+import { CondaRuntime } from "./providers/conda/CondaRuntime.js";
 import { CondaProvider } from "./providers/conda/index.js";
+import { stageConda } from "./providers/conda/staging/index.js";
 
 /**
  * Capability shape exposed by kilo-ui for local MCP App resource registration.
@@ -21,9 +25,10 @@ interface LocalMcpAppsCapability extends Record<string, unknown> {
  *
  * When this evaluates to `false` (the default, used when the flag is missing,
  * the provider errors, the user is not in an enabled cohort, or the
- * feature-flag capability itself is unavailable) the plugin contributes
- * nothing at boot: no providers boot, no channel handlers register, and the
- * conda staging pipeline never runs.
+ * feature-flag capability itself is unavailable) the environments UI provider
+ * does not boot and the conda staging pipeline never runs. The lightweight
+ * main-process runtime capability remains available to other plugins and
+ * stages conda only when they call it.
  *
  * Kept in sync with the renderer-side constant in
  * `plugins/environments/src/web/EnvironmentsPage.tsx`.
@@ -45,10 +50,11 @@ interface FeatureFlagCapability extends Record<string, unknown> {
 /**
  * Main-process registration for the `environments` plugin.
  *
- * Gated on the `environments-feature` LaunchDarkly flag. When the flag is
- * off (or the flag capability is unavailable) `mainRegister` short-circuits
- * before staging conda — the boot path stays fast and the plugin behaves as
- * if it were absent from the manifest.
+ * The environments UI provider is gated on the `environments-feature`
+ * LaunchDarkly flag. A main-process conda runtime capability is always exposed
+ * before the gate so headless consumers can request an isolated environment.
+ * Constructing and exposing it performs no I/O; when the flag is off, boot
+ * still returns before staging conda.
  *
  * When enabled: boots registered providers sequentially (staging is one-time,
  * first-launch work), then binds their handlers. Async so the shell can
@@ -69,6 +75,22 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  * on next launch.
  */
 export async function mainRegister(mainSdk: MainSdk): Promise<void> {
+	const runtime = new CondaRuntime({
+		stage: () =>
+			stageConda({
+				storageDir: mainSdk.storageDir,
+				fetch: mainSdk.net.fetch,
+				logger: mainSdk.logger,
+				reportProgress: (message) => mainSdk.boot.reportProgress(message),
+			}),
+		logger: mainSdk.logger,
+	});
+	const condaRuntime = {
+		ensureEnvironment: runtime.ensureEnvironment.bind(runtime),
+		executable: runtime.executable.bind(runtime),
+	} satisfies CondaEnvironmentRuntime;
+	mainSdk.plugins.expose("condaRuntime", condaRuntime);
+
 	const featureFlag = mainSdk.plugins.get<FeatureFlagCapability>("feature-flag");
 	const flagEnabled = featureFlag?.featureFlag.getFlag<boolean>(FEATURE_FLAG_KEY, false) ?? false;
 	if (!flagEnabled) {
@@ -77,7 +99,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	}
 
 	const registry = new ProviderRegistry();
-	registry.register(new CondaProvider());
+	registry.register(new CondaProvider(runtime));
 
 	const queue = new JobQueue({
 		emit: (event) => mainSdk.events.emit(JOB_PROGRESS_LOCAL_EVENT, event),

@@ -12,6 +12,7 @@ import type {
 	KiloGlobalConnection,
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
+import { ANACONDA_LOCAL_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { hydrateSessionActivity } from "../session-activity/hydrate-session-activity.js";
 import {
 	buildAnacondaSessionMetadata,
@@ -33,7 +34,9 @@ import {
 const REQUEST_OPTIONS = { throwOnError: true } as const;
 
 export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
-	connectionPromise: Promise<KiloGlobalConnection>;
+	connectionPromise?: Promise<KiloGlobalConnection>;
+	/** Latest Kilo connection; used on every request so a port change mid-prepare still lands. */
+	getConnection?: () => Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
 	sessionActivity?: SessionActivityStore;
 	suggestions?: KiloSuggestionStore;
@@ -41,10 +44,12 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 
 export function createKiloRuntimeBackend({
 	connectionPromise,
+	getConnection,
 	prepareSession,
 	getVariant,
 	getAgent,
 	getModel,
+	prepareModel,
 	sessionActivity,
 	suggestions,
 }: CreateKiloRuntimeBackendOptions): OpenCodeRuntimeBackend {
@@ -53,12 +58,27 @@ export function createKiloRuntimeBackend({
 	const clientsBySessionId = new Map<string, KiloClient>();
 	const workspaceSystemBySessionId = new Map<string, string>();
 	let refreshPromise: Promise<void> | undefined;
+	const liveConnection =
+		getConnection ??
+		(() => {
+			if (!connectionPromise) {
+				throw new Error("createKiloRuntimeBackend requires connectionPromise or getConnection");
+			}
+			return connectionPromise;
+		});
+	const globalClients = new WeakMap<KiloGlobalConnection, KiloClient>();
+	const directoryClients = new WeakMap<KiloGlobalConnection, Map<string, KiloClient>>();
 
-	const globalClient = createDeferredKiloRuntimeClient(
-		connectionPromise.then((connection) =>
-			withAnacondaSessionListFilter(createKiloGlobalClient(connection)),
-		),
-	);
+	const liveGlobalClient = async () => {
+		const connection = await liveConnection();
+		const cached = globalClients.get(connection);
+		if (cached) return cached;
+		const client = withAnacondaSessionListFilter(createKiloGlobalClient(connection));
+		globalClients.set(connection, client);
+		return client;
+	};
+
+	const globalClient = createDeferredKiloRuntimeClient(liveGlobalClient);
 
 	const rememberSession = (ref: OpenCodeSessionRef) => {
 		if (!ref.directory) return;
@@ -70,6 +90,7 @@ export function createKiloRuntimeBackend({
 		...(getVariant ? { getVariant } : {}),
 		...(getAgent ? { getAgent } : {}),
 		...(getModel ? { getModel } : {}),
+		...(prepareModel ? { prepareModel } : {}),
 		getSystem: (prompt) => {
 			const sessionId = typeof prompt.sessionID === "string" ? prompt.sessionID : undefined;
 			return sessionId ? workspaceSystemBySessionId.get(sessionId) : undefined;
@@ -84,14 +105,27 @@ export function createKiloRuntimeBackend({
 		if (system) workspaceSystemBySessionId.set(sessionId, system);
 	};
 
+	const liveDirectoryClient = async (directory: string) => {
+		const connection = await liveConnection();
+		let clients = directoryClients.get(connection);
+		if (!clients) {
+			clients = new Map<string, KiloClient>();
+			directoryClients.set(connection, clients);
+		}
+		const cached = clients.get(directory);
+		if (cached) return cached;
+		const client = withPromptOptions(
+			createKiloDirectoryClient(connection, directory),
+			promptGetters,
+		);
+		clients.set(directory, client);
+		return client;
+	};
+
 	const directoryClient = (directory: string) => {
 		const existing = clientsByDirectory.get(directory);
 		if (existing) return existing;
-		const client = createDeferredKiloRuntimeClient(
-			connectionPromise.then((connection) =>
-				withPromptOptions(createKiloDirectoryClient(connection, directory), promptGetters),
-			),
-		);
+		const client = createDeferredKiloRuntimeClient(async () => liveDirectoryClient(directory));
 		clientsByDirectory.set(directory, client);
 		return client;
 	};
@@ -170,6 +204,10 @@ export function createKiloRuntimeBackend({
 		getSessionClient,
 		initializeSession: async () => {
 			const { directory, workspaceId, workspaceFolders } = await prepareSession();
+			const model = getModel?.();
+			if (prepareModel && model?.providerID === ANACONDA_LOCAL_PROVIDER_ID) {
+				await prepareModel(model.modelID);
+			}
 			const metadata = buildAnacondaSessionMetadata(
 				workspaceId ? { workspaceId, workspaceFolders } : undefined,
 			);

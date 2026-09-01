@@ -35,6 +35,8 @@ import * as kiloServerMain from "@anaconda-agentic-desktop/plugin-kilo-server/ma
 import { createKiloServerResolveAsset } from "@anaconda-agentic-desktop/plugin-kilo-server/packaged-assets";
 import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
 import * as kiloUiMain from "@anaconda-agentic-desktop/plugin-kilo-ui/main";
+import localInferenceManifest from "@anaconda-agentic-desktop/plugin-local-inference/plugin.json" with { type: "json" };
+import * as localInferenceMain from "@anaconda-agentic-desktop/plugin-local-inference/main";
 import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.json" with { type: "json" };
 import * as notebookMain from "@anaconda-agentic-desktop/plugin-notebook/main";
 import { createNotebookResolveAsset } from "@anaconda-agentic-desktop/plugin-notebook/packaged-assets";
@@ -79,5 +81,10 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 		manifest: environmentsManifest,
 		module: environmentsMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-environments"),
+	},
+	{
+		manifest: localInferenceManifest,
+		module: localInferenceMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-local-inference"),
 	},
 ];

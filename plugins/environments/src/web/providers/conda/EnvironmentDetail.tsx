@@ -35,8 +35,12 @@ import type { CondaEnv, CondaPackage, CondaService } from "../../../contracts/pr
 import { computePageNumbers } from "./compute-page-numbers.js";
 import { environmentDisplayName } from "./environment-display.js";
 
-type SortField = "name" | "version";
+type SortField = "name" | "version" | "source";
 type SortDirection = "asc" | "desc";
+
+function packageSource(pkg: CondaPackage): "pip" | "conda" {
+	return pkg.channel === "pypi" ? "pip" : "conda";
+}
 
 interface EnvironmentDetailProps {
 	env: CondaEnv;
@@ -73,8 +77,8 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 	const sorted = useMemo(() => {
 		const items = [...filtered];
 		items.sort((a, b) => {
-			const aVal = a[sortField].toLowerCase();
-			const bVal = b[sortField].toLowerCase();
+			const aVal = sortField === "source" ? packageSource(a) : a[sortField].toLowerCase();
+			const bVal = sortField === "source" ? packageSource(b) : b[sortField].toLowerCase();
 			const cmp = aVal.localeCompare(bVal);
 			return sortDirection === "asc" ? cmp : -cmp;
 		});
@@ -110,40 +114,49 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 
 	return (
 		<TooltipProvider>
-			<div className="flex min-h-0 flex-1 flex-col" data-qa-id="environments-conda-detail">
-				{/* Back button */}
+			<div className="flex min-h-0 flex-1 flex-col gap-4" data-qa-id="environments-conda-detail">
+				{/* Back button — top-left, above the header */}
 				<button
 					type="button"
 					onClick={onBack}
-					className="text-primary mb-4 flex cursor-pointer items-center gap-1 text-sm font-medium hover:underline"
+					className="text-primary flex cursor-pointer items-center gap-1 self-start text-sm font-medium hover:underline"
 					data-qa-id="environments-conda-detail-back"
 				>
 					<ChevronLeftIcon className="size-4" />
 					Back
 				</button>
 
-				{/* Header */}
-				<div className="mb-6 flex items-start justify-between">
-					<div>
+				{/* Header — matches the PageShell heading pattern used by other settings sections */}
+				<header className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
 						<h2
-							className="text-xl font-semibold tracking-tight"
+							className="text-lg font-semibold tracking-tight"
 							data-qa-id="environments-conda-detail-name"
 						>
 							{displayName}
 						</h2>
-						<p
-							className="text-muted-foreground mt-0.5 font-mono text-xs"
-							data-qa-id="environments-conda-detail-prefix"
-						>
-							{env.prefix}
-						</p>
+						<Tooltip>
+							<TooltipTrigger
+								render={
+									<p
+										className="text-muted-foreground mt-1 cursor-default truncate font-mono text-xs"
+										data-qa-id="environments-conda-detail-prefix"
+									/>
+								}
+							>
+								{env.prefix}
+							</TooltipTrigger>
+							<TooltipContent side="bottom" align="start">
+								{env.prefix}
+							</TooltipContent>
+						</Tooltip>
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex shrink-0 items-center gap-2">
 						<Tooltip>
 							<TooltipTrigger render={<span className="inline-flex" />}>
 								<Button
 									variant="default"
-									size="default"
+									size="sm"
 									data-qa-id="environments-conda-detail-add-pkg"
 									disabled
 								>
@@ -155,17 +168,17 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 						</Tooltip>
 						<Tooltip>
 							<TooltipTrigger render={<span className="inline-flex" />}>
-								<Button variant="ghost" size="icon" disabled aria-label="More actions">
+								<Button variant="ghost" size="icon-sm" disabled aria-label="More actions">
 									<EllipsisVerticalIcon className="size-4" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>Soon</TooltipContent>
 						</Tooltip>
 					</div>
-				</div>
+				</header>
 
 				{/* Search */}
-				<div className="relative mb-4 max-w-sm">
+				<div className="relative max-w-sm">
 					<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
 					<Input
 						type="text"
@@ -281,6 +294,16 @@ function PackagesTable({
 								<SortIcon field="version" activeField={sortField} direction={sortDirection} />
 							</button>
 						</th>
+						<th className="px-3 py-2.5 text-left font-medium">
+							<button
+								type="button"
+								onClick={() => onSort("source")}
+								className="inline-flex cursor-pointer items-center gap-1"
+							>
+								Source
+								<SortIcon field="source" activeField={sortField} direction={sortDirection} />
+							</button>
+						</th>
 						<th className="px-3 py-2.5 text-left font-medium">Actions</th>
 					</tr>
 				</thead>
@@ -293,6 +316,9 @@ function PackagesTable({
 						>
 							<td className="px-3 py-2.5 font-medium">{pkg.name}</td>
 							<td className="text-muted-foreground px-3 py-2.5">{pkg.version}</td>
+							<td className="px-3 py-2.5">
+								<SourceBadge source={packageSource(pkg)} channel={pkg.channel} />
+							</td>
 							<td className="px-3 py-2.5">
 								<Tooltip>
 									<TooltipTrigger render={<span className="inline-flex" />}>
@@ -313,6 +339,31 @@ function PackagesTable({
 				</tbody>
 			</table>
 		</div>
+	);
+}
+
+function SourceBadge({ source, channel }: { source: "pip" | "conda"; channel: string }) {
+	const isPip = source === "pip";
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<span
+						className={`inline-flex cursor-default items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+							isPip
+								? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+								: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+						}`}
+						data-qa-id="environments-conda-detail-source"
+					/>
+				}
+			>
+				{isPip ? "pip" : "conda"}
+			</TooltipTrigger>
+			<TooltipContent side="bottom" align="start">
+				{isPip ? "Installed via pip (PyPI)" : `Channel: ${channel}`}
+			</TooltipContent>
+		</Tooltip>
 	);
 }
 

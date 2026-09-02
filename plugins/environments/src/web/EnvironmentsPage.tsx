@@ -36,15 +36,24 @@ export function EnvironmentsPage() {
 	if (!featureEnabled) {
 		return (
 			<div
-				className="flex h-full min-h-0 flex-col"
+				className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-6"
 				data-qa-id="environments-page"
 				data-state="flag-off"
 			>
-				<div className="mx-auto w-full max-w-xl px-5 py-8">
-					<p className="text-muted-foreground text-sm" data-qa-id="environments-flag-off-message">
-						This feature is not enabled for your account.
+				<header className="min-w-0">
+					<h1
+						className="text-lg font-semibold tracking-tight"
+						data-qa-id="settings-section-heading"
+					>
+						Environments
+					</h1>
+					<p className="text-muted-foreground mt-1 text-sm">
+						Manage your conda environments and packages.
 					</p>
-				</div>
+				</header>
+				<p className="text-muted-foreground text-sm" data-qa-id="environments-flag-off-message">
+					This feature is not enabled for your account.
+				</p>
 			</div>
 		);
 	}
@@ -78,7 +87,18 @@ export function EnvironmentsPage() {
 	}
 
 	return (
-		<div className="flex h-full min-h-0 flex-col" data-qa-id="environments-page">
+		<div
+			className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-6"
+			data-qa-id="environments-page"
+		>
+			<header className="min-w-0">
+				<h1 className="text-lg font-semibold tracking-tight" data-qa-id="settings-section-heading">
+					Environments
+				</h1>
+				<p className="text-muted-foreground mt-1 text-sm">
+					Manage your conda environments and packages.
+				</p>
+			</header>
 			{/*
 			 * Labelled via `aria-label` rather than `aria-labelledby`: the visual
 			 * "Conda" heading is gone (a single provider needs no sub-heading), so

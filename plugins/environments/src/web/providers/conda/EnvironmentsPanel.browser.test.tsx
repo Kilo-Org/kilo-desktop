@@ -222,8 +222,8 @@ describe("EnvironmentsPanel — search, sort, pagination", () => {
 	});
 
 	it("shows pagination and navigates pages when items exceed page size", async () => {
-		// Create 15 environments to trigger pagination at page size 10
-		const manyEnvs = Array.from({ length: 15 }, (_, i) => ({
+		// Create 20 environments to trigger pagination at the default page size of 15
+		const manyEnvs = Array.from({ length: 20 }, (_, i) => ({
 			name: `env-${String(i).padStart(2, "0")}`,
 			prefix: `/opt/conda/envs/env-${String(i).padStart(2, "0")}`,
 		}));
@@ -237,7 +237,7 @@ describe("EnvironmentsPanel — search, sort, pagination", () => {
 		// Click next page
 		await screen.getByTestId("environments-pagination-next").click();
 
-		// Should now show remaining items
-		await expect.element(screen.getByText("env-10")).toBeVisible();
+		// Should now show remaining items (page 2 starts at env-15)
+		await expect.element(screen.getByText("env-15")).toBeVisible();
 	});
 });

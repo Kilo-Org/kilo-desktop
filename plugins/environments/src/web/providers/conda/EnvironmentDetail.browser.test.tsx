@@ -25,6 +25,7 @@ const MOCK_PACKAGES: CondaPackage[] = [
 	{ name: "jupyter", version: "1.1.1", build: "py311_0", channel: "defaults" },
 	{ name: "scikit-learn", version: "1.5.0", build: "py311_0", channel: "defaults" },
 	{ name: "scipy", version: "1.14.0", build: "py311_0", channel: "defaults" },
+	{ name: "requests", version: "2.32.3", build: "pypi_0", channel: "pypi" },
 ];
 
 function defaultHandlers(
@@ -143,7 +144,7 @@ describe("EnvironmentDetail", () => {
 		// Default page size is 20; our mock has 7 packages so all should render
 		expect(
 			baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]').length,
-		).toBe(7);
+		).toBe(8);
 	});
 
 	it("displays pagination info showing total items", async () => {
@@ -151,7 +152,7 @@ describe("EnvironmentDetail", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-pagination")).toBeVisible();
-		await expect.element(screen.getByText("1 - 7 of 7 items")).toBeVisible();
+		await expect.element(screen.getByText("1 - 8 of 8 items")).toBeVisible();
 	});
 
 	it("surfaces backend errors", async () => {
@@ -260,5 +261,55 @@ describe("EnvironmentDetail", () => {
 		);
 		const sortedVersions = [...versions].sort((a, b) => a.localeCompare(b));
 		expect(versions).toEqual(sortedVersions);
+	});
+
+	it("shows conda badge for conda packages and pip badge for pypi packages", async () => {
+		const { baseElement } = renderDetail();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
+
+		const badges = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-source"]');
+		const labels = Array.from(badges).map((b) => b.textContent?.trim());
+
+		// The mock data has 7 conda packages and 1 pip package
+		expect(labels.filter((l) => l === "conda")).toHaveLength(7);
+		expect(labels.filter((l) => l === "pip")).toHaveLength(1);
+	});
+
+	it("sorts packages by source when the Source header is clicked", async () => {
+		const { baseElement } = renderDetail();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
+
+		// Click source header to sort by source ascending (conda before pip)
+		const sourceButton = screen.getByRole("button", { name: /source/i });
+		await sourceButton.click();
+
+		const badges = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-source"]');
+		const labels = Array.from(badges).map((b) => b.textContent?.trim());
+
+		// All conda packages should appear before pip packages in ascending order
+		const firstPipIndex = labels.indexOf("pip");
+		const lastCondaIndex = labels.lastIndexOf("conda");
+		expect(lastCondaIndex).toBeLessThan(firstPipIndex);
+	});
+
+	it("toggles sort direction when clicking the same column header again", async () => {
+		const { baseElement } = renderDetail();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
+
+		// Default sort is name ascending. Clicking the name header toggles to descending.
+		const nameButton = screen.getByRole("columnheader", { name: /package/i }).getByRole("button");
+		await nameButton.click();
+
+		// Extract names and verify descending order
+		const rows = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]');
+		const names = Array.from(rows).map((row) => row.querySelectorAll("td")[0]?.textContent ?? "");
+		const sortedDesc = [...names].sort((a, b) => b.localeCompare(a));
+		expect(names).toEqual(sortedDesc);
 	});
 });

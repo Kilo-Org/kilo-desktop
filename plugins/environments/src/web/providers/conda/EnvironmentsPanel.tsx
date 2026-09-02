@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useSyncExternalStore } from "react";
 
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
@@ -11,6 +11,12 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/select";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
@@ -54,13 +60,47 @@ const PAGE_SIZE_OPTIONS = [
  * The panel uses `data-qa-id` attributes for browser and e2e tests
  * following the repo convention (see `docs/TESTING.md`).
  */
+/**
+ * Read the `env` search param from the shell location. When a user selects
+ * an environment, we navigate to `?env=<prefix>` via `sdk.navigate`; going
+ * back clears the param. This keeps TanStack Router's history tracking
+ * intact — no raw `window.history.pushState` that clobbers `__TSR_index`.
+ */
+function useSelectedPrefix(sdk: ReturnType<typeof useSdk<CondaService>>): string | undefined {
+	const subscribe = useCallback((fn: () => void) => sdk.location.subscribe(fn), [sdk]);
+	const getSnapshot = useCallback(() => {
+		const env = sdk.location.peek().search.env;
+		return typeof env === "string" && env ? env : undefined;
+	}, [sdk]);
+	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
 export function EnvironmentsPanel() {
 	const sdk = useSdk<CondaService>("environments");
 	const envs = useSdkQuery(sdk, "conda.envs.list");
-	const [selectedEnv, setSelectedEnv] = useState<CondaEnv | null>(null);
+	const selectedPrefix = useSelectedPrefix(sdk);
+
+	const selectEnv = useCallback(
+		(env: CondaEnv) => {
+			const currentPath = sdk.location.peek().path;
+			sdk.navigate(currentPath, { search: { env: env.prefix } });
+		},
+		[sdk],
+	);
+
+	const goBack = useCallback(() => {
+		const currentPath = sdk.location.peek().path;
+		sdk.navigate(currentPath, { search: {} });
+	}, [sdk]);
+
+	// Resolve the CondaEnv object from the prefix in the search param.
+	const selectedEnv = useMemo(() => {
+		if (!selectedPrefix || !envs.data) return null;
+		return envs.data.find((e) => e.prefix === selectedPrefix) ?? null;
+	}, [selectedPrefix, envs.data]);
 
 	if (selectedEnv) {
-		return <EnvironmentDetail env={selectedEnv} onBack={() => setSelectedEnv(null)} />;
+		return <EnvironmentDetail env={selectedEnv} onBack={goBack} />;
 	}
 
 	if (envs.isPending) {
@@ -93,7 +133,7 @@ export function EnvironmentsPanel() {
 		);
 	}
 
-	return <EnvironmentsTable rows={rows} onSelectEnv={setSelectedEnv} />;
+	return <EnvironmentsTable rows={rows} onSelectEnv={selectEnv} />;
 }
 
 interface EnvironmentsTableProps {
@@ -105,7 +145,7 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 	const [currentPage, setCurrentPage] = useState(1);
-	const [itemsPerPage, setItemsPerPage] = useState(10);
+	const [itemsPerPage, setItemsPerPage] = useState(15);
 
 	const processedEnvs = useMemo(() => {
 		let result = [...rows];
@@ -171,197 +211,211 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 	}, [effectivePage, totalPages]);
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col gap-4" data-qa-id="environments-controls">
-			{/* Search bar */}
-			<div className="relative max-w-sm">
-				<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-				<Input
-					id="environments-search"
-					placeholder="Search"
-					value={searchQuery}
-					onChange={handleSearchChange}
-					className="pl-9"
-					data-qa-id="environments-search-input"
-				/>
-			</div>
+		<TooltipProvider>
+			<div className="flex min-h-0 flex-1 flex-col gap-4" data-qa-id="environments-controls">
+				{/* Search bar */}
+				<div className="relative max-w-sm">
+					<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+					<Input
+						id="environments-search"
+						placeholder="Search"
+						value={searchQuery}
+						onChange={handleSearchChange}
+						className="pl-9"
+						data-qa-id="environments-search-input"
+					/>
+				</div>
 
-			{/* Item count */}
-			<div className="text-muted-foreground text-sm" data-qa-id="environments-results-info">
-				{totalItems} {totalItems === 1 ? "item" : "items"}
-			</div>
+				{/* Item count */}
+				<div className="text-muted-foreground text-sm" data-qa-id="environments-results-info">
+					{totalItems} {totalItems === 1 ? "item" : "items"}
+				</div>
 
-			{/* Table */}
-			{paginatedEnvs.length === 0 ? (
-				<p className="text-muted-foreground text-sm" data-qa-id="environments-conda-empty-filtered">
-					No conda environments match the current filters.
-				</p>
-			) : (
-				<div className="min-h-0 overflow-auto rounded-lg border">
-					<table className="w-full table-fixed border-separate border-spacing-0">
-						<caption className="sr-only">Conda environments</caption>
-						<thead className="bg-background sticky top-0 z-10">
-							<tr>
-								{/*
-								 * `aria-sort` on the th (not the button) is what assistive tech
-								 * reads for sort state; the icon alone is invisible to it.
-								 */}
-								<th
-									scope="col"
-									aria-sort={sortOrder === "asc" ? "ascending" : "descending"}
-									className="border-b p-0 text-left text-sm font-medium"
-								>
-									<button
-										type="button"
-										className="hover:bg-foreground/5 flex w-full items-center gap-1 px-4 py-3 text-left transition-colors"
-										onClick={handleSortToggle}
-										data-qa-id="environments-sort-toggle"
+				{/* Table */}
+				{paginatedEnvs.length === 0 ? (
+					<p
+						className="text-muted-foreground text-sm"
+						data-qa-id="environments-conda-empty-filtered"
+					>
+						No conda environments match the current filters.
+					</p>
+				) : (
+					<div className="min-h-0 overflow-auto rounded-lg border">
+						<table className="w-full table-fixed border-separate border-spacing-0">
+							<caption className="sr-only">Conda environments</caption>
+							<thead className="bg-background sticky top-0 z-10">
+								<tr>
+									{/*
+									 * `aria-sort` on the th (not the button) is what assistive tech
+									 * reads for sort state; the icon alone is invisible to it.
+									 */}
+									<th
+										scope="col"
+										aria-sort={sortOrder === "asc" ? "ascending" : "descending"}
+										className="border-b p-0 text-left text-sm font-medium"
 									>
-										Name
-										{sortOrder === "asc" ? (
-											<ArrowDownIcon className="size-3.5" aria-hidden="true" />
-										) : (
-											<ArrowUpIcon className="size-3.5" aria-hidden="true" />
-										)}
-										<span className="sr-only">
-											{sortOrder === "asc" ? "sorted ascending" : "sorted descending"}
-										</span>
-									</button>
-								</th>
-								<th
-									scope="col"
-									className="text-muted-foreground border-b px-4 py-3 text-left text-sm font-medium"
-								>
-									Prefix
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							{/*
-							 * Row highlight tracks the pointer. Anaconda Desktop's grid tints
-							 * the hovered row with the foreground at ~11% (Kendo's
-							 * `$kendo-table-hover-bg`); `bg-foreground/10` is this palette's
-							 * nearest step and matches the hover already used on buttons.
-							 */}
-							{paginatedEnvs.map((env) => (
-								<tr
-									key={env.prefix}
-									role="button"
-									tabIndex={0}
-									className="hover:bg-foreground/10 group cursor-pointer transition-colors"
-									data-qa-id="environments-conda-row"
-									onClick={() => onSelectEnv(env)}
-									onKeyDown={(e) => {
-										if (e.key === "Enter" || e.key === " ") {
-											e.preventDefault();
-											onSelectEnv(env);
-										}
-									}}
-								>
-									<td
-										className="border-b px-4 py-3 font-medium group-last:border-b-0"
-										data-qa-id="environments-conda-name"
+										<button
+											type="button"
+											className="hover:bg-foreground/5 flex w-full items-center gap-1 px-4 py-3 text-left transition-colors"
+											onClick={handleSortToggle}
+											data-qa-id="environments-sort-toggle"
+										>
+											Name
+											{sortOrder === "asc" ? (
+												<ArrowDownIcon className="size-3.5" aria-hidden="true" />
+											) : (
+												<ArrowUpIcon className="size-3.5" aria-hidden="true" />
+											)}
+											<span className="sr-only">
+												{sortOrder === "asc" ? "sorted ascending" : "sorted descending"}
+											</span>
+										</button>
+									</th>
+									<th
+										scope="col"
+										className="text-muted-foreground border-b px-4 py-3 text-left text-sm font-medium"
 									>
-										{environmentDisplayName(env)}
-									</td>
-									<td
-										className="text-muted-foreground truncate border-b px-4 py-3 font-mono text-sm group-last:border-b-0"
-										data-qa-id="environments-conda-prefix"
-									>
-										{env.prefix}
-									</td>
+										Prefix
+									</th>
 								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			)}
-
-			{/*
-			 * Hidden when the filters match nothing: a pager over an empty result
-			 * set would render a nonsensical "1 – 0 of 0 items" range.
-			 */}
-			{totalItems > 0 && (
-				<div
-					className="flex items-center justify-between gap-4"
-					data-qa-id="environments-pagination"
-				>
-					{/* Page navigation */}
-					<div className="flex items-center gap-1">
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => goToPage(1)}
-							disabled={effectivePage === 1}
-							aria-label="First page"
-						>
-							<ChevronsLeftIcon className="size-4" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => goToPage(effectivePage - 1)}
-							disabled={effectivePage === 1}
-							data-qa-id="environments-pagination-prev"
-							aria-label="Previous page"
-						>
-							<ChevronLeftIcon className="size-4" />
-						</Button>
-
-						{pageNumbers.map((page) => (
-							<Button
-								key={page}
-								variant={page === effectivePage ? "default" : "ghost"}
-								size="sm"
-								onClick={() => goToPage(page)}
-								className="min-w-8"
-							>
-								{page}
-							</Button>
-						))}
-
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => goToPage(effectivePage + 1)}
-							disabled={effectivePage === totalPages}
-							data-qa-id="environments-pagination-next"
-							aria-label="Next page"
-						>
-							<ChevronRightIcon className="size-4" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => goToPage(totalPages)}
-							disabled={effectivePage === totalPages}
-							aria-label="Last page"
-						>
-							<ChevronsRightIcon className="size-4" />
-						</Button>
-					</div>
-
-					{/* Items per page + range indicator */}
-					<div className="flex items-center gap-3">
-						<Select value={String(itemsPerPage)} onValueChange={handleItemsPerPageChange}>
-							<SelectTrigger className="w-16" data-qa-id="environments-items-per-page">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{PAGE_SIZE_OPTIONS.map((opt) => (
-									<SelectItem key={opt.value} value={opt.value}>
-										{opt.label}
-									</SelectItem>
+							</thead>
+							<tbody>
+								{/*
+								 * Row highlight tracks the pointer. Anaconda Desktop's grid tints
+								 * the hovered row with the foreground at ~11% (Kendo's
+								 * `$kendo-table-hover-bg`); `bg-foreground/10` is this palette's
+								 * nearest step and matches the hover already used on buttons.
+								 */}
+								{paginatedEnvs.map((env) => (
+									<tr
+										key={env.prefix}
+										role="button"
+										tabIndex={0}
+										className="hover:bg-foreground/10 group cursor-pointer transition-colors"
+										data-qa-id="environments-conda-row"
+										onClick={() => onSelectEnv(env)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" || e.key === " ") {
+												e.preventDefault();
+												onSelectEnv(env);
+											}
+										}}
+									>
+										<td
+											className="border-b px-4 py-3 font-medium group-last:border-b-0"
+											data-qa-id="environments-conda-name"
+										>
+											{environmentDisplayName(env)}
+										</td>
+										<td
+											className="text-muted-foreground border-b px-4 py-3 font-mono text-sm group-last:border-b-0"
+											data-qa-id="environments-conda-prefix"
+										>
+											<Tooltip>
+												<TooltipTrigger render={<span className="block cursor-default truncate" />}>
+													{env.prefix}
+												</TooltipTrigger>
+												<TooltipContent side="bottom" align="start">
+													{env.prefix}
+												</TooltipContent>
+											</Tooltip>
+										</td>
+									</tr>
 								))}
-							</SelectContent>
-						</Select>
-						<span className="text-muted-foreground text-sm whitespace-nowrap">items per page</span>
-						<span className="text-muted-foreground text-sm whitespace-nowrap">
-							{startIndex + 1} – {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
-							items
-						</span>
+							</tbody>
+						</table>
 					</div>
-				</div>
-			)}
-		</div>
+				)}
+
+				{/*
+				 * Hidden when the filters match nothing: a pager over an empty result
+				 * set would render a nonsensical "1 – 0 of 0 items" range.
+				 */}
+				{totalItems > 0 && (
+					<div
+						className="flex items-center justify-between gap-4"
+						data-qa-id="environments-pagination"
+					>
+						{/* Page navigation */}
+						<div className="flex items-center gap-1">
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => goToPage(1)}
+								disabled={effectivePage === 1}
+								aria-label="First page"
+							>
+								<ChevronsLeftIcon className="size-4" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => goToPage(effectivePage - 1)}
+								disabled={effectivePage === 1}
+								data-qa-id="environments-pagination-prev"
+								aria-label="Previous page"
+							>
+								<ChevronLeftIcon className="size-4" />
+							</Button>
+
+							{pageNumbers.map((page) => (
+								<Button
+									key={page}
+									variant={page === effectivePage ? "default" : "ghost"}
+									size="sm"
+									onClick={() => goToPage(page)}
+									className="min-w-8"
+								>
+									{page}
+								</Button>
+							))}
+
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => goToPage(effectivePage + 1)}
+								disabled={effectivePage === totalPages}
+								data-qa-id="environments-pagination-next"
+								aria-label="Next page"
+							>
+								<ChevronRightIcon className="size-4" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => goToPage(totalPages)}
+								disabled={effectivePage === totalPages}
+								aria-label="Last page"
+							>
+								<ChevronsRightIcon className="size-4" />
+							</Button>
+						</div>
+
+						{/* Items per page + range indicator */}
+						<div className="flex items-center gap-3">
+							<Select value={String(itemsPerPage)} onValueChange={handleItemsPerPageChange}>
+								<SelectTrigger className="w-16" data-qa-id="environments-items-per-page">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{PAGE_SIZE_OPTIONS.map((opt) => (
+										<SelectItem key={opt.value} value={opt.value}>
+											{opt.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<span className="text-muted-foreground text-sm whitespace-nowrap">
+								items per page
+							</span>
+							<span className="text-muted-foreground text-sm whitespace-nowrap">
+								{startIndex + 1} – {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
+								items
+							</span>
+						</div>
+					</div>
+				)}
+			</div>
+		</TooltipProvider>
 	);
 }

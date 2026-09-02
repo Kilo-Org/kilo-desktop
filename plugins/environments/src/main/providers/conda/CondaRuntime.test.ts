@@ -174,11 +174,15 @@ describe("CondaRuntime", () => {
 		try {
 			expect(result.prefixPath).toBe(path.posix.join(condaFilesRoot, "envs", "local-inference"));
 			expect(create).toHaveBeenCalledTimes(1);
-			expect(create).toHaveBeenCalledWith({
-				name: "local-inference",
-				packages: ["anaconda::llama.cpp=1.2", "python=3.12"],
-				channels: ["anaconda", "defaults"],
-			});
+			expect(create).toHaveBeenCalledWith(
+				{
+					name: "local-inference",
+					packages: ["anaconda::llama.cpp=1.2", "python=3.12"],
+					channels: ["anaconda", "defaults"],
+				},
+				undefined,
+				{ prefix: path.posix.join(condaFilesRoot, "envs", "local-inference") },
+			);
 		} finally {
 			create.mockRestore();
 		}

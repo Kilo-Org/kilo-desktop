@@ -129,7 +129,9 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 		const backend = this.#ensureBackend();
 		const channels = resolveChannels(packages);
 		this.#logger.info(`Creating conda environment "${name}" at ${prefixPath}.`);
-		await backend.create({ name, packages: packages as string[], channels });
+		await backend.create({ name, packages: packages as string[], channels }, undefined, {
+			prefix: prefixPath,
+		});
 		if (await ready(prefixPath, paths)) await writeStamp(prefixPath, packages, paths);
 		return { condaBinPath: "", prefixPath };
 	}

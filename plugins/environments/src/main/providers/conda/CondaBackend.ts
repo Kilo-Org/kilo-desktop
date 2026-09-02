@@ -50,10 +50,27 @@ export interface CondaCallContext {
  * Every method takes {@link CondaCallContext} so cancellation and
  * progress-forwarding stay uniform.
  */
+export interface CondaCreateOptions {
+	/**
+	 * When provided, the environment is created at this exact filesystem
+	 * prefix instead of letting the backend choose a location based on
+	 * `name`. Used by {@link CondaRuntime} so the isolated `condaFilesRoot`
+	 * is respected regardless of the bridge's own `envs_dirs` configuration.
+	 *
+	 * Intentionally NOT part of the public `CondaEnvsCreateInput` contract
+	 * so it cannot be set via the MCP-exposed `conda.envs.create` channel.
+	 */
+	readonly prefix?: string;
+}
+
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
 
-	create(input: CondaEnvsCreateInput, ctx?: CondaCallContext): Promise<CondaEnv>;
+	create(
+		input: CondaEnvsCreateInput,
+		ctx?: CondaCallContext,
+		options?: CondaCreateOptions,
+	): Promise<CondaEnv>;
 	remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void>;
 
 	listPackages(

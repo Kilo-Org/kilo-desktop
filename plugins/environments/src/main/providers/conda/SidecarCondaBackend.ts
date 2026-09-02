@@ -57,7 +57,7 @@ import type {
 	CondaPackagesRemoveResult,
 	EnvironmentName,
 } from "../../../contracts/providers/conda.js";
-import type { CondaBackend, CondaCallContext } from "./CondaBackend.js";
+import type { CondaBackend, CondaCallContext, CondaCreateOptions } from "./CondaBackend.js";
 
 const MAX_RESTART_ATTEMPTS = 3;
 const BASE_RESTART_DELAY_MS = 1000;
@@ -135,11 +135,18 @@ export class SidecarCondaBackend implements CondaBackend {
 		}));
 	}
 
-	async create(input: CondaEnvsCreateInput, ctx?: CondaCallContext): Promise<CondaEnv> {
+	async create(
+		input: CondaEnvsCreateInput,
+		ctx?: CondaCallContext,
+		options?: CondaCreateOptions,
+	): Promise<CondaEnv> {
 		const result = await this.#call<TransactionResult>(
 			"conda.create",
 			{
-				name: input.name,
+				// When a prefix is provided, send it instead of the name so the
+				// bridge creates the environment at the exact requested location
+				// rather than under its own default envs_dirs.
+				...(options?.prefix ? { prefix: options.prefix } : { name: input.name }),
 				packages: input.packages ?? [],
 				channels: input.channels ?? undefined,
 				skip_preview: true,

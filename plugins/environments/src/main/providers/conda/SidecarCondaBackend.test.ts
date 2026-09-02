@@ -179,6 +179,40 @@ describe("SidecarCondaBackend", () => {
 				expect.anything(),
 			);
 		});
+
+		it("sends prefix instead of name when prefix option is provided", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create") {
+					return Promise.resolve({
+						prefix: "/custom/root/envs/newenv",
+						success: true,
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.create({ name: "newenv", packages: ["numpy"] }, undefined, {
+				prefix: "/custom/root/envs/newenv",
+			});
+
+			expect(result).toEqual({
+				name: "newenv",
+				prefix: "/custom/root/envs/newenv",
+			});
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.create",
+				{
+					prefix: "/custom/root/envs/newenv",
+					packages: ["numpy"],
+					channels: undefined,
+					skip_preview: true,
+				},
+				expect.anything(),
+			);
+		});
 	});
 
 	describe("remove()", () => {

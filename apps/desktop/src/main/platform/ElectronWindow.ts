@@ -36,12 +36,15 @@ export class ElectronWindow {
 		readonly deferShow?: boolean;
 	}): BrowserWindow {
 		const chrome = chromeFor(this.shouldUseDarkColors());
+		const appName = app.getName();
 		const window = new BrowserWindow({
-			title: app.getName(),
+			title: appName,
+			name: appName,
 			width: 1280,
 			height: 860,
 			minWidth: 720,
 			minHeight: 520,
+			windowStatePersistence: true,
 			show: false,
 			backgroundColor: windowBackgroundFor(this.shouldUseDarkColors()),
 			...systemMaterialOptions(),

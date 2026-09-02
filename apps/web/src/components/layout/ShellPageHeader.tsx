@@ -62,7 +62,7 @@ export function ShellPageHeader({ title, leading, actions, pageProps }: ShellPag
 
 	return (
 		<header
-			className="drag-region border-border bg-background dark:border-muted-foreground/15 flex h-12 shrink-0 items-center border-b pr-[calc(0.75rem+env(titlebar-area-width,0px))] pl-3"
+			className="drag-region border-border bg-background dark:border-muted-foreground/15 flex h-12 shrink-0 items-center border-b pr-[calc(0.75rem+var(--window-controls-width))] pl-3"
 			data-qa-id="shell-page-header"
 		>
 			<ShellSidebarToggle open={open} />

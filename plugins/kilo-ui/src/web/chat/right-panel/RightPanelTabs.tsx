@@ -123,7 +123,7 @@ export const RightPanelTabs: FC<RightPanelTabsProps> = ({
 			data-right-panel-maximized={maximized ? "true" : "false"}
 		>
 			<div
-				className="border-border dark:border-muted-foreground/15 flex h-11 shrink-0 items-center gap-1 border-b pr-[calc(0.75rem+env(titlebar-area-width,0px))] pl-2"
+				className="border-border dark:border-muted-foreground/15 flex h-11 shrink-0 items-center gap-1 border-b pr-3 pl-2"
 				data-qa-id="chat-right-panel-tabbar"
 			>
 				<div

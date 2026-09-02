@@ -19,6 +19,9 @@
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
 	--shell-glass-opacity: 64%;
+	--window-controls-width: calc(
+		100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
+	);
 	--update: var(--success-foreground);
 	--update-surface: color-mix(in oklch, var(--primary) 12%, transparent);
 	--update-surface-hover: color-mix(in oklch, var(--primary) 18%, transparent);

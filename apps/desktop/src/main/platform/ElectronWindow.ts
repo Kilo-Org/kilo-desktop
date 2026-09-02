@@ -17,6 +17,7 @@ import type { ElectronShell } from "./ElectronShell.js";
 
 /** Matches the app header band (`h-12` = 48px). */
 const TITLEBAR_HEIGHT = 48;
+const TITLEBAR_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1;
 const TRAFFIC_LIGHT_SIZE = 14;
 
 export class ElectronWindow {
@@ -197,7 +198,7 @@ function titleBarOptions(chrome: ThemeChromeColors): BrowserWindowConstructorOpt
 	return {
 		titleBarStyle: "hidden",
 		titleBarOverlay: {
-			height: TITLEBAR_HEIGHT,
+			height: TITLEBAR_OVERLAY_HEIGHT,
 			color: chrome.background,
 			symbolColor: chrome.foreground,
 		},

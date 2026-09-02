@@ -119,6 +119,7 @@ describe("ElectronWindow theme chrome", () => {
 		expect(createdWindows[0]?.options.titleBarOverlay).toMatchObject({
 			color: themeChromeColors.dark.background,
 			symbolColor: themeChromeColors.dark.foreground,
+			height: 47,
 		});
 	});
 

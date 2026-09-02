@@ -10,7 +10,7 @@ import type {
 import type { CondaBackend } from "./CondaBackend.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import { registerCondaHandlers } from "./handlers.js";
-import { resolveBridgeLaunchInfo } from "./resolveBridgePath.js";
+import { resolveBridge } from "./resolveBridgePath.js";
 import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
 
 /**
@@ -41,18 +41,19 @@ export class CondaProvider implements EnvironmentProvider {
 	#backend: CondaBackend | undefined;
 
 	async boot(ctx: ProviderBootContext): Promise<void> {
-		const launchInfo = resolveBridgeLaunchInfo();
-		if (!launchInfo) {
+		const result = resolveBridge();
+		if (result.kind === "not-found") {
 			throw new Error(
-				"[conda-provider] anaconda-bridge-sidecar payload not found. " +
-					"Ensure the bridge is packaged or BRIDGE_PAYLOAD is set.",
+				`[conda-provider] anaconda-bridge-sidecar payload not found.\n` +
+					`Searched:\n${result.searchedPaths.map((p) => `  - ${p}`).join("\n")}\n` +
+					`Ensure the bridge is packaged or set BRIDGE_PAYLOAD.`,
 			);
 		}
 		ctx.logger.info(
-			`[conda-provider] Using anaconda-bridge-sidecar v${launchInfo.version}: ${launchInfo.command.join(" ")}`,
+			`[conda-provider] Using anaconda-bridge-sidecar v${result.info.version}: ${result.info.command.join(" ")}`,
 		);
 		this.#backend = new SidecarCondaBackend({
-			command: launchInfo.command,
+			command: result.info.command,
 			logger: ctx.logger,
 		});
 	}

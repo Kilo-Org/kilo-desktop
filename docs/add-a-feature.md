@@ -30,7 +30,7 @@ A feature ships two halves that communicate only through the SDK:
 
 ### Reporting boot progress
 
-If `mainRegister` does non-trivial setup work (staging a bundled runtime, running
+If `mainRegister` does non-trivial setup work (resolving a bundled payload, running
 migrations against a large database), call
 `mainSdk.boot.reportProgress("Preparing …")` to surface a message to the host
 while the shell is still starting up. The hook is delivered to the boot-progress

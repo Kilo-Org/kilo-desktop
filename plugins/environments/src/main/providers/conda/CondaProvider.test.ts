@@ -56,10 +56,13 @@ describe("CondaProvider", () => {
 		const provider = new CondaProvider();
 		const mainSdk = createFakeMainSdk({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
-		vi.spyOn(resolveBridge, "resolveBridgeLaunchInfo").mockReturnValue({
-			command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
-			payloadRoot: "/fake/bridge",
-			version: "9.9.9",
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "found",
+			info: {
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			},
 		});
 
 		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
@@ -80,24 +83,35 @@ describe("CondaProvider", () => {
 		expect(names.sort()).toEqual(["conda.envs.create", "conda.envs.delete", "conda.envs.list"]);
 	});
 
-	it("boot() throws when the bridge payload is missing", async () => {
-		vi.spyOn(resolveBridge, "resolveBridgeLaunchInfo").mockReturnValue(null);
+	it("boot() throws with searched paths when the bridge payload is missing", async () => {
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "not-found",
+			searchedPaths: ["/fake/resources/bridge", "/fake/plugin/resources/bridge"],
+		});
 		const provider = new CondaProvider();
 		const mainSdk = createFakeMainSdk({ featureId: "environments" });
 
-		await expect(
-			provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger }),
-		).rejects.toThrow(/anaconda-bridge-sidecar payload not found/);
+		const error = await provider
+			.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger })
+			.catch((e: Error) => e);
+
+		expect(error).toBeInstanceOf(Error);
+		expect(error!.message).toMatch(/anaconda-bridge-sidecar payload not found/);
+		expect(error!.message).toContain("/fake/resources/bridge");
+		expect(error!.message).toContain("/fake/plugin/resources/bridge");
 
 		mainSdk.dispose();
 	});
 
 	it("onDispose() tears down the sidecar backend (kills the bridge process)", async () => {
 		const dispose = vi.spyOn(SidecarCondaBackend.prototype, "dispose").mockImplementation(() => {});
-		vi.spyOn(resolveBridge, "resolveBridgeLaunchInfo").mockReturnValue({
-			command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
-			payloadRoot: "/fake/bridge",
-			version: "9.9.9",
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "found",
+			info: {
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			},
 		});
 
 		const provider = new CondaProvider();

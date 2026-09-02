@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveBridgeBinaryPath, resolveBridgeLaunchInfo } from "./resolveBridgePath.js";
+import {
+	resolveBridge,
+	resolveBridgeBinaryPath,
+	resolveBridgeLaunchInfo,
+} from "./resolveBridgePath.js";
 
 function createFakePayload(root: string): string {
 	const bridgeDir = path.join(root, "resources", "bridge");
@@ -165,6 +169,58 @@ describe("resolveBridgeLaunchInfo", () => {
 
 		const result = resolveBridgeLaunchInfo({ isPackaged: false, pluginRoot: tempDir });
 		expect(result).toBeNull();
+	});
+});
+
+describe("resolveBridge", () => {
+	let tempDir: string;
+
+	beforeEach(() => {
+		tempDir = mkdtempSync(path.join(tmpdir(), "bridge-resolve-"));
+		vi.stubEnv("BRIDGE_PAYLOAD", "");
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("returns kind 'found' with info when payload exists", () => {
+		createFakePayload(tempDir);
+		const result = resolveBridge({ isPackaged: false, pluginRoot: tempDir });
+		expect(result.kind).toBe("found");
+		expect(result.kind === "found" && result.info.version).toBe("0.1.0");
+	});
+
+	it("returns kind 'not-found' with searchedPaths when no payload exists", () => {
+		const result = resolveBridge({
+			isPackaged: false,
+			pluginRoot: path.join(tempDir, "nonexistent"),
+		});
+		expect(result.kind).toBe("not-found");
+		expect(result.kind === "not-found" && result.searchedPaths).toEqual([
+			path.join(tempDir, "nonexistent", "resources", "bridge"),
+		]);
+	});
+
+	it("includes the BRIDGE_PAYLOAD path in searchedPaths when env var is set but invalid", () => {
+		const fakePath = path.join(tempDir, "bad-payload");
+		vi.stubEnv("BRIDGE_PAYLOAD", fakePath);
+		const result = resolveBridge();
+		expect(result.kind).toBe("not-found");
+		expect(result.kind === "not-found" && result.searchedPaths).toEqual([fakePath]);
+	});
+
+	it("includes resourcesPath in searchedPaths for packaged mode", () => {
+		const resourcesPath = path.join(tempDir, "app-resources");
+		const result = resolveBridge({
+			isPackaged: true,
+			resourcesPath,
+			pluginRoot: path.join(tempDir, "nonexistent"),
+		});
+		expect(result.kind).toBe("not-found");
+		if (result.kind === "not-found") {
+			expect(result.searchedPaths[0]).toBe(path.join(resourcesPath, "bridge"));
+		}
 	});
 });
 

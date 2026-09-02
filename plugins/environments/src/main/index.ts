@@ -1,8 +1,10 @@
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import type { CondaEnvironmentRuntime } from "../contracts/capabilities.js";
+import { environmentsStatusContract } from "../contracts/status.js";
 
 import { JOB_PROGRESS_LOCAL_EVENT, JobQueue } from "./JobQueue.js";
+import type { EnvironmentProvider } from "./EnvironmentProvider.js";
 import { ProviderRegistry } from "./ProviderRegistry.js";
 import { CondaRuntime } from "./providers/conda/CondaRuntime.js";
 import { CondaProvider } from "./providers/conda/index.js";
@@ -26,9 +28,9 @@ interface LocalMcpAppsCapability extends Record<string, unknown> {
  * When this evaluates to `false` (the default, used when the flag is missing,
  * the provider errors, the user is not in an enabled cohort, or the
  * feature-flag capability itself is unavailable) the environments UI provider
- * does not boot and the conda staging pipeline never runs. The lightweight
+ * does not boot and the bridge sidecar is not started. The lightweight
  * main-process runtime capability remains available to other plugins and
- * stages conda only when they call it.
+ * resolves the bridge lazily only when they call it.
  *
  * Kept in sync with the renderer-side constant in
  * `plugins/environments/src/web/EnvironmentsPage.tsx`.
@@ -56,9 +58,9 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  * Constructing and exposing it performs no I/O; when the flag is off, the
  * bridge is not started until a consumer actually calls `ensureEnvironment`.
  *
- * When enabled: boots registered providers sequentially (staging is one-time,
- * first-launch work), then binds their handlers. Async so the shell can
- * await staging and deliver progress to the splash throughout.
+ * When enabled: boots registered providers sequentially (resolving the bridge
+ * payload, constructing the backend), then binds their handlers. Async so
+ * the shell can await provider boot and deliver progress to the splash.
  *
  * A single {@link JobQueue} is created here and shared across every
  * registered provider — sub-issue 5's shared write-serialization + read
@@ -71,7 +73,7 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  * The gate reads the real LaunchDarkly value at boot because
  * `Application#registerIpc` awaits `FeatureFlagService.initialize()` before
  * `bootFeatures` runs. Flipping the flag while the app is running does NOT
- * re-run staging or dispose of providers — a flag toggle only takes effect
+ * re-boot providers or dispose of them — a flag toggle only takes effect
  * on next launch.
  */
 export async function mainRegister(mainSdk: MainSdk): Promise<void> {
@@ -84,6 +86,14 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 		executable: runtime.executable.bind(runtime),
 	} satisfies CondaEnvironmentRuntime;
 	mainSdk.plugins.expose("condaRuntime", condaRuntime);
+
+	// Registered before the flag gate so the renderer never hits an
+	// unregistered channel when querying status (the EnvironmentsPage
+	// component calls useSdkQuery unconditionally due to React hook rules).
+	let providersAvailable = false;
+	mainSdk
+		.channels(environmentsStatusContract)
+		.handle("environments.status", () => ({ providersAvailable }));
 
 	const featureFlag = mainSdk.plugins.get<FeatureFlagCapability>("feature-flag");
 	const flagEnabled = featureFlag?.featureFlag.getFlag<boolean>(FEATURE_FLAG_KEY, false) ?? false;
@@ -101,15 +111,28 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	});
 	mainSdk.onDispose(() => queue.dispose());
 
+	const bootedProviders: EnvironmentProvider[] = [];
 	for (const provider of registry.list()) {
 		if (provider.boot) {
-			await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+			try {
+				await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+				bootedProviders.push(provider);
+			} catch (error) {
+				mainSdk.logger.error(
+					`[environments] provider "${provider.id}" failed to boot — skipping its handlers`,
+					{ error },
+				);
+			}
+		} else {
+			bootedProviders.push(provider);
 		}
 	}
 
+	providersAvailable = bootedProviders.length > 0;
+
 	// Handlers are registered AFTER all providers have booted so they never
 	// serve requests against a not-yet-staged conda binary.
-	for (const provider of registry.list()) {
+	for (const provider of bootedProviders) {
 		provider.registerHandlers({ mainSdk, queue });
 	}
 
@@ -117,13 +140,17 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	// a provider holding a long-lived resource (e.g. CondaProvider's
 	// SidecarCondaBackend, which spawns the Python bridge) would leak it on a
 	// normal app quit — dispose() is otherwise never reached.
-	for (const provider of registry.list()) {
+	for (const provider of bootedProviders) {
 		if (provider.onDispose) {
 			mainSdk.onDispose(() => provider.onDispose!());
 		}
 	}
 
-	mainSdk.logger.info(`boot: ${registry.list().length} provider(s) registered`);
+	mainSdk.logger.info(
+		`boot: ${bootedProviders.length}/${registry.list().length} provider(s) booted`,
+	);
+
+	if (!providersAvailable) return;
 
 	// Register the environments list MCP App HTML with kilo-ui's local
 	// resource registry so it renders as an interactive iframe in chat.

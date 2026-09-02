@@ -9,13 +9,15 @@ import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
 import { CondaProvider } from "./providers/conda/index.js";
 
 vi.mock("./providers/conda/resolveBridgePath.js", () => ({
+	resolveBridge: vi.fn(() => ({ kind: "not-found", searchedPaths: ["/fake/path"] })),
 	resolveBridgeLaunchInfo: vi.fn(() => null),
 	resolveBridgeBinaryPath: vi.fn(() => null),
 }));
 
-import { resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
+import { resolveBridge, resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
 
-const mockedResolveBridge = vi.mocked(resolveBridgeLaunchInfo);
+const mockedResolveBridge = vi.mocked(resolveBridge);
+const mockedResolveBridgeLaunchInfo = vi.mocked(resolveBridgeLaunchInfo);
 
 /**
  * Build a linked SDK pair and (optionally) expose the shell-side
@@ -45,21 +47,25 @@ function createSdkWithFlag(options: { featureFlagEnabled: boolean | null }): {
 	return { mainSdk, getFlag };
 }
 
-/** Configure `resolveBridgeLaunchInfo` to return a valid bridge payload. */
+const FAKE_LAUNCH_INFO = {
+	command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+	payloadRoot: "/fake/bridge",
+	version: "1.0.0",
+} as const;
+
+/** Configure bridge resolution mocks to return a valid bridge payload. */
 function setupFakeBridge(): void {
-	mockedResolveBridge.mockReturnValue({
-		command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
-		payloadRoot: "/fake/bridge",
-		version: "1.0.0",
-	});
+	mockedResolveBridge.mockReturnValue({ kind: "found", info: FAKE_LAUNCH_INFO });
+	mockedResolveBridgeLaunchInfo.mockReturnValue(FAKE_LAUNCH_INFO);
 }
 
 describe("environments plugin main entry", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
-		// Reset the module-level vi.fn mock so a previous test's
+		// Reset module-level vi.fn mocks so a previous test's
 		// `mockReturnValue` does not leak into the next test.
 		mockedResolveBridge.mockReset();
+		mockedResolveBridgeLaunchInfo.mockReset();
 	});
 
 	it("returns a Promise (async mainRegister for provider boot)", async () => {
@@ -79,13 +85,49 @@ describe("environments plugin main entry", () => {
 		expect(mockedResolveBridge).toHaveBeenCalled();
 	});
 
-	it("propagates boot failures (bridge payload not found)", async () => {
-		// resolveBridgeLaunchInfo returns null by default (mock above)
+	it("degrades gracefully when provider boot fails (bridge payload not found)", async () => {
+		// resolveBridge returns not-found by default (mock above)
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
+		const errorSpy = vi.spyOn(mainSdk.logger, "error");
+
+		// mainRegister no longer throws — it catches per-provider and degrades
+		await expect(mainRegister(mainSdk)).resolves.toBeUndefined();
+
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.stringContaining('provider "conda" failed to boot'),
+			expect.objectContaining({ error: expect.any(Error) }),
+		);
+	});
+
+	it("exposes condaRuntime capability even when provider boot fails", async () => {
+		// resolveBridgeLaunchInfo returns null → provider.boot() throws
 		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
 
-		await expect(mainRegister(mainSdk)).rejects.toThrow(
-			/anaconda-bridge-sidecar payload not found/,
-		);
+		await mainRegister(mainSdk);
+
+		const capabilities = mainSdk.plugins.get<EnvironmentsCapabilities>("environments");
+		expect(capabilities?.condaRuntime).toBeDefined();
+		expect(typeof capabilities?.condaRuntime.ensureEnvironment).toBe("function");
+	});
+
+	it("sets providersAvailable to false when all providers fail", async () => {
+		// resolveBridgeLaunchInfo returns null → CondaProvider.boot() throws
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
+
+		await mainRegister(mainSdk);
+
+		const status = await mainSdk.invoke("environments.status");
+		expect(status).toEqual({ providersAvailable: false });
+	});
+
+	it("sets providersAvailable to true when providers boot successfully", async () => {
+		setupFakeBridge();
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
+
+		await mainRegister(mainSdk);
+
+		const status = await mainSdk.invoke("environments.status");
+		expect(status).toEqual({ providersAvailable: true });
 	});
 
 	describe("feature-flag gate (environments-feature)", () => {
@@ -119,6 +161,15 @@ describe("environments plugin main entry", () => {
 			await mainRegister(mainSdk);
 
 			expect(mockedResolveBridge).not.toHaveBeenCalled();
+		});
+
+		it("reports providersAvailable false when the flag is off", async () => {
+			const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: false });
+
+			await mainRegister(mainSdk);
+
+			const status = await mainSdk.invoke("environments.status");
+			expect(status).toEqual({ providersAvailable: false });
 		});
 	});
 

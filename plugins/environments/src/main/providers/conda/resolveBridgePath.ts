@@ -27,6 +27,19 @@ export interface BridgeLaunchInfo {
 	readonly version: string;
 }
 
+export interface BridgeResolutionSuccess {
+	readonly kind: "found";
+	readonly info: BridgeLaunchInfo;
+}
+
+export interface BridgeResolutionFailure {
+	readonly kind: "not-found";
+	/** Absolute paths that were searched (in priority order). */
+	readonly searchedPaths: readonly string[];
+}
+
+export type BridgeResolutionResult = BridgeResolutionSuccess | BridgeResolutionFailure;
+
 interface PayloadManifest {
 	readonly launch: readonly string[];
 	readonly bridge_version: string;
@@ -93,13 +106,20 @@ function buildLaunchInfo(bridgeDir: string): BridgeLaunchInfo | null {
 	return { command, payloadRoot: bridgeDir, version: manifest.bridge_version };
 }
 
-export function resolveBridgeLaunchInfo(
-	options: ResolveBridgeOptions = {},
-): BridgeLaunchInfo | null {
+/**
+ * Primary resolution API. Returns a discriminated result so callers can
+ * log which paths were tried when the payload is absent.
+ */
+export function resolveBridge(options: ResolveBridgeOptions = {}): BridgeResolutionResult {
+	const searchedPaths: string[] = [];
+
 	// 1. Environment variable override (highest priority, for local dev)
 	const envOverride = process.env["BRIDGE_PAYLOAD"]?.trim();
 	if (envOverride) {
-		return buildLaunchInfo(envOverride);
+		searchedPaths.push(envOverride);
+		const info = buildLaunchInfo(envOverride);
+		if (info) return { kind: "found", info };
+		return { kind: "not-found", searchedPaths };
 	}
 
 	// 2. Packaged app: payload is in process.resourcesPath/bridge/
@@ -111,8 +131,10 @@ export function resolveBridgeLaunchInfo(
 			options.resourcesPath ??
 			(process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
 		if (resourcesPath) {
-			const info = buildLaunchInfo(path.join(resourcesPath, "bridge"));
-			if (info) return info;
+			const bridgeDir = path.join(resourcesPath, "bridge");
+			searchedPaths.push(bridgeDir);
+			const info = buildLaunchInfo(bridgeDir);
+			if (info) return { kind: "found", info };
 		}
 	}
 
@@ -125,10 +147,26 @@ export function resolveBridgeLaunchInfo(
 		(typeof __ENVIRONMENTS_PLUGIN_ROOT__ !== "undefined"
 			? __ENVIRONMENTS_PLUGIN_ROOT__
 			: path.resolve(import.meta.dirname, "../../../.."));
-	return buildLaunchInfo(path.join(pluginRoot, "resources", "bridge"));
+	const devBridgeDir = path.join(pluginRoot, "resources", "bridge");
+	searchedPaths.push(devBridgeDir);
+	const info = buildLaunchInfo(devBridgeDir);
+	if (info) return { kind: "found", info };
+
+	return { kind: "not-found", searchedPaths };
 }
 
-// Re-export for backward compat — but the new primary API is resolveBridgeLaunchInfo
+/**
+ * Backward-compatible wrapper returning `BridgeLaunchInfo | null`.
+ * Used by {@link CondaRuntime} which only needs the info, not the
+ * searched-paths diagnostic.
+ */
+export function resolveBridgeLaunchInfo(
+	options: ResolveBridgeOptions = {},
+): BridgeLaunchInfo | null {
+	const result = resolveBridge(options);
+	return result.kind === "found" ? result.info : null;
+}
+
 export function resolveBridgeBinaryPath(options: ResolveBridgeOptions = {}): string | null {
 	const info = resolveBridgeLaunchInfo(options);
 	return info ? (info.command[0] ?? null) : null;

@@ -7,7 +7,7 @@ import type { JobQueue } from "./JobQueue.js";
 
 /**
  * Context passed to `EnvironmentProvider.boot`. Providers run any one-time,
- * expensive setup here (staging a bundled runtime, running migrations, …)
+ * expensive setup here (resolving the bridge payload, constructing the backend, …)
  * during the shell's boot window.
  *
  * Boot progress delivered via `boot.reportProgress` is forwarded to the

@@ -7,7 +7,7 @@ import { packagedExecutable, repoRoot } from "./paths.js";
 
 /**
  * Isolated `--user-data-dir` profiles still share the host keychain and would
- * otherwise show first-run onboarding / conda staging. Every packaged e2e
+ * otherwise show first-run onboarding / conda bootstrap. Every packaged e2e
  * launch — including restart fixtures — must use this env.
  */
 export function packagedAppLaunchEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {

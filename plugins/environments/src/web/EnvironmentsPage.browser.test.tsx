@@ -8,6 +8,7 @@ import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-deskto
 import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
 import { condaContract, type CondaService } from "../contracts/providers/conda.js";
+import { environmentsStatusContract } from "../contracts/status.js";
 import { EnvironmentsPage } from "./EnvironmentsPage";
 
 /**
@@ -22,16 +23,19 @@ import { EnvironmentsPage } from "./EnvironmentsPage";
 function renderPage(
 	options: {
 		flagEnabled?: boolean;
+		providersAvailable?: boolean;
 		list?: CondaService["conda.envs.list"];
 	} = {},
 ) {
 	const flagEnabled = options.flagEnabled ?? true;
+	const providersAvailable = options.providersAvailable ?? true;
 	const list = options.list ?? (async () => []);
 	const flags: Record<string, unknown> = { "environments-feature": flagEnabled };
 	const sdk = createFakeSdk({
 		featureId: "environments",
-		channels: condaContract,
+		channels: { ...condaContract, ...environmentsStatusContract },
 		handlers: {
+			"environments.status": async () => ({ providersAvailable }),
 			"conda.envs.list": list,
 			"conda.envs.create": async () => {
 				throw new Error("not implemented in test");
@@ -165,6 +169,28 @@ describe("EnvironmentsPage", () => {
 			await expect
 				.element(screen.getByTestId("environments-flag-off-message"))
 				.not.toBeInTheDocument();
+		});
+	});
+
+	describe("provider boot status gate", () => {
+		it("renders unavailable message when providers failed to boot", async () => {
+			const { baseElement } = renderPage({ providersAvailable: false });
+			const screen = page.elementLocator(baseElement);
+
+			const root = screen.getByTestId("environments-page");
+			await expect.element(root).toHaveAttribute("data-state", "unavailable");
+
+			await expect.element(screen.getByTestId("environments-unavailable-message")).toBeVisible();
+		});
+
+		it("renders normally when providers are available", async () => {
+			const { baseElement } = renderPage({ providersAvailable: true });
+			const screen = page.elementLocator(baseElement);
+
+			await expect
+				.element(screen.getByTestId("environments-unavailable-message"))
+				.not.toBeInTheDocument();
+			await expect.element(screen.getByRole("region", { name: "Conda" })).toBeInTheDocument();
 		});
 	});
 });

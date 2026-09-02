@@ -1,4 +1,6 @@
-import { useFeatureFlag } from "@anaconda-agentic-desktop/sdk-react";
+import { useFeatureFlag, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+
+import type { EnvironmentsStatusService } from "../contracts/status.js";
 
 import { EnvironmentsPanel as CondaEnvironmentsPanel } from "./providers/conda/EnvironmentsPanel.js";
 
@@ -14,20 +16,22 @@ const FEATURE_FLAG_KEY = "environments-feature";
 /**
  * `/environments` route (plugin.json `routes[0]`).
  *
- * Gated on the `environments-feature` flag. When off (default), a
- * "not enabled" placeholder renders instead of the page — no data
- * fetching, no provider tabs.
+ * Two-gate guard:
+ * 1. **Feature flag** (`environments-feature`) — off by default.
+ * 2. **Provider boot status** (`environments.status`) — when the flag is on
+ *    but no provider booted (e.g. bridge payload missing), the page shows an
+ *    informational placeholder instead of rendering panels whose `sdk.invoke`
+ *    calls would fail with `FeatureError NOT_FOUND`.
  *
  * v1 ships a single provider (Conda). Rather than pretending to be a
  * multi-tab strip before there is a second provider, the page renders the
  * Conda tab as a labelled section — the structure that graduates to a
  * true tab strip once a second provider (uv, pip, ...) is registered.
- * When that happens, this component reads the providers registered in a
- * renderer-side registry (a mirror of `main/ProviderRegistry`) and maps
- * each entry to its panel component.
  */
 export function EnvironmentsPage() {
 	const featureEnabled = useFeatureFlag<boolean>(FEATURE_FLAG_KEY, false);
+	const sdk = useSdk<EnvironmentsStatusService>("environments");
+	const statusQuery = useSdkQuery(sdk, "environments.status");
 
 	if (!featureEnabled) {
 		return (
@@ -39,6 +43,34 @@ export function EnvironmentsPage() {
 				<div className="mx-auto w-full max-w-xl px-5 py-8">
 					<p className="text-muted-foreground text-sm" data-qa-id="environments-flag-off-message">
 						This feature is not enabled for your account.
+					</p>
+				</div>
+			</div>
+		);
+	}
+
+	// Wait for the status query before mounting provider panels. In Electron
+	// mode mainRegister completes before the renderer mounts, so this resolves
+	// instantly. Rendering early would let CondaEnvironmentsPanel call
+	// conda.envs.list against an unregistered handler, flashing a transient
+	// error before the "unavailable" placeholder takes over.
+	if (statusQuery.isLoading) return null;
+
+	const providersAvailable = statusQuery.data?.providersAvailable ?? false;
+	if (!providersAvailable) {
+		return (
+			<div
+				className="flex h-full min-h-0 flex-col"
+				data-qa-id="environments-page"
+				data-state="unavailable"
+			>
+				<div className="mx-auto w-full max-w-xl px-5 py-8">
+					<p
+						className="text-muted-foreground text-sm"
+						data-qa-id="environments-unavailable-message"
+					>
+						Environments is unavailable. The conda bridge payload was not found. Check the
+						application logs for details.
 					</p>
 				</div>
 			</div>

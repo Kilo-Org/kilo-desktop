@@ -506,7 +506,7 @@ describe("SidecarCondaBackend", () => {
 			});
 
 			const backend = createBackend();
-			const result = await backend.listPackages("myenv");
+			const result = await backend.listPackages({ name: "myenv" });
 
 			expect(result).toEqual([
 				{
@@ -718,7 +718,7 @@ describe("SidecarCondaBackend", () => {
 			});
 
 			const backend = createBackend();
-			await expect(backend.install({ envName: "myenv", packages: ["numpy>=99"] })).rejects.toThrow(
+			await expect(backend.install({ name: "myenv", packages: ["numpy>=99"] })).rejects.toThrow(
 				"SOLVE_FAILED",
 			);
 		});
@@ -737,7 +737,7 @@ describe("SidecarCondaBackend", () => {
 			});
 
 			const backend = createBackend();
-			await expect(backend.uninstall({ envName: "myenv", packages: ["numpy"] })).rejects.toThrow(
+			await expect(backend.uninstall({ name: "myenv", packages: ["numpy"] })).rejects.toThrow(
 				"SOLVE_FAILED",
 			);
 		});

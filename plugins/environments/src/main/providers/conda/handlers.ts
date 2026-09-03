@@ -12,6 +12,7 @@ import type {
 	CondaEnvsDistributionsResult,
 	CondaPackagesListInput,
 	CondaPackagesListResult,
+	EnvTarget,
 } from "../../../contracts/providers/conda.js";
 import { condaContract } from "../../../contracts/providers/conda.js";
 import type { JobQueue } from "../../JobQueue.js";
@@ -90,18 +91,12 @@ export function registerCondaHandlers(
 			queue.read({
 				providerId: "conda",
 				opName: "packages.list",
-				args: { envName: input.envName, prefix: input.prefix },
+				args: { name: input.name, prefix: input.prefix },
 				run: (ctx) =>
-					backend
-						.listPackages(
-							input.envName,
-							{ signal: ctx.signal },
-							input.prefix ? { prefix: input.prefix } : undefined,
-						)
-						.then((packages) => ({
-							envName: input.envName,
-							packages,
-						})),
+					backend.listPackages(input, { signal: ctx.signal }).then((packages) => ({
+						envName: envTargetDisplayName(input),
+						packages,
+					})),
 			}),
 	);
 
@@ -171,5 +166,14 @@ async function enqueueEnvsDelete(
 		run: (ctx) => backend.remove(input, { signal: ctx.signal, onProgress: ctx.onProgress }),
 	});
 	await result;
-	return { jobId, name: input.name };
+	return {
+		jobId,
+		name: envTargetDisplayName(input),
+		prefix: input.prefix,
+	};
+}
+
+/** Human-readable label for an env target: the name when available, else the prefix. */
+function envTargetDisplayName(target: EnvTarget): string {
+	return target.name ?? target.prefix ?? "";
 }

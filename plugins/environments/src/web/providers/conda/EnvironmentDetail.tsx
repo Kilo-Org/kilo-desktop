@@ -52,12 +52,8 @@ const PAGE_SIZES = [20, 50, 100] as const;
 export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 	const sdk = useSdk<CondaService>("environments");
 	const displayName = environmentDisplayName(env);
-	// The bridge's `conda.list` accepts "base" as the name for the base
-	// environment (`conda list -n base`). The contract schema requires a
-	// non-empty string so we cannot pass an empty name.
-	const queryName = env.name || "base";
 	const packages = useSdkQuery(sdk, "conda.packages.list", {
-		envName: queryName,
+		name: env.name || undefined,
 		prefix: env.prefix,
 	});
 

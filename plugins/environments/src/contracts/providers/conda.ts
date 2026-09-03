@@ -53,6 +53,50 @@ export const environmentNameSchema = z.string().min(1).max(128).regex(ENVIRONMEN
 export type EnvironmentName = z.infer<typeof environmentNameSchema>;
 
 /**
+ * Absolute on-disk path to an environment root. Rejects a leading `-` so
+ * the value cannot be mistaken for a conda CLI flag. Legitimate absolute
+ * paths on every platform start with `/` (POSIX) or a drive letter
+ * (Windows), never a dash.
+ */
+export const envPrefixSchema = z
+	.string()
+	.min(1)
+	.max(4096)
+	.refine((v) => !v.startsWith("-"), {
+		message: "Prefix must not start with '-' — that would look like a conda CLI flag.",
+	})
+	.refine((v) => /^(?:\/|[A-Za-z]:[/\\])/.test(v), {
+		message: "Prefix must be an absolute path (starts with / or a drive letter).",
+	})
+	// oxlint-disable-next-line no-control-regex -- intentionally rejecting control characters
+	.refine((v) => !/[\u0000-\u001f]/.test(v), {
+		message: "Prefix must not contain control characters.",
+	});
+export type EnvPrefix = z.infer<typeof envPrefixSchema>;
+
+/**
+ * Identifies a conda environment by **name** or **prefix**.
+ *
+ * `conda env list --json` reports `name: ""` for base installs and envs
+ * created with `conda create -p /path` (prefix-addressed envs). Those
+ * environments are fully functional — every conda operation accepts `-p
+ * <prefix>` as an alternative to `-n <name>`. The contract mirrors that:
+ * callers supply whichever identifier they have.
+ *
+ * When both are present, handlers prefer `prefix` because it is
+ * unambiguous (a name can shadow envs across different `envs_dirs`).
+ */
+export const envTargetSchema = z
+	.object({
+		name: environmentNameSchema.optional(),
+		prefix: envPrefixSchema.optional(),
+	})
+	.refine((v) => v.name !== undefined || v.prefix !== undefined, {
+		message: "At least one of `name` or `prefix` must be provided.",
+	});
+export type EnvTarget = z.infer<typeof envTargetSchema>;
+
+/**
  * Raw conda MatchSpec string, e.g. `"numpy"`, `"numpy>=1.24"`,
  * `"conda-forge::pandas=2.*=py311_*"`. The contract accepts any
  * non-empty, single-line, printable string; deeper validation
@@ -167,12 +211,13 @@ export const condaEnvsCreateResultSchema = z.object({
 });
 export type CondaEnvsCreateResult = z.infer<typeof condaEnvsCreateResultSchema>;
 
-export const condaEnvsDeleteInputSchema = z.object({ name: environmentNameSchema });
+export const condaEnvsDeleteInputSchema = envTargetSchema;
 export type CondaEnvsDeleteInput = z.infer<typeof condaEnvsDeleteInputSchema>;
 
 export const condaEnvsDeleteResultSchema = z.object({
 	jobId: jobIdSchema,
-	name: environmentNameSchema,
+	name: z.string(),
+	prefix: envPrefixSchema.optional(),
 });
 export type CondaEnvsDeleteResult = z.infer<typeof condaEnvsDeleteResultSchema>;
 
@@ -249,47 +294,40 @@ export type CondaEnvsDistributionsResult = z.infer<typeof condaEnvsDistributions
 /* Method I/O — packages                                                 */
 /* --------------------------------------------------------------------- */
 
-export const condaPackagesListInputSchema = z.object({
-	envName: environmentNameSchema,
-	prefix: z
-		.string()
-		.min(1)
-		.refine((v) => !v.startsWith("-"), {
-			message: "Prefix must not start with '-' — that would look like a conda CLI flag.",
-		})
-		.optional(),
-});
+export const condaPackagesListInputSchema = envTargetSchema;
 export type CondaPackagesListInput = z.infer<typeof condaPackagesListInputSchema>;
 
 export const condaPackagesListResultSchema = z.object({
-	envName: environmentNameSchema,
+	envName: z.string(),
 	packages: z.array(condaPackageSchema),
 });
 export type CondaPackagesListResult = z.infer<typeof condaPackagesListResultSchema>;
 
-export const condaPackagesInstallInputSchema = z.object({
-	envName: environmentNameSchema,
-	packages: z.array(matchSpecSchema).min(1),
-	channels: z.array(channelSchema).min(1).optional(),
-});
+export const condaPackagesInstallInputSchema = envTargetSchema.and(
+	z.object({
+		packages: z.array(matchSpecSchema).min(1),
+		channels: z.array(channelSchema).min(1).optional(),
+	}),
+);
 export type CondaPackagesInstallInput = z.infer<typeof condaPackagesInstallInputSchema>;
 
 export const condaPackagesInstallResultSchema = z.object({
 	jobId: jobIdSchema,
-	envName: environmentNameSchema,
+	envName: z.string(),
 	installed: z.array(condaPackageSchema),
 });
 export type CondaPackagesInstallResult = z.infer<typeof condaPackagesInstallResultSchema>;
 
-export const condaPackagesRemoveInputSchema = z.object({
-	envName: environmentNameSchema,
-	packages: z.array(matchSpecSchema).min(1),
-});
+export const condaPackagesRemoveInputSchema = envTargetSchema.and(
+	z.object({
+		packages: z.array(matchSpecSchema).min(1),
+	}),
+);
 export type CondaPackagesRemoveInput = z.infer<typeof condaPackagesRemoveInputSchema>;
 
 export const condaPackagesRemoveResultSchema = z.object({
 	jobId: jobIdSchema,
-	envName: environmentNameSchema,
+	envName: z.string(),
 	removed: z.array(z.string().min(1)),
 });
 export type CondaPackagesRemoveResult = z.infer<typeof condaPackagesRemoveResultSchema>;

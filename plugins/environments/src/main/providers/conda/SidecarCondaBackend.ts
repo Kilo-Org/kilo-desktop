@@ -55,13 +55,12 @@ import type {
 	CondaEnvsCloneInput,
 	CondaEnvsCreateFromFileInput,
 	CondaEnvsCreateInput,
-	CondaEnvsDeleteInput,
 	CondaPackage,
 	CondaPackagesInstallInput,
 	CondaPackagesInstallResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
-	EnvironmentName,
+	EnvTarget,
 } from "../../../contracts/providers/conda.js";
 import type { CondaBackend, CondaCallContext, CondaCreateOptions } from "./CondaBackend.js";
 
@@ -215,11 +214,11 @@ export class SidecarCondaBackend implements CondaBackend {
 		};
 	}
 
-	async remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void> {
+	async remove(target: EnvTarget, ctx?: CondaCallContext): Promise<void> {
 		const result = await this.#call<TransactionResult>(
 			"conda.remove",
 			{
-				name: input.name,
+				...resolveTargetParam(target),
 				all: true,
 				skip_preview: true,
 			},
@@ -228,16 +227,12 @@ export class SidecarCondaBackend implements CondaBackend {
 		this.#assertTransactionSuccess(result);
 	}
 
-	async listPackages(
-		envName: EnvironmentName,
-		ctx?: CondaCallContext,
-		options?: { prefix?: string },
-	): Promise<CondaPackage[]> {
-		// Prefer prefix over name for resolution — the bridge's conda context
-		// may not have all envs_dirs configured, so name-based resolution can
-		// fail for environments outside the bridge's own envs directories.
-		const params = options?.prefix ? { prefix: options.prefix } : { name: envName };
-		const result = await this.#call<ListPackagesResult>("conda.list", params, ctx);
+	async listPackages(target: EnvTarget, ctx?: CondaCallContext): Promise<CondaPackage[]> {
+		const result = await this.#call<ListPackagesResult>(
+			"conda.list",
+			resolveTargetParam(target),
+			ctx,
+		);
 		return result.packages.map((pkg) => ({
 			name: pkg.name,
 			version: pkg.version,
@@ -250,10 +245,11 @@ export class SidecarCondaBackend implements CondaBackend {
 		input: CondaPackagesInstallInput,
 		ctx?: CondaCallContext,
 	): Promise<CondaPackagesInstallResult> {
+		const target = resolveTargetParam(input);
 		const result = await this.#call<TransactionResult>(
 			"conda.install",
 			{
-				name: input.envName,
+				...target,
 				packages: input.packages,
 				channels: input.channels ?? undefined,
 				skip_preview: true,
@@ -261,11 +257,11 @@ export class SidecarCondaBackend implements CondaBackend {
 			ctx,
 		);
 		this.#assertTransactionSuccess(result);
-		// After install, fetch the updated package list to report what was installed
-		const packages = await this.listPackages(input.envName, ctx);
+		const packages = await this.listPackages(input, ctx);
 		const installedNames = new Set(input.packages.map((p) => parsePackageName(p)));
 		const installed = packages.filter((p) => installedNames.has(p.name));
-		return { jobId: "", envName: input.envName, installed };
+		const envName = input.name ?? input.prefix ?? "";
+		return { jobId: "", envName, installed };
 	}
 
 	async uninstall(
@@ -275,14 +271,15 @@ export class SidecarCondaBackend implements CondaBackend {
 		const result = await this.#call<TransactionResult>(
 			"conda.remove",
 			{
-				name: input.envName,
+				...resolveTargetParam(input),
 				packages: input.packages,
 				skip_preview: true,
 			},
 			ctx,
 		);
 		this.#assertTransactionSuccess(result);
-		return { jobId: "", envName: input.envName, removed: input.packages };
+		const envName = input.name ?? input.prefix ?? "";
+		return { jobId: "", envName, removed: input.packages };
 	}
 
 	async listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult> {
@@ -581,6 +578,17 @@ function featureError(code: EnvironmentsErrorCode, detail?: string): FeatureErro
 function environmentNameFromPrefix(prefix: string): string {
 	const segments = prefix.split(/[/\\]/).filter((segment) => segment.length > 0);
 	return segments[segments.length - 1] ?? "";
+}
+
+/**
+ * Maps an {@link EnvTarget} to the bridge JSON-RPC param object.
+ * Prefers `prefix` when available because it is unambiguous; falls back
+ * to `name` for named environments.
+ */
+function resolveTargetParam(target: EnvTarget): { name: string } | { prefix: string } {
+	if (target.prefix) return { prefix: target.prefix };
+	if (target.name) return { name: target.name };
+	throw new Error("EnvTarget must have a name or prefix");
 }
 
 /**

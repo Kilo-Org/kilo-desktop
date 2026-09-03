@@ -6,13 +6,12 @@ import type {
 	CondaEnvsCloneInput,
 	CondaEnvsCreateFromFileInput,
 	CondaEnvsCreateInput,
-	CondaEnvsDeleteInput,
 	CondaPackage,
 	CondaPackagesInstallInput,
 	CondaPackagesInstallResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
-	EnvironmentName,
+	EnvTarget,
 } from "../../../contracts/providers/conda.js";
 
 /**
@@ -77,13 +76,9 @@ export interface CondaBackend {
 	): Promise<CondaEnv>;
 	clone(input: CondaEnvsCloneInput, ctx?: CondaCallContext): Promise<CondaEnv>;
 	createFromFile(input: CondaEnvsCreateFromFileInput, ctx?: CondaCallContext): Promise<CondaEnv>;
-	remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void>;
+	remove(target: EnvTarget, ctx?: CondaCallContext): Promise<void>;
 
-	listPackages(
-		envName: EnvironmentName,
-		ctx?: CondaCallContext,
-		options?: { prefix?: string },
-	): Promise<CondaPackage[]>;
+	listPackages(target: EnvTarget, ctx?: CondaCallContext): Promise<CondaPackage[]>;
 	install(
 		input: CondaPackagesInstallInput,
 		ctx?: CondaCallContext,

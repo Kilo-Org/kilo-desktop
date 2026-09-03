@@ -140,7 +140,10 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		const client = rendererSdk.client as unknown as CondaService;
 		const result = await client["conda.envs.delete"]({ name: "dev" });
 
-		expect(result).toEqual({ jobId: expect.stringMatching(/^conda-/), name: "dev" });
+		expect(result).toEqual({
+			jobId: expect.stringMatching(/^conda-/),
+			name: "dev",
+		});
 		expect(remove).toHaveBeenCalledWith(
 			{ name: "dev" },
 			expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -239,6 +242,31 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		await client["conda.envs.clone"]({ sourceName: "source", name: "cloned" });
 		await client["conda.envs.distributions"]();
 		expect(findDistributions).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.delete accepts a prefix-only target for base/nameless envs", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({ emit: (event) => events.push(event) });
+		const remove = vi.fn().mockResolvedValue(undefined);
+		registerCondaHandlers(mainSdk, makeBackend({ remove }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.delete"]({ prefix: "/opt/conda/envs/custom" });
+
+		expect(result).toEqual({
+			jobId: expect.stringMatching(/^conda-/),
+			name: "/opt/conda/envs/custom",
+			prefix: "/opt/conda/envs/custom",
+		});
+		expect(remove).toHaveBeenCalledWith(
+			{ prefix: "/opt/conda/envs/custom" },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
 
 		queue.dispose();
 		mainSdk.dispose();

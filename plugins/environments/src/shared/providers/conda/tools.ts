@@ -62,12 +62,13 @@ export function registerCondaTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "conda.envs.delete",
 		description:
-			"Delete a named conda environment from the plugin-scoped base. This action " +
-			"is irreversible — every package installed into the environment is removed.",
+			"Delete a conda environment from the plugin-scoped base. This action " +
+			"is irreversible — every package installed into the environment is removed. " +
+			"Identify the environment by name or by prefix path.",
 		inputSchema: z.toJSONSchema(condaEnvsDeleteInputSchema, { target: "draft-2020-12" }),
 		validate: condaEnvsDeleteInputSchema,
-		annotations: { destructiveHint: true },
 		exposeToModelContext: true,
+		annotations: { destructiveHint: true },
 		handler: (args) => sdk.invoke("conda.envs.delete", args),
 	});
 

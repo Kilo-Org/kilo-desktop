@@ -26,6 +26,8 @@ import {
 	condaPackagesRemoveResultSchema,
 	ENVIRONMENT_NAME_PATTERN,
 	environmentNameSchema,
+	envPrefixSchema,
+	envTargetSchema,
 	matchSpecSchema,
 } from "./conda.js";
 
@@ -58,6 +60,63 @@ describe("environmentNameSchema", () => {
 	it("exposes the same pattern for ad-hoc validation", () => {
 		expect(ENVIRONMENT_NAME_PATTERN.test("py311")).toBe(true);
 		expect(ENVIRONMENT_NAME_PATTERN.test("has space")).toBe(false);
+	});
+});
+
+describe("envPrefixSchema", () => {
+	it("accepts absolute POSIX and Windows paths", () => {
+		for (const p of ["/opt/conda", "/opt/conda/envs/dev", "C:\\Users\\me\\conda", "D:/envs/dev"]) {
+			expect(envPrefixSchema.parse(p)).toBe(p);
+		}
+	});
+
+	it("rejects empty strings", () => {
+		expect(envPrefixSchema.safeParse("").success).toBe(false);
+	});
+
+	it("rejects values that look like a conda CLI flag", () => {
+		expect(envPrefixSchema.safeParse("--prefix").success).toBe(false);
+		expect(envPrefixSchema.safeParse("-n").success).toBe(false);
+	});
+
+	it("rejects relative paths", () => {
+		expect(envPrefixSchema.safeParse("relative/path").success).toBe(false);
+		expect(envPrefixSchema.safeParse("../../etc").success).toBe(false);
+		expect(envPrefixSchema.safeParse("conda").success).toBe(false);
+	});
+
+	it("rejects strings containing control characters", () => {
+		expect(envPrefixSchema.safeParse("/opt/conda\x00/evil").success).toBe(false);
+		expect(envPrefixSchema.safeParse("/opt/conda\n--all").success).toBe(false);
+		expect(envPrefixSchema.safeParse("/opt/conda\t/env").success).toBe(false);
+	});
+});
+
+describe("envTargetSchema", () => {
+	it("accepts a name-only target", () => {
+		expect(envTargetSchema.parse({ name: "dev" })).toEqual({ name: "dev" });
+	});
+
+	it("accepts a prefix-only target", () => {
+		expect(envTargetSchema.parse({ prefix: "/opt/conda" })).toEqual({ prefix: "/opt/conda" });
+	});
+
+	it("accepts both name and prefix", () => {
+		const target = { name: "dev", prefix: "/opt/conda/envs/dev" };
+		expect(envTargetSchema.parse(target)).toEqual(target);
+	});
+
+	it("rejects an empty target (neither name nor prefix)", () => {
+		expect(envTargetSchema.safeParse({}).success).toBe(false);
+	});
+
+	it("rejects when name is invalid but prefix is absent", () => {
+		expect(envTargetSchema.safeParse({ name: "" }).success).toBe(false);
+		expect(envTargetSchema.safeParse({ name: "has space" }).success).toBe(false);
+	});
+
+	it("accepts when name is absent but prefix is valid", () => {
+		expect(envTargetSchema.safeParse({ prefix: "/opt/conda" }).success).toBe(true);
 	});
 });
 
@@ -184,12 +243,28 @@ describe("conda.envs I/O", () => {
 		expect(condaEnvsCreateResultSchema.parse(result)).toEqual(result);
 	});
 
-	it("condaEnvsDelete I/O round-trip", () => {
+	it("condaEnvsDelete accepts name-only target", () => {
 		expect(condaEnvsDeleteInputSchema.parse({ name: "py311" })).toEqual({ name: "py311" });
+	});
+
+	it("condaEnvsDelete accepts prefix-only target", () => {
+		expect(condaEnvsDeleteInputSchema.parse({ prefix: "/opt/conda" })).toEqual({
+			prefix: "/opt/conda",
+		});
+	});
+
+	it("condaEnvsDeleteResult carries name and optional prefix", () => {
 		expect(condaEnvsDeleteResultSchema.parse({ jobId: "j-2", name: "py311" })).toEqual({
 			jobId: "j-2",
 			name: "py311",
 		});
+		expect(
+			condaEnvsDeleteResultSchema.parse({
+				jobId: "j-2",
+				name: "conda",
+				prefix: "/opt/conda",
+			}),
+		).toEqual({ jobId: "j-2", name: "conda", prefix: "/opt/conda" });
 	});
 
 	it("condaEnvsClone I/O round-trip", () => {
@@ -273,8 +348,17 @@ describe("conda.envs I/O", () => {
 });
 
 describe("conda.packages I/O", () => {
-	it("condaPackagesListInputSchema requires envName", () => {
-		expect(condaPackagesListInputSchema.parse({ envName: "py311" })).toEqual({ envName: "py311" });
+	it("condaPackagesListInputSchema accepts a name target", () => {
+		expect(condaPackagesListInputSchema.parse({ name: "py311" })).toEqual({ name: "py311" });
+	});
+
+	it("condaPackagesListInputSchema accepts a prefix target", () => {
+		expect(condaPackagesListInputSchema.parse({ prefix: "/opt/conda" })).toEqual({
+			prefix: "/opt/conda",
+		});
+	});
+
+	it("condaPackagesListInputSchema rejects an empty target", () => {
 		expect(condaPackagesListInputSchema.safeParse({}).success).toBe(false);
 	});
 
@@ -284,10 +368,15 @@ describe("conda.packages I/O", () => {
 	});
 
 	it("condaPackagesInstallInputSchema requires a non-empty packages array", () => {
-		expect(
-			condaPackagesInstallInputSchema.safeParse({ envName: "py311", packages: [] }).success,
-		).toBe(false);
-		const input = { envName: "py311", packages: ["numpy>=1.24"], channels: ["conda-forge"] };
+		expect(condaPackagesInstallInputSchema.safeParse({ name: "py311", packages: [] }).success).toBe(
+			false,
+		);
+		const input = { name: "py311", packages: ["numpy>=1.24"], channels: ["conda-forge"] };
+		expect(condaPackagesInstallInputSchema.parse(input)).toEqual(input);
+	});
+
+	it("condaPackagesInstallInputSchema accepts prefix + packages", () => {
+		const input = { prefix: "/opt/conda", packages: ["numpy>=1.24"] };
 		expect(condaPackagesInstallInputSchema.parse(input)).toEqual(input);
 	});
 
@@ -302,13 +391,23 @@ describe("conda.packages I/O", () => {
 		expect(condaPackagesInstallResultSchema.parse(result)).toEqual(result);
 	});
 
-	it("condaPackagesRemoveInputSchema mirrors install for its inputs", () => {
-		expect(condaPackagesRemoveInputSchema.parse({ envName: "py311", packages: ["numpy"] })).toEqual(
-			{ envName: "py311", packages: ["numpy"] },
-		);
+	it("condaPackagesRemoveInputSchema accepts name + packages", () => {
+		expect(condaPackagesRemoveInputSchema.parse({ name: "py311", packages: ["numpy"] })).toEqual({
+			name: "py311",
+			packages: ["numpy"],
+		});
+	});
+
+	it("condaPackagesRemoveInputSchema accepts prefix + packages", () => {
 		expect(
-			condaPackagesRemoveInputSchema.safeParse({ envName: "py311", packages: [] }).success,
-		).toBe(false);
+			condaPackagesRemoveInputSchema.parse({ prefix: "/opt/conda", packages: ["numpy"] }),
+		).toEqual({ prefix: "/opt/conda", packages: ["numpy"] });
+	});
+
+	it("condaPackagesRemoveInputSchema rejects empty packages array", () => {
+		expect(condaPackagesRemoveInputSchema.safeParse({ name: "py311", packages: [] }).success).toBe(
+			false,
+		);
 	});
 
 	it("condaPackagesRemoveResultSchema returns removed package names", () => {

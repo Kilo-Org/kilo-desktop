@@ -74,6 +74,7 @@ describe("CondaProvider", () => {
 		expect(mainSdk.has("conda.envs.clone")).toBe(true);
 		expect(mainSdk.has("conda.envs.createFromFile")).toBe(true);
 		expect(mainSdk.has("conda.envs.delete")).toBe(true);
+		expect(mainSdk.has("conda.channels.list")).toBe(true);
 		queue.dispose();
 		mainSdk.dispose();
 	});
@@ -83,7 +84,12 @@ describe("CondaProvider", () => {
 		const sdk = createFakeSdk({ featureId: "environments" });
 		provider.registerTools(sdk);
 		const names = sdk.services.toolRegistry.all().map((tool) => tool.name);
-		expect(names.sort()).toEqual(["conda.envs.create", "conda.envs.delete", "conda.envs.list"]);
+		expect(names.sort()).toEqual([
+			"conda.channels.list",
+			"conda.envs.create",
+			"conda.envs.delete",
+			"conda.envs.list",
+		]);
 	});
 
 	it("boot() throws with searched paths when the bridge payload is missing", async () => {

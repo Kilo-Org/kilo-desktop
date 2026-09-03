@@ -520,7 +520,7 @@ describe("SidecarCondaBackend", () => {
 	});
 
 	describe("listChannels()", () => {
-		it("maps list_channels response to Channel[]", async () => {
+		it("maps wrapped list_channels response to Channel[]", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
 				if (method === "conda.info") return Promise.resolve({});
 				if (method === "conda_tools.list_channels") {
@@ -538,6 +538,29 @@ describe("SidecarCondaBackend", () => {
 			const result = await backend.listChannels();
 
 			expect(result).toEqual(["conda-forge", "defaults"]);
+		});
+
+		it("maps bare-array list_channels response to Channel[]", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda_tools.list_channels") {
+					return Promise.resolve([
+						{
+							name: "defaults",
+							urls: [
+								"https://repo.anaconda.com/pkgs/main/osx-arm64",
+								"https://repo.anaconda.com/pkgs/main/noarch",
+							],
+						},
+					]);
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.listChannels();
+
+			expect(result).toEqual(["defaults"]);
 		});
 	});
 

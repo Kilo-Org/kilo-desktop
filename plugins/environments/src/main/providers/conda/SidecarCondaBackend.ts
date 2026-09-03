@@ -286,8 +286,13 @@ export class SidecarCondaBackend implements CondaBackend {
 	}
 
 	async listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult> {
-		const result = await this.#call<ListChannelsResult>("conda_tools.list_channels", {}, ctx);
-		return result.channels.map((ch) => ch.name ?? ch.url ?? "");
+		const result = await this.#call<ListChannelsResult | BridgeChannel[]>(
+			"conda_tools.list_channels",
+			{},
+			ctx,
+		);
+		const channels = Array.isArray(result) ? result : result.channels;
+		return channels.map((ch) => ch.name ?? ch.url ?? "");
 	}
 
 	async addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult> {

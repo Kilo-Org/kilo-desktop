@@ -105,7 +105,15 @@ export function registerCondaHandlers(
 			}),
 	);
 
-	// conda.packages.install / packages.remove / channels.* / jobs.cancel
+	handlers.handle("conda.channels.list", () =>
+		queue.read({
+			providerId: "conda",
+			opName: "channels.list",
+			run: (ctx) => backend.listChannels({ signal: ctx.signal }),
+		}),
+	);
+
+	// conda.packages.install / packages.remove / channels.add / channels.remove / jobs.cancel
 	// are wired in sub-issues 7 – 9 alongside their CondaBackend
 	// implementations, enqueued through `queue.enqueue(...)` (writes).
 }

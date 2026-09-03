@@ -262,6 +262,38 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
+	it("conda.channels.list returns the backend's channel list through the renderer client", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const listChannels = vi
+			.fn()
+			.mockResolvedValue(["defaults", "conda-forge", "https://my.repo/channel"]);
+		registerCondaHandlers(mainSdk, makeBackend({ listChannels }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const channels = await client["conda.channels.list"]();
+
+		expect(channels).toEqual(["defaults", "conda-forge", "https://my.repo/channel"]);
+		expect(listChannels).toHaveBeenCalledOnce();
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("memoises channel-list results within the read-cache TTL — a second call skips the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const listChannels = vi.fn().mockResolvedValue(["defaults"]);
+		registerCondaHandlers(mainSdk, makeBackend({ listChannels }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.channels.list"]();
+		await client["conda.channels.list"]();
+		expect(listChannels).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
 	it("plugin-scoped job-progress events surface on the fully-qualified environments.job-progress name", async () => {
 		// Sanity check: the constant we advertise to renderer subscribers
 		// matches the featureId + local event name path.

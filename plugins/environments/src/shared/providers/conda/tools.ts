@@ -70,4 +70,18 @@ export function registerCondaTools(sdk: SDK): void {
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("conda.envs.delete", args),
 	});
+
+	sdk.tools.register({
+		name: "conda.channels.list",
+		description:
+			"List the conda channels configured for the plugin-scoped base, in solver " +
+			"priority order (highest priority first). Use this to inspect which package " +
+			"sources are active before installing packages or diagnosing channel-related " +
+			"solve failures. Returns an ordered array of channel identifiers (short names " +
+			'like "conda-forge", URLs, or file:// paths).',
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		annotations: { readOnlyHint: true },
+		exposeToModelContext: true,
+		handler: () => sdk.invoke("conda.channels.list"),
+	});
 }

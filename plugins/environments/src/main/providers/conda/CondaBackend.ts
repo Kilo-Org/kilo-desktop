@@ -1,7 +1,10 @@
 import type {
 	Channel,
 	CondaChannelsListResult,
+	CondaDistribution,
 	CondaEnv,
+	CondaEnvsCloneInput,
+	CondaEnvsCreateFromFileInput,
 	CondaEnvsCreateInput,
 	CondaEnvsDeleteInput,
 	CondaPackage,
@@ -65,12 +68,15 @@ export interface CondaCreateOptions {
 
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
+	findDistributions(ctx?: CondaCallContext): Promise<CondaDistribution[]>;
 
 	create(
 		input: CondaEnvsCreateInput,
 		ctx?: CondaCallContext,
 		options?: CondaCreateOptions,
 	): Promise<CondaEnv>;
+	clone(input: CondaEnvsCloneInput, ctx?: CondaCallContext): Promise<CondaEnv>;
+	createFromFile(input: CondaEnvsCreateFromFileInput, ctx?: CondaCallContext): Promise<CondaEnv>;
 	remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void>;
 
 	listPackages(

@@ -133,6 +133,17 @@ export const condaPackageSchema = z.object({
 });
 export type CondaPackage = z.infer<typeof condaPackageSchema>;
 
+/**
+ * A discovered local conda distribution root, returned by
+ * `conda_tools.find_distributions`. Higher priority means the
+ * distribution is more likely to be the user's primary install.
+ */
+export const condaDistributionSchema = z.object({
+	prefix: z.string().min(1),
+	priority: z.number().int(),
+});
+export type CondaDistribution = z.infer<typeof condaDistributionSchema>;
+
 /* --------------------------------------------------------------------- */
 /* Method I/O — envs                                                     */
 /* --------------------------------------------------------------------- */
@@ -164,6 +175,75 @@ export const condaEnvsDeleteResultSchema = z.object({
 	name: environmentNameSchema,
 });
 export type CondaEnvsDeleteResult = z.infer<typeof condaEnvsDeleteResultSchema>;
+
+/** Input to `conda.envs.clone`. Clones `sourceName` into a new env `name`. */
+export const condaEnvsCloneInputSchema = z.object({
+	sourceName: environmentNameSchema,
+	name: environmentNameSchema,
+});
+export type CondaEnvsCloneInput = z.infer<typeof condaEnvsCloneInputSchema>;
+
+/** Terminal result of `conda.envs.clone`. */
+export const condaEnvsCloneResultSchema = z.object({
+	jobId: jobIdSchema,
+	environment: condaEnvSchema,
+});
+export type CondaEnvsCloneResult = z.infer<typeof condaEnvsCloneResultSchema>;
+
+/**
+ * Path to an exported conda environment file (`environment.yml`, or a
+ * `--file` style spec list). Guards mirror {@link matchSpecSchema} and
+ * {@link channelSchema} because this value crosses the same IPC boundary
+ * and reaches the bridge as a conda argument:
+ *
+ * - A leading `-` is rejected so a path cannot pass for a conda CLI flag
+ *   (Python argparse accepts options interspersed with positionals).
+ * - Null bytes are rejected — they truncate paths in POSIX syscalls.
+ * - CR/LF/TAB are rejected, and leading/trailing whitespace is rejected.
+ *   Interior spaces are allowed: `/Users/me/My Documents/env.yml` is a
+ *   legitimate path.
+ * - Length is capped at Linux's `PATH_MAX` so the value stays bounded
+ *   without rejecting legitimately deep paths.
+ */
+export const environmentFilePathSchema = z
+	.string()
+	.min(1)
+	.max(4096)
+	.refine((value) => !value.includes("\0"), {
+		message: "File path must not contain null bytes.",
+	})
+	.refine((value) => !/[\r\n\t]/.test(value), {
+		message: "File path must be a single line without tabs.",
+	})
+	.refine((value) => value.trim().length === value.length, {
+		message: "File path must not have leading or trailing whitespace.",
+	})
+	.refine((value) => !value.startsWith("-"), {
+		message: "File path must not start with '-' — that would look like a conda CLI flag.",
+	});
+
+/**
+ * Input to `conda.envs.createFromFile`. Creates an environment from an
+ * exported YAML/txt file. `name` overrides the name inside the file.
+ */
+export const condaEnvsCreateFromFileInputSchema = z.object({
+	file: environmentFilePathSchema,
+	name: environmentNameSchema.optional(),
+});
+export type CondaEnvsCreateFromFileInput = z.infer<typeof condaEnvsCreateFromFileInputSchema>;
+
+/** Terminal result of `conda.envs.createFromFile`. */
+export const condaEnvsCreateFromFileResultSchema = z.object({
+	jobId: jobIdSchema,
+	environment: condaEnvSchema,
+});
+export type CondaEnvsCreateFromFileResult = z.infer<typeof condaEnvsCreateFromFileResultSchema>;
+
+/** Result of `conda.envs.distributions`. */
+export const condaEnvsDistributionsResultSchema = z.object({
+	distributions: z.array(condaDistributionSchema),
+});
+export type CondaEnvsDistributionsResult = z.infer<typeof condaEnvsDistributionsResultSchema>;
 
 /* --------------------------------------------------------------------- */
 /* Method I/O — packages                                                 */
@@ -250,7 +330,13 @@ export type CondaChannelsRemoveInput = z.infer<typeof condaChannelsRemoveInputSc
  */
 export const condaContract = defineContract({
 	"conda.envs.list": defineMethod(z.undefined(), z.array(condaEnvSchema)),
+	"conda.envs.distributions": defineMethod(z.undefined(), condaEnvsDistributionsResultSchema),
 	"conda.envs.create": defineMethod(condaEnvsCreateInputSchema, condaEnvsCreateResultSchema),
+	"conda.envs.clone": defineMethod(condaEnvsCloneInputSchema, condaEnvsCloneResultSchema),
+	"conda.envs.createFromFile": defineMethod(
+		condaEnvsCreateFromFileInputSchema,
+		condaEnvsCreateFromFileResultSchema,
+	),
 	"conda.envs.delete": defineMethod(condaEnvsDeleteInputSchema, condaEnvsDeleteResultSchema),
 
 	"conda.packages.list": defineMethod(condaPackagesListInputSchema, condaPackagesListResultSchema),

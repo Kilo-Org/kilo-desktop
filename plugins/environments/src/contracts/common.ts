@@ -187,6 +187,8 @@ export type JobId = z.infer<typeof jobIdSchema>;
  */
 export const jobKindSchema = z.enum([
 	"envs.create",
+	"envs.clone",
+	"envs.createFromFile",
 	"envs.delete",
 	"packages.install",
 	"packages.remove",

@@ -52,7 +52,7 @@ describe("CondaProvider", () => {
 		mainSdk.dispose();
 	});
 
-	it("registerHandlers wires conda.envs.list + create + delete once boot() resolved", async () => {
+	it("registerHandlers wires conda.envs.list + distributions + create + clone + createFromFile + delete once boot() resolved", async () => {
 		const provider = new CondaProvider();
 		const mainSdk = createFakeMainSdk({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
@@ -69,7 +69,10 @@ describe("CondaProvider", () => {
 		provider.registerHandlers({ mainSdk, queue });
 
 		expect(mainSdk.has("conda.envs.list")).toBe(true);
+		expect(mainSdk.has("conda.envs.distributions")).toBe(true);
 		expect(mainSdk.has("conda.envs.create")).toBe(true);
+		expect(mainSdk.has("conda.envs.clone")).toBe(true);
+		expect(mainSdk.has("conda.envs.createFromFile")).toBe(true);
 		expect(mainSdk.has("conda.envs.delete")).toBe(true);
 		queue.dispose();
 		mainSdk.dispose();

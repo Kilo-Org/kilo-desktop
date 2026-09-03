@@ -42,6 +42,8 @@ describe("jobKindSchema", () => {
 	it("covers every v1 mutating conda op", () => {
 		const expected = [
 			"envs.create",
+			"envs.clone",
+			"envs.createFromFile",
 			"envs.delete",
 			"packages.install",
 			"packages.remove",

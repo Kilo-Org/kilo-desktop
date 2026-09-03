@@ -1,10 +1,15 @@
 import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import type {
+	CondaEnvsCloneInput,
+	CondaEnvsCloneResult,
+	CondaEnvsCreateFromFileInput,
+	CondaEnvsCreateFromFileResult,
 	CondaEnvsCreateInput,
 	CondaEnvsCreateResult,
 	CondaEnvsDeleteInput,
 	CondaEnvsDeleteResult,
+	CondaEnvsDistributionsResult,
 	CondaPackagesListInput,
 	CondaPackagesListResult,
 } from "../../../contracts/providers/conda.js";
@@ -46,10 +51,31 @@ export function registerCondaHandlers(
 		}),
 	);
 
+	handlers.handle("conda.envs.distributions", (): Promise<CondaEnvsDistributionsResult> =>
+		queue.read({
+			providerId: "conda",
+			opName: "envs.distributions",
+			run: (ctx) =>
+				backend
+					.findDistributions({ signal: ctx.signal })
+					.then((distributions) => ({ distributions })),
+		}),
+	);
+
 	handlers.handle(
 		"conda.envs.create",
 		(input: CondaEnvsCreateInput): Promise<CondaEnvsCreateResult> =>
 			enqueueEnvsCreate(queue, backend, input),
+	);
+
+	handlers.handle("conda.envs.clone", (input: CondaEnvsCloneInput): Promise<CondaEnvsCloneResult> =>
+		enqueueEnvsClone(queue, backend, input),
+	);
+
+	handlers.handle(
+		"conda.envs.createFromFile",
+		(input: CondaEnvsCreateFromFileInput): Promise<CondaEnvsCreateFromFileResult> =>
+			enqueueEnvsCreateFromFile(queue, backend, input),
 	);
 
 	handlers.handle(
@@ -93,6 +119,34 @@ async function enqueueEnvsCreate(
 		providerId: "conda",
 		kind: "envs.create",
 		run: (ctx) => backend.create(input, { signal: ctx.signal, onProgress: ctx.onProgress }),
+	});
+	const environment = await result;
+	return { jobId, environment };
+}
+
+async function enqueueEnvsClone(
+	queue: JobQueue,
+	backend: CondaBackend,
+	input: CondaEnvsCloneInput,
+): Promise<CondaEnvsCloneResult> {
+	const { jobId, result } = queue.enqueue({
+		providerId: "conda",
+		kind: "envs.clone",
+		run: (ctx) => backend.clone(input, { signal: ctx.signal, onProgress: ctx.onProgress }),
+	});
+	const environment = await result;
+	return { jobId, environment };
+}
+
+async function enqueueEnvsCreateFromFile(
+	queue: JobQueue,
+	backend: CondaBackend,
+	input: CondaEnvsCreateFromFileInput,
+): Promise<CondaEnvsCreateFromFileResult> {
+	const { jobId, result } = queue.enqueue({
+		providerId: "conda",
+		kind: "envs.createFromFile",
+		run: (ctx) => backend.createFromFile(input, { signal: ctx.signal, onProgress: ctx.onProgress }),
 	});
 	const environment = await result;
 	return { jobId, environment };

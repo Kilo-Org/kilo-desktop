@@ -25,7 +25,10 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 	};
 	return {
 		list: overrides.list ?? (() => Promise.resolve([])),
+		findDistributions: overrides.findDistributions ?? (() => Promise.resolve([])),
 		create: overrides.create ?? notImpl,
+		clone: overrides.clone ?? notImpl,
+		createFromFile: overrides.createFromFile ?? notImpl,
 		remove: overrides.remove ?? notImpl,
 		listPackages: overrides.listPackages ?? notImpl,
 		install: overrides.install ?? notImpl,
@@ -144,6 +147,98 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		);
 		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
 		expect(events.every((e) => e.kind === "envs.delete")).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.distributions returns { distributions } and memoises within the read-cache TTL", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findDistributions = vi.fn().mockResolvedValue([
+			{ prefix: "/opt/miniconda3", priority: 10 },
+			{ prefix: "/home/user/anaconda3", priority: 5 },
+		]);
+		registerCondaHandlers(mainSdk, makeBackend({ findDistributions }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.distributions"]();
+
+		expect(result).toEqual({
+			distributions: [
+				{ prefix: "/opt/miniconda3", priority: 10 },
+				{ prefix: "/home/user/anaconda3", priority: 5 },
+			],
+		});
+		// Reads bypass the queue and cache, so a second call skips the backend.
+		await client["conda.envs.distributions"]();
+		expect(findDistributions).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.clone returns { jobId, environment } and emits queued → running → succeeded", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({ emit: (event) => events.push(event) });
+		const clone = vi.fn().mockResolvedValue({ name: "cloned", prefix: "/tmp/envs/cloned" });
+		registerCondaHandlers(mainSdk, makeBackend({ clone }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.clone"]({ sourceName: "source", name: "cloned" });
+
+		expect(result.environment).toEqual({ name: "cloned", prefix: "/tmp/envs/cloned" });
+		expect(result.jobId).toMatch(/^conda-/);
+		expect(clone).toHaveBeenCalledWith(
+			{ sourceName: "source", name: "cloned" },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
+		expect(events.every((e) => e.kind === "envs.clone")).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.createFromFile returns { jobId, environment } and emits terminal succeeded", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({ emit: (event) => events.push(event) });
+		const createFromFile = vi
+			.fn()
+			.mockResolvedValue({ name: "fromfile", prefix: "/tmp/envs/fromfile" });
+		registerCondaHandlers(mainSdk, makeBackend({ createFromFile }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.createFromFile"]({ file: "/tmp/env.yml" });
+
+		expect(result.environment).toEqual({ name: "fromfile", prefix: "/tmp/envs/fromfile" });
+		expect(result.jobId).toMatch(/^conda-/);
+		expect(createFromFile).toHaveBeenCalledWith(
+			{ file: "/tmp/env.yml" },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
+		expect(events.every((e) => e.kind === "envs.createFromFile")).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.clone write invalidates the distributions read cache", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findDistributions = vi.fn().mockResolvedValue([]);
+		const clone = vi.fn().mockResolvedValue({ name: "cloned", prefix: "/tmp/envs/cloned" });
+		registerCondaHandlers(mainSdk, makeBackend({ findDistributions, clone }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.envs.distributions"]();
+		expect(findDistributions).toHaveBeenCalledTimes(1);
+		await client["conda.envs.clone"]({ sourceName: "source", name: "cloned" });
+		await client["conda.envs.distributions"]();
+		expect(findDistributions).toHaveBeenCalledTimes(2);
 
 		queue.dispose();
 		mainSdk.dispose();

@@ -6,11 +6,17 @@ import {
 	condaChannelsListResultSchema,
 	condaChannelsRemoveInputSchema,
 	condaContract,
+	condaDistributionSchema,
 	condaEnvSchema,
+	condaEnvsCloneInputSchema,
+	condaEnvsCloneResultSchema,
+	condaEnvsCreateFromFileInputSchema,
+	condaEnvsCreateFromFileResultSchema,
 	condaEnvsCreateInputSchema,
 	condaEnvsCreateResultSchema,
 	condaEnvsDeleteInputSchema,
 	condaEnvsDeleteResultSchema,
+	condaEnvsDistributionsResultSchema,
 	condaPackageSchema,
 	condaPackagesInstallInputSchema,
 	condaPackagesInstallResultSchema,
@@ -136,6 +142,15 @@ describe("value schemas", () => {
 				.success,
 		).toBe(false);
 	});
+
+	it("condaDistributionSchema round-trips a distribution entry", () => {
+		const dist = { prefix: "/opt/miniconda3", priority: 10 };
+		expect(condaDistributionSchema.parse(dist)).toEqual(dist);
+	});
+
+	it("condaDistributionSchema rejects empty prefix", () => {
+		expect(condaDistributionSchema.safeParse({ prefix: "", priority: 5 }).success).toBe(false);
+	});
 });
 
 describe("conda.envs I/O", () => {
@@ -174,6 +189,85 @@ describe("conda.envs I/O", () => {
 		expect(condaEnvsDeleteResultSchema.parse({ jobId: "j-2", name: "py311" })).toEqual({
 			jobId: "j-2",
 			name: "py311",
+		});
+	});
+
+	it("condaEnvsClone I/O round-trip", () => {
+		const input = { sourceName: "base-env", name: "cloned-env" };
+		expect(condaEnvsCloneInputSchema.parse(input)).toEqual(input);
+		const result = {
+			jobId: "j-5",
+			environment: { name: "cloned-env", prefix: "/opt/envs/cloned-env" },
+		};
+		expect(condaEnvsCloneResultSchema.parse(result)).toEqual(result);
+	});
+
+	it("condaEnvsCreateFromFile I/O round-trip", () => {
+		expect(condaEnvsCreateFromFileInputSchema.parse({ file: "/tmp/env.yml" })).toEqual({
+			file: "/tmp/env.yml",
+		});
+		expect(
+			condaEnvsCreateFromFileInputSchema.parse({ file: "/tmp/env.yml", name: "myenv" }),
+		).toEqual({ file: "/tmp/env.yml", name: "myenv" });
+		const result = {
+			jobId: "j-6",
+			environment: { name: "myenv", prefix: "/opt/envs/myenv" },
+		};
+		expect(condaEnvsCreateFromFileResultSchema.parse(result)).toEqual(result);
+	});
+
+	it("condaEnvsCreateFromFileInputSchema rejects empty file path", () => {
+		expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: "" }).success).toBe(false);
+	});
+
+	it("condaEnvsCreateFromFileInputSchema rejects paths that could be mistaken for a conda CLI flag", () => {
+		// Same rationale as matchSpecSchema / channelSchema: argparse accepts
+		// options interspersed with positionals, so a leading `-` could smuggle
+		// a flag through the argv boundary.
+		for (const bad of ["--dry-run", "-c", "--file"]) {
+			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaEnvsCreateFromFileInputSchema rejects null bytes, newlines, tabs, and padded paths", () => {
+		for (const bad of [
+			"/tmp/env.yml\0/etc/passwd",
+			"/tmp/env.yml\nrm -rf /",
+			"/tmp/env\t.yml",
+			" /tmp/env.yml",
+			"/tmp/env.yml ",
+		]) {
+			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaEnvsCreateFromFileInputSchema allows interior spaces and caps length at PATH_MAX", () => {
+		// Interior spaces are legitimate in real paths and must not be rejected.
+		expect(
+			condaEnvsCreateFromFileInputSchema.safeParse({ file: "/Users/me/My Documents/env.yml" })
+				.success,
+		).toBe(true);
+		expect(
+			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4095)}` }).success,
+		).toBe(true);
+		expect(
+			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4096)}` }).success,
+		).toBe(false);
+	});
+
+	it("condaEnvsDistributionsResultSchema round-trips", () => {
+		const result = {
+			distributions: [
+				{ prefix: "/opt/miniconda3", priority: 10 },
+				{ prefix: "/home/user/anaconda3", priority: 5 },
+			],
+		};
+		expect(condaEnvsDistributionsResultSchema.parse(result)).toEqual(result);
+	});
+
+	it("condaEnvsDistributionsResultSchema accepts empty list", () => {
+		expect(condaEnvsDistributionsResultSchema.parse({ distributions: [] })).toEqual({
+			distributions: [],
 		});
 	});
 });
@@ -245,7 +339,10 @@ describe("condaContract", () => {
 		expect(new Set(Object.keys(condaContract))).toEqual(
 			new Set([
 				"conda.envs.list",
+				"conda.envs.distributions",
 				"conda.envs.create",
+				"conda.envs.clone",
+				"conda.envs.createFromFile",
 				"conda.envs.delete",
 				"conda.packages.list",
 				"conda.packages.install",

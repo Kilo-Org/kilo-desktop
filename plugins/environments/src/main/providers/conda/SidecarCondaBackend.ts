@@ -14,15 +14,18 @@
  * - `dispose()` tears down the process cleanly.
  *
  * Mapping from CondaBackend methods to bridge JSON-RPC methods:
- * - list()         → conda_tools.describe_environments
- * - create()       → conda.create (skip_preview=true)
- * - remove()       → conda.remove (all=true to delete env)
- * - listPackages() → conda.list
- * - install()      → conda.install (skip_preview=true)
- * - uninstall()    → conda.remove (packages only, no all flag)
- * - listChannels() → conda_tools.list_channels
- * - addChannel()   → conda_config.add (key="channels")
- * - removeChannel()→ not yet implemented in anaconda-bridge-sidecar
+ * - list()              → conda_tools.describe_environments
+ * - findDistributions() → conda_tools.find_distributions
+ * - create()            → conda.create (skip_preview=true)
+ * - clone()             → conda.clone (destinationName=<target>)
+ * - createFromFile()    → conda.create_from_file (file=<path>)
+ * - remove()            → conda.remove (all=true to delete env)
+ * - listPackages()      → conda.list
+ * - install()           → conda.install (skip_preview=true)
+ * - uninstall()         → conda.remove (packages only, no all flag)
+ * - listChannels()      → conda_tools.list_channels
+ * - addChannel()        → conda_config.add (key="channels")
+ * - removeChannel()     → not yet implemented in anaconda-bridge-sidecar
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -47,7 +50,10 @@ import {
 import type {
 	Channel,
 	CondaChannelsListResult,
+	CondaDistribution,
 	CondaEnv,
+	CondaEnvsCloneInput,
+	CondaEnvsCreateFromFileInput,
 	CondaEnvsCreateInput,
 	CondaEnvsDeleteInput,
 	CondaPackage,
@@ -128,11 +134,27 @@ export class SidecarCondaBackend implements CondaBackend {
 		// Fallback: derive env list from conda.info
 		const info = await this.#call<CondaInfoResult>("conda.info", {}, ctx);
 		return (info.envs ?? []).map((prefix) => ({
-			// Split on both separators so a Windows prefix yields the trailing
-			// directory name, not the whole path.
-			name: prefix.split(/[/\\]/).pop() ?? "",
+			name: environmentNameFromPrefix(prefix),
 			prefix,
 		}));
+	}
+
+	async findDistributions(ctx?: CondaCallContext): Promise<CondaDistribution[]> {
+		const result = await this.#call<BridgeDistribution[] | FindDistributionsResult>(
+			"conda_tools.find_distributions",
+			{},
+			ctx,
+		);
+		// The bridge returns a bare array today, but `describe_environments`
+		// has already shipped both shapes, so tolerate an object envelope
+		// here too. Rows missing a prefix are skipped rather than thrown on:
+		// a single malformed entry must not fail the whole discovery read,
+		// and a raw TypeError here would escape #classifyRpcError and reach
+		// callers unclassified.
+		const distributions = Array.isArray(result) ? result : (result?.distributions ?? []);
+		return distributions.flatMap((d) =>
+			d?.prefix ? [{ prefix: d.prefix, priority: d.details?.priority ?? 0 }] : [],
+		);
 	}
 
 	async create(
@@ -155,6 +177,42 @@ export class SidecarCondaBackend implements CondaBackend {
 		);
 		this.#assertTransactionSuccess(result);
 		return { name: input.name, prefix: result.prefix };
+	}
+
+	async clone(input: CondaEnvsCloneInput, ctx?: CondaCallContext): Promise<CondaEnv> {
+		// Bridge method uses camelCase wire format (to_camel alias generator).
+		const result = await this.#call<TransactionResult>(
+			"conda.clone",
+			{
+				destinationName: input.name,
+				name: input.sourceName,
+			},
+			ctx,
+		);
+		this.#assertTransactionSuccess(result);
+		return { name: input.name, prefix: result.prefix };
+	}
+
+	async createFromFile(
+		input: CondaEnvsCreateFromFileInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaEnv> {
+		// Bridge method uses snake_case wire format.
+		const result = await this.#call<TransactionResult>(
+			"conda.create_from_file",
+			{
+				file: input.file,
+				...(input.name ? { name: input.name } : {}),
+			},
+			ctx,
+		);
+		this.#assertTransactionSuccess(result);
+		// No name override means the name came from inside the file, and the
+		// bridge only reports the prefix — derive the display name from it.
+		return {
+			name: input.name ?? environmentNameFromPrefix(result.prefix),
+			prefix: result.prefix,
+		};
 	}
 
 	async remove(input: CondaEnvsDeleteInput, ctx?: CondaCallContext): Promise<void> {
@@ -506,6 +564,21 @@ function featureError(code: EnvironmentsErrorCode, detail?: string): FeatureErro
 }
 
 /**
+ * Derive an environment's display name from its prefix path.
+ *
+ * Splits on both separators so a Windows prefix yields the trailing
+ * directory name rather than the whole path, and ignores empty segments so
+ * a trailing separator (`/envs/dev/`) still yields `dev` instead of `""`.
+ * Returns `""` for a prefix with no usable segment — `condaEnvSchema`
+ * permits an empty name because base and anonymous envs legitimately have
+ * one.
+ */
+function environmentNameFromPrefix(prefix: string): string {
+	const segments = prefix.split(/[/\\]/).filter((segment) => segment.length > 0);
+	return segments[segments.length - 1] ?? "";
+}
+
+/**
  * Extract the bare package name from a conda MatchSpec so it can be matched
  * against `listPackages()` output. Strips an optional `channel::` prefix
  * (e.g. `conda-forge::numpy=1.2` → `numpy`) and any version/build constraint.
@@ -525,6 +598,24 @@ interface BridgeEnvironment {
 
 interface DescribeEnvironmentsResult {
 	environments: BridgeEnvironment[];
+}
+
+/**
+ * `DistributionInfo` from the bridge. Every field carries a Python-side
+ * default, so all of them are optional on the wire.
+ */
+interface BridgeDistributionInfo {
+	priority?: number;
+}
+
+interface BridgeDistribution {
+	prefix: string;
+	details?: BridgeDistributionInfo;
+}
+
+/** Object envelope shape tolerated by {@link SidecarCondaBackend.findDistributions}. */
+interface FindDistributionsResult {
+	distributions?: BridgeDistribution[];
 }
 
 interface CondaInfoResult {

@@ -145,6 +145,250 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
+	describe("findDistributions()", () => {
+		it("sends conda_tools.find_distributions with no params and maps prefix + priority", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda_tools.find_distributions") {
+					return Promise.resolve([
+						{ prefix: "/opt/miniconda3", details: { priority: 10, conda_root: true, depth: 0 } },
+						{ prefix: "/home/user/anaconda3", details: { priority: 5 } },
+					]);
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.findDistributions();
+
+			expect(result).toEqual([
+				{ prefix: "/opt/miniconda3", priority: 10 },
+				{ prefix: "/home/user/anaconda3", priority: 5 },
+			]);
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda_tools.find_distributions",
+				{},
+				expect.anything(),
+			);
+		});
+
+		it("defaults priority to 0 when details or priority is absent", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda_tools.find_distributions") {
+					return Promise.resolve([
+						{ prefix: "/opt/no-details" },
+						{ prefix: "/opt/empty-details", details: {} },
+					]);
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.findDistributions()).toEqual([
+				{ prefix: "/opt/no-details", priority: 0 },
+				{ prefix: "/opt/empty-details", priority: 0 },
+			]);
+		});
+
+		it("skips malformed rows instead of throwing so one bad entry cannot fail discovery", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda_tools.find_distributions") {
+					return Promise.resolve([
+						null,
+						{ details: { priority: 3 } },
+						{ prefix: "", details: { priority: 4 } },
+						{ prefix: "/opt/good", details: { priority: 7 } },
+					]);
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.findDistributions()).toEqual([{ prefix: "/opt/good", priority: 7 }]);
+		});
+
+		it("tolerates an object envelope the way list() does for describe_environments", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda_tools.find_distributions") {
+					return Promise.resolve({
+						distributions: [{ prefix: "/opt/enveloped", details: { priority: 2 } }],
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.findDistributions()).toEqual([
+				{ prefix: "/opt/enveloped", priority: 2 },
+			]);
+		});
+
+		it("returns an empty list when the bridge returns neither an array nor distributions", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda_tools.find_distributions") return Promise.resolve({});
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.findDistributions()).toEqual([]);
+		});
+	});
+
+	describe("clone()", () => {
+		// The bridge's conda.clone model uses a to_camel alias generator with
+		// extra="forbid", so a snake_case key here is a hard RPC error. These
+		// assertions pin the exact camelCase wire shape.
+		it("sends conda.clone with camelCase destinationName + source name", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.clone") {
+					return Promise.resolve({
+						prefix: "/home/user/miniconda3/envs/cloned",
+						success: true,
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.clone({ sourceName: "source", name: "cloned" });
+
+			expect(result).toEqual({
+				name: "cloned",
+				prefix: "/home/user/miniconda3/envs/cloned",
+			});
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.clone",
+				{ destinationName: "cloned", name: "source" },
+				expect.anything(),
+			);
+		});
+
+		it("throws SOLVE_FAILED when the bridge reports success=false", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.clone") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: false,
+						message: "source environment is corrupt",
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.clone({ sourceName: "source", name: "cloned" })).rejects.toThrow(
+				"source environment is corrupt",
+			);
+		});
+	});
+
+	describe("createFromFile()", () => {
+		it("sends conda.create_from_file with snake_case file and omits name when absent", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create_from_file") {
+					return Promise.resolve({
+						prefix: "/home/user/miniconda3/envs/fromfile",
+						success: true,
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.createFromFile({ file: "/tmp/env.yml" });
+
+			// No name override, so the env name is derived from the prefix.
+			expect(result).toEqual({
+				name: "fromfile",
+				prefix: "/home/user/miniconda3/envs/fromfile",
+			});
+			// Exact-shape assertion: `name` must be absent, not undefined.
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.create_from_file",
+				{ file: "/tmp/env.yml" },
+				expect.anything(),
+			);
+		});
+
+		it("derives the name from a trailing-separator prefix instead of yielding an empty name", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create_from_file") {
+					return Promise.resolve({ prefix: "/envs/fromfile/", success: true });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.createFromFile({ file: "/tmp/env.yml" })).toEqual({
+				name: "fromfile",
+				prefix: "/envs/fromfile/",
+			});
+		});
+
+		it("derives the name from a Windows prefix", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create_from_file") {
+					return Promise.resolve({ prefix: "C:\\Users\\me\\envs\\winenv", success: true });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.createFromFile({ file: "/tmp/env.yml" })).toEqual({
+				name: "winenv",
+				prefix: "C:\\Users\\me\\envs\\winenv",
+			});
+		});
+
+		it("forwards the name override when provided", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create_from_file") {
+					return Promise.resolve({ prefix: "/envs/override", success: true });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.createFromFile({ file: "/tmp/env.yml", name: "override" });
+
+			expect(result).toEqual({ name: "override", prefix: "/envs/override" });
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.create_from_file",
+				{ file: "/tmp/env.yml", name: "override" },
+				expect.anything(),
+			);
+		});
+
+		it("throws SOLVE_FAILED when the bridge reports success=false", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.create_from_file") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: false,
+						message: "environment file is invalid",
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.createFromFile({ file: "/tmp/bad.yml" })).rejects.toThrow(
+				"environment file is invalid",
+			);
+		});
+	});
+
 	describe("create()", () => {
 		it("sends conda.create with skip_preview=true", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {

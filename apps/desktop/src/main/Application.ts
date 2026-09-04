@@ -81,6 +81,7 @@ export class Application {
 	#disposePromise: Promise<void> | undefined;
 
 	async start(): Promise<void> {
+		this.#logAppSessionStart();
 		const identity = getAppIdentity(
 			this.#app.metadata.isPackaged ? RELEASE_CHANNEL : "development",
 		);
@@ -189,6 +190,19 @@ export class Application {
 
 	#createWindow(isDevelopment: boolean): void {
 		this.#windows.create({ isDevelopment });
+	}
+
+	// Marks the start of a new application session in the main log with a version/platform/pid
+	// banner, making session boundaries and build/OS context easy to spot when
+	// scanning or grepping a log file.
+	#logAppSessionStart(): void {
+		const { appVersion, isPackaged } = this.#app.metadata;
+		const divider = "=".repeat(100);
+		this.#logger.info(
+			`New application session started\n${divider}\n` +
+				`version=${appVersion} | packaged=${isPackaged} | platform=${process.platform} | arch=${process.arch} | pid=${process.pid}\n` +
+				divider,
+		);
 	}
 
 	/**

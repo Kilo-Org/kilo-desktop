@@ -11,6 +11,7 @@ import type {
 	CondaPackagesInstallResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
+	CondaRepodataPackage,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
 
@@ -65,6 +66,18 @@ export interface CondaCreateOptions {
 	readonly prefix?: string;
 }
 
+/**
+ * Filters for {@link CondaBackend.findRepodata}, mirroring the bridge's
+ * `repodata.find` params. Omitted fields fall back to the bridge's own
+ * defaults (configured channels, host subdirs, and — for `names` — no
+ * filter at all).
+ */
+export interface CondaRepodataFilter {
+	readonly names?: string[];
+	readonly channels?: string[];
+	readonly subdirs?: string[];
+}
+
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
 	findDistributions(ctx?: CondaCallContext): Promise<CondaDistribution[]>;
@@ -91,6 +104,19 @@ export interface CondaBackend {
 	listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	removeChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
+
+	/**
+	 * Aggregate available packages from the channel repodata index.
+	 *
+	 * Every filter is optional and matches the bridge's own params. `names`
+	 * is an **exact-match** allowlist (the bridge has no substring or glob
+	 * support); omitting it walks the entire index, so callers are expected
+	 * to bound the result themselves.
+	 */
+	findRepodata(
+		filter: CondaRepodataFilter,
+		ctx?: CondaCallContext,
+	): Promise<CondaRepodataPackage[]>;
 
 	/**
 	 * Optional teardown — release long-lived resources. `SidecarCondaBackend`

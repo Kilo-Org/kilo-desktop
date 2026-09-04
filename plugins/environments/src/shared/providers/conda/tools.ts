@@ -5,6 +5,7 @@ import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import {
 	condaEnvsCreateInputSchema,
 	condaEnvsDeleteInputSchema,
+	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
 
 /**
@@ -84,5 +85,25 @@ export function registerCondaTools(sdk: SDK): void {
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
 		handler: () => sdk.invoke("conda.channels.list"),
+	});
+
+	sdk.tools.register({
+		name: "conda.repodata.find",
+		description:
+			"Look up available conda packages in the channel repodata index. " +
+			"`names` filters by EXACT package name (there is no substring or " +
+			"wildcard matching) — omit it only to walk the whole index, which is " +
+			"slow and returns thousands of packages. Optionally narrow by " +
+			"`channels` and platform `subdirs`. Each result aggregates one package: " +
+			"`version` is the newest available version, `build` is that version's " +
+			"build number, and `versions` lists every version with its size. " +
+			"Results are capped at `limit` (default 100) and `truncated` is true " +
+			"when more existed. Use this to check whether a package (or a specific " +
+			"version of it) is installable before calling conda.packages.install.",
+		inputSchema: z.toJSONSchema(condaRepodataFindInputSchema, { target: "draft-2020-12" }),
+		validate: condaRepodataFindInputSchema,
+		annotations: { readOnlyHint: true },
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.repodata.find", args),
 	});
 }

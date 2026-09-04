@@ -350,6 +350,131 @@ export const condaChannelsRemoveInputSchema = z.object({ channel: channelSchema 
 export type CondaChannelsRemoveInput = z.infer<typeof condaChannelsRemoveInputSchema>;
 
 /* --------------------------------------------------------------------- */
+/* Method I/O — repodata                                                 */
+/* --------------------------------------------------------------------- */
+
+/**
+ * An exact conda package name used to filter `repodata.find`.
+ *
+ * The bridge's `repodata.find` matches names **exactly** — it has no
+ * substring or glob support — so this is an identifier, not a search term.
+ * Constrained like {@link matchSpecSchema}: names reach conda as
+ * identifiers, and a value starting with `-` could smuggle a CLI flag
+ * (e.g. `--override-channels`) across the argv boundary. Legitimate
+ * package names never start with a dash.
+ */
+export const repodataPackageNameSchema = z
+	.string()
+	.min(1)
+	.max(256)
+	.refine((value) => !/[\r\n\t]/.test(value), {
+		message: "Package name must be a single line without tabs.",
+	})
+	.refine((value) => value.trim().length === value.length, {
+		message: "Package name must not have leading or trailing whitespace.",
+	})
+	.refine((value) => !value.startsWith("-"), {
+		message: "Package name must not start with '-' — that would look like a conda CLI flag.",
+	});
+export type RepodataPackageName = z.infer<typeof repodataPackageNameSchema>;
+
+/**
+ * A conda platform subdir (e.g. `"linux-64"`, `"osx-arm64"`, `"noarch"`).
+ * Carries the same argv-boundary guards as {@link repodataPackageNameSchema}:
+ * subdirs reach conda as identifiers, so a value with an embedded newline/tab
+ * or a leading `-` could smuggle a CLI flag across the argv boundary.
+ */
+export const subdirSchema = z
+	.string()
+	.min(1)
+	.max(64)
+	.refine((value) => !/[\r\n\t]/.test(value), {
+		message: "Subdir must be a single line without tabs.",
+	})
+	.refine((value) => value.trim().length === value.length, {
+		message: "Subdir must not have leading or trailing whitespace.",
+	})
+	.refine((value) => !value.startsWith("-"), {
+		message: "Subdir must not start with '-' — that would look like a conda CLI flag.",
+	});
+export type Subdir = z.infer<typeof subdirSchema>;
+
+/**
+ * Ceiling on how many packages one `conda.repodata.find` call returns.
+ *
+ * The bridge's only filter is `names`; omitting it aggregates **every
+ * package in every configured channel** (tens of thousands of records).
+ * Each record crosses the main → renderer IPC boundary, enters the 5 s read
+ * cache, and — because `conda.repodata.find` is an MCP tool — can land in a
+ * model's context window. The default keeps a typical call small;
+ * `REPODATA_FIND_MAX_LIMIT` caps what a caller may request.
+ */
+export const REPODATA_FIND_DEFAULT_LIMIT = 100;
+export const REPODATA_FIND_MAX_LIMIT = 500;
+
+/**
+ * Input to `conda.repodata.find`.
+ *
+ * Mirrors the bridge's `repodata.find` params. Every filter is optional:
+ * - `names` restricts to these **exact** package names. Omit it to walk the
+ *   whole channel index — correct for building a catalog, but expensive, so
+ *   `limit` still applies. An empty array is rejected as a caller bug: use
+ *   omission to mean "no filter", since the bridge reads `[]` as "return
+ *   nothing".
+ * - `channels` overrides the configured channels.
+ * - `subdirs` restricts to specific platform subdirs; omitted uses conda's
+ *   defaults for the host.
+ * - `limit` bounds the response — see {@link REPODATA_FIND_DEFAULT_LIMIT}.
+ */
+export const condaRepodataFindInputSchema = z.object({
+	names: z.array(repodataPackageNameSchema).min(1).optional(),
+	channels: z.array(channelSchema).min(1).optional(),
+	subdirs: z.array(subdirSchema).min(1).optional(),
+	limit: z.number().int().min(1).max(REPODATA_FIND_MAX_LIMIT).default(REPODATA_FIND_DEFAULT_LIMIT),
+});
+export type CondaRepodataFindInput = z.infer<typeof condaRepodataFindInputSchema>;
+
+/** One available version of a package, with its artifact size in bytes. */
+export const condaRepodataVersionSchema = z.object({
+	version: z.string().min(1),
+	size: z.number().int().min(0),
+});
+export type CondaRepodataVersion = z.infer<typeof condaRepodataVersionSchema>;
+
+/**
+ * One package from conda repodata, aggregated across every version and
+ * channel the index holds — this is the bridge's shape, not one row per
+ * name × version × build.
+ *
+ * `version` is the newest available version (null when the index held no
+ * usable version) and `build` is its **build number**, not a build string.
+ * `channel`, `summary`, and `home` are empty strings when the index does not
+ * supply them, so none of them are `.min(1)`. `versions` is ordered newest
+ * first, matching the bridge's own sort.
+ */
+export const condaRepodataPackageSchema = z.object({
+	name: z.string().min(1),
+	version: z.string().min(1).nullable(),
+	build: z.number().int(),
+	channel: z.string(),
+	summary: z.string(),
+	home: z.string(),
+	versions: z.array(condaRepodataVersionSchema),
+});
+export type CondaRepodataPackage = z.infer<typeof condaRepodataPackageSchema>;
+
+/**
+ * `packages` is capped at the request's `limit`. `truncated` is true when
+ * the index held more packages than were returned, signalling the caller
+ * (or model) to narrow `names` rather than assume it saw everything.
+ */
+export const condaRepodataFindResultSchema = z.object({
+	packages: z.array(condaRepodataPackageSchema),
+	truncated: z.boolean(),
+});
+export type CondaRepodataFindResult = z.infer<typeof condaRepodataFindResultSchema>;
+
+/* --------------------------------------------------------------------- */
 /* Contract                                                              */
 /* --------------------------------------------------------------------- */
 
@@ -393,6 +518,8 @@ export const condaContract = defineContract({
 		condaChannelsRemoveInputSchema,
 		condaChannelsListResultSchema,
 	),
+
+	"conda.repodata.find": defineMethod(condaRepodataFindInputSchema, condaRepodataFindResultSchema),
 
 	"conda.jobs.cancel": defineMethod(cancelInputSchema, cancelResultSchema),
 });

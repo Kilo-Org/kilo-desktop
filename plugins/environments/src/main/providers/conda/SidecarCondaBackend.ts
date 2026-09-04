@@ -26,6 +26,13 @@
  * - listChannels()      → conda_tools.list_channels
  * - addChannel()        → conda_config.add (key="channels")
  * - removeChannel()     → not yet implemented in anaconda-bridge-sidecar
+ * - findRepodata()      → repodata.find
+ *
+ * Bridge method names are NOT derivable from the conda CLI verb or from a
+ * single namespace: they span `conda.*`, `conda_tools.*`, and bare
+ * feature namespaces like `repodata.*`. Verify any new method against the
+ * bridge's registered features (its startup log lines
+ * `Registered "<method>" with options ...`) instead of inferring a name.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -47,6 +54,7 @@ import {
 	formatEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
 } from "../../../contracts/common.js";
+import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
 import type {
 	Channel,
 	CondaChannelsListResult,
@@ -60,9 +68,15 @@ import type {
 	CondaPackagesInstallResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
+	CondaRepodataPackage,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
-import type { CondaBackend, CondaCallContext, CondaCreateOptions } from "./CondaBackend.js";
+import type {
+	CondaBackend,
+	CondaCallContext,
+	CondaCreateOptions,
+	CondaRepodataFilter,
+} from "./CondaBackend.js";
 
 const MAX_RESTART_ATTEMPTS = 3;
 const BASE_RESTART_DELAY_MS = 1000;
@@ -302,6 +316,56 @@ export class SidecarCondaBackend implements CondaBackend {
 			ctx,
 		);
 		return this.listChannels(ctx);
+	}
+
+	/**
+	 * Aggregate available packages from the channel repodata index.
+	 *
+	 * The bridge namespaces this one as `repodata.find` — not `conda.*` or
+	 * `conda_tools.*` like its neighbours — so the name cannot be inferred
+	 * from the CLI verb or from any sibling method. It returns a
+	 * `{ name: package }` **map**, not an array, and each entry is already
+	 * aggregated across versions and channels: `version` is the newest
+	 * version, `build` is that version's build *number*, and `versions`
+	 * carries every version with its size. Omitted params fall back to the
+	 * bridge's defaults; `names` is an exact-match allowlist with no
+	 * substring support.
+	 */
+	async findRepodata(
+		filter: CondaRepodataFilter,
+		ctx?: CondaCallContext,
+	): Promise<CondaRepodataPackage[]> {
+		const result = await this.#call<RepodataFindResult>(
+			"repodata.find",
+			toRepodataFindParams(filter),
+			ctx,
+		);
+		// `repodata.find` has no native limit, so an unfiltered walk returns
+		// the entire channel index (tens of thousands of records). Bound what
+		// this method materialises, sorts, and hands to the read cache: retain
+		// at most REPODATA_FIND_MAX_LIMIT + 1 packages. The one extra element
+		// keeps the handler's `matches.length > input.limit` truncation flag
+		// exact for every valid limit (all <= REPODATA_FIND_MAX_LIMIT) while
+		// still signalling "more existed" when the index overflowed the cap.
+		const entries = Object.entries(result ?? {}).slice(0, REPODATA_FIND_MAX_LIMIT + 1);
+		// The package name is the map key, not a field on the record.
+		return entries.map(([name, pkg]) => ({
+			name,
+			version: pkg.version ?? null,
+			build: pkg.build ?? 0,
+			channel: pkg.channel ?? "",
+			summary: pkg.summary ?? "",
+			home: pkg.home ?? "",
+			// The bridge emits `versions` newest-first, but that order is lost
+			// on the wire (see compareCondaVersions), so re-impose it explicitly
+			// to honour the newest-first contract on CondaRepodataPackage.
+			versions: Object.entries(pkg.versions ?? {})
+				.map(([version, meta]) => ({
+					version,
+					size: meta?.size ?? 0,
+				}))
+				.sort((left, right) => compareCondaVersions(right.version, left.version)),
+		}));
 	}
 
 	async removeChannel(
@@ -601,6 +665,73 @@ function parsePackageName(spec: string): string {
 	return withoutChannel.split(/[>=<!\s]/)[0]!;
 }
 
+/**
+ * Compare two conda version strings, returning >0 when `a` is newer than `b`.
+ *
+ * The bridge sends `versions` as a JSON object keyed by version string, and
+ * although it emits them newest-first, that order is not preserved on the
+ * wire: `Object.entries`/`Object.keys` enumerate integer-index-like keys
+ * (e.g. CalVer `"20240301"`) in ascending numeric order ahead of other keys,
+ * regardless of insertion order. Relying on key order would therefore
+ * silently flip purely-numeric versions oldest-first, so the newest-first
+ * contract on `CondaRepodataPackage.versions` has to be imposed explicitly.
+ *
+ * This is a pragmatic dotted-component comparison, not a full PEP 440 / conda
+ * `VersionOrder` implementation: it splits each version into `.`/`-`/`_`
+ * separated components, then compares component-by-component numerically when
+ * both sides are integers and lexically otherwise (a numeric component sorts
+ * ahead of an alphabetic one, so `1.1` > `1.1a`). It covers the numeric,
+ * CalVer, and dotted-release strings conda repodata actually produces; exotic
+ * epoch/local-segment forms fall back to a stable lexical tiebreak rather
+ * than throwing.
+ */
+function compareCondaVersions(a: string, b: string): number {
+	const aParts = a.split(/[._-]/);
+	const bParts = b.split(/[._-]/);
+	const length = Math.max(aParts.length, bParts.length);
+
+	for (let i = 0; i < length; i++) {
+		const aPart = aParts[i];
+		const bPart = bParts[i];
+		if (aPart === undefined) return -1; // shorter version is older
+		if (bPart === undefined) return 1;
+		if (aPart === bPart) continue;
+
+		const aNum = /^\d+$/.test(aPart) ? Number(aPart) : null;
+		const bNum = /^\d+$/.test(bPart) ? Number(bPart) : null;
+
+		if (aNum !== null && bNum !== null) {
+			if (aNum !== bNum) return aNum - bNum;
+			continue;
+		}
+		// A numeric component is newer than an alphabetic one at the same
+		// position (e.g. a release `1.1` outranks a pre-release `1.1a`).
+		if (aNum !== null) return 1;
+		if (bNum !== null) return -1;
+		return aPart < bPart ? -1 : 1;
+	}
+	return 0;
+}
+
+/**
+ * Build the `repodata.find` wire params from a filter, applying the single
+ * authoritative "omit an unset key" rule for this method.
+ *
+ * The distinction is a bridge contract, not a preference: the bridge reads a
+ * present `names: []` as "return nothing" but an *absent* `names` as "no
+ * filter". This is the only place that rule is enforced, so a direct
+ * in-process caller of {@link SidecarCondaBackend.findRepodata} (whose
+ * `CondaRepodataFilter` type permits empty arrays) cannot accidentally send
+ * `[]` to the bridge, and the IPC handler does not re-encode the same rule.
+ */
+function toRepodataFindParams(filter: CondaRepodataFilter): Record<string, string[]> {
+	return {
+		...(filter.names?.length ? { names: filter.names } : {}),
+		...(filter.channels?.length ? { channels: filter.channels } : {}),
+		...(filter.subdirs?.length ? { subdirs: filter.subdirs } : {}),
+	};
+}
+
 // ─── Bridge response types (internal) ────────────────────────────────────────
 
 interface BridgeEnvironment {
@@ -669,4 +800,20 @@ interface ListChannelsResult {
 
 interface AddChannelResult {
 	success: boolean;
+}
+
+/**
+ * `repodata.find` keys its response by package name rather than returning a
+ * list, and each value is aggregated across versions (`build` is the newest
+ * version's build *number*; there is no build string or subdir).
+ */
+interface RepodataFindResult {
+	[name: string]: {
+		home: string;
+		summary: string;
+		channel: string;
+		build: number;
+		version: string | null;
+		versions: Record<string, { size: number }>;
+	};
 }

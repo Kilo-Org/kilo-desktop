@@ -12,12 +12,14 @@ import type {
 	CondaEnvsDistributionsResult,
 	CondaPackagesListInput,
 	CondaPackagesListResult,
+	CondaRepodataFindInput,
+	CondaRepodataFindResult,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
 import { condaContract } from "../../../contracts/providers/conda.js";
 import type { JobQueue } from "../../JobQueue.js";
 
-import type { CondaBackend } from "./CondaBackend.js";
+import type { CondaBackend, CondaRepodataFilter } from "./CondaBackend.js";
 
 /**
  * Bind provider-scoped main-process handlers.
@@ -108,9 +110,54 @@ export function registerCondaHandlers(
 		}),
 	);
 
+	handlers.handle(
+		"conda.repodata.find",
+		(input: CondaRepodataFindInput): Promise<CondaRepodataFindResult> =>
+			readRepodataFind(queue, backend, input),
+	);
+
 	// conda.packages.install / packages.remove / channels.add / channels.remove / jobs.cancel
 	// are wired in sub-issues 7 – 9 alongside their CondaBackend
 	// implementations, enqueued through `queue.enqueue(...)` (writes).
+}
+
+/**
+ * Repodata lookup with a bounded response.
+ *
+ * The cache key intentionally omits `limit`: the backend result is the full
+ * (already bridge/backend-bounded) package set for the filter, so one bridge
+ * round-trip serves every limit. Truncation is applied *after* the cache
+ * read, which keeps the `truncated` flag exact and lets a caller widen its
+ * limit within the TTL without re-hitting the bridge.
+ *
+ * The "empty array means return nothing, absent means no filter" bridge
+ * rule lives solely in the backend (`toRepodataFindParams`); this handler
+ * only drops keys the caller left unset (a serialization nicety for the
+ * cache key and wire payload) and never re-encodes that bridge contract, so
+ * the two layers cannot drift.
+ */
+async function readRepodataFind(
+	queue: JobQueue,
+	backend: CondaBackend,
+	input: CondaRepodataFindInput,
+): Promise<CondaRepodataFindResult> {
+	const filter: CondaRepodataFilter = {
+		...(input.names ? { names: input.names } : {}),
+		...(input.channels ? { channels: input.channels } : {}),
+		...(input.subdirs ? { subdirs: input.subdirs } : {}),
+	};
+
+	const matches = await queue.read({
+		providerId: "conda",
+		opName: "repodata.find",
+		args: filter,
+		run: (ctx) => backend.findRepodata(filter, { signal: ctx.signal }),
+	});
+
+	return {
+		packages: matches.slice(0, input.limit),
+		truncated: matches.length > input.limit,
+	};
 }
 
 async function enqueueEnvsCreate(

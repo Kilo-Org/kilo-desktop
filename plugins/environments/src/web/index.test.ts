@@ -29,6 +29,7 @@ describe("environments plugin web entry", () => {
 			"conda.envs.create",
 			"conda.envs.delete",
 			"conda.envs.list",
+			"conda.repodata.find",
 		]);
 		const listTool = tools.find((tool) => tool.name === "conda.envs.list");
 		expect(listTool?.annotations).toMatchObject({ readOnlyHint: true });
@@ -48,5 +49,11 @@ describe("environments plugin web entry", () => {
 		const deleteTool = tools.find((tool) => tool.name === "conda.envs.delete");
 		expect(deleteTool?.annotations).toMatchObject({ destructiveHint: true });
 		expect(deleteTool?.exposeToModelContext).toBe(true);
+
+		// `repodata.find` is a read-only lookup over the channel index, backed by
+		// the bridge's `repodata.find` method (present since payload 0.1.4).
+		const repodataTool = tools.find((tool) => tool.name === "conda.repodata.find");
+		expect(repodataTool?.annotations).toMatchObject({ readOnlyHint: true });
+		expect(repodataTool?.exposeToModelContext).toBe(true);
 	});
 });

@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
 import { ENVIRONMENTS_EVENT_NAMES, type JobProgressEvent } from "../../../contracts/common.js";
-import { type CondaService } from "../../../contracts/providers/conda.js";
+import {
+	REPODATA_FIND_DEFAULT_LIMIT,
+	type CondaRepodataPackage,
+	type CondaService,
+} from "../../../contracts/providers/conda.js";
 import { JobQueue } from "../../JobQueue.js";
 import { registerCondaHandlers } from "./handlers.js";
 import type { CondaBackend } from "./CondaBackend.js";
@@ -36,7 +40,21 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 		listChannels: overrides.listChannels ?? notImpl,
 		addChannel: overrides.addChannel ?? notImpl,
 		removeChannel: overrides.removeChannel ?? notImpl,
+		findRepodata: overrides.findRepodata ?? notImpl,
 	};
+}
+
+/** `count` distinct aggregated packages, named `pkg-0`, `pkg-1`, ... for ordering assertions. */
+function makeRepodataMatches(count: number): CondaRepodataPackage[] {
+	return Array.from({ length: count }, (_unused, index) => ({
+		name: `pkg-${index}`,
+		version: "1.0.0",
+		build: 0,
+		channel: "https://conda.anaconda.org/conda-forge",
+		summary: "",
+		home: "",
+		versions: [{ version: "1.0.0", size: 1000 }],
+	}));
 }
 
 describe("conda handlers → sdk.invoke round-trip", () => {
@@ -290,6 +308,98 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
+	it("conda.repodata.find returns matching packages through the renderer client", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const numpy = {
+			name: "numpy",
+			version: "1.26.4",
+			build: 2,
+			channel: "https://conda.anaconda.org/conda-forge",
+			summary: "Array computing with Python",
+			home: "https://numpy.org",
+			versions: [
+				{ version: "1.26.4", size: 7_000_000 },
+				{ version: "1.25.0", size: 6_500_000 },
+			],
+		};
+		const findRepodata = vi.fn().mockResolvedValue([numpy]);
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.repodata.find"]({ names: ["numpy"] });
+
+		expect(result).toEqual({ packages: [numpy], truncated: false });
+		// The exact-name filter is forwarded to the backend as-is.
+		expect(findRepodata).toHaveBeenCalledWith(
+			{ names: ["numpy"] },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("caps repodata.find at the requested limit and flags truncation", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(12));
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.repodata.find"]({ names: ["numpy"], limit: 5 });
+
+		expect(result.packages).toHaveLength(5);
+		expect(result.truncated).toBe(true);
+		// The cap is applied before the response crosses the contract boundary,
+		// so the renderer never receives the full match set.
+		expect(result.packages.map((pkg) => pkg.name)).toEqual([
+			"pkg-0",
+			"pkg-1",
+			"pkg-2",
+			"pkg-3",
+			"pkg-4",
+		]);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("reports truncated=false when the match set fits inside the limit", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(3));
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.repodata.find"]({ names: ["numpy"], limit: 3 });
+
+		expect(result.packages).toHaveLength(3);
+		expect(result.truncated).toBe(false);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("applies the default limit when the caller omits it", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi
+			.fn()
+			.mockResolvedValue(makeRepodataMatches(REPODATA_FIND_DEFAULT_LIMIT + 25));
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.repodata.find"]({ names: ["numpy"] });
+
+		// Proves the contract's Zod default reaches the handler — without it the
+		// slice would be unbounded and the cap silently ineffective.
+		expect(result.packages).toHaveLength(REPODATA_FIND_DEFAULT_LIMIT);
+		expect(result.truncated).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
 	it("conda.channels.list returns the backend's channel list through the renderer client", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
@@ -317,6 +427,41 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		await client["conda.channels.list"]();
 		await client["conda.channels.list"]();
 		expect(listChannels).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("serves different limits for one query from a single backend call", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(20));
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const narrow = await client["conda.repodata.find"]({ names: ["numpy"], limit: 2 });
+		const wide = await client["conda.repodata.find"]({ names: ["numpy"], limit: 10 });
+
+		// `limit` is deliberately absent from the read-cache key, so widening it
+		// within the TTL re-slices the cached match set instead of re-querying.
+		expect(narrow.packages).toHaveLength(2);
+		expect(wide.packages).toHaveLength(10);
+		expect(findRepodata).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("memoises repodata.find results within the read-cache TTL", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue([]);
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.repodata.find"]({ names: ["numpy"] });
+		await client["conda.repodata.find"]({ names: ["numpy"] });
+		expect(findRepodata).toHaveBeenCalledOnce();
 
 		queue.dispose();
 		mainSdk.dispose();

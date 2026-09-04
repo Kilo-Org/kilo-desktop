@@ -75,11 +75,12 @@ describe("CondaProvider", () => {
 		expect(mainSdk.has("conda.envs.createFromFile")).toBe(true);
 		expect(mainSdk.has("conda.envs.delete")).toBe(true);
 		expect(mainSdk.has("conda.channels.list")).toBe(true);
+		expect(mainSdk.has("conda.repodata.find")).toBe(true);
 		queue.dispose();
 		mainSdk.dispose();
 	});
 
-	it("registerTools registers list + create + delete on the renderer SDK", () => {
+	it("registerTools registers the conda tool surface on the renderer SDK", () => {
 		const provider = new CondaProvider();
 		const sdk = createFakeSdk({ featureId: "environments" });
 		provider.registerTools(sdk);
@@ -89,6 +90,7 @@ describe("CondaProvider", () => {
 			"conda.envs.create",
 			"conda.envs.delete",
 			"conda.envs.list",
+			"conda.repodata.find",
 		]);
 	});
 

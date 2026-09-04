@@ -5,6 +5,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -591,6 +592,277 @@ describe("SidecarCondaBackend", () => {
 				expect.anything(),
 			);
 			expect(result).toEqual(["my-channel", "conda-forge"]);
+		});
+	});
+
+	describe("findRepodata()", () => {
+		/**
+		 * Shaped from the bridge's own `RepodataPackage` pydantic model: the
+		 * response is keyed by package name, `build` is the newest version's
+		 * build *number*, and `versions` maps version → { size }.
+		 */
+		function repodataResponse() {
+			return {
+				numpy: {
+					home: "https://numpy.org",
+					summary: "Array computing with Python",
+					channel: "https://conda.anaconda.org/conda-forge",
+					build: 2,
+					version: "1.26.0",
+					versions: {
+						"1.26.0": { size: 7_000_000 },
+						"1.25.0": { size: 6_500_000 },
+					},
+				},
+				pip: {
+					home: "https://pip.pypa.io",
+					summary: "PyPA package installer",
+					channel: "https://conda.anaconda.org/conda-forge",
+					build: 0,
+					version: "24.0",
+					versions: { "24.0": { size: 1_200_000 } },
+				},
+			};
+		}
+
+		it("calls repodata.find — not conda.search — and takes the package name from the map key", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve(repodataResponse());
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.findRepodata({ names: ["numpy", "pip"] });
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"repodata.find",
+				{ names: ["numpy", "pip"] },
+				expect.anything(),
+			);
+			expect(result).toEqual([
+				{
+					name: "numpy",
+					version: "1.26.0",
+					build: 2,
+					channel: "https://conda.anaconda.org/conda-forge",
+					summary: "Array computing with Python",
+					home: "https://numpy.org",
+					versions: [
+						{ version: "1.26.0", size: 7_000_000 },
+						{ version: "1.25.0", size: 6_500_000 },
+					],
+				},
+				{
+					name: "pip",
+					version: "24.0",
+					build: 0,
+					channel: "https://conda.anaconda.org/conda-forge",
+					summary: "PyPA package installer",
+					home: "https://pip.pypa.io",
+					versions: [{ version: "24.0", size: 1_200_000 }],
+				},
+			]);
+		});
+
+		it("forwards channels and subdirs, and omits filters the caller left unset", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve({});
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.findRepodata({
+				names: ["numpy"],
+				channels: ["conda-forge", "defaults"],
+				subdirs: ["osx-arm64", "noarch"],
+			});
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"repodata.find",
+				{
+					names: ["numpy"],
+					channels: ["conda-forge", "defaults"],
+					subdirs: ["osx-arm64", "noarch"],
+				},
+				expect.anything(),
+			);
+		});
+
+		it("sends no params at all for an unfiltered catalog walk", async () => {
+			// The bridge reads a missing `names` as "no filter" and an empty array
+			// as "return nothing", so an unset filter must be omitted, never sent
+			// as `names: []`.
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve({});
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.findRepodata({});
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"repodata.find",
+				{},
+				expect.anything(),
+			);
+		});
+
+		it("omits empty filter arrays so the bridge never receives names: []", async () => {
+			// The IPC schema rejects empty arrays, but the CondaRepodataFilter
+			// type permits them, so a direct in-process caller could pass
+			// `names: []`. toRepodataFindParams is the single guard that keeps
+			// that from reaching the bridge as "return nothing".
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve({});
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.findRepodata({ names: [], channels: [], subdirs: [] });
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"repodata.find",
+				{},
+				expect.anything(),
+			);
+		});
+
+		it("bounds the materialised set at REPODATA_FIND_MAX_LIMIT + 1 to keep truncation exact", async () => {
+			// An unfiltered walk can return the whole channel index. The backend
+			// must not materialise, sort, and cache tens of thousands of records;
+			// it retains one more than the max the handler can ask for, so the
+			// handler's `matches.length > limit` truncation flag stays exact.
+			const oversized: Record<string, unknown> = {};
+			for (let i = 0; i < REPODATA_FIND_MAX_LIMIT + 500; i++) {
+				oversized[`pkg-${i}`] = {
+					home: "",
+					summary: "",
+					channel: "",
+					build: 0,
+					version: "1.0.0",
+					versions: { "1.0.0": { size: 1 } },
+				};
+			}
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve(oversized);
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.findRepodata({});
+
+			expect(result).toHaveLength(REPODATA_FIND_MAX_LIMIT + 1);
+		});
+
+		it("returns an empty array when the index has no matching packages", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve({});
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.findRepodata({ names: ["nonexistent"] })).toEqual([]);
+		});
+
+		it("tolerates a record with no usable version and defaulted metadata", async () => {
+			// `RepodataPackage` defaults version to None and the string fields to
+			// "", so the mapping must not assume they are populated.
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") {
+					return Promise.resolve({
+						weird: { home: "", summary: "", channel: "", build: 0, version: null, versions: {} },
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			expect(await backend.findRepodata({ names: ["weird"] })).toEqual([
+				{
+					name: "weird",
+					version: null,
+					build: 0,
+					channel: "",
+					summary: "",
+					home: "",
+					versions: [],
+				},
+			]);
+		});
+
+		it("orders versions newest-first even when version strings are purely numeric keys", async () => {
+			// The bridge sends `versions` as a JSON object keyed by version
+			// string, in its own newest-first order. But `Object.entries`
+			// enumerates integer-index-like keys (e.g. CalVer "20240101") in
+			// ascending numeric order regardless of insertion order, so relying
+			// on key order would silently flip such packages oldest-first.
+			// The backend must impose the newest-first contract explicitly.
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") {
+					return Promise.resolve({
+						calver: {
+							home: "",
+							summary: "",
+							channel: "https://conda.anaconda.org/conda-forge",
+							build: 0,
+							version: "20240301",
+							// Deliberately provided oldest-first to prove the
+							// backend sorts rather than trusting object order.
+							versions: {
+								"20220101": { size: 100 },
+								"20230201": { size: 200 },
+								"20240301": { size: 300 },
+							},
+						},
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const [pkg] = await backend.findRepodata({ names: ["calver"] });
+
+			expect(pkg?.versions).toEqual([
+				{ version: "20240301", size: 300 },
+				{ version: "20230201", size: 200 },
+				{ version: "20220101", size: 100 },
+			]);
+		});
+
+		it("orders mixed numeric and dotted version strings newest-first", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") {
+					return Promise.resolve({
+						mixed: {
+							home: "",
+							summary: "",
+							channel: "c",
+							build: 0,
+							version: "10",
+							versions: {
+								"2": { size: 2 },
+								"10": { size: 10 },
+								"1.5": { size: 15 },
+							},
+						},
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const [pkg] = await backend.findRepodata({ names: ["mixed"] });
+
+			expect(pkg?.versions.map((v) => v.version)).toEqual(["10", "2", "1.5"]);
 		});
 	});
 

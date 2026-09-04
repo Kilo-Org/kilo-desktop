@@ -24,11 +24,17 @@ import {
 	condaPackagesListResultSchema,
 	condaPackagesRemoveInputSchema,
 	condaPackagesRemoveResultSchema,
+	condaRepodataFindInputSchema,
+	condaRepodataFindResultSchema,
+	condaRepodataPackageSchema,
 	ENVIRONMENT_NAME_PATTERN,
 	environmentNameSchema,
 	envPrefixSchema,
 	envTargetSchema,
 	matchSpecSchema,
+	REPODATA_FIND_DEFAULT_LIMIT,
+	REPODATA_FIND_MAX_LIMIT,
+	subdirSchema,
 } from "./conda.js";
 
 describe("environmentNameSchema", () => {
@@ -433,6 +439,139 @@ describe("conda.channels I/O", () => {
 	});
 });
 
+describe("conda.repodata I/O", () => {
+	const numpyPackage = {
+		name: "numpy",
+		version: "1.26.4",
+		build: 2,
+		channel: "https://conda.anaconda.org/conda-forge",
+		summary: "Array computing with Python",
+		home: "https://numpy.org",
+		versions: [
+			{ version: "1.26.4", size: 7_000_000 },
+			{ version: "1.25.0", size: 6_500_000 },
+		],
+	};
+
+	it("condaRepodataFindInputSchema accepts an empty filter and applies the default limit", () => {
+		// An empty filter is a deliberate whole-index walk; `limit` is what keeps
+		// it survivable.
+		expect(condaRepodataFindInputSchema.parse({})).toEqual({
+			limit: REPODATA_FIND_DEFAULT_LIMIT,
+		});
+	});
+
+	it("condaRepodataFindInputSchema accepts names, channels, and subdirs", () => {
+		const input = {
+			names: ["numpy", "pip"],
+			channels: ["conda-forge"],
+			subdirs: ["osx-arm64", "noarch"],
+		};
+		expect(condaRepodataFindInputSchema.parse(input)).toEqual({
+			...input,
+			limit: REPODATA_FIND_DEFAULT_LIMIT,
+		});
+	});
+
+	it("condaRepodataFindInputSchema rejects an empty names array", () => {
+		// The bridge reads `names: []` as "return nothing"; omission means "no
+		// filter". Rejecting `[]` keeps that distinction from being expressed by
+		// accident.
+		expect(condaRepodataFindInputSchema.safeParse({ names: [] }).success).toBe(false);
+	});
+
+	it("condaRepodataFindInputSchema accepts an explicit limit and rejects out-of-range values", () => {
+		expect(condaRepodataFindInputSchema.parse({ limit: 5 }).limit).toBe(5);
+		expect(condaRepodataFindInputSchema.safeParse({ limit: REPODATA_FIND_MAX_LIMIT }).success).toBe(
+			true,
+		);
+		for (const bad of [0, -1, 1.5, REPODATA_FIND_MAX_LIMIT + 1]) {
+			expect(condaRepodataFindInputSchema.safeParse({ limit: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaRepodataFindInputSchema rejects names that could be mistaken for a conda CLI flag", () => {
+		for (const bad of ["--override-channels", "-c", "--json"]) {
+			expect(condaRepodataFindInputSchema.safeParse({ names: [bad] }).success).toBe(false);
+		}
+	});
+
+	it("condaRepodataFindInputSchema rejects multi-line or space-padded names", () => {
+		for (const bad of ["num\npy", "num\tpy", " numpy", "numpy "]) {
+			expect(condaRepodataFindInputSchema.safeParse({ names: [bad] }).success).toBe(false);
+		}
+	});
+
+	it("condaRepodataFindInputSchema caps a name at 256 characters", () => {
+		expect(condaRepodataFindInputSchema.safeParse({ names: ["a".repeat(256)] }).success).toBe(true);
+		expect(condaRepodataFindInputSchema.safeParse({ names: ["a".repeat(257)] }).success).toBe(
+			false,
+		);
+	});
+
+	it("subdirSchema rejects flag-like and padded subdirs", () => {
+		expect(subdirSchema.parse("osx-arm64")).toBe("osx-arm64");
+		expect(subdirSchema.safeParse("-64").success).toBe(false);
+		expect(subdirSchema.safeParse(" noarch").success).toBe(false);
+	});
+
+	it("subdirSchema rejects embedded control chars that could smuggle a flag across the argv boundary", () => {
+		// An interior newline passes the trim() guard (no leading/trailing
+		// padding) and does not start with '-', so only the single-line guard
+		// stops "noarch\n--override-channels" from reaching conda's argv.
+		for (const bad of ["noarch\n--override-channels", "osx-arm64\t--json", "noarch\rlinux-64"]) {
+			expect(subdirSchema.safeParse(bad).success).toBe(false);
+		}
+	});
+
+	it("condaRepodataPackageSchema round-trips one aggregated package", () => {
+		expect(condaRepodataPackageSchema.parse(numpyPackage)).toEqual(numpyPackage);
+	});
+
+	it("condaRepodataPackageSchema accepts the bridge's empty-string and null defaults", () => {
+		// RepodataPackage defaults channel/summary/home to "" and version to
+		// None, so none of those may be `.min(1)` or non-nullable.
+		const bare = {
+			name: "weird",
+			version: null,
+			build: 0,
+			channel: "",
+			summary: "",
+			home: "",
+			versions: [],
+		};
+		expect(condaRepodataPackageSchema.parse(bare)).toEqual(bare);
+	});
+
+	it("condaRepodataPackageSchema requires build to be an integer build number", () => {
+		// The bridge sends `build_number`, not a build string like py311h1234_0.
+		expect(
+			condaRepodataPackageSchema.safeParse({ ...numpyPackage, build: "py311h1234_0" }).success,
+		).toBe(false);
+		expect(condaRepodataPackageSchema.safeParse({ ...numpyPackage, build: 1.5 }).success).toBe(
+			false,
+		);
+	});
+
+	it("condaRepodataPackageSchema rejects rows missing a pinned field", () => {
+		const { versions: _versions, ...withoutVersions } = numpyPackage;
+		expect(condaRepodataPackageSchema.safeParse(withoutVersions).success).toBe(false);
+	});
+
+	it("condaRepodataFindResultSchema round-trips populated and empty results", () => {
+		const populated = { packages: [numpyPackage], truncated: true };
+		expect(condaRepodataFindResultSchema.parse(populated)).toEqual(populated);
+		expect(condaRepodataFindResultSchema.parse({ packages: [], truncated: false })).toEqual({
+			packages: [],
+			truncated: false,
+		});
+	});
+
+	it("condaRepodataFindResultSchema requires the truncated flag", () => {
+		expect(condaRepodataFindResultSchema.safeParse({ packages: [] }).success).toBe(false);
+	});
+});
+
 describe("condaContract", () => {
 	it("declares every v1 tool the delivery plan pins", () => {
 		expect(new Set(Object.keys(condaContract))).toEqual(
@@ -449,6 +588,7 @@ describe("condaContract", () => {
 				"conda.channels.list",
 				"conda.channels.add",
 				"conda.channels.remove",
+				"conda.repodata.find",
 				"conda.jobs.cancel",
 			]),
 		);

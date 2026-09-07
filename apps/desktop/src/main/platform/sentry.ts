@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/electron/main";
 import { app } from "electron";
 
 import { createLogger } from "./logger.js";
+import type { PreferencesStore } from "./PreferencesStore.js";
 
 const log = createLogger("sentry");
 
@@ -28,6 +29,16 @@ export function initSentry(): void {
 	});
 
 	log.debug("Sentry initialized", isDev ? "(dev: Spotlight only, no remote DSN)" : "");
+}
+
+/**
+ * Attaches the stable, anonymous installation id as the Sentry user so
+ * issues report an affected-user count instead of only an event count.
+ * This is not a real user identity - it's the same per-install UUID used
+ * by the OTEL telemetry pipeline.
+ */
+export function identifySentryUser(preferences: PreferencesStore): void {
+	Sentry.setUser({ id: preferences.getInstallationId() });
 }
 
 export async function flushSentry(): Promise<void> {

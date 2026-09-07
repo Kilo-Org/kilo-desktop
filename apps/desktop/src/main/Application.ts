@@ -45,7 +45,7 @@ import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { SplashWindow } from "./platform/SplashWindow.js";
 import { DesktopUpdaterService } from "./platform/Updater.js";
-import { flushSentry } from "./platform/sentry.js";
+import { flushSentry, identifySentryUser } from "./platform/sentry.js";
 import * as Sentry from "@sentry/electron/main";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
@@ -91,6 +91,8 @@ export class Application {
 			return;
 		}
 		const preferences = new PreferencesStore();
+		this.#logger.debug("Installation id", preferences.getInstallationId());
+		identifySentryUser(preferences);
 
 		this.#disposers.push(
 			this.#app.on("second-instance", () => this.#windows.reveal()),

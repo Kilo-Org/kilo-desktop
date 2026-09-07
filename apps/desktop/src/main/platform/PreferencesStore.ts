@@ -42,8 +42,9 @@ export class PreferencesStore {
 
 	/**
 	 * Stable installation id, lazily generated on first read and persisted so it
-	 * survives restarts. Used as an OTEL resource attribute to correlate a
-	 * single install without identifying the user.
+	 * survives restarts. Used as an OTEL resource attribute and as the Sentry
+	 * user id to correlate a single install (e.g. affected-user counts on
+	 * issues) without identifying the actual user.
 	 */
 	getInstallationId(): string {
 		let id = this.#store.get("installationId");

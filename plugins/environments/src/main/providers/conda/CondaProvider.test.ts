@@ -52,7 +52,7 @@ describe("CondaProvider", () => {
 		mainSdk.dispose();
 	});
 
-	it("registerHandlers wires conda.envs.list + distributions + create + clone + createFromFile + delete once boot() resolved", async () => {
+	it("registerHandlers wires all conda env handlers once boot() resolved", async () => {
 		const provider = new CondaProvider();
 		const mainSdk = createFakeMainSdk({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
@@ -74,6 +74,9 @@ describe("CondaProvider", () => {
 		expect(mainSdk.has("conda.envs.clone")).toBe(true);
 		expect(mainSdk.has("conda.envs.createFromFile")).toBe(true);
 		expect(mainSdk.has("conda.envs.delete")).toBe(true);
+		expect(mainSdk.has("conda.envs.pickFile")).toBe(true);
+		expect(mainSdk.has("conda.envs.readFile")).toBe(true);
+		expect(mainSdk.has("conda.envs.prefixOptions")).toBe(true);
 		expect(mainSdk.has("conda.channels.list")).toBe(true);
 		expect(mainSdk.has("conda.repodata.find")).toBe(true);
 		expect(mainSdk.has("conda.packages.install")).toBe(true);
@@ -88,7 +91,9 @@ describe("CondaProvider", () => {
 		const names = sdk.services.toolRegistry.all().map((tool) => tool.name);
 		expect(names.sort()).toEqual([
 			"conda.channels.list",
+			"conda.envs.clone",
 			"conda.envs.create",
+			"conda.envs.createFromFile",
 			"conda.envs.delete",
 			"conda.envs.list",
 			"conda.packages.install",

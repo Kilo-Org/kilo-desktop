@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { basename, environmentDisplayName } from "./environment-display.js";
+import {
+	basename,
+	environmentDisplayName,
+	validateEnvironmentName,
+} from "./environment-display.js";
 
 describe("basename", () => {
 	it("returns the last POSIX segment", () => {
@@ -55,5 +59,23 @@ describe("environmentDisplayName", () => {
 	it("falls back to 'base' when the prefix yields nothing", () => {
 		expect(environmentDisplayName({ name: "", prefix: "/" })).toBe("base");
 		expect(environmentDisplayName({ name: "", prefix: "" })).toBe("base");
+	});
+});
+
+describe("validateEnvironmentName", () => {
+	it("accepts conda-legal names", () => {
+		expect(validateEnvironmentName("py311")).toBeNull();
+		expect(validateEnvironmentName("data.science_1-0")).toBeNull();
+	});
+
+	it("rejects empty and pattern-violating names", () => {
+		expect(validateEnvironmentName("")).toBe("Name is required.");
+		expect(validateEnvironmentName("has space")).toMatch(/must start with a letter or digit/);
+		expect(validateEnvironmentName("-lead")).toMatch(/must start with a letter or digit/);
+	});
+
+	it("enforces the contract's 128-character maximum", () => {
+		expect(validateEnvironmentName("a".repeat(128))).toBeNull();
+		expect(validateEnvironmentName("a".repeat(129))).toBe("Name must be 128 characters or fewer.");
 	});
 });

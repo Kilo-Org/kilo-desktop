@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 
 import {
+	condaEnvsCloneInputSchema,
+	condaEnvsCreateFromFileInputSchema,
 	condaEnvsCreateInputSchema,
 	condaEnvsDeleteInputSchema,
 	condaPackagesInstallInputSchema,
@@ -49,14 +51,17 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: () => sdk.invoke("conda.envs.list"),
 	});
 
+	// The MCP-exposed schema omits `prefix` so LLMs cannot target arbitrary
+	// filesystem locations. The UI channel handler accepts the full schema.
+	const mcpCreateSchema = condaEnvsCreateInputSchema.omit({ prefix: true });
 	sdk.tools.register({
 		name: "conda.envs.create",
 		description:
 			"Create a new named conda environment inside the plugin-scoped base. " +
 			"Optionally installs packages from the given channels during creation. " +
 			"Fails with ENV_EXISTS if the name is already in use.",
-		inputSchema: z.toJSONSchema(condaEnvsCreateInputSchema, { target: "draft-2020-12" }),
-		validate: condaEnvsCreateInputSchema,
+		inputSchema: z.toJSONSchema(mcpCreateSchema, { target: "draft-2020-12" }),
+		validate: mcpCreateSchema,
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("conda.envs.create", args),
 	});
@@ -72,6 +77,31 @@ export function registerCondaTools(sdk: SDK): void {
 		exposeToModelContext: true,
 		annotations: { destructiveHint: true },
 		handler: (args) => sdk.invoke("conda.envs.delete", args),
+	});
+
+	sdk.tools.register({
+		name: "conda.envs.clone",
+		description:
+			"Clone an existing conda environment into a new named environment. " +
+			"The new environment receives an exact copy of all packages from the source.",
+		inputSchema: z.toJSONSchema(condaEnvsCloneInputSchema, { target: "draft-2020-12" }),
+		validate: condaEnvsCloneInputSchema,
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.envs.clone", args),
+	});
+
+	// createFromFile accepts an unconstrained filesystem path — intentionally
+	// NOT exposed to the model context so an LLM cannot invoke it with
+	// arbitrary paths. The renderer UI provides paths only from the trusted
+	// native file picker or Electron's getPathForFile (drag-and-drop).
+	sdk.tools.register({
+		name: "conda.envs.createFromFile",
+		description:
+			"Create a conda environment from a YAML environment file (.yml/.yaml). " +
+			"Optionally override the name declared in the file by passing a `name` parameter.",
+		inputSchema: z.toJSONSchema(condaEnvsCreateFromFileInputSchema, { target: "draft-2020-12" }),
+		validate: condaEnvsCreateFromFileInputSchema,
+		handler: (args) => sdk.invoke("conda.envs.createFromFile", args),
 	});
 
 	sdk.tools.register({
@@ -109,9 +139,10 @@ export function registerCondaTools(sdk: SDK): void {
 		name: "conda.repodata.find",
 		description:
 			"Look up available conda packages in the channel repodata index. " +
-			"`names` filters by EXACT package name (there is no substring or " +
-			"wildcard matching) — omit it only to walk the whole index, which is " +
-			"slow and returns thousands of packages. Optionally narrow by " +
+			"`names` filters by EXACT package name; `query` does case-insensitive " +
+			"partial matching (results ranked exact > prefix > substring). Use one " +
+			"or the other, not both. Omit both only to walk the whole index, which " +
+			"is slow and returns thousands of packages. Optionally narrow by " +
 			"`channels` and platform `subdirs`. Each result aggregates one package: " +
 			"`version` is the newest available version, `build` is that version's " +
 			"build number, and `versions` lists every version with its size. " +

@@ -125,11 +125,17 @@ describe("update UI", () => {
 		renderUpdates(updateApi(downloadedState, { install }), <SidebarUpdatePill />);
 
 		await page.getByTestId("update-ready-pill").click();
-		expect(install).not.toHaveBeenCalled();
+		// The click handler is async (flushSync + waitForPaint before confirm),
+		// so wait for the confirm → install chain to settle.
+		await vi.waitFor(() => {
+			expect(install).not.toHaveBeenCalled();
+		});
 
 		vi.mocked(globalThis.confirm).mockReturnValue(true);
 		await page.getByTestId("update-ready-pill").click();
-		expect(install).toHaveBeenCalledOnce();
+		await vi.waitFor(() => {
+			expect(install).toHaveBeenCalledOnce();
+		});
 		await expect.element(page.getByTestId("update-ready-pill")).toBeVisible();
 	});
 

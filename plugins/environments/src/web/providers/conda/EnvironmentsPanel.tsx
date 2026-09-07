@@ -10,6 +10,12 @@ import {
 	SelectValue,
 } from "@anaconda-agentic-desktop/ui/components/select";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
 import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
 import {
 	Tooltip,
@@ -24,12 +30,19 @@ import {
 	ChevronRightIcon,
 	ChevronsLeftIcon,
 	ChevronsRightIcon,
+	CopyIcon,
+	EllipsisVerticalIcon,
+	FileUpIcon,
+	PlusIcon,
 	SearchIcon,
 } from "lucide-react";
 
 import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
-import { environmentDisplayName } from "./environment-display.js";
+import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
+import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
 import { EnvironmentDetail } from "./EnvironmentDetail.js";
+import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
+import { environmentDisplayName } from "./environment-display.js";
 
 const PAGE_SIZE_OPTIONS = [
 	{ value: "10", label: "10" },
@@ -136,6 +149,17 @@ export function EnvironmentsPanel() {
 	return <EnvironmentsTable rows={rows} onSelectEnv={selectEnv} />;
 }
 
+type DialogState =
+	| { kind: "none" }
+	| { kind: "create" }
+	| { kind: "import" }
+	| { kind: "clone"; env: CondaEnv };
+
+/** Nameless envs: base installs and prefix-only envs both have `name: ""`. */
+function isNamelessEnv(env: CondaEnv): boolean {
+	return env.name === "";
+}
+
 interface EnvironmentsTableProps {
 	rows: Array<{ name: string; prefix: string }>;
 	onSelectEnv: (env: CondaEnv) => void;
@@ -146,6 +170,8 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 	const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 	const [currentPage, setCurrentPage] = useState(1);
 	const [itemsPerPage, setItemsPerPage] = useState(15);
+	const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
+	const closeDialog = useCallback(() => setDialog({ kind: "none" }), []);
 
 	const processedEnvs = useMemo(() => {
 		let result = [...rows];
@@ -213,17 +239,38 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 	return (
 		<TooltipProvider>
 			<div className="flex min-h-0 flex-1 flex-col gap-4" data-qa-id="environments-controls">
-				{/* Search bar */}
-				<div className="relative max-w-sm">
-					<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-					<Input
-						id="environments-search"
-						placeholder="Search"
-						value={searchQuery}
-						onChange={handleSearchChange}
-						className="pl-9"
-						data-qa-id="environments-search-input"
-					/>
+				{/* Toolbar: search + action buttons */}
+				<div className="flex items-center gap-3">
+					<div className="relative flex-1">
+						<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+						<Input
+							id="environments-search"
+							placeholder="Search"
+							value={searchQuery}
+							onChange={handleSearchChange}
+							className="pl-9"
+							data-qa-id="environments-search-input"
+						/>
+					</div>
+					<div className="flex items-center gap-2">
+						<Button
+							size="sm"
+							onClick={() => setDialog({ kind: "create" })}
+							data-qa-id="environments-create-btn"
+						>
+							<PlusIcon className="size-4" />
+							New environment
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setDialog({ kind: "import" })}
+							data-qa-id="environments-import-btn"
+						>
+							<FileUpIcon className="size-4" />
+							Import from file
+						</Button>
+					</div>
 				</div>
 
 				{/* Item count */}
@@ -277,15 +324,16 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 									>
 										Prefix
 									</th>
+									<th
+										scope="col"
+										className="border-b px-4 py-3 text-right text-sm font-medium"
+										style={{ width: "3.5rem" }}
+									>
+										<span className="sr-only">Actions</span>
+									</th>
 								</tr>
 							</thead>
 							<tbody>
-								{/*
-								 * Row highlight tracks the pointer. Anaconda Desktop's grid tints
-								 * the hovered row with the foreground at ~11% (Kendo's
-								 * `$kendo-table-hover-bg`); `bg-foreground/10` is this palette's
-								 * nearest step and matches the hover already used on buttons.
-								 */}
 								{paginatedEnvs.map((env) => (
 									<tr
 										key={env.prefix}
@@ -319,6 +367,40 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 													{env.prefix}
 												</TooltipContent>
 											</Tooltip>
+										</td>
+										<td
+											className="border-b px-4 py-3 text-right group-last:border-b-0"
+											onClick={(e) => e.stopPropagation()}
+											onKeyDown={(e) => e.stopPropagation()}
+										>
+											<DropdownMenu>
+												<DropdownMenuTrigger
+													render={
+														<Button
+															variant="ghost"
+															size="icon-sm"
+															aria-label={`Actions for ${environmentDisplayName(env)}`}
+															data-qa-id="environments-row-actions"
+														/>
+													}
+												>
+													<EllipsisVerticalIcon className="size-4" />
+												</DropdownMenuTrigger>
+												<DropdownMenuContent align="end">
+													{!isNamelessEnv(env) && (
+														<DropdownMenuItem
+															onClick={() => setDialog({ kind: "clone", env })}
+															data-qa-id="environments-row-clone"
+														>
+															<CopyIcon className="size-4" />
+															Clone
+														</DropdownMenuItem>
+													)}
+													{isNamelessEnv(env) && (
+														<DropdownMenuItem disabled>No actions available</DropdownMenuItem>
+													)}
+												</DropdownMenuContent>
+											</DropdownMenu>
 										</td>
 									</tr>
 								))}
@@ -414,6 +496,12 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 							</span>
 						</div>
 					</div>
+				)}
+				{/* Dialogs */}
+				<CreateEnvironmentDialog open={dialog.kind === "create"} onClose={closeDialog} />
+				<ImportEnvironmentDialog open={dialog.kind === "import"} onClose={closeDialog} />
+				{dialog.kind === "clone" && (
+					<CloneEnvironmentDialog env={dialog.env} open onClose={closeDialog} />
 				)}
 			</div>
 		</TooltipProvider>

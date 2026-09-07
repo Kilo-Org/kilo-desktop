@@ -17,6 +17,9 @@ import {
 	condaEnvsDeleteInputSchema,
 	condaEnvsDeleteResultSchema,
 	condaEnvsDistributionsResultSchema,
+	condaEnvsPickFileInputSchema,
+	condaEnvsPickFileResultSchema,
+	condaEnvsReadFileInputSchema,
 	condaPackageSchema,
 	condaPackagesInstallInputSchema,
 	condaPackagesInstallResultSchema,
@@ -34,6 +37,7 @@ import {
 	matchSpecSchema,
 	REPODATA_FIND_DEFAULT_LIMIT,
 	REPODATA_FIND_MAX_LIMIT,
+	repodataQuerySchema,
 	subdirSchema,
 } from "./conda.js";
 
@@ -241,6 +245,28 @@ describe("conda.envs I/O", () => {
 		);
 	});
 
+	it("condaEnvsCreateInputSchema accepts an absolute prefix", () => {
+		const input = { name: "py311", prefix: "/opt/conda/envs/py311" };
+		expect(condaEnvsCreateInputSchema.parse(input)).toEqual(input);
+		const win = { name: "py311", prefix: "C:\\Users\\me\\envs\\py311" };
+		expect(condaEnvsCreateInputSchema.parse(win)).toEqual(win);
+	});
+
+	it("condaEnvsCreateInputSchema rejects relative, flag-like, or control-char prefixes", () => {
+		for (const bad of [
+			"relative/path",
+			"../../etc",
+			"--prefix",
+			"-p",
+			"/opt/conda\u0000/evil",
+			"/opt/conda\n--all",
+		]) {
+			expect(condaEnvsCreateInputSchema.safeParse({ name: "py311", prefix: bad }).success).toBe(
+				false,
+			);
+		}
+	});
+
 	it("condaEnvsCreateResultSchema carries jobId + environment", () => {
 		const result = {
 			jobId: "j-1",
@@ -350,6 +376,156 @@ describe("conda.envs I/O", () => {
 		expect(condaEnvsDistributionsResultSchema.parse({ distributions: [] })).toEqual({
 			distributions: [],
 		});
+	});
+
+	it("condaEnvsCreateFromFileInputSchema rejects empty file path", () => {
+		expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: "" }).success).toBe(false);
+	});
+
+	it("condaEnvsCreateFromFileInputSchema rejects paths that could be mistaken for a conda CLI flag", () => {
+		// Same rationale as matchSpecSchema / channelSchema: argparse accepts
+		// options interspersed with positionals, so a leading `-` could smuggle
+		// a flag through the argv boundary.
+		for (const bad of ["--dry-run", "-c", "--file"]) {
+			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaEnvsCreateFromFileInputSchema rejects null bytes, newlines, tabs, and padded paths", () => {
+		for (const bad of [
+			"/tmp/env.yml\0/etc/passwd",
+			"/tmp/env.yml\nrm -rf /",
+			"/tmp/env\t.yml",
+			" /tmp/env.yml",
+			"/tmp/env.yml ",
+		]) {
+			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaEnvsCreateFromFileInputSchema allows interior spaces and caps length at PATH_MAX", () => {
+		// Interior spaces are legitimate in real paths and must not be rejected.
+		expect(
+			condaEnvsCreateFromFileInputSchema.safeParse({ file: "/Users/me/My Documents/env.yml" })
+				.success,
+		).toBe(true);
+		expect(
+			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4095)}` }).success,
+		).toBe(true);
+		expect(
+			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4096)}` }).success,
+		).toBe(false);
+	});
+
+	it("condaEnvsDistributionsResultSchema round-trips", () => {
+		const result = {
+			distributions: [
+				{ prefix: "/opt/miniconda3", priority: 10 },
+				{ prefix: "/home/user/anaconda3", priority: 5 },
+			],
+		};
+		expect(condaEnvsDistributionsResultSchema.parse(result)).toEqual(result);
+	});
+
+	it("condaEnvsDistributionsResultSchema accepts empty list", () => {
+		expect(condaEnvsDistributionsResultSchema.parse({ distributions: [] })).toEqual({
+			distributions: [],
+		});
+	});
+});
+
+describe("conda.envs.clone I/O", () => {
+	it("condaEnvsCloneInputSchema requires sourceName and name", () => {
+		const input = { sourceName: "py311", name: "py311-copy" };
+		expect(condaEnvsCloneInputSchema.parse(input)).toEqual(input);
+	});
+
+	it("condaEnvsCloneInputSchema rejects missing fields", () => {
+		expect(condaEnvsCloneInputSchema.safeParse({ sourceName: "py311" }).success).toBe(false);
+		expect(condaEnvsCloneInputSchema.safeParse({ name: "py311-copy" }).success).toBe(false);
+		expect(condaEnvsCloneInputSchema.safeParse({}).success).toBe(false);
+	});
+
+	it("condaEnvsCloneInputSchema validates names with environment name rules", () => {
+		expect(
+			condaEnvsCloneInputSchema.safeParse({ sourceName: "has space", name: "ok" }).success,
+		).toBe(false);
+		expect(condaEnvsCloneInputSchema.safeParse({ sourceName: "ok", name: ".dotted" }).success).toBe(
+			false,
+		);
+	});
+
+	it("condaEnvsCloneResultSchema carries jobId + environment", () => {
+		const result = {
+			jobId: "j-10",
+			environment: { name: "py311-copy", prefix: "/opt/envs/py311-copy" },
+		};
+		expect(condaEnvsCloneResultSchema.parse(result)).toEqual(result);
+	});
+});
+
+describe("conda.envs.readFile I/O", () => {
+	it("condaEnvsReadFileInputSchema accepts .yml and .yaml paths (case-insensitive)", () => {
+		for (const filePath of [
+			"/tmp/environment.yml",
+			"/tmp/environment.yaml",
+			"/tmp/ENVIRONMENT.YAML",
+			"/Users/me/My Documents/env.yml",
+		]) {
+			expect(condaEnvsReadFileInputSchema.parse({ filePath })).toEqual({ filePath });
+		}
+	});
+
+	it("condaEnvsReadFileInputSchema rejects non-YAML extensions", () => {
+		for (const bad of ["/tmp/env.txt", "/tmp/env.json", "/tmp/env", "/tmp/env.yml.exe"]) {
+			expect(condaEnvsReadFileInputSchema.safeParse({ filePath: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaEnvsReadFileInputSchema rejects flag-like paths", () => {
+		// environmentFilePathSchema underneath rejects a leading `-` so the
+		// path cannot pass for a conda CLI flag downstream.
+		for (const bad of ["--file.yml", "-f.yaml"]) {
+			expect(condaEnvsReadFileInputSchema.safeParse({ filePath: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaEnvsReadFileInputSchema rejects null bytes, CR/LF, tabs, and padded paths", () => {
+		for (const bad of [
+			"/tmp/env\u0000.yml",
+			"/tmp/env\n.yml",
+			"/tmp/env\r.yml",
+			"/tmp/env\t.yml",
+			" /tmp/env.yml",
+			"/tmp/env.yml ",
+		]) {
+			expect(condaEnvsReadFileInputSchema.safeParse({ filePath: bad }).success).toBe(false);
+		}
+	});
+
+	it("condaEnvsReadFileInputSchema caps length at PATH_MAX", () => {
+		const okPath = `/${"a".repeat(4090)}.yml`;
+		expect(okPath.length).toBeLessThanOrEqual(4096);
+		expect(condaEnvsReadFileInputSchema.safeParse({ filePath: okPath }).success).toBe(true);
+		const longPath = `/${"a".repeat(4092)}.yml`;
+		expect(longPath.length).toBeGreaterThan(4096);
+		expect(condaEnvsReadFileInputSchema.safeParse({ filePath: longPath }).success).toBe(false);
+	});
+});
+
+describe("conda.envs.pickFile I/O", () => {
+	it("condaEnvsPickFileInputSchema accepts an empty object", () => {
+		expect(condaEnvsPickFileInputSchema.parse({})).toEqual({});
+	});
+
+	it("condaEnvsPickFileResultSchema returns a file path", () => {
+		const result = { filePath: "/path/to/environment.yml" };
+		expect(condaEnvsPickFileResultSchema.parse(result)).toEqual(result);
+	});
+
+	it("condaEnvsPickFileResultSchema returns null when user cancels", () => {
+		const result = { filePath: null };
+		expect(condaEnvsPickFileResultSchema.parse(result)).toEqual(result);
 	});
 });
 
@@ -509,6 +685,41 @@ describe("conda.repodata I/O", () => {
 		);
 	});
 
+	it("repodataQuerySchema accepts partial search terms", () => {
+		for (const good of ["num", "NumPy", "scikit-", "a", "a".repeat(256)]) {
+			expect(repodataQuerySchema.parse(good)).toBe(good);
+		}
+	});
+
+	it("repodataQuerySchema rejects the empty string — omission already means no filter", () => {
+		expect(repodataQuerySchema.safeParse("").success).toBe(false);
+	});
+
+	it("repodataQuerySchema rejects flag-like, padded, and multi-line terms", () => {
+		for (const bad of ["--override-channels", "-c", " numpy", "numpy ", "num\npy", "num\tpy"]) {
+			expect(repodataQuerySchema.safeParse(bad).success).toBe(false);
+		}
+	});
+
+	it("repodataQuerySchema caps a term at 256 characters", () => {
+		expect(repodataQuerySchema.safeParse("a".repeat(257)).success).toBe(false);
+	});
+
+	it("condaRepodataFindInputSchema rejects names and query together", () => {
+		// The two filter modes are mutually exclusive: `names` goes to the
+		// bridge exactly, `query` ranks the cached index in the main process.
+		expect(condaRepodataFindInputSchema.safeParse({ names: ["numpy"], query: "num" }).success).toBe(
+			false,
+		);
+	});
+
+	it("condaRepodataFindInputSchema accepts query alone and applies the default limit", () => {
+		expect(condaRepodataFindInputSchema.parse({ query: "num" })).toEqual({
+			query: "num",
+			limit: REPODATA_FIND_DEFAULT_LIMIT,
+		});
+	});
+
 	it("subdirSchema rejects flag-like and padded subdirs", () => {
 		expect(subdirSchema.parse("osx-arm64")).toBe("osx-arm64");
 		expect(subdirSchema.safeParse("-64").success).toBe(false);
@@ -582,6 +793,9 @@ describe("condaContract", () => {
 				"conda.envs.clone",
 				"conda.envs.createFromFile",
 				"conda.envs.delete",
+				"conda.envs.pickFile",
+				"conda.envs.readFile",
+				"conda.envs.prefixOptions",
 				"conda.packages.list",
 				"conda.packages.install",
 				"conda.packages.remove",

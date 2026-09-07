@@ -9,7 +9,11 @@ import { ThemeProvider, useColorScheme } from "@/platform/theme/ThemeProvider";
 
 function ThemedToaster() {
 	const { resolved } = useColorScheme();
-	return <Toaster theme={resolved} />;
+	// Bottom-right, lifted above the create-environment drawer's footer so a
+	// persistent error toast never sits behind the Create button. `closeButton`
+	// gives every toast an explicit dismiss control — required because error
+	// toasts are persistent (`duration: Infinity`) and never auto-hide.
+	return <Toaster theme={resolved} position="bottom-right" offset={{ bottom: 88 }} closeButton />;
 }
 
 export function App() {

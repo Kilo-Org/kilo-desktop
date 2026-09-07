@@ -33,6 +33,8 @@ export function EnvironmentsPage() {
 	const sdk = useSdk<EnvironmentsStatusService>("environments");
 	const statusQuery = useSdkQuery(sdk, "environments.status");
 
+	const providersAvailable = statusQuery.data?.providersAvailable ?? false;
+
 	if (!featureEnabled) {
 		return (
 			<div
@@ -65,7 +67,6 @@ export function EnvironmentsPage() {
 	// error before the "unavailable" placeholder takes over.
 	if (statusQuery.isLoading) return null;
 
-	const providersAvailable = statusQuery.data?.providersAvailable ?? false;
 	if (!providersAvailable) {
 		return (
 			<div

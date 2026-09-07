@@ -51,6 +51,8 @@ describe("jobKindSchema", () => {
 			"channels.remove",
 		] as const;
 		for (const kind of expected) expect(jobKindSchema.parse(kind)).toBe(kind);
+		// Exhaustive check — a new kind that isn't listed here will fail.
+		expect([...jobKindSchema.options].sort()).toEqual([...expected].sort());
 	});
 
 	it("rejects read op names — reads never enqueue and never emit progress", () => {

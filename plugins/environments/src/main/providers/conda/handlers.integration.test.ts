@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdir, rmdir, symlink, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 
@@ -30,6 +34,8 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 	return {
 		list: overrides.list ?? (() => Promise.resolve([])),
 		findDistributions: overrides.findDistributions ?? (() => Promise.resolve([])),
+		prefixOptions:
+			overrides.prefixOptions ?? (() => Promise.resolve({ envsDirs: [], channels: [] })),
 		create: overrides.create ?? notImpl,
 		clone: overrides.clone ?? notImpl,
 		createFromFile: overrides.createFromFile ?? notImpl,
@@ -57,7 +63,17 @@ function makeRepodataMatches(count: number): CondaRepodataPackage[] {
 	}));
 }
 
+/** Temp file paths created during tests — cleaned up by the afterEach hook. */
+const tmpFiles: string[] = [];
+
 describe("conda handlers → sdk.invoke round-trip", () => {
+	afterEach(async () => {
+		for (const f of tmpFiles) {
+			await unlink(f).catch(() => rmdir(f).catch(() => {}));
+		}
+		tmpFiles.length = 0;
+	});
+
 	it("returns the backend's env list through the renderer client", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
@@ -136,6 +152,7 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		expect(create).toHaveBeenCalledWith(
 			{ name: "dev" },
 			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+			undefined,
 		);
 
 		// Every event carries the same jobId, and the ordering is the
@@ -452,6 +469,93 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
+	it("ranks exact and prefix name matches ahead of substring matches before truncating", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const named = (name: string): CondaRepodataPackage => ({
+			name,
+			version: "1.0.0",
+			build: 0,
+			channel: "",
+			summary: "",
+			home: "",
+			versions: [{ version: "1.0.0", size: 1000 }],
+		});
+		// Deliberately unordered: the exact match sits behind substring and
+		// prefix matches in index order, and a non-match is interleaved.
+		const index = [
+			named("unrelated"),
+			named("scikit-numpy"),
+			named("numpydoc"),
+			named("NumPy"),
+			named("also-numpy"),
+		];
+		const findRepodata = vi.fn().mockResolvedValue(index);
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.repodata.find"]({ query: "numpy", limit: 3 });
+
+		// exact > prefix > substring (case-insensitive), stable within a rank;
+		// the non-match is dropped BEFORE truncation, so it cannot crowd out
+		// lower-ranked matches.
+		expect(result.packages.map((pkg) => pkg.name)).toEqual(["NumPy", "numpydoc", "scikit-numpy"]);
+		expect(result.truncated).toBe(true);
+		// The query never reaches the backend — it fetches the full index
+		// (names-less filter) with the materialisation bound lifted.
+		expect(findRepodata).toHaveBeenCalledWith(
+			{},
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+			{ unbounded: true },
+		);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("serves different queries from one cached index — the backend walks the bridge once", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(5));
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const first = await client["conda.repodata.find"]({ query: "pkg-1" });
+		const second = await client["conda.repodata.find"]({ query: "pkg-2" });
+
+		// The index cache key omits `query`, so every keystroke of an
+		// interactive search re-ranks the same cached index.
+		expect(first.packages.map((pkg) => pkg.name)).toEqual(["pkg-1"]);
+		expect(second.packages.map((pkg) => pkg.name)).toEqual(["pkg-2"]);
+		expect(findRepodata).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("names lookups bypass the query index cache and forward the exact filter", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(3));
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.repodata.find"]({ query: "pkg" });
+		await client["conda.repodata.find"]({ names: ["pkg-0"] });
+
+		// The names path keeps its own cache slot (`repodata.find`) and hits
+		// the backend with the exact-name filter even while the query path's
+		// index (`repodata.index`) is warm.
+		expect(findRepodata).toHaveBeenCalledTimes(2);
+		expect(findRepodata).toHaveBeenLastCalledWith(
+			{ names: ["pkg-0"] },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
 	it("memoises repodata.find results within the read-cache TTL", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
@@ -541,5 +645,190 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		// Sanity check: the constant we advertise to renderer subscribers
 		// matches the featureId + local event name path.
 		expect(ENVIRONMENTS_EVENT_NAMES.JOB_PROGRESS).toBe("environments.job-progress");
+	});
+
+	it("conda.envs.readFile returns the file content for a valid YAML file", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const tmpPath = join(tmpDir, "env.yml");
+		const yamlContent = "name: test-env\ndependencies:\n  - numpy\n";
+		await writeFile(tmpPath, yamlContent, "utf-8");
+		tmpFiles.push(tmpPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.readFile"]({ filePath: tmpPath });
+
+		expect(result).toEqual({ content: yamlContent });
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.readFile rejects with VALIDATION for non-YAML extension", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(client["conda.envs.readFile"]({ filePath: "/tmp/env.txt" })).rejects.toThrow();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.readFile rejects a symlink whose target is not a YAML file", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		// Create a non-YAML target and a .yml symlink pointing to it.
+		const targetPath = join(tmpDir, "secret.txt");
+		await writeFile(targetPath, "not yaml", "utf-8");
+		tmpFiles.push(targetPath);
+		const symlinkPath = join(tmpDir, "sneaky.yml");
+		await symlink(targetPath, symlinkPath);
+		tmpFiles.push(symlinkPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(client["conda.envs.readFile"]({ filePath: symlinkPath })).rejects.toThrow(/YAML/);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.readFile follows a symlink whose target IS a YAML file", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const targetPath = join(tmpDir, "real-env.yaml");
+		const yamlContent = "name: linked-env\ndependencies:\n  - scipy\n";
+		await writeFile(targetPath, yamlContent, "utf-8");
+		tmpFiles.push(targetPath);
+		const symlinkPath = join(tmpDir, "link.yml");
+		await symlink(targetPath, symlinkPath);
+		tmpFiles.push(symlinkPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.readFile"]({ filePath: symlinkPath });
+		expect(result).toEqual({ content: yamlContent });
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.readFile rejects a directory path", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test", "fake-env.yml");
+		await mkdir(tmpDir, { recursive: true });
+		tmpFiles.push(tmpDir);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(client["conda.envs.readFile"]({ filePath: tmpDir })).rejects.toThrow(
+			/regular file/,
+		);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.readFile rejects files exceeding the size limit", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const tmpPath = join(tmpDir, "huge.yml");
+		// Write just over 1 MB to trigger the size guard.
+		await writeFile(tmpPath, "a".repeat(1024 * 1024 + 1), "utf-8");
+		tmpFiles.push(tmpPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(client["conda.envs.readFile"]({ filePath: tmpPath })).rejects.toThrow(/too large/);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.prefixOptions returns envsDirs and channels from the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const prefixOptions = vi.fn().mockResolvedValue({
+			envsDirs: ["/opt/anaconda3/envs", "/home/user/.conda/envs"],
+			channels: ["defaults", "conda-forge"],
+		});
+		registerCondaHandlers(mainSdk, makeBackend({ prefixOptions }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.prefixOptions"]();
+
+		expect(result).toEqual({
+			envsDirs: ["/opt/anaconda3/envs", "/home/user/.conda/envs"],
+			channels: ["defaults", "conda-forge"],
+		});
+		expect(prefixOptions).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.prefixOptions puts highest-priority distribution dir first", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const prefixOptions = vi.fn().mockResolvedValue({
+			envsDirs: ["/bridge/payload/envs", "/home/user/.conda/envs"],
+			channels: ["defaults"],
+		});
+		const findDistributions = vi.fn().mockResolvedValue([
+			{ prefix: "/opt/miniconda3", priority: 1 },
+			{ prefix: "/opt/anaconda3", priority: 10 },
+		]);
+		registerCondaHandlers(mainSdk, makeBackend({ prefixOptions, findDistributions }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.prefixOptions"]();
+
+		expect(result.envsDirs).toEqual([
+			"/opt/anaconda3/envs",
+			"/opt/miniconda3/envs",
+			"/bridge/payload/envs",
+			"/home/user/.conda/envs",
+		]);
+		expect(result.channels).toEqual(["defaults"]);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.prefixOptions degrades gracefully when findDistributions fails", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const prefixOptions = vi.fn().mockResolvedValue({
+			envsDirs: ["/bridge/payload/envs"],
+			channels: ["defaults"],
+		});
+		const findDistributions = vi.fn().mockRejectedValue(new Error("bridge unavailable"));
+		registerCondaHandlers(mainSdk, makeBackend({ prefixOptions, findDistributions }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.prefixOptions"]();
+
+		expect(result.envsDirs).toEqual(["/bridge/payload/envs"]);
+		expect(result.channels).toEqual(["defaults"]);
+
+		queue.dispose();
+		mainSdk.dispose();
 	});
 });

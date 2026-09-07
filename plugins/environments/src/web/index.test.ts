@@ -26,7 +26,9 @@ describe("environments plugin web entry", () => {
 		const tools = sdk.services.toolRegistry.all();
 		expect(tools.map((tool) => tool.name).sort()).toEqual([
 			"conda.channels.list",
+			"conda.envs.clone",
 			"conda.envs.create",
+			"conda.envs.createFromFile",
 			"conda.envs.delete",
 			"conda.envs.list",
 			"conda.packages.install",

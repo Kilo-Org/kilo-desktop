@@ -83,6 +83,13 @@ export interface ReadOptions<T> {
 	 * `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` share a cache slot.
 	 */
 	readonly args?: unknown;
+	/**
+	 * Optional per-read TTL override in ms. Defaults to the queue's
+	 * {@link JobQueueOptions.ttlMs}. Use a longer TTL for expensive,
+	 * slow-changing reads (e.g. the full repodata index) that would be
+	 * wasteful to re-fetch on every call.
+	 */
+	readonly ttlMs?: number;
 	readonly run: (ctx: ReadRunContext) => Promise<T>;
 }
 
@@ -235,7 +242,7 @@ export class JobQueue {
 		const providerBucket = this.#cache.get(options.providerId) ?? new Map<string, CacheEntry>();
 		providerBucket.set(cacheKey, {
 			value,
-			expiresAt: this.#now() + this.#ttlMs,
+			expiresAt: this.#now() + (options.ttlMs ?? this.#ttlMs),
 		});
 		this.#cache.set(options.providerId, providerBucket);
 		return value;

@@ -522,6 +522,34 @@ describe("JobQueue.read — cache TTL + invalidation", () => {
 		queue.dispose();
 	});
 
+	it("honors a per-read ttlMs override beyond the queue default", async () => {
+		const emit = vi.fn<(event: JobProgressEvent) => void>();
+		let now = 0;
+		const queue = new JobQueue({ emit, now: () => now });
+
+		const runs = vi.fn(async () => "index-v1");
+		await queue.read({
+			providerId: "conda",
+			opName: "repodata.index",
+			ttlMs: DEFAULT_READ_CACHE_TTL_MS * 10,
+			run: runs,
+		});
+		expect(runs).toHaveBeenCalledTimes(1);
+
+		// Past the default TTL but within the override → still a cache hit.
+		now += DEFAULT_READ_CACHE_TTL_MS + 1;
+		const cached = await queue.read({
+			providerId: "conda",
+			opName: "repodata.index",
+			ttlMs: DEFAULT_READ_CACHE_TTL_MS * 10,
+			run: runs,
+		});
+		expect(cached).toBe("index-v1");
+		expect(runs).toHaveBeenCalledTimes(1);
+
+		queue.dispose();
+	});
+
 	it("keys cache entries on (providerId, opName, args) — different args do not collide", async () => {
 		const emit = vi.fn<(event: JobProgressEvent) => void>();
 		const queue = new JobQueue({ emit });

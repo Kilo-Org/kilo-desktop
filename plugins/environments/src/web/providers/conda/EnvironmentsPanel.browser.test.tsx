@@ -24,38 +24,33 @@ function renderPanel(
 	} = {},
 ) {
 	const list = options.list ?? (async () => mockEnvironments);
+	const notImpl = async () => {
+		throw new Error("not implemented in test");
+	};
 	const sdk = createFakeSdk({
 		featureId: "environments",
 		channels: condaContract,
 		handlers: {
 			"conda.envs.list": list,
-			"conda.envs.create": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.envs.delete": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.packages.list": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.packages.install": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.packages.remove": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.channels.list": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.channels.add": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.channels.remove": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.jobs.cancel": async () => {
-				throw new Error("not implemented in test");
-			},
+			"conda.envs.create": notImpl,
+			"conda.envs.clone": notImpl,
+			"conda.envs.createFromFile": notImpl,
+			"conda.envs.delete": notImpl,
+			"conda.envs.pickFile": notImpl,
+			"conda.envs.readFile": notImpl,
+			"conda.envs.distributions": notImpl,
+			"conda.envs.prefixOptions": async () => ({
+				envsDirs: ["/opt/anaconda3/envs"],
+				channels: ["defaults", "conda-forge"],
+			}),
+			"conda.packages.list": notImpl,
+			"conda.packages.install": notImpl,
+			"conda.packages.remove": notImpl,
+			"conda.channels.list": notImpl,
+			"conda.channels.add": notImpl,
+			"conda.channels.remove": notImpl,
+			"conda.repodata.find": async () => ({ packages: [], truncated: false }),
+			"conda.jobs.cancel": notImpl,
 		},
 	});
 	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
@@ -239,5 +234,71 @@ describe("EnvironmentsPanel — search, sort, pagination", () => {
 
 		// Should now show remaining items (page 2 starts at env-15)
 		await expect.element(screen.getByText("env-15")).toBeVisible();
+	});
+});
+
+describe("EnvironmentsPanel — toolbar and row actions", () => {
+	it("renders New environment and Import from file toolbar buttons", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-create-btn")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-import-btn")).toBeVisible();
+	});
+
+	it("opens the Create Environment dialog from the toolbar button", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-create-btn"));
+		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
+	});
+
+	it("opens the Import from file dialog from the toolbar button", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-import-btn"));
+		await expect.element(screen.getByTestId("environments-import-dialog")).toBeVisible();
+	});
+
+	it("shows the row actions menu with Clone for named envs", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		// Click the row actions button for the first named env
+		const actionButtons = screen.getByTestId("environments-row-actions");
+		await userEvent.click(actionButtons.first());
+
+		await expect.element(screen.getByTestId("environments-row-clone")).toBeVisible();
+	});
+
+	it("opens the Clone dialog from the row actions menu", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		const actionButtons = screen.getByTestId("environments-row-actions");
+		await userEvent.click(actionButtons.first());
+		await userEvent.click(screen.getByTestId("environments-row-clone"));
+
+		await expect.element(screen.getByTestId("environments-clone-dialog")).toBeVisible();
+	});
+
+	it("shows 'No actions available' for nameless envs (base or prefix-only)", async () => {
+		const { baseElement } = renderPanel({
+			list: async () => [{ name: "", prefix: "/opt/conda" }],
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		const actionButtons = screen.getByTestId("environments-row-actions");
+		await userEvent.click(actionButtons.first());
+
+		await expect.element(screen.getByText("No actions available")).toBeVisible();
 	});
 });

@@ -1,5 +1,5 @@
 /**
- * Display-name derivation for conda environments.
+ * Display-name derivation and validation for conda environments.
  *
  * `conda env list --json` reports an empty name for every environment it did
  * not create under an `envs/` directory — base installs, `-p/--prefix` envs,
@@ -7,6 +7,8 @@
  * "base" collapses unrelated environments into a wall of identical rows, so
  * fall back to the prefix's last path segment the way Anaconda Desktop does.
  */
+
+import { ENVIRONMENT_NAME_PATTERN } from "../../../contracts/providers/conda.js";
 
 /** Last path segment of a POSIX or Windows path, without trailing separators. */
 export function basename(prefix: string): string {
@@ -23,4 +25,19 @@ export function basename(prefix: string): string {
 export function environmentDisplayName(env: { name: string; prefix: string }): string {
 	if (env.name) return env.name;
 	return basename(env.prefix) || "base";
+}
+
+/**
+ * Validate an environment name against conda's naming rules. Returns an error
+ * message string if invalid, or `null` if the name is acceptable. Used by
+ * dialog components that accept user-entered environment names.
+ */
+export function validateEnvironmentName(name: string): string | null {
+	const trimmed = name.trim();
+	if (!trimmed) return "Name is required.";
+	if (trimmed.length > 128) return "Name must be 128 characters or fewer.";
+	if (!ENVIRONMENT_NAME_PATTERN.test(trimmed)) {
+		return "Name must start with a letter or digit and contain only letters, digits, '.', '_', or '-'.";
+	}
+	return null;
 }

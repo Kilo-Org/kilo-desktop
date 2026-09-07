@@ -78,9 +78,25 @@ export interface CondaRepodataFilter {
 	readonly subdirs?: string[];
 }
 
+/**
+ * Options for {@link CondaBackend.findRepodata} that never reach the
+ * bridge — they only shape what the backend materialises from the
+ * bridge's response.
+ */
+export interface CondaRepodataFindOptions {
+	/**
+	 * Skip the `REPODATA_FIND_MAX_LIMIT + 1` bound on the materialised
+	 * result. Reserved for the main-process index cache that backs
+	 * partial-match (`query`) searches: the result never crosses IPC
+	 * directly — the handler ranks and slices it first.
+	 */
+	readonly unbounded?: boolean;
+}
+
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
 	findDistributions(ctx?: CondaCallContext): Promise<CondaDistribution[]>;
+	prefixOptions(ctx?: CondaCallContext): Promise<{ envsDirs: string[]; channels: string[] }>;
 
 	create(
 		input: CondaEnvsCreateInput,
@@ -111,11 +127,14 @@ export interface CondaBackend {
 	 * Every filter is optional and matches the bridge's own params. `names`
 	 * is an **exact-match** allowlist (the bridge has no substring or glob
 	 * support); omitting it walks the entire index, so callers are expected
-	 * to bound the result themselves.
+	 * to bound the result themselves — unless `options.unbounded` is set,
+	 * which hands back the whole materialised index (see
+	 * {@link CondaRepodataFindOptions}).
 	 */
 	findRepodata(
 		filter: CondaRepodataFilter,
 		ctx?: CondaCallContext,
+		options?: CondaRepodataFindOptions,
 	): Promise<CondaRepodataPackage[]>;
 
 	/**

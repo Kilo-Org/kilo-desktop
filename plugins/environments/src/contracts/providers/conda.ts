@@ -196,11 +196,18 @@ export type CondaDistribution = z.infer<typeof condaDistributionSchema>;
  * Input to `conda.envs.create`. `channels` and `packages` are optional so
  * callers can create an empty env; when provided, both must be non-empty
  * (an empty list would be a caller bug and is rejected as VALIDATION).
+ *
+ * `prefix` is an optional absolute filesystem path where the environment
+ * should be created (equivalent to `conda create --prefix <path>`). When
+ * provided, it takes precedence over `name` for the on-disk location.
+ * The MCP-exposed tool uses a narrower schema without `prefix` so LLMs
+ * cannot target arbitrary filesystem locations.
  */
 export const condaEnvsCreateInputSchema = z.object({
 	name: environmentNameSchema,
 	channels: z.array(channelSchema).min(1).optional(),
 	packages: z.array(matchSpecSchema).min(1).optional(),
+	prefix: envPrefixSchema.optional(),
 });
 export type CondaEnvsCreateInput = z.infer<typeof condaEnvsCreateInputSchema>;
 
@@ -289,6 +296,49 @@ export const condaEnvsDistributionsResultSchema = z.object({
 	distributions: z.array(condaDistributionSchema),
 });
 export type CondaEnvsDistributionsResult = z.infer<typeof condaEnvsDistributionsResultSchema>;
+
+/**
+ * Input to `conda.envs.pickFile` — opens a native OS file picker dialog
+ * filtered to `.yml`/`.yaml` environment files. The handler runs in the
+ * main process and returns the selected file path or `null` if cancelled.
+ */
+export const condaEnvsPickFileInputSchema = z.object({});
+export type CondaEnvsPickFileInput = z.infer<typeof condaEnvsPickFileInputSchema>;
+
+export const condaEnvsPickFileResultSchema = z.object({
+	filePath: z.string().nullable(),
+});
+export type CondaEnvsPickFileResult = z.infer<typeof condaEnvsPickFileResultSchema>;
+
+/**
+ * Input to `conda.envs.readFile` — reads the text content of a YAML env file.
+ * Reuses {@link environmentFilePathSchema} so the same path guards (null
+ * bytes, control characters, padding, length cap, leading `-`) apply to both
+ * `readFile` and the `createFromFile` call the path is later sent to; the
+ * extension refinement is the only `readFile`-specific rule.
+ */
+export const condaEnvsReadFileInputSchema = z.object({
+	filePath: environmentFilePathSchema.refine((v) => /\.ya?ml$/i.test(v), {
+		message: "File must be a YAML environment file (.yml or .yaml).",
+	}),
+});
+export type CondaEnvsReadFileInput = z.infer<typeof condaEnvsReadFileInputSchema>;
+
+export const condaEnvsReadFileResultSchema = z.object({
+	content: z.string(),
+});
+export type CondaEnvsReadFileResult = z.infer<typeof condaEnvsReadFileResultSchema>;
+
+/**
+ * Result of `conda.envs.prefixOptions` — the directories where conda
+ * looks for and creates environments (`envs_dirs` from `conda info`).
+ * The first entry is the default location used when no prefix is specified.
+ */
+export const condaEnvsPrefixOptionsResultSchema = z.object({
+	envsDirs: z.array(z.string().min(1)),
+	channels: z.array(z.string().min(1)),
+});
+export type CondaEnvsPrefixOptionsResult = z.infer<typeof condaEnvsPrefixOptionsResultSchema>;
 
 /* --------------------------------------------------------------------- */
 /* Method I/O — packages                                                 */
@@ -396,6 +446,33 @@ export const repodataPackageNameSchema = z
 export type RepodataPackageName = z.infer<typeof repodataPackageNameSchema>;
 
 /**
+ * A partial-match package search term for `conda.repodata.find`.
+ *
+ * Unlike {@link repodataPackageNameSchema} this is a *search term*, not an
+ * identifier: the main process applies it as a case-insensitive partial
+ * match against the cached full channel index (the bridge itself has no
+ * substring support, so the term never reaches the bridge). It carries the
+ * same argv-boundary guards anyway — single line, no tabs, no padding, no
+ * leading `-` — because defence in depth is cheap and a flag-like "search
+ * term" is never legitimate. Empty strings are rejected: omitting `query`
+ * already means "no filter".
+ */
+export const repodataQuerySchema = z
+	.string()
+	.min(1)
+	.max(256)
+	.refine((value) => !/[\r\n\t]/.test(value), {
+		message: "Query must be a single line without tabs.",
+	})
+	.refine((value) => value.trim().length === value.length, {
+		message: "Query must not have leading or trailing whitespace.",
+	})
+	.refine((value) => !value.startsWith("-"), {
+		message: "Query must not start with '-' — that would look like a conda CLI flag.",
+	});
+export type RepodataQuery = z.infer<typeof repodataQuerySchema>;
+
+/**
  * A conda platform subdir (e.g. `"linux-64"`, `"osx-arm64"`, `"noarch"`).
  * Carries the same argv-boundary guards as {@link repodataPackageNameSchema}:
  * subdirs reach conda as identifiers, so a value with an embedded newline/tab
@@ -432,23 +509,38 @@ export const REPODATA_FIND_MAX_LIMIT = 500;
 /**
  * Input to `conda.repodata.find`.
  *
- * Mirrors the bridge's `repodata.find` params. Every filter is optional:
+ * Mirrors the bridge's `repodata.find` params, plus a main-process-only
+ * `query`. Every filter is optional:
  * - `names` restricts to these **exact** package names. Omit it to walk the
  *   whole channel index — correct for building a catalog, but expensive, so
  *   `limit` still applies. An empty array is rejected as a caller bug: use
  *   omission to mean "no filter", since the bridge reads `[]` as "return
  *   nothing".
+ * - `query` is a case-insensitive **partial** match applied in the main
+ *   process against the cached full index (the bridge itself has no
+ *   substring support). Results are ranked exact > prefix > substring.
+ *   Mutually exclusive with `names` so the two filter modes stay crisp.
  * - `channels` overrides the configured channels.
  * - `subdirs` restricts to specific platform subdirs; omitted uses conda's
  *   defaults for the host.
  * - `limit` bounds the response — see {@link REPODATA_FIND_DEFAULT_LIMIT}.
  */
-export const condaRepodataFindInputSchema = z.object({
-	names: z.array(repodataPackageNameSchema).min(1).optional(),
-	channels: z.array(channelSchema).min(1).optional(),
-	subdirs: z.array(subdirSchema).min(1).optional(),
-	limit: z.number().int().min(1).max(REPODATA_FIND_MAX_LIMIT).default(REPODATA_FIND_DEFAULT_LIMIT),
-});
+export const condaRepodataFindInputSchema = z
+	.object({
+		names: z.array(repodataPackageNameSchema).min(1).optional(),
+		query: repodataQuerySchema.optional(),
+		channels: z.array(channelSchema).min(1).optional(),
+		subdirs: z.array(subdirSchema).min(1).optional(),
+		limit: z
+			.number()
+			.int()
+			.min(1)
+			.max(REPODATA_FIND_MAX_LIMIT)
+			.default(REPODATA_FIND_DEFAULT_LIMIT),
+	})
+	.refine((value) => value.names === undefined || value.query === undefined, {
+		message: "Provide either `names` (exact) or `query` (partial), not both.",
+	});
 export type CondaRepodataFindInput = z.infer<typeof condaRepodataFindInputSchema>;
 
 /** One available version of a package, with its artifact size in bytes. */
@@ -518,6 +610,9 @@ export const condaContract = defineContract({
 		condaEnvsCreateFromFileResultSchema,
 	),
 	"conda.envs.delete": defineMethod(condaEnvsDeleteInputSchema, condaEnvsDeleteResultSchema),
+	"conda.envs.pickFile": defineMethod(condaEnvsPickFileInputSchema, condaEnvsPickFileResultSchema),
+	"conda.envs.readFile": defineMethod(condaEnvsReadFileInputSchema, condaEnvsReadFileResultSchema),
+	"conda.envs.prefixOptions": defineMethod(z.undefined(), condaEnvsPrefixOptionsResultSchema),
 
 	"conda.packages.list": defineMethod(condaPackagesListInputSchema, condaPackagesListResultSchema),
 	"conda.packages.install": defineMethod(

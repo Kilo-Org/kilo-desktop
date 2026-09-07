@@ -759,6 +759,33 @@ describe("SidecarCondaBackend", () => {
 			expect(result).toHaveLength(REPODATA_FIND_MAX_LIMIT + 1);
 		});
 
+		it("unbounded: true skips the materialisation bound so the index cache sees the whole map", async () => {
+			// The main-process index cache that backs partial-match queries needs
+			// every package — the handler ranks and slices before anything
+			// crosses IPC, so the bound would silently hide matches.
+			const oversized: Record<string, unknown> = {};
+			for (let i = 0; i < REPODATA_FIND_MAX_LIMIT + 500; i++) {
+				oversized[`pkg-${i}`] = {
+					home: "",
+					summary: "",
+					channel: "",
+					build: 0,
+					version: "1.0.0",
+					versions: { "1.0.0": { size: 1 } },
+				};
+			}
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve(oversized);
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.findRepodata({}, undefined, { unbounded: true });
+
+			expect(result).toHaveLength(REPODATA_FIND_MAX_LIMIT + 500);
+		});
+
 		it("returns an empty array when the index has no matching packages", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
 				if (method === "conda.info") return Promise.resolve({});
@@ -933,6 +960,20 @@ describe("SidecarCondaBackend", () => {
 			expect(warnSpy).toHaveBeenCalledWith(
 				expect.stringContaining("Unmapped domain_code: conda:unknown:thing"),
 			);
+		});
+
+		it("maps a 'prefix already exists' conda exception (no domain code) to ENV_EXISTS", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				// The bridge relays raw conda exceptions without a domain code.
+				throw new ResponseError(
+					-32000,
+					"conda.exceptions.CondaValueError: prefix already exists: /Users/x/.conda/envs/faker",
+				);
+			});
+
+			const backend = createBackend();
+			await expect(backend.create({ name: "faker", packages: [] })).rejects.toThrow("ENV_EXISTS");
 		});
 
 		it("falls back to PROVIDER_NOT_READY for ResponseError without data", async () => {

@@ -16,6 +16,7 @@
  * Mapping from CondaBackend methods to bridge JSON-RPC methods:
  * - list()              → conda_tools.describe_environments
  * - findDistributions() → conda_tools.find_distributions
+ * - prefixOptions()     → conda.info (envs_dirs + channels)
  * - create()            → conda.create (skip_preview=true)
  * - clone()             → conda.clone (destinationName=<target>)
  * - createFromFile()    → conda.create_from_file (file=<path>)
@@ -76,6 +77,7 @@ import type {
 	CondaCallContext,
 	CondaCreateOptions,
 	CondaRepodataFilter,
+	CondaRepodataFindOptions,
 } from "./CondaBackend.js";
 
 const MAX_RESTART_ATTEMPTS = 3;
@@ -100,6 +102,34 @@ const DOMAIN_CODE_MAP: Record<string, EnvironmentsErrorCode> = {
 	"conda:environment:failed-to-clone": "SOLVE_FAILED",
 	"conda:environment-file:invalid": "INVALID_MATCHSPEC",
 };
+
+/**
+ * Fallback classification for bridge failures that arrive without a domain
+ * code — raw conda exception strings (e.g. `CondaValueError: prefix already
+ * exists: ...`). Recognising the common ones lets the renderer show a
+ * friendly, code-driven message instead of a Python traceback fragment.
+ *
+ * Ordered most-specific first; the first matching pattern wins.
+ */
+const MESSAGE_PATTERNS: ReadonlyArray<{ pattern: RegExp; code: EnvironmentsErrorCode }> = [
+	{ pattern: /prefix already exists/i, code: "ENV_EXISTS" },
+	{ pattern: /environment .* already exists/i, code: "ENV_EXISTS" },
+	{
+		pattern: /(?:PackagesNotFoundError|package[s]? .* not (?:found|available))/i,
+		code: "PACKAGE_NOT_FOUND",
+	},
+	{ pattern: /(?:environment|prefix) (?:does not exist|not found)/i, code: "ENV_NOT_FOUND" },
+	{ pattern: /(?:UnsatisfiableError|found conflicts|solv(?:e|ing) failed)/i, code: "SOLVE_FAILED" },
+	{ pattern: /channel .* (?:not found|unavailable|does not exist)/i, code: "CHANNEL_NOT_FOUND" },
+];
+
+/** Best-effort map of a raw error message to a granular code. */
+function classifyByMessage(message: string): EnvironmentsErrorCode | undefined {
+	for (const { pattern, code } of MESSAGE_PATTERNS) {
+		if (pattern.test(message)) return code;
+	}
+	return undefined;
+}
 
 export interface SidecarCondaBackendOptions {
 	/** Launch command for the bridge (first element is the binary, rest are args). */
@@ -168,6 +198,17 @@ export class SidecarCondaBackend implements CondaBackend {
 		return distributions.flatMap((d) =>
 			d?.prefix ? [{ prefix: d.prefix, priority: d.details?.priority ?? 0 }] : [],
 		);
+	}
+
+	async prefixOptions(ctx?: CondaCallContext): Promise<{ envsDirs: string[]; channels: string[] }> {
+		const info = await this.#call<CondaInfoResult>("conda.info", {}, ctx);
+		const envsDirs = Array.isArray(info.envs_dirs)
+			? info.envs_dirs.filter((d): d is string => typeof d === "string" && d.length > 0)
+			: [];
+		const channels = Array.isArray(info.channels)
+			? info.channels.filter((c): c is string => typeof c === "string" && c.length > 0)
+			: [];
+		return { envsDirs, channels };
 	}
 
 	async create(
@@ -334,6 +375,7 @@ export class SidecarCondaBackend implements CondaBackend {
 	async findRepodata(
 		filter: CondaRepodataFilter,
 		ctx?: CondaCallContext,
+		options?: CondaRepodataFindOptions,
 	): Promise<CondaRepodataPackage[]> {
 		const result = await this.#call<RepodataFindResult>(
 			"repodata.find",
@@ -347,7 +389,13 @@ export class SidecarCondaBackend implements CondaBackend {
 		// keeps the handler's `matches.length > input.limit` truncation flag
 		// exact for every valid limit (all <= REPODATA_FIND_MAX_LIMIT) while
 		// still signalling "more existed" when the index overflowed the cap.
-		const entries = Object.entries(result ?? {}).slice(0, REPODATA_FIND_MAX_LIMIT + 1);
+		// `unbounded` skips the cap for the main-process index cache that
+		// backs partial-match queries — that result never crosses IPC
+		// directly; the handler ranks and slices it first.
+		const allEntries = Object.entries(result ?? {});
+		const entries = options?.unbounded
+			? allEntries
+			: allEntries.slice(0, REPODATA_FIND_MAX_LIMIT + 1);
 		// The package name is the map key, not a field on the record.
 		return entries.map(([name, pkg]) => ({
 			name,
@@ -401,10 +449,19 @@ export class SidecarCondaBackend implements CondaBackend {
 				this.#logger.warn(`[anaconda-bridge-sidecar] Unmapped domain_code: ${domainCode}`);
 			}
 
+			// The bridge does not always attach a domain code — some failures
+			// arrive as raw conda exception strings. Recognise the common ones
+			// so the UI can show a friendly, actionable message instead of a
+			// Python traceback fragment.
+			const byMessage = classifyByMessage(detail);
+			if (byMessage) return featureError(byMessage, detail);
+
 			return featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${detail}`);
 		}
 
 		const message = error instanceof Error ? error.message : String(error);
+		const byMessage = classifyByMessage(message);
+		if (byMessage) return featureError(byMessage, message);
 		return featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${message}`);
 	}
 
@@ -766,6 +823,8 @@ interface CondaInfoResult {
 	conda_version?: string;
 	root_prefix?: string;
 	envs?: string[];
+	envs_dirs?: unknown[];
+	channels?: unknown[];
 	[key: string]: unknown;
 }
 

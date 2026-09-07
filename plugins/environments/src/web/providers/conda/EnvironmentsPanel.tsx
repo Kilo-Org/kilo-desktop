@@ -35,11 +35,13 @@ import {
 	FileUpIcon,
 	PlusIcon,
 	SearchIcon,
+	TrashIcon,
 } from "lucide-react";
 
 import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
 import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
+import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog.js";
 import { EnvironmentDetail } from "./EnvironmentDetail.js";
 import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
 import { environmentDisplayName } from "./environment-display.js";
@@ -153,7 +155,8 @@ type DialogState =
 	| { kind: "none" }
 	| { kind: "create" }
 	| { kind: "import" }
-	| { kind: "clone"; env: CondaEnv };
+	| { kind: "clone"; env: CondaEnv }
+	| { kind: "delete"; env: CondaEnv };
 
 /** Nameless envs: base installs and prefix-only envs both have `name: ""`. */
 function isNamelessEnv(env: CondaEnv): boolean {
@@ -396,6 +399,16 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 															Clone
 														</DropdownMenuItem>
 													)}
+													{!isNamelessEnv(env) && (
+														<DropdownMenuItem
+															variant="destructive"
+															onClick={() => setDialog({ kind: "delete", env })}
+															data-qa-id="environments-row-delete"
+														>
+															<TrashIcon className="size-4" />
+															Delete
+														</DropdownMenuItem>
+													)}
 													{isNamelessEnv(env) && (
 														<DropdownMenuItem disabled>No actions available</DropdownMenuItem>
 													)}
@@ -502,6 +515,9 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 				<ImportEnvironmentDialog open={dialog.kind === "import"} onClose={closeDialog} />
 				{dialog.kind === "clone" && (
 					<CloneEnvironmentDialog env={dialog.env} open onClose={closeDialog} />
+				)}
+				{dialog.kind === "delete" && (
+					<DeleteEnvironmentDialog env={dialog.env} open onClose={closeDialog} />
 				)}
 			</div>
 		</TooltipProvider>

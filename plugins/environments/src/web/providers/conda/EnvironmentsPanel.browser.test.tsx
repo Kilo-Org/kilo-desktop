@@ -301,4 +301,29 @@ describe("EnvironmentsPanel — toolbar and row actions", () => {
 
 		await expect.element(screen.getByText("No actions available")).toBeVisible();
 	});
+
+	it("shows the row actions menu with Delete for named envs", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		const actionButtons = screen.getByTestId("environments-row-actions");
+		await userEvent.click(actionButtons.first());
+
+		await expect.element(screen.getByTestId("environments-row-delete")).toBeVisible();
+	});
+
+	it("opens the Delete dialog from the row actions menu", async () => {
+		const { baseElement } = renderPanel();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
+
+		const actionButtons = screen.getByTestId("environments-row-actions");
+		await userEvent.click(actionButtons.first());
+		await userEvent.click(screen.getByTestId("environments-row-delete"));
+
+		await expect.element(screen.getByTestId("environments-delete-dialog")).toBeVisible();
+	});
 });

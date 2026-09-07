@@ -54,3 +54,30 @@ export function trackBackgroundCreateToast(
 		},
 	);
 }
+
+/**
+ * Track a delete-environment job as a background toast:
+ * loading → success or persistent error. The dialog closes immediately
+ * and this toast takes over progress reporting.
+ */
+export function trackBackgroundDeleteToast(promise: Promise<unknown>, envName: string): void {
+	const toastId = toast.loading(`Deleting ${envName}…`, {
+		description: "Removing the environment and all its packages.",
+	});
+	promise.then(
+		() => {
+			toast.success(`${envName} deleted`, {
+				id: toastId,
+				description: "The environment has been removed.",
+			});
+		},
+		(reason) => {
+			showEnvironmentsErrorToast(
+				`Failed to delete ${envName}`,
+				reason,
+				"Could not delete environment.",
+				toastId,
+			);
+		},
+	);
+}

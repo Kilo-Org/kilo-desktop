@@ -24,6 +24,7 @@ import {
 	showEnvironmentCreatedToast,
 	showEnvironmentsErrorToast,
 	trackBackgroundCreateToast,
+	trackBackgroundDeleteToast,
 } from "./environments-toasts.js";
 
 describe("showEnvironmentsErrorToast", () => {
@@ -93,6 +94,45 @@ describe("trackBackgroundCreateToast", () => {
 		await vi.waitFor(() => {
 			expect(toast.error).toHaveBeenCalledWith(
 				"Failed to create my-env",
+				expect.objectContaining({
+					id: "toast-id",
+					duration: Infinity,
+				}),
+			);
+		});
+	});
+});
+
+describe("trackBackgroundDeleteToast", () => {
+	it("shows loading then success on promise resolve", async () => {
+		const promise = Promise.resolve();
+		trackBackgroundDeleteToast(promise, "my-env");
+
+		expect(toast.loading).toHaveBeenCalledWith("Deleting my-env…", {
+			description: "Removing the environment and all its packages.",
+		});
+
+		await promise;
+		await vi.waitFor(() => {
+			expect(toast.success).toHaveBeenCalledWith("my-env deleted", {
+				id: "toast-id",
+				description: "The environment has been removed.",
+			});
+		});
+	});
+
+	it("shows loading then error on promise reject", async () => {
+		const error = new Error("boom");
+		const promise = Promise.reject(error);
+		promise.catch(() => {});
+
+		trackBackgroundDeleteToast(promise, "my-env");
+
+		expect(toast.loading).toHaveBeenCalled();
+
+		await vi.waitFor(() => {
+			expect(toast.error).toHaveBeenCalledWith(
+				"Failed to delete my-env",
 				expect.objectContaining({
 					id: "toast-id",
 					duration: Infinity,

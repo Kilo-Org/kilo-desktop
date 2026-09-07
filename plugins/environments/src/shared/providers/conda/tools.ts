@@ -8,6 +8,7 @@ import {
 	condaEnvsCreateInputSchema,
 	condaEnvsDeleteInputSchema,
 	condaPackagesInstallInputSchema,
+	condaPackagesRemoveInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
 
@@ -119,6 +120,22 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: condaPackagesInstallInputSchema,
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("conda.packages.install", args),
+	});
+
+	sdk.tools.register({
+		name: "conda.packages.remove",
+		description:
+			"Remove (uninstall) one or more packages from an EXISTING conda " +
+			"environment. Identify the environment by name or by prefix path, and " +
+			'pass one or more package names (e.g. "faker", "numpy"). This is ' +
+			"DESTRUCTIVE — it uninstalls the named packages and any now-orphaned " +
+			"dependencies; fails with SOLVE_FAILED when the removal cannot be " +
+			"satisfied (e.g. another installed package still requires it).",
+		inputSchema: z.toJSONSchema(condaPackagesRemoveInputSchema, { target: "draft-2020-12" }),
+		validate: condaPackagesRemoveInputSchema,
+		annotations: { destructiveHint: true },
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.packages.remove", args),
 	});
 
 	sdk.tools.register({

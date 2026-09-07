@@ -334,7 +334,14 @@ export class SidecarCondaBackend implements CondaBackend {
 		);
 		this.#assertTransactionSuccess(result);
 		const envName = input.name ?? input.prefix ?? "";
-		return { jobId: "", envName, removed: input.packages };
+		// Report what conda actually unlinked — the requested packages plus any
+		// now-orphaned dependencies — from the transaction actions. We can't
+		// re-list to discover this (the packages are gone), so the UNLINK set is
+		// the source of truth; fall back to the requested specs (normalized to
+		// bare names, matching the UNLINK shape) if the bridge omitted `actions`.
+		const unlinked = extractUnlinkedNames(result.actions);
+		const removed = unlinked.length > 0 ? unlinked : input.packages.map(parsePackageName);
+		return { jobId: "", envName, removed };
 	}
 
 	async listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult> {
@@ -720,6 +727,19 @@ function resolveTargetParam(target: EnvTarget): { name: string } | { prefix: str
 function parsePackageName(spec: string): string {
 	const withoutChannel = spec.includes("::") ? (spec.split("::").pop() ?? spec) : spec;
 	return withoutChannel.split(/[>=<!\s]/)[0]!;
+}
+
+/**
+ * Extract the bare package names from a transaction's `UNLINK` action — every
+ * package conda actually removed, including now-orphaned dependencies. Entries
+ * are dist specs (`channel/subdir::name==version=build`), reduced to their
+ * name via {@link parsePackageName}. Returns `[]` when the bridge omitted or
+ * malformed `actions.UNLINK` so callers can fall back to the requested set.
+ */
+function extractUnlinkedNames(actions: TransactionResult["actions"]): string[] {
+	const unlink = actions?.["UNLINK"];
+	if (!Array.isArray(unlink)) return [];
+	return unlink.filter((entry): entry is string => typeof entry === "string").map(parsePackageName);
 }
 
 /**

@@ -32,6 +32,7 @@ describe("environments plugin web entry", () => {
 			"conda.envs.delete",
 			"conda.envs.list",
 			"conda.packages.install",
+			"conda.packages.remove",
 			"conda.repodata.find",
 		]);
 		const listTool = tools.find((tool) => tool.name === "conda.envs.list");
@@ -81,5 +82,21 @@ describe("environments plugin web entry", () => {
 		expect(installSchema.properties?.packages?.type).toBe("array");
 		expect(installSchema.properties?.name?.type).toBe("string");
 		expect(installSchema.properties?.prefix?.type).toBe("string");
+
+		// `packages.remove` uninstalls packages — MUST advertise `destructiveHint`
+		// so MCP hosts prompt for confirmation. Same flat-schema guard as install.
+		const removeTool = tools.find((tool) => tool.name === "conda.packages.remove");
+		expect(removeTool?.annotations).toMatchObject({ destructiveHint: true });
+		expect(removeTool?.exposeToModelContext).toBe(true);
+		const removeSchema = removeTool?.inputSchema as {
+			allOf?: unknown;
+			type?: string;
+			required?: string[];
+			properties?: Record<string, { type?: string }>;
+		};
+		expect(removeSchema.allOf).toBeUndefined();
+		expect(removeSchema.type).toBe("object");
+		expect(removeSchema.required).toContain("packages");
+		expect(removeSchema.properties?.packages?.type).toBe("array");
 	});
 });

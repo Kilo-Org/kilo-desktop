@@ -485,6 +485,76 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
+	describe("uninstall()", () => {
+		it("sends conda.remove with the packages and skip_preview", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.remove") {
+					return Promise.resolve({ prefix: "/path/to/env", success: true });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.uninstall({ name: "dev", packages: ["faker"] });
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.remove",
+				{ name: "dev", packages: ["faker"], skip_preview: true },
+				expect.anything(),
+			);
+		});
+
+		it("reports the actual unlinked set (requested + orphaned deps) from actions.UNLINK", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.remove") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: true,
+						actions: {
+							UNLINK: [
+								"conda-forge/noarch::faker==40.38.0=pyh5ded981_0",
+								"conda-forge/noarch::python-tzdata==2026.3=pyhd8ed1ab_0",
+							],
+						},
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.uninstall({ name: "dev", packages: ["faker"] });
+
+			expect(result).toEqual({
+				jobId: "",
+				envName: "dev",
+				// faker plus the now-orphaned python-tzdata it pulled in.
+				removed: ["faker", "python-tzdata"],
+			});
+		});
+
+		it("falls back to the requested specs — normalized to bare names — when the bridge omits actions", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.remove") {
+					return Promise.resolve({ prefix: "/path/to/env", success: true });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.uninstall({
+				name: "dev",
+				// Qualified MatchSpecs must be reduced to bare names so the fallback
+				// matches the UNLINK-derived shape of the primary path.
+				packages: ["conda-forge::pandas=2.*", "numpy>=1.24"],
+			});
+
+			expect(result.removed).toEqual(["pandas", "numpy"]);
+		});
+	});
+
 	describe("listPackages()", () => {
 		it("maps conda.list response to CondaPackage[]", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {

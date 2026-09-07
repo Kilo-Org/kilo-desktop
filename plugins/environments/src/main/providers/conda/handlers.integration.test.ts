@@ -641,6 +641,51 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
+	it("conda.packages.remove enqueues, stamps the queue jobId, and emits queued → running → succeeded", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({ emit: (event) => events.push(event) });
+		const uninstall = vi.fn().mockResolvedValue({ jobId: "", envName: "dev", removed: ["faker"] });
+		registerCondaHandlers(mainSdk, makeBackend({ uninstall }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.packages.remove"]({ name: "dev", packages: ["faker"] });
+
+		// The queue-assigned jobId replaces the backend's placeholder empty string.
+		expect(result).toEqual({
+			jobId: expect.stringMatching(/^conda-/),
+			envName: "dev",
+			removed: ["faker"],
+		});
+		expect(uninstall).toHaveBeenCalledWith(
+			{ name: "dev", packages: ["faker"] },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(events.map((event) => event.status)).toEqual(["queued", "running", "succeeded"]);
+		expect(events.every((event) => event.kind === "packages.remove")).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.packages.remove write clears the read cache — the next packages.list re-runs the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const listPackages = vi.fn().mockResolvedValue([]);
+		const uninstall = vi.fn().mockResolvedValue({ jobId: "", envName: "dev", removed: ["faker"] });
+		registerCondaHandlers(mainSdk, makeBackend({ listPackages, uninstall }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.packages.list"]({ name: "dev" });
+		expect(listPackages).toHaveBeenCalledOnce();
+		await client["conda.packages.remove"]({ name: "dev", packages: ["faker"] });
+		await client["conda.packages.list"]({ name: "dev" });
+		expect(listPackages).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
 	it("plugin-scoped job-progress events surface on the fully-qualified environments.job-progress name", async () => {
 		// Sanity check: the constant we advertise to renderer subscribers
 		// matches the featureId + local event name path.

@@ -5,6 +5,7 @@ import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import {
 	condaEnvsCreateInputSchema,
 	condaEnvsDeleteInputSchema,
+	condaPackagesInstallInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
 
@@ -71,6 +72,23 @@ export function registerCondaTools(sdk: SDK): void {
 		exposeToModelContext: true,
 		annotations: { destructiveHint: true },
 		handler: (args) => sdk.invoke("conda.envs.delete", args),
+	});
+
+	sdk.tools.register({
+		name: "conda.packages.install",
+		description:
+			"Install one or more packages into an EXISTING conda environment " +
+			"(use conda.envs.create instead to make a new environment). Identify " +
+			"the environment by name or by prefix path, and pass one or more raw " +
+			'conda MatchSpec strings (e.g. "faker", "numpy>=1.24", ' +
+			'"conda-forge::pandas"). Optionally restrict solving to specific ' +
+			"channels. Adds state (not destructive); fails with SOLVE_FAILED when " +
+			"the requested specs cannot be satisfied. Call conda.repodata.find " +
+			"first if you need to confirm a package or version is available.",
+		inputSchema: z.toJSONSchema(condaPackagesInstallInputSchema, { target: "draft-2020-12" }),
+		validate: condaPackagesInstallInputSchema,
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.packages.install", args),
 	});
 
 	sdk.tools.register({

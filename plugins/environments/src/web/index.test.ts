@@ -29,6 +29,7 @@ describe("environments plugin web entry", () => {
 			"conda.envs.create",
 			"conda.envs.delete",
 			"conda.envs.list",
+			"conda.packages.install",
 			"conda.repodata.find",
 		]);
 		const listTool = tools.find((tool) => tool.name === "conda.envs.list");
@@ -55,5 +56,28 @@ describe("environments plugin web entry", () => {
 		const repodataTool = tools.find((tool) => tool.name === "conda.repodata.find");
 		expect(repodataTool?.annotations).toMatchObject({ readOnlyHint: true });
 		expect(repodataTool?.exposeToModelContext).toBe(true);
+
+		// `packages.install` adds state into an existing env — mutating but NOT
+		// destructive, and exposed to the model so a prompt can install packages.
+		const installTool = tools.find((tool) => tool.name === "conda.packages.install");
+		expect(installTool?.annotations?.destructiveHint).toBeUndefined();
+		expect(installTool?.exposeToModelContext).toBe(true);
+
+		// Regression guard: the published input schema must be a single flat
+		// object, NOT an `allOf` intersection. An intersection lowers to two
+		// objects each with `additionalProperties: false`, which is
+		// unsatisfiable and makes every tool call fail host-side validation.
+		const installSchema = installTool?.inputSchema as {
+			allOf?: unknown;
+			type?: string;
+			required?: string[];
+			properties?: Record<string, { type?: string }>;
+		};
+		expect(installSchema.allOf).toBeUndefined();
+		expect(installSchema.type).toBe("object");
+		expect(installSchema.required).toContain("packages");
+		expect(installSchema.properties?.packages?.type).toBe("array");
+		expect(installSchema.properties?.name?.type).toBe("string");
+		expect(installSchema.properties?.prefix?.type).toBe("string");
 	});
 });

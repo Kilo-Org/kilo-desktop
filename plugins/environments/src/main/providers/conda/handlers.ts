@@ -10,6 +10,8 @@ import type {
 	CondaEnvsDeleteInput,
 	CondaEnvsDeleteResult,
 	CondaEnvsDistributionsResult,
+	CondaPackagesInstallInput,
+	CondaPackagesInstallResult,
 	CondaPackagesListInput,
 	CondaPackagesListResult,
 	CondaRepodataFindInput,
@@ -116,9 +118,15 @@ export function registerCondaHandlers(
 			readRepodataFind(queue, backend, input),
 	);
 
-	// conda.packages.install / packages.remove / channels.add / channels.remove / jobs.cancel
-	// are wired in sub-issues 7 – 9 alongside their CondaBackend
-	// implementations, enqueued through `queue.enqueue(...)` (writes).
+	handlers.handle(
+		"conda.packages.install",
+		(input: CondaPackagesInstallInput): Promise<CondaPackagesInstallResult> =>
+			enqueuePackagesInstall(queue, backend, input),
+	);
+
+	// conda.packages.remove / channels.add / channels.remove / jobs.cancel are
+	// wired in later slices alongside their CondaBackend implementations,
+	// enqueued through `queue.enqueue(...)` (writes).
 }
 
 /**
@@ -158,6 +166,21 @@ async function readRepodataFind(
 		packages: matches.slice(0, input.limit),
 		truncated: matches.length > input.limit,
 	};
+}
+
+async function enqueuePackagesInstall(
+	queue: JobQueue,
+	backend: CondaBackend,
+	input: CondaPackagesInstallInput,
+): Promise<CondaPackagesInstallResult> {
+	const { jobId, result } = queue.enqueue({
+		providerId: "conda",
+		kind: "packages.install",
+		run: (ctx) => backend.install(input, { signal: ctx.signal, onProgress: ctx.onProgress }),
+	});
+	// `backend.install` returns a placeholder empty `jobId`; the queue-assigned
+	// id is the one the renderer correlates progress events (and cancel) with.
+	return { ...(await result), jobId };
 }
 
 async function enqueueEnvsCreate(

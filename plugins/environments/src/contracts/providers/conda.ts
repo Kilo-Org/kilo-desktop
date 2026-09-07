@@ -303,12 +303,24 @@ export const condaPackagesListResultSchema = z.object({
 });
 export type CondaPackagesListResult = z.infer<typeof condaPackagesListResultSchema>;
 
-export const condaPackagesInstallInputSchema = envTargetSchema.and(
-	z.object({
+/**
+ * Kept as a single flat `z.object(...).refine(...)` rather than
+ * `envTargetSchema.and(...)`: an intersection lowers to a JSON Schema
+ * `allOf` of two objects that each carry `additionalProperties: false`,
+ * which is unsatisfiable (each branch forbids the other's keys) and breaks
+ * MCP hosts validating tool input against the published schema. A flat
+ * object emits one clean `{ properties, required, additionalProperties }`.
+ */
+export const condaPackagesInstallInputSchema = z
+	.object({
+		name: environmentNameSchema.optional(),
+		prefix: envPrefixSchema.optional(),
 		packages: z.array(matchSpecSchema).min(1),
 		channels: z.array(channelSchema).min(1).optional(),
-	}),
-);
+	})
+	.refine((v) => v.name !== undefined || v.prefix !== undefined, {
+		message: "At least one of `name` or `prefix` must be provided.",
+	});
 export type CondaPackagesInstallInput = z.infer<typeof condaPackagesInstallInputSchema>;
 
 export const condaPackagesInstallResultSchema = z.object({
@@ -318,11 +330,16 @@ export const condaPackagesInstallResultSchema = z.object({
 });
 export type CondaPackagesInstallResult = z.infer<typeof condaPackagesInstallResultSchema>;
 
-export const condaPackagesRemoveInputSchema = envTargetSchema.and(
-	z.object({
+/** Flat object for the same reason as {@link condaPackagesInstallInputSchema}. */
+export const condaPackagesRemoveInputSchema = z
+	.object({
+		name: environmentNameSchema.optional(),
+		prefix: envPrefixSchema.optional(),
 		packages: z.array(matchSpecSchema).min(1),
-	}),
-);
+	})
+	.refine((v) => v.name !== undefined || v.prefix !== undefined, {
+		message: "At least one of `name` or `prefix` must be provided.",
+	});
 export type CondaPackagesRemoveInput = z.infer<typeof condaPackagesRemoveInputSchema>;
 
 export const condaPackagesRemoveResultSchema = z.object({

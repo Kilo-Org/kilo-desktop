@@ -80,6 +80,7 @@ describe("CondaProvider", () => {
 		expect(mainSdk.has("conda.channels.list")).toBe(true);
 		expect(mainSdk.has("conda.repodata.find")).toBe(true);
 		expect(mainSdk.has("conda.packages.install")).toBe(true);
+		expect(mainSdk.has("conda.packages.list")).toBe(true);
 		expect(mainSdk.has("conda.packages.remove")).toBe(true);
 		queue.dispose();
 		mainSdk.dispose();
@@ -98,6 +99,7 @@ describe("CondaProvider", () => {
 			"conda.envs.delete",
 			"conda.envs.list",
 			"conda.packages.install",
+			"conda.packages.list",
 			"conda.packages.remove",
 			"conda.repodata.find",
 		]);

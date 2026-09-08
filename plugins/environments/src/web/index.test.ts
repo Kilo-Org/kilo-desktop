@@ -32,6 +32,7 @@ describe("environments plugin web entry", () => {
 			"conda.envs.delete",
 			"conda.envs.list",
 			"conda.packages.install",
+			"conda.packages.list",
 			"conda.packages.remove",
 			"conda.repodata.find",
 		]);
@@ -59,6 +60,23 @@ describe("environments plugin web entry", () => {
 		const repodataTool = tools.find((tool) => tool.name === "conda.repodata.find");
 		expect(repodataTool?.annotations).toMatchObject({ readOnlyHint: true });
 		expect(repodataTool?.exposeToModelContext).toBe(true);
+
+		// `packages.list` is read-only — lists installed packages and their source
+		// channel, distinguishing pip (channel === "pypi") from conda packages.
+		const listPackagesTool = tools.find((tool) => tool.name === "conda.packages.list");
+		expect(listPackagesTool?.annotations).toMatchObject({ readOnlyHint: true });
+		expect(listPackagesTool?.exposeToModelContext).toBe(true);
+
+		// Same flat-schema guard as install/remove: no allOf.
+		const listPkgSchema = listPackagesTool?.inputSchema as {
+			allOf?: unknown;
+			type?: string;
+			properties?: Record<string, { type?: string }>;
+		};
+		expect(listPkgSchema.allOf).toBeUndefined();
+		expect(listPkgSchema.type).toBe("object");
+		expect(listPkgSchema.properties?.name?.type).toBe("string");
+		expect(listPkgSchema.properties?.prefix?.type).toBe("string");
 
 		// `packages.install` adds state into an existing env — mutating but NOT
 		// destructive, and exposed to the model so a prompt can install packages.

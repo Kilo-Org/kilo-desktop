@@ -8,6 +8,7 @@ import {
 	condaEnvsCreateInputSchema,
 	condaEnvsDeleteInputSchema,
 	condaPackagesInstallInputSchema,
+	condaPackagesListInputSchema,
 	condaPackagesRemoveInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
@@ -103,6 +104,20 @@ export function registerCondaTools(sdk: SDK): void {
 		inputSchema: z.toJSONSchema(condaEnvsCreateFromFileInputSchema, { target: "draft-2020-12" }),
 		validate: condaEnvsCreateFromFileInputSchema,
 		handler: (args) => sdk.invoke("conda.envs.createFromFile", args),
+	});
+
+	sdk.tools.register({
+		name: "conda.packages.list",
+		description:
+			"List all packages installed in a conda environment, including " +
+			"pip-installed packages. Identify the environment by name or by " +
+			"prefix path. Each package includes name, version, build string, " +
+			'and source channel. Pip-installed packages have channel "pypi".',
+		inputSchema: z.toJSONSchema(condaPackagesListInputSchema, { target: "draft-2020-12" }),
+		validate: condaPackagesListInputSchema,
+		annotations: { readOnlyHint: true },
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.packages.list", args),
 	});
 
 	sdk.tools.register({

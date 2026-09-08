@@ -16,6 +16,7 @@ import { LlamaRouterManager } from "./LlamaRouterManager.js";
 import { LocalInferenceService, type KiloCapability } from "./LocalInferenceService.js";
 import { LocalModelRegistry, type PersistedLocalModels } from "./LocalModelRegistry.js";
 import { readLlamaHost, resolveLlamaExecutable } from "./llamaRuntime.js";
+import { createLocalInferenceUsageCollector } from "./resourceUsage.js";
 
 interface CondaRuntimeCapability extends Record<string, unknown> {
 	condaRuntime: {
@@ -56,6 +57,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 		logger: mainSdk.logger,
 		onStatusChange: (status) => mainSdk.events.emit(STATUS_CHANGED_EVENT, status),
 	});
+	const usage = createLocalInferenceUsageCollector();
 	const settingsFor = (modelId: string) =>
 		registry.list().find((model) => model.id === modelId)?.settings;
 	const proxy = new LocalChatProxy({
@@ -64,8 +66,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 		fetch: mainSdk.net.fetch,
 		logger: mainSdk.logger,
 		prepareModel: (modelId) => service.prepareModel(modelId),
-		getTemperature: (modelId) => settingsFor(modelId)?.temperature,
-		getMaxTokens: (modelId) => settingsFor(modelId)?.maxResponseTokens,
+		getSamplingSettings: settingsFor,
 		getIncludeKiloContext: (modelId) => settingsFor(modelId)?.includeKiloContext,
 	});
 	const service = new LocalInferenceService({
@@ -129,6 +130,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 		"settings.get": async () => service.serverSettings(),
 		"settings.update": (input) => guarded(async () => service.updateServerSettings(input)),
 		"status.get": async () => service.status,
+		"usage.get": () => usage.read(),
 	};
 
 	const capability = {
@@ -150,6 +152,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	});
 	mainSdk.onDispose(() => {
 		unsubscribe();
+		usage.dispose();
 		service.dispose();
 	});
 

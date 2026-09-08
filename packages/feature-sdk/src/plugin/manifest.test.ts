@@ -33,7 +33,15 @@ const validManifest = {
 				priority: 5,
 			},
 		],
-		settings: [{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 }],
+		settings: [
+			{
+				id: "todos",
+				title: "Todos",
+				component: "TodosSettings",
+				category: "Personal",
+				priority: 5,
+			},
+		],
 	},
 };
 
@@ -68,7 +76,13 @@ describe("pluginManifestSchema", () => {
 		]);
 		expect(manifest.zones).toEqual([{ id: "detail-panel" }]);
 		expect(manifest.contributes.settings).toEqual([
-			{ id: "todos", title: "Todos", component: "TodosSettings", priority: 5 },
+			{
+				id: "todos",
+				title: "Todos",
+				component: "TodosSettings",
+				category: "Personal",
+				priority: 5,
+			},
 		]);
 	});
 

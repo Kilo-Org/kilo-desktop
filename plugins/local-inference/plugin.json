@@ -8,6 +8,16 @@
 		"providers": [],
 		"routes": [],
 		"nav": [],
-		"zones": []
+		"zones": [],
+		"settings": [
+			{
+				"id": "local-model-server",
+				"title": "Local Model Server",
+				"component": "LocalModelServerSettings",
+				"icon": "server",
+				"category": "AI",
+				"priority": 80
+			}
+		]
 	}
 }

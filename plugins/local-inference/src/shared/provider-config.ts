@@ -1,5 +1,6 @@
 import type { LocalModel } from "../contracts/schemas.js";
 import { LLAMA_API_KEY_ENV, LOCAL_PROVIDER_NAME } from "./constants.js";
+import { hasLlamaFlagOverride } from "./model-settings.js";
 
 function available(models: readonly LocalModel[]): LocalModel[] {
 	return models.filter((model) => model.available);
@@ -8,7 +9,7 @@ function available(models: readonly LocalModel[]): LocalModel[] {
 function renderPresetSection(model: LocalModel): string {
 	const lines = [`[${model.id}]`, `model = ${model.path}`];
 	const contextLength = model.settings?.contextLength;
-	if (contextLength !== undefined) {
+	if (contextLength !== undefined && !hasLlamaFlagOverride(model.settings, "contextLength")) {
 		lines.push(`ctx-size = ${String(contextLength)}`);
 	}
 	const flags = model.settings?.llamaFlags ?? {};

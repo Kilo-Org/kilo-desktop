@@ -245,7 +245,7 @@ describe("LocalChatProxy", () => {
 		expect(paths).toEqual(["/v1/chat/completions"]);
 	});
 
-	it("applies the model's temperature so Kilo heuristics cannot override it", async () => {
+	it("applies the model's sampling settings so Kilo heuristics cannot override them", async () => {
 		let forwarded: unknown;
 		const upstreamPort = await allocateLoopbackPort();
 		const upstream = createServer(async (request, response) => {
@@ -265,7 +265,17 @@ describe("LocalChatProxy", () => {
 			allocatePort: allocateLoopbackPort,
 			fetch,
 			logger: { info() {}, warn() {}, error() {} },
-			getTemperature: (modelId) => (modelId === "qwen-3-aaaa" ? 0.2 : undefined),
+			getSamplingSettings: (modelId) =>
+				modelId === "qwen-3-aaaa"
+					? {
+							temperature: 0.2,
+							topP: 0.9,
+							topK: 64,
+							minP: 0.05,
+							repeatPenalty: 1.1,
+							presencePenalty: 0.2,
+						}
+					: undefined,
 		});
 		servers.push(proxy);
 		const connection = await proxy.ensureRunning(`http://127.0.0.1:${String(upstreamPort)}`);
@@ -279,6 +289,11 @@ describe("LocalChatProxy", () => {
 			body: JSON.stringify({
 				model: "qwen-3-aaaa",
 				temperature: 0.55,
+				top_p: 0.8,
+				top_k: 40,
+				min_p: 0.1,
+				repeat_penalty: 1,
+				presence_penalty: 0,
 				messages: [{ role: "user", content: "hi" }],
 			}),
 		});
@@ -287,7 +302,87 @@ describe("LocalChatProxy", () => {
 		expect(forwarded).toMatchObject({
 			model: "qwen-3-aaaa",
 			temperature: 0.2,
+			top_p: 0.9,
+			top_k: 64,
+			min_p: 0.05,
+			repeat_penalty: 1.1,
+			presence_penalty: 0.2,
 		});
+	});
+
+	it("lets extra llama.cpp arguments override the dedicated sampling controls", async () => {
+		let forwarded: unknown;
+		const upstreamPort = await allocateLoopbackPort();
+		const upstream = createServer(async (request, response) => {
+			const chunks: Buffer[] = [];
+			for await (const chunk of request) chunks.push(Buffer.from(chunk));
+			forwarded = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+			response.setHeader("Content-Type", "application/json");
+			response.end(
+				JSON.stringify({ choices: [{ message: { role: "assistant", content: "hello" } }] }),
+			);
+		});
+		servers.push(upstream);
+		await new Promise<void>((resolve) => upstream.listen(upstreamPort, "127.0.0.1", resolve));
+
+		const proxy = new LocalChatProxy({
+			apiKey: "secret",
+			allocatePort: allocateLoopbackPort,
+			fetch,
+			logger: { info() {}, warn() {}, error() {} },
+			getSamplingSettings: () => ({
+				temperature: 0.2,
+				topP: 0.9,
+				topK: 64,
+				minP: 0.05,
+				repeatPenalty: 1.1,
+				presencePenalty: 0.2,
+				maxResponseTokens: 2048,
+				llamaFlags: {
+					temp: "0.4",
+					"top-p": "0.8",
+					"top-k": "20",
+					"min-p": "0.1",
+					"repeat-penalty": "1.2",
+					"presence-penalty": "0.3",
+					"n-predict": "1024",
+				},
+			}),
+		});
+		servers.push(proxy);
+		const connection = await proxy.ensureRunning(`http://127.0.0.1:${String(upstreamPort)}`);
+
+		const response = await fetch(`${connection.baseUrl}/v1/chat/completions`, {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				model: "qwen-3-aaaa",
+				temperature: 0.55,
+				top_p: 0.7,
+				top_k: 30,
+				min_p: 0.2,
+				repeat_penalty: 1,
+				presence_penalty: 0,
+				max_tokens: 4096,
+				max_completion_tokens: 4096,
+				max_output_tokens: 4096,
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+
+		expect(response.ok).toBe(true);
+		expect(forwarded).not.toHaveProperty("temperature");
+		expect(forwarded).not.toHaveProperty("top_p");
+		expect(forwarded).not.toHaveProperty("top_k");
+		expect(forwarded).not.toHaveProperty("min_p");
+		expect(forwarded).not.toHaveProperty("repeat_penalty");
+		expect(forwarded).not.toHaveProperty("presence_penalty");
+		expect(forwarded).not.toHaveProperty("max_tokens");
+		expect(forwarded).not.toHaveProperty("max_completion_tokens");
+		expect(forwarded).not.toHaveProperty("max_output_tokens");
 	});
 
 	it("applies the model's maximum response length so Kilo cannot override it", async () => {
@@ -310,7 +405,8 @@ describe("LocalChatProxy", () => {
 			allocatePort: allocateLoopbackPort,
 			fetch,
 			logger: { info() {}, warn() {}, error() {} },
-			getMaxTokens: (modelId) => (modelId === "qwen-3-aaaa" ? 2048 : undefined),
+			getSamplingSettings: (modelId) =>
+				modelId === "qwen-3-aaaa" ? { maxResponseTokens: 2048 } : undefined,
 		});
 		servers.push(proxy);
 		const connection = await proxy.ensureRunning(`http://127.0.0.1:${String(upstreamPort)}`);
@@ -358,7 +454,8 @@ describe("LocalChatProxy", () => {
 			fetch,
 			logger: { info() {}, warn() {}, error() {} },
 			getIncludeKiloContext: (modelId) => modelId === "qwen-3-aaaa",
-			getTemperature: (modelId) => (modelId === "qwen-3-aaaa" ? 0.2 : undefined),
+			getSamplingSettings: (modelId) =>
+				modelId === "qwen-3-aaaa" ? { temperature: 0.2 } : undefined,
 		});
 		servers.push(proxy);
 		const connection = await proxy.ensureRunning(`http://127.0.0.1:${String(upstreamPort)}`);

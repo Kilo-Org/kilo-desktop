@@ -14,18 +14,19 @@ import {
 describe("compactServerSettings", () => {
 	it("omits empty settings so defaults stay unset", () => {
 		expect(compactServerSettings({})).toBeUndefined();
+		expect(compactServerSettings({ modelLoadMode: "one" })).toBeUndefined();
 		expect(compactServerSettings({ llamaFlags: {} })).toBeUndefined();
 		expect(compactServerSettings({ serveOnLocalNetwork: false })).toBeUndefined();
 		expect(
 			compactServerSettings({
 				port: 8080,
-				maxModels: 2,
+				modelLoadMode: "all",
 				serveOnLocalNetwork: true,
 				llamaFlags: { timeout: "3600" },
 			}),
 		).toEqual({
 			port: 8080,
-			maxModels: 2,
+			modelLoadMode: "all",
 			serveOnLocalNetwork: true,
 			llamaFlags: { timeout: "3600" },
 		});
@@ -41,10 +42,10 @@ describe("proxyBindHost", () => {
 });
 
 describe("routerMaxModels", () => {
-	it("uses the configured cap when set, otherwise every registered model", () => {
-		expect(routerMaxModels(5)).toBe(5);
-		expect(routerMaxModels(5, 2)).toBe(2);
-		expect(routerMaxModels(2, 8)).toBe(8);
+	it("keeps one model loaded by default and only expands for all mode", () => {
+		expect(routerMaxModels(5)).toBe(1);
+		expect(routerMaxModels(5, "one")).toBe(1);
+		expect(routerMaxModels(5, "all")).toBe(5);
 	});
 });
 
@@ -67,7 +68,7 @@ describe("renderRouterArgs", () => {
 			"--models-preset",
 			"/tmp/models.ini",
 			"--models-max",
-			"3",
+			"1",
 			"--no-models-autoload",
 			"--jinja",
 		]);
@@ -98,7 +99,7 @@ describe("renderRouterArgs", () => {
 		]);
 	});
 
-	it("applies max models and extra llama.cpp router flags", () => {
+	it("allows expert users to keep all registered models loaded", () => {
 		expect(
 			renderRouterArgs({
 				port: 8080,
@@ -106,7 +107,7 @@ describe("renderRouterArgs", () => {
 				presetPath: "/tmp/models.ini",
 				modelCount: 5,
 				settings: {
-					maxModels: 2,
+					modelLoadMode: "all",
 					llamaFlags: { timeout: "120", "threads-http": "8" },
 				},
 			}),
@@ -120,7 +121,7 @@ describe("renderRouterArgs", () => {
 			"--models-preset",
 			"/tmp/models.ini",
 			"--models-max",
-			"2",
+			"5",
 			"--no-models-autoload",
 			"--jinja",
 			"--threads-http",
@@ -139,7 +140,7 @@ describe("server llama.cpp flags", () => {
 		});
 		expect(llamaFlagsFromRows([{ key: "models-max", value: "2" }])).toEqual({
 			ok: false,
-			error: "Set max models in Server settings, not as a llama.cpp flag.",
+			error: "Set models kept loaded in Server settings, not as a llama.cpp flag.",
 		});
 		expect(serverFlagsFromRows([{ key: "jinja", value: "off" }])).toEqual({
 			ok: false,
@@ -166,6 +167,13 @@ describe("server llama.cpp flags", () => {
 });
 
 describe("localServerSettingsSchema", () => {
+	it("only accepts one or all as model load modes", () => {
+		expect(localServerSettingsSchema.safeParse({ modelLoadMode: "one" }).success).toBe(true);
+		expect(localServerSettingsSchema.safeParse({ modelLoadMode: "all" }).success).toBe(true);
+		expect(localServerSettingsSchema.safeParse({ modelLoadMode: "two" }).success).toBe(false);
+		expect(localServerSettingsSchema.safeParse({ maxModels: 2 }).success).toBe(false);
+	});
+
 	it("rejects reserved llama.cpp flags stored on the server", () => {
 		expect(localServerSettingsSchema.safeParse({ llamaFlags: { jinja: "off" } }).success).toBe(
 			false,

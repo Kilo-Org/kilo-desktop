@@ -1,13 +1,6 @@
-import type { LocalConnectionInfo } from "./contract.js";
+import type { LocalConnectionInfo } from "../contracts/schemas.js";
 
-export interface LocalConnectionField {
-	readonly id: "base-url" | "api-key";
-	readonly label: string;
-	readonly value: string;
-	readonly masked: boolean;
-}
-
-export interface LocalConnectionExample {
+export interface LocalConnectionRequest {
 	readonly id: "models" | "chat" | "chat-stream";
 	readonly label: string;
 	readonly method: "GET" | "POST";
@@ -18,26 +11,20 @@ export interface LocalConnectionExample {
 
 export const LOCAL_API_KEY_MASK = "••••••••";
 
-export function localConnectionFields(info: LocalConnectionInfo): readonly LocalConnectionField[] {
-	return [
-		{ id: "base-url", label: "Base URL", value: info.baseUrl, masked: false },
-		{ id: "api-key", label: "API key", value: info.apiKey, masked: true },
-	];
-}
-
-export function localConnectionExamples(
-	info: LocalConnectionInfo,
+export function localConnectionRequests(
+	connection: LocalConnectionInfo,
 	modelId = "model-id",
-): readonly LocalConnectionExample[] {
-	const modelsUrl = `${info.baseUrl}/models`;
-	const chatUrl = `${info.baseUrl}/chat/completions`;
+): readonly LocalConnectionRequest[] {
+	const modelsUrl = `${connection.baseUrl}/models`;
+	const chatUrl = `${connection.baseUrl}/chat/completions`;
+
 	return [
 		{
 			id: "models",
 			label: "List models",
 			method: "GET",
 			url: modelsUrl,
-			curl: curlGet(modelsUrl, info.apiKey),
+			curl: curlGet(modelsUrl, connection.apiKey),
 			curlDisplay: curlGet(modelsUrl, LOCAL_API_KEY_MASK),
 		},
 		{
@@ -45,7 +32,7 @@ export function localConnectionExamples(
 			label: "Chat completions",
 			method: "POST",
 			url: chatUrl,
-			curl: curlChat(chatUrl, info.apiKey, modelId),
+			curl: curlChat(chatUrl, connection.apiKey, modelId),
 			curlDisplay: curlChat(chatUrl, LOCAL_API_KEY_MASK, modelId),
 		},
 		{
@@ -53,7 +40,7 @@ export function localConnectionExamples(
 			label: "Streaming completions",
 			method: "POST",
 			url: chatUrl,
-			curl: curlChat(chatUrl, info.apiKey, modelId, true),
+			curl: curlChat(chatUrl, connection.apiKey, modelId, true),
 			curlDisplay: curlChat(chatUrl, LOCAL_API_KEY_MASK, modelId, true),
 		},
 	];
@@ -73,6 +60,7 @@ function curlChat(url: string, apiKey: string, modelId: string, stream = false):
 		messages: [{ role: "user", content: "Hello!" }],
 		...(stream ? { stream: true } : {}),
 	});
+
 	return [
 		stream ? "curl -N -sS -X POST" : "curl -sS -X POST",
 		shellWord(url),

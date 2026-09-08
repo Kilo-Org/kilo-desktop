@@ -37,6 +37,7 @@ function makeDiscovery(): PluginDiscovery {
 								id: "beta",
 								title: "Beta",
 								component: "BetaPanel",
+								category: "Advanced",
 								priority: 10,
 								featureFlag: "beta-settings",
 							},
@@ -60,12 +61,14 @@ describe("buildPluginSettings", () => {
 			id: "alpha",
 			title: "Alpha",
 			component: AlphaPanel,
+			category: "Personal",
 			icon: "AlphaIcon",
 			iconComponent: AlphaIcon,
 			priority: 1,
 			featureFlag: undefined,
 			browserSafe: true,
 		});
+		expect(sections[0]?.category).toBe("Advanced");
 		expect(sections[0]?.featureFlag).toBe("beta-settings");
 	});
 
@@ -76,6 +79,7 @@ describe("buildPluginSettings", () => {
 				id: "general",
 				title: "General",
 				component: () => null,
+				category: "Personal",
 				icon: undefined,
 				iconComponent: undefined,
 				priority: 5,
@@ -115,6 +119,7 @@ describe("filterVisiblePluginSettings", () => {
 				id: "desk",
 				title: "Desk",
 				component: () => null,
+				category: "Personal",
 				icon: undefined,
 				iconComponent: undefined,
 				priority: 0,
@@ -150,8 +155,26 @@ describe("PLUGIN_SETTINGS", () => {
 		expect(PLUGIN_SETTINGS.find((section) => section.id === "kilo-providers")).toMatchObject({
 			pluginId: "kilo-ui",
 			title: "AI Providers",
+			category: "AI",
 			priority: 90,
 		});
+	});
+
+	it("includes Local Model Server under AI", () => {
+		expect(PLUGIN_SETTINGS.find((section) => section.id === "local-model-server")).toMatchObject({
+			pluginId: "local-inference",
+			title: "Local Model Server",
+			category: "AI",
+			priority: 80,
+		});
+	});
+
+	it("lists AI Providers before Local Model Server", () => {
+		const aiSections = PLUGIN_SETTINGS.filter((section) => section.category === "AI");
+		expect(aiSections.map((section) => section.id)).toEqual([
+			"kilo-providers",
+			"local-model-server",
+		]);
 	});
 });
 

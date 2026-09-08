@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, PlusIcon, RotateCcwIcon, ServerIcon, Trash2Icon } from "lucide-react";
 
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 import {
@@ -36,9 +36,10 @@ import type { SanitizedProviderConfig } from "./custom-provider.js";
 import { EditProviderApiKeyDialog } from "./EditProviderApiKeyDialog.js";
 import { KiloGatewayProviderDisclosure } from "./KiloGatewayProviderCard.js";
 import { resolveLocalInferenceCapability } from "./local-inference/capability.js";
-import { LocalProviderSettingsCard } from "./local-inference/LocalProviderSettingsCard.js";
 import { isEnvironmentSourced, providerSourceLabel, type ProviderRow } from "./provider-list.js";
 import { useKiloProviders } from "./use-kilo-providers.js";
+
+const LOCAL_MODEL_SERVER_SETTINGS_PATH = "/settings/local-model-server";
 
 type DialogState =
 	| null
@@ -67,10 +68,31 @@ function useLocalInferenceAvailable(): boolean {
 	return resolveLocalInferenceCapability(sdk.plugins.get("local-inference")) !== null;
 }
 
-function LocalInferenceProviderCard() {
+function LocalModelServerLink() {
+	const sdk = useSdk("kilo-ui");
+
 	return (
 		<ProviderEntrySurface>
-			<LocalProviderSettingsCard />
+			<SummaryCard.Row>
+				<SummaryCard.Icon>
+					<ServerIcon className="size-[18px]" aria-hidden />
+				</SummaryCard.Icon>
+				<SummaryCard.Content>
+					<SummaryCard.Title>Local Model Server</SummaryCard.Title>
+					<SummaryCard.Description>Run AI models locally on your device.</SummaryCard.Description>
+				</SummaryCard.Content>
+				<SummaryCard.Actions>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => sdk.navigate(LOCAL_MODEL_SERVER_SETTINGS_PATH)}
+						data-qa-id="kilo-providers-local-model-server-link"
+					>
+						Manage
+					</Button>
+				</SummaryCard.Actions>
+			</SummaryCard.Row>
 		</ProviderEntrySurface>
 	);
 }
@@ -78,8 +100,8 @@ function LocalInferenceProviderCard() {
 /**
  * A focused provider switchboard for Kilo chat. Kilo Gateway is the primary
  * path; direct API keys and custom endpoints remain available without exposing
- * the underlying provider config file as product UI. Local inference renders
- * its own card when the headless local-inference plugin is available.
+ * the underlying provider config file as product UI. Local inference links to
+ * its dedicated settings page when the local-inference plugin is available.
  */
 export function KiloProvidersSettings() {
 	const connection = useChatConnection();
@@ -94,7 +116,7 @@ export function KiloProvidersSettings() {
 				<p className="text-muted-foreground text-sm" data-qa-id="kilo-providers-unavailable">
 					Provider management is available in Anaconda Agentic Desktop.
 				</p>
-				{localInference ? <LocalInferenceProviderCard /> : null}
+				{localInference ? <LocalModelServerLink /> : null}
 			</PageShell>
 		);
 	}
@@ -104,7 +126,6 @@ export function KiloProvidersSettings() {
 	const editProvider = dialog?.type === "edit-api" ? dialog.provider : null;
 	const removeProvider = dialog?.type === "remove" ? dialog.provider : null;
 	const view = providers.view ?? { connected: [], environment: [], popular: [] };
-	const providerShapeKnown = providers.view !== undefined;
 	const connected = [
 		...view.connected.filter((row) => !row.isKilo && !row.isLocal),
 		...view.environment,
@@ -144,11 +165,7 @@ export function KiloProvidersSettings() {
 			}
 		>
 			{pageLoading ? (
-				<ProvidersContentLoadingState
-					connected={connected}
-					shapeKnown={providerShapeKnown}
-					localInference={localInference}
-				/>
+				<ProvidersContentLoadingState />
 			) : (
 				<>
 					<section
@@ -159,7 +176,7 @@ export function KiloProvidersSettings() {
 						<ProviderEntrySurface>
 							<KiloGatewayProviderDisclosure />
 						</ProviderEntrySurface>
-						{localInference ? <LocalInferenceProviderCard /> : null}
+						{localInference ? <LocalModelServerLink /> : null}
 						{connected.map((row) => (
 							<ProviderEntrySurface key={row.id}>
 								{isEnvironmentSourced(row) ? (
@@ -355,15 +372,7 @@ function PageShell({
 	);
 }
 
-function ProvidersContentLoadingState({
-	connected,
-	shapeKnown,
-	localInference,
-}: {
-	connected: ProviderRow[];
-	shapeKnown: boolean;
-	localInference: boolean;
-}) {
+function ProvidersContentLoadingState() {
 	return (
 		<section
 			className="flex min-w-0 flex-col gap-2"
@@ -376,82 +385,53 @@ function ProvidersContentLoadingState({
 			<ProviderEntrySurface>
 				<GatewayProviderLoadingState />
 			</ProviderEntrySurface>
-			{localInference ? (
-				<ProviderEntrySurface>
-					<LocalProviderLoadingState />
-				</ProviderEntrySurface>
-			) : null}
-			{shapeKnown
-				? connected.map((row) => (
-						<ProviderEntrySurface key={row.id}>
-							<ConnectedProviderLoadingState row={row} />
-						</ProviderEntrySurface>
-					))
-				: null}
+			<ProviderEntrySurface>
+				<ProviderLoadingRow compact qaId="kilo-providers-loading-provider">
+					<Skeleton className="bg-muted-foreground/25 h-7 w-14 rounded-lg" />
+				</ProviderLoadingRow>
+			</ProviderEntrySurface>
 		</section>
 	);
 }
 
 function GatewayProviderLoadingState() {
 	return (
-		<ProviderLoadingRow>
+		<ProviderLoadingRow qaId="kilo-providers-loading-gateway">
 			<Skeleton className="bg-muted-foreground/25 h-7 w-14 rounded-lg" />
 		</ProviderLoadingRow>
 	);
 }
 
-function LocalProviderLoadingState() {
+function ProviderLoadingRow({
+	children,
+	compact = false,
+	qaId,
+}: {
+	children?: ReactNode;
+	compact?: boolean;
+	qaId: string;
+}) {
 	return (
-		<ProviderLoadingRow qaId="kilo-providers-local-loading">
-			<Skeleton className="bg-muted-foreground/25 size-7 rounded-lg" />
-		</ProviderLoadingRow>
-	);
-}
-
-function ProviderLoadingRow({ children, qaId }: { children?: ReactNode; qaId?: string }) {
-	return (
-		<SummaryCard.Row aria-hidden="true" {...(qaId ? { "data-qa-id": qaId } : {})}>
+		<SummaryCard.Row className="min-h-[54px]" aria-hidden="true" data-qa-id={qaId}>
 			<SummaryCard.Icon>
 				<Skeleton className="bg-muted-foreground/25 size-[18px] rounded-sm" />
 			</SummaryCard.Icon>
 			<SummaryCard.Content className="group-data-[size=xs]/item:gap-1.5">
-				<Skeleton className="bg-muted-foreground/25 h-3.5 w-32" />
-				<Skeleton className="bg-muted-foreground/25 h-3 w-64 max-w-full" />
+				<Skeleton
+					className={
+						compact ? "bg-muted-foreground/25 h-3.5 w-24" : "bg-muted-foreground/25 h-3.5 w-32"
+					}
+				/>
+				<Skeleton
+					className={
+						compact
+							? "bg-muted-foreground/25 h-3 w-44 max-w-full"
+							: "bg-muted-foreground/25 h-3 w-64 max-w-full"
+					}
+				/>
 			</SummaryCard.Content>
 			{children ? <SummaryCard.Actions>{children}</SummaryCard.Actions> : null}
 		</SummaryCard.Row>
-	);
-}
-
-function ConnectedProviderLoadingState({ row }: { row: ProviderRow }) {
-	return (
-		<SummaryCard.Row aria-hidden="true">
-			<SummaryCard.Icon>
-				<Skeleton className="bg-muted-foreground/25 size-[18px] rounded-sm" />
-			</SummaryCard.Icon>
-			<SummaryCard.Content className="group-data-[size=xs]/item:gap-1.5">
-				<Skeleton className="bg-muted-foreground/25 flex h-3.5 min-w-0">
-					<span className="invisible text-sm font-medium">{row.name}</span>
-				</Skeleton>
-				<Skeleton className="bg-muted-foreground/25 flex h-3 min-w-0">
-					<span className="invisible text-xs">{providerSourceLabel(row)}</span>
-				</Skeleton>
-			</SummaryCard.Content>
-			<SummaryCard.Actions>
-				{isEnvironmentSourced(row) ? <ProviderActionSkeleton /> : null}
-				{row.custom || row.canDisconnect ? <ProviderActionSkeleton /> : null}
-				{row.canDisconnect && !row.custom ? <ProviderActionSkeleton /> : null}
-				{row.custom ? <ProviderActionSkeleton /> : null}
-			</SummaryCard.Actions>
-		</SummaryCard.Row>
-	);
-}
-
-function ProviderActionSkeleton() {
-	return (
-		<Skeleton className="bg-muted-foreground/25 size-7 shrink-0 rounded-lg">
-			<Button type="button" variant="ghost" size="icon-sm" className="invisible" disabled />
-		</Skeleton>
 	);
 }
 

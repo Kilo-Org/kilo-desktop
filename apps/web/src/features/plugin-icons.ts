@@ -1,4 +1,4 @@
-import { PuzzleIcon } from "lucide-react";
+import { PuzzleIcon, ServerIcon } from "lucide-react";
 
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -18,7 +18,9 @@ import type { LucideIcon } from "lucide-react";
  * for icons that are known at build time because bundled plugins are static
  * workspace deps (Decision #10/#13).
  */
-const PLUGIN_NAV_ICONS: Readonly<Record<string, LucideIcon>> = {};
+const PLUGIN_NAV_ICONS: Readonly<Record<string, LucideIcon>> = {
+	server: ServerIcon,
+};
 
 /** Fallback for missing/unregistered icon names — a generic plugin icon. */
 export const FALLBACK_PLUGIN_NAV_ICON: LucideIcon = PuzzleIcon;

@@ -54,6 +54,19 @@ export const localInferenceStatusSchema = z.discriminatedUnion("status", [
 
 export type LocalInferenceStatus = z.infer<typeof localInferenceStatusSchema>;
 
+export const localInferenceUsageSchema = z.object({
+	system: z.object({
+		cpuPercent: z.number().finite().min(0).max(100),
+		cpuSpeedGHz: z.number().finite().nonnegative().nullable(),
+		gpuMemoryUsedBytes: z.number().int().nonnegative().nullable(),
+		gpuMemoryTotalBytes: z.number().int().nonnegative().nullable(),
+		memoryUsedBytes: z.number().int().nonnegative(),
+		memoryTotalBytes: z.number().int().nonnegative(),
+	}),
+});
+
+export type LocalInferenceUsage = z.infer<typeof localInferenceUsageSchema>;
+
 export const localInferenceContract = defineContract({
 	"models.list": defineMethod(z.undefined(), z.array(localModelSchema)),
 	"models.add": defineMethod(
@@ -84,6 +97,7 @@ export const localInferenceContract = defineContract({
 	"settings.get": defineMethod(z.undefined(), localServerSettingsSchema),
 	"settings.update": defineMethod(localServerSettingsSchema, localServerSettingsSchema),
 	"status.get": defineMethod(z.undefined(), localInferenceStatusSchema),
+	"usage.get": defineMethod(z.undefined(), localInferenceUsageSchema),
 });
 
 export type LocalInferenceServiceContract = InferContract<typeof localInferenceContract>;

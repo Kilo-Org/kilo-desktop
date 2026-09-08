@@ -670,14 +670,14 @@ describe("LocalInferenceService", () => {
 		ensureListening.mockClear();
 		ensureProxy.mockClear();
 
-		expect(service.updateServerSettings({ port: 8080, maxModels: 2 })).toEqual({
+		expect(service.updateServerSettings({ port: 8080, modelLoadMode: "all" })).toEqual({
 			port: 8080,
-			maxModels: 2,
+			modelLoadMode: "all",
 		});
 		await service.reconcile();
 
 		expect(ensureRunning).toHaveBeenCalledWith([expect.objectContaining({ id: model.id })], {
-			maxModels: 2,
+			modelLoadMode: "all",
 		});
 		expect(ensureListening).toHaveBeenCalledWith(8080, "127.0.0.1");
 		expect(ensureProxy).toHaveBeenCalledWith("http://127.0.0.1:43123", 8080, "127.0.0.1");

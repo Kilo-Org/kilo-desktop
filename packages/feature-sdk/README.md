@@ -277,11 +277,11 @@ providers wrap lower-priority providers; equal priorities keep plugin registry o
 
 ```jsonc
 "contributes": {
-  "settings": [{ "id": "todos", "title": "Todos", "component": "TodosSettings" }]
+  "settings": [{ "id": "todos", "title": "Todos", "component": "TodosSettings", "category": "Personal" }]
 }
 ```
 
-Optional `featureFlag` hides the nav entry (same semantics as `contributes.nav`). There is no `sdk.contributeSettings` — settings are declarative only.
+Optional `category` groups the section in the settings sidebar and defaults to `Personal`. Optional `featureFlag` hides the nav entry (same semantics as `contributes.nav`). There is no `sdk.contributeSettings` — settings are declarative only.
 
 ### `sdk.commands` — command palette entries
 

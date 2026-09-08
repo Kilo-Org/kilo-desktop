@@ -50,6 +50,8 @@ async function hasGgufHeader(filePath: string): Promise<boolean> {
  * Owns the persisted GGUF registry. Paths remain user-owned and are never
  * copied; canonicalization makes duplicate adds idempotent, while availability
  * is refreshed independently so disconnected drives do not destroy metadata.
+ * Server settings are compacted on read so obsolete fields cannot cross the
+ * feature contract and instead fall back to current safe defaults.
  */
 export class LocalModelRegistry {
 	readonly #store: KvStore<PersistedLocalModels>;
@@ -75,7 +77,7 @@ export class LocalModelRegistry {
 
 	serverSettings(): LocalServerSettings {
 		const settings = this.#store.snapshot().settings;
-		return settings && Object.keys(settings).length > 0 ? structuredClone(settings) : {};
+		return settings ? (compactServerSettings(settings) ?? {}) : {};
 	}
 
 	setServerSettings(settings: LocalServerSettings): LocalServerSettings {

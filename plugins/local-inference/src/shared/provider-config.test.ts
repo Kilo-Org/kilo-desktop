@@ -48,6 +48,23 @@ n-gpu-layers = 99
 `);
 	});
 
+	it("lets extra arguments override the dedicated context length", () => {
+		expect(
+			renderModelPreset([
+				{
+					...models[0]!,
+					settings: {
+						contextLength: 8192,
+						llamaFlags: { "ctx-size": "16384" },
+					},
+				},
+			]),
+		).toBe(`[qwen-3-a1b2c3d4]
+model = /models/Qwen 3.gguf
+ctx-size = 16384
+`);
+	});
+
 	it("creates one OpenAI-compatible provider containing every available model", () => {
 		expect(createProviderEntry(models, "http://127.0.0.1:43123/v1")).toEqual({
 			npm: "@ai-sdk/openai-compatible",

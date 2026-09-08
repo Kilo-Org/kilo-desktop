@@ -265,6 +265,7 @@ export interface ResolvedPluginSettingsContribution {
 	title: string;
 	/** The resolved section component export. */
 	component: unknown;
+	category?: string | undefined;
 	icon?: string | undefined;
 	iconComponent?: unknown | undefined;
 	/** Higher renders first in the settings nav. Default 0. */
@@ -619,6 +620,7 @@ function resolveContributions(
 			id: contribution.id,
 			title: contribution.title,
 			component,
+			...(contribution.category === undefined ? {} : { category: contribution.category }),
 			icon: contribution.icon,
 			iconComponent,
 			priority: contribution.priority ?? 0,

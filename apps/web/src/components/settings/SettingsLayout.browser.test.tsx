@@ -38,6 +38,7 @@ function makeSection(overrides: Partial<PluginSettingsSection> = {}): PluginSett
 		id: "alpha",
 		title: "Alpha",
 		component: AlphaPanel,
+		category: "Personal",
 		icon: undefined,
 		iconComponent: undefined,
 		priority: 1,
@@ -134,6 +135,26 @@ describe("SettingsSidebar", () => {
 		await screen.getByTestId("settings-search").fill("beta");
 		await expect.element(screen.getByTestId("settings-section-beta")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-alpha")).not.toBeInTheDocument();
+	});
+
+	it("groups sections by category", async () => {
+		const sections = [
+			makeSection(),
+			makeSection({
+				id: "local-model-server",
+				title: "Local Model Server",
+				category: "AI",
+				component: BetaPanel,
+			}),
+		];
+		const { baseElement } = renderSettings(sections);
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByTestId("settings-group-personal"))
+			.toHaveTextContent("Personal");
+		await expect.element(screen.getByTestId("settings-group-ai")).toHaveTextContent("AI");
+		await expect.element(screen.getByTestId("settings-section-local-model-server")).toBeVisible();
 	});
 });
 

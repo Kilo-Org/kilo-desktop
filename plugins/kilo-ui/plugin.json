@@ -44,6 +44,7 @@
 				"title": "AI Providers",
 				"component": "KiloProvidersSettings",
 				"icon": "KiloProvidersNavIcon",
+				"category": "AI",
 				"priority": 90
 			}
 		]

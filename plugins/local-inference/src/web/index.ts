@@ -5,6 +5,8 @@ import type {
 	LocalInferenceServiceContract,
 } from "../contracts/schemas.js";
 
+export { LocalModelServerSettings } from "./LocalModelServerSettings.js";
+
 export function webRegister(sdk: SDK): void {
 	const service = {
 		prepareModel: async (modelId: string) => {

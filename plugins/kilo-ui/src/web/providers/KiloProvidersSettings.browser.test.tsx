@@ -185,8 +185,10 @@ function renderPage(
 	auth: KiloAuthContextValue = idleAuth(),
 	options: { localInference?: boolean } = {},
 ) {
+	const navigate = vi.fn();
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
+		navigation: { navigate },
 		channels: { ...kiloUiChatContract, ...kiloUiProvidersContract },
 		handlers: {
 			"chat.getConnection": async () => connection,
@@ -229,6 +231,7 @@ function renderPage(
 		sdk,
 		queryClient,
 		auth,
+		navigate,
 		rerenderAuth: (value: KiloAuthContextValue) => {
 			currentAuth = value;
 			view.rerender(mount());
@@ -379,27 +382,35 @@ describe("KiloProvidersSettings", () => {
 		await expect.element(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
 	});
 
-	it("renders the local provider card when local inference is available", async () => {
+	it("links to the local model server when local inference is available", async () => {
 		mockCatalog();
-		const { screen } = renderPage({ isPending: false, isError: false, connection }, idleAuth(), {
-			localInference: true,
-		});
+		const { screen, navigate } = renderPage(
+			{ isPending: false, isError: false, connection },
+			idleAuth(),
+			{ localInference: true },
+		);
 
-		await expect.element(screen.getByTestId("local-provider-card")).toBeVisible();
+		const link = screen.getByTestId("kilo-providers-local-model-server-link");
+		await expect.element(link).toBeVisible();
+		await expect.element(link).toHaveTextContent("Manage");
+		await expect.element(screen.getByText("Run AI models locally on your device.")).toBeVisible();
 		expect(
 			screen
 				.getByTestId("kilo-providers-row-kilo")
 				.element()
-				.compareDocumentPosition(screen.getByTestId("local-provider-card").element()) &
-				Node.DOCUMENT_POSITION_FOLLOWING,
+				.compareDocumentPosition(link.element()) & Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+		await link.click();
+		expect(navigate).toHaveBeenCalledWith("/settings/local-model-server", undefined);
 	});
 
-	it("hides the local provider card when local inference is unavailable", async () => {
+	it("hides the local model server link when local inference is unavailable", async () => {
 		mockCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
 		await expect.element(screen.getByTestId("kilo-providers-row-kilo")).toBeVisible();
-		await expect.element(screen.getByTestId("local-provider-card")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("kilo-providers-local-model-server-link"))
+			.not.toBeInTheDocument();
 	});
 
 	it("disables adding providers while the catalog is loading", async () => {
@@ -407,23 +418,61 @@ describe("KiloProvidersSettings", () => {
 		await expect.element(screen.getByTestId("kilo-providers-add-provider")).toBeDisabled();
 	});
 
-	it("defers the local provider card until the page finishes loading", async () => {
+	it("keeps one complete skeleton inventory visible until every initial request is ready", async () => {
+		let resolveCatalog!: (value: unknown) => void;
+		providerList.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					resolveCatalog = resolve;
+				}),
+		);
+		configGet.mockResolvedValue({ data: {} });
+		const loadingAuth = idleAuth({ isLoading: true });
+		const { screen, queryClient, rerenderAuth } = renderPage(
+			{ isPending: false, isError: false, connection },
+			loadingAuth,
+		);
+
+		await expect.element(screen.getByTestId("kilo-providers-loading-gateway")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-loading-provider")).toBeVisible();
+
+		resolveCatalog({
+			data: {
+				all: [
+					{ id: "kilo", name: "Kilo Gateway", source: "custom" },
+					{ id: "anthropic", name: "Anthropic", source: "api" },
+				],
+				connected: ["kilo", "anthropic"],
+				default: {},
+			},
+		});
+
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		await expect.element(screen.getByTestId("kilo-providers-loading")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-loading-provider")).toBeVisible();
+
+		rerenderAuth(idleAuth());
+		await expect.element(screen.getByTestId("kilo-providers-loading")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-providers-row-anthropic")).toBeVisible();
+	});
+
+	it("defers the local model server link until the page finishes loading", async () => {
 		mockCatalog();
 		const { screen, rerenderStatus } = renderPage({ isPending: true, isError: false }, idleAuth(), {
 			localInference: true,
 		});
 
 		await expect.element(screen.getByTestId("kilo-providers-loading")).toBeVisible();
-		await expect.element(screen.getByTestId("local-provider-card")).not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("kilo-providers-local-loading")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-providers-local-model-server-link"))
+			.not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("kilo-providers-inventory")).not.toBeInTheDocument();
 
 		rerenderStatus({ isPending: false, isError: false, connection });
 
-		await expect.element(screen.getByTestId("local-provider-card")).toBeVisible();
 		await expect
-			.element(screen.getByTestId("kilo-providers-local-loading"))
-			.not.toBeInTheDocument();
+			.element(screen.getByTestId("kilo-providers-local-model-server-link"))
+			.toBeVisible();
 	});
 
 	it("shows the connected Kilo account details inside the gateway card", async () => {

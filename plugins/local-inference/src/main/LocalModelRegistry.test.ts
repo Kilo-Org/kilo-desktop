@@ -147,24 +147,37 @@ describe("LocalModelRegistry", () => {
 		expect(
 			registry.setServerSettings({
 				port: 8080,
-				maxModels: 2,
+				modelLoadMode: "all",
 				serveOnLocalNetwork: true,
 				llamaFlags: { timeout: "120" },
 			}),
 		).toEqual({
 			port: 8080,
-			maxModels: 2,
+			modelLoadMode: "all",
 			serveOnLocalNetwork: true,
 			llamaFlags: { timeout: "120" },
 		});
 		expect(registry.serverSettings()).toEqual({
 			port: 8080,
-			maxModels: 2,
+			modelLoadMode: "all",
 			serveOnLocalNetwork: true,
 			llamaFlags: { timeout: "120" },
 		});
 		expect(registry.setServerSettings({})).toEqual({});
 		expect(registry.serverSettings()).toEqual({});
 		expect(registry.list()).toEqual([]);
+	});
+
+	it("treats legacy numeric model limits as the safe default", () => {
+		const registry = new LocalModelRegistry(
+			store({
+				models: [],
+				settings: { maxModels: 4, port: 8080 } as unknown as NonNullable<
+					PersistedLocalModels["settings"]
+				>,
+			}),
+		);
+
+		expect(registry.serverSettings()).toEqual({ port: 8080 });
 	});
 });

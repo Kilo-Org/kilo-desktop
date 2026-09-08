@@ -43,15 +43,19 @@ export function serverFlagsFromRows(
 export const LOOPBACK_HOST = "127.0.0.1";
 export const LAN_BIND_HOST = "0.0.0.0";
 
+export const localModelLoadModeSchema = z.enum(["one", "all"]);
+export type LocalModelLoadMode = z.infer<typeof localModelLoadModeSchema>;
+
 export const localServerSettingsSchema = z
 	.object({
 		port: z.number().int().min(1).max(65_535).optional(),
-		maxModels: z.number().int().min(1).max(64).optional(),
+		modelLoadMode: localModelLoadModeSchema.optional(),
 		serveOnLocalNetwork: z.boolean().optional(),
 		llamaFlags: z
 			.record(z.string().regex(FLAG_KEY), z.string().trim().min(1).max(4_096))
 			.optional(),
 	})
+	.strict()
 	.superRefine((settings, context) => {
 		for (const [key, value] of Object.entries(settings.llamaFlags ?? {})) {
 			const parsed = parseServerFlagRow(key, value);
@@ -71,7 +75,7 @@ export function compactServerSettings(
 ): LocalServerSettings | undefined {
 	const next: LocalServerSettings = {};
 	if (settings.port !== undefined) next.port = settings.port;
-	if (settings.maxModels !== undefined) next.maxModels = settings.maxModels;
+	if (settings.modelLoadMode === "all") next.modelLoadMode = "all";
 	if (settings.serveOnLocalNetwork) next.serveOnLocalNetwork = true;
 	if (settings.llamaFlags && Object.keys(settings.llamaFlags).length > 0) {
 		next.llamaFlags = Object.fromEntries(
@@ -83,8 +87,11 @@ export function compactServerSettings(
 	return Object.keys(next).length > 0 ? next : undefined;
 }
 
-export function routerMaxModels(modelCount: number, maxModels?: number): number {
-	return maxModels ?? modelCount;
+export function routerMaxModels(
+	modelCount: number,
+	modelLoadMode: LocalModelLoadMode = "one",
+): number {
+	return modelLoadMode === "all" ? modelCount : 1;
 }
 
 export function proxyBindHost(serveOnLocalNetwork?: boolean): string {
@@ -109,7 +116,7 @@ export function renderRouterArgs(input: {
 		"--models-preset",
 		input.presetPath,
 		"--models-max",
-		String(routerMaxModels(input.modelCount, input.settings?.maxModels)),
+		String(routerMaxModels(input.modelCount, input.settings?.modelLoadMode)),
 		"--no-models-autoload",
 		"--jinja",
 	];

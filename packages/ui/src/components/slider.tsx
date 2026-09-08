@@ -1,8 +1,18 @@
 "use client";
 
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
+import type { ComponentProps, ReactNode } from "react";
 
+import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import { Label } from "@anaconda-agentic-desktop/ui/components/label";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+
+type SliderProps = SliderPrimitive.Root.Props & {
+	input?: ComponentProps<typeof Input> | undefined;
+	inputAddon?: ReactNode;
+	label?: ReactNode;
+	labelAddon?: ReactNode;
+};
 
 function thumbsFor(value: unknown, defaultValue: unknown, min: number): number[] {
 	if (Array.isArray(value)) return value as number[];
@@ -15,14 +25,18 @@ function thumbsFor(value: unknown, defaultValue: unknown, min: number): number[]
 function Slider({
 	className,
 	defaultValue,
+	input,
+	inputAddon,
+	label,
+	labelAddon,
 	value,
 	min = 0,
 	max = 100,
 	...props
-}: SliderPrimitive.Root.Props) {
+}: SliderProps) {
 	const thumbs = thumbsFor(value, defaultValue, min);
 
-	return (
+	const slider = (
 		<SliderPrimitive.Root
 			className={cn("data-horizontal:w-full data-vertical:h-full", className)}
 			data-slot="slider"
@@ -52,6 +66,33 @@ function Slider({
 				))}
 			</SliderPrimitive.Control>
 		</SliderPrimitive.Root>
+	);
+
+	if (!input) return slider;
+
+	const { className: inputClassName, ...inputProps } = input;
+	return (
+		<div className="flex min-w-0 flex-col gap-2" data-slot="slider-with-input">
+			<div className="flex items-center justify-between gap-3">
+				{label || labelAddon ? (
+					<div className="flex min-w-0 items-center gap-1">
+						{label ? <Label htmlFor={props.id}>{label}</Label> : null}
+						{labelAddon}
+					</div>
+				) : null}
+				<div className="ml-auto flex shrink-0 items-center gap-1">
+					{inputAddon}
+					<Input
+						className={cn(
+							"h-6 w-auto min-w-10 max-w-28 shrink-0 px-1.5 text-right text-xs tabular-nums [appearance:textfield] [field-sizing:content] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+							inputClassName,
+						)}
+						{...inputProps}
+					/>
+				</div>
+			</div>
+			<div className="min-w-0">{slider}</div>
+		</div>
 	);
 }
 

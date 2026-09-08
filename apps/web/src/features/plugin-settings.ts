@@ -20,6 +20,7 @@ export interface PluginSettingsSection {
 	id: string;
 	title: string;
 	component: ComponentType;
+	category: string;
 	icon: string | undefined;
 	iconComponent: ComponentType | undefined;
 	/** Higher renders first. */
@@ -47,6 +48,7 @@ export function buildPluginSettings(
 		id: section.id,
 		title: section.title,
 		component: section.component as ComponentType,
+		category: section.category ?? "Personal",
 		icon: section.icon,
 		iconComponent: section.iconComponent as ComponentType | undefined,
 		priority: section.priority,

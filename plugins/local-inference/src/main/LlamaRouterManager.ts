@@ -52,6 +52,7 @@ export interface LlamaRouterManagerOptions {
 		options: { cwd: string; detached: boolean; env: NodeJS.ProcessEnv },
 	) => LlamaChildProcess;
 	readonly queryVersion?: (executable: string) => Promise<string>;
+	readonly reclaimStaleRouters?: (presetPath: string) => Promise<void>;
 	readonly logger: RouterLogger;
 	readonly onStatusChange?: (status: LlamaRouterStatus) => void;
 	readonly healthTimeoutMs?: number;
@@ -247,8 +248,9 @@ function waitForExit(child: LlamaChildProcess, timeoutMs: number): Promise<void>
 
 /**
  * Owns exactly one llama.cpp router process for every registered GGUF.
- * `--models-max` follows server settings when set, otherwise the registry
- * size. Loads are serialized and coalesced, while residency is synchronized
+ * `--models-max` defaults to one and expands to the registry size only when
+ * the user explicitly enables all-model residency. Loads are serialized and
+ * coalesced, while residency is synchronized
  * from llama.cpp's model list after every load because the router may evict
  * an older model at its configured limit. Each load belongs to one router
  * generation so a stopped router cannot update the replacement's state. The
@@ -268,6 +270,7 @@ export class LlamaRouterManager {
 			| "modelLoadTimeoutMs"
 			| "stopTimeoutMs"
 			| "apiKey"
+			| "reclaimStaleRouters"
 		>
 	> &
 		Omit<
@@ -279,6 +282,7 @@ export class LlamaRouterManager {
 			| "modelLoadTimeoutMs"
 			| "stopTimeoutMs"
 			| "apiKey"
+			| "reclaimStaleRouters"
 		>;
 	readonly #intentional = new WeakSet<LlamaChildProcess>();
 	readonly #loads = new Map<string, Promise<void>>();
@@ -304,6 +308,9 @@ export class LlamaRouterManager {
 			healthRetryDelayMs: options.healthRetryDelayMs ?? 250,
 			modelLoadTimeoutMs: options.modelLoadTimeoutMs ?? 300_000,
 			stopTimeoutMs: options.stopTimeoutMs ?? 5_000,
+			reclaimStaleRouters:
+				options.reclaimStaleRouters ??
+				((presetPath) => reclaimStaleRouters(presetPath, options.logger)),
 		};
 	}
 
@@ -410,7 +417,7 @@ export class LlamaRouterManager {
 			const temporaryPath = `${presetPath}.${crypto.randomUUID()}.tmp`;
 			await writeFile(temporaryPath, preset, "utf8");
 			await rename(temporaryPath, presetPath);
-			await reclaimStaleRouters(presetPath, this.#options.logger);
+			await this.#options.reclaimStaleRouters(presetPath);
 			const port = await this.#options.allocatePort();
 			if (this.#disposed || this.#generation !== generation) {
 				throw new Error("Local inference startup was cancelled.");

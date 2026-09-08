@@ -70,7 +70,10 @@ function child(
 async function setup(
 	process = child(),
 	extras: Partial<
-		Pick<LlamaRouterManagerOptions, "healthTimeoutMs" | "modelLoadTimeoutMs" | "stopTimeoutMs">
+		Pick<
+			LlamaRouterManagerOptions,
+			"healthTimeoutMs" | "modelLoadTimeoutMs" | "reclaimStaleRouters" | "stopTimeoutMs"
+		>
 	> = {},
 ) {
 	const root = path.join(tmpdir(), `llama-router-${crypto.randomUUID()}`);
@@ -100,6 +103,8 @@ async function setup(
 		allocatePort: async () => 43123,
 		fetch,
 		spawn,
+		queryVersion: async () => "test",
+		reclaimStaleRouters: async () => undefined,
 		logger: { info() {}, warn() {}, error() {} },
 		onStatusChange: (status) => statuses.push(status),
 		healthRetryDelayMs: 1,
@@ -129,7 +134,7 @@ describe("LlamaRouterManager", () => {
 		expect(ctx.manager.status).toEqual({ status: "idle" });
 	});
 
-	it("coalesces startup and launches one router for all model presets", async () => {
+	it("coalesces startup and launches one router with one-model residency by default", async () => {
 		const ctx = await setup();
 		const models = [model(), model("other-deadbeef")];
 
@@ -147,7 +152,7 @@ describe("LlamaRouterManager", () => {
 				"--models-preset",
 				path.join(ctx.root, "runtime", "models.ini"),
 				"--models-max",
-				"2",
+				"1",
 				"--no-models-autoload",
 			]),
 			expect.objectContaining({ detached: true }),
@@ -162,14 +167,14 @@ describe("LlamaRouterManager", () => {
 		]);
 	});
 
-	it("restarts when max models or router flags change", async () => {
+	it("restarts when model load mode or router flags change", async () => {
 		const ctx = await setup();
-		const models = [model()];
-		await ctx.manager.ensureRunning(models, { maxModels: 1 });
+		const models = [model(), model("other-deadbeef")];
+		await ctx.manager.ensureRunning(models, { modelLoadMode: "one" });
 		ctx.spawn.mockImplementation(() => child());
 
 		await ctx.manager.ensureRunning(models, {
-			maxModels: 1,
+			modelLoadMode: "all",
 			llamaFlags: { timeout: "120" },
 		});
 
@@ -177,11 +182,11 @@ describe("LlamaRouterManager", () => {
 		expect(ctx.spawn).toHaveBeenNthCalledWith(
 			2,
 			"/bin/llama-server",
-			expect.arrayContaining(["--models-max", "1", "--timeout", "120"]),
+			expect.arrayContaining(["--models-max", "2", "--timeout", "120"]),
 			expect.objectContaining({ detached: true }),
 		);
 		await ctx.manager.ensureRunning(models, {
-			maxModels: 1,
+			modelLoadMode: "all",
 			llamaFlags: { timeout: "120" },
 		});
 		expect(ctx.spawn).toHaveBeenCalledTimes(2);
@@ -232,7 +237,7 @@ describe("LlamaRouterManager", () => {
 			return new Response("{}", { status: 200 });
 		});
 
-		await ctx.manager.ensureRunning(models, { maxModels: 1 });
+		await ctx.manager.ensureRunning(models, { modelLoadMode: "one" });
 		await ctx.manager.prepareModel(first.id, models);
 		await ctx.manager.prepareModel(second.id, models);
 		await ctx.manager.prepareModel(first.id, models);

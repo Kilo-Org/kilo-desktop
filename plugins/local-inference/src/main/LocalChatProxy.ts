@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
+import { hasLlamaFlagOverride, type LocalModelSettings } from "../shared/model-settings.js";
 import { LOOPBACK_HOST } from "../shared/server-settings.js";
 
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
@@ -41,8 +42,21 @@ export interface LocalChatProxyOptions {
 	readonly fetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 	readonly logger: ProxyLogger;
 	readonly prepareModel?: (modelId: string) => Promise<void>;
-	readonly getTemperature?: (modelId: string) => number | undefined;
-	readonly getMaxTokens?: (modelId: string) => number | undefined;
+	readonly getSamplingSettings?: (
+		modelId: string,
+	) =>
+		| Pick<
+				LocalModelSettings,
+				| "temperature"
+				| "topP"
+				| "topK"
+				| "minP"
+				| "repeatPenalty"
+				| "presencePenalty"
+				| "maxResponseTokens"
+				| "llamaFlags"
+		  >
+		| undefined;
 	readonly getIncludeKiloContext?: (modelId: string) => boolean | undefined;
 }
 
@@ -205,8 +219,7 @@ export class LocalChatProxy {
 			}
 			const forwardedBody = isChat
 				? compactChatBody(body, {
-						temperature: modelId ? this.#options.getTemperature?.(modelId) : undefined,
-						maxTokens: modelId ? this.#options.getMaxTokens?.(modelId) : undefined,
+						...(modelId ? this.#options.getSamplingSettings?.(modelId) : undefined),
 						includeKiloContext: modelId
 							? Boolean(this.#options.getIncludeKiloContext?.(modelId))
 							: false,
@@ -309,7 +322,13 @@ function compactChatBody(
 	body: Buffer,
 	overlays: {
 		temperature?: number | undefined;
-		maxTokens?: number | undefined;
+		topP?: number | undefined;
+		topK?: number | undefined;
+		minP?: number | undefined;
+		repeatPenalty?: number | undefined;
+		presencePenalty?: number | undefined;
+		maxResponseTokens?: number | undefined;
+		llamaFlags?: Record<string, string> | undefined;
 		includeKiloContext?: boolean;
 	},
 ): Buffer {
@@ -333,9 +352,25 @@ function compactChatBody(
 						: []),
 				],
 			};
-	if (overlays.temperature !== undefined) compact.temperature = overlays.temperature;
-	if (overlays.maxTokens !== undefined) {
-		compact.max_tokens = overlays.maxTokens;
+	if (hasLlamaFlagOverride(overlays, "temperature")) delete compact.temperature;
+	else if (overlays.temperature !== undefined) compact.temperature = overlays.temperature;
+	if (hasLlamaFlagOverride(overlays, "topP")) delete compact.top_p;
+	else if (overlays.topP !== undefined) compact.top_p = overlays.topP;
+	if (hasLlamaFlagOverride(overlays, "topK")) delete compact.top_k;
+	else if (overlays.topK !== undefined) compact.top_k = overlays.topK;
+	if (hasLlamaFlagOverride(overlays, "minP")) delete compact.min_p;
+	else if (overlays.minP !== undefined) compact.min_p = overlays.minP;
+	if (hasLlamaFlagOverride(overlays, "repeatPenalty")) delete compact.repeat_penalty;
+	else if (overlays.repeatPenalty !== undefined) compact.repeat_penalty = overlays.repeatPenalty;
+	if (hasLlamaFlagOverride(overlays, "presencePenalty")) delete compact.presence_penalty;
+	else if (overlays.presencePenalty !== undefined)
+		compact.presence_penalty = overlays.presencePenalty;
+	if (hasLlamaFlagOverride(overlays, "maxResponseTokens")) {
+		delete compact.max_tokens;
+		delete compact.max_completion_tokens;
+		delete compact.max_output_tokens;
+	} else if (overlays.maxResponseTokens !== undefined) {
+		compact.max_tokens = overlays.maxResponseTokens;
 		delete compact.max_completion_tokens;
 		delete compact.max_output_tokens;
 	}

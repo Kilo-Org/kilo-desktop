@@ -81,7 +81,7 @@ export interface LocalInferenceServiceOptions {
  * Disconnect keeps registered GGUF files but unpublishes the provider and
  * stops the router until Start. Status is `stopping` while the process
  * exits, then `disconnected`. Launching with any registered models, or
- * adding a model, starts the server again. Server settings (port, max models,
+ * adding a model, starts the server again. Server settings (port, model residency,
  * extra llama.cpp router flags, LAN serving) persist independently and restart
  * the public proxy when they change. llama.cpp stays on loopback.
  */
@@ -102,7 +102,7 @@ export class LocalInferenceService {
 
 	get status(): LocalInferenceStatus {
 		if (this.#error) return { status: "error", message: this.#error };
-		if (!this.#options.registry.isEnabled() && this.list().length > 0) {
+		if (!this.#options.registry.isEnabled()) {
 			if (isRouterStillRunning(this.#options.router.status)) {
 				return { status: "stopping" };
 			}
@@ -253,7 +253,7 @@ export class LocalInferenceService {
 			}
 			const settings = this.serverSettings();
 			const routerSettings = compactServerSettings({
-				maxModels: settings.maxModels,
+				modelLoadMode: settings.modelLoadMode,
 				llamaFlags: settings.llamaFlags,
 			});
 			const connection = forceRestart

@@ -51,7 +51,7 @@
 		"anaconda-opentelemetry": "0.9.2",
 		"atomically": "catalog:",
 		"electron-debug": "^4.1.0",
-		"electron-log": "^5.4.3",
+		"electron-log": "catalog:",
 		"electron-squirrel-startup": "^1.0.1",
 		"electron-store": "^11.0.2",
 		"execa": "^9.6.0",

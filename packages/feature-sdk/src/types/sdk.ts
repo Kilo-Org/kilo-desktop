@@ -427,6 +427,7 @@ export interface SdkShell {
 	readonly canPickDirectories: boolean;
 	openExternal(url: string): Promise<{ opened: boolean }>;
 	copyText(text: string): Promise<void>;
+	showItemInFolder(path: string): Promise<{ revealed: boolean }>;
 	showOpenDialog(
 		options: DirectoryOpenDialogOptions,
 	): Promise<{ canceled: boolean; paths: string[] }>;

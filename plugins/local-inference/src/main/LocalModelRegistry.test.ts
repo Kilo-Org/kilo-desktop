@@ -56,6 +56,48 @@ describe("LocalModelRegistry", () => {
 		expect(registry.list()).toEqual([model]);
 	});
 
+	it("persists catalog identity on downloaded and previously imported models", async () => {
+		const file = await fixture("catalog-model.gguf");
+		const kv = store();
+		const registry = new LocalModelRegistry(kv, () => 42);
+		const catalog = { modelId: "catalog-model", quantizationId: "catalog-model-q4" };
+
+		const imported = await registry.add(file);
+		expect(imported.catalog).toBeUndefined();
+		const matched = await registry.add(file, undefined, catalog, {
+			managedFile: true,
+			sizeBytes: 4,
+		});
+		expect(matched.catalog).toEqual(catalog);
+		expect(matched).toMatchObject({ managedFile: true, sizeBytes: 4 });
+
+		const restored = new LocalModelRegistry(kv);
+		expect(restored.list()[0]?.catalog).toEqual(catalog);
+		expect(restored.list()[0]).toMatchObject({ managedFile: true, sizeBytes: 4 });
+	});
+
+	it("adopts legacy catalog files only from the managed models directory", async () => {
+		const managedFile = await fixture("catalog.gguf");
+		const importedFile = await fixture("imported.gguf");
+		const managedRoot = path.dirname(managedFile);
+		const kv = store();
+		const registry = new LocalModelRegistry(kv, () => 42);
+		const catalog = { modelId: "catalog-model", quantizationId: "q4" };
+		await registry.add(managedFile, undefined, catalog);
+		await registry.add(importedFile, undefined, catalog);
+
+		await registry.adoptLegacyManagedFiles(managedRoot);
+
+		expect(registry.list()).toEqual([
+			expect.objectContaining({
+				path: await realpath(managedFile),
+				managedFile: true,
+				sizeBytes: 4,
+			}),
+			expect.not.objectContaining({ managedFile: true }),
+		]);
+	});
+
 	it("rejects missing files and non-GGUF paths", async () => {
 		const text = await fixture("model.txt");
 		const mislabeled = await fixture("model.gguf");

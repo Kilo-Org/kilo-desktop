@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { KvStore } from "@anaconda-agentic-desktop/feature-sdk";
 
+import type { LocalModel } from "../contracts/schemas.js";
 import { LocalInferenceService } from "./LocalInferenceService.js";
 import type { LlamaRouterStatus } from "./LlamaRouterManager.js";
 import { LocalModelRegistry, type PersistedLocalModels } from "./LocalModelRegistry.js";
@@ -41,6 +42,180 @@ afterEach(async () => {
 });
 
 describe("LocalInferenceService", () => {
+	it("deletes only explicitly managed GGUF files inside the models directory", async () => {
+		const file = await fixture();
+		const modelsDir = path.dirname(file);
+		const registry = new LocalModelRegistry(store(), () => 1);
+		const ensureRunning = vi.fn(async () => null);
+		const service = new LocalInferenceService({
+			registry,
+			managedModelsDir: modelsDir,
+			router: {
+				apiKey: "secret",
+				status: { status: "ready", loadedModelIds: [] },
+				ensureRunning,
+				restart: async () => null,
+				prepareModel: async () => {},
+				dispose() {},
+			},
+			proxy: {
+				ensureListening: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				ensureRunning: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				close() {},
+			},
+			getKilo: () => null,
+			emit: vi.fn(),
+			logger: { info() {}, warn() {}, error() {} },
+		});
+		const model = await service.add({
+			path: file,
+			catalog: { modelId: "catalog-model", quantizationId: "q4" },
+			managedFile: true,
+			sizeBytes: 4,
+		});
+
+		await expect(service.remove(model.id, "delete-managed-file")).resolves.toBe(true);
+
+		await expect(readFile(file)).rejects.toMatchObject({ code: "ENOENT" });
+		expect(service.list()).toEqual([]);
+		expect(ensureRunning).toHaveBeenCalledWith([], {});
+	});
+
+	it("keeps queued reconciles behind managed file removal", async () => {
+		const file = await fixture();
+		const registry = new LocalModelRegistry(store(), () => 1);
+		const model = await registry.add(file, undefined, undefined, {
+			managedFile: true,
+			sizeBytes: 4,
+		});
+		registry.setEnabled(true);
+		let finishRelease: (() => void) | undefined;
+		const ensureRunning = vi
+			.fn(async (_models: readonly LocalModel[]) => ({
+				baseUrl: "http://127.0.0.1:43123",
+				port: 43123,
+			}))
+			.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						finishRelease = () => resolve({ baseUrl: "http://127.0.0.1:43123", port: 43123 });
+					}),
+			);
+		const service = new LocalInferenceService({
+			registry,
+			managedModelsDir: path.dirname(file),
+			router: {
+				apiKey: "secret",
+				status: { status: "ready", loadedModelIds: [model.id] },
+				ensureRunning,
+				restart: ensureRunning,
+				prepareModel: async () => {},
+				dispose() {},
+			},
+			proxy: {
+				ensureListening: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				ensureRunning: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				close() {},
+			},
+			getKilo: () => null,
+			emit: vi.fn(),
+			logger: { info() {}, warn() {}, error() {} },
+		});
+
+		const removal = service.remove(model.id, "delete-managed-file");
+		await vi.waitFor(() => expect(finishRelease).toBeTypeOf("function"));
+		const queuedReconcile = service.reconcile();
+		finishRelease?.();
+
+		await expect(removal).resolves.toBe(true);
+		await expect(queuedReconcile).resolves.toBeUndefined();
+		expect(
+			ensureRunning.mock.calls.every(([models]) => models.every((entry) => entry.id !== model.id)),
+		).toBe(true);
+	});
+
+	it("reports a completed removal when the follow-up reconcile fails", async () => {
+		const file = await fixture();
+		const registry = new LocalModelRegistry(store(), () => 1);
+		const model = await registry.add(file);
+		registry.setEnabled(true);
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const service = new LocalInferenceService({
+			registry,
+			router: {
+				apiKey: "secret",
+				status: { status: "idle" },
+				ensureRunning: async () => {
+					throw new Error("Router unavailable");
+				},
+				restart: async () => null,
+				prepareModel: async () => {},
+				dispose() {},
+			},
+			proxy: {
+				ensureListening: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				ensureRunning: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				close() {},
+			},
+			getKilo: () => null,
+			emit: vi.fn(),
+			logger,
+		});
+
+		await expect(service.remove(model.id, "registry-only")).resolves.toBe(true);
+
+		expect(service.list()).toEqual([]);
+		expect(logger.error).toHaveBeenCalledWith(
+			"Local inference reconcile failed: Router unavailable",
+		);
+		expect(service.status).toEqual({
+			status: "error",
+			message: "Local inference could not be configured. Check the app logs and try again.",
+		});
+	});
+
+	it("refuses to delete imported files and managed paths outside its models directory", async () => {
+		const importedFile = await fixture();
+		const managedRoot = path.join(tmpdir(), `managed-models-${crypto.randomUUID()}`);
+		roots.push(managedRoot);
+		await mkdir(managedRoot, { recursive: true });
+		const registry = new LocalModelRegistry(store(), () => 1);
+		const service = new LocalInferenceService({
+			registry,
+			managedModelsDir: managedRoot,
+			router: {
+				apiKey: "secret",
+				status: { status: "idle" },
+				ensureRunning: async () => null,
+				restart: async () => null,
+				prepareModel: async () => {},
+				dispose() {},
+			},
+			proxy: {
+				ensureListening: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				ensureRunning: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+				close() {},
+			},
+			getKilo: () => null,
+			emit: vi.fn(),
+			logger: { info() {}, warn() {}, error() {} },
+		});
+		const imported = await service.add({ path: importedFile });
+
+		await expect(service.remove(imported.id, "delete-managed-file")).rejects.toThrow(
+			"Only models downloaded from the catalog",
+		);
+		await expect(readFile(importedFile)).resolves.toEqual(Buffer.from("GGUF"));
+
+		const mislabeled = await registry.add(importedFile, undefined, undefined, {
+			managedFile: true,
+		});
+		await expect(service.remove(mislabeled.id, "delete-managed-file")).rejects.toThrow(
+			"outside the local models folder",
+		);
+		await expect(readFile(importedFile)).resolves.toEqual(Buffer.from("GGUF"));
+	});
+
 	it("reconciles registered models into one managed Kilo provider", async () => {
 		const set = vi.fn(async () => {});
 		const remove = vi.fn(async () => {});
@@ -94,7 +269,7 @@ describe("LocalInferenceService", () => {
 			}),
 		);
 
-		expect(service.remove(model.id)).toBe(true);
+		await expect(service.remove(model.id, "registry-only")).resolves.toBe(true);
 		await service.reconcile();
 		expect(remove).toHaveBeenLastCalledWith("local-inference", "anaconda-local");
 	});

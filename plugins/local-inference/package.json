@@ -16,6 +16,7 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
+		"@lobehub/icons": "^5.15.0",
 		"execa": "^9.6.0",
 		"lucide-react": "^1.27.0",
 		"systeminformation": "5.33.1"

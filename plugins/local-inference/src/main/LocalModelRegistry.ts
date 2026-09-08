@@ -47,11 +47,12 @@ async function hasGgufHeader(filePath: string): Promise<boolean> {
 }
 
 /**
- * Owns the persisted GGUF registry. Paths remain user-owned and are never
- * copied; canonicalization makes duplicate adds idempotent, while availability
- * is refreshed independently so disconnected drives do not destroy metadata.
- * Server settings are compacted on read so obsolete fields cannot cross the
- * feature contract and instead fall back to current safe defaults.
+ * Owns the persisted GGUF registry. Imported paths remain user-owned, while
+ * catalog downloads carry explicit managed-file metadata so destructive
+ * actions can never be inferred from their location alone. Canonicalization
+ * makes duplicate adds idempotent, and availability refreshes independently so
+ * disconnected drives do not destroy metadata. Server settings are compacted
+ * on read so obsolete fields fall back to current safe defaults.
  */
 export class LocalModelRegistry {
 	readonly #store: KvStore<PersistedLocalModels>;
@@ -86,7 +87,44 @@ export class LocalModelRegistry {
 		return this.serverSettings();
 	}
 
-	async add(inputPath: string, displayName?: string): Promise<LocalModel> {
+	async adoptLegacyManagedFiles(modelsDir: string): Promise<void> {
+		const managedRoot = await realpath(modelsDir);
+		const models = this.list();
+		let changed = false;
+		for (const [index, model] of models.entries()) {
+			if (model.managedFile || !model.catalog) continue;
+			try {
+				const canonicalPath = await realpath(model.path);
+				const relative = path.relative(managedRoot, canonicalPath);
+				if (
+					relative.length === 0 ||
+					relative.startsWith(`..${path.sep}`) ||
+					path.isAbsolute(relative) ||
+					path.extname(canonicalPath).toLowerCase() !== ".gguf"
+				) {
+					continue;
+				}
+				const details = await stat(canonicalPath);
+				if (!details.isFile() || details.size <= 0) continue;
+				models[index] = {
+					...model,
+					managedFile: true,
+					sizeBytes: model.sizeBytes ?? details.size,
+				};
+				changed = true;
+			} catch {
+				// An unresolvable legacy file is not safe to adopt as app-managed.
+			}
+		}
+		if (changed) this.#store.set({ models });
+	}
+
+	async add(
+		inputPath: string,
+		displayName?: string,
+		catalog?: LocalModel["catalog"],
+		fileMetadata?: Pick<LocalModel, "managedFile" | "sizeBytes">,
+	): Promise<LocalModel> {
 		if (/[\r\n]/.test(inputPath)) {
 			throw new Error("GGUF file paths cannot contain line breaks.");
 		}
@@ -101,7 +139,29 @@ export class LocalModelRegistry {
 		}
 		const canonicalPath = await realpath(inputPath);
 		const existing = this.list().find((model) => model.path === canonicalPath);
-		if (existing) return existing;
+		if (existing) {
+			const nextCatalog = catalog ?? existing.catalog;
+			const nextManagedFile = fileMetadata?.managedFile ?? existing.managedFile;
+			const nextSizeBytes = fileMetadata?.sizeBytes ?? existing.sizeBytes;
+			if (
+				nextCatalog === existing.catalog &&
+				nextManagedFile === existing.managedFile &&
+				nextSizeBytes === existing.sizeBytes
+			) {
+				return existing;
+			}
+			const models = this.list();
+			const index = models.findIndex((model) => model.id === existing.id);
+			const next: LocalModel = {
+				...existing,
+				...(nextCatalog ? { catalog: nextCatalog } : {}),
+				...(nextManagedFile === undefined ? {} : { managedFile: nextManagedFile }),
+				...(nextSizeBytes === undefined ? {} : { sizeBytes: nextSizeBytes }),
+			};
+			models[index] = next;
+			this.#store.set({ models });
+			return structuredClone(next);
+		}
 
 		const fallback = path.basename(canonicalPath, path.extname(canonicalPath));
 		const name = displayName?.trim() || fallback;
@@ -111,6 +171,9 @@ export class LocalModelRegistry {
 			path: canonicalPath,
 			available: true,
 			addedAt: this.#now(),
+			...(catalog ? { catalog } : {}),
+			...(fileMetadata?.managedFile === undefined ? {} : { managedFile: fileMetadata.managedFile }),
+			...(fileMetadata?.sizeBytes === undefined ? {} : { sizeBytes: fileMetadata.sizeBytes }),
 		};
 		this.#store.set({ models: [...this.list(), model] });
 		return model;

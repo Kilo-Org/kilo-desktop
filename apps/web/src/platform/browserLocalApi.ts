@@ -33,6 +33,9 @@ export function createBrowserLocalApi(): LocalApi {
 					throw new LocalApiError("TRANSPORT", "Could not copy text to the clipboard.");
 				}
 			},
+			async showItemInFolder() {
+				throw new LocalApiError("TRANSPORT", "Revealing files requires the desktop app.");
+			},
 			async showOpenDialog() {
 				throw new LocalApiError("TRANSPORT", "Folder selection requires the desktop app.");
 			},

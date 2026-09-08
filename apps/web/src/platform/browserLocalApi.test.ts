@@ -47,6 +47,10 @@ describe("createBrowserLocalApi", () => {
 		await expect(api.shell.copyText({ text: "hello" })).rejects.toMatchObject({
 			code: "TRANSPORT",
 		});
+		await expect(api.shell.showItemInFolder({ path: "/tmp/model.gguf" })).rejects.toMatchObject({
+			code: "TRANSPORT",
+			message: "Revealing files requires the desktop app.",
+		});
 		await expect(
 			api.shell.showOpenDialog({ kind: "directory", multiple: true }),
 		).rejects.toMatchObject({

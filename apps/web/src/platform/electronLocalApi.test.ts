@@ -20,6 +20,7 @@ describe("createElectronLocalApi", () => {
 			.mockResolvedValueOnce({ ok: true, value: undefined })
 			.mockResolvedValueOnce({ ok: true, value: { opened: true } })
 			.mockResolvedValueOnce({ ok: true, value: undefined })
+			.mockResolvedValueOnce({ ok: true, value: { revealed: true } })
 			.mockResolvedValueOnce({
 				ok: true,
 				value: { canceled: false, paths: ["/tmp/project"] },
@@ -36,6 +37,9 @@ describe("createElectronLocalApi", () => {
 			opened: true,
 		});
 		await expect(api.shell.copyText({ text: "hi" })).resolves.toBeUndefined();
+		await expect(api.shell.showItemInFolder({ path: "/tmp/model.gguf" })).resolves.toEqual({
+			revealed: true,
+		});
 		await expect(api.shell.showOpenDialog({ kind: "directory", multiple: true })).resolves.toEqual({
 			canceled: false,
 			paths: ["/tmp/project"],
@@ -48,7 +52,10 @@ describe("createElectronLocalApi", () => {
 			source: "dark",
 			shouldUseDarkColors: true,
 		});
-		expect(invoke).toHaveBeenNthCalledWith(4, "shell:show-open-dialog", {
+		expect(invoke).toHaveBeenNthCalledWith(4, "shell:show-item-in-folder", {
+			path: "/tmp/model.gguf",
+		});
+		expect(invoke).toHaveBeenNthCalledWith(5, "shell:show-open-dialog", {
 			kind: "directory",
 			multiple: true,
 		});

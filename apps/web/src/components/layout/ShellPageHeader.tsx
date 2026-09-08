@@ -26,7 +26,7 @@ function ShellSidebarToggle({ open }: { open: boolean }) {
 
 	return (
 		<div
-			className="pointer-events-auto fixed top-0 z-[60] flex h-12 items-center [-webkit-app-region:no-drag]"
+			className="pointer-events-auto fixed top-0 z-40 flex h-12 items-center [-webkit-app-region:no-drag]"
 			style={{ left: "var(--shell-sidebar-toggle-left)" }}
 		>
 			<Tooltip>

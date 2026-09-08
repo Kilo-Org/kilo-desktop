@@ -5,6 +5,7 @@ const {
 	getFocusedWindow,
 	openExternal,
 	parentWindow,
+	showItemInFolder,
 	showOpenDialog,
 	showSaveDialog,
 	writeText,
@@ -13,6 +14,7 @@ const {
 	getFocusedWindow: vi.fn(),
 	openExternal: vi.fn(),
 	parentWindow: {},
+	showItemInFolder: vi.fn(),
 	showOpenDialog: vi.fn(),
 	showSaveDialog: vi.fn(),
 	writeText: vi.fn(),
@@ -22,7 +24,7 @@ vi.mock("electron", () => ({
 	BrowserWindow: { getAllWindows, getFocusedWindow },
 	clipboard: { writeText },
 	dialog: { showOpenDialog, showSaveDialog },
-	shell: { openExternal },
+	shell: { openExternal, showItemInFolder },
 }));
 
 import { ElectronShell, parseSafeExternalUrl } from "./ElectronShell.js";
@@ -30,6 +32,7 @@ import { ElectronShell, parseSafeExternalUrl } from "./ElectronShell.js";
 describe("ElectronShell", () => {
 	beforeEach(() => {
 		openExternal.mockReset();
+		showItemInFolder.mockReset();
 		writeText.mockReset();
 		showOpenDialog.mockReset();
 		showSaveDialog.mockReset();
@@ -124,5 +127,18 @@ describe("ElectronShell", () => {
 		adapter.copyText("λ Anaconda");
 		expect(writeText).toHaveBeenCalledWith("λ Anaconda");
 		expect("readText" in adapter).toBe(false);
+	});
+
+	it("reveals valid file paths in the native file manager", () => {
+		const adapter = new ElectronShell();
+
+		expect(adapter.showItemInFolder("/models/tiny.gguf")).toBe(true);
+		expect(adapter.showItemInFolder("model\n.gguf")).toBe(false);
+		showItemInFolder.mockImplementationOnce(() => {
+			throw new Error("unavailable");
+		});
+		expect(adapter.showItemInFolder("/models/missing.gguf")).toBe(false);
+		expect(showItemInFolder).toHaveBeenCalledTimes(2);
+		expect(showItemInFolder).toHaveBeenCalledWith("/models/tiny.gguf");
 	});
 });

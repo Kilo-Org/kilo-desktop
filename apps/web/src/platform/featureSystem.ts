@@ -166,6 +166,7 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 			canPickDirectories: api.shell.canPickDirectories,
 			openExternal: (url) => api.shell.openExternal({ url }),
 			copyText: (text) => api.shell.copyText({ text }),
+			showItemInFolder: (path) => api.shell.showItemInFolder({ path }),
 			showOpenDialog: (options) => api.shell.showOpenDialog(options),
 			getPathForFile: (file) => api.shell.getPathForFile(file),
 		},

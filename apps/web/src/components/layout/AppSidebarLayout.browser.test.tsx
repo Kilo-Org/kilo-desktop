@@ -60,6 +60,7 @@ function fakeLocalApi(
 			canPickDirectories: true,
 			openExternal: async () => ({ opened: true }),
 			copyText: async () => undefined,
+			showItemInFolder: async () => ({ revealed: true }),
 			showOpenDialog: async () => ({ canceled: true, paths: [] }),
 			getPathForFile: () => null,
 		},

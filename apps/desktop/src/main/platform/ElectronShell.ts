@@ -46,6 +46,16 @@ export class ElectronShell {
 		this.electronClipboard.writeText(text);
 	}
 
+	showItemInFolder(filePath: string): boolean {
+		if (!filePath || /[\r\n]/.test(filePath)) return false;
+		try {
+			this.electronShell.showItemInFolder(filePath);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	async showOpenDialog(options: {
 		kind: "directory";
 		multiple?: boolean | undefined;

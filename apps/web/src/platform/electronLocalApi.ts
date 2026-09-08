@@ -27,6 +27,7 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			canPickDirectories: true,
 			openExternal: (input) => invoke("shell:open-external", input),
 			copyText: (input) => invoke("shell:copy-text", input),
+			showItemInFolder: (input) => invoke("shell:show-item-in-folder", input),
 			showOpenDialog: (input) => invoke("shell:show-open-dialog", input),
 			getPathForFile: (file) => bridge.getPathForFile(file),
 		},

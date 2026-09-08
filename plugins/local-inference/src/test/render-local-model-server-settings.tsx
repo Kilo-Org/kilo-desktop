@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 
-import type { ChannelHandlerMap, SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { AuthSession, ChannelHandlerMap, SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
@@ -28,18 +28,34 @@ export const connection = {
 	apiKey: "local-secret",
 };
 
+const authenticatedSession: AuthSession = {
+	status: "authenticated",
+	user: { email: "test@example.com" },
+};
+
+const authenticatedAuth: Partial<SDK["auth"]> = {
+	subscribe(listener) {
+		listener(authenticatedSession);
+		return () => undefined;
+	},
+	peek: () => authenticatedSession,
+};
+
 export function renderSettings(
 	handlers: Partial<LocalInferenceHandlers>,
 	shell: Partial<SDK["shell"]> = {},
+	auth: Partial<SDK["auth"]> = authenticatedAuth,
 ) {
 	const sdk = createFakeSdk({
 		featureId: "local-inference",
 		channels: localInferenceContract,
 		handlers: {
 			"models.list": async () => [],
+			"catalog.downloads.list": async () => [],
 			...handlers,
 		},
 		shell,
+		auth,
 	});
 	const system = createFakeFeatureSystem({ sdks: { "local-inference": sdk } });
 	const queryClient = new QueryClient({

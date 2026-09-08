@@ -20,6 +20,7 @@ export interface LocalApi {
 		readonly canPickDirectories: boolean;
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;
 		copyText(input: { text: string }): Promise<void>;
+		showItemInFolder(input: { path: string }): Promise<{ revealed: boolean }>;
 		showOpenDialog(input: {
 			kind: "directory";
 			multiple?: boolean;

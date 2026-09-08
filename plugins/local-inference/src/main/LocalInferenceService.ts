@@ -1,4 +1,6 @@
+import { lstat, realpath, rm } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
+import path from "node:path";
 
 import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
 
@@ -43,6 +45,7 @@ export interface KiloCapability extends Record<string, unknown> {
 
 export interface LocalInferenceServiceOptions {
 	readonly registry: LocalModelRegistry;
+	readonly managedModelsDir?: string;
 	readonly router: {
 		readonly apiKey: string;
 		readonly status: LlamaRouterStatus;
@@ -71,6 +74,40 @@ export interface LocalInferenceServiceOptions {
 	readonly logger: MainSdkLogger;
 }
 
+export type LocalModelRemovalMode = "registry-only" | "delete-managed-file";
+
+function isWithinDirectory(parent: string, candidate: string): boolean {
+	const relative = path.relative(parent, candidate);
+	return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+async function deleteManagedModelFile(model: LocalModel, modelsDir: string): Promise<void> {
+	if (!model.managedFile) {
+		throw new Error("Only models downloaded from the catalog can be deleted by the app.");
+	}
+	if (path.extname(model.path).toLowerCase() !== ".gguf") {
+		throw new Error("The managed model path is not a GGUF file.");
+	}
+	const managedRoot = await realpath(modelsDir);
+	const candidate = path.resolve(model.path);
+	if (!isWithinDirectory(managedRoot, candidate)) {
+		throw new Error("The managed model path is outside the local models folder.");
+	}
+	try {
+		const details = await lstat(candidate);
+		if (details.isSymbolicLink()) {
+			throw new Error("Symbolic links cannot be deleted as managed models.");
+		}
+		const canonicalCandidate = await realpath(candidate);
+		if (!isWithinDirectory(managedRoot, canonicalCandidate)) {
+			throw new Error("The managed model path is outside the local models folder.");
+		}
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+	}
+	await rm(candidate, { force: true });
+}
+
 /**
  * Reconciles three pieces of state behind one small interface: the persisted
  * GGUF registry, the single llama.cpp router, and Kilo's managed Local provider.
@@ -83,7 +120,9 @@ export interface LocalInferenceServiceOptions {
  * exits, then `disconnected`. Launching with any registered models, or
  * adding a model, starts the server again. Server settings (port, model residency,
  * extra llama.cpp router flags, LAN serving) persist independently and restart
- * the public proxy when they change. llama.cpp stays on loopback.
+ * the public proxy when they change. llama.cpp stays on loopback. Router,
+ * provider, and managed-file removal transitions share one operation queue so
+ * a reconcile cannot reopen a model while its file is being deleted.
  */
 export class LocalInferenceService {
 	readonly #options: LocalInferenceServiceOptions;
@@ -127,30 +166,78 @@ export class LocalInferenceService {
 		if (this.#options.registry.isEnabled()) {
 			await this.#run(() => this.#publishProvider());
 		}
-		void this.reconcile();
+		this.#reconcileInBackground();
 	}
 
-	async add(input: { path: string; name?: string | undefined }): Promise<LocalModel> {
-		const model = await this.#options.registry.add(input.path, input.name);
+	async add(input: {
+		path: string;
+		name?: string | undefined;
+		catalog?: LocalModel["catalog"];
+		managedFile?: boolean;
+		sizeBytes?: number;
+	}): Promise<LocalModel> {
+		const model = await this.#options.registry.add(input.path, input.name, input.catalog, {
+			...(input.managedFile === undefined ? {} : { managedFile: input.managedFile }),
+			...(input.sizeBytes === undefined ? {} : { sizeBytes: input.sizeBytes }),
+		});
 		this.#options.registry.setEnabled(true);
 		this.#emitModels();
-		void this.reconcile();
+		this.#reconcileInBackground();
 		return model;
 	}
 
-	remove(id: string): boolean {
-		const removed = this.#options.registry.remove(id);
-		if (!removed) return false;
-		this.#emitModels();
-		void this.reconcile();
-		return true;
+	async remove(id: string, mode: LocalModelRemovalMode): Promise<boolean> {
+		let removed = false;
+		let removalFailure: { error: unknown } | undefined;
+		await this.#run(async () => {
+			const model = this.list().find((entry) => entry.id === id);
+			if (!model) return;
+			if (mode === "delete-managed-file") {
+				const managedModelsDir = this.#options.managedModelsDir;
+				if (!managedModelsDir) {
+					removalFailure = { error: new Error("Managed model deletion is unavailable.") };
+					return;
+				}
+				await this.#releaseModelFile(model.id);
+				try {
+					await deleteManagedModelFile(model, managedModelsDir);
+				} catch (error) {
+					removalFailure = { error };
+					await this.#reconcileAfterMutation(true);
+					return;
+				}
+			}
+			removed = this.#options.registry.remove(id);
+			if (!removed) return;
+			this.#emitModels();
+			await this.#reconcileAfterMutation();
+		});
+		if (removalFailure) throw removalFailure.error;
+		return removed;
+	}
+
+	async #releaseModelFile(modelId: string): Promise<void> {
+		if (this.#disposed || !isRouterStillRunning(this.#options.router.status)) return;
+		const remaining = this.list().filter((model) => model.id !== modelId && model.available);
+		const settings = this.serverSettings();
+		const routerSettings = compactServerSettings({
+			modelLoadMode: settings.modelLoadMode,
+			llamaFlags: settings.llamaFlags,
+		});
+		const connection = await this.#options.router.ensureRunning(remaining, routerSettings ?? {});
+		if (!connection) return;
+		await this.#options.proxy.ensureRunning(
+			connection.baseUrl,
+			settings.port,
+			proxyBindHost(settings.serveOnLocalNetwork),
+		);
 	}
 
 	update(id: string, settings: LocalModelSettings): LocalModel {
 		const model = this.#options.registry.update(id, settings);
 		if (!model) throw new Error("Local model not found.");
 		this.#emitModels();
-		void this.reconcile();
+		this.#reconcileInBackground();
 		return model;
 	}
 
@@ -160,7 +247,7 @@ export class LocalInferenceService {
 
 	updateServerSettings(settings: LocalServerSettings): LocalServerSettings {
 		const next = this.#options.registry.setServerSettings(settings);
-		void this.reconcile();
+		this.#reconcileInBackground();
 		return next;
 	}
 
@@ -176,18 +263,32 @@ export class LocalInferenceService {
 
 	#run(operation: () => Promise<void>): Promise<void> {
 		const result = this.#pending.then(operation, operation);
-		this.#pending = result.catch((error) => {
-			this.#options.logger.error(
-				`Local inference reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (this.#options.router.status.status === "error") {
-				this.#error = undefined;
-			} else {
-				this.#error = "Local inference could not be configured. Check the app logs and try again.";
-			}
-			this.#options.emit(STATUS_CHANGED_EVENT, this.status);
-		});
+		this.#pending = result.catch((error) => this.#recordReconcileFailure(error));
 		return result;
+	}
+
+	#recordReconcileFailure(error: unknown): void {
+		this.#options.logger.error(
+			`Local inference reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		if (this.#options.router.status.status === "error") {
+			this.#error = undefined;
+		} else {
+			this.#error = "Local inference could not be configured. Check the app logs and try again.";
+		}
+		this.#options.emit(STATUS_CHANGED_EVENT, this.status);
+	}
+
+	#reconcileInBackground(forceRestart = false): void {
+		void this.reconcile(forceRestart).catch(() => undefined);
+	}
+
+	async #reconcileAfterMutation(forceRestart = false): Promise<void> {
+		try {
+			await this.#reconcileState(forceRestart);
+		} catch (error) {
+			this.#recordReconcileFailure(error);
+		}
 	}
 
 	async #publishProvider(): Promise<void> {
@@ -218,7 +319,7 @@ export class LocalInferenceService {
 	}
 
 	retry(): void {
-		void this.reconcile(true);
+		this.#reconcileInBackground(true);
 	}
 
 	async disconnect(): Promise<void> {
@@ -234,40 +335,42 @@ export class LocalInferenceService {
 	}
 
 	reconcile(forceRestart = false): Promise<void> {
-		return this.#run(async () => {
-			if (this.#disposed) return;
-			if (!this.#options.registry.isEnabled()) {
-				await this.#unpublish();
-				this.#error = undefined;
-				this.#emitModels();
-				this.#options.emit(STATUS_CHANGED_EVENT, this.status);
-				return;
-			}
-			await this.#publishProvider();
-			const available = this.list().filter((model) => model.available);
-			if (available.length === 0) {
-				await this.#options.router.ensureRunning([]);
-				this.#error = undefined;
-				this.#emitModels();
-				return;
-			}
-			const settings = this.serverSettings();
-			const routerSettings = compactServerSettings({
-				modelLoadMode: settings.modelLoadMode,
-				llamaFlags: settings.llamaFlags,
-			});
-			const connection = forceRestart
-				? await this.#options.router.restart(available, routerSettings ?? {})
-				: await this.#options.router.ensureRunning(available, routerSettings ?? {});
-			if (!connection) return;
-			await this.#options.proxy.ensureRunning(
-				connection.baseUrl,
-				settings.port,
-				proxyBindHost(settings.serveOnLocalNetwork),
-			);
+		return this.#run(() => this.#reconcileState(forceRestart));
+	}
+
+	async #reconcileState(forceRestart = false): Promise<void> {
+		if (this.#disposed) return;
+		if (!this.#options.registry.isEnabled()) {
+			await this.#unpublish();
 			this.#error = undefined;
 			this.#emitModels();
+			this.#options.emit(STATUS_CHANGED_EVENT, this.status);
+			return;
+		}
+		await this.#publishProvider();
+		const available = this.list().filter((model) => model.available);
+		if (available.length === 0) {
+			await this.#options.router.ensureRunning([]);
+			this.#error = undefined;
+			this.#emitModels();
+			return;
+		}
+		const settings = this.serverSettings();
+		const routerSettings = compactServerSettings({
+			modelLoadMode: settings.modelLoadMode,
+			llamaFlags: settings.llamaFlags,
 		});
+		const connection = forceRestart
+			? await this.#options.router.restart(available, routerSettings ?? {})
+			: await this.#options.router.ensureRunning(available, routerSettings ?? {});
+		if (!connection) return;
+		await this.#options.proxy.ensureRunning(
+			connection.baseUrl,
+			settings.port,
+			proxyBindHost(settings.serveOnLocalNetwork),
+		);
+		this.#error = undefined;
+		this.#emitModels();
 	}
 
 	dispose(): void {

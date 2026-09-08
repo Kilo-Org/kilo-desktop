@@ -169,7 +169,11 @@ describe("PLUGIN_SETTINGS", () => {
 		});
 	});
 
-	it("lists AI Providers before Local Model Server", () => {
+	it("does not expose the local model catalog as a separate settings section", () => {
+		expect(PLUGIN_SETTINGS.some((section) => section.id === "local-model-catalog")).toBe(false);
+	});
+
+	it("lists AI settings by priority", () => {
 		const aiSections = PLUGIN_SETTINGS.filter((section) => section.category === "AI");
 		expect(aiSections.map((section) => section.id)).toEqual([
 			"kilo-providers",

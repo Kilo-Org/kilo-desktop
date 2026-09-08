@@ -20,6 +20,15 @@ export const localModelSchema = z.object({
 	available: z.boolean(),
 	addedAt: z.number().int().nonnegative(),
 	settings: localModelSettingsSchema.optional(),
+	catalog: z
+		.object({
+			modelId: z.string().min(1),
+			quantizationId: z.string().min(1),
+			publisher: z.string().min(1).max(200).optional(),
+		})
+		.optional(),
+	managedFile: z.boolean().optional(),
+	sizeBytes: z.number().int().positive().optional(),
 });
 
 export type LocalModel = z.infer<typeof localModelSchema>;
@@ -67,7 +76,98 @@ export const localInferenceUsageSchema = z.object({
 
 export type LocalInferenceUsage = z.infer<typeof localInferenceUsageSchema>;
 
+export const localInferenceHardwareProfileSchema = z.object({
+	name: z.string().min(1),
+	kind: z.enum(["unified-memory", "dedicated-gpu", "system-memory", "mobile"]),
+	accelerator: z.enum(["metal", "cuda", "vulkan", "cpu"]),
+	memoryTotalBytes: z.number().int().nonnegative(),
+	systemMemoryTotalBytes: z.number().int().nonnegative(),
+	memoryBandwidthGBps: z.number().finite().positive().nullable(),
+});
+
+export type LocalInferenceHardwareProfile = z.infer<typeof localInferenceHardwareProfileSchema>;
+
+export const modelCatalogCapabilitiesSchema = z.object({
+	chat: z.boolean(),
+	embedding: z.boolean(),
+	vision: z.boolean(),
+	toolCalling: z.boolean(),
+});
+
+export type ModelCatalogCapabilities = z.infer<typeof modelCatalogCapabilitiesSchema>;
+
+export const modelCatalogQuantizationSchema = z.object({
+	id: z.string().min(1),
+	method: z.string().min(1),
+	sizeBytes: z.number().int().positive(),
+	sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+});
+
+export type ModelCatalogQuantization = z.infer<typeof modelCatalogQuantizationSchema>;
+
+export const modelCatalogEntrySchema = z.object({
+	id: z.string().min(1),
+	name: z.string().min(1),
+	description: z.string(),
+	numParameters: z.number().int().nonnegative(),
+	activeParameters: z.number().int().nonnegative().optional(),
+	activeParametersEstimated: z.boolean().optional(),
+	modelType: z.string(),
+	publisher: z.string(),
+	libraryName: z.string(),
+	license: z.string(),
+	contextWindowSize: z.number().int().nonnegative(),
+	publishedAt: z.string().nullable().optional(),
+	tags: z.array(z.string()).default([]),
+	quantizations: z.array(modelCatalogQuantizationSchema).default([]),
+	capabilities: modelCatalogCapabilitiesSchema.default({
+		chat: false,
+		embedding: false,
+		vision: false,
+		toolCalling: false,
+	}),
+});
+
+export type ModelCatalogEntry = z.infer<typeof modelCatalogEntrySchema>;
+
+export const modelCatalogSchema = z.object({
+	models: z.array(modelCatalogEntrySchema),
+	total: z.number().int().nonnegative(),
+});
+
+export type ModelCatalog = z.infer<typeof modelCatalogSchema>;
+
+export const modelDownloadStatusSchema = z.enum([
+	"downloading",
+	"cancelling",
+	"completed",
+	"failed",
+	"cancelled",
+]);
+
+export const modelDownloadSchema = z.object({
+	modelId: z.string().min(1),
+	quantizationId: z.string().min(1),
+	status: modelDownloadStatusSchema,
+	transferredBytes: z.number().int().nonnegative(),
+	totalBytes: z.number().int().positive(),
+	percentage: z.number().int().min(0).max(100),
+	error: z.string().min(1).optional(),
+});
+
+export type ModelDownload = z.infer<typeof modelDownloadSchema>;
+
+const modelDownloadIdentitySchema = modelDownloadSchema.pick({
+	modelId: true,
+	quantizationId: true,
+});
+
 export const localInferenceContract = defineContract({
+	"catalog.list": defineMethod(z.undefined(), modelCatalogSchema),
+	"catalog.download.start": defineMethod(modelDownloadIdentitySchema, modelDownloadSchema),
+	"catalog.download.cancel": defineMethod(modelDownloadIdentitySchema, modelDownloadSchema),
+	"catalog.downloads.list": defineMethod(z.undefined(), z.array(modelDownloadSchema)),
+	"hardware.profile": defineMethod(z.undefined(), localInferenceHardwareProfileSchema),
 	"models.list": defineMethod(z.undefined(), z.array(localModelSchema)),
 	"models.add": defineMethod(
 		z.object({
@@ -77,7 +177,10 @@ export const localInferenceContract = defineContract({
 		localModelSchema,
 	),
 	"models.remove": defineMethod(
-		z.object({ id: z.string().min(1) }),
+		z.object({
+			id: z.string().min(1),
+			mode: z.enum(["registry-only", "delete-managed-file"]),
+		}),
 		z.object({ ok: z.literal(true) }),
 	),
 	"models.update": defineMethod(

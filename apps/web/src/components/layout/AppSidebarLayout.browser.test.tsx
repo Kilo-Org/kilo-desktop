@@ -311,14 +311,40 @@ describe("AppSidebarLayout nav toggle", () => {
 		expect(sidebar()?.getAttribute("data-state")).toBe("expanded");
 	});
 
-	it("keeps the collapsed nav toggle inside the active title-bar drag region", async () => {
-		renderLayout(fakeLocalApi({ status: "anonymous" }));
+	it("keeps the nav toggle clear of draggable title-bar regions", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
 
 		const toggle = page.getByRole("button", { name: "Toggle navigation" });
-		await toggle.click();
+		await expect.element(toggle).toBeInTheDocument();
+		const sidebarGap = baseElement.querySelector<HTMLElement>('[data-slot="sidebar-gap"]');
+		expect(sidebarGap).not.toBeNull();
+		const expectToggleOutsideDragRegions = () => {
+			const toggleRect = toggle.element().getBoundingClientRect();
+			const toggleCenter = {
+				x: toggleRect.left + toggleRect.width / 2,
+				y: toggleRect.top + toggleRect.height / 2,
+			};
+			const overlappingDragRegions = Array.from(
+				baseElement.querySelectorAll<HTMLElement>(".drag-region"),
+			).filter((region) => {
+				const regionRect = region.getBoundingClientRect();
+				return (
+					toggleCenter.x >= regionRect.left &&
+					toggleCenter.x <= regionRect.right &&
+					toggleCenter.y >= regionRect.top &&
+					toggleCenter.y <= regionRect.bottom
+				);
+			});
 
-		const pageHeader = page.getByTestId("shell-page-header");
-		expect(pageHeader.element().contains(toggle.element())).toBe(true);
+			expect(overlappingDragRegions).toHaveLength(0);
+		};
+
+		expectToggleOutsideDragRegions();
+		await toggle.click();
+		await vi.waitFor(() => {
+			expect(sidebarGap?.getBoundingClientRect().width).toBe(0);
+		});
+		expectToggleOutsideDragRegions();
 	});
 
 	it("resizes the left nav when the rail is dragged", async () => {

@@ -53,7 +53,7 @@ function ShellSidebarToggle({ open }: { open: boolean }) {
  */
 export function ShellPageHeader({ title, leading, actions, pageProps }: ShellPageHeaderProps) {
 	const { open, progress } = useSidebar();
-	const paddingLeft = useTransform(
+	const contentMarginLeft = useTransform(
 		progress,
 		(value) => `calc((var(--shell-sidebar-toggle-left, 0.75rem) + 1.25rem) * ${1 - value})`,
 	);
@@ -62,11 +62,14 @@ export function ShellPageHeader({ title, leading, actions, pageProps }: ShellPag
 
 	return (
 		<header
-			className="drag-region border-border bg-background dark:border-muted-foreground/15 flex h-12 shrink-0 items-center border-b pr-[calc(0.75rem+var(--window-controls-width))] pl-3"
+			className="border-border bg-background dark:border-muted-foreground/15 flex h-12 shrink-0 items-center border-b pr-[calc(0.75rem+var(--window-controls-width))] pl-3"
 			data-qa-id="shell-page-header"
 		>
 			<ShellSidebarToggle open={open} />
-			<motion.div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft }}>
+			<motion.div
+				className="drag-region flex min-w-0 flex-1 items-center gap-2"
+				style={{ marginLeft: contentMarginLeft }}
+			>
 				<div className="flex min-w-0 flex-1 items-center gap-1">
 					{Leading ? (
 						<Leading {...pageProps} />

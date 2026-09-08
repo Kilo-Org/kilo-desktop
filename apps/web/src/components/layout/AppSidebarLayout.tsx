@@ -272,16 +272,20 @@ export function AppSidebarLayout({
 					className="border-border dark:border-muted-foreground/15 h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
 					data-qa-id="app-sidebar"
 				>
-					<SidebarHeader
-						className="drag-region relative h-12 shrink-0 p-0"
-						data-qa-id="sidebar-titlebar"
-					>
-						{settings ? null : (
-							<ZoneOutlet
-								zone={SIDEBAR_HEADER_ACTIONS_ZONE}
-								className="absolute top-0 right-2 flex h-12 items-center [-webkit-app-region:no-drag]"
-							/>
-						)}
+					<SidebarHeader className="relative h-12 shrink-0 p-0" data-qa-id="sidebar-titlebar">
+						{/* Keep the drag surface clear of the fixed navigation toggle. Electron
+						    otherwise treats the overlapping button pixels as window chrome. */}
+						<div
+							className="drag-region absolute inset-y-0 right-0 flex items-center justify-end pr-2"
+							style={{ left: "calc(var(--shell-sidebar-toggle-left) + 2rem)" }}
+						>
+							{settings ? null : (
+								<ZoneOutlet
+									zone={SIDEBAR_HEADER_ACTIONS_ZONE}
+									className="flex items-center [-webkit-app-region:no-drag]"
+								/>
+							)}
+						</div>
 					</SidebarHeader>
 					<SidebarContent>
 						{settings ? <SettingsSidebar sections={settingsSections} /> : null}

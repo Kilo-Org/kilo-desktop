@@ -24,7 +24,8 @@ plugins/          Bundled plugins — self-contained workspace packages
 ├── todos/        @anaconda-agentic-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
 ├── kilo-server/  @anaconda-agentic-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
 ├── kilo-ui/      @anaconda-agentic-desktop/plugin-kilo-ui Chat UI and workspace management
-└── notebook/     @anaconda-agentic-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
+├── notebook/     @anaconda-agentic-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
+└── git/          @anaconda-agentic-desktop/plugin-git Main-only git status via git-client
 ```
 
 ## Key architectural decisions

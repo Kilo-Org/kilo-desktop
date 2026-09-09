@@ -19,7 +19,7 @@
 		"@lobehub/icons": "^5.15.0",
 		"execa": "^9.6.0",
 		"lucide-react": "^1.27.0",
-		"systeminformation": "5.33.1"
+		"systeminformation": "5.33.10"
 	},
 	"peerDependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "^0.1.0",

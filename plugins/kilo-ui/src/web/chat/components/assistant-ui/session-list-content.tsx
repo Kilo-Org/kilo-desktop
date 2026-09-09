@@ -127,6 +127,9 @@ const rowHoverActionsClassName =
 const rowHoverLabelFadeClassName =
 	"group-hover/sidebar-row:opacity-0 group-has-[:focus-visible]/sidebar-row:opacity-0 group-has-[[data-popup-open]]/sidebar-row:opacity-0";
 
+const workspaceHeaderActionsClassName =
+	"pointer-events-none mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-has-[[data-popup-open]]/workspace-row:pointer-events-auto group-has-[[data-popup-open]]/workspace-row:opacity-100";
+
 const SESSION_LIST_OVERSCAN = 10;
 const SESSION_ROW_ESTIMATE_PX = 32;
 const SESSION_SHELF_HEADER_PX = 28;
@@ -834,28 +837,80 @@ const SessionShelfHeader: FC<{
 				/>
 			</Button>
 			{tone === "workspace" && workspace ? (
-				<TooltipProvider delay={300}>
+				<WorkspaceShelfActions
+					workspace={workspace}
+					onCreateChatInWorkspace={onCreateChatInWorkspace}
+				/>
+			) : null}
+		</div>
+	);
+};
+
+const WorkspaceShelfActions: FC<{
+	workspace: Workspace;
+	onCreateChatInWorkspace: (workspaceId: string) => void;
+}> = ({ workspace, onCreateChatInWorkspace }) => {
+	const { openEdit, openDelete } = useWorkspacesFeature();
+
+	return (
+		<TooltipProvider delay={300}>
+			<div
+				className={workspaceHeaderActionsClassName}
+				data-qa-id={`session-list-workspace-controls-${workspace.id}`}
+			>
+				<DropdownMenu>
 					<Tooltip>
 						<TooltipTrigger
 							render={
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									aria-label={`New chat in ${workspace.name}`}
-									data-qa-id={`session-list-workspace-new-${workspace.id}`}
-									className="text-muted-foreground pointer-events-none mr-1 size-5 shrink-0 opacity-0 transition-opacity group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100"
-									onClick={() => onCreateChatInWorkspace(workspace.id)}
+								<DropdownMenuTrigger
+									render={
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-xs"
+											aria-label={`Workspace actions for ${workspace.name}`}
+											data-qa-id={`session-list-workspace-actions-${workspace.id}`}
+											className="text-muted-foreground size-5"
+										/>
+									}
 								/>
 							}
 						>
-							<PlusIcon aria-hidden className="size-3.5" />
+							<MoreHorizontalIcon aria-hidden className="size-3.5" />
 						</TooltipTrigger>
-						<TooltipContent side="bottom">New chat</TooltipContent>
+						<TooltipContent side="bottom">More</TooltipContent>
 					</Tooltip>
-				</TooltipProvider>
-			) : null}
-		</div>
+					<DropdownMenuContent align="end" side="right" sideOffset={6}>
+						<DropdownMenuItem onClick={() => openEdit(workspace)}>
+							<PencilIcon />
+							Edit
+						</DropdownMenuItem>
+						<DropdownMenuItem variant="destructive" onClick={() => openDelete(workspace)}>
+							<Trash2Icon />
+							Delete
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+				<Tooltip>
+					<TooltipTrigger
+						render={
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-xs"
+								aria-label={`New chat in ${workspace.name}`}
+								data-qa-id={`session-list-workspace-new-${workspace.id}`}
+								className="text-muted-foreground size-5"
+								onClick={() => onCreateChatInWorkspace(workspace.id)}
+							/>
+						}
+					>
+						<PlusIcon aria-hidden className="size-3.5" />
+					</TooltipTrigger>
+					<TooltipContent side="bottom">New chat</TooltipContent>
+				</Tooltip>
+			</div>
+		</TooltipProvider>
 	);
 };
 

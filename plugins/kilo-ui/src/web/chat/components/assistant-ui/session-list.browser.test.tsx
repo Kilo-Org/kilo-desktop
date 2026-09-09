@@ -182,7 +182,15 @@ function renderSessionList({
 	const adapter = new SeededThreadListAdapter(threads);
 	const navigate = vi.fn();
 	const setActiveWorkspaceId = vi.fn();
-	const workspaces = { ...workspacesValue, activeWorkspaceId, setActiveWorkspaceId };
+	const openEdit = vi.fn();
+	const openDelete = vi.fn();
+	const workspaces = {
+		...workspacesValue,
+		activeWorkspaceId,
+		setActiveWorkspaceId,
+		openEdit,
+		openDelete,
+	};
 	const sdk = createFakeSdk({ featureId: "kilo-ui", navigation: { navigate } });
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const store = createSessionActivityStore({ storage: null });
@@ -207,6 +215,8 @@ function renderSessionList({
 	return {
 		adapter,
 		navigate,
+		openDelete,
+		openEdit,
 		setActiveWorkspaceId,
 		store,
 		screen: page.elementLocator(result.baseElement),
@@ -1080,13 +1090,14 @@ describe("SessionList", () => {
 		await userEvent.keyboard("{Escape}");
 
 		const createChat = screen.getByRole("button", { name: "New chat in Acme App" });
+		const controls = screen.getByTestId("session-list-workspace-controls-ws-1");
 		await expect.element(createChat).toBeVisible();
 		expect(createChat.element().querySelector("svg")?.classList.contains("lucide-plus")).toBe(true);
 		await screen.getByRole("heading", { name: "Workspace" }).hover();
-		await expect.poll(() => getComputedStyle(createChat.element()).opacity).toBe("0");
+		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("0");
 		const workspaceRow = screen.getByRole("button", { name: "Acme App" });
 		await workspaceRow.hover();
-		await expect.poll(() => getComputedStyle(createChat.element()).opacity).toBe("1");
+		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("1");
 		await createChat.hover();
 		await expect.element(page.getByText("New chat", { exact: true })).toBeVisible();
 		await workspaceRow.click();
@@ -1098,6 +1109,39 @@ describe("SessionList", () => {
 
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-1");
 		expect(navigate).toHaveBeenLastCalledWith("/plugins/chat", undefined);
+	});
+
+	it("opens the workspace Edit and Delete actions from its group header", async () => {
+		const { openDelete, openEdit, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+
+		const workspaceToggle = screen.getByRole("button", { name: "Acme App" });
+		const actions = screen.getByRole("button", { name: "Workspace actions for Acme App" });
+		const controls = screen.getByTestId("session-list-workspace-controls-ws-1");
+		await screen.getByRole("heading", { name: "Workspace" }).hover();
+		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("0");
+		await workspaceToggle.hover();
+		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("1");
+
+		await actions.click();
+		await page.getByRole("menuitem", { name: "Edit" }).click();
+		expect(openEdit).toHaveBeenCalledWith(workspacesValue.workspaces[0]);
+		await expect.element(workspaceToggle).toHaveAttribute("aria-expanded", "true");
+
+		await actions.click();
+		await page.getByRole("menuitem", { name: "Delete" }).click();
+		expect(openDelete).toHaveBeenCalledWith(workspacesValue.workspaces[0]);
+		await expect.element(workspaceToggle).toHaveAttribute("aria-expanded", "true");
 	});
 
 	it("keeps grouping values next to their submenu chevrons", async () => {

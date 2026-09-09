@@ -1,6 +1,6 @@
 /**
  * Renderer capability that lets other plugins (via `sdk.plugins.get`) inspect
- * and mutate the chat right-panel store without importing kilo-ui UI modules.
+ * and mutate the chat pane store without importing kilo-ui UI modules.
  */
 import {
 	selectSessionRightPanelState,
@@ -28,7 +28,6 @@ export type ChatRightPanelCapability = {
 		lifecycle: RightPanelTabLifecycle,
 	): () => void;
 	getTabLifecycle(sessionId: string, instanceId: string): RightPanelTabLifecycle | undefined;
-	show(sessionId: string): void;
 };
 
 export interface RightPanelTabSaveResult {
@@ -71,17 +70,18 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 		},
 		openContributedTab(sessionId, definition, options) {
 			const requestedInstanceId = options?.instanceId;
+			const previous = selectSessionRightPanelState(
+				useRightPanelStore.getState().bySessionId,
+				sessionId,
+			);
 			const conflictingTab = requestedInstanceId
-				? selectSessionRightPanelState(
-						useRightPanelStore.getState().bySessionId,
-						sessionId,
-					).tabs.find(
+				? previous.tabs.find(
 						(tab) => tab.instanceId === requestedInstanceId && tab.definitionId !== definition.id,
 					)
 				: undefined;
 			if (conflictingTab) {
 				throw new Error(
-					`Right-panel tab id "${requestedInstanceId}" is already owned by "${conflictingTab.definitionId}".`,
+					`Chat pane id "${requestedInstanceId}" is already owned by "${conflictingTab.definitionId}".`,
 				);
 			}
 			useRightPanelStore.getState().openTab(sessionId, definition, options);
@@ -89,11 +89,13 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 				useRightPanelStore.getState().bySessionId,
 				sessionId,
 			);
-			const opened =
-				state.tabs.find((tab) => tab.instanceId === state.activeTabId) ??
-				state.tabs.find((tab) => tab.definitionId === definition.id);
+			const opened = requestedInstanceId
+				? state.tabs.find((tab) => tab.instanceId === requestedInstanceId)
+				: state.tabs.find(
+						(tab) => !previous.tabs.some((candidate) => candidate.instanceId === tab.instanceId),
+					);
 			if (!opened) {
-				throw new Error(`Failed to open right-panel tab for definition "${definition.id}".`);
+				throw new Error(`Failed to open chat pane for definition "${definition.id}".`);
 			}
 			return opened;
 		},
@@ -113,11 +115,8 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 		getTabLifecycle(sessionId, instanceId) {
 			return lifecycles.get(lifecycleKey(sessionId, instanceId));
 		},
-		show(sessionId) {
-			useRightPanelStore.getState().show(sessionId);
-		},
 	};
 }
 
-/** Process-local singleton — the right-panel store is already a module singleton. */
+/** Process-local singleton — the pane store is already a module singleton. */
 export const chatRightPanelCapability = createChatRightPanelCapability();

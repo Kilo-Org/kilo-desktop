@@ -38,12 +38,16 @@ export class FilesPage {
 		await click(getLocatorByText(name, { exact: true }));
 	}
 
-	async openFilesPanel(): Promise<void> {
-		await click(getLocatorByTestId("chat-right-panel-toggle"));
-		await click(getLocatorByTestId("chat-right-panel-open-files-files"));
+	async openFilesPane(): Promise<void> {
+		await getLocatorByRole("textbox", { name: "Message input" }).fill("Open the workspace files");
+		await click(getLocatorByRole("button", { name: "Send message" }));
 		await expectElementToBeVisible(
-			getLocatorByTestId("files-view"),
-			"Files right-panel contribution should be visible",
+			getLocatorByTestId("chat-pane-toolbar"),
+			"Pane toolbar should be visible after the chat starts",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("chat-pane-files:explorer").getByTestId("files-view"),
+			"Files pane should be visible",
 		);
 	}
 

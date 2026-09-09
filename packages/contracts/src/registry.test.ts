@@ -7,7 +7,7 @@ import { featureMethods } from "./features/feature-invoke.js";
 import { featurePorts } from "./features/feature-port.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
-import { shellMethods } from "./features/shell.js";
+import { shellEvents, shellMethods } from "./features/shell.js";
 import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
 import { updateEvents, updateMethods } from "./features/updates.js";
@@ -36,7 +36,8 @@ describe("IPC registry", () => {
 
 	it("merged event channel count equals the sum of feature parts", () => {
 		expect(Object.keys(ipcEvents)).toHaveLength(
-			Object.keys(authEvents).length +
+			Object.keys(shellEvents).length +
+				Object.keys(authEvents).length +
 				Object.keys(featureEvents).length +
 				Object.keys(featureFlagEvents).length +
 				Object.keys(updateEvents).length,

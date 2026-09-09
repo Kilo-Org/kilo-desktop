@@ -10,10 +10,13 @@ import {
 } from "@/features/plugin-zones";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
+import { router } from "@/router";
 
-afterEach(() => {
+afterEach(async () => {
 	cleanup();
 	localStorage.clear();
+	router.history.replace("/");
+	await router.load();
 });
 
 /**
@@ -64,6 +67,34 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByTestId("plugin-page-unavailable")).toBeVisible();
 	});
 
+	it("renders pane windows without the main application chrome", async () => {
+		router.history.push(
+			"/plugins/chat?paneWindow=true&panePluginId=kilo-ui&paneSessionId=draft&paneId=missing",
+		);
+		await router.load();
+		expect(router.state.location.search).toMatchObject({
+			paneWindow: true,
+			panePluginId: "kilo-ui",
+			paneSessionId: "draft",
+			paneId: "missing",
+		});
+		const localApi = createBrowserLocalApi();
+		const paneApi: typeof localApi = {
+			...localApi,
+			shell: {
+				...localApi.shell,
+				windowRole: "pane",
+			},
+		};
+		const system = createAppFeatureSystem(paneApi, WEB_FEATURES);
+		const { baseElement } = render(<AppProviders localApi={paneApi} system={system} />);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("detached-pane-shell")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-dock")).toBeVisible();
+		await expect.element(screen.getByTestId("app-sidebar")).not.toBeInTheDocument();
+	});
+
 	it("opens Appearance settings from the sidebar footer", async () => {
 		const localApi = createBrowserLocalApi();
 		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
@@ -97,6 +128,8 @@ describe("AppProviders (app-level)", () => {
 			.toHaveAttribute("aria-hidden", "false");
 		await expect.element(screen.getByTestId("global-new")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-chat-page")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-thread")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-right-panel-toggle")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("chat-pane-arrangement")).not.toBeInTheDocument();
 	});
 });

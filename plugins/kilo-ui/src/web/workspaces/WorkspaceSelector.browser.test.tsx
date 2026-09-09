@@ -118,7 +118,7 @@ describe("WorkspaceSelector", () => {
 			document.querySelector('[data-slot="popover-content"]')?.parentElement?.dataset.side,
 		).toBe("bottom");
 		await expect.element(page.getByText("No workspaces yet.")).toBeVisible();
-		await page.getByText("Create workspace", { exact: true }).click();
+		await page.getByText("New workspace", { exact: true }).click();
 		await page.getByRole("button", { name: /Drop folders/ }).click();
 		const projectFolder = page.getByText("Project", { exact: true });
 		await expect.element(projectFolder).toBeVisible();
@@ -201,7 +201,7 @@ describe("WorkspaceSelector", () => {
 			.element(page.getByRole("combobox", { name: "Select workspace" }))
 			.toHaveTextContent("Select workspace");
 
-		await page.getByText("Create workspace", { exact: true }).click();
+		await page.getByText("New workspace", { exact: true }).click();
 		await page.getByRole("button", { name: /Drop folders/ }).click();
 		await page.getByRole("button", { name: "Create workspace" }).click();
 		await expect
@@ -233,7 +233,7 @@ describe("WorkspaceSelector", () => {
 
 		for (const name of ["AlphaProject", "BetaProject"]) {
 			await page.getByRole("combobox", { name: "Select workspace" }).click();
-			await page.getByText("Create workspace", { exact: true }).click();
+			await page.getByText("New workspace", { exact: true }).click();
 			await page.getByRole("button", { name: /Drop folders/ }).click();
 			await page.getByRole("button", { name: "Create workspace" }).click();
 			await expect
@@ -260,14 +260,14 @@ describe("WorkspaceSelector", () => {
 		await expect.element(page.getByRole("option", { name: /AlphaProject/ })).toBeVisible();
 		await expect.element(page.getByRole("option", { name: /BetaProject/ })).not.toBeInTheDocument();
 		await expect
-			.element(page.getByRole("option", { name: "Create workspace", exact: true }))
+			.element(page.getByRole("option", { name: "New workspace", exact: true }))
 			.toBeVisible();
 
 		await search.fill("zzzz");
 		await expect.element(page.getByText("No workspaces found.")).toBeVisible();
 		await expect.element(page.getByRole("option", { name: /Project/ })).not.toBeInTheDocument();
 		await expect
-			.element(page.getByRole("option", { name: "Create workspace", exact: true }))
+			.element(page.getByRole("option", { name: "New workspace", exact: true }))
 			.toBeVisible();
 
 		await search.fill("alph");
@@ -282,7 +282,7 @@ describe("WorkspaceSelector", () => {
 		renderSelector({ canPickDirectories: false, showOpenDialog });
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
-		await page.getByText("Create workspace", { exact: true }).click();
+		await page.getByText("New workspace", { exact: true }).click();
 		await expect
 			.element(page.getByText("Folder selection requires the desktop app.", { exact: true }))
 			.toBeVisible();
@@ -297,7 +297,7 @@ describe("WorkspaceSelector", () => {
 		renderSelector();
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
-		await page.getByText("Create workspace", { exact: true }).click();
+		await page.getByText("New workspace", { exact: true }).click();
 		const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
 		Object.defineProperty(drop, "dataTransfer", {
 			value: {
@@ -322,7 +322,7 @@ describe("WorkspaceSelector", () => {
 		renderSelector({ showOpenDialog });
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
-		await page.getByText("Create workspace", { exact: true }).click();
+		await page.getByText("New workspace", { exact: true }).click();
 		const dropZone = page.getByRole("button", { name: /Drop folders/ }).element();
 		const space = new KeyboardEvent("keydown", {
 			key: " ",

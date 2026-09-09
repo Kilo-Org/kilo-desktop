@@ -84,6 +84,7 @@ export default defineConfig({
 						"@kilocode/sdk/v2/client",
 						"motion/react",
 						"zod",
+						"@anaconda-agentic-desktop/pane-layout",
 					],
 				},
 				test: {

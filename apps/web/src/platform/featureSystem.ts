@@ -164,11 +164,20 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 		featureFlags: createFeatureFlagsDelegate(api),
 		shell: {
 			canPickDirectories: api.shell.canPickDirectories,
+			canPopOutPanes: api.shell.canPopOutPanes,
+			windowRole: api.shell.windowRole,
 			openExternal: (url) => api.shell.openExternal({ url }),
 			copyText: (text) => api.shell.copyText({ text }),
 			showItemInFolder: (path) => api.shell.showItemInFolder({ path }),
 			showOpenDialog: (options) => api.shell.showOpenDialog(options),
 			getPathForFile: (file) => api.shell.getPathForFile(file),
+			openPaneWindow: (input) => api.shell.openPaneWindow(input),
+			listPaneWindows: (pluginId) => api.shell.listPaneWindows({ pluginId }),
+			focusPaneWindow: (input) => api.shell.focusPaneWindow(input),
+			dockPaneWindow: (input) => api.shell.dockPaneWindow(input),
+			syncPaneWindows: (pluginId, activeSessionId) =>
+				api.shell.syncPaneWindows({ pluginId, activeSessionId }),
+			onPaneWindowChanged: (listener) => api.shell.onPaneWindowChanged(listener),
 		},
 		// Scoped fs — the SDK binds each feature's id onto this delegate, and
 		// the main process confines every path to that feature's sandbox dir

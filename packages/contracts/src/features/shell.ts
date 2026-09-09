@@ -1,6 +1,25 @@
 import { z } from "zod";
 
-import { defineMethod } from "../contract.js";
+import { defineEvent, defineMethod } from "../contract.js";
+
+const paneWindowIdentity = z.object({
+	pluginId: z.string().min(1).max(120),
+	sessionId: z.string().min(1).max(256),
+	paneId: z.string().min(1).max(256),
+});
+
+export const paneWindow = paneWindowIdentity.extend({
+	title: z.string().min(1).max(256),
+	path: z.string().regex(/^\/plugins\/[a-zA-Z0-9/_-]{1,200}$/),
+	workspaceId: z.string().min(1).max(256).optional(),
+});
+
+export const paneWindowEvent = paneWindowIdentity.extend({
+	type: z.enum(["opened", "docked", "focused", "blurred"]),
+});
+
+export type PaneWindow = z.infer<typeof paneWindow>;
+export type PaneWindowEvent = z.infer<typeof paneWindowEvent>;
 
 export const shellMethods = {
 	"shell:open-external": defineMethod(
@@ -16,4 +35,22 @@ export const shellMethods = {
 		z.object({ kind: z.literal("directory"), multiple: z.boolean().optional() }),
 		z.object({ canceled: z.boolean(), paths: z.array(z.string()) }),
 	),
+	"shell:open-pane-window": defineMethod(paneWindow, z.object({ opened: z.boolean() })),
+	"shell:list-pane-windows": defineMethod(
+		z.object({ pluginId: z.string().min(1).max(120) }),
+		z.array(paneWindow),
+	),
+	"shell:focus-pane-window": defineMethod(paneWindowIdentity, z.object({ focused: z.boolean() })),
+	"shell:dock-pane-window": defineMethod(paneWindowIdentity, z.object({ docked: z.boolean() })),
+	"shell:sync-pane-windows": defineMethod(
+		z.object({
+			pluginId: z.string().min(1).max(120),
+			activeSessionId: z.string().min(1).max(256).nullable(),
+		}),
+		z.undefined(),
+	),
+} as const;
+
+export const shellEvents = {
+	"shell:pane-window-changed": defineEvent(paneWindowEvent),
 } as const;

@@ -8,7 +8,7 @@ const PlanTab = lazy(() => import("./PlanTab.js").then((module) => ({ default: m
 
 export const CHAT_RIGHT_PANEL_TAB_EXTENSION = "kilo-ui/chat-right-panel-tab";
 
-/** Context Kilo supplies when it renders a right-panel tab contribution. */
+/** Context Kilo supplies when it renders a contributed chat pane. */
 export interface ChatRightPanelContributionProps {
 	readonly sessionId: string;
 	readonly instanceId: string;
@@ -60,6 +60,8 @@ export interface CreateContributedTabOptions {
 	readonly iconKey?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
 	readonly transient?: boolean;
+	/** When false, the new pane is added without becoming the focused tab. */
+	readonly activate?: boolean;
 }
 
 export interface RightPanelTabUpdate {
@@ -183,7 +185,7 @@ function MissingContributionTab({ title }: ChatRightPanelContributionProps) {
 	return (
 		<div
 			className="text-muted-foreground flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-6 text-center"
-			data-qa-id="chat-right-panel-contribution-unavailable"
+			data-qa-id="chat-pane-contribution-unavailable"
 		>
 			<CircleHelpIcon className="size-6" />
 			<p className="text-foreground text-sm font-medium">{title} is unavailable</p>

@@ -16,6 +16,52 @@ const PROPS: FilesViewProps = {
 	workspaceDirectory: "/workspace",
 };
 
+function filePane(
+	relativePath: string,
+	extra: Partial<FilesViewProps> = {},
+): Partial<FilesViewProps> {
+	const workspaceDirectory =
+		extra.metadata?.workspaceDirectory ?? extra.workspaceDirectory ?? "/workspace";
+	return {
+		instanceId: extra.instanceId ?? PROPS.instanceId,
+		title: relativePath.split("/").at(-1) ?? relativePath,
+		...extra,
+		metadata: {
+			workspaceDirectory,
+			relativePath,
+			...extra.metadata,
+		},
+	};
+}
+
+function requestFile(
+	view: { rerenderView: (next: Partial<FilesViewProps>) => void },
+	relativePath: string,
+): void {
+	view.rerenderView(filePane(relativePath));
+}
+
+function openedFileCall(
+	relativePath: string,
+	workspaceDirectory = "/workspace",
+	explorerId = "files-1",
+) {
+	return [
+		"session-1",
+		{ id: "files.files", title: "Files" },
+		{
+			instanceId: `file:${explorerId}:${workspaceDirectory}/${relativePath}`,
+			title: relativePath.split("/").at(-1) ?? relativePath,
+			iconKey: relativePath,
+			metadata: {
+				explorerId,
+				workspaceDirectory,
+				relativePath,
+			},
+		},
+	];
+}
+
 function renderView(
 	handlers: FilesServiceContract,
 	props: Partial<FilesViewProps> = {},
@@ -29,6 +75,7 @@ function renderView(
 		getActiveTabId: vi.fn(() => props.instanceId ?? PROPS.instanceId),
 		updateTab: vi.fn(),
 		registerTabLifecycle: vi.fn(() => vi.fn()),
+		openContributedTab: vi.fn(),
 		...panel,
 	});
 	const renderTree = (nextProps: Partial<FilesViewProps>) => (
@@ -69,13 +116,39 @@ const handlers = (): FilesServiceContract => ({
 	write: async () => ({ status: "saved", revision: "b".repeat(64) }),
 });
 
+function treeHost(): Element | null {
+	return document.querySelector('[data-qa-id="files-tree"]');
+}
+
+function treeItem(relativePath: string): HTMLElement | null {
+	return (
+		treeHost()?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${relativePath}"]`) ?? null
+	);
+}
+
+function ancestorDirectoryPaths(relativePath: string): string[] {
+	if (relativePath.endsWith("/")) return [];
+	const parts = relativePath.split("/");
+	return parts.slice(0, -1).map((_, index) => `${parts.slice(0, index + 1).join("/")}/`);
+}
+
+async function expandTreePath(relativePath: string): Promise<HTMLElement> {
+	await vi.waitFor(() => expect(treeItem(relativePath)).not.toBeNull());
+	const item = treeItem(relativePath);
+	if (!item) throw new Error(`Files tree path was not mounted: ${relativePath}`);
+	if (item.getAttribute("aria-expanded") === "false") item.click();
+	await vi.waitFor(() =>
+		expect(treeItem(relativePath)?.getAttribute("aria-expanded")).not.toBe("false"),
+	);
+	return item;
+}
+
 async function openTreePath(relativePath: string): Promise<void> {
-	await vi.waitFor(() => {
-		const host = document.querySelector('[data-qa-id="files-tree"]');
-		expect(host?.shadowRoot?.querySelector(`[data-item-path="${relativePath}"]`)).not.toBeNull();
-	});
-	const host = document.querySelector('[data-qa-id="files-tree"]');
-	host?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${relativePath}"]`)?.click();
+	for (const directoryPath of ancestorDirectoryPaths(relativePath)) {
+		await expandTreePath(directoryPath);
+	}
+	await vi.waitFor(() => expect(treeItem(relativePath)).not.toBeNull());
+	treeItem(relativePath)?.click();
 }
 
 function diffsContentEditable(): HTMLElement | null {
@@ -118,12 +191,51 @@ describe("FilesView", () => {
 		await expect.element(page.getByTestId("files-no-workspace")).toBeVisible();
 	});
 
-	it("removes the generated ordinal from the initial Files tab title", async () => {
+	it("titles the explorer pane with the workspace folder name", async () => {
 		const updateTab = vi.fn();
 		renderView(handlers(), {}, { updateTab });
 
 		await vi.waitFor(() =>
+			expect(updateTab).toHaveBeenCalledWith(
+				"session-1",
+				"files-1",
+				expect.objectContaining({
+					title: "workspace",
+					metadata: expect.objectContaining({ workspaceDirectory: "/workspace" }),
+				}),
+			),
+		);
+	});
+
+	it("keeps the Files title when the chat has no workspace", async () => {
+		const updateTab = vi.fn();
+		renderView(handlers(), { workspaceDirectory: undefined }, { updateTab });
+
+		await vi.waitFor(() =>
 			expect(updateTab).toHaveBeenCalledWith("session-1", "files-1", { title: "Files" }),
+		);
+	});
+
+	it("uses the full workspace path when two folders share a name", async () => {
+		const updateTab = vi.fn();
+		renderView(
+			handlers(),
+			{
+				workspaceDirectory: "/projects/alpha/src",
+				workspaceFolders: [
+					{ path: "/projects/alpha/src", isPrimary: true },
+					{ path: "/projects/beta/src", isPrimary: false },
+				],
+			},
+			{ updateTab },
+		);
+
+		await vi.waitFor(() =>
+			expect(updateTab).toHaveBeenCalledWith(
+				"session-1",
+				"files-1",
+				expect.objectContaining({ title: "/projects/alpha/src" }),
+			),
 		);
 	});
 
@@ -153,6 +265,8 @@ describe("FilesView", () => {
 					: ["src/", "src/index.ts"],
 			truncated: false,
 		}));
+		const openContributedTab = vi.fn();
+		const updateTab = vi.fn();
 		renderView(
 			{ ...service, list, read },
 			{
@@ -161,6 +275,7 @@ describe("FilesView", () => {
 					{ path: "/reference", isPrimary: false },
 				],
 			},
+			{ openContributedTab, updateTab },
 		);
 
 		const folderSelector = page.getByRole("combobox", { name: "Workspace folder" });
@@ -171,19 +286,23 @@ describe("FilesView", () => {
 		await page.getByRole("option", { name: "reference" }).click();
 
 		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/reference" }));
-		await vi.waitFor(() => {
-			const host = document.querySelector('[data-qa-id="files-tree"]');
-			expect(
-				host?.shadowRoot?.querySelector('[data-item-path="guides/reference.md"]'),
-			).not.toBeNull();
-		});
+		await vi.waitFor(() =>
+			expect(updateTab).toHaveBeenCalledWith(
+				"session-1",
+				"files-1",
+				expect.objectContaining({
+					title: "reference",
+					metadata: expect.objectContaining({ workspaceDirectory: "/reference" }),
+				}),
+			),
+		);
 		await openTreePath("guides/reference.md");
 		await vi.waitFor(() =>
-			expect(read).toHaveBeenCalledWith({
-				workspaceDirectory: "/reference",
-				relativePath: "guides/reference.md",
-			}),
+			expect(openContributedTab).toHaveBeenCalledWith(
+				...openedFileCall("guides/reference.md", "/reference"),
+			),
 		);
+		expect(read).not.toHaveBeenCalled();
 	});
 
 	it("opens the workspace file requested by contributed tab metadata", async () => {
@@ -254,7 +373,7 @@ describe("FilesView", () => {
 			"readme.md",
 		);
 		expect(document.querySelector('[data-qa-id="files-markdown-toggle"]')).not.toBeNull();
-		expect(document.querySelector('[data-qa-id="files-tree-toggle"]')).not.toBeNull();
+		expect(document.querySelector('[data-qa-id="files-tree"]')).toBeNull();
 		finishRead({
 			kind: "text",
 			contents: "export const value = 1;",
@@ -262,8 +381,8 @@ describe("FilesView", () => {
 			truncated: false,
 			revision: "a".repeat(64),
 		});
-		await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
 		await vi.waitFor(() => expect(listExternalEditors).toHaveBeenCalledOnce());
+		expect(list).not.toHaveBeenCalled();
 
 		view.rerenderView({
 			instanceId: "files-2",
@@ -273,11 +392,13 @@ describe("FilesView", () => {
 				relativePath: "src/index.ts",
 			},
 		});
-		expect(document.querySelector('[data-qa-id="files-open-external-editor"]')).not.toHaveAttribute(
-			"disabled",
-		);
-		await expect.element(page.getByTestId("files-tree")).toBeVisible();
-		expect(list).toHaveBeenCalledOnce();
+		await vi.waitFor(() => {
+			expect(
+				document.querySelector('[data-qa-id="files-open-external-editor"]'),
+			).not.toHaveAttribute("disabled");
+		});
+		expect(document.querySelector('[data-qa-id="files-tree"]')).toBeNull();
+		expect(list).not.toHaveBeenCalled();
 		expect(listExternalEditors).toHaveBeenCalledOnce();
 	});
 
@@ -378,9 +499,10 @@ describe("FilesView", () => {
 			},
 		);
 
-		await vi.waitFor(() => expect(list).toHaveBeenCalledWith({ workspaceDirectory: "/reference" }));
 		expect(read).not.toHaveBeenCalled();
-		expect(document.querySelector('[data-qa-id="files-viewer-pane"]')).toBeNull();
+		expect(list).not.toHaveBeenCalled();
+		expect(document.querySelector('[data-qa-id="files-tree"]')).toBeNull();
+		expect(document.querySelector('[data-qa-id="files-breadcrumb"]')).toBeNull();
 	});
 
 	it("does not show a folder selector for a single-folder workspace", async () => {
@@ -393,28 +515,26 @@ describe("FilesView", () => {
 			.not.toBeInTheDocument();
 	});
 
-	it("renders the real Trees explorer and opens a selected file with a breadcrumb", async () => {
-		const updateTab = vi.fn();
-		renderView(handlers(), {}, { updateTab });
+	it("opens the explorer with folders collapsed", async () => {
+		renderView(handlers());
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
-		await vi.waitFor(() => {
-			const host = document.querySelector('[data-qa-id="files-tree"]');
-			expect(host?.shadowRoot?.querySelector('[data-item-path="docs/readme.md"]')).not.toBeNull();
-		});
-		const host = document.querySelector('[data-qa-id="files-tree"]');
-		const row = host?.shadowRoot?.querySelector<HTMLElement>('[data-item-path="docs/readme.md"]');
-		row?.click();
+		await vi.waitFor(() => expect(treeItem("docs/")).not.toBeNull());
 
-		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
+		expect(treeItem("docs/")?.getAttribute("aria-expanded")).toBe("false");
+		expect(treeItem("src/")?.getAttribute("aria-expanded")).toBe("false");
+		expect(treeItem("docs/readme.md")).toBeNull();
+		expect(treeItem("src/index.ts")).toBeNull();
+	});
+
+	it("opens a selected explorer file as a distinct file pane", async () => {
+		const openContributedTab = vi.fn();
+		renderView(handlers(), {}, { openContributedTab });
+		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+		await openTreePath("docs/readme.md");
+
+		expect(document.querySelector('[data-qa-id="files-breadcrumb"]')).toBeNull();
 		await vi.waitFor(() =>
-			expect(updateTab).toHaveBeenCalledWith("session-1", "files-1", {
-				title: "readme.md",
-				iconKey: "docs/readme.md",
-				metadata: {
-					workspaceDirectory: "/workspace",
-					relativePath: "docs/readme.md",
-				},
-			}),
+			expect(openContributedTab).toHaveBeenCalledWith(...openedFileCall("docs/readme.md")),
 		);
 	});
 
@@ -441,11 +561,32 @@ describe("FilesView", () => {
 
 		await openTreePath("notebooks/analysis.ipynb");
 
+		expect(document.querySelector('[data-qa-id="files-notebook-empty"]')).toBeNull();
+		expect(read).not.toHaveBeenCalled();
+		await vi.waitFor(() =>
+			expect(openNotebookFile).toHaveBeenCalledWith({
+				sessionId: "session-1",
+				path: "/workspace/notebooks/analysis.ipynb",
+			}),
+		);
+	});
+
+	it("offers to open an ipynb file pane in the notebook panel without reading raw contents", async () => {
+		const service = handlers();
+		const read = vi.fn(service.read);
+		const openNotebookFile = vi.fn(async () => ({
+			sessionId: "session-1",
+			notebook_id: "notebook-1",
+			title: "analysis.ipynb",
+			path: "/workspace/notebooks/analysis.ipynb",
+		}));
+		const view = renderView({ ...service, read }, filePane("notebooks/analysis.ipynb"));
+		view.system.getSdk("notebook").plugins.expose("notebookViewer", {
+			openFile: openNotebookFile,
+		});
+
 		await expect.element(page.getByTestId("files-notebook-empty")).toBeVisible();
 		await expect.element(page.getByRole("heading", { name: "Open as a notebook" })).toBeVisible();
-		await expect
-			.element(page.getByText("Use the Notebook panel to view and edit this file."))
-			.toBeVisible();
 		expect(read).not.toHaveBeenCalled();
 		expect(document.querySelector("diffs-container")).toBeNull();
 
@@ -459,20 +600,21 @@ describe("FilesView", () => {
 	});
 
 	it("opens the latest file request when a reused tab receives new metadata", async () => {
-		const view = renderView(handlers(), {
-			metadata: { workspaceDirectory: "/workspace", relativePath: "src/index.ts" },
-		});
+		const view = renderView(handlers(), filePane("src/index.ts", { instanceId: "files-1" }));
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
 
-		await openTreePath("docs/readme.md");
+		view.rerenderView(filePane("docs/readme.md", { instanceId: "files-1" }));
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
-		view.rerenderView({
-			metadata: {
-				workspaceDirectory: "/workspace",
-				relativePath: "src/index.ts",
-				line: "42",
-			},
-		});
+		view.rerenderView(
+			filePane("src/index.ts", {
+				instanceId: "files-1",
+				metadata: {
+					workspaceDirectory: "/workspace",
+					relativePath: "src/index.ts",
+					line: "42",
+				},
+			}),
+		);
 
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
 	});
@@ -481,8 +623,7 @@ describe("FilesView", () => {
 		const openExternalEditor = vi.fn<FilesServiceContract["openExternalEditor"]>(async () => ({
 			opened: true,
 		}));
-		renderView({ ...handlers(), openExternalEditor });
-		await openTreePath("src/index.ts");
+		renderView({ ...handlers(), openExternalEditor }, filePane("src/index.ts"));
 
 		await page.getByTestId("files-external-editor-menu").click();
 		await page.getByRole("menuitem", { name: "VS Code" }).click();
@@ -501,8 +642,7 @@ describe("FilesView", () => {
 		const openExternalEditor = vi.fn<FilesServiceContract["openExternalEditor"]>(async () => ({
 			opened: true,
 		}));
-		renderView({ ...handlers(), openExternalEditor });
-		await openTreePath("src/index.ts");
+		renderView({ ...handlers(), openExternalEditor }, filePane("src/index.ts"));
 
 		const openButton = page.getByTestId("files-open-external-editor");
 		await expect.element(openButton).toBeEnabled();
@@ -518,8 +658,7 @@ describe("FilesView", () => {
 	});
 
 	it("shows a labeled primary Save action before the external editor controls for dirty files", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
+		renderView(handlers(), filePane("src/index.ts"));
 		await replaceEditorText("export const value = 2;");
 		await expect.element(page.getByTestId("files-save")).toBeVisible();
 
@@ -535,22 +674,18 @@ describe("FilesView", () => {
 	});
 
 	it("hides the Save action for a clean file", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
+		renderView(handlers(), filePane("src/index.ts"));
 		await expect.element(page.getByRole("textbox", { name: "src/index.ts" })).toBeVisible();
 
 		expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull();
 	});
 
 	it("shows tooltips for the file toolbar controls", async () => {
-		renderView(handlers());
-		await openTreePath("docs/readme.md");
+		renderView(handlers(), filePane("docs/readme.md"));
 		await expect.element(page.getByTestId("files-markdown-toggle")).toBeVisible();
 
 		for (const [testId, label] of [
 			["files-open-external-editor", "Open file in Cursor"],
-			["files-tree-toggle", "Hide file list"],
-			["files-refresh", "Refresh files"],
 			["files-markdown-toggle", "Show rendered Markdown"],
 		] as const) {
 			await page.getByTestId(testId).hover();
@@ -561,13 +696,15 @@ describe("FilesView", () => {
 	});
 
 	it("shows an inline error when an external editor cannot be opened", async () => {
-		renderView({
-			...handlers(),
-			openExternalEditor: async () => {
-				throw new Error("VS Code could not be launched");
+		renderView(
+			{
+				...handlers(),
+				openExternalEditor: async () => {
+					throw new Error("VS Code could not be launched");
+				},
 			},
-		});
-		await openTreePath("src/index.ts");
+			filePane("src/index.ts"),
+		);
 
 		await page.getByTestId("files-external-editor-menu").click();
 		await page.getByRole("menuitem", { name: "VS Code" }).click();
@@ -578,11 +715,13 @@ describe("FilesView", () => {
 	});
 
 	it("uses the file-operation fallback for a non-Error launch rejection", async () => {
-		renderView({
-			...handlers(),
-			openExternalEditor: async () => Promise.reject("launch failed"),
-		});
-		await openTreePath("src/index.ts");
+		renderView(
+			{
+				...handlers(),
+				openExternalEditor: async () => Promise.reject("launch failed"),
+			},
+			filePane("src/index.ts"),
+		);
 
 		await page.getByTestId("files-open-external-editor").click();
 
@@ -593,19 +732,20 @@ describe("FilesView", () => {
 
 	it("uses the stored available editor without adding a menu label", async () => {
 		localStorage.setItem("files.preferredExternalEditor", "vscode");
-		renderView(handlers());
-		await openTreePath("src/index.ts");
+		renderView(handlers(), filePane("src/index.ts"));
 		await expect
 			.element(page.getByTestId("files-open-external-editor"))
 			.toHaveAttribute("aria-label", "Open file in VS Code");
 	});
 
 	it("explains when no external editors are installed", async () => {
-		renderView({
-			...handlers(),
-			listExternalEditors: async () => ({ editors: [] }),
-		});
-		await openTreePath("src/index.ts");
+		renderView(
+			{
+				...handlers(),
+				listExternalEditors: async () => ({ editors: [] }),
+			},
+			filePane("src/index.ts"),
+		);
 		await expect.element(page.getByTestId("files-open-external-editor")).toBeDisabled();
 
 		await page.getByTestId("files-external-editor-menu").click();
@@ -626,65 +766,10 @@ describe("FilesView", () => {
 			.toHaveTextContent("Editor discovery failed");
 	});
 
-	it("persists the t3code-style explorer toggle", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
-		await expect.element(page.getByTestId("files-tree-toggle")).toBeVisible();
-		fireEvent.click(document.querySelector('[data-qa-id="files-tree-toggle"]')!);
-		expect(localStorage.getItem("files.explorerOpen")).toBe("false");
-		expect(document.querySelector('[data-qa-id="files-tree"]')).toBeNull();
-	});
-
-	it("resizes the file explorer by dragging its divider and persists the width", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
-
-		let explorer: HTMLElement | null = null;
-		let handle: HTMLElement | null = null;
-		await vi.waitFor(() => {
-			explorer = document.querySelector<HTMLElement>(".files-explorer-pane");
-			handle = document.querySelector<HTMLElement>('[data-qa-id="files-explorer-resize-handle"]');
-			expect(explorer).not.toBeNull();
-			expect(handle).not.toBeNull();
-		});
-		const initialWidth = explorer!.getBoundingClientRect().width;
-
-		fireEvent.pointerDown(handle!, { buttons: 1, clientX: 600, pointerId: 7 });
-		fireEvent.pointerMove(handle!, { buttons: 1, clientX: 520, pointerId: 7 });
-		fireEvent.pointerUp(handle!, { clientX: 520, pointerId: 7 });
-
-		await vi.waitFor(() => {
-			expect(explorer!.getBoundingClientRect().width).toBeCloseTo(initialWidth + 80, 0);
-		});
-		expect(Number(localStorage.getItem("files.explorerWidth"))).toBeCloseTo(initialWidth + 80, 0);
-	});
-
-	it("resizes the file explorer from the keyboard", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
-
-		let explorer: HTMLElement | null = null;
-		let handle: HTMLElement | null = null;
-		await vi.waitFor(() => {
-			explorer = document.querySelector<HTMLElement>(".files-explorer-pane");
-			handle = document.querySelector<HTMLElement>('[data-qa-id="files-explorer-resize-handle"]');
-			expect(explorer).not.toBeNull();
-			expect(handle).not.toBeNull();
-		});
-		const initialWidth = explorer!.getBoundingClientRect().width;
-
-		expect(handle!.tabIndex).toBe(0);
-		fireEvent.keyDown(handle!, { key: "ArrowLeft" });
-		await vi.waitFor(() => {
-			expect(explorer!.getBoundingClientRect().width).toBeCloseTo(initialWidth + 16, 0);
-		});
-	});
-
 	it("edits with Diffs, publishes dirty state, and saves manually", async () => {
 		const updateTab = vi.fn();
 		const write = vi.fn(async () => ({ status: "saved" as const, revision: "b".repeat(64) }));
-		renderView({ ...handlers(), write }, {}, { updateTab });
-		await openTreePath("src/index.ts");
+		renderView({ ...handlers(), write }, filePane("src/index.ts"), { updateTab });
 		await replaceEditorText("export const value = 2;");
 
 		await vi.waitFor(() =>
@@ -717,8 +802,7 @@ describe("FilesView", () => {
 			.fn<FilesServiceContract["write"]>()
 			.mockImplementationOnce(async () => firstSave)
 			.mockResolvedValue({ status: "saved", revision: "c".repeat(64) });
-		renderView({ ...handlers(), write });
-		await openTreePath("src/index.ts");
+		renderView({ ...handlers(), write }, filePane("src/index.ts"));
 		await replaceEditorText("first saved change");
 
 		await page.getByTestId("files-save").click();
@@ -744,13 +828,12 @@ describe("FilesView", () => {
 			resolveSave = resolve;
 		});
 		const write = vi.fn<FilesServiceContract["write"]>(async () => pendingSave);
-		renderView({ ...handlers(), write });
-		await openTreePath("src/index.ts");
+		const view = renderView({ ...handlers(), write }, filePane("src/index.ts"));
 		await replaceEditorText("saved source change");
 
 		await page.getByTestId("files-save").click();
 		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
-		await openTreePath("docs/readme.md");
+		requestFile(view, "docs/readme.md");
 		await page.getByTestId("files-unsaved-discard").click();
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 
@@ -758,7 +841,7 @@ describe("FilesView", () => {
 		await vi.waitFor(() => expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull());
 	});
 
-	it("renders relative Markdown links as file chips that open in the same tab", async () => {
+	it("renders relative Markdown links as file chips that open a new pane", async () => {
 		const markdownHandlers: FilesServiceContract = {
 			...handlers(),
 			read: async ({ relativePath }) => ({
@@ -772,8 +855,12 @@ describe("FilesView", () => {
 				revision: "a".repeat(64),
 			}),
 		};
-		renderView(markdownHandlers);
-		await openTreePath("docs/readme.md");
+		const openContributedTab = vi.fn();
+		renderView(
+			markdownHandlers,
+			filePane("docs/readme.md", { metadata: { explorerId: "files-1" } }),
+			{ openContributedTab },
+		);
 		await expect.element(page.getByTestId("files-markdown-toggle")).toBeVisible();
 		fireEvent.click(document.querySelector('[data-qa-id="files-markdown-toggle"]')!);
 
@@ -788,7 +875,10 @@ describe("FilesView", () => {
 		const fileLink = document.querySelector<HTMLElement>('[data-qa-id="markdown-file-link"]');
 		expect(fileLink?.textContent).toBe("index.ts");
 		fireEvent.click(fileLink!);
-		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		await vi.waitFor(() =>
+			expect(openContributedTab).toHaveBeenCalledWith(...openedFileCall("src/index.ts")),
+		);
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 	});
 
 	it("loads workspace-relative Markdown images and leaves fragment links in the preview", async () => {
@@ -804,8 +894,7 @@ describe("FilesView", () => {
 						revision: "a".repeat(64),
 					},
 		);
-		renderView({ ...handlers(), read });
-		await openTreePath("docs/readme.md");
+		renderView({ ...handlers(), read }, filePane("docs/readme.md"));
 		await expect.element(page.getByTestId("files-markdown-toggle")).toBeVisible();
 		await page.getByTestId("files-markdown-toggle").click();
 
@@ -842,8 +931,7 @@ describe("FilesView", () => {
 				revision: "a".repeat(64),
 			};
 		});
-		renderView({ ...handlers(), read });
-		await openTreePath("docs/readme.md");
+		renderView({ ...handlers(), read }, filePane("docs/readme.md"));
 		await page.getByTestId("files-markdown-toggle").click();
 
 		await expect.element(page.getByText("Missing diagram")).toBeVisible();
@@ -859,10 +947,9 @@ describe("FilesView", () => {
 					? { kind: "image", mimeType: "image/png", base64: "AQID", byteLength: 3 }
 					: { kind: "unsupported", reason: "preview-deferred", byteLength: 20 },
 		};
-		renderView(previewHandlers);
-		await openTreePath("image.png");
+		const view = renderView(previewHandlers, filePane("image.png"));
 		await expect.element(page.getByTestId("files-image-preview")).toBeVisible();
-		await openTreePath("manual.pdf");
+		requestFile(view, "manual.pdf");
 		await expect
 			.element(page.getByTestId("files-unsupported"))
 			.toHaveTextContent("Preview support for this file type is not available yet.");
@@ -885,85 +972,72 @@ describe("FilesView", () => {
 		await expect.element(page.getByTestId("files-list-error")).toHaveTextContent("scan failed");
 
 		cleanup();
-		renderView({
+		const truncatedHandlers: FilesServiceContract = {
 			...handlers(),
 			list: async () => ({ paths: ["large.txt", "archive.zip"], truncated: true }),
 			read: async ({ relativePath }) =>
 				relativePath === "large.txt"
 					? { kind: "text", contents: "preview", byteLength: 2_000_000, truncated: true }
 					: { kind: "unsupported", reason: "binary", byteLength: 42 },
-		});
+		};
+		renderView(truncatedHandlers);
 		await expect.element(page.getByText("Showing the first 25,000 entries.")).toBeVisible();
-		await openTreePath("large.txt");
+
+		cleanup();
+		renderView(truncatedHandlers, filePane("large.txt"));
 		await expect.element(page.getByTestId("files-truncated")).toBeVisible();
 		expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull();
-		await openTreePath("archive.zip");
+
+		cleanup();
+		renderView(truncatedHandlers, filePane("archive.zip"));
 		await expect
 			.element(page.getByTestId("files-unsupported"))
 			.toHaveTextContent("This binary file cannot be previewed.");
 	});
 
 	it("guards file switches while dirty with cancel and discard", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
+		const view = renderView(handlers(), filePane("src/index.ts"));
 		await replaceEditorText("changed");
-		await openTreePath("docs/readme.md");
+		requestFile(view, "docs/readme.md");
 		await expect.element(page.getByTestId("files-unsaved-dialog")).toBeVisible();
 		await page.getByTestId("files-unsaved-cancel").click();
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
-		await vi.waitFor(() => {
-			const host = document.querySelector('[data-qa-id="files-tree"]');
-			expect(
-				host?.shadowRoot
-					?.querySelector('[data-item-path="src/index.ts"]')
-					?.hasAttribute("data-item-selected"),
-			).toBe(true);
-		});
 
-		await openTreePath("docs/readme.md");
+		requestFile(view, "docs/readme.md");
 		await expect.element(page.getByTestId("files-unsaved-dialog")).toBeVisible();
 		await page.getByTestId("files-unsaved-discard").click();
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 	});
 
-	it("resets tree selection when the unsaved-changes dialog is dismissed with Escape", async () => {
-		renderView(handlers());
-		await openTreePath("src/index.ts");
+	it("keeps the current file when the unsaved-changes dialog is dismissed with Escape", async () => {
+		const view = renderView(handlers(), filePane("src/index.ts"));
 		await replaceEditorText("changed");
-		await openTreePath("docs/readme.md");
+		requestFile(view, "docs/readme.md");
 		await expect.element(page.getByTestId("files-unsaved-dialog")).toBeVisible();
 		await userEvent.keyboard("{Escape}");
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
-		await vi.waitFor(() => {
-			const host = document.querySelector('[data-qa-id="files-tree"]');
-			expect(
-				host?.shadowRoot
-					?.querySelector('[data-item-path="src/index.ts"]')
-					?.hasAttribute("data-item-selected"),
-			).toBe(true);
-		});
 	});
 
 	it("saves from the keyboard and through the dirty-switch guard", async () => {
 		const write = vi.fn(async () => ({ status: "saved" as const, revision: "b".repeat(64) }));
-		renderView({ ...handlers(), write });
-		await openTreePath("src/index.ts");
+		const view = renderView({ ...handlers(), write }, filePane("src/index.ts"));
 		await replaceEditorText("keyboard change");
 		await expect.element(page.getByTestId("files-save")).toBeEnabled();
 		await userEvent.keyboard("{Control>}s{/Control}");
 		await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
 
 		await replaceEditorText("guarded change");
-		await openTreePath("docs/readme.md");
+		requestFile(view, "docs/readme.md");
 		await page.getByTestId("files-unsaved-save").click();
 		await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 	});
 
-	it("ignores the save shortcut while another right-panel tab is active", async () => {
+	it("ignores the save shortcut while another chat pane is active", async () => {
 		const write = vi.fn(async () => ({ status: "saved" as const, revision: "b".repeat(64) }));
-		renderView({ ...handlers(), write }, {}, { getActiveTabId: () => "another-tab" });
-		await openTreePath("src/index.ts");
+		renderView({ ...handlers(), write }, filePane("src/index.ts"), {
+			getActiveTabId: () => "another-tab",
+		});
 		await replaceEditorText("background change");
 
 		await userEvent.keyboard("{Control>}s{/Control}");
@@ -976,10 +1050,9 @@ describe("FilesView", () => {
 			.fn<FilesServiceContract["write"]>()
 			.mockResolvedValueOnce({ status: "conflict", diskRevision: "c".repeat(64) })
 			.mockResolvedValueOnce({ status: "saved", revision: "d".repeat(64) });
-		renderView({ ...handlers(), write });
-		await openTreePath("src/index.ts");
+		const view = renderView({ ...handlers(), write }, filePane("src/index.ts"));
 		await replaceEditorText("changed");
-		await openTreePath("docs/readme.md");
+		requestFile(view, "docs/readme.md");
 		await page.getByTestId("files-unsaved-save").click();
 		await expect.element(page.getByTestId("files-conflict-dialog")).toBeVisible();
 
@@ -993,8 +1066,7 @@ describe("FilesView", () => {
 			.fn<FilesServiceContract["write"]>()
 			.mockResolvedValueOnce({ status: "conflict", diskRevision: "c".repeat(64) })
 			.mockResolvedValueOnce({ status: "saved", revision: "d".repeat(64) });
-		renderView({ ...handlers(), write });
-		await openTreePath("src/index.ts");
+		renderView({ ...handlers(), write }, filePane("src/index.ts"));
 		await replaceEditorText("changed");
 		fireEvent.click(document.querySelector('[data-qa-id="files-save"]')!);
 		await expect.element(page.getByTestId("files-conflict-dialog")).toBeVisible();
@@ -1025,8 +1097,7 @@ describe("FilesView", () => {
 			status: "conflict",
 			diskRevision: "c".repeat(64),
 		}));
-		renderView({ ...handlers(), read, write });
-		await openTreePath("src/index.ts");
+		renderView({ ...handlers(), read, write }, filePane("src/index.ts"));
 		await replaceEditorText("changed");
 		fireEvent.click(document.querySelector('[data-qa-id="files-save"]')!);
 		await expect.element(page.getByTestId("files-conflict-dialog")).toBeVisible();

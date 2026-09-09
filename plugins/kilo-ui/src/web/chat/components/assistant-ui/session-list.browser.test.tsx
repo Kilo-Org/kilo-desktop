@@ -317,11 +317,11 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Session 0")).not.toBeInTheDocument();
 	});
 
-	it("creates a chat from the New Chat split button", async () => {
+	it("creates a chat from the New button", async () => {
 		const { baseElement, navigate, screen } = renderSessionList({ threads: [] });
 
 		await expect.element(page.getByTestId("kilo-thread-list")).toBeVisible();
-		const trigger = screen.getByRole("button", { name: "New Chat" });
+		const trigger = screen.getByRole("button", { name: "New" });
 		await expect.element(trigger).toBeVisible();
 		expect(baseElement.querySelector('[data-slot="aui_thread-list-new"]')).not.toBeNull();
 		expect(baseElement.querySelector('[data-slot="aui_thread-list-items"]')?.className).toContain(
@@ -331,7 +331,6 @@ describe("SessionList", () => {
 		await trigger.click();
 		expect(navigate).toHaveBeenCalledTimes(1);
 		expect(navigate).toHaveBeenLastCalledWith("/plugins/chat", undefined);
-		await expect.element(screen.getByRole("menuitem", { name: "Chat" })).not.toBeInTheDocument();
 	});
 
 	it("opens a command dialog from Search and jumps to a matching chat", async () => {
@@ -1287,7 +1286,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 	});
 
-	it("shows the workspace switcher at the top of the siderail", async () => {
+	it("shows New above the workspace switcher", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
 		});
@@ -1304,7 +1303,7 @@ describe("SessionList", () => {
 		const headerEl = header.element();
 		const trigger = header.getByRole("combobox", { name: "Filter by workspace" }).element();
 		const filter = screen.getByRole("button", { name: "Session list options" }).element();
-		const newChat = screen.getByRole("button", { name: "New Chat" }).element();
+		const newChat = screen.getByRole("button", { name: "New" }).element();
 		const search = screen.getByRole("button", { name: "Search" }).element();
 		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
 		const groupingHeader = screen.getByTestId("session-list-grouping-header").element();
@@ -1327,10 +1326,10 @@ describe("SessionList", () => {
 		expect(switcherIcon?.classList.contains("lucide-layout-grid")).toBe(true);
 		expect(switcherIcon?.getAttribute("stroke")).toBe("currentColor");
 		await expect.element(screen.getByTestId("session-list-chrome-divider")).not.toBeInTheDocument();
-		expect(headerEl.compareDocumentPosition(newChat) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+		expect(newChat.compareDocumentPosition(headerEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(newChat.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+		expect(headerEl.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
 		expect(getComputedStyle(trigger).fontSize).toBe(getComputedStyle(newChat).fontSize);
@@ -1344,9 +1343,10 @@ describe("SessionList", () => {
 		await expect.element(page.getByRole("option", { name: "All workspaces" })).toBeVisible();
 		const popover = document.querySelector('[data-slot="popover-content"]');
 		expect(popover).not.toBeNull();
-		expect(popover!.getBoundingClientRect().width).toBeCloseTo(
+		await vi.waitFor(() => expect(popover!.parentElement?.dataset.side).toBe("right"));
+		expect(popover!.getBoundingClientRect().width).toBeGreaterThan(80);
+		expect(popover!.getBoundingClientRect().width).toBeLessThan(
 			trigger.getBoundingClientRect().width,
-			0,
 		);
 		await expect.element(page.getByRole("option", { name: /Acme App/ })).toBeVisible();
 		await expect.element(page.getByRole("option", { name: /Beta/ })).toBeVisible();

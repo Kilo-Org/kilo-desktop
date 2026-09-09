@@ -35,7 +35,8 @@
 		"motion": "^13.0.0",
 		"remark-gfm": "^4.0.1",
 		"tw-shimmer": "^0.4.12",
-		"zustand": "^5.0.14"
+		"zustand": "^5.0.14",
+		"@anaconda-agentic-desktop/pane-layout": "workspace:*"
 	},
 	"peerDependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "^0.1.0",

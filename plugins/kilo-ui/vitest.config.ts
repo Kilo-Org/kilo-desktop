@@ -66,6 +66,10 @@ export default defineConfig({
 					},
 				},
 				optimizeDeps: {
+					// Crawl every browser spec before tests run so Vite does not discover
+					// new deps mid-file, re-optimize, and reload the tester iframe.
+					entries: ["src/web/**/*.browser.test.tsx", "src/test/setup.ts"],
+					holdUntilCrawlEnd: true,
 					include: [
 						"react",
 						"react-dom",
@@ -73,16 +77,29 @@ export default defineConfig({
 						"react/jsx-dev-runtime",
 						"@anaconda-agentic-desktop/feature-sdk",
 						"@anaconda-agentic-desktop/sdk-react",
+						"@anaconda-agentic-desktop/pane-layout",
+						"@assistant-ui/core",
+						"@assistant-ui/react",
+						"@assistant-ui/react-markdown",
+						"@assistant-ui/react-opencode",
 						"@tanstack/react-query",
+						"@tanstack/react-virtual",
 						"@testing-library/react",
-						// Base UI primitives used by @anaconda-agentic-desktop/ui. Pre-bundle
-						// them so Vite does not discover them mid-run, reload the page, and
-						// swap React instances (Invalid hook call in CheckboxRoot).
+						"@pierre/diffs",
+						"@pierre/diffs/react",
+						// Pre-bundle deps that Vite otherwise discovers mid-run. A re-optimize
+						// reloads the tester iframe and the orchestrator times out waiting for ready.
 						"@base-ui/react/accordion",
+						"@base-ui/react/alert-dialog",
+						"@base-ui/react/avatar",
+						"@base-ui/react/button",
 						"@base-ui/react/checkbox",
 						"@base-ui/react/collapsible",
 						"@base-ui/react/dialog",
 						"@base-ui/react/input",
+						"@base-ui/react/menu",
+						"@base-ui/react/merge-props",
+						"@base-ui/react/popover",
 						"@base-ui/react/scroll-area",
 						"@base-ui/react/select",
 						"@base-ui/react/separator",
@@ -91,6 +108,23 @@ export default defineConfig({
 						"@base-ui/react/toggle",
 						"@base-ui/react/toggle-group",
 						"@base-ui/react/tooltip",
+						"@base-ui/react/use-render",
+						"@kilocode/sdk/v2/client",
+						"class-variance-authority",
+						"clsx",
+						"cmdk",
+						"lodash/isEqual.js",
+						"lucide-react",
+						"motion/react",
+						"remark-gfm",
+						"sonner",
+						"tailwind-merge",
+						"use-sync-external-store/shim",
+						"use-sync-external-store/shim/with-selector",
+						"zustand",
+						"zustand/middleware",
+						"zustand/shallow",
+						"zustand/vanilla",
 						"zod",
 						"vitest",
 						"vitest/internal/browser",
@@ -104,6 +138,9 @@ export default defineConfig({
 					include: ["src/web/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
 					fileParallelism: false,
+					// Orchestrator waits this long for each tester iframe. Default 60s
+					// is tight for session-list / ChatPage when unit workers contend.
+					env: { VITEST_BROWSER_IFRAME_TIMEOUT: "120000" },
 					browser: {
 						enabled: true,
 						headless: true,

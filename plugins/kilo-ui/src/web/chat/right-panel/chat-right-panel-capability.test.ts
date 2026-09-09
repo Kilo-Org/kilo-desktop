@@ -62,6 +62,19 @@ describe("createChatRightPanelCapability", () => {
 		});
 	});
 
+	it("returns a contributed tab opened without changing the active tab", () => {
+		const panel = createChatRightPanelCapability();
+		const active = panel.openContributedTab(SESSION, { id: "canvas.panel", title: "Canvas" });
+		const opened = panel.openContributedTab(
+			SESSION,
+			{ id: "preview.panel", title: "Preview" },
+			{ activate: false, instanceId: "preview-1" },
+		);
+
+		expect(opened.instanceId).toBe("preview-1");
+		expect(panel.getActiveTabId(SESSION)).toBe(active.instanceId);
+	});
+
 	it("reopens an existing contributed tab with the latest resource state", () => {
 		const panel = createChatRightPanelCapability();
 		panel.openContributedTab(
@@ -95,15 +108,6 @@ describe("createChatRightPanelCapability", () => {
 			workspaceDirectory: "/workspace",
 			relativePath: "src/index.ts",
 			line: "42",
-		});
-	});
-
-	it("show opens the panel without adding tabs", () => {
-		const panel = createChatRightPanelCapability();
-		panel.show(SESSION);
-		expect(useRightPanelStore.getState().bySessionId[SESSION]).toMatchObject({
-			isOpen: true,
-			tabs: [],
 		});
 	});
 

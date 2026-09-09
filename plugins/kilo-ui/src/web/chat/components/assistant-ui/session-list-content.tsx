@@ -76,6 +76,10 @@ import {
 } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { workspaceGlyphColor } from "../../../workspaces/workspace-glyph-style.js";
 import { navigateToChat } from "../../chat-navigation.js";
+import {
+	DRAFT_RIGHT_PANEL_SESSION_KEY,
+	useRightPanelStore,
+} from "../../right-panel/right-panel-store.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
 import {
 	deriveSessionRowState,
@@ -315,6 +319,7 @@ export const SessionListContent = memo(function SessionListContent({
 	const groupingLabel = SESSION_LIST_GROUPING_LABELS[resolveSessionListGrouping(resolvedView)];
 	const createChatInWorkspace = useCallback(
 		(workspaceId: string) => {
+			useRightPanelStore.getState().clearSession(DRAFT_RIGHT_PANEL_SESSION_KEY);
 			setActiveWorkspaceId(workspaceId);
 			void aui.threads.switchToNewThread();
 			navigate();
@@ -373,6 +378,9 @@ export const SessionListContent = memo(function SessionListContent({
 					data-slot="aui_thread-list-root"
 					className="flex min-h-0 flex-1 flex-col"
 				>
+					<div className="mb-2 flex shrink-0 flex-col gap-0.5">
+						<GlobalNewButton />
+					</div>
 					<div
 						data-qa-id="session-list-inbox-header"
 						className="mb-2 flex h-8 shrink-0 items-center"
@@ -384,9 +392,6 @@ export const SessionListContent = memo(function SessionListContent({
 								if (id) setActiveWorkspaceId(id);
 							}}
 						/>
-					</div>
-					<div className="mb-2 flex shrink-0 flex-col gap-0.5">
-						<GlobalNewButton />
 					</div>
 					<div
 						data-qa-id="session-list-grouping-header"
@@ -1243,6 +1248,7 @@ const SessionRowContent = memo(function SessionRowContent({
 					ref={triggerRef}
 					type="button"
 					data-slot="aui_session-list-settled-trigger"
+					data-sidebar-select
 					className={cn("flex w-full flex-col py-0 text-left focus-visible:outline-none", rowPad)}
 					onClick={() => {
 						navigate();
@@ -1257,6 +1263,7 @@ const SessionRowContent = memo(function SessionRowContent({
 					ref={triggerRef}
 					onClick={navigate}
 					data-slot="aui_session-list-item-trigger"
+					data-sidebar-select
 					className={cn("flex w-full flex-col py-0 text-left focus-visible:outline-none", rowPad)}
 				>
 					{titleRow}

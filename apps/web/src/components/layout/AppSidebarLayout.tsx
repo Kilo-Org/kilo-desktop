@@ -266,10 +266,14 @@ export function AppSidebarLayout({
 
 	return (
 		<TooltipProvider>
-			<SidebarProvider className="app-shell-glass h-svh min-h-0" style={sidebarProviderStyle}>
+			<SidebarProvider
+				hoverReveal
+				className="app-shell-glass h-svh min-h-0"
+				style={sidebarProviderStyle}
+			>
 				<Sidebar
 					collapsible="offcanvas"
-					className="border-border dark:border-muted-foreground/15 h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
+					className="border-border dark:border-muted-foreground/15 group-data-[transient=true]:bg-sidebar! h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
 					data-qa-id="app-sidebar"
 				>
 					<SidebarHeader className="relative h-12 shrink-0 p-0" data-qa-id="sidebar-titlebar">

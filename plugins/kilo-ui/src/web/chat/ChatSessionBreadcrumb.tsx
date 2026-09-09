@@ -15,6 +15,45 @@ import { workspaceGlyphStyle } from "../workspaces/workspace-glyph-style.js";
 import { resolveSessionLocationLabel } from "./session-activity/session-activity-logic.js";
 import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
 
+export const ChatLocationBreadcrumb: FC<{
+	locationLabel?: string | null;
+	locationColor?: string;
+	title: string;
+	qaId: string;
+	scale?: "compact" | "header";
+}> = ({ locationLabel, locationColor, title, qaId, scale = "compact" }) => (
+	<Breadcrumb data-qa-id={qaId} className="min-w-0">
+		<BreadcrumbList
+			className={scale === "header" ? "flex-nowrap text-[13px]" : "flex-nowrap text-xs"}
+		>
+			{locationLabel ? (
+				<>
+					<BreadcrumbItem className="min-w-0">
+						<span className="inline-flex min-w-0 items-center gap-1.5">
+							<FolderIcon
+								aria-hidden
+								className={
+									scale === "header"
+										? "text-muted-foreground size-3.5 shrink-0"
+										: "text-muted-foreground size-3 shrink-0"
+								}
+								style={workspaceGlyphStyle(locationColor)}
+							/>
+							<span className="truncate">{locationLabel}</span>
+						</span>
+					</BreadcrumbItem>
+					<BreadcrumbSeparator className="[&>svg]:size-3" />
+				</>
+			) : null}
+			<BreadcrumbItem className="min-w-0">
+				<BreadcrumbPage className={scale === "header" ? "truncate font-medium" : "truncate"}>
+					{title}
+				</BreadcrumbPage>
+			</BreadcrumbItem>
+		</BreadcrumbList>
+	</Breadcrumb>
+);
+
 /**
  * Chat-page breadcrumb. Shows workspace → session when a non-draft session
  * is in a workspace; unscoped sessions show only the title.
@@ -33,27 +72,12 @@ export const ChatSessionBreadcrumb: FC = () => {
 	const title = sessionTitle?.trim() || "New Chat";
 
 	return (
-		<Breadcrumb data-qa-id="chat-session-breadcrumb" className="min-w-0">
-			<BreadcrumbList className="flex-nowrap">
-				{locationLabel ? (
-					<>
-						<BreadcrumbItem className="min-w-0">
-							<span className="inline-flex min-w-0 items-center gap-1.5">
-								<FolderIcon
-									aria-hidden
-									className="text-muted-foreground size-3.5 shrink-0"
-									style={workspaceGlyphStyle(workspace?.color)}
-								/>
-								<span className="truncate">{locationLabel}</span>
-							</span>
-						</BreadcrumbItem>
-						<BreadcrumbSeparator />
-					</>
-				) : null}
-				<BreadcrumbItem className="min-w-0">
-					<BreadcrumbPage className="truncate">{title}</BreadcrumbPage>
-				</BreadcrumbItem>
-			</BreadcrumbList>
-		</Breadcrumb>
+		<ChatLocationBreadcrumb
+			locationLabel={locationLabel}
+			{...(workspace?.color ? { locationColor: workspace.color } : {})}
+			title={title}
+			qaId="chat-session-breadcrumb"
+			scale="header"
+		/>
 	);
 };

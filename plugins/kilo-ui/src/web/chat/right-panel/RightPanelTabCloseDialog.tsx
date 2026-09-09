@@ -71,7 +71,7 @@ export function RightPanelTabCloseDialog({
 
 	return (
 		<AlertDialog open onOpenChange={(open) => !open && !pending && onCancel()}>
-			<AlertDialogContent data-qa-id="chat-right-panel-close-dialog">
+			<AlertDialogContent data-qa-id="chat-pane-close-dialog">
 				<AlertDialogHeader>
 					<AlertDialogTitle>
 						{lifecycle?.save ? "Save" : "Discard"} changes to {tab.title}?
@@ -81,16 +81,12 @@ export function RightPanelTabCloseDialog({
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				{error ? (
-					<p
-						className="text-destructive text-sm"
-						role="alert"
-						data-qa-id="chat-right-panel-close-error"
-					>
+					<p className="text-destructive text-sm" role="alert" data-qa-id="chat-pane-close-error">
 						{error}
 					</p>
 				) : null}
 				<AlertDialogFooter className="sm:justify-between">
-					<AlertDialogCancel disabled={pending !== null} data-qa-id="chat-right-panel-close-cancel">
+					<AlertDialogCancel disabled={pending !== null} data-qa-id="chat-pane-close-cancel">
 						Cancel
 					</AlertDialogCancel>
 					<div className="flex items-center gap-2">
@@ -98,7 +94,7 @@ export function RightPanelTabCloseDialog({
 							type="button"
 							variant="destructive"
 							disabled={pending !== null}
-							data-qa-id="chat-right-panel-close-discard"
+							data-qa-id="chat-pane-close-discard"
 							onClick={() => void discard()}
 						>
 							{pending === "discard" ? "Discarding…" : "Discard"}
@@ -107,7 +103,7 @@ export function RightPanelTabCloseDialog({
 							<AlertDialogAction
 								type="button"
 								disabled={pending !== null}
-								data-qa-id="chat-right-panel-close-save"
+								data-qa-id="chat-pane-close-save"
 								onClick={() => void save()}
 							>
 								{pending === "save" ? "Saving…" : "Save"}

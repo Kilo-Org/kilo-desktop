@@ -1,10 +1,10 @@
 /**
  * WebMCP tools that surface open chat notebooks and open scratch or file-backed
- * notebooks in the kilo-ui right panel. Cross-plugin access goes through
+ * notebooks in the kilo-ui pane layout. Cross-plugin access goes through
  * `sdk.plugins.get("kilo-ui")` — no kilo-ui source imports.
  *
  * Tool descriptions are the model-facing contract: create and show stay in this
- * panel. nteract MCP is for cells, kernel, and save only.
+ * layout. nteract MCP is for cells, kernel, and save only.
  */
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { z } from "zod";
@@ -71,7 +71,6 @@ export type ChatRightPanelCapability = {
 			readonly discard?: () => Promise<void>;
 		},
 	): () => void;
-	show(sessionId: string): void;
 };
 
 export type ChatRightPanelCapabilities = {
@@ -79,10 +78,10 @@ export type ChatRightPanelCapabilities = {
 };
 
 const NO_FOCUSED_SESSION =
-	"No focused chat session. Open a chat in the app before using notebook panel tools.";
+	"No focused chat session. Open a chat in the app before using notebook pane tools.";
 
 const KILO_UI_UNAVAILABLE =
-	"kilo-ui chat right panel is unavailable. The chat UI plugin may not be loaded.";
+	"kilo-ui chat pane capability is unavailable. The chat UI plugin may not be loaded.";
 
 function basename(filePath: string): string {
 	return filePath.replaceAll("\\", "/").split("/").at(-1) ?? filePath;
@@ -137,7 +136,6 @@ export function openNotebookInPanel(sdk: SDK):
 	if ("error" in sessionOrError) return sessionOrError;
 
 	const { sessionId } = sessionOrError;
-	panelOrError.show(sessionId);
 	const tab = panelOrError.openContributedTab(sessionId, {
 		id: NOTEBOOK_TAB_DEFINITION_ID,
 		title: NOTEBOOK_TAB_TITLE,
@@ -168,7 +166,6 @@ async function openNotebookFileWithPanel(
 	sessionId: string,
 	panel: ChatRightPanelCapability,
 ): Promise<NotebookPanelOpenFileResult> {
-	panel.show(sessionId);
 	const existing = panel
 		.listTabs(sessionId)
 		.find(
@@ -278,13 +275,13 @@ export async function openNotebookFileInPanel(
 const DESKTOP_NOTEBOOK_PANEL_POLICY =
 	"Never create or show a notebook in the external nteract app. " +
 	"Do not call notebooks_create_notebook, notebooks_show_notebook, or notebooks_open_notebook. " +
-	"Always use these desktop notebook tools to open the notebook in the chat right-hand side panel.";
+	"Always use these desktop notebook tools to open the notebook in the chat pane layout.";
 
 export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "list_open",
 		description:
-			"List notebooks open in the focused chat's right-hand side panel. " +
+			"List notebooks open in the focused chat's pane layout. " +
 			DESKTOP_NOTEBOOK_PANEL_POLICY +
 			" Each notebook_id is the id to pass to notebooks_* cell, kernel, and save tools. " +
 			"Call this to see which notebooks are already open before creating another.",
@@ -297,7 +294,7 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "open",
 		description:
-			"Open a new notebook in the focused chat's right-hand side panel and return its " +
+			"Open a new notebook in the focused chat's pane layout and return its " +
 			"notebook_id (a bare UUID). " +
 			DESKTOP_NOTEBOOK_PANEL_POLICY +
 			" Call this instead of notebooks_create_notebook or notebooks_show_notebook. " +
@@ -313,7 +310,7 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "open_file",
 		description:
-			"Open an existing .ipynb file in the focused chat's right-hand side panel. " +
+			"Open an existing .ipynb file in the focused chat's pane layout. " +
 			DESKTOP_NOTEBOOK_PANEL_POLICY +
 			" Pass an absolute file path. Returns the daemon notebook_id to use unchanged with " +
 			"notebooks_* cell, kernel, and save tools. Reopening the same file focuses its existing tab.",

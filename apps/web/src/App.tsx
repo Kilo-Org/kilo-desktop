@@ -5,6 +5,7 @@ import { AppSidebarLayout } from "@/components/layout/AppSidebarLayout";
 import { PLUGIN_NAV } from "@/features/plugin-nav-entries";
 import { PLUGIN_PAGES } from "@/features/plugin-pages";
 import { PLUGIN_SETTINGS } from "@/features/plugin-settings-entries";
+import { useLocalApi } from "@/platform/LocalApiProvider";
 import { ThemeProvider, useColorScheme } from "@/platform/theme/ThemeProvider";
 
 function ThemedToaster() {
@@ -17,6 +18,20 @@ function ThemedToaster() {
 }
 
 export function App() {
+	const api = useLocalApi();
+	if (api.shell.windowRole === "pane") {
+		return (
+			<ThemeProvider>
+				<div
+					className="bg-background flex h-svh min-h-0 min-w-0 flex-col overflow-hidden"
+					data-qa-id="detached-pane-shell"
+				>
+					<Outlet />
+					<ThemedToaster />
+				</div>
+			</ThemeProvider>
+		);
+	}
 	return (
 		<ThemeProvider>
 			<AppSidebarLayout

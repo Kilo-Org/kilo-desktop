@@ -38,7 +38,12 @@ registerPluginZoneContributions(featureSystem, PLUGIN_ZONE_CONTRIBUTIONS, {
 // `webRegister` (invoked by createFeatureSystem) registers its own tools via
 // `sdk.tools`, and this bridge auto-picks them up through the registry's
 // change notifications (see issue #74).
-installWebMcp(featureSystem);
+// Pane windows must not become a second WebMCP producer — opening a notebook
+// (or any UI-local tool) from a popped-out chat would mutate that window's
+// store, and the main canvas would never see the pane.
+if (localApi.shell.windowRole !== "pane") {
+	installWebMcp(featureSystem);
+}
 
 createRoot(root, {
 	// @ts-expect-error -- reactErrorHandler types ErrorInfo against React 18 (componentStack: string|null); React 19 uses string|undefined

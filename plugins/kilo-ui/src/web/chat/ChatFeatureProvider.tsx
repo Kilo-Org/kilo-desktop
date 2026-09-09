@@ -27,10 +27,8 @@ import { usePersistedModelSelection } from "./model-selection/use-persisted-mode
 import { resolveLocalInferenceCapability } from "../providers/local-inference/capability.js";
 import { invalidateKiloProviderQueries } from "../providers/provider-queries.js";
 import { isStaleKiloConnectionError } from "./kilo-connection-error.js";
-import {
-	chatRightPanelCapability,
-	type ChatRightPanelCapabilities,
-} from "./right-panel/chat-right-panel-capability.js";
+import { bindChatPaneSync, listenChatPaneSync } from "./pane-canvas/chat-pane-sync.js";
+import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
 import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
@@ -58,8 +56,8 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	useEffect(() => {
-		if (sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel) return;
-		sdk.plugins.expose("chatRightPanel", chatRightPanelCapability);
+		sdk.plugins.expose("chatRightPanel", bindChatPaneSync(sdk, chatRightPanelCapability));
+		return listenChatPaneSync(sdk);
 	}, [sdk]);
 	const connectionOptions = useMemo(
 		() =>

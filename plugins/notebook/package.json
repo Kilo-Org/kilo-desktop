@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Recoverable nteract notebooks contributed to Kilo chat right panels",
+	"description": "Recoverable nteract notebooks contributed to Kilo chat panes",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

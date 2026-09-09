@@ -422,9 +422,27 @@ export interface DirectoryOpenDialogOptions {
 	multiple?: boolean;
 }
 
+export interface PaneWindow {
+	pluginId: string;
+	sessionId: string;
+	paneId: string;
+	title: string;
+	path: string;
+	workspaceId?: string | undefined;
+}
+
+export type PaneWindowEvent = {
+	type: "opened" | "docked" | "focused" | "blurred";
+	pluginId: string;
+	sessionId: string;
+	paneId: string;
+};
+
 /** OS-level shell actions (open browser, clipboard, native folder access). */
 export interface SdkShell {
 	readonly canPickDirectories: boolean;
+	readonly canPopOutPanes: boolean;
+	readonly windowRole: "main" | "pane";
 	openExternal(url: string): Promise<{ opened: boolean }>;
 	copyText(text: string): Promise<void>;
 	showItemInFolder(path: string): Promise<{ revealed: boolean }>;
@@ -432,6 +450,16 @@ export interface SdkShell {
 		options: DirectoryOpenDialogOptions,
 	): Promise<{ canceled: boolean; paths: string[] }>;
 	getPathForFile(file: File): string | null;
+	openPaneWindow(input: PaneWindow): Promise<{ opened: boolean }>;
+	listPaneWindows(pluginId: string): Promise<PaneWindow[]>;
+	focusPaneWindow(
+		input: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">,
+	): Promise<{ focused: boolean }>;
+	dockPaneWindow(
+		input: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">,
+	): Promise<{ docked: boolean }>;
+	syncPaneWindows(pluginId: string, activeSessionId: string | null): Promise<void>;
+	onPaneWindowChanged(listener: (event: PaneWindowEvent) => void): () => void;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────

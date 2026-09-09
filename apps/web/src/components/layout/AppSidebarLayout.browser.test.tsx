@@ -57,6 +57,7 @@ function fakeLocalApi(
 			sync: async () => undefined,
 		},
 		shell: {
+			...base.shell,
 			canPickDirectories: true,
 			openExternal: async () => ({ opened: true }),
 			copyText: async () => undefined,
@@ -346,6 +347,60 @@ describe("AppSidebarLayout nav toggle", () => {
 			expect(sidebarGap?.getBoundingClientRect().width).toBe(0);
 		});
 		expectToggleOutsideDragRegions();
+	});
+
+	it("reveals the collapsed nav transiently without moving the page while entering it", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+		const toggle = page.getByRole("button", { name: "Toggle navigation" });
+		const sidebar = () => baseElement.querySelector('[data-slot="sidebar"]');
+		const panelLayer = () =>
+			baseElement.querySelector('[data-slot="sidebar-container"]') as HTMLElement;
+
+		await toggle.click();
+		const inset = baseElement.querySelector('[data-qa-id="shell-main"]')!.parentElement!;
+		expect(sidebar()?.getAttribute("data-state")).toBe("collapsed");
+		await vi.waitFor(() => {
+			expect(inset.getBoundingClientRect().left).toBeLessThan(1);
+		});
+
+		fireEvent.pointerEnter(toggle.element());
+		expect(sidebar()?.getAttribute("data-transient")).toBe("true");
+		expect(sidebar()?.getAttribute("data-state")).toBe("collapsed");
+		expect(inset.getBoundingClientRect().left).toBeLessThan(1);
+
+		const panel = baseElement.querySelector('[data-slot="sidebar-inner"]');
+		fireEvent.pointerLeave(toggle.element(), { relatedTarget: document.body });
+		expect(sidebar()?.getAttribute("data-transient")).toBe("true");
+
+		fireEvent.pointerEnter(panel!);
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		expect(sidebar()?.getAttribute("data-transient")).toBe("true");
+		expect(inset.getBoundingClientRect().left).toBeLessThan(1);
+		expect(Number(getComputedStyle(panelLayer()).zIndex)).toBeGreaterThan(10);
+		expect(getComputedStyle(panelLayer()).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+
+		fireEvent.pointerLeave(panel!, { relatedTarget: document.body });
+		await vi.waitFor(() => {
+			expect(sidebar()?.getAttribute("data-transient")).toBeNull();
+			expect(inset.getBoundingClientRect().left).toBeLessThan(1);
+		});
+		expect(sidebar()?.getAttribute("data-state")).toBe("collapsed");
+	});
+
+	it("dismisses the transient nav after a navigation selection without expanding it", async () => {
+		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
+		const toggle = page.getByRole("button", { name: "Toggle navigation" });
+		const sidebar = () => baseElement.querySelector('[data-slot="sidebar"]');
+
+		await toggle.click();
+		fireEvent.pointerEnter(toggle.element());
+		expect(sidebar()?.getAttribute("data-transient")).toBe("true");
+
+		await page.getByTestId("nav-settings").click();
+
+		expect(sidebar()?.getAttribute("data-transient")).toBeNull();
+		expect(sidebar()?.getAttribute("data-state")).toBe("collapsed");
+		await expect.element(page.getByTestId("settings-back")).toBeVisible();
 	});
 
 	it("resizes the left nav when the rail is dragged", async () => {

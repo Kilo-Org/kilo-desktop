@@ -142,7 +142,7 @@ const ThreadComposerSlot: FC = () => {
 // Empty threads stay in draft layout (centered composer). Require status
 // "new" too — after lazy session init the list item flips to regular before
 // messages project, and treating that as draft docks→centers→docks again.
-const isDraftView = (s: AssistantState) =>
+export const isDraftView = (s: AssistantState) =>
 	s.thread.messages.length === 0 && s.threadListItem.status === "new";
 
 export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {

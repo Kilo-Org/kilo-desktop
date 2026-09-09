@@ -5,17 +5,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	themeChromeColors,
 	TRANSPARENT_WINDOW_BACKGROUND,
+	type PaneWindow,
 } from "@anaconda-agentic-desktop/contracts";
+
+import { getDesktopRouteUrl } from "./ElectronProtocol.js";
 
 const { createdWindows, electronApp } = vi.hoisted(() => {
 	interface FakeWindow {
 		options: {
 			backgroundColor?: string;
 			backgroundMaterial?: string;
+			name?: string;
 			vibrancy?: string;
 			visualEffectState?: string;
 			icon?: string;
 			titleBarOverlay?: { color: string; symbolColor: string; height: number };
+			webPreferences?: { additionalArguments?: string[] };
+			windowStatePersistence?: boolean;
 		};
 		webContents: {
 			id: number;
@@ -27,6 +33,9 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 		on: ReturnType<typeof vi.fn>;
 		loadURL: ReturnType<typeof vi.fn>;
 		show: ReturnType<typeof vi.fn>;
+		showInactive: ReturnType<typeof vi.fn>;
+		hide: ReturnType<typeof vi.fn>;
+		close: ReturnType<typeof vi.fn>;
 		restore: ReturnType<typeof vi.fn>;
 		focus: ReturnType<typeof vi.fn>;
 		destroy: ReturnType<typeof vi.fn>;
@@ -69,6 +78,9 @@ vi.mock("electron", () => ({
 		readonly on = vi.fn();
 		readonly loadURL = vi.fn();
 		readonly show = vi.fn();
+		readonly showInactive = vi.fn();
+		readonly hide = vi.fn();
+		readonly close = vi.fn();
 		readonly restore = vi.fn();
 		readonly focus = vi.fn();
 		readonly destroy = vi.fn();
@@ -88,7 +100,10 @@ vi.mock("electron", () => ({
 	},
 }));
 
-vi.mock("./ElectronProtocol.js", () => ({ getDesktopUrl: vi.fn(() => "desktop://app") }));
+vi.mock("./ElectronProtocol.js", () => ({
+	getDesktopRouteUrl: vi.fn(() => "desktop://app/#/plugins/chat"),
+	getDesktopUrl: vi.fn(() => "desktop://app"),
+}));
 vi.mock("./ElectronSecurity.js", () => ({ isTrustedRendererUrl: vi.fn(() => true) }));
 
 import { ElectronWindow } from "./ElectronWindow.js";
@@ -116,6 +131,8 @@ describe("ElectronWindow theme chrome", () => {
 
 		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.dark.background);
 		expect(createdWindows[0]?.options.backgroundMaterial).toBeUndefined();
+		expect(createdWindows[0]?.options.name).toBe("Test App");
+		expect(createdWindows[0]?.options.windowStatePersistence).toBe(true);
 		expect(createdWindows[0]?.options.titleBarOverlay).toMatchObject({
 			color: themeChromeColors.dark.background,
 			symbolColor: themeChromeColors.dark.foreground,
@@ -249,6 +266,97 @@ describe("ElectronWindow theme chrome", () => {
 		expect(window?.destroy).toHaveBeenCalled();
 		expect(windows.main).toBeUndefined();
 	});
+
+	it("opens, focuses, hides, and docks a session-owned pane window", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		const pane: PaneWindow = {
+			pluginId: "kilo-ui",
+			sessionId: "session-1",
+			paneId: "file:readme.md",
+			title: "readme.md",
+			path: "/plugins/chat",
+			workspaceId: "workspace-1",
+		};
+
+		expect(windows.openPaneWindow(pane, false)).toEqual({ opened: true });
+		expect(getDesktopRouteUrl).toHaveBeenCalledWith(false, "/plugins/chat", {
+			paneWindow: "true",
+			panePluginId: "kilo-ui",
+			paneSessionId: "session-1",
+			paneId: "file:readme.md",
+			paneWorkspaceId: "workspace-1",
+		});
+		const detached = createdWindows[1];
+		expect(detached?.options.name).toBe("pane:kilo-ui:session-1:file:readme.md");
+		expect(detached?.options.webPreferences?.additionalArguments).toContain(
+			"--anaconda-window-role=pane",
+		);
+		expect(detached?.options.windowStatePersistence).toBeUndefined();
+		expect(windows.listPaneWindows("kilo-ui")).toEqual([pane]);
+
+		createdWindows[0]?.isVisible.mockReturnValue(true);
+		const ready = detached?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
+		ready?.();
+		expect(detached?.show).toHaveBeenCalled();
+		expect(detached?.focus).toHaveBeenCalled();
+
+		detached?.isVisible.mockReturnValue(true);
+		windows.syncPaneWindows("kilo-ui", "session-2");
+		expect(detached?.hide).toHaveBeenCalled();
+		createdWindows[0]?.isVisible.mockReturnValue(true);
+		detached?.isVisible.mockReturnValue(false);
+		windows.syncPaneWindows("kilo-ui", "session-1");
+		expect(detached?.showInactive).toHaveBeenCalled();
+
+		detached?.isVisible.mockReturnValue(true);
+		const hideMain = createdWindows[0]?.on.mock.calls.find((call) => call[0] === "hide")?.[1];
+		hideMain?.();
+		expect(detached?.hide).toHaveBeenCalledTimes(2);
+
+		detached?.isVisible.mockReturnValue(false);
+		const showMain = createdWindows[0]?.on.mock.calls.find((call) => call[0] === "show")?.[1];
+		showMain?.();
+		expect(detached?.showInactive).toHaveBeenCalledTimes(2);
+
+		expect(windows.focusPaneWindow(pane)).toEqual({ focused: true });
+		expect(detached?.focus).toHaveBeenCalledTimes(2);
+		expect(windows.dockPaneWindow(pane)).toEqual({ docked: true });
+		expect(detached?.close).toHaveBeenCalled();
+
+		const closed = detached?.on.mock.calls.find((call) => call[0] === "closed")?.[1];
+		closed?.();
+		expect(windows.listPaneWindows("kilo-ui")).toEqual([]);
+		expect(createdWindows[0]?.webContents.send).toHaveBeenCalledWith("shell:pane-window-changed", {
+			type: "docked",
+			pluginId: "kilo-ui",
+			sessionId: "session-1",
+			paneId: "file:readme.md",
+		});
+	});
+
+	it("keeps a pane window hidden when the main window hides before the pane is ready", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		windows.openPaneWindow(
+			{
+				pluginId: "kilo-ui",
+				sessionId: "session-1",
+				paneId: "file:readme.md",
+				title: "readme.md",
+				path: "/plugins/chat",
+			},
+			false,
+		);
+
+		const detached = createdWindows[1];
+		const ready = detached?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
+		ready?.();
+
+		expect(detached?.show).not.toHaveBeenCalled();
+		expect(detached?.focus).not.toHaveBeenCalled();
+	});
+
 	it("broadcasts renderer events to every window except their origin", () => {
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });

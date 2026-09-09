@@ -61,6 +61,15 @@ export function getDesktopUrl(isDevelopment: boolean): string {
 	return `${getDesktopOrigin(isDevelopment)}/#/`;
 }
 
+export function getDesktopRouteUrl(
+	isDevelopment: boolean,
+	route: string,
+	search: Readonly<Record<string, string>>,
+): string {
+	const params = new URLSearchParams(search);
+	return `${getDesktopOrigin(isDevelopment)}/#${route}${params.size > 0 ? `?${params}` : ""}`;
+}
+
 export function registerDesktopSchemes(): void {
 	protocol.registerSchemesAsPrivileged(
 		[DESKTOP_PRODUCTION_SCHEME, DESKTOP_DEVELOPMENT_SCHEME].map((scheme) => ({

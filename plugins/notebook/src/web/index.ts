@@ -23,7 +23,7 @@ export interface NotebookCapabilities extends Record<string, unknown> {
 
 /**
  * Renderer boot hook — registers WebMCP tools that open/list notebooks in the
- * kilo-ui chat right panel. Runs in Electron and browser modes.
+ * kilo-ui chat pane layout. Runs in Electron and browser modes.
  */
 export function webRegister(sdk: SDK): void {
 	sdk.plugins.expose("notebookViewer", {

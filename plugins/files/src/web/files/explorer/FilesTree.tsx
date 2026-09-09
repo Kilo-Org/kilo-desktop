@@ -23,6 +23,7 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 import { FILE_ICONS } from "../file-icons/file-icons.js";
+import { explorerRootTitle, folderName } from "./explorer-title.js";
 
 export interface FilesWorkspaceFolder {
 	readonly path: string;
@@ -42,11 +43,6 @@ interface FilesTreeProps {
 	readonly onOpenFile: (relativePath: string) => void;
 	readonly onSelectWorkspaceFolder: (path: string) => void;
 	readonly onRefresh: () => void;
-}
-
-function folderName(path: string): string {
-	const withoutTrailingSeparators = path.replace(/[\\/]+$/u, "");
-	return withoutTrailingSeparators.split(/[\\/]/u).at(-1) || path;
 }
 
 export function FilesTree({
@@ -71,7 +67,7 @@ export function FilesTree({
 		density: "compact",
 		icons: FILE_ICONS,
 		flattenEmptyDirectories: true,
-		initialExpansion: 1,
+		initialExpansion: "closed",
 		fileTreeSearchMode: "hide-non-matches",
 		search: false,
 		unsafeCSS: `
@@ -112,14 +108,14 @@ export function FilesTree({
 	});
 	const search = useFileTreeSearch(model);
 	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
-	const folderOptions = useMemo(() => {
-		const names = workspaceFolders.map(({ path }) => folderName(path));
-		return workspaceFolders.map(({ path }, index) => ({
-			value: path,
-			label:
-				names.indexOf(names[index]!) === names.lastIndexOf(names[index]!) ? names[index]! : path,
-		}));
-	}, [workspaceFolders]);
+	const folderOptions = useMemo(
+		() =>
+			workspaceFolders.map(({ path }) => ({
+				value: path,
+				label: explorerRootTitle(path, workspaceFolders),
+			})),
+		[workspaceFolders],
+	);
 
 	useEffect(() => {
 		model.resetPaths(paths);

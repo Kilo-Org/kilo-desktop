@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { PLAN_TAB_DEFINITION_ID } from "./right-panel-tab-registry.js";
 import {
+	DEFAULT_ARRANGEMENT,
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
-	EMPTY_SESSION_RIGHT_PANEL_STATE,
 	persistedRightPanelState,
 	resolveRightPanelSessionKey,
+	RIGHT_PANEL_STORAGE_KEY,
 	selectActiveRightPanelTab,
 	selectSessionRightPanelState,
 	useRightPanelStore,
+	type SessionRightPanelState,
 } from "./right-panel-store.js";
 
 const SESSION = "session-1";
@@ -27,16 +29,35 @@ describe("resolveRightPanelSessionKey", () => {
 });
 
 describe("right-panel-store", () => {
-	it("toggles visibility without adding tabs", () => {
-		useRightPanelStore.getState().toggleVisibility(SESSION);
-		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION),
-		).toMatchObject({ isOpen: true, activeTabId: null, tabs: [] });
+	it("uses fresh grouped-layout persistence with Tiles as the default", () => {
+		expect(RIGHT_PANEL_STORAGE_KEY).toBe("kilo-ui:right-panel-state:v3");
+		expect(DEFAULT_ARRANGEMENT).toBe("tiles");
+		expect(useRightPanelStore.persist.getOptions().version).toBe(1);
+	});
 
-		useRightPanelStore.getState().toggleVisibility(SESSION);
+	it("falls back from a persisted legacy arrangement to Tiles", () => {
+		const stored = {
+			[SESSION]: {
+				activeTabId: null,
+				tabs: [],
+				planAnchorCallId: null,
+				arrangement: "tabs",
+			},
+		} as unknown as Record<string, SessionRightPanelState>;
+
+		expect(selectSessionRightPanelState(stored, SESSION).arrangement).toBe("tiles");
+	});
+
+	it("keeps arrangement choices for a chat without artifact panes", () => {
+		useRightPanelStore.getState().setArrangement(SESSION, "tiles");
 		expect(
-			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION),
-		).toEqual(EMPTY_SESSION_RIGHT_PANEL_STATE);
+			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION).arrangement,
+		).toBe("tiles");
+
+		useRightPanelStore.getState().setArrangement(SESSION, "carousel");
+		expect(
+			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION).arrangement,
+		).toBe("carousel");
 	});
 
 	it("opens multiple numbered contributions and selects the newest", () => {
@@ -49,6 +70,13 @@ describe("right-panel-store", () => {
 		expect(
 			selectActiveRightPanelTab(useRightPanelStore.getState().bySessionId, SESSION)?.title,
 		).toBe("Canvas 2");
+	});
+
+	it("can open a contribution without focusing it", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS, { activate: false, title: "Canvas" });
+		const state = selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION);
+		expect(state.tabs.map(({ title }) => title)).toEqual(["Canvas"]);
+		expect(state.activeTabId).toBeNull();
 	});
 
 	it("keeps Plan singleton and maintains its historical anchor", () => {
@@ -66,18 +94,23 @@ describe("right-panel-store", () => {
 		expect(state.planAnchorCallId).toBe("edit-2");
 	});
 
-	it("keeps the panel open after closing the last tab", () => {
+	it("returns empty state after closing the last tab", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const [tab] = useRightPanelStore.getState().bySessionId[SESSION]!.tabs;
 		useRightPanelStore.getState().closeTab(SESSION, tab!.instanceId);
 		expect(
 			selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION),
-		).toEqual({ isOpen: true, activeTabId: null, tabs: [], planAnchorCallId: null });
+		).toEqual({
+			activeTabId: null,
+			tabs: [],
+			planAnchorCallId: null,
+			arrangement: "tiles",
+		});
 	});
 
 	it("isolates tabs by chat session", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
-		useRightPanelStore.getState().show("session-2");
+		useRightPanelStore.getState().setArrangement("session-2", "carousel");
 		expect(useRightPanelStore.getState().bySessionId[SESSION]?.tabs).toHaveLength(1);
 		expect(useRightPanelStore.getState().bySessionId["session-2"]?.tabs).toHaveLength(0);
 	});
@@ -140,5 +173,22 @@ describe("right-panel-store", () => {
 		useRightPanelStore.getState().moveSessionState("local-1", "remote-1");
 		expect(useRightPanelStore.getState().bySessionId["local-1"]).toBeUndefined();
 		expect(useRightPanelStore.getState().bySessionId["remote-1"]?.tabs[0]?.title).toBe("Canvas 1");
+	});
+
+	it("clears pane state for a session", () => {
+		useRightPanelStore.getState().openTab(DRAFT_RIGHT_PANEL_SESSION_KEY, CANVAS);
+		useRightPanelStore.getState().setArrangement(DRAFT_RIGHT_PANEL_SESSION_KEY, "tiles");
+		useRightPanelStore.getState().clearSession(DRAFT_RIGHT_PANEL_SESSION_KEY);
+		expect(
+			useRightPanelStore.getState().bySessionId[DRAFT_RIGHT_PANEL_SESSION_KEY],
+		).toBeUndefined();
+	});
+
+	it("omits the shared draft session from persisted pane state", () => {
+		useRightPanelStore.getState().openTab(DRAFT_RIGHT_PANEL_SESSION_KEY, CANVAS);
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		const persisted = persistedRightPanelState(useRightPanelStore.getState());
+		expect(persisted.bySessionId[DRAFT_RIGHT_PANEL_SESSION_KEY]).toBeUndefined();
+		expect(persisted.bySessionId[SESSION]?.tabs).toHaveLength(1);
 	});
 });

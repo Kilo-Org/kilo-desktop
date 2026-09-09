@@ -24,10 +24,11 @@ describe("files webRegister", () => {
 			"session-1",
 			{ id: "files.files", title: "Files" },
 			{
-				instanceId: "file:/workspace/project/src/App.tsx",
+				instanceId: "file:files:explorer:/workspace/project/src/App.tsx",
 				title: "App.tsx",
 				iconKey: "src/App.tsx",
 				metadata: {
+					explorerId: "files:explorer",
 					workspaceDirectory: "/workspace/project",
 					relativePath: "src/App.tsx",
 					line: "42",

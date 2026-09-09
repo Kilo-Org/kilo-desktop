@@ -1,6 +1,8 @@
-/** Per-session right-panel tab state (t3code-inspired). */
+/** Per-session chat pane + artifact tab state. */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+
+import { ARRANGEMENTS, type Arrangement } from "@anaconda-agentic-desktop/pane-layout";
 
 import {
 	createContributedTab,
@@ -15,9 +17,11 @@ import {
 export type { RightPanelTab } from "./right-panel-tab-registry.js";
 
 export const DRAFT_RIGHT_PANEL_SESSION_KEY = "draft";
-export const RIGHT_PANEL_STORAGE_KEY = "kilo-ui:right-panel-state:v2";
+export const RIGHT_PANEL_STORAGE_KEY = "kilo-ui:right-panel-state:v3";
+export const DEFAULT_ARRANGEMENT: Arrangement = "tiles";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+type PersistedSessionState = SessionRightPanelState & { readonly isOpen?: boolean };
 
 const memoryStorage = (): StorageLike => {
 	const data = new Map<string, string>();
@@ -42,11 +46,15 @@ function resolveStorage(): StorageLike {
 }
 
 export interface SessionRightPanelState {
-	isOpen: boolean;
 	activeTabId: string | null;
 	tabs: RightPanelTab[];
 	/** Tool-call id of the plan snapshot shown in the plan tab; null = newest. */
 	planAnchorCallId: string | null;
+	/** False when the Chat pane is hidden while artifact panes remain. */
+	chatPaneOpen?: boolean;
+	/** Tiles / Carousel. Invalid persisted values fall back to Tiles. */
+	arrangement?: Arrangement;
+	layoutJson?: string;
 }
 
 export type OpenPlanOptions = {
@@ -57,6 +65,7 @@ export type OpenPlanOptions = {
 interface RightPanelStoreState {
 	bySessionId: Record<string, SessionRightPanelState>;
 	moveSessionState: (sourceSessionId: string, targetSessionId: string) => void;
+	clearSession: (sessionId: string) => void;
 	openTab: (
 		sessionId: string,
 		definition: Pick<RightPanelTabDefinition, "id" | "title">,
@@ -66,9 +75,9 @@ interface RightPanelStoreState {
 	activateTab: (sessionId: string, tabId: string) => void;
 	updateTab: (sessionId: string, tabId: string, update: RightPanelTabUpdate) => void;
 	closeTab: (sessionId: string, tabId: string) => void;
-	show: (sessionId: string) => void;
-	close: (sessionId: string) => void;
-	toggleVisibility: (sessionId: string) => void;
+	setChatPaneOpen: (sessionId: string, open: boolean) => void;
+	setLayout: (sessionId: string, layoutJson: string) => void;
+	setArrangement: (sessionId: string, arrangement: Arrangement) => void;
 }
 
 export function persistedRightPanelState(
@@ -76,24 +85,27 @@ export function persistedRightPanelState(
 ): Pick<RightPanelStoreState, "bySessionId"> {
 	return {
 		bySessionId: Object.fromEntries(
-			Object.entries(state.bySessionId).map(([sessionId, session]) => {
-				const tabs = session.tabs
-					.filter((tab) => !tab.transient)
-					.map(({ dirty: _dirty, transient: _transient, ...tab }) => tab);
-				const activeTabId = tabs.some((tab) => tab.instanceId === session.activeTabId)
-					? session.activeTabId
-					: (tabs.at(-1)?.instanceId ?? null);
-				return [sessionId, { ...session, tabs, activeTabId }];
-			}),
+			Object.entries(state.bySessionId)
+				.filter(([sessionId]) => sessionId !== DRAFT_RIGHT_PANEL_SESSION_KEY)
+				.map(([sessionId, session]) => {
+					const { isOpen: _legacyIsOpen, ...current } = session as PersistedSessionState;
+					const tabs = session.tabs
+						.filter((tab) => !tab.transient)
+						.map(({ dirty: _dirty, transient: _transient, ...tab }) => tab);
+					const activeTabId = tabs.some((tab) => tab.instanceId === session.activeTabId)
+						? session.activeTabId
+						: (tabs.at(-1)?.instanceId ?? null);
+					return [sessionId, { ...current, tabs, activeTabId }];
+				}),
 		),
 	};
 }
 
 export const EMPTY_SESSION_RIGHT_PANEL_STATE: SessionRightPanelState = {
-	isOpen: false,
 	activeTabId: null,
 	tabs: [],
 	planAnchorCallId: null,
+	arrangement: DEFAULT_ARRANGEMENT,
 };
 
 const upsertTab = (
@@ -118,7 +130,6 @@ const upsertTab = (
 		: [...current.tabs, tab];
 	return {
 		...current,
-		isOpen: true,
 		tabs,
 		activeTabId: activate ? tab.instanceId : current.activeTabId,
 	};
@@ -131,7 +142,12 @@ const updateSession = (
 ): Record<string, SessionRightPanelState> => {
 	const current = bySessionId[sessionId] ?? EMPTY_SESSION_RIGHT_PANEL_STATE;
 	const next = updater(current);
-	if (!next.isOpen && next.activeTabId === null && next.tabs.length === 0) {
+	if (
+		next.activeTabId === null &&
+		next.tabs.length === 0 &&
+		!next.layoutJson &&
+		(next.arrangement ?? DEFAULT_ARRANGEMENT) === DEFAULT_ARRANGEMENT
+	) {
 		if (!(sessionId in bySessionId)) return bySessionId;
 		const { [sessionId]: _removed, ...rest } = bySessionId;
 		return rest;
@@ -157,13 +173,19 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 						},
 					};
 				}),
+			clearSession: (sessionId) =>
+				set((state) => {
+					if (!(sessionId in state.bySessionId)) return state;
+					const { [sessionId]: _removed, ...remaining } = state.bySessionId;
+					return { bySessionId: remaining };
+				}),
 			openTab: (sessionId, definition, options) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
 						upsertTab(
 							current,
 							createContributedTab(current.tabs, definition, undefined, options),
-							true,
+							options?.activate !== false,
 							options,
 						),
 					),
@@ -179,7 +201,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
 						current.tabs.some((tab) => tab.instanceId === tabId)
-							? { ...current, isOpen: true, activeTabId: tabId }
+							? { ...current, activeTabId: tabId }
 							: current,
 					),
 				})),
@@ -219,46 +241,54 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 						if (index < 0) return current;
 						const closing = current.tabs[index];
 						const tabs = current.tabs.filter((tab) => tab.instanceId !== tabId);
+						const chatPaneOpen =
+							current.chatPaneOpen === false && tabs.length === 0 ? true : current.chatPaneOpen;
 						const planAnchorCallId =
 							closing?.definitionId === PLAN_TAB_DEFINITION_ID
 								? null
 								: (current.planAnchorCallId ?? null);
 						if (current.activeTabId !== tabId) {
-							return { ...current, tabs, planAnchorCallId };
+							return {
+								...current,
+								tabs,
+								planAnchorCallId,
+								...(chatPaneOpen === undefined ? {} : { chatPaneOpen }),
+							};
 						}
 						const fallback = tabs[Math.min(index, tabs.length - 1)] ?? null;
 						return {
 							...current,
-							isOpen: true,
 							tabs,
 							activeTabId: fallback?.instanceId ?? null,
 							planAnchorCallId,
+							...(chatPaneOpen === undefined ? {} : { chatPaneOpen }),
 						};
 					}),
 				})),
-			show: (sessionId) =>
+			setChatPaneOpen: (sessionId, open) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
-						current.isOpen ? current : { ...current, isOpen: true },
+						(current.chatPaneOpen !== false) === open
+							? current
+							: { ...current, chatPaneOpen: open },
 					),
 				})),
-			close: (sessionId) =>
+			setLayout: (sessionId, layoutJson) =>
 				set((state) => ({
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
-						current.isOpen ? { ...current, isOpen: false } : current,
+						current.layoutJson === layoutJson ? current : { ...current, layoutJson },
 					),
 				})),
-			toggleVisibility: (sessionId) =>
+			setArrangement: (sessionId, arrangement) =>
 				set((state) => ({
-					bySessionId: updateSession(state.bySessionId, sessionId, (current) => ({
-						...current,
-						isOpen: !current.isOpen,
-					})),
+					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
+						current.arrangement === arrangement ? current : { ...current, arrangement },
+					),
 				})),
 		}),
 		{
 			name: RIGHT_PANEL_STORAGE_KEY,
-			version: 2,
+			version: 1,
 			storage: createJSONStorage(resolveStorage),
 			partialize: persistedRightPanelState,
 		},
@@ -270,7 +300,14 @@ export function selectSessionRightPanelState(
 	sessionId: string | null | undefined,
 ): SessionRightPanelState {
 	if (!sessionId) return EMPTY_SESSION_RIGHT_PANEL_STATE;
-	return bySessionId[sessionId] ?? EMPTY_SESSION_RIGHT_PANEL_STATE;
+	const session = bySessionId[sessionId];
+	if (!session) return EMPTY_SESSION_RIGHT_PANEL_STATE;
+	const arrangement =
+		typeof session.arrangement === "string" &&
+		(ARRANGEMENTS as readonly string[]).includes(session.arrangement)
+			? session.arrangement
+			: DEFAULT_ARRANGEMENT;
+	return arrangement === session.arrangement ? session : { ...session, arrangement };
 }
 
 export function selectActiveRightPanelTab(
@@ -278,7 +315,6 @@ export function selectActiveRightPanelTab(
 	sessionId: string | null | undefined,
 ): RightPanelTab | null {
 	const state = selectSessionRightPanelState(bySessionId, sessionId);
-	if (!state.isOpen) return null;
 	return state.tabs.find((tab) => tab.instanceId === state.activeTabId) ?? null;
 }
 

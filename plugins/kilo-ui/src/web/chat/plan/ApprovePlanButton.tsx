@@ -14,7 +14,7 @@ type ApprovePlanButtonProps = {
 	approvedQaId?: string;
 };
 
-/** Shared Approve / Approved control for plan card and right-panel plan tab. */
+/** Shared Approve / Approved control for the plan card and plan pane. */
 export const ApprovePlanButton: FC<ApprovePlanButtonProps> = ({
 	enabled,
 	approve,

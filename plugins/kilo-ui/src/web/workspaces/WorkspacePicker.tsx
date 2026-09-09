@@ -53,6 +53,7 @@ const ALL_WORKSPACES_COMMAND_VALUE = "all-workspaces";
 const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 
 type PopoverAlign = "start" | "center" | "end";
+type PopoverSide = "top" | "right" | "bottom" | "left";
 
 // Workspace items carry their name as a keyword so search matches names, never the uuid value.
 function filterWorkspaceItems(value: string, search: string, keywords?: string[]): number {
@@ -93,6 +94,7 @@ export function useWorkspacePicker(): WorkspacePickerContextValue {
 export function WorkspacePickerRoot({
 	children,
 	contentAlign = "start",
+	contentSide = "bottom",
 	contentWidth = "max",
 	emptyLabel,
 	includeUnscoped = true,
@@ -101,7 +103,8 @@ export function WorkspacePickerRoot({
 }: {
 	children: ReactNode;
 	contentAlign?: PopoverAlign;
-	contentWidth?: "max" | "trigger";
+	contentSide?: PopoverSide;
+	contentWidth?: "max" | "fit";
 	emptyLabel?: string;
 	includeUnscoped?: boolean;
 	value?: string | null;
@@ -159,11 +162,11 @@ export function WorkspacePickerRoot({
 				{children}
 				<PopoverContent
 					align={contentAlign}
-					side="bottom"
+					side={contentSide}
 					sideOffset={6}
 					collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
 					className={
-						contentWidth === "trigger" ? "w-(--anchor-width) gap-0 p-0" : "w-max min-w-64 gap-0 p-0"
+						contentWidth === "fit" ? "w-max min-w-0 gap-0 p-0" : "w-max min-w-64 gap-0 p-0"
 					}
 					onKeyDown={(event) => {
 						if (event.key === "Escape") setOpen(false);
@@ -176,7 +179,7 @@ export function WorkspacePickerRoot({
 						filter={filterWorkspaceItems}
 						className="[&_[data-slot=command-input-wrapper]]:gap-1.5 [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:py-2 [&_[data-slot=command-item]]:gap-1.5 [&_[data-slot=command-item]]:rounded-md [&_[data-slot=command-item]]:px-1.5 [&_[data-slot=command-item]]:py-1 [&_[data-slot=command-item]_[data-slot=button]]:size-5 [&_[data-slot=command-item]_span:has(>svg.lucide-check)]:size-5"
 					>
-						<CommandInput placeholder="Search workspaces…" />
+						<CommandInput placeholder="Search workspaces…" className="w-0 min-w-0 flex-1" />
 						<CommandSeparator />
 						<CommandList className="scroll-fade max-h-[calc(1.75rem*5+0.5rem)]">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
@@ -300,7 +303,7 @@ export function WorkspacePickerRoot({
 								}}
 							>
 								<PlusIcon />
-								Create workspace
+								New workspace
 							</CommandItem>
 							{includeUnscoped ? (
 								<CommandItem

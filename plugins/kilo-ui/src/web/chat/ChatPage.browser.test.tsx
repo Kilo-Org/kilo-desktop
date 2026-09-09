@@ -1,11 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, renderHook } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { cleanup, render, renderHook } from "@testing-library/react";
+import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { FeatureError, type Contribution } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	FeatureError,
+	type Contribution,
+	type PluginPageProps,
+	type SDK,
+} from "@anaconda-agentic-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
@@ -29,6 +34,10 @@ import {
 } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage, ChatPageHeaderActions } from "./ChatPage.js";
+import {
+	FILES_EXPLORER_PANE_ID,
+	FILES_PANE_DEFINITION_ID,
+} from "./pane-canvas/default-workspace-files-pane.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 import {
@@ -42,9 +51,31 @@ import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js
 import type * as KiloModelCatalogModule from "./model-selection/use-kilo-model-catalog.js";
 import { useChatModelSelection } from "./model-selection/ChatModelSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
-import { useChatAgentSelection } from "./agent-selection/ChatAgentSelectionContext.js";
+import {
+	ChatAgentSelectionProvider,
+	useChatAgentSelection,
+} from "./agent-selection/ChatAgentSelectionContext.js";
 import { KILO_PROVIDER_LIST_QUERY_KEY } from "../providers/provider-queries.js";
 import { HammerIcon, ListTodoIcon } from "lucide-react";
+import type * as ThreadModule from "./components/assistant-ui/thread.js";
+
+function FilesPanel({
+	instanceId,
+	sessionId,
+	title,
+	workspaceDirectory,
+}: ChatRightPanelContributionProps) {
+	return (
+		<div
+			data-qa-id="test-files-panel"
+			data-instance-id={instanceId}
+			data-session-id={sessionId}
+			data-workspace-directory={workspaceDirectory}
+		>
+			{title}
+		</div>
+	);
+}
 
 function CanvasPanel({
 	instanceId,
@@ -66,20 +97,36 @@ function CanvasPanel({
 	);
 }
 
-vi.mock("@assistant-ui/react", async (importOriginal) => {
-	const actual = await importOriginal<typeof AssistantUiReact>();
-	const fakeState = {
-		thread: { messages: [], isRunning: false, isEmpty: true, suggestions: [] },
+function NotebookPanel({ instanceId, title }: ChatRightPanelContributionProps) {
+	return (
+		<div data-qa-id="test-notebook-panel" data-instance-id={instanceId}>
+			{title}
+		</div>
+	);
+}
+
+const assistantState = vi.hoisted(() => ({
+	current: {
+		thread: {
+			messages: [] as Array<{ role: string }>,
+			isRunning: false,
+			isEmpty: true,
+			suggestions: [],
+		},
 		threadListItem: {
 			remoteId: undefined as string | undefined,
-			status: "regular" as const,
+			status: "new" as "new" | "regular",
 			title: "Session",
 		},
-	};
+	},
+}));
+vi.mock("@assistant-ui/react", async (importOriginal) => {
+	const actual = await importOriginal<typeof AssistantUiReact>();
 	return {
 		...actual,
 		AssistantRuntimeProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-		useAuiState: (selector: (state: typeof fakeState) => unknown) => selector(fakeState),
+		useAuiState: (selector: (state: typeof assistantState.current) => unknown) =>
+			selector(assistantState.current),
 	};
 });
 
@@ -121,9 +168,10 @@ vi.mock("./agent-selection/use-kilo-agent-catalog.js", () => ({
 
 const threadMount = vi.hoisted(() => ({ nextId: 0, renderCount: 0 }));
 
-vi.mock("./components/assistant-ui/thread.js", async () => {
-	const { useState } = await import("react");
+vi.mock("./components/assistant-ui/thread.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof ThreadModule>();
 	return {
+		...actual,
 		Thread: function ThreadMock() {
 			threadMount.renderCount += 1;
 			const [instanceId] = useState(() => String(++threadMount.nextId));
@@ -167,14 +215,22 @@ function renderChatPage(options?: {
 	getConnection?: KiloUiChatService["chat.getConnection"];
 	prepareSession?: KiloUiChatService["chat.prepareSession"];
 	workspaces?: Workspace[];
+	activeWorkspaceId?: string | null;
+	contributeFiles?: boolean;
+	contributeNotebook?: boolean;
 	children?: ReactNode;
 	canvasMountPolicy?: Contribution["mountPolicy"];
 	prepareModel?: (modelId: string) => Promise<void>;
+	shell?: Partial<SDK["shell"]>;
+	pageProps?: Partial<PluginPageProps>;
 }) {
 	const getConnection = options?.getConnection ?? (async () => connection);
 	const prepareSession =
 		options?.prepareSession ?? (async () => ({ directory: "/tmp/chat", workspaceFolders: [] }));
 	const workspaces = options?.workspaces ?? [];
+	if (options?.activeWorkspaceId) {
+		localStorage.setItem("kilo-ui.active-workspace", options.activeWorkspaceId);
+	}
 
 	const kiloUi = createFakeSdk({
 		featureId: "kilo-ui",
@@ -188,6 +244,7 @@ function renderChatPage(options?: {
 			"chat.getConnection": getConnection,
 			"chat.prepareSession": prepareSession,
 		} satisfies Partial<WorkspacesService & KiloUiChatService>,
+		...(options?.shell ? { shell: options.shell } : {}),
 	});
 	const system = createFakeFeatureSystem({
 		sdks: { "kilo-ui": kiloUi },
@@ -208,22 +265,45 @@ function renderChatPage(options?: {
 			component: CanvasPanel,
 			...(options?.canvasMountPolicy ? { mountPolicy: options.canvasMountPolicy } : {}),
 		});
+	const removeFilesContribution = options?.contributeFiles
+		? system.getSdk("files").contribute(CHAT_RIGHT_PANEL_TAB_EXTENSION, {
+				id: "files",
+				label: "Files",
+				description: "Browse workspace files",
+				component: FilesPanel,
+			})
+		: undefined;
+	const removeNotebookContribution = options?.contributeNotebook
+		? system.getSdk("notebook").contribute(CHAT_RIGHT_PANEL_TAB_EXTENSION, {
+				id: "notebook",
+				label: "Notebook",
+				description: "Scratch notebook",
+				component: NotebookPanel,
+			})
+		: undefined;
 	const queryClient = testClient();
-	const result = render(
+	const renderView = () => (
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<SidebarProvider>
 					<WorkspacesFeatureProvider>
 						<ChatFeatureProvider>
 							<ChatPageHeaderActions />
-							<ChatPage />
+							{options?.pageProps ? (
+								<div className="h-[600px]">
+									<ChatPage {...options.pageProps} />
+								</div>
+							) : (
+								<ChatPage />
+							)}
 							{options?.children}
 						</ChatFeatureProvider>
 					</WorkspacesFeatureProvider>
 				</SidebarProvider>
 			</QueryClientProvider>
-		</SdkProvider>,
+		</SdkProvider>
 	);
+	const result = render(renderView());
 	return {
 		...result,
 		queryClient,
@@ -231,7 +311,36 @@ function renderChatPage(options?: {
 		localInference,
 		kiloServer,
 		removeCanvasContribution,
+		removeFilesContribution,
+		removeNotebookContribution,
+		rerenderChatPage: () => result.rerender(renderView()),
 	};
+}
+
+async function openFirstCanvasPane(screen: ReturnType<typeof page.elementLocator>) {
+	assistantState.current.threadListItem.status = "regular";
+	useRightPanelStore.getState().openTab("draft", { id: "canvas.canvas", title: "Canvas" });
+	await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+}
+
+function addTabInActiveGroup(baseElement: HTMLElement) {
+	return (
+		baseElement
+			.querySelector("[data-pane-tab][data-active='true']")
+			?.closest("[data-pane-group-id]")
+			?.querySelector<HTMLElement>("[data-qa-id='chat-pane-add-tab']") ?? null
+	);
+}
+
+async function clickAddTab(baseElement: HTMLElement) {
+	const add = addTabInActiveGroup(baseElement);
+	expect(add).toBeTruthy();
+	await page.elementLocator(add!).click();
+}
+
+async function launchCanvasFromAddTab(baseElement: HTMLElement) {
+	await clickAddTab(baseElement);
+	await page.getByTestId("chat-pane-add-menu-canvas.canvas").click();
 }
 
 afterEach(() => {
@@ -240,6 +349,11 @@ afterEach(() => {
 	useRightPanelStore.setState({ bySessionId: {} });
 	threadMount.nextId = 0;
 	threadMount.renderCount = 0;
+	assistantState.current.thread.messages = [];
+	assistantState.current.thread.isEmpty = true;
+	assistantState.current.threadListItem.remoteId = undefined;
+	assistantState.current.threadListItem.status = "new";
+	assistantState.current.threadListItem.title = "Session";
 	vi.clearAllMocks();
 });
 
@@ -292,7 +406,17 @@ describe("ChatPage error rendering", () => {
 						<WorkspacesFeatureProvider>
 							<SessionActivityProvider store={sessionActivity}>
 								<ChatConnectionProvider status={status}>
-									<ChatPage />
+									<ChatAgentSelectionProvider
+										value={{
+											agent: "code",
+											setAgent: () => undefined,
+											catalog: undefined,
+											isCatalogPending: false,
+											isCatalogError: false,
+										}}
+									>
+										<ChatPage />
+									</ChatAgentSelectionProvider>
 								</ChatConnectionProvider>
 							</SessionActivityProvider>
 						</WorkspacesFeatureProvider>
@@ -697,177 +821,845 @@ describe("ChatPage", () => {
 		expect(prepareSession).not.toHaveBeenCalled();
 	});
 
-	it("opens the right panel from the header trailing toggle", async () => {
+	it("keeps a new chat as a plain thread without legacy sidebar controls", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByTestId("chat-right-panel-toggle")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel")).not.toBeInTheDocument();
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-
-		await expect.element(screen.getByTestId("chat-right-panel")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-empty")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-maximize")).toBeVisible();
-	});
-
-	it("resizes the right panel up to 70% of the chat view", async () => {
-		const { baseElement, container } = renderChatPage();
-		container.style.width = "1200px";
-		const screen = page.elementLocator(baseElement);
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		const chatPage = baseElement.querySelector<HTMLElement>("[data-qa-id='kilo-chat-page']");
-		const resizeHandle = baseElement.querySelector<HTMLElement>(
-			"[data-qa-id='chat-right-panel-resize']",
-		);
-		expect(chatPage).not.toBeNull();
-		expect(resizeHandle).not.toBeNull();
-
-		resizeHandle!.dispatchEvent(
-			new PointerEvent("pointerdown", {
-				bubbles: true,
-				clientX: chatPage!.clientWidth,
-				pointerId: 1,
-			}),
-		);
-		resizeHandle!.dispatchEvent(
-			new PointerEvent("pointermove", {
-				bubbles: true,
-				clientX: 0,
-				pointerId: 1,
-			}),
-		);
-		resizeHandle!.dispatchEvent(
-			new PointerEvent("pointerup", {
-				bubbles: true,
-				clientX: 0,
-				pointerId: 1,
-			}),
-		);
-
-		await vi.waitFor(() =>
-			expect(
-				baseElement.querySelector<HTMLElement>("[data-qa-id='chat-right-panel-slot']")?.clientWidth,
-			).toBe(Math.floor(chatPage!.clientWidth * 0.7)),
-		);
-	});
-
-	it("keeps multiple tab descriptors while mounting only the active clean contribution", async () => {
-		const { baseElement } = renderChatPage();
-		const screen = page.elementLocator(baseElement);
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await expect.element(screen.getByTestId("chat-right-panel-empty")).toBeVisible();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
-
-		await expect.element(screen.getByTestId("test-canvas-panel")).toHaveTextContent("Canvas 1");
-		const firstCanvas = baseElement.querySelector<HTMLElement>("[data-qa-id='test-canvas-panel']");
-		expect(firstCanvas).not.toBeNull();
-		const firstTab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		await expect.element(screen.getByTestId("kilo-chat-thread")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-right-panel-toggle")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("chat-right-panel-empty")).not.toBeInTheDocument();
+		expect(baseElement.querySelector("[data-qa-id='kilo-chat-pane-canvas']")).toBeNull();
+		expect(baseElement.querySelector("[data-qa-id='chat-pane-arrangement']")).toBeNull();
+		expect(baseElement.querySelector("[data-qa-id='chat-pane-toolbar']")).toBeNull();
+	});
 
-		await screen.getByTestId("chat-right-panel-add-tab").click();
-		await screen.getByTestId("chat-right-panel-add-canvas-canvas").click();
-		await vi.waitFor(() => {
-			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(1);
+	it("moves a submitted new chat into the pane canvas", async () => {
+		const { baseElement, rerenderChatPage } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		expect(baseElement.querySelector("[data-qa-id='kilo-chat-pane-canvas']")).toBeNull();
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-agent:draft")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-arrangement")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-toolbar")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "tiles");
+		await expect
+			.element(screen.getByTestId("chat-pane-arrangement-carousel"))
+			.toHaveAttribute("aria-checked", "false");
+		expect(document.querySelector("[data-qa-id='chat-pane-carousel-hint']")).toBeNull();
+
+		await screen.getByTestId("chat-pane-arrangement-carousel").click();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "carousel");
+		await expect
+			.element(screen.getByTestId("chat-pane-arrangement-carousel"))
+			.toHaveAttribute("aria-checked", "true");
+		await screen.getByTestId("chat-pane-toolbar").hover();
+		await screen.getByTestId("chat-pane-arrangement").hover();
+		await expect
+			.poll(() => document.querySelector("[data-slot='tooltip-content']")?.textContent)
+			.toBe("Shift + scroll to pan");
+
+		await screen.getByTestId("chat-pane-arrangement-carousel").click();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "tiles");
+		await expect
+			.element(screen.getByTestId("chat-pane-arrangement-carousel"))
+			.toHaveAttribute("aria-checked", "false");
+	});
+
+	it("expands a pane to fill the canvas without leaving the current arrangement", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await openFirstCanvasPane(screen);
+		const artifact = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		await expect.element(screen.getByTestId("chat-pane-expand-agent:draft")).toBeVisible();
+
+		await screen.getByTestId("chat-pane-arrangement-carousel").click();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "carousel");
+		await screen.getByTestId("kilo-chat-pane-canvas").hover();
+		await expect.element(screen.getByTestId("chat-pane-agent:draft")).toBeVisible();
+		await expect.element(screen.getByTestId(`chat-pane-${artifact.instanceId}`)).toBeVisible();
+
+		await screen.getByTestId(`chat-pane-tab-${artifact.instanceId}`).click({ force: true });
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${artifact.instanceId}`))
+			.toHaveAttribute("aria-selected", "true");
+		const expand = screen.getByTestId(`chat-pane-expand-${artifact.instanceId}`);
+		await expect.element(expand).toBeVisible();
+		await expand.click({ force: true });
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-expanded", "true");
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "carousel");
+		await expect.element(screen.getByTestId(`chat-pane-${artifact.instanceId}`)).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-agent:draft")).not.toBeVisible();
+
+		await screen.getByTestId(`chat-pane-expand-${artifact.instanceId}`).click();
+		await screen.getByTestId("chat-pane-tab-agent:draft").click({ force: true });
+		await expect.element(screen.getByTestId("chat-pane-agent:draft")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-expanded", "false");
+		await expect.element(screen.getByTestId(`chat-pane-${artifact.instanceId}`)).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-carousel-track")).toBeVisible();
+	});
+
+	it("opens a files explorer beside chat when a workspace draft is submitted", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
 		});
-		expect(firstCanvas?.isConnected).toBe(false);
-		await expect.element(screen.getByTestId("test-canvas-panel")).toHaveTextContent("Canvas 2");
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toBeUndefined();
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-agent:draft")).toBeVisible();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toBeVisible();
+		const chatPane = screen.getByTestId("chat-pane-agent:draft").element();
+		const filesPane = screen.getByTestId(`chat-pane-${FILES_EXPLORER_PANE_ID}`).element();
+		expect(chatPane.getBoundingClientRect().left).toBeLessThan(
+			filesPane.getBoundingClientRect().left,
+		);
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toHaveTextContent("workspace-1");
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toHaveAttribute("title", "/projects/workspace-1");
+		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "tiles");
+		const filesPanel = baseElement.querySelector("[data-qa-id='test-files-panel']");
+		expect(filesPanel).not.toBeNull();
+		expect(filesPanel).toHaveAttribute("data-workspace-directory", "/projects/workspace-1");
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toEqual([
+			expect.objectContaining({
+				instanceId: FILES_EXPLORER_PANE_ID,
+				definitionId: FILES_PANE_DEFINITION_ID,
+				title: "workspace-1",
+			}),
+		]);
+	});
+
+	it("opens workspace files into a group beside the files explorer", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toBeVisible();
+
+		useRightPanelStore.getState().openTab(
+			"draft",
+			{ id: FILES_PANE_DEFINITION_ID, title: "Files" },
+			{
+				instanceId: `file:${FILES_EXPLORER_PANE_ID}:/projects/workspace-1/readme.md`,
+				title: "readme.md",
+				metadata: {
+					explorerId: FILES_EXPLORER_PANE_ID,
+					workspaceDirectory: "/projects/workspace-1",
+					relativePath: "readme.md",
+				},
+			},
+		);
+		useRightPanelStore.getState().openTab(
+			"draft",
+			{ id: FILES_PANE_DEFINITION_ID, title: "Files" },
+			{
+				instanceId: `file:${FILES_EXPLORER_PANE_ID}:/projects/workspace-1/notes.md`,
+				title: "notes.md",
+				metadata: {
+					explorerId: FILES_EXPLORER_PANE_ID,
+					workspaceDirectory: "/projects/workspace-1",
+					relativePath: "notes.md",
+				},
+			},
+		);
+
+		await expect
+			.element(
+				screen.getByTestId(
+					`chat-pane-tab-file:${FILES_EXPLORER_PANE_ID}:/projects/workspace-1/readme.md`,
+				),
+			)
+			.toBeVisible();
+		await expect
+			.element(
+				screen.getByTestId(
+					`chat-pane-tab-file:${FILES_EXPLORER_PANE_ID}:/projects/workspace-1/notes.md`,
+				),
+			)
+			.toBeVisible();
+
+		const explorerGroup = baseElement
+			.querySelector(`[data-pane-tab='${FILES_EXPLORER_PANE_ID}']`)
+			?.closest("[data-pane-group-id]");
+		const readmeGroup = baseElement
+			.querySelector(
+				`[data-pane-tab='file:${FILES_EXPLORER_PANE_ID}:/projects/workspace-1/readme.md']`,
+			)
+			?.closest("[data-pane-group-id]");
+		const notesGroup = baseElement
+			.querySelector(
+				`[data-pane-tab='file:${FILES_EXPLORER_PANE_ID}:/projects/workspace-1/notes.md']`,
+			)
+			?.closest("[data-pane-group-id]");
+		expect(readmeGroup).not.toBe(explorerGroup);
+		expect(notesGroup).toBe(readmeGroup);
+		expect(readmeGroup?.querySelectorAll("[data-pane-tab]")).toHaveLength(2);
+	});
+
+	it("groups sequential workspace files even without explorerId metadata", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toBeVisible();
+
+		useRightPanelStore.getState().openTab(
+			"draft",
+			{ id: FILES_PANE_DEFINITION_ID, title: "Files" },
+			{
+				instanceId: "file:/projects/workspace-1/readme.md",
+				title: "readme.md",
+				metadata: {
+					workspaceDirectory: "/projects/workspace-1",
+					relativePath: "readme.md",
+				},
+			},
+		);
+		await expect
+			.element(screen.getByTestId("chat-pane-tab-file:/projects/workspace-1/readme.md"))
+			.toBeVisible();
+
+		useRightPanelStore.getState().openTab(
+			"draft",
+			{ id: FILES_PANE_DEFINITION_ID, title: "Files" },
+			{
+				instanceId: "file:/projects/workspace-1/notes.md",
+				title: "notes.md",
+				metadata: {
+					workspaceDirectory: "/projects/workspace-1",
+					relativePath: "notes.md",
+				},
+			},
+		);
+
+		await expect
+			.element(screen.getByTestId("chat-pane-tab-file:/projects/workspace-1/readme.md"))
+			.toBeVisible();
+		await expect
+			.element(screen.getByTestId("chat-pane-tab-file:/projects/workspace-1/notes.md"))
+			.toBeVisible();
+
+		const explorerGroup = baseElement
+			.querySelector(`[data-pane-tab='${FILES_EXPLORER_PANE_ID}']`)
+			?.closest("[data-pane-group-id]");
+		const readmeGroup = baseElement
+			.querySelector("[data-pane-tab='file:/projects/workspace-1/readme.md']")
+			?.closest("[data-pane-group-id]");
+		const notesGroup = baseElement
+			.querySelector("[data-pane-tab='file:/projects/workspace-1/notes.md']")
+			?.closest("[data-pane-group-id]");
+		expect(readmeGroup).not.toBe(explorerGroup);
+		expect(notesGroup).toBe(readmeGroup);
+		expect(readmeGroup?.querySelectorAll("[data-pane-tab]")).toHaveLength(2);
+	});
+
+	it("opens a second files explorer into the same tab group", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toBeVisible();
+
+		await screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`).click();
+		await clickAddTab(baseElement);
+		await page.getByTestId("chat-pane-add-menu-files.files").click();
+
+		const explorers = useRightPanelStore
+			.getState()
+			.bySessionId.draft!.tabs.filter(
+				(tab) =>
+					tab.definitionId === FILES_PANE_DEFINITION_ID && tab.metadata?.relativePath == null,
+			);
+		expect(explorers).toHaveLength(2);
+		const secondId = explorers.find((tab) => tab.instanceId !== FILES_EXPLORER_PANE_ID)!.instanceId;
+		await expect.element(screen.getByTestId(`chat-pane-tab-${secondId}`)).toBeVisible();
+		const firstGroup = baseElement
+			.querySelector(`[data-pane-tab='${FILES_EXPLORER_PANE_ID}']`)
+			?.closest("[data-pane-group-id]");
+		const secondGroup = baseElement
+			.querySelector(`[data-pane-tab='${secondId}']`)
+			?.closest("[data-pane-group-id]");
+		expect(secondGroup).toBe(firstGroup);
+		expect(firstGroup?.querySelectorAll("[data-pane-tab]")).toHaveLength(2);
+	});
+
+	it("does not open files when submitting an unscoped new chat", async () => {
+		const { baseElement, rerenderChatPage } = renderChatPage({ contributeFiles: true });
+		const screen = page.elementLocator(baseElement);
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-agent:draft")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBeNull();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+	});
+
+	it("does not auto-open files when opening an existing workspace session", async () => {
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		const { baseElement } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-agent:draft")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBeNull();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+	});
+
+	it("returns to the empty chat page when starting a new chat after a workspace submit", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toBeVisible();
+
+		assistantState.current.thread.messages = [];
+		assistantState.current.thread.isEmpty = true;
+		assistantState.current.threadListItem.remoteId = undefined;
+		assistantState.current.threadListItem.status = "new";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='kilo-chat-pane-canvas']")).toBeNull();
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBeNull();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+	});
+
+	it("shows the empty new-chat page when New is pressed from a workspace canvas", async () => {
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.remoteId = "session-1";
+		assistantState.current.threadListItem.status = "regular";
+		useRightPanelStore
+			.getState()
+			.openTab(
+				"session-1",
+				{ id: FILES_PANE_DEFINITION_ID, title: "Files" },
+				{ instanceId: FILES_EXPLORER_PANE_ID },
+			);
+		const { baseElement, rerenderChatPage } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
+			.toBeVisible();
+
+		assistantState.current.thread.messages = [];
+		assistantState.current.thread.isEmpty = true;
+		assistantState.current.threadListItem.status = "new";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='kilo-chat-pane-canvas']")).toBeNull();
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBeNull();
+	});
+
+	it("does not open files when a new chat leaves draft status before the first message", async () => {
+		const { baseElement, rerenderChatPage } = renderChatPage({
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='kilo-chat-pane-canvas']")).toBeNull();
+
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='kilo-chat-pane-canvas']")).toBeNull();
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBeNull();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+	});
+
+	it("opens a files explorer from the plus tab into the current tab group", async () => {
+		const { baseElement } = renderChatPage({ contributeFiles: true });
+		const screen = page.elementLocator(baseElement);
+
+		await openFirstCanvasPane(screen);
+		const canvasTab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		await expect.element(screen.getByTestId(`chat-pane-tab-${canvasTab.instanceId}`)).toBeVisible();
+
+		await clickAddTab(baseElement);
+		await page.getByTestId("chat-pane-add-menu-files.files").click();
+
+		const filesTab = useRightPanelStore
+			.getState()
+			.bySessionId.draft!.tabs.find(
+				(tab) =>
+					tab.definitionId === FILES_PANE_DEFINITION_ID && tab.metadata?.relativePath == null,
+			);
+		expect(filesTab).toBeDefined();
+		await expect.element(screen.getByTestId(`chat-pane-tab-${filesTab!.instanceId}`)).toBeVisible();
+		const canvasGroup = baseElement
+			.querySelector(`[data-pane-tab='${canvasTab.instanceId}']`)
+			?.closest("[data-pane-group-id]");
+		const filesGroup = baseElement
+			.querySelector(`[data-pane-tab='${filesTab!.instanceId}']`)
+			?.closest("[data-pane-group-id]");
+		expect(filesGroup).toBe(canvasGroup);
+		expect(canvasGroup?.querySelectorAll("[data-pane-tab]")).toHaveLength(2);
+	});
+
+	it("opens a contributed pane from the plus tab beside existing tabs", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await openFirstCanvasPane(screen);
+		await expect.element(screen.getByTestId("test-canvas-panel")).toHaveTextContent("Canvas 1");
+		const firstTab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		await expect.element(screen.getByTestId(`chat-pane-tab-${firstTab.instanceId}`)).toBeVisible();
+		await expect.element(page.elementLocator(addTabInActiveGroup(baseElement)!)).toBeVisible();
+
+		await clickAddTab(baseElement);
+		await expect.element(page.getByTestId("chat-pane-add-menu-chat")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("chat-pane-add-menu-canvas.canvas")).toBeVisible();
+		await page.getByTestId("chat-pane-add-menu-canvas.canvas").click();
+		const secondTab = useRightPanelStore.getState().bySessionId.draft!.tabs[1]!;
+		await expect.element(screen.getByTestId(`chat-pane-tab-${secondTab.instanceId}`)).toBeVisible();
+		const firstGroup = baseElement
+			.querySelector(`[data-pane-tab='${firstTab.instanceId}']`)
+			?.closest("[data-pane-group-id]");
+		const secondGroup = baseElement
+			.querySelector(`[data-pane-tab='${secondTab.instanceId}']`)
+			?.closest("[data-pane-group-id]");
+		expect(secondGroup).toBe(firstGroup);
+		expect(firstGroup?.querySelectorAll("[data-pane-tab]")).toHaveLength(2);
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs.map(({ title }) => title)).toEqual(
 			["Canvas 1", "Canvas 2"],
 		);
 
-		await screen.getByTestId(`chat-right-panel-tab-${firstTab.instanceId}`).click();
-		await expect.element(screen.getByTestId("test-canvas-panel")).toHaveTextContent("Canvas 1");
+		await screen.getByTestId(`chat-pane-tab-${firstTab.instanceId}`).click();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${firstTab.instanceId}`))
+			.toHaveAttribute("aria-selected", "true");
 	});
 
-	it("keeps active tab content visible throughout the panel close animation", async () => {
+	it("pops a pane into a window while retaining a focusable tab", async () => {
+		const openPaneWindow = vi.fn(async () => ({ opened: true }));
+		const focusPaneWindow = vi.fn(async () => ({ focused: true }));
+		const dockPaneWindow = vi.fn(async () => ({ docked: true }));
+		const { baseElement } = renderChatPage({
+			shell: { openPaneWindow, focusPaneWindow, dockPaneWindow },
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await openFirstCanvasPane(screen);
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		await screen.getByTestId(`chat-pane-pop-out-tab-${tab.instanceId}`).click();
+
+		expect(openPaneWindow).toHaveBeenCalledWith({
+			pluginId: "kilo-ui",
+			sessionId: "draft",
+			paneId: tab.instanceId,
+			title: tab.title,
+			path: "/plugins/chat",
+			workspaceId: workspace.id,
+		});
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${tab.instanceId}`))
+			.toHaveAttribute("data-popped-out", "true");
+		expect(baseElement.querySelector("[data-qa-id='test-canvas-panel']")).toBeNull();
+
+		await screen.getByTestId(`chat-pane-tab-${tab.instanceId}`).click();
+		expect(focusPaneWindow).toHaveBeenCalledWith({
+			pluginId: "kilo-ui",
+			sessionId: "draft",
+			paneId: tab.instanceId,
+		});
+
+		await screen.getByTestId(`chat-pane-dock-tab-${tab.instanceId}`).click();
+		expect(dockPaneWindow).toHaveBeenCalledWith({
+			pluginId: "kilo-ui",
+			sessionId: "draft",
+			paneId: tab.instanceId,
+		});
+		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
+	});
+
+	it("merges pane window events that arrive while the initial window list is loading", async () => {
+		assistantState.current.threadListItem.status = "regular";
+		useRightPanelStore
+			.getState()
+			.openTab("draft", { id: "canvas.canvas", title: "Canvas" }, { instanceId: "existing-pane" });
+		useRightPanelStore
+			.getState()
+			.openTab("draft", { id: "canvas.canvas", title: "Canvas" }, { instanceId: "live-pane" });
+		let resolveListed!: (value: Awaited<ReturnType<SDK["shell"]["listPaneWindows"]>>) => void;
+		const listed = new Promise<Awaited<ReturnType<SDK["shell"]["listPaneWindows"]>>>((resolve) => {
+			resolveListed = resolve;
+		});
+		let notify!: Parameters<SDK["shell"]["onPaneWindowChanged"]>[0];
+		const { baseElement } = renderChatPage({
+			shell: {
+				listPaneWindows: () => listed,
+				onPaneWindowChanged: (listener) => {
+					notify = listener;
+					return () => {};
+				},
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+		await vi.waitFor(() => expect(notify).toBeTypeOf("function"));
+
+		notify({
+			type: "opened",
+			pluginId: "kilo-ui",
+			sessionId: "draft",
+			paneId: "live-pane",
+		});
+		resolveListed([
+			{
+				pluginId: "kilo-ui",
+				sessionId: "draft",
+				paneId: "existing-pane",
+				title: "Canvas 1",
+				path: "/plugins/chat",
+			},
+		]);
+
+		await expect
+			.element(screen.getByTestId("chat-pane-tab-existing-pane"))
+			.toHaveAttribute("data-popped-out", "true");
+		await expect
+			.element(screen.getByTestId("chat-pane-tab-live-pane"))
+			.toHaveAttribute("data-popped-out", "true");
+	});
+
+	it("shows a notebook in the main canvas when chat is popped out", async () => {
+		assistantState.current.threadListItem.remoteId = "session-1";
+		assistantState.current.threadListItem.status = "regular";
+		const { baseElement, sdk } = renderChatPage({
+			contributeNotebook: true,
+			shell: {
+				openPaneWindow: async () => ({ opened: true }),
+				listPaneWindows: async () => [],
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+		const chatPaneId = "agent:session-1";
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		await screen.getByTestId(`chat-pane-pop-out-tab-${chatPaneId}`).click();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${chatPaneId}`))
+			.toHaveAttribute("data-popped-out", "true");
+		expect(baseElement.querySelector("[data-qa-id='kilo-chat-thread-mock']")).toBeNull();
+
+		sdk.events.emit("chat-pane-tab-opened", {
+			sessionId: "session-1",
+			tab: {
+				instanceId: "nb-1",
+				definitionId: "notebook.notebook",
+				title: "Notebook",
+				ordinal: 1,
+			},
+		});
+
+		await expect.element(screen.getByTestId("test-notebook-panel")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-tab-nb-1")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='test-notebook-panel']")).not.toBeNull();
+	});
+
+	it("labels the chat pane pill with the chat title", async () => {
+		assistantState.current.threadListItem.remoteId = "session-1";
+		assistantState.current.threadListItem.status = "regular";
+		assistantState.current.threadListItem.title = "Refactor breadcrumbs";
+		let setAgent!: (agent: string) => void;
+		function CaptureAgentControls() {
+			setAgent = useChatAgentSelection().setAgent;
+			return null;
+		}
+		const { baseElement } = renderChatPage({ children: <CaptureAgentControls /> });
+		const screen = page.elementLocator(baseElement);
+		const tab = screen.getByTestId("chat-pane-tab-agent:session-1");
+
+		await expect.element(tab).toBeVisible();
+		await expect.element(tab).toHaveTextContent("Refactor breadcrumbs");
+		expect(tab.element()?.textContent).not.toContain("Code");
+		await expect.element(tab).toHaveAttribute("title", "Refactor breadcrumbs");
+		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
+
+		setAgent("plan");
+		await expect.element(tab).toHaveTextContent("Refactor breadcrumbs");
+		expect(tab.element()?.textContent).not.toContain("Plan");
+	});
+
+	it("hides and restores the Chat pane without closing its session", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		const chatPaneId = "agent:draft";
+
+		await openFirstCanvasPane(screen);
+		await screen.getByTestId(`chat-pane-close-tab-${chatPaneId}`).click();
+
+		await expect.element(screen.getByTestId(`chat-pane-tab-${chatPaneId}`)).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
+
+		await clickAddTab(baseElement);
+		await page.getByTestId("chat-pane-add-menu-chat").click();
+
+		await expect.element(screen.getByTestId(`chat-pane-tab-${chatPaneId}`)).toBeVisible();
+		await expect
+			.element(screen.getByTestId(`chat-pane-tab-${chatPaneId}`))
+			.toHaveAttribute("aria-selected", "true");
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+	});
+
+	it("returns to Chat when the last remaining artifact pane is closed", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		const chatPaneId = "agent:draft";
+
+		await openFirstCanvasPane(screen);
+		const artifact = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		await screen.getByTestId(`chat-pane-close-tab-${chatPaneId}`).click();
+		await screen.getByTestId(`chat-pane-close-tab-${artifact.instanceId}`).click();
+
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).not.toBeInTheDocument();
+	});
+
+	it("shows workspace context and passes workspace folders to a detached pane renderer", async () => {
+		assistantState.current.threadListItem.remoteId = "session-1";
+		useRightPanelStore
+			.getState()
+			.openTab("session-1", { id: "canvas.canvas", title: "Detached Canvas" });
+		const tab = useRightPanelStore.getState().bySessionId["session-1"]!.tabs[0]!;
+		const detachedWorkspace = { ...workspace, color: "#34D399" };
+		const { baseElement } = renderChatPage({
+			workspaces: [detachedWorkspace],
+			pageProps: {
+				search: {
+					paneWindow: true,
+					panePluginId: "kilo-ui",
+					paneSessionId: "session-1",
+					paneId: tab.instanceId,
+					paneWorkspaceId: detachedWorkspace.id,
+				},
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		const breadcrumb = screen.getByTestId("detached-pane-breadcrumb");
+		await expect.element(screen.getByText("Workspace 1")).toBeVisible();
+		const breadcrumbElement = breadcrumb.element();
+		expect(breadcrumbElement.textContent).toContain("Workspace 1");
+		expect(breadcrumbElement.textContent).toContain("Detached Canvas");
+		expect(breadcrumbElement.querySelector("svg")?.style.color).toBe("rgb(52, 211, 153)");
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute("data-workspace-directory", "/projects/workspace-1");
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute("data-workspace-folders", "/projects/workspace-1");
+		const detachedContent = baseElement.querySelector(
+			`[data-qa-id='chat-pane-content-${tab.instanceId}']`,
+		);
+		expect(detachedContent?.getBoundingClientRect().height).toBeGreaterThan(100);
+	});
+
+	it("opens a contributed pane from the header launch toolbar", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
-		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
+		await openFirstCanvasPane(screen);
+		await expect.element(screen.getByTestId("chat-pane-toolbar")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-arrangement")).toBeVisible();
 
-		fireEvent.click(baseElement.querySelector('[data-qa-id="chat-right-panel-toggle"]')!);
+		await screen.getByTestId("chat-pane-launch-canvas.canvas").click();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs.map(({ title }) => title)).toEqual(
+			["Canvas 1", "Canvas 2"],
+		);
+	});
 
-		expect(baseElement.querySelector('[data-qa-id="chat-right-panel-empty"]')).toBeNull();
-		expect(baseElement.querySelector('[data-qa-id="test-canvas-panel"]')).not.toBeNull();
+	it("keeps Chat separate in the header toolbar and reveals its existing pane", async () => {
+		assistantState.current.threadListItem.status = "regular";
+		const store = useRightPanelStore.getState();
+		store.openTab("draft", { id: "canvas.canvas", title: "Canvas" });
+		store.openTab("draft", { id: "canvas.canvas", title: "Canvas" });
+		store.setArrangement("draft", "carousel");
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		const track = baseElement.querySelector<HTMLElement>("[data-qa-id='chat-pane-carousel-track']");
+
+		expect(track).toBeTruthy();
+		if (!track) return;
+		await vi.waitFor(() => {
+			expect(track.scrollWidth).toBeGreaterThan(track.clientWidth + 100);
+		});
+
+		const chatControl = screen.getByTestId("chat-pane-toolbar-chat");
+		const addControls = screen.getByTestId("chat-pane-toolbar-add");
+		await expect.element(chatControl).toBeVisible();
+		await expect.element(addControls).toBeVisible();
+		expect(
+			chatControl.element().contains(screen.getByTestId("chat-pane-launch-chat").element()),
+		).toBe(true);
+		expect(
+			addControls
+				.element()
+				.contains(screen.getByTestId("chat-pane-launch-canvas.canvas").element()),
+		).toBe(true);
+
+		await screen.getByTestId("chat-pane-launch-chat").click({ force: true });
+		await expect
+			.element(screen.getByTestId("chat-pane-tab-agent:draft"))
+			.toHaveAttribute("aria-selected", "true");
+		expect(baseElement.querySelectorAll("[data-pane-tab][data-pane-kind='agent']")).toHaveLength(1);
+		await vi.waitFor(() => expect(track.scrollLeft).toBeLessThan(50));
+
+		track.dispatchEvent(
+			new WheelEvent("wheel", { deltaX: 240, deltaY: 0, bubbles: true, cancelable: true }),
+		);
+		track.scrollLeft = track.scrollWidth - track.clientWidth;
+		expect(track.scrollLeft).toBeGreaterThan(100);
+		await screen.getByTestId("chat-pane-launch-chat").click({ force: true });
+		await vi.waitFor(() => expect(track.scrollLeft).toBeLessThan(50));
+	});
+
+	it("offers a Carousel toggle instead of named layout modes", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await openFirstCanvasPane(screen);
+		await expect.element(screen.getByTestId("chat-pane-arrangement")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-arrangement-carousel")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='chat-pane-arrangement-tiles']")).toBeNull();
+		expect(baseElement.querySelector("[data-qa-id='chat-pane-arrangement-tabs']")).toBeNull();
 	});
 
 	it("keeps an inactive dirty contribution mounted", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await openFirstCanvasPane(screen);
 		const firstTab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
 		chatRightPanelCapability.updateTab("draft", firstTab.instanceId, { dirty: true });
 
-		await screen.getByTestId("chat-right-panel-add-tab").click();
-		await screen.getByTestId("chat-right-panel-add-canvas-canvas").click();
+		await launchCanvasFromAddTab(baseElement);
 		await vi.waitFor(() => {
 			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(2);
 		});
 	});
 
-	it("keeps a dirty contribution mounted across panel closure", async () => {
+	it("shows a close dialog and keeps the tab after Save is cancelled", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
-		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
-		const canvas = baseElement.querySelector<HTMLElement>("[data-qa-id='test-canvas-panel']")!;
-		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await vi.waitFor(() => {
-			expect(
-				baseElement.querySelector<HTMLElement>("[data-qa-id='chat-right-panel-slot']")?.style.width,
-			).toBe("0px");
-		});
-		expect(canvas.isConnected).toBe(true);
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		expect(canvas.isConnected).toBe(true);
-	});
-
-	it("keeps a keep-alive contribution mounted across tab switches and panel closure", async () => {
-		const { baseElement } = renderChatPage({ canvasMountPolicy: "keep-alive" });
-		const screen = page.elementLocator(baseElement);
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
-		const firstTab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
-		const firstCanvas = baseElement.querySelector<HTMLElement>("[data-qa-id='test-canvas-panel']")!;
-
-		await screen.getByTestId("chat-right-panel-add-tab").click();
-		await screen.getByTestId("chat-right-panel-add-canvas-canvas").click();
-		await vi.waitFor(() => {
-			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(2);
-		});
-		expect(firstCanvas.isConnected).toBe(true);
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await vi.waitFor(() => {
-			expect(
-				baseElement.querySelector<HTMLElement>("[data-qa-id='chat-right-panel-slot']")?.style.width,
-			).toBe("0px");
-		});
-		expect(firstCanvas.isConnected).toBe(true);
-
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId(`chat-right-panel-tab-${firstTab.instanceId}`).click();
-		expect(firstCanvas.isConnected).toBe(true);
-	});
-
-	it("shows generic dirty state and keeps the tab after Save is cancelled", async () => {
-		const { baseElement } = renderChatPage();
-		const screen = page.elementLocator(baseElement);
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await openFirstCanvasPane(screen);
 		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
 		const save = vi.fn(async () => ({ outcome: "cancelled" as const }));
 		const discard = vi.fn(async () => undefined);
@@ -877,22 +1669,17 @@ describe("ChatPage", () => {
 		});
 		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
 
-		await expect
-			.element(screen.getByTestId(`chat-right-panel-dirty-${tab.instanceId}`))
-			.toBeVisible();
-		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
-		await expect.element(screen.getByTestId("chat-right-panel-close-dialog")).toBeVisible();
+		await screen.getByTestId(`chat-pane-close-tab-${tab.instanceId}`).click();
+		await expect.element(screen.getByTestId("chat-pane-close-dialog")).toBeVisible();
 
-		await screen.getByTestId("chat-right-panel-close-save").click();
+		await screen.getByTestId("chat-pane-close-save").click();
 		await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
-		await expect.element(screen.getByTestId("chat-right-panel-close-dialog")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-close-dialog")).toBeVisible();
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
 
-		await screen.getByTestId("chat-right-panel-close-discard").click();
+		await screen.getByTestId("chat-pane-close-discard").click();
 		await vi.waitFor(() => expect(discard).toHaveBeenCalledOnce());
-		await expect
-			.element(screen.getByTestId("chat-right-panel-close-dialog"))
-			.not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("chat-pane-close-dialog")).not.toBeInTheDocument();
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(0);
 		unregister();
 	});
@@ -900,24 +1687,22 @@ describe("ChatPage", () => {
 	it("offers Discard and Cancel when a dirty tab has no save handler", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await openFirstCanvasPane(screen);
 		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
 		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
 
-		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
+		await screen.getByTestId(`chat-pane-close-tab-${tab.instanceId}`).click();
 
-		await expect.element(screen.getByTestId("chat-right-panel-close-dialog")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-close-save")).not.toBeInTheDocument();
-		await screen.getByTestId("chat-right-panel-close-cancel").click();
+		await expect.element(screen.getByTestId("chat-pane-close-dialog")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-close-save")).not.toBeInTheDocument();
+		await screen.getByTestId("chat-pane-close-cancel").click();
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
 	});
 
 	it("disables close actions while pending and retains the tab after lifecycle failures", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await openFirstCanvasPane(screen);
 		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
 		let resolveSave!: (result: { outcome: "failed"; reason: string }) => void;
 		const save = vi.fn(
@@ -934,22 +1719,22 @@ describe("ChatPage", () => {
 			discard,
 		});
 		chatRightPanelCapability.updateTab("draft", tab.instanceId, { dirty: true });
-		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
+		await screen.getByTestId(`chat-pane-close-tab-${tab.instanceId}`).click();
 
-		await screen.getByTestId("chat-right-panel-close-save").click();
+		await screen.getByTestId("chat-pane-close-save").click();
 		await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
-		await expect.element(screen.getByTestId("chat-right-panel-close-save")).toBeDisabled();
-		await expect.element(screen.getByTestId("chat-right-panel-close-discard")).toBeDisabled();
-		await expect.element(screen.getByTestId("chat-right-panel-close-cancel")).toBeDisabled();
+		await expect.element(screen.getByTestId("chat-pane-close-save")).toBeDisabled();
+		await expect.element(screen.getByTestId("chat-pane-close-discard")).toBeDisabled();
+		await expect.element(screen.getByTestId("chat-pane-close-cancel")).toBeDisabled();
 		resolveSave({ outcome: "failed", reason: "Save failed" });
 
 		await expect
-			.element(screen.getByTestId("chat-right-panel-close-error"))
+			.element(screen.getByTestId("chat-pane-close-error"))
 			.toHaveTextContent("Save failed");
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
-		await screen.getByTestId("chat-right-panel-close-discard").click();
+		await screen.getByTestId("chat-pane-close-discard").click();
 		await expect
-			.element(screen.getByTestId("chat-right-panel-close-error"))
+			.element(screen.getByTestId("chat-pane-close-error"))
 			.toHaveTextContent("Discard cleanup failed");
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1);
 		unregister();
@@ -958,15 +1743,12 @@ describe("ChatPage", () => {
 	it("closes a clean tab without prompting", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await openFirstCanvasPane(screen);
 		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
 
-		await screen.getByTestId(`chat-right-panel-close-tab-${tab.instanceId}`).click();
+		await screen.getByTestId(`chat-pane-close-tab-${tab.instanceId}`).click();
 
-		await expect
-			.element(screen.getByTestId("chat-right-panel-close-dialog"))
-			.not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("chat-pane-close-dialog")).not.toBeInTheDocument();
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(0);
 	});
 
@@ -974,83 +1756,50 @@ describe("ChatPage", () => {
 		const { baseElement, removeCanvasContribution } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await openFirstCanvasPane(screen);
 		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
 
 		removeCanvasContribution();
-		await expect
-			.element(screen.getByTestId("chat-right-panel-contribution-unavailable"))
-			.toBeVisible();
-		expect(baseElement.querySelector("[data-qa-id^='chat-right-panel-close-tab-']")).toBeTruthy();
+		await expect.element(screen.getByTestId("chat-pane-contribution-unavailable")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id^='chat-pane-close-tab-']")).toBeTruthy();
 	});
 
-	it("shows the plan tab when openPlan is called for the session", async () => {
+	it("shows the plan pane when openPlan is called for the session", async () => {
+		assistantState.current.threadListItem.status = "regular";
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
 		useRightPanelStore.getState().openPlan("draft");
 
-		await expect.element(screen.getByTestId("chat-right-panel")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-tab-plan")).toBeVisible();
-		await expect.element(screen.getByTestId("chat-right-panel-plan-empty")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-tab-plan")).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-plan-empty")).toBeVisible();
 	});
 
-	it("maximizes the right panel without unmounting the chat column", async () => {
+	it("keeps the same thread instance when opening an artifact pane", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
 
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await expect.element(screen.getByTestId("kilo-chat-thread")).toBeVisible();
-		const threadBefore = baseElement.querySelector("[data-qa-id='kilo-chat-thread-mock']");
-		const instanceBefore = threadBefore?.getAttribute("data-thread-instance");
-		expect(instanceBefore).toBeTruthy();
-
-		await expect.element(screen.getByTestId("chat-right-panel-resize")).toBeVisible();
-		await screen.getByTestId("chat-right-panel-maximize").click();
-
-		await expect.element(screen.getByTestId("chat-right-panel")).toBeVisible();
-		expect(
-			baseElement
-				.querySelector("[data-qa-id='chat-right-panel']")
-				?.getAttribute("data-right-panel-maximized"),
-		).toBe("true");
-		expect(
-			baseElement
-				.querySelector("[data-qa-id='kilo-chat-thread']")
-				?.getAttribute("data-chat-column-maximized-away"),
-		).toBe("true");
-		await expect.element(screen.getByTestId("chat-right-panel-resize")).not.toBeInTheDocument();
-		expect(
-			baseElement
-				.querySelector("[data-qa-id='kilo-chat-thread-mock']")
-				?.getAttribute("data-thread-instance"),
-		).toBe(instanceBefore);
-	});
-
-	it("keeps the same thread instance when opening the right panel", async () => {
-		const { baseElement } = renderChatPage();
-		const screen = page.elementLocator(baseElement);
-
-		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await openFirstCanvasPane(screen);
 		const instanceBefore = baseElement
 			.querySelector("[data-qa-id='kilo-chat-thread-mock']")
 			?.getAttribute("data-thread-instance");
 		expect(instanceBefore).toBeTruthy();
-		const rendersBefore = threadMount.renderCount;
 
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await expect.element(screen.getByTestId("chat-right-panel")).toBeVisible();
+		await launchCanvasFromAddTab(baseElement);
+		await vi.waitFor(() => {
+			expect(
+				baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']").length,
+			).toBeGreaterThan(1);
+		});
 
 		expect(
 			baseElement
 				.querySelector("[data-qa-id='kilo-chat-thread-mock']")
 				?.getAttribute("data-thread-instance"),
 		).toBe(instanceBefore);
-		expect(threadMount.renderCount).toBe(rendersBefore);
 	});
 
-	it("passes all of the draft chat's workspace folders to right-panel contributions", async () => {
+	it("passes all of the draft chat's workspace folders to pane contributions", async () => {
 		const multiFolderWorkspace: Workspace = {
 			...workspace,
 			folders: [
@@ -1067,8 +1816,7 @@ describe("ChatPage", () => {
 		const { baseElement } = renderChatPage({ workspaces: [multiFolderWorkspace] });
 		const screen = page.elementLocator(baseElement);
 
-		await screen.getByTestId("chat-right-panel-toggle").click();
-		await screen.getByTestId("chat-right-panel-open-canvas-canvas").click();
+		await openFirstCanvasPane(screen);
 
 		await expect
 			.element(screen.getByTestId("test-canvas-panel"))

@@ -20,7 +20,7 @@ export interface ChatRightPanelNotebookTab {
 	readonly active: boolean;
 }
 
-/** Legacy right-panel ids were prefixed before Kilo switched to opaque UUIDs. */
+/** Legacy pane ids were prefixed before Kilo switched to opaque UUIDs. */
 export function notebookIdFromInstanceId(instanceId: string): string {
 	const prefix = `${NOTEBOOK_TAB_DEFINITION_ID}:`;
 	return instanceId.startsWith(prefix) ? instanceId.slice(prefix.length) : instanceId;

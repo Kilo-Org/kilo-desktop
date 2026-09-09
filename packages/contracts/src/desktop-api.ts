@@ -31,6 +31,8 @@ export type InvokeArguments<TChannel extends IpcMethodChannel> =
 		: [input: IpcMethodInput<TChannel>];
 
 export interface DesktopApi {
+	/** Renderer role derived from BrowserWindow additionalArguments by the preload. */
+	readonly windowRole: "main" | "pane";
 	/** Preload-only resolver for Electron's opaque dropped File objects. */
 	getPathForFile(file: File): string | null;
 	invoke<TChannel extends IpcMethodChannel>(

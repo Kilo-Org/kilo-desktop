@@ -2,7 +2,6 @@ import {
 	AlertTriangleIcon,
 	Code2Icon,
 	EyeIcon,
-	FolderTreeIcon,
 	ImageIcon,
 	LoaderCircleIcon,
 	NotebookIcon,
@@ -10,15 +9,7 @@ import {
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery } from "@tanstack/react-query";
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	type KeyboardEvent as ReactKeyboardEvent,
-	type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -49,21 +40,17 @@ import { type FileReadResult, type FilesServiceContract } from "../../contracts/
 import { FileEditor, FilesEditProvider } from "./document/FileEditor.js";
 import { useFileSession } from "./document/file-session.js";
 import { FilesTree, type FilesWorkspaceFolder } from "./explorer/FilesTree.js";
+import { explorerRootTitle } from "./explorer/explorer-title.js";
 import {
 	ExternalEditorActions,
 	useExternalEditorActions,
 } from "./external-editors/ExternalEditorActions.js";
 import type { ChatRightPanelCapabilities } from "./integrations/chat-right-panel.js";
+import { openWorkspaceFile } from "./integrations/file-viewer.js";
 import { isNotebookFile, openNotebookFile } from "./integrations/notebook-viewer.js";
 import { MarkdownPreview } from "./markdown/MarkdownPreview.js";
 
 import "./files.css";
-
-const EXPLORER_STORAGE_KEY = "files.explorerOpen";
-const EXPLORER_WIDTH_STORAGE_KEY = "files.explorerWidth";
-const EXPLORER_MIN_WIDTH = 176;
-const VIEWER_MIN_WIDTH = 176;
-const NUMBERED_FILES_TAB_TITLE = /^Files \d+$/u;
 
 export interface FilesViewProps {
 	readonly sessionId: string;
@@ -82,31 +69,6 @@ function errorMessage(error: unknown): string {
 
 function basename(relativePath: string): string {
 	return relativePath.split("/").at(-1) ?? relativePath;
-}
-
-function initialExplorerOpen(): boolean {
-	try {
-		return localStorage.getItem(EXPLORER_STORAGE_KEY) !== "false";
-	} catch {
-		return true;
-	}
-}
-
-function initialExplorerWidth(): number | null {
-	try {
-		const stored = Number(localStorage.getItem(EXPLORER_WIDTH_STORAGE_KEY));
-		return Number.isFinite(stored) && stored >= EXPLORER_MIN_WIDTH ? stored : null;
-	} catch {
-		return null;
-	}
-}
-
-function persistExplorerWidth(width: number): void {
-	try {
-		localStorage.setItem(EXPLORER_WIDTH_STORAGE_KEY, String(Math.round(width)));
-	} catch {
-		// Persistence failure does not block resizing in memory.
-	}
 }
 
 function isMarkdown(relativePath: string): boolean {
@@ -189,14 +151,6 @@ export function FilesView({
 			: undefined;
 	const [notebookOpenError, setNotebookOpenError] = useState<string | null>(null);
 	const [notebookOpening, setNotebookOpening] = useState(false);
-	const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
-	const [explorerWidth, setExplorerWidth] = useState<number | null>(initialExplorerWidth);
-	const [deferWorkspaceList, setDeferWorkspaceList] = useState(
-		() =>
-			Boolean(metadata?.relativePath) &&
-			Boolean(initialRequestedWorkspaceDirectory) &&
-			workspaceFolders.some((folder) => folder.path === initialRequestedWorkspaceDirectory),
-	);
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
@@ -252,9 +206,6 @@ export function FilesView({
 	});
 	const [attachedEditor, setAttachedEditor] = useState<Editor<undefined> | null>(null);
 	const handledFileRequestRef = useRef<string | null>(null);
-	const splitPaneRef = useRef<HTMLDivElement>(null);
-	const explorerPaneRef = useRef<HTMLElement>(null);
-	const resizeCleanupRef = useRef<(() => void) | null>(null);
 	const editorOptions = useMemo<EditorOptions<undefined>>(
 		() => ({
 			persistState: true,
@@ -311,7 +262,6 @@ export function FilesView({
 					metadata: nextMetadata,
 				});
 			}
-			if (outcome !== "superseded") setDeferWorkspaceList(false);
 		},
 		[activeWorkspaceDirectory, instanceId, openDocument, panel, sessionId],
 	);
@@ -346,12 +296,25 @@ export function FilesView({
 		setSelectionSyncVersion((value) => value + 1);
 	}, []);
 
-	const requestOpenFile = useCallback(
+	const openFileFromTree = useCallback(
 		(relativePath: string) => {
-			if (relativePath === selectedPath) return;
-			requestAction(() => openFileNow(relativePath));
+			if (!activeWorkspaceDirectory) return;
+			const explorerId = metadata?.explorerId ?? (!metadata?.relativePath ? instanceId : undefined);
+			openWorkspaceFile(sdk, {
+				sessionId,
+				workspaceDirectory: activeWorkspaceDirectory,
+				relativePath,
+				...(explorerId ? { explorerId } : {}),
+			});
 		},
-		[openFileNow, requestAction, selectedPath],
+		[
+			activeWorkspaceDirectory,
+			instanceId,
+			metadata?.explorerId,
+			metadata?.relativePath,
+			sdk,
+			sessionId,
+		],
 	);
 
 	const selectWorkspaceFolder = useCallback(
@@ -360,66 +323,6 @@ export function FilesView({
 			resetDocument();
 		},
 		[resetDocument],
-	);
-
-	const clampExplorerWidth = useCallback((width: number) => {
-		const splitWidth = splitPaneRef.current?.getBoundingClientRect().width ?? 900;
-		const maximum = Math.max(EXPLORER_MIN_WIDTH, splitWidth - VIEWER_MIN_WIDTH);
-		return Math.max(EXPLORER_MIN_WIDTH, Math.min(maximum, width));
-	}, []);
-
-	const handleExplorerResizePointerDown = useCallback(
-		(event: ReactPointerEvent<HTMLDivElement>) => {
-			const explorer = explorerPaneRef.current;
-			if (!explorer) return;
-			event.preventDefault();
-			resizeCleanupRef.current?.();
-
-			const startX = event.clientX;
-			const startWidth = explorer.getBoundingClientRect().width;
-			let latestWidth = startWidth;
-			const previousCursor = document.body.style.cursor;
-			const previousUserSelect = document.body.style.userSelect;
-			document.body.style.cursor = "col-resize";
-			document.body.style.userSelect = "none";
-
-			const cleanup = () => {
-				window.removeEventListener("pointermove", onMove);
-				window.removeEventListener("pointerup", onEnd);
-				window.removeEventListener("pointercancel", onEnd);
-				document.body.style.cursor = previousCursor;
-				document.body.style.userSelect = previousUserSelect;
-				resizeCleanupRef.current = null;
-			};
-			const onMove = (moveEvent: PointerEvent) => {
-				latestWidth = clampExplorerWidth(startWidth + startX - moveEvent.clientX);
-				setExplorerWidth(latestWidth);
-			};
-			const onEnd = () => {
-				cleanup();
-				persistExplorerWidth(latestWidth);
-			};
-
-			window.addEventListener("pointermove", onMove);
-			window.addEventListener("pointerup", onEnd);
-			window.addEventListener("pointercancel", onEnd);
-			resizeCleanupRef.current = cleanup;
-		},
-		[clampExplorerWidth],
-	);
-
-	const handleExplorerResizeKeyDown = useCallback(
-		(event: ReactKeyboardEvent<HTMLDivElement>) => {
-			const delta = event.key === "ArrowLeft" ? 16 : event.key === "ArrowRight" ? -16 : null;
-			if (delta === null) return;
-			const currentWidth = explorerPaneRef.current?.getBoundingClientRect().width;
-			if (currentWidth === undefined) return;
-			event.preventDefault();
-			const nextWidth = clampExplorerWidth(currentWidth + delta);
-			setExplorerWidth(nextWidth);
-			persistExplorerWidth(nextWidth);
-		},
-		[clampExplorerWidth],
 	);
 
 	useEffect(() => {
@@ -451,10 +354,9 @@ export function FilesView({
 		workspaceFolders,
 	]);
 
-	const showExplorer = explorerOpen || selectedPath === null;
+	const explorerOnly = !metadata?.relativePath;
 	const workspaceListDirectory = activeWorkspaceDirectory ?? "";
-	const shouldLoadWorkspaceList =
-		Boolean(activeWorkspaceDirectory) && showExplorer && !deferWorkspaceList;
+	const shouldLoadWorkspaceList = Boolean(activeWorkspaceDirectory) && explorerOnly;
 	const workspaceListQuery = useQuery({
 		queryKey: [sdk.featureId, "workspace-list", workspaceListDirectory],
 		queryFn: () =>
@@ -468,18 +370,39 @@ export function FilesView({
 	const paths = workspaceListQuery.data?.paths ?? [];
 	const listTruncated = workspaceListQuery.data?.truncated ?? false;
 	const listLoading =
-		Boolean(activeWorkspaceDirectory) &&
-		showExplorer &&
-		(deferWorkspaceList || workspaceListQuery.isPending);
+		Boolean(activeWorkspaceDirectory) && explorerOnly && workspaceListQuery.isPending;
 	const listError = workspaceListQuery.error ? errorMessage(workspaceListQuery.error) : null;
 
 	useEffect(() => {
-		if (NUMBERED_FILES_TAB_TITLE.test(title)) {
-			panel?.updateTab(sessionId, instanceId, { title: "Files" });
+		if (!explorerOnly) return;
+		const nextTitle = explorerRootTitle(activeWorkspaceDirectory, workspaceFolders);
+		if (
+			title === nextTitle &&
+			metadata?.workspaceDirectory === (activeWorkspaceDirectory ?? metadata?.workspaceDirectory)
+		) {
+			return;
 		}
-	}, [instanceId, panel, sessionId, title]);
-
-	useEffect(() => () => resizeCleanupRef.current?.(), []);
+		panel?.updateTab(sessionId, instanceId, {
+			title: nextTitle,
+			...(activeWorkspaceDirectory
+				? {
+						metadata: {
+							...metadata,
+							workspaceDirectory: activeWorkspaceDirectory,
+						},
+					}
+				: {}),
+		});
+	}, [
+		activeWorkspaceDirectory,
+		explorerOnly,
+		instanceId,
+		metadata,
+		panel,
+		sessionId,
+		title,
+		workspaceFolders,
+	]);
 
 	useEffect(() => sdk.theme.subscribe(setTheme), [sdk]);
 
@@ -576,7 +499,6 @@ export function FilesView({
 	}
 
 	const markdownToggleLabel = renderMarkdown ? "Show Markdown source" : "Show rendered Markdown";
-	const explorerToggleLabel = showExplorer ? "Hide file list" : "Show file list";
 	return (
 		<FilesEditProvider>
 			<div
@@ -649,38 +571,6 @@ export function FilesView({
 								</Tooltip>
 							</TooltipProvider>
 						) : null}
-						<TooltipProvider>
-							<Tooltip disableHoverablePopup>
-								<TooltipTrigger
-									render={
-										<Button
-											aria-label={explorerToggleLabel}
-											aria-pressed={showExplorer}
-											className={
-												showExplorer ? "bg-foreground/5 text-foreground" : "text-muted-foreground"
-											}
-											data-qa-id="files-tree-toggle"
-											onClick={() => {
-												setExplorerOpen((value) => {
-													const next = !value;
-													try {
-														localStorage.setItem(EXPLORER_STORAGE_KEY, String(next));
-													} catch {
-														// Persistence failure does not block the in-memory toggle.
-													}
-													return next;
-												});
-											}}
-											size="icon-sm"
-											variant="ghost"
-										/>
-									}
-								>
-									<FolderTreeIcon />
-								</TooltipTrigger>
-								<TooltipContent side="bottom">{explorerToggleLabel}</TooltipContent>
-							</Tooltip>
-						</TooltipProvider>
 					</div>
 				) : null}
 
@@ -702,8 +592,31 @@ export function FilesView({
 					</div>
 				) : null}
 
-				<div ref={splitPaneRef} className="relative flex min-h-0 flex-1 overflow-hidden">
-					{selectedPath ? (
+				<div className="relative flex min-h-0 flex-1 overflow-hidden">
+					{explorerOnly ? (
+						<aside className="files-explorer-pane relative flex min-h-0 min-w-0 flex-1">
+							<FilesTree
+								activePath={selectedPath}
+								error={listError}
+								loading={listLoading}
+								onOpenFile={openFileFromTree}
+								onRefresh={() =>
+									requestAction(async () => {
+										await workspaceListQuery.refetch();
+									})
+								}
+								onSelectWorkspaceFolder={(directory) =>
+									requestAction(() => selectWorkspaceFolder(directory))
+								}
+								paths={paths}
+								sdk={sdk}
+								selectionSyncVersion={selectionSyncVersion}
+								truncated={listTruncated}
+								workspaceDirectory={activeWorkspaceDirectory}
+								workspaceFolders={workspaceFolders}
+							/>
+						</aside>
+					) : (
 						<div className="flex min-w-0 flex-1 flex-col" data-qa-id="files-viewer-pane">
 							{fileLoading ? (
 								<div
@@ -756,7 +669,7 @@ export function FilesView({
 								renderMarkdown && isMarkdown(selectedPath) ? (
 									<MarkdownPreview
 										contents={draft}
-										onOpenFile={requestOpenFile}
+										onOpenFile={openFileFromTree}
 										read={readForMarkdown}
 										relativePath={selectedPath}
 										workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
@@ -798,64 +711,7 @@ export function FilesView({
 								</div>
 							) : null}
 						</div>
-					) : null}
-					{showExplorer ? (
-						<aside
-							ref={explorerPaneRef}
-							className={
-								selectedPath
-									? "files-explorer-pane relative flex min-h-0 w-[min(22rem,46%)] min-w-64 shrink-0 border-l"
-									: "files-explorer-pane relative flex min-h-0 min-w-0 flex-1"
-							}
-							style={
-								selectedPath && explorerWidth !== null
-									? {
-											width: explorerWidth,
-											minWidth: EXPLORER_MIN_WIDTH,
-											maxWidth: `calc(100% - ${String(VIEWER_MIN_WIDTH)}px)`,
-										}
-									: undefined
-							}
-						>
-							{selectedPath ? (
-								<div
-									aria-label="Resize file explorer"
-									aria-orientation="vertical"
-									className="group absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize touch-none select-none"
-									data-qa-id="files-explorer-resize-handle"
-									onKeyDown={handleExplorerResizeKeyDown}
-									onPointerDown={handleExplorerResizePointerDown}
-									role="separator"
-									tabIndex={0}
-								>
-									<span
-										aria-hidden
-										className="group-hover:bg-ring/70 group-active:bg-ring pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors"
-									/>
-								</div>
-							) : null}
-							<FilesTree
-								activePath={selectedPath}
-								error={listError}
-								loading={listLoading}
-								onOpenFile={requestOpenFile}
-								onRefresh={() =>
-									requestAction(async () => {
-										await workspaceListQuery.refetch();
-									})
-								}
-								onSelectWorkspaceFolder={(directory) =>
-									requestAction(() => selectWorkspaceFolder(directory))
-								}
-								paths={paths}
-								sdk={sdk}
-								selectionSyncVersion={selectionSyncVersion}
-								truncated={listTruncated}
-								workspaceDirectory={activeWorkspaceDirectory}
-								workspaceFolders={workspaceFolders}
-							/>
-						</aside>
-					) : null}
+					)}
 				</div>
 
 				<Dialog

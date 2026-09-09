@@ -216,7 +216,7 @@ describe("PlanCard", () => {
 		);
 	});
 
-	it("opens the plan right-panel tab from View Plan with this card's anchor", async () => {
+	it("opens the plan pane from View Plan with this card's anchor", async () => {
 		const { baseElement } = renderPlanCard({
 			status: "ready",
 			path: ".kilo/plans/ship.md",
@@ -229,7 +229,6 @@ describe("PlanCard", () => {
 		await screen.getByTestId("kilo-plan-view").click();
 
 		const state = useRightPanelStore.getState().bySessionId["session-plan"];
-		expect(state?.isOpen).toBe(true);
 		expect(state?.activeTabId).toBe("plan");
 		expect(state?.tabs).toEqual([
 			{ instanceId: "plan", definitionId: "kilo-ui.plan", title: "Plan", ordinal: null },

@@ -47,6 +47,7 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+const SIDEBAR_HOVER_CLOSE_DELAY_MS = 200;
 
 type SidebarContextProps = {
 	state: "expanded" | "collapsed";
@@ -57,12 +58,24 @@ type SidebarContextProps = {
 	isMobile: boolean;
 	toggleSidebar: () => void;
 	progress: MotionValue<number>;
+	transientOpen: boolean;
+	setTransientOpen: (open: boolean) => void;
+	cancelTransientClose: () => void;
+	scheduleTransientClose: () => void;
+	panelProgress: MotionValue<number>;
 	width: number;
 	setWidth: (width: number) => void;
 	widthPx: MotionValue<number>;
 };
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
+
+function isSidebarHoverTarget(target: EventTarget | null): boolean {
+	return (
+		target instanceof Element &&
+		target.closest('[data-sidebar="sidebar"], [data-sidebar="trigger"]') !== null
+	);
+}
 
 function useSidebar() {
 	const context = React.useContext(SidebarContext);
@@ -77,6 +90,7 @@ function SidebarProvider({
 	defaultOpen = true,
 	open: openProp,
 	onOpenChange: setOpenProp,
+	hoverReveal = false,
 	className,
 	style,
 	children,
@@ -85,6 +99,7 @@ function SidebarProvider({
 	defaultOpen?: boolean;
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
+	hoverReveal?: boolean;
 }) {
 	const isMobile = false;
 	const [openMobile, setOpenMobile] = React.useState(false);
@@ -94,7 +109,17 @@ function SidebarProvider({
 	// We use openProp and setOpenProp for control from outside the component.
 	const [_open, _setOpen] = React.useState(defaultOpen);
 	const open = openProp ?? _open;
+	// Persistent progress reserves layout space. Panel progress can reveal the
+	// collapsed sidebar over the page without moving the page underneath it.
 	const progress = useMotionValue(open ? 1 : 0);
+	const [transientOpen, _setTransientOpen] = React.useState(false);
+	const panelProgress = useMotionValue(open ? 1 : 0);
+	const transientCloseTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	const cancelTransientClose = React.useCallback(() => {
+		if (transientCloseTimer.current === null) return;
+		clearTimeout(transientCloseTimer.current);
+		transientCloseTimer.current = null;
+	}, []);
 	// Expanded width is independent of open/collapsed. Drag the rail to change
 	// it; collapse still animates from this value. localStorage restores it.
 	const [width, _setWidth] = React.useState(readStoredSidebarWidth);
@@ -110,11 +135,13 @@ function SidebarProvider({
 	const setOpen = React.useCallback(
 		(value: boolean | ((value: boolean) => boolean)) => {
 			const openState = typeof value === "function" ? value(open) : value;
+			cancelTransientClose();
 			if (setOpenProp) {
 				setOpenProp(openState);
 			} else {
 				_setOpen(openState);
 			}
+			_setTransientOpen(false);
 
 			// This sets the cookie to keep the sidebar state.
 			document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
@@ -123,9 +150,36 @@ function SidebarProvider({
 				openState ? 1 : 0,
 				reduceMotion ? SHELL_LAYOUT_SNAP : SHELL_LAYOUT_SPRING,
 			);
+			void animate(
+				panelProgress,
+				openState ? 1 : 0,
+				reduceMotion ? SHELL_LAYOUT_SNAP : SHELL_LAYOUT_SPRING,
+			);
 		},
-		[setOpenProp, open, progress, reduceMotion],
+		[cancelTransientClose, setOpenProp, open, progress, panelProgress, reduceMotion],
 	);
+	const setTransientOpen = React.useCallback(
+		(value: boolean) => {
+			const next = hoverReveal && !open && value;
+			_setTransientOpen(next);
+			void animate(
+				panelProgress,
+				open || next ? 1 : 0,
+				reduceMotion ? SHELL_LAYOUT_SNAP : SHELL_LAYOUT_SPRING,
+			);
+		},
+		[hoverReveal, open, panelProgress, reduceMotion],
+	);
+	const scheduleTransientClose = React.useCallback(() => {
+		if (open) return;
+		cancelTransientClose();
+		transientCloseTimer.current = setTimeout(() => {
+			transientCloseTimer.current = null;
+			setTransientOpen(false);
+		}, SIDEBAR_HOVER_CLOSE_DELAY_MS);
+	}, [cancelTransientClose, open, setTransientOpen]);
+
+	React.useEffect(() => cancelTransientClose, [cancelTransientClose]);
 
 	// Helper to toggle the sidebar.
 	const toggleSidebar = React.useCallback(() => {
@@ -159,6 +213,11 @@ function SidebarProvider({
 			setOpenMobile,
 			toggleSidebar,
 			progress,
+			transientOpen,
+			setTransientOpen,
+			cancelTransientClose,
+			scheduleTransientClose,
+			panelProgress,
 			width,
 			setWidth,
 			widthPx,
@@ -172,6 +231,11 @@ function SidebarProvider({
 			setOpenMobile,
 			toggleSidebar,
 			progress,
+			transientOpen,
+			setTransientOpen,
+			cancelTransientClose,
+			scheduleTransientClose,
+			panelProgress,
 			width,
 			setWidth,
 			widthPx,
@@ -208,19 +272,34 @@ function Sidebar({
 	className,
 	children,
 	dir,
+	onClickCapture,
+	onPointerEnter,
+	onPointerLeave,
 	...props
 }: React.ComponentProps<"div"> & {
 	side?: "left" | "right";
 	variant?: "sidebar" | "floating" | "inset";
 	collapsible?: "offcanvas" | "icon" | "none";
 }) {
-	const { isMobile, state, openMobile, setOpenMobile, progress, widthPx } = useSidebar();
+	const {
+		isMobile,
+		state,
+		openMobile,
+		setOpenMobile,
+		progress,
+		transientOpen,
+		setTransientOpen,
+		cancelTransientClose,
+		scheduleTransientClose,
+		panelProgress,
+		widthPx,
+	} = useSidebar();
 	const gapWidth = useTransform(
 		[progress, widthPx],
 		([nextProgress, nextWidth]) => (nextWidth as number) * (nextProgress as number),
 	);
 	const offcanvasOffset = useTransform(
-		[progress, widthPx],
+		[panelProgress, widthPx],
 		([nextProgress, nextWidth]) => -(nextWidth as number) * (1 - (nextProgress as number)),
 	);
 
@@ -273,6 +352,7 @@ function Sidebar({
 			data-variant={variant}
 			data-side={side}
 			data-slot="sidebar"
+			data-transient={transientOpen || undefined}
 		>
 			<motion.div
 				data-slot="sidebar-gap"
@@ -284,7 +364,7 @@ function Sidebar({
 				data-side={side}
 				style={side === "left" ? { left: offcanvasOffset } : { right: offcanvasOffset }}
 				className={cn(
-					"fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width)",
+					"fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width) group-data-[transient=true]:z-40",
 					variant === "floating" || variant === "inset"
 						? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
 						: "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
@@ -295,6 +375,31 @@ function Sidebar({
 					data-sidebar="sidebar"
 					data-slot="sidebar-inner"
 					className="bg-sidebar group-data-[variant=floating]:ring-sidebar-border flex size-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1"
+					onPointerEnter={(event) => {
+						onPointerEnter?.(event);
+						if (!event.defaultPrevented) {
+							cancelTransientClose();
+							setTransientOpen(true);
+						}
+					}}
+					onPointerLeave={(event) => {
+						onPointerLeave?.(event);
+						if (!event.defaultPrevented && !isSidebarHoverTarget(event.relatedTarget)) {
+							scheduleTransientClose();
+						}
+					}}
+					onClickCapture={(event) => {
+						onClickCapture?.(event);
+						const target = event.target;
+						if (
+							target instanceof Element &&
+							(target.closest("a[href]") !== null ||
+								target.closest("[data-sidebar-select]") !== null)
+						) {
+							cancelTransientClose();
+							setTransientOpen(false);
+						}
+					}}
 					{...props}
 				>
 					{children}
@@ -305,8 +410,15 @@ function Sidebar({
 	);
 }
 
-function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
-	const { toggleSidebar } = useSidebar();
+function SidebarTrigger({
+	className,
+	onClick,
+	onPointerEnter,
+	onPointerLeave,
+	...props
+}: React.ComponentProps<typeof Button>) {
+	const { toggleSidebar, setTransientOpen, cancelTransientClose, scheduleTransientClose } =
+		useSidebar();
 
 	return (
 		<Button
@@ -315,6 +427,19 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 			variant="ghost"
 			size="icon-sm"
 			className={cn(className)}
+			onPointerEnter={(event) => {
+				onPointerEnter?.(event);
+				if (!event.defaultPrevented) {
+					cancelTransientClose();
+					setTransientOpen(true);
+				}
+			}}
+			onPointerLeave={(event) => {
+				onPointerLeave?.(event);
+				if (!event.defaultPrevented && !isSidebarHoverTarget(event.relatedTarget)) {
+					scheduleTransientClose();
+				}
+			}}
 			onClick={(event) => {
 				onClick?.(event);
 				toggleSidebar();

@@ -89,7 +89,7 @@ export function nteractSrc(instanceId: string): string | undefined {
 	);
 }
 
-/** Context supplied by Kilo's `chat-right-panel-tab` extension point. */
+/** Context supplied by Kilo's contributed chat-pane extension point. */
 export interface NotebookViewProps {
 	readonly sessionId: string;
 	readonly instanceId: string;

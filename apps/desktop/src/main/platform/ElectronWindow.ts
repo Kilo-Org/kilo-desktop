@@ -7,11 +7,12 @@ import {
 	ipcEvents,
 	type IpcEventChannel,
 	type IpcEventPayload,
+	type PaneWindow,
 	type ThemeChromeColors,
 	windowBackgroundFor,
 } from "@anaconda-agentic-desktop/contracts";
 
-import { getDesktopUrl } from "./ElectronProtocol.js";
+import { getDesktopRouteUrl, getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
 
@@ -20,8 +21,22 @@ const TITLEBAR_HEIGHT = 48;
 const TITLEBAR_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1;
 const TRAFFIC_LIGHT_SIZE = 14;
 
+type PaneWindowRecord = {
+	descriptor: PaneWindow;
+	window: BrowserWindow;
+	ready: boolean;
+};
+
+/**
+ * Owns the main BrowserWindow and session-scoped pane windows. Pane windows
+ * remain keyed by plugin/session/pane identity, are hidden when their session
+ * is inactive, and emit one lifecycle event whenever native window state
+ * changes so renderer tabs remain the source of navigation truth.
+ */
 export class ElectronWindow {
 	#mainWindow: BrowserWindow | undefined;
+	readonly #paneWindows = new Map<string, PaneWindowRecord>();
+	readonly #activePaneSessions = new Map<string, string | null>();
 
 	constructor(
 		private readonly electronShell: ElectronShell,
@@ -35,30 +50,9 @@ export class ElectronWindow {
 		/** When true, the window is not shown on ready-to-show. Use `reveal()` to show it. */
 		readonly deferShow?: boolean;
 	}): BrowserWindow {
-		const chrome = chromeFor(this.shouldUseDarkColors());
-		const appName = app.getName();
-		const window = new BrowserWindow({
-			title: appName,
-			name: appName,
-			width: 1280,
-			height: 860,
-			minWidth: 720,
-			minHeight: 520,
+		const window = this.#createWindow(input.preloadPath, {
 			windowStatePersistence: true,
-			show: false,
-			backgroundColor: windowBackgroundFor(this.shouldUseDarkColors()),
-			...systemMaterialOptions(),
-			...(process.platform === "linux" ? { icon: linuxWindowIcon() } : {}),
-			...titleBarOptions(chrome),
 			...input.options,
-			webPreferences: {
-				preload: input.preloadPath ?? path.join(import.meta.dirname, "preload.js"),
-				sandbox: true,
-				contextIsolation: true,
-				nodeIntegration: false,
-				webviewTag: false,
-				...input.options?.webPreferences,
-			},
 		});
 
 		this.#mainWindow = window;
@@ -66,19 +60,120 @@ export class ElectronWindow {
 			window.once("ready-to-show", () => window.show());
 		}
 		window.on("closed", () => {
-			if (this.#mainWindow === window) this.#mainWindow = undefined;
+			if (this.#mainWindow !== window) return;
+			this.#mainWindow = undefined;
+			for (const record of this.#paneWindows.values()) record.window.close();
 		});
-		window.webContents.setWindowOpenHandler(({ url }) => {
-			void this.electronShell.openExternal(url);
-			return { action: "deny" };
-		});
-		window.webContents.on("will-navigate", (event, url) => {
-			if (isTrustedRendererUrl(url)) return;
-			event.preventDefault();
-			void this.electronShell.openExternal(url);
-		});
+		window.on("hide", () => this.#hidePaneWindows());
+		window.on("minimize", () => this.#hidePaneWindows());
+		window.on("show", () => this.#refreshPaneWindows());
+		window.on("restore", () => this.#refreshPaneWindows());
 		void window.loadURL(getDesktopUrl(input.isDevelopment));
 		return window;
+	}
+
+	openPaneWindow(descriptor: PaneWindow, isDevelopment: boolean): { opened: boolean } {
+		const key = paneWindowKey(descriptor);
+		const existing = this.#paneWindows.get(key);
+		if (existing && !existing.window.isDestroyed()) {
+			this.reveal(existing.window);
+			return { opened: false };
+		}
+
+		const window = this.#createWindow(undefined, {
+			title: descriptor.title,
+			name: paneWindowName(descriptor),
+			width: 960,
+			height: 720,
+			minWidth: 480,
+			minHeight: 360,
+			webPreferences: {
+				additionalArguments: ["--anaconda-window-role=pane"],
+			},
+		});
+		const record: PaneWindowRecord = { descriptor, window, ready: false };
+		this.#paneWindows.set(key, record);
+
+		window.once("ready-to-show", () => {
+			record.ready = true;
+			if (!this.#isPaneSessionActive(descriptor) || !this.main?.isVisible()) return;
+			window.show();
+			window.focus();
+		});
+		window.on("focus", () => this.#emitPaneWindowEvent(record, "focused"));
+		window.on("blur", () => this.#emitPaneWindowEvent(record, "blurred"));
+		window.on("closed", () => {
+			if (this.#paneWindows.get(key) !== record) return;
+			this.#paneWindows.delete(key);
+			this.#emitPaneWindowEvent(record, "docked");
+		});
+		void window.loadURL(
+			getDesktopRouteUrl(isDevelopment, descriptor.path, {
+				paneWindow: "true",
+				panePluginId: descriptor.pluginId,
+				paneSessionId: descriptor.sessionId,
+				paneId: descriptor.paneId,
+				...(descriptor.workspaceId ? { paneWorkspaceId: descriptor.workspaceId } : {}),
+			}),
+		);
+		this.#emitPaneWindowEvent(record, "opened");
+		return { opened: true };
+	}
+
+	listPaneWindows(pluginId: string): PaneWindow[] {
+		return [...this.#paneWindows.values()]
+			.filter((record) => record.descriptor.pluginId === pluginId && !record.window.isDestroyed())
+			.map((record) => record.descriptor);
+	}
+
+	focusPaneWindow(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): {
+		focused: boolean;
+	} {
+		const record = this.#paneWindows.get(paneWindowKey(identity));
+		if (!record || record.window.isDestroyed()) return { focused: false };
+		this.reveal(record.window);
+		return { focused: true };
+	}
+
+	dockPaneWindow(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): {
+		docked: boolean;
+	} {
+		const record = this.#paneWindows.get(paneWindowKey(identity));
+		if (!record || record.window.isDestroyed()) return { docked: false };
+		record.window.close();
+		return { docked: true };
+	}
+
+	syncPaneWindows(pluginId: string, activeSessionId: string | null): void {
+		this.#activePaneSessions.set(pluginId, activeSessionId);
+		this.#refreshPaneWindows(pluginId);
+	}
+
+	#hidePaneWindows(): void {
+		for (const record of this.#paneWindows.values()) {
+			if (!record.window.isDestroyed() && record.window.isVisible()) record.window.hide();
+		}
+	}
+
+	#refreshPaneWindows(pluginId?: string): void {
+		for (const record of this.#paneWindows.values()) {
+			if (
+				(pluginId && record.descriptor.pluginId !== pluginId) ||
+				!record.ready ||
+				record.window.isDestroyed()
+			) {
+				continue;
+			}
+			const activeSessionId = this.#activePaneSessions.get(record.descriptor.pluginId);
+			if (
+				(activeSessionId === undefined || record.descriptor.sessionId === activeSessionId) &&
+				this.main?.isVisible()
+			) {
+				if (!record.window.isVisible()) record.window.showInactive();
+				continue;
+			}
+			if (record.window.isVisible()) record.window.hide();
+		}
 	}
 
 	/**
@@ -169,12 +264,76 @@ export class ElectronWindow {
 
 	destroyAll(): void {
 		for (const window of this.liveWindows) window.destroy();
+		this.#paneWindows.clear();
+		this.#activePaneSessions.clear();
 		this.#mainWindow = undefined;
+	}
+
+	#createWindow(preloadPath?: string, options?: BrowserWindowConstructorOptions): BrowserWindow {
+		const chrome = chromeFor(this.shouldUseDarkColors());
+		const appName = app.getName();
+		const window = new BrowserWindow({
+			title: appName,
+			name: appName,
+			width: 1280,
+			height: 860,
+			minWidth: 720,
+			minHeight: 520,
+			show: false,
+			backgroundColor: windowBackgroundFor(this.shouldUseDarkColors()),
+			...systemMaterialOptions(),
+			...(process.platform === "linux" ? { icon: linuxWindowIcon() } : {}),
+			...titleBarOptions(chrome),
+			...options,
+			webPreferences: {
+				preload: preloadPath ?? path.join(import.meta.dirname, "preload.js"),
+				sandbox: true,
+				contextIsolation: true,
+				nodeIntegration: false,
+				webviewTag: false,
+				...options?.webPreferences,
+			},
+		});
+		window.webContents.setWindowOpenHandler(({ url }) => {
+			void this.electronShell.openExternal(url);
+			return { action: "deny" };
+		});
+		window.webContents.on("will-navigate", (event, url) => {
+			if (isTrustedRendererUrl(url)) return;
+			event.preventDefault();
+			void this.electronShell.openExternal(url);
+		});
+		return window;
+	}
+
+	#isPaneSessionActive(descriptor: PaneWindow): boolean {
+		const active = this.#activePaneSessions.get(descriptor.pluginId);
+		return active === undefined || active === descriptor.sessionId;
+	}
+
+	#emitPaneWindowEvent(
+		record: PaneWindowRecord,
+		type: "opened" | "docked" | "focused" | "blurred",
+	): void {
+		this.broadcast("shell:pane-window-changed", {
+			type,
+			pluginId: record.descriptor.pluginId,
+			sessionId: record.descriptor.sessionId,
+			paneId: record.descriptor.paneId,
+		});
 	}
 
 	#forSender(senderId: number): BrowserWindow | undefined {
 		return this.liveWindows.find((window) => window.webContents.id === senderId);
 	}
+}
+
+function paneWindowKey(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): string {
+	return JSON.stringify([identity.pluginId, identity.sessionId, identity.paneId]);
+}
+
+function paneWindowName(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): string {
+	return `pane:${identity.pluginId}:${identity.sessionId}:${identity.paneId}`;
 }
 
 function systemMaterialOptions(): BrowserWindowConstructorOptions {

@@ -34,7 +34,6 @@ function createFakeChatRightPanel(): ChatRightPanelCapability & {
 		},
 		listTabs: (sessionId) => tabsBySession.get(sessionId) ?? [],
 		getActiveTabId: (sessionId) => activeBySession.get(sessionId) ?? null,
-		show: () => undefined,
 		openContributedTab: (sessionId, definition, options) => {
 			const existing = options?.instanceId
 				? tabsBySession.get(sessionId)?.find((entry) => entry.instanceId === options.instanceId)
@@ -136,7 +135,7 @@ describe("notebook plugin webRegister", () => {
 		expect(tools.find((tool) => tool.name === "list_open")?.annotations?.readOnlyHint).toBe(true);
 	});
 
-	it("tells the model to open notebooks only in the chat side panel", () => {
+	it("tells the model to open notebooks only in the chat pane layout", () => {
 		const { system, notebookSdk } = makeSystem();
 		webRegister(notebookSdk);
 
@@ -145,7 +144,7 @@ describe("notebook plugin webRegister", () => {
 			.map((tool) => tool.description)
 			.join("\n");
 
-		expect(descriptions).toMatch(/chat right-hand side panel/i);
+		expect(descriptions).toMatch(/chat pane layout/i);
 		expect(descriptions).toContain("notebooks_create_notebook");
 		expect(descriptions).toContain("notebooks_show_notebook");
 		expect(descriptions).toMatch(/external nteract/i);
@@ -202,12 +201,10 @@ describe("notebook plugin webRegister", () => {
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("chat-1");
 
-		const show = vi.spyOn(panel, "show");
 		const result = await system.services.toolRegistry.invoke("notebook", "open_file", {
 			path: "/projects/analysis.ipynb",
 		});
 
-		expect(show).toHaveBeenCalledWith("chat-1");
 		expect(result).toEqual({
 			sessionId: "chat-1",
 			notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d",
@@ -232,7 +229,6 @@ describe("notebook plugin webRegister", () => {
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("another-chat");
 
-		const show = vi.spyOn(panel, "show");
 		const notebookViewer = system
 			.getSdk("files")
 			.plugins.get<NotebookCapabilities>("notebook")?.notebookViewer;
@@ -248,7 +244,6 @@ describe("notebook plugin webRegister", () => {
 			title: "analysis.ipynb",
 			path: "/projects/analysis.ipynb",
 		});
-		expect(show).toHaveBeenCalledWith("chat-1");
 		expect(panel.listTabs("chat-1")).toEqual([
 			expect.objectContaining({
 				instanceId: "nb-1",

@@ -6,6 +6,7 @@ import { createElectronLocalApi } from "./electronLocalApi";
 
 function makeBridge(overrides?: Partial<DesktopApi>): DesktopApi {
 	return {
+		windowRole: "main",
 		getPathForFile: vi.fn(() => null),
 		invoke: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
 		on: vi.fn(() => () => undefined),
@@ -27,7 +28,12 @@ describe("createElectronLocalApi", () => {
 			});
 		const on = vi.fn(() => () => undefined);
 		const getPathForFile = vi.fn(() => "/tmp/dropped");
-		const api = createElectronLocalApi({ invoke, on, getPathForFile } as unknown as DesktopApi);
+		const api = createElectronLocalApi({
+			windowRole: "main",
+			invoke,
+			on,
+			getPathForFile,
+		} as unknown as DesktopApi);
 		expect(api.shell.canPickDirectories).toBe(true);
 
 		await expect(

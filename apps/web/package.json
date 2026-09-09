@@ -24,6 +24,7 @@
 		"@anaconda-agentic-desktop/plugin-local-inference": "link:../../plugins/local-inference",
 		"@anaconda-agentic-desktop/plugin-notebook": "link:../../plugins/notebook",
 		"@anaconda-agentic-desktop/plugin-todos": "workspace:*",
+		"@anaconda-agentic-desktop/pane-layout": "workspace:*",
 		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
 		"@anaconda-agentic-desktop/ui": "link:../../packages/ui",
 		"@anaconda/shadcn-theme": "0.1.0-alpha.0",

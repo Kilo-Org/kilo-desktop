@@ -27,7 +27,13 @@ const invoke = ((channel: IpcMethodChannel, input?: unknown) => {
 	return ipcRenderer.invoke(channel, input);
 }) as DesktopApi["invoke"];
 
+function getWindowArgument(name: string): string | undefined {
+	const prefix = `${name}=`;
+	return process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
+}
+
 const desktopApi: DesktopApi = {
+	windowRole: getWindowArgument("--anaconda-window-role") === "pane" ? "pane" : "main",
 	getPathForFile(file) {
 		const resolved = webUtils.getPathForFile(file);
 		return resolved || null;

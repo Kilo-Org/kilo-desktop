@@ -19,6 +19,8 @@ export function createBrowserLocalApi(): LocalApi {
 		},
 		shell: {
 			canPickDirectories: false,
+			canPopOutPanes: false,
+			windowRole: "main",
 			async openExternal(input) {
 				const opened = globalThis.open(input.url, "_blank", "noopener,noreferrer");
 				if (!opened) {
@@ -41,6 +43,22 @@ export function createBrowserLocalApi(): LocalApi {
 			},
 			getPathForFile() {
 				return null;
+			},
+			async openPaneWindow() {
+				return { opened: false };
+			},
+			async listPaneWindows() {
+				return [];
+			},
+			async focusPaneWindow() {
+				return { focused: false };
+			},
+			async dockPaneWindow() {
+				return { docked: false };
+			},
+			async syncPaneWindows() {},
+			onPaneWindowChanged() {
+				return () => {};
 			},
 		},
 		notifications: {

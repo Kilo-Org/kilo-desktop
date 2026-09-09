@@ -250,6 +250,24 @@ describe("createFakeSdk", () => {
 		const sdk = createFakeSdk({ featureId: "shell" });
 		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: true });
 		await expect(sdk.shell.copyText("hi")).resolves.toBeUndefined();
+		await expect(sdk.shell.showOpenDialog({ kind: "directory", multiple: true })).resolves.toEqual({
+			canceled: true,
+			paths: [],
+		});
+		const pane = {
+			pluginId: "kilo-ui",
+			sessionId: "session-1",
+			paneId: "pane-1",
+			title: "Pane",
+			path: "/plugins/chat",
+		};
+		await expect(sdk.shell.openPaneWindow(pane)).resolves.toEqual({ opened: true });
+		await expect(sdk.shell.listPaneWindows("kilo-ui")).resolves.toEqual([]);
+		await expect(sdk.shell.focusPaneWindow(pane)).resolves.toEqual({ focused: true });
+		await expect(sdk.shell.dockPaneWindow(pane)).resolves.toEqual({ docked: true });
+		await expect(sdk.shell.syncPaneWindows("kilo-ui", "session-1")).resolves.toBeUndefined();
+		const unsubscribe = sdk.shell.onPaneWindowChanged(vi.fn());
+		expect(() => unsubscribe()).not.toThrow();
 	});
 
 	it("fs is an in-memory sandbox: write, read, list, remove", async () => {

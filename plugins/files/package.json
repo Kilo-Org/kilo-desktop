@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Workspace file browser and editor for Kilo chat right panels",
+	"description": "Workspace file browser and editor for Kilo chat panes",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

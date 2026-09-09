@@ -7,7 +7,7 @@ import {
 } from "@assistant-ui/react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { page } from "vitest/browser";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
@@ -15,6 +15,10 @@ import {
 	WorkspacesContext,
 	type WorkspacesContextValue,
 } from "../workspaces/WorkspacesFeatureContext.js";
+import {
+	DRAFT_RIGHT_PANEL_SESSION_KEY,
+	useRightPanelStore,
+} from "../chat/right-panel/right-panel-store.js";
 import { GlobalNewButton } from "./GlobalNewButton.js";
 
 const stubChatModel: ChatModelAdapter = {
@@ -83,7 +87,9 @@ function Harness({
 		<SdkProvider system={system}>
 			<AssistantRuntimeProvider runtime={runtime}>
 				<WorkspacesContext.Provider value={workspaces}>
-					<GlobalNewButton />
+					<div style={{ width: 255 }}>
+						<GlobalNewButton />
+					</div>
 				</WorkspacesContext.Provider>
 			</AssistantRuntimeProvider>
 		</SdkProvider>
@@ -102,52 +108,51 @@ function renderGlobalNew() {
 
 afterEach(() => {
 	cleanup();
+	useRightPanelStore.setState({ bySessionId: {} });
 });
 
 describe("GlobalNewButton", () => {
-	it("renders New Chat as the default action in a split button group", async () => {
+	it("renders a New button with a Chat and Workspace menu", async () => {
 		const { screen } = renderGlobalNew();
 
-		const primary = screen.getByRole("button", { name: "New Chat" }).element();
-		const more = screen.getByRole("button", { name: "Create new" }).element();
-		expect(primary.className).not.toContain("bg-muted");
-		expect(primary.className).not.toContain("bg-secondary");
-		expect(primary.className).toContain("group-hover/new:bg-foreground/5");
-		expect(more.className).not.toContain("bg-muted");
-		expect(more.className).toContain("group-hover/new:bg-foreground/5");
-		expect(primary.getBoundingClientRect().height).toBeGreaterThanOrEqual(32);
-		const label = primary.querySelector('[data-slot="aui_thread-list-new-label"]');
-		expect(label).not.toBeNull();
-		expect(more.getBoundingClientRect().left).toBeGreaterThan(label!.getBoundingClientRect().right);
-		await expect.element(screen.getByRole("group", { name: "New" })).toBeVisible();
+		const button = screen.getByRole("button", { name: "New" }).element();
+		await expect.element(button).toBeVisible();
+		expect(button.textContent).toBe("New");
+		expect(button.querySelector('[data-slot="aui_thread-list-new-icon"]')).not.toBeNull();
+		expect(button.className).toContain("border-border");
+		expect(button.className).toContain("bg-background");
+		await expect.element(screen.getByRole("button", { name: "More new options" })).toBeVisible();
+		expect(screen.getByRole("button").elements()).toHaveLength(2);
 	});
 
-	it("hovers both halves of the split button together", async () => {
-		const { screen } = renderGlobalNew();
-
-		const primary = screen.getByRole("button", { name: "New Chat" });
-		const more = screen.getByRole("button", { name: "Create new" });
-		await userEvent.hover(primary);
-
-		expect(getComputedStyle(primary.element()).backgroundColor).toBe(
-			getComputedStyle(more.element()).backgroundColor,
-		);
-	});
-
-	it("creates a chat from the default New Chat action without opening the menu", async () => {
+	it("creates a chat when New is pressed", async () => {
 		const { navigate, openCreate, screen } = renderGlobalNew();
 
-		await screen.getByRole("button", { name: "New Chat" }).click();
+		await screen.getByRole("button", { name: "New" }).click();
 
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
 		expect(openCreate).not.toHaveBeenCalled();
-		await expect.element(screen.getByRole("menuitem", { name: "Chat" })).not.toBeInTheDocument();
+		await expect.element(screen.getByRole("menu")).not.toBeInTheDocument();
+	});
+
+	it("returns to a fresh empty chat by clearing leftover draft panes", async () => {
+		useRightPanelStore.getState().openTab(DRAFT_RIGHT_PANEL_SESSION_KEY, {
+			id: "files.files",
+			title: "Files",
+		});
+		const { screen } = renderGlobalNew();
+
+		await screen.getByRole("button", { name: "New" }).click();
+
+		expect(
+			useRightPanelStore.getState().bySessionId[DRAFT_RIGHT_PANEL_SESSION_KEY],
+		).toBeUndefined();
 	});
 
 	it("opens a New menu with Chat first and Workspace next", async () => {
 		const { screen } = renderGlobalNew();
 
-		await screen.getByRole("button", { name: "Create new" }).click();
+		await screen.getByRole("button", { name: "More new options" }).click();
 
 		const chat = screen.getByRole("menuitem", { name: "Chat" });
 		const workspace = screen.getByRole("menuitem", { name: "Workspace" });
@@ -158,17 +163,12 @@ describe("GlobalNewButton", () => {
 			chat.element().compareDocumentPosition(workspace.element()) &
 				Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-		const field = screen.getByRole("group", { name: "New" }).element();
-		expect(screen.getByRole("menu").element().getBoundingClientRect().width).toBeCloseTo(
-			field.getBoundingClientRect().width,
-			0,
-		);
 	});
 
 	it("creates a chat from the New menu", async () => {
 		const { navigate, openCreate, screen } = renderGlobalNew();
 
-		await screen.getByRole("button", { name: "Create new" }).click();
+		await screen.getByRole("button", { name: "More new options" }).click();
 		await screen.getByRole("menuitem", { name: "Chat" }).click();
 
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
@@ -178,10 +178,27 @@ describe("GlobalNewButton", () => {
 	it("opens the create-workspace dialog from the New menu", async () => {
 		const { navigate, openCreate, screen } = renderGlobalNew();
 
-		await screen.getByRole("button", { name: "Create new" }).click();
+		await screen.getByRole("button", { name: "More new options" }).click();
 		await screen.getByRole("menuitem", { name: "Workspace" }).click();
 
 		expect(openCreate).toHaveBeenCalledTimes(1);
 		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("opens the New menu to the right, sized to its items", async () => {
+		const { screen } = renderGlobalNew();
+		const group = screen.getByRole("group", { name: "New" }).element();
+
+		await screen.getByRole("button", { name: "More new options" }).click();
+
+		const menu = screen.getByRole("menu");
+		await expect.element(menu).toBeVisible();
+		await expect.element(menu).toHaveAttribute("data-side", "right");
+		await vi.waitFor(() => {
+			const groupWidth = group.getBoundingClientRect().width;
+			const menuWidth = menu.element().getBoundingClientRect().width;
+			expect(menuWidth).toBeGreaterThan(80);
+			expect(menuWidth).toBeLessThan(groupWidth);
+		});
 	});
 });

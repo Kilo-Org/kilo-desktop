@@ -152,7 +152,7 @@ export class Application {
 
 			reporter.report("features", "Preparing features\u2026");
 			Sentry.addBreadcrumb({ category: "app.boot", message: "Booting features" });
-			await this.#registerIpc(preferences, reporter);
+			await this.#registerIpc(preferences, isDevelopment, reporter);
 			Sentry.addBreadcrumb({ category: "app.boot", message: "Features booted" });
 			this.#registerPushEvents();
 
@@ -181,7 +181,7 @@ export class Application {
 
 		this.#disposers.push(
 			this.#app.on("activate", () => {
-				if (this.#windows.liveWindows.length === 0) this.#createWindow(isDevelopment);
+				if (!this.#windows.main) this.#createWindow(isDevelopment);
 				else this.#windows.reveal();
 			}),
 			this.#app.on("window-all-closed", () => {
@@ -233,6 +233,7 @@ export class Application {
 
 	async #registerIpc(
 		preferences: PreferencesStore,
+		isDevelopment: boolean,
 		reporter?: BootProgressReporter,
 	): Promise<void> {
 		// Expose main-side plugin capabilities BEFORE booting features:
@@ -308,7 +309,7 @@ export class Application {
 		this.#disposers.push(() => void telemetry.dispose());
 
 		const handlers = {
-			...createShellHandlers(this.#shell),
+			...createShellHandlers(this.#shell, this.#windows, isDevelopment),
 			...createThemeHandlers(this.#windows, preferences),
 			...createAuthHandlers(this.#auth),
 			...createNotificationsHandlers(this.#notifications),

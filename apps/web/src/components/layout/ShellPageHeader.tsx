@@ -6,11 +6,6 @@ import {
 	type PluginPageProps,
 } from "@anaconda-agentic-desktop/feature-sdk";
 import { SidebarTrigger, useSidebar } from "@anaconda-agentic-desktop/ui/components/sidebar";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 
@@ -22,26 +17,17 @@ type ShellPageHeaderProps = {
 };
 
 function ShellSidebarToggle({ open }: { open: boolean }) {
-	const label = open ? "Hide navigation" : "Show navigation";
-
 	return (
 		<div
 			className="pointer-events-auto fixed top-0 z-40 flex h-12 items-center [-webkit-app-region:no-drag]"
 			style={{ left: "var(--shell-sidebar-toggle-left)" }}
 		>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<SidebarTrigger
-							aria-label="Toggle navigation"
-							aria-pressed={open}
-							data-qa-id="sidebar-nav-toggle"
-							className="[-webkit-app-region:no-drag]"
-						/>
-					}
-				/>
-				<TooltipContent side="bottom">{label}</TooltipContent>
-			</Tooltip>
+			<SidebarTrigger
+				aria-label="Toggle navigation"
+				aria-pressed={open}
+				data-qa-id="sidebar-nav-toggle"
+				className="[-webkit-app-region:no-drag]"
+			/>
 		</div>
 	);
 }

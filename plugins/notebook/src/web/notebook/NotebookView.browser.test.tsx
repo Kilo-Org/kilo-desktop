@@ -126,7 +126,7 @@ describe("NotebookView", () => {
 		expect(document.querySelector('[data-qa-id="notebook-placeholder"]')).toBeNull();
 	});
 
-	it("uses distinct right-panel instance ids for distinct scratch notebooks", () => {
+	it("uses distinct pane instance ids for distinct scratch notebooks", () => {
 		vi.stubEnv("VITE_NTERACT_ORIGIN", "http://localhost:8737");
 		renderView({ instanceId: "instance-2", title: "Notebook 2" });
 

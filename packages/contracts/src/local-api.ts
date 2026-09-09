@@ -1,5 +1,6 @@
 import type { AuthSession } from "./features/auth.js";
 import type { NotificationDeliveryResult } from "./features/notifications.js";
+import type { PaneWindow, PaneWindowEvent } from "./features/shell.js";
 import type { TelemetryTrackInput } from "./features/telemetry.js";
 import type { ThemeState } from "./features/theme.js";
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "./features/updates.js";
@@ -18,6 +19,8 @@ export interface LocalApi {
 	};
 	shell: {
 		readonly canPickDirectories: boolean;
+		readonly canPopOutPanes: boolean;
+		readonly windowRole: "main" | "pane";
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;
 		copyText(input: { text: string }): Promise<void>;
 		showItemInFolder(input: { path: string }): Promise<{ revealed: boolean }>;
@@ -26,6 +29,16 @@ export interface LocalApi {
 			multiple?: boolean;
 		}): Promise<{ canceled: boolean; paths: string[] }>;
 		getPathForFile(file: File): string | null;
+		openPaneWindow(input: PaneWindow): Promise<{ opened: boolean }>;
+		listPaneWindows(input: { pluginId: string }): Promise<PaneWindow[]>;
+		focusPaneWindow(
+			input: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">,
+		): Promise<{ focused: boolean }>;
+		dockPaneWindow(
+			input: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">,
+		): Promise<{ docked: boolean }>;
+		syncPaneWindows(input: { pluginId: string; activeSessionId: string | null }): Promise<void>;
+		onPaneWindowChanged(listener: (event: PaneWindowEvent) => void): () => void;
 	};
 	notifications: {
 		show(input: {

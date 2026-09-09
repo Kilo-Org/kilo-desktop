@@ -7,7 +7,7 @@ import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-deskto
 import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
 
 import { localInferenceContract } from "../contracts/schemas.js";
-import { LocalModelServerSettings } from "../web/LocalModelServerSettings.js";
+import { LocalModelServerSettings } from "../web/settings/LocalModelServerSettings.js";
 
 export type LocalInferenceHandlers = ChannelHandlerMap<typeof localInferenceContract>;
 

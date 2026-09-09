@@ -5,7 +5,7 @@ import type {
 	LocalInferenceServiceContract,
 } from "../contracts/schemas.js";
 
-export { LocalModelServerSettings } from "./LocalModelServerSettings.js";
+export { LocalModelServerSettings } from "./settings/LocalModelServerSettings.js";
 
 export function webRegister(sdk: SDK): void {
 	const service = {

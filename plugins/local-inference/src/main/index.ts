@@ -4,27 +4,26 @@ import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sd
 
 import {
 	localInferenceContract,
-	type ModelCatalog,
 	type LocalInferenceCapabilities,
 	type LocalInferenceServiceContract,
 } from "../contracts/schemas.js";
 import {
-	LOCAL_PROVIDER_ID,
 	CATALOG_DOWNLOAD_CHANGED_EVENT,
 	MODELS_CHANGED_EVENT,
 	STATUS_CHANGED_EVENT,
-} from "../shared/constants.js";
-import { allocateLoopbackPort } from "./allocatePort.js";
-import { LocalChatProxy } from "./LocalChatProxy.js";
-import { LlamaRouterManager } from "./LlamaRouterManager.js";
-import { LocalInferenceService, type KiloCapability } from "./LocalInferenceService.js";
-import { LocalModelRegistry, type PersistedLocalModels } from "./LocalModelRegistry.js";
-import { ModelDownloadManager, type ModelDownloadIdentity } from "./ModelDownloadManager.js";
-import { readLlamaHost, resolveLlamaExecutable } from "./llamaRuntime.js";
-import { createHardwareProfileReader } from "./hardware-profile.js";
-import { getModelDownloadUrl, listModelCatalog, type AuthMainCapability } from "./model-catalog.js";
-import { createLocalInferenceUsageCollector } from "./resourceUsage.js";
-import { evaluateCatalogModel } from "../shared/model-compatibility.js";
+} from "../contracts/events.js";
+import { ModelDownloadManager } from "./catalog/ModelDownloadManager.js";
+import { ModelCatalogService } from "./catalog/ModelCatalogService.js";
+import { type AuthMainCapability } from "./catalog/catalog-client.js";
+import { LocalInferenceService, type KiloCapability } from "./inference/LocalInferenceService.js";
+import { LOCAL_PROVIDER_ID } from "./integrations/kilo-constants.js";
+import { LocalModelRegistry, type PersistedLocalModels } from "./models/LocalModelRegistry.js";
+import { allocateLoopbackPort } from "./runtime/allocatePort.js";
+import { LocalChatProxy } from "./runtime/LocalChatProxy.js";
+import { LlamaRouterManager } from "./runtime/LlamaRouterManager.js";
+import { readLlamaHost, resolveLlamaExecutable } from "./runtime/llamaRuntime.js";
+import { createHardwareProfileReader } from "./system/hardware-profile.js";
+import { createLocalInferenceUsageCollector } from "./system/resourceUsage.js";
 
 interface CondaRuntimeCapability extends Record<string, unknown> {
 	condaRuntime: {
@@ -90,48 +89,12 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	const getApiKey = async () =>
 		(await mainSdk.plugins.get<AuthMainCapability>("auth")?.session.getApiKey()) ?? null;
 	const catalogDependencies = { fetch: mainSdk.net.fetch, getApiKey };
-	let cachedCatalog: ModelCatalog | undefined;
-	const loadCatalog = async (): Promise<ModelCatalog> => {
-		const catalog = await listModelCatalog(catalogDependencies);
-		cachedCatalog = catalog;
-		return catalog;
-	};
-	const resolveArtifact = async ({ modelId, quantizationId }: ModelDownloadIdentity) => {
-		const find = (catalog: ModelCatalog) => {
-			const model = catalog.models.find((entry) => entry.id === modelId);
-			const quantization = model?.quantizations.find((entry) => entry.id === quantizationId);
-			return model && quantization ? { model, quantization } : undefined;
-		};
-		const resolved = (cachedCatalog ? find(cachedCatalog) : undefined) ?? find(await loadCatalog());
-		if (!resolved) {
-			throw new FeatureError(
-				"The selected model quantization is no longer available.",
-				"NOT_FOUND",
-			);
-		}
-		const compatibility = evaluateCatalogModel(
-			{ ...resolved.model, quantizations: [resolved.quantization] },
-			await hardwareProfile.read(),
-		);
-		if (!compatibility) {
-			throw new FeatureError("This model quantization does not fit on this machine.", "BUSINESS");
-		}
-		return {
-			modelId: resolved.model.id,
-			quantizationId: resolved.quantization.id,
-			modelName: resolved.model.name,
-			publisher: resolved.model.publisher,
-			quantization: resolved.quantization.method,
-			sizeBytes: resolved.quantization.sizeBytes,
-			sha256: resolved.quantization.sha256,
-		};
-	};
+	const catalog = new ModelCatalogService(catalogDependencies, () => hardwareProfile.read());
 	const downloads = new ModelDownloadManager({
 		modelsDir: path.join(mainSdk.storageDir, "models"),
 		fetch: mainSdk.net.fetch,
-		resolveArtifact,
-		resolveDownloadUrl: (artifact, signal) =>
-			getModelDownloadUrl(catalogDependencies, artifact.modelId, artifact.quantizationId, signal),
+		resolveArtifact: (identity) => catalog.resolveArtifact(identity),
+		resolveDownloadUrl: (artifact, signal) => catalog.downloadUrl(artifact, signal),
 		addModel: (input) => service.add(input),
 		emit: (download) => mainSdk.events.emit(CATALOG_DOWNLOAD_CHANGED_EVENT, download),
 		logger: mainSdk.logger,
@@ -147,7 +110,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 		}
 	};
 	const handlers: LocalInferenceServiceContract = {
-		"catalog.list": loadCatalog,
+		"catalog.list": () => catalog.list(),
 		"catalog.download.start": (input) => guarded(() => downloads.start(input)),
 		"catalog.download.cancel": (input) => guarded(async () => downloads.cancel(input)),
 		"catalog.downloads.list": async () => downloads.list(),

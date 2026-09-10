@@ -28,8 +28,11 @@ export interface CondaRuntimeOptions {
 	readonly logger: MainSdkLogger;
 	readonly platform?: NodeJS.Platform;
 	/**
-	 * Root for conda working state (envs, package cache). The sidecar's
-	 * default isolation root is `~/.anaconda-agentic-desktop/conda`.
+	 * Root for plugin environment working state (envs, package cache).
+	 * Defaults to `~/.anaconda-agentic-desktop/conda`. Environments here
+	 * are created with explicit `prefix` paths, bypassing the bridge's
+	 * `envs_dirs` — they are intentionally invisible from `conda env list`
+	 * in the user's terminal. See ADR-002.
 	 */
 	readonly condaFilesRoot?: string;
 }
@@ -45,8 +48,8 @@ export interface CondaRuntimeOptions {
  * `conda create`. A different pin recreates the prefix. An incomplete
  * prefix (present without `conda-meta`) is removed first so create is
  * not blocked. Identical concurrent requests share one operation, while
- * distinct writes serialize because every environment uses the same
- * isolated package cache.
+ * distinct writes serialize because conda's package cache does not
+ * support concurrent transactions.
  */
 export class CondaRuntime implements CondaEnvironmentRuntime {
 	readonly #resolveBridge: () => BridgeLaunchInfo | null;

@@ -579,7 +579,13 @@ export class SidecarCondaBackend implements CondaBackend {
 			stdio: ["pipe", "pipe", "pipe"],
 			env: {
 				...process.env,
-				// Ensure the bridge's stdout protection is active
+				// The bridge inherits the user's real environment — no
+				// CONDA_ENVS_PATH, CONDA_PKGS_DIRS, or CONDARC override.
+				// User-created environments land in the user's standard envs_dirs
+				// and share the system package cache. See ADR-002.
+				//
+				// Plugin environments (CondaRuntime) bypass this entirely via
+				// explicit `prefix` paths at ~/.anaconda-agentic-desktop/conda/envs/.
 				BRIDGE_PROTECT_STDIO: "1",
 			},
 		});

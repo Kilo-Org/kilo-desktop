@@ -82,6 +82,7 @@ describe("CondaProvider", () => {
 		expect(mainSdk.has("conda.packages.install")).toBe(true);
 		expect(mainSdk.has("conda.packages.list")).toBe(true);
 		expect(mainSdk.has("conda.packages.remove")).toBe(true);
+		expect(mainSdk.has("conda.packages.update")).toBe(true);
 		queue.dispose();
 		mainSdk.dispose();
 	});
@@ -101,6 +102,7 @@ describe("CondaProvider", () => {
 			"conda.packages.install",
 			"conda.packages.list",
 			"conda.packages.remove",
+			"conda.packages.update",
 			"conda.repodata.find",
 		]);
 	});

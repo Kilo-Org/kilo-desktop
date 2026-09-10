@@ -399,6 +399,58 @@ export const condaPackagesRemoveResultSchema = z.object({
 });
 export type CondaPackagesRemoveResult = z.infer<typeof condaPackagesRemoveResultSchema>;
 
+/**
+ * Input to `conda.packages.update`.
+ *
+ * Two mutually exclusive modes:
+ * - **targeted**: pass `packages` (>=1 MatchSpec) to update just those. A
+ *   version-less spec (`"numpy"`) resolves to the newest version installable
+ *   under the environment's EXISTING constraints (latest-*compatible*, via
+ *   conda's `UPDATE_SPECS` modifier) — not an unconditional jump to the
+ *   absolute latest. Pin a version (`"numpy=1.26"`) to constrain the target version.
+ *   Note the solver may relink/downgrade other installed packages and their
+ *   dependencies to keep the environment consistent.
+ * - **update_all**: set `updateAll: true` (and omit `packages`) to update
+ *   every package in the environment to its latest compatible version.
+ *
+ * Providing neither or both is a VALIDATION error — the two modes stay
+ * crisp. Mirrors (and tightens) the bridge's own rule ("Either provide
+ * packages or set update_all=True").
+ *
+ * Flat object for the same reason as {@link condaPackagesInstallInputSchema}.
+ */
+export const condaPackagesUpdateInputSchema = z
+	.object({
+		name: environmentNameSchema.optional(),
+		prefix: envPrefixSchema.optional(),
+		packages: z.array(matchSpecSchema).min(1).optional(),
+		updateAll: z.boolean().optional(),
+		channels: z.array(channelSchema).min(1).optional(),
+	})
+	.refine((v) => v.name !== undefined || v.prefix !== undefined, {
+		message: "At least one of `name` or `prefix` must be provided.",
+	})
+	.refine((v) => (v.packages !== undefined) !== (v.updateAll === true), {
+		message: "Provide either `packages` (targeted) or `updateAll: true`, not both and not neither.",
+	});
+export type CondaPackagesUpdateInput = z.infer<typeof condaPackagesUpdateInputSchema>;
+
+/**
+ * Terminal result of `conda.packages.update`.
+ *
+ * `updated` is the set of packages conda newly linked to satisfy the
+ * update: the requested packages at their new versions, plus any
+ * dependencies conda added or changed to keep the environment consistent.
+ * It is a "what changed" set rather than strictly "the packages you named",
+ * and is empty when nothing changed (the environment was already current).
+ */
+export const condaPackagesUpdateResultSchema = z.object({
+	jobId: jobIdSchema,
+	envName: z.string(),
+	updated: z.array(condaPackageSchema),
+});
+export type CondaPackagesUpdateResult = z.infer<typeof condaPackagesUpdateResultSchema>;
+
 /* --------------------------------------------------------------------- */
 /* Method I/O — channels                                                 */
 /* --------------------------------------------------------------------- */
@@ -622,6 +674,10 @@ export const condaContract = defineContract({
 	"conda.packages.remove": defineMethod(
 		condaPackagesRemoveInputSchema,
 		condaPackagesRemoveResultSchema,
+	),
+	"conda.packages.update": defineMethod(
+		condaPackagesUpdateInputSchema,
+		condaPackagesUpdateResultSchema,
 	),
 
 	"conda.channels.list": defineMethod(z.undefined(), condaChannelsListResultSchema),

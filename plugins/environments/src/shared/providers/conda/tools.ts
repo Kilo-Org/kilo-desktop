@@ -10,6 +10,7 @@ import {
 	condaPackagesInstallInputSchema,
 	condaPackagesListInputSchema,
 	condaPackagesRemoveInputSchema,
+	condaPackagesUpdateInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
 
@@ -151,6 +152,31 @@ export function registerCondaTools(sdk: SDK): void {
 		annotations: { destructiveHint: true },
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("conda.packages.remove", args),
+	});
+
+	sdk.tools.register({
+		name: "conda.packages.update",
+		description:
+			"Update packages in an EXISTING conda environment. Identify the " +
+			"environment by name or by prefix path. Two mutually exclusive modes: " +
+			'pass `packages` (one or more names/MatchSpecs, e.g. "numpy", ' +
+			'"conda-forge::pandas") to update just those, or set `updateAll: true` ' +
+			"(with no `packages`) to update every package in the environment. " +
+			"A version-less package updates to the newest version COMPATIBLE with " +
+			"the environment's existing constraints (not an unconditional jump to " +
+			'the absolute latest); pin a version like "numpy=1.26" to constrain it. ' +
+			"Optionally restrict solving to specific channels. WARNING: updating can " +
+			"BREAK the environment — it REPLACES installed package versions and the " +
+			"solver may relink or downgrade other packages and their dependencies to " +
+			"keep the environment consistent, which can make packages that relied on " +
+			"the previous versions stop working. This applies to a single targeted " +
+			"package as much as to updateAll, so warn the user before proceeding. " +
+			"Fails with SOLVE_FAILED when the update cannot be satisfied.",
+		inputSchema: z.toJSONSchema(condaPackagesUpdateInputSchema, { target: "draft-2020-12" }),
+		validate: condaPackagesUpdateInputSchema,
+		annotations: { destructiveHint: true },
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.packages.update", args),
 	});
 
 	sdk.tools.register({

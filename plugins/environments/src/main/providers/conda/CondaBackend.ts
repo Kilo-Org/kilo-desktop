@@ -11,6 +11,8 @@ import type {
 	CondaPackagesInstallResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
+	CondaPackagesUpdateInput,
+	CondaPackagesUpdateResult,
 	CondaRepodataPackage,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
@@ -116,6 +118,10 @@ export interface CondaBackend {
 		input: CondaPackagesRemoveInput,
 		ctx?: CondaCallContext,
 	): Promise<CondaPackagesRemoveResult>;
+	update(
+		input: CondaPackagesUpdateInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaPackagesUpdateResult>;
 
 	listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;

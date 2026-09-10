@@ -34,6 +34,7 @@ describe("environments plugin web entry", () => {
 			"conda.packages.install",
 			"conda.packages.list",
 			"conda.packages.remove",
+			"conda.packages.update",
 			"conda.repodata.find",
 		]);
 		const listTool = tools.find((tool) => tool.name === "conda.envs.list");
@@ -116,5 +117,20 @@ describe("environments plugin web entry", () => {
 		expect(removeSchema.type).toBe("object");
 		expect(removeSchema.required).toContain("packages");
 		expect(removeSchema.properties?.packages?.type).toBe("array");
+
+		// `packages.update` mutates existing versions (non-additive) and can break
+		// the environment — MUST advertise `destructiveHint` so MCP hosts confirm.
+		const updateTool = tools.find((tool) => tool.name === "conda.packages.update");
+		expect(updateTool?.annotations).toMatchObject({ destructiveHint: true });
+		expect(updateTool?.exposeToModelContext).toBe(true);
+		const updateSchema = updateTool?.inputSchema as {
+			allOf?: unknown;
+			type?: string;
+			properties?: Record<string, { type?: string }>;
+		};
+		expect(updateSchema.allOf).toBeUndefined();
+		expect(updateSchema.type).toBe("object");
+		expect(updateSchema.properties?.packages?.type).toBe("array");
+		expect(updateSchema.properties?.updateAll?.type).toBe("boolean");
 	});
 });

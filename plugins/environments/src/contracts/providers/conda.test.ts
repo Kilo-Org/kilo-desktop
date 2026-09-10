@@ -27,6 +27,8 @@ import {
 	condaPackagesListResultSchema,
 	condaPackagesRemoveInputSchema,
 	condaPackagesRemoveResultSchema,
+	condaPackagesUpdateInputSchema,
+	condaPackagesUpdateResultSchema,
 	condaRepodataFindInputSchema,
 	condaRepodataFindResultSchema,
 	condaRepodataPackageSchema,
@@ -596,6 +598,56 @@ describe("conda.packages I/O", () => {
 		const result = { jobId: "j-4", envName: "py311", removed: ["numpy", "scipy"] };
 		expect(condaPackagesRemoveResultSchema.parse(result)).toEqual(result);
 	});
+
+	it("condaPackagesUpdateInputSchema accepts a targeted packages update", () => {
+		const input = { name: "py311", packages: ["numpy"] };
+		expect(condaPackagesUpdateInputSchema.parse(input)).toEqual(input);
+	});
+
+	it("condaPackagesUpdateInputSchema accepts an updateAll request", () => {
+		const input = { name: "py311", updateAll: true };
+		expect(condaPackagesUpdateInputSchema.parse(input)).toEqual(input);
+	});
+
+	it("condaPackagesUpdateInputSchema accepts prefix + channels with packages", () => {
+		const input = { prefix: "/opt/conda", packages: ["numpy>=1.24"], channels: ["conda-forge"] };
+		expect(condaPackagesUpdateInputSchema.parse(input)).toEqual(input);
+	});
+
+	it("condaPackagesUpdateInputSchema rejects neither packages nor updateAll", () => {
+		expect(condaPackagesUpdateInputSchema.safeParse({ name: "py311" }).success).toBe(false);
+	});
+
+	it("condaPackagesUpdateInputSchema rejects both packages and updateAll", () => {
+		expect(
+			condaPackagesUpdateInputSchema.safeParse({
+				name: "py311",
+				packages: ["numpy"],
+				updateAll: true,
+			}).success,
+		).toBe(false);
+	});
+
+	it("condaPackagesUpdateInputSchema rejects a missing env target", () => {
+		expect(condaPackagesUpdateInputSchema.safeParse({ packages: ["numpy"] }).success).toBe(false);
+	});
+
+	it("condaPackagesUpdateInputSchema rejects an empty packages array", () => {
+		expect(condaPackagesUpdateInputSchema.safeParse({ name: "py311", packages: [] }).success).toBe(
+			false,
+		);
+	});
+
+	it("condaPackagesUpdateResultSchema round-trips job + envName + updated", () => {
+		const result = {
+			jobId: "j-5",
+			envName: "py311",
+			updated: [
+				{ name: "numpy", version: "1.26.4", build: "py311h1234_0", channel: "conda-forge" },
+			],
+		};
+		expect(condaPackagesUpdateResultSchema.parse(result)).toEqual(result);
+	});
 });
 
 describe("conda.channels I/O", () => {
@@ -799,6 +851,7 @@ describe("condaContract", () => {
 				"conda.packages.list",
 				"conda.packages.install",
 				"conda.packages.remove",
+				"conda.packages.update",
 				"conda.channels.list",
 				"conda.channels.add",
 				"conda.channels.remove",

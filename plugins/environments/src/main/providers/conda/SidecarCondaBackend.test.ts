@@ -555,6 +555,116 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
+	describe("update()", () => {
+		it("sends conda.update with packages, update_all=false, and skip_preview", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.update") {
+					return Promise.resolve({ prefix: "/path/to/env", success: true });
+				}
+				if (method === "conda.list")
+					return Promise.resolve({ prefix: "/path/to/env", packages: [] });
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.update({ name: "dev", packages: ["numpy"] });
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.update",
+				{
+					name: "dev",
+					packages: ["numpy"],
+					channels: undefined,
+					update_all: false,
+					skip_preview: true,
+				},
+				expect.anything(),
+			);
+		});
+
+		it("sends conda.update with update_all=true and no packages key", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.update") {
+					return Promise.resolve({ prefix: "/path/to/env", success: true });
+				}
+				if (method === "conda.list")
+					return Promise.resolve({ prefix: "/path/to/env", packages: [] });
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.update({ name: "dev", updateAll: true });
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.update",
+				{ name: "dev", channels: undefined, update_all: true, skip_preview: true },
+				expect.anything(),
+			);
+		});
+
+		it("reports the LINKed set, re-listed for full records, as `updated`", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.update") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: true,
+						actions: { LINK: ["conda-forge/noarch::numpy==1.26.4=py311_0"] },
+					});
+				}
+				if (method === "conda.list") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						packages: [
+							{
+								name: "numpy",
+								version: "1.26.4",
+								build_string: "py311_0",
+								build_number: 0,
+								channel: "conda-forge",
+							},
+							{
+								name: "pip",
+								version: "24.0",
+								build_string: "pyhd8ed1ab_0",
+								build_number: 0,
+								channel: "conda-forge",
+							},
+						],
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.update({ name: "dev", packages: ["numpy"] });
+
+			expect(result).toEqual({
+				jobId: "",
+				envName: "dev",
+				// only numpy was LINKed; pip is unchanged and excluded.
+				updated: [{ name: "numpy", version: "1.26.4", build: "py311_0", channel: "conda-forge" }],
+			});
+		});
+
+		it("throws SOLVE_FAILED when the bridge returns success=false", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.update") {
+					return Promise.resolve({ prefix: "/path/to/env", success: false, message: "conflict" });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.update({ name: "dev", updateAll: true })).rejects.toThrow(
+				"SOLVE_FAILED",
+			);
+		});
+	});
+
 	describe("listPackages()", () => {
 		it("maps conda.list response to CondaPackage[]", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {

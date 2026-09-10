@@ -24,6 +24,7 @@
  * - listPackages()      → conda.list
  * - install()           → conda.install (skip_preview=true)
  * - uninstall()         → conda.remove (packages only, no all flag)
+ * - update()            → conda.update (skip_preview=true, update_all flag)
  * - listChannels()      → conda_tools.list_channels
  * - addChannel()        → conda_config.add (key="channels")
  * - removeChannel()     → not yet implemented in anaconda-bridge-sidecar
@@ -69,6 +70,8 @@ import type {
 	CondaPackagesInstallResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
+	CondaPackagesUpdateInput,
+	CondaPackagesUpdateResult,
 	CondaRepodataPackage,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
@@ -342,6 +345,32 @@ export class SidecarCondaBackend implements CondaBackend {
 		const unlinked = extractUnlinkedNames(result.actions);
 		const removed = unlinked.length > 0 ? unlinked : input.packages.map(parsePackageName);
 		return { jobId: "", envName, removed };
+	}
+
+	async update(
+		input: CondaPackagesUpdateInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaPackagesUpdateResult> {
+		const result = await this.#call<TransactionResult>(
+			"conda.update",
+			{
+				...resolveTargetParam(input),
+				...(input.packages ? { packages: input.packages } : {}),
+				channels: input.channels ?? undefined,
+				update_all: input.updateAll ?? false,
+				skip_preview: true,
+			},
+			ctx,
+		);
+		this.#assertTransactionSuccess(result);
+		const envName = input.name ?? input.prefix ?? "";
+		// Report what conda actually changed: the newly LINKed packages (the
+		// updated versions plus any deps it pulled in), re-listed for full
+		// records. Empty when nothing changed — the env was already up to date.
+		const linked = new Set(extractLinkedNames(result.actions));
+		const packages = await this.listPackages(input, ctx);
+		const updated = packages.filter((pkg) => linked.has(pkg.name));
+		return { jobId: "", envName, updated };
 	}
 
 	async listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult> {
@@ -740,6 +769,19 @@ function extractUnlinkedNames(actions: TransactionResult["actions"]): string[] {
 	const unlink = actions?.["UNLINK"];
 	if (!Array.isArray(unlink)) return [];
 	return unlink.filter((entry): entry is string => typeof entry === "string").map(parsePackageName);
+}
+
+/**
+ * Extract the bare package names from a transaction's `LINK` action — every
+ * package conda newly linked (the updated versions plus any dependencies it
+ * pulled in). Mirrors {@link extractUnlinkedNames}; entries are dist specs
+ * reduced to their name via {@link parsePackageName}. Returns `[]` when the
+ * bridge omitted or malformed `actions.LINK`.
+ */
+function extractLinkedNames(actions: TransactionResult["actions"]): string[] {
+	const link = actions?.["LINK"];
+	if (!Array.isArray(link)) return [];
+	return link.filter((entry): entry is string => typeof entry === "string").map(parsePackageName);
 }
 
 /**

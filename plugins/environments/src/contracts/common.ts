@@ -192,6 +192,7 @@ export const jobKindSchema = z.enum([
 	"envs.delete",
 	"packages.install",
 	"packages.remove",
+	"packages.update",
 	"channels.add",
 	"channels.remove",
 ]);

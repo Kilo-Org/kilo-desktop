@@ -47,6 +47,7 @@ describe("jobKindSchema", () => {
 			"envs.delete",
 			"packages.install",
 			"packages.remove",
+			"packages.update",
 			"channels.add",
 			"channels.remove",
 		] as const;

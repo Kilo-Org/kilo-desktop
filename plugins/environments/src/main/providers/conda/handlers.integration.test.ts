@@ -43,6 +43,7 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 		listPackages: overrides.listPackages ?? notImpl,
 		install: overrides.install ?? notImpl,
 		uninstall: overrides.uninstall ?? notImpl,
+		update: overrides.update ?? notImpl,
 		listChannels: overrides.listChannels ?? notImpl,
 		addChannel: overrides.addChannel ?? notImpl,
 		removeChannel: overrides.removeChannel ?? notImpl,
@@ -679,6 +680,76 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		await client["conda.packages.list"]({ name: "dev" });
 		expect(listPackages).toHaveBeenCalledOnce();
 		await client["conda.packages.remove"]({ name: "dev", packages: ["faker"] });
+		await client["conda.packages.list"]({ name: "dev" });
+		expect(listPackages).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.packages.update enqueues, stamps the queue jobId, and emits queued → running → succeeded", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({ emit: (event) => events.push(event) });
+		const updated = [
+			{ name: "numpy", version: "1.26.4", build: "py311_0", channel: "conda-forge" },
+		];
+		const update = vi.fn().mockResolvedValue({ jobId: "", envName: "dev", updated });
+		registerCondaHandlers(mainSdk, makeBackend({ update }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.packages.update"]({ name: "dev", packages: ["numpy"] });
+
+		// The queue-assigned jobId replaces the backend's placeholder empty string.
+		expect(result).toEqual({
+			jobId: expect.stringMatching(/^conda-/),
+			envName: "dev",
+			updated,
+		});
+		expect(update).toHaveBeenCalledWith(
+			{ name: "dev", packages: ["numpy"] },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(events.map((event) => event.status)).toEqual(["queued", "running", "succeeded"]);
+		expect(events.every((event) => event.kind === "packages.update")).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.packages.update forwards updateAll and optional channels to the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const update = vi.fn().mockResolvedValue({ jobId: "", envName: "dev", updated: [] });
+		registerCondaHandlers(mainSdk, makeBackend({ update }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.packages.update"]({
+			name: "dev",
+			updateAll: true,
+			channels: ["conda-forge"],
+		});
+
+		expect(update).toHaveBeenCalledWith(
+			{ name: "dev", updateAll: true, channels: ["conda-forge"] },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.packages.update write clears the read cache — the next packages.list re-runs the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const listPackages = vi.fn().mockResolvedValue([]);
+		const update = vi.fn().mockResolvedValue({ jobId: "", envName: "dev", updated: [] });
+		registerCondaHandlers(mainSdk, makeBackend({ listPackages, update }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.packages.list"]({ name: "dev" });
+		expect(listPackages).toHaveBeenCalledOnce();
+		await client["conda.packages.update"]({ name: "dev", packages: ["numpy"] });
 		await client["conda.packages.list"]({ name: "dev" });
 		expect(listPackages).toHaveBeenCalledTimes(2);
 

@@ -35,7 +35,10 @@ describe("FilesService", () => {
 		await writeFile(path.join(workspace, "src", "index.ts"), "export {};");
 		await writeFile(path.join(workspace, "src", "generated", "code.ts"), "ignored");
 
-		const service = new FilesService({ authorize: async () => undefined });
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
 		await expect(service.list(workspace)).resolves.toEqual({
 			paths: [".gitignore", ".hidden", "src/", "src/.gitignore", "src/index.ts"],
 			truncated: false,
@@ -49,7 +52,11 @@ describe("FilesService", () => {
 				writeFile(path.join(workspace, `file-${String(index)}.txt`), "text"),
 			),
 		);
-		const service = new FilesService({ authorize: async () => undefined, scanLimit: 3 });
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+			scanLimit: 3,
+		});
 
 		const result = await service.list(workspace);
 		expect(result.paths).toHaveLength(3);
@@ -66,7 +73,7 @@ describe("FilesService", () => {
 		await writeFile(path.join(outside, "secret.md"), "secret");
 		await symlink(path.join(outside, "secret.md"), path.join(workspace, "escaped.md"));
 		const authorize = vi.fn(async () => undefined);
-		const service = new FilesService({ authorize });
+		const service = new FilesService({ authorize, gitStatus: async () => null });
 
 		await expect(
 			service.existingPaths(workspace, [
@@ -93,6 +100,7 @@ describe("FilesService", () => {
 				if (candidate !== canonicalWorkspace)
 					throw new FeatureError("Workspace not registered.", "VALIDATION");
 			},
+			gitStatus: async () => null,
 		});
 
 		await expect(service.read(workspace, "../secret.txt")).rejects.toMatchObject({
@@ -118,7 +126,10 @@ describe("FilesService", () => {
 		await writeFile(path.join(workspace, "binary.dat"), Buffer.from([65, 0, 66]));
 		await writeFile(path.join(workspace, "invalid.txt"), Buffer.from([0xc3, 0x28]));
 		await writeFile(path.join(workspace, "large.txt"), "abcdef");
-		const service = new FilesService({ authorize: async () => undefined });
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
 
 		const text = await service.read(workspace, "text.txt");
 		expect(text).toMatchObject({
@@ -140,6 +151,7 @@ describe("FilesService", () => {
 		});
 		const limitedService = new FilesService({
 			authorize: async () => undefined,
+			gitStatus: async () => null,
 			textLimitBytes: 4,
 		});
 		await expect(limitedService.read(workspace, "large.txt")).resolves.toEqual({
@@ -154,7 +166,10 @@ describe("FilesService", () => {
 		const workspace = await temporaryWorkspace();
 		const file = path.join(workspace, "bom.txt");
 		await writeFile(file, Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from("value\n")]));
-		const service = new FilesService({ authorize: async () => undefined });
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
 
 		const opened = await service.read(workspace, "bom.txt");
 		if (opened.kind !== "text" || !opened.revision) throw new Error("Expected editable text");
@@ -176,7 +191,10 @@ describe("FilesService", () => {
 		await writeFile(path.join(workspace, "pixel.png"), Buffer.from([1, 2, 3]));
 		await writeFile(path.join(workspace, "index.html"), "<h1>Hello</h1>");
 		await writeFile(path.join(workspace, "doc.pdf"), "%PDF");
-		const service = new FilesService({ authorize: async () => undefined });
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
 
 		await expect(service.read(workspace, "pixel.png")).resolves.toEqual({
 			kind: "image",
@@ -194,6 +212,7 @@ describe("FilesService", () => {
 		});
 		const limitedService = new FilesService({
 			authorize: async () => undefined,
+			gitStatus: async () => null,
 			imageLimitBytes: 2,
 		});
 		await expect(limitedService.read(workspace, "pixel.png")).resolves.toEqual({
@@ -203,11 +222,26 @@ describe("FilesService", () => {
 		});
 	});
 
+	it("degrades to null when the injected git status lookup rejects", async () => {
+		const workspace = await temporaryWorkspace();
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => {
+				throw new Error("git exploded");
+			},
+		});
+
+		await expect(service.gitStatus(workspace)).resolves.toBeNull();
+	});
+
 	it("saves atomically, preserves mode, detects conflicts, and permits explicit overwrite", async () => {
 		const workspace = await temporaryWorkspace();
 		const file = path.join(workspace, "script.sh");
 		await writeFile(file, "one\n", { mode: 0o755 });
-		const service = new FilesService({ authorize: async () => undefined });
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
 		const opened = await service.read(workspace, "script.sh");
 		if (opened.kind !== "text" || !opened.revision) throw new Error("Expected editable text");
 

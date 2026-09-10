@@ -6,6 +6,7 @@ import {
 	type FilesServiceContract,
 } from "../contracts/schemas.js";
 import { ExternalEditorService } from "./external-editors/ExternalEditorService.js";
+import { createGitStatusLookup } from "./integrations/git-status.js";
 import { createKiloWorkspaceAuthorization } from "./integrations/kilo-workspace-authorization.js";
 import { FilesService } from "./workspace-files/FilesService.js";
 
@@ -22,6 +23,7 @@ export function mainRegister(
 ): void {
 	const service = new FilesService({
 		authorize: createKiloWorkspaceAuthorization(mainSdk),
+		gitStatus: createGitStatusLookup(mainSdk),
 	});
 
 	const handlers: FilesServiceContract = {
@@ -38,6 +40,10 @@ export function mainRegister(
 		},
 		write: ({ workspaceDirectory, relativePath, contents, expectedRevision, force }) =>
 			service.write(workspaceDirectory, relativePath, contents, expectedRevision, force),
+		gitStatus: async ({ workspaceDirectory }) => {
+			const entries = await service.gitStatus(workspaceDirectory);
+			return entries === null ? null : { entries };
+		},
 	};
 	mainSdk.channels(filesContract).handleAll(handlers);
 }

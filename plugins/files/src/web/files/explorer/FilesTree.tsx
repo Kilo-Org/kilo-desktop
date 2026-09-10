@@ -22,6 +22,7 @@ import {
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
+import type { FileGitStatusEntry } from "../../../contracts/schemas.js";
 import { FILE_ICONS } from "../file-icons/file-icons.js";
 import { explorerRootTitle, folderName } from "./explorer-title.js";
 
@@ -36,6 +37,7 @@ interface FilesTreeProps {
 	readonly loading: boolean;
 	readonly truncated: boolean;
 	readonly error: string | null;
+	readonly gitStatusEntries: readonly FileGitStatusEntry[] | null;
 	readonly activePath: string | null;
 	readonly workspaceDirectory: string;
 	readonly workspaceFolders: readonly FilesWorkspaceFolder[];
@@ -51,6 +53,7 @@ export function FilesTree({
 	loading,
 	truncated,
 	error,
+	gitStatusEntries,
 	activePath,
 	workspaceDirectory,
 	workspaceFolders,
@@ -120,6 +123,10 @@ export function FilesTree({
 	useEffect(() => {
 		model.resetPaths(paths);
 	}, [model, paths]);
+
+	useEffect(() => {
+		model.setGitStatus(gitStatusEntries ?? undefined);
+	}, [model, gitStatusEntries]);
 
 	useEffect(() => {
 		if (!activePath) return;

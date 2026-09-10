@@ -98,6 +98,48 @@ function renderView(
 	};
 }
 
+// The app mounts explorer and file panes as separate FilesView instances under
+// a single root QueryClient, so a save in one pane must invalidate the git
+// status query observed by the other. This harness mirrors that topology.
+function renderExplorerAndFilePane(
+	handlers: FilesServiceContract,
+	filePaneProps: Partial<FilesViewProps>,
+	explorerProps: Partial<FilesViewProps> = {},
+) {
+	const sdk = createFakeSdk({ featureId: "files", channels: filesContract, handlers });
+	const system = createFakeFeatureSystem({ sdks: { files: sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	system.getSdk("kilo-ui").plugins.expose("chatRightPanel", {
+		getActiveTabId: vi.fn(() => filePaneProps.instanceId ?? PROPS.instanceId),
+		updateTab: vi.fn(),
+		registerTabLifecycle: vi.fn(() => vi.fn()),
+		openContributedTab: vi.fn(),
+	});
+	const renderTree = (nextFilePaneProps: Partial<FilesViewProps>) => (
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<div className="flex" style={{ height: 600, width: 900 }}>
+					<FilesView {...PROPS} instanceId="files-explorer" title="Files" {...explorerProps} />
+					<FilesView
+						key={nextFilePaneProps.instanceId ?? PROPS.instanceId}
+						{...PROPS}
+						{...nextFilePaneProps}
+					/>
+				</div>
+			</QueryClientProvider>
+		</SdkProvider>
+	);
+	const result = render(renderTree(filePaneProps));
+	return {
+		...result,
+		system,
+		queryClient,
+		rerenderFilePane(nextProps: Partial<FilesViewProps>) {
+			result.rerender(renderTree(nextProps));
+		},
+	};
+}
+
 const handlers = (): FilesServiceContract => ({
 	list: async () => ({
 		paths: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
@@ -114,6 +156,7 @@ const handlers = (): FilesServiceContract => ({
 	listExternalEditors: async () => ({ editors: ["cursor", "vscode"] }),
 	openExternalEditor: async () => ({ opened: true }),
 	write: async () => ({ status: "saved", revision: "b".repeat(64) }),
+	gitStatus: async () => null,
 });
 
 function treeHost(): Element | null {
@@ -536,6 +579,171 @@ describe("FilesView", () => {
 		await vi.waitFor(() =>
 			expect(openContributedTab).toHaveBeenCalledWith(...openedFileCall("docs/readme.md")),
 		);
+	});
+
+	it("shows git status decorations on tree rows", async () => {
+		renderView({
+			...handlers(),
+			gitStatus: async () => ({
+				entries: [
+					{ path: "docs/readme.md", status: "added" },
+					{ path: "src/index.ts", status: "modified" },
+				],
+			}),
+		});
+		await expandTreePath("docs/");
+		await expandTreePath("src/");
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector(
+					'[data-item-path="src/index.ts"][data-item-git-status="modified"]',
+				),
+			).not.toBeNull();
+		});
+		const host = treeHost();
+		expect(
+			host?.shadowRoot?.querySelector(
+				'[data-item-path="docs/readme.md"][data-item-git-status="added"]',
+			),
+		).not.toBeNull();
+		expect(
+			host?.shadowRoot?.querySelector(
+				'[data-item-path="src/"][data-item-contains-git-change="true"]',
+			),
+		).not.toBeNull();
+		expect(
+			host?.shadowRoot?.querySelector(
+				'[data-item-path="docs/"][data-item-contains-git-change="true"]',
+			),
+		).not.toBeNull();
+	});
+
+	it("renders no git status attributes when the workspace has no git status", async () => {
+		renderView(handlers());
+		await expandTreePath("docs/");
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector('[data-item-path="docs/readme.md"]'),
+			).not.toBeNull();
+		});
+		const host = treeHost();
+		expect(host?.shadowRoot?.querySelector("[data-item-git-status]")).toBeNull();
+		expect(host?.shadowRoot?.querySelector("[data-item-contains-git-change]")).toBeNull();
+	});
+
+	it("refreshes explorer git status decorations after a file pane saves", async () => {
+		let saved = false;
+		const write = vi.fn<FilesServiceContract["write"]>(async () => {
+			saved = true;
+			return { status: "saved", revision: "b".repeat(64) };
+		});
+		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () =>
+			saved ? { entries: [{ path: "src/index.ts", status: "modified" }] } : null,
+		);
+		renderExplorerAndFilePane({ ...handlers(), write, gitStatus }, filePane("src/index.ts"));
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		await expandTreePath("src/");
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector('[data-item-path="src/index.ts"]'),
+			).not.toBeNull();
+		});
+		expect(
+			treeHost()?.shadowRoot?.querySelector(
+				'[data-item-path="src/index.ts"][data-item-git-status]',
+			),
+		).toBeNull();
+
+		await replaceEditorText("changed to make the document dirty");
+		await page.getByTestId("files-save").click();
+
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector(
+					'[data-item-path="src/index.ts"][data-item-git-status="modified"]',
+				),
+			).not.toBeNull();
+		});
+	});
+
+	it("refreshes the explorer's git status after saving a document whose folder was removed", async () => {
+		let saved = false;
+		const write = vi.fn<FilesServiceContract["write"]>(async () => {
+			saved = true;
+			return { status: "saved", revision: "b".repeat(64) };
+		});
+		const list = vi.fn<FilesServiceContract["list"]>(async ({ workspaceDirectory }) => ({
+			paths: workspaceDirectory === "/other" ? ["src/", "src/index.ts"] : ["readme.md"],
+			truncated: false,
+		}));
+		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async ({ workspaceDirectory }) =>
+			saved && workspaceDirectory === "/workspace"
+				? { entries: [{ path: "readme.md", status: "added" }] }
+				: null,
+		);
+		const view = renderExplorerAndFilePane(
+			{ ...handlers(), list, write, gitStatus },
+			{
+				workspaceFolders: [
+					{ path: "/workspace", isPrimary: true },
+					{ path: "/other", isPrimary: false },
+				],
+				metadata: { workspaceDirectory: "/other", relativePath: "src/index.ts" },
+			},
+		);
+		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		await replaceEditorText("changed to make the document dirty");
+
+		view.rerenderFilePane({
+			workspaceFolders: [{ path: "/workspace", isPrimary: true }],
+			metadata: { workspaceDirectory: "/other", relativePath: "src/index.ts" },
+		});
+		await vi.waitFor(() => {
+			expect(treeHost()?.shadowRoot?.querySelector('[data-item-path="readme.md"]')).not.toBeNull();
+		});
+		expect(
+			treeHost()?.shadowRoot?.querySelector('[data-item-path="readme.md"][data-item-git-status]'),
+		).toBeNull();
+
+		await page.getByTestId("files-save").click();
+
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector(
+					'[data-item-path="readme.md"][data-item-git-status="added"]',
+				),
+			).not.toBeNull();
+		});
+	});
+
+	it("refetches git status when the refresh button is clicked", async () => {
+		let externallyChanged = false;
+		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () =>
+			externallyChanged ? { entries: [{ path: "docs/readme.md", status: "untracked" }] } : null,
+		);
+		renderView({ ...handlers(), gitStatus });
+		await expandTreePath("docs/");
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector('[data-item-path="docs/readme.md"]'),
+			).not.toBeNull();
+		});
+		expect(
+			treeHost()?.shadowRoot?.querySelector(
+				'[data-item-path="docs/readme.md"][data-item-git-status]',
+			),
+		).toBeNull();
+
+		externallyChanged = true;
+		await page.getByTestId("files-refresh").click();
+
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector(
+					'[data-item-path="docs/readme.md"][data-item-git-status="untracked"]',
+				),
+			).not.toBeNull();
+		});
 	});
 
 	it("offers to open ipynb files in the notebook panel without reading their raw contents", async () => {

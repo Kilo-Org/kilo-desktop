@@ -57,4 +57,11 @@ export class FilesPage {
 			`Files tree should expose ${fileName}`,
 		);
 	}
+
+	async verifyFileHasGitStatus(fileName: string, status: string): Promise<void> {
+		await expectElementToBeVisible(
+			getLocator(`[data-item-path="${fileName}"][data-item-git-status="${status}"]`),
+			`Files tree should mark ${fileName} as ${status}`,
+		);
+	}
 }

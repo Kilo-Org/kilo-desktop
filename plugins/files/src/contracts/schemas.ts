@@ -73,6 +73,15 @@ export const fileWriteResultSchema = z.discriminatedUnion("status", [
 	z.object({ status: z.literal("conflict"), diskRevision: z.string() }),
 ]);
 
+export const fileGitStatusSchema = z.enum(["added", "modified", "deleted", "renamed", "untracked"]);
+export type FileGitStatus = z.infer<typeof fileGitStatusSchema>;
+
+export const fileGitStatusEntrySchema = z.object({
+	path: z.string(),
+	status: fileGitStatusSchema,
+});
+export type FileGitStatusEntry = z.infer<typeof fileGitStatusEntrySchema>;
+
 export const filesContract = defineContract({
 	list: defineMethod(workspaceRequestSchema, filesListResultSchema),
 	existingPaths: defineMethod(
@@ -97,6 +106,10 @@ export const filesContract = defineContract({
 			force: z.boolean().optional(),
 		}),
 		fileWriteResultSchema,
+	),
+	gitStatus: defineMethod(
+		workspaceRequestSchema,
+		z.object({ entries: z.array(fileGitStatusEntrySchema) }).nullable(),
 	),
 });
 

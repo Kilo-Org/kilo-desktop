@@ -8,7 +8,7 @@ import {
 	SaveIcon,
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
@@ -116,6 +116,7 @@ export function FilesView({
 	metadata,
 }: FilesViewProps) {
 	const sdk = useSdk<FilesServiceContract>("files");
+	const queryClient = useQueryClient();
 	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
 	const workspaceFolders = useMemo<readonly FilesWorkspaceFolder[]>(() => {
 		if (providedWorkspaceFolders?.length) return providedWorkspaceFolders;
@@ -198,6 +199,14 @@ export function FilesView({
 		write: writeFile,
 	});
 	const externalEditorWorkspaceDirectory = documentWorkspaceDirectory ?? activeWorkspaceDirectory;
+	const workspaceListDirectory = activeWorkspaceDirectory ?? "";
+	// Single key source for the live query and the save invalidation: an open
+	// document always belongs to the active workspace folder, and if that
+	// folder disappears the visible tree is what needs refreshing.
+	const gitStatusQueryKey = useMemo(
+		() => [sdk.featureId, "git-status", workspaceListDirectory],
+		[sdk.featureId, workspaceListDirectory],
+	);
 	const externalEditors = useExternalEditorActions({
 		...(externalEditorWorkspaceDirectory
 			? { workspaceDirectory: externalEditorWorkspaceDirectory }
@@ -273,9 +282,13 @@ export function FilesView({
 	const saveCurrent = useCallback(
 		async (force = false): Promise<boolean> => {
 			const currentDraft = editorRef.current?.getText() ?? draft;
-			return saveDocument(currentDraft, force);
+			const saved = await saveDocument(currentDraft, force);
+			if (saved) {
+				void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey });
+			}
+			return saved;
 		},
-		[draft, saveDocument],
+		[draft, gitStatusQueryKey, queryClient, saveDocument],
 	);
 
 	const requestAction = useCallback(
@@ -355,7 +368,6 @@ export function FilesView({
 	]);
 
 	const explorerOnly = !metadata?.relativePath;
-	const workspaceListDirectory = activeWorkspaceDirectory ?? "";
 	const shouldLoadWorkspaceList = Boolean(activeWorkspaceDirectory) && explorerOnly;
 	const workspaceListQuery = useQuery({
 		queryKey: [sdk.featureId, "workspace-list", workspaceListDirectory],
@@ -363,6 +375,13 @@ export function FilesView({
 			sdk.client.list({
 				workspaceDirectory: workspaceListDirectory,
 			}),
+		enabled: shouldLoadWorkspaceList,
+		staleTime: 30_000,
+		gcTime: 5 * 60_000,
+	});
+	const gitStatusQuery = useQuery({
+		queryKey: gitStatusQueryKey,
+		queryFn: () => sdk.client.gitStatus({ workspaceDirectory: workspaceListDirectory }),
 		enabled: shouldLoadWorkspaceList,
 		staleTime: 30_000,
 		gcTime: 5 * 60_000,
@@ -597,11 +616,13 @@ export function FilesView({
 							<FilesTree
 								activePath={selectedPath}
 								error={listError}
+								gitStatusEntries={gitStatusQuery.data?.entries ?? null}
 								loading={listLoading}
 								onOpenFile={openFileFromTree}
 								onRefresh={() =>
 									requestAction(async () => {
 										await workspaceListQuery.refetch();
+										void gitStatusQuery.refetch();
 									})
 								}
 								onSelectWorkspaceFolder={(directory) =>

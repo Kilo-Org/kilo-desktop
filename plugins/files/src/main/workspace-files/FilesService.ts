@@ -7,7 +7,7 @@ import { globbyStream } from "globby";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 
-import type { FileReadResult } from "../../contracts/schemas.js";
+import type { FileGitStatusEntry, FileReadResult } from "../../contracts/schemas.js";
 
 const DEFAULT_SCAN_LIMIT = 25_000;
 const DEFAULT_TEXT_LIMIT_BYTES = 1024 * 1024;
@@ -28,6 +28,13 @@ const DEFERRED_PREVIEW_EXTENSIONS = new Set([".htm", ".html", ".pdf"]);
 
 export interface FilesServiceOptions {
 	readonly authorize: (canonicalWorkspaceDirectory: string) => Promise<void>;
+	/**
+	 * Best-effort git status lookup (already gated on the workspace being a
+	 * git worktree root). Runs only after `authorize`, so renderer-supplied
+	 * directories are authorized before any git probe. Implementations may
+	 * reject; the service degrades a rejected lookup to `null`.
+	 */
+	readonly gitStatus: (canonicalWorkspaceDirectory: string) => Promise<FileGitStatusEntry[] | null>;
 	readonly scanLimit?: number;
 	readonly textLimitBytes?: number;
 	readonly imageLimitBytes?: number;
@@ -70,6 +77,9 @@ function featureErrorForFilesystem(error: unknown, message: string): FeatureErro
  * hashes supplied by callers, which keeps concurrent agent edits observable.
  * Batched existence checks authorize their root once, then canonicalize all
  * independent candidates in parallel against that same security boundary.
+ * Git status is the one best-effort operation: it shares the authorization
+ * boundary (authorization failures still reject), while a failure of the
+ * injected lookup itself degrades to `null` instead of failing the operation.
  */
 export class FilesService {
 	private readonly scanLimit: number;
@@ -173,6 +183,11 @@ export class FilesService {
 			truncated,
 			...(!truncated ? { revision: sha256(contents) } : {}),
 		};
+	}
+
+	async gitStatus(workspaceDirectory: string): Promise<FileGitStatusEntry[] | null> {
+		const root = await this.authorizedRoot(workspaceDirectory);
+		return this.options.gitStatus(root).catch(() => null);
 	}
 
 	async resolveFilePath(workspaceDirectory: string, relativePath: string): Promise<string> {

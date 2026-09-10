@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,8 +9,12 @@ import { FilesPage } from "./pages/files-page.js";
 
 type FilesFixtures = {
 	filesPage: FilesPage;
-	filesWorkspace: { path: string; name: string; fileName: string };
+	filesWorkspace: { path: string; name: string; fileName: string; untrackedFileName: string };
 };
+
+function execGit(cwd: string, args: string[]): void {
+	execFileSync("git", args, { cwd, stdio: "pipe" });
+}
 
 export const test = shellTest.extend<FilesFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
@@ -20,8 +25,25 @@ export const test = shellTest.extend<FilesFixtures>({
 	filesWorkspace: async ({}, use) => {
 		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "aad-files-workspace-"));
 		const fileName = "files-plugin-smoke.txt";
+		const untrackedFileName = "files-plugin-untracked.txt";
 		await writeFile(path.join(workspacePath, fileName), "Files plugin smoke test\n");
-		await use({ path: workspacePath, name: path.basename(workspacePath), fileName });
+		// A real worktree root so the files tree shows git status decorations:
+		// the committed file is then modified (modified) and a second file is
+		// left uncommitted (untracked). Identity is repo-local and signing is
+		// disabled to stay deterministic on any developer machine.
+		execGit(workspacePath, ["init", "-b", "main"]);
+		execGit(workspacePath, ["config", "user.email", "files-e2e@example.com"]);
+		execGit(workspacePath, ["config", "user.name", "Files E2E"]);
+		execGit(workspacePath, ["add", fileName]);
+		execGit(workspacePath, ["-c", "commit.gpgsign=false", "commit", "-m", "initial"]);
+		await writeFile(path.join(workspacePath, fileName), "Files plugin smoke test\nmodified\n");
+		await writeFile(path.join(workspacePath, untrackedFileName), "untracked\n");
+		await use({
+			path: workspacePath,
+			name: path.basename(workspacePath),
+			fileName,
+			untrackedFileName,
+		});
 		await rm(workspacePath, { recursive: true, force: true });
 	},
 });

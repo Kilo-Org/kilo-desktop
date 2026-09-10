@@ -132,5 +132,22 @@ export const gitContract = defineContract({
 
 export type GitStatus = z.infer<typeof gitStatusSchema>;
 
+/**
+ * Capability type for consumers resolving the git plugin via
+ * `mainSdk.plugins.get`.
+ *
+ * Usage:
+ * ```ts
+ * const git = mainSdk.plugins.get<GitCapabilities>("git");
+ * const status = await git?.gitService.status(workingDirectory);
+ * ```
+ */
+export type GitCapabilities = {
+	readonly gitService: {
+		status(workingDirectory: string): Promise<GitStatus | null>;
+		available(): Promise<boolean>;
+	};
+};
+
 /** Method-style service type inferred from the contract. */
 export type GitServiceContract = InferContract<typeof gitContract>;

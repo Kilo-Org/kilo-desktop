@@ -11,6 +11,7 @@ import {
 	createLinkedFakeSdkPair,
 } from "@anaconda-agentic-desktop/testing";
 
+import type { GitCapabilities } from "../contracts/schemas.js";
 import { mainRegister } from "./index.js";
 
 const directories: string[] = [];
@@ -146,6 +147,23 @@ describe("git mainRegister", () => {
 			name: "FeatureError",
 			code: "VALIDATION",
 		});
+
+		mainSdk.dispose();
+	});
+
+	it("exposes the gitService capability for other plugins to consume", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		const gitService = mainSdk.plugins.get<GitCapabilities>("git")?.gitService;
+		expect(gitService).toBeDefined();
+
+		await expect(gitService!.status(repoDir)).resolves.toMatchObject({
+			exists: true,
+			workingDirectory: { files: [] },
+		});
+		await expect(gitService!.available()).resolves.toBe(true);
 
 		mainSdk.dispose();
 	});

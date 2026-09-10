@@ -25,7 +25,6 @@ export const DraftWelcomeHeadline: FC = () => {
 									<button
 										type="button"
 										className="border-foreground/60 text-foreground hover:border-foreground/80 focus-visible:ring-ring pointer-events-auto inline-flex max-w-40 min-w-0 cursor-pointer border-b border-dotted transition-colors focus-visible:rounded-sm focus-visible:ring-2 focus-visible:outline-hidden sm:max-w-56"
-										title={active.name}
 									/>
 								}
 							>

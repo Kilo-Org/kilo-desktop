@@ -1,3 +1,4 @@
+import { PaneTabTooltip } from "./PaneTabTooltip.js";
 import {
 	ExternalLinkIcon,
 	Maximize2Icon,
@@ -6,29 +7,24 @@ import {
 	PinOffIcon,
 	XIcon,
 } from "lucide-react";
-import {
-	useCallback,
-	useRef,
-	type FC,
-	type PointerEvent as ReactPointerEvent,
-	type ReactNode,
-} from "react";
+import type { CSSProperties, FC, ReactNode } from "react";
 
-import {
-	dropPositionFromPoint,
-	type DropPosition,
-	type PaneDescriptor,
-} from "@anaconda-agentic-desktop/pane-layout";
+import type { PaneDescriptor } from "@anaconda-agentic-desktop/pane-layout";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { TabsList, TabsTrigger } from "@anaconda-agentic-desktop/ui/components/tabs";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
-import { PANE_ACTIVE_TAB_CLASS } from "./pane-chrome.js";
+import type { PaneDrop } from "./pane-drop.js";
+import { PaneTabScrollArea } from "./PaneTabScrollArea.js";
+import { usePaneDrag } from "./use-pane-drag.js";
+import "./pane-drag.css";
+
 import { PANE_KIND_ICON, PANE_KIND_ICON_CLASS } from "./pane-kind-icon.js";
 
 function tabChromeClassName(active: boolean) {
 	return active
-		? PANE_ACTIVE_TAB_CLASS
-		: "border-border bg-card/70 text-muted-foreground hover:bg-card hover:text-foreground";
+		? "border-primary bg-foreground/10 text-foreground"
+		: "border-border/60 bg-foreground/[0.025] text-muted-foreground hover:border-border hover:bg-foreground/5 hover:text-foreground";
 }
 
 function stopActionBubble(event: { stopPropagation: () => void }) {
@@ -36,6 +32,7 @@ function stopActionBubble(event: { stopPropagation: () => void }) {
 }
 
 export const PaneTabStrip: FC<{
+	canDrop?: (drop: PaneDrop) => boolean;
 	groupId: string;
 	panes: readonly PaneDescriptor[];
 	activePaneId: string;
@@ -43,7 +40,6 @@ export const PaneTabStrip: FC<{
 	showPinned?: boolean;
 	pinned?: boolean;
 	onPin?: () => void;
-	onPinIntentChange?: (active: boolean) => void;
 	poppedOutPaneIds?: ReadonlySet<string>;
 	onSelect: (paneId: string) => void;
 	onActivateGroup?: () => void;
@@ -54,12 +50,11 @@ export const PaneTabStrip: FC<{
 	onExpand?: (paneId: string) => void;
 	onClose?: (paneId: string) => void;
 	canClose?: (pane: PaneDescriptor) => boolean;
-	onMoveToTab?: (paneId: string, targetPaneId: string, position: "before" | "after") => void;
-	onMoveToGroup?: (paneId: string, targetGroupId: string, position: DropPosition) => void;
-	onMoveGroup?: (sourceGroupId: string, targetGroupId: string, position: DropPosition) => void;
+	onDrop?: (drop: PaneDrop) => void;
 	trailing?: ReactNode;
 	titleHint?: (paneId: string) => string | undefined;
 }> = ({
+	canDrop,
 	groupId,
 	panes,
 	activePaneId,
@@ -67,7 +62,6 @@ export const PaneTabStrip: FC<{
 	showPinned = false,
 	pinned = false,
 	onPin,
-	onPinIntentChange,
 	poppedOutPaneIds,
 	onSelect,
 	onActivateGroup,
@@ -78,127 +72,19 @@ export const PaneTabStrip: FC<{
 	onExpand,
 	onClose,
 	canClose,
-	onMoveToTab,
-	onMoveToGroup,
-	onMoveGroup,
+	onDrop,
 	trailing,
 	titleHint,
 }) => {
-	const stripRef = useRef<HTMLDivElement>(null);
-	const dragRef = useRef<{
-		kind: "pane" | "group";
-		pointerId: number;
-		sourceId: string;
-		startX: number;
-		startY: number;
-		moved: boolean;
-		marker?: HTMLElement;
-	} | null>(null);
-	const suppressClickRef = useRef<{ kind: "pane" | "group"; sourceId: string } | null>(null);
-
-	const clearMarker = useCallback(() => {
-		const drag = dragRef.current;
-		if (drag?.marker) delete drag.marker.dataset.dropZone;
-	}, []);
-
-	const startPointerDrag = useCallback(
-		(event: ReactPointerEvent<HTMLElement>, kind: "pane" | "group", sourceId: string) => {
-			if (
-				event.button !== 0 ||
-				(kind === "pane" && !onMoveToTab && !onMoveToGroup) ||
-				(kind === "group" && !onMoveGroup)
-			) {
-				return;
-			}
-			event.stopPropagation();
-			event.currentTarget.setPointerCapture(event.pointerId);
-			dragRef.current = {
-				kind,
-				pointerId: event.pointerId,
-				sourceId,
-				startX: event.clientX,
-				startY: event.clientY,
-				moved: false,
-			};
-		},
-		[onMoveGroup, onMoveToGroup, onMoveToTab],
-	);
-
-	const onPointerDrag = useCallback(
-		(event: ReactPointerEvent<HTMLElement>) => {
-			const drag = dragRef.current;
-			if (!drag || drag.pointerId !== event.pointerId) return;
-			if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) {
-				return;
-			}
-			drag.moved = true;
-			event.preventDefault();
-			const hit = document.elementFromPoint(event.clientX, event.clientY);
-			const tab = hit?.closest<HTMLElement>("[data-pane-tab]");
-			const group = hit?.closest<HTMLElement>("[data-pane-group-id]");
-			if (
-				(drag.kind === "pane" && tab?.dataset.paneTab === drag.sourceId) ||
-				(drag.kind === "group" && group?.dataset.paneGroupId === drag.sourceId)
-			) {
-				clearMarker();
-				delete drag.marker;
-				return;
-			}
-			const target = drag.kind === "group" ? group : (tab ?? group);
-			if (!target) {
-				clearMarker();
-				delete drag.marker;
-				return;
-			}
-			const position = dropPositionFromPoint(
-				target.dataset.paneTab ? "tab" : "group",
-				event.clientX,
-				event.clientY,
-				target.getBoundingClientRect(),
-			);
-			if (drag.marker && drag.marker !== target) delete drag.marker.dataset.dropZone;
-			target.dataset.dropZone = position;
-			drag.marker = target;
-		},
-		[clearMarker],
-	);
-
-	const finishPointerDrag = useCallback(
-		(event: ReactPointerEvent<HTMLElement>, cancelled = false) => {
-			const drag = dragRef.current;
-			if (!drag || drag.pointerId !== event.pointerId) return;
-			const marker = drag.marker;
-			const targetId = marker?.dataset.paneTab;
-			const position = marker?.dataset.dropZone;
-			clearMarker();
-			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-				event.currentTarget.releasePointerCapture(event.pointerId);
-			}
-			dragRef.current = null;
-			if (!drag.moved) return;
-			suppressClickRef.current = { kind: drag.kind, sourceId: drag.sourceId };
-			if (cancelled || !position) return;
-			if (drag.kind === "pane" && targetId && (position === "before" || position === "after")) {
-				onMoveToTab?.(drag.sourceId, targetId, position);
-				return;
-			}
-			const targetGroupId =
-				marker?.dataset.paneGroupId ??
-				marker?.closest<HTMLElement>("[data-pane-group-id]")?.dataset.paneGroupId;
-			if (!targetGroupId) return;
-			if (drag.kind === "group") {
-				onMoveGroup?.(drag.sourceId, targetGroupId, position as DropPosition);
-				return;
-			}
-			onMoveToGroup?.(drag.sourceId, targetGroupId, position as DropPosition);
-		},
-		[clearMarker, onMoveGroup, onMoveToGroup, onMoveToTab],
-	);
+	const { stripRef, suppressClickRef, startPointerDrag, onPointerDrag, finishPointerDrag } =
+		usePaneDrag({ onDrop, canDrop });
 
 	return (
-		<div
-			ref={stripRef}
-			className="group/pane-tabs flex h-7 min-w-0 shrink-0 [scrollbar-width:none] items-stretch gap-1 overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden"
+		<PaneTabScrollArea
+			scrollRef={stripRef}
+			tabIds={panes.map((pane) => pane.id)}
+			activeTabId={activePaneId}
+			className="group/pane-tabs scroll-fade-x flex h-7 min-w-0 shrink-0 [scroll-padding-inline:1.25rem] [scrollbar-width:none] items-stretch gap-1 overflow-x-auto overflow-y-hidden [--scroll-fade-reveal:1.25rem] [--scroll-fade-size:1.25rem] [&::-webkit-scrollbar]:hidden"
 			data-qa-id="chat-pane-tabs"
 			data-pane-group-tabs={groupId}
 			data-selected={panes.some((pane) => pane.id === activePaneId) || undefined}
@@ -206,7 +92,11 @@ export const PaneTabStrip: FC<{
 				if (event.target === event.currentTarget) onActivateGroup?.();
 			}}
 		>
-			<nav className="flex h-7 shrink-0 items-stretch gap-1" role="tablist" aria-label="Panes">
+			<TabsList
+				variant="ghost"
+				className="h-7 shrink-0 items-stretch group-data-horizontal/tabs:h-7"
+				aria-label="Panes"
+			>
 				{panes.map((pane) => {
 					const active = pane.id === activePaneId;
 					const poppedOut = poppedOutPaneIds?.has(pane.id) === true;
@@ -216,15 +106,16 @@ export const PaneTabStrip: FC<{
 					const paneExpanded = active && expanded;
 					const Icon = PANE_KIND_ICON[pane.kind];
 					const closable = Boolean(onClose) && (canClose?.(pane) ?? pane.kind !== "agent");
+					const actionCount = Number(Boolean(onExpand)) + Number(windowable) + Number(closable);
 					const actionVisibilityClassName = cn(
-						"opacity-0 transition-opacity group-hover/pane-tab:opacity-100 group-focus-within/pane-tab:opacity-100",
-						active && "opacity-100",
+						"pointer-events-none absolute inset-y-0 right-0.5 flex items-center opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/pane-tab:pointer-events-auto group-hover/pane-tab:opacity-100 group-focus-within/pane-tab:pointer-events-auto group-focus-within/pane-tab:opacity-100",
+						active && "pointer-events-auto opacity-100",
 					);
 					return (
 						<div
 							key={pane.id}
 							className={cn(
-								"group/pane-tab relative flex h-7 min-w-[6.5rem] max-w-44 shrink-0 overflow-hidden rounded-[4px_4px_2px_2px] border transition-colors",
+								"group/pane-tab relative flex h-7 min-w-40 max-w-56 shrink-0 overflow-hidden rounded-md border transition-colors",
 								tabChromeClassName(active && highlighted),
 								poppedOut && "border-dashed",
 								poppedOut && "border-info/70",
@@ -233,13 +124,16 @@ export const PaneTabStrip: FC<{
 							data-pane-tab={pane.id}
 							data-active={active ? "true" : undefined}
 							data-popped-out={poppedOut ? "true" : undefined}
+							style={
+								{ "--pane-tab-actions-width": `${actionCount * 1.25 + 0.5}rem` } as CSSProperties
+							}
 						>
-							<button
+							<TabsTrigger
+								aria-description={titleHint?.(pane.id)}
+								value={pane.id}
+								variant="ghost"
 								type="button"
-								role="tab"
-								aria-selected={active}
-								title={titleHint?.(pane.id) ?? pane.title}
-								className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-inset"
+								className="h-full min-w-0 flex-1 cursor-grab touch-none justify-start gap-1.5 rounded-none px-2 text-xs hover:bg-transparent focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0"
 								data-qa-id={`chat-pane-tab-${pane.id}`}
 								data-popped-out={poppedOut ? "true" : undefined}
 								onClick={() => {
@@ -262,93 +156,102 @@ export const PaneTabStrip: FC<{
 								onPointerMove={poppedOut ? undefined : onPointerDrag}
 								onPointerUp={poppedOut ? undefined : (event) => finishPointerDrag(event)}
 								onPointerCancel={poppedOut ? undefined : (event) => finishPointerDrag(event, true)}
+								onLostPointerCapture={
+									poppedOut ? undefined : (event) => finishPointerDrag(event, true)
+								}
 							>
 								<Icon
 									className={cn("size-3 shrink-0", PANE_KIND_ICON_CLASS[pane.kind])}
 									aria-hidden
 								/>
-								<span className="min-w-0 truncate">{pane.title}</span>
-							</button>
-							{onExpand ? (
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									aria-label={paneExpanded ? `Restore ${pane.title}` : `Expand ${pane.title}`}
-									aria-pressed={paneExpanded}
-									title={paneExpanded ? "Restore" : "Expand"}
+								<span
 									className={cn(
-										"text-muted-foreground hover:text-foreground mt-[3px] size-5 rounded-[3px]",
-										actionVisibilityClassName,
-										paneExpanded && "bg-foreground/10 text-foreground",
+										"min-w-0 flex-1 truncate text-left",
+										actionCount > 0 &&
+											"group-hover/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-focus-within/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-data-[active]/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))]",
 									)}
-									data-qa-id={`chat-pane-expand-${pane.id}`}
-									onPointerDown={stopActionBubble}
-									onClick={(event) => {
-										stopActionBubble(event);
-										onExpand(pane.id);
-									}}
 								>
-									{paneExpanded ? <Minimize2Icon /> : <Maximize2Icon />}
-								</Button>
-							) : null}
-							{windowable ? (
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									aria-label={poppedOut ? `Dock ${pane.title}` : `Pop out ${pane.title}`}
-									title={poppedOut ? "Dock" : "Pop out"}
-									className={cn(
-										"hover:text-foreground mt-[3px] size-5 rounded-[3px]",
-										actionVisibilityClassName,
-										poppedOut ? "text-info" : "text-muted-foreground",
-									)}
-									data-qa-id={`chat-pane-${poppedOut ? "dock" : "pop-out"}-tab-${pane.id}`}
-									onPointerDown={stopActionBubble}
-									onClick={(event) => {
-										stopActionBubble(event);
-										if (poppedOut) {
-											onDockPoppedOut?.(pane.id);
-											return;
-										}
-										onPopOut?.(pane.id);
-									}}
-								>
-									{poppedOut ? <Minimize2Icon /> : <ExternalLinkIcon />}
-								</Button>
-							) : null}
-							{closable && onClose ? (
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									aria-label={`Close ${pane.title}`}
-									className={cn(
-										"text-muted-foreground hover:text-foreground mt-[3px] mr-0.5 size-5 rounded-[3px]",
-										actionVisibilityClassName,
-									)}
-									data-qa-id={`chat-pane-close-tab-${pane.id}`}
-									onPointerDown={stopActionBubble}
-									onClick={(event) => {
-										stopActionBubble(event);
-										onClose(pane.id);
-									}}
-								>
-									<XIcon />
-								</Button>
-							) : null}
+									{pane.title}
+								</span>
+							</TabsTrigger>
+							<div className={actionVisibilityClassName}>
+								{onExpand ? (
+									<PaneTabTooltip content={paneExpanded ? "Restore" : "Expand"}>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-xs"
+											aria-label={paneExpanded ? `Restore ${pane.title}` : `Expand ${pane.title}`}
+											aria-pressed={paneExpanded}
+											className={cn(
+												"text-muted-foreground hover:text-foreground size-5 rounded-[3px]",
+												paneExpanded && "bg-foreground/10 text-foreground",
+											)}
+											data-qa-id={`chat-pane-expand-${pane.id}`}
+											onPointerDown={stopActionBubble}
+											onClick={(event) => {
+												stopActionBubble(event);
+												onExpand(pane.id);
+											}}
+										>
+											{paneExpanded ? <Minimize2Icon /> : <Maximize2Icon />}
+										</Button>
+									</PaneTabTooltip>
+								) : null}
+								{windowable ? (
+									<PaneTabTooltip content={poppedOut ? "Dock" : "Pop out"}>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-xs"
+											aria-label={poppedOut ? `Dock ${pane.title}` : `Pop out ${pane.title}`}
+											className={cn(
+												"hover:text-foreground size-5 rounded-[3px]",
+												poppedOut ? "text-info" : "text-muted-foreground",
+											)}
+											data-qa-id={`chat-pane-${poppedOut ? "dock" : "pop-out"}-tab-${pane.id}`}
+											onPointerDown={stopActionBubble}
+											onClick={(event) => {
+												stopActionBubble(event);
+												if (poppedOut) {
+													onDockPoppedOut?.(pane.id);
+													return;
+												}
+												onPopOut?.(pane.id);
+											}}
+										>
+											{poppedOut ? <Minimize2Icon /> : <ExternalLinkIcon />}
+										</Button>
+									</PaneTabTooltip>
+								) : null}
+								{closable && onClose ? (
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-xs"
+										aria-label={`Close ${pane.title}`}
+										className="text-muted-foreground hover:text-foreground size-5 rounded-[3px]"
+										data-qa-id={`chat-pane-close-tab-${pane.id}`}
+										onPointerDown={stopActionBubble}
+										onClick={(event) => {
+											stopActionBubble(event);
+											onClose(pane.id);
+										}}
+									>
+										<XIcon />
+									</Button>
+								) : null}
+							</div>
 						</div>
 					);
 				})}
-			</nav>
+			</TabsList>
 			{trailing}
-			{onMoveGroup ? (
+			{onDrop ? (
 				<button
 					type="button"
 					aria-label="Drag pane group"
-					title="Drag pane group"
-					className="min-w-6 flex-1 cursor-grab touch-none active:cursor-grabbing"
+					className="-ml-1 min-w-0 flex-1 cursor-grab touch-none active:cursor-grabbing"
 					data-qa-id={`chat-pane-group-drag-${groupId}`}
 					onClick={() => {
 						if (
@@ -364,35 +267,33 @@ export const PaneTabStrip: FC<{
 					onPointerMove={onPointerDrag}
 					onPointerUp={(event) => finishPointerDrag(event)}
 					onPointerCancel={(event) => finishPointerDrag(event, true)}
+					onLostPointerCapture={(event) => finishPointerDrag(event, true)}
 				/>
 			) : null}
 			{showPinned && onPin ? (
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-xs"
-					aria-label={pinned ? "Unpin column" : "Pin column"}
-					aria-pressed={pinned}
-					title={pinned ? "Unpin column" : "Pin column"}
-					className={cn(
-						"border-border bg-card/70 text-muted-foreground hover:bg-card hover:text-foreground focus-visible:ring-ring relative ml-auto flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[4px_4px_2px_2px] border opacity-0 transition-opacity outline-none group-focus-within/pane-tabs:opacity-100 group-hover/pane-tabs:opacity-100 focus-visible:ring-2 focus-visible:ring-inset",
-						pinned &&
-							"text-amber-600 opacity-100 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300",
-					)}
-					data-qa-id={`chat-pane-pin-${groupId}`}
-					onPointerEnter={() => onPinIntentChange?.(true)}
-					onPointerLeave={() => onPinIntentChange?.(false)}
-					onFocus={() => onPinIntentChange?.(true)}
-					onBlur={() => onPinIntentChange?.(false)}
-					onPointerDown={stopActionBubble}
-					onClick={(event) => {
-						stopActionBubble(event);
-						onPin();
-					}}
-				>
-					{pinned ? <PinOffIcon /> : <PinIcon />}
-				</Button>
+				<PaneTabTooltip content={pinned ? "Unpin column" : "Pin column"}>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						aria-label={pinned ? "Unpin column" : "Pin column"}
+						aria-pressed={pinned}
+						className={cn(
+							"text-muted-foreground relative ml-auto rounded-md opacity-0 transition-opacity group-focus-within/pane-tabs:opacity-100 group-hover/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100",
+							pinned &&
+								"bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary opacity-100",
+						)}
+						data-qa-id={`chat-pane-pin-${groupId}`}
+						onPointerDown={stopActionBubble}
+						onClick={(event) => {
+							stopActionBubble(event);
+							onPin();
+						}}
+					>
+						{pinned ? <PinOffIcon className="size-3" /> : <PinIcon className="size-3" />}
+					</Button>
+				</PaneTabTooltip>
 			) : null}
-		</div>
+		</PaneTabScrollArea>
 	);
 };

@@ -109,7 +109,7 @@ describe("DraftWelcomeHeadline", () => {
 		await expect.element(heading).toHaveTextContent("What should we work on in Alpha?");
 
 		const trigger = screen.getByRole("combobox", { name: "Change workspace" });
-		await expect.element(trigger).toHaveAttribute("title", "Alpha");
+		await expect.element(trigger).not.toHaveAttribute("title");
 		expect(trigger.element().className).toMatch(/max-w-40/);
 		expect(trigger.element().querySelector(".truncate")).not.toBeNull();
 
@@ -146,7 +146,7 @@ describe("DraftWelcomeHeadline", () => {
 		const screen = page.elementLocator(baseElement);
 		const trigger = screen.getByRole("combobox", { name: "Change workspace" });
 
-		await expect.element(trigger).toHaveAttribute("title", longName);
+		await expect.element(trigger).not.toHaveAttribute("title");
 		await expect
 			.element(screen.getByRole("heading", { level: 1 }))
 			.toHaveTextContent(`What should we work on in ${longName}?`);

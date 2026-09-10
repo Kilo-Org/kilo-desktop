@@ -174,7 +174,11 @@ export function FilesTree({
 						<SelectContent>
 							<SelectGroup>
 								{folderOptions.map((option) => (
-									<SelectItem key={option.value} value={option.value} title={option.value}>
+									<SelectItem
+										aria-description={option.value}
+										key={option.value}
+										value={option.value}
+									>
 										<span className="min-w-0 truncate">{option.label}</span>
 									</SelectItem>
 								))}

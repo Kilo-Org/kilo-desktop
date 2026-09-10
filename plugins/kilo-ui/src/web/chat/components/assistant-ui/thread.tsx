@@ -160,7 +160,7 @@ const ComposerDockMask: FC = () => {
 		<>
 			<div
 				aria-hidden
-				className="bg-background pointer-events-none absolute -inset-x-4 top-full h-4 md:h-6"
+				className="bg-background pointer-events-none absolute -inset-x-4 top-full h-4"
 			/>
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-tl" />
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-tr" />
@@ -212,7 +212,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				autoScroll
 				scrollToBottomOnRunStart={false}
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 [scrollbar-gutter:stable_both-edges] flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth"
+				className="relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
 				<div
 					className={cn(
@@ -227,7 +227,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
 							/* Transparent so sticky glass can blur scrolled messages behind the shell. */
-							"aui-thread-viewport-footer relative flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+							"aui-thread-viewport-footer relative flex flex-col gap-4 overflow-visible pb-4",
 							!isDraft && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
 						)}
 					>
@@ -779,7 +779,8 @@ const ComposerAction: FC<{
 						) : null}
 						<ComposerPrimitive.Cancel
 							render={
-								<Button
+								<TooltipIconButton
+									tooltip="Stop generating"
 									type="button"
 									variant={canQueue && !isComposerEmpty ? "outline" : "default"}
 									size="icon"

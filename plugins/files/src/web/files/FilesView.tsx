@@ -510,7 +510,6 @@ export function FilesView({
 						<div
 							className="text-muted-foreground min-w-0 flex-1 truncate px-1 text-xs"
 							data-qa-id="files-breadcrumb"
-							title={selectedPath}
 						>
 							{selectedPath.split("/").map((segment, index) => (
 								<span key={`${segment}:${String(index)}`}>

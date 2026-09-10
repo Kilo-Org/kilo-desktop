@@ -101,7 +101,7 @@ const ActivityIconStack: FC<{
 				</AvatarGroupCount>
 			) : null}
 			{visible.map((item, index) => (
-				<Avatar key={index} title={item.label} className="size-6.5">
+				<Avatar key={index} aria-hidden className="size-6.5">
 					<AvatarFallback
 						className={cn(
 							"relative border-2",

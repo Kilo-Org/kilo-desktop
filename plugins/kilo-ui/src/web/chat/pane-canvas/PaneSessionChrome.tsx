@@ -2,7 +2,9 @@ import { GalleryHorizontalIcon } from "lucide-react";
 import type { FC } from "react";
 
 import type { Arrangement } from "@anaconda-agentic-desktop/pane-layout";
+import { buttonVariants } from "@anaconda-agentic-desktop/ui/components/button";
 import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
 	Tooltip,
 	TooltipContent,
@@ -21,7 +23,10 @@ export const PaneSessionChrome: FC<{
 				<TooltipTrigger
 					render={
 						<div
-							className="bg-card/95 border-border text-muted-foreground flex h-7 items-center gap-2 rounded-md border px-2 text-xs shadow-sm [-webkit-app-region:no-drag]"
+							className={cn(
+								buttonVariants({ variant: "outline", size: "xs" }),
+								"h-6.5 gap-2 [-webkit-app-region:no-drag]",
+							)}
 							data-qa-id="chat-pane-arrangement"
 						/>
 					}

@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useReducer,
 	useRef,
 	useState,
 	type FC,
@@ -18,9 +19,6 @@ import {
 	findPaneGroup,
 	flattenPanes,
 	getScrollTarget,
-	moveGroup,
-	movePane,
-	movePaneToGroup,
 	PANE_GAP,
 	projectLayout,
 	resizeColumn,
@@ -28,17 +26,19 @@ import {
 	setActivePane,
 	togglePin,
 	type Arrangement,
-	type DropPosition,
 	type PaneLayout,
 	type ProjectedColumn,
 	type ProjectedGroup,
 } from "@anaconda-agentic-desktop/pane-layout";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { ResizableHandle } from "@anaconda-agentic-desktop/ui/components/resizable";
+import { Tabs, TabsContent } from "@anaconda-agentic-desktop/ui/components/tabs";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import type { RightPanelTabDefinition } from "../right-panel/right-panel-tab-registry.js";
+import { applyPaneDrop, changesPanePlacement, type PaneDrop } from "./pane-drop.js";
 import { PaneAddTab } from "./PaneAddTab.js";
+import { PaneColumnMount } from "./PaneColumnMount.js";
 import { PaneTabStrip } from "./PaneTabStrip.js";
 import {
 	applyCarouselScroll,
@@ -46,8 +46,8 @@ import {
 	shouldStartCarouselPan,
 } from "./carousel-gestures.js";
 import { ChatPaneHost } from "./ChatPaneHost.js";
-import { PANE_PINNED_COLUMN_CLASS, PANE_PINNED_COLUMN_INTENT_CLASS } from "./pane-chrome.js";
 import { usePaneExpand } from "./pane-expand.js";
+import { usePaneFrameFocus } from "./use-pane-frame-focus.js";
 
 const FALLBACK_VIEWPORT_WIDTH = 960;
 const PANE_REVEAL_SPRING = {
@@ -293,7 +293,7 @@ const StackResizeHandle: FC<{
 				className={cn(
 					"group absolute inset-x-0 -inset-y-0.5 z-10 cursor-row-resize touch-none bg-transparent outline-none",
 					"before:absolute before:inset-x-0 before:top-1/2 before:h-0.5 before:-translate-y-1/2 before:bg-transparent before:content-['']",
-					"hover:before:bg-primary/70 focus-visible:before:bg-primary active:before:bg-primary before:transition-colors before:duration-150 motion-reduce:before:transition-none",
+					"hover:before:bg-muted-foreground/35 focus-visible:before:bg-muted-foreground/60 active:before:bg-muted-foreground/60 before:transition-colors before:duration-150 motion-reduce:before:transition-none",
 				)}
 				onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
 					if (event.button !== 0) return;
@@ -348,6 +348,7 @@ const StackResizeHandle: FC<{
 };
 
 const PaneCanvasColumn: FC<{
+	canDrop: (drop: PaneDrop) => boolean;
 	column: ProjectedColumn;
 	layout: PaneLayout;
 	arrangement: Arrangement;
@@ -364,9 +365,7 @@ const PaneCanvasColumn: FC<{
 	onToggleExpand?: (groupId: string, paneId: string) => void;
 	expanded?: boolean;
 	onResize: (delta: number) => void;
-	onMoveToTab: (paneId: string, targetPaneId: string, position: "before" | "after") => void;
-	onMoveToGroup: (paneId: string, targetGroupId: string, position: DropPosition) => void;
-	onMoveGroup: (sourceGroupId: string, targetGroupId: string, position: DropPosition) => void;
+	onDrop: (drop: PaneDrop) => void;
 	definitions: readonly RightPanelTabDefinition[];
 	showChatInAddMenu: boolean;
 	onLaunchChat: (targetGroupId?: string) => void;
@@ -374,6 +373,7 @@ const PaneCanvasColumn: FC<{
 	renderPane: (paneId: string) => ReactNode;
 	paneTitleHint?: (paneId: string) => string | undefined;
 }> = ({
+	canDrop,
 	column,
 	layout,
 	arrangement,
@@ -390,9 +390,7 @@ const PaneCanvasColumn: FC<{
 	onToggleExpand,
 	expanded = false,
 	onResize,
-	onMoveToTab,
-	onMoveToGroup,
-	onMoveGroup,
+	onDrop,
 	definitions,
 	showChatInAddMenu,
 	onLaunchChat,
@@ -401,7 +399,6 @@ const PaneCanvasColumn: FC<{
 	paneTitleHint,
 }) => {
 	const paneCount = flattenPanes(layout).length;
-	const [pinIntent, setPinIntent] = useState(false);
 	const columnExpanded = expandedGroupId
 		? column.groups.some((group) => group.id === expandedGroupId)
 		: false;
@@ -414,7 +411,6 @@ const PaneCanvasColumn: FC<{
 			)}
 			data-column-id={column.id}
 			data-pinned={column.pinned ? "true" : undefined}
-			data-pin-intent={pinIntent ? "true" : undefined}
 			hidden={Boolean(expandedGroupId) && !columnExpanded}
 			style={columnExpanded ? { width: "100%" } : { width: column.width }}
 		>
@@ -424,16 +420,19 @@ const PaneCanvasColumn: FC<{
 				const active = group.id === activeGroupId;
 				return (
 					<Fragment key={group.id}>
-						<div
-							className="relative flex min-h-0 min-w-0 flex-col gap-1"
+						<Tabs
+							value={pane.id}
+							className="pane-group relative flex min-h-0 min-w-0 flex-col gap-1"
 							data-qa-id={`chat-pane-group-${group.id}`}
 							data-pane-group-id={group.id}
+							data-group-active={active ? "true" : undefined}
 							data-pane-id={pane.id}
 							data-pinned={group.pinned ? "true" : undefined}
 							hidden={Boolean(expandedGroupId) && group.id !== expandedGroupId}
 							style={{ flex: `${group.heightWeight} 1 0%` }}
 						>
 							<PaneTabStrip
+								canDrop={canDrop}
 								groupId={group.id}
 								panes={sourceGroup.tabs}
 								activePaneId={active ? group.pane.id : ""}
@@ -443,7 +442,6 @@ const PaneCanvasColumn: FC<{
 								{...(arrangement === "carousel" && index === 0
 									? {
 											onPin: () => onLayoutChange(togglePin(layout, group.id)),
-											onPinIntentChange: setPinIntent,
 										}
 									: {})}
 								{...(onToggleExpand
@@ -470,9 +468,7 @@ const PaneCanvasColumn: FC<{
 									onLayoutChange(setActivePane(layout, group.pane.id));
 									onSelectPane(group.pane.id);
 								}}
-								onMoveToTab={onMoveToTab}
-								onMoveToGroup={onMoveToGroup}
-								onMoveGroup={onMoveGroup}
+								onDrop={onDrop}
 								{...(onClosePane ? { onClose: onClosePane } : {})}
 								canClose={(tab) => tab.kind !== "agent" || paneCount > 1}
 								trailing={
@@ -484,40 +480,46 @@ const PaneCanvasColumn: FC<{
 									/>
 								}
 							/>
-							<div className="relative min-h-0 min-w-0 flex-1" data-qa-id={`chat-pane-${pane.id}`}>
-								<ChatPaneHost
-									kind={pane.kind}
-									active={active}
-									highlighted={paneCount > 1 && !(arrangement === "carousel" && column.pinned)}
-									paneId={pane.id}
-								>
+							<div
+								className="relative min-h-0 min-w-0 flex-1"
+								data-qa-id={`chat-pane-${pane.id}`}
+								onPointerDownCapture={(event) => {
+									if (active || event.button !== 0) return;
+									onLayoutChange(setActivePane(layout, pane.id));
+									onSelectPane(pane.id);
+								}}
+							>
+								<ChatPaneHost kind={pane.kind} active={active} paneId={pane.id}>
 									{poppedOutPaneIds?.has(pane.id) ? (
-										<PoppedOutPanePlaceholder
-											paneId={pane.id}
-											{...(onFocusPoppedOutPane ? { onFocus: onFocusPoppedOutPane } : {})}
-											{...(onDockPoppedOutPane ? { onDock: onDockPoppedOutPane } : {})}
-										/>
+										<TabsContent value={pane.id} className="flex min-h-0 flex-col">
+											<PoppedOutPanePlaceholder
+												paneId={pane.id}
+												{...(onFocusPoppedOutPane ? { onFocus: onFocusPoppedOutPane } : {})}
+												{...(onDockPoppedOutPane ? { onDock: onDockPoppedOutPane } : {})}
+											/>
+										</TabsContent>
 									) : (
 										group.tabs.map((tab) => {
 											if (poppedOutPaneIds?.has(tab.id)) return null;
 											const shown = tab.id === pane.id;
 											return (
-												<div
+												<TabsContent
 													key={tab.id}
+													value={tab.id}
+													keepMounted
 													className="flex min-h-0 flex-1 flex-col overflow-hidden"
-													hidden={!shown}
 													data-qa-id={
 														shown ? `chat-pane-content-${tab.id}` : `chat-pane-parked-${tab.id}`
 													}
 												>
 													{renderPane(tab.id)}
-												</div>
+												</TabsContent>
 											);
 										})
 									)}
 								</ChatPaneHost>
 							</div>
-						</div>
+						</Tabs>
 						{!expandedGroupId && index < column.groups.length - 1 && column.groups[index + 1] ? (
 							<StackResizeHandle
 								upperGroup={group}
@@ -534,16 +536,6 @@ const PaneCanvasColumn: FC<{
 				);
 			})}
 			{showResize ? <ResizableHandle ariaLabel="Resize column" onResize={onResize} /> : null}
-			{arrangement === "carousel" && (column.pinned || pinIntent) ? (
-				<div
-					aria-hidden
-					className={cn(
-						"pointer-events-none absolute inset-0 z-50 rounded-sm border",
-						pinIntent ? PANE_PINNED_COLUMN_INTENT_CLASS : PANE_PINNED_COLUMN_CLASS,
-					)}
-					data-qa-id="chat-pane-column-pin-outline"
-				/>
-			) : null}
 		</div>
 	);
 };
@@ -583,6 +575,8 @@ export const ChatPaneCanvas: FC<{
 }) => {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const trackRef = useRef<HTMLDivElement>(null);
+	const pinnedRef = useRef<HTMLDivElement>(null);
+	const [columnMountVersion, onColumnReady] = useReducer((version: number) => version + 1, 0);
 	const layoutRef = useRef(layout);
 	const scrollMotionRef = useRef<ScrollMotion>(createScrollMotion());
 	const panRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
@@ -593,7 +587,7 @@ export const ChatPaneCanvas: FC<{
 	const dockedLayout = withoutPoppedOutPanes(layout, poppedOutPaneIds);
 	const showChatInAddMenu = !flattenPanes(layout).some((pane) => pane.kind === "agent");
 	const activeGroupId = findPaneGroup(dockedLayout, dockedLayout.activePaneId)?.id ?? "";
-	const paneExpand = usePaneExpand(arrangement, dockedLayout.groups.length);
+	const paneExpand = usePaneExpand(arrangement, dockedLayout.groups.length, activeGroupId);
 	const projection = projectLayout(dockedLayout, arrangement, viewportWidth);
 	const pinnedColumns =
 		arrangement === "carousel" ? projection.columns.filter((column) => column.pinned) : [];
@@ -604,6 +598,12 @@ export const ChatPaneCanvas: FC<{
 	const scrollingColumnsRef = useRef(scrollingColumns);
 	scrollingColumnsRef.current = scrollingColumns;
 	layoutRef.current = layout;
+
+	usePaneFrameFocus(viewportRef, (paneId) => {
+		if (layout.activePaneId === paneId) return;
+		onLayoutChange(setActivePane(layout, paneId));
+		onSelectPane(paneId);
+	});
 
 	useEffect(() => {
 		const node = viewportRef.current;
@@ -669,46 +669,24 @@ export const ChatPaneCanvas: FC<{
 			return;
 		}
 		animateHorizontalScroll(track, target, scrollMotionRef);
-	}, [arrangement, dockedLayout.activePaneId, revealActivePaneNonce]);
+	}, [arrangement, dockedLayout.activePaneId, revealActivePaneNonce, columnMountVersion]);
 
 	useEffect(() => () => cancelHorizontalScroll(scrollMotionRef), []);
 
-	const commitMove = useCallback(
-		(next: PaneLayout) => {
+	const canDrop = useCallback((drop: PaneDrop) => {
+		const current = layoutRef.current;
+		return changesPanePlacement(current, applyPaneDrop(current, drop));
+	}, []);
+
+	const onDrop = useCallback(
+		(drop: PaneDrop) => {
+			const current = layoutRef.current;
+			const next = applyPaneDrop(current, drop);
+			if (!changesPanePlacement(current, next)) return;
 			onLayoutChange(next);
 			onSelectPane(next.activePaneId);
 		},
 		[onLayoutChange, onSelectPane],
-	);
-
-	const onMoveToTab = useCallback(
-		(paneId: string, targetPaneId: string, position: "before" | "after") => {
-			const current = layoutRef.current;
-			const source = findPaneGroup(current, paneId);
-			const target = findPaneGroup(current, targetPaneId);
-			if (!source || !target) return;
-			const sourceIndex = source.tabs.findIndex((pane) => pane.id === paneId);
-			const targetIndex = target.tabs.findIndex((pane) => pane.id === targetPaneId);
-			const insertion = targetIndex + (position === "after" ? 1 : 0);
-			const adjusted =
-				source.id === target.id && sourceIndex < insertion ? insertion - 1 : insertion;
-			commitMove(movePaneToGroup(current, paneId, target.id, adjusted));
-		},
-		[commitMove],
-	);
-
-	const onMoveToGroup = useCallback(
-		(paneId: string, targetGroupId: string, position: DropPosition) => {
-			commitMove(movePane(layoutRef.current, paneId, targetGroupId, position));
-		},
-		[commitMove],
-	);
-
-	const onMoveGroup = useCallback(
-		(sourceGroupId: string, targetGroupId: string, position: DropPosition) => {
-			commitMove(moveGroup(layoutRef.current, sourceGroupId, targetGroupId, position));
-		},
-		[commitMove],
 	);
 
 	const renderColumn = (
@@ -717,6 +695,7 @@ export const ChatPaneCanvas: FC<{
 		siblings: readonly ProjectedColumn[],
 	) => (
 		<PaneCanvasColumn
+			canDrop={canDrop}
 			key={column.id}
 			column={column}
 			layout={layout}
@@ -739,12 +718,12 @@ export const ChatPaneCanvas: FC<{
 						expanded: paneExpand.isExpanded,
 						onToggleExpand: (groupId: string, paneId: string) => {
 							if (paneExpand.expandedGroupId === groupId) {
-								paneExpand.setExpandedGroupId(null);
+								paneExpand.setExpanded(false);
 								return;
 							}
 							onLayoutChange(setActivePane(layout, paneId));
 							onSelectPane(paneId);
-							paneExpand.setExpandedGroupId(groupId);
+							paneExpand.setExpanded(true);
 						},
 					}
 				: {})}
@@ -755,9 +734,7 @@ export const ChatPaneCanvas: FC<{
 				}
 				onLayoutChange(tileResize(layout, column, siblings[index + 1], delta));
 			}}
-			onMoveToTab={onMoveToTab}
-			onMoveToGroup={onMoveToGroup}
-			onMoveGroup={onMoveGroup}
+			onDrop={onDrop}
 			definitions={definitions}
 			showChatInAddMenu={showChatInAddMenu}
 			onLaunchChat={onLaunchChat}
@@ -768,10 +745,11 @@ export const ChatPaneCanvas: FC<{
 	);
 
 	const onTrackPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+		const track = trackRef.current;
+		if (!track || !track.contains(event.target as Node)) return;
 		cancelHorizontalScroll(scrollMotionRef);
 		userScrolledRef.current = true;
 		if (!shouldStartCarouselPan(event)) return;
-		const track = event.currentTarget;
 		panRef.current = {
 			pointerId: event.pointerId,
 			startX: event.clientX,
@@ -785,16 +763,18 @@ export const ChatPaneCanvas: FC<{
 	const onTrackPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
 		const pan = panRef.current;
 		if (!pan || pan.pointerId !== event.pointerId) return;
-		event.currentTarget.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
+		if (trackRef.current)
+			trackRef.current.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
 	}, []);
 
 	const finishTrackPan = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
 		const pan = panRef.current;
 		if (!pan || pan.pointerId !== event.pointerId) return;
-		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-			event.currentTarget.releasePointerCapture(event.pointerId);
+		const track = trackRef.current;
+		if (track?.hasPointerCapture(event.pointerId)) {
+			track.releasePointerCapture(event.pointerId);
 		}
-		delete event.currentTarget.dataset.panning;
+		if (track) delete track.dataset.panning;
 		panRef.current = null;
 	}, []);
 
@@ -806,47 +786,58 @@ export const ChatPaneCanvas: FC<{
 			data-arrangement={arrangement}
 			data-expanded={paneExpand.isExpanded ? "true" : "false"}
 		>
-			<div className={cn("flex min-h-0 min-w-0 flex-1", arrangement === "carousel" && "gap-1")}>
-				{pinnedColumns.length > 0 ? (
-					<div
-						className={cn(
-							"flex h-full shrink-0 gap-1",
-							paneExpand.isExpanded &&
-								!pinnedColumns.some((column) =>
-									column.groups.some((group) => group.id === paneExpand.expandedGroupId),
-								) &&
-								"hidden",
-							paneExpand.isExpanded && "min-w-0 flex-1",
-						)}
-						data-qa-id="chat-pane-pinned"
-					>
-						{pinnedColumns.map((column, index) => renderColumn(column, index, pinnedColumns))}
-					</div>
-				) : null}
-				{scrollingColumns.length > 0 ? (
-					<div
-						ref={arrangement === "carousel" ? trackRef : undefined}
-						className={cn(
-							"flex min-h-0 min-w-0",
-							arrangement === "carousel"
-								? "flex-1 gap-1 [overflow-anchor:none] overflow-x-auto"
-								: "flex-1",
-							arrangement === "tiles" && "gap-1",
-							paneExpand.isExpanded &&
-								!scrollingColumns.some((column) =>
-									column.groups.some((group) => group.id === paneExpand.expandedGroupId),
-								) &&
-								"hidden",
-						)}
-						data-qa-id={arrangement === "carousel" ? "chat-pane-carousel-track" : undefined}
-						onPointerDown={arrangement === "carousel" ? onTrackPointerDown : undefined}
-						onPointerMove={arrangement === "carousel" ? onTrackPointerMove : undefined}
-						onPointerUp={arrangement === "carousel" ? finishTrackPan : undefined}
-						onPointerCancel={arrangement === "carousel" ? finishTrackPan : undefined}
-					>
-						{scrollingColumns.map((column, index) => renderColumn(column, index, scrollingColumns))}
-					</div>
-				) : null}
+			<div
+				className={cn("flex min-h-0 min-w-0 flex-1", arrangement === "carousel" && "gap-1")}
+				onPointerDown={arrangement === "carousel" ? onTrackPointerDown : undefined}
+				onPointerMove={arrangement === "carousel" ? onTrackPointerMove : undefined}
+				onPointerUp={arrangement === "carousel" ? finishTrackPan : undefined}
+				onPointerCancel={arrangement === "carousel" ? finishTrackPan : undefined}
+			>
+				<div
+					ref={pinnedRef}
+					className={cn(
+						"flex h-full shrink-0 gap-1",
+						pinnedColumns.length === 0 && "hidden",
+						paneExpand.isExpanded &&
+							!pinnedColumns.some((column) =>
+								column.groups.some((group) => group.id === paneExpand.expandedGroupId),
+							) &&
+							"hidden",
+						paneExpand.isExpanded && "min-w-0 flex-1",
+					)}
+					data-qa-id="chat-pane-pinned"
+				/>
+				<div
+					ref={trackRef}
+					className={cn(
+						"flex min-h-0 min-w-0",
+						scrollingColumns.length === 0 && "hidden",
+						arrangement === "carousel"
+							? "scroll-fade-x flex-1 gap-1 [overflow-anchor:none] overflow-x-auto [--scroll-fade-size:1.5rem] [--scroll-fade-reveal:1.5rem]"
+							: "flex-1",
+						arrangement === "tiles" && "gap-1",
+						paneExpand.isExpanded &&
+							!scrollingColumns.some((column) =>
+								column.groups.some((group) => group.id === paneExpand.expandedGroupId),
+							) &&
+							"hidden",
+					)}
+					data-qa-id={arrangement === "carousel" ? "chat-pane-carousel-track" : undefined}
+				/>
+				{projection.columns.map((column) => {
+					const pinned = arrangement === "carousel" && column.pinned;
+					const siblings = pinned ? pinnedColumns : scrollingColumns;
+					return (
+						<PaneColumnMount
+							key={column.id}
+							containerRef={pinned ? pinnedRef : trackRef}
+							order={siblings.indexOf(column)}
+							onReady={onColumnReady}
+						>
+							{renderColumn(column, siblings.indexOf(column), siblings)}
+						</PaneColumnMount>
+					);
+				})}
 			</div>
 		</div>
 	);

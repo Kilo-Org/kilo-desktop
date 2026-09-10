@@ -8,11 +8,13 @@ function TooltipProvider({ delay = 0, ...props }: TooltipPrimitive.Provider.Prop
 	return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delay} {...props} />;
 }
 
-function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
+const createTooltipHandle = TooltipPrimitive.createHandle;
+
+function Tooltip<Payload>({ ...props }: TooltipPrimitive.Root.Props<Payload>) {
 	return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }
 
-function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
+function TooltipTrigger<Payload>({ ...props }: TooltipPrimitive.Trigger.Props<Payload>) {
 	return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
 }
 
@@ -23,16 +25,21 @@ function TooltipContent({
 	sideOffset = 4,
 	align = "center",
 	alignOffset = 0,
+	positionMethod = "absolute",
 	children,
 	...props
 }: TooltipPrimitive.Popup.Props &
-	Pick<TooltipPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset"> & {
+	Pick<
+		TooltipPrimitive.Positioner.Props,
+		"align" | "alignOffset" | "side" | "sideOffset" | "positionMethod"
+	> & {
 		arrowClassName?: string;
 	}) {
 	return (
 		<TooltipPrimitive.Portal>
 			<TooltipPrimitive.Positioner
 				align={align}
+				positionMethod={positionMethod}
 				alignOffset={alignOffset}
 				side={side}
 				sideOffset={sideOffset}
@@ -60,4 +67,4 @@ function TooltipContent({
 	);
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, createTooltipHandle };

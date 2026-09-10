@@ -46,7 +46,6 @@ function WorkspaceFilterTrigger() {
 					size="default"
 					data-qa-id="session-list-workspace-filter"
 					className="border-border/60 bg-foreground/5 hover:bg-foreground/5 aria-expanded:bg-foreground/5 dark:border-border/50 w-full min-w-0 justify-start gap-1.5 px-2 text-sm font-normal shadow-none"
-					title="Filter by workspace"
 				/>
 			}
 		>

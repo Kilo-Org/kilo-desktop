@@ -53,7 +53,7 @@ export function ShellPageHeader({ title, leading, actions, pageProps }: ShellPag
 		>
 			<ShellSidebarToggle open={open} />
 			<motion.div
-				className="drag-region flex min-w-0 flex-1 items-center gap-2"
+				className="drag-region flex h-full min-w-0 flex-1 items-center gap-2"
 				style={{ marginLeft: contentMarginLeft }}
 			>
 				<div className="flex min-w-0 flex-1 items-center gap-1">

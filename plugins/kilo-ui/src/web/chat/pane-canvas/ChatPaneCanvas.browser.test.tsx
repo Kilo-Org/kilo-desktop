@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { useLayoutEffect, useRef, useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { StrictMode, useLayoutEffect, useRef, useState } from "react";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { page, userEvent } from "vitest/browser";
 
 import {
+	addPane,
 	createLayout,
 	movePane,
 	movePaneToGroup,
@@ -59,7 +60,7 @@ describe("ChatPaneCanvas", () => {
 
 		expect(tab).toHaveAttribute("data-active", "true");
 		expect(frame).toHaveAttribute("data-pane-active", "true");
-		expect(tab?.className).toMatch(/border-border/);
+
 		expect(tab?.className).not.toMatch(/border-info/);
 		expect(tab?.className).not.toMatch(/bg-sidebar-accent/);
 		expect(frame?.className).toMatch(/border-border/);
@@ -148,6 +149,8 @@ describe("ChatPaneCanvas", () => {
 						onLaunch={vi.fn()}
 						onLayoutChange={setLayout}
 						onSelectPane={(paneId) => setLayout((current) => setActivePane(current, paneId))}
+						onClosePane={vi.fn()}
+						onPopOutPane={vi.fn()}
 						renderPane={(paneId) => <StatefulPane paneId={paneId} />}
 					/>
 				</div>
@@ -158,6 +161,12 @@ describe("ChatPaneCanvas", () => {
 		const screen = page.elementLocator(baseElement);
 		const groupedHook = `chat-pane-group-${grouped.groups[0]!.id}`;
 		const group = baseElement.querySelector(`[data-qa-id='${groupedHook}']`);
+		const tabBounds = () =>
+			[...group!.querySelectorAll<HTMLElement>("[data-pane-tab]")].map((tab) => {
+				const { offsetLeft: x, offsetWidth: width } = tab;
+				return { x, width };
+			});
+		const initialTabBounds = tabBounds();
 
 		expect(baseElement.querySelectorAll("[data-qa-id='chat-pane-tabs']")).toHaveLength(2);
 		expect(group?.querySelectorAll("[role='tab']")).toHaveLength(2);
@@ -184,11 +193,20 @@ describe("ChatPaneCanvas", () => {
 			.toHaveAttribute("aria-selected", "true");
 
 		await screen.getByTestId("chat-pane-tab-files").click();
+		expect(tabBounds()).toEqual(initialTabBounds);
 		await screen.getByRole("button", { name: "files:0" }).click();
 		await screen.getByTestId("chat-pane-tab-agent").click();
-		await screen.getByTestId("chat-pane-tab-files").click();
+		expect(tabBounds()).toEqual(initialTabBounds);
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.element(screen.getByTestId("chat-pane-tab-files")).toHaveFocus();
+		await expect
+			.element(screen.getByTestId("chat-pane-tab-agent"))
+			.toHaveAttribute("aria-selected", "true");
+		await userEvent.keyboard("{Enter}");
 
 		await expect.element(screen.getByRole("button", { name: "files:1" })).toBeVisible();
+		await expect.element(screen.getByRole("tabpanel", { name: "Files" })).toBeVisible();
+		expect(tabBounds()).toEqual(initialTabBounds);
 	});
 
 	it("spans the vertical column splitter across the tab group header", () => {
@@ -282,6 +300,82 @@ describe("ChatPaneCanvas", () => {
 		await expect.element(screen.getByTestId("chat-pane-agent")).not.toBeVisible();
 	});
 
+	it.each(["tiles", "carousel"] as const)(
+		"follows newly opened and selected panes while maximized in %s",
+		async (arrangement) => {
+			await page.viewport(1000, 600);
+			function Harness() {
+				const [layout, setLayout] = useState(() => {
+					const initial = createLayout(
+						[
+							{ id: "agent", kind: "agent", title: "Chat" },
+							{ id: "files", kind: "document", title: "Files" },
+						],
+						"files",
+					);
+					return arrangement === "carousel" ? togglePin(initial, "group:files") : initial;
+				});
+				return (
+					<>
+						<button onClick={() => setLayout((current) => setActivePane(current, "agent"))}>
+							Select Chat
+						</button>
+						<div style={{ display: "flex", width: 900, height: 500 }}>
+							<ChatPaneCanvas
+								arrangement={arrangement}
+								definitions={[]}
+								layout={layout}
+								onLaunchChat={vi.fn()}
+								onLaunch={vi.fn()}
+								onLayoutChange={setLayout}
+								onSelectPane={vi.fn()}
+								renderPane={(id) =>
+									id === "files" ? (
+										<button
+											onClick={() =>
+												setLayout((current) =>
+													addPane(current, {
+														id: "opened-file",
+														kind: "document",
+														title: "Opened file",
+													}),
+												)
+											}
+										>
+											Open file
+										</button>
+									) : (
+										<div>{id}</div>
+									)
+								}
+							/>
+						</div>
+					</>
+				);
+			}
+			const { baseElement } = render(<Harness />);
+			const screen = page.elementLocator(baseElement);
+			const canvas = screen.getByTestId("kilo-chat-pane-canvas");
+			await screen.getByTestId("chat-pane-tab-files").hover();
+			await screen.getByTestId("chat-pane-expand-files").click();
+			await expect.element(canvas).toHaveAttribute("data-expanded", "true");
+			await screen.getByRole("button", { name: "Open file", exact: true }).click();
+			await expect.element(screen.getByTestId("chat-pane-content-opened-file")).toBeVisible();
+			await expect.element(screen.getByTestId("chat-pane-files")).not.toBeVisible();
+			await expect.element(canvas).toHaveAttribute("data-expanded", "true");
+			expect(
+				screen.getByTestId("chat-pane-content-opened-file").element().getBoundingClientRect().width,
+			).toBeGreaterThan(890);
+			await screen.getByRole("button", { name: "Select Chat", exact: true }).click();
+			await expect.element(screen.getByTestId("chat-pane-content-agent")).toBeVisible();
+			await expect.element(screen.getByTestId("chat-pane-opened-file")).not.toBeVisible();
+			await expect.element(canvas).toHaveAttribute("data-expanded", "true");
+			await screen.getByTestId("chat-pane-tab-agent").hover();
+			await screen.getByTestId("chat-pane-expand-agent").click();
+			await expect.element(canvas).toHaveAttribute("data-expanded", "false");
+			await expect.element(screen.getByTestId("chat-pane-files")).toBeVisible();
+		},
+	);
 	it("spans the vertical column splitter across a stacked column", () => {
 		const initial = createLayout(
 			[
@@ -441,6 +535,92 @@ describe("ChatPaneCanvas", () => {
 		).toEqual(["agent", "files"]);
 	});
 
+	it.each(["before", "after", "above", "below", "inside"] as const)(
+		"previews a %s drop without committing or remounting the pane, and cancels with Escape",
+		async (position) => {
+			await page.viewport(1100, 700);
+			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+			const initial = createLayout([
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "files", kind: "document", title: "Files" },
+				{ id: "other", kind: "document", title: "Other" },
+			]);
+			const layout = movePaneToGroup(initial, "other", "group:files");
+			const commit = vi.fn();
+			const { baseElement } = render(
+				<div style={{ display: "flex", width: 900, height: 400 }}>
+					<ChatPaneCanvas
+						arrangement="tiles"
+						definitions={[]}
+						layout={layout}
+						onLaunchChat={vi.fn()}
+						onLaunch={vi.fn()}
+						onLayoutChange={commit}
+						onSelectPane={vi.fn()}
+						renderPane={(id) => <textarea aria-label={id} defaultValue="Unsaved work" />}
+					/>
+				</div>,
+			);
+			const source = baseElement.querySelector<HTMLElement>("[data-qa-id='chat-pane-tab-files']")!;
+			const target = baseElement.querySelector<HTMLElement>("[data-pane-group-id='group:agent']")!;
+			const content = target.querySelector<HTMLElement>("[data-qa-id='chat-pane-frame']")!;
+			const editor = content.querySelector("textarea")!;
+			const before = content.getBoundingClientRect();
+			const rect = target.getBoundingClientRect();
+			const row = target
+				.querySelector<HTMLElement>("[data-pane-group-tabs]")!
+				.getBoundingClientRect();
+			const x =
+				position === "before"
+					? rect.left + 2
+					: position === "after"
+						? rect.right - 2
+						: rect.left + rect.width / 2;
+			const y =
+				position === "above"
+					? (rect.top + row.top) / 2
+					: position === "below"
+						? rect.bottom - 2
+						: rect.top + rect.height / 2;
+			source.setPointerCapture = vi.fn();
+			source.hasPointerCapture = vi.fn(() => false);
+			fireEvent.pointerDown(source, {
+				button: 0,
+				pointerId: 42,
+				clientX: source.getBoundingClientRect().left + 8,
+				clientY: 12,
+			});
+			fireEvent.pointerMove(source, { pointerId: 42, clientX: x, clientY: y });
+			expect(target).toHaveAttribute("data-drop-zone", position);
+			expect(document.querySelector("[data-qa-id='chat-pane-drag-preview']")).toHaveTextContent(
+				"Files",
+			);
+			expect(target.querySelector("[data-qa-id='chat-pane-drop-preview']")?.textContent).toContain(
+				position === "inside" ? "Add to tab group" : "Split here",
+			);
+			if (position !== "inside") {
+				await vi.waitFor(() => {
+					const preview = content.getBoundingClientRect();
+					if (position === "before" || position === "after")
+						expect(preview.width).toBeLessThan(before.width * 0.7);
+					else expect(preview.height).toBeLessThan(before.height * 0.7);
+				});
+			}
+			expect(commit).not.toHaveBeenCalled();
+			expect(content.querySelector("textarea")).toBe(editor);
+			fireEvent.keyDown(window, { key: "Escape" });
+			fireEvent.pointerUp(source, { pointerId: 42, clientX: x, clientY: y });
+			expect(commit).not.toHaveBeenCalled();
+			expect(document.querySelector("[data-qa-id='chat-pane-drag-preview']")).toBeNull();
+			expect(target.querySelector("[data-qa-id='chat-pane-drop-preview']")).toBeNull();
+			expect(target).not.toHaveAttribute("data-drop-zone");
+			expect(editor.value).toBe("Unsaved work");
+			await vi.waitFor(() =>
+				expect(content.getBoundingClientRect().width).toBeCloseTo(before.width, 0),
+			);
+		},
+	);
+
 	it("moves every tab in a group when its tab-row space is dragged", () => {
 		const initial = createLayout([
 			{ id: "agent", kind: "agent", title: "Chat" },
@@ -552,7 +732,81 @@ describe("ChatPaneCanvas", () => {
 		);
 	});
 
-	it("styles a pinned column and keeps one unpin action on its top group strip", async () => {
+	it("preserves draft and iframe content when pinning and unpinning a stacked column", async () => {
+		await page.viewport(1000, 600);
+		const frameLoaded = vi.fn();
+		function Draft() {
+			const [value, setValue] = useState("");
+			return (
+				<input
+					autoFocus
+					aria-label="Draft"
+					value={value}
+					onChange={(event) => setValue(event.target.value)}
+				/>
+			);
+		}
+		function Harness() {
+			const [layout, setLayout] = useState(() => {
+				const initial = createLayout(
+					[
+						{ id: "agent", kind: "agent", title: "Chat" },
+						{ id: "notebook", kind: "notebook", title: "Notebook" },
+					],
+					"agent",
+				);
+				return movePane(initial, "notebook", "group:agent", "below");
+			});
+			return (
+				<div style={{ display: "flex", width: 900, height: 500 }}>
+					<ChatPaneCanvas
+						arrangement="carousel"
+						definitions={[]}
+						layout={layout}
+						onLaunchChat={vi.fn()}
+						onLaunch={vi.fn()}
+						onLayoutChange={setLayout}
+						onSelectPane={vi.fn()}
+						renderPane={(id) =>
+							id === "agent" ? (
+								<Draft />
+							) : (
+								<iframe
+									title="Notebook content"
+									srcDoc='<input aria-label="Cell" value="Initial">'
+									onLoad={frameLoaded}
+								/>
+							)
+						}
+					/>
+				</div>
+			);
+		}
+		const { baseElement } = render(
+			<StrictMode>
+				<Harness />
+			</StrictMode>,
+		);
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByRole("textbox", { name: "Draft" })).toHaveFocus();
+		await screen.getByRole("textbox", { name: "Draft" }).fill("Keep this draft");
+		await vi.waitFor(() => expect(frameLoaded).toHaveBeenCalledTimes(1));
+		const frame = baseElement.querySelector("iframe")!;
+		const frameDocument = frame.contentDocument!;
+		frameDocument.querySelector("input")!.value = "Unsaved cell";
+		for (const label of ["Pin column", "Unpin column", "Pin column", "Unpin column"]) {
+			await screen.getByTestId("chat-pane-tab-agent").hover();
+			await screen.getByRole("button", { name: label, exact: true }).click();
+			await expect
+				.element(screen.getByRole("textbox", { name: "Draft" }))
+				.toHaveValue("Keep this draft");
+			expect(baseElement.querySelector("iframe")).toBe(frame);
+			expect(frame.contentDocument).toBe(frameDocument);
+			expect(frameDocument.querySelector("input")).toHaveValue("Unsaved cell");
+			expect(frameLoaded).toHaveBeenCalledTimes(1);
+		}
+	});
+	it("keeps one visible unpin action on the top group of a pinned column", async () => {
 		const initial = createLayout(
 			[
 				{
@@ -603,24 +857,8 @@ describe("ChatPaneCanvas", () => {
 		expect(baseElement.querySelectorAll("[data-qa-id^='chat-pane-pin-']")).toHaveLength(1);
 		expect(unpin?.querySelector(".lucide-pin-off")).not.toBeNull();
 		expect(unpin).toHaveAttribute("aria-label", "Unpin column");
-		expect(unpin).toHaveClass(
-			"h-7",
-			"w-7",
-			"border-border",
-			"bg-card/70",
-			"text-amber-600",
-			"opacity-100",
-		);
-		expect(unpin).not.toHaveClass("opacity-0");
-		const outline = column?.querySelector("[data-qa-id='chat-pane-column-pin-outline']");
-		expect(outline).toHaveClass(
-			"pointer-events-none",
-			"absolute",
-			"inset-0",
-			"border-amber-500/70",
-		);
-		expect(column).not.toHaveClass("border-amber-500/70", "ring-1", "ring-offset-1", "p-0.5");
-		expect(column).not.toHaveAttribute("data-pin-intent");
+		expect(unpin).toHaveAttribute("aria-pressed", "true");
+		expect(column).toHaveAttribute("data-pinned", "true");
 		expect(pane?.querySelector("[data-qa-id='chat-pane-header']")).toBeNull();
 		const stripBox = strip?.getBoundingClientRect();
 		const addBox = add?.getBoundingClientRect();
@@ -632,7 +870,6 @@ describe("ChatPaneCanvas", () => {
 		const agentTab = baseElement.querySelector("[data-pane-tab='agent']");
 		const filesFrame = pane?.querySelector("[data-qa-id='chat-pane-frame']");
 		expect(filesTab).not.toHaveAttribute("data-pinned");
-		expect(filesTab?.className).toMatch(/border-border/);
 		expect(filesTab?.className).not.toMatch(/border-primary/);
 		expect(filesTab?.className).not.toMatch(/border-info-foreground/);
 		expect(filesFrame?.className).toMatch(/border-border/);
@@ -643,18 +880,12 @@ describe("ChatPaneCanvas", () => {
 		);
 		expect(agentFrame?.className).not.toMatch(/border-info-foreground/);
 		expect(agentTab).toHaveAttribute("data-active", "true");
-		expect(agentTab?.className).toMatch(/border-info-foreground/);
-		expect(agentTab?.className).not.toMatch(/border-primary/);
 
 		await screen.getByTestId("chat-pane-tab-agent").hover();
 		await vi.waitFor(() => expect(unpin && getComputedStyle(unpin).opacity).toBe("1"));
-		await screen.getByTestId(`chat-pane-pin-${topGroup.id}`).hover();
-		await vi.waitFor(() => expect(column).toHaveAttribute("data-pin-intent", "true"));
-		expect(outline).toHaveClass("border-amber-500");
-		expect(column).not.toHaveClass("border-amber-500", "ring-2");
 	});
 
-	it("keeps selected pane chrome active while placing the pinned treatment on its column", async () => {
+	it("keeps the selected pane active when its column is pinned", async () => {
 		const initial = createLayout(
 			[
 				{ id: "agent", kind: "agent", title: "Chat" },
@@ -689,22 +920,10 @@ describe("ChatPaneCanvas", () => {
 			"[data-qa-id='chat-pane-agent'] [data-qa-id='chat-pane-frame']",
 		);
 		const column = tab?.closest("[data-column-id]");
-		const outline = column?.querySelector("[data-qa-id='chat-pane-column-pin-outline']");
 		expect(column).toHaveAttribute("data-pinned", "true");
-		expect(outline).toHaveClass(
-			"pointer-events-none",
-			"absolute",
-			"inset-0",
-			"z-50",
-			"border-amber-500/70",
-		);
-		expect(column?.lastElementChild).toBe(outline);
-		expect(column).not.toHaveClass("border-amber-500/70", "ring-1", "ring-offset-1", "p-0.5");
 		expect(tab).not.toHaveAttribute("data-pinned");
 		expect(tab).toHaveAttribute("data-active", "true");
-		expect(tab?.className).toMatch(/border-info-foreground/);
-		expect(tab?.className).not.toMatch(/border-primary/);
-		expect(tab?.className).toMatch(/bg-sidebar-accent/);
+
 		expect(tab?.className).not.toMatch(/bg-info/);
 		expect(frame?.className).not.toMatch(/border-info-foreground/);
 		expect(frame?.className).not.toMatch(/border-primary/);
@@ -987,7 +1206,7 @@ describe("ChatPaneCanvas", () => {
 		const screen = page.elementLocator(baseElement);
 		const tab = screen.getByTestId("chat-pane-tab-agent");
 		await expect.element(tab).toHaveTextContent("Code");
-		await expect.element(tab).toHaveAttribute("title", "Code");
+		await expect.element(tab).not.toHaveAttribute("title");
 		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
 	});
 
@@ -1012,7 +1231,7 @@ describe("ChatPaneCanvas", () => {
 		const tab = screen.getByTestId("chat-pane-tab-files");
 		await expect.element(tab).toHaveTextContent("workspace-1");
 		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
-		await expect.element(tab).toHaveAttribute("title", "/projects/workspace-1");
+		await expect.element(tab).not.toHaveAttribute("title");
 	});
 
 	it("shows the add-pane control on an unselected tab group when its tab strip is hovered", async () => {
@@ -1062,5 +1281,302 @@ describe("ChatPaneCanvas", () => {
 		await page.elementLocator(add!).click();
 		await page.getByTestId("chat-pane-add-menu-chat").click();
 		expect(launchChat).toHaveBeenCalledWith(filesGroupId);
+	});
+	it("shows directional overflow arrows and scrolls the tab strip without selecting a tab", async () => {
+		let layout = createLayout(
+			[
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "notes", kind: "document", title: "Notes" },
+				{ id: "files", kind: "document", title: "Files" },
+				{ id: "output", kind: "tool", title: "Output" },
+			],
+			"agent",
+		);
+		for (const id of ["notes", "files", "output"]) {
+			layout = movePaneToGroup(layout, id, "group:agent");
+		}
+		layout = setActivePane(layout, "agent");
+		const onSelectPane = vi.fn();
+		const view = (width: number) => (
+			<div style={{ display: "flex", width, height: 400 }}>
+				<ChatPaneCanvas
+					arrangement="tiles"
+					definitions={[]}
+					layout={layout}
+					onLaunchChat={vi.fn()}
+					onLaunch={vi.fn()}
+					onLayoutChange={vi.fn()}
+					onSelectPane={onSelectPane}
+					renderPane={() => null}
+				/>
+			</div>
+		);
+		const { baseElement, rerender } = render(view(400));
+		const screen = page.elementLocator(baseElement);
+		const left = screen.getByRole("button", { name: "Scroll tabs left" });
+		const right = screen.getByRole("button", { name: "Scroll tabs right" });
+		await expect.element(left).not.toBeInTheDocument();
+		await expect.element(right).toBeVisible();
+		await right.click();
+		await expect.element(left).toBeVisible();
+		await expect.element(right).not.toBeInTheDocument();
+		await left.click();
+		await expect.element(left).not.toBeInTheDocument();
+		await expect.element(right).toBeVisible();
+		expect(onSelectPane).not.toHaveBeenCalled();
+		rerender(view(1100));
+		await expect.element(left).not.toBeInTheDocument();
+		await expect.element(right).not.toBeInTheDocument();
+		rerender(view(400));
+		await expect.element(right).toBeVisible();
+	});
+	it("reveals newly active tabs past either edge without interrupting manual scrolling", async () => {
+		await page.viewport(900, 600);
+		let layout = createLayout(
+			[
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "notes", kind: "document", title: "Notes" },
+				{ id: "files", kind: "document", title: "Files" },
+				{ id: "output", kind: "document", title: "Output" },
+				{ id: "logs", kind: "document", title: "Logs" },
+			],
+			"agent",
+		);
+		for (const id of ["notes", "files", "output", "logs"]) {
+			layout = movePaneToGroup(layout, id, "group:agent");
+		}
+		layout = setActivePane(layout, "agent");
+		const view = () => (
+			<div style={{ display: "flex", width: 400, height: 400 }}>
+				<ChatPaneCanvas
+					arrangement="tiles"
+					definitions={[]}
+					layout={layout}
+					onLaunchChat={vi.fn()}
+					onLaunch={vi.fn()}
+					onLayoutChange={vi.fn()}
+					onSelectPane={vi.fn()}
+					renderPane={() => null}
+				/>
+			</div>
+		);
+		const { baseElement, rerender } = render(view());
+		const screen = page.elementLocator(baseElement);
+		const strip = screen.getByTestId("chat-pane-tabs").element();
+		const expectRevealed = (id: string) =>
+			vi.waitFor(() => {
+				const bounds = strip.getBoundingClientRect();
+				const tab = screen.getByTestId(`chat-pane-tab-${id}`).element().closest("[data-pane-tab]")!;
+				const tabBounds = tab.getBoundingClientRect();
+				const leftArrow = baseElement.querySelector('[aria-label="Scroll tabs left"]');
+				const rightArrow = baseElement.querySelector('[aria-label="Scroll tabs right"]');
+				expect(tabBounds.left).toBeGreaterThanOrEqual(
+					leftArrow?.getBoundingClientRect().right ?? bounds.left,
+				);
+				expect(tabBounds.right).toBeLessThanOrEqual(
+					rightArrow?.getBoundingClientRect().left ?? bounds.right,
+				);
+			});
+		layout = setActivePane(layout, "notes");
+		rerender(view());
+		await expectRevealed("notes");
+		expect(strip.scrollLeft).toBe(0);
+		layout = setActivePane(layout, "output");
+		rerender(view());
+		await expectRevealed("output");
+		layout = setActivePane(layout, "notes");
+		rerender(view());
+		await expectRevealed("notes");
+		layout = setActivePane(layout, "logs");
+		rerender(view());
+		await expectRevealed("logs");
+		await vi.waitFor(() => {
+			const add = screen.getByRole("button", { name: "Add tab" }).element().getBoundingClientRect();
+			const bounds = strip.getBoundingClientRect();
+			expect(add.left).toBeGreaterThanOrEqual(bounds.left);
+			expect(add.right).toBeLessThanOrEqual(bounds.right);
+		});
+		await expect
+			.element(screen.getByRole("button", { name: "Scroll tabs right" }))
+			.not.toBeInTheDocument();
+		strip.scrollLeft = 0;
+		fireEvent.scroll(strip);
+		const manualScrollLeft = strip.scrollLeft;
+		rerender(view());
+		expect(strip.scrollLeft).toBe(manualScrollLeft);
+		expect(window.scrollX).toBe(0);
+		expect(window.scrollY).toBe(0);
+	});
+	it("reveals an appended tab and lets the user scroll back without snapping to the end", async () => {
+		let layout = createLayout(
+			[
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "notes", kind: "document", title: "Notes" },
+				{ id: "files", kind: "document", title: "Files" },
+			],
+			"agent",
+		);
+		layout = movePaneToGroup(layout, "notes", "group:agent");
+		layout = movePaneToGroup(layout, "files", "group:agent");
+		layout = setActivePane(layout, "agent");
+		const view = () => (
+			<div style={{ display: "flex", width: 400, height: 400 }}>
+				<ChatPaneCanvas
+					arrangement="tiles"
+					definitions={[]}
+					layout={layout}
+					onLaunchChat={vi.fn()}
+					onLaunch={vi.fn()}
+					onLayoutChange={vi.fn()}
+					onSelectPane={vi.fn()}
+					renderPane={() => null}
+				/>
+			</div>
+		);
+		const { baseElement, rerender } = render(view());
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByRole("button", { name: "Scroll tabs right" })).toBeVisible();
+		layout = movePaneToGroup(
+			addPane(layout, { id: "new-notebook", kind: "notebook", title: "New notebook" }),
+			"new-notebook",
+			"group:agent",
+		);
+		rerender(view());
+		const strip = screen.getByTestId("chat-pane-tabs").element();
+		const tab = screen.getByTestId("chat-pane-tab-new-notebook").element();
+		await vi.waitFor(() => {
+			const bounds = strip.getBoundingClientRect();
+			const tabBounds = tab.getBoundingClientRect();
+			expect(tabBounds.left).toBeGreaterThanOrEqual(bounds.left);
+			expect(tabBounds.right).toBeLessThanOrEqual(bounds.right);
+		});
+		await expect
+			.element(screen.getByRole("button", { name: "Scroll tabs right" }))
+			.not.toBeInTheDocument();
+		await screen.getByRole("button", { name: "Scroll tabs left" }).click();
+		await expect.element(screen.getByRole("button", { name: "Scroll tabs right" })).toBeVisible();
+		const scrollLeft = strip.scrollLeft;
+		rerender(view());
+		expect(strip.scrollLeft).toBe(scrollLeft);
+	});
+	it("dismisses tab tooltips during scrolling and restores them after scrolling stops", async () => {
+		await page.viewport(420, 420);
+		const expectTooltipHidden = () =>
+			vi.waitFor(() => {
+				const tooltip = document.querySelector('[data-slot="tooltip-content"]');
+				expect(tooltip?.checkVisibility() ?? false).toBe(false);
+			});
+		const overflowingFrames: { width: number; height: number }[] = [];
+		let frame = 0;
+		const sampleOverflow = () => {
+			const root = document.documentElement;
+			if (root.scrollWidth > root.clientWidth || root.scrollHeight > root.clientHeight) {
+				overflowingFrames.push({ width: root.scrollWidth, height: root.scrollHeight });
+			}
+			frame = requestAnimationFrame(sampleOverflow);
+		};
+		frame = requestAnimationFrame(sampleOverflow);
+		onTestFinished(() => cancelAnimationFrame(frame));
+		let layout = createLayout(
+			[
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "notes", kind: "document", title: "Notes" },
+				{ id: "files", kind: "document", title: "Files" },
+			],
+			"agent",
+		);
+		layout = movePaneToGroup(layout, "notes", "group:agent");
+		layout = movePaneToGroup(layout, "files", "group:agent");
+		layout = setActivePane(layout, "agent");
+		const { baseElement } = render(
+			<div
+				style={{
+					display: "flex",
+					width: 400,
+					height: 40,
+					position: "absolute",
+					bottom: 0,
+					right: 0,
+				}}
+			>
+				<ChatPaneCanvas
+					arrangement="tiles"
+					definitions={[]}
+					layout={layout}
+					onLaunchChat={vi.fn()}
+					onLaunch={vi.fn()}
+					onLayoutChange={vi.fn()}
+					onSelectPane={vi.fn()}
+					onPopOutPane={vi.fn()}
+					renderPane={() => null}
+				/>
+			</div>,
+		);
+		const screen = page.elementLocator(baseElement);
+		await screen.getByTestId("chat-pane-tab-agent").hover();
+		const popOut = screen.getByTestId("chat-pane-pop-out-tab-agent");
+		await popOut.hover();
+		await expect.element(page.getByText("Pop out", { exact: true })).toBeVisible();
+		const strip = screen.getByTestId("chat-pane-tabs").element();
+		fireEvent.wheel(strip, { deltaX: 1 });
+		await expectTooltipHidden();
+		strip.scrollLeft = 1;
+		fireEvent.scroll(strip);
+		await expectTooltipHidden();
+		await screen.getByRole("tabpanel", { name: "Chat" }).hover();
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		await expectTooltipHidden();
+		await popOut.hover();
+		await expect.element(page.getByText("Pop out", { exact: true })).toBeVisible();
+		strip.scrollLeft = strip.scrollWidth;
+		fireEvent.scroll(strip);
+		await expectTooltipHidden();
+		expect(overflowingFrames).toEqual([]);
+	});
+	it("keeps only one tooltip visible when moving between tab actions", async () => {
+		await page.viewport(900, 600);
+		const layout = createLayout(
+			[
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "notes", kind: "document", title: "Notes" },
+			],
+			"agent",
+		);
+		const { baseElement } = render(
+			<div style={{ display: "flex", width: 850, height: 500 }}>
+				<ChatPaneCanvas
+					arrangement="tiles"
+					definitions={[]}
+					layout={layout}
+					onLaunchChat={vi.fn()}
+					onLaunch={vi.fn()}
+					onLayoutChange={vi.fn()}
+					onSelectPane={vi.fn()}
+					onPopOutPane={vi.fn()}
+					renderPane={() => null}
+				/>
+			</div>,
+		);
+		const screen = page.elementLocator(baseElement);
+		const expand = screen.getByTestId("chat-pane-expand-agent");
+		const popOut = screen.getByTestId("chat-pane-pop-out-tab-agent");
+		await screen.getByTestId("chat-pane-tab-notes").hover();
+		await expand.hover();
+		expand.element().focus();
+		await vi.waitFor(() =>
+			expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent("Expand"),
+		);
+		await popOut.hover();
+		await vi.waitFor(() => {
+			const popups = document.querySelectorAll('[data-slot="tooltip-content"]');
+			expect(popups).toHaveLength(1);
+			expect(popups[0]).toHaveTextContent("Pop out");
+		});
+		await expand.hover();
+		await vi.waitFor(() => {
+			const popups = document.querySelectorAll('[data-slot="tooltip-content"]');
+			expect(popups).toHaveLength(1);
+			expect(popups[0]).toHaveTextContent("Expand");
+		});
 	});
 });

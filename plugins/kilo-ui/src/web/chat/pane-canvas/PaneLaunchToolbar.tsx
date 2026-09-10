@@ -2,6 +2,7 @@ import { BotIcon } from "lucide-react";
 import type { FC } from "react";
 
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { ButtonGroup } from "@anaconda-agentic-desktop/ui/components/button-group";
 import {
 	Tooltip,
 	TooltipContent,
@@ -29,7 +30,7 @@ export const PaneLaunchToolbar: FC<{
 			>
 				{showChat ? (
 					<div
-						className="bg-card/95 border-border flex h-7 items-center rounded-md border px-1 shadow-sm"
+						className="flex items-center"
 						data-qa-id="chat-pane-toolbar-chat"
 						role="group"
 						aria-label="Chat pane"
@@ -39,26 +40,25 @@ export const PaneLaunchToolbar: FC<{
 								render={
 									<Button
 										type="button"
-										variant="ghost"
+										variant="outline"
 										size="icon-xs"
+										className="size-6.5 [&_svg:not([class*='size-'])]:size-3.5"
 										aria-label="Chat"
-										className="text-muted-foreground hover:text-foreground size-5 rounded-[3px]"
 										data-qa-id="chat-pane-launch-chat"
 										onClick={onLaunchChat}
 									/>
 								}
 							>
-								<BotIcon className="text-primary size-3" />
+								<BotIcon className="text-primary" />
 							</TooltipTrigger>
 							<TooltipContent side="bottom">Show Chat</TooltipContent>
 						</Tooltip>
 					</div>
 				) : null}
 				{launchers.length > 0 ? (
-					<div
-						className="bg-card/95 border-border flex h-7 items-center gap-1 rounded-md border px-1 shadow-sm"
+					<ButtonGroup
+						className="[&>[data-slot]:first-child]:rounded-l-[min(var(--radius-md),10px)]! [&>[data-slot]:not(:has(~[data-slot]))]:rounded-r-[min(var(--radius-md),10px)]!"
 						data-qa-id="chat-pane-toolbar-add"
-						role="group"
 						aria-label="Add pane"
 					>
 						{launchers.map((definition) => (
@@ -67,21 +67,21 @@ export const PaneLaunchToolbar: FC<{
 									render={
 										<Button
 											type="button"
-											variant="ghost"
+											variant="outline"
 											size="icon-xs"
+											className="size-6.5 [&_svg:not([class*='size-'])]:size-3.5"
 											aria-label={definition.title}
-											className="text-muted-foreground hover:text-foreground size-5 rounded-[3px]"
 											data-qa-id={`chat-pane-launch-${definition.id}`}
 											onClick={() => onLaunch(definition)}
 										/>
 									}
 								>
-									<definition.Icon className="size-3" />
+									<definition.Icon />
 								</TooltipTrigger>
 								<TooltipContent side="bottom">{definition.title}</TooltipContent>
 							</Tooltip>
 						))}
-					</div>
+					</ButtonGroup>
 				) : null}
 			</div>
 		</TooltipProvider>

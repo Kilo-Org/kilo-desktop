@@ -1,6 +1,8 @@
+import { PaneTabTooltip } from "./PaneTabTooltip.js";
 import { BotIcon, PlusIcon } from "lucide-react";
 import type { FC } from "react";
 
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -21,19 +23,20 @@ export const PaneAddTab: FC<{
 
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger
-				aria-label="Add pane"
-				aria-haspopup="menu"
-				data-qa-id="chat-pane-add-tab"
-				className={cn(
-					"relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-[4px_4px_2px_2px] border border-border bg-card/70 text-muted-foreground outline-none",
-					"hover:bg-card hover:text-foreground focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-inset",
-					"data-popup-open:bg-card data-popup-open:text-foreground",
-					"opacity-0 transition-opacity group-hover/pane-tabs:opacity-100 group-focus-within/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100 data-popup-open:opacity-100",
-				)}
-			>
-				<PlusIcon className="size-3" aria-hidden />
-			</DropdownMenuTrigger>
+			<PaneTabTooltip content="Add tab">
+				<DropdownMenuTrigger
+					render={<Button variant="ghost" size="icon-sm" />}
+					aria-label="Add tab"
+					aria-haspopup="menu"
+					data-qa-id="chat-pane-add-tab"
+					className={cn(
+						"text-muted-foreground rounded-md",
+						"opacity-0 transition-opacity group-hover/pane-tabs:opacity-100 group-focus-within/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100 data-popup-open:opacity-100",
+					)}
+				>
+					<PlusIcon className="size-3" aria-hidden />
+				</DropdownMenuTrigger>
+			</PaneTabTooltip>
 			<DropdownMenuContent
 				align="start"
 				side="bottom"

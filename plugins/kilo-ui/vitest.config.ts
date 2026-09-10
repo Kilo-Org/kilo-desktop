@@ -19,6 +19,7 @@ export default defineConfig({
 				"src/web/index.ts",
 				"src/web/chat/components/**",
 				"src/test/**",
+				"src/web/chat/pane-canvas/test-helpers.tsx",
 				// Drizzle table definitions; behavior is covered by workspaces
 				// integration tests, not by unit-testing the schema declarations.
 				"src/main/workspaces/schema.ts",
@@ -105,6 +106,7 @@ export default defineConfig({
 						"@base-ui/react/separator",
 						"@base-ui/react/slider",
 						"@base-ui/react/switch",
+						"@base-ui/react/tabs",
 						"@base-ui/react/toggle",
 						"@base-ui/react/toggle-group",
 						"@base-ui/react/tooltip",

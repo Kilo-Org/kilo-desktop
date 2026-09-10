@@ -72,6 +72,7 @@ export default defineConfig({
 						"@base-ui/react/button",
 						"@base-ui/react/separator",
 						"@base-ui/react/switch",
+						"@base-ui/react/tabs",
 						"@base-ui/react/toggle",
 						"@base-ui/react/toggle-group",
 						"@base-ui/react/tooltip",

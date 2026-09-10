@@ -628,10 +628,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		return (
 			<div className="flex h-full min-h-0 w-full min-w-0 flex-col">
 				<header className="drag-region border-border bg-card flex h-12 shrink-0 items-center gap-3 border-b pr-2 pl-20">
-					<div
-						className="min-w-0 flex-1 translate-y-0.5"
-						title={paneTitleHint(detached.paneId) ?? paneTitle}
-					>
+					<div className="min-w-0 flex-1 translate-y-0.5">
 						<ChatLocationBreadcrumb
 							{...(workspace?.name ? { locationLabel: workspace.name } : {})}
 							{...(workspace?.color ? { locationColor: workspace.color } : {})}

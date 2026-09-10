@@ -57,7 +57,7 @@ export const OpenCodeSuggestBar = ({ request }: { request: KiloSuggestionRequest
 						type="button"
 						size="sm"
 						disabled={isBusy}
-						title={action.description}
+						aria-description={action.description}
 						onClick={() => void run(index, () => accept(request, index))}
 					>
 						{submitting === index ? (

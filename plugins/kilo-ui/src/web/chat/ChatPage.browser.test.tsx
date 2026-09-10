@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
@@ -344,6 +344,10 @@ async function launchCanvasFromAddTab(baseElement: HTMLElement) {
 	await clickAddTab(baseElement);
 	await page.getByTestId("chat-pane-add-menu-canvas.canvas").click();
 }
+
+beforeEach(async () => {
+	await page.viewport(1200, 800);
+});
 
 afterEach(() => {
 	cleanup();
@@ -1127,7 +1131,7 @@ describe("ChatPage", () => {
 			.toHaveTextContent("workspace-1");
 		await expect
 			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
-			.toHaveAttribute("title", "/projects/workspace-1");
+			.not.toHaveAttribute("title");
 		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
 		await expect
 			.element(screen.getByTestId("kilo-chat-pane-canvas"))
@@ -1663,7 +1667,7 @@ describe("ChatPage", () => {
 		await expect.element(tab).toBeVisible();
 		await expect.element(tab).toHaveTextContent("Refactor breadcrumbs");
 		expect(tab.element()?.textContent).not.toContain("Code");
-		await expect.element(tab).toHaveAttribute("title", "Refactor breadcrumbs");
+		await expect.element(tab).not.toHaveAttribute("title");
 		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
 
 		setAgent("plan");
@@ -1677,6 +1681,7 @@ describe("ChatPage", () => {
 		const chatPaneId = "agent:draft";
 
 		await openFirstCanvasPane(screen);
+		await screen.getByTestId(`chat-pane-tab-${chatPaneId}`).hover();
 		await screen.getByTestId(`chat-pane-close-tab-${chatPaneId}`).click();
 
 		await expect.element(screen.getByTestId(`chat-pane-tab-${chatPaneId}`)).not.toBeInTheDocument();
@@ -1699,6 +1704,7 @@ describe("ChatPage", () => {
 
 		await openFirstCanvasPane(screen);
 		const artifact = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		await screen.getByTestId(`chat-pane-tab-${chatPaneId}`).hover();
 		await screen.getByTestId(`chat-pane-close-tab-${chatPaneId}`).click();
 		await screen.getByTestId(`chat-pane-close-tab-${artifact.instanceId}`).click();
 

@@ -505,10 +505,9 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"div">) {
 				window.addEventListener("pointerup", onUp);
 				window.addEventListener("pointercancel", onUp);
 			}}
-			title="Drag to resize"
 			className={cn(
 				"absolute inset-y-0 z-20 flex w-4 touch-none select-none group-data-[side=left]:-right-4 group-data-[side=right]:left-0 ltr:-translate-x-1/2 rtl:-translate-x-1/2",
-				"before:bg-transparent hover:before:bg-primary/70 active:before:bg-primary cursor-col-resize before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:transition-colors before:duration-150 before:content-[''] motion-reduce:before:transition-none",
+				"before:bg-transparent hover:before:bg-muted-foreground/35 active:before:bg-muted-foreground/60 cursor-col-resize before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:transition-colors before:duration-150 before:content-[''] motion-reduce:before:transition-none",
 				"group-data-[collapsible=offcanvas]:translate-x-0",
 				"[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
 				"[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",

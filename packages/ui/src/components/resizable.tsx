@@ -105,8 +105,8 @@ export function ResizableHandle({
 				vertical
 					? "inset-y-0 -right-1.5 w-2 cursor-col-resize before:absolute before:inset-y-0 before:left-1/2 before:w-0.5 before:-translate-x-1/2 before:bg-transparent before:content-['']"
 					: "inset-x-0 -bottom-1 h-2 cursor-row-resize before:absolute before:inset-x-0 before:bottom-0.5 before:h-0.5 before:bg-transparent before:content-['']",
-				"hover:before:bg-primary/70 focus-visible:before:bg-primary before:transition-colors before:duration-150 motion-reduce:before:transition-none",
-				active && "before:bg-primary",
+				"focus-visible:before:bg-muted-foreground/60 before:transition-colors before:duration-150 motion-reduce:before:transition-none",
+				active ? "before:bg-muted-foreground/60" : "hover:before:bg-muted-foreground/35",
 				className,
 			)}
 			onPointerDown={handlePointerDown}

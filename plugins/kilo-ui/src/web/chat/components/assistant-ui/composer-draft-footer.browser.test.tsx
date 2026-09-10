@@ -29,6 +29,7 @@ import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.j
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "../../../account/KiloAuthContext.js";
+import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { Thread } from "./thread.js";
 
 const signedInAuth: KiloAuthContextValue = {
@@ -292,5 +293,66 @@ describe("ComposerDraftFooter", () => {
 		await expect
 			.element(screen.getByRole("combobox", { name: "Select workspace" }))
 			.not.toBeInTheDocument();
+	});
+});
+
+function Probe({ workspaceDirectory }: { workspaceDirectory?: string }) {
+	return <output data-qa-id="footer-probe">{workspaceDirectory ?? "<none>"}</output>;
+}
+
+async function bootedFooterSdk() {
+	const sdk = createFakeSdk({ featureId: "kilo-ui" });
+	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	kiloUiBrowserRegister(mainSdk);
+	return { sdk, mainSdk };
+}
+
+function renderFooter(sdk: Awaited<ReturnType<typeof bootedFooterSdk>>["sdk"]) {
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<ComposerDraftFooter />
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+}
+
+describe("ComposerDraftFooter zone host", () => {
+	it("renders zone contributions with the active workspace's primary folder", async () => {
+		const { sdk, mainSdk } = await bootedFooterSdk();
+		const saved = (await mainSdk.invoke("create", {
+			name: "Project",
+			color: "#F87171",
+			folders: [
+				{ path: "/repo/project", isPrimary: false },
+				{ path: "/repo/primary", isPrimary: true },
+			],
+		})) as { id: string };
+		localStorage.setItem("kilo-ui.active-workspace", saved.id);
+		sdk.contribute("kilo-ui/chat-composer-draft-footer", {
+			id: "probe",
+			component: Probe,
+			label: "Probe",
+		});
+
+		const { baseElement } = renderFooter(sdk);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("footer-probe")).toHaveTextContent("/repo/primary");
+	});
+
+	it("renders only the workspace selector when the zone is empty", async () => {
+		const { sdk } = await bootedFooterSdk();
+
+		const { baseElement } = renderFooter(sdk);
+		const screen = page.elementLocator(baseElement);
+
+		const footer = screen.getByTestId("kilo-composer-draft-footer").element();
+		const leftCluster = footer.firstElementChild as HTMLElement;
+		expect(leftCluster.children).toHaveLength(1);
 	});
 });

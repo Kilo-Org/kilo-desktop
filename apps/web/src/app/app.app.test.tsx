@@ -95,6 +95,21 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByTestId("app-sidebar")).not.toBeInTheDocument();
 	});
 
+	it("renders desktop plugin zone contributions inside the SDK provider", async () => {
+		const localApi = createBrowserLocalApi();
+		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
+		await router.navigate({ to: "/plugins/$", params: { _splat: "chat" } });
+		registerPluginZoneContributions(system, PLUGIN_ZONE_CONTRIBUTIONS, {
+			desktopAvailable: true,
+		});
+		const { baseElement } = render(<AppProviders localApi={localApi} system={system} />);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-page")).toBeVisible();
+		await expect.element(screen.getByTestId("git-branch-selector-trigger")).toBeVisible();
+		await expect.element(screen.getByText("Something went wrong!")).not.toBeInTheDocument();
+	});
+
 	it("opens Appearance settings from the sidebar footer", async () => {
 		const localApi = createBrowserLocalApi();
 		const system = createAppFeatureSystem(localApi, WEB_FEATURES);

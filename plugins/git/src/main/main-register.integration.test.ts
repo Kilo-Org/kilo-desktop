@@ -34,6 +34,10 @@ function execGit(cwd: string, args: string[]): void {
 	execFileSync("git", args, { cwd, stdio: "pipe" });
 }
 
+function execGitOutput(cwd: string, args: string[]): string {
+	return execFileSync("git", args, { cwd, stdio: "pipe" }).toString().trim();
+}
+
 /**
  * Create a temp git repository on branch `main` with one empty commit.
  *
@@ -61,6 +65,84 @@ function commit(repoDir: string, message: string): void {
  * call it with the directory they are about to operate on, exactly like the
  * renderer only ever passes workspace folder paths.
  */
+/** Clone of a repo whose origin has `main` plus an untracked `feature`. */
+function cloneWithUntrackedRemoteFeature(): string {
+	const sourceDir = initRepo();
+	execGit(sourceDir, ["checkout", "-b", "feature"]);
+	commit(sourceDir, "feature");
+	execGit(sourceDir, ["checkout", "main"]);
+
+	const remoteDir = createTempDir();
+	execGit(remoteDir, ["init", "--bare", "-b", "main"]);
+	execGit(sourceDir, ["remote", "add", "origin", remoteDir]);
+	execGit(sourceDir, ["push", "-u", "origin", "main"]);
+	execGit(sourceDir, ["push", "origin", "feature"]);
+
+	const cloneDir = createTempDir();
+	execGit(cloneDir, ["clone", remoteDir, "."]);
+	return cloneDir;
+}
+
+/** Two branches diverge on README.md, then the working tree is dirtied so a switch would clobber it. */
+function setupDirtyTreeConflict(repoDir: string): void {
+	fs.writeFileSync(path.join(repoDir, "README.md"), "v1\n");
+	execGit(repoDir, ["add", "README.md"]);
+	commit(repoDir, "main change");
+	execGit(repoDir, ["checkout", "-b", "feature"]);
+	fs.writeFileSync(path.join(repoDir, "README.md"), "v2\n");
+	execGit(repoDir, ["add", "README.md"]);
+	commit(repoDir, "feature change");
+	execGit(repoDir, ["checkout", "main"]);
+	fs.writeFileSync(path.join(repoDir, "README.md"), "dirty\n");
+}
+
+/**
+ * Runs `run` with `HOME` pointed at a stub directory holding the given
+ * `.gitconfig` — the spawned git reads it, so global-config probes
+ * (`init.defaultBranch`) are deterministic and never touch the
+ * developer's real `~/.gitconfig`.
+ */
+async function withHomeConfig(gitconfig: string, run: () => Promise<void>): Promise<void> {
+	const home = createTempDir();
+	fs.writeFileSync(path.join(home, ".gitconfig"), gitconfig);
+	const previousHome = process.env.HOME;
+	process.env.HOME = home;
+	try {
+		await run();
+	} finally {
+		if (previousHome === undefined) {
+			delete process.env.HOME;
+		} else {
+			process.env.HOME = previousHome;
+		}
+	}
+}
+
+/**
+ * Clone of a repo whose origin has `main` (HEAD), `feature`, and whose
+ * local checkout history is main → topic-a → main → topic-b → main.
+ */
+function cloneWithCheckoutHistory(): string {
+	const sourceDir = initRepo();
+	execGit(sourceDir, ["checkout", "-b", "feature"]);
+	commit(sourceDir, "feature");
+	execGit(sourceDir, ["checkout", "main"]);
+
+	const remoteDir = createTempDir();
+	execGit(remoteDir, ["init", "--bare", "-b", "main"]);
+	execGit(sourceDir, ["remote", "add", "origin", remoteDir]);
+	execGit(sourceDir, ["push", "-u", "origin", "main"]);
+	execGit(sourceDir, ["push", "origin", "feature"]);
+
+	const cloneDir = createTempDir();
+	execGit(cloneDir, ["clone", remoteDir, "."]);
+	execGit(cloneDir, ["checkout", "-b", "topic-a"]);
+	execGit(cloneDir, ["checkout", "main"]);
+	execGit(cloneDir, ["checkout", "-b", "topic-b"]);
+	execGit(cloneDir, ["checkout", "main"]);
+	return cloneDir;
+}
+
 function bootedSdk() {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "git" });
 	const workspaceFolders: string[] = [];
@@ -318,6 +400,270 @@ describe("git mainRegister", () => {
 		);
 		expect(response.status).toBe(403);
 		expect(await response.text()).toContain("not inside a workspace folder");
+
+		mainSdk.dispose();
+	});
+});
+
+describe("git mainRegister branches", () => {
+	it("reports the current branch alongside the branch list", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		expect(mainSdk.has("branches")).toBe(true);
+		await withHomeConfig("", async () => {
+			const result = await mainSdk.invoke("branches", { workingDirectory: repoDir });
+
+			expect(result).toStrictEqual({
+				currentBranch: "main",
+				branches: [
+					{
+						name: "main",
+						upstream: null,
+						tip: { sha: expect.any(String) },
+						ref: "refs/heads/main",
+						kind: "local",
+					},
+				],
+				// The literal `main` fallback: no remote HEAD, no configured default.
+				defaultBranch: "main",
+				recentBranches: [],
+			});
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("detects the configured default branch from global config", async () => {
+		const repoDir = createTempDir();
+		execGit(repoDir, ["init", "-b", "trunk"]);
+		execGit(repoDir, ["config", "user.email", "git-plugin@example.com"]);
+		execGit(repoDir, ["config", "user.name", "Git Plugin Test"]);
+		commit(repoDir, "initial");
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		await withHomeConfig("[init]\n\tdefaultBranch = trunk\n", async () => {
+			const result = await mainSdk.invoke("branches", { workingDirectory: repoDir });
+			expect(result).toMatchObject({ defaultBranch: "trunk" });
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("detects the remote HEAD as the default and resolves recency from real checkouts", async () => {
+		const cloneDir = cloneWithCheckoutHistory();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(cloneDir);
+
+		await withHomeConfig("", async () => {
+			const result = await mainSdk.invoke("branches", { workingDirectory: cloneDir });
+
+			expect(result).toMatchObject({
+				currentBranch: "main",
+				defaultBranch: "main",
+				// Reflog order after main → topic-a → main → topic-b → main,
+				// with the default branch excluded.
+				recentBranches: ["topic-b", "topic-a"],
+				branches: expect.arrayContaining([
+					expect.objectContaining({ name: "main", kind: "local", upstream: "origin/main" }),
+					expect.objectContaining({ name: "origin/feature", kind: "remote" }),
+					expect.objectContaining({ name: "topic-a", kind: "local" }),
+					expect.objectContaining({ name: "topic-b", kind: "local" }),
+				]),
+			});
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("resolves null for a directory that is not a git repository", async () => {
+		const plainDir = createTempDir();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(plainDir);
+
+		await expect(mainSdk.invoke("branches", { workingDirectory: plainDir })).resolves.toBe(null);
+
+		mainSdk.dispose();
+	});
+
+	it("lists remote-tracking branches that no local branch tracks", async () => {
+		const cloneDir = cloneWithUntrackedRemoteFeature();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(cloneDir);
+
+		const result = await mainSdk.invoke("branches", { workingDirectory: cloneDir });
+
+		expect(result).toMatchObject({
+			currentBranch: "main",
+			branches: expect.arrayContaining([
+				expect.objectContaining({ name: "main", kind: "local" }),
+				expect.objectContaining({ name: "origin/feature", kind: "remote" }),
+			]),
+		});
+		expect(result).toMatchObject({
+			branches: expect.not.arrayContaining([expect.objectContaining({ name: "origin/main" })]),
+		});
+
+		mainSdk.dispose();
+	});
+});
+
+describe("git mainRegister repositoryType", () => {
+	it("registers the repositoryType channel and classifies a regular repository", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		expect(mainSdk.has("repositoryType")).toBe(true);
+		await expect(mainSdk.invoke("repositoryType", { workingDirectory: repoDir })).resolves.toEqual({
+			kind: "regular",
+			topLevelWorkingDirectory: repoDir,
+			gitDir: path.join(repoDir, ".git"),
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("resolves missing for a directory that is not a git repository", async () => {
+		const plainDir = createTempDir();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(plainDir);
+
+		await expect(mainSdk.invoke("repositoryType", { workingDirectory: plainDir })).resolves.toEqual(
+			{ kind: "missing" },
+		);
+
+		mainSdk.dispose();
+	});
+});
+
+describe("git mainRegister checkout", () => {
+	it("checks out a remote-tracking branch as a local tracking branch", async () => {
+		const cloneDir = cloneWithUntrackedRemoteFeature();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(cloneDir);
+
+		await mainSdk.invoke("checkout", {
+			workingDirectory: cloneDir,
+			branch: "origin/feature",
+			kind: "remote",
+		});
+
+		const branches = await mainSdk.invoke("branches", { workingDirectory: cloneDir });
+		expect(branches).toMatchObject({
+			currentBranch: "feature",
+			branches: expect.arrayContaining([
+				expect.objectContaining({
+					name: "feature",
+					kind: "local",
+					upstream: "origin/feature",
+				}),
+			]),
+		});
+		expect(branches).toMatchObject({
+			branches: expect.not.arrayContaining([expect.objectContaining({ name: "origin/feature" })]),
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("creates and switches to a new branch, then switches back", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		await mainSdk.invoke("checkout", {
+			workingDirectory: repoDir,
+			branch: "feature",
+			create: true,
+		});
+
+		let branches = await mainSdk.invoke("branches", { workingDirectory: repoDir });
+		expect(branches).toMatchObject({ currentBranch: "feature" });
+		expect(branches).toMatchObject({
+			branches: expect.arrayContaining([expect.objectContaining({ name: "feature" })]),
+		});
+
+		await mainSdk.invoke("checkout", { workingDirectory: repoDir, branch: "main" });
+		branches = await mainSdk.invoke("branches", { workingDirectory: repoDir });
+		expect(branches).toMatchObject({ currentBranch: "main" });
+
+		mainSdk.dispose();
+	});
+
+	it("rejects when checking out a branch that does not exist", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		await expect(
+			mainSdk.invoke("checkout", { workingDirectory: repoDir, branch: "missing" }),
+		).rejects.toThrow();
+
+		mainSdk.dispose();
+	});
+
+	it("creates the branch off the named start point's tip", async () => {
+		const repoDir = initRepo();
+		execGit(repoDir, ["checkout", "-b", "feature"]);
+		commit(repoDir, "feature change");
+		const mainTip = execGitOutput(repoDir, ["rev-parse", "main"]);
+		const featureTip = execGitOutput(repoDir, ["rev-parse", "feature"]);
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		await mainSdk.invoke("checkout", {
+			workingDirectory: repoDir,
+			branch: "topic",
+			create: true,
+			startPoint: "main",
+		});
+
+		const branches = await mainSdk.invoke("branches", { workingDirectory: repoDir });
+		expect(branches).toMatchObject({
+			branches: expect.arrayContaining([
+				expect.objectContaining({ name: "topic", tip: { sha: mainTip } }),
+			]),
+		});
+		// HEAD (feature) has its own commit, so the tip equality above proves
+		// the start point — not the current HEAD — anchored the branch.
+		expect(mainTip).not.toBe(featureTip);
+
+		mainSdk.dispose();
+	});
+
+	it("rejects with a BUSINESS FeatureError when creating an existing branch name", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		await expect(
+			mainSdk.invoke("checkout", { workingDirectory: repoDir, branch: "main", create: true }),
+		).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: "A branch with that name already exists.",
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("rejects with a BUSINESS FeatureError when a dirty tree would be overwritten", async () => {
+		const repoDir = initRepo();
+		setupDirtyTreeConflict(repoDir);
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		await expect(
+			mainSdk.invoke("checkout", { workingDirectory: repoDir, branch: "feature" }),
+		).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message:
+				"Unable to switch branches as there are working directory changes which would be overwritten. Please commit or stash your changes.",
+		});
 
 		mainSdk.dispose();
 	});

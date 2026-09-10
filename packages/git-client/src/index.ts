@@ -57,7 +57,21 @@ export {
 	isConflictWithMarkers,
 	isManualConflict,
 } from "./models/status.js";
-export type { IAheadBehind } from "./models/branch.js";
+export type { IAheadBehind, IBranch, IBranchTip } from "./models/branch.js";
+export type { RepositoryType, RevParseExec } from "./git/rev-parse.js";
+export { getRepositoryType } from "./git/rev-parse.js";
+export { createForEachRefParser } from "./lib/git-delimiter-parser.js";
+export type { BranchExec, BranchOptions } from "./git/branch.js";
+export type { CheckoutExec, CheckoutOptions } from "./git/checkout.js";
+export type { ForEachRefExec, ForEachRefOptions } from "./git/for-each-ref.js";
+export type { GlobalConfigExec } from "./git/config.js";
+export { getGlobalConfigValue } from "./git/config.js";
+export type { RecentBranchesExec, RecentBranchesOptions } from "./git/reflog.js";
+export { getRecentBranches } from "./git/reflog.js";
+export type { RemoteHeadExec, RemoteHeadOptions } from "./git/remote.js";
+export { getRemoteHEAD } from "./git/remote.js";
+export type { SymbolicRefExec, SymbolicRefOptions } from "./git/refs.js";
+export { getSymbolicRef } from "./git/refs.js";
 
 // Exec layer (exec/; base types stay: the IGit* variants extend them)
 export type {

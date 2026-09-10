@@ -10,34 +10,43 @@ import { createCoverageConfig } from "../../vitest.coverage.shared.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
+const coverage = {
+	...createCoverageConfig([
+		// Registration glue and the component-only web entry are exercised by
+		// the integration project and app composition, which coverage excludes.
+		"src/main/index.ts",
+		"src/web/index.ts",
+		// Shared browser-test scaffolding, not plugin source.
+		"src/web/test-utils.tsx",
+		"src/test/**",
+	]),
+	include: ["src/**"],
+};
+
 export default defineConfig({
+	// Package-local cache: the hoisted workspace layout would otherwise share
+	// the root node_modules/.vite between concurrently running packages
+	// (pnpm -r), corrupting the optimized-deps bundle mid-run.
 	cacheDir: path.join(root, ".vitest/cache"),
 	test: {
-		coverage: {
-			...createCoverageConfig([
-				// Registration glue; exercised by the integration project,
-				// which coverage excludes.
-				"src/main/index.ts",
-				"src/web/index.ts",
-				// Shared browser-test scaffolding, not plugin source.
-				"src/web/test-utils.tsx",
-				"src/test/**",
-			]),
-			include: ["src/**"],
-		},
+		coverage,
 		projects: [
 			{
 				test: {
 					name: "unit",
-					include: ["src/**/*.test.ts"],
-					exclude: ["src/**/*.integration.test.ts"],
+					include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+					exclude: [
+						"src/**/*.integration.test.ts",
+						"src/**/*.browser.test.ts",
+						"src/**/*.browser.test.tsx",
+					],
 					environment: "node",
 				},
 			},
 			{
 				test: {
 					name: "integration",
-					include: ["src/**/*.integration.test.ts"],
+					include: ["src/main/**/*.integration.test.ts"],
 					environment: "node",
 					fileParallelism: false,
 					testTimeout: 30_000,
@@ -45,7 +54,9 @@ export default defineConfig({
 			},
 			{
 				plugins: [react(), tailwindcss()],
-				resolve: { dedupe: ["react", "react-dom"] },
+				resolve: {
+					dedupe: ["react", "react-dom"],
+				},
 				test: {
 					name: "browser",
 					include: ["src/web/**/*.browser.test.tsx"],

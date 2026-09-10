@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import process from "node:process";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createGitClient } from "../client.js";
@@ -225,8 +226,11 @@ describe("git() core", () => {
 	});
 
 	it("suffixes maxBuffer overflows with the command name and keeps the error code", async () => {
-		const path = await createTestDir("desktop-core-maxbuffer-explicit");
-		const git = createCoreTestClient(path);
+		// Run outside a temp dir: exceeding maxBuffer kills the child, and on
+		// Windows cmd/git.exe is a launcher — killing it orphans the real git
+		// process, which briefly holds its CWD handle and races cleanupTestDirs'
+		// rmSync into an EPERM. exec.test.ts uses process.cwd() for the same reason.
+		const git = createCoreTestClient(process.cwd());
 
 		const error = await git.exec(["-h"], "help", { maxBuffer: 1 }).catch((e: unknown) => e);
 

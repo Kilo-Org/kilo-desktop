@@ -17,7 +17,7 @@ packages/
 ├── sdk-react/    @anaconda-agentic-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
 ├── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
 ├── ui/           @anaconda-agentic-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
-└── git-client/   @anaconda-agentic-desktop/git-client   Node-only git client: `exec` with error normalization (successExitCodes/expectedErrors gating), typed `status()` (working-directory and branch status), `createWorkingDirectoryPatch()` (throwaway-index patch) and `getFileContents()`/`getBlobContents()` (both sides of a working-tree file, size-capped); system git via which — no embedded binary
+└── git-client/   @anaconda-agentic-desktop/git-client   Node-only git client: `exec` with error normalization (successExitCodes/expectedErrors gating), typed `status()` (working-directory and branch status), `branches()`/`createBranch()`/`checkoutBranch()` (local branch list/create/checkout), `repositoryType()` (single rev-parse probe classifying missing/unsafe/bare/regular, ported from GitHub Desktop), `createWorkingDirectoryPatch()` (throwaway-index patch) and `getFileContents()`/`getBlobContents()` (both sides of a working-tree file, size-capped); system git via which — no embedded binary
 
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
 plugins/          Bundled plugins — self-contained workspace packages
@@ -25,7 +25,7 @@ plugins/          Bundled plugins — self-contained workspace packages
 ├── kilo-server/  @anaconda-agentic-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
 ├── kilo-ui/      @anaconda-agentic-desktop/plugin-kilo-ui Chat UI and workspace management
 ├── notebook/     @anaconda-agentic-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
-└── git/          @anaconda-agentic-desktop/plugin-git Git status (main) + working-directory "Changes" right-panel tab, streamed over a custom `kilo-git://` protocol; hunk expansion loads file contents via the `getDiffContents` invoke channel
+└── git/          @anaconda-agentic-desktop/plugin-git Git status (main) + working-directory "Changes" right-panel tab streamed over a custom `kilo-git://` protocol (`getDiffContents` channel for hunk expansion), and branch switching (create/checkout) via git-client contributing the composer draft footer branch switcher, gated on `repositoryType` (regular repos only)
 ```
 
 ## Key architectural decisions

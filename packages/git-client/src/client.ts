@@ -16,12 +16,28 @@ import { createGitLogger } from "./logger.js";
 import type { GitLogger } from "./logger.js";
 import { resolveGitBinary } from "./exec/resolve-git.js";
 import { parseGitVersion, satisfies as satisfiesRange } from "./exec/version.js";
+import type { BranchOptions } from "./git/branch.js";
+import { createBranch } from "./git/branch.js";
+import type { CheckoutOptions } from "./git/checkout.js";
+import { checkoutBranch } from "./git/checkout.js";
+import type { ForEachRefOptions } from "./git/for-each-ref.js";
+import type { IBranch } from "./models/branch.js";
+import { getBranches } from "./git/for-each-ref.js";
+import type { RepositoryType } from "./git/rev-parse.js";
+import { getRepositoryType } from "./git/rev-parse.js";
 import type { IStatusResult, StatusOptions } from "./git/status.js";
 import { getStatus } from "./git/status.js";
 import type { CreateWorkingDirectoryPatchOptions, GitPatchFile, PatchExec } from "./git/diff.js";
 import { createWorkingDirectoryPatch } from "./git/diff.js";
 import type { GetFileContentsOptions, WorkingTreeFileContents } from "./git/file-contents.js";
 import { getFileContents } from "./git/file-contents.js";
+import { getGlobalConfigValue } from "./git/config.js";
+import type { RecentBranchesOptions } from "./git/reflog.js";
+import { getRecentBranches } from "./git/reflog.js";
+import type { RemoteHeadOptions } from "./git/remote.js";
+import { getRemoteHEAD } from "./git/remote.js";
+import type { SymbolicRefOptions } from "./git/refs.js";
+import { getSymbolicRef } from "./git/refs.js";
 import type { ShowExec } from "./git/show.js";
 
 export interface GitClientOptions {
@@ -88,6 +104,62 @@ export interface GitClient {
 	 * directory for this call; it defaults to the client's `path`.
 	 */
 	getFileContents(options: GetFileContentsOptions): Promise<WorkingTreeFileContents>;
+	/**
+	 * Local branches (refs/heads) of the repository, via `git for-each-ref`.
+	 * Resolves `null` when the working directory is not inside a git
+	 * repository. `options.cwd` overrides the working directory for this
+	 * call; it defaults to the client's `path`.
+	 */
+	branches(options?: ForEachRefOptions): Promise<IBranch[] | null>;
+	/**
+	 * Create a branch at `startPoint` (or the current HEAD when omitted)
+	 * with `git branch <name> [startPoint]`. `options.cwd` overrides the
+	 * working directory for this call; it defaults to the client's `path`.
+	 */
+	createBranch(name: string, startPoint?: string, options?: BranchOptions): Promise<void>;
+	/**
+	 * Check out the given branch with `git checkout <branch> --`.
+	 * `options.track` creates a local branch that follows a remote-tracking
+	 * ref (`git checkout --track`). Unexpected git failures throw
+	 * `GitError` (inspect with `isGitError`). `options.cwd` overrides the
+	 * working directory for this call; it defaults to the client's `path`.
+	 */
+	checkoutBranch(branch: string, options?: CheckoutOptions): Promise<void>;
+	/**
+	 * The repository type of the given path (`missing`, `unsafe`, `bare`,
+	 * or `regular` with the top-level working directory and git dir),
+	 * determined by a single `git rev-parse` probe. Defaults to the
+	 * client's `path`.
+	 */
+	repositoryType(path?: string): Promise<RepositoryType>;
+	/**
+	 * Read a symbolic ref (e.g. `HEAD` → `refs/heads/main`). Resolves
+	 * `null` when the ref cannot be found or is not a symbolic ref.
+	 * `options.cwd` overrides the working directory for this call; it
+	 * defaults to the client's `path`.
+	 */
+	symbolicRef(ref: string, options?: SymbolicRefOptions): Promise<string | null>;
+	/**
+	 * The default branch of a remote, from the remote's `HEAD` symbolic
+	 * ref (`refs/remotes/&lt;remote&gt;/HEAD`), without the remote
+	 * namespace. Resolves `null` when the symref is absent or points
+	 * outside the namespace. `options.cwd` overrides the working
+	 * directory for this call; it defaults to the client's `path`.
+	 */
+	remoteHead(remote: string, options?: RemoteHeadOptions): Promise<string | null>;
+	/**
+	 * A global config value by name. Resolves `null` when the value is
+	 * not configured. Reads the global config regardless of the working
+	 * directory.
+	 */
+	globalConfigValue(name: string): Promise<string | null>;
+	/**
+	 * The `limit` most recently checked out branches from the HEAD
+	 * reflog, newest first. Resolves an empty list for an unborn
+	 * branch. `options.cwd` overrides the working directory for this
+	 * call; it defaults to the client's `path`.
+	 */
+	recentBranches(limit: number, options?: RecentBranchesOptions): Promise<string[]>;
 }
 
 /**
@@ -159,6 +231,62 @@ class GitClientImpl implements GitClient {
 		const cwd = options.cwd ?? this.path;
 		const exec: ShowExec = (args, name, opts) => this.exec(args, name, { ...opts, cwd });
 		return getFileContents(exec, { ...options, cwd });
+	}
+
+	branches(options?: ForEachRefOptions): Promise<IBranch[] | null> {
+		return getBranches(
+			(args, name, opts) =>
+				this.exec(args, name, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
+			options,
+		);
+	}
+
+	createBranch(name: string, startPoint?: string, options?: BranchOptions): Promise<void> {
+		return createBranch(
+			(args, execName, opts) =>
+				this.exec(args, execName, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
+			name,
+			startPoint,
+		);
+	}
+
+	checkoutBranch(branch: string, options?: CheckoutOptions): Promise<void> {
+		return checkoutBranch(
+			(args, name, opts) =>
+				this.exec(args, name, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
+			branch,
+			options,
+		);
+	}
+
+	/**
+	 * The module sets `cwd: path` itself — the probed path is the cwd — so
+	 * the executor is the client's `exec` unmodified (identity).
+	 */
+	repositoryType(path?: string): Promise<RepositoryType> {
+		return getRepositoryType((args, name, opts) => this.exec(args, name, opts), path ?? this.path);
+	}
+
+	symbolicRef(ref: string, options?: SymbolicRefOptions): Promise<string | null> {
+		return getSymbolicRef(this.#exec, ref, options);
+	}
+
+	remoteHead(remote: string, options?: RemoteHeadOptions): Promise<string | null> {
+		return getRemoteHEAD(this.#exec, remote, options);
+	}
+
+	globalConfigValue(name: string): Promise<string | null> {
+		return getGlobalConfigValue(this.#exec, name);
+	}
+
+	recentBranches(limit: number, options?: RecentBranchesOptions): Promise<string[]> {
+		return getRecentBranches(this.#exec, limit, options);
+	}
+
+	/** The bound exec with no cwd override — the probe modules set `cwd` from their options. */
+	get #exec() {
+		return (args: string[], name: string, opts: IGitStringExecutionOptions) =>
+			this.exec(args, name, opts);
 	}
 
 	#resolveContext(): GitProcessContext {

@@ -165,6 +165,26 @@ describe("createGitClient", () => {
 		});
 	});
 
+	describe("repositoryType", () => {
+		it("returns regular for the bound repository", async () => {
+			const path = createDir("desktop-git-client-repository-type");
+			const git = createGitClient({ path, logger: noopLogger });
+
+			await git.exec(["init"], "init");
+			const result = await git.repositoryType();
+
+			expect(result).toMatchObject({ kind: "regular", topLevelWorkingDirectory: path });
+		});
+
+		it("returns missing for a given path that is not a repository", async () => {
+			const clientPath = createDir("desktop-git-client-repository-type-client");
+			const otherPath = createDir("desktop-git-client-repository-type-other");
+			const git = createGitClient({ path: clientPath, logger: noopLogger });
+
+			await expect(git.repositoryType(otherPath)).resolves.toEqual({ kind: "missing" });
+		});
+	});
+
 	describe("version", () => {
 		it("returns a coerced semver string", async () => {
 			const git = createGitClient();

@@ -95,6 +95,7 @@ export async function initialize(name: string, defaultBranch?: string): Promise<
 export async function initializeWithRemote(
 	name: string,
 	remotePath?: string,
+	defaultBranch?: string,
 ): Promise<{ path: string; remote: string }> {
 	let remote: string;
 	if (remotePath !== undefined) {
@@ -104,7 +105,7 @@ export async function initializeWithRemote(
 		await gitExec(["init", "--bare"], remote);
 	}
 
-	const testRepoPath = await initialize(name);
+	const testRepoPath = await initialize(name, defaultBranch);
 	await gitExec(["remote", "add", "origin", remote], testRepoPath);
 
 	return { path: testRepoPath, remote };

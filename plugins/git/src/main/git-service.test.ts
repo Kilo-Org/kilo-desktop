@@ -9,7 +9,7 @@ import {
 	GitFileTooLargeError,
 	GitNotDetectedError,
 } from "@anaconda-agentic-desktop/git-client";
-import type { IStatusResult } from "@anaconda-agentic-desktop/git-client";
+import type { IStatusResult, RepositoryType } from "@anaconda-agentic-desktop/git-client";
 
 import { GitService, type GitClientSlice } from "./git-service.js";
 
@@ -27,9 +27,36 @@ function clientOf(client: Partial<GitClientSlice>): GitClientSlice {
 	return {
 		status: () => Promise.reject(new Error("unused")),
 		version: () => Promise.resolve("2.39.5"),
+		branches: () => Promise.resolve(null),
+		createBranch: () => Promise.resolve(),
+		checkoutBranch: () => Promise.resolve(),
+		repositoryType: () => Promise.resolve({ kind: "missing" }),
 		createWorkingDirectoryPatch: () => Promise.resolve(null),
 		getFileContents: () => Promise.resolve({ oldContents: null, newContents: null }),
+		remoteHead: () => Promise.resolve(null),
+		globalConfigValue: () => Promise.resolve(null),
+		recentBranches: () => Promise.resolve([]),
 		...client,
+	};
+}
+
+/** A status result with the given current branch and a clean tree. */
+function statusOn(currentBranch: string) {
+	return () =>
+		Promise.resolve({
+			exists: true,
+			currentBranch,
+			workingDirectory: { files: [] },
+			doConflictedFilesExist: false,
+		});
+}
+
+function localBranch(name: string, upstream: string | null = null) {
+	return {
+		name,
+		upstream,
+		tip: { sha: "abc123" },
+		ref: `refs/heads/${name}`,
 	};
 }
 
@@ -136,6 +163,298 @@ describe("GitService", () => {
 		});
 
 		await expect(service.status("/not/a/repo")).resolves.toBe(null);
+	});
+
+	describe("branches", () => {
+		it("lists remotes that no local branch tracks and tags each kind", async () => {
+			const branches = vi.fn(() =>
+				Promise.resolve([
+					{
+						name: "main",
+						upstream: "origin/main",
+						tip: { sha: "aaa" },
+						ref: "refs/heads/main",
+					},
+					{
+						name: "origin/main",
+						upstream: null,
+						tip: { sha: "aaa" },
+						ref: "refs/remotes/origin/main",
+					},
+					{
+						name: "origin/feature",
+						upstream: null,
+						tip: { sha: "bbb" },
+						ref: "refs/remotes/origin/feature",
+					},
+				]),
+			);
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						status: () =>
+							Promise.resolve({
+								exists: true,
+								currentBranch: "main",
+								workingDirectory: { files: [] },
+								doConflictedFilesExist: false,
+							}),
+						branches,
+					}),
+			});
+
+			await expect(service.branches("/repos/project")).resolves.toEqual({
+				currentBranch: "main",
+				branches: [
+					{
+						name: "main",
+						upstream: "origin/main",
+						tip: { sha: "aaa" },
+						ref: "refs/heads/main",
+						kind: "local",
+					},
+					{
+						name: "origin/feature",
+						upstream: null,
+						tip: { sha: "bbb" },
+						ref: "refs/remotes/origin/feature",
+						kind: "remote",
+					},
+				],
+				defaultBranch: "main",
+				recentBranches: [],
+			});
+			expect(branches).toHaveBeenCalledWith({
+				cwd: "/repos/project",
+				prefixes: ["refs/heads", "refs/remotes"],
+			});
+		});
+
+		it("runs the default-branch and recent-branch probes alongside the branch probes", async () => {
+			const remoteHead = vi.fn(() => Promise.resolve("main"));
+			const globalConfigValue = vi.fn(() => Promise.resolve(null));
+			const recentBranches = vi.fn(() => Promise.resolve([]));
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						status: statusOn("main"),
+						branches: () => Promise.resolve([localBranch("main", "origin/main")]),
+						remoteHead,
+						globalConfigValue,
+						recentBranches,
+					}),
+			});
+
+			await service.branches("/repos/project");
+
+			expect(remoteHead).toHaveBeenCalledWith("origin", { cwd: "/repos/project" });
+			expect(globalConfigValue).toHaveBeenCalledWith("init.defaultBranch");
+			// One more than the recent limit: the default branch often appears in
+			// the reflog and is filtered afterwards.
+			expect(recentBranches).toHaveBeenCalledWith(6, { cwd: "/repos/project" });
+		});
+
+		it("reports the default branch resolved from the remote HEAD", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						status: statusOn("develop"),
+						branches: () =>
+							Promise.resolve([
+								localBranch("develop", "origin/main"),
+								localBranch("main", "origin/main"),
+							]),
+						remoteHead: () => Promise.resolve("main"),
+					}),
+			});
+
+			await expect(service.branches("/repos/project")).resolves.toMatchObject({
+				defaultBranch: "main",
+			});
+		});
+
+		it("falls back to the configured default branch without a remote HEAD", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						status: statusOn("trunk"),
+						branches: () => Promise.resolve([localBranch("trunk"), localBranch("main")]),
+						globalConfigValue: () => Promise.resolve("trunk"),
+					}),
+			});
+
+			await expect(service.branches("/repos/project")).resolves.toMatchObject({
+				defaultBranch: "trunk",
+			});
+		});
+
+		it("omits defaultBranch when no branch matches the detected name", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						status: statusOn("feature"),
+						branches: () => Promise.resolve([localBranch("feature")]),
+						remoteHead: () => Promise.resolve("main"),
+					}),
+			});
+
+			await expect(service.branches("/repos/project")).resolves.toEqual({
+				currentBranch: "feature",
+				branches: [
+					{
+						name: "feature",
+						upstream: null,
+						tip: { sha: "abc123" },
+						ref: "refs/heads/feature",
+						kind: "local",
+					},
+				],
+				recentBranches: [],
+			});
+		});
+
+		it("resolves recentBranches in reflog order, dropping the default and deleted branches", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						status: statusOn("main"),
+						branches: () =>
+							Promise.resolve([
+								localBranch("main"),
+								localBranch("topic-b"),
+								localBranch("topic-a"),
+							]),
+						recentBranches: () => Promise.resolve(["main", "topic-b", "deleted", "topic-a"]),
+					}),
+			});
+
+			await expect(service.branches("/repos/project")).resolves.toMatchObject({
+				recentBranches: ["topic-b", "topic-a"],
+			});
+		});
+
+		it("caps recentBranches at five", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						status: statusOn("main"),
+						branches: () =>
+							Promise.resolve([
+								localBranch("main"),
+								localBranch("topic-1"),
+								localBranch("topic-2"),
+								localBranch("topic-3"),
+								localBranch("topic-4"),
+								localBranch("topic-5"),
+							]),
+						recentBranches: () =>
+							Promise.resolve(["main", "topic-1", "topic-2", "topic-3", "topic-4", "topic-5"]),
+					}),
+			});
+
+			await expect(service.branches("/repos/project")).resolves.toMatchObject({
+				recentBranches: ["topic-1", "topic-2", "topic-3", "topic-4", "topic-5"],
+			});
+		});
+
+		it("resolves null when either probe reports not a repository", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/not/a/repo"),
+				createClient: () =>
+					clientOf({
+						status: () => Promise.resolve(null),
+						branches: () =>
+							Promise.resolve([
+								{
+									name: "main",
+									upstream: null,
+									tip: { sha: "abc123" },
+									ref: "refs/heads/main",
+								},
+							]),
+						createBranch: () => Promise.resolve(),
+						checkoutBranch: () => Promise.resolve(),
+						version: () => Promise.resolve("2.39.5"),
+					}),
+			});
+
+			await expect(service.branches("/not/a/repo")).resolves.toBe(null);
+		});
+	});
+
+	describe("repositoryType", () => {
+		it("probes the given working directory and passes each kind through", async () => {
+			const kinds: RepositoryType[] = [
+				{ kind: "missing" },
+				{ kind: "bare" },
+				{ kind: "unsafe", path: "/some/repo" },
+				{
+					kind: "regular",
+					topLevelWorkingDirectory: "/some/repo",
+					gitDir: "/some/repo/.git",
+				},
+			];
+
+			for (const repositoryType of kinds) {
+				const repositoryTypeProbe = vi.fn(() => Promise.resolve(repositoryType));
+				const service = new GitService({
+					logger,
+					getWorkspaceFolderPaths: folders("/some/repo"),
+					createClient: () => clientOf({ repositoryType: repositoryTypeProbe }),
+				});
+
+				await expect(service.repositoryType("/some/repo")).resolves.toEqual(repositoryType);
+				expect(repositoryTypeProbe).toHaveBeenCalledWith("/some/repo");
+			}
+		});
+	});
+
+	describe("checkout", () => {
+		it("checks out a remote branch with tracking", async () => {
+			const checkoutBranch = vi.fn(() => Promise.resolve());
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/some/repo"),
+				createClient: () => clientOf({ checkoutBranch }),
+			});
+
+			await service.checkout("/some/repo", "origin/feature", undefined, undefined, "remote");
+
+			expect(checkoutBranch).toHaveBeenCalledWith("origin/feature", {
+				cwd: "/some/repo",
+				track: true,
+			});
+		});
+
+		it("forwards the start point to createBranch when creating", async () => {
+			const createBranch = vi.fn(() => Promise.resolve());
+			const checkoutBranch = vi.fn(() => Promise.resolve());
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/some/repo"),
+				createClient: () => clientOf({ createBranch, checkoutBranch }),
+			});
+
+			await service.checkout("/some/repo", "topic", true, "main");
+
+			expect(createBranch).toHaveBeenCalledWith("topic", "main", { cwd: "/some/repo" });
+			expect(checkoutBranch).toHaveBeenCalledWith("topic", { cwd: "/some/repo" });
+		});
 	});
 
 	it("available resolves true when the git version is obtained", async () => {

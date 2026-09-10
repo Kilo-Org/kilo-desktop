@@ -8,6 +8,12 @@
 	"contributes": {
 		"zones": [
 			{
+				"zone": "kilo-ui/chat-composer-draft-footer",
+				"id": "branch-selector",
+				"component": "GitBranchSelector",
+				"label": "Branch"
+			},
+			{
 				"zone": "kilo-ui/chat-right-panel-tab",
 				"id": "changes",
 				"component": "GitDiffView",

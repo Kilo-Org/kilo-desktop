@@ -2,20 +2,103 @@ import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 import type { GitClient, GitPatchFile } from "@anaconda-agentic-desktop/git-client";
 import {
+	GitErrorCode,
 	GitFileTooLargeError,
 	GitNotDetectedError,
 	createGitClient,
+	isGitError,
 } from "@anaconda-agentic-desktop/git-client";
 import { rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import type { GitStatus } from "../contracts/schemas.js";
+import type {
+	GitBranch,
+	GitBranchesResult,
+	GitRepositoryType,
+	GitStatus,
+} from "../contracts/schemas.js";
+import type { IBranch, RepositoryType } from "@anaconda-agentic-desktop/git-client";
+import { findDefaultBranch } from "./find-default-branch.js";
+
+const REMOTE_REF_PREFIX = "refs/remotes/";
+const BRANCH_REF_PREFIXES = ["refs/heads", "refs/remotes"] as const;
+/** The only remote this plugin's default-branch detection looks at (no fork model). */
+const DEFAULT_REMOTE_NAME = "origin";
+/** The max number of recent branches to report (GitHub Desktop's `RecentBranchesLimit`). */
+const RECENT_BRANCHES_LIMIT = 5;
+const DEFAULT_BRANCH_CONFIG_KEY = "init.defaultBranch";
+
+function branchKind(ref: string): GitBranch["kind"] {
+	return ref.startsWith(REMOTE_REF_PREFIX) ? "remote" : "local";
+}
+
+/** Drop remotes that a local branch already tracks (same short name as `upstream`). */
+function visibleBranches(branches: ReadonlyArray<IBranch>): GitBranch[] {
+	const localUpstreams = new Set(
+		branches.flatMap((branch) =>
+			branchKind(branch.ref) === "local" && branch.upstream !== null ? [branch.upstream] : [],
+		),
+	);
+	return branches.flatMap((branch) => {
+		const kind = branchKind(branch.ref);
+		if (kind === "remote" && localUpstreams.has(branch.name)) return [];
+		return [{ ...branch, kind }];
+	});
+}
 
 /** The slice of `GitClient` the service actually uses; `GitClient` satisfies it. */
 export type GitClientSlice = Pick<
 	GitClient,
-	"status" | "version" | "createWorkingDirectoryPatch" | "getFileContents"
+	| "status"
+	| "version"
+	| "branches"
+	| "createBranch"
+	| "checkoutBranch"
+	| "repositoryType"
+	| "createWorkingDirectoryPatch"
+	| "getFileContents"
+	| "remoteHead"
+	| "globalConfigValue"
+	| "recentBranches"
 >;
+
+/**
+ * The visible branches' recently checked-out local branch names, in reflog
+ * order: the default branch is excluded (it has its own group), names with
+ * no matching local branch are dropped (deleted), and the list caps at
+ * {@link RECENT_BRANCHES_LIMIT} — GitHub Desktop's `refreshRecentBranches`.
+ */
+function recentBranchNamesOf(
+	branches: ReadonlyArray<IBranch>,
+	recentNames: ReadonlyArray<string>,
+	defaultBranch: string | undefined,
+): string[] {
+	const localNames = new Set(
+		branches.flatMap((branch) => (branchKind(branch.ref) === "local" ? [branch.name] : [])),
+	);
+
+	const recentBranches: string[] = [];
+	for (const name of recentNames) {
+		// The default branch already has its own section in the branch
+		// list so we exclude it here.
+		if (name === defaultBranch) {
+			continue;
+		}
+
+		// This means the recent branch has been deleted. That's fine.
+		if (!localNames.has(name)) {
+			continue;
+		}
+
+		recentBranches.push(name);
+
+		if (recentBranches.length >= RECENT_BRANCHES_LIMIT) {
+			break;
+		}
+	}
+
+	return recentBranches;
+}
 
 export interface GitServiceOptions {
 	readonly logger: MainSdkLogger;
@@ -74,30 +157,89 @@ function createDefaultClient(logger: MainSdkLogger): GitClientSlice {
 }
 
 /**
- * Status service over git-client.
+ * The one error mapped to a `FeatureError` across every method: no git
+ * binary means the message must survive the IPC boundary. Everything else
+ * propagates unwrapped (the IPC boundary scrubs generic errors, and
+ * git-client logs the detail via the adapted logger).
+ */
+function gitNotDetectedToFeatureError(error: unknown): unknown {
+	if (error instanceof GitNotDetectedError) {
+		return new FeatureError(
+			"Git executable not found. Install git and make sure it is on your PATH.",
+			"BUSINESS",
+		);
+	}
+	return error;
+}
+
+/**
+ * Expected user-facing checkout failures: git's parsed description (the
+ * "already exists" / "local changes overwritten" copy) must survive the IPC
+ * boundary, so they map to `FeatureError`s; anything else propagates
+ * unwrapped (scrubbed at IPC, logged by git-client).
+ */
+function checkoutErrorToFeatureError(error: unknown): unknown {
+	if (isGitError(error, GitErrorCode.BranchAlreadyExists)) {
+		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+	}
+	if (isGitError(error, GitErrorCode.LocalChangesOverwritten)) {
+		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+	}
+	return gitNotDetectedToFeatureError(error);
+}
+
+/**
+ * Git status/branch service over git-client.
  *
  * Stateless, backed by one shared client: git-client resolves the git binary
  * lazily and memoizes it per instance, so the binary resolution cost is paid
- * once per service, not per call. Each `status` call selects its working
- * directory via the client's `cwd` option.
+ * once per service, not per call. Every method selects its working directory
+ * via the client's `cwd` option.
  *
  * Semantics inherited from git-client and deliberately not deviated from:
- * - `null` means `git status` exited 128 — a missing directory and a
- *   non-repo directory are indistinguishable.
- * - `GitNotDetectedError` (no git binary on PATH) is the one error mapped to
- *   a `FeatureError` so its message survives the IPC boundary; every other
- *   error propagates unwrapped (the IPC boundary scrubs generic errors, and
- *   git-client logs the detail via the adapted logger).
+ * - `null` from `status`/`branches` means the probe exited 128 — a missing
+ *   directory and a non-repo directory are indistinguishable. `branches`
+ *   runs its probes (local+remote refs, status for the current branch,
+ *   plus the grouping inputs: remote HEAD, `init.defaultBranch` global
+ *   config, recent reflog names) in parallel and collapses to `null`
+ *   when the refs or status probe reports not-a-repo — the grouping
+ *   probes resolve their failure modes as data, so they never turn a
+ *   regular repo into `null`. Remote-tracking refs that a local branch
+ *   already tracks are omitted so the switcher shows one row per
+ *   checkout target, and the result carries the detected `defaultBranch`
+ *   (Desktop's `findDefaultBranch` priority, remote always `origin`)
+ *   and `recentBranches` (reflog order, local-only, default excluded,
+ *   deleted dropped, capped at 5).
+ *   `kind: "remote"` checkout uses `git checkout --track`.
+ * - `repositoryType` is the explicit replacement for that accidental
+ *   guardrail: one `git rev-parse` probe classifies the directory as
+ *   `missing`/`unsafe`/`bare`/`regular` (ported from GitHub Desktop), and
+ *   the renderer gates the branch selector on `kind === "regular"` before
+ *   the data probes ever run. It never resolves `null` — `missing` is an
+ *   explicit kind, and `unsafe` crosses the contract so a trust flow can
+ *   be added later without schema changes.
+ * - `GitNotDetectedError` (no git binary on PATH) is mapped to a
+ *   `FeatureError` on every method so its message survives the IPC boundary;
+ *   every other unexpected error propagates unwrapped (the IPC boundary
+ *   scrubs generic errors, and git-client logs the detail via the adapted
+ *   logger).
+ * - `checkout` additionally maps the two expected user-facing failures
+ *   (`BranchAlreadyExists`, `LocalChangesOverwritten`) to `FeatureError`s
+ *   carrying git's parsed descriptions, so the UI can surface them. With
+ *   `create`, the new branch is based on `startPoint` when given — the
+ *   default branch while branching off it, per Desktop's dialog — and on
+ *   the current HEAD when omitted.
  *
  * Workspace containment: every directory-taking call (`status`,
- * `createPatch`, `getDiffContents`) resolves the workspace folders
- * per request and rejects with a `VALIDATION` FeatureError unless the
- * directory equals or is inside one of them — this choke point covers both
- * the IPC channels and the `kilo-git://` protocol handler in one place.
- * The capability is resolved per call, so boot order never matters, and an
- * absent capability fails closed (kilo-ui is bundled and always booted by
- * the time renderer requests exist). Legitimate renderer traffic always
- * passes workspace folder paths, so the guard never trips in normal use.
+ * `branches`, `checkout`, `createPatch`, `getDiffContents`) resolves the
+ * workspace folders per request and rejects with a `VALIDATION` FeatureError
+ * unless the directory equals or is inside one of them — this choke point
+ * covers both the IPC channels and the `kilo-git://` protocol handler in one
+ * place. The capability is resolved per call, so boot order never matters,
+ * and an absent capability fails closed (kilo-ui is bundled and always
+ * booted by the time renderer requests exist). Legitimate renderer traffic
+ * always passes workspace folder paths, so the guard never trips in normal
+ * use.
  *
  * `available` is a probe, so its error semantics differ from `status` on
  * purpose: every failure collapses to `false` — including
@@ -160,13 +302,89 @@ export class GitService {
 				workingDirectory: { files: [...result.workingDirectory.files] },
 			};
 		} catch (error) {
-			if (error instanceof GitNotDetectedError) {
-				throw new FeatureError(
-					"Git executable not found. Install git and make sure it is on your PATH.",
-					"BUSINESS",
-				);
+			throw gitNotDetectedToFeatureError(error);
+		}
+	}
+
+	async branches(workingDirectory: string): Promise<GitBranchesResult | null> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			// Independent probes, spawned in parallel rather than serially:
+			// branch refs, status for the current branch (`for-each-ref`
+			// alone cannot report it), and the Desktop-parity grouping
+			// inputs (remote HEAD, configured default, recent reflog
+			// names). The grouping probes are failure-tolerant by design —
+			// symref 128 → null, config 1 → null, reflog 128 → [] — so
+			// only branches/status keep the null-means-not-a-repo gate.
+			// The recent fetch asks for one more than the limit because
+			// the default branch often appears in the reflog and is
+			// filtered out afterwards.
+			const [branches, status, remoteHead, configuredDefault, recentNames] = await Promise.all([
+				this.#client.branches({ cwd: workingDirectory, prefixes: BRANCH_REF_PREFIXES }),
+				this.#client.status({ cwd: workingDirectory }),
+				this.#client.remoteHead(DEFAULT_REMOTE_NAME, { cwd: workingDirectory }),
+				this.#client.globalConfigValue(DEFAULT_BRANCH_CONFIG_KEY),
+				this.#client.recentBranches(RECENT_BRANCHES_LIMIT + 1, { cwd: workingDirectory }),
+			]);
+			if (branches === null || status === null) return null;
+			const visible = visibleBranches(branches);
+			const defaultBranch = findDefaultBranch(visible, remoteHead, configuredDefault);
+			return {
+				// Absent on detached HEAD and unborn repositories — matches the
+				// schema's optional `currentBranch`.
+				...(status.currentBranch === undefined ? {} : { currentBranch: status.currentBranch }),
+				branches: visible,
+				// Absent when no branch matches the detected default name.
+				...(defaultBranch === undefined ? {} : { defaultBranch }),
+				recentBranches: recentBranchNamesOf(branches, recentNames, defaultBranch),
+			};
+		} catch (error) {
+			throw gitNotDetectedToFeatureError(error);
+		}
+	}
+
+	/**
+	 * The explicit repository-type probe the selector gate runs on: a
+	 * single `git rev-parse` decides `missing`/`unsafe`/`bare`/`regular`,
+	 * so non-regular workspaces never spawn the failing data probes.
+	 */
+	async repositoryType(workingDirectory: string): Promise<GitRepositoryType> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			const result: RepositoryType = await this.#client.repositoryType(workingDirectory);
+			// The discriminated unions of git-client's `RepositoryType` and
+			// the contract's `GitRepositoryType` align member-for-member;
+			// `tsc` enforces the alignment at this assignment.
+			return result;
+		} catch (error) {
+			throw gitNotDetectedToFeatureError(error);
+		}
+	}
+
+	/**
+	 * Check out a branch. `kind: "remote"` creates a local branch that
+	 * tracks the named remote-tracking ref. With `create`, first create the
+	 * branch off `startPoint` — or the current HEAD when omitted (Desktop's
+	 * create-then-checkout flow, where `startPoint: null` means HEAD).
+	 */
+	async checkout(
+		workingDirectory: string,
+		branch: string,
+		create?: boolean,
+		startPoint?: string,
+		kind?: GitBranch["kind"],
+	): Promise<void> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			if (create) {
+				await this.#client.createBranch(branch, startPoint, { cwd: workingDirectory });
 			}
-			throw error;
+			await this.#client.checkoutBranch(branch, {
+				cwd: workingDirectory,
+				...(kind === "remote" ? { track: true } : {}),
+			});
+		} catch (error) {
+			throw checkoutErrorToFeatureError(error);
 		}
 	}
 

@@ -287,12 +287,13 @@ describe("createWorkingDirectoryPatch", () => {
 		await makeCommit(repoPath, { entries: [{ path: "file.txt", contents: "x\n" }] });
 		await writeFile(join(repoPath, "file.txt"), "y\n");
 
-		const indexDirsBefore = await leftoverIndexDirs();
+		const indexDirsBefore = new Set(await leftoverIndexDirs());
 		const patch = await createPatchOrThrow(repoPath);
 		const patchPath = patch.patchPath;
 		expect((await stat(patchPath)).size).toBeGreaterThan(0);
-		// The throwaway index dir never outlives the call.
-		expect(await leftoverIndexDirs()).toEqual(indexDirsBefore);
+		// The throwaway index dir never outlives the call — no new entries leaked.
+		const newIndexDirs = (await leftoverIndexDirs()).filter((d) => !indexDirsBefore.has(d));
+		expect(newIndexDirs).toEqual([]);
 		// The patch file does, until the caller removes it.
 		await rm(patchPath, { force: true });
 		await expect(stat(patchPath)).rejects.toMatchObject({ code: "ENOENT" });

@@ -4,7 +4,11 @@
 	"version": "1.0.0",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
-	"zones": [{ "id": "chat-right-panel-tab" }, { "id": "chat-markdown-extension" }],
+	"zones": [
+		{ "id": "chat-right-panel-tab" },
+		{ "id": "chat-markdown-extension" },
+		{ "id": "chat-composer-draft-footer" }
+	],
 	"contributes": {
 		"providers": [
 			{ "component": "WorkspacesFeatureProvider", "priority": 20 },

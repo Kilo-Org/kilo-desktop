@@ -44,6 +44,12 @@ export function mainRegister(mainSdk: MainSdk): void {
 
 	mainSdk.channels(gitContract).handleAll({
 		status: ({ workingDirectory }) => service.status(workingDirectory),
+		branches: ({ workingDirectory }) => service.branches(workingDirectory),
+		repositoryType: ({ workingDirectory }) => service.repositoryType(workingDirectory),
+		checkout: async ({ workingDirectory, branch, create, startPoint, kind }) => {
+			await service.checkout(workingDirectory, branch, create, startPoint, kind);
+			return undefined;
+		},
 		available: () => service.available(),
 		getDiffContents: (args) => service.getDiffContents(args),
 	});

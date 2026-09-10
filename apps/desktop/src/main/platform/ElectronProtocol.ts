@@ -53,6 +53,14 @@ export function getDesktopScheme(isDevelopment: boolean): string {
 	return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
 }
 
+/**
+ * Plugin-declared protocol schemes (`mainSdk.protocol`) are manifest-declared
+ * because `registerSchemesAsPrivileged` must run before app-ready — the loader
+ * does not (and cannot) extend this list at runtime. `main.ts` passes the
+ * schemes here for privileged registration, and `Application` passes the same
+ * list to `ElectronProtocol.register` so `createContentSecurityPolicy` emits
+ * matching `connect-src` entries.
+ */
 export function getDesktopOrigin(isDevelopment: boolean, host: string = DESKTOP_HOST): string {
 	return `${getDesktopScheme(isDevelopment)}://${host}`;
 }
@@ -70,9 +78,9 @@ export function getDesktopRouteUrl(
 	return `${getDesktopOrigin(isDevelopment)}/#${route}${params.size > 0 ? `?${params}` : ""}`;
 }
 
-export function registerDesktopSchemes(): void {
+export function registerDesktopSchemes(pluginSchemes: readonly string[]): void {
 	protocol.registerSchemesAsPrivileged(
-		[DESKTOP_PRODUCTION_SCHEME, DESKTOP_DEVELOPMENT_SCHEME].map((scheme) => ({
+		[DESKTOP_PRODUCTION_SCHEME, DESKTOP_DEVELOPMENT_SCHEME, ...pluginSchemes].map((scheme) => ({
 			scheme,
 			privileges: {
 				standard: true,
@@ -98,6 +106,8 @@ export function createContentSecurityPolicy(
 	developmentOrigin?: string,
 	inlineScriptHashes: readonly string[] = [],
 	frameOrigins: readonly string[] = [],
+	/** Plugin-declared protocol schemes (mainSdk.protocol), connectable. */
+	pluginSchemes: readonly string[] = [],
 ): string {
 	const developmentSources = developmentOrigin ? ` ${new URL(developmentOrigin).origin} ws:` : "";
 	// NOTE: MCP App widgets render in sandboxed blob-URL iframes, which inherit
@@ -121,7 +131,7 @@ export function createContentSecurityPolicy(
 		// loopback servers (e.g. the local Kilo server); `RELAY_WS_SOURCES` are
 		// the loopback WebSockets the self-hosted WebMCP relay widget uses to
 		// reach the `@mcp-b/webmcp-local-relay` daemon.
-		`connect-src 'self' ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
+		`connect-src 'self' ${pluginSchemes.map((scheme) => `${scheme}:`).join(" ")} ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
 		// `frame-src 'self' blob:`: the app embeds the WebMCP relay widget in a
 		// hidden same-origin iframe, and MCP App widgets render in sandboxed
 		// blob-URL iframes. `frame-ancestors 'self'`: the widget response must
@@ -325,6 +335,12 @@ async function serveEmbeddedHost(embedded: EmbeddedWebHost, requestUrl: URL): Pr
 
 export class ElectronProtocol {
 	#registeredScheme: string | undefined;
+	// Plugin protocol schemes (mainSdk.protocol) and their handlers, keyed
+	// by scheme, tracked so app shutdown (`unregisterAllFeatureSchemes`)
+	// can unhandle exactly what features registered — a scheme stays bound
+	// for the process lifetime, not the plugin's (feature teardown does not
+	// release it).
+	#featureSchemes = new Map<string, (request: Request) => Promise<Response> | Response>();
 
 	register(input: {
 		readonly isDevelopment: boolean;
@@ -336,6 +352,12 @@ export class ElectronProtocol {
 		 * empty for the process's whole lifetime.
 		 */
 		readonly embeddedHosts?: () => readonly EmbeddedWebHost[];
+		/**
+		 * Plugin-declared protocol schemes (mainSdk.protocol), so the app CSP
+		 * keeps emitting matching `connect-src` entries. `Application` passes
+		 * the same manifest-derived list `main.ts` registers pre-ready.
+		 */
+		readonly pluginSchemes?: readonly string[];
 	}): void {
 		const scheme = getDesktopScheme(input.isDevelopment);
 		if (this.#registeredScheme === scheme) return;
@@ -346,7 +368,12 @@ export class ElectronProtocol {
 				getDesktopOrigin(input.isDevelopment, embedded.host),
 			);
 			return (inlineScriptHashes: readonly string[]) =>
-				createContentSecurityPolicy(input.developmentOrigin, inlineScriptHashes, frameOrigins);
+				createContentSecurityPolicy(
+					input.developmentOrigin,
+					inlineScriptHashes,
+					frameOrigins,
+					input.pluginSchemes ?? [],
+				);
 		};
 
 		protocol.handle(scheme, async (request) => {
@@ -411,7 +438,34 @@ export class ElectronProtocol {
 		this.#registeredScheme = scheme;
 	}
 
+	/**
+	 * Bind a plugin's protocol scheme (`mainSdk.protocol`, manifest-declared)
+	 * to its request handler. Legal only after app-ready — the privileged
+	 * scheme list is registered pre-ready by `registerDesktopSchemes`. A
+	 * repeated registration replaces the handler, mirroring Electron's own
+	 * `protocol.handle` semantics.
+	 */
+	registerFeatureScheme(
+		scheme: string,
+		handler: (request: Request) => Promise<Response> | Response,
+	): void {
+		protocol.handle(scheme, handler);
+		this.#featureSchemes.set(scheme, handler);
+	}
+
+	unregisterFeatureScheme(scheme: string): void {
+		if (!this.#featureSchemes.delete(scheme)) return;
+		protocol.unhandle(scheme);
+	}
+
+	unregisterAllFeatureSchemes(): void {
+		for (const scheme of [...this.#featureSchemes.keys()]) {
+			this.unregisterFeatureScheme(scheme);
+		}
+	}
+
 	dispose(): void {
+		this.unregisterAllFeatureSchemes();
 		if (!this.#registeredScheme) return;
 		protocol.unhandle(this.#registeredScheme);
 		this.#registeredScheme = undefined;

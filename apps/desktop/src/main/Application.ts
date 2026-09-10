@@ -14,6 +14,10 @@ import {
 } from "./features/registry/feature-registry.js";
 import { collectEmbeddedHosts } from "./features/registry/embedded-hosts.js";
 import { FEATURES } from "./features/registry/features.js";
+import {
+	PLUGIN_PROTOCOLS_BY_FEATURE_ID,
+	PLUGIN_PROTOCOL_SCHEMES,
+} from "./features/registry/bundled-plugin-manifests.js";
 import { registerAuthCapability } from "./features/auth/auth-capability-bridge.js";
 import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
@@ -139,6 +143,7 @@ export class Application {
 				rendererRoot: getProductionRendererRoot(import.meta.dirname),
 				...(developmentOrigin ? { developmentOrigin } : {}),
 				embeddedHosts: collectEmbeddedHosts,
+				pluginSchemes: PLUGIN_PROTOCOL_SCHEMES,
 			});
 
 			// Bootstrap networking before #registerIpc (bootFeatures): merge the
@@ -265,9 +270,26 @@ export class Application {
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
 				createLogger,
 				fetch: this.#http.fetch,
+				// Each plugin may handle URL schemes it declared in its
+				// manifest's `protocols` array; undeclared schemes are
+				// rejected. `bootFeatures` runs after app-ready, so
+				// `protocol.handle` is legal here; the declared schemes
+				// themselves were registered pre-ready by
+				// registerDesktopSchemes from the same manifests.
+				createProtocolDelegate: (featureId: string) => ({
+					handle: (scheme, handler) => {
+						if (!PLUGIN_PROTOCOLS_BY_FEATURE_ID.get(featureId)?.includes(scheme)) {
+							throw new Error(
+								`Feature "${featureId}" cannot handle scheme "${scheme}": not declared in its manifest's "protocols" array.`,
+							);
+						}
+						this.#protocol.registerFeatureScheme(scheme, handler);
+					},
+				}),
 				host: {
 					paths: {
 						defaultSaveDirectory: () => this.#app.getPath("documents"),
+						tempDirectory: () => this.#app.getPath("temp"),
 					},
 					dialog: {
 						openFile: (senderId, options) => this.#shell.showOpenFileDialog(senderId, options),
@@ -298,6 +320,9 @@ export class Application {
 					: {}),
 			}),
 		);
+		// Registered after the boot disposer, so reverse-order teardown unbinds
+		// every claimed plugin scheme before the features' own cleanup runs.
+		this.#disposers.push(() => this.#protocol.unregisterAllFeatureSchemes());
 
 		const telemetry = TelemetryService.create({
 			auth: this.#auth,

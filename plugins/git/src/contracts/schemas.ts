@@ -112,6 +112,22 @@ export const gitContract = defineContract({
 		gitStatusSchema.nullable(),
 	),
 	available: defineMethod(z.undefined(), z.boolean()),
+	/**
+	 * Both sides of a working-tree file's contents for diff hunk expansion:
+	 * the old side from HEAD, the new side from disk. Null sides mean that
+	 * side is absent (new/untracked file, deleted file, unborn HEAD).
+	 */
+	getDiffContents: defineMethod(
+		z.object({
+			workingDirectory: z.string().min(1).max(32_768),
+			path: z.string().min(1).max(32_768),
+			oldPath: z.string().min(1).max(32_768).optional(),
+		}),
+		z.object({
+			oldContents: z.string().nullable(),
+			newContents: z.string().nullable(),
+		}),
+	),
 });
 
 export type GitStatus = z.infer<typeof gitStatusSchema>;

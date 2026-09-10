@@ -1,4 +1,5 @@
 import { Application } from "./Application.js";
+import { PLUGIN_PROTOCOL_SCHEMES } from "./features/registry/bundled-plugin-manifests.js";
 import { createLogger } from "./platform/logger.js";
 import { registerDesktopSchemes } from "./platform/ElectronProtocol.js";
 import { initSentry } from "./platform/sentry.js";
@@ -8,7 +9,7 @@ if (electronSquirrelStartup) {
 	process.exitCode = 0;
 } else {
 	initSentry();
-	registerDesktopSchemes();
+	registerDesktopSchemes(PLUGIN_PROTOCOL_SCHEMES);
 
 	void new Application().start().catch((error: unknown) => {
 		createLogger("startup").error("Anaconda Agentic Desktop failed to start.", error);

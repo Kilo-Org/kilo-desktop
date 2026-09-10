@@ -86,6 +86,33 @@ describe("pluginManifestSchema", () => {
 		]);
 	});
 
+	it("accepts declared protocol schemes", () => {
+		const manifest = parsePluginManifest({
+			...validManifest,
+			protocols: ["todos", "todo-db+1"],
+		});
+		expect(manifest.protocols).toEqual(["todos", "todo-db+1"]);
+	});
+
+	it("treats omitted protocols as no schemes", () => {
+		expect(parsePluginManifest(validManifest).protocols).toBeUndefined();
+	});
+
+	it.each(["Todo", "1todo", "-todos", "todo scheme", "todos://x"])(
+		"rejects invalid protocol scheme %j",
+		(scheme) => {
+			expect(
+				pluginManifestSchema.safeParse({ ...validManifest, protocols: [scheme] }).success,
+			).toBe(false);
+		},
+	);
+
+	it("rejects non-array protocols", () => {
+		expect(pluginManifestSchema.safeParse({ ...validManifest, protocols: "todos" }).success).toBe(
+			false,
+		);
+	});
+
 	it("accepts a transparent shell surface for pages that render their own surfaces", () => {
 		const manifest = parsePluginManifest({
 			...validManifest,

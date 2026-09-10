@@ -22,7 +22,7 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"lucide-react": "^1.27.0"
+		"lucide-react": "catalog:"
 	},
 	"peerDependencies": {
 		"@runtimed/node": "0.5.0",

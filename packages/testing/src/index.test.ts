@@ -9,6 +9,7 @@ import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
 import {
 	createFakeFeatureSystem,
 	createFakeMainSdk,
+	createFakeMainSdkProtocol,
 	createFakeSdk,
 	createLinkedFakeSdkPair,
 } from "./index.js";
@@ -24,7 +25,42 @@ const todosChannels = {
 	add: defineMethod(z.object({ title: z.string().min(1) }), todoSchema),
 } as const;
 
+describe("createFakeMainSdkProtocol", () => {
+	it("records handlers by scheme and lets a later handle call replace one", async () => {
+		const protocol = createFakeMainSdkProtocol();
+		expect(protocol.handler).toBeUndefined();
+		expect(protocol.handlers.size).toBe(0);
+
+		const first = () => new Response("one");
+		protocol.handle("kilo-git", first);
+		expect(protocol.handler).toBe(first);
+		expect(protocol.handlers.get("kilo-git")).toBe(first);
+
+		const second = async () => new Response("two");
+		protocol.handle("kilo-git", second);
+		expect(protocol.handler).toBe(second);
+		expect(await protocol.handler?.(new Request("kilo-git://diff/patch"))).toEqual(
+			new Response("two"),
+		);
+	});
+});
+
 describe("createFakeMainSdk", () => {
+	it("passes a protocol delegate through so features can install handlers", () => {
+		const protocol = createFakeMainSdkProtocol();
+		const mainSdk = createFakeMainSdk({ featureId: "git", protocol });
+
+		mainSdk.protocol?.handle("kilo-git", () => new Response("diff"));
+
+		expect(protocol.handler).toBeTypeOf("function");
+		expect(mainSdk.protocol).toBe(protocol);
+	});
+
+	it("leaves protocol undefined when no delegate is provided", () => {
+		const mainSdk = createFakeMainSdk({ featureId: "git" });
+		expect(mainSdk.protocol).toBeUndefined();
+	});
+
 	it("invoke validates input and output like the real router", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "todos" });
 		mainSdk.channels(todosChannels).handle("add", ({ title }) => ({

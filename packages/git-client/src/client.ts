@@ -18,6 +18,11 @@ import { resolveGitBinary } from "./exec/resolve-git.js";
 import { parseGitVersion, satisfies as satisfiesRange } from "./exec/version.js";
 import type { IStatusResult, StatusOptions } from "./git/status.js";
 import { getStatus } from "./git/status.js";
+import type { CreateWorkingDirectoryPatchOptions, GitPatchFile, PatchExec } from "./git/diff.js";
+import { createWorkingDirectoryPatch } from "./git/diff.js";
+import type { GetFileContentsOptions, WorkingTreeFileContents } from "./git/file-contents.js";
+import { getFileContents } from "./git/file-contents.js";
+import type { ShowExec } from "./git/show.js";
 
 export interface GitClientOptions {
 	/** Working directory for git commands. Defaults to process.cwd(). */
@@ -65,6 +70,24 @@ export interface GitClient {
 	 * working directory for this call; it defaults to the client's `path`.
 	 */
 	status(options?: StatusOptions): Promise<IStatusResult | null>;
+	/**
+	 * Write the complete working-tree patch (staged + unstaged + untracked
+	 * vs `commitish`, default `HEAD`) to a temp file WITHOUT touching the
+	 * user's real index (throwaway `GIT_INDEX_FILE`). Resolves `null` when
+	 * the working directory is not inside a git repository; an empty working
+	 * tree yields a zero-byte patch. The caller must `cleanup()` the result.
+	 */
+	createWorkingDirectoryPatch(
+		options?: CreateWorkingDirectoryPatchOptions,
+	): Promise<GitPatchFile | null>;
+	/**
+	 * Both sides of a working-tree file's contents (old side from
+	 * `commitish`, default `HEAD`, new side from disk), for diff hunk
+	 * expansion. Null sides mean that side is absent (new/untracked file,
+	 * deleted file, unborn HEAD). `options.cwd` overrides the working
+	 * directory for this call; it defaults to the client's `path`.
+	 */
+	getFileContents(options: GetFileContentsOptions): Promise<WorkingTreeFileContents>;
 }
 
 /**
@@ -122,6 +145,20 @@ class GitClientImpl implements GitClient {
 				this.exec(args, name, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
 			options,
 		);
+	}
+
+	createWorkingDirectoryPatch(
+		options?: CreateWorkingDirectoryPatchOptions,
+	): Promise<GitPatchFile | null> {
+		const exec: PatchExec = (args, name, opts) =>
+			this.exec(args, name, options?.cwd ? { ...opts, cwd: options.cwd } : opts);
+		return createWorkingDirectoryPatch(exec, options);
+	}
+
+	getFileContents(options: GetFileContentsOptions): Promise<WorkingTreeFileContents> {
+		const cwd = options.cwd ?? this.path;
+		const exec: ShowExec = (args, name, opts) => this.exec(args, name, { ...opts, cwd });
+		return getFileContents(exec, { ...options, cwd });
 	}
 
 	#resolveContext(): GitProcessContext {

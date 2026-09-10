@@ -18,6 +18,7 @@ import type {
 	MainSdk,
 	MainSdkFetch,
 	MainSdkLogger,
+	MainSdkProtocol,
 	SDK,
 	SdkFactoryServices,
 	ShellDelegates,
@@ -517,6 +518,8 @@ export interface FakeMainSdkOptions {
 	fetch?: MainSdkFetch;
 	/** Optional desktop host capabilities for main-process plugin tests. */
 	host?: MainSdk["host"];
+	/** Custom protocol delegate (manifest-declared schemes) for main-process plugin tests. */
+	protocol?: MainSdkProtocol;
 	/** Optional KV factory; defaults to an isolated in-memory implementation. */
 	createKvStore?: KvStoreFactory;
 	/**
@@ -538,6 +541,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		logger: options?.logger ?? noopMainSdkLogger,
 		fetch: options?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
 		...(options?.host ? { host: options.host } : {}),
+		...(options?.protocol ? { protocol: options.protocol } : {}),
 		createKvStore,
 		resolveStorageDir: () => {
 			if (options?.storageDir !== undefined) return options.storageDir;
@@ -569,6 +573,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		storage: mainSdk.storage,
 		ports: mainSdk.ports,
 		host: mainSdk.host,
+		protocol: mainSdk.protocol,
 		// Delegate instead of spreading — spreading would eagerly invoke the
 		// lazy storageDir getter and create a temp dir every test.
 		get storageDir() {
@@ -581,6 +586,31 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 		has: (channel) => router.has(featureId, channel),
 		dispose: () => router.destroyFeature(featureId),
 		disposeAsync: () => router.destroyFeatureAsync(featureId),
+	};
+}
+
+/**
+ * Capturing `MainSdkProtocol` fake: records the handlers a feature's
+ * `mainRegister` installs (keyed by scheme) so integration tests can invoke
+ * them directly with `Request` objects, and observe teardown semantics,
+ * without Electron. `handler` exposes the most recently registered handler
+ * for the common single-scheme plugin.
+ */
+export function createFakeMainSdkProtocol(): MainSdkProtocol & {
+	readonly handlers: ReadonlyMap<string, (request: Request) => Promise<Response> | Response>;
+	readonly handler: ((request: Request) => Promise<Response> | Response) | undefined;
+} {
+	const handlers = new Map<string, (request: Request) => Promise<Response> | Response>();
+	return {
+		handle(scheme, next) {
+			handlers.set(scheme, next);
+		},
+		get handlers() {
+			return handlers;
+		},
+		get handler() {
+			return [...handlers.values()].at(-1);
+		},
 	};
 }
 

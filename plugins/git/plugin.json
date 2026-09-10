@@ -2,5 +2,20 @@
 	"id": "git",
 	"displayName": "Git",
 	"version": "1.0.0",
-	"main": "./src/main/index.ts"
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"protocols": ["kilo-git"],
+	"contributes": {
+		"zones": [
+			{
+				"zone": "kilo-ui/chat-right-panel-tab",
+				"id": "changes",
+				"component": "GitDiffView",
+				"label": "Changes",
+				"description": "Review uncommitted changes in this chat's workspace.",
+				"icon": "GitDiffTabIcon",
+				"priority": 55
+			}
+		]
+	}
 }

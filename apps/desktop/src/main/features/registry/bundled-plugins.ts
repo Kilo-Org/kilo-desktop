@@ -26,35 +26,28 @@ import { app } from "electron";
  *    seed data, ...).
  */
 
-import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
 import * as environmentsMain from "@anaconda-agentic-desktop/plugin-environments/main";
-import filesManifest from "@anaconda-agentic-desktop/plugin-files/plugin.json" with { type: "json" };
 import * as filesMain from "@anaconda-agentic-desktop/plugin-files/main";
-import gitManifest from "@anaconda-agentic-desktop/plugin-git/plugin.json" with { type: "json" };
 import * as gitMain from "@anaconda-agentic-desktop/plugin-git/main";
-import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
 import * as kiloServerMain from "@anaconda-agentic-desktop/plugin-kilo-server/main";
 import { createKiloServerResolveAsset } from "@anaconda-agentic-desktop/plugin-kilo-server/packaged-assets";
-import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
 import * as kiloUiMain from "@anaconda-agentic-desktop/plugin-kilo-ui/main";
-import localInferenceManifest from "@anaconda-agentic-desktop/plugin-local-inference/plugin.json" with { type: "json" };
 import * as localInferenceMain from "@anaconda-agentic-desktop/plugin-local-inference/main";
-import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.json" with { type: "json" };
 import * as notebookMain from "@anaconda-agentic-desktop/plugin-notebook/main";
 import { createNotebookResolveAsset } from "@anaconda-agentic-desktop/plugin-notebook/packaged-assets";
-import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
 
 import { bundledPluginAssetResolver } from "./bundled-plugin-assets.js";
+import { bundledPluginManifests } from "./bundled-plugin-manifests.js";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{
-		manifest: kiloUiManifest,
+		manifest: bundledPluginManifests.kiloUi,
 		module: kiloUiMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-kilo-ui"),
 	},
 	{
-		manifest: kiloServerManifest,
+		manifest: bundledPluginManifests.kiloServer,
 		module: kiloServerMain,
 		resolveAsset: createKiloServerResolveAsset({
 			isPackaged: app.isPackaged,
@@ -62,7 +55,7 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 		}),
 	},
 	{
-		manifest: notebookManifest,
+		manifest: bundledPluginManifests.notebook,
 		module: notebookMain,
 		resolveAsset: createNotebookResolveAsset({
 			isPackaged: app.isPackaged,
@@ -70,27 +63,27 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 		}),
 	},
 	{
-		manifest: filesManifest,
+		manifest: bundledPluginManifests.files,
 		module: filesMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-files"),
 	},
 	{
-		manifest: todosManifest,
+		manifest: bundledPluginManifests.todos,
 		module: todosMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-todos"),
 	},
 	{
-		manifest: environmentsManifest,
+		manifest: bundledPluginManifests.environments,
 		module: environmentsMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-environments"),
 	},
 	{
-		manifest: localInferenceManifest,
+		manifest: bundledPluginManifests.localInference,
 		module: localInferenceMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-local-inference"),
 	},
 	{
-		manifest: gitManifest,
+		manifest: bundledPluginManifests.git,
 		module: gitMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-git"),
 	},

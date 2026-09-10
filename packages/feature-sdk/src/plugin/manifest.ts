@@ -208,6 +208,13 @@ export const pluginManifestSchema = z
 		 * browser-mode support. Omit for headless plugins.
 		 */
 		web: z.string().min(1).optional(),
+		/**
+		 * URL schemes this plugin handles (`mainSdk.protocol.handle`). Declared
+		 * here so the shell can register them as privileged schemes before
+		 * app-ready; `handle` calls for undeclared schemes are rejected.
+		 * Charset per RFC 3986 (lowercase).
+		 */
+		protocols: z.array(z.string().regex(/^[a-z][a-z0-9+.-]*$/)).optional(),
 		/** UI zones owned and rendered by this plugin. */
 		zones: z.array(pluginZoneDeclarationSchema).default([]),
 		/** Declarative UI contributions (providers, routes, nav, zone entries). */

@@ -68,7 +68,7 @@ function desktopHost(overrides?: {
 	openLink?: (url: string) => Promise<boolean>;
 }) {
 	return {
-		paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
+		paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
 		dialog: {
 			openFile: vi.fn(overrides?.openFile ?? (async () => null)),
 			saveFile: vi.fn(overrides?.saveFile ?? (async () => null)),
@@ -366,7 +366,7 @@ describe("ElectronNotebookHostService", () => {
 		const mainSdk = createFakeMainSdk({
 			featureId: "notebook",
 			host: {
-				paths: { defaultSaveDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/tmp", tempDirectory: () => "/tmp" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),
@@ -415,7 +415,7 @@ describe("ElectronNotebookHostService", () => {
 		const mainSdk = createFakeMainSdk({
 			featureId: "notebook",
 			host: {
-				paths: { defaultSaveDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/tmp", tempDirectory: () => "/tmp" },
 				dialog: { openFile: vi.fn(async () => null), saveFile },
 				externalLinks: { open: vi.fn(async () => true) },
 				window: {
@@ -453,7 +453,7 @@ describe("ElectronNotebookHostService", () => {
 		const mainSdk = createFakeMainSdk({
 			featureId: "notebook",
 			host: {
-				paths: { defaultSaveDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/tmp", tempDirectory: () => "/tmp" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),
@@ -555,7 +555,7 @@ describe("ElectronNotebookHostService", () => {
 		const mainSdk = createFakeMainSdk({
 			featureId: "notebook",
 			host: {
-				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
 				dialog: { openFile: vi.fn(async () => null), saveFile },
 				externalLinks: { open: vi.fn(async () => true) },
 				window: {
@@ -593,7 +593,7 @@ describe("ElectronNotebookHostService", () => {
 		const mainSdk = createFakeMainSdk({
 			featureId: "notebook",
 			host: {
-				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),
@@ -633,7 +633,7 @@ describe("ElectronNotebookHostService", () => {
 		const mainSdk = createFakeMainSdk({
 			featureId: "notebook",
 			host: {
-				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),

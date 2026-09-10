@@ -822,6 +822,8 @@ export interface MainSdkHostDialogOptions {
 export interface MainSdkHost {
 	readonly paths: {
 		defaultSaveDirectory(): string;
+		/** OS temp directory for short-lived files (Electron `app.getPath("temp")`). */
+		tempDirectory(): string;
 	};
 	readonly dialog: {
 		openFile(senderId: number, options?: MainSdkHostDialogOptions): Promise<string | null>;
@@ -844,6 +846,25 @@ export interface MainSdkPorts {
 		argsSchema: SchemaLike<TArgs>,
 		handler: (port: HostMessagePort, args: TArgs, context: HostPortContext) => void | Promise<void>,
 	): void;
+}
+
+/**
+ * Shell-owned custom protocol delegate. Schemes are declared statically via
+ * the plugin manifest's `protocols` array — the shell registers declared
+ * schemes as privileged before app-ready (scheme privileges cannot be
+ * granted later) and rejects `handle` calls for schemes the plugin did not
+ * declare.
+ *
+ * One handler per scheme: a second `handle` call for the same scheme
+ * replaces the first. A registered handler stays bound for the process
+ * lifetime — the shell unregisters schemes only at app shutdown
+ * (`unregisterAllFeatureSchemes`), not on feature teardown, so a feature
+ * whose `mainRegister` throws after a `handle()` call leaves its scheme
+ * bound until the process exits. Absent in browser and headless hosts —
+ * same optionality as {@link MainSdkHost}.
+ */
+export interface MainSdkProtocol {
+	handle(scheme: string, handler: (request: Request) => Promise<Response> | Response): void;
 }
 
 /**
@@ -903,6 +924,8 @@ export interface MainSdk {
 	readonly ports: MainSdkPorts;
 	/** Shell-owned desktop capabilities. Absent in browser and headless hosts. */
 	readonly host: MainSdkHost | undefined;
+	/** Custom protocol delegate (manifest-declared schemes). Absent in browser and headless hosts. */
+	readonly protocol: MainSdkProtocol | undefined;
 	/**
 	 * Shell-provided per-feature data directory (`${userData}/plugins/<id>/`),
 	 * created lazily on first access. Features persist ONLY here — open your

@@ -10,6 +10,7 @@ import {
 	type MainSdkFetch,
 	type MainSdkHost,
 	type MainSdkLogger,
+	type MainSdkProtocol,
 } from "@anaconda-agentic-desktop/feature-sdk";
 import type {
 	FeatureEventPayload,
@@ -39,6 +40,13 @@ export interface BootFeaturesOptions {
 	fetch?: MainSdkFetch;
 	/** Narrow shell-owned desktop capabilities shared with main-process plugins. */
 	host?: MainSdkHost;
+	/**
+	 * Create the custom protocol delegate for a feature (manifest-declared schemes).
+	 * Called once per feature before its `mainRegister` runs; return
+	 * `undefined` to leave the feature without protocol access. Browser mode
+	 * and headless environments omit this.
+	 */
+	createProtocolDelegate?: (featureId: string) => MainSdkProtocol | undefined;
 	/**
 	 * Base data path (Electron `app.getPath("userData")`). Each feature gets
 	 * `${storageRoot}/plugins/<id>` as its `mainSdk.storageDir`, created
@@ -105,11 +113,13 @@ export async function bootFeatures(
 						mkdirSync(dir, { recursive: true });
 						return dir;
 					};
+		const protocol = options?.createProtocolDelegate?.(feature.id);
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
 			...(options?.fetch ? { fetch: options.fetch } : {}),
 			...(options?.host ? { host: options.host } : {}),
+			...(protocol ? { protocol } : {}),
 			...(resolveStorageDir
 				? {
 						resolveStorageDir,

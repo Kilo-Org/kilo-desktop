@@ -17,7 +17,10 @@ function bufferOutput(subprocess: ReturnType<typeof spawn>, failPromiseWhenLengt
 		subprocess.stdout?.on("data", (chunk) => {
 			stdout.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
 		});
-		subprocess.on("exit", () => {
+		// 'exit' fires when the OS reports the child terminated, possibly before
+		// the parent has drained the stdio pipes; 'close' fires only after all
+		// stdio has been delivered, so the buffer is complete here.
+		subprocess.on("close", () => {
 			const output = Buffer.concat(stdout);
 			if (failPromiseWhenLengthExceeded && output.length >= maximumStringSize) {
 				reject(
@@ -52,7 +55,8 @@ describe("spawn", () => {
 	});
 
 	// Writes ~256MB to disk and streams it back through git; slow/shared CI
-	// runners can exceed even the package's raised testTimeout.
+	// runners can exceed even the package's raised testTimeout, so this test
+	// carries its own much larger budget.
 	it("can fail safely with a diff exceeding the string length", async () => {
 		const testRepoPath = await createTestDir("desktop-git-spawn-empty");
 		await gitExec(["init"], testRepoPath);
@@ -79,5 +83,5 @@ describe("spawn", () => {
 		);
 
 		await expect(bufferOutput(subprocess)).rejects.toThrow("string size");
-	}, 30_000);
+	}, 120_000);
 });

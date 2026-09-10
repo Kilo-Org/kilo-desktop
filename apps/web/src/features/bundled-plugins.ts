@@ -19,6 +19,8 @@ import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/
 import * as environmentsWeb from "@anaconda-agentic-desktop/plugin-environments/web";
 import filesManifest from "@anaconda-agentic-desktop/plugin-files/plugin.json" with { type: "json" };
 import * as filesWeb from "@anaconda-agentic-desktop/plugin-files/web";
+import gitManifest from "@anaconda-agentic-desktop/plugin-git/plugin.json" with { type: "json" };
+import * as gitWeb from "@anaconda-agentic-desktop/plugin-git/web";
 import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
 import * as kiloServerWeb from "@anaconda-agentic-desktop/plugin-kilo-server/web";
 import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
@@ -35,6 +37,7 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: kiloServerManifest, module: kiloServerWeb },
 	{ manifest: notebookManifest, module: notebookWeb },
 	{ manifest: filesManifest, module: filesWeb },
+	{ manifest: gitManifest, module: gitWeb },
 	{ manifest: todosManifest, module: todosWeb },
 	{ manifest: environmentsManifest, module: environmentsWeb },
 	{ manifest: localInferenceManifest, module: localInferenceWeb },

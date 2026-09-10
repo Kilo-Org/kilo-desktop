@@ -47,6 +47,7 @@ export type {
 	HostPortContext,
 	MainSdkHost,
 	MainSdkHostDialogOptions,
+	MainSdkProtocol,
 	KvStore,
 	KvStoreOptions,
 	KvStoreFactory,

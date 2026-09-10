@@ -16,6 +16,7 @@ import type {
 	MainSdkFetch,
 	MainSdkHost,
 	MainSdkLogger,
+	MainSdkProtocol,
 	MainSdkStorage,
 } from "../types/sdk.js";
 import type { SchemaLike } from "../types/schema.js";
@@ -73,6 +74,8 @@ export interface CreateMainSdkOptions {
 	fetch?: MainSdkFetch;
 	/** Narrow shell-owned desktop capabilities. Browser mode omits this. */
 	host?: MainSdkHost;
+	/** Custom protocol delegate (manifest-declared schemes). Browser mode omits this. */
+	protocol?: MainSdkProtocol;
 	/**
 	 * Resolve (and create, if needed) the feature's storage directory.
 	 * Called lazily on first `mainSdk.storageDir` access and cached.
@@ -287,6 +290,7 @@ export class FeatureRouter {
 			storage,
 			ports,
 			host: options?.host,
+			protocol: options?.protocol,
 			get storageDir(): string {
 				if (!resolveStorageDir) {
 					throw new Error(

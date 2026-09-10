@@ -17,7 +17,7 @@ packages/
 ├── sdk-react/    @anaconda-agentic-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
 ├── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
 ├── ui/           @anaconda-agentic-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
-└── git-client/   @anaconda-agentic-desktop/git-client   Node-only git client: `exec` with error normalization (successExitCodes/expectedErrors gating), typed `status()` (working-directory and branch status); system git via which — no embedded binary
+└── git-client/   @anaconda-agentic-desktop/git-client   Node-only git client: `exec` with error normalization (successExitCodes/expectedErrors gating), typed `status()` (working-directory and branch status), `createWorkingDirectoryPatch()` (throwaway-index patch) and `getFileContents()`/`getBlobContents()` (both sides of a working-tree file, size-capped); system git via which — no embedded binary
 
 e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
 plugins/          Bundled plugins — self-contained workspace packages
@@ -25,7 +25,7 @@ plugins/          Bundled plugins — self-contained workspace packages
 ├── kilo-server/  @anaconda-agentic-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
 ├── kilo-ui/      @anaconda-agentic-desktop/plugin-kilo-ui Chat UI and workspace management
 ├── notebook/     @anaconda-agentic-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
-└── git/          @anaconda-agentic-desktop/plugin-git Main-only git status via git-client
+└── git/          @anaconda-agentic-desktop/plugin-git Git status (main) + working-directory "Changes" right-panel tab, streamed over a custom `kilo-git://` protocol; hunk expansion loads file contents via the `getDiffContents` invoke channel
 ```
 
 ## Key architectural decisions
@@ -45,7 +45,7 @@ Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`
 - `sdk.commands` — command palette entries
 - `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
 - `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)
-- `mainSdk.logger` / `mainSdk.net.fetch` — main-process shell delegates. Electron supplies a feature-scoped `electron-log` sink and `net.fetch`; browser/test environments provide runtime implementations or explicit fakes. Plugins never import Electron or shell logging modules directly.
+- `mainSdk.logger` / `mainSdk.net.fetch` / `mainSdk.protocol` — main-process shell delegates. Electron supplies a feature-scoped `electron-log` sink, `net.fetch`, and a custom protocol handler whose schemes the plugin declares in its manifest's `protocols` array (the privileged scheme list is derived from those manifests and declared pre-app-ready in `platform/ElectronProtocol.ts`); browser/test environments provide runtime implementations or explicit fakes, and `mainSdk.protocol` is simply absent outside Electron. Plugins never import Electron or shell logging modules directly.
 
 In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
 In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Only `browserRegister` boots in this mode — features without one are skipped with a warning. Node-free features opt in with `browserRegister: register`; features using Node APIs (SQLite, fs) must provide browser-safe fakes.

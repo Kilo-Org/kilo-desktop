@@ -37,8 +37,15 @@ export async function createTestDir(prefix: string): Promise<string> {
 export function cleanupTestDirs(): void {
 	for (const dir of directories.splice(0)) {
 		// Retries absorb the EPERM/EBUSY Windows throws when a just-finished
-		// git process (or an indexer) still holds a handle inside the tree.
-		rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+		// (or just-killed, e.g. maxBuffer) git process still has the tree as
+		// its cwd or an indexer holds a handle inside it. An exhausted retry
+		// loop must not fail an otherwise-passing test — a leaked temp dir on
+		// an ephemeral CI runner is harmless — so it downgrades to a warning.
+		try {
+			rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+		} catch (error) {
+			console.warn(`cleanupTestDirs: could not remove ${dir}`, error);
+		}
 	}
 }
 

@@ -55,19 +55,43 @@ describe("ElectronProtocol", () => {
 	});
 
 	it("registers privileged desktop schemes", () => {
-		registerDesktopSchemes();
+		registerDesktopSchemes(["kilo-git"]);
 		expect(protocol.registerSchemesAsPrivileged).toHaveBeenCalledWith(
 			expect.arrayContaining([
 				expect.objectContaining({ scheme: "anaconda-agentic-desktop" }),
 				expect.objectContaining({ scheme: "anaconda-agentic-desktop-dev" }),
+				// Plugin protocol schemes are manifest-declared (mainSdk.protocol).
+				expect.objectContaining({
+					scheme: "kilo-git",
+					privileges: expect.objectContaining({ supportFetchAPI: true, stream: true }),
+				}),
 			]),
 		);
 	});
 
+	it("binds and unbinds plugin protocol schemes (mainSdk.protocol)", () => {
+		const adapter = new ElectronProtocol();
+		const handler = () => new Response("ok");
+		adapter.registerFeatureScheme("kilo-git", handler);
+		expect(handle).toHaveBeenCalledWith("kilo-git", handler);
+
+		// A repeated registration replaces the handler, mirroring Electron.
+		const replacement = () => new Response("replaced");
+		adapter.registerFeatureScheme("kilo-git", replacement);
+		expect(handle).toHaveBeenLastCalledWith("kilo-git", replacement);
+
+		adapter.unregisterFeatureScheme("kilo-git");
+		expect(protocol.unhandle).toHaveBeenCalledWith("kilo-git");
+		// Unregistering an unbound scheme (e.g. teardown after unregister) is a no-op.
+		expect(() => adapter.unregisterFeatureScheme("kilo-git")).not.toThrow();
+	});
+
 	it("creates a restrictive production CSP", () => {
-		const policy = createContentSecurityPolicy();
+		const policy = createContentSecurityPolicy(undefined, [], [], ["kilo-git"]);
 		expect(policy).toContain("default-src 'self'");
 		expect(policy).toContain("connect-src 'self'");
+		// Plugin protocol schemes (mainSdk.protocol) are connectable.
+		expect(policy).toContain("kilo-git:");
 		expect(policy).toContain("http://127.0.0.1:*");
 		expect(policy).not.toContain("http://localhost:*");
 		expect(policy).toContain("object-src 'none'");
@@ -77,6 +101,22 @@ describe("ElectronProtocol", () => {
 		expect(policy).not.toContain("unsafe-eval");
 		expect(policy).not.toContain("https:");
 		expect(policy).not.toContain("wss:");
+	});
+
+	it("emits plugin scheme connect-src entries from the register input", async () => {
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: false,
+			rendererRoot: "/unused",
+			pluginSchemes: ["kilo-git"],
+		});
+		const protocolHandler = handle.mock.calls.at(-1)?.[1] as (
+			request: Request,
+		) => Promise<Response>;
+
+		const response = await protocolHandler(new Request("anaconda-agentic-desktop://app/missing"));
+
+		expect(response.headers.get("Content-Security-Policy")).toContain("kilo-git:");
 	});
 
 	it("allows the self-hosted WebMCP relay (same-origin frame + loopback websockets)", () => {

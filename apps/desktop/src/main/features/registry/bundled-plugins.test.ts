@@ -15,25 +15,37 @@ import { parsePluginManifest } from "@anaconda-agentic-desktop/feature-sdk";
  *
  * This test compares the two registry SOURCES (imports would drag renderer
  * code into the main-process test) and asserts every dual-entry plugin
- * manifest is registered on both sides.
+ * manifest is registered on both sides. Desktop-side manifest ids come from
+ * `bundled-plugin-manifests.ts` (the single home of the plugin.json imports)
+ * and main-entry registration from this registry's `/main` imports.
  */
 describe("BUNDLED_PLUGINS parity", () => {
 	const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url));
 
 	const manifestSpecifier = /@anaconda-agentic-desktop\/plugin-([a-z0-9-]+)\/plugin\.json/g;
+	const mainSpecifier = /@anaconda-agentic-desktop\/plugin-([a-z0-9-]+)\/main/g;
 
-	function registeredPluginIds(registrySource: string): Set<string> {
-		return new Set([...registrySource.matchAll(manifestSpecifier)].map((match) => match[1]!));
+	function matchedIds(source: string, pattern: RegExp): Set<string> {
+		return new Set([...source.matchAll(pattern)].map((match) => match[1]!));
 	}
 
 	it("registers every dual-entry plugin in both the desktop and web registries", () => {
-		const desktopIds = registeredPluginIds(readFileSync(here("./bundled-plugins.ts"), "utf8"));
-		const webIds = registeredPluginIds(
+		const desktopManifestIds = matchedIds(
+			readFileSync(here("./bundled-plugin-manifests.ts"), "utf8"),
+			manifestSpecifier,
+		);
+		const desktopMainIds = matchedIds(
+			readFileSync(here("./bundled-plugins.ts"), "utf8"),
+			mainSpecifier,
+		);
+		const webIds = matchedIds(
 			readFileSync(here("../../../../../web/src/features/bundled-plugins.ts"), "utf8"),
+			manifestSpecifier,
 		);
 
-		const allIds = [...new Set([...desktopIds, ...webIds])].sort();
+		const allIds = [...new Set([...desktopManifestIds, ...webIds])].sort();
 		expect(allIds.length).toBeGreaterThan(0);
+		expect(desktopManifestIds).toEqual(new Set([...desktopMainIds]));
 
 		for (const id of allIds) {
 			const manifest = parsePluginManifest(
@@ -42,7 +54,7 @@ describe("BUNDLED_PLUGINS parity", () => {
 
 			if (manifest.main !== undefined) {
 				expect(
-					desktopIds,
+					desktopMainIds,
 					`plugin "${id}" declares "main" but is missing from the desktop
 	registry (apps/desktop/src/main/features/registry/bundled-plugins.ts)`,
 				).toContain(id);

@@ -38,6 +38,7 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	/** Latest Kilo connection; used on every request so a port change mid-prepare still lands. */
 	getConnection?: () => Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
+	onSessionInitialized?: (threadId: string) => void;
 	sessionActivity?: SessionActivityStore;
 	suggestions?: KiloSuggestionStore;
 }
@@ -50,6 +51,7 @@ export function createKiloRuntimeBackend({
 	getAgent,
 	getModel,
 	prepareModel,
+	onSessionInitialized,
 	sessionActivity,
 	suggestions,
 }: CreateKiloRuntimeBackendOptions): OpenCodeRuntimeBackend {
@@ -204,7 +206,9 @@ export function createKiloRuntimeBackend({
 		getSessionClient,
 		initializeSession: async () => {
 			const { directory, workspaceId, workspaceFolders } = await prepareSession();
+			const agent = getAgent?.();
 			const model = getModel?.();
+			const variant = getVariant?.();
 			if (prepareModel && model?.providerID === ANACONDA_LOCAL_PROVIDER_ID) {
 				await prepareModel(model.modelID);
 			}
@@ -213,7 +217,20 @@ export function createKiloRuntimeBackend({
 			);
 			const permission = buildWorkspacePermissionRules(workspaceFolders);
 			const response = await directoryClient(directory).session.create(
-				permission.length > 0 ? { ...metadata, permission } : metadata,
+				{
+					...metadata,
+					...(agent ? { agent } : {}),
+					...(model
+						? {
+								model: {
+									id: model.modelID,
+									providerID: model.providerID,
+									...(variant ? { variant } : {}),
+								},
+							}
+						: {}),
+					...(permission.length > 0 ? { permission } : {}),
+				},
 				REQUEST_OPTIONS,
 			);
 			const session = response.data;
@@ -221,6 +238,7 @@ export function createKiloRuntimeBackend({
 			const ref = { id: session.id, directory };
 			rememberWorkspaceSystem(session.id, workspaceFolders);
 			rememberSession(ref);
+			onSessionInitialized?.(session.id);
 			if (workspaceId) {
 				sessionActivity?.getState().hydrateSessions([{ id: session.id, workspaceId }]);
 			}

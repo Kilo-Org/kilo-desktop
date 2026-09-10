@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { AssistantRuntimeProvider, DataRenderers, Tools, useAui } from "@assistant-ui/react";
 
@@ -38,6 +38,7 @@ import { SessionListViewProvider } from "./session-list/use-session-list-view.js
 import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
 import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
 import { PierreDiffProvider } from "./PierreDiffProvider.js";
+import { KiloSessionSelectionSync } from "./session-selection/KiloSessionSelectionSync.js";
 
 import "./composer-glass.css";
 
@@ -237,8 +238,19 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const suggestions = useMemo(() => createKiloSuggestionStore(), []);
 
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
-	const { model, validatedModel, setModel, name, effort, efforts, setEffort } =
-		usePersistedModelSelection(catalogQuery.data);
+	const [activeThreadId, setActiveThreadId] = useState<string>();
+	const {
+		model,
+		validatedModel,
+		setModel,
+		name,
+		effort,
+		efforts,
+		setEffort,
+		hydrateThreadModel,
+		promoteDraftModel,
+		resetDraftModel,
+	} = usePersistedModelSelection(catalogQuery.data, activeThreadId);
 	const selectModel = useCallback((next: KiloModelRef) => setModel(next), [setModel]);
 	const activeEffort = resolveModelEffort(
 		catalogQuery.data?.models ?? [],
@@ -247,21 +259,33 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
-	const { agent, getAgent, setAgent, resetAgent } = useAgentSelection(agentCatalogQuery.data);
-	const resetAgentRef = useRef(resetAgent);
-	resetAgentRef.current = resetAgent;
+	const { agent, getAgent, setAgent, resetDraftAgent, hydrateThreadAgent, promoteDraftAgent } =
+		useAgentSelection(agentCatalogQuery.data, activeThreadId);
+	const resetDraftAgentRef = useRef(resetDraftAgent);
+	resetDraftAgentRef.current = resetDraftAgent;
+	const resetDraftModelRef = useRef(resetDraftModel);
+	resetDraftModelRef.current = resetDraftModel;
 
 	const onThreadIdChange = useMemo(
 		() => (threadId?: string) => {
+			setActiveThreadId(threadId);
 			// New/draft threads prefer Code and never carry the previous session's agent.
 			if (!threadId) {
-				resetAgentRef.current();
+				resetDraftAgentRef.current();
+				resetDraftModelRef.current();
 			}
 			sessionActivity.getState().setOpenSession(threadId ?? null);
 			if (threadId) sessionActivity.getState().markVisited(threadId);
 			navigateToChat(sdk);
 		},
 		[sdk, sessionActivity],
+	);
+	const onSessionInitialized = useCallback(
+		(threadId: string) => {
+			promoteDraftAgent(threadId);
+			promoteDraftModel(threadId);
+		},
+		[promoteDraftAgent, promoteDraftModel],
 	);
 
 	const runtime = useKiloRuntime({
@@ -273,6 +297,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		...(prepareModel ? { prepareModel } : {}),
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
+		onSessionInitialized,
 		onError: onRuntimeError,
 		sessionActivity,
 		suggestions,
@@ -352,6 +377,10 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 							<ChatAgentSelectionProvider value={agentSelection}>
 								<ChatModelSelectionProvider value={modelSelection}>
 									<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+										<KiloSessionSelectionSync
+											hydrateAgent={hydrateThreadAgent}
+											hydrateModel={hydrateThreadModel}
+										/>
 										<SessionListViewProvider>{children}</SessionListViewProvider>
 									</AssistantRuntimeProvider>
 								</ChatModelSelectionProvider>

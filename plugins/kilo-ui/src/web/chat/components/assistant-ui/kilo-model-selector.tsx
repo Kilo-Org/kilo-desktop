@@ -40,9 +40,9 @@ import {
 } from "../../model-selection/model-catalog.js";
 import { sortModelsWithFavoritesFirst } from "../../model-selection/model-favorites.js";
 import { filterModelsBySearchQuery } from "../../model-selection/model-search.js";
+import { effortsForOptimisticTrigger } from "../../model-selection/model-selection-utils.js";
 import { ProviderIcon } from "../../model-selection/provider-icon.js";
 import { useModelFavorites } from "../../model-selection/use-model-favorites.js";
-import { effortsForOptimisticTrigger } from "../../model-selection/selection-storage.js";
 import {
 	ModelSelector,
 	ModelSelectorContent,

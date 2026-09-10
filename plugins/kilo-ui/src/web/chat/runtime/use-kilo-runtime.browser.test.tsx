@@ -38,6 +38,7 @@ describe("useKiloRuntime", () => {
 		const connectionPromise = Promise.resolve(connection);
 		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		const onError = vi.fn();
+		const onSessionInitialized = vi.fn();
 
 		renderHook(() =>
 			useKiloRuntime({
@@ -45,6 +46,7 @@ describe("useKiloRuntime", () => {
 				prepareSession,
 				defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
 				onError,
+				onSessionInitialized,
 			}),
 		);
 
@@ -56,6 +58,7 @@ describe("useKiloRuntime", () => {
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
 			prepareModel: expect.any(Function),
+			onSessionInitialized,
 		});
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			backend: expect.objectContaining({ globalClient: {} }),

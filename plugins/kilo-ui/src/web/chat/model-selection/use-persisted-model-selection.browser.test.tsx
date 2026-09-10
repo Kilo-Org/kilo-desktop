@@ -1,12 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { KiloModelCatalog, KiloModelRef } from "./model-catalog.js";
-import {
-	MODEL_SELECTION_STORAGE_KEY,
-	readModelSelection,
-	writeModelSelection,
-} from "./selection-storage.js";
 import { usePersistedModelSelection } from "./use-persisted-model-selection.js";
 
 const defaultModel: KiloModelRef = {
@@ -45,45 +40,36 @@ const catalog: KiloModelCatalog = {
 	defaults: { anthropic: "claude-sonnet" },
 };
 
+beforeEach(() => {
+	localStorage.clear();
+});
+
 afterEach(() => {
 	cleanup();
-	localStorage.removeItem(MODEL_SELECTION_STORAGE_KEY);
 });
 
 describe("usePersistedModelSelection", () => {
-	it("restores a valid selection and preserves its effort when the model changes", () => {
-		writeModelSelection({ model: defaultModel, effort: "high" });
+	it("preserves effort when the model changes", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(catalog));
 
 		expect(result.current.model).toEqual(defaultModel);
 		expect(result.current.validatedModel).toEqual(defaultModel);
-		expect(result.current.effort).toBe("high");
 		expect(result.current.name).toBe("Claude Sonnet");
 
+		act(() => result.current.setEffort("high"));
 		act(() => result.current.setModel(alternateModel));
 
 		expect(result.current.model).toEqual(alternateModel);
 		expect(result.current.name).toBe("Claude Opus");
-		expect(readModelSelection()).toEqual({
-			model: alternateModel,
-			name: "Claude Opus",
-			effort: "high",
-			efforts: [
-				{ id: "low", name: "Low" },
-				{ id: "medium", name: "Med" },
-				{ id: "high", name: "High" },
-				{ id: "max", name: "Max" },
-			],
-		});
+		expect(result.current.effort).toBe("high");
+		expect(localStorage.length).toBe(0);
 
 		act(() => result.current.setEffort("max"));
 
 		expect(result.current.effort).toBe("max");
-		expect(readModelSelection()?.effort).toBe("max");
 	});
 
-	it("falls back to the catalog default and persists effort against that model", () => {
-		writeModelSelection({ model: { providerID: "removed", modelID: "old-model" } });
+	it("falls back to the catalog default and applies effort to that model", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(catalog));
 
 		expect(result.current.model).toEqual(defaultModel);
@@ -92,27 +78,25 @@ describe("usePersistedModelSelection", () => {
 
 		act(() => result.current.setEffort("medium"));
 
-		expect(readModelSelection()).toMatchObject({
-			model: defaultModel,
-			name: "Claude Sonnet",
-			effort: "medium",
-		});
+		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.name).toBe("Claude Sonnet");
+		expect(result.current.effort).toBe("medium");
 	});
 
-	it("surfaces the stored model, name, and effort before the catalog loads", () => {
-		writeModelSelection({
-			model: defaultModel,
-			name: "Claude Sonnet",
-			effort: "high",
-			efforts: [{ id: "high", name: "High" }],
-		});
-		const { result } = renderHook(() => usePersistedModelSelection(undefined));
+	it("surfaces the Kilo session model and effort before the catalog loads", () => {
+		const { result } = renderHook(() => usePersistedModelSelection(undefined, "thread-a"));
+		act(() =>
+			result.current.hydrateThreadModel("thread-a", {
+				model: defaultModel,
+				effort: "high",
+			}),
+		);
 
 		expect(result.current.model).toEqual(defaultModel);
 		expect(result.current.validatedModel).toBeUndefined();
-		expect(result.current.name).toBe("Claude Sonnet");
+		expect(result.current.name).toBeUndefined();
 		expect(result.current.effort).toBe("high");
-		expect(result.current.efforts).toEqual([{ id: "high", name: "High" }]);
+		expect(result.current.efforts).toBeUndefined();
 	});
 
 	it("clears sticky efforts when switching to a model that has none", () => {
@@ -132,18 +116,9 @@ describe("usePersistedModelSelection", () => {
 			],
 		};
 
-		writeModelSelection({
-			model: defaultModel,
-			name: "Claude Sonnet",
-			effort: "high",
-			efforts: [
-				{ id: "low", name: "Low" },
-				{ id: "medium", name: "Med" },
-				{ id: "high", name: "High" },
-			],
-		});
 		const { result } = renderHook(() => usePersistedModelSelection(catalogWithNoEffortModel));
 
+		act(() => result.current.setEffort("high"));
 		expect(result.current.efforts).toEqual([
 			{ id: "low", name: "Low" },
 			{ id: "medium", name: "Med" },
@@ -155,14 +130,10 @@ describe("usePersistedModelSelection", () => {
 		expect(result.current.model).toEqual(noEffortModel);
 		expect(result.current.name).toBe("Claude Haiku");
 		expect(result.current.efforts).toBeUndefined();
-		expect(readModelSelection()).toEqual({
-			model: noEffortModel,
-			name: "Claude Haiku",
-			effort: "high",
-		});
+		expect(result.current.effort).toBe("high");
 	});
 
-	it("keeps effort in memory when nothing is stored and the catalog is missing", () => {
+	it("keeps effort in memory when the catalog is missing", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(undefined));
 
 		expect(result.current.model).toBeUndefined();
@@ -170,10 +141,50 @@ describe("usePersistedModelSelection", () => {
 		act(() => result.current.setEffort("low"));
 
 		expect(result.current.effort).toBe("low");
-		expect(localStorage.getItem(MODEL_SELECTION_STORAGE_KEY)).toBeNull();
 
 		act(() => result.current.setModel(defaultModel));
 
-		expect(readModelSelection()).toEqual({ model: defaultModel, effort: "low" });
+		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.effort).toBe("low");
+	});
+
+	it("hydrates from Kilo while preserving an unsent local override", () => {
+		const { result } = renderHook(() => usePersistedModelSelection(catalog, "thread-a"));
+
+		act(() =>
+			result.current.hydrateThreadModel("thread-a", {
+				model: alternateModel,
+				effort: "max",
+			}),
+		);
+		expect(result.current.model).toEqual(alternateModel);
+		expect(result.current.effort).toBe("max");
+
+		act(() => result.current.setModel(defaultModel));
+		act(() =>
+			result.current.hydrateThreadModel("thread-a", {
+				model: alternateModel,
+				effort: "max",
+			}),
+		);
+		expect(result.current.model).toEqual(defaultModel);
+	});
+
+	it("promotes a draft selection when Kilo creates its session", () => {
+		const { result, rerender } = renderHook(
+			({ threadId }: { threadId: string | undefined }) =>
+				usePersistedModelSelection(catalog, threadId),
+			{ initialProps: { threadId: undefined as string | undefined } },
+		);
+
+		act(() => result.current.setModel(alternateModel));
+		act(() => result.current.promoteDraftModel("thread-new"));
+		rerender({ threadId: "thread-new" });
+
+		expect(result.current.model).toEqual(alternateModel);
+
+		rerender({ threadId: undefined });
+		act(() => result.current.resetDraftModel());
+		expect(result.current.model).toEqual(defaultModel);
 	});
 });

@@ -1,11 +1,16 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { OPTIMISTIC_AGENT_CATALOG } from "./agent-catalog.js";
 import { useAgentSelection } from "./use-agent-selection.js";
 
+beforeEach(() => {
+	localStorage.clear();
+});
+
 afterEach(() => {
 	cleanup();
+	localStorage.clear();
 });
 
 describe("useAgentSelection", () => {
@@ -16,6 +21,7 @@ describe("useAgentSelection", () => {
 
 		act(() => result.current.setAgent("plan"));
 		expect(result.current.agent).toBe("plan");
+		expect(localStorage.length).toBe(0);
 
 		act(() => result.current.resetAgent());
 		expect(result.current.agent).toBe("code");
@@ -31,6 +37,58 @@ describe("useAgentSelection", () => {
 		});
 
 		expect(dispatchedAgent).toBe("plan");
+		expect(result.current.agent).toBe("plan");
+	});
+
+	it("restores the selected agent when returning to a chat", () => {
+		const { result, rerender } = renderHook(
+			({ threadId }: { threadId: string }) => useAgentSelection(undefined, threadId),
+			{ initialProps: { threadId: "thread-a" } },
+		);
+
+		act(() => result.current.setAgent("plan"));
+		rerender({ threadId: "thread-b" });
+		expect(result.current.agent).toBe("code");
+
+		rerender({ threadId: "thread-a" });
+		expect(result.current.agent).toBe("plan");
+	});
+
+	it("hydrates from Kilo while preserving an unsent local override", () => {
+		const { result } = renderHook(() => useAgentSelection(undefined, "thread-a"));
+
+		act(() => result.current.hydrateThreadAgent("thread-a", "plan"));
+		expect(result.current.agent).toBe("plan");
+
+		act(() => result.current.setAgent("debug"));
+		act(() => result.current.hydrateThreadAgent("thread-a", "code"));
+		expect(result.current.agent).toBe("debug");
+	});
+
+	it("promotes a draft selection when Kilo creates its session", () => {
+		const { result, rerender } = renderHook(
+			({ threadId }: { threadId: string | undefined }) => useAgentSelection(undefined, threadId),
+			{ initialProps: { threadId: undefined as string | undefined } },
+		);
+
+		act(() => result.current.setAgent("plan"));
+		act(() => result.current.promoteDraftAgent("thread-new"));
+		rerender({ threadId: "thread-new" });
+
+		expect(result.current.agent).toBe("plan");
+	});
+
+	it("hydrates a promoted reset draft from the Kilo session", () => {
+		const { result, rerender } = renderHook(
+			({ threadId }: { threadId: string | undefined }) => useAgentSelection(undefined, threadId),
+			{ initialProps: { threadId: undefined as string | undefined } },
+		);
+
+		act(() => result.current.resetDraftAgent());
+		act(() => result.current.promoteDraftAgent("thread-new"));
+		rerender({ threadId: "thread-new" });
+		act(() => result.current.hydrateThreadAgent("thread-new", "plan"));
+
 		expect(result.current.agent).toBe("plan");
 	});
 

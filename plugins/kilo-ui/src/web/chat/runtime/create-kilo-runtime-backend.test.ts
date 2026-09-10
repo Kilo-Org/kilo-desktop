@@ -317,6 +317,7 @@ describe("createKiloRuntimeBackend", () => {
 		}));
 		const create = vi.fn(async () => ({ data: { id: "session-getters" } }));
 		const prompt = vi.fn(async () => ({ data: {} }));
+		const initialized = vi.fn();
 		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
 		vi.mocked(createKiloDirectoryClient).mockReturnValue({
 			session: { create, prompt },
@@ -327,9 +328,22 @@ describe("createKiloRuntimeBackend", () => {
 			getVariant: () => "variant",
 			getAgent: () => "code",
 			getModel: () => ({ providerID: "anthropic", modelID: "claude" }),
+			onSessionInitialized: initialized,
 		});
 
 		const ref = await backend.initializeSession();
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agent: "code",
+				model: {
+					id: "claude",
+					providerID: "anthropic",
+					variant: "variant",
+				},
+			}),
+			expect.anything(),
+		);
+		expect(initialized).toHaveBeenCalledWith("session-getters");
 		await backend.getSessionClient(ref).session.prompt({
 			sessionID: ref.id,
 			parts: [{ type: "text", text: "hello" }],

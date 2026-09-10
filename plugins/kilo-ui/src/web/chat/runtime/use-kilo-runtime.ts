@@ -30,6 +30,8 @@ export interface UseKiloRuntimeOptions {
 	initialSessionId?: string;
 	/** Fires when the active remote thread id changes (OpenCode session switch). */
 	onThreadIdChange?: (threadId: string | undefined) => void;
+	/** Fires after Kilo creates a remote session for the active draft. */
+	onSessionInitialized?: (threadId: string) => void;
 	defaultAgent?: string;
 	/** Reads the current agent synchronously for prompt dispatch. */
 	getAgent?: () => string | undefined;
@@ -52,6 +54,7 @@ export function useKiloRuntime({
 	client: clientOption,
 	initialSessionId,
 	onThreadIdChange,
+	onSessionInitialized,
 	defaultAgent,
 	getAgent,
 	defaultModel,
@@ -107,10 +110,11 @@ export function useKiloRuntime({
 			},
 			prepareSession,
 			...promptGetters,
+			...(onSessionInitialized ? { onSessionInitialized } : {}),
 			...(sessionActivity ? { sessionActivity } : {}),
 			...(suggestions ? { suggestions } : {}),
 		});
-	}, [client, prepareSession, promptGetters, sessionActivity, suggestions]);
+	}, [client, onSessionInitialized, prepareSession, promptGetters, sessionActivity, suggestions]);
 	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 
 	return useOpenCodeRuntime({

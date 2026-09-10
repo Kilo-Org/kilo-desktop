@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, renderHook } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
@@ -112,8 +112,10 @@ const assistantState = vi.hoisted(() => ({
 			isRunning: false,
 			isEmpty: true,
 			suggestions: [],
+			extras: undefined as unknown,
 		},
 		threadListItem: {
+			id: "draft",
 			remoteId: undefined as string | undefined,
 			status: "new" as "new" | "regular",
 			title: "Session",
@@ -351,6 +353,7 @@ afterEach(() => {
 	threadMount.renderCount = 0;
 	assistantState.current.thread.messages = [];
 	assistantState.current.thread.isEmpty = true;
+	assistantState.current.thread.extras = undefined;
 	assistantState.current.threadListItem.remoteId = undefined;
 	assistantState.current.threadListItem.status = "new";
 	assistantState.current.threadListItem.title = "Session";
@@ -443,6 +446,176 @@ describe("ChatPage error rendering", () => {
 });
 
 describe("ChatFeatureProvider thread + prepareSession wiring", () => {
+	it("keeps model selection independent for each chat", async () => {
+		vi.mocked(useKiloModelCatalog).mockReturnValue({
+			data: {
+				providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
+				models: [
+					{
+						id: "anthropic/claude-sonnet",
+						name: "Claude Sonnet",
+						providerID: "anthropic",
+						modelID: "claude-sonnet",
+					},
+					{
+						id: "anthropic/claude-opus",
+						name: "Claude Opus",
+						providerID: "anthropic",
+						modelID: "claude-opus",
+					},
+				],
+				defaults: { anthropic: "claude-sonnet" },
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+		let selection!: ReturnType<typeof useChatModelSelection>;
+		function CaptureModelSelection() {
+			selection = useChatModelSelection();
+			return null;
+		}
+		renderChatPage({ children: <CaptureModelSelection /> });
+		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-a"));
+		await vi.waitFor(() =>
+			expect(selection.model).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-sonnet",
+			}),
+		);
+
+		act(() =>
+			selection.setModel({
+				providerID: "anthropic",
+				modelID: "claude-opus",
+			}),
+		);
+		expect(selection.model).toEqual({
+			providerID: "anthropic",
+			modelID: "claude-opus",
+		});
+
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-b"));
+		await vi.waitFor(() =>
+			expect(selection.model).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-sonnet",
+			}),
+		);
+
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-a"));
+		await vi.waitFor(() =>
+			expect(selection.model).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-opus",
+			}),
+		);
+	});
+
+	it("keeps agent selection independent for each chat", async () => {
+		vi.mocked(useKiloAgentCatalog).mockReturnValue({
+			data: {
+				agents: [
+					{ name: "code", displayName: "Code", icon: HammerIcon },
+					{ name: "plan", displayName: "Plan", icon: ListTodoIcon },
+				],
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+		let selection!: ReturnType<typeof useChatAgentSelection>;
+		function CaptureAgentSelection() {
+			selection = useChatAgentSelection();
+			return null;
+		}
+		renderChatPage({ children: <CaptureAgentSelection /> });
+		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-a"));
+		await vi.waitFor(() => expect(selection.agent).toBe("code"));
+
+		act(() => selection.setAgent("plan"));
+		expect(selection.agent).toBe("plan");
+
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-b"));
+		await vi.waitFor(() => expect(selection.agent).toBe("code"));
+
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-a"));
+		await vi.waitFor(() => expect(selection.agent).toBe("plan"));
+	});
+
+	it("hydrates model, effort, and agent from the active Kilo session", async () => {
+		vi.mocked(useKiloModelCatalog).mockReturnValue({
+			data: {
+				providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
+				models: [
+					{
+						id: "anthropic/claude-sonnet",
+						name: "Claude Sonnet",
+						providerID: "anthropic",
+						modelID: "claude-sonnet",
+					},
+					{
+						id: "anthropic/claude-opus",
+						name: "Claude Opus",
+						providerID: "anthropic",
+						modelID: "claude-opus",
+						efforts: [{ id: "max", name: "Max" }],
+					},
+				],
+				defaults: { anthropic: "claude-sonnet" },
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+		vi.mocked(useKiloAgentCatalog).mockReturnValue({
+			data: {
+				agents: [
+					{ name: "code", displayName: "Code", icon: HammerIcon },
+					{ name: "plan", displayName: "Plan", icon: ListTodoIcon },
+				],
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+		assistantState.current.threadListItem.remoteId = "thread-a";
+		assistantState.current.thread.extras = {
+			session: {
+				id: "thread-a",
+				agent: "plan",
+				model: {
+					id: "claude-opus",
+					providerID: "anthropic",
+					variant: "max",
+				},
+			},
+			replyToQuestion: vi.fn(),
+			rejectQuestion: vi.fn(),
+			replyToPermission: vi.fn(),
+		};
+		let modelSelection!: ReturnType<typeof useChatModelSelection>;
+		let agentSelection!: ReturnType<typeof useChatAgentSelection>;
+		function CaptureSelections() {
+			modelSelection = useChatModelSelection();
+			agentSelection = useChatAgentSelection();
+			return null;
+		}
+		renderChatPage({ children: <CaptureSelections /> });
+		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-a"));
+
+		await vi.waitFor(() => expect(agentSelection.agent).toBe("plan"));
+		await vi.waitFor(() =>
+			expect(modelSelection.model).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-opus",
+			}),
+		);
+		expect(modelSelection.effort).toBe("max");
+	});
+
 	it("resets the agent only when the thread id is cleared and prepares without a workspace", async () => {
 		vi.mocked(useKiloAgentCatalog).mockReturnValue({
 			data: {
@@ -474,11 +647,11 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0]?.defaultAgent).toBe("plan"),
 		);
 
-		// Selecting an existing thread keeps the current agent: give any errant
-		// reset a chance to re-render, then confirm the agent is still "plan".
+		// Selecting an existing thread does not inherit the draft agent.
 		vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-42");
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0]?.defaultAgent).toBe("plan");
+		await vi.waitFor(() =>
+			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0]?.defaultAgent).toBe("code"),
+		);
 
 		// Clearing the thread id resets the agent back to the default.
 		vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!(undefined);

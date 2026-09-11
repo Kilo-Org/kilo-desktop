@@ -2,5 +2,4 @@
 # These owners will be requested for review when someone opens a pull request,
 # unless a later, more specific rule below matches instead.
 #
-# Temporary until JoshuaLowe1002 and mchilvers join @anaconda/desktop.
-*       @anaconda/desktop @JoshuaLowe1002 @mchilvers
+*       @anaconda/desktop

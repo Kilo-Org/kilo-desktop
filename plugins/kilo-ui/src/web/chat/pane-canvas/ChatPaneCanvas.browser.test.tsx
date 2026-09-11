@@ -13,6 +13,7 @@ import {
 } from "@anaconda-agentic-desktop/pane-layout";
 
 import { ChatPaneCanvas } from "./ChatPaneCanvas.js";
+import { startPaneDrag } from "./test-helpers.js";
 
 function ShadowFolderTree() {
 	const hostRef = useRef<HTMLDivElement>(null);
@@ -65,6 +66,37 @@ describe("ChatPaneCanvas", () => {
 		expect(tab?.className).not.toMatch(/bg-sidebar-accent/);
 		expect(frame?.className).toMatch(/border-border/);
 		expect(frame?.className).not.toMatch(/border-info/);
+	});
+
+	it("lets the active tab close action receive clicks through a long title", async () => {
+		const onClosePane = vi.fn();
+		const layout = createLayout(
+			[
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "terminal", kind: "tool", title: "Terminal 1 with a very long title" },
+			],
+			"terminal",
+		);
+		const { baseElement } = render(
+			<div style={{ display: "flex", width: 900, height: 400 }}>
+				<ChatPaneCanvas
+					arrangement="tiles"
+					definitions={[]}
+					layout={layout}
+					onLaunchChat={vi.fn()}
+					onLaunch={vi.fn()}
+					onLayoutChange={vi.fn()}
+					onSelectPane={vi.fn()}
+					onClosePane={onClosePane}
+					renderPane={(paneId) => <div>{paneId}</div>}
+				/>
+			</div>,
+		);
+		const screen = page.elementLocator(baseElement);
+		const close = screen.getByTestId("chat-pane-close-tab-terminal");
+		await expect.element(close).toBeVisible();
+		await close.click();
+		expect(onClosePane).toHaveBeenCalledWith("terminal");
 	});
 
 	it("offers focus and dock actions in place of popped-out pane content", async () => {
@@ -806,6 +838,115 @@ describe("ChatPaneCanvas", () => {
 			expect(frameLoaded).toHaveBeenCalledTimes(1);
 		}
 	});
+
+	it("preserves iframe content when moving a pane across columns, stacks, and tab groups", async () => {
+		const frameLoaded = vi.fn();
+
+		function Harness() {
+			const [layout, setLayout] = useState(() =>
+				createLayout(
+					[
+						{ id: "agent", kind: "agent", title: "Chat" },
+						{ id: "terminal", kind: "tool", title: "Terminal" },
+						{ id: "files", kind: "document", title: "Files" },
+					],
+					"terminal",
+				),
+			);
+			return (
+				<div style={{ width: 900, height: 500 }}>
+					<ChatPaneCanvas
+						arrangement="carousel"
+						definitions={[]}
+						layout={layout}
+						onLaunchChat={vi.fn()}
+						onLaunch={vi.fn()}
+						onLayoutChange={setLayout}
+						onSelectPane={vi.fn()}
+						renderPane={(id) =>
+							id === "terminal" ? (
+								<iframe
+									title="Terminal content"
+									srcDoc='<input aria-label="Terminal buffer" value="Initial">'
+									onLoad={frameLoaded}
+								/>
+							) : (
+								<div data-pane-content={id}>{id}</div>
+							)
+						}
+					/>
+				</div>
+			);
+		}
+
+		const { baseElement } = render(
+			<StrictMode>
+				<Harness />
+			</StrictMode>,
+		);
+		await vi.waitFor(() => expect(frameLoaded).toHaveBeenCalledTimes(1));
+		const frame = baseElement.querySelector("iframe")!;
+		const frameDocument = frame.contentDocument!;
+		const filesContent = baseElement.querySelector("[data-pane-content='files']")!;
+		frameDocument.querySelector("input")!.value = "Shell history";
+
+		const dragTerminal = (
+			targetGroupId: string,
+			position: "before" | "after" | "above" | "below" | "inside",
+		) => {
+			const source = baseElement.querySelector<HTMLElement>("[data-pane-tab='terminal']")!;
+			const target = baseElement.querySelector<HTMLElement>(
+				`[data-pane-group-id='${targetGroupId}']`,
+			)!;
+			const bounds = target.getBoundingClientRect();
+			const tabStrip = target.querySelector<HTMLElement>("[data-pane-group-tabs]")!;
+			const tabBounds = tabStrip.getBoundingClientRect();
+			const x =
+				position === "before"
+					? bounds.left + 2
+					: position === "after"
+						? bounds.right - 2
+						: bounds.left + bounds.width / 2;
+			const y =
+				position === "above" || position === "below"
+					? position === "above"
+						? bounds.top + 2
+						: bounds.bottom - 2
+					: position === "inside"
+						? tabBounds.bottom + 24
+						: bounds.top + bounds.height / 2;
+			const drag = startPaneDrag(source);
+			drag.move(x, y);
+			drag.drop();
+		};
+
+		for (const [action, move] of [
+			["Move terminal left", () => dragTerminal("group:agent", "before")],
+			["Stack terminal", () => dragTerminal("group:files", "below")],
+			["Move terminal above", () => dragTerminal("group:files", "above")],
+			["Move terminal below", () => dragTerminal("group:files", "below")],
+			["Move terminal left again", () => dragTerminal("group:agent", "before")],
+			["Group terminal", () => dragTerminal("group:files", "inside")],
+			["Split terminal", () => dragTerminal("group:agent", "after")],
+		] as const) {
+			move();
+			await vi.waitFor(() =>
+				expect(frame.closest("[data-qa-id='chat-pane-content-terminal']"), action).toBeTruthy(),
+			);
+			expect(baseElement.querySelector("iframe")).toBe(frame);
+			expect(baseElement.querySelector("[data-pane-content='files']"), action).toBe(filesContent);
+			expect(
+				filesContent.closest(
+					"[data-qa-id='chat-pane-content-files'], [data-qa-id='chat-pane-parked-files']",
+				),
+				action,
+			).toBeTruthy();
+			expect(frame.contentDocument, action).toBe(frameDocument);
+			expect(frameDocument.querySelector("input")).toHaveValue("Shell history");
+			expect(frameLoaded).toHaveBeenCalledTimes(1);
+		}
+	});
+
 	it("keeps one visible unpin action on the top group of a pinned column", async () => {
 		const initial = createLayout(
 			[

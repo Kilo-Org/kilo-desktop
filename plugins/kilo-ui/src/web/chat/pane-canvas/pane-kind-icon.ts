@@ -1,6 +1,12 @@
 import { BotIcon, FileIcon, NotebookIcon, WrenchIcon } from "lucide-react";
+import type { ComponentType } from "react";
 
 import type { PaneKind } from "@anaconda-agentic-desktop/pane-layout";
+
+export type PaneIconOverride = {
+	readonly Icon: ComponentType<{ readonly className?: string; readonly iconKey?: string }>;
+	readonly iconKey?: string;
+};
 
 export const PANE_KIND_ICON: Record<PaneKind, typeof BotIcon> = {
 	agent: BotIcon,

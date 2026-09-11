@@ -8,11 +8,13 @@ export function PaneColumnMount({
 	containerRef,
 	order,
 	onReady,
+	onBeforeRemove,
 	children,
 }: {
 	containerRef: RefObject<HTMLDivElement | null>;
 	order: number;
 	onReady: () => void;
+	onBeforeRemove?: (host: HTMLDivElement) => void;
 	children: ReactNode;
 }) {
 	const [ready, setReady] = useState(false);
@@ -42,7 +44,13 @@ export function PaneColumnMount({
 		if (ready) onReady();
 	}, [ready, onReady]);
 
-	useLayoutEffect(() => () => host.remove(), [host]);
+	useLayoutEffect(
+		() => () => {
+			onBeforeRemove?.(host);
+			host.remove();
+		},
+		[host, onBeforeRemove],
+	);
 
 	// Mount children in a connected host so autofocus and initial measurements work.
 	return ready ? createPortal(children, host) : null;

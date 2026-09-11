@@ -31,12 +31,15 @@ import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.j
 import * as notebookWeb from "@anaconda-agentic-desktop/plugin-notebook/web";
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 import * as todosWeb from "@anaconda-agentic-desktop/plugin-todos/web";
+import terminalManifest from "@anaconda-agentic-desktop/plugin-terminal/plugin.json" with { type: "json" };
+import * as terminalWeb from "@anaconda-agentic-desktop/plugin-terminal/web";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: kiloUiManifest, module: kiloUiWeb },
 	{ manifest: kiloServerManifest, module: kiloServerWeb },
 	{ manifest: notebookManifest, module: notebookWeb },
 	{ manifest: filesManifest, module: filesWeb },
+	{ manifest: terminalManifest, module: terminalWeb },
 	{ manifest: gitManifest, module: gitWeb },
 	{ manifest: todosManifest, module: todosWeb },
 	{ manifest: environmentsManifest, module: environmentsWeb },

@@ -121,17 +121,18 @@ describe("update UI", () => {
 			accepted: false,
 			state: { ...downloadedState, message: "Install unavailable" },
 		}));
-		vi.spyOn(globalThis, "confirm").mockReturnValue(false);
+		const confirm = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
 		renderUpdates(updateApi(downloadedState, { install }), <SidebarUpdatePill />);
 
 		await page.getByTestId("update-ready-pill").click();
 		// The click handler is async (flushSync + waitForPaint before confirm),
-		// so wait for the confirm → install chain to settle.
+		// so wait until the cancelled confirmation has actually been observed.
 		await vi.waitFor(() => {
-			expect(install).not.toHaveBeenCalled();
+			expect(confirm).toHaveBeenCalledOnce();
 		});
+		expect(install).not.toHaveBeenCalled();
 
-		vi.mocked(globalThis.confirm).mockReturnValue(true);
+		confirm.mockReturnValue(true);
 		await page.getByTestId("update-ready-pill").click();
 		await vi.waitFor(() => {
 			expect(install).toHaveBeenCalledOnce();

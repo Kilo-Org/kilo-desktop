@@ -2,6 +2,8 @@ import { AppShellPage } from "../pages/shell/app-shell.js";
 
 import { electronFixture } from "./electron.js";
 
+export { removePathAfterAppStops } from "./electron.js";
+
 /**
  * Shell-owned fixtures only. Feature page objects live in per-feature fixtures
  * that extend this base (same pattern plugins use).

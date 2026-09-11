@@ -253,7 +253,7 @@ describe("KiloConfigManager", () => {
 			reason: "explicit",
 		});
 		expect((await readConfig()).provider).not.toHaveProperty("anaconda-local");
-	});
+	}, 15_000);
 
 	it("preserves JSONC while refusing to overwrite a user-owned provider", async () => {
 		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);

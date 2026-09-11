@@ -18,6 +18,7 @@ import {
 	findGroup,
 	findPaneGroup,
 	flattenPanes,
+	getPaneColumns,
 	getScrollTarget,
 	PANE_GAP,
 	projectLayout,
@@ -46,6 +47,13 @@ import {
 	shouldStartCarouselPan,
 } from "./carousel-gestures.js";
 import { ChatPaneHost } from "./ChatPaneHost.js";
+import {
+	createPaneContentMountRegistry,
+	PaneContentMount,
+	PaneContentTarget,
+	type PaneContentMountRegistry,
+} from "./PaneContentMount.js";
+import type { PaneIconOverride } from "./pane-kind-icon.js";
 import { usePaneExpand } from "./pane-expand.js";
 import { usePaneFrameFocus } from "./use-pane-frame-focus.js";
 
@@ -223,6 +231,18 @@ function withoutPoppedOutPanes(
 	return { ...layout, groups, activePaneId };
 }
 
+function paneMountLocations(layout: PaneLayout): ReadonlyMap<string, string> {
+	const locations = new Map<string, string>();
+	for (const column of getPaneColumns(layout.groups, layout.sizes)) {
+		for (const [groupIndex, group] of column.groups.entries()) {
+			for (const [tabIndex, pane] of group.tabs.entries()) {
+				locations.set(pane.id, `${column.id}/${groupIndex}/${group.id}/${tabIndex}`);
+			}
+		}
+	}
+	return locations;
+}
+
 const StackResizeHandle: FC<{
 	upperGroup: ProjectedGroup;
 	lowerGroup: ProjectedGroup;
@@ -370,8 +390,9 @@ const PaneCanvasColumn: FC<{
 	showChatInAddMenu: boolean;
 	onLaunchChat: (targetGroupId?: string) => void;
 	onLaunch: (definition: RightPanelTabDefinition, targetGroupId?: string) => void;
-	renderPane: (paneId: string) => ReactNode;
+	contentRegistry: PaneContentMountRegistry;
 	paneTitleHint?: (paneId: string) => string | undefined;
+	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
 }> = ({
 	canDrop,
 	column,
@@ -395,8 +416,9 @@ const PaneCanvasColumn: FC<{
 	showChatInAddMenu,
 	onLaunchChat,
 	onLaunch,
-	renderPane,
+	contentRegistry,
 	paneTitleHint,
+	iconForPane,
 }) => {
 	const paneCount = flattenPanes(layout).length;
 	const columnExpanded = expandedGroupId
@@ -460,6 +482,7 @@ const PaneCanvasColumn: FC<{
 									const tab = sourceGroup.tabs.find((entry) => entry.id === paneId);
 									return tab?.kind === "agent" ? tab.title : undefined;
 								}}
+								{...(iconForPane ? { iconForPane } : {})}
 								onSelect={(paneId) => {
 									onLayoutChange(setActivePane(layout, paneId));
 									onSelectPane(paneId);
@@ -512,7 +535,7 @@ const PaneCanvasColumn: FC<{
 														shown ? `chat-pane-content-${tab.id}` : `chat-pane-parked-${tab.id}`
 													}
 												>
-													{renderPane(tab.id)}
+													<PaneContentTarget paneId={tab.id} registry={contentRegistry} />
 												</TabsContent>
 											);
 										})
@@ -556,6 +579,7 @@ export const ChatPaneCanvas: FC<{
 	onLaunch: (definition: RightPanelTabDefinition, targetGroupId?: string) => void;
 	renderPane: (paneId: string) => ReactNode;
 	paneTitleHint?: (paneId: string) => string | undefined;
+	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
 }> = ({
 	layout,
 	arrangement,
@@ -572,10 +596,13 @@ export const ChatPaneCanvas: FC<{
 	onLaunch,
 	renderPane,
 	paneTitleHint,
+	iconForPane,
 }) => {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const trackRef = useRef<HTMLDivElement>(null);
 	const pinnedRef = useRef<HTMLDivElement>(null);
+	const contentParkingRef = useRef<HTMLDivElement>(null);
+	const [contentRegistry] = useState(() => createPaneContentMountRegistry(contentParkingRef));
 	const [columnMountVersion, onColumnReady] = useReducer((version: number) => version + 1, 0);
 	const layoutRef = useRef(layout);
 	const scrollMotionRef = useRef<ScrollMotion>(createScrollMotion());
@@ -585,6 +612,7 @@ export const ChatPaneCanvas: FC<{
 	const revealNonceRef = useRef(revealActivePaneNonce);
 	const [viewportWidth, setViewportWidth] = useState(FALLBACK_VIEWPORT_WIDTH);
 	const dockedLayout = withoutPoppedOutPanes(layout, poppedOutPaneIds);
+	const dockedPanes = flattenPanes(dockedLayout).filter((pane) => !poppedOutPaneIds?.has(pane.id));
 	const showChatInAddMenu = !flattenPanes(layout).some((pane) => pane.kind === "agent");
 	const activeGroupId = findPaneGroup(dockedLayout, dockedLayout.activePaneId)?.id ?? "";
 	const paneExpand = usePaneExpand(arrangement, dockedLayout.groups.length, activeGroupId);
@@ -603,6 +631,10 @@ export const ChatPaneCanvas: FC<{
 		if (layout.activePaneId === paneId) return;
 		onLayoutChange(setActivePane(layout, paneId));
 		onSelectPane(paneId);
+	});
+
+	useLayoutEffect(() => {
+		contentRegistry.restoreParked();
 	});
 
 	useEffect(() => {
@@ -683,10 +715,17 @@ export const ChatPaneCanvas: FC<{
 			const current = layoutRef.current;
 			const next = applyPaneDrop(current, drop);
 			if (!changesPanePlacement(current, next)) return;
+			const currentLocations = paneMountLocations(current);
+			const nextLocations = paneMountLocations(next);
+			contentRegistry.parkPanes(
+				[...currentLocations].flatMap(([paneId, location]) =>
+					nextLocations.get(paneId) === location ? [] : [paneId],
+				),
+			);
 			onLayoutChange(next);
 			onSelectPane(next.activePaneId);
 		},
-		[onLayoutChange, onSelectPane],
+		[contentRegistry, onLayoutChange, onSelectPane],
 	);
 
 	const renderColumn = (
@@ -739,8 +778,9 @@ export const ChatPaneCanvas: FC<{
 			showChatInAddMenu={showChatInAddMenu}
 			onLaunchChat={onLaunchChat}
 			onLaunch={onLaunch}
-			renderPane={renderPane}
+			contentRegistry={contentRegistry}
 			{...(paneTitleHint ? { paneTitleHint } : {})}
+			{...(iconForPane ? { iconForPane } : {})}
 		/>
 	);
 
@@ -786,6 +826,12 @@ export const ChatPaneCanvas: FC<{
 			data-arrangement={arrangement}
 			data-expanded={paneExpand.isExpanded ? "true" : "false"}
 		>
+			<div ref={contentParkingRef} className="hidden" aria-hidden />
+			{dockedPanes.map((pane) => (
+				<PaneContentMount key={pane.id} paneId={pane.id} registry={contentRegistry}>
+					{renderPane(pane.id)}
+				</PaneContentMount>
+			))}
 			<div
 				className={cn("flex min-h-0 min-w-0 flex-1", arrangement === "carousel" && "gap-1")}
 				onPointerDown={arrangement === "carousel" ? onTrackPointerDown : undefined}
@@ -833,6 +879,7 @@ export const ChatPaneCanvas: FC<{
 							containerRef={pinned ? pinnedRef : trackRef}
 							order={siblings.indexOf(column)}
 							onReady={onColumnReady}
+							onBeforeRemove={contentRegistry.parkDescendants}
 						>
 							{renderColumn(column, siblings.indexOf(column), siblings)}
 						</PaneColumnMount>

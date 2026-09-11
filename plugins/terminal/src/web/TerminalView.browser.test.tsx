@@ -1,0 +1,279 @@
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
+
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+
+import { TERMINAL_PROTOCOL_VERSION, terminalContract } from "../contracts/session.js";
+import { TerminalView, type TerminalViewProps } from "./TerminalView.js";
+
+afterEach(() => {
+	cleanup();
+	vi.unstubAllEnvs();
+	document.documentElement.style.removeProperty("--app-scrollbar-thumb");
+	document.documentElement.style.removeProperty("--app-scrollbar-thumb-hover");
+});
+
+function renderView(
+	workspaceFolders: readonly { path: string; isPrimary: boolean }[] = [],
+	props: Partial<TerminalViewProps> = {},
+	options: {
+		readonly openPort?: (featureId: string, channel: string, args?: unknown) => unknown;
+		readonly ordinal?: number | null;
+		readonly theme?: {
+			peek(): "dark" | "light";
+			subscribe(listener: (mode: "dark" | "light") => void): () => void;
+		};
+	} = {},
+) {
+	const close = vi.fn(async () => undefined);
+	const closeTab = vi.fn();
+	const updateTab = vi.fn();
+	let lifecycle: { onClose?: () => Promise<void> } | undefined;
+	const registerTabLifecycle = vi.fn(
+		(_sessionId: string, _instanceId: string, nextLifecycle: { onClose?: () => Promise<void> }) => {
+			lifecycle = nextLifecycle;
+			return vi.fn();
+		},
+	);
+	const sdk = createFakeSdk({
+		featureId: "terminal",
+		channels: terminalContract,
+		handlers: { close },
+		...(options.theme ? { theme: options.theme } : {}),
+	});
+	if (options.openPort) sdk.services.openPort = options.openPort;
+	const system = createFakeFeatureSystem({ sdks: { terminal: sdk } });
+	system.getSdk("kilo-ui").plugins.expose("chatRightPanel", {
+		registerTabLifecycle,
+		closeTab,
+		listTabs: () => [
+			{
+				instanceId: "terminal-1",
+				ordinal: options.ordinal === undefined ? 1 : options.ordinal,
+			},
+		],
+		updateTab,
+	});
+	const result = render(
+		<SdkProvider system={system}>
+			<TerminalView
+				sessionId={props.sessionId ?? "chat-1"}
+				instanceId={props.instanceId ?? "terminal-1"}
+				title={props.title ?? "Terminal 1"}
+				workspaceFolders={workspaceFolders}
+				{...(props.metadata ? { metadata: props.metadata } : {})}
+			/>
+		</SdkProvider>,
+	);
+	return {
+		...result,
+		close,
+		closeTab,
+		registerTabLifecycle,
+		system,
+		updateTab,
+		getLifecycle: () => lifecycle,
+	};
+}
+
+describe("TerminalView", () => {
+	it("renders a terminal frame without a workspace so the backend can use the user home", async () => {
+		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
+		renderView();
+		await expect.element(page.getByTestId("terminal-frame")).toBeVisible();
+	});
+
+	it("registers explicit close cleanup and removes it on unmount", async () => {
+		const { registerTabLifecycle, updateTab, close, getLifecycle, unmount } = renderView([
+			{ path: "/workspace", isPrimary: true },
+		]);
+		await vi.waitFor(() => expect(registerTabLifecycle).toHaveBeenCalledOnce());
+		expect(updateTab).toHaveBeenCalledWith("chat-1", "terminal-1", {
+			title: "Terminal 1",
+			metadata: { terminalSessionId: "chat-1" },
+		});
+		const lifecycle = getLifecycle();
+		if (!lifecycle?.onClose) throw new Error("Expected terminal close lifecycle");
+		await lifecycle.onClose();
+		expect(close).toHaveBeenCalledWith({
+			sessionId: "chat-1",
+			terminalId: "terminal-1",
+			deleteHistory: true,
+		});
+		const unregister = registerTabLifecycle.mock.results[0]!.value;
+		unmount();
+		expect(unregister).toHaveBeenCalledOnce();
+	});
+
+	it("keeps the original backend session when Kilo replaces its local chat id", async () => {
+		const { registerTabLifecycle, close, getLifecycle } = renderView([], {
+			sessionId: "remote-chat-1",
+			metadata: { terminalSessionId: "local-chat-1" },
+		});
+		await vi.waitFor(() => expect(registerTabLifecycle).toHaveBeenCalledOnce());
+		const lifecycle = getLifecycle();
+		if (!lifecycle?.onClose) throw new Error("Expected terminal close lifecycle");
+		await lifecycle.onClose();
+		expect(close).toHaveBeenCalledWith({
+			sessionId: "local-chat-1",
+			terminalId: "terminal-1",
+			deleteHistory: true,
+		});
+	});
+
+	it("deletes an exited terminal session and closes its host tab", async () => {
+		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
+		const { close, closeTab } = renderView([{ path: "/workspace", isPrimary: true }]);
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="terminal-frame"]');
+		if (!frame?.contentWindow) throw new Error("Expected terminal iframe window");
+
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				origin: "https://terminal.test",
+				source: frame.contentWindow,
+				data: { type: "terminal:exited", protocolVersion: TERMINAL_PROTOCOL_VERSION },
+			}),
+		);
+
+		await vi.waitFor(() => expect(closeTab).toHaveBeenCalledWith("chat-1", "terminal-1"));
+		expect(close).toHaveBeenCalledWith({
+			sessionId: "chat-1",
+			terminalId: "terminal-1",
+			deleteHistory: true,
+		});
+
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				origin: "https://terminal.test",
+				source: frame.contentWindow,
+				data: { type: "terminal:exited", protocolVersion: TERMINAL_PROTOCOL_VERSION },
+			}),
+		);
+		expect(close).toHaveBeenCalledOnce();
+	});
+
+	it("connects the trusted frame with the stable session and updates its process label", async () => {
+		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
+		document.documentElement.style.setProperty("--app-scrollbar-thumb", "#111111");
+		document.documentElement.style.setProperty("--app-scrollbar-thumb-hover", "#222222");
+		const terminalPort = { close: vi.fn() } as unknown as MessagePort;
+		const openPort = vi.fn(() => terminalPort);
+		const { updateTab } = renderView(
+			[{ path: "/workspace", isPrimary: true }],
+			{
+				sessionId: "remote-chat-1",
+				metadata: { terminalSessionId: "local-chat-1" },
+				title: "Shell",
+			},
+			{ openPort, ordinal: null },
+		);
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="terminal-frame"]');
+		if (!frame?.contentWindow) throw new Error("Expected terminal iframe window");
+		vi.spyOn(frame.contentWindow, "postMessage").mockImplementation(() => undefined);
+
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				origin: "https://terminal.test",
+				source: frame.contentWindow,
+				data: { type: "terminal:ready", protocolVersion: TERMINAL_PROTOCOL_VERSION },
+			}),
+		);
+		await vi.waitFor(() => expect(openPort).toHaveBeenCalledOnce());
+		expect(openPort).toHaveBeenCalledWith("terminal", "session", {
+			protocolVersion: TERMINAL_PROTOCOL_VERSION,
+			sessionId: "local-chat-1",
+			terminalId: "terminal-1",
+			cwd: "/workspace",
+			cols: 120,
+			rows: 30,
+			initialLabel: "Shell",
+		});
+
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				origin: "https://terminal.test",
+				source: frame.contentWindow,
+				data: {
+					type: "terminal:label",
+					protocolVersion: TERMINAL_PROTOCOL_VERSION,
+					label: "vite",
+				},
+			}),
+		);
+		await vi.waitFor(() =>
+			expect(updateTab).toHaveBeenCalledWith("remote-chat-1", "terminal-1", { title: "vite" }),
+		);
+	});
+
+	it("keeps forwarding theme changes after workspace props change", async () => {
+		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
+		const themeListeners = new Set<(mode: "dark" | "light") => void>();
+		const theme = {
+			peek: () => "light" as const,
+			subscribe: (listener: (mode: "dark" | "light") => void) => {
+				listener("light");
+				themeListeners.add(listener);
+				return () => themeListeners.delete(listener);
+			},
+		};
+		const terminalPort = { close: vi.fn() } as unknown as MessagePort;
+		const view = renderView(
+			[{ path: "/workspace-one", isPrimary: true }],
+			{},
+			{
+				openPort: () => terminalPort,
+				theme,
+			},
+		);
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="terminal-frame"]');
+		if (!frame?.contentWindow) throw new Error("Expected terminal iframe window");
+		const postMessage = vi
+			.spyOn(frame.contentWindow, "postMessage")
+			.mockImplementation(() => undefined);
+
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				origin: "https://terminal.test",
+				source: frame.contentWindow,
+				data: { type: "terminal:ready", protocolVersion: TERMINAL_PROTOCOL_VERSION },
+			}),
+		);
+		await vi.waitFor(() => expect(postMessage).toHaveBeenCalledOnce());
+		postMessage.mockClear();
+
+		view.rerender(
+			<SdkProvider system={view.system}>
+				<TerminalView
+					sessionId="chat-1"
+					instanceId="terminal-1"
+					title="Terminal 1"
+					workspaceFolders={[{ path: "/workspace-two", isPrimary: true }]}
+				/>
+			</SdkProvider>,
+		);
+		for (const listener of themeListeners) listener("dark");
+
+		expect(postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "terminal:theme" }),
+			"https://terminal.test",
+		);
+	});
+
+	it("shows a connection error when no host port transport is available", async () => {
+		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
+		renderView();
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="terminal-frame"]');
+		if (!frame?.contentWindow) throw new Error("Expected terminal iframe window");
+
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				origin: "https://terminal.test",
+				source: frame.contentWindow,
+				data: { type: "terminal:ready", protocolVersion: TERMINAL_PROTOCOL_VERSION },
+			}),
+		);
+		await expect.element(page.getByTestId("terminal-connection-error")).toBeVisible();
+	});
+});

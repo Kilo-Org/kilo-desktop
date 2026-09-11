@@ -35,6 +35,7 @@ import * as kiloUiMain from "@anaconda-agentic-desktop/plugin-kilo-ui/main";
 import * as localInferenceMain from "@anaconda-agentic-desktop/plugin-local-inference/main";
 import * as notebookMain from "@anaconda-agentic-desktop/plugin-notebook/main";
 import { createNotebookResolveAsset } from "@anaconda-agentic-desktop/plugin-notebook/packaged-assets";
+import * as terminalMain from "@anaconda-agentic-desktop/plugin-terminal/main";
 import * as todosMain from "@anaconda-agentic-desktop/plugin-todos/main";
 
 import { bundledPluginAssetResolver } from "./bundled-plugin-assets.js";
@@ -66,6 +67,11 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 		manifest: bundledPluginManifests.files,
 		module: filesMain,
 		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-files"),
+	},
+	{
+		manifest: bundledPluginManifests.terminal,
+		module: terminalMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-terminal"),
 	},
 	{
 		manifest: bundledPluginManifests.todos,

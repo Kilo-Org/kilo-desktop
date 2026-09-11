@@ -116,6 +116,8 @@ describe("DiffConfigProvider", () => {
 });
 
 describe("Diff settings menu", () => {
+	// The first layout change cold-starts main-thread highlighting, which can
+	// exceed the default 15-second budget on a coverage-loaded macOS runner.
 	it("toggles split/unified and persists the choice", async () => {
 		stubFetch(() => new Response(patchResponseStream()));
 		renderView();
@@ -130,15 +132,13 @@ describe("Diff settings menu", () => {
 		expect(JSON.parse(localStorage.getItem("git.diffOptions:v1")!)).toMatchObject({
 			diffStyle: "split",
 		});
-		/*
-			Radio/checkbox menu items keep the dropdown open (Base UI
-			closeOnClick=false), so assert on the still-open menu — a second
-			trigger click would close it and race the exit-animation unmount.
-		*/
+		// Radio/checkbox menu items keep the dropdown open (Base UI
+		// closeOnClick=false), so assert on the still-open menu — a second
+		// trigger click would close it and race the exit-animation unmount.
 		await expect
 			.element(page.getByTestId("git-diff-settings-layout-split"))
 			.toHaveAttribute("aria-checked", "true");
-	});
+	}, 30_000);
 
 	it("selects the indicators style and persists the choice", async () => {
 		stubFetch(() => new Response(patchResponseStream()));

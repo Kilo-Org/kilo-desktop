@@ -85,9 +85,7 @@ describe("CreateEnvironmentDialog (drawer)", () => {
 
 		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
 		const rows = screen.getByTestId("environments-create-package-row");
-		await vi.waitFor(async () => {
-			expect(await rows.all()).not.toHaveLength(0);
-		});
+		await expect.element(rows.first(), { timeout: 10_000 }).toBeVisible();
 	});
 
 	it("selecting a package adds it to the Selected Packages sidebar", async () => {
@@ -245,10 +243,9 @@ describe("CreateEnvironmentDialog (drawer)", () => {
 		});
 		const screen = page.elementLocator(baseElement);
 
-		// Wait for packages to load
-		await vi.waitFor(async () => {
-			expect(await screen.getByTestId("environments-create-package-row").all()).not.toHaveLength(0);
-		});
+		await expect
+			.element(screen.getByTestId("environments-create-package-row").first(), { timeout: 10_000 })
+			.toBeVisible();
 
 		// Pagination footer should be visible (25 > PAGE_SIZE of 20)
 		await expect.element(screen.getByTestId("environments-create-package-next")).toBeVisible();
@@ -362,11 +359,9 @@ describe("CreateEnvironmentDialog (drawer)", () => {
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await vi.waitFor(async () => {
-			await expect
-				.element(screen.getByTestId("environments-create-package-size-numpy"))
-				.toHaveTextContent("1.4 MB");
-		});
+		await expect
+			.element(screen.getByTestId("environments-create-package-size-numpy"), { timeout: 10_000 })
+			.toHaveTextContent("1.4 MB");
 
 		await userEvent.click(screen.getByRole("combobox", { name: "Version for numpy" }));
 		await userEvent.click(screen.getByRole("option", { name: "1.25.0" }));

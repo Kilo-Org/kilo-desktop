@@ -141,4 +141,13 @@ describe("createChatRightPanelCapability", () => {
 			metadata: { notebookPath: "/projects/analysis.ipynb" },
 		});
 	});
+
+	it("closes a contributed tab through the host store", () => {
+		const panel = createChatRightPanelCapability();
+		const tab = panel.openContributedTab(SESSION, { id: "terminal.terminal", title: "Terminal" });
+
+		panel.closeTab(SESSION, tab.instanceId);
+
+		expect(panel.listTabs(SESSION)).toEqual([]);
+	});
 });

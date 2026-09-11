@@ -162,6 +162,9 @@ importers:
       '@anaconda-agentic-desktop/plugin-notebook':
         specifier: link:../../plugins/notebook
         version: link:../../plugins/notebook
+      '@anaconda-agentic-desktop/plugin-terminal':
+        specifier: link:../../plugins/terminal
+        version: link:../../plugins/terminal
       '@anaconda-agentic-desktop/plugin-todos':
         specifier: workspace:*
         version: link:../../plugins/todos
@@ -337,6 +340,9 @@ importers:
       '@anaconda-agentic-desktop/plugin-notebook':
         specifier: link:../../plugins/notebook
         version: link:../../plugins/notebook
+      '@anaconda-agentic-desktop/plugin-terminal':
+        specifier: link:../../plugins/terminal
+        version: link:../../plugins/terminal
       '@anaconda-agentic-desktop/plugin-todos':
         specifier: workspace:*
         version: link:../../plugins/todos
@@ -1365,6 +1371,94 @@ importers:
       tsx:
         specifier: ^4.23.1
         version: 4.23.1
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.0-rc.2(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0-rc.2)(@vitest/coverage-v8@5.0.0-rc.2)(@vitest/ui@5.0.0-rc.2)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+
+  plugins/terminal:
+    dependencies:
+      atomically:
+        specifier: 'catalog:'
+        version: 2.1.1
+      ghostty-web:
+        specifier: 0.4.0
+        version: 0.4.0
+      lucide-react:
+        specifier: ^1.27.0
+        version: 1.27.0(react@19.2.8)
+      node-pty:
+        specifier: 1.1.0
+        version: 1.1.0
+    devDependencies:
+      '@anaconda-agentic-desktop/e2e':
+        specifier: workspace:*
+        version: link:../../e2e
+      '@anaconda-agentic-desktop/feature-sdk':
+        specifier: workspace:*
+        version: link:../../packages/feature-sdk
+      '@anaconda-agentic-desktop/sdk-react':
+        specifier: workspace:*
+        version: link:../../packages/sdk-react
+      '@anaconda-agentic-desktop/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@anaconda-agentic-desktop/ui':
+        specifier: link:../../packages/ui
+        version: link:../../packages/ui
+      '@anaconda/playwright-utils':
+        specifier: 1.17.1
+        version: 1.17.1(@playwright/test@1.62.1)(jiti@2.7.0)(supports-color@10.2.2)
+      '@playwright/test':
+        specifier: 1.62.1
+        version: 1.62.1
+      '@tailwindcss/vite':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.4
+        version: 6.0.4(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@vitest/browser':
+        specifier: 5.0.0-rc.2
+        version: 5.0.0-rc.2(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-rc.2)
+      '@vitest/browser-playwright':
+        specifier: 5.0.0-rc.2
+        version: 5.0.0-rc.2(playwright@1.62.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.0-rc.2)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.0-rc.2(@vitest/browser@5.0.0-rc.2)(vitest@5.0.0-rc.2)
+      playwright:
+        specifier: 1.62.1
+        version: 1.62.1
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -6490,6 +6584,9 @@ packages:
   get-tsconfig@4.14.0:
     resolution: {integrity: sha512-yTb+8DXzDREzgvYmh6s9vHsSVCHeC0G3PI5bEXNBHtmshPnO+S5O7qgLEOn0I5QvMy6kpZN8K1NKGyilLb93wA==}
 
+  ghostty-web@0.4.0:
+    resolution: {integrity: sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg==}
+
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
@@ -7577,6 +7674,9 @@ packages:
     resolution: {integrity: sha512-vLBWCKb+7LWsX+TbfzWOkw0W81m377tyx3hOweBTjO43CXZnRGS1/JPWs20fr0PgZyDXk6ROYrylsEycK8raDA==}
     engines: {node: '>=22.12.0'}
 
+  node-addon-api@7.1.1:
+    resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
+
   node-addon-api@8.9.0:
     resolution: {integrity: sha512-ekZMeaaIzSQTSpr7X2X3iJM7lTzgnx8ahAG9pJfT/7+14mlEM8ZYQ9cgCDvSSRbReFK0oHli3WrZdCiRsgAT9Q==}
     engines: {node: ^18 || ^20 || >= 21}
@@ -7601,6 +7701,9 @@ packages:
     resolution: {integrity: sha512-OMcPNvqTCFUnNaBlmdgq+lfNqY7gTiSmNRDjY3uAXRyudeKZEZxu3CLtjMQrx4zZxCX2b/mpNqTtwuCJgXhHkw==}
     engines: {node: ^20.17.0 || >=22.9.0}
     hasBin: true
+
+  node-pty@1.1.0:
+    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -14679,6 +14782,8 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
+  ghostty-web@0.4.0: {}
+
   glob-parent@5.1.2:
     dependencies:
       is-glob: 4.0.3
@@ -15894,6 +15999,8 @@ snapshots:
     dependencies:
       semver: 7.8.5
 
+  node-addon-api@7.1.1: {}
+
   node-addon-api@8.9.0: {}
 
   node-api-version@0.2.1:
@@ -15923,6 +16030,10 @@ snapshots:
       tinyglobby: 0.2.17
       undici: 6.28.0
       which: 6.0.1
+
+  node-pty@1.1.0:
+    dependencies:
+      node-addon-api: 7.1.1
 
   node-releases@2.0.51: {}
 

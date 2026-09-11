@@ -22,6 +22,7 @@ export type ChatRightPanelCapability = {
 	): RightPanelTab;
 	activateTab(sessionId: string, instanceId: string): void;
 	updateTab(sessionId: string, instanceId: string, update: RightPanelTabUpdate): void;
+	closeTab(sessionId: string, instanceId: string): void;
 	registerTabLifecycle(
 		sessionId: string,
 		instanceId: string,
@@ -38,6 +39,8 @@ export interface RightPanelTabSaveResult {
 export interface RightPanelTabLifecycle {
 	readonly save?: () => Promise<RightPanelTabSaveResult>;
 	readonly discard?: () => Promise<void>;
+	/** Runs only for an explicit user close; captured before the tab descriptor is removed. */
+	readonly onClose?: () => Promise<void>;
 }
 
 function lifecycleKey(sessionId: string, instanceId: string): string {
@@ -104,6 +107,9 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 		},
 		updateTab(sessionId, instanceId, update) {
 			useRightPanelStore.getState().updateTab(sessionId, instanceId, update);
+		},
+		closeTab(sessionId, instanceId) {
+			useRightPanelStore.getState().closeTab(sessionId, instanceId);
 		},
 		registerTabLifecycle(sessionId, instanceId, lifecycle) {
 			const key = lifecycleKey(sessionId, instanceId);

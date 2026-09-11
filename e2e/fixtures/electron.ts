@@ -19,6 +19,27 @@ const DESKTOP_URL_PREFIX = "anaconda-agentic-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
 const CLOSE_TIMEOUT_MS = 10_000;
 const CLOSE_FORCE_WAIT_MS = 5_000;
+const deferredRemovalPaths = new Set<string>();
+
+/**
+ * Test workspaces can remain open in the packaged app until worker teardown,
+ * especially on Windows where active directory handles make `rm` fail with
+ * EBUSY. Workspace fixtures register their paths here so the worker owns the
+ * invariant that Electron stops before those paths are removed.
+ */
+export function removePathAfterAppStops(targetPath: string): void {
+	deferredRemovalPaths.add(targetPath);
+}
+
+async function removeDeferredPaths(): Promise<void> {
+	const paths = [...deferredRemovalPaths];
+	deferredRemovalPaths.clear();
+	await Promise.all(
+		paths.map((targetPath) =>
+			rm(targetPath, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 }),
+		),
+	);
+}
 
 /**
  * The app's first window is the splash screen — a `data:` URL with no preload,
@@ -103,7 +124,10 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			const { app, userDataDir } = await launchApp();
 			await use(app);
 			await stopApp(app);
-			await rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 });
+			await Promise.all([
+				removeDeferredPaths(),
+				rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 }),
+			]);
 		},
 		{ scope: "worker" },
 	],

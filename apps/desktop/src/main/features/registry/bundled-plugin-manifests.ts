@@ -20,6 +20,7 @@ import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plu
 import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
 import localInferenceManifest from "@anaconda-agentic-desktop/plugin-local-inference/plugin.json" with { type: "json" };
 import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.json" with { type: "json" };
+import terminalManifest from "@anaconda-agentic-desktop/plugin-terminal/plugin.json" with { type: "json" };
 import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
 
 /**
@@ -39,6 +40,7 @@ export const bundledPluginManifests = {
 	kiloUi: kiloUiManifest,
 	localInference: localInferenceManifest,
 	notebook: notebookManifest,
+	terminal: terminalManifest,
 	todos: todosManifest,
 } satisfies Record<string, BundledPluginManifest>;
 

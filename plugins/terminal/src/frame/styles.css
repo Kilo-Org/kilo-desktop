@@ -1,0 +1,130 @@
+:root {
+	color-scheme: light dark;
+	font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body,
+#app {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	overflow: hidden;
+}
+
+#app {
+	position: relative;
+	display: flex;
+	min-height: 0;
+	flex-direction: column;
+	background: var(--terminal-background, #141820);
+	color: var(--terminal-foreground, #e1e8f0);
+}
+
+.terminal-state {
+	position: absolute;
+	z-index: 1;
+	right: 12px;
+	bottom: 12px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+	border-radius: 6px;
+	padding: 5px 6px 5px 9px;
+	background: color-mix(in srgb, var(--terminal-background) 90%, transparent);
+	font-size: 12px;
+}
+
+.terminal-state[hidden] {
+	display: none;
+}
+
+.terminal-state button {
+	border: 0;
+	border-radius: 4px;
+	padding: 3px 7px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.terminal-state button:hover,
+.terminal-state button:focus-visible {
+	background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.terminal-state button:disabled {
+	cursor: default;
+	opacity: 0.45;
+}
+
+#terminal {
+	box-sizing: border-box;
+	min-height: 0;
+	flex: 1;
+	/* ghostty-web 0.4 reserves 15px for a scrollbar inside FitAddon. The
+	   containing app clips this compensated width to the visible frame. */
+	width: calc(100% + 15px);
+	padding: 6px 8px 4px;
+	background: var(--terminal-gutter-background, var(--terminal-background));
+	outline: none;
+	caret-color: transparent;
+}
+
+.terminal-scrollbar {
+	position: absolute;
+	z-index: 2;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	box-sizing: border-box;
+	width: 8px;
+	touch-action: none;
+}
+
+.terminal-scrollbar[hidden] {
+	display: none;
+}
+
+.terminal-scrollbar-thumb {
+	position: absolute;
+	top: 0;
+	right: 1px;
+	left: 1px;
+	min-height: 20px;
+	border-radius: 3px;
+	background: transparent;
+	transition: background-color 160ms ease-out;
+}
+
+#app:is(:hover, :focus-within) .terminal-scrollbar-thumb {
+	background: var(--terminal-scrollbar-thumb);
+}
+
+#app:is(:hover, :focus-within) .terminal-scrollbar-thumb:hover {
+	background: var(--terminal-scrollbar-thumb-hover);
+}
+
+.error {
+	position: absolute;
+	right: 12px;
+	bottom: 52px;
+	left: 12px;
+	border: 1px solid color-mix(in srgb, #e5484d 60%, transparent);
+	border-radius: 6px;
+	padding: 8px 10px;
+	background: color-mix(in srgb, #e5484d 14%, var(--terminal-background));
+	font-size: 12px;
+}
+
+.screen-reader-output {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: pre-wrap;
+}

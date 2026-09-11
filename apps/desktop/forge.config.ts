@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,6 +63,7 @@ const bridgePackaging = createBridgePackagingPlan();
 const asarUnpackPackages = [
 	"better-sqlite3",
 	"@github/keytar",
+	"node-pty",
 	...notebookPackaging.asarUnpackPackages,
 ];
 const webMcpRelayRuntimePackage = "@anaconda-agentic-desktop/webmcp-relay-runtime";
@@ -112,6 +113,11 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 				"node_modules",
 				"resources",
 			]),
+		},
+		{
+			packageName: "@anaconda-agentic-desktop/plugin-terminal",
+			source: path.join(workspaceRoot, "plugins/terminal"),
+			excludedDirectories: new Set([".git", ".vitest", "coverage", "e2e", "node_modules"]),
 		},
 		{
 			packageName: "@anaconda-agentic-desktop/plugin-environments",
@@ -167,6 +173,7 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 		await cp(path.join(stagingDirectory, "node_modules"), path.join(buildPath, "node_modules"), {
 			recursive: true,
 		});
+		await ensureNodePtySpawnHelpersExecutable(path.join(buildPath, "node_modules", "node-pty"));
 		// pnpm deploy creates `.bin` directories (top-level and nested inside
 		// individual packages, e.g. `@opentelemetry/configuration/node_modules/.bin`)
 		// whose symlinks resolve to paths outside the app. `@electron/asar` refuses
@@ -177,6 +184,35 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 	} finally {
 		await rm(stagingDirectory, { force: true, recursive: true });
 	}
+}
+
+async function ensureNodePtySpawnHelpersExecutable(packageDirectory: string): Promise<void> {
+	if (process.platform === "win32") return;
+	const candidates = [
+		path.join(packageDirectory, "build", "Release", "spawn-helper"),
+		path.join(packageDirectory, "build", "Debug", "spawn-helper"),
+	];
+	try {
+		const prebuildDirectories = await readdir(path.join(packageDirectory, "prebuilds"), {
+			withFileTypes: true,
+		});
+		for (const entry of prebuildDirectories) {
+			if (entry.isDirectory()) {
+				candidates.push(path.join(packageDirectory, "prebuilds", entry.name, "spawn-helper"));
+			}
+		}
+	} catch {
+		// A source-built node-pty has build/Release instead of prebuilds.
+	}
+	await Promise.all(
+		candidates.map(async (candidate) => {
+			try {
+				await chmod(candidate, 0o755);
+			} catch {
+				// Candidate layouts are mutually exclusive; only existing helpers matter.
+			}
+		}),
+	);
 }
 
 async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {

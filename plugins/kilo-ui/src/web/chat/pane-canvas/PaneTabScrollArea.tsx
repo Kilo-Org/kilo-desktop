@@ -116,7 +116,7 @@ export function PaneTabScrollArea({
 		if (!strip) return;
 		suspendTooltips();
 		strip.scrollBy({
-			left: direction * strip.clientWidth * 0.8,
+			left: direction * strip.clientWidth * 0.9,
 			behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
 				? "instant"
 				: "smooth",

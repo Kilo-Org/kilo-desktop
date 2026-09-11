@@ -1,0 +1,24 @@
+{
+	"id": "terminal",
+	"displayName": "Terminal",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"providers": [],
+		"routes": [],
+		"nav": [],
+		"zones": [
+			{
+				"zone": "kilo-ui/chat-right-panel-tab",
+				"id": "terminal",
+				"component": "TerminalView",
+				"label": "Terminal",
+				"description": "Run commands in an interactive shell.",
+				"icon": "TerminalIcon",
+				"mountPolicy": "keep-alive",
+				"priority": 40
+			}
+		]
+	}
+}

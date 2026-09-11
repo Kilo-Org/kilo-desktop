@@ -46,6 +46,7 @@ import {
 	workspaceFolderName,
 } from "./pane-canvas/default-workspace-files-pane.js";
 import { shouldShowChatCanvas } from "./pane-canvas/chat-canvas-visibility.js";
+import type { PaneIconOverride } from "./pane-canvas/pane-kind-icon.js";
 import {
 	agentPaneId,
 	ensureAgentPane,
@@ -81,6 +82,14 @@ import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js"
 
 const EMPTY_WORKSPACE_FOLDERS: ChatMarkdownExtensionContext["workspaceFolders"] = [];
 const KILO_UI_PLUGIN_ID = "kilo-ui";
+
+function unpinLayout(layout: PaneLayout): PaneLayout {
+	if (!layout.groups.some((group) => group.pinned)) return layout;
+	return {
+		...layout,
+		groups: layout.groups.map((group) => (group.pinned ? { ...group, pinned: false } : group)),
+	};
+}
 
 type DetachedPaneRequest = {
 	sessionId: string;
@@ -303,6 +312,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		readonly sessionId: string;
 		readonly tab: RightPanelTab;
 	} | null>(null);
+	const [tabCloseError, setTabCloseError] = useState<string | null>(null);
 
 	useEffect(() => {
 		chatRightPanelCapability.setFocusedSessionId(sessionId);
@@ -412,6 +422,27 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		setRedockedPaneId(null);
 	}, [commitLayout, handleSelectPane, layout, redockedPaneId]);
 
+	const finishClosingTab = useCallback(
+		(closingSessionId: string, tab: RightPanelTab) => {
+			const onClose = chatRightPanelCapability.getTabLifecycle(
+				closingSessionId,
+				tab.instanceId,
+			)?.onClose;
+			setTabCloseError(null);
+			if (poppedOutPaneIds.has(tab.instanceId)) void dockPaneWindow(tab.instanceId);
+			closeTab(closingSessionId, tab.instanceId);
+			setCloseRequest(null);
+			void Promise.resolve()
+				.then(() => onClose?.())
+				.catch((error: unknown) => {
+					setTabCloseError(
+						error instanceof Error ? error.message : `Could not clean up ${tab.title}.`,
+					);
+				});
+		},
+		[closeTab, dockPaneWindow, poppedOutPaneIds],
+	);
+
 	const handleClosePane = useCallback(
 		(paneId: string) => {
 			if (isAgentPaneId(paneId)) {
@@ -424,16 +455,15 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			const tab = panelState.tabs.find((entry) => entry.instanceId === paneId);
 			if (!tab) return;
 			if (!tab.dirty) {
-				if (poppedOutPaneIds.has(paneId)) void dockPaneWindow(paneId);
-				closeTab(sessionId, paneId);
+				finishClosingTab(sessionId, tab);
 				return;
 			}
 			setCloseRequest({ sessionId, tab });
 		},
 		[
-			closeTab,
 			commitLayout,
 			dockPaneWindow,
+			finishClosingTab,
 			layout,
 			panelState.tabs,
 			poppedOutPaneIds,
@@ -444,12 +474,8 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 
 	const closeRequestedTab = useCallback(() => {
 		if (!closeRequest) return;
-		if (poppedOutPaneIds.has(closeRequest.tab.instanceId)) {
-			void dockPaneWindow(closeRequest.tab.instanceId);
-		}
-		closeTab(closeRequest.sessionId, closeRequest.tab.instanceId);
-		setCloseRequest(null);
-	}, [closeRequest, closeTab, dockPaneWindow, poppedOutPaneIds]);
+		finishClosingTab(closeRequest.sessionId, closeRequest.tab);
+	}, [closeRequest, finishClosingTab]);
 
 	const wasEmptyRef = useRef(!hasMessages);
 	const filesDefinition = rightPanelDefinitions.find(
@@ -547,6 +573,16 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		},
 		[aliases, chatTitle, commitLayout, layout, sessionId, setChatPaneOpen],
 	);
+	const handleArrangementChange = useCallback(
+		(next: Arrangement) => {
+			if (next === "tiles") {
+				const unpinned = unpinLayout(layout);
+				if (unpinned !== layout) commitLayout(unpinned);
+			}
+			persistArrangement(sessionId, next);
+		},
+		[commitLayout, layout, persistArrangement, sessionId],
+	);
 
 	useEffect(() => {
 		if (isDetached) return;
@@ -555,7 +591,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			sessionId,
 			hasCanvas,
 			arrangement,
-			onArrangementChange: (next) => persistArrangement(sessionId, next),
+			onArrangementChange: handleArrangementChange,
 			definitions: rightPanelDefinitions,
 			onLaunch: handleLaunch,
 			onLaunchChat: handleLaunchChat,
@@ -565,9 +601,9 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		arrangement,
 		handleLaunch,
 		handleLaunchChat,
+		handleArrangementChange,
 		hasCanvas,
 		isDetached,
-		persistArrangement,
 		rightPanelDefinitions,
 		sessionId,
 	]);
@@ -584,6 +620,19 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			return tab.metadata.workspaceDirectory;
 		},
 		[tabsById],
+	);
+	const iconForPane = useCallback(
+		(paneId: string): PaneIconOverride | undefined => {
+			const tab = tabsById.get(paneId);
+			if (!tab) return undefined;
+			const definition = rightPanelDefinitions.find((entry) => entry.id === tab.definitionId);
+			if (!definition) return undefined;
+			return {
+				Icon: definition.Icon,
+				...(tab.iconKey ? { iconKey: tab.iconKey } : {}),
+			};
+		},
+		[rightPanelDefinitions, tabsById],
 	);
 
 	const renderPane = useCallback(
@@ -676,6 +725,15 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 
 	return (
 		<div className="flex h-full min-h-0 w-full min-w-0 flex-col">
+			{tabCloseError ? (
+				<p
+					className="text-destructive-foreground px-6 pt-4 text-sm"
+					role="alert"
+					data-qa-id="chat-pane-lifecycle-close-error"
+				>
+					{tabCloseError}
+				</p>
+			) : null}
 			{closeRequest ? (
 				<RightPanelTabCloseDialog
 					key={`${closeRequest.sessionId}:${closeRequest.tab.instanceId}`}
@@ -723,6 +781,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 						onLaunch={handleLaunch}
 						renderPane={renderPane}
 						paneTitleHint={paneTitleHint}
+						iconForPane={iconForPane}
 					/>
 				</div>
 			) : (

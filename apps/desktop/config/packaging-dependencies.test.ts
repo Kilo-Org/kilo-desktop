@@ -92,6 +92,22 @@ describe("packaged production dependencies", () => {
 		expect(forge).toContain('unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`');
 	});
 
+	it("stages and unpacks the terminal plugin's node-pty native runtime", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		const viteMain = readFileSync(path.join(desktopRoot, "vite.main.config.ts"), "utf8");
+		const terminalManifest = JSON.parse(
+			readFileSync(path.join(workspaceRoot, "plugins/terminal/package.json"), "utf8"),
+		) as { dependencies?: Record<string, string>; scripts?: Record<string, string> };
+
+		expect(terminalManifest.dependencies?.["node-pty"]).toBe("1.1.0");
+		expect(terminalManifest.dependencies?.["ghostty-web"]).toBe("0.4.0");
+		expect(terminalManifest.scripts?.["prepare-assets"]).toContain("build-terminal-app");
+		expect(forge).toContain('"node-pty"');
+		expect(forge).toContain('packageName: "@anaconda-agentic-desktop/plugin-terminal"');
+		expect(forge).toContain("ensureNodePtySpawnHelpersExecutable");
+		expect(viteMain).toContain('"node-pty"');
+	});
+
 	it("quotes plugin prepare-assets filters so Windows cmd.exe can match packages", () => {
 		const scripts = (
 			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {

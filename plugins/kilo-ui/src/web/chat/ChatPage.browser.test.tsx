@@ -265,6 +265,7 @@ function renderChatPage(options?: {
 			label: "Canvas",
 			description: "Scratch canvas",
 			component: CanvasPanel,
+			icon: HammerIcon,
 			...(options?.canvasMountPolicy ? { mountPolicy: options.canvasMountPolicy } : {}),
 		});
 	const removeFilesContribution = options?.contributeFiles
@@ -1821,6 +1822,41 @@ describe("ChatPage", () => {
 		expect(baseElement.querySelector("[data-qa-id='chat-pane-arrangement-tabs']")).toBeNull();
 	});
 
+	it("unpins every column when Carousel is turned off", async () => {
+		assistantState.current.threadListItem.status = "regular";
+		const store = useRightPanelStore.getState();
+		store.openTab("draft", { id: "canvas.canvas", title: "Canvas" });
+		store.setArrangement("draft", "carousel");
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		const agentGroup = baseElement
+			.querySelector("[data-pane-tab][data-pane-kind='agent']")
+			?.closest<HTMLElement>("[data-pane-group-id]");
+		const pin = agentGroup?.querySelector<HTMLElement>("[data-qa-id^='chat-pane-pin-']");
+		expect(pin).toBeTruthy();
+		await page.elementLocator(pin!).click();
+		await vi.waitFor(() => {
+			const stored = useRightPanelStore.getState().bySessionId.draft?.layoutJson;
+			expect(
+				stored && JSON.parse(stored).groups.some((group: { pinned: boolean }) => group.pinned),
+			).toBe(true);
+		});
+
+		await screen.getByTestId("chat-pane-arrangement-carousel").click();
+		await vi.waitFor(() => {
+			const session = useRightPanelStore.getState().bySessionId.draft;
+			expect(session?.arrangement).toBe("tiles");
+			expect(
+				session?.layoutJson &&
+					JSON.parse(session.layoutJson).groups.every(
+						(group: { pinned: boolean }) => !group.pinned,
+					),
+			).toBe(true);
+		});
+	});
+
 	it("keeps an inactive dirty contribution mounted", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);
@@ -1833,6 +1869,20 @@ describe("ChatPage", () => {
 		await vi.waitFor(() => {
 			expect(baseElement.querySelectorAll("[data-qa-id='test-canvas-panel']")).toHaveLength(2);
 		});
+	});
+
+	it("uses a contributed pane icon in the tab strip", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await openFirstCanvasPane(screen);
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+
+		const icon = baseElement.querySelector(
+			`[data-qa-id='chat-pane-tab-${tab.instanceId}'] .lucide-hammer`,
+		);
+		expect(icon).toBeTruthy();
+		expect(icon).not.toHaveClass("text-chart-2");
 	});
 
 	it("shows a close dialog and keeps the tab after Save is cancelled", async () => {
@@ -1924,11 +1974,45 @@ describe("ChatPage", () => {
 		const screen = page.elementLocator(baseElement);
 		await openFirstCanvasPane(screen);
 		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		const onClose = vi.fn(async () => undefined);
+		const unregister = chatRightPanelCapability.registerTabLifecycle("draft", tab.instanceId, {
+			onClose,
+		});
 
 		await screen.getByTestId(`chat-pane-close-tab-${tab.instanceId}`).click();
 
 		await expect.element(screen.getByTestId("chat-pane-close-dialog")).not.toBeInTheDocument();
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(0);
+		unregister();
+	});
+
+	it("removes a clean tab immediately and reports background cleanup failures", async () => {
+		const { baseElement } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		await openFirstCanvasPane(screen);
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		let rejectClose!: (error: Error) => void;
+		const onClose = vi.fn(
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					rejectClose = reject;
+				}),
+		);
+		const unregister = chatRightPanelCapability.registerTabLifecycle("draft", tab.instanceId, {
+			onClose,
+		});
+
+		await screen.getByTestId(`chat-pane-close-tab-${tab.instanceId}`).click();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(0);
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+
+		rejectClose(new Error("Terminal shutdown failed"));
+		await expect
+			.element(screen.getByTestId("chat-pane-lifecycle-close-error"))
+			.toHaveTextContent("Terminal shutdown failed");
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(0);
+		unregister();
 	});
 
 	it("keeps an existing tab closeable when its contributing plugin disappears", async () => {

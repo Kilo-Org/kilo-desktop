@@ -15,11 +15,10 @@ import { TabsList, TabsTrigger } from "@anaconda-agentic-desktop/ui/components/t
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import type { PaneDrop } from "./pane-drop.js";
+import { PANE_KIND_ICON, PANE_KIND_ICON_CLASS, type PaneIconOverride } from "./pane-kind-icon.js";
 import { PaneTabScrollArea } from "./PaneTabScrollArea.js";
 import { usePaneDrag } from "./use-pane-drag.js";
 import "./pane-drag.css";
-
-import { PANE_KIND_ICON, PANE_KIND_ICON_CLASS } from "./pane-kind-icon.js";
 
 function tabChromeClassName(active: boolean) {
 	return active
@@ -53,6 +52,7 @@ export const PaneTabStrip: FC<{
 	onDrop?: (drop: PaneDrop) => void;
 	trailing?: ReactNode;
 	titleHint?: (paneId: string) => string | undefined;
+	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
 }> = ({
 	canDrop,
 	groupId,
@@ -75,6 +75,7 @@ export const PaneTabStrip: FC<{
 	onDrop,
 	trailing,
 	titleHint,
+	iconForPane,
 }) => {
 	const { stripRef, suppressClickRef, startPointerDrag, onPointerDrag, finishPointerDrag } =
 		usePaneDrag({ onDrop, canDrop });
@@ -104,11 +105,12 @@ export const PaneTabStrip: FC<{
 					const poppable = !poppedOut && Boolean(onPopOut);
 					const windowable = dockable || poppable;
 					const paneExpanded = active && expanded;
-					const Icon = PANE_KIND_ICON[pane.kind];
+					const iconOverride = iconForPane?.(pane.id);
+					const Icon = iconOverride?.Icon ?? PANE_KIND_ICON[pane.kind];
 					const closable = Boolean(onClose) && (canClose?.(pane) ?? pane.kind !== "agent");
 					const actionCount = Number(Boolean(onExpand)) + Number(windowable) + Number(closable);
 					const actionVisibilityClassName = cn(
-						"pointer-events-none absolute inset-y-0 right-0.5 flex items-center opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/pane-tab:pointer-events-auto group-hover/pane-tab:opacity-100 group-focus-within/pane-tab:pointer-events-auto group-focus-within/pane-tab:opacity-100",
+						"pointer-events-none absolute inset-y-0 right-0.5 z-10 flex items-center opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/pane-tab:pointer-events-auto group-hover/pane-tab:opacity-100 group-focus-within/pane-tab:pointer-events-auto group-focus-within/pane-tab:opacity-100",
 						active && "pointer-events-auto opacity-100",
 					);
 					return (
@@ -161,7 +163,11 @@ export const PaneTabStrip: FC<{
 								}
 							>
 								<Icon
-									className={cn("size-3 shrink-0", PANE_KIND_ICON_CLASS[pane.kind])}
+									className={cn(
+										"size-3 shrink-0",
+										iconOverride ? undefined : PANE_KIND_ICON_CLASS[pane.kind],
+									)}
+									{...(iconOverride?.iconKey ? { iconKey: iconOverride.iconKey } : {})}
 									aria-hidden
 								/>
 								<span
@@ -251,7 +257,7 @@ export const PaneTabStrip: FC<{
 				<button
 					type="button"
 					aria-label="Drag pane group"
-					className="-ml-1 min-w-0 flex-1 cursor-grab touch-none active:cursor-grabbing"
+					className="-ml-1 min-w-8 flex-1 shrink-0 cursor-grab touch-none active:cursor-grabbing"
 					data-qa-id={`chat-pane-group-drag-${groupId}`}
 					onClick={() => {
 						if (

@@ -87,12 +87,6 @@ export class TerminalPage {
 		await click(getLocatorByTestId(`chat-pane-tab-${instanceId}`));
 	}
 
-	async verifyTabLabel(instanceId: string, label: string): Promise<void> {
-		await expectElementToContainText(getLocatorByTestId(`chat-pane-tab-${instanceId}`), label, {
-			message: `Terminal ${instanceId} should be labelled ${label}`,
-		});
-	}
-
 	async exit(instanceId: string): Promise<void> {
 		await this.run(instanceId, "exit");
 		await expectElementToHaveCount(getLocatorByTestId(`chat-pane-tab-${instanceId}`), 0, {

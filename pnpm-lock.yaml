@@ -356,8 +356,8 @@ importers:
         specifier: link:../../packages/ui
         version: link:../../packages/ui
       '@anaconda/shadcn-theme':
-        specifier: 0.1.0-alpha.0
-        version: 0.1.0-alpha.0
+        specifier: 0.1.0-alpha.2
+        version: 0.1.0-alpha.2
       '@fontsource-variable/inter':
         specifier: ^5.3.0
         version: 5.3.0
@@ -1589,8 +1589,8 @@ packages:
     peerDependencies:
       '@playwright/test': ~1.61.1
 
-  '@anaconda/shadcn-theme@0.1.0-alpha.0':
-    resolution: {integrity: sha512-bGMfNeBzVhPwn4hqEVLIGO53GvgCFYVbnoHGHpsYyJa9/gdDq8eIYSv1ibU5ozHlQr94m27K21s7yP5ao1JVOg==, tarball: https://npm.pkg.github.com/download/@anaconda/shadcn-theme/0.1.0-alpha.0/37562dc9b9a94adc803154695e21b3460c4a1a9d}
+  '@anaconda/shadcn-theme@0.1.0-alpha.2':
+    resolution: {integrity: sha512-e8Z4b5Mj0g4bt0gxZigwwVTOKKR63MsRLSibqRPr1/iqvqlkasSdyjcRsTJACd5MkkmnBlsZL6ClLNfZLpMw3A==, tarball: https://npm.pkg.github.com/download/@anaconda/shadcn-theme/0.1.0-alpha.2/e5f63ac7e1fadbf49d85044c915609f1eadd7738}
 
   '@ant-design/cssinjs@2.1.2':
     resolution: {integrity: sha512-2Hy8BnCEH31xPeSLbhhB2ctCPXE2ZnASdi+KbSeS79BNbUhL9hAEe20SkUk+BR8aKTmqb6+FKFruk7w8z0VoRQ==}
@@ -9499,7 +9499,7 @@ snapshots:
       - jiti
       - supports-color
 
-  '@anaconda/shadcn-theme@0.1.0-alpha.0': {}
+  '@anaconda/shadcn-theme@0.1.0-alpha.2': {}
 
   '@ant-design/cssinjs@2.1.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:

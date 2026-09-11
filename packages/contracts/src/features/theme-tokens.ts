@@ -7,13 +7,13 @@ export const THEME_STORAGE_KEY = "theme:v1";
 
 /**
  * Hex paint tokens for native chrome (Linux window background, splash, title-bar symbols).
- * Hex equivalents of the `--storm-100` / `--storm-900` / `--storm-50` values from
+ * Hex equivalents of the background/foreground values from
  * `@anaconda/shadcn-theme` — Electron cannot use oklch here.
  * macOS uses a transparent window over vibrancy instead.
  */
 export const themeChromeColors = {
-	light: { background: "#f3f5f8", foreground: "#141820" },
-	dark: { background: "#141820", foreground: "#fafafa" },
+	light: { background: "#ffffff", foreground: "#090b0c" },
+	dark: { background: "#161b1d", foreground: "#f9fbfb" },
 } as const;
 
 export type ThemeChromeColors = (typeof themeChromeColors)[keyof typeof themeChromeColors];
@@ -27,14 +27,15 @@ export const TRANSPARENT_WINDOW_BACKGROUND = "#00000000";
  */
 export const shellGlassOpacity = {
 	light: 64,
-	dark: 90,
+	dark: 80,
 } as const;
 
 /**
- * Dark shell surface hex: `--storm-900` (`#141820`) — keep in sync with
- * `--sidebar` / the html glass tint in apps/web globals.css.
+ * Dark shell surface hex: Mist 950 — keep in sync with
+ * `--sidebar` / the html glass tint in apps/web globals.css. Distinct from
+ * `themeChromeColors.dark.background` (Mist 900), which paints content panes.
  */
-export const shellGlassDarkSurface = "#141820";
+export const shellGlassDarkSurface = "#090b0c";
 
 export function resolveShouldUseDarkColors(source: ThemeSource, systemDark: boolean): boolean {
 	if (source === "system") return systemDark;
@@ -72,10 +73,9 @@ export function windowBackgroundFor(
  * `body` too would stack two translucent layers and look too opaque.
  */
 export function criticalThemeStyle(): string {
-	const { light } = themeChromeColors;
 	return [
-		`html{background:color-mix(in srgb,${light.background} ${shellGlassOpacity.light}%,transparent)}`,
-		`html[data-theme="dark"]{background:color-mix(in srgb,${shellGlassDarkSurface} ${shellGlassOpacity.dark}%,transparent)}`,
+		`html{background:color-mix(in srgb,var(--sidebar,#f9fbfb) var(--shell-glass-opacity,${shellGlassOpacity.light}%),transparent)}`,
+		`html[data-theme="dark"]{background:color-mix(in srgb,var(--sidebar,${shellGlassDarkSurface}) var(--shell-glass-opacity,${shellGlassOpacity.dark}%),transparent)}`,
 		"body{background:transparent}",
 	].join("");
 }

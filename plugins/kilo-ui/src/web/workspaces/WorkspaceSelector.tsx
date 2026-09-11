@@ -25,7 +25,7 @@ function WorkspaceSelectorTrigger() {
 					type="button"
 					variant="ghost"
 					size="sm"
-					className="dark:text-foreground/90 h-7 max-w-56 rounded-full"
+					className="dark:text-foreground/90 h-7 max-w-56 rounded-md"
 				/>
 			}
 		>

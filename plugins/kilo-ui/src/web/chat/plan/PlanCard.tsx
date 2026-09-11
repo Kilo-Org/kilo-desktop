@@ -122,7 +122,7 @@ export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 					{showError ? (
 						<div
 							role="alert"
-							className="bg-destructive text-destructive-foreground mt-2 flex items-start gap-2 rounded-lg px-3 py-2 text-sm"
+							className="bg-destructive/10 text-destructive-foreground mt-2 flex items-start gap-2 rounded-lg px-3 py-2 text-sm"
 						>
 							<AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
 							<span>

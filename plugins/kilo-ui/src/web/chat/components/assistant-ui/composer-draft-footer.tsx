@@ -33,7 +33,7 @@ export const ComposerDraftFooter: FC = () => {
 		<div
 			data-slot="aui_composer-draft-footer"
 			data-qa-id="kilo-composer-draft-footer"
-			className="border-border dark:border-border/60 relative z-0 mx-auto -mt-3 flex w-[calc(100%-2.75rem)] items-center justify-between gap-2 rounded-b-2xl border border-t-0 bg-(--composer-bg) px-1 pt-4 pb-1 dark:bg-[color-mix(in_oklab,var(--composer-bg),black_8%)]"
+			className="border-border dark:border-border/60 relative z-0 mx-auto -mt-3 flex w-[calc(100%-2.75rem)] items-center justify-between gap-2 rounded-b-xl border border-t-0 bg-(--composer-bg) px-1 pt-4 pb-1 dark:bg-[color-mix(in_oklab,var(--composer-bg),black_8%)]"
 		>
 			<div className="flex min-w-0 flex-1 items-center gap-1">
 				<WorkspaceSelector />

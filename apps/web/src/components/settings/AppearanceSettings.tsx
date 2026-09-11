@@ -125,15 +125,15 @@ function ThemePreview({ source }: { source: ThemeSource }) {
 const WINDOW_PALETTE = {
 	light: {
 		bar: "#ffffff",
-		sidebar: "#e6eaf0",
+		sidebar: "var(--color-mist-50)",
 		line: "rgb(0 0 0 / 0.14)",
 		muted: "rgb(0 0 0 / 0.08)",
 		block: "rgb(0 0 0 / 0.05)",
 		border: "border-black/10",
 	},
 	dark: {
-		bar: "#1a1e28",
-		sidebar: "#1c212c",
+		bar: "var(--color-mist-900)",
+		sidebar: "var(--color-mist-950)",
 		line: "rgb(255 255 255 / 0.22)",
 		muted: "rgb(255 255 255 / 0.1)",
 		block: "rgb(255 255 255 / 0.06)",

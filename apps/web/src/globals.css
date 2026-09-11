@@ -13,8 +13,10 @@
 
 :root {
 	--font-sans: "Inter Variable", sans-serif;
-	--foreground: var(--storm-800);
-	--sidebar-foreground: var(--storm-800);
+	/* Existing app roles not supplied by the alpha.2 theme. */
+	--info: var(--color-blue-600);
+	--info-foreground: var(--info);
+	--destructive-foreground: var(--color-red-700);
 	--app-scrollbar-width: 6px;
 	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
 	--app-scrollbar-thumb-hover: var(--border);
@@ -22,17 +24,29 @@
 	--window-controls-width: calc(
 		100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
 	);
-	--update: var(--success-foreground);
+	--update: var(--color-green-850);
 	--update-surface: color-mix(in oklch, var(--primary) 12%, transparent);
 	--update-surface-hover: color-mix(in oklch, var(--primary) 18%, transparent);
 }
 
 [data-theme="dark"] {
-	--foreground: var(--storm-200);
-	--sidebar-foreground: var(--storm-200);
-	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 70%, transparent);
-	--app-scrollbar-thumb-hover: var(--border);
-	--shell-glass-opacity: 90%;
+	/* Glass chrome over vibrancy, opaque stepped content: the translucent
+	   sidebar tint sits on 950, content panes on 900, and raised surfaces
+	   (cards, composer) on 800. */
+	--sidebar: var(--color-mist-950);
+	--background: var(--color-mist-900);
+	--card: var(--color-mist-800);
+	--popover: var(--color-mist-800);
+	/* Translucent hairline: keeps one apparent weight over both the opaque
+	   content panes and the vibrancy-backed sidebar, which a solid Mist step
+	   cannot — its contrast inverts with the surface beneath it. */
+	--border: color-mix(in oklch, var(--color-mist-300) 6%, transparent);
+	--sidebar-border: color-mix(in oklch, var(--color-mist-300) 6%, transparent);
+	--info: var(--color-blue-400);
+	--destructive-foreground: var(--color-red-400);
+	--app-scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+	--app-scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
+	--shell-glass-opacity: 80%;
 	--update: var(--primary);
 }
 
@@ -100,6 +114,10 @@ html {
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
 
 @theme inline {
+	--color-info: var(--info);
+	--color-info-foreground: var(--info-foreground);
+	--color-destructive-foreground: var(--destructive-foreground);
+
 	@keyframes collapsible-down {
 		from {
 			height: 0;

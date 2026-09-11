@@ -44,10 +44,10 @@ describe("theme contracts", () => {
 
 	it("builds critical CSS and bootstrap script from the shared tokens", () => {
 		const css = criticalThemeStyle();
-		expect(css).toContain(themeChromeColors.light.background);
+		expect(css).toContain("var(--sidebar,");
 		expect(css).toContain(shellGlassDarkSurface);
-		expect(css).toContain(` ${shellGlassOpacity.light}%,`);
-		expect(css).toContain(` ${shellGlassOpacity.dark}%,`);
+		expect(css).toContain(`var(--shell-glass-opacity,${shellGlassOpacity.light}%)`);
+		expect(css).toContain(`var(--shell-glass-opacity,${shellGlassOpacity.dark}%)`);
 		expect(css).toContain('html[data-theme="dark"]');
 
 		const script = themeBootstrapScript();

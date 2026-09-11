@@ -204,7 +204,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 			className="aui-root aui-thread-root bg-background @container flex h-full flex-col [--composer-bg:var(--color-card)]"
 			style={{
 				["--thread-max-width" as string]: "48rem",
-				["--composer-radius" as string]: "1.5rem",
+				["--composer-radius" as string]: "1rem",
 				["--composer-padding" as string]: "8px",
 			}}
 		>

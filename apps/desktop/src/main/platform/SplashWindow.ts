@@ -171,8 +171,8 @@ function splashHtml(isDark: boolean, initialMessage: string): string {
 	// Design tokens (hex, no oklch — Electron can't use it).
 	const bg = chrome.background;
 	const fg = chrome.foreground;
-	const subtleFg = isDark ? "#94a3b8" : "#64748b"; // storm-400 / storm-500
-	const accent = isDark ? "#84cc16" : "#15803d"; // lime-600 / green-700
+	const subtleFg = isDark ? "#9ca8ab" : "#67787c"; // Mist 400 / 500
+	const accent = isDark ? "#96f778" : "#07ca4a"; // Anaconda lime 600 / green 700
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -215,7 +215,7 @@ body{
 .progress-bar{
   width:120px;
   height:3px;
-  background:${isDark ? "#1e293b" : "#e2e8f0"};
+  background:${isDark ? "#22292b" : "#e3e7e8"};
   border-radius:2px;
   overflow:hidden;
   position:relative;

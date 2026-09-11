@@ -291,7 +291,7 @@ export function AppSidebarLayout({
 			>
 				<Sidebar
 					collapsible="offcanvas"
-					className="border-border dark:border-muted-foreground/15 group-data-[transient=true]:bg-sidebar! h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
+					className="border-border group-data-[transient=true]:bg-sidebar! h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
 					data-qa-id="app-sidebar"
 				>
 					<SidebarHeader className="relative h-12 shrink-0 p-0" data-qa-id="sidebar-titlebar">

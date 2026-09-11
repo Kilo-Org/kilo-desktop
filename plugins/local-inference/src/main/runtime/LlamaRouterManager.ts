@@ -73,7 +73,7 @@ function defaultSpawn(
 		stdout: "pipe",
 		stderr: "pipe",
 		windowsHide: true,
-	}) as unknown as LlamaChildProcess;
+	}).nodeChildProcess as LlamaChildProcess;
 }
 
 function delay(durationMs: number): Promise<void> {

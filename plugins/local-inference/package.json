@@ -17,7 +17,7 @@
 	},
 	"dependencies": {
 		"@lobehub/icons": "^5.15.0",
-		"execa": "^9.6.0",
+		"execa": "catalog:",
 		"lucide-react": "^1.27.0",
 		"systeminformation": "5.33.10"
 	},

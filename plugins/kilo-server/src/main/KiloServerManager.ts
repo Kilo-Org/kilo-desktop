@@ -113,7 +113,7 @@ function defaultSpawn(
 		stderr: "pipe",
 		stdout: "pipe",
 		windowsHide: true,
-	}) as unknown as KiloChildProcess;
+	}).nodeChildProcess as KiloChildProcess;
 }
 
 function safeErrorMessage(error: unknown, secrets: readonly string[] = []): string {

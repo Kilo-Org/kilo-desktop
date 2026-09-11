@@ -8,7 +8,8 @@
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
-		"./contracts": "./src/contracts/index.ts"
+		"./contracts": "./src/contracts/index.ts",
+		"./packaging": "./src/packaging/artifacts.ts"
 	},
 	"scripts": {
 		"build-terminal-app": "vite build --config src/frame/vite.config.ts",
@@ -21,7 +22,7 @@
 		"atomically": "catalog:",
 		"ghostty-web": "0.4.0",
 		"lucide-react": "^1.27.0",
-		"node-pty": "1.1.0"
+		"node-pty": "1.2.0-beta.15"
 	},
 	"peerDependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "^0.1.0",

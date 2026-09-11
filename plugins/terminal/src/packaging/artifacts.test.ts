@@ -1,10 +1,10 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { validateTerminalBundle } from "./artifacts.js";
+import { ensureNodePtySpawnHelpersExecutable, validateTerminalBundle } from "./artifacts.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -36,5 +36,30 @@ describe("terminal bundle artifacts", () => {
 		await expect(validateTerminalBundle(root)).rejects.toThrow(
 			"The terminal bundle has no JavaScript entry asset.",
 		);
+	});
+});
+
+describe("node-pty packaging artifacts", () => {
+	it("makes the native rebuild's macOS spawn helper executable before ASAR packaging", async () => {
+		const packageDirectory = await mkdtemp(path.join(os.tmpdir(), "terminal-node-pty-"));
+		directories.push(packageDirectory);
+		const releaseDirectory = path.join(packageDirectory, "build/Release");
+		const spawnHelper = path.join(releaseDirectory, "spawn-helper");
+		await mkdir(releaseDirectory, { recursive: true });
+		await writeFile(spawnHelper, "helper");
+		await chmod(spawnHelper, 0o644);
+
+		await ensureNodePtySpawnHelpersExecutable(packageDirectory, "darwin", "arm64");
+
+		expect((await stat(spawnHelper)).mode & 0o111).toBe(0o111);
+	});
+
+	it("fails macOS packaging when node-pty has no spawn helper", async () => {
+		const packageDirectory = await mkdtemp(path.join(os.tmpdir(), "terminal-node-pty-"));
+		directories.push(packageDirectory);
+
+		await expect(
+			ensureNodePtySpawnHelpersExecutable(packageDirectory, "darwin", "arm64"),
+		).rejects.toThrow("node-pty spawn-helper is missing");
 	});
 });

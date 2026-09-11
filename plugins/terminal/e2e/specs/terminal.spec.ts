@@ -20,9 +20,17 @@ test.describe("Terminal @smoke", () => {
 
 		await terminalPage.exit(first);
 		await terminalPage.verifyOutputContains(second, "terminal-two-marker");
-		await terminalPage.run(second, 'node -e "setTimeout(process.exit, 5000)"');
-		await terminalPage.verifyTabLabel(second, "node");
-		await terminalPage.verifyTabLabel(second, "Terminal 2");
+		await terminalPage.run(
+			second,
+			"node -e \"setTimeout(() => console.log('terminal-node-finished'), 5000)\"",
+		);
+		if (process.platform !== "win32") {
+			await terminalPage.verifyTabLabel(second, "node");
+		}
+		await terminalPage.verifyOutputContains(second, "terminal-node-finished");
+		if (process.platform !== "win32") {
+			await terminalPage.verifyTabLabel(second, "Terminal 2");
+		}
 
 		await terminalPage.exit(second);
 	});

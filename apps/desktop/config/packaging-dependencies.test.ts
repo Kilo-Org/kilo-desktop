@@ -104,12 +104,13 @@ describe("packaged production dependencies", () => {
 			readFileSync(path.join(workspaceRoot, "plugins/terminal/package.json"), "utf8"),
 		) as { dependencies?: Record<string, string>; scripts?: Record<string, string> };
 
-		expect(terminalManifest.dependencies?.["node-pty"]).toBe("1.1.0");
+		expect(terminalManifest.dependencies?.["node-pty"]).toBe("1.2.0-beta.15");
 		expect(terminalManifest.dependencies?.["ghostty-web"]).toBe("0.4.0");
 		expect(terminalManifest.scripts?.["prepare-assets"]).toContain("build-terminal-app");
 		expect(forge).toContain('"node-pty"');
 		expect(forge).toContain('packageName: "@anaconda-agentic-desktop/plugin-terminal"');
 		expect(forge).toContain("ensureNodePtySpawnHelpersExecutable");
+		expect(forge).toContain("beforeAsar");
 		expect(viteMain).toContain('"node-pty"');
 	});
 

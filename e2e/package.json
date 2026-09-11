@@ -16,9 +16,9 @@
 	},
 	"devDependencies": {
 		"@anaconda/playwright-utils": "1.17.1",
-		"@playwright/test": "1.62.1",
+		"@playwright/test": "catalog:",
 		"@types/node": "^24.13.3",
-		"playwright": "1.62.1",
+		"playwright": "catalog:",
 		"typescript": "catalog:"
 	}
 }

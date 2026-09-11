@@ -2,9 +2,11 @@ import {
 	AuiProvider,
 	AssistantRuntimeProvider,
 	ExternalThread,
+	fromThreadMessageLike,
 	useAui,
 	useLocalRuntime,
 	type ChatModelAdapter,
+	type ExternalThreadMessage,
 	type ExternalThreadQueueAdapter,
 	type QueueItemState,
 	type ThreadMessageLike,
@@ -348,6 +350,61 @@ function renderExternalQueueThread(queue: ExternalThreadQueueAdapter) {
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
 					<ExternalQueueThreadTree queue={queue} />
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+	return page.elementLocator(baseElement);
+}
+
+function ExternalMessagesThreadTree({
+	messages,
+	isRunning,
+}: {
+	messages: readonly ExternalThreadMessage[];
+	isRunning: boolean;
+}) {
+	const aui = useAui({ thread: ExternalThread({ messages, isRunning }) });
+
+	return (
+		<KiloAuthContext.Provider value={signedInAuth}>
+			<AuiProvider value={aui}>
+				<ChatConnectionProvider
+					status={{
+						isPending: false,
+						isError: false,
+						error: null,
+						connection,
+						connectionPromise: Promise.resolve(connection),
+					}}
+				>
+					<ChatAgentSelectionProvider value={agentSelection}>
+						<ChatModelSelectionProvider value={kiloModelSelection}>
+							<div className="h-[480px]">
+								<Thread />
+							</div>
+						</ChatModelSelectionProvider>
+					</ChatAgentSelectionProvider>
+				</ChatConnectionProvider>
+			</AuiProvider>
+		</KiloAuthContext.Provider>
+	);
+}
+
+function renderExternalMessagesThread(
+	messages: readonly ExternalThreadMessage[],
+	isRunning: boolean,
+) {
+	const sdk = createFakeSdk({ featureId: "kilo-ui" });
+	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	kiloUiBrowserRegister(mainSdk);
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const { baseElement } = render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<ExternalMessagesThreadTree messages={messages} isRunning={isRunning} />
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
@@ -715,5 +772,54 @@ describe("message error sign-in", () => {
 		await expect
 			.element(screen.getByTestId("kilo-message-error-signed-in"))
 			.not.toBeInTheDocument();
+	});
+});
+
+describe("snapshot progress status", () => {
+	const progressPartMessages = (
+		status: "running" | "complete",
+	): readonly ExternalThreadMessage[] => [
+		fromThreadMessageLike(
+			{ role: "user", content: [{ type: "text", text: "Set up my project" }] },
+			"msg-user",
+			{ type: "complete", reason: "stop" },
+		),
+		fromThreadMessageLike(
+			{
+				role: "assistant",
+				status: status === "running" ? { type: "running" } : { type: "complete", reason: "stop" },
+				content: [
+					{
+						type: "data",
+						name: "opencode-snapshot-progress",
+						data: { text: "⠋ Initializing snapshot…" },
+					},
+				],
+			},
+			"msg-assistant",
+			{ type: "complete", reason: "stop" },
+		),
+	];
+
+	it("shows 'Initializing snapshot...' as the working status instead of chat text", async () => {
+		const screen = renderExternalMessagesThread(progressPartMessages("running"), true);
+
+		await expect
+			.element(screen.getByRole("status", { name: "Initializing snapshot..." }))
+			.toBeVisible();
+		await expect
+			.element(screen.getByRole("status", { name: "Considering next steps" }))
+			.not.toBeInTheDocument();
+		// The raw spinner-frame text must never land in the chat content.
+		expect(screen.getByText(/Initializing snapshot…/).elements()).toHaveLength(0);
+	});
+
+	it("leaves no trace of the progress part once the message completes", async () => {
+		const screen = renderExternalMessagesThread(progressPartMessages("complete"), false);
+
+		await expect
+			.element(screen.getByRole("status", { name: "Initializing snapshot..." }))
+			.not.toBeInTheDocument();
+		expect(screen.getByText(/Initializing snapshot…/).elements()).toHaveLength(0);
 	});
 });

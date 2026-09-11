@@ -17,6 +17,7 @@ import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
 import { createActivityGroupBy } from "../tools/activity-grouping.js";
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
+import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { getPlanProjectionForMessage } from "../../plan/index.js";
@@ -800,6 +801,7 @@ const ComposerAction: FC<{
 };
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
+const SNAPSHOT_PROGRESS_STATUS = "Initializing snapshot...";
 const WORKING_INDICATOR_DELAY_MS = 200;
 const WORKING_INDICATOR_PIXEL_DELAYS = Array.from({ length: 9 }, (_, index) => {
 	const row = Math.floor(index / 3);
@@ -824,6 +826,14 @@ const AssistantWorkingIndicator: FC = () => {
 		}
 		return s.message.createdAt.getTime();
 	});
+	// kilo-vscode parity: a trailing synthetic snapshot-progress part drives the
+	// status line instead of rendering as chat text.
+	const label = useAuiState((s) => {
+		const last = s.message.parts.at(-1);
+		return last?.type === "data" && last.name === OPENCODE_SNAPSHOT_PROGRESS_PART
+			? SNAPSHOT_PROGRESS_STATUS
+			: CONSIDERING_NEXT_STEPS;
+	});
 	const [visible, setVisible] = useState(false);
 	const [elapsedDeciseconds, setElapsedDeciseconds] = useState(() =>
 		elapsedDecisecondsSince(turnStartedAt),
@@ -847,7 +857,7 @@ const AssistantWorkingIndicator: FC = () => {
 			data-slot="aui_assistant-message-indicator"
 			className="text-muted-foreground flex w-fit items-center gap-2 py-1 text-sm [&:not(:first-child)]:mt-3"
 			role="status"
-			aria-label={CONSIDERING_NEXT_STEPS}
+			aria-label={label}
 		>
 			<AvatarGroup aria-hidden className="-space-x-1">
 				<Avatar className="size-6.5">
@@ -865,9 +875,9 @@ const AssistantWorkingIndicator: FC = () => {
 				</Avatar>
 			</AvatarGroup>
 			<span aria-hidden className="relative inline-block font-normal">
-				{CONSIDERING_NEXT_STEPS}
+				{label}
 				<span className="shimmer shimmer-color-foreground pointer-events-none absolute top-0 left-0 motion-reduce:animate-none">
-					{CONSIDERING_NEXT_STEPS}
+					{label}
 				</span>
 			</span>
 			<span aria-hidden className="font-mono text-xs tabular-nums opacity-60">

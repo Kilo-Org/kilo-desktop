@@ -1,4 +1,4 @@
-import { chmod, cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -74,6 +74,17 @@ const extraResources = [
 	...notebookPackaging.extraResources,
 	...bridgePackaging.extraResources,
 ];
+
+async function moveDirectory(source: string, destination: string): Promise<void> {
+	await rm(destination, { force: true, recursive: true });
+	try {
+		await rename(source, destination);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+		await cp(source, destination, { recursive: true });
+		await rm(source, { force: true, recursive: true });
+	}
+}
 
 function updateFeed(platform: string, arch: string): string | undefined {
 	return getUpdateFeedUrl({ publishUrl, channel, platform, arch });
@@ -170,9 +181,9 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 				recursive: true,
 			});
 		}
-		await cp(path.join(stagingDirectory, "node_modules"), path.join(buildPath, "node_modules"), {
-			recursive: true,
-		});
+		const stagedNodeModules = path.join(stagingDirectory, "node_modules");
+		const packagedNodeModules = path.join(buildPath, "node_modules");
+		await moveDirectory(stagedNodeModules, packagedNodeModules);
 		await ensureNodePtySpawnHelpersExecutable(path.join(buildPath, "node_modules", "node-pty"));
 		// pnpm deploy creates `.bin` directories (top-level and nested inside
 		// individual packages, e.g. `@opentelemetry/configuration/node_modules/.bin`)

@@ -9,6 +9,8 @@ import {
 	terminalThemeFor,
 	trustedTerminalFrameMessageFrom,
 } from "./terminal-frame-bridge.js";
+import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
+import { registerTerminalPaneOwner } from "./terminal-pane-owners.js";
 
 const INITIAL_COLS = 120;
 const INITIAL_ROWS = 30;
@@ -22,29 +24,6 @@ function terminalThemeFromApp(mode: "dark" | "light") {
 		...(scrollbarThumb ? { scrollbarThumb } : {}),
 		...(scrollbarThumbHover ? { scrollbarThumbHover } : {}),
 	});
-}
-
-interface ChatRightPanelCapabilities extends Record<string, unknown> {
-	chatRightPanel?: {
-		listTabs?(sessionId: string): readonly {
-			readonly instanceId: string;
-			readonly ordinal: number | null;
-		}[];
-		updateTab?(
-			sessionId: string,
-			instanceId: string,
-			update: {
-				readonly title?: string;
-				readonly metadata?: Readonly<Record<string, string>>;
-			},
-		): void;
-		closeTab?(sessionId: string, instanceId: string): void;
-		registerTabLifecycle?(
-			sessionId: string,
-			instanceId: string,
-			lifecycle: { readonly onClose?: () => Promise<void> },
-		): () => void;
-	};
 }
 
 export interface TerminalViewProps {
@@ -83,6 +62,16 @@ export function TerminalView({
 	);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 
+	useEffect(
+		() =>
+			registerTerminalPaneOwner({
+				paneSessionId: sessionId,
+				terminalSessionId,
+				terminalId: instanceId,
+			}),
+		[instanceId, sessionId, terminalSessionId],
+	);
+
 	useEffect(() => {
 		panel?.updateTab?.(sessionId, instanceId, {
 			title: defaultLabel,
@@ -111,26 +100,11 @@ export function TerminalView({
 		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
 		let port: MessagePort | null = null;
 		let transferred = false;
-		let exitHandled = false;
 
 		const onMessage = (event: MessageEvent<unknown>) => {
 			const frameWindow = frameRef.current?.contentWindow;
 			const message = trustedTerminalFrameMessageFrom(event, frameWindow ?? null, frameOrigin);
 			if (!message) return;
-			if (message.type === "terminal:exited") {
-				if (!exitHandled) {
-					exitHandled = true;
-					panel?.closeTab?.(sessionId, instanceId);
-					void sdk.client
-						.close({
-							sessionId: terminalSessionId,
-							terminalId: instanceId,
-							deleteHistory: true,
-						})
-						.catch(() => undefined);
-				}
-				return;
-			}
 			if (message.type === "terminal:label") {
 				panel?.updateTab?.(sessionId, instanceId, { title: message.label });
 				return;

@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { BranchSelectorPage } from "../../pages/features/git/branch-selector-page.js";
 import { ChangesPage } from "../../pages/features/git/changes-page.js";
-import { test as shellTest } from "../shell.js";
+import { removePathAfterAppStops, test as shellTest } from "../shell.js";
 
 type GitFixtures = {
 	changesPage: ChangesPage;
@@ -30,6 +30,7 @@ export const test = shellTest.extend<GitFixtures>({
 		// Changes tab has content to stream (proving the kilo-git://
 		// protocol round-trip in the packaged binary).
 		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "aad-git-workspace-"));
+		removePathAfterAppStops(workspacePath);
 		const git = (args: string[]) => execFileSync("git", ["-C", workspacePath, ...args]);
 		git(["init", "-b", "main"]);
 		git(["config", "user.email", "git-plugin-e2e@example.com"]);
@@ -39,7 +40,6 @@ export const test = shellTest.extend<GitFixtures>({
 		git(["-c", "commit.gpgsign=false", "commit", "-m", "initial"]);
 		await writeFile(path.join(workspacePath, "README.md"), "modified\n");
 		await use({ path: workspacePath, name: path.basename(workspacePath) });
-		await rm(workspacePath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	gitBranchWorkspace: async ({}, use) => {
@@ -47,6 +47,7 @@ export const test = shellTest.extend<GitFixtures>({
 		// main; the checkout sequence gives the reflog recency, and the
 		// untracked feature populates "Other Branches".
 		const basePath = await mkdtemp(path.join(os.tmpdir(), "aad-git-branch-"));
+		removePathAfterAppStops(basePath);
 		const git = (dir: string, args: string[]) => execFileSync("git", ["-C", dir, ...args]);
 		const source = path.join(basePath, "source");
 		const remote = path.join(basePath, "remote.git");
@@ -68,7 +69,6 @@ export const test = shellTest.extend<GitFixtures>({
 		git(clone, ["checkout", "-b", "topic-a"]);
 		git(clone, ["checkout", "main"]);
 		await use({ path: clone, name: path.basename(clone) });
-		await rm(basePath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 	},
 });
 

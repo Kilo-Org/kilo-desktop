@@ -35,15 +35,12 @@ export default defineConfig({
 					include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
 					exclude: ["src/**/*.integration.test.ts"],
 					environment: "node",
-					// Notebook UI staging tests do real tar/gzip + filesystem I/O that
-					// can exceed the 5s default on slower Windows CI runners.
-					testTimeout: 30_000,
 				},
 			},
 			{
 				test: {
 					name: "integration",
-					include: ["src/main/**/*.integration.test.ts"],
+					include: ["src/**/*.integration.test.ts"],
 					environment: "node",
 					fileParallelism: false,
 					testTimeout: 30_000,

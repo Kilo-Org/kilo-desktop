@@ -28,7 +28,10 @@ import { KiloAuthContext, type KiloAuthContextValue } from "../../../account/Kil
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
 import { OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";
 import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelectionContext.js";
-import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
+import {
+	ChatConnectionProvider,
+	type ChatConnectionStatus,
+} from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { Thread } from "./thread.js";
 
@@ -197,12 +200,20 @@ function ThreadTree({
 	initialMessages,
 	adapter = stubChatModel,
 	enableMessageQueue = false,
+	connectionStatus = {
+		isPending: false,
+		isError: false,
+		error: null,
+		connection,
+		connectionPromise: Promise.resolve(connection),
+	},
 }: {
 	auth: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
 	enableMessageQueue?: boolean;
+	connectionStatus?: ChatConnectionStatus;
 }) {
 	const runtime = useLocalRuntime(adapter, {
 		initialMessages,
@@ -211,15 +222,7 @@ function ThreadTree({
 	return (
 		<KiloAuthContext.Provider value={auth}>
 			<AssistantRuntimeProvider runtime={runtime}>
-				<ChatConnectionProvider
-					status={{
-						isPending: false,
-						isError: false,
-						error: null,
-						connection,
-						connectionPromise: Promise.resolve(connection),
-					}}
-				>
+				<ChatConnectionProvider status={connectionStatus}>
 					<ChatAgentSelectionProvider value={agentSelection}>
 						<ChatModelSelectionProvider value={selection}>
 							<div className="h-[480px]">
@@ -239,12 +242,14 @@ function renderThread({
 	initialMessages,
 	adapter,
 	enableMessageQueue,
+	connectionStatus,
 }: {
 	auth?: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
 	enableMessageQueue?: boolean;
+	connectionStatus?: ChatConnectionStatus;
 }) {
 	const sdk = createFakeSdk({ featureId: "kilo-ui" });
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
@@ -261,6 +266,7 @@ function renderThread({
 						initialMessages={initialMessages}
 						{...(enableMessageQueue === undefined ? {} : { enableMessageQueue })}
 						{...(adapter ? { adapter } : {})}
+						{...(connectionStatus ? { connectionStatus } : {})}
 					/>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
@@ -450,6 +456,53 @@ describe("composer responsiveness", () => {
 		await expect.element(modelLabel).not.toBeVisible();
 		await expect.element(reasoningLabel).not.toBeVisible();
 		expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
+	});
+});
+
+describe("composer focus", () => {
+	it("focuses an untouched draft when no pane owns focus", async () => {
+		const screen = renderThread({ initialMessages: [] });
+
+		await expect.element(screen.getByRole("textbox", { name: "Message input" })).toHaveFocus();
+	});
+
+	it("does not steal focus from a pane when a pending connection resolves", async () => {
+		let resolveConnection!: (value: KiloGlobalConnection) => void;
+		const connectionPromise = new Promise<KiloGlobalConnection>((resolve) => {
+			resolveConnection = resolve;
+		});
+		const screen = renderThread({
+			initialMessages: [],
+			connectionStatus: {
+				isPending: true,
+				isError: false,
+				error: null,
+				connectionPromise,
+			},
+		});
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await input.fill("Start chat");
+		await screen.getByRole("button", { name: "Send message" }).click();
+		await expect.element(screen.getByTestId("kilo-composer-connecting")).toBeVisible();
+
+		const paneCanvas = document.createElement("div");
+		paneCanvas.dataset.qaId = "kilo-chat-pane-canvas";
+		const terminalFrame = document.createElement("iframe");
+		paneCanvas.append(terminalFrame);
+		document.body.append(paneCanvas);
+
+		try {
+			terminalFrame.focus();
+			expect(document.activeElement).toBe(terminalFrame);
+
+			resolveConnection(connection);
+
+			await expect.element(screen.getByTestId("kilo-composer-connecting")).not.toBeInTheDocument();
+			expect(document.activeElement).toBe(terminalFrame);
+		} finally {
+			paneCanvas.remove();
+		}
 	});
 });
 

@@ -1,6 +1,7 @@
 import {
 	click,
 	expectElementToContainText,
+	expectElementToHaveAttribute,
 	expectElementToBeVisible,
 	expectElementToHaveCount,
 	expectElementNotToContainText,
@@ -9,6 +10,8 @@ import {
 	getLocatorByRole,
 	getLocatorByTestId,
 	getLocatorByText,
+	pressLocatorKeyboard,
+	pressSequentially,
 	wait,
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
@@ -60,8 +63,9 @@ export class TerminalPage {
 	async run(instanceId: string, command: string): Promise<void> {
 		await this.activate(instanceId);
 		const frame = this.frame(instanceId);
+		const terminal = frame.getByTestId("ghostty-terminal");
 		await expectElementToBeVisible(
-			frame.getByTestId("ghostty-terminal"),
+			terminal,
 			`Terminal ${instanceId} should initialize ghostty-web`,
 		);
 		const status = frame.getByTestId("terminal-status");
@@ -71,10 +75,12 @@ export class TerminalPage {
 				`Terminal ${instanceId} failed to start: ${await frame.getByTestId("terminal-error").textContent()}`,
 			);
 		}
+		await expectElementToHaveAttribute(terminal, "aria-busy", "false", {
+			message: `Terminal ${instanceId} should accept input after its session snapshot`,
+		});
 		await this.#waitForPrompt(instanceId);
-		await frame.getByTestId("ghostty-terminal").click();
-		await getPage().keyboard.type(command);
-		await getPage().keyboard.press("Enter");
+		await pressSequentially(terminal, command);
+		await pressLocatorKeyboard(terminal, "Enter");
 	}
 
 	async activate(instanceId: string): Promise<void> {

@@ -5,7 +5,7 @@
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
 	"contributes": {
-		"providers": [],
+		"providers": [{ "component": "TerminalLifecycleProvider", "priority": 5 }],
 		"routes": [],
 		"nav": [],
 		"zones": [

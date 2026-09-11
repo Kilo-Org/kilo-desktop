@@ -272,11 +272,14 @@ describe("LlamaRouterManager", () => {
 		ctx.spawn.mockImplementation(() => child());
 
 		const stopped = ctx.manager.ensureRunning([]);
-		await expect(
-			Promise.race([stopped.then(() => "stopped"), delay(40).then(() => "waiting")]),
-		).resolves.toBe("waiting");
 		expect(process.killed).toBe(true);
 		expect(ctx.manager.status).toEqual({ status: "stopping" });
+		let settled = false;
+		void stopped.then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
 
 		process.exit();
 		await stopped;
@@ -331,15 +334,10 @@ describe("LlamaRouterManager", () => {
 		await vi.waitFor(() => expect(loadRequestCount).toBe(1));
 		await ctx.manager.restart(models);
 		const currentLoad = ctx.manager.prepareModel(second.id, models);
-		const currentResult = await Promise.race([
-			currentLoad.then(() => "ready"),
-			delay(20).then(() => "blocked"),
-		]);
+		await currentLoad;
 		firstLoadResponse.resolve(new Response("{}", { status: 200 }));
 
 		await expect(staleLoad).rejects.toThrow(/cancelled/);
-		await currentLoad;
-		expect(currentResult).toBe("ready");
 		expect(ctx.manager.status).toEqual({
 			status: "ready",
 			loadedModelId: second.id,
@@ -351,9 +349,12 @@ describe("LlamaRouterManager", () => {
 		const firstChild = child({ exitOnKill: false });
 		const secondChild = child();
 		const ctx = await setup(firstChild);
+		const firstHealthCheck = deferred<void>();
+		let firstHealthRequestCount = 0;
 		ctx.fetch.mockImplementation(async (url: string | URL | Request) => {
 			if (String(url).endsWith("/health") && ctx.spawn.mock.calls.length === 1) {
-				await delay(80);
+				firstHealthRequestCount += 1;
+				await firstHealthCheck.promise;
 			}
 			return new Response("{}", { status: 200 });
 		});
@@ -361,11 +362,12 @@ describe("LlamaRouterManager", () => {
 		ctx.spawn.mockReturnValueOnce(firstChild);
 
 		const first = ctx.manager.ensureRunning([model()]);
-		await vi.waitFor(() => expect(ctx.spawn).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(firstHealthRequestCount).toBe(1));
 
 		const stopped = ctx.manager.ensureRunning([]);
 		const second = ctx.manager.ensureRunning([model()]);
 		firstChild.exit();
+		firstHealthCheck.resolve(undefined);
 
 		await expect(first).rejects.toThrow(/cancelled/);
 		await stopped;
@@ -553,7 +555,3 @@ describe("LlamaRouterManager", () => {
 		]);
 	});
 });
-
-function delay(durationMs: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, durationMs));
-}

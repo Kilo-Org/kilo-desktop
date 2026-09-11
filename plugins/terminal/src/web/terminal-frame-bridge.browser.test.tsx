@@ -87,7 +87,7 @@ describe("terminal frame bridge", () => {
 		).toBeUndefined();
 	});
 
-	it("parses labels and exits only from the trusted frame", () => {
+	it("parses labels only from the trusted frame", () => {
 		const source = window;
 		const origin = "anaconda-agentic-desktop://terminal";
 		const labelMessage = {
@@ -101,12 +101,5 @@ describe("terminal frame bridge", () => {
 		expect(
 			trustedTerminalFrameMessageFrom({ ...labelMessage, source: null }, source, origin),
 		).toBeUndefined();
-
-		const exitMessage = {
-			source,
-			origin,
-			data: { type: "terminal:exited", protocolVersion: TERMINAL_PROTOCOL_VERSION },
-		};
-		expect(trustedTerminalFrameMessageFrom(exitMessage, source, origin)).toEqual(exitMessage.data);
 	});
 });

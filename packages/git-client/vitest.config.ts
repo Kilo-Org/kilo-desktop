@@ -6,6 +6,7 @@ export default defineConfig({
 	test: {
 		include: ["src/**/*.test.ts"],
 		environment: "node",
+		fileParallelism: false,
 		// Every test shells out to real git processes; on Windows each spawn
 		// costs hundreds of ms, so the multi-command conflict/pull tests
 		// exceed the 5s default on loaded CI runners.

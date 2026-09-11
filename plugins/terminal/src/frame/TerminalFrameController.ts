@@ -42,7 +42,6 @@ export class TerminalFrameController {
 	#fitAddon: FitAddon | null = null;
 	#port: MessagePort | null = null;
 	#snapshotReceived = false;
-	#exitPublished = false;
 	#disposeData: { dispose(): void } | null = null;
 	#disposeResize: { dispose(): void } | null = null;
 	#disposeScroll: { dispose(): void } | null = null;
@@ -321,6 +320,7 @@ export class TerminalFrameController {
 		this.#resizeObserver.observe(this.#elements.container);
 		this.#fitAddon.fit();
 		this.#send({ type: "resize", cols: this.#terminal.cols, rows: this.#terminal.rows });
+		this.#elements.container.setAttribute("aria-busy", "false");
 	}
 
 	#handleServerMessage(message: TerminalServerMessage): void {
@@ -328,10 +328,6 @@ export class TerminalFrameController {
 		switch (message.type) {
 			case "snapshot":
 				this.#publishLabel(message.label);
-				if (message.status === "exited") {
-					this.#publishExited();
-					break;
-				}
 				this.#setStatus(message.status, message.exitCode, message.exitSignal);
 				if (message.history) {
 					this.#fitAddon?.fit();
@@ -340,7 +336,7 @@ export class TerminalFrameController {
 					this.#scheduleScrollbarSync();
 					this.#appendAccessibleOutput(message.history);
 				}
-				this.#enableLiveInput();
+				if (message.status !== "exited" && message.status !== "closed") this.#enableLiveInput();
 				break;
 			case "output":
 				if (!this.#snapshotReceived) return;
@@ -359,10 +355,6 @@ export class TerminalFrameController {
 				this.#publishLabel(message.label);
 				break;
 			case "status":
-				if (message.status === "exited") {
-					this.#publishExited();
-					break;
-				}
 				this.#setStatus(message.status, message.exitCode ?? null, message.exitSignal ?? null);
 				break;
 			case "error":
@@ -376,15 +368,6 @@ export class TerminalFrameController {
 				break;
 			}
 		}
-	}
-
-	#publishExited(): void {
-		if (this.#exitPublished) return;
-		this.#exitPublished = true;
-		this.#window.parent.postMessage(
-			{ type: "terminal:exited", protocolVersion: TERMINAL_PROTOCOL_VERSION },
-			this.#trustedParentOrigin,
-		);
 	}
 
 	#publishLabel(label: string): void {

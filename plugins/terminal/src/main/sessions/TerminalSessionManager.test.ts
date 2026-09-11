@@ -79,6 +79,7 @@ async function setup(
 		resolveCwd?: (cwd?: string) => Promise<string>;
 		logger?: { error(message: string, ...args: unknown[]): void };
 		platform?: NodeJS.Platform;
+		onSessionExited?: (identity: { sessionId: string; terminalId: string }) => void;
 	} = {},
 ) {
 	const storageDir = await mkdtemp(path.join(os.tmpdir(), "terminal-plugin-"));
@@ -104,6 +105,7 @@ async function setup(
 			? { processPollIntervalMs: options.processPollIntervalMs }
 			: {}),
 		...(options.logger ? { logger: options.logger } : {}),
+		...(options.onSessionExited ? { onSessionExited: options.onSessionExited } : {}),
 	});
 	const args: TerminalConnectionArgs = {
 		protocolVersion: TERMINAL_PROTOCOL_VERSION,
@@ -180,6 +182,21 @@ describe("TerminalSessionManager", () => {
 		await vi.waitFor(() =>
 			expect(port.messages).toContainEqual({ type: "error", message: "The shell is not running." }),
 		);
+		await manager.dispose();
+	});
+
+	it("publishes the authoritative terminal identity when the PTY exits", async () => {
+		const onSessionExited = vi.fn();
+		const { args, manager, processes } = await setup({ onSessionExited });
+		await manager.attach(new FakePort(), args);
+
+		processes[0]!.emitExit({ exitCode: 0, signal: null });
+
+		expect(onSessionExited).toHaveBeenCalledOnce();
+		expect(onSessionExited).toHaveBeenCalledWith({
+			sessionId: "chat-1",
+			terminalId: "terminal-1",
+		});
 		await manager.dispose();
 	});
 

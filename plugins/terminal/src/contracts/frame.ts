@@ -43,14 +43,8 @@ export const terminalFrameLabelSchema = z.object({
 	label: terminalLabelSchema,
 });
 
-export const terminalFrameExitedSchema = z.object({
-	type: z.literal("terminal:exited"),
-	protocolVersion: z.literal(TERMINAL_PROTOCOL_VERSION),
-});
-
 export const terminalFrameHostMessageSchema = z.discriminatedUnion("type", [
 	terminalFrameReadySchema,
 	terminalFrameLabelSchema,
-	terminalFrameExitedSchema,
 ]);
 export type TerminalFrameHostMessage = z.infer<typeof terminalFrameHostMessageSchema>;

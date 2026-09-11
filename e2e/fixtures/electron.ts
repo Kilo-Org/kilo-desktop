@@ -69,15 +69,19 @@ type ElectronFixtures = {
 };
 
 type ElectronWorkerFixtures = {
+	appIsolationKey: string;
+	appLaunchEnv: Record<string, string>;
 	sharedApp: ElectronApplication;
 };
 
-async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: string }> {
+async function launchApp(
+	envOverrides: Readonly<Record<string, string>>,
+): Promise<{ app: ElectronApplication; userDataDir: string }> {
 	const userDataDir = await mkdtemp(path.join(os.tmpdir(), "aad-e2e-"));
 	const app = await electron.launch({
 		executablePath: packagedExecutable(),
 		args: [`--user-data-dir=${userDataDir}`],
-		env: packagedAppLaunchEnv(),
+		env: packagedAppLaunchEnv({ ...process.env, ...envOverrides }),
 	});
 	return { app, userDataDir };
 }
@@ -117,11 +121,16 @@ async function stopApp(app: ElectronApplication): Promise<void> {
  * `electronApp` rebinds the page singleton and resets the hash between tests.
  */
 export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerFixtures>({
+	appIsolationKey: ["shared", { scope: "worker", option: true }],
+	appLaunchEnv: [{}, { scope: "worker", option: true }],
+
 	sharedApp: [
-		// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
-		async ({}, use) => {
+		async ({ appIsolationKey, appLaunchEnv }, use) => {
+			// Depending on the option gives each distinct key its own worker, app,
+			// and temporary profile while preserving sharing within that group.
+			void appIsolationKey;
 			await killStrayProcesses();
-			const { app, userDataDir } = await launchApp();
+			const { app, userDataDir } = await launchApp(appLaunchEnv);
 			await use(app);
 			await stopApp(app);
 			await Promise.all([

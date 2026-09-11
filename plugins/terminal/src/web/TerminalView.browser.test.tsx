@@ -5,7 +5,12 @@ import { page } from "vitest/browser";
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
-import { TERMINAL_PROTOCOL_VERSION, terminalContract } from "../contracts/session.js";
+import {
+	TERMINAL_PROTOCOL_VERSION,
+	TERMINAL_SESSION_EXITED,
+	terminalContract,
+} from "../contracts/session.js";
+import { TerminalLifecycleProvider } from "./TerminalLifecycleProvider.js";
 import { TerminalView, type TerminalViewProps } from "./TerminalView.js";
 
 afterEach(() => {
@@ -58,13 +63,15 @@ function renderView(
 	});
 	const result = render(
 		<SdkProvider system={system}>
-			<TerminalView
-				sessionId={props.sessionId ?? "chat-1"}
-				instanceId={props.instanceId ?? "terminal-1"}
-				title={props.title ?? "Terminal 1"}
-				workspaceFolders={workspaceFolders}
-				{...(props.metadata ? { metadata: props.metadata } : {})}
-			/>
+			<TerminalLifecycleProvider>
+				<TerminalView
+					sessionId={props.sessionId ?? "chat-1"}
+					instanceId={props.instanceId ?? "terminal-1"}
+					title={props.title ?? "Terminal 1"}
+					workspaceFolders={workspaceFolders}
+					{...(props.metadata ? { metadata: props.metadata } : {})}
+				/>
+			</TerminalLifecycleProvider>
 		</SdkProvider>,
 	);
 	return {
@@ -124,33 +131,28 @@ describe("TerminalView", () => {
 	});
 
 	it("deletes an exited terminal session and closes its host tab", async () => {
-		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
-		const { close, closeTab } = renderView([{ path: "/workspace", isPrimary: true }]);
-		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="terminal-frame"]');
-		if (!frame?.contentWindow) throw new Error("Expected terminal iframe window");
+		const { close, closeTab, registerTabLifecycle, system } = renderView([], {
+			sessionId: "remote-chat-1",
+			metadata: { terminalSessionId: "local-chat-1" },
+		});
+		await vi.waitFor(() => expect(registerTabLifecycle).toHaveBeenCalledOnce());
 
-		window.dispatchEvent(
-			new MessageEvent("message", {
-				origin: "https://terminal.test",
-				source: frame.contentWindow,
-				data: { type: "terminal:exited", protocolVersion: TERMINAL_PROTOCOL_VERSION },
-			}),
-		);
+		system.getSdk("terminal").events.emit(TERMINAL_SESSION_EXITED, {
+			sessionId: "local-chat-1",
+			terminalId: "terminal-1",
+		});
 
-		await vi.waitFor(() => expect(closeTab).toHaveBeenCalledWith("chat-1", "terminal-1"));
+		await vi.waitFor(() => expect(closeTab).toHaveBeenCalledWith("remote-chat-1", "terminal-1"));
 		expect(close).toHaveBeenCalledWith({
-			sessionId: "chat-1",
+			sessionId: "local-chat-1",
 			terminalId: "terminal-1",
 			deleteHistory: true,
 		});
 
-		window.dispatchEvent(
-			new MessageEvent("message", {
-				origin: "https://terminal.test",
-				source: frame.contentWindow,
-				data: { type: "terminal:exited", protocolVersion: TERMINAL_PROTOCOL_VERSION },
-			}),
-		);
+		system.getSdk("terminal").events.emit(TERMINAL_SESSION_EXITED, {
+			sessionId: "local-chat-1",
+			terminalId: "terminal-1",
+		});
 		expect(close).toHaveBeenCalledOnce();
 	});
 
@@ -245,12 +247,14 @@ describe("TerminalView", () => {
 
 		view.rerender(
 			<SdkProvider system={view.system}>
-				<TerminalView
-					sessionId="chat-1"
-					instanceId="terminal-1"
-					title="Terminal 1"
-					workspaceFolders={[{ path: "/workspace-two", isPrimary: true }]}
-				/>
+				<TerminalLifecycleProvider>
+					<TerminalView
+						sessionId="chat-1"
+						instanceId="terminal-1"
+						title="Terminal 1"
+						workspaceFolders={[{ path: "/workspace-two", isPrimary: true }]}
+					/>
+				</TerminalLifecycleProvider>
 			</SdkProvider>,
 		);
 		for (const listener of themeListeners) listener("dark");

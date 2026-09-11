@@ -453,7 +453,9 @@ const Composer: FC = () => {
 	};
 
 	useEffect(() => {
-		if (!isDraft || isConnecting) return;
+		const activeElement = document.activeElement;
+		const paneOwnsFocus = activeElement?.closest('[data-qa-id="kilo-chat-pane-canvas"]');
+		if (!isDraft || isConnecting || paneOwnsFocus) return;
 		inputRef.current?.focus({ preventScroll: true });
 	}, [activeThreadId, isConnecting, isDraft]);
 
@@ -578,7 +580,6 @@ const Composer: FC = () => {
 					placeholder="Send a message..."
 					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none disabled:cursor-not-allowed"
 					minRows={2}
-					autoFocus
 					enterKeyHint="send"
 					aria-label="Message input"
 					disabled={isConnecting}

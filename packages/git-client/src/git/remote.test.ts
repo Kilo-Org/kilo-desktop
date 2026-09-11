@@ -50,6 +50,7 @@ describe("git/remote", () => {
 			});
 			await gitExec(["push", "-u", "origin", "HEAD:main"], repoPath);
 			await gitExec(["fetch", "origin"], repoPath);
+			await gitExec(["remote", "set-head", "origin", "--delete"], repoPath);
 
 			await expect(getRemoteHEAD(execFor(repoPath), "origin")).resolves.toBe(null);
 		});

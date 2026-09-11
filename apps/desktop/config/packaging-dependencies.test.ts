@@ -65,6 +65,11 @@ describe("packaged production dependencies", () => {
 		expect(forge).not.toContain('"--legacy"');
 	});
 
+	it("moves the staged production dependency tree into the package", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toContain("await moveDirectory(stagedNodeModules, packagedNodeModules)");
+	});
+
 	it("stages the isolated WebMCP runtime from a workspace-local deploy", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		// Electron-packager dest is outside the repo. `pnpm deploy --offline`

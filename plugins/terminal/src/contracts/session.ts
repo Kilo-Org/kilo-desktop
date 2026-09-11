@@ -8,13 +8,21 @@ import {
 
 export const TERMINAL_PROTOCOL_VERSION = 2;
 export const MAX_TERMINAL_LABEL_LENGTH = 128;
+export const TERMINAL_FEATURE_ID = "terminal";
+export const TERMINAL_SESSION_EXITED = "session-exited";
+export const TERMINAL_SESSION_EXITED_EVENT =
+	`${TERMINAL_FEATURE_ID}.${TERMINAL_SESSION_EXITED}` as const;
 
 export const terminalLabelSchema = z.string().min(1).max(MAX_TERMINAL_LABEL_LENGTH);
 
-const terminalIdentitySchema = z.object({
+export const terminalIdentitySchema = z.object({
 	sessionId: z.string().min(1).max(512),
 	terminalId: z.string().min(1).max(512),
 });
+export type TerminalIdentity = z.infer<typeof terminalIdentitySchema>;
+
+export const terminalSessionExitedSchema = terminalIdentitySchema;
+export type TerminalSessionExited = z.infer<typeof terminalSessionExitedSchema>;
 
 export const terminalConnectionArgsSchema = terminalIdentitySchema.extend({
 	protocolVersion: z.literal(TERMINAL_PROTOCOL_VERSION),

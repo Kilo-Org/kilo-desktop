@@ -8,6 +8,7 @@ import {
 	MAX_TERMINAL_LABEL_LENGTH,
 	terminalClientMessageSchema,
 	type TerminalConnectionArgs,
+	type TerminalIdentity,
 	type TerminalServerMessage,
 	type TerminalStatus,
 } from "../../contracts/session.js";
@@ -57,6 +58,7 @@ export interface TerminalSessionManagerOptions {
 	readonly killGraceMs?: number;
 	readonly inspectForegroundProcess?: (terminalPid: number) => Promise<string | null>;
 	readonly processPollIntervalMs?: number;
+	readonly onSessionExited?: (identity: TerminalIdentity) => void;
 	readonly logger?: Pick<MainSdkLogger, "error">;
 }
 
@@ -84,6 +86,7 @@ export class TerminalSessionManager {
 	readonly #killGraceMs: number;
 	readonly #inspectForegroundProcess: (terminalPid: number) => Promise<string | null>;
 	readonly #processPollIntervalMs: number;
+	readonly #onSessionExited: (identity: TerminalIdentity) => void;
 	readonly #logger: Pick<MainSdkLogger, "error">;
 	#processPollTimer: ReturnType<typeof setTimeout> | null = null;
 	#processPollRunning = false;
@@ -99,6 +102,7 @@ export class TerminalSessionManager {
 		this.#killGraceMs = options.killGraceMs ?? 1_000;
 		this.#inspectForegroundProcess = options.inspectForegroundProcess ?? inspectForegroundProcess;
 		this.#processPollIntervalMs = options.processPollIntervalMs ?? 1_000;
+		this.#onSessionExited = options.onSessionExited ?? (() => undefined);
 		this.#logger = options.logger ?? { error: () => undefined };
 	}
 
@@ -373,6 +377,7 @@ export class TerminalSessionManager {
 			exitCode: event.exitCode,
 			exitSignal: event.signal,
 		});
+		this.#onSessionExited({ sessionId: session.sessionId, terminalId: session.terminalId });
 	}
 
 	#detachProcess(session: Session) {

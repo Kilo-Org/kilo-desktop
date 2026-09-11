@@ -19,6 +19,7 @@ export default defineConfig({
 	outputDir: path.join(repoRoot, "test-results"),
 	fullyParallel: false,
 	forbidOnly: isCI,
+	failOnFlakyTests: isCI,
 	workers: 1,
 	retries: isCI ? 2 : 0,
 	timeout: Timeouts.TEST_TIMEOUT * 3,

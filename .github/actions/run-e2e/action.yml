@@ -24,17 +24,18 @@ inputs:
 runs:
   using: composite
   steps:
-    # --with-deps is only needed on Linux. On Windows it runs a slow, silent
-    # Media Foundation DISM install (~3min) that the e2e tests don't need.
-    - name: Install Playwright browsers (Linux)
-      if: runner.os == 'Linux'
-      shell: bash
-      run: pnpm --filter @anaconda-agentic-desktop/e2e exec playwright install chromium --with-deps
+    - uses: ./.github/actions/install-test-runtime
+      with:
+        runtime: electron
+        package-name: "@anaconda-agentic-desktop/desktop"
 
-    - name: Install Playwright browsers (macOS/Windows)
-      if: runner.os != 'Linux'
-      shell: bash
-      run: pnpm --filter @anaconda-agentic-desktop/e2e exec playwright install chromium
+    # --with-deps is only enabled on Linux. On Windows it runs a slow, silent
+    # Media Foundation DISM install (~3min) that the e2e tests don't need.
+    - uses: ./.github/actions/install-test-runtime
+      with:
+        runtime: playwright
+        package-name: "@anaconda-agentic-desktop/e2e"
+        with-deps: ${{ runner.os == 'Linux' }}
 
     - uses: ./plugins/notebook/actions/setup-native
 

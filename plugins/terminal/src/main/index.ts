@@ -9,6 +9,7 @@ import { TERMINAL_HOST } from "../contracts/frame.js";
 import {
 	terminalConnectionArgsSchema,
 	terminalContract,
+	TERMINAL_SESSION_EXITED,
 	type TerminalConnectionArgs,
 	type TerminalService,
 } from "../contracts/session.js";
@@ -39,6 +40,7 @@ export function mainRegister(mainSdk: MainSdk, options: TerminalFeatureOptions =
 			adapter: options.adapter ?? new NodePtyAdapter(),
 			storageDir: mainSdk.storageDir,
 			resolveCwd: createTerminalCwdResolver(mainSdk),
+			onSessionExited: (identity) => mainSdk.events.emit(TERMINAL_SESSION_EXITED, identity),
 			logger: mainSdk.logger,
 		});
 	mainSdk.onDispose(() => manager.dispose());

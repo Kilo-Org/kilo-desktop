@@ -1074,8 +1074,8 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@kilocode/sdk':
-        specifier: 7.5.5
-        version: 7.5.5
+        specifier: 7.6.2
+        version: 7.6.2
       '@lobehub/icons':
         specifier: ^5.15.0
         version: 5.15.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
@@ -1204,8 +1204,8 @@ importers:
   plugins/kilo-ui/opencode-sdk-compat:
     dependencies:
       '@kilocode/sdk':
-        specifier: 7.5.5
-        version: 7.5.5
+        specifier: 7.6.2
+        version: 7.6.2
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2756,8 +2756,8 @@ packages:
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
 
-  '@kilocode/sdk@7.5.5':
-    resolution: {integrity: sha512-qoJjNZpFxGQ5abXmtNEXFpcp1lDigam0zFSh3h6B4sC9IUY19XSplJsSAGbvoPhYAwQcgxvbW/qlCLwFTcowOA==}
+  '@kilocode/sdk@7.6.2':
+    resolution: {integrity: sha512-m9fSEUEY8Jg3VN3ZSsgu3aeSOJY0dNzXsUjSlCKbf/BFA33/jv5s255tzRXp925ReJ7qyf2XHs/eu0hpjz6SaA==}
 
   '@launchdarkly/js-client-sdk-common@1.30.2':
     resolution: {integrity: sha512-qpO5gSNX5WbqM03LMCKxOh8dR7Rl1iPxcsXXY//XUNlVbZ1YLrJfqVkSrOYfZHxO8PQMSPa/GFwNWSCwfapjPw==}
@@ -2816,6 +2816,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
+      zod: ^3.25 || ^4.0
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -10808,7 +10809,7 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
-  '@kilocode/sdk@7.5.5':
+  '@kilocode/sdk@7.6.2':
     dependencies:
       cross-spawn: 7.0.6
 
@@ -10846,7 +10847,7 @@ snapshots:
 
   '@mcp-b/webmcp-local-relay@4.0.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)
+      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@3.25.76)
       ws: 8.21.3
       zod: 3.25.76
     transitivePeerDependencies:
@@ -10872,7 +10873,7 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)':
+  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@3.25.76)':
     dependencies:
       '@hono/node-server': 1.19.17(hono@4.12.32)
       ajv: 8.20.0
@@ -10889,7 +10890,7 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.4.3
+      zod: 3.25.76
       zod-to-json-schema: 3.25.2(zod@4.4.3)
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1

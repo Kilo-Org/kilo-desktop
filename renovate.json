@@ -4,6 +4,11 @@
 	"rangeStrategy": "replace",
 	"packageRules": [
 		{
+			"description": "Exclude all @assistant-ui packages from automated updates",
+			"enabled": false,
+			"matchPackageNames": ["@assistant-ui/**"]
+		},
+		{
 			"description": "Group Sentry packages so @sentry/react and @sentry/electron are always bumped together. They share a @sentry/core peer and split installs cause duplicate-module type errors.",
 			"matchPackageNames": ["@sentry/react", "@sentry/electron", "@sentry/vite-plugin"],
 			"groupName": "Sentry packages"

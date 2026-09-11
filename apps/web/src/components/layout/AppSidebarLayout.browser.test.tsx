@@ -561,6 +561,35 @@ describe("AppSidebarLayout account menu", () => {
 describe("AppSidebarLayout settings takeover", () => {
 	afterEach(cleanup);
 
+	it("opens Settings with Cmd+, from a focused input, but ignores other comma combinations", async () => {
+		const { unmount } = renderLayout(fakeLocalApi({ status: "anonymous" }), "/", (system) => {
+			system.getSdk("auth").contribute("sidebar", {
+				id: "shortcut-input",
+				label: "Shortcut input",
+				component: () => <input aria-label="Shortcut input" />,
+			});
+		});
+		const input = page.getByRole("textbox", { name: "Shortcut input" });
+		await input.click();
+
+		for (const modifiers of [
+			{},
+			{ ctrlKey: true },
+			{ metaKey: true, altKey: true },
+			{ metaKey: true, shiftKey: true },
+			{ metaKey: true, ctrlKey: true },
+		]) {
+			expect(fireEvent.keyDown(input.element(), { key: ",", ...modifiers })).toBe(true);
+		}
+		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
+
+		expect(fireEvent.keyDown(input.element(), { key: ",", metaKey: true })).toBe(false);
+		await expect.element(page.getByTestId("settings-back")).toBeVisible();
+
+		unmount();
+		expect(fireEvent.keyDown(window, { key: ",", metaKey: true })).toBe(true);
+	});
+
 	it("replaces plugin nav with the settings siderail on /settings", async () => {
 		renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
 

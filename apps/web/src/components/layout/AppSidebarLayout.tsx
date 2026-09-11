@@ -1,5 +1,5 @@
 import { useEffect, type CSSProperties, type ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LogInIcon, LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
@@ -214,6 +214,24 @@ export function AppSidebarLayout({
 	settingsSections = EMPTY_SETTINGS,
 	pages = EMPTY_PAGES,
 }: AppSidebarLayoutProps) {
+	const navigate = useNavigate();
+	useEffect(() => {
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (
+				event.key === "," &&
+				event.metaKey &&
+				!event.ctrlKey &&
+				!event.altKey &&
+				!event.shiftKey
+			) {
+				event.preventDefault();
+				void navigate({ to: "/settings" });
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [navigate]);
+
 	const location = useRouterState({ select: (state) => state.location });
 	const pathname = location.pathname;
 	// PAGE_VISIT is a shell-level, cross-feature concern, so it uses the

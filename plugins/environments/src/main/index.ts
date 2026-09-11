@@ -58,9 +58,11 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  * Constructing and exposing it performs no I/O; when the flag is off, the
  * bridge is not started until a consumer actually calls `ensureEnvironment`.
  *
- * When enabled: boots registered providers sequentially (resolving the bridge
- * payload, constructing the backend), then binds their handlers. Async so
- * the shell can await provider boot and deliver progress to the splash.
+ * When enabled: boots registered providers sequentially (resolving the
+ * bridge payload, constructing the backend, and kicking off a
+ * fire-and-forget bridge warm-up so the first renderer call doesn't pay
+ * cold-start latency), then binds their handlers. Async so the shell can
+ * await provider boot and deliver progress to the splash.
  *
  * A single {@link JobQueue} is created here and shared across every
  * registered provider — sub-issue 5's shared write-serialization + read

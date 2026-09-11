@@ -1441,4 +1441,48 @@ describe("SidecarCondaBackend", () => {
 			expect(mockProcess.kill).toHaveBeenCalledWith("SIGTERM");
 		});
 	});
+
+	describe("warmUp()", () => {
+		it("starts the bridge process ahead of the first call, which then reuses the connection", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda_tools.describe_environments") {
+					return Promise.resolve({ environments: [{ name: "base", prefix: "/opt/conda" }] });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.warmUp();
+			expect(spawn).toHaveBeenCalledTimes(1);
+
+			// The first real call finds the warmed-up connection — no respawn.
+			await backend.list();
+			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+
+		it("shares one in-flight spawn when a real call races the warm-up", async () => {
+			// Gate the health check so warmUp() and list() overlap mid-startup;
+			// both must ride the same spawn instead of launching two processes.
+			let releaseHealthCheck!: (value: unknown) => void;
+			const healthCheckGate = new Promise((resolve) => {
+				releaseHealthCheck = resolve;
+			});
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return healthCheckGate;
+				if (method === "conda_tools.describe_environments") {
+					return Promise.resolve({ environments: [{ name: "base", prefix: "/opt/conda" }] });
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const warmUp = backend.warmUp();
+			const list = backend.list();
+			releaseHealthCheck({});
+			await Promise.all([warmUp, list]);
+
+			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+	});
 });

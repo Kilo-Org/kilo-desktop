@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
 import type { FakeMainSdk } from "@anaconda-agentic-desktop/testing";
@@ -7,6 +7,7 @@ import type { EnvironmentsCapabilities } from "../contracts/capabilities.js";
 
 import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
 import { CondaProvider } from "./providers/conda/index.js";
+import { SidecarCondaBackend } from "./providers/conda/SidecarCondaBackend.js";
 
 vi.mock("./providers/conda/resolveBridgePath.js", () => ({
 	resolveBridge: vi.fn(() => ({ kind: "not-found", searchedPaths: ["/fake/path"] })),
@@ -60,6 +61,12 @@ function setupFakeBridge(): void {
 }
 
 describe("environments plugin main entry", () => {
+	beforeEach(() => {
+		// Provider boot kicks off a fire-and-forget bridge warm-up; stub it
+		// at the prototype seam so these tests never spawn a real sidecar.
+		vi.spyOn(SidecarCondaBackend.prototype, "warmUp").mockResolvedValue(undefined);
+	});
+
 	afterEach(() => {
 		vi.restoreAllMocks();
 		// Reset module-level vi.fn mocks so a previous test's
@@ -83,6 +90,15 @@ describe("environments plugin main entry", () => {
 		await mainRegister(mainSdk);
 
 		expect(mockedResolveBridge).toHaveBeenCalled();
+	});
+
+	it("kicks off bridge warm-up during provider boot (fire-and-forget)", async () => {
+		setupFakeBridge();
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
+
+		await mainRegister(mainSdk);
+
+		expect(SidecarCondaBackend.prototype.warmUp).toHaveBeenCalledTimes(1);
 	});
 
 	it("degrades gracefully when provider boot fails (bridge payload not found)", async () => {

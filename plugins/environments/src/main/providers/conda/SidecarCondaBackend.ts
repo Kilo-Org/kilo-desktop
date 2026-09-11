@@ -8,7 +8,9 @@
  * stdin/stdout (Content-Length framed, same protocol as LSP/pygls).
  *
  * Lifecycle:
- * - The bridge process is lazily started on the first call.
+ * - The bridge process is lazily started on the first call, or earlier via
+ *   an explicit `warmUp()` (CondaProvider fires one during plugin boot so
+ *   the first renderer call doesn't pay cold-start latency).
  * - It stays alive for the lifetime of the plugin.
  * - On unexpected exit, it restarts with exponential backoff (max 3 retries).
  * - `dispose()` tears down the process cleanly.
@@ -498,6 +500,20 @@ export class SidecarCondaBackend implements CondaBackend {
 	}
 
 	// ─── Lifecycle ────────────────────────────────────────────────────────
+
+	/**
+	 * Start the bridge process ahead of the first real call. Resolves once
+	 * the startup health check passes; rejects when startup fails (the
+	 * existing restart-on-exit and retry-on-next-call machinery still
+	 * applies, so a rejected warm-up is not terminal).
+	 *
+	 * Shares `#ensureConnection`'s in-flight dedup: a call that arrives
+	 * while the warm-up spawn is still starting awaits the same connection
+	 * instead of launching a second process.
+	 */
+	async warmUp(): Promise<void> {
+		await this.#ensureConnection();
+	}
 
 	dispose(): void {
 		this.#disposed = true;

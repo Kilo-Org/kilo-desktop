@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
@@ -19,6 +19,12 @@ import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
  * - `webComponents` exposes the placeholder shape the interface requires.
  */
 describe("CondaProvider", () => {
+	beforeEach(() => {
+		// boot() kicks off a fire-and-forget bridge warm-up; stub it at the
+		// prototype seam so these unit tests never spawn a real sidecar.
+		vi.spyOn(SidecarCondaBackend.prototype, "warmUp").mockResolvedValue(undefined);
+	});
+
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
@@ -105,6 +111,47 @@ describe("CondaProvider", () => {
 			"conda.packages.update",
 			"conda.repodata.find",
 		]);
+	});
+
+	it("boot() kicks off the bridge warm-up during the boot window", async () => {
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "found",
+			info: {
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			},
+		});
+		const provider = new CondaProvider();
+		const mainSdk = createFakeMainSdk({ featureId: "environments" });
+
+		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+
+		expect(SidecarCondaBackend.prototype.warmUp).toHaveBeenCalledTimes(1);
+		mainSdk.dispose();
+	});
+
+	it("boot() resolves even when the bridge warm-up fails (first real call retries)", async () => {
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "found",
+			info: {
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			},
+		});
+		// Fire-and-forget: a failed warm-up is logged and swallowed inside
+		// boot() — it must not fail the provider boot (which would skip the
+		// provider's handlers entirely) nor surface as an unhandled rejection.
+		vi.mocked(SidecarCondaBackend.prototype.warmUp).mockRejectedValue(new Error("spawn failed"));
+		const provider = new CondaProvider();
+		const mainSdk = createFakeMainSdk({ featureId: "environments" });
+
+		await expect(
+			provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger }),
+		).resolves.toBeUndefined();
+
+		mainSdk.dispose();
 	});
 
 	it("boot() throws with searched paths when the bridge payload is missing", async () => {

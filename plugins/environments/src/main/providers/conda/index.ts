@@ -7,7 +7,6 @@ import type {
 	ProviderWebComponents,
 } from "../../EnvironmentProvider.js";
 
-import type { CondaBackend } from "./CondaBackend.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import { registerCondaHandlers } from "./handlers.js";
 import { resolveBridge } from "./resolveBridgePath.js";
@@ -20,7 +19,9 @@ import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
  * - Constructed: `#backend` is `undefined`; handlers registered before
  *   `boot()` completes would fail loudly.
  * - After `boot()`: `#backend` is a live {@link SidecarCondaBackend}
- *   (JSON-RPC to the anaconda-bridge-sidecar binary).
+ *   (JSON-RPC to the anaconda-bridge-sidecar binary) with a fire-and-forget
+ *   warm-up spawn already in flight, so the first renderer call usually
+ *   finds the bridge up.
  * - After `registerHandlers()`: conda channels are served.
  *
  * `webComponents` stays as placeholder function references on the
@@ -38,7 +39,10 @@ export class CondaProvider implements EnvironmentProvider {
 		PackagesPanel: () => null,
 	};
 
-	#backend: CondaBackend | undefined;
+	// Concrete type, not the `CondaBackend` swap seam: this class owns the
+	// sidecar lifecycle (warm-up at boot, dispose on shutdown), which the
+	// handler-facing interface deliberately doesn't expose.
+	#backend: SidecarCondaBackend | undefined;
 
 	async boot(ctx: ProviderBootContext): Promise<void> {
 		const result = resolveBridge();
@@ -55,6 +59,16 @@ export class CondaProvider implements EnvironmentProvider {
 		this.#backend = new SidecarCondaBackend({
 			command: result.info.command,
 			logger: ctx.logger,
+		});
+		// Fire-and-forget: spawn the bridge during the boot window so the
+		// first renderer call doesn't pay cold-start latency. The backend
+		// dedupes a racing call against this in-flight spawn, and a failed
+		// warm-up self-heals (restart-on-exit, retry on next call) — so it
+		// must neither block nor fail the provider boot.
+		void this.#backend.warmUp().catch((error: unknown) => {
+			ctx.logger.warn("[conda-provider] bridge warm-up failed; will retry on first use", {
+				error,
+			});
 		});
 	}
 

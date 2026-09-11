@@ -579,7 +579,7 @@ const Composer: FC = () => {
 				<ComposerPrimitive.Input
 					ref={inputRef}
 					placeholder="Send a message..."
-					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none disabled:cursor-not-allowed"
+					className="aui-composer-input caret-foreground placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none disabled:cursor-not-allowed"
 					minRows={2}
 					enterKeyHint="send"
 					aria-label="Message input"

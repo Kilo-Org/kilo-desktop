@@ -31,7 +31,7 @@ index 2222222..3333333 100644
 +three
 `;
 
-function createFakeViewer(): CodeViewHandle<undefined> {
+function createFakeViewer(): CodeViewHandle<undefined, undefined> {
 	return {
 		addItems: vi.fn(),
 		getItem: () => undefined,
@@ -49,8 +49,8 @@ function createFakeViewer(): CodeViewHandle<undefined> {
 
 /** Test-owned ref so a "new viewer" after supersession can be simulated. */
 function createViewerRef(
-	viewer: CodeViewHandle<undefined>,
-): RefObject<CodeViewHandle<undefined> | null> {
+	viewer: CodeViewHandle<undefined, undefined>,
+): RefObject<CodeViewHandle<undefined, undefined> | null> {
 	return { current: viewer };
 }
 
@@ -59,7 +59,7 @@ function PatchLoaderHarness({
 	viewerRef,
 }: {
 	workspaceDirectory: string;
-	viewerRef: RefObject<CodeViewHandle<undefined> | null>;
+	viewerRef: RefObject<CodeViewHandle<undefined, undefined> | null>;
 }) {
 	const result = usePatchLoader({ collapseMode: "expanded", workspaceDirectory, viewerRef });
 	return (

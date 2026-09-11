@@ -26,7 +26,7 @@ export interface GitDiffItemIdRename {
 }
 
 interface CodeViewPathState {
-	currentItem: CodeViewItem;
+	currentItem: CodeViewItem<undefined>;
 	currentItemId: string;
 	currentType: ChangeTypes;
 	sawDeleted: boolean;
@@ -35,7 +35,7 @@ interface CodeViewPathState {
 export interface GitDiffDataAccumulator {
 	diffStats: GitDiffStats;
 	gitStatusByPath: Map<string, GitStatusEntry>;
-	items: CodeViewItem[];
+	items: CodeViewItem<undefined>[];
 	// The last tree source emitted by snapshotGitDiffTreeSource for this
 	// accumulator. Each new snapshot links back to this so the consumer can
 	// recognize append-only growth and skip the full PathStore rebuild.
@@ -43,8 +43,8 @@ export interface GitDiffDataAccumulator {
 	nextCollisionSuffixByBase: Map<string, number>;
 	pendingGitStatusRemovePaths: Set<string>;
 	pendingGitStatusSetByPath: Map<string, GitStatusEntry>;
-	pendingItems: CodeViewItem[];
-	pendingItemById: Map<string, CodeViewItem>;
+	pendingItems: CodeViewItem<undefined>[];
+	pendingItemById: Map<string, CodeViewItem<undefined>>;
 	pathToItemId: Map<string, string>;
 	pathStateByTreePath: Map<string, CodeViewPathState>;
 	paths: string[];
@@ -92,7 +92,7 @@ export function appendFileDiffToGitDiffData(
 			: renameCurrentPathItem(accumulator, path, previousPathState);
 	const id = accumulator.usedItemIds.has(path) ? createFallbackItemId(accumulator, path) : path;
 
-	const item: CodeViewItem = {
+	const item: CodeViewItem<undefined> = {
 		id,
 		type: "diff",
 		fileDiff,
@@ -122,7 +122,9 @@ export function appendFileDiffToGitDiffData(
 	return itemIdRename;
 }
 
-export function takePendingGitDiffItems(accumulator: GitDiffDataAccumulator): CodeViewItem[] {
+export function takePendingGitDiffItems(
+	accumulator: GitDiffDataAccumulator,
+): CodeViewItem<undefined>[] {
 	const { pendingItems } = accumulator;
 	accumulator.pendingItems = [];
 	accumulator.pendingItemById.clear();

@@ -1,5 +1,5 @@
 import type { FileContents, FileOptions } from "@pierre/diffs";
-import { Editor, type EditorOptions } from "@pierre/diffs/edit";
+import { Editor, type EditorOptions, type EditorType } from "@pierre/diffs/edit";
 import { EditProvider, File, Virtualizer } from "@pierre/diffs/react";
 import { memo, useMemo, type ReactNode } from "react";
 
@@ -11,7 +11,7 @@ interface FileEditorProps {
 	readonly theme: "dark" | "light";
 	readonly reloadVersion: number;
 	readonly documentRevision: string | null;
-	readonly editorOptions: EditorOptions<undefined>;
+	readonly editorOptions: EditorOptions<"file", undefined, undefined>;
 }
 
 const FILE_EDITOR_SURFACE_CSS = `
@@ -24,8 +24,12 @@ const FILE_EDITOR_SURFACE_CSS = `
 	}
 `;
 
-function createEditor(options: EditorOptions<undefined>): Editor<undefined> {
-	return new Editor(options);
+function createEditor<EType extends EditorType>(
+	editorType: EType,
+	options: EditorOptions<EType, undefined, undefined>,
+	editStateKey?: string,
+): Editor<EType, undefined, undefined> {
+	return new Editor(editorType, options, editStateKey);
 }
 
 export function FilesEditProvider({ children }: { readonly children: ReactNode }) {
@@ -50,7 +54,7 @@ export const FileEditor = memo(function FileEditor({
 		}),
 		[contents, documentRevision, relativePath, reloadVersion],
 	);
-	const options = useMemo<FileOptions<undefined>>(
+	const options = useMemo<FileOptions<undefined, undefined>>(
 		() => ({
 			disableFileHeader: true,
 			overflow: "wrap",

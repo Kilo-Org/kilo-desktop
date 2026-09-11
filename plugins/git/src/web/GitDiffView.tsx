@@ -148,7 +148,7 @@ function GitDiffTabContent({
 	const effectiveDirectory = folders.some((folder) => folder.path === chosenDirectory)
 		? chosenDirectory
 		: workspaceDirectory;
-	const viewerRef = useRef<CodeViewHandle<undefined> | null>(null);
+	const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
 	const groupRef = useRef<HTMLDivElement | null>(null);
 	const [collapseMode, setCollapseMode] = useState<"expanded" | "collapsed">("expanded");
 	// Tree collapse is session-only state that must live here because the
@@ -249,7 +249,7 @@ function GitDiffTabContent({
 	// stable too and unrelated renders (theme, diff style, panel state) never
 	// re-render CodeView item children.
 	const renderHeaderPrefix = useCallback(
-		(item: CodeViewItem) =>
+		(item: CodeViewItem<undefined>) =>
 			item.type === "diff" ? (
 				<CollapseDiffButton
 					collapsed={item.collapsed === true}

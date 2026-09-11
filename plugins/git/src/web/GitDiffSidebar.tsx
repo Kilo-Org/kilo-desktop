@@ -52,7 +52,7 @@ interface GitDiffSidebarProps {
 	readonly onRefresh: () => void;
 	readonly source: GitDiffTreeSource | null;
 	readonly treePlaceholder: string | null;
-	readonly viewerRef: RefObject<CodeViewHandle<undefined> | null>;
+	readonly viewerRef: RefObject<CodeViewHandle<undefined, undefined> | null>;
 }
 
 /** Sidebar with the folder switcher, search, and the changed-files tree. Relies on the shell-level `TooltipProvider`. */

@@ -204,6 +204,12 @@ function diffsContentEditable(): HTMLElement | null {
 	);
 }
 
+function diffsEditorText(): string {
+	return Array.from(document.querySelectorAll("diffs-container"))
+		.map((host) => host.shadowRoot?.querySelector<HTMLElement>("[data-content]")?.textContent ?? "")
+		.join("\n");
+}
+
 function diffsEditorHasFocus(): boolean {
 	return Array.from(document.querySelectorAll("diffs-container")).some((host) =>
 		Boolean(host.shadowRoot?.activeElement?.matches('[data-content][contenteditable="true"]')),
@@ -810,9 +816,11 @@ describe("FilesView", () => {
 	it("opens the latest file request when a reused tab receives new metadata", async () => {
 		const view = renderView(handlers(), filePane("src/index.ts", { instanceId: "files-1" }));
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		await vi.waitFor(() => expect(diffsEditorText()).toContain("export const value = 1;"));
 
 		view.rerenderView(filePane("docs/readme.md", { instanceId: "files-1" }));
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
+		await vi.waitFor(() => expect(diffsEditorText()).toContain("# Read me"));
 		view.rerenderView(
 			filePane("src/index.ts", {
 				instanceId: "files-1",
@@ -825,6 +833,16 @@ describe("FilesView", () => {
 		);
 
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+	});
+
+	it("keeps simultaneous editor panes independent when they show the same file", async () => {
+		renderExplorerAndFilePane(
+			handlers(),
+			filePane("src/index.ts", { instanceId: "files-1" }),
+			filePane("src/index.ts", { instanceId: "files-2" }),
+		);
+
+		await vi.waitFor(() => expect(document.querySelectorAll("diffs-container")).toHaveLength(2));
 	});
 
 	it("opens the selected file in an available external editor and remembers the choice", async () => {

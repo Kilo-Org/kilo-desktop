@@ -35,7 +35,7 @@ export interface UsePatchLoaderOptions {
 	collapseMode: "expanded" | "collapsed";
 	/** Absolute workspace directory the diff is generated for. */
 	workspaceDirectory: string;
-	viewerRef: RefObject<CodeViewHandle<undefined> | null>;
+	viewerRef: RefObject<CodeViewHandle<undefined, undefined> | null>;
 }
 
 export interface UsePatchLoaderResult {
@@ -45,7 +45,7 @@ export interface UsePatchLoaderResult {
 	errorStatus: number | null;
 	errorMessage: string | null;
 	expandItem: (itemId: string) => void;
-	initialItems: CodeViewItem[];
+	initialItems: CodeViewItem<undefined>[];
 	loadState: PatchLoadState;
 	retryLoad: () => void;
 	toggleItemCollapsed: (itemId: string) => void;
@@ -74,7 +74,7 @@ export function usePatchLoader({
 	workspaceDirectory,
 	viewerRef,
 }: UsePatchLoaderOptions): UsePatchLoaderResult {
-	const [initialItems, setInitialItems] = useState<CodeViewItem[]>([]);
+	const [initialItems, setInitialItems] = useState<CodeViewItem<undefined>[]>([]);
 	const [treeSource, setTreeSource] = useState<GitDiffTreeSource | null>(null);
 	const [diffStats, setDiffStats] = useState<GitDiffStats | null>(null);
 	const [loadState, setLoadState] = useState<PatchLoadState>("fetching");
@@ -96,7 +96,7 @@ export function usePatchLoader({
 	// Deleted-file diffs initialize collapsed by default, so the overwrite is
 	// unconditional — otherwise they would stay collapsed even in expanded
 	// mode.
-	const prepareItemsForViewer = (items: readonly CodeViewItem[]): void => {
+	const prepareItemsForViewer = (items: readonly CodeViewItem<undefined>[]): void => {
 		const targetCollapsed = collapseModeRef.current === "collapsed";
 		for (const item of items) {
 			loadedItemIdsRef.current.add(item.id);

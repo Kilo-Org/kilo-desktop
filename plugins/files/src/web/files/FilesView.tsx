@@ -101,7 +101,11 @@ function fileRequestKey(
 	return JSON.stringify([workspaceDirectory, relativePath, line ?? null, column ?? null]);
 }
 
-function revealEditorLocation(editor: Editor<undefined>, line: number, column?: number): void {
+function revealEditorLocation(
+	editor: Editor<"file", undefined, undefined>,
+	line: number,
+	column?: number,
+): void {
 	editor.focus({ lineNumber: line, character: (column ?? 1) - 1 });
 }
 
@@ -155,7 +159,7 @@ export function FilesView({
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
-	const editorRef = useRef<Editor<undefined> | null>(null);
+	const editorRef = useRef<Editor<"file", undefined, undefined> | null>(null);
 	const readFile = useCallback<FilesServiceContract["read"]>(
 		async ({ workspaceDirectory: requestedDirectory, relativePath }) =>
 			isNotebookFile(relativePath)
@@ -213,17 +217,18 @@ export function FilesView({
 			: {}),
 		relativePath: selectedPath,
 	});
-	const [attachedEditor, setAttachedEditor] = useState<Editor<undefined> | null>(null);
+	const [attachedEditor, setAttachedEditor] = useState<Editor<"file", undefined, undefined> | null>(
+		null,
+	);
 	const handledFileRequestRef = useRef<string | null>(null);
-	const editorOptions = useMemo<EditorOptions<undefined>>(
+	const editorOptions = useMemo<EditorOptions<"file", undefined, undefined>>(
 		() => ({
-			persistState: true,
 			onAttach(editor) {
 				editorRef.current = editor;
 				setAttachedEditor(editor);
 			},
-			onChange(changedFile) {
-				setDraft(changedFile.contents);
+			onChange(event) {
+				setDraft(event.file.contents);
 			},
 		}),
 		[setDraft],

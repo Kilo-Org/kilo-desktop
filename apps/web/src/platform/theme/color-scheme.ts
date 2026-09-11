@@ -1,5 +1,6 @@
 import {
 	resolveColorScheme,
+	SIDEBAR_VIBRANCY_STORAGE_KEY,
 	THEME_STORAGE_KEY,
 	themeSourceSchema,
 	type ResolvedColorScheme,
@@ -34,6 +35,22 @@ export function readStoredThemeSource(): ThemeSource {
 export function persistThemeSource(source: ThemeSource): void {
 	try {
 		globalThis.localStorage.setItem(THEME_STORAGE_KEY, source);
+	} catch {
+		// Best-effort persistence; the in-memory state still applies for this session.
+	}
+}
+
+export function readStoredSidebarVibrancy(): boolean {
+	try {
+		return globalThis.localStorage.getItem(SIDEBAR_VIBRANCY_STORAGE_KEY) !== "false";
+	} catch {
+		return true;
+	}
+}
+
+export function persistSidebarVibrancy(enabled: boolean): void {
+	try {
+		globalThis.localStorage.setItem(SIDEBAR_VIBRANCY_STORAGE_KEY, String(enabled));
 	} catch {
 		// Best-effort persistence; the in-memory state still applies for this session.
 	}

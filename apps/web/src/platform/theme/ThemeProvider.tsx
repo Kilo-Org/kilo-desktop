@@ -15,7 +15,9 @@ import { useLocalApi } from "@/platform/LocalApiProvider";
 import {
 	applyDocumentColorScheme,
 	DARK_SCHEME_QUERY,
+	persistSidebarVibrancy,
 	persistThemeSource,
+	readStoredSidebarVibrancy,
 	readStoredThemeSource,
 	resolveColorScheme,
 	type ResolvedColorScheme,
@@ -35,6 +37,8 @@ interface ColorSchemeContextValue {
 	readonly source: ThemeSource;
 	readonly resolved: ResolvedColorScheme;
 	readonly setSource: (source: ThemeSource) => void;
+	readonly sidebarVibrancy: boolean;
+	readonly setSidebarVibrancy: (enabled: boolean) => void;
 }
 
 const ColorSchemeContext = createContext<ColorSchemeContextValue | null>(null);
@@ -42,12 +46,19 @@ const ColorSchemeContext = createContext<ColorSchemeContextValue | null>(null);
 export function ThemeProvider({ children }: { children: ReactNode }) {
 	const api = useLocalApi();
 	const [source, setSourceState] = useState<ThemeSource>(readStoredThemeSource);
+	const [sidebarVibrancy, setSidebarVibrancyState] = useState(readStoredSidebarVibrancy);
 	const systemDark = useSyncExternalStore(subscribeSystemScheme, getSystemSchemeSnapshot);
 	const resolved = resolveColorScheme(source, systemDark);
 
 	useLayoutEffect(() => {
 		applyDocumentColorScheme(resolved);
 	}, [resolved]);
+
+	useLayoutEffect(() => {
+		const style = document.documentElement.style;
+		if (sidebarVibrancy) style.removeProperty("--shell-glass-opacity");
+		else style.setProperty("--shell-glass-opacity", "100%");
+	}, [sidebarVibrancy]);
 
 	useEffect(() => {
 		void api.theme.sync({ source, shouldUseDarkColors: resolved === "dark" }).catch((error) => {
@@ -60,8 +71,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 		persistThemeSource(next);
 	}, []);
 
+	const setSidebarVibrancy = useCallback((enabled: boolean) => {
+		setSidebarVibrancyState(enabled);
+		persistSidebarVibrancy(enabled);
+	}, []);
+
 	return (
-		<ColorSchemeContext value={{ source, resolved, setSource }}>{children}</ColorSchemeContext>
+		<ColorSchemeContext
+			value={{ source, resolved, setSource, sidebarVibrancy, setSidebarVibrancy }}
+		>
+			{children}
+		</ColorSchemeContext>
 	);
 }
 

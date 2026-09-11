@@ -4,6 +4,7 @@ export type ResolvedColorScheme = "light" | "dark";
 
 /** localStorage key for the renderer-owned theme source (and the pre-paint bootstrap). */
 export const THEME_STORAGE_KEY = "theme:v1";
+export const SIDEBAR_VIBRANCY_STORAGE_KEY = "sidebar-vibrancy:v1";
 
 /**
  * Hex paint tokens for native chrome (Linux window background, splash, title-bar symbols).
@@ -86,5 +87,6 @@ export function criticalThemeStyle(): string {
  */
 export function themeBootstrapScript(): string {
 	const key = JSON.stringify(THEME_STORAGE_KEY);
-	return `(function(){var k=${key},s="system";try{var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light"})();`;
+	const vibrancyKey = JSON.stringify(SIDEBAR_VIBRANCY_STORAGE_KEY);
+	return `(function(){var k=${key},s="system",r=document.documentElement;try{if(localStorage.getItem(${vibrancyKey})==="false")r.style.setProperty("--shell-glass-opacity","100%");var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light"})();`;
 }

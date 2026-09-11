@@ -3,10 +3,14 @@ import { MonitorIcon, MoonIcon, SunIcon, type LucideIcon } from "lucide-react";
 
 import { themeChromeColors, type ThemeSource } from "@anaconda-agentic-desktop/contracts";
 import {
+	Field,
+	FieldContent,
 	FieldDescription,
+	FieldLabel,
 	FieldLegend,
 	FieldSet,
 } from "@anaconda-agentic-desktop/ui/components/field";
+import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { useColorScheme } from "@/platform/theme/ThemeProvider";
@@ -26,7 +30,7 @@ const THEME_OPTIONS = [
  * (`ThemeProvider` / localStorage); this page is the user-facing control.
  */
 export function AppearanceSettings() {
-	const { source, setSource } = useColorScheme();
+	const { source, setSource, sidebarVibrancy, setSidebarVibrancy } = useColorScheme();
 
 	return (
 		<div className="mx-auto w-full max-w-3xl" data-qa-id="appearance-settings">
@@ -57,6 +61,18 @@ export function AppearanceSettings() {
 					))}
 				</div>
 			</FieldSet>
+			<Field orientation="horizontal" className="mt-8">
+				<FieldContent>
+					<FieldLabel htmlFor="sidebar-vibrancy">Sidebar vibrancy</FieldLabel>
+					<FieldDescription>Show a translucent sidebar background.</FieldDescription>
+				</FieldContent>
+				<Switch
+					id="sidebar-vibrancy"
+					data-qa-id="appearance-sidebar-vibrancy"
+					checked={sidebarVibrancy}
+					onCheckedChange={setSidebarVibrancy}
+				/>
+			</Field>
 		</div>
 	);
 }

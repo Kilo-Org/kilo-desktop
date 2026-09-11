@@ -234,6 +234,8 @@ export class ElectronNotebookHostService {
 			((managerOptions) => new RuntimedDaemonManager(managerOptions));
 		this.#daemonManager = createDaemonManager({
 			binaryPath: options.runtimedBinaryPath,
+			socketPath: this.#socketPath,
+			allowSpawn: options.socketPath === undefined && !process.env["RUNTIMED_SOCKET_PATH"]?.trim(),
 			probe: async () => (await queryDaemonInfo({ socketPath: this.#socketPath })) !== null,
 			logger: this.#mainSdk.logger,
 		});

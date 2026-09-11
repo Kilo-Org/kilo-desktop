@@ -78,6 +78,7 @@ export async function mainRegister(
 	options: NotebookFeatureOptions = {},
 ): Promise<void> {
 	const runtimeChannel = options.runtimeChannel ?? NTERACT_RELEASE.channel;
+	const socketPath = options.socketPath ?? process.env["RUNTIMED_SOCKET_PATH"]?.trim();
 	const createHostService =
 		options.createHostService ??
 		((serviceOptions) => new ElectronNotebookHostService(serviceOptions));
@@ -94,7 +95,7 @@ export async function mainRegister(
 	const runtimedBinaryPath = resolveRuntimedBinary();
 	const hostService = createHostService({
 		mainSdk,
-		...(options.socketPath ? { socketPath: options.socketPath } : {}),
+		...(socketPath ? { socketPath } : {}),
 		runtimeChannel,
 		...(runtimedBinaryPath ? { runtimedBinaryPath } : {}),
 	});
@@ -111,7 +112,7 @@ export async function mainRegister(
 	await reconcileRuntMcpConfig(mainSdk, {
 		runtimeChannel,
 		logger: mainSdk.logger,
-		...(options.socketPath ? { customSocketPath: hostService.socketPath } : {}),
+		...(socketPath ? { customSocketPath: hostService.socketPath } : {}),
 		...(options.resolveNteractMcpBinary
 			? { resolveNteractMcpBinary: options.resolveNteractMcpBinary }
 			: {}),

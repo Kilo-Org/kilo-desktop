@@ -1,9 +1,16 @@
 import type { ChildProcess } from "node:child_process";
+import * as childProcesses from "node:child_process";
 import { EventEmitter } from "node:events";
+import { createServer } from "node:net";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RuntimedDaemonManager, runtimedRestartDelayMs } from "./RuntimedDaemonManager.js";
+
+vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
 class FakeChild extends EventEmitter {
 	pid = 4242;
@@ -67,6 +74,193 @@ describe("runtimedRestartDelayMs", () => {
 });
 
 describe("RuntimedDaemonManager", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllEnvs();
+	});
+
+	it("spawns in the shared namespace even when Electron inherits worktree variables", async () => {
+		vi.stubEnv("RUNTIMED_DEV", "1");
+		vi.stubEnv("RUNTIMED_WORKSPACE_PATH", "/some/nteract-worktree");
+		vi.stubEnv("RUNTIMED_SOCKET_PATH", "/some/other.sock");
+		const child = new FakeChild();
+		const spawn = vi.mocked(childProcesses.spawn).mockReturnValue(child.asChildProcess());
+		let probes = 0;
+		const manager = new RuntimedDaemonManager({
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => ++probes > 1,
+		});
+		try {
+			expect(await manager.ensureAvailable()).toMatchObject({ status: "bundled" });
+			const options = spawn.mock.calls[0]?.[2];
+			expect(options?.env).toBeDefined();
+			expect(options?.env).not.toHaveProperty("RUNTIMED_DEV");
+			expect(options?.env).not.toHaveProperty("RUNTIMED_WORKSPACE_PATH");
+			expect(options?.env).not.toHaveProperty("RUNTIMED_SOCKET_PATH");
+			expect(process.env["RUNTIMED_DEV"]).toBe("1");
+		} finally {
+			await manager.dispose();
+		}
+	});
+
+	it("never spawns for an explicit attach-only endpoint", async () => {
+		const spawnProcess = vi.fn();
+		const manager = new RuntimedDaemonManager({
+			binaryPath: "/resources/runtimed-nightly",
+			allowSpawn: false,
+			probe: async () => false,
+			spawnProcess,
+		});
+		expect(await manager.ensureAvailable()).toMatchObject({
+			status: "failed",
+			reason: expect.stringContaining("selected notebook runtime"),
+		});
+		expect(spawnProcess).not.toHaveBeenCalled();
+		await manager.dispose();
+	});
+
+	it.each(["unresponsive", "ready", "disposed"])(
+		"waits for a listening endpoint: %s",
+		async (outcome) => {
+			const directory = await mkdtemp(path.join(os.tmpdir(), "kd-probe-"));
+			const socketPath =
+				process.platform === "win32"
+					? `\\\\.\\pipe\\kd-probe-${process.pid}-${Date.now()}`
+					: path.join(directory, "daemon.sock");
+			const server = createServer((socket) => socket.end());
+			await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+			const spawnProcess = vi.fn();
+			let clock = 0;
+			let probes = 0;
+			const manager = new RuntimedDaemonManager({
+				socketPath,
+				binaryPath: "/resources/runtimed-nightly",
+				probe: async () => ++probes > 1 && outcome === "ready",
+				spawnProcess,
+				now: () => clock,
+				sleep: async (ms) => {
+					clock += ms;
+					if (outcome === "disposed") await manager.dispose();
+				},
+				readyTimeoutMs: 20,
+				pollIntervalMs: 10,
+			});
+			try {
+				const result = await manager.ensureAvailable();
+				if (outcome === "unresponsive") {
+					expect(result).toMatchObject({
+						status: "failed",
+						reason: expect.stringContaining("metadata"),
+					});
+				} else {
+					expect(result).toEqual({ status: outcome === "ready" ? "external" : "stopped" });
+				}
+				expect(spawnProcess).not.toHaveBeenCalled();
+			} finally {
+				await manager.dispose();
+				await new Promise<void>((resolve, reject) =>
+					server.close((error) => (error ? reject(error) : resolve())),
+				);
+				await rm(directory, { recursive: true, force: true });
+			}
+		},
+	);
+
+	it.skipIf(process.platform === "win32").each(["absent", "stale", "blocked"])(
+		"classifies a %s endpoint before spawning",
+		async (kind) => {
+			const directory = await mkdtemp(path.join(os.tmpdir(), "kd-probe-"));
+			const entry = path.join(directory, "daemon.sock");
+			if (kind === "blocked") await writeFile(entry, "not a directory");
+			if (kind === "stale") {
+				const initialPath = path.join(directory, "initial.sock");
+				const server = createServer();
+				await new Promise<void>((resolve) => server.listen(initialPath, resolve));
+				await rename(initialPath, entry);
+				await new Promise<void>((resolve, reject) =>
+					server.close((error) => (error ? reject(error) : resolve())),
+				);
+			}
+			const socketPath = kind === "blocked" ? path.join(entry, "socket") : entry;
+			const child = new FakeChild();
+			const spawnProcess = vi.fn(() => child.asChildProcess());
+			let probes = 0;
+			const manager = new RuntimedDaemonManager({
+				socketPath,
+				binaryPath: "/resources/runtimed-nightly",
+				probe: async () => ++probes > 1,
+				spawnProcess,
+			});
+			try {
+				const result = await manager.ensureAvailable();
+				if (kind === "blocked") {
+					expect(result).toMatchObject({
+						status: "failed",
+						reason: expect.stringContaining("Could not access"),
+					});
+					expect(spawnProcess).not.toHaveBeenCalled();
+				} else {
+					expect(result).toMatchObject({ status: "bundled" });
+					expect(spawnProcess).toHaveBeenCalledOnce();
+				}
+			} finally {
+				await manager.dispose();
+				await rm(directory, { recursive: true, force: true });
+			}
+		},
+	);
+
+	it("starts when the selected socket or Windows named pipe is absent", async () => {
+		const directory = await mkdtemp(path.join(os.tmpdir(), "kd-absent-"));
+		const socketPath =
+			process.platform === "win32"
+				? `\\\\.\\pipe\\${path.basename(directory)}`
+				: path.join(directory, "daemon.sock");
+		const child = new FakeChild();
+		const spawnProcess = vi.fn(() => child.asChildProcess());
+		let probes = 0;
+		const manager = new RuntimedDaemonManager({
+			socketPath,
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => ++probes > 1,
+			spawnProcess,
+		});
+		try {
+			expect(await manager.ensureAvailable()).toMatchObject({ status: "bundled" });
+			expect(spawnProcess).toHaveBeenCalledOnce();
+		} finally {
+			await manager.dispose();
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it.skipIf(process.platform !== "darwin")(
+		"reports a non-socket file without deleting it or spawning",
+		async () => {
+			const directory = await mkdtemp(path.join(os.tmpdir(), "kd-file-"));
+			const socketPath = path.join(directory, "daemon.sock");
+			await writeFile(socketPath, "not a socket");
+			const spawnProcess = vi.fn();
+			const manager = new RuntimedDaemonManager({
+				socketPath,
+				binaryPath: "/resources/runtimed-nightly",
+				probe: async () => false,
+				spawnProcess,
+			});
+			try {
+				expect(await manager.ensureAvailable()).toMatchObject({
+					status: "failed",
+					reason: expect.stringContaining("ENOTSOCK"),
+				});
+				expect(spawnProcess).not.toHaveBeenCalled();
+				expect(await readFile(socketPath, "utf8")).toBe("not a socket");
+			} finally {
+				await manager.dispose();
+				await rm(directory, { recursive: true, force: true });
+			}
+		},
+	);
+
 	it("attaches to an existing singleton without spawning", async () => {
 		const spawnProcess = vi.fn();
 		const manager = new RuntimedDaemonManager({

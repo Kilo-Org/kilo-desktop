@@ -47,7 +47,13 @@ describe("resolveDaemonSocketPath", () => {
 		);
 	});
 
-	it("uses XDG_CACHE_HOME when set, on any platform", () => {
+	it("ignores XDG_CACHE_HOME on macOS, matching the daemon", () => {
+		expect(resolveDaemonSocketPath({ env: { XDG_CACHE_HOME: "/xdg" }, ...MAC })).toBe(
+			"/Users/mm/Library/Caches/runt/runtimed.sock",
+		);
+	});
+
+	it("uses XDG_CACHE_HOME when set on Linux", () => {
 		expect(
 			resolveDaemonSocketPath({
 				env: { XDG_CACHE_HOME: "/xdg" },

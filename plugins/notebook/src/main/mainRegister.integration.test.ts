@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
@@ -7,7 +7,11 @@ import {
 	type HostMessagePort,
 } from "@anaconda-agentic-desktop/feature-sdk/main";
 
-import { mainRegister, type ElectronNotebookHostServiceLike } from "./index.js";
+import {
+	mainRegister,
+	type ElectronNotebookHostServiceLike,
+	type NotebookFeatureOptions,
+} from "./index.js";
 import type { ElectronNotebookHostServiceOptions } from "./runtime/ElectronNotebookHostService.js";
 
 function fakePort(): HostMessagePort {
@@ -20,8 +24,10 @@ function fakePort(): HostMessagePort {
 	};
 }
 
-async function boot() {
+async function boot(options: NotebookFeatureOptions = {}) {
 	const router = new FeatureRouter();
+	const mcpConfig = { set: vi.fn(async () => undefined), remove: vi.fn(async () => undefined) };
+	router.createMainSdk("kilo-server").plugins.expose("kiloService", { mcpConfig });
 	const mainSdk = router.createMainSdk("notebook", {
 		resolvePluginAsset: (subpath) => `/plugins/notebook/${subpath}`,
 	});
@@ -50,16 +56,38 @@ async function boot() {
 	} satisfies ElectronNotebookHostServiceLike;
 	let hostServiceOptions: ElectronNotebookHostServiceOptions | undefined;
 	await mainRegister(mainSdk, {
+		...options,
 		resolveBundleRoot: () => "/plugins/notebook/build/notebook",
+		resolveNteractMcpBinary: () => "/bundled/nteract-mcp",
+		resolveRuntBinary: () => "/bundled/runt-nightly",
 		createHostService: (options) => {
 			hostServiceOptions = options;
 			return hostService;
 		},
 	});
-	return { hostService, hostServiceOptions, mainSdk, router };
+	return { hostService, hostServiceOptions, mainSdk, router, mcpConfig };
 }
 
 describe("notebook mainRegister", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	it.each(["option", "environment"])(
+		"uses the same explicit %s endpoint for the host and MCP",
+		async (selection) => {
+			const socketPath = "/tmp/runtimed.sock";
+			if (selection === "environment") vi.stubEnv("RUNTIMED_SOCKET_PATH", socketPath);
+			const { hostServiceOptions, mcpConfig } = await boot(
+				selection === "option" ? { socketPath } : {},
+			);
+			expect(hostServiceOptions?.socketPath).toBe(socketPath);
+			expect(mcpConfig.set).toHaveBeenCalledWith("notebook", expect.any(String), {
+				type: "local",
+				command: ["/bundled/runt-nightly", "mcp", "--socket", socketPath, "--no-show"],
+				enabled: true,
+			});
+		},
+	);
+
 	it("starts runtimed during app feature registration", async () => {
 		const { hostService } = await boot();
 

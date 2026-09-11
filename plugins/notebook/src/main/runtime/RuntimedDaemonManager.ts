@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createConnection } from "node:net";
 
 import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
 
@@ -7,10 +8,11 @@ import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
  * singleton itself. The canonical endpoint is probed before every spawn because
  * runtimed's lock is channel-scoped rather than socket-scoped; an existing
  * daemon always wins. Only a child created here is restarted or stopped, and a
- * completed socket probe—not process creation or exit code—is the readiness
+ * completed native metadata probe is the readiness
  * invariant. Concurrent callers share one ensure attempt so notebook tabs cannot
  * race into duplicate children. Dispose SIGTERMs, then SIGKILLs, then gives up
- * so a stuck sidecar cannot block Electron quit.
+ * so a stuck sidecar cannot block Electron quit. Transport reachability only
+ * guards occupancy; explicit endpoints never spawn a default runtime.
  */
 
 const READY_POLL_INTERVAL_MS = 150;
@@ -34,6 +36,9 @@ export type RuntimedDaemonState =
 
 export interface RuntimedDaemonManagerOptions {
 	readonly binaryPath?: string | undefined;
+	readonly socketPath?: string | undefined;
+	/** Explicit endpoints are attach-only: a socket override is not isolation. */
+	readonly allowSpawn?: boolean;
 	readonly probe: () => Promise<boolean>;
 	readonly logger?: Pick<MainSdkLogger, "info" | "warn">;
 	readonly spawnProcess?: (binaryPath: string) => ChildProcess;
@@ -59,6 +64,8 @@ export function runtimedRestartDelayMs(attempt: number): number {
 
 export class RuntimedDaemonManager {
 	readonly #binaryPath: string | undefined;
+	readonly #socketPath: string | undefined;
+	readonly #allowSpawn: boolean;
 	readonly #probe: () => Promise<boolean>;
 	readonly #logger: Pick<MainSdkLogger, "info" | "warn">;
 	readonly #spawnProcess: (binaryPath: string) => ChildProcess;
@@ -82,15 +89,23 @@ export class RuntimedDaemonManager {
 
 	constructor(options: RuntimedDaemonManagerOptions) {
 		this.#binaryPath = options.binaryPath;
+		this.#socketPath = options.socketPath;
+		this.#allowSpawn = options.allowSpawn ?? true;
 		this.#probe = options.probe;
 		this.#logger = options.logger ?? noopLogger;
 		this.#spawnProcess =
 			options.spawnProcess ??
-			((binaryPath) =>
-				spawn(binaryPath, [], {
+			((binaryPath) => {
+				const env = { ...process.env };
+				delete env["RUNTIMED_DEV"];
+				delete env["RUNTIMED_WORKSPACE_PATH"];
+				delete env["RUNTIMED_SOCKET_PATH"];
+				return spawn(binaryPath, [], {
 					stdio: "ignore",
 					detached: false,
-				}));
+					env,
+				});
+			});
 		this.#sleep = options.sleep ?? sleep;
 		this.#now = options.now ?? Date.now;
 		this.#readyTimeoutMs = options.readyTimeoutMs ?? READY_TIMEOUT_MS;
@@ -118,10 +133,35 @@ export class RuntimedDaemonManager {
 
 	async #ensure(): Promise<RuntimedDaemonState> {
 		this.#state = { status: "probing" };
-		if (await this.#probe()) return this.#attachExternal();
+		const ready = await this.#probe();
 		if (this.#disposed) return this.#state;
+		if (ready) return this.#attachExternal();
+		if (this.#socketPath) {
+			const endpoint = await inspectEndpoint(this.#socketPath);
+			if (this.#disposed) return this.#state;
+			if (endpoint.status === "unreachable") return this.#fail(endpoint.reason);
+			if (endpoint.status === "occupied") return this.#waitForExternal();
+		}
+		if (!this.#allowSpawn)
+			return this.#fail(
+				"The selected notebook runtime is not available. Start the runtime that owns this endpoint, or remove the custom endpoint setting to use the bundled runtime.",
+			);
 		if (!this.#binaryPath) return this.#fail("The bundled runtimed daemon is unavailable.");
 		return this.#spawnAndWait();
+	}
+
+	async #waitForExternal(): Promise<RuntimedDaemonState> {
+		const deadline = this.#now() + this.#readyTimeoutMs;
+		while (this.#now() < deadline) {
+			await this.#sleep(this.#pollIntervalMs);
+			if (this.#disposed) return this.#state;
+			const ready = await this.#probe();
+			if (this.#disposed) return this.#state;
+			if (ready) return this.#attachExternal();
+		}
+		return this.#fail(
+			`The notebook runtime endpoint ${this.#socketPath} accepts connections, but Kilo Desktop could not read its metadata. It may still be starting or require a compatible runtime. Retry after startup; if this persists, check the Kilo Desktop and nteract versions.`,
+		);
 	}
 
 	#attachExternal(): RuntimedDaemonState {
@@ -288,4 +328,36 @@ function describeExit(
 
 function messageOf(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+type EndpointStatus = { status: "absent" | "occupied" } | { status: "unreachable"; reason: string };
+
+// Transport reachability only: the native metadata probe remains the readiness
+// gate. A failed protocol exchange must not be mistaken for permission to spawn.
+function inspectEndpoint(socketPath: string): Promise<EndpointStatus> {
+	return new Promise((resolve) => {
+		const socket = createConnection(socketPath);
+		const finish = (status: EndpointStatus) => {
+			socket.destroy();
+			resolve(status);
+		};
+		socket.setTimeout(2_000);
+		socket.once("connect", () => finish({ status: "occupied" }));
+		socket.once("timeout", () =>
+			finish({
+				status: "unreachable",
+				reason: `The notebook runtime endpoint did not respond: ${socketPath}. Retry when the runtime is ready.`,
+			}),
+		);
+		socket.once("error", (error: NodeJS.ErrnoException) =>
+			finish(
+				error.code === "ENOENT" || error.code === "ECONNREFUSED"
+					? { status: "absent" }
+					: {
+							status: "unreachable",
+							reason: `Could not access the notebook runtime endpoint ${socketPath}: ${error.message}`,
+						},
+			),
+		);
+	});
 }

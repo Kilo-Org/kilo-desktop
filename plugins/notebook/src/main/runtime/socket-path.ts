@@ -43,12 +43,12 @@ export function daemonBinaryBasename(channel: BuildChannel): string {
 }
 
 function cacheDir(env: SocketPathEnvironment, platform: NodeJS.Platform, homedir: string): string {
-	if (env.XDG_CACHE_HOME) return env.XDG_CACHE_HOME;
 	const targetPath = platform === "win32" ? path.win32 : path.posix;
 	if (platform === "darwin") return targetPath.join(homedir, "Library", "Caches");
 	if (platform === "win32") {
 		return env.LOCALAPPDATA ?? targetPath.join(homedir, "AppData", "Local");
 	}
+	if (env.XDG_CACHE_HOME && path.posix.isAbsolute(env.XDG_CACHE_HOME)) return env.XDG_CACHE_HOME;
 	return targetPath.join(homedir, ".cache");
 }
 

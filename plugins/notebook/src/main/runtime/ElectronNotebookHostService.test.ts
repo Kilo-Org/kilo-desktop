@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -84,6 +84,31 @@ function desktopHost(overrides?: {
 }
 
 describe("ElectronNotebookHostService", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	it.each(["option", "environment"])(
+		"keeps an explicit %s endpoint attach-only",
+		async (selection) => {
+			mocks.queryDaemonInfo.mockResolvedValue(null);
+			const socketPath = path.join(os.tmpdir(), `kd-absent-${process.pid}-${selection}.sock`);
+			if (selection === "environment") vi.stubEnv("RUNTIMED_SOCKET_PATH", socketPath);
+			const service = new ElectronNotebookHostService({
+				mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+				runtimedBinaryPath: "/missing-bundled-runtime",
+				...(selection === "option" ? { socketPath } : {}),
+			});
+			try {
+				expect(service.socketPath).toBe(socketPath);
+				expect(await service.start()).toMatchObject({
+					status: "failed",
+					reason: expect.stringContaining("selected notebook runtime"),
+				});
+			} finally {
+				await service.dispose();
+			}
+		},
+	);
+
 	let handler!: ElectronNotebookHostHandler;
 	let server: ElectronNotebookHostServer;
 
@@ -694,7 +719,7 @@ describe("ElectronNotebookHostService", () => {
 		expect(server.emit).toHaveBeenCalledWith("transport.status", "online");
 	});
 
-	it("reports an actionable failure when no daemon or bundled binary is available", async () => {
+	it("reports an actionable failure when the selected daemon is unavailable", async () => {
 		mocks.queryDaemonInfo.mockResolvedValue(null);
 		const service = new ElectronNotebookHostService({
 			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
@@ -704,11 +729,11 @@ describe("ElectronNotebookHostService", () => {
 		await expect(service.status()).resolves.toEqual({
 			availability: {
 				status: "unavailable",
-				reason: "The bundled runtimed daemon is unavailable.",
+				reason: expect.stringContaining("selected notebook runtime"),
 			},
 			process: {
 				status: "failed",
-				reason: "The bundled runtimed daemon is unavailable.",
+				reason: expect.stringContaining("selected notebook runtime"),
 			},
 			daemon: null,
 		});

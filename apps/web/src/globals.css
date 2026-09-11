@@ -31,10 +31,10 @@
 
 [data-theme="dark"] {
 	/* Glass chrome over vibrancy, opaque stepped content: the translucent
-	   sidebar tint sits on 950, content panes on 900, and raised surfaces
-	   (cards, composer) on 800. */
-	--sidebar: var(--color-mist-950);
-	--background: var(--color-mist-900);
+	   sidebar tint sits on 900, content panes between 950 and 900, and
+	   raised surfaces (cards, composer) on 800. */
+	--sidebar: var(--color-mist-900);
+	--background: color-mix(in oklch, var(--color-mist-950) 50%, var(--color-mist-900));
 	--card: var(--color-mist-800);
 	--popover: var(--color-mist-800);
 	/* Translucent hairline: keeps one apparent weight over both the opaque

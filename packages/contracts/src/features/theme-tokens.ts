@@ -13,7 +13,7 @@ export const THEME_STORAGE_KEY = "theme:v1";
  */
 export const themeChromeColors = {
 	light: { background: "#ffffff", foreground: "#090b0c" },
-	dark: { background: "#161b1d", foreground: "#f9fbfb" },
+	dark: { background: "#101314", foreground: "#f9fbfb" },
 } as const;
 
 export type ThemeChromeColors = (typeof themeChromeColors)[keyof typeof themeChromeColors];
@@ -31,11 +31,11 @@ export const shellGlassOpacity = {
 } as const;
 
 /**
- * Dark shell surface hex: Mist 950 — keep in sync with
+ * Dark shell surface hex: Mist 900 — keep in sync with
  * `--sidebar` / the html glass tint in apps/web globals.css. Distinct from
- * `themeChromeColors.dark.background` (Mist 900), which paints content panes.
+ * `themeChromeColors.dark.background` (50/50 Mist 950/900), which paints content panes.
  */
-export const shellGlassDarkSurface = "#090b0c";
+export const shellGlassDarkSurface = "#161b1d";
 
 export function resolveShouldUseDarkColors(source: ThemeSource, systemDark: boolean): boolean {
 	if (source === "system") return systemDark;

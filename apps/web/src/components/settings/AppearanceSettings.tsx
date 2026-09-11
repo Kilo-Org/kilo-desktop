@@ -132,8 +132,8 @@ const WINDOW_PALETTE = {
 		border: "border-black/10",
 	},
 	dark: {
-		bar: "var(--color-mist-900)",
-		sidebar: "var(--color-mist-950)",
+		bar: themeChromeColors.dark.background,
+		sidebar: "var(--color-mist-900)",
 		line: "rgb(255 255 255 / 0.22)",
 		muted: "rgb(255 255 255 / 0.1)",
 		block: "rgb(255 255 255 / 0.06)",

@@ -63,7 +63,17 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      GIT_CONFIG_NOSYSTEM: "true"
     steps:
+      # Job-level env cannot use the runner context, so pin GIT_CONFIG_GLOBAL
+      # here before checkout. An empty writable file (not /dev/null) lets
+      # `git config --global` writes such as checkout's safe.directory succeed
+      # without touching the runner's real gitconfig.
+      - name: Isolate git config
+        shell: bash
+        run: |
+          : > "$RUNNER_TEMP/aad-test-gitconfig"
+          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/aad-test-gitconfig" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile

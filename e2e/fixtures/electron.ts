@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -78,10 +78,15 @@ async function launchApp(
 	envOverrides: Readonly<Record<string, string>>,
 ): Promise<{ app: ElectronApplication; userDataDir: string }> {
 	const userDataDir = await mkdtemp(path.join(os.tmpdir(), "aad-e2e-"));
+	// The launch env points GIT_CONFIG_GLOBAL/SYSTEM here; pre-create both as
+	// empty files so the long-lived GUI process never falls back to real
+	// global/system gitconfig paths on any git version.
+	await writeFile(path.join(userDataDir, ".gitconfig"), "");
+	await writeFile(path.join(userDataDir, ".gitconfig-system"), "");
 	const app = await electron.launch({
 		executablePath: packagedExecutable(),
 		args: [`--user-data-dir=${userDataDir}`],
-		env: packagedAppLaunchEnv({ ...process.env, ...envOverrides }),
+		env: packagedAppLaunchEnv(userDataDir, { ...process.env, ...envOverrides }),
 	});
 	return { app, userDataDir };
 }

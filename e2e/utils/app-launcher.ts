@@ -9,8 +9,19 @@ import { packagedExecutable, repoRoot } from "./paths.js";
  * Isolated `--user-data-dir` profiles still share the host keychain and would
  * otherwise show first-run onboarding / conda bootstrap. Every packaged e2e
  * launch — including restart fixtures — must use this env.
+ *
+ * The packaged app forks git processes that inherit this env, so the git
+ * config paths are pinned into the worker-unique `userDataDir` and SSH is
+ * disabled (`GIT_SSH_COMMAND: "false"` fails fast instead of prompting) —
+ * git can never reach the runner's or developer's real gitconfig or agent.
+ * `HOME`/`USERPROFILE` stay intact: the app resolves `~/` for workspace
+ * folder suggestions. These keys win over anything inherited or added to CI
+ * later because they are spread after `env`.
  */
-export function packagedAppLaunchEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function packagedAppLaunchEnv(
+	userDataDir: string,
+	env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
 	return {
 		...Object.fromEntries(
 			Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
@@ -18,6 +29,10 @@ export function packagedAppLaunchEnv(env: NodeJS.ProcessEnv = process.env): Reco
 		ANACONDA_SKIP_CONDA_STAGING: "1",
 		ANACONDA_SKIP_ONBOARDING: "1",
 		ANACONDA_SKIP_KEYRING: "1",
+		GIT_CONFIG_GLOBAL: path.join(userDataDir, ".gitconfig"),
+		GIT_CONFIG_SYSTEM: path.join(userDataDir, ".gitconfig-system"),
+		SSH_AUTH_SOCK: "",
+		GIT_SSH_COMMAND: "false",
 	};
 }
 

@@ -1,6 +1,5 @@
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import process from "node:process";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createGitClient } from "../client.js";
@@ -15,8 +14,8 @@ afterEach(cleanupTestDirs);
  * sets `cwd` itself, so the executor is the client's `exec` unmodified —
  * the git binary is the system boundary and is deliberately not mocked.
  */
-function execFor(path: string): RevParseExec {
-	const client = createGitClient({ path, logger: noopLogger });
+function execFor(path: string, env?: Record<string, string>): RevParseExec {
+	const client = createGitClient({ path, ...(env !== undefined && { env }), logger: noopLogger });
 	return (args, name, options) => client.exec(args, name, options);
 }
 
@@ -93,35 +92,33 @@ describe("git/rev-parse", () => {
 		it("returns unsafe for a repository with dubious ownership", async () => {
 			const repoPath = await initialize("rev-parse-unsafe", "main");
 
-			const previousHome = process.env.HOME;
 			// A stub global config clears any system `safe.directory=*` — the
 			// `safe.directory` setting is ignored in local config, environment
-			// variables and command line arguments, so HOME is the lever.
-			const testHomeDirectory = await createTestDir("desktop-git-test-rev-parse-home");
+			// variables and command line arguments, so GIT_CONFIG_GLOBAL is
+			// the lever. The client-level env override beats any ambient
+			// GIT_CONFIG_GLOBAL (CI sets one) and leaves process.env untouched.
+			const globalConfigPath = join(
+				await createTestDir("desktop-git-test-rev-parse-global"),
+				".gitconfig",
+			);
 			await writeFile(
-				join(testHomeDirectory, ".gitconfig"),
+				globalConfigPath,
 				`[safe]
 directory=`,
 			);
 
-			process.env.HOME = testHomeDirectory;
-			process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = "1";
-
-			try {
-				const result = await getRepositoryType(execFor(repoPath), repoPath);
-				// git prints the dubious-ownership path from its own
-				// resolution, which expands macOS temp symlinks.
-				expect(result).toMatchObject({ kind: "unsafe" });
-				if (result.kind === "unsafe") {
-					expect(await realpath(result.path)).toBe(await realpath(repoPath));
-				}
-			} finally {
-				delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
-				if (previousHome === undefined) {
-					delete process.env.HOME;
-				} else {
-					process.env.HOME = previousHome;
-				}
+			const result = await getRepositoryType(
+				execFor(repoPath, {
+					GIT_CONFIG_GLOBAL: globalConfigPath,
+					GIT_TEST_ASSUME_DIFFERENT_OWNER: "1",
+				}),
+				repoPath,
+			);
+			// git prints the dubious-ownership path from its own
+			// resolution, which expands macOS temp symlinks.
+			expect(result).toMatchObject({ kind: "unsafe" });
+			if (result.kind === "unsafe") {
+				expect(await realpath(result.path)).toBe(await realpath(repoPath));
 			}
 		});
 	});

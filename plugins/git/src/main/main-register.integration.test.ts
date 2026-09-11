@@ -97,23 +97,26 @@ function setupDirtyTreeConflict(repoDir: string): void {
 }
 
 /**
- * Runs `run` with `HOME` pointed at a stub directory holding the given
- * `.gitconfig` — the spawned git reads it, so global-config probes
- * (`init.defaultBranch`) are deterministic and never touch the
- * developer's real `~/.gitconfig`.
+ * Runs `run` with `GIT_CONFIG_GLOBAL` pointed at a stub file holding the
+ * given content — every git spawned while it is set reads it, including the
+ * real git-client inside mainRegister (whose children inherit this env at
+ * spawn time), so global-config probes (`init.defaultBranch`) are
+ * deterministic and never touch the developer's real `~/.gitconfig`. The
+ * stub also overrides any ambient `GIT_CONFIG_GLOBAL` a CI job sets, which
+ * a `HOME` stub could not.
  */
-async function withHomeConfig(gitconfig: string, run: () => Promise<void>): Promise<void> {
-	const home = createTempDir();
-	fs.writeFileSync(path.join(home, ".gitconfig"), gitconfig);
-	const previousHome = process.env.HOME;
-	process.env.HOME = home;
+async function withGitConfig(gitconfig: string, run: () => Promise<void>): Promise<void> {
+	const stubPath = path.join(createTempDir(), ".gitconfig");
+	fs.writeFileSync(stubPath, gitconfig);
+	const previousGlobalConfig = process.env.GIT_CONFIG_GLOBAL;
+	process.env.GIT_CONFIG_GLOBAL = stubPath;
 	try {
 		await run();
 	} finally {
-		if (previousHome === undefined) {
-			delete process.env.HOME;
+		if (previousGlobalConfig === undefined) {
+			delete process.env.GIT_CONFIG_GLOBAL;
 		} else {
-			process.env.HOME = previousHome;
+			process.env.GIT_CONFIG_GLOBAL = previousGlobalConfig;
 		}
 	}
 }
@@ -412,7 +415,7 @@ describe("git mainRegister branches", () => {
 		addWorkspaceFolder(repoDir);
 
 		expect(mainSdk.has("branches")).toBe(true);
-		await withHomeConfig("", async () => {
+		await withGitConfig("", async () => {
 			const result = await mainSdk.invoke("branches", { workingDirectory: repoDir });
 
 			expect(result).toStrictEqual({
@@ -444,7 +447,7 @@ describe("git mainRegister branches", () => {
 		const { mainSdk, addWorkspaceFolder } = bootedSdk();
 		addWorkspaceFolder(repoDir);
 
-		await withHomeConfig("[init]\n\tdefaultBranch = trunk\n", async () => {
+		await withGitConfig("[init]\n\tdefaultBranch = trunk\n", async () => {
 			const result = await mainSdk.invoke("branches", { workingDirectory: repoDir });
 			expect(result).toMatchObject({ defaultBranch: "trunk" });
 		});
@@ -457,7 +460,7 @@ describe("git mainRegister branches", () => {
 		const { mainSdk, addWorkspaceFolder } = bootedSdk();
 		addWorkspaceFolder(cloneDir);
 
-		await withHomeConfig("", async () => {
+		await withGitConfig("", async () => {
 			const result = await mainSdk.invoke("branches", { workingDirectory: cloneDir });
 
 			expect(result).toMatchObject({

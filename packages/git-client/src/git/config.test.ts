@@ -11,21 +11,28 @@ import type { GlobalConfigExec } from "./config.js";
 afterEach(cleanupTestDirs);
 
 /**
- * The real executor seam: a git-client whose `HOME` points at an isolated
- * directory, so global-config reads never touch the developer's real
- * `~/.gitconfig` — and the fixture fully determines the outcome.
+ * The real executor seam: a git-client whose `GIT_CONFIG_GLOBAL` points at a
+ * stub file, so global-config reads never touch the developer's real
+ * `~/.gitconfig` — and the fixture fully determines the outcome. The
+ * client-level override also beats any ambient `GIT_CONFIG_GLOBAL` a CI job
+ * sets, keeping the fixture authoritative everywhere.
  */
-async function execWithIsolatedHome(gitconfig: string): Promise<GlobalConfigExec> {
-	const home = await createTestDir("desktop-git-test-config-home");
-	await writeFile(join(home, ".gitconfig"), gitconfig);
-	const client = createGitClient({ path: home, env: { HOME: home }, logger: noopLogger });
+async function execWithIsolatedGlobalConfig(gitconfig: string): Promise<GlobalConfigExec> {
+	const dir = await createTestDir("desktop-git-test-config-global");
+	const globalConfigPath = join(dir, ".gitconfig");
+	await writeFile(globalConfigPath, gitconfig);
+	const client = createGitClient({
+		path: dir,
+		env: { GIT_CONFIG_GLOBAL: globalConfigPath },
+		logger: noopLogger,
+	});
 	return (args, name, options) => client.exec(args, name, options);
 }
 
 describe("git/config", () => {
 	describe("getGlobalConfigValue", () => {
 		it("returns the configured value of a global key", async () => {
-			const exec = await execWithIsolatedHome(`[init]
+			const exec = await execWithIsolatedGlobalConfig(`[init]
 	defaultBranch = trunk
 `);
 
@@ -33,13 +40,13 @@ describe("git/config", () => {
 		});
 
 		it("returns null when the key is not configured", async () => {
-			const exec = await execWithIsolatedHome("");
+			const exec = await execWithIsolatedGlobalConfig("");
 
 			await expect(getGlobalConfigValue(exec, "init.defaultBranch")).resolves.toBe(null);
 		});
 
 		it("returns only the value piece when the -z output carries a trailing delimiter", async () => {
-			const exec = await execWithIsolatedHome(`[init]
+			const exec = await execWithIsolatedGlobalConfig(`[init]
 	defaultBranch = trunk
 `);
 

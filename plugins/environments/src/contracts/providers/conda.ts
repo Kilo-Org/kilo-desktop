@@ -231,6 +231,7 @@ export type CondaEnvsDeleteResult = z.infer<typeof condaEnvsDeleteResultSchema>;
 /** Input to `conda.envs.clone`. Clones `sourceName` into a new env `name`. */
 export const condaEnvsCloneInputSchema = z.object({
 	sourceName: environmentNameSchema,
+	sourcePrefix: envPrefixSchema.optional(),
 	name: environmentNameSchema,
 });
 export type CondaEnvsCloneInput = z.infer<typeof condaEnvsCloneInputSchema>;
@@ -450,6 +451,50 @@ export const condaPackagesUpdateResultSchema = z.object({
 	updated: z.array(condaPackageSchema),
 });
 export type CondaPackagesUpdateResult = z.infer<typeof condaPackagesUpdateResultSchema>;
+
+/** A single package change in a solver preview (dry-run). */
+export const condaPackageChangeSchema = z.object({
+	name: z.string().min(1),
+	/** Version before the operation, or null for newly added packages. */
+	fromVersion: z.string().nullable(),
+	/** Version after the operation, or null for removed packages. */
+	toVersion: z.string().nullable(),
+	channel: z.string().default(""),
+});
+export type CondaPackageChange = z.infer<typeof condaPackageChangeSchema>;
+
+/**
+ * Flat object + refine for the same reason as `condaPackagesInstallInputSchema`:
+ * a `z.intersection` (`.and()`) emits an unsatisfiable JSON Schema `allOf` when
+ * both sides carry `additionalProperties: false`.
+ */
+export const condaPackagesPreviewInputSchema = z
+	.object({
+		name: environmentNameSchema.optional(),
+		prefix: envPrefixSchema.optional(),
+		packages: z.array(matchSpecSchema).min(1),
+		channels: z.array(channelSchema).min(1).optional(),
+	})
+	.refine((v) => v.name !== undefined || v.prefix !== undefined, {
+		message: "At least one of `name` or `prefix` must be provided.",
+	});
+export type CondaPackagesPreviewInput = z.infer<typeof condaPackagesPreviewInputSchema>;
+
+export const condaPackagesPreviewResultSchema = z.object({
+	/** Packages that will be upgraded. */
+	upgraded: z.array(condaPackageChangeSchema),
+	/** Packages that will be downgraded. */
+	downgraded: z.array(condaPackageChangeSchema),
+	/** Packages that will be newly installed (transitive dependencies). */
+	added: z.array(condaPackageChangeSchema),
+	/** Packages that will be removed. */
+	removed: z.array(condaPackageChangeSchema),
+	/** Packages reinstalled at the same version but different build or channel. */
+	rebuilt: z.array(condaPackageChangeSchema),
+	/** True when the solver found no changes needed. */
+	nothingToDo: z.boolean(),
+});
+export type CondaPackagesPreviewResult = z.infer<typeof condaPackagesPreviewResultSchema>;
 
 /* --------------------------------------------------------------------- */
 /* Method I/O — channels                                                 */
@@ -679,7 +724,10 @@ export const condaContract = defineContract({
 		condaPackagesUpdateInputSchema,
 		condaPackagesUpdateResultSchema,
 	),
-
+	"conda.packages.preview": defineMethod(
+		condaPackagesPreviewInputSchema,
+		condaPackagesPreviewResultSchema,
+	),
 	"conda.channels.list": defineMethod(z.undefined(), condaChannelsListResultSchema),
 	"conda.channels.add": defineMethod(condaChannelsAddInputSchema, condaChannelsListResultSchema),
 	"conda.channels.remove": defineMethod(

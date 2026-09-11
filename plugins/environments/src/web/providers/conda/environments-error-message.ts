@@ -44,10 +44,24 @@ const FRIENDLY_MESSAGE: Record<EnvironmentsErrorCode, string> = {
  * Convert a caught error (or any value) into a friendly, user-facing message.
  * Recognised environments error codes map to curated copy; anything else
  * falls back to `fallback`.
+ *
+ * For `PROVIDER_NOT_READY` errors that contain a bridge detail string, the
+ * detail is appended so the user sees something actionable (e.g. a YAML
+ * parse error in `.condarc`) rather than just "backend not ready".
  */
 export function friendlyEnvironmentsError(reason: unknown, fallback: string): string {
 	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
 	const parsed = raw ? parseEnvironmentsErrorMessage(raw) : null;
-	if (parsed) return FRIENDLY_MESSAGE[parsed.code];
-	return fallback;
+	if (!parsed) return fallback;
+
+	const friendly = FRIENDLY_MESSAGE[parsed.code];
+	// For opaque "not ready" errors, surface the bridge detail when it
+	// carries real information (avoids hiding fixable config issues).
+	if (parsed.code === "PROVIDER_NOT_READY" && parsed.detail) {
+		const detail = parsed.detail.replace(/^anaconda-bridge-sidecar error:\s*/i, "").trim();
+		if (detail && !detail.startsWith("bridge failed to start")) {
+			return `${friendly} (${detail})`;
+		}
+	}
+	return friendly;
 }

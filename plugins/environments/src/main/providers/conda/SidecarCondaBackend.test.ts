@@ -1,9 +1,13 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 
 import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
@@ -248,8 +252,9 @@ describe("SidecarCondaBackend", () => {
 				if (method === "conda.info") return Promise.resolve({});
 				if (method === "conda.clone") {
 					return Promise.resolve({
-						prefix: "/home/user/miniconda3/envs/cloned",
 						success: true,
+						srcPrefix: "/home/user/miniconda3/envs/source",
+						dstPrefix: "/home/user/miniconda3/envs/cloned",
 					});
 				}
 				return Promise.resolve({});
@@ -269,14 +274,119 @@ describe("SidecarCondaBackend", () => {
 			);
 		});
 
+		it("derives destinationPrefix from sourcePrefix to preserve the root location", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.clone") {
+					return Promise.resolve({
+						success: true,
+						srcPrefix: "/home/user/miniconda3/envs/myenv",
+						dstPrefix: "/home/user/miniconda3/envs/myenv-backup",
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.clone({
+				sourceName: "myenv",
+				sourcePrefix: "/home/user/miniconda3/envs/myenv",
+				name: "myenv-backup",
+			});
+
+			expect(result).toEqual({
+				name: "myenv-backup",
+				prefix: "/home/user/miniconda3/envs/myenv-backup",
+			});
+			// Should send destinationPrefix (not destinationName) derived from
+			// the source's parent directory to keep the clone co-located.
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda.clone",
+				{
+					destinationPrefix: "/home/user/miniconda3/envs/myenv-backup",
+					prefix: "/home/user/miniconda3/envs/myenv",
+				},
+				expect.anything(),
+			);
+		});
+
+		it("clones the base env into the distribution's own envs directory", async () => {
+			// A real distribution root carries envs/ (and pkgs/); an ordinary env
+			// does not. Build one on disk so the filesystem check drives the
+			// decision exactly as it will in production.
+			const root = mkdtempSync(join(tmpdir(), "sidecar-clone-"));
+			mkdirSync(join(root, "envs"));
+			try {
+				mockConnection.sendRequest.mockImplementation((method: string) => {
+					if (method === "conda.info") return Promise.resolve({});
+					if (method === "conda.clone") {
+						return Promise.resolve({
+							success: true,
+							srcPrefix: root,
+							dstPrefix: join(root, "envs", "base-backup"),
+						});
+					}
+					return Promise.resolve({});
+				});
+
+				const backend = createBackend();
+				const result = await backend.clone({
+					sourceName: "base",
+					sourcePrefix: root,
+					name: "base-backup",
+				});
+
+				expect(result).toEqual({ name: "base-backup", prefix: join(root, "envs", "base-backup") });
+				// Not the parent-derived `<parent>/base-backup`, and not
+				// destinationName (which the sidecar would resolve into its own
+				// envs_dirs) — the clone stays inside the user's distribution.
+				expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+					"conda.clone",
+					{ destinationPrefix: join(root, "envs", "base-backup"), prefix: root },
+					expect.anything(),
+				);
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
+
+		it("falls back to destinationName for a -p env outside any envs directory", async () => {
+			const prefix = mkdtempSync(join(tmpdir(), "sidecar-clone-p-"));
+			mkdirSync(join(prefix, "conda-meta"));
+			try {
+				mockConnection.sendRequest.mockImplementation((method: string) => {
+					if (method === "conda.info") return Promise.resolve({});
+					if (method === "conda.clone") {
+						return Promise.resolve({
+							success: true,
+							srcPrefix: prefix,
+							dstPrefix: "/home/user/.conda/envs/copy",
+						});
+					}
+					return Promise.resolve({});
+				});
+
+				const backend = createBackend();
+				await backend.clone({ sourceName: "", sourcePrefix: prefix, name: "copy" });
+
+				expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+					"conda.clone",
+					{ destinationName: "copy", prefix },
+					expect.anything(),
+				);
+			} finally {
+				rmSync(prefix, { recursive: true, force: true });
+			}
+		});
+
 		it("throws SOLVE_FAILED when the bridge reports success=false", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
 				if (method === "conda.info") return Promise.resolve({});
 				if (method === "conda.clone") {
 					return Promise.resolve({
-						prefix: "/path/to/env",
 						success: false,
-						message: "source environment is corrupt",
+						srcPrefix: "/path/to/source",
+						dstPrefix: "/path/to/env",
 					});
 				}
 				return Promise.resolve({});
@@ -284,7 +394,7 @@ describe("SidecarCondaBackend", () => {
 
 			const backend = createBackend();
 			await expect(backend.clone({ sourceName: "source", name: "cloned" })).rejects.toThrow(
-				"source environment is corrupt",
+				"clone failed",
 			);
 		});
 	});
@@ -705,12 +815,12 @@ describe("SidecarCondaBackend", () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
 				if (method === "conda.info") return Promise.resolve({});
 				if (method === "conda_tools.list_channels") {
-					return Promise.resolve({
-						channels: [
-							{ name: "conda-forge", url: "https://conda.anaconda.org/conda-forge" },
-							{ name: "defaults", url: "https://repo.anaconda.com/pkgs/main" },
-						],
-					});
+					// The bridge returns list[ChannelMetadata] directly (not
+					// wrapped in { channels: [...] }).
+					return Promise.resolve([
+						{ name: "conda-forge", urls: ["https://conda.anaconda.org/conda-forge"] },
+						{ name: "defaults", urls: ["https://repo.anaconda.com/pkgs/main"] },
+					]);
 				}
 				return Promise.resolve({});
 			});
@@ -753,9 +863,7 @@ describe("SidecarCondaBackend", () => {
 					return Promise.resolve({ success: true });
 				}
 				if (method === "conda_tools.list_channels") {
-					return Promise.resolve({
-						channels: [{ name: "my-channel" }, { name: "conda-forge" }],
-					});
+					return Promise.resolve([{ name: "my-channel" }, { name: "conda-forge" }]);
 				}
 				return Promise.resolve({});
 			});
@@ -1251,6 +1359,40 @@ describe("SidecarCondaBackend", () => {
 			const backend = createBackend();
 			await expect(backend.create({ name: "test", packages: ["numpy>=99"] })).rejects.toThrow(
 				"UnsatisfiableError: conflict for numpy",
+			);
+		});
+
+		it("strips ANSI colors and keeps the solver conflict tree in SOLVE_FAILED detail", async () => {
+			const solverReport = [
+				"Encountered problems while solving:",
+				"  - package \u001b[32mcffi =2.1.1 \u001b[0mrequires \u001b[31mlibffi >=3.4.8 \u001b[0m",
+				"",
+				"The following packages are incompatible",
+				"└─ \u001b[31mpin on python =3.11 \u001b[0mis not installable",
+			].join("\n");
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "conda.info") return Promise.resolve({});
+				if (method === "conda.install") {
+					return Promise.resolve({
+						prefix: "/path/to/env",
+						success: false,
+						message: solverReport,
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const failure = await backend
+				.install({ name: "myenv", packages: ["cffi=2.1.1"] })
+				.catch((error: unknown) => error);
+			expect(failure).toBeInstanceOf(FeatureError);
+			expect((failure as FeatureError).message).toBe(
+				"SOLVE_FAILED: Encountered problems while solving:\n" +
+					"  - package cffi =2.1.1 requires libffi >=3.4.8\n" +
+					"\n" +
+					"The following packages are incompatible\n" +
+					"└─ pin on python =3.11 is not installable",
 			);
 		});
 

@@ -162,6 +162,9 @@ apps/desktop/.data/
 # WebMCP relay assets are synced from @mcp-b/webmcp-local-relay at build time
 apps/web/public/webmcp/
 plugins/kilo-server/resources/kilo/
+# Fetched Kilo binaries under any plugin path (guards against stale copies
+# left behind by a plugin rename).
+plugins/*/resources/kilo/
 build/
 release/
 playwright-report/
@@ -175,3 +178,8 @@ ldclient-user-cache/
 
 # turborepo
 .turbo
+
+# Jupyter scratch files at the repo root
+/Untitled*.ipynb
+.ipynb_checkpoints/
+.virtual_documents/

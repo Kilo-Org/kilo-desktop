@@ -88,18 +88,38 @@ export const ENVIRONMENTS_ERROR_MESSAGE_PATTERN =
 	/^(?:\[(?:VALIDATION|NOT_FOUND|BUSINESS)\]\s+)?([A-Z][A-Z0-9_]*)(?::\s+(.+))?$/s;
 
 /**
+ * Matches ANSI escape sequences emitted by conda's solver reports (SGR
+ * color codes and other CSI sequences). The bridge sidecar captures conda
+ * output with color enabled, so raw details arrive wrapped in e.g.
+ * `\x1b[32m…\x1b[0m`; renderers are not terminals and would show the
+ * leftover `[32m` fragments as literal text.
+ */
+// oxlint-disable-next-line no-control-regex -- intentionally matching terminal escape sequences
+const ANSI_ESCAPE_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+
+/**
  * Encode a granular reason into the string form carried by
  * `FeatureError.message` so downstream consumers can recover the reason
  * via {@link parseEnvironmentsErrorMessage}.
  *
- * `detail` is trimmed and collapsed to one line to keep the wire format
- * unambiguous.
+ * `detail` is trimmed and stripped of ANSI escape sequences. Line breaks
+ * are preserved (only trailing per-line whitespace is dropped): solver
+ * conflict reports use newlines and indentation to draw a dependency tree,
+ * and UI surfaces render the detail inside `whitespace-pre-wrap` blocks.
+ * Multi-line details stay parseable because
+ * {@link ENVIRONMENTS_ERROR_MESSAGE_PATTERN} matches across lines.
  */
 export function formatEnvironmentsErrorMessage(
 	code: EnvironmentsErrorCode,
 	detail?: string,
 ): string {
-	const trimmed = detail?.replace(/\s+/g, " ").trim();
+	const trimmed = detail
+		?.replace(ANSI_ESCAPE_PATTERN, "")
+		.replace(/\r\n?/g, "\n")
+		.split("\n")
+		.map((line) => line.trimEnd())
+		.join("\n")
+		.trim();
 	return trimmed ? `${code}: ${trimmed}` : code;
 }
 
@@ -280,9 +300,11 @@ export type EnvironmentsEventName =
 
 /**
  * Input to the per-provider `<provider>.jobs.cancel` tool. Cancelling a
- * job that has already reached a terminal state is a no-op (returns
- * `cancelled: false`); cancelling an unknown job throws
- * {@link EnvironmentsErrorCode} `JOB_NOT_FOUND`.
+ * job that has already reached a terminal state or whose id is unknown
+ * is a no-op (returns `cancelled: false`) — the queue evicts records
+ * once a job settles, so the two cases are indistinguishable. This is
+ * intentionally idempotent: a UI Cancel button that races the job's
+ * own completion never errors.
  */
 export const cancelInputSchema = z.object({ jobId: jobIdSchema });
 export type CancelInput = z.infer<typeof cancelInputSchema>;

@@ -23,8 +23,11 @@ import { friendlyEnvironmentsError } from "./environments-error-message.js";
 import {
 	showEnvironmentCreatedToast,
 	showEnvironmentsErrorToast,
+	showPackagesInstalledToast,
+	showPackagesUpdatedToast,
 	trackBackgroundCreateToast,
 	trackBackgroundDeleteToast,
+	trackBackgroundInstallToast,
 } from "./environments-toasts.js";
 
 describe("showEnvironmentsErrorToast", () => {
@@ -135,6 +138,58 @@ describe("trackBackgroundDeleteToast", () => {
 				"Failed to delete my-env",
 				expect.objectContaining({
 					id: "toast-id",
+					duration: Infinity,
+				}),
+			);
+		});
+	});
+});
+
+describe("showPackagesInstalledToast / showPackagesUpdatedToast", () => {
+	it("pluralises the count and names the environment", () => {
+		showPackagesInstalledToast("dev", 1);
+		expect(toast.success).toHaveBeenCalledWith("Packages installed", {
+			description: "1 package installed in dev.",
+		});
+
+		showPackagesUpdatedToast("dev", 3, "t-1");
+		expect(toast.success).toHaveBeenCalledWith("Packages updated", {
+			id: "t-1",
+			description: "3 packages updated in dev.",
+		});
+	});
+});
+
+describe("trackBackgroundInstallToast", () => {
+	it("shows loading then success on promise resolve", async () => {
+		const promise = Promise.resolve();
+		trackBackgroundInstallToast(promise, "dev", 2, "fallback");
+
+		expect(toast.loading).toHaveBeenCalledWith("Installing 2 packages…", {
+			description: "Resolving dependencies for dev.",
+		});
+
+		await vi.waitFor(() => {
+			expect(toast.success).toHaveBeenCalledWith("Packages installed", {
+				id: "toast-id",
+				description: "2 packages installed in dev.",
+			});
+		});
+	});
+
+	it("shows loading then a persistent error on promise reject", async () => {
+		const promise = Promise.reject(new Error("boom"));
+		promise.catch(() => {});
+
+		trackBackgroundInstallToast(promise, "dev", 1, "Could not install.");
+
+		expect(toast.loading).toHaveBeenCalledWith("Installing 1 package…", expect.anything());
+		await vi.waitFor(() => {
+			expect(toast.error).toHaveBeenCalledWith(
+				"Install failed",
+				expect.objectContaining({
+					id: "toast-id",
+					description: "Could not install.",
 					duration: Infinity,
 				}),
 			);

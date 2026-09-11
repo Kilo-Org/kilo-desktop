@@ -202,9 +202,33 @@ describe("formatEnvironmentsErrorMessage / parseEnvironmentsErrorMessage", () =>
 		expect(parseEnvironmentsErrorMessage(wire)).toEqual({ code: "PROVIDER_NOT_READY" });
 	});
 
-	it("collapses whitespace in detail so the wire format stays single-line", () => {
-		expect(formatEnvironmentsErrorMessage("STAGING_FAILED", "  install\nfailed \t badly  ")).toBe(
-			"STAGING_FAILED: install failed badly",
+	it("preserves the line structure of a conda solver conflict tree", () => {
+		const tree = [
+			"The following packages are incompatible",
+			"├─ cffi =2.1.1 * is installable with the potential options",
+			"│  ├─ cffi 2.1.1 would require",
+			"│  │  └─ python >=3.10,<3.11.0a0 *, which can be installed;",
+			"└─ pin on python =3.11 * is not installable because it requires",
+			"   └─ python =3.11 *, which conflicts with any installable versions previously reported.",
+			"",
+			"Pins seem to be involved in the conflict. Currently pinned specs:",
+			" - python=3.11",
+		].join("\n");
+		expect(formatEnvironmentsErrorMessage("SOLVE_FAILED", tree)).toBe(`SOLVE_FAILED: ${tree}`);
+		expect(parseEnvironmentsErrorMessage(`[BUSINESS] SOLVE_FAILED: ${tree}`)).toEqual({
+			code: "SOLVE_FAILED",
+			detail: tree,
+		});
+	});
+
+	it("strips ANSI escape sequences from detail so terminal color codes never reach the UI", () => {
+		expect(
+			formatEnvironmentsErrorMessage(
+				"SOLVE_FAILED",
+				"Encountered problems while solving:\n  - package \u001b[32mcffi =2.1.1 \u001b[0mrequires \u001b[31mlibffi >=3.4.8 \u001b[0m",
+			),
+		).toBe(
+			"SOLVE_FAILED: Encountered problems while solving:\n  - package cffi =2.1.1 requires libffi >=3.4.8",
 		);
 	});
 

@@ -94,7 +94,11 @@ describe("CloneEnvironmentDialog", () => {
 		await vi.waitFor(() => {
 			expect(clone).toHaveBeenCalledOnce();
 		});
-		expect(clone).toHaveBeenCalledWith({ sourceName: "myenv", name: "myenv-copy" });
+		expect(clone).toHaveBeenCalledWith({
+			sourceName: "myenv",
+			sourcePrefix: "/opt/anaconda3/envs/myenv",
+			name: "myenv-copy",
+		});
 		await vi.waitFor(() => {
 			expect(onClose).toHaveBeenCalledOnce();
 		});

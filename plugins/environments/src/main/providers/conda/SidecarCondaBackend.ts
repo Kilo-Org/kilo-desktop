@@ -25,6 +25,7 @@
  * - install()           → conda.install (skip_preview=true)
  * - uninstall()         → conda.remove (packages only, no all flag)
  * - update()            → conda.update (skip_preview=true, update_all flag)
+ * - previewUpdate()     → conda.update (dry_run=true)
  * - listChannels()      → conda_tools.list_channels
  * - addChannel()        → conda_config.add (key="channels")
  * - removeChannel()     → not yet implemented in anaconda-bridge-sidecar
@@ -48,6 +49,7 @@ import {
 	type MessageConnection,
 } from "vscode-jsonrpc/node";
 
+import { compareCondaVersions } from "../../../compare-conda-versions.js";
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
 import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
 
@@ -68,6 +70,8 @@ import type {
 	CondaPackage,
 	CondaPackagesInstallInput,
 	CondaPackagesInstallResult,
+	CondaPackagesPreviewInput,
+	CondaPackagesPreviewResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
 	CondaPackagesUpdateInput,
@@ -75,6 +79,7 @@ import type {
 	CondaRepodataPackage,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
+import { cloneDestinationParam } from "./clone-destination.js";
 import type {
 	CondaBackend,
 	CondaCallContext,
@@ -82,6 +87,7 @@ import type {
 	CondaRepodataFilter,
 	CondaRepodataFindOptions,
 } from "./CondaBackend.js";
+import { parseTransactionActions } from "./transaction-actions.js";
 
 const MAX_RESTART_ATTEMPTS = 3;
 const BASE_RESTART_DELAY_MS = 1000;
@@ -237,17 +243,22 @@ export class SidecarCondaBackend implements CondaBackend {
 	}
 
 	async clone(input: CondaEnvsCloneInput, ctx?: CondaCallContext): Promise<CondaEnv> {
-		// Bridge method uses camelCase wire format (to_camel alias generator).
-		const result = await this.#call<TransactionResult>(
+		// Prefer sourcePrefix over sourceName for environments outside the
+		// bridge's envs_dirs (same pattern as install/remove/update).
+		const source = input.sourcePrefix ? { prefix: input.sourcePrefix } : { name: input.sourceName };
+
+		const result = await this.#call<CloneResult>(
 			"conda.clone",
 			{
-				destinationName: input.name,
-				name: input.sourceName,
+				...cloneDestinationParam(input.sourcePrefix, input.name),
+				...source,
 			},
 			ctx,
 		);
-		this.#assertTransactionSuccess(result);
-		return { name: input.name, prefix: result.prefix };
+		if (result.success === false) {
+			throw featureError("SOLVE_FAILED", result.message ?? "clone failed");
+		}
+		return { name: input.name, prefix: result.dstPrefix };
 	}
 
 	async createFromFile(
@@ -373,6 +384,28 @@ export class SidecarCondaBackend implements CondaBackend {
 		return { jobId: "", envName, updated };
 	}
 
+	async previewUpdate(
+		input: CondaPackagesPreviewInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaPackagesPreviewResult> {
+		const result = await this.#call<TransactionResult>(
+			"conda.update",
+			{
+				...resolveTargetParam(input),
+				packages: input.packages,
+				channels: input.channels ?? undefined,
+				dry_run: true,
+			},
+			ctx,
+		);
+
+		if (result.success === false) {
+			throw featureError("SOLVE_FAILED", result.message ?? "solver preview failed");
+		}
+
+		return parseTransactionActions(result.actions ?? {});
+	}
+
 	async listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult> {
 		const result = await this.#call<ListChannelsResult | BridgeChannel[]>(
 			"conda_tools.list_channels",
@@ -440,9 +473,11 @@ export class SidecarCondaBackend implements CondaBackend {
 			channel: pkg.channel ?? "",
 			summary: pkg.summary ?? "",
 			home: pkg.home ?? "",
-			// The bridge emits `versions` newest-first, but that order is lost
-			// on the wire (see compareCondaVersions), so re-impose it explicitly
-			// to honour the newest-first contract on CondaRepodataPackage.
+			// The bridge emits `versions` newest-first as a JSON object keyed by
+			// version string, but that order is lost on the wire: Object.entries
+			// enumerates integer-like keys (e.g. CalVer "20240301") in ascending
+			// numeric order regardless of insertion order. Re-sort explicitly to
+			// honour the newest-first contract on CondaRepodataPackage.
 			versions: Object.entries(pkg.versions ?? {})
 				.map(([version, meta]) => ({
 					version,
@@ -791,54 +826,6 @@ function extractLinkedNames(actions: TransactionResult["actions"]): string[] {
 }
 
 /**
- * Compare two conda version strings, returning >0 when `a` is newer than `b`.
- *
- * The bridge sends `versions` as a JSON object keyed by version string, and
- * although it emits them newest-first, that order is not preserved on the
- * wire: `Object.entries`/`Object.keys` enumerate integer-index-like keys
- * (e.g. CalVer `"20240301"`) in ascending numeric order ahead of other keys,
- * regardless of insertion order. Relying on key order would therefore
- * silently flip purely-numeric versions oldest-first, so the newest-first
- * contract on `CondaRepodataPackage.versions` has to be imposed explicitly.
- *
- * This is a pragmatic dotted-component comparison, not a full PEP 440 / conda
- * `VersionOrder` implementation: it splits each version into `.`/`-`/`_`
- * separated components, then compares component-by-component numerically when
- * both sides are integers and lexically otherwise (a numeric component sorts
- * ahead of an alphabetic one, so `1.1` > `1.1a`). It covers the numeric,
- * CalVer, and dotted-release strings conda repodata actually produces; exotic
- * epoch/local-segment forms fall back to a stable lexical tiebreak rather
- * than throwing.
- */
-function compareCondaVersions(a: string, b: string): number {
-	const aParts = a.split(/[._-]/);
-	const bParts = b.split(/[._-]/);
-	const length = Math.max(aParts.length, bParts.length);
-
-	for (let i = 0; i < length; i++) {
-		const aPart = aParts[i];
-		const bPart = bParts[i];
-		if (aPart === undefined) return -1; // shorter version is older
-		if (bPart === undefined) return 1;
-		if (aPart === bPart) continue;
-
-		const aNum = /^\d+$/.test(aPart) ? Number(aPart) : null;
-		const bNum = /^\d+$/.test(bPart) ? Number(bPart) : null;
-
-		if (aNum !== null && bNum !== null) {
-			if (aNum !== bNum) return aNum - bNum;
-			continue;
-		}
-		// A numeric component is newer than an alphabetic one at the same
-		// position (e.g. a release `1.1` outranks a pre-release `1.1a`).
-		if (aNum !== null) return 1;
-		if (bNum !== null) return -1;
-		return aPart < bPart ? -1 : 1;
-	}
-	return 0;
-}
-
-/**
  * Build the `repodata.find` wire params from a filter, applying the single
  * authoritative "omit an unset key" rule for this method.
  *
@@ -905,6 +892,13 @@ interface TransactionResult {
 	actions?: Record<string, unknown>;
 }
 
+interface CloneResult {
+	success: boolean;
+	srcPrefix: string;
+	dstPrefix: string;
+	message?: string;
+}
+
 interface ListPackagesResult {
 	prefix: string;
 	packages: Array<{
@@ -919,6 +913,7 @@ interface ListPackagesResult {
 interface BridgeChannel {
 	name?: string;
 	url?: string;
+	urls?: string[];
 }
 
 interface ListChannelsResult {

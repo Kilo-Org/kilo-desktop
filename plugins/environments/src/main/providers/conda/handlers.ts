@@ -1,10 +1,11 @@
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
-
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
 
+import type { CancelInput, CancelResult } from "../../../contracts/common.js";
 import type {
+	CondaChannelsListResult,
 	CondaDistribution,
 	CondaEnvsCloneInput,
 	CondaEnvsCloneResult,
@@ -23,6 +24,8 @@ import type {
 	CondaPackagesInstallResult,
 	CondaPackagesListInput,
 	CondaPackagesListResult,
+	CondaPackagesPreviewInput,
+	CondaPackagesPreviewResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
 	CondaPackagesUpdateInput,
@@ -92,18 +95,23 @@ export function mergeEnvsDirs(envsDirs: string[], distributions: CondaDistributi
 /**
  * Bind provider-scoped main-process handlers.
  *
- * Semantics (per delivery plan sub-issues 4 – 6):
- * - **Reads** (`conda.envs.list`) go through {@link JobQueue.read} — a
- *   5 s TTL cache keyed on `(providerId, opName, args)` bypasses the
- *   backend round-trip on repeat calls and is cleared automatically by
- *   any successful write for the same provider.
- * - **Writes** (`conda.envs.create`, `conda.envs.delete`) go through
- *   {@link JobQueue.enqueue} — a per-provider FIFO worker with
- *   `queued` → `running` → terminal progress events emitted on
- *   `environments.job-progress`. The queue-assigned `jobId` is
- *   returned inline on the response so the renderer can correlate
- *   subsequent events (and drive `conda.jobs.cancel` in sub-issue 9)
- *   without a separate lookup.
+ * Semantics:
+ * - **Reads** (`conda.envs.list`, `conda.packages.list`, `conda.channels.list`)
+ *   go through {@link JobQueue.read} — a 5 s TTL cache keyed on
+ *   `(providerId, opName, args)` bypasses the backend round-trip on repeat
+ *   calls and is cleared automatically by any successful write for the
+ *   same provider.
+ * - **Writes** (`conda.envs.create`, `conda.envs.delete`,
+ *   `conda.packages.install`, `conda.packages.remove`,
+ *   `conda.packages.update`) go through {@link JobQueue.enqueue} — a
+ *   per-provider FIFO worker with `queued` → `running` → terminal
+ *   progress events emitted on `environments.job-progress`. The
+ *   queue-assigned `jobId` is returned inline on the response so the
+ *   renderer can correlate subsequent events (and drive
+ *   `conda.jobs.cancel`) without a separate lookup.
+ * - **Cancel** (`conda.jobs.cancel`) delegates to
+ *   {@link JobQueue.cancel}, which aborts running jobs or dequeues
+ *   queued ones.
  *
  * Kept as a free function (not a method on `CondaProvider`) so it can be
  * unit-tested in isolation with a stub backend and a fake `MainSdk`.
@@ -115,6 +123,9 @@ export function registerCondaHandlers(
 	queue: JobQueue,
 ): void {
 	const handlers = mainSdk.channels(condaContract);
+
+	// ─── Reads ────────────────────────────────────────────────────────
+
 	handlers.handle("conda.envs.list", () =>
 		queue.read({
 			providerId: "conda",
@@ -133,6 +144,31 @@ export function registerCondaHandlers(
 					.then((distributions) => ({ distributions })),
 		}),
 	);
+
+	handlers.handle(
+		"conda.packages.list",
+		(input: CondaPackagesListInput): Promise<CondaPackagesListResult> =>
+			queue.read({
+				providerId: "conda",
+				opName: "packages.list",
+				args: { name: input.name, prefix: input.prefix },
+				run: (ctx) =>
+					backend.listPackages(input, { signal: ctx.signal }).then((packages) => ({
+						envName: envTargetDisplayName(input),
+						packages,
+					})),
+			}),
+	);
+
+	handlers.handle("conda.channels.list", (): Promise<CondaChannelsListResult> =>
+		queue.read({
+			providerId: "conda",
+			opName: "channels.list",
+			run: (ctx) => backend.listChannels({ signal: ctx.signal }),
+		}),
+	);
+
+	// ─── Writes ───────────────────────────────────────────────────────
 
 	handlers.handle(
 		"conda.envs.create",
@@ -214,10 +250,6 @@ export function registerCondaHandlers(
 			run: async (ctx) => {
 				const [options, distResult] = await Promise.all([
 					backend.prefixOptions({ signal: ctx.signal }),
-					// Fetch distributions through the queue so it shares the cache
-					// entry with the `conda.envs.distributions` handler. On a cold
-					// miss this saves one bridge RPC when distributions were recently
-					// fetched by the distributions handler (or vice versa).
 					queue
 						.read<CondaEnvsDistributionsResult>({
 							providerId: "conda",
@@ -238,35 +270,6 @@ export function registerCondaHandlers(
 	);
 
 	handlers.handle(
-		"conda.packages.list",
-		(input: CondaPackagesListInput): Promise<CondaPackagesListResult> =>
-			queue.read({
-				providerId: "conda",
-				opName: "packages.list",
-				args: { name: input.name, prefix: input.prefix },
-				run: (ctx) =>
-					backend.listPackages(input, { signal: ctx.signal }).then((packages) => ({
-						envName: envTargetDisplayName(input),
-						packages,
-					})),
-			}),
-	);
-
-	handlers.handle("conda.channels.list", () =>
-		queue.read({
-			providerId: "conda",
-			opName: "channels.list",
-			run: (ctx) => backend.listChannels({ signal: ctx.signal }),
-		}),
-	);
-
-	handlers.handle(
-		"conda.repodata.find",
-		(input: CondaRepodataFindInput): Promise<CondaRepodataFindResult> =>
-			readRepodataFind(queue, backend, input),
-	);
-
-	handlers.handle(
 		"conda.packages.install",
 		(input: CondaPackagesInstallInput): Promise<CondaPackagesInstallResult> =>
 			enqueuePackagesInstall(queue, backend, input),
@@ -279,14 +282,47 @@ export function registerCondaHandlers(
 	);
 
 	handlers.handle(
+		"conda.repodata.find",
+		(input: CondaRepodataFindInput): Promise<CondaRepodataFindResult> =>
+			readRepodataFind(queue, backend, input),
+	);
+
+	handlers.handle(
 		"conda.packages.update",
 		(input: CondaPackagesUpdateInput): Promise<CondaPackagesUpdateResult> =>
 			enqueuePackagesUpdate(queue, backend, input),
 	);
 
-	// conda.channels.add / channels.remove / jobs.cancel are wired in later
-	// slices alongside their CondaBackend implementations, enqueued through
-	// `queue.enqueue(...)` (writes).
+	handlers.handle(
+		"conda.packages.preview",
+		(input: CondaPackagesPreviewInput): Promise<CondaPackagesPreviewResult> =>
+			queue.read({
+				providerId: "conda",
+				opName: "packages.preview",
+				args: { name: input.name, prefix: input.prefix, packages: input.packages },
+				run: (ctx) => backend.previewUpdate(input, { signal: ctx.signal }),
+			}),
+	);
+
+	// ─── Channels (writes) ────────────────────────────────────────────
+	// Stub handlers so callers get a descriptive error instead of a
+	// generic "No handler" rejection. A global channel management UI
+	// would implement these in a follow-up.
+
+	handlers.handle("conda.channels.add", () => {
+		throw new FeatureError("conda.channels.add is not yet implemented.", "BUSINESS");
+	});
+
+	handlers.handle("conda.channels.remove", () => {
+		throw new FeatureError("conda.channels.remove is not yet implemented.", "BUSINESS");
+	});
+
+	// ─── Cancel ───────────────────────────────────────────────────────
+
+	handlers.handle("conda.jobs.cancel", (input: CancelInput): CancelResult => {
+		const cancelled = queue.cancel(input.jobId);
+		return { jobId: input.jobId, cancelled };
+	});
 }
 
 /**
@@ -393,20 +429,7 @@ function rankRepodataMatches(
 	return scored.map((entry) => entry.pkg);
 }
 
-async function enqueuePackagesInstall(
-	queue: JobQueue,
-	backend: CondaBackend,
-	input: CondaPackagesInstallInput,
-): Promise<CondaPackagesInstallResult> {
-	const { jobId, result } = queue.enqueue({
-		providerId: "conda",
-		kind: "packages.install",
-		run: (ctx) => backend.install(input, { signal: ctx.signal, onProgress: ctx.onProgress }),
-	});
-	// `backend.install` returns a placeholder empty `jobId`; the queue-assigned
-	// id is the one the renderer correlates progress events (and cancel) with.
-	return { ...(await result), jobId };
-}
+// ─── Enqueue helpers ──────────────────────────────────────────────────────
 
 async function enqueuePackagesRemove(
 	queue: JobQueue,
@@ -503,4 +526,18 @@ async function enqueueEnvsDelete(
 /** Human-readable label for an env target: the name when available, else the prefix. */
 function envTargetDisplayName(target: EnvTarget): string {
 	return target.name ?? target.prefix ?? "";
+}
+
+async function enqueuePackagesInstall(
+	queue: JobQueue,
+	backend: CondaBackend,
+	input: CondaPackagesInstallInput,
+): Promise<CondaPackagesInstallResult> {
+	const { jobId, result } = queue.enqueue({
+		providerId: "conda",
+		kind: "packages.install",
+		run: (ctx) => backend.install(input, { signal: ctx.signal, onProgress: ctx.onProgress }),
+	});
+	const installResult = await result;
+	return { ...installResult, jobId };
 }

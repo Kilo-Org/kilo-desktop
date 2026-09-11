@@ -9,6 +9,8 @@ import type {
 	CondaPackage,
 	CondaPackagesInstallInput,
 	CondaPackagesInstallResult,
+	CondaPackagesPreviewInput,
+	CondaPackagesPreviewResult,
 	CondaPackagesRemoveInput,
 	CondaPackagesRemoveResult,
 	CondaPackagesUpdateInput,
@@ -122,6 +124,10 @@ export interface CondaBackend {
 		input: CondaPackagesUpdateInput,
 		ctx?: CondaCallContext,
 	): Promise<CondaPackagesUpdateResult>;
+	previewUpdate(
+		input: CondaPackagesPreviewInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaPackagesPreviewResult>;
 
 	listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;

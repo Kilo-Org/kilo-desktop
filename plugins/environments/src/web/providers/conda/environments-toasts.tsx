@@ -55,6 +55,53 @@ export function trackBackgroundCreateToast(
 	);
 }
 
+/** Success toast shown when packages finish installing. */
+export function showPackagesInstalledToast(
+	envName: string,
+	count: number,
+	toastId?: string | number,
+): void {
+	toast.success(`Packages installed`, {
+		...(toastId !== undefined ? { id: toastId } : {}),
+		description: `${count} ${count === 1 ? "package" : "packages"} installed in ${envName}.`,
+	});
+}
+
+/** Success toast shown when packages finish updating. */
+export function showPackagesUpdatedToast(
+	envName: string,
+	count: number,
+	toastId?: string | number,
+): void {
+	toast.success(`Packages updated`, {
+		...(toastId !== undefined ? { id: toastId } : {}),
+		description: `${count} ${count === 1 ? "package" : "packages"} updated in ${envName}.`,
+	});
+}
+
+/**
+ * Track an already-running install job as a background toast:
+ * loading → success or persistent error.
+ */
+export function trackBackgroundInstallToast(
+	promise: Promise<unknown>,
+	envName: string,
+	count: number,
+	errorFallback: string,
+): void {
+	const toastId = toast.loading(`Installing ${count} ${count === 1 ? "package" : "packages"}…`, {
+		description: `Resolving dependencies for ${envName}.`,
+	});
+	promise.then(
+		() => {
+			showPackagesInstalledToast(envName, count, toastId);
+		},
+		(reason) => {
+			showEnvironmentsErrorToast("Install failed", reason, errorFallback, toastId);
+		},
+	);
+}
+
 /**
  * Track a delete-environment job as a background toast:
  * loading → success or persistent error. The dialog closes immediately

@@ -38,9 +38,10 @@ const memoryStorage = (): StorageLike => {
 
 function resolveStorage(): StorageLike {
 	try {
-		if (typeof globalThis.localStorage !== "undefined") return globalThis.localStorage;
+		const ls = globalThis.localStorage;
+		if (typeof ls?.setItem === "function") return ls;
 	} catch {
-		// Ignore storage access errors (private mode / SSR).
+		// Ignore storage access errors (private mode / SSR / Node without --localstorage-file).
 	}
 	return memoryStorage();
 }

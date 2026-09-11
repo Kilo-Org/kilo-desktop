@@ -32,4 +32,22 @@ describe("friendlyEnvironmentsError", () => {
 			"Could not create environment.",
 		);
 	});
+
+	it("appends the bridge detail to PROVIDER_NOT_READY when it carries actionable information", () => {
+		const message =
+			"[BUSINESS] PROVIDER_NOT_READY: anaconda-bridge-sidecar error: could not parse .condarc";
+		const result = friendlyEnvironmentsError(new Error(message), "fallback");
+		expect(result).toContain("backend is not ready");
+		expect(result).toContain("could not parse .condarc");
+		// The bridge-prefix noise is stripped from the surfaced detail.
+		expect(result).not.toContain("anaconda-bridge-sidecar error:");
+	});
+
+	it("omits an opaque 'bridge failed to start' PROVIDER_NOT_READY detail to keep the toast copy short", () => {
+		const message =
+			"[BUSINESS] PROVIDER_NOT_READY: anaconda-bridge-sidecar error: bridge failed to start";
+		const result = friendlyEnvironmentsError(new Error(message), "fallback");
+		expect(result).toContain("backend is not ready");
+		expect(result).not.toContain("bridge failed to start");
+	});
 });

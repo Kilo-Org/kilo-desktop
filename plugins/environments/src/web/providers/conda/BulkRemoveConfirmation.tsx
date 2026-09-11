@@ -1,0 +1,112 @@
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@anaconda-agentic-desktop/ui/components/alert-dialog";
+import { useSdk, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
+
+import type { CondaEnv, CondaPackage, CondaService } from "../../../contracts/providers/conda.js";
+import { environmentDisplayName } from "./environment-display.js";
+import { friendlyEnvironmentsError } from "./environments-error-message.js";
+
+interface BulkRemoveConfirmationProps {
+	env: CondaEnv;
+	packages: CondaPackage[];
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	onSuccess: () => void;
+}
+
+/**
+ * Confirmation dialog for removing multiple packages from a conda environment.
+ * Lists each package name so the user can review before confirming.
+ */
+export function BulkRemoveConfirmation({
+	env,
+	packages,
+	open,
+	onOpenChange,
+	onSuccess,
+}: BulkRemoveConfirmationProps) {
+	const sdk = useSdk<CondaService>("environments");
+	const remove = useSdkMutation(sdk, "conda.packages.remove", {
+		invalidates: ["conda.packages.list", "conda.repodata.find"],
+	});
+
+	const targetName = env.name || "base";
+	const displayName = environmentDisplayName(env);
+	const count = packages.length;
+
+	function handleConfirm() {
+		remove.mutate(
+			{ name: targetName, prefix: env.prefix, packages: packages.map((p) => p.name) },
+			{
+				onSuccess: () => {
+					remove.reset();
+					onOpenChange(false);
+					onSuccess();
+				},
+			},
+		);
+	}
+
+	function handleOpenChange(next: boolean) {
+		if (!next && remove.isPending) return;
+		if (!next) remove.reset();
+		onOpenChange(next);
+	}
+
+	return (
+		<AlertDialog open={open} onOpenChange={handleOpenChange}>
+			<AlertDialogContent data-qa-id="environments-conda-bulk-remove-dialog">
+				<AlertDialogHeader>
+					<AlertDialogTitle>
+						Remove {count} {count === 1 ? "package" : "packages"}?
+					</AlertDialogTitle>
+					<AlertDialogDescription>
+						The following will be uninstalled from <strong>{displayName}</strong>. Dependent
+						packages may also be removed.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+
+				<ul className="max-h-48 overflow-auto rounded-md border p-2 text-sm">
+					{packages.map((pkg) => (
+						<li key={pkg.name} className="flex items-center justify-between py-1">
+							<span className="font-medium">{pkg.name}</span>
+							<span className="text-muted-foreground text-xs">{pkg.version}</span>
+						</li>
+					))}
+				</ul>
+
+				{remove.isError && (
+					<p
+						className="text-destructive text-sm"
+						role="alert"
+						data-qa-id="environments-conda-bulk-remove-error"
+					>
+						{friendlyEnvironmentsError(remove.error, "Could not remove the selected packages.")}
+					</p>
+				)}
+
+				<AlertDialogFooter>
+					<AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+					<AlertDialogAction
+						variant="destructive"
+						disabled={remove.isPending}
+						onClick={handleConfirm}
+						data-qa-id="environments-conda-bulk-remove-confirm-btn"
+					>
+						{remove.isPending
+							? "Removing\u2026"
+							: `Remove ${count} ${count === 1 ? "Package" : "Packages"}`}
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	);
+}

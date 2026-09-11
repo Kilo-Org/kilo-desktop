@@ -55,7 +55,7 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 
 		setServerError(null);
 		mutation.mutate(
-			{ sourceName: env.name, name: name.trim() },
+			{ sourceName: env.name, sourcePrefix: env.prefix, name: name.trim() },
 			{
 				onSuccess: () => onClose(),
 				onError: (reason) =>

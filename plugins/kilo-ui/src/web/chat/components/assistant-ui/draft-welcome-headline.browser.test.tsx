@@ -48,6 +48,7 @@ function renderHeadline(
 	options: {
 		workspaces?: Workspace[];
 		activeWorkspaceId?: string | null;
+		containerWidth?: number;
 	} = {},
 ) {
 	const workspaces = options.workspaces ?? [];
@@ -68,12 +69,17 @@ function renderHeadline(
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const headline = <DraftWelcomeHeadline />;
 
 	return render(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<DraftWelcomeHeadline />
+					{options.containerWidth != null ? (
+						<div style={{ width: options.containerWidth }}>{headline}</div>
+					) : (
+						headline
+					)}
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
@@ -110,8 +116,6 @@ describe("DraftWelcomeHeadline", () => {
 
 		const trigger = screen.getByRole("combobox", { name: "Change workspace" });
 		await expect.element(trigger).not.toHaveAttribute("title");
-		expect(trigger.element().className).toMatch(/max-w-40/);
-		expect(trigger.element().querySelector(".truncate")).not.toBeNull();
 
 		await trigger.click();
 		expect(
@@ -132,8 +136,8 @@ describe("DraftWelcomeHeadline", () => {
 			.not.toBeInTheDocument();
 	});
 
-	it("keeps a long workspace name on one line with an ellipsis", async () => {
-		const longName = "anaconda-agentic-desktop-with-a-very-long-workspace-name";
+	it("wraps a long workspace name instead of truncating it", async () => {
+		const longName = "AnacondaAgenticDesktopWithAVeryLongUnbrokenWorkspaceName";
 		const longWorkspace: Workspace = {
 			...workspace,
 			id: "workspace-long",
@@ -142,20 +146,20 @@ describe("DraftWelcomeHeadline", () => {
 		const { baseElement } = renderHeadline({
 			workspaces: [longWorkspace],
 			activeWorkspaceId: longWorkspace.id,
+			containerWidth: 280,
 		});
 		const screen = page.elementLocator(baseElement);
 		const trigger = screen.getByRole("combobox", { name: "Change workspace" });
 
-		await expect.element(trigger).not.toHaveAttribute("title");
 		await expect
 			.element(screen.getByRole("heading", { level: 1 }))
 			.toHaveTextContent(`What should we work on in ${longName}?`);
 
 		const headingEl = screen.getByRole("heading", { level: 1 }).element();
 		const triggerEl = trigger.element();
-		const label = triggerEl.querySelector(".truncate");
-		expect(headingEl.getBoundingClientRect().height).toBeLessThan(48);
-		expect(label).not.toBeNull();
-		expect(label!.scrollWidth).toBeGreaterThan(label!.clientWidth);
+		expect(triggerEl.querySelector(".truncate")).toBeNull();
+		expect(triggerEl.textContent).toBe(longName);
+		expect(triggerEl.scrollWidth).toBeLessThanOrEqual(triggerEl.clientWidth + 1);
+		expect(headingEl.getBoundingClientRect().height).toBeGreaterThan(40);
 	});
 });

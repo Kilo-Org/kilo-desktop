@@ -20,20 +20,16 @@ describe("createLocalApi", () => {
 		vi.stubGlobal("window", { desktopApi: bridge });
 
 		const api = createLocalApi();
-		await expect(
-			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
-		).resolves.toBeUndefined();
+		await expect(api.theme.sync({ source: "dark", themeId: "anaconda" })).resolves.toBeUndefined();
 		expect(bridge.invoke).toHaveBeenCalledWith("theme:sync", {
 			source: "dark",
-			shouldUseDarkColors: true,
+			themeId: "anaconda",
 		});
 	});
 
 	it("uses the browser adapter when the Electron bridge is absent", async () => {
 		vi.stubGlobal("window", {});
 		const api = createLocalApi();
-		await expect(
-			api.theme.sync({ source: "system", shouldUseDarkColors: false }),
-		).resolves.toBeUndefined();
+		await expect(api.theme.sync({ source: "system", themeId: "kilo" })).resolves.toBeUndefined();
 	});
 });

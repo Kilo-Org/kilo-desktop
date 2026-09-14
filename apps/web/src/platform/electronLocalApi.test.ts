@@ -36,9 +36,7 @@ describe("createElectronLocalApi", () => {
 		} as unknown as DesktopApi);
 		expect(api.shell.canPickDirectories).toBe(true);
 
-		await expect(
-			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
-		).resolves.toBeUndefined();
+		await expect(api.theme.sync({ source: "dark", themeId: "anaconda" })).resolves.toBeUndefined();
 		await expect(api.shell.openExternal({ url: "https://example.com" })).resolves.toEqual({
 			opened: true,
 		});
@@ -56,7 +54,7 @@ describe("createElectronLocalApi", () => {
 
 		expect(invoke).toHaveBeenNthCalledWith(1, "theme:sync", {
 			source: "dark",
-			shouldUseDarkColors: true,
+			themeId: "anaconda",
 		});
 		expect(invoke).toHaveBeenNthCalledWith(4, "shell:show-item-in-folder", {
 			path: "/tmp/model.gguf",
@@ -147,12 +145,10 @@ describe("createElectronLocalApi", () => {
 			}),
 		});
 		const api = createElectronLocalApi(bridge);
-		await expect(
-			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
-		).rejects.toBeInstanceOf(LocalApiError);
-		await expect(
-			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
-		).rejects.toMatchObject({
+		await expect(api.theme.sync({ source: "dark", themeId: "anaconda" })).rejects.toBeInstanceOf(
+			LocalApiError,
+		);
+		await expect(api.theme.sync({ source: "dark", themeId: "anaconda" })).rejects.toMatchObject({
 			code: "INTERNAL",
 			message: "failed",
 		});

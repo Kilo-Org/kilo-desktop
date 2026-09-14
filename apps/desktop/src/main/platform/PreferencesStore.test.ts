@@ -37,6 +37,16 @@ describe("PreferencesStore", () => {
 		expect(preferences.themeSource).toBeUndefined();
 	});
 
+	it("round-trips a theme ID and defaults invalid values to Kilo", () => {
+		const store = createFakeStore();
+		const preferences = new PreferencesStore(store as never);
+		expect(preferences.themeId).toBe("kilo");
+		preferences.setThemeId("anaconda");
+		expect(preferences.themeId).toBe("anaconda");
+		store.get.mockReturnValue("unknown");
+		expect(preferences.themeId).toBe("kilo");
+	});
+
 	describe("allowDataCollection", () => {
 		it("defaults to true when unset (opt-out model)", () => {
 			const preferences = new PreferencesStore(createFakeStore() as never);

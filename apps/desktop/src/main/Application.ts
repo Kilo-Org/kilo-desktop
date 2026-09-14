@@ -69,8 +69,13 @@ export class Application {
 	readonly #auth = new AuthSessionService({
 		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,
 	});
-	// After restoreNativeThemeFromPreferences, nativeTheme is the chrome signal.
-	readonly #windows = new ElectronWindow(this.#shell, () => nativeTheme.shouldUseDarkColors);
+	#preferences: PreferencesStore | undefined;
+	// Restore the source before creating windows; read its persisted palette on every paint.
+	readonly #windows = new ElectronWindow(
+		this.#shell,
+		() => nativeTheme.shouldUseDarkColors,
+		() => this.#preferences?.themeId,
+	);
 	readonly #ipcServer = new IpcServer();
 	readonly #logger = createLogger("application");
 	readonly #disposers: Array<() => void | Promise<void>> = [];
@@ -95,6 +100,7 @@ export class Application {
 			return;
 		}
 		const preferences = new PreferencesStore();
+		this.#preferences = preferences;
 		this.#logger.debug("Installation id", preferences.getInstallationId());
 		identifySentryUser(preferences);
 

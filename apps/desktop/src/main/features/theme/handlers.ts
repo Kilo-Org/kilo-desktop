@@ -28,8 +28,9 @@ export function createThemeHandlers(
 	return {
 		"theme:sync": (state) => {
 			preferences.setThemeSource(state.source);
+			preferences.setThemeId(state.themeId);
 			theme.themeSource = state.source;
-			electronWindow.applyColorScheme(state.shouldUseDarkColors);
+			electronWindow.applyColorScheme();
 			return undefined;
 		},
 	};

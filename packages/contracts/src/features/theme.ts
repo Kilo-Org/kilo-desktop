@@ -8,7 +8,7 @@ export * from "./theme-tokens.js";
 export const themeSourceSchema = z.enum(THEME_SOURCES);
 export const themeStateSchema = z.object({
 	source: themeSourceSchema,
-	shouldUseDarkColors: z.boolean(),
+	themeId: z.string(),
 });
 
 export type ThemeState = z.infer<typeof themeStateSchema>;

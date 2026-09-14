@@ -44,14 +44,6 @@ export class AppShellPage {
 		}
 	}
 
-	async verifyColorSchemeApplied(): Promise<void> {
-		await this.verifyShellIsLoaded();
-		await getPage().waitForFunction(() => {
-			const scheme = document.documentElement.style.colorScheme;
-			return scheme === "light" || scheme === "dark";
-		});
-	}
-
 	async verifyAppearanceSettings(): Promise<void> {
 		await expectElementToBeVisible(
 			getLocatorByTestId("settings-back"),

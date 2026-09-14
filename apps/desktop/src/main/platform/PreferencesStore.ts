@@ -1,16 +1,22 @@
 import Store from "electron-store";
 
-import { themeSourceSchema, type ThemeSource } from "@anaconda-agentic-desktop/contracts";
+import {
+	normalizeAppThemePreferences,
+	themeSourceSchema,
+	type ThemeSource,
+} from "@anaconda-agentic-desktop/contracts";
 
 export interface AppPreferences {
 	/** Last renderer-synced theme source — used to resolve cold-start native chrome. */
 	themeSource?: ThemeSource;
+	themeId?: string;
 	/** Telemetry opt-out gate. Defaults to `true` (opt-out model). */
 	allowDataCollection?: boolean;
 	/** Stable per-install id, generated once and persisted across sessions. */
 	installationId?: string;
 }
 
+/** Owns persisted shell preferences; invalid theme values fall back to application defaults. */
 export class PreferencesStore {
 	readonly #store: Store<AppPreferences>;
 
@@ -25,6 +31,14 @@ export class PreferencesStore {
 
 	setThemeSource(source: ThemeSource): void {
 		this.#store.set("themeSource", source);
+	}
+
+	get themeId(): string {
+		return normalizeAppThemePreferences({ themeId: this.#store.get("themeId") }).themeId;
+	}
+
+	setThemeId(themeId: string): void {
+		this.#store.set("themeId", normalizeAppThemePreferences({ themeId }).themeId);
 	}
 
 	/**

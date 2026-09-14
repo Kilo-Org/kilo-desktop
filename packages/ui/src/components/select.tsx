@@ -20,7 +20,7 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
 	return (
 		<SelectPrimitive.Value
 			data-slot="select-value"
-			className={cn("flex flex-1 text-left", className)}
+			className={cn("flex flex-1 items-center text-left", className)}
 			{...props}
 		/>
 	);
@@ -114,7 +114,7 @@ function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Prop
 			)}
 			{...props}
 		>
-			<SelectPrimitive.ItemText className="flex min-w-0 flex-1 gap-2 overflow-hidden">
+			<SelectPrimitive.ItemText className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
 				{children}
 			</SelectPrimitive.ItemText>
 			<SelectPrimitive.ItemIndicator

@@ -8,6 +8,11 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 
 import {
+	APP_THEMES,
+	DEFAULT_APP_THEME_PREFERENCES,
+	themeCss,
+} from "../../packages/contracts/src/features/app-themes";
+import {
 	criticalThemeStyle,
 	themeBootstrapScript,
 } from "@anaconda-agentic-desktop/contracts/theme-tokens";
@@ -20,9 +25,16 @@ function injectThemeBootstrap(): Plugin {
 	return {
 		name: "inject-theme-bootstrap",
 		transformIndexHtml() {
+			const themes = Object.fromEntries(
+				APP_THEMES.map(({ id }) => [id, themeCss({ themeId: id })]),
+			);
 			return [
 				{ tag: "style", children: criticalThemeStyle(), injectTo: "head-prepend" },
-				{ tag: "script", children: themeBootstrapScript(), injectTo: "head-prepend" },
+				{
+					tag: "script",
+					children: themeBootstrapScript(DEFAULT_APP_THEME_PREFERENCES.themeId, themes),
+					injectTo: "head-prepend",
+				},
 			];
 		},
 	};

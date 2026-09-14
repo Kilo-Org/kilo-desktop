@@ -3,7 +3,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-	themeChromeColors,
 	TRANSPARENT_WINDOW_BACKGROUND,
 	type PaneWindow,
 } from "@anaconda-agentic-desktop/contracts";
@@ -123,19 +122,19 @@ describe("ElectronWindow theme chrome", () => {
 		Object.defineProperty(process, "platform", { value: originalPlatform });
 	});
 
-	it("paints the initial Windows background and title bar from the cached scheme", () => {
+	it("paints the initial Windows background and title bar with Kilo when no palette is saved", () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
 		const windows = new ElectronWindow(createShell() as never, () => true);
 
 		windows.create({ isDevelopment: false });
 
-		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.dark.background);
+		expect(createdWindows[0]?.options.backgroundColor).toBe("#111111");
 		expect(createdWindows[0]?.options.backgroundMaterial).toBeUndefined();
 		expect(createdWindows[0]?.options.name).toBe("Test App");
 		expect(createdWindows[0]?.options.windowStatePersistence).toBe(true);
 		expect(createdWindows[0]?.options.titleBarOverlay).toMatchObject({
-			color: themeChromeColors.dark.background,
-			symbolColor: themeChromeColors.dark.foreground,
+			color: "#111111",
+			symbolColor: "#fafafa",
 			height: 47,
 		});
 	});
@@ -158,34 +157,47 @@ describe("ElectronWindow theme chrome", () => {
 
 		windows.create({ isDevelopment: false });
 
-		expect(createdWindows[0]?.options.backgroundColor).toBe(themeChromeColors.light.background);
+		expect(createdWindows[0]?.options.backgroundColor).toBe("#fafaf7");
 		expect(createdWindows[0]?.options.icon).toBe(
 			path.join(electronApp.getAppPath(), "assets/icon.png"),
 		);
 	});
 
-	it("repaints live window chrome when the renderer syncs a scheme", () => {
+	it("repaints both main and pane windows with the selected palette", () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
-		const windows = new ElectronWindow(createShell() as never, () => false);
+		let dark = false;
+		let themeId = "kilo";
+		const windows = new ElectronWindow(
+			createShell() as never,
+			() => dark,
+			() => themeId,
+		);
 		windows.create({ isDevelopment: false });
-		const window = createdWindows[0];
+		windows.openPaneWindow(
+			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
+			false,
+		);
 
-		windows.applyColorScheme(true);
+		dark = true;
+		themeId = "anaconda";
+		windows.applyColorScheme();
 
-		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.dark.background);
-		expect(window?.setTitleBarOverlay).toHaveBeenCalledWith({
-			color: themeChromeColors.dark.background,
-			symbolColor: themeChromeColors.dark.foreground,
-		});
+		for (const window of createdWindows) {
+			expect(window.setBackgroundColor).toHaveBeenLastCalledWith("#101314");
+			expect(window.setTitleBarOverlay).toHaveBeenLastCalledWith({
+				color: "#101314",
+				symbolColor: "#f9fbfb",
+			});
+		}
 	});
 
 	it("leaves the macOS title bar native while keeping the vibrancy background transparent", () => {
 		Object.defineProperty(process, "platform", { value: "darwin" });
-		const windows = new ElectronWindow(createShell() as never, () => false);
+		const windows = new ElectronWindow(createShell() as never, () => true);
 		windows.create({ isDevelopment: false });
 		const window = createdWindows[0];
 
-		windows.applyColorScheme(true);
+		windows.applyColorScheme();
 
 		expect(window?.setBackgroundColor).toHaveBeenCalledWith(TRANSPARENT_WINDOW_BACKGROUND);
 		expect(window?.setTitleBarOverlay).not.toHaveBeenCalled();
@@ -193,16 +205,18 @@ describe("ElectronWindow theme chrome", () => {
 
 	it("repaints an opaque Linux window background when the scheme changes", () => {
 		Object.defineProperty(process, "platform", { value: "linux" });
-		const windows = new ElectronWindow(createShell() as never, () => false);
+		let dark = false;
+		const windows = new ElectronWindow(createShell() as never, () => dark);
 		windows.create({ isDevelopment: false });
 		const window = createdWindows[0];
 
-		windows.applyColorScheme(true);
+		dark = true;
+		windows.applyColorScheme();
 
-		expect(window?.setBackgroundColor).toHaveBeenCalledWith(themeChromeColors.dark.background);
+		expect(window?.setBackgroundColor).toHaveBeenCalledWith("#111111");
 		expect(window?.setTitleBarOverlay).toHaveBeenCalledWith({
-			color: themeChromeColors.dark.background,
-			symbolColor: themeChromeColors.dark.foreground,
+			color: "#111111",
+			symbolColor: "#fafafa",
 		});
 	});
 

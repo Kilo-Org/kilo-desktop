@@ -4,6 +4,7 @@ export type ResolvedColorScheme = "light" | "dark";
 
 /** localStorage key for the renderer-owned theme source (and the pre-paint bootstrap). */
 export const THEME_STORAGE_KEY = "theme:v1";
+export const APP_THEME_STORAGE_KEY = "appTheme:v1";
 export const SIDEBAR_VIBRANCY_STORAGE_KEY = "sidebar-vibrancy:v1";
 
 /**
@@ -17,7 +18,7 @@ export const themeChromeColors = {
 	dark: { background: "#101314", foreground: "#f9fbfb" },
 } as const;
 
-export type ThemeChromeColors = (typeof themeChromeColors)[keyof typeof themeChromeColors];
+export type ThemeChromeColors = { background: string; foreground: string };
 
 /** Transparent paint so macOS vibrancy / Windows mica can show through the webview. */
 export const TRANSPARENT_WINDOW_BACKGROUND = "#00000000";
@@ -47,8 +48,11 @@ export function resolveColorScheme(source: ThemeSource, systemDark: boolean): Re
 	return resolveShouldUseDarkColors(source, systemDark) ? "dark" : "light";
 }
 
-export function chromeFor(shouldUseDarkColors: boolean): ThemeChromeColors {
-	return shouldUseDarkColors ? themeChromeColors.dark : themeChromeColors.light;
+export function chromeFor(
+	shouldUseDarkColors: boolean,
+	colors: Record<ResolvedColorScheme, ThemeChromeColors> = themeChromeColors,
+): ThemeChromeColors {
+	return shouldUseDarkColors ? colors.dark : colors.light;
 }
 
 /**
@@ -62,9 +66,10 @@ export function usesSystemWindowMaterial(platform: NodeJS.Platform = process.pla
 export function windowBackgroundFor(
 	shouldUseDarkColors: boolean,
 	platform: NodeJS.Platform = process.platform,
+	colors: Record<ResolvedColorScheme, ThemeChromeColors> = themeChromeColors,
 ): string {
 	if (usesSystemWindowMaterial(platform)) return TRANSPARENT_WINDOW_BACKGROUND;
-	return chromeFor(shouldUseDarkColors).background;
+	return chromeFor(shouldUseDarkColors, colors).background;
 }
 
 /**
@@ -84,9 +89,18 @@ export function criticalThemeStyle(): string {
 /**
  * Pre-paint bootstrap IIFE — injected into index.html by the Vite plugin.
  * Mirrors readStoredThemeSource / resolveColorScheme / applyDocumentColorScheme.
+ * Build-time CSS registries recover saved selections without importing the theme model here.
  */
-export function themeBootstrapScript(): string {
+export function themeBootstrapScript(
+	defaultThemeId: string,
+	themeCssById: Record<string, string>,
+): string {
 	const key = JSON.stringify(THEME_STORAGE_KEY);
+	const appThemeKey = JSON.stringify(APP_THEME_STORAGE_KEY);
 	const vibrancyKey = JSON.stringify(SIDEBAR_VIBRANCY_STORAGE_KEY);
-	return `(function(){var k=${key},s="system",r=document.documentElement;try{if(localStorage.getItem(${vibrancyKey})==="false")r.style.setProperty("--shell-glass-opacity","100%");var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light"})();`;
+	return [
+		`(function(){var k=${key},s="system",r=document.documentElement;try{if(localStorage.getItem(${vibrancyKey})==="false")r.style.setProperty("--shell-glass-opacity","100%");var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light";`,
+		`var themes=${JSON.stringify(themeCssById)},c=themes[${JSON.stringify(defaultThemeId)}]||"";try{var p=JSON.parse(localStorage.getItem(${appThemeKey}));if(p&&typeof p==="object"&&!Array.isArray(p)&&typeof p.themeId==="string"&&Object.hasOwn(themes,p.themeId))c=themes[p.themeId]}catch(e){}`,
+		`if(c){var t=document.getElementById("app-theme");if(!t){t=document.createElement("style");t.id="app-theme";document.head.appendChild(t)}t.textContent=c}})();`,
+	].join("");
 }

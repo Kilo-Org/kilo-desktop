@@ -9,9 +9,21 @@ import {
 	type ReactNode,
 } from "react";
 
-import type { ThemeSource } from "@anaconda-agentic-desktop/contracts";
+import {
+	APP_THEME_STORAGE_KEY,
+	SIDEBAR_VIBRANCY_STORAGE_KEY,
+	THEME_STORAGE_KEY,
+	type AppThemePreferences,
+	type ThemeSource,
+} from "@anaconda-agentic-desktop/contracts";
 
 import { useLocalApi } from "@/platform/LocalApiProvider";
+import {
+	applyAppTheme,
+	getAppThemePreferencesSnapshot,
+	readStoredAppTheme,
+	subscribeAppTheme,
+} from "@/platform/theme/app-theme";
 import {
 	applyDocumentColorScheme,
 	DARK_SCHEME_QUERY,
@@ -39,6 +51,8 @@ interface ColorSchemeContextValue {
 	readonly setSource: (source: ThemeSource) => void;
 	readonly sidebarVibrancy: boolean;
 	readonly setSidebarVibrancy: (enabled: boolean) => void;
+	readonly appTheme: AppThemePreferences;
+	readonly setAppTheme: (preferences: AppThemePreferences) => void;
 }
 
 const ColorSchemeContext = createContext<ColorSchemeContextValue | null>(null);
@@ -47,12 +61,29 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 	const api = useLocalApi();
 	const [source, setSourceState] = useState<ThemeSource>(readStoredThemeSource);
 	const [sidebarVibrancy, setSidebarVibrancyState] = useState(readStoredSidebarVibrancy);
+	const appTheme = useSyncExternalStore(subscribeAppTheme, getAppThemePreferencesSnapshot);
 	const systemDark = useSyncExternalStore(subscribeSystemScheme, getSystemSchemeSnapshot);
 	const resolved = resolveColorScheme(source, systemDark);
 
 	useLayoutEffect(() => {
 		applyDocumentColorScheme(resolved);
 	}, [resolved]);
+
+	useLayoutEffect(() => applyAppTheme(readStoredAppTheme()), []);
+
+	useEffect(() => {
+		function onStorage(event: StorageEvent) {
+			if (event.storageArea !== localStorage) return;
+			if (event.key === null || event.key === APP_THEME_STORAGE_KEY)
+				applyAppTheme(readStoredAppTheme());
+			if (event.key === null || event.key === THEME_STORAGE_KEY)
+				setSourceState(readStoredThemeSource());
+			if (event.key === null || event.key === SIDEBAR_VIBRANCY_STORAGE_KEY)
+				setSidebarVibrancyState(readStoredSidebarVibrancy());
+		}
+		window.addEventListener("storage", onStorage);
+		return () => window.removeEventListener("storage", onStorage);
+	}, []);
 
 	useLayoutEffect(() => {
 		const style = document.documentElement.style;
@@ -61,10 +92,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 	}, [sidebarVibrancy]);
 
 	useEffect(() => {
-		void api.theme.sync({ source, shouldUseDarkColors: resolved === "dark" }).catch((error) => {
+		void api.theme.sync({ source, themeId: appTheme.themeId }).catch((error) => {
 			console.warn("[theme] failed to sync chrome to host", error);
 		});
-	}, [api, source, resolved]);
+	}, [api, source, resolved, appTheme.themeId]);
 
 	const setSource = useCallback((next: ThemeSource) => {
 		setSourceState(next);
@@ -78,7 +109,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 	return (
 		<ColorSchemeContext
-			value={{ source, resolved, setSource, sidebarVibrancy, setSidebarVibrancy }}
+			value={{
+				source,
+				resolved,
+				setSource,
+				sidebarVibrancy,
+				setSidebarVibrancy,
+				appTheme,
+				setAppTheme: applyAppTheme,
+			}}
 		>
 			{children}
 		</ColorSchemeContext>

@@ -55,11 +55,14 @@ describe("preload desktopApi", { timeout: 15_000 }, () => {
 		};
 
 		await expect(
-			desktopApi.invoke("theme:sync", { source: "dark", shouldUseDarkColors: true }),
+			desktopApi.invoke("theme:sync", {
+				source: "dark",
+				themeId: "anaconda",
+			}),
 		).resolves.toEqual({ ok: true, value: undefined });
 		expect(ipcRenderer.invoke).toHaveBeenCalledWith("theme:sync", {
 			source: "dark",
-			shouldUseDarkColors: true,
+			themeId: "anaconda",
 		});
 
 		expect(() => desktopApi.invoke("theme:unknown" as never)).toThrow(

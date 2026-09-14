@@ -3,10 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { build } from "vite";
 
-import {
-	criticalThemeStyle,
-	themeBootstrapScript,
-} from "@anaconda-agentic-desktop/contracts/theme-tokens";
+import { criticalThemeStyle } from "@anaconda-agentic-desktop/contracts/theme-tokens";
 
 describe("theme bootstrap build", () => {
 	it(
@@ -28,7 +25,8 @@ describe("theme bootstrap build", () => {
 			}
 
 			const criticalStyleIndex = html.source.indexOf(`<style>${criticalThemeStyle()}</style>`);
-			const bootstrapIndex = html.source.indexOf(`<script>${themeBootstrapScript()}</script>`);
+			const bootstrap = /<script>([\s\S]*?)<\/script>/.exec(html.source);
+			const bootstrapIndex = bootstrap?.index ?? -1;
 			const applicationIndex = html.source.indexOf('<script type="module"');
 
 			expect(criticalStyleIndex).toBeGreaterThanOrEqual(0);

@@ -2,22 +2,14 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { LocalApi, ThemeState } from "@anaconda-agentic-desktop/contracts";
+import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
-import {
-	DARK_SCHEME_QUERY,
-	THEME_STORAGE_KEY,
-	applyDocumentColorScheme,
-} from "@/platform/theme/color-scheme";
+import { DARK_SCHEME_QUERY, applyDocumentColorScheme } from "@/platform/theme/color-scheme";
 import { ThemeProvider } from "@/platform/theme/ThemeProvider";
 
 import { AppearanceSettings } from "./AppearanceSettings";
-
-function withThemeSync(api: LocalApi, sync: (state: ThemeState) => Promise<void>): LocalApi {
-	return { ...api, theme: { sync } };
-}
 
 function stubMatchMedia(initialDark: boolean) {
 	const listeners = new Set<(event: MediaQueryListEvent) => void>();
@@ -53,34 +45,64 @@ afterEach(() => {
 	cleanup();
 	vi.unstubAllGlobals();
 	globalThis.localStorage.clear();
+	document.getElementById("app-theme")?.remove();
 	applyDocumentColorScheme("light");
 });
 
 describe("AppearanceSettings", () => {
-	it("selects Light, Dark, and System and persists the source", async () => {
+	it("switches Anaconda live and restores it after remount", async () => {
 		stubMatchMedia(true);
-		const sync = vi.fn<(state: ThemeState) => Promise<void>>().mockResolvedValue(undefined);
-		const { baseElement } = renderAppearance(withThemeSync(createBrowserLocalApi(), sync));
+		const mounted = renderAppearance();
+
+		await expect
+			.poll(() =>
+				getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
+			)
+			.toBe("#111111");
+		await page.getByRole("combobox", { name: "Color theme" }).click();
+		await page.getByRole("option", { name: "Anaconda", exact: true }).click();
+		await expect.poll(() => document.getElementById("app-theme")).toBeNull();
+		mounted.unmount();
+		renderAppearance();
+		await expect.element(page.getByText("Anaconda", { exact: true })).toBeVisible();
+		await page.getByRole("combobox", { name: "Color theme" }).click();
+		await page.getByRole("option", { name: "Kilo", exact: true }).click();
+		await expect
+			.poll(() =>
+				getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
+			)
+			.toBe("#111111");
+	});
+
+	it("toggles vibrancy for the default Kilo theme", async () => {
+		stubMatchMedia(true);
+		renderAppearance();
+		const opacity = () =>
+			getComputedStyle(document.documentElement).getPropertyValue("--shell-glass-opacity").trim();
+
+		expect(opacity()).toBe("96%");
+		await page.getByTestId("appearance-sidebar-vibrancy").click();
+		await expect.poll(opacity).toBe("100%");
+	});
+
+	it("selects Light, Dark, and System", async () => {
+		stubMatchMedia(true);
+		const { baseElement } = renderAppearance();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("appearance-settings")).toBeVisible();
+		await expect.element(screen.getByText("Kilo", { exact: true })).toBeVisible();
 		await expect
 			.element(screen.getByRole("radio", { name: "System" }))
 			.toHaveAttribute("aria-checked", "true");
 
 		await screen.getByTestId("appearance-theme-light").click();
 		await expect.poll(() => document.documentElement.style.colorScheme).toBe("light");
-		expect(globalThis.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
-		expect(sync).toHaveBeenCalledWith({ source: "light", shouldUseDarkColors: false });
 
 		await screen.getByTestId("appearance-theme-dark").click();
 		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
-		expect(globalThis.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
-		expect(sync).toHaveBeenCalledWith({ source: "dark", shouldUseDarkColors: true });
 
 		await screen.getByTestId("appearance-theme-system").click();
 		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
-		expect(globalThis.localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
-		expect(sync).toHaveBeenCalledWith({ source: "system", shouldUseDarkColors: true });
 	});
 });

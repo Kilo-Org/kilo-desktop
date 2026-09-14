@@ -2,11 +2,16 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { LocalApi, ThemeState } from "@anaconda-agentic-desktop/contracts";
+import {
+	DEFAULT_APP_THEME_PREFERENCES,
+	type LocalApi,
+	type ThemeState,
+} from "@anaconda-agentic-desktop/contracts";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
 
+import { applyAppTheme } from "./app-theme";
 import { DARK_SCHEME_QUERY, THEME_STORAGE_KEY, applyDocumentColorScheme } from "./color-scheme";
 import { ThemeProvider, useColorScheme } from "./ThemeProvider";
 
@@ -43,14 +48,12 @@ function stubMatchMedia(initialDark: boolean) {
 }
 
 function Harness() {
-	const { source, resolved, setSource } = useColorScheme();
+	const { source, resolved, setSource, appTheme } = useColorScheme();
 	return (
 		<div>
 			<span data-qa-id="source">{source}</span>
 			<span data-qa-id="resolved">{resolved}</span>
-			<button data-qa-id="set-dark" onClick={() => setSource("dark")}>
-				dark
-			</button>
+			<span data-qa-id="app-theme-id">{appTheme.themeId}</span>
 			<button data-qa-id="set-light" onClick={() => setSource("light")}>
 				light
 			</button>
@@ -71,64 +74,37 @@ function renderProvider(api: LocalApi) {
 afterEach(() => {
 	cleanup();
 	vi.unstubAllGlobals();
+	applyAppTheme(DEFAULT_APP_THEME_PREFERENCES);
 	globalThis.localStorage.clear();
+	document.getElementById("app-theme")?.remove();
 	applyDocumentColorScheme("light");
 });
 
 describe("ThemeProvider", () => {
-	it("applies the persisted dark source on mount and syncs chrome", async () => {
-		stubMatchMedia(false);
-		globalThis.localStorage.setItem(THEME_STORAGE_KEY, "dark");
-		const sync = vi.fn<(state: ThemeState) => Promise<void>>().mockResolvedValue(undefined);
-		const api = withThemeSync(createBrowserLocalApi(), sync);
-
-		renderProvider(api);
-
-		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
-		expect(document.documentElement.style.colorScheme).toBe("dark");
-		expect(sync).toHaveBeenCalledWith({ source: "dark", shouldUseDarkColors: true });
-	});
-
-	it("follows the OS scheme while source is system", async () => {
-		const os = stubMatchMedia(false);
-		const sync = vi.fn<(state: ThemeState) => Promise<void>>().mockResolvedValue(undefined);
-		const api = withThemeSync(createBrowserLocalApi(), sync);
-
-		renderProvider(api);
-
-		await expect.poll(() => document.documentElement.style.colorScheme).toBe("light");
-		expect(document.documentElement.dataset.theme).toBeUndefined();
-		expect(sync).toHaveBeenCalledWith({ source: "system", shouldUseDarkColors: false });
-
-		os.setDark(true);
-
-		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
-		expect(sync).toHaveBeenCalledWith({ source: "system", shouldUseDarkColors: true });
-	});
-
-	it("persists explicit source changes and updates the DOM", async () => {
+	it("recovers invalid preferences and follows appearance changes from another window", async () => {
 		stubMatchMedia(true);
-		const sync = vi.fn<(state: ThemeState) => Promise<void>>().mockResolvedValue(undefined);
-		const api = withThemeSync(createBrowserLocalApi(), sync);
-
-		const { baseElement } = renderProvider(api);
+		localStorage.setItem("appTheme:v1", "{broken");
+		const { baseElement } = renderProvider(createBrowserLocalApi());
 		const screen = page.elementLocator(baseElement);
-
-		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
-
-		await screen.getByTestId("set-light").click();
-
-		await expect.poll(() => document.documentElement.style.colorScheme).toBe("light");
-		expect(globalThis.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
-		expect(sync).toHaveBeenCalledWith({ source: "light", shouldUseDarkColors: false });
-
-		await screen.getByTestId("set-dark").click();
-
-		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
-		expect(globalThis.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
+		expect(getComputedStyle(document.documentElement).getPropertyValue("--background").trim()).toBe(
+			"#111111",
+		);
+		localStorage.setItem("appTheme:v1", JSON.stringify({ themeId: "anaconda" }));
+		window.dispatchEvent(
+			new StorageEvent("storage", { key: "appTheme:v1", storageArea: localStorage }),
+		);
+		await expect.poll(() => document.getElementById("app-theme")).toBeNull();
+		await expect.element(screen.getByTestId("app-theme-id")).toHaveTextContent("anaconda");
+		localStorage.removeItem("appTheme:v1");
+		window.dispatchEvent(new StorageEvent("storage", { key: null, storageArea: localStorage }));
+		await expect
+			.poll(() =>
+				getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
+			)
+			.toBe("#111111");
 	});
 
-	it("still applies the scheme when the host chrome sync rejects", async () => {
+	it("applies persisted source even when host chrome sync rejects", async () => {
 		stubMatchMedia(false);
 		globalThis.localStorage.setItem(THEME_STORAGE_KEY, "dark");
 		const sync = vi
@@ -139,7 +115,49 @@ describe("ThemeProvider", () => {
 		expect(() => renderProvider(api)).not.toThrow();
 
 		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
-		expect(sync).toHaveBeenCalledWith({ source: "dark", shouldUseDarkColors: true });
+		expect(document.documentElement.style.colorScheme).toBe("dark");
+		expect(sync).toHaveBeenCalledWith({
+			source: "dark",
+			themeId: "kilo",
+		});
+	});
+
+	it("follows the OS scheme and resyncs native chrome while source is system", async () => {
+		const os = stubMatchMedia(false);
+		const sync = vi.fn<(state: ThemeState) => Promise<void>>().mockResolvedValue(undefined);
+		const api = withThemeSync(createBrowserLocalApi(), sync);
+
+		renderProvider(api);
+
+		await expect.poll(() => document.documentElement.style.colorScheme).toBe("light");
+		expect(document.documentElement.dataset.theme).toBeUndefined();
+		expect(sync).toHaveBeenCalledWith({
+			source: "system",
+			themeId: "kilo",
+		});
+		const lightSyncCount = sync.mock.calls.length;
+
+		os.setDark(true);
+
+		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
+		await expect.poll(() => sync.mock.calls.length).toBe(lightSyncCount + 1);
+		expect(sync).toHaveBeenLastCalledWith({
+			source: "system",
+			themeId: "kilo",
+		});
+	});
+
+	it("persists explicit source changes and updates the DOM", async () => {
+		stubMatchMedia(true);
+		const { baseElement } = renderProvider(createBrowserLocalApi());
+		const screen = page.elementLocator(baseElement);
+
+		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
+
+		await screen.getByTestId("set-light").click();
+
+		await expect.poll(() => document.documentElement.style.colorScheme).toBe("light");
+		expect(globalThis.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
 	});
 
 	it("throws from useColorScheme when used outside a ThemeProvider", () => {

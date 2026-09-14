@@ -4,6 +4,8 @@ import { app, BrowserWindow, type BrowserWindowConstructorOptions } from "electr
 
 import {
 	chromeFor,
+	DEFAULT_APP_THEME_PREFERENCES,
+	getThemeChrome,
 	ipcEvents,
 	type IpcEventChannel,
 	type IpcEventPayload,
@@ -32,6 +34,9 @@ type PaneWindowRecord = {
  * remain keyed by plugin/session/pane identity, are hidden when their session
  * is inactive, and emit one lifecycle event whenever native window state
  * changes so renderer tabs remain the source of navigation truth.
+ * Chrome reads the last renderer-synced preferences on creation and repaint,
+ * falling back to the app's default palette before the first renderer sync;
+ * macOS retains native vibrancy regardless of the selected palette.
  */
 export class ElectronWindow {
 	#mainWindow: BrowserWindow | undefined;
@@ -41,6 +46,7 @@ export class ElectronWindow {
 	constructor(
 		private readonly electronShell: ElectronShell,
 		private readonly shouldUseDarkColors: () => boolean,
+		private readonly themeId: () => string | undefined = () => undefined,
 	) {}
 
 	create(input: {
@@ -248,9 +254,11 @@ export class ElectronWindow {
 	}
 
 	/** Repaints native chrome to match the renderer-owned theme (pushed via `theme:sync`). */
-	applyColorScheme(shouldUseDarkColors: boolean): void {
-		const chrome = chromeFor(shouldUseDarkColors);
-		const background = windowBackgroundFor(shouldUseDarkColors);
+	applyColorScheme(): void {
+		const shouldUseDarkColors = this.shouldUseDarkColors();
+		const colors = getThemeChrome(this.themeId() ?? DEFAULT_APP_THEME_PREFERENCES.themeId);
+		const chrome = chromeFor(shouldUseDarkColors, colors);
+		const background = windowBackgroundFor(shouldUseDarkColors, process.platform, colors);
 		for (const window of this.liveWindows) {
 			window.setBackgroundColor(background);
 			if (process.platform !== "darwin") {
@@ -270,7 +278,9 @@ export class ElectronWindow {
 	}
 
 	#createWindow(preloadPath?: string, options?: BrowserWindowConstructorOptions): BrowserWindow {
-		const chrome = chromeFor(this.shouldUseDarkColors());
+		const dark = this.shouldUseDarkColors();
+		const colors = getThemeChrome(this.themeId() ?? DEFAULT_APP_THEME_PREFERENCES.themeId);
+		const chrome = chromeFor(dark, colors);
 		const appName = app.getName();
 		const window = new BrowserWindow({
 			title: appName,
@@ -280,7 +290,7 @@ export class ElectronWindow {
 			minWidth: 720,
 			minHeight: 520,
 			show: false,
-			backgroundColor: windowBackgroundFor(this.shouldUseDarkColors()),
+			backgroundColor: windowBackgroundFor(dark, process.platform, colors),
 			...systemMaterialOptions(),
 			...(process.platform === "linux" ? { icon: linuxWindowIcon() } : {}),
 			...titleBarOptions(chrome),

@@ -9,9 +9,7 @@ afterEach(() => {
 describe("createBrowserLocalApi", () => {
 	it("treats theme sync as a no-op outside Electron", async () => {
 		const api = createBrowserLocalApi();
-		await expect(
-			api.theme.sync({ source: "dark", shouldUseDarkColors: true }),
-		).resolves.toBeUndefined();
+		await expect(api.theme.sync({ source: "dark", themeId: "anaconda" })).resolves.toBeUndefined();
 	});
 
 	it("opens external URLs and copies text", async () => {

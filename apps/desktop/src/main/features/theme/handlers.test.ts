@@ -5,30 +5,31 @@ import { createThemeHandlers, restoreNativeThemeFromPreferences } from "./handle
 describe("createThemeHandlers", () => {
 	it("persists source, applies nativeTheme, and repaints chrome on sync", () => {
 		const electronWindow = { applyColorScheme: vi.fn() };
-		const preferences = { setThemeSource: vi.fn() };
+		const preferences = { setThemeSource: vi.fn(), setThemeId: vi.fn() };
 		const theme = { themeSource: "system" as "system" | "light" | "dark" };
 
 		const handlers = createThemeHandlers(electronWindow as never, preferences as never, theme);
 
-		expect(handlers["theme:sync"]({ source: "dark", shouldUseDarkColors: true })).toBeUndefined();
+		expect(handlers["theme:sync"]({ source: "dark", themeId: "anaconda" })).toBeUndefined();
 
 		expect(preferences.setThemeSource).toHaveBeenCalledWith("dark");
+		expect(preferences.setThemeId).toHaveBeenCalledWith("anaconda");
 		expect(theme.themeSource).toBe("dark");
-		expect(electronWindow.applyColorScheme).toHaveBeenCalledWith(true);
+		expect(electronWindow.applyColorScheme).toHaveBeenCalledWith();
 	});
 
 	it("persists system so cold start can re-resolve against the live OS scheme", () => {
 		const electronWindow = { applyColorScheme: vi.fn() };
-		const preferences = { setThemeSource: vi.fn() };
+		const preferences = { setThemeSource: vi.fn(), setThemeId: vi.fn() };
 		const theme = { themeSource: "dark" as "system" | "light" | "dark" };
 
 		const handlers = createThemeHandlers(electronWindow as never, preferences as never, theme);
 
-		handlers["theme:sync"]({ source: "system", shouldUseDarkColors: false });
+		handlers["theme:sync"]({ source: "system", themeId: "kilo" });
 
 		expect(preferences.setThemeSource).toHaveBeenCalledWith("system");
 		expect(theme.themeSource).toBe("system");
-		expect(electronWindow.applyColorScheme).toHaveBeenCalledWith(false);
+		expect(electronWindow.applyColorScheme).toHaveBeenCalledWith();
 	});
 });
 

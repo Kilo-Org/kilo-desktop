@@ -18,8 +18,7 @@ export function WorkspaceFilter({
 		<div className="min-w-0 flex-1">
 			<WorkspacePickerRoot
 				contentAlign="start"
-				contentSide="right"
-				contentWidth="fit"
+				contentWidth="trigger"
 				emptyLabel={EMPTY_LABEL}
 				includeUnscoped={false}
 				value={value}
@@ -45,7 +44,7 @@ function WorkspaceFilterTrigger() {
 					variant="ghost"
 					size="default"
 					data-qa-id="session-list-workspace-filter"
-					className="border-border/60 bg-foreground/5 hover:bg-foreground/5 aria-expanded:bg-foreground/5 dark:border-border/50 w-full min-w-0 justify-start gap-1.5 px-2 text-sm font-normal shadow-none"
+					className="w-full min-w-0 justify-start font-normal"
 				/>
 			}
 		>

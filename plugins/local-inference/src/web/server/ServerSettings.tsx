@@ -124,7 +124,7 @@ export function ServerSettings({
 		<FieldGroup className="gap-5">
 			<Field orientation="horizontal" className="gap-6">
 				<FieldContent>
-					<FieldLabel className="text-[13px]" htmlFor="local-model-server-port">
+					<FieldLabel className="text-sm" htmlFor="local-model-server-port">
 						Server Port
 					</FieldLabel>
 					<FieldDescription className="text-xs">
@@ -145,13 +145,13 @@ export function ServerSettings({
 						setLocalError(null);
 						setDirty(true);
 					}}
-					className="h-8 w-36 shrink-0 text-[13px]"
+					className="h-8 w-36 shrink-0 text-sm"
 					data-qa-id="local-model-server-port"
 				/>
 			</Field>
 			<Field orientation="horizontal" className="gap-6">
 				<FieldContent>
-					<FieldLabel className="text-[13px]" htmlFor="local-model-server-load-mode">
+					<FieldLabel className="text-sm" htmlFor="local-model-server-load-mode">
 						Models kept loaded
 					</FieldLabel>
 					<FieldDescription className="text-xs">
@@ -188,7 +188,7 @@ export function ServerSettings({
 			</Field>
 			<Field orientation="horizontal" className="gap-6">
 				<FieldContent>
-					<FieldLabel className="text-[13px]" htmlFor="local-model-server-lan">
+					<FieldLabel className="text-sm" htmlFor="local-model-server-lan">
 						Serve on Local Network
 					</FieldLabel>
 					<FieldDescription className="text-xs">
@@ -210,7 +210,7 @@ export function ServerSettings({
 				/>
 			</Field>
 			{localError || error ? (
-				<FieldError className="text-[13px]">{localError ?? error}</FieldError>
+				<FieldError className="text-sm">{localError ?? error}</FieldError>
 			) : null}
 		</FieldGroup>
 	);

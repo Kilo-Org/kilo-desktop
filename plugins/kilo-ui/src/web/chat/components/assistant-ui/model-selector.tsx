@@ -238,7 +238,7 @@ function ModelSelectorRoot({
 }
 
 export const modelSelectorTriggerVariants = cva(
-	"focus-visible:ring-ring/50 flex w-fit items-center justify-between gap-2 overflow-hidden rounded-md text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+	"focus-visible:ring-ring/50 flex w-fit items-center justify-between gap-1.5 overflow-hidden rounded-md text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
 	{
 		variants: {
 			variant: {
@@ -347,7 +347,7 @@ function ModelSelectorValue({
 		<span
 			data-slot="model-selector-value"
 			data-model-selected="true"
-			className={cn("flex items-center gap-2 dark:text-foreground/90", className)}
+			className={cn("flex items-center gap-1.5 dark:text-foreground/90", className)}
 		>
 			{selectedModel.icon && <ModelIcon>{selectedModel.icon}</ModelIcon>}
 			<span data-slot="model-selector-name" className="font-medium whitespace-nowrap">

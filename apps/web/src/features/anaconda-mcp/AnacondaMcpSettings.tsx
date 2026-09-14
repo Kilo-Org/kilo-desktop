@@ -118,8 +118,8 @@ export function AnacondaMcpSettings() {
 	if (!featureEnabled) {
 		return (
 			<div className="mx-auto max-w-xl" data-qa-id="anaconda-mcp-settings" data-state="flag-off">
-				<h1 className="text-2xl font-semibold tracking-tight">Anaconda MCP</h1>
-				<p className="text-muted-foreground mt-1 text-sm">
+				<h1 className="text-base font-semibold tracking-tight">Anaconda MCP</h1>
+				<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 					This feature is not enabled for your account. Contact your Anaconda administrator or try
 					again later.
 				</p>
@@ -129,8 +129,8 @@ export function AnacondaMcpSettings() {
 
 	return (
 		<div className="mx-auto max-w-xl" data-qa-id="anaconda-mcp-settings">
-			<h1 className="text-2xl font-semibold tracking-tight">Anaconda MCP</h1>
-			<p className="text-muted-foreground mt-1 text-sm">
+			<h1 className="text-base font-semibold tracking-tight">Anaconda MCP</h1>
+			<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 				Connects to the Anaconda Remote MCP server to provide package search and organization policy
 				tools in Kilo chats.
 			</p>

@@ -123,6 +123,9 @@ describe("LocalModelServerSettings", () => {
 		expect(dialogBounds.top).toBeGreaterThanOrEqual(48);
 		const bottomMargin = window.innerHeight - dialogBounds.bottom;
 		expect(Math.abs(dialogBounds.top - bottomMargin)).toBeLessThanOrEqual(1);
+		expect(dialogBounds.left).toBeGreaterThanOrEqual(16);
+		expect(window.innerWidth - dialogBounds.right).toBeGreaterThanOrEqual(16);
+		expect(dialogBounds.width).toBeLessThanOrEqual(80 * 16 + 1);
 
 		await dialog.getByRole("button", { name: "Close" }).click();
 		await expect.element(dialog).not.toBeInTheDocument();

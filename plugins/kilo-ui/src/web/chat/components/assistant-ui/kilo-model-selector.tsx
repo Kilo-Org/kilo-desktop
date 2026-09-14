@@ -281,7 +281,7 @@ export const KiloModelSelector: FC = () => {
 					placeholder={
 						showLoadingPlaceholder ? (
 							<>
-								<span className="flex min-w-0 items-center gap-2" aria-hidden>
+								<span className="flex min-w-0 items-center gap-1.5" aria-hidden>
 									<Skeleton className="bg-muted-foreground/25 size-3.5 shrink-0 rounded-sm" />
 									<Skeleton className="bg-muted-foreground/25 h-3 w-24" />
 								</span>

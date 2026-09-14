@@ -44,12 +44,12 @@ export function EnvironmentsPage() {
 			>
 				<header className="min-w-0">
 					<h1
-						className="text-lg font-semibold tracking-tight"
+						className="text-base font-semibold tracking-tight"
 						data-qa-id="settings-section-heading"
 					>
 						Environments
 					</h1>
-					<p className="text-muted-foreground mt-1 text-sm">
+					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 						Manage your conda environments and packages.
 					</p>
 				</header>
@@ -99,10 +99,13 @@ export function EnvironmentsPage() {
 			data-qa-id="environments-page"
 		>
 			<header className="min-w-0 shrink-0">
-				<h1 className="text-lg font-semibold tracking-tight" data-qa-id="settings-section-heading">
+				<h1
+					className="text-base font-semibold tracking-tight"
+					data-qa-id="settings-section-heading"
+				>
 					Environments
 				</h1>
-				<p className="text-muted-foreground mt-1 text-sm">
+				<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 					Manage your conda environments and packages.
 				</p>
 			</header>

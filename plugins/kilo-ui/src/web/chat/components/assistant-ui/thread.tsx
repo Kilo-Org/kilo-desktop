@@ -386,7 +386,7 @@ const ComposerQueue: FC = () => {
 									{attachmentPreview ? (
 										<QueueAttachmentPreview attachment={attachmentPreview} />
 									) : null}
-									<QueueItemPrimitive.Text className="text-foreground/90 min-w-0 flex-1 truncate text-[13px]" />
+									<QueueItemPrimitive.Text className="text-foreground/90 min-w-0 flex-1 truncate text-sm" />
 									<QueueItemPrimitive.Steer
 										render={
 											<Button

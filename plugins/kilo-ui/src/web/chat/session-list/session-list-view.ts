@@ -179,6 +179,32 @@ export function writeSessionListView(
 }
 
 /** Versioned key — bump the suffix if the stored shape changes. */
+export const SESSION_LIST_SETTLED_EXPANDED_STORAGE_KEY = "kilo-ui.session-list-settled-expanded:v1";
+
+export function readSessionListSettledExpanded(
+	storage: Pick<Storage, "getItem"> | null = getLocalStorage(),
+): boolean {
+	if (!storage) return false;
+	try {
+		return storage.getItem(SESSION_LIST_SETTLED_EXPANDED_STORAGE_KEY) === "true";
+	} catch {
+		return false;
+	}
+}
+
+export function writeSessionListSettledExpanded(
+	expanded: boolean,
+	storage: Pick<Storage, "setItem"> | null = getLocalStorage(),
+): void {
+	if (!storage) return;
+	try {
+		storage.setItem(SESSION_LIST_SETTLED_EXPANDED_STORAGE_KEY, String(expanded));
+	} catch {
+		// Keep the in-memory shelf state usable when persistence is unavailable.
+	}
+}
+
+/** Versioned key — bump the suffix if the stored shape changes. */
 export const SESSION_LIST_PINS_STORAGE_KEY = "kilo-ui.session-list-pins:v1";
 
 export function parseSessionListPins(value: unknown): string[] {

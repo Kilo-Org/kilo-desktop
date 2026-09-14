@@ -50,10 +50,9 @@ function categoryQaId(category: string): string {
  * optional section search, and the settings section list. Not a nested nav
  * inside the content pane.
  *
- * Root `px-2` matches the sidebar ZoneOutlet. The back+search stack uses
- * four-pixel spacing because SidebarSearch contributes another four pixels of
- * vertical padding, producing the same visible eight-pixel rhythm as the
- * session sidebar.
+ * Root padding and the back/search stack match the primary sidebar contribution
+ * so equivalent controls stay aligned when navigating between app settings and
+ * the main sidebar.
  */
 export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarProps) {
 	const visible = useVisiblePluginSettings(sections);
@@ -68,7 +67,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col px-2" data-qa-id="settings-sidebar">
-			<div className="mb-1 flex flex-col gap-1">
+			<div className="mb-2 flex flex-col gap-0.5">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton
@@ -100,7 +99,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 					{categories.map((category) => (
 						<div key={category.name} className="flex flex-col gap-px">
 							<SidebarGroupLabel
-								className="text-sidebar-foreground/60 h-7 px-2 text-[13px] font-medium"
+								className="text-sidebar-foreground/60 h-7 px-2 text-sm font-medium"
 								data-qa-id={`settings-group-${categoryQaId(category.name)}`}
 							>
 								{category.name}

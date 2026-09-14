@@ -148,7 +148,7 @@ function NumericSettingSlider({
 		<Field>
 			<Slider
 				id={id}
-				label={<span className="text-[13px]">{label}</span>}
+				label={<span className="text-sm">{label}</span>}
 				labelAddon={
 					<Tooltip>
 						<TooltipTrigger
@@ -291,10 +291,7 @@ export function ModelSettingsPanel({
 						<FieldGroup className="gap-5">
 							<Field orientation="horizontal">
 								<FieldContent>
-									<FieldLabel
-										className="text-[13px]"
-										htmlFor={`local-model-kilo-context-${model.id}`}
-									>
+									<FieldLabel className="text-sm" htmlFor={`local-model-kilo-context-${model.id}`}>
 										Coding tools and instructions
 									</FieldLabel>
 									<FieldDescription className="text-xs">
@@ -461,10 +458,7 @@ export function ModelSettingsPanel({
 					<AccordionContent className="border-border border-t px-3 py-3">
 						<FieldGroup>
 							<Field className="gap-3" data-invalid={Boolean(extraArgumentsError)}>
-								<FieldLabel
-									className="text-[13px]"
-									htmlFor={`local-model-extra-arguments-${model.id}`}
-								>
+								<FieldLabel className="text-sm" htmlFor={`local-model-extra-arguments-${model.id}`}>
 									Extra Arguments
 								</FieldLabel>
 								<Textarea

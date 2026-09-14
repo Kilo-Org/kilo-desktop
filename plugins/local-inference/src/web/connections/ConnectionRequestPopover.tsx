@@ -95,7 +95,7 @@ export function ConnectionRequestPopover({
 								>
 									{request.method}
 								</Badge>
-								<span className="min-w-0 truncate text-[13px] font-medium">{request.label}</span>
+								<span className="min-w-0 truncate text-sm font-medium">{request.label}</span>
 							</AccordionTrigger>
 							<AccordionContent className="border-border flex flex-col gap-3 border-t px-3 py-3">
 								<CopyRequestValue

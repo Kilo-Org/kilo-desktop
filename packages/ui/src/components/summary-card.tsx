@@ -40,7 +40,7 @@ function SummaryCardIcon({ className, ...props }: ComponentProps<typeof ItemMedi
 	return (
 		<ItemMedia
 			className={cn(
-				"border-border bg-background flex size-8 shrink-0 self-center rounded-md border group-has-data-[slot=item-description]/item:self-center group-has-data-[slot=item-description]/item:translate-y-0",
+				"border-border bg-background flex size-8 shrink-0 self-center rounded-md border group-has-data-[slot=item-description]/item:!self-center group-has-data-[slot=item-description]/item:!translate-y-0",
 				className,
 			)}
 			{...props}
@@ -49,20 +49,15 @@ function SummaryCardIcon({ className, ...props }: ComponentProps<typeof ItemMedi
 }
 
 function SummaryCardContent({ className, ...props }: ComponentProps<typeof ItemContent>) {
-	return <ItemContent className={cn("min-w-0 gap-0", className)} {...props} />;
+	return <ItemContent className={cn("min-w-0 gap-0 self-center", className)} {...props} />;
 }
 
 function SummaryCardTitle({ className, ...props }: ComponentProps<typeof ItemTitle>) {
-	return <ItemTitle className={cn("text-[13px] font-semibold", className)} {...props} />;
+	return <ItemTitle className={cn("text-sm leading-4 font-medium", className)} {...props} />;
 }
 
 function SummaryCardDescription({ className, ...props }: ComponentProps<typeof ItemDescription>) {
-	return (
-		<ItemDescription
-			className={cn("mt-0.5 truncate text-xs leading-normal", className)}
-			{...props}
-		/>
-	);
+	return <ItemDescription className={cn("line-clamp-1 text-xs leading-4", className)} {...props} />;
 }
 
 function SummaryCardActions({ className, ...props }: ComponentProps<typeof ItemActions>) {

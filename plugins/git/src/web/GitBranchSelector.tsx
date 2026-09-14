@@ -185,7 +185,7 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 							type="button"
 							variant="ghost"
 							size="sm"
-							className="dark:text-foreground/90 h-7 max-w-56 rounded-md"
+							className="dark:text-foreground/90 h-7 max-w-56 gap-1.5 rounded-md text-xs"
 							data-qa-id="git-branch-selector-trigger"
 						/>
 					}

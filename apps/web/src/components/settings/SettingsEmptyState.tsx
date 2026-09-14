@@ -6,8 +6,8 @@
 export function SettingsEmptyState() {
 	return (
 		<div className="mx-auto max-w-xl" data-qa-id="settings-empty">
-			<h1 className="text-lg font-semibold tracking-tight">Settings</h1>
-			<p className="text-muted-foreground mt-1 text-sm">
+			<h1 className="text-base font-semibold tracking-tight">Settings</h1>
+			<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 				Plugins can contribute settings sections via <code>plugin.json</code>.
 			</p>
 		</div>

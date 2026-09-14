@@ -225,17 +225,11 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 		expect(contribution?.component).toBeTypeOf("function");
 	});
 
-	it("includes kilo-ui search in the sidebar header actions zone", () => {
+	it("does not contribute kilo-ui search to the sidebar header", () => {
 		const contribution = PLUGIN_ZONE_CONTRIBUTIONS.find(
 			(c) => c.pluginId === "kilo-ui" && c.zone === "sidebar-header-actions",
 		);
-		expect(contribution).toMatchObject({
-			pluginId: "kilo-ui",
-			zone: "sidebar-header-actions",
-			label: "Search chats and workspaces",
-			priority: 10,
-		});
-		expect(contribution?.component).toBeTypeOf("function");
+		expect(contribution).toBeUndefined();
 	});
 
 	it("includes Notebook targeting Kilo's declared zone", () => {

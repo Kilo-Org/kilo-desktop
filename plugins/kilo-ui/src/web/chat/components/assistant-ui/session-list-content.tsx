@@ -68,7 +68,7 @@ import {
 } from "react";
 
 import type { Workspace } from "../../../../contracts/workspaces/schemas.js";
-import { GlobalNewButton } from "../../../create/GlobalNewButton.js";
+import { NewChatButton } from "../../NewChatButton.js";
 import { WorkspaceFilter } from "../../../workspaces/WorkspaceFilter.js";
 import {
 	useWorkspacesFeature,
@@ -93,14 +93,15 @@ import {
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
 import {
 	buildSessionListSections,
-	SESSION_LIST_GROUPING_LABELS,
-	resolveSessionListGrouping,
+	readSessionListSettledExpanded,
 	visibleShowFields,
+	writeSessionListSettledExpanded,
 	type SessionListSection,
 	type SessionListSectionRow,
 	type SessionListShowField,
 	type SessionListView,
 } from "../../session-list/session-list-view.js";
+
 /** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
 const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 
@@ -111,7 +112,7 @@ const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 const sidebarSurfaceIdleClassName =
 	"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
 const sidebarSurfaceActiveClassName =
-	"bg-foreground/5 text-sidebar-foreground font-medium transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
+	"bg-foreground/5 text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -131,9 +132,10 @@ const workspaceHeaderActionsClassName =
 	"pointer-events-none mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-has-[[data-popup-open]]/workspace-row:pointer-events-auto group-has-[[data-popup-open]]/workspace-row:opacity-100";
 
 const SESSION_LIST_OVERSCAN = 10;
-const SESSION_ROW_ESTIMATE_PX = 32;
-const SESSION_SHELF_HEADER_PX = 28;
-const SESSION_SECTION_GAP_PX = 8;
+const SESSION_ROW_ESTIMATE_PX = 30;
+const SESSION_SHELF_HEADER_PX = 30;
+const SESSION_SECTION_GAP_PX = 13;
+const DEFAULT_EXPANDED_SECTIONS: Readonly<Record<string, boolean>> = { settled: false };
 
 const SessionListChromeContext = createContext<{
 	show: readonly SessionListShowField[];
@@ -262,7 +264,10 @@ export const SessionListContent = memo(function SessionListContent({
 	const aui = useAui();
 	const navigate = useNavigateToChat();
 	const pinnedIds = useMemo(() => new Set(pinIds), [pinIds]);
-	const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+	const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
+		...DEFAULT_EXPANDED_SECTIONS,
+		settled: readSessionListSettledExpanded(),
+	}));
 	const focus =
 		view.focus && workspaces.some((workspace) => workspace.id === view.focus) ? view.focus : null;
 	const resolvedView = useMemo(
@@ -319,7 +324,6 @@ export const SessionListContent = memo(function SessionListContent({
 		? workspaces.find((workspace) => workspace.id === focus)
 		: undefined;
 	const emptyLabel = focusedWorkspace ? `No chats in ${focusedWorkspace.name}` : null;
-	const groupingLabel = SESSION_LIST_GROUPING_LABELS[resolveSessionListGrouping(resolvedView)];
 	const createChatInWorkspace = useCallback(
 		(workspaceId: string) => {
 			useRightPanelStore.getState().clearSession(DRAFT_RIGHT_PANEL_SESSION_KEY);
@@ -361,15 +365,26 @@ export const SessionListContent = memo(function SessionListContent({
 	const viewMenu = (
 		<SessionListViewMenu
 			view={resolvedView}
-			onViewChange={updateView}
+			onViewChange={(patch) => {
+				updateView(patch);
+				if (patch.focus) setActiveWorkspaceId(patch.focus);
+			}}
 			onReset={resetView}
 			canCollapse={collapsibleKeys.length > 0}
 			allCollapsed={allCollapsed}
 			onCollapseAll={() => {
-				setExpanded(Object.fromEntries(collapsibleKeys.map((key) => [key, false])));
+				if (collapsibleKeys.includes("settled")) writeSessionListSettledExpanded(false);
+				setExpanded((current) => ({
+					...current,
+					...Object.fromEntries(collapsibleKeys.map((key) => [key, false])),
+				}));
 			}}
 			onExpandAll={() => {
-				setExpanded(Object.fromEntries(collapsibleKeys.map((key) => [key, true])));
+				if (collapsibleKeys.includes("settled")) writeSessionListSettledExpanded(true);
+				setExpanded((current) => ({
+					...current,
+					...Object.fromEntries(collapsibleKeys.map((key) => [key, true])),
+				}));
 			}}
 		/>
 	);
@@ -382,11 +397,17 @@ export const SessionListContent = memo(function SessionListContent({
 					className="flex min-h-0 flex-1 flex-col"
 				>
 					<div className="mb-2 flex shrink-0 flex-col gap-0.5">
-						<GlobalNewButton />
+						<NewChatButton />
+						<SessionListSearch
+							onSelectWorkspace={(id) => {
+								updateView({ focus: id });
+								setActiveWorkspaceId(id);
+							}}
+						/>
 					</div>
 					<div
-						data-qa-id="session-list-inbox-header"
-						className="mb-2 flex h-8 shrink-0 items-center"
+						data-qa-id="session-list-grouping-header"
+						className="mb-1 flex h-8 shrink-0 items-center gap-0.5"
 					>
 						<WorkspaceFilter
 							value={focus}
@@ -395,13 +416,7 @@ export const SessionListContent = memo(function SessionListContent({
 								if (id) setActiveWorkspaceId(id);
 							}}
 						/>
-					</div>
-					<div
-						data-qa-id="session-list-grouping-header"
-						className="mb-1 flex h-7 shrink-0 items-center pl-2"
-					>
-						<h2 className="text-muted-foreground text-[13px] font-medium">{groupingLabel}</h2>
-						<div className="ml-auto flex items-center">{viewMenu}</div>
+						{viewMenu}
 					</div>
 					<div
 						ref={listRef}
@@ -446,9 +461,13 @@ export const SessionListContent = memo(function SessionListContent({
 														onCreateChatInWorkspace={createChatInWorkspace}
 														expanded={entry.expanded}
 														onToggle={() => {
+															const nextExpanded = !entry.expanded;
+															if (entry.sectionKey === "settled") {
+																writeSessionListSettledExpanded(nextExpanded);
+															}
 															setExpanded((current) => ({
 																...current,
-																[entry.sectionKey]: !entry.expanded,
+																[entry.sectionKey]: nextExpanded,
 															}));
 														}}
 													/>
@@ -641,25 +660,18 @@ export const SessionListSearch: FC<{
 
 	return (
 		<>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon-sm"
-							aria-label="Search"
-							className={sidebarNavRadiusClassName}
-							data-slot="aui_thread-list-search"
-							data-qa-id="session-list-search"
-							onClick={() => setOpen(true)}
-						/>
-					}
-				>
-					<SearchIcon />
-				</TooltipTrigger>
-				<TooltipContent side="bottom">Search</TooltipContent>
-			</Tooltip>
+			<Button
+				type="button"
+				variant="ghost"
+				aria-label="Search"
+				className="h-8 w-full justify-start rounded-md px-2 text-sm font-normal"
+				data-slot="aui_thread-list-search"
+				data-qa-id="session-list-search"
+				onClick={() => setOpen(true)}
+			>
+				<SearchIcon data-icon="inline-start" />
+				<span>Search</span>
+			</Button>
 			<CommandDialog
 				open={open}
 				onOpenChange={setOpen}
@@ -806,7 +818,7 @@ const SessionShelfHeader: FC<{
 				aria-expanded={expanded}
 				data-qa-id={qaId}
 				className={cn(
-					"group/shelf h-7 min-w-0 flex-1 justify-start gap-2 bg-transparent px-2 font-normal hover:bg-transparent aria-expanded:bg-transparent",
+					"group/shelf h-[30px] min-w-0 flex-1 justify-start gap-2 bg-transparent px-2 font-normal hover:bg-transparent aria-expanded:bg-transparent",
 					sidebarNavRadiusClassName,
 				)}
 			>
@@ -818,15 +830,7 @@ const SessionShelfHeader: FC<{
 						{...(glyph ? { color: glyph } : {})}
 					/>
 				) : null}
-				<span
-					className={cn(
-						"min-w-0 truncate font-medium",
-						tone === "pinned" ? "text-sm" : "text-[13px]",
-						classes.label,
-					)}
-				>
-					{label}
-				</span>
+				<span className={cn("min-w-0 truncate text-sm font-normal", classes.label)}>{label}</span>
 				<ChevronDownIcon
 					aria-hidden
 					className={cn(
@@ -1226,18 +1230,18 @@ const SessionRowContent = memo(function SessionRowContent({
 	const rightSlot = updatedAt !== undefined ? <SessionRelativeTime timestamp={updatedAt} /> : null;
 
 	const glyph = indented ? (
-		<span className="flex h-7 w-4 shrink-0 items-center justify-center">{leadingIcon}</span>
+		<span className="flex h-5 w-4 shrink-0 items-center justify-center">{leadingIcon}</span>
 	) : (
 		leadingIcon
 	);
 
 	const titleRow = (
-		<span className={cn("flex h-7 min-w-0 items-center", indented ? "gap-1.5" : glyph && "gap-2")}>
+		<span className={cn("flex h-5 min-w-0 items-center", indented ? "gap-1.5" : glyph && "gap-2")}>
 			{glyph}
 			<span
 				data-slot="aui_session-list-item-title"
 				className={cn(
-					"min-w-0 flex-1 truncate text-[13px]",
+					"min-w-0 flex-1 truncate text-sm",
 					// sidebar-accent-foreground is a muted storm step for filled
 					// accent chips; titles sit on a faint wash, so hover/selected
 					// use full sidebar-foreground.
@@ -1253,7 +1257,7 @@ const SessionRowContent = memo(function SessionRowContent({
 			<span
 				data-slot="aui_session-list-item-time"
 				className={cn(
-					"ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 tabular-nums text-xs text-muted-foreground transition-opacity",
+					"text-muted-foreground/70 ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums transition-opacity",
 					canSettle || isSettled
 						? "group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24"
 						: "group-hover/sidebar-row:min-w-16 group-has-[:focus-visible]/sidebar-row:min-w-16 group-has-[[data-popup-open]]/sidebar-row:min-w-16",
@@ -1270,20 +1274,26 @@ const SessionRowContent = memo(function SessionRowContent({
 			<span
 				data-slot="aui_session-list-item-info"
 				className={cn(
-					"text-muted-foreground flex min-w-0 items-center gap-1.5 truncate pb-1 text-xs",
+					"text-muted-foreground/70 flex min-w-0 items-center gap-1.5 truncate text-xs leading-4",
 					indented && "ml-1.5 pl-4",
 				)}
 			>
 				<FolderIcon
 					aria-hidden
 					data-slot="aui_session-list-workspace-icon"
-					className="size-3.5 shrink-0"
+					className="size-[13px] shrink-0 opacity-70"
 					{...(workspaceColor ? { color: workspaceColor } : {})}
 				/>
 				<span className="truncate">{locationLabel}</span>
 			</span>
 		) : null;
 
+	const rowContent = (
+		<span className="flex min-w-0 -translate-y-px flex-col">
+			{titleRow}
+			{infoLine}
+		</span>
+	);
 	const rowPad = indented ? "pl-2 pr-2.5" : "px-2.5";
 
 	return (
@@ -1304,14 +1314,13 @@ const SessionRowContent = memo(function SessionRowContent({
 					type="button"
 					data-slot="aui_session-list-settled-trigger"
 					data-sidebar-select
-					className={cn("flex w-full flex-col py-0 text-left focus-visible:outline-none", rowPad)}
+					className={cn("flex w-full flex-col py-1 text-left focus-visible:outline-none", rowPad)}
 					onClick={() => {
 						navigate();
 						switchToSettled();
 					}}
 				>
-					{titleRow}
-					{infoLine}
+					{rowContent}
 				</button>
 			) : (
 				<ThreadListItemPrimitive.Trigger
@@ -1319,14 +1328,13 @@ const SessionRowContent = memo(function SessionRowContent({
 					onClick={navigate}
 					data-slot="aui_session-list-item-trigger"
 					data-sidebar-select
-					className={cn("flex w-full flex-col py-0 text-left focus-visible:outline-none", rowPad)}
+					className={cn("flex w-full flex-col py-1 text-left focus-visible:outline-none", rowPad)}
 				>
-					{titleRow}
-					{infoLine}
+					{rowContent}
 				</ThreadListItemPrimitive.Trigger>
 			)}
 			{!isRenaming && (
-				<span className={cn(rowHoverActionsClassName, "right-1.5 top-0 h-7")}>
+				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-5")}>
 					<TooltipProvider>
 						{canSettle ? (
 							<RowHoverAction
@@ -1482,7 +1490,7 @@ const SessionItemRename: FC<{
 			data-slot="aui_session-list-item-rename"
 			aria-label="Rename thread"
 			value={value}
-			className="h-7 min-w-0 flex-1 px-1 text-[13px]"
+			className="h-7 min-w-0 flex-1 px-1 text-sm"
 			onChange={(event) => setValue(event.target.value)}
 			onBlur={() => commit(false)}
 			onKeyDown={(event) => {

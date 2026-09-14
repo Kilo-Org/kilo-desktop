@@ -358,12 +358,14 @@ function PageShell({
 			<header className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					<h1
-						className="text-lg font-semibold tracking-tight"
+						className="text-base font-semibold tracking-tight"
 						data-qa-id="settings-section-heading"
 					>
 						AI Providers
 					</h1>
-					<p className="text-muted-foreground mt-1 text-sm">Choose where your models come from.</p>
+					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
+						Choose where your models come from.
+					</p>
 				</div>
 				{action ? <div className="shrink-0">{action}</div> : null}
 			</header>

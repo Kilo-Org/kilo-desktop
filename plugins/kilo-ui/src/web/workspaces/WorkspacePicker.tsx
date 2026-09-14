@@ -91,6 +91,21 @@ export function useWorkspacePicker(): WorkspacePickerContextValue {
 	return value;
 }
 
+function workspacePickerContentWidthClass(contentWidth: "max" | "fit" | "trigger"): string {
+	switch (contentWidth) {
+		case "fit":
+			return "w-max min-w-0 gap-0 p-0";
+		case "trigger":
+			return "w-(--anchor-width) min-w-0 gap-0 p-0";
+		case "max":
+			return "w-max min-w-64 gap-0 p-0";
+		default: {
+			const _exhaustive: never = contentWidth;
+			return _exhaustive;
+		}
+	}
+}
+
 export function WorkspacePickerRoot({
 	children,
 	contentAlign = "start",
@@ -104,7 +119,7 @@ export function WorkspacePickerRoot({
 	children: ReactNode;
 	contentAlign?: PopoverAlign;
 	contentSide?: PopoverSide;
-	contentWidth?: "max" | "fit";
+	contentWidth?: "max" | "fit" | "trigger";
 	emptyLabel?: string;
 	includeUnscoped?: boolean;
 	value?: string | null;
@@ -165,9 +180,7 @@ export function WorkspacePickerRoot({
 					side={contentSide}
 					sideOffset={6}
 					collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-					className={
-						contentWidth === "fit" ? "w-max min-w-0 gap-0 p-0" : "w-max min-w-64 gap-0 p-0"
-					}
+					className={workspacePickerContentWidthClass(contentWidth)}
 					onKeyDown={(event) => {
 						if (event.key === "Escape") setOpen(false);
 					}}

@@ -152,7 +152,7 @@ export const markdownComponents = {
 	pre: ({ className, node: _node, ...props }) => (
 		<pre
 			className={cn(
-				"aui-md-pre border-border/50 bg-muted/30 overflow-x-auto rounded-xl border p-3.5 text-[13px] leading-relaxed",
+				"aui-md-pre border-border/50 bg-muted/30 overflow-x-auto rounded-xl border p-3.5 text-sm leading-relaxed",
 				className,
 			)}
 			{...props}

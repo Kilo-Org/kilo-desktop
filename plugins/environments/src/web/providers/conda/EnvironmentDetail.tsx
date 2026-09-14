@@ -309,7 +309,7 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 					<div className="min-w-0">
 						<div className="flex items-center gap-2.5">
 							<h2
-								className="text-lg font-semibold tracking-tight"
+								className="text-base font-semibold tracking-tight"
 								data-qa-id="environments-conda-detail-name"
 							>
 								{displayName}

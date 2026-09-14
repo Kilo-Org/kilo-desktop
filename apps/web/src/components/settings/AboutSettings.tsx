@@ -50,7 +50,7 @@ export function AboutSettings() {
 
 	return (
 		<div className="mx-auto w-full max-w-3xl" data-qa-id="about-settings">
-			<h1 className="text-lg font-semibold tracking-tight" data-qa-id="settings-section-heading">
+			<h1 className="text-base font-semibold tracking-tight" data-qa-id="settings-section-heading">
 				About
 			</h1>
 
@@ -59,15 +59,15 @@ export function AboutSettings() {
 				data-qa-id="about-version"
 			>
 				<div className="flex flex-col gap-4 p-4 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-8">
-					<div className="min-w-0 space-y-1">
-						<div className="flex min-h-5 items-center gap-2">
-							<h2 className="text-sm font-medium tracking-[-0.005em]">Version</h2>
+					<div className="min-w-0 space-y-0.5">
+						<div className="flex items-baseline gap-2">
+							<h2 className="text-sm leading-tight font-medium tracking-[-0.005em]">Version</h2>
 							<code className="text-muted-foreground text-[11px] font-medium">
 								{state?.currentVersion ?? "Loading…"}
 							</code>
 						</div>
 						<p
-							className="text-muted-foreground/80 max-w-xl text-[13px] leading-[1.45]"
+							className="text-muted-foreground/80 max-w-xl text-sm leading-snug"
 							data-qa-id="update-status-message"
 						>
 							{getUpdateDescription(state)}

@@ -313,7 +313,7 @@ export function LocalModelServerSettings() {
 			<header className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					<h1
-						className="text-lg font-semibold tracking-tight"
+						className="text-base font-semibold tracking-tight"
 						data-qa-id="settings-section-heading"
 					>
 						Local Model Server
@@ -321,7 +321,7 @@ export function LocalModelServerSettings() {
 				</div>
 				<div className="flex items-center gap-3">
 					<div className="flex h-7 items-center gap-2">
-						<span className="text-muted-foreground flex items-center gap-1.5 text-[13px]">
+						<span className="text-muted-foreground flex items-center gap-1.5 text-sm">
 							<span
 								className={cn("size-1.5 rounded-full", statusPresentation.indicatorClass)}
 								aria-hidden
@@ -375,10 +375,10 @@ export function LocalModelServerSettings() {
 			<section className="mt-1 flex min-w-0 flex-col gap-4" aria-labelledby="models-heading">
 				<div className="flex items-center justify-between gap-4">
 					<div className="min-w-0">
-						<h2 id="models-heading" className="text-sm font-medium">
+						<h2 id="models-heading" className="text-sm leading-tight font-medium">
 							Models
 						</h2>
-						<p className="text-muted-foreground mt-1 text-sm">
+						<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 							Manage local models and configure how each one runs.
 						</p>
 					</div>
@@ -563,10 +563,10 @@ export function LocalModelServerSettings() {
 			</section>
 			<section className="mt-1 flex min-w-0 flex-col gap-4" aria-labelledby="runtime-heading">
 				<div className="min-w-0">
-					<h2 id="runtime-heading" className="text-sm font-medium">
+					<h2 id="runtime-heading" className="text-sm leading-tight font-medium">
 						Runtime
 					</h2>
-					<p className="text-muted-foreground mt-1 text-sm">
+					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 						Configure how the server runs, loads models, and accepts connections.
 					</p>
 				</div>
@@ -597,7 +597,7 @@ export function LocalModelServerSettings() {
 				}}
 			>
 				<DialogContent
-					className="h-[min(48rem,calc(100dvh-8rem))] grid-rows-[minmax(0,1fr)] overflow-hidden sm:max-w-[calc(100vw-4rem)]"
+					className="h-[min(48rem,calc(100dvh-8rem))] grid-rows-[minmax(0,1fr)] overflow-hidden sm:w-[calc(100%-4rem)] sm:max-w-7xl"
 					data-qa-id="local-model-catalog-dialog"
 				>
 					<div

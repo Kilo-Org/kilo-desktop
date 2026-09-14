@@ -73,7 +73,7 @@ export function PluginPageView({
 		return (
 			<PluginPageSurface>
 				<PluginFallbackPage headingQaId="plugin-page-not-found">
-					<p className="text-muted-foreground mt-1 text-sm">
+					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 						No plugin provides a page at <code className="bg-muted rounded px-1">{path}</code>.
 					</p>
 				</PluginFallbackPage>
@@ -88,7 +88,10 @@ export function PluginPageView({
 		return (
 			<PluginPageSurface surface={page.surface}>
 				<PluginFallbackPage headingQaId="plugin-page-heading">
-					<p className="text-muted-foreground mt-1 text-sm" data-qa-id="plugin-page-unavailable">
+					<p
+						className="text-muted-foreground mt-0.5 text-sm leading-snug"
+						data-qa-id="plugin-page-unavailable"
+					>
 						{title} is not available in browser mode. Run the desktop app to use this feature.
 					</p>
 				</PluginFallbackPage>

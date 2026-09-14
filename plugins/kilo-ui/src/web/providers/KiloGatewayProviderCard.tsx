@@ -65,7 +65,7 @@ export function KiloGatewayProviderDisclosure() {
 						<SummaryCard.Content>
 							<SummaryCard.Title>Kilo Gateway</SummaryCard.Title>
 							{initialLoading ? (
-								<Skeleton className="mt-1 h-3.5 w-48" />
+								<Skeleton className="mt-0.5 h-3 w-48" />
 							) : (
 								<SummaryCard.Description
 									{...(signedIn && email ? { "data-qa-id": "kilo-account-email" } : {})}

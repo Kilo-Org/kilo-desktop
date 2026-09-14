@@ -41,8 +41,8 @@ import {
 import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
 import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
-/** Clears macOS traffic lights (x:16 + three lights) so the toggle sits just to their right. */
-const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "90px";
+/** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
+const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";
 const DEFAULT_SIDEBAR_TOGGLE_LEFT = "0.75rem";
 
 function resolveSidebarToggleLeft(): string {
@@ -154,12 +154,12 @@ function SidebarAccountDock({
 							<SidebarMenuButton
 								aria-label={`Account menu for ${accountName}`}
 								size="lg"
-								className="data-open:text-sidebar-accent-foreground w-full min-w-0 pr-12 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
+								className="data-open:text-sidebar-accent-foreground w-full min-w-0 gap-2.5 pr-12 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
 								data-qa-id="account-menu"
 							/>
 						}
 					>
-						<Avatar className="size-8">
+						<Avatar className="size-7">
 							<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
 						</Avatar>
 						<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
@@ -172,7 +172,7 @@ function SidebarAccountDock({
 					<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
 						<DropdownMenuGroup>
 							<DropdownMenuLabel className="p-0 font-normal">
-								<div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+								<div className="flex items-center gap-2.5 px-1 py-1.5 text-left text-sm">
 									<Avatar>
 										<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
 									</Avatar>

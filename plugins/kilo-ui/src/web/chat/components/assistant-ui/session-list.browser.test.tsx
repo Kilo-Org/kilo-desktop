@@ -20,7 +20,7 @@ import {
 import { SessionActivityProvider } from "../../session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "../../session-activity/session-activity-store.js";
 import { SessionListViewProvider } from "../../session-list/use-session-list-view.js";
-import { SessionList, SessionListHeaderSearch } from "./session-list.js";
+import { SessionList } from "./session-list.js";
 
 const stubChatModel: ChatModelAdapter = {
 	async run() {
@@ -149,9 +149,7 @@ function SessionListHarness({
 				<SessionActivityProvider store={store}>
 					<WorkspacesContext.Provider value={workspaces}>
 						<SessionListViewProvider>
-							<div data-qa-id="sidebar-header-actions">
-								<SessionListHeaderSearch />
-							</div>
+							<div data-qa-id="sidebar-header-actions" />
 							<div className="flex h-[420px] flex-col">
 								<SessionList />
 							</div>
@@ -182,12 +180,14 @@ function renderSessionList({
 	const adapter = new SeededThreadListAdapter(threads);
 	const navigate = vi.fn();
 	const setActiveWorkspaceId = vi.fn();
+	const openCreate = vi.fn();
 	const openEdit = vi.fn();
 	const openDelete = vi.fn();
 	const workspaces = {
 		...workspacesValue,
 		activeWorkspaceId,
 		setActiveWorkspaceId,
+		openCreate,
 		openEdit,
 		openDelete,
 	};
@@ -215,6 +215,7 @@ function renderSessionList({
 	return {
 		adapter,
 		navigate,
+		openCreate,
 		openDelete,
 		openEdit,
 		setActiveWorkspaceId,
@@ -327,11 +328,11 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Session 0")).not.toBeInTheDocument();
 	});
 
-	it("creates a chat from the New button", async () => {
+	it("creates a chat from the New Chat entry", async () => {
 		const { baseElement, navigate, screen } = renderSessionList({ threads: [] });
 
 		await expect.element(page.getByTestId("kilo-thread-list")).toBeVisible();
-		const trigger = screen.getByRole("button", { name: "New" });
+		const trigger = screen.getByRole("button", { name: "New Chat" });
 		await expect.element(trigger).toBeVisible();
 		expect(baseElement.querySelector('[data-slot="aui_thread-list-new"]')).not.toBeNull();
 		expect(baseElement.querySelector('[data-slot="aui_thread-list-items"]')?.className).toContain(
@@ -390,6 +391,7 @@ describe("SessionList", () => {
 		await screen.getByRole("button", { name: "Search" }).click();
 		await page.getByRole("option", { name: /Settled chat/ }).click();
 
+		await screen.getByTestId("session-list-settled-toggle").click();
 		const row = screen.getByRole("listitem").filter({ hasText: "Settled chat" });
 		await vi.waitFor(() =>
 			expect(
@@ -432,9 +434,7 @@ describe("SessionList", () => {
 
 		await page.getByTestId("session-search-workspace-ws-2").click();
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-2");
-		await expect
-			.element(screen.getByRole("combobox", { name: "Filter by workspace" }))
-			.toHaveTextContent("Beta");
+		await expect.element(screen.getByText("No chats in Beta")).toBeVisible();
 		await expect.element(dialog).not.toBeInTheDocument();
 	});
 
@@ -522,16 +522,17 @@ describe("SessionList", () => {
 			.filter({ hasText: "Fix the bug" })
 			.element()
 			.querySelector('[data-slot="aui_session-list-item-title"]');
-		expect(sessionTitle?.className).toContain("text-[13px]");
+		expect(sessionTitle?.className).toContain("text-sm");
 		const groupingHeader = screen.getByTestId("session-list-grouping-header");
-		await expect.element(groupingHeader.getByRole("heading", { name: "Status" })).toBeVisible();
-		const inboxHeader = screen.getByTestId("session-list-inbox-header");
-		await expect.element(inboxHeader).toBeVisible();
 		await expect
-			.element(screen.getByRole("combobox", { name: "Filter by workspace" }))
+			.element(groupingHeader.getByRole("combobox", { name: "Filter by workspace" }))
 			.toBeVisible();
 		await expect
-			.element(inboxHeader.getByRole("button", { name: "Session list options" }))
+			.element(groupingHeader.getByRole("combobox", { name: "Filter by workspace" }))
+			.toHaveTextContent("All workspaces");
+		await expect.element(screen.getByTestId("session-list-inbox-header")).not.toBeInTheDocument();
+		await expect
+			.element(groupingHeader.getByRole("heading", { name: "Status" }))
 			.not.toBeInTheDocument();
 		await expect
 			.element(groupingHeader.getByRole("button", { name: "Session list options" }))
@@ -549,8 +550,8 @@ describe("SessionList", () => {
 			.getByTestId("session-list-active-toggle")
 			.getByText("Active")
 			.element();
-		expect(activeLabel.className).toContain("text-[13px]");
-		expect(activeLabel.className).toContain("font-medium");
+		expect(activeLabel.className).toContain("text-sm");
+		expect(activeLabel.className).toContain("font-normal");
 		expect(activeLabel.className.split(/\s+/)).toContain("text-muted-foreground");
 		const settledLabel = screen
 			.getByTestId("session-list-settled-toggle")
@@ -567,6 +568,11 @@ describe("SessionList", () => {
 		expect(getComputedStyle(chevron!).opacity).toBe("0");
 		await userEvent.hover(screen.getByTestId("session-list-active-toggle"));
 		await expect.poll(() => getComputedStyle(chevron!).opacity).toBe("1");
+		await expect
+			.element(screen.getByTestId("session-list-settled-toggle"))
+			.toHaveAttribute("aria-expanded", "false");
+		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
+		await screen.getByTestId("session-list-settled-toggle").click();
 		await expect.element(screen.getByText("Old work")).toBeVisible();
 		const settledShelfRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
 		await expect.element(settledShelfRow.getByText("2m")).not.toBeInTheDocument();
@@ -577,6 +583,64 @@ describe("SessionList", () => {
 		await page.getByRole("menuitem", { name: /Show/ }).click();
 		await page.getByRole("menuitemcheckbox", { name: "Updated" }).click();
 		await expect.element(settledShelfRow.getByText("2m")).toBeVisible();
+	});
+
+	it("restores the Settled shelf expansion preference", async () => {
+		const threads: SeededThread[] = [
+			{ remoteId: "ses-1", title: "Active work" },
+			{ remoteId: "ses-2", title: "Old work", status: "archived" },
+		];
+		const first = renderSessionList({ threads });
+
+		await expect.element(first.screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(first.screen.getByText("Old work")).not.toBeInTheDocument();
+		await first.screen.getByTestId("session-list-settled-toggle").click();
+		await expect.element(first.screen.getByText("Old work")).toBeVisible();
+		first.unmount();
+
+		const second = renderSessionList({ threads });
+		await expect.element(second.screen.getByText("Old work")).toBeVisible();
+		await second.screen.getByTestId("session-list-settled-toggle").click();
+		await expect.element(second.screen.getByText("Old work")).not.toBeInTheDocument();
+		second.unmount();
+
+		const third = renderSessionList({ threads });
+		await expect.element(third.screen.getByText("Old work")).not.toBeInTheDocument();
+	});
+
+	it("keeps the Settled shelf collapsed after Collapse All in another grouping", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Active work" },
+				{ remoteId: "ses-2", title: "Old work", status: "archived" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([
+					{ id: "ses-1", workspaceId: "ws-1" },
+					{ id: "ses-2", workspaceId: "ws-1" },
+				]);
+			},
+		});
+
+		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-settled-toggle")).not.toBeInTheDocument();
+
+		await page.getByRole("menuitem", { name: "Collapse All" }).click();
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Status" }).click();
+
+		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("session-list-settled-toggle"))
+			.toHaveAttribute("aria-expanded", "false");
+		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
 	});
 
 	it("opens the session list options menu to the right of the button", async () => {
@@ -709,6 +773,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
 		expect(adapter.archiveCalls).toEqual(["ses-1"]);
 
+		await screen.getByTestId("session-list-settled-toggle").click();
 		const settledRow = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		await expect.element(settledRow).toBeVisible();
 		await userEvent.hover(settledRow);
@@ -730,6 +795,7 @@ describe("SessionList", () => {
 		});
 
 		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await screen.getByTestId("session-list-settled-toggle").click();
 		const settledRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
 		await expect.element(settledRow).toBeVisible();
 
@@ -807,6 +873,7 @@ describe("SessionList", () => {
 			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
 		});
 
+		await screen.getByTestId("session-list-settled-toggle").click();
 		const icon = screen.getByRole("status", { name: "Settled" });
 		await expect.element(icon).toBeVisible();
 		await icon.hover();
@@ -827,6 +894,7 @@ describe("SessionList", () => {
 			},
 		});
 
+		await screen.getByTestId("session-list-settled-toggle").click();
 		const scoped = screen.getByRole("listitem").filter({ hasText: "Old work" });
 		const unscoped = screen.getByRole("listitem").filter({ hasText: "Unscoped work" });
 		const scopedIcon = scoped.getByRole("status", { name: "Settled" });
@@ -1006,7 +1074,6 @@ describe("SessionList", () => {
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
-		await expect.element(screen.getByRole("heading", { name: "Workspace" })).toBeVisible();
 		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 		await expect.element(page.getByRole("menuitemradio", { name: "Updated" })).toBeVisible();
@@ -1017,7 +1084,6 @@ describe("SessionList", () => {
 			.not.toBeInTheDocument();
 		await expect.element(page.getByRole("menuitemradio", { name: "Workspace" })).toBeVisible();
 
-		await expect.element(screen.getByRole("heading", { name: "Updated" })).toBeVisible();
 		await expect.element(screen.getByRole("button", { name: "Today" })).toBeVisible();
 		await expect.element(screen.getByRole("button", { name: "Last 7 Days" })).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
@@ -1048,7 +1114,9 @@ describe("SessionList", () => {
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
 
 		const groupingHeader = screen.getByTestId("session-list-grouping-header");
-		await expect.element(groupingHeader.getByRole("heading", { name: "Workspace" })).toBeVisible();
+		await expect
+			.element(groupingHeader.getByRole("combobox", { name: "Filter by workspace" }))
+			.toBeVisible();
 		await expect
 			.element(screen.getByTestId("session-list-attention-toggle"))
 			.not.toBeInTheDocument();
@@ -1093,7 +1161,7 @@ describe("SessionList", () => {
 		const controls = screen.getByTestId("session-list-workspace-controls-ws-1");
 		await expect.element(createChat).toBeVisible();
 		expect(createChat.element().querySelector("svg")?.classList.contains("lucide-plus")).toBe(true);
-		await screen.getByRole("heading", { name: "Workspace" }).hover();
+		await screen.getByTestId("session-list-grouping-header").hover();
 		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("0");
 		const workspaceRow = screen.getByRole("button", { name: "Acme App" });
 		await workspaceRow.hover();
@@ -1128,7 +1196,7 @@ describe("SessionList", () => {
 		const workspaceToggle = screen.getByRole("button", { name: "Acme App" });
 		const actions = screen.getByRole("button", { name: "Workspace actions for Acme App" });
 		const controls = screen.getByTestId("session-list-workspace-controls-ws-1");
-		await screen.getByRole("heading", { name: "Workspace" }).hover();
+		await screen.getByTestId("session-list-grouping-header").hover();
 		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("0");
 		await workspaceToggle.hover();
 		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("1");
@@ -1228,6 +1296,7 @@ describe("SessionList", () => {
 			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
 		});
 
+		await screen.getByTestId("session-list-settled-toggle").click();
 		const card = screen.getByRole("listitem").filter({ hasText: "Old work" });
 		await userEvent.hover(card);
 
@@ -1271,7 +1340,7 @@ describe("SessionList", () => {
 		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
-		await expect.element(screen.getByText("Old work")).toBeVisible();
+		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
 
 		const pinnedCard = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		const activeCard = screen.getByRole("listitem").filter({ hasText: "Add tests" });
@@ -1325,89 +1394,87 @@ describe("SessionList", () => {
 		await page.getByRole("menuitem", { name: /^Status/ }).click();
 		await page.getByRole("menuitemradio", { name: "Settled" }).click();
 
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+		await screen.getByTestId("session-list-settled-toggle").click();
 		await expect.element(screen.getByText("Old work")).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 	});
 
-	it("shows New above the workspace switcher", async () => {
+	it("shows New Chat above the session list", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
 		});
 
 		const titlebarActions = screen.getByTestId("sidebar-header-actions");
-		const header = screen.getByTestId("session-list-inbox-header");
-		await expect
-			.element(header.getByRole("combobox", { name: "Filter by workspace" }))
-			.toBeVisible();
-		await expect
-			.element(header.getByRole("combobox", { name: "Filter by workspace" }))
-			.toHaveTextContent("All workspaces");
+		const groupingHeader = screen.getByTestId("session-list-grouping-header");
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
-		const headerEl = header.element();
-		const trigger = header.getByRole("combobox", { name: "Filter by workspace" }).element();
+		await expect.element(screen.getByTestId("session-list-inbox-header")).not.toBeInTheDocument();
+		const groupingHeaderEl = groupingHeader.element();
+		const workspaceFilter = groupingHeader.getByRole("combobox", { name: "Filter by workspace" });
+		await expect.element(workspaceFilter).toBeVisible();
+		await expect.element(workspaceFilter).toHaveTextContent("All workspaces");
 		const filter = screen.getByRole("button", { name: "Session list options" }).element();
-		const newChat = screen.getByRole("button", { name: "New" }).element();
+		const newButton = screen.getByTestId("new-chat").element();
 		const search = screen.getByRole("button", { name: "Search" }).element();
 		const activeRow = screen.getByTestId("session-list-active-toggle").element().closest("li");
-		const groupingHeader = screen.getByTestId("session-list-grouping-header").element();
 		const inbox = screen.getByTestId("session-list-inbox").element();
-		expect(headerEl.contains(trigger)).toBe(true);
-		expect(headerEl.contains(filter)).toBe(false);
 		expect(activeRow?.contains(filter)).toBe(false);
-		expect(groupingHeader.contains(filter)).toBe(true);
+		expect(groupingHeaderEl.contains(filter)).toBe(true);
+		expect(groupingHeaderEl.contains(workspaceFilter.element())).toBe(true);
+		expect(
+			workspaceFilter.element().compareDocumentPosition(filter) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 		expect(inbox.contains(filter)).toBe(false);
-		expect(headerEl.className).not.toContain("bg-foreground/5");
-		expect(trigger.className).toContain("border-border/60");
-		expect(trigger.className).toContain("bg-foreground/5");
-		expect(trigger.className).not.toContain("bg-background");
-		expect(trigger.className).not.toContain("bg-input/30");
-		expect(Number.parseFloat(getComputedStyle(trigger).borderTopWidth)).toBeGreaterThan(0);
-		expect(headerEl.contains(newChat)).toBe(false);
-		expect(titlebarActions.element().contains(search)).toBe(true);
-		expect(screen.getByTestId("kilo-thread-list").element().contains(search)).toBe(false);
-		const switcherIcon = trigger.querySelector("svg");
-		expect(switcherIcon?.classList.contains("lucide-layout-grid")).toBe(true);
-		expect(switcherIcon?.getAttribute("stroke")).toBe("currentColor");
+		expect(titlebarActions.element().contains(search)).toBe(false);
+		expect(screen.getByTestId("kilo-thread-list").element().contains(search)).toBe(true);
 		await expect.element(screen.getByTestId("session-list-chrome-divider")).not.toBeInTheDocument();
-		expect(newChat.compareDocumentPosition(headerEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+		expect(newButton.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(headerEl.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+		expect(
+			newButton.compareDocumentPosition(groupingHeaderEl) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+		expect(groupingHeaderEl.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(getComputedStyle(trigger).fontSize).toBe(getComputedStyle(newChat).fontSize);
-		expect(Number.parseFloat(getComputedStyle(trigger).paddingLeft)).toBe(8);
-		expect(Number.parseFloat(getComputedStyle(trigger).paddingRight)).toBe(8);
+		expect(newButton.textContent).toBe("New Chat");
 		await expect
 			.element(screen.getByRole("button", { name: "Session list options" }))
 			.toBeVisible();
 
-		await header.getByRole("combobox", { name: "Filter by workspace" }).click();
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await expect.element(page.getByRole("menuitem", { name: /^Status/ })).toBeVisible();
+		await expect
+			.element(page.getByRole("menuitem", { name: /^Workspace/ }))
+			.not.toBeInTheDocument();
+		await userEvent.keyboard("{Escape}");
+
+		await workspaceFilter.click();
 		await expect.element(page.getByRole("option", { name: "All workspaces" })).toBeVisible();
-		const popover = document.querySelector('[data-slot="popover-content"]');
-		expect(popover).not.toBeNull();
-		await vi.waitFor(() => expect(popover!.parentElement?.dataset.side).toBe("right"));
-		expect(popover!.getBoundingClientRect().width).toBeGreaterThan(80);
-		expect(popover!.getBoundingClientRect().width).toBeLessThan(
-			trigger.getBoundingClientRect().width,
-		);
 		await expect.element(page.getByRole("option", { name: /Acme App/ })).toBeVisible();
 		await expect.element(page.getByRole("option", { name: /Beta/ })).toBeVisible();
+		const allIcon = page
+			.getByRole("option", { name: "All workspaces" })
+			.element()
+			.querySelector(".lucide-layout-grid");
+		expect(allIcon).not.toBeNull();
+		const acmeIcon = page
+			.getByRole("option", { name: /Acme App/ })
+			.element()
+			.querySelector(".lucide-folder");
+		expect(acmeIcon).not.toBeNull();
+		expect(acmeIcon?.getAttribute("stroke")).toBe("#F87171");
+		const betaIcon = page
+			.getByRole("option", { name: /Beta/ })
+			.element()
+			.querySelector(".lucide-folder");
+		expect(betaIcon).not.toBeNull();
+		expect(betaIcon?.getAttribute("stroke")).toBe("currentColor");
 		await expect
 			.element(page.getByRole("option", { name: "Don't work in a workspace" }))
 			.not.toBeInTheDocument();
-		const workspaceItemHeight = page
-			.getByRole("option", { name: "All workspaces" })
-			.element()
-			.getBoundingClientRect().height;
-		await userEvent.keyboard("{Escape}");
-		await screen.getByRole("button", { name: "Session list options" }).click();
-		const sessionFilterItemHeight = page
-			.getByRole("menuitem", { name: /Grouping/ })
-			.element()
-			.getBoundingClientRect().height;
-		expect(workspaceItemHeight).toBeCloseTo(sessionFilterItemHeight, 0);
 	});
 
 	it("focuses the inbox on a workspace and sets it as the new-chat target", async () => {
@@ -1427,14 +1494,12 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 
-		await screen.getByRole("combobox", { name: "Filter by workspace" }).click();
+		const workspaceFilter = screen.getByRole("combobox", { name: "Filter by workspace" });
+		await workspaceFilter.click();
 		await page.getByRole("option", { name: /Acme App/ }).click();
 
-		await expect
-			.element(screen.getByRole("combobox", { name: "Filter by workspace" }))
-			.toHaveTextContent("Acme App");
-		const trigger = screen.getByRole("combobox", { name: "Filter by workspace" }).element();
-		const switcherIcon = trigger.querySelector("svg");
+		await expect.element(workspaceFilter).toHaveTextContent("Acme App");
+		const switcherIcon = workspaceFilter.element().querySelector("svg");
 		expect(switcherIcon?.classList.contains("lucide-folder")).toBe(true);
 		expect(switcherIcon?.getAttribute("stroke")).toBe("#F87171");
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
@@ -1451,15 +1516,13 @@ describe("SessionList", () => {
 		await userEvent.keyboard("{Escape}");
 		await userEvent.keyboard("{Escape}");
 
-		await screen.getByRole("combobox", { name: "Filter by workspace" }).click();
+		await workspaceFilter.click();
 		await page.getByRole("option", { name: "All workspaces" }).click();
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 		expect(setActiveWorkspaceId).toHaveBeenCalledTimes(1);
-		const allIcon = screen
-			.getByRole("combobox", { name: "Filter by workspace" })
-			.element()
-			.querySelector("svg");
+		await expect.element(workspaceFilter).toHaveTextContent("All workspaces");
+		const allIcon = workspaceFilter.element().querySelector("svg");
 		expect(allIcon?.classList.contains("lucide-layout-grid")).toBe(true);
 		expect(allIcon?.getAttribute("stroke")).toBe("currentColor");
 	});

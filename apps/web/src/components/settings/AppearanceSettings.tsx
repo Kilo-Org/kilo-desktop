@@ -34,7 +34,7 @@ export function AppearanceSettings() {
 
 	return (
 		<div className="mx-auto w-full max-w-3xl" data-qa-id="appearance-settings">
-			<h1 className="text-lg font-semibold tracking-tight" data-qa-id="settings-section-heading">
+			<h1 className="text-base font-semibold tracking-tight" data-qa-id="settings-section-heading">
 				Appearance
 			</h1>
 			<FieldSet className="mt-6 gap-0">

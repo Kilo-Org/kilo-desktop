@@ -58,7 +58,7 @@ describe("AppProviders (app-level)", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("app-sidebar")).toBeVisible();
-		await expect.element(screen.getByTestId("global-new")).toBeVisible();
+		await expect.element(screen.getByTestId("new-chat")).toBeVisible();
 
 		// The todos nav entry is derived from the plugin manifest route.
 		await screen.getByTestId("nav-todos").click();
@@ -133,7 +133,7 @@ describe("AppProviders (app-level)", () => {
 			.element(screen.getByTestId("app-sidebar-primary"))
 			.toHaveAttribute("aria-hidden", "true");
 		await expect.element(screen.getByTestId("zone-sidebar")).not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("global-new")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("new-chat")).not.toBeInTheDocument();
 
 		await screen.getByTestId("settings-back").click();
 		await expect.element(screen.getByTestId("nav-settings")).toBeVisible();
@@ -141,7 +141,7 @@ describe("AppProviders (app-level)", () => {
 		await expect
 			.element(screen.getByTestId("app-sidebar-primary"))
 			.toHaveAttribute("aria-hidden", "false");
-		await expect.element(screen.getByTestId("global-new")).toBeVisible();
+		await expect.element(screen.getByTestId("new-chat")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-chat-page")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-chat-thread")).toBeVisible();
 		await expect.element(screen.getByTestId("chat-right-panel-toggle")).not.toBeInTheDocument();

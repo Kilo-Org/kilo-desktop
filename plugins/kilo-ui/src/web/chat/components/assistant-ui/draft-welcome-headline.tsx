@@ -14,7 +14,7 @@ export const DraftWelcomeHeadline: FC = () => {
 
 	return (
 		<div className="aui-thread-welcome-root relative z-10 mb-6 flex w-full max-w-(--thread-max-width) flex-col items-center px-4 text-center">
-			<h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex w-full max-w-full flex-wrap items-baseline justify-center text-2xl font-semibold duration-200">
+			<h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex w-full max-w-full flex-wrap items-baseline justify-center text-2xl font-medium duration-200">
 				{active ? (
 					<>
 						<span className="shrink-0">What should we work on in{"\u00a0"}</span>

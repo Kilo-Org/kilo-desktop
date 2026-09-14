@@ -215,7 +215,7 @@ describe("formatEnvironmentsErrorMessage / parseEnvironmentsErrorMessage", () =>
 			" - python=3.11",
 		].join("\n");
 		expect(formatEnvironmentsErrorMessage("SOLVE_FAILED", tree)).toBe(`SOLVE_FAILED: ${tree}`);
-		expect(parseEnvironmentsErrorMessage(`[BUSINESS] SOLVE_FAILED: ${tree}`)).toEqual({
+		expect(parseEnvironmentsErrorMessage(`SOLVE_FAILED: ${tree}`)).toEqual({
 			code: "SOLVE_FAILED",
 			detail: tree,
 		});
@@ -236,25 +236,9 @@ describe("formatEnvironmentsErrorMessage / parseEnvironmentsErrorMessage", () =>
 		expect(parseEnvironmentsErrorMessage("JOB_CANCELLED")).toEqual({ code: "JOB_CANCELLED" });
 	});
 
-	it("parses the renderer-observed shape after feature-registry.createFeatureHandlers wraps the FeatureError with a `[CODE] ` prefix", () => {
-		// This is the exact wire format apps/desktop/src/main/features/registry/feature-registry.ts:169
-		// produces: `new BusinessError(\`[${error.code}] ${error.message}\`)`. If this test starts failing
-		// after a router change, sync the regex or expose a strip helper — do not force every consumer
-		// to hand-roll the prefix strip.
-		expect(parseEnvironmentsErrorMessage("[NOT_FOUND] ENV_NOT_FOUND: no such env foo")).toEqual({
-			code: "ENV_NOT_FOUND",
-			detail: "no such env foo",
-		});
-		expect(
-			parseEnvironmentsErrorMessage("[BUSINESS] SOLVE_FAILED: cannot resolve numpy>=99"),
-		).toEqual({ code: "SOLVE_FAILED", detail: "cannot resolve numpy>=99" });
-		expect(parseEnvironmentsErrorMessage("[VALIDATION] INVALID_MATCHSPEC")).toEqual({
-			code: "INVALID_MATCHSPEC",
-		});
-	});
-
-	it("rejects unknown FeatureErrorCode wrappers so a foreign error is not misclassified", () => {
-		expect(parseEnvironmentsErrorMessage("[TIMEOUT] SOLVE_FAILED: hi")).toBeNull();
+	it("rejects wrapped or lowercase FeatureError wrappers so a foreign error is not misclassified", () => {
+		expect(parseEnvironmentsErrorMessage("[BUSINESS] SOLVE_FAILED: hi")).toBeNull();
+		expect(parseEnvironmentsErrorMessage("[NOT_FOUND] ENV_NOT_FOUND: no such env foo")).toBeNull();
 		expect(parseEnvironmentsErrorMessage("[business] SOLVE_FAILED: hi")).toBeNull();
 	});
 

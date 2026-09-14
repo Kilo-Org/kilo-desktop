@@ -3,18 +3,17 @@ import { describe, expect, it } from "vitest";
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
 
 describe("friendlyEnvironmentsError", () => {
-	it("maps the renderer-observed [BUCKET] CODE: detail form to friendly copy", () => {
-		const message = "[BUSINESS] ENV_EXISTS: prefix already exists: /Users/romulo/.conda/envs/faker";
+	it("maps the CODE: detail form to friendly copy", () => {
+		const message = "ENV_EXISTS: prefix already exists: /Users/romulo/.conda/envs/faker";
 		const result = friendlyEnvironmentsError(new Error(message), "fallback");
 		expect(result).toContain("already exists");
 		expect(result).not.toContain("CondaValueError");
 		expect(result).not.toContain("ENV_EXISTS");
-		expect(result).not.toContain("[BUSINESS]");
 	});
 
 	it("maps SOLVE_FAILED to a resolution-focused message", () => {
 		const result = friendlyEnvironmentsError(
-			new Error("[BUSINESS] SOLVE_FAILED: found conflicts"),
+			new Error("SOLVE_FAILED: found conflicts"),
 			"fallback",
 		);
 		expect(result.toLowerCase()).toContain("resolve");
@@ -34,8 +33,7 @@ describe("friendlyEnvironmentsError", () => {
 	});
 
 	it("appends the bridge detail to PROVIDER_NOT_READY when it carries actionable information", () => {
-		const message =
-			"[BUSINESS] PROVIDER_NOT_READY: anaconda-bridge-sidecar error: could not parse .condarc";
+		const message = "PROVIDER_NOT_READY: anaconda-bridge-sidecar error: could not parse .condarc";
 		const result = friendlyEnvironmentsError(new Error(message), "fallback");
 		expect(result).toContain("backend is not ready");
 		expect(result).toContain("could not parse .condarc");
@@ -44,8 +42,7 @@ describe("friendlyEnvironmentsError", () => {
 	});
 
 	it("omits an opaque 'bridge failed to start' PROVIDER_NOT_READY detail to keep the toast copy short", () => {
-		const message =
-			"[BUSINESS] PROVIDER_NOT_READY: anaconda-bridge-sidecar error: bridge failed to start";
+		const message = "PROVIDER_NOT_READY: anaconda-bridge-sidecar error: bridge failed to start";
 		const result = friendlyEnvironmentsError(new Error(message), "fallback");
 		expect(result).toContain("backend is not ready");
 		expect(result).not.toContain("bridge failed to start");

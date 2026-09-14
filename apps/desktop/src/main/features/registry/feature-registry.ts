@@ -194,7 +194,7 @@ export function createFeatureHandlers(): Pick<IpcHandlers, "feature:invoke"> {
 				return await featureRouter.invoke(input.featureId, input.channel, input.args);
 			} catch (error) {
 				if (error instanceof FeatureError) {
-					throw new BusinessError(`[${error.code}] ${error.message}`);
+					throw new BusinessError(error.message);
 				}
 				throw error;
 			}

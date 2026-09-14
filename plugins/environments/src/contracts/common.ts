@@ -38,17 +38,10 @@ export type Provider = z.infer<typeof providerSchema>;
  * `message` field so callers can branch on the concrete reason across the
  * IPC boundary.
  *
- * Two related shapes flow through the system:
- * - **Emitter format** (what handlers throw):
- *   `"<CODE>"` or `"<CODE>: <detail>"` — see
- *   {@link formatEnvironmentsErrorMessage}.
- * - **Renderer-observed format** (what a caught error's `.message` looks
- *   like after `apps/desktop/.../feature-registry.createFeatureHandlers`
- *   rewraps the `FeatureError` as
- *   `` `[${error.code}] ${error.message}` `` and the renderer transport
- *   surfaces that string): `"[<FeatureErrorCode>] <CODE>: <detail>"`.
- *   {@link parseEnvironmentsErrorMessage} accepts both shapes so callers
- *   on either side of the IPC boundary can use the same helper.
+ * Handlers throw `"<CODE>"` or `"<CODE>: <detail>"` (see
+ * {@link formatEnvironmentsErrorMessage}); the message crosses IPC
+ * unchanged, and {@link parseEnvironmentsErrorMessage} recovers the code
+ * and detail on the renderer side from the same shape.
  *
  * All codes are uppercase, colon-space separated, single-line.
  */
@@ -74,18 +67,9 @@ export type EnvironmentsErrorCode = z.infer<typeof environmentsErrorCodeSchema>;
  * Regex used by {@link parseEnvironmentsErrorMessage} to peel a granular
  * environments error code off the front of a FeatureError message.
  *
- * Tolerates an optional leading `[VALIDATION|NOT_FOUND|BUSINESS] ` prefix
- * because `apps/desktop/.../feature-registry.createFeatureHandlers`
- * rewraps every FeatureError as
- * `` `[${error.code}] ${error.message}` `` before it crosses IPC. Callers
- * on the emitter side (main process) see the raw `"CODE: detail"` shape;
- * callers on the receiver side (renderer toasts) see the `[CODE] `-wrapped
- * form. One regex handles both.
- *
  * Exposed so tests and consumers can share one definition.
  */
-export const ENVIRONMENTS_ERROR_MESSAGE_PATTERN =
-	/^(?:\[(?:VALIDATION|NOT_FOUND|BUSINESS)\]\s+)?([A-Z][A-Z0-9_]*)(?::\s+(.+))?$/s;
+export const ENVIRONMENTS_ERROR_MESSAGE_PATTERN = /^([A-Z][A-Z0-9_]*)(?::\s+(.+))?$/s;
 
 /**
  * Matches ANSI escape sequences emitted by conda's solver reports (SGR
@@ -124,11 +108,9 @@ export function formatEnvironmentsErrorMessage(
 }
 
 /**
- * Extract the granular reason encoded in a FeatureError message. Accepts
- * both the emitter form (`"CODE: detail"` — what a handler throws) and the
- * renderer-observed form (`"[VALIDATION|NOT_FOUND|BUSINESS] CODE: detail"`
- * — after `feature-registry.createFeatureHandlers` has rewrapped it for
- * IPC). Returns `null` for messages that do not follow the convention
+ * Extract the granular reason encoded in a FeatureError message
+ * (`"CODE: detail"` — the shape {@link formatEnvironmentsErrorMessage}
+ * produces). Returns `null` for messages that do not follow the convention
  * (they may still be legitimate FeatureErrors — e.g. an SDK-level
  * VALIDATION from the router — just not ones this plugin authored).
  */

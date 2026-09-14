@@ -251,7 +251,7 @@ describe("AddPackageDialog", () => {
 		const { baseElement } = renderDialog({
 			onClose,
 			install: async () => {
-				throw new Error("[BUSINESS] SOLVE_FAILED: conflict");
+				throw new Error("SOLVE_FAILED: conflict");
 			},
 		});
 		const screen = page.elementLocator(baseElement);

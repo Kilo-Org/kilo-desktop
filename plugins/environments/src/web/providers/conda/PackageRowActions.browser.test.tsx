@@ -132,7 +132,7 @@ describe("RemovePackageConfirmation", () => {
 		const { baseElement } = renderWithSdk(
 			<RemovePackageConfirmation env={ENV} pkg={NUMPY} open onOpenChange={onOpenChange} />,
 			async () => {
-				throw new Error("[BUSINESS] SOLVE_FAILED: conflict");
+				throw new Error("SOLVE_FAILED: conflict");
 			},
 		);
 		const screen = page.elementLocator(baseElement);
@@ -218,7 +218,7 @@ describe("BulkRemoveConfirmation", () => {
 				onSuccess={onSuccess}
 			/>,
 			async () => {
-				throw new Error("[BUSINESS] SOLVE_FAILED: conflict");
+				throw new Error("SOLVE_FAILED: conflict");
 			},
 		);
 		const screen = page.elementLocator(baseElement);

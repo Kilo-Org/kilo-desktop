@@ -158,7 +158,7 @@ describe("UpdateConfirmationDialog", () => {
 		const detail = "The following packages are incompatible\n└─ pin on python =3.11";
 		const { baseElement } = renderDialog({
 			preview: async () => {
-				throw new Error(`[BUSINESS] SOLVE_FAILED: ${detail}`);
+				throw new Error(`SOLVE_FAILED: ${detail}`);
 			},
 		});
 		const screen = page.elementLocator(baseElement);
@@ -177,7 +177,7 @@ describe("UpdateConfirmationDialog", () => {
 		const detail = "The following packages are incompatible\n└─ pin on python =3.11";
 		const { baseElement } = renderDialog({
 			preview: async () => {
-				throw new Error(`[BUSINESS] SOLVE_FAILED: ${detail}`);
+				throw new Error(`SOLVE_FAILED: ${detail}`);
 			},
 		});
 		const screen = page.elementLocator(baseElement);
@@ -422,7 +422,7 @@ describe("UpdateConfirmationDialog", () => {
 		const { baseElement } = renderDialog({
 			preview: async () => emptyPreview(),
 			update: async () => {
-				throw new Error("[BUSINESS] SOLVE_FAILED: boom");
+				throw new Error("SOLVE_FAILED: boom");
 			},
 			onUpdatingChange,
 		});
@@ -479,7 +479,7 @@ describe("UpdateConfirmationDialog", () => {
 		const { baseElement } = renderDialog({
 			preview: async () => emptyPreview(),
 			clone: async () => {
-				throw new Error("[BUSINESS] ENV_EXISTS: already exists");
+				throw new Error("ENV_EXISTS: already exists");
 			},
 			update,
 			onUpdatingChange,

@@ -133,7 +133,7 @@ describe("CloneEnvironmentDialog", () => {
 
 	it("shows server error when clone fails", async () => {
 		const clone = () => {
-			throw new Error("[BUSINESS] ENV_EXISTS: already exists");
+			throw new Error("ENV_EXISTS: already exists");
 		};
 		const { baseElement } = renderDialog({ clone });
 		const screen = page.elementLocator(baseElement);

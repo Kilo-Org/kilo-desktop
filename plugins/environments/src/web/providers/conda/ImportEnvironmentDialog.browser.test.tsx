@@ -216,7 +216,7 @@ describe("ImportEnvironmentDialog", () => {
 
 	it("shows error toast when the import fails in the foreground", async () => {
 		const createFromFile = vi.fn((): never => {
-			throw new Error("[BUSINESS] ENV_EXISTS: prefix already exists");
+			throw new Error("ENV_EXISTS: prefix already exists");
 		});
 		const { baseElement } = renderDialog({ createFromFile });
 		const screen = page.elementLocator(baseElement);

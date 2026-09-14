@@ -1,7 +1,7 @@
 /**
  * User-facing messages for environments failures.
  *
- * FeatureErrors cross the IPC boundary as `"[BUCKET] CODE: detail"` strings
+ * FeatureErrors cross the IPC boundary as `"CODE: detail"` strings
  * (see contracts/common.ts). Surfacing that raw form to users leaks Python
  * traceback fragments like
  * `PROVIDER_NOT_READY: conda.exceptions.CondaValueError: prefix already

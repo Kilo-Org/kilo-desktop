@@ -317,7 +317,7 @@ describe("feature invoke bridge", () => {
 		try {
 			await expect(invoke({ featureId, channel: "run", args: "success" })).resolves.toBe("done");
 			await expect(invoke({ featureId, channel: "run", args: "expected" })).rejects.toEqual(
-				new BusinessError("[NOT_FOUND] missing"),
+				new BusinessError("missing"),
 			);
 			await expect(invoke({ featureId, channel: "run", args: "unexpected" })).rejects.toBe(
 				unexpected,

@@ -12,6 +12,7 @@ import type {
 	CondaEnvsCreateResult,
 } from "../../../contracts/providers/conda.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
+import { PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY } from "./column-widths.js";
 
 function pkg(name: string, versions: string[] = []): CondaRepodataPackage {
 	return {
@@ -78,12 +79,15 @@ function renderDialog(
 
 afterEach(cleanup);
 
-describe("CreateEnvironmentDialog (drawer)", () => {
-	it("renders the manual create drawer with the package grid populated", async () => {
+describe("CreateEnvironmentDialog (modal)", () => {
+	it("renders the manual create modal with the package grid populated", async () => {
 		const { baseElement } = renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
+		// As the first test in the file this one absorbs browser and module warm-up,
+		// which outran the default matcher window on CI even though the grid renders
+		// fine, hence the explicit timeout.
 		const rows = screen.getByTestId("environments-create-package-row");
 		await expect.element(rows.first(), { timeout: 10_000 }).toBeVisible();
 	});
@@ -436,5 +440,81 @@ describe("CreateEnvironmentDialog (drawer)", () => {
 		});
 		const payload = create.mock.calls[0]![0];
 		expect(payload.prefix).toBe("/home/user/.conda/envs/myenv");
+	});
+});
+
+/** Drives the pointer sequence a real drag produces, which userEvent cannot express. */
+function dragHandle(handle: Element, deltaX: number) {
+	const startX = 500;
+	handle.dispatchEvent(
+		new PointerEvent("pointerdown", { bubbles: true, clientX: startX, pointerId: 1 }),
+	);
+	window.dispatchEvent(
+		new PointerEvent("pointermove", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
+	);
+	window.dispatchEvent(
+		new PointerEvent("pointerup", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
+	);
+}
+
+describe("CreateEnvironmentDialog — resizable package columns", () => {
+	afterEach(() => {
+		localStorage.removeItem(PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY);
+	});
+
+	it("widens the Version column when its handle is dragged right", async () => {
+		const { baseElement } = renderDialog();
+		const screen = page.elementLocator(baseElement);
+		const handle = screen.getByTestId("environments-create-column-resizer-version");
+
+		await expect.element(handle).toBeVisible();
+		dragHandle(handle.element(), -40);
+
+		// Version starts at its 128px default; dragging its leading edge left widens it.
+		await expect.element(handle).toHaveAttribute("aria-valuenow", "168");
+	});
+
+	it("narrows the Size column from the keyboard and keeps it after remount", async () => {
+		const first = renderDialog();
+		const firstHandle = page
+			.elementLocator(first.baseElement)
+			.getByTestId("environments-create-column-resizer-size");
+
+		await expect.element(firstHandle).toBeVisible();
+		await userEvent.click(firstHandle);
+		await userEvent.keyboard("{ArrowRight}");
+
+		// Size starts at 80px; a right press on its leading edge trims 16px.
+		await expect.element(firstHandle).toHaveAttribute("aria-valuenow", "64");
+
+		cleanup();
+		const second = renderDialog();
+		const secondHandle = page
+			.elementLocator(second.baseElement)
+			.getByTestId("environments-create-column-resizer-size");
+
+		await expect.element(secondHandle).toHaveAttribute("aria-valuenow", "64");
+	});
+});
+
+describe("CreateEnvironmentDialog — narrow columns", () => {
+	afterEach(() => {
+		localStorage.removeItem(PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY);
+	});
+
+	it("keeps the row within the grid even when a column is dragged very wide", async () => {
+		const { baseElement } = renderDialog();
+		const screen = page.elementLocator(baseElement);
+		const handle = screen.getByTestId("environments-create-column-resizer-version");
+
+		await expect.element(handle).toBeVisible();
+		// A leading-edge drag this far left would otherwise push the row wider
+		// than the grid.
+		dragHandle(handle.element(), -4000);
+
+		// Flex shrinking absorbs an oversized column, so the row still fits.
+		const header = baseElement.querySelector('[data-qa-id="environments-create-package-header"]')!;
+
+		expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth + 1);
 	});
 });

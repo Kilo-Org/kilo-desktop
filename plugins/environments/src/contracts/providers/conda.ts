@@ -728,6 +728,10 @@ export const condaContract = defineContract({
 		condaPackagesPreviewInputSchema,
 		condaPackagesPreviewResultSchema,
 	),
+	"conda.packages.previewInstall": defineMethod(
+		condaPackagesPreviewInputSchema,
+		condaPackagesPreviewResultSchema,
+	),
 	"conda.channels.list": defineMethod(z.undefined(), condaChannelsListResultSchema),
 	"conda.channels.add": defineMethod(condaChannelsAddInputSchema, condaChannelsListResultSchema),
 	"conda.channels.remove": defineMethod(

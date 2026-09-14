@@ -66,6 +66,14 @@ function renderDialog(
 				truncated: options.truncated ?? false,
 			}),
 			"conda.packages.install": install,
+			"conda.packages.previewInstall": async () => ({
+				upgraded: [],
+				downgraded: [],
+				added: [],
+				removed: [],
+				rebuilt: [],
+				nothingToDo: true,
+			}),
 		},
 	});
 	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });

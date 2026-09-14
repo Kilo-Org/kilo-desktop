@@ -88,11 +88,17 @@ export function EnvironmentsPage() {
 	}
 
 	return (
+		/*
+		 * `min-h-0 flex-1` is what keeps the settings scroller from taking over:
+		 * without it this column grows to its content and the whole page scrolls,
+		 * carrying the heading, search, and column headers away. Bounded here, the
+		 * environment list becomes the only thing that scrolls.
+		 */
 		<div
-			className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-6"
+			className="mx-auto flex min-h-0 w-full max-w-3xl min-w-0 flex-1 flex-col gap-6"
 			data-qa-id="environments-page"
 		>
-			<header className="min-w-0">
+			<header className="min-w-0 shrink-0">
 				<h1 className="text-lg font-semibold tracking-tight" data-qa-id="settings-section-heading">
 					Environments
 				</h1>

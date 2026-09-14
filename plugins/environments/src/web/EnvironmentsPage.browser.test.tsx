@@ -25,6 +25,8 @@ function renderPage(
 		flagEnabled?: boolean;
 		providersAvailable?: boolean;
 		list?: CondaService["conda.envs.list"];
+		/** Height of the surrounding shell; settings renders the page in a bounded scroller. */
+		hostHeight?: number;
 	} = {},
 ) {
 	const flagEnabled = options.flagEnabled ?? true;
@@ -79,12 +81,37 @@ function renderPage(
 		defaultOptions: { queries: { retry: false } },
 	});
 
-	return render(
+	const page = (
 		<SdkProvider system={system}>
 			<SidebarProvider>
 				<QueryClientProvider client={queryClient}>
 					<EnvironmentsPage />
 				</QueryClientProvider>
+			</SidebarProvider>
+		</SdkProvider>
+	);
+
+	if (options.hostHeight === undefined) return render(page);
+
+	// Mirrors the settings content area: a bounded, scrollable flex column that is
+	// the page's direct parent, as the shell arranges it in production.
+	return render(
+		<SdkProvider system={system}>
+			<SidebarProvider>
+				<div
+					style={{
+						height: `${options.hostHeight}px`,
+						display: "flex",
+						flexDirection: "column",
+						minHeight: 0,
+						overflowY: "auto",
+					}}
+					data-qa-id="test-settings-scroller"
+				>
+					<QueryClientProvider client={queryClient}>
+						<EnvironmentsPage />
+					</QueryClientProvider>
+				</div>
 			</SidebarProvider>
 		</SdkProvider>,
 	);
@@ -192,5 +219,29 @@ describe("EnvironmentsPage", () => {
 				.not.toBeInTheDocument();
 			await expect.element(screen.getByRole("region", { name: "Conda" })).toBeInTheDocument();
 		});
+	});
+});
+
+describe("EnvironmentsPage — scrolling", () => {
+	const manyEnvironments = Array.from({ length: 15 }, (_, index) => ({
+		name: `env-${String(index).padStart(2, "0")}`,
+		prefix: `/opt/conda/envs/env-${index}`,
+	}));
+
+	it("keeps the page chrome in place and scrolls only the environment list", async () => {
+		const { baseElement } = renderPage({
+			list: async () => manyEnvironments,
+			hostHeight: 420,
+		});
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
+
+		const shell = baseElement.querySelector('[data-qa-id="test-settings-scroller"]')!;
+		const table = baseElement.querySelector("table")!;
+		const listScroller = table.parentElement!;
+
+		// The settings shell must not be what overflows: the list owns the scroll.
+		expect(shell.scrollHeight).toBeLessThanOrEqual(shell.clientHeight + 1);
+		expect(listScroller.scrollHeight).toBeGreaterThan(listScroller.clientHeight);
 	});
 });

@@ -5,12 +5,12 @@ import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Field, FieldError, FieldLabel } from "@anaconda-agentic-desktop/ui/components/field";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import {
-	Sheet,
-	SheetContent,
-	SheetDescription,
-	SheetHeader,
-	SheetTitle,
-} from "@anaconda-agentic-desktop/ui/components/sheet";
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@anaconda-agentic-desktop/ui/components/dialog";
 import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
 import {
 	Tooltip,
@@ -258,18 +258,22 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 
 	return (
 		<TooltipProvider>
-			<Sheet open={open} onOpenChange={handleOpenChange}>
-				<SheetContent
-					side="bottom"
+			<Dialog open={open} onOpenChange={handleOpenChange}>
+				{/*
+				 * max-h rather than a fixed height: this form is short, so the modal
+				 * sizes to its content and only caps on a small viewport, where the
+				 * body scrolls inside the second grid row.
+				 */}
+				<DialogContent
 					data-qa-id="environments-import-dialog"
-					className="top-16 h-auto gap-0 overflow-hidden p-0"
+					className="max-h-[85vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-2xl"
 				>
-					<SheetHeader className="shrink-0 border-b px-6 py-4">
-						<SheetTitle className="text-xl">Import from file</SheetTitle>
-						<SheetDescription>
+					<DialogHeader className="shrink-0 gap-1 border-b px-6 py-4">
+						<DialogTitle>Import from file</DialogTitle>
+						<DialogDescription>
 							Create an environment from a YAML environment file (.yml / .yaml).
-						</SheetDescription>
-					</SheetHeader>
+						</DialogDescription>
+					</DialogHeader>
 					<form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
 						<div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
 							{/* Drop zone / file display */}
@@ -405,8 +409,8 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 							</Button>
 						</div>
 					</form>
-				</SheetContent>
-			</Sheet>
+				</DialogContent>
+			</Dialog>
 		</TooltipProvider>
 	);
 }

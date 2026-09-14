@@ -1,10 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
 	ChevronLeftIcon,
-	ChevronRightIcon,
-	ChevronsLeftIcon,
-	ChevronsRightIcon,
 	ArrowUpDownIcon,
 	ArrowUpIcon,
 	ArrowDownIcon,
@@ -32,13 +29,6 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
 import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
 import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
@@ -52,8 +42,16 @@ import type {
 import { AddPackageDialog } from "./AddPackageDialog.js";
 import { BulkRemoveConfirmation } from "./BulkRemoveConfirmation.js";
 import { compareCondaVersions } from "./compare-conda-versions.js";
-import { computePageNumbers } from "./compute-page-numbers.js";
+import { ColumnResizer } from "./ColumnResizer.js";
+import {
+	MIN_COLUMN_WIDTH,
+	readPackageTableColumnWidths,
+	resizeColumn,
+	writePackageTableColumnWidths,
+	type PackageTableColumnId,
+} from "./column-widths.js";
 import { environmentDisplayName } from "./environment-display.js";
+import { TablePagination } from "./TablePagination.js";
 import { PackageRowActions } from "./PackageRowActions.js";
 import { UpdateConfirmationDialog, type UpgradablePackage } from "./UpdateConfirmationDialog.js";
 
@@ -70,6 +68,10 @@ interface EnvironmentDetailProps {
 }
 
 const PAGE_SIZES = [20, 50, 100] as const;
+
+/** Widths reserved for the pinned selection and row-actions columns. */
+const SELECT_COLUMN_PX = 40;
+const ACTIONS_COLUMN_PX = 80;
 
 export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 	const sdk = useSdk<CondaService>("environments");
@@ -534,15 +536,18 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 							onUpdatePackage={setRowUpdatePackage}
 							updateDisabled={updatingCount > 0}
 						/>
-						<Pagination
-							page={safePage}
-							totalPages={totalPages}
-							pageSize={pageSize}
+						<TablePagination
+							pageIndex={safePage}
+							pageCount={totalPages}
+							onPageChange={setPage}
 							rangeStart={rangeStart}
 							rangeEnd={rangeEnd}
 							totalItems={sorted.length}
-							onPageChange={setPage}
+							pageSize={pageSize}
+							pageSizeOptions={PAGE_SIZES}
 							onPageSizeChange={handlePageSizeChange}
+							qaPrefix="environments-conda-detail-pagination"
+							className="mt-3"
 						/>
 					</>
 				)}
@@ -606,13 +611,58 @@ function PackagesTable({
 	/** Disable all per-row Update actions (e.g. while another update is in flight). */
 	updateDisabled?: boolean;
 }) {
+	const tableWrapperRef = useRef<HTMLDivElement>(null);
+	const [columnWidths, setColumnWidths] = useState(() => readPackageTableColumnWidths());
+	// Mirrored in a ref so a drag resolves against the width it started from
+	// without the pointer handlers closing over a stale render.
+	const columnWidthsRef = useRef(columnWidths);
+	columnWidthsRef.current = columnWidths;
+	const handleColumnResize = useCallback(
+		(column: PackageTableColumnId, nextWidthPx: number, options: { persist: boolean }) => {
+			const current = columnWidthsRef.current;
+			// Cap the drag so "Channel" keeps its minimum: the row must total its
+			// container, never overflow it sideways.
+			const available = tableWrapperRef.current?.clientWidth ?? Number.POSITIVE_INFINITY;
+			const others = (Object.keys(current) as PackageTableColumnId[])
+				.filter((id) => id !== column)
+				.reduce((total, id) => total + current[id], 0);
+			const maxWidth = available - others - SELECT_COLUMN_PX - ACTIONS_COLUMN_PX - MIN_COLUMN_WIDTH;
+			const next = resizeColumn(
+				current,
+				column,
+				nextWidthPx - current[column],
+				MIN_COLUMN_WIDTH,
+				maxWidth,
+			);
+			columnWidthsRef.current = next;
+			setColumnWidths(next);
+			if (options.persist) writePackageTableColumnWidths(next);
+		},
+		[],
+	);
+
 	return (
 		<div
 			className="min-h-0 overflow-auto rounded-lg border"
 			data-qa-id="environments-conda-detail-table"
+			ref={tableWrapperRef}
 		>
-			<table className="w-full text-sm">
-				<thead>
+			{/* table-fixed so the colgroup below, not the content, decides widths. */}
+			<table className="w-full table-fixed text-sm">
+				<colgroup>
+					<col style={{ width: `${SELECT_COLUMN_PX}px` }} />
+					{/*
+					 * min() caps each stored width against a share of the table, so a
+					 * narrow window can never push the row wider than its container.
+					 */}
+					<col style={{ width: `min(${columnWidths.name}px, 35%)` }} />
+					<col style={{ width: `min(${columnWidths.version}px, 20%)` }} />
+					<col style={{ width: `min(${columnWidths.source}px, 20%)` }} />
+					{/* No width: "Channel" absorbs whatever is left over. */}
+					<col />
+					<col style={{ width: `${ACTIONS_COLUMN_PX}px` }} />
+				</colgroup>
+				<thead className="bg-background sticky top-0 z-10">
 					<tr className="bg-muted/50 border-b">
 						<th className="w-10 px-3 py-2.5">
 							<Checkbox
@@ -623,7 +673,7 @@ function PackagesTable({
 								data-qa-id="environments-conda-detail-select-all"
 							/>
 						</th>
-						<th className="px-3 py-2.5 text-left font-medium">
+						<th className="relative px-3 py-2.5 text-left font-medium">
 							<button
 								type="button"
 								onClick={() => onSort("name")}
@@ -632,8 +682,15 @@ function PackagesTable({
 								Package
 								<SortIcon field="name" activeField={sortField} direction={sortDirection} />
 							</button>
+							<ColumnResizer
+								label="Package"
+								width={columnWidths.name}
+								minWidth={MIN_COLUMN_WIDTH}
+								qaId="environments-detail-column-resizer-name"
+								onResize={(next, options) => handleColumnResize("name", next, options)}
+							/>
 						</th>
-						<th className="px-3 py-2.5 text-left font-medium">
+						<th className="relative px-3 py-2.5 text-left font-medium">
 							<button
 								type="button"
 								onClick={() => onSort("version")}
@@ -642,8 +699,15 @@ function PackagesTable({
 								Version
 								<SortIcon field="version" activeField={sortField} direction={sortDirection} />
 							</button>
+							<ColumnResizer
+								label="Version"
+								width={columnWidths.version}
+								minWidth={MIN_COLUMN_WIDTH}
+								qaId="environments-detail-column-resizer-version"
+								onResize={(next, options) => handleColumnResize("version", next, options)}
+							/>
 						</th>
-						<th className="px-3 py-2.5 text-left font-medium">
+						<th className="relative px-3 py-2.5 text-left font-medium">
 							<button
 								type="button"
 								onClick={() => onSort("source")}
@@ -652,6 +716,13 @@ function PackagesTable({
 								Source
 								<SortIcon field="source" activeField={sortField} direction={sortDirection} />
 							</button>
+							<ColumnResizer
+								label="Source"
+								width={columnWidths.source}
+								minWidth={MIN_COLUMN_WIDTH}
+								qaId="environments-detail-column-resizer-source"
+								onResize={(next, options) => handleColumnResize("source", next, options)}
+							/>
 						</th>
 						<th className="px-3 py-2.5 text-left font-medium">
 							<button
@@ -683,7 +754,7 @@ function PackagesTable({
 										aria-label={`Select ${pkg.name}`}
 									/>
 								</td>
-								<td className="px-3 py-2.5 font-medium">{pkg.name}</td>
+								<td className="truncate px-3 py-2.5 font-medium">{pkg.name}</td>
 								<td className="px-3 py-2.5">
 									<div className="flex items-center gap-1.5">
 										{latestVersion && (
@@ -704,7 +775,7 @@ function PackagesTable({
 												</TooltipContent>
 											</Tooltip>
 										)}
-										<span className="text-muted-foreground">{pkg.version}</span>
+										<span className="text-muted-foreground truncate">{pkg.version}</span>
 									</div>
 								</td>
 								<td className="px-3 py-2.5">
@@ -714,7 +785,7 @@ function PackagesTable({
 									className="text-muted-foreground px-3 py-2.5"
 									data-qa-id="environments-conda-detail-channel"
 								>
-									{pkg.channel}
+									<span className="truncate">{pkg.channel}</span>
 								</td>
 								<td className="px-3 py-2.5">
 									<PackageRowActions
@@ -755,113 +826,6 @@ function SourceBadge({ source, channel }: { source: "pip" | "conda"; channel: st
 				{isPip ? "Installed via pip (PyPI)" : `Channel: ${channel}`}
 			</TooltipContent>
 		</Tooltip>
-	);
-}
-
-function Pagination({
-	page,
-	totalPages,
-	pageSize,
-	rangeStart,
-	rangeEnd,
-	totalItems,
-	onPageChange,
-	onPageSizeChange,
-}: {
-	page: number;
-	totalPages: number;
-	pageSize: number;
-	rangeStart: number;
-	rangeEnd: number;
-	totalItems: number;
-	onPageChange: (page: number) => void;
-	onPageSizeChange: (value: string | null) => void;
-}) {
-	const pageNumbers = useMemo(() => computePageNumbers(page, totalPages), [page, totalPages]);
-
-	return (
-		<div
-			className="mt-3 flex items-center justify-between text-sm"
-			data-qa-id="environments-conda-detail-pagination"
-		>
-			<div className="flex items-center gap-1">
-				<Button
-					variant="ghost"
-					size="icon-xs"
-					disabled={page === 0}
-					onClick={() => onPageChange(0)}
-					aria-label="First page"
-				>
-					<ChevronsLeftIcon className="size-4" />
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon-xs"
-					disabled={page === 0}
-					onClick={() => onPageChange(page - 1)}
-					aria-label="Previous page"
-				>
-					<ChevronLeftIcon className="size-4" />
-				</Button>
-				{pageNumbers.map((p, i) =>
-					p === "ellipsis" ? (
-						<span key={`ellipsis-${i}`} className="px-1">
-							…
-						</span>
-					) : (
-						<Button
-							key={p}
-							variant={p === page ? "default" : "ghost"}
-							size="icon-xs"
-							onClick={() => onPageChange(p)}
-							aria-label={`Page ${p + 1}`}
-							aria-current={p === page ? "page" : undefined}
-						>
-							{p + 1}
-						</Button>
-					),
-				)}
-				<Button
-					variant="ghost"
-					size="icon-xs"
-					disabled={page >= totalPages - 1}
-					onClick={() => onPageChange(page + 1)}
-					aria-label="Next page"
-				>
-					<ChevronRightIcon className="size-4" />
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon-xs"
-					disabled={page >= totalPages - 1}
-					onClick={() => onPageChange(totalPages - 1)}
-					aria-label="Last page"
-				>
-					<ChevronsRightIcon className="size-4" />
-				</Button>
-			</div>
-
-			<div className="flex items-center gap-3">
-				<div className="flex items-center gap-2">
-					<Select value={String(pageSize)} onValueChange={onPageSizeChange}>
-						<SelectTrigger size="sm" className="w-16">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{PAGE_SIZES.map((size) => (
-								<SelectItem key={size} value={String(size)}>
-									{size}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<span className="text-muted-foreground">items per page</span>
-				</div>
-				<span className="text-muted-foreground">
-					{rangeStart} - {rangeEnd} of {totalItems} items
-				</span>
-			</div>
-		</div>
 	);
 }
 

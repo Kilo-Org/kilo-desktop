@@ -304,6 +304,17 @@ export function registerCondaHandlers(
 			}),
 	);
 
+	handlers.handle(
+		"conda.packages.previewInstall",
+		(input: CondaPackagesPreviewInput): Promise<CondaPackagesPreviewResult> =>
+			queue.read({
+				providerId: "conda",
+				opName: "packages.previewInstall",
+				args: { name: input.name, prefix: input.prefix, packages: input.packages },
+				run: (ctx) => backend.previewInstall(input, { signal: ctx.signal }),
+			}),
+	);
+
 	// ─── Channels (writes) ────────────────────────────────────────────
 	// Stub handlers so callers get a descriptive error instead of a
 	// generic "No handler" rejection. A global channel management UI

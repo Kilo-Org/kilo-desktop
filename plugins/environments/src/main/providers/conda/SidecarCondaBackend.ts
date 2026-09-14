@@ -28,6 +28,7 @@
  * - uninstall()         → conda.remove (packages only, no all flag)
  * - update()            → conda.update (skip_preview=true, update_all flag)
  * - previewUpdate()     → conda.update (dry_run=true)
+ * - previewInstall()    → conda.install (dry_run=true)
  * - listChannels()      → conda_tools.list_channels
  * - addChannel()        → conda_config.add (key="channels")
  * - removeChannel()     → not yet implemented in anaconda-bridge-sidecar
@@ -392,6 +393,28 @@ export class SidecarCondaBackend implements CondaBackend {
 	): Promise<CondaPackagesPreviewResult> {
 		const result = await this.#call<TransactionResult>(
 			"conda.update",
+			{
+				...resolveTargetParam(input),
+				packages: input.packages,
+				channels: input.channels ?? undefined,
+				dry_run: true,
+			},
+			ctx,
+		);
+
+		if (result.success === false) {
+			throw featureError("SOLVE_FAILED", result.message ?? "solver preview failed");
+		}
+
+		return parseTransactionActions(result.actions ?? {});
+	}
+
+	async previewInstall(
+		input: CondaPackagesPreviewInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaPackagesPreviewResult> {
+		const result = await this.#call<TransactionResult>(
+			"conda.install",
 			{
 				...resolveTargetParam(input),
 				packages: input.packages,

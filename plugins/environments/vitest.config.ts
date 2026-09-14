@@ -17,6 +17,16 @@ const coverage = {
 		"src/test/**",
 		// Nav icon — trivial JSX that ships one SVG.
 		"src/web/EnvironmentsNavIcon.tsx",
+		// Presentational dependency-preview components — no business logic, just
+		// rendering. Branch coverage comes from the UpdateConfirmationDialog and
+		// AddPackageDialog browser tests that exercise every variant.
+		"src/web/providers/conda/DependencyPreview.tsx",
+		// Shared pagination primitive — JSX-only, exercised through the panel
+		// and detail browser tests rather than in isolation.
+		"src/web/providers/conda/TablePagination.tsx",
+		// Shared column resize handle — pointer/keyboard plumbing tested via
+		// the EnvironmentsPanel and EnvironmentDetail browser tests.
+		"src/web/providers/conda/ColumnResizer.tsx",
 		// Build-time packaging tooling — runs during prepare-assets / forge, not at runtime.
 		"src/packaging/**",
 		// MCP App widget — a separately-built (vite-plugin-singlefile) iframe

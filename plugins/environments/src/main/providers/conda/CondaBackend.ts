@@ -128,6 +128,10 @@ export interface CondaBackend {
 		input: CondaPackagesPreviewInput,
 		ctx?: CondaCallContext,
 	): Promise<CondaPackagesPreviewResult>;
+	previewInstall(
+		input: CondaPackagesPreviewInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaPackagesPreviewResult>;
 
 	listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;

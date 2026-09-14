@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
 	ChevronLeftIcon,
 	ChevronRightIcon,
+	CircleHelpIcon,
 	NetworkIcon,
 	PackageIcon,
 	SearchIcon,
@@ -29,21 +30,37 @@ import {
 	SelectValue,
 } from "@anaconda-agentic-desktop/ui/components/select";
 import {
-	Sheet,
-	SheetContent,
-	SheetHeader,
-	SheetTitle,
-} from "@anaconda-agentic-desktop/ui/components/sheet";
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "@anaconda-agentic-desktop/ui/components/dialog";
 import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import type {
 	CondaEnv,
+	CondaPackageChange,
+	CondaPackagesPreviewResult,
 	CondaRepodataFindResult,
 	CondaRepodataPackage,
 	CondaService,
 } from "../../../contracts/providers/conda.js";
+import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
 import { ChannelsDialog } from "./ChannelsDialog.js";
+import {
+	CHANGE_ICONS,
+	CHANGE_VARIANT,
+	PreviewContent,
+	SolverErrorCard,
+	type ChangeFilter,
+	type ChangeSection,
+} from "./DependencyPreview.js";
 import { environmentDisplayName } from "./environment-display.js";
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
 import {
@@ -94,7 +111,7 @@ function sizeForRow(pkg: CondaRepodataPackage, rowVersion: string): number | und
 }
 
 /**
- * Sheet-based dialog for searching and adding packages to an existing
+ * Modal dialog for searching and adding packages to an existing
  * environment. Uses `conda.repodata.find` for debounced search (matching
  * the CreateEnvironmentDialog pattern) with a `PackageGrid` + sidebar.
  */
@@ -116,6 +133,111 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 	const [page, setPage] = useState(0);
 	const [showChannels, setShowChannels] = useState(false);
 	const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+
+	const channelsArg = useMemo(
+		() => (selectedChannels.length > 0 ? selectedChannels : undefined),
+		[selectedChannels],
+	);
+
+	// ─── Install preview ─────────────────────────────────────────────
+	const [preview, setPreview] = useState<CondaPackagesPreviewResult | null>(null);
+	const [previewLoading, setPreviewLoading] = useState(false);
+	const [previewError, setPreviewError] = useState<{ message: string; detail?: string } | null>(
+		null,
+	);
+	const [depFilter, setDepFilter] = useState<ChangeFilter>("all");
+	const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+	const previewGenRef = useRef(0);
+	const lastSpecsKeyRef = useRef("");
+	const previewRef = useRef<CondaPackagesPreviewResult | null>(null);
+	const previewErrorRef = useRef<{ message: string; detail?: string } | null>(null);
+
+	const runPreview = useCallback(() => {
+		if (selected.length === 0) return;
+		const specs = selected.map(selectedPackageToSpec);
+		const key = specs.join(",");
+		if (key === lastSpecsKeyRef.current && previewRef.current && !previewErrorRef.current) return;
+		lastSpecsKeyRef.current = key;
+		const gen = ++previewGenRef.current;
+		setPreviewLoading(true);
+		setPreviewError(null);
+		previewErrorRef.current = null;
+		sdk
+			.invoke("conda.packages.previewInstall", {
+				name: targetName,
+				prefix: env.prefix,
+				packages: specs,
+				channels: channelsArg,
+			})
+			.then((result) => {
+				if (gen !== previewGenRef.current) return;
+				const typed = result as CondaPackagesPreviewResult;
+				previewRef.current = typed;
+				setPreview(typed);
+			})
+			.catch((reason) => {
+				if (gen !== previewGenRef.current) return;
+				const raw =
+					reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+				const parsed = raw ? parseEnvironmentsErrorMessage(raw) : null;
+				const message = friendlyEnvironmentsError(reason, "Could not preview the install.");
+				const detail = parsed?.detail;
+				const err = detail ? { message, detail } : { message };
+				previewErrorRef.current = err;
+				setPreviewError(err);
+				previewRef.current = null;
+				setPreview(null);
+			})
+			.finally(() => {
+				if (gen === previewGenRef.current) setPreviewLoading(false);
+			});
+	}, [selected, targetName, env.prefix, channelsArg, sdk]);
+
+	// Auto-preview when the selection changes — debounced so rapid clicks
+	// don't fire a solver request per toggle.
+	useEffect(() => {
+		if (!open || selected.length === 0) {
+			setPreview(null);
+			setPreviewError(null);
+			lastSpecsKeyRef.current = "";
+			return;
+		}
+		const timer = setTimeout(runPreview, 1500);
+		return () => clearTimeout(timer);
+	}, [open, selected, runPreview]);
+
+	// Derived preview sections, filtering out the explicitly selected packages
+	// so only transitive dependency changes are shown.
+	const selectedPkgNames = useMemo(() => new Set(selected.map((s) => s.name)), [selected]);
+	const { filteredSections, totalChanges, categoryCounts } = useMemo(() => {
+		const empty = {
+			filteredSections: [] as ChangeSection[],
+			totalChanges: 0,
+			categoryCounts: new Map<string, number>(),
+		};
+		if (!preview || preview.nothingToDo) return empty;
+		const categories = ["upgraded", "downgraded", "added", "removed", "rebuilt"] as const;
+		const sections: ChangeSection[] = [];
+		const counts = new Map<string, number>();
+		let total = 0;
+		for (const cat of categories) {
+			const changes = preview[cat].filter((c: CondaPackageChange) => !selectedPkgNames.has(c.name));
+			counts.set(cat, changes.length);
+			total += changes.length;
+			if (depFilter !== "all" && depFilter !== cat) continue;
+			if (changes.length > 0) {
+				sections.push({
+					key: cat,
+					title: cat.charAt(0).toUpperCase() + cat.slice(1),
+					icon: CHANGE_ICONS[cat]!,
+					variant: CHANGE_VARIANT[cat]!,
+					changes,
+					totalCount: changes.length,
+				});
+			}
+		}
+		return { filteredSections: sections, totalChanges: total, categoryCounts: counts };
+	}, [preview, selectedPkgNames, depFilter]);
 
 	// The in-flight install job, so "Run in background" can adopt it.
 	// `backgrounded` mutes the foreground handlers.
@@ -145,11 +267,6 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 			setSelectedChannels(availableChannels);
 		}
 	}, [availableChannels]); // eslint-disable-line react-hooks/exhaustive-deps
-
-	const channelsArg = useMemo(
-		() => (selectedChannels.length > 0 ? selectedChannels : undefined),
-		[selectedChannels],
-	);
 
 	// Debounced package search via repodata.find. Waits for prefixOptions
 	// to load first so the initial search includes the correct channels —
@@ -207,6 +324,15 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 		setPage(0);
 		setShowChannels(false);
 		setSelectedChannels(availableChannels);
+		setPreview(null);
+		setPreviewLoading(false);
+		setPreviewError(null);
+		setDepFilter("all");
+		setCollapsed({});
+		lastSpecsKeyRef.current = "";
+		previewGenRef.current = 0;
+		previewRef.current = null;
+		previewErrorRef.current = null;
 		pendingInstallRef.current = null;
 		install.reset();
 	}
@@ -298,120 +424,243 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 
 	return (
 		<>
-			<Sheet open={open} onOpenChange={handleOpenChange}>
-				<SheetContent
-					side="bottom"
-					className="top-16 flex h-auto flex-col gap-0 overflow-hidden p-0"
+			<Dialog open={open} onOpenChange={handleOpenChange}>
+				<DialogContent
 					data-qa-id="environments-conda-add-pkg-dialog"
+					className="h-[85vh] max-h-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-7xl"
 				>
-					<SheetHeader className="shrink-0 border-b px-6 py-4">
-						<SheetTitle className="text-xl">
+					<DialogHeader className="shrink-0 border-b px-6 py-4">
+						<DialogTitle>
 							Add Packages to <span className="text-primary">{displayName}</span>
-						</SheetTitle>
-					</SheetHeader>
+						</DialogTitle>
+					</DialogHeader>
 
-					<div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[1fr_20rem]">
-						{/* Main column: search + grid */}
-						<div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-6 py-5">
-							<div className="flex items-center justify-between">
-								<h4 className="text-base font-semibold">Select packages:</h4>
+					<div className="flex min-h-0 flex-1 flex-col">
+						<div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[1fr_22rem]">
+							{/* Main column: search + grid */}
+							<div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-6 py-5">
+								<div className="flex items-center justify-between">
+									<h4 className="text-base font-semibold">Select packages:</h4>
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => setShowChannels(true)}
+										data-qa-id="environments-conda-add-pkg-channels-btn"
+									>
+										<NetworkIcon data-icon="inline-start" />
+										Channels
+										<Badge variant="secondary" className="ml-1">
+											{channelLabel}
+										</Badge>
+									</Button>
+								</div>
+								<div className="relative">
+									<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+									<Input
+										type="text"
+										placeholder="Search packages…"
+										value={query}
+										onChange={(e) => setQuery(e.target.value)}
+										className="pl-9"
+										data-qa-id="environments-conda-add-pkg-search"
+									/>
+								</div>
+								<PackageGrid
+									loading={loadingPackages}
+									packages={results}
+									truncated={resultsTruncated}
+									query={query}
+									page={page}
+									pageCount={pageCount}
+									selectedByName={selectedByName}
+									installedByName={installedByName}
+									rowVersions={rowVersions}
+									disabled={install.isPending}
+									onToggle={togglePackage}
+									onVersionChange={changeRowVersion}
+									onPageChange={setPage}
+								/>
+							</div>
+
+							{/* Sidebar: selected packages + resolution (right column) */}
+							<div className="flex min-h-0 flex-col border-l">
+								<div className="flex min-h-0 basis-[60%] flex-col">
+									<SelectedPackagesSidebar selected={selected} onRemove={removePackage} />
+								</div>
+
+								{/* Environment resolution — bottom-right quadrant */}
+								<div
+									className="flex min-h-0 basis-[40%] flex-col border-t px-4 py-3"
+									data-qa-id="environments-conda-add-pkg-preview"
+								>
+									<div className="mb-2 flex items-center justify-between">
+										<h4 className="flex items-center gap-1 text-sm font-semibold">
+											Resolution
+											<Tooltip>
+												<TooltipTrigger
+													render={
+														<CircleHelpIcon className="text-muted-foreground size-3.5 cursor-help" />
+													}
+												/>
+												<TooltipContent side="bottom" className="max-w-xs text-xs">
+													Shows the additional dependency changes the solver will make when
+													installing the selected packages — including transitive dependencies that
+													will be upgraded, downgraded, added, or removed.
+												</TooltipContent>
+											</Tooltip>
+											{!previewLoading && !previewError && totalChanges > 0 && (
+												<Badge variant="secondary" className="ml-2 text-[10px]">
+													{totalChanges}
+												</Badge>
+											)}
+										</h4>
+										{previewLoading && (
+											<div className="flex items-center gap-1.5 text-xs">
+												<Spinner size="sm" />
+												<span className="text-muted-foreground">Resolving…</span>
+											</div>
+										)}
+									</div>
+
+									{previewError && (
+										<SolverErrorCard
+											message={previewError.message}
+											{...(previewError.detail ? { detail: previewError.detail } : {})}
+											qaId="environments-conda-add-pkg-preview-error"
+										/>
+									)}
+
+									{!previewLoading && !previewError && preview && preview.nothingToDo && (
+										<p className="text-muted-foreground text-center text-xs">
+											No additional dependency changes needed.
+										</p>
+									)}
+
+									{!previewLoading && !previewError && preview && !preview.nothingToDo && (
+										<>
+											{totalChanges > 0 && filteredSections.length > 1 && (
+												<div className="mb-2 flex flex-wrap gap-1">
+													{(
+														[
+															["all", "All"],
+															["upgraded", "Upgraded"],
+															["downgraded", "Downgraded"],
+															["added", "Added"],
+															["removed", "Removed"],
+															["rebuilt", "Rebuilt"],
+														] as const
+													).map(([value, label]) => {
+														const count =
+															value === "all" ? totalChanges : (categoryCounts.get(value) ?? 0);
+														if (value !== "all" && count === 0) return null;
+														return (
+															<Button
+																key={value}
+																type="button"
+																variant={depFilter === value ? "default" : "outline"}
+																size="sm"
+																className="h-6 text-[10px]"
+																onClick={() => setDepFilter(value)}
+															>
+																{label}
+																<Badge
+																	variant={depFilter === value ? "outline" : "secondary"}
+																	className="ml-1 text-[9px]"
+																>
+																	{count}
+																</Badge>
+															</Button>
+														);
+													})}
+												</div>
+											)}
+											<div className="min-h-0 flex-1 overflow-auto">
+												{totalChanges === 0 ? (
+													<p className="text-muted-foreground text-center text-xs">
+														No additional dependency changes needed.
+													</p>
+												) : (
+													<PreviewContent
+														sections={filteredSections}
+														collapsed={collapsed}
+														onToggleCollapse={(key) =>
+															setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
+														}
+													/>
+												)}
+											</div>
+										</>
+									)}
+
+									{!previewLoading && !previewError && !preview && selected.length > 0 && (
+										<div className="text-muted-foreground flex items-center justify-center gap-2 py-2 text-xs">
+											<Spinner size="sm" />
+											Preparing preview…
+										</div>
+									)}
+
+									{selected.length === 0 && (
+										<p className="text-muted-foreground flex flex-1 items-center justify-center text-center text-xs">
+											Select packages to preview dependency changes.
+										</p>
+									)}
+								</div>
+							</div>
+						</div>
+
+						{/* In-flight progress bar */}
+						{install.isPending && (
+							<div className="bg-muted/50 mx-6 mb-2 flex items-center justify-between rounded-lg px-3 py-2 text-sm">
+								<div className="flex items-center gap-2">
+									<Spinner size="sm" />
+									<span className="text-muted-foreground">
+										Installing packages — this may take a few minutes…
+									</span>
+								</div>
 								<Button
 									type="button"
 									variant="outline"
-									onClick={() => setShowChannels(true)}
-									data-qa-id="environments-conda-add-pkg-channels-btn"
+									size="sm"
+									onClick={handleRunInBackground}
+									data-qa-id="environments-conda-add-pkg-background"
 								>
-									<NetworkIcon data-icon="inline-start" />
-									Channels
-									<Badge variant="secondary" className="ml-1">
-										{channelLabel}
-									</Badge>
+									Run in background
 								</Button>
 							</div>
-							<div className="relative">
-								<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-								<Input
-									type="text"
-									placeholder="Search packages…"
-									value={query}
-									onChange={(e) => setQuery(e.target.value)}
-									className="pl-9"
-									data-qa-id="environments-conda-add-pkg-search"
-								/>
-							</div>
-							<PackageGrid
-								loading={loadingPackages}
-								packages={results}
-								truncated={resultsTruncated}
-								query={query}
-								page={page}
-								pageCount={pageCount}
-								selectedByName={selectedByName}
-								installedByName={installedByName}
-								rowVersions={rowVersions}
-								disabled={install.isPending}
-								onToggle={togglePackage}
-								onVersionChange={changeRowVersion}
-								onPageChange={setPage}
-							/>
-						</div>
-
-						{/* Sidebar: selected packages */}
-						<SelectedPackagesSidebar selected={selected} onRemove={removePackage} />
-					</div>
-
-					{/* In-flight progress bar */}
-					{install.isPending && (
-						<div className="bg-muted/50 mx-6 mb-2 flex items-center justify-between rounded-lg px-3 py-2 text-sm">
-							<div className="flex items-center gap-2">
-								<Spinner size="sm" />
-								<span className="text-muted-foreground">
-									Installing packages — this may take a few minutes…
-								</span>
-							</div>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={handleRunInBackground}
-								data-qa-id="environments-conda-add-pkg-background"
-							>
-								Run in background
-							</Button>
-						</div>
-					)}
-
-					{/* Footer */}
-					<div className="flex shrink-0 items-center justify-between border-t px-6 py-4">
-						{install.isError && (
-							<p
-								className="text-destructive text-sm"
-								role="alert"
-								data-qa-id="environments-conda-add-pkg-error"
-							>
-								{friendlyEnvironmentsError(
-									install.error,
-									"Could not install the selected packages.",
-								)}
-							</p>
 						)}
-						<div className="ml-auto flex items-center gap-2">
-							<Button variant="outline" onClick={() => handleOpenChange(false)}>
-								Cancel
-							</Button>
-							<Button
-								onClick={handleInstall}
-								disabled={install.isPending || selected.length === 0}
-								data-qa-id="environments-conda-add-pkg-install-btn"
-							>
-								{install.isPending
-									? "Installing…"
-									: `Install ${selected.length} ${selected.length === 1 ? "Package" : "Packages"}`}
-							</Button>
+
+						{/* Footer */}
+						<div className="flex shrink-0 items-center justify-between border-t px-6 py-4">
+							{install.isError && (
+								<p
+									className="text-destructive text-sm"
+									role="alert"
+									data-qa-id="environments-conda-add-pkg-error"
+								>
+									{friendlyEnvironmentsError(
+										install.error,
+										"Could not install the selected packages.",
+									)}
+								</p>
+							)}
+							<div className="ml-auto flex items-center gap-2">
+								<Button variant="outline" onClick={() => handleOpenChange(false)}>
+									Cancel
+								</Button>
+								<Button
+									onClick={handleInstall}
+									disabled={install.isPending || selected.length === 0 || previewLoading}
+									data-qa-id="environments-conda-add-pkg-install-btn"
+								>
+									{install.isPending
+										? "Installing…"
+										: `Install ${selected.length} ${selected.length === 1 ? "Package" : "Packages"}`}
+								</Button>
+							</div>
 						</div>
 					</div>
-				</SheetContent>
-			</Sheet>
+				</DialogContent>
+			</Dialog>
 
 			<ChannelsDialog
 				open={showChannels}
@@ -636,7 +885,7 @@ function SelectedPackagesSidebar({
 	onRemove: (name: string) => void;
 }) {
 	return (
-		<aside className="flex min-h-0 flex-col border-l">
+		<aside className="flex min-h-0 flex-1 flex-col">
 			<div className="flex items-center justify-between border-b px-4 py-4">
 				<h3 className="font-semibold">Selected</h3>
 				<Badge variant="secondary" data-qa-id="environments-conda-add-pkg-selected-count">

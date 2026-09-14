@@ -853,6 +853,7 @@ describe("condaContract", () => {
 				"conda.packages.remove",
 				"conda.packages.update",
 				"conda.packages.preview",
+				"conda.packages.previewInstall",
 				"conda.channels.list",
 				"conda.channels.add",
 				"conda.channels.remove",

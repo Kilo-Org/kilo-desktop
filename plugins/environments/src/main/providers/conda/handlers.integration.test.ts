@@ -45,6 +45,7 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 		uninstall: overrides.uninstall ?? notImpl,
 		update: overrides.update ?? notImpl,
 		previewUpdate: overrides.previewUpdate ?? notImpl,
+		previewInstall: overrides.previewInstall ?? notImpl,
 		listChannels: overrides.listChannels ?? notImpl,
 		addChannel: overrides.addChannel ?? notImpl,
 		removeChannel: overrides.removeChannel ?? notImpl,
@@ -492,6 +493,112 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		expect(result.jobId.startsWith("conda-")).toBe(true);
 		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
 		expect(events.every((e) => e.kind === "packages.update")).toBe(true);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.packages.preview forwards to backend.previewUpdate through the read queue", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const previewUpdate = vi.fn().mockResolvedValue({
+			upgraded: [
+				{ name: "numpy", fromVersion: "2.0.0", toVersion: "2.5.1", channel: "conda-forge" },
+			],
+			downgraded: [],
+			added: [],
+			removed: [],
+			rebuilt: [],
+			nothingToDo: false,
+		});
+		registerCondaHandlers(mainSdk, makeBackend({ previewUpdate }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.packages.preview"]({
+			name: "dev",
+			packages: ["numpy"],
+		});
+
+		expect(result.upgraded).toHaveLength(1);
+		expect(result.upgraded[0]!.name).toBe("numpy");
+		expect(previewUpdate).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.packages.previewInstall forwards to backend.previewInstall through the read queue", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const previewInstall = vi.fn().mockResolvedValue({
+			upgraded: [],
+			downgraded: [],
+			added: [{ name: "requests", fromVersion: null, toVersion: "2.32.0", channel: "conda-forge" }],
+			removed: [],
+			rebuilt: [],
+			nothingToDo: false,
+		});
+		registerCondaHandlers(mainSdk, makeBackend({ previewInstall }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.packages.previewInstall"]({
+			name: "dev",
+			packages: ["requests"],
+		});
+
+		expect(result.added).toHaveLength(1);
+		expect(result.added[0]!.name).toBe("requests");
+		expect(previewInstall).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.repodata.find forwards optional name/channel/subdir filters to the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue([]);
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.repodata.find"]({
+			names: ["numpy"],
+			channels: ["conda-forge"],
+			subdirs: ["osx-arm64"],
+			limit: 20,
+		});
+
+		expect(findRepodata).toHaveBeenCalledOnce();
+		expect(findRepodata.mock.calls[0]![0]).toEqual({
+			names: ["numpy"],
+			channels: ["conda-forge"],
+			subdirs: ["osx-arm64"],
+		});
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.create honours an explicit prefix by threading it through to the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const create = vi.fn().mockResolvedValue({
+			name: "dev",
+			prefix: "/tmp/custom/dev",
+		});
+		registerCondaHandlers(mainSdk, makeBackend({ create }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const result = await client["conda.envs.create"]({
+			name: "dev",
+			prefix: "/tmp/custom/dev",
+		});
+
+		expect(result.environment.prefix).toBe("/tmp/custom/dev");
+		expect(create).toHaveBeenCalledOnce();
+		// The third argument to backend.create is the options bag, which should
+		// carry the explicit prefix when the caller provided one.
+		expect(create.mock.calls[0]![2]).toEqual({ prefix: "/tmp/custom/dev" });
 
 		queue.dispose();
 		mainSdk.dispose();

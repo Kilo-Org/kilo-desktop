@@ -1,14 +1,7 @@
-import { useState, useMemo, useCallback, useSyncExternalStore } from "react";
+import { useState, useMemo, useCallback, useRef, useSyncExternalStore } from "react";
 
 import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
 	DropdownMenu,
@@ -26,10 +19,6 @@ import {
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
-	ChevronLeftIcon,
-	ChevronRightIcon,
-	ChevronsLeftIcon,
-	ChevronsRightIcon,
 	CopyIcon,
 	EllipsisVerticalIcon,
 	FileUpIcon,
@@ -40,19 +29,25 @@ import {
 
 import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
 import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
+import { ColumnResizer } from "./ColumnResizer.js";
+import { TablePagination } from "./TablePagination.js";
+import {
+	MIN_COLUMN_WIDTH,
+	readColumnWidths,
+	resizeColumn,
+	writeColumnWidths,
+	type EnvironmentColumnId,
+} from "./column-widths.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
 import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog.js";
 import { EnvironmentDetail } from "./EnvironmentDetail.js";
 import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
 import { environmentDisplayName } from "./environment-display.js";
 
-const PAGE_SIZE_OPTIONS = [
-	{ value: "10", label: "10" },
-	{ value: "15", label: "15" },
-	{ value: "30", label: "30" },
-	{ value: "50", label: "50" },
-	{ value: "100", label: "100" },
-];
+const PAGE_SIZE_OPTIONS = [10, 15, 30, 50, 100] as const;
+
+/** Width reserved for the pinned row-actions column. */
+const ACTIONS_COLUMN_PX = 56;
 
 /**
  * Renderer panel for the conda provider's Environments tab.
@@ -227,23 +222,38 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 		setCurrentPage(clamped);
 	};
 
-	const pageNumbers = useMemo(() => {
-		const pages: number[] = [];
-		const maxVisible = 5;
-		let start = Math.max(1, effectivePage - Math.floor(maxVisible / 2));
-		const end = Math.min(totalPages, start + maxVisible - 1);
-		start = Math.max(1, end - maxVisible + 1);
-		for (let i = start; i <= end; i++) {
-			pages.push(i);
-		}
-		return pages;
-	}, [effectivePage, totalPages]);
+	const tableWrapperRef = useRef<HTMLDivElement>(null);
+	const [columnWidths, setColumnWidths] = useState(() => readColumnWidths());
+	// Mirrored in a ref so a drag resolves against the width it started from
+	// without the pointer handlers closing over a stale render.
+	const columnWidthsRef = useRef(columnWidths);
+	columnWidthsRef.current = columnWidths;
+	const handleColumnResize = useCallback(
+		(column: EnvironmentColumnId, nextWidthPx: number, options: { persist: boolean }) => {
+			const current = columnWidthsRef.current;
+			// Cap the drag so "Prefix" keeps its minimum: the table must total its
+			// container, never overflow it sideways.
+			const available = tableWrapperRef.current?.clientWidth ?? Number.POSITIVE_INFINITY;
+			const maxWidth = available - ACTIONS_COLUMN_PX - MIN_COLUMN_WIDTH;
+			const next = resizeColumn(
+				current,
+				column,
+				nextWidthPx - current[column],
+				MIN_COLUMN_WIDTH,
+				maxWidth,
+			);
+			columnWidthsRef.current = next;
+			setColumnWidths(next);
+			if (options.persist) writeColumnWidths(next);
+		},
+		[],
+	);
 
 	return (
 		<TooltipProvider>
 			<div className="flex min-h-0 flex-1 flex-col gap-4" data-qa-id="environments-controls">
 				{/* Toolbar: search + action buttons */}
-				<div className="flex items-center gap-3">
+				<div className="flex shrink-0 items-center gap-3">
 					<div className="relative flex-1">
 						<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
 						<Input
@@ -290,11 +300,25 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 						No conda environments match the current filters.
 					</p>
 				) : (
-					<div className="min-h-0 overflow-auto rounded-lg border">
+					<div className="min-h-0 overflow-auto rounded-lg border" ref={tableWrapperRef}>
 						<table className="w-full table-fixed border-separate border-spacing-0">
 							<caption className="sr-only">Conda environments</caption>
+							{/*
+							 * `table-fixed` takes each column's width from here, so resizing is
+							 * a matter of restyling these <col>s rather than touching cells.
+							 */}
+							<colgroup>
+								{/*
+								 * min() caps the stored width against a share of the table, so a
+								 * narrow window can never push the row wider than its container.
+								 */}
+								<col style={{ width: `min(${columnWidths.name}px, 60%)` }} />
+								{/* No width: "Prefix" absorbs whatever is left over. */}
+								<col />
+								<col style={{ width: `${ACTIONS_COLUMN_PX}px` }} />
+							</colgroup>
 							<thead className="bg-background sticky top-0 z-10">
-								<tr>
+								<tr className="group/columns">
 									{/*
 									 * `aria-sort` on the th (not the button) is what assistive tech
 									 * reads for sort state; the icon alone is invisible to it.
@@ -302,7 +326,7 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 									<th
 										scope="col"
 										aria-sort={sortOrder === "asc" ? "ascending" : "descending"}
-										className="border-b p-0 text-left text-sm font-medium"
+										className="relative border-b p-0 text-left text-sm font-medium"
 									>
 										<button
 											type="button"
@@ -320,18 +344,21 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 												{sortOrder === "asc" ? "sorted ascending" : "sorted descending"}
 											</span>
 										</button>
+										<ColumnResizer
+											label="Name"
+											width={columnWidths.name}
+											minWidth={MIN_COLUMN_WIDTH}
+											qaId="environments-column-resizer-name"
+											onResize={(next, options) => handleColumnResize("name", next, options)}
+										/>
 									</th>
 									<th
 										scope="col"
-										className="text-muted-foreground border-b px-4 py-3 text-left text-sm font-medium"
+										className="text-muted-foreground relative border-b px-4 py-3 text-left text-sm font-medium"
 									>
 										Prefix
 									</th>
-									<th
-										scope="col"
-										className="border-b px-4 py-3 text-right text-sm font-medium"
-										style={{ width: "3.5rem" }}
-									>
+									<th scope="col" className="border-b px-4 py-3 text-right text-sm font-medium">
 										<span className="sr-only">Actions</span>
 									</th>
 								</tr>
@@ -427,88 +454,19 @@ function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
 				 * set would render a nonsensical "1 – 0 of 0 items" range.
 				 */}
 				{totalItems > 0 && (
-					<div
-						className="flex items-center justify-between gap-4"
-						data-qa-id="environments-pagination"
-					>
-						{/* Page navigation */}
-						<div className="flex items-center gap-1">
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								onClick={() => goToPage(1)}
-								disabled={effectivePage === 1}
-								aria-label="First page"
-							>
-								<ChevronsLeftIcon className="size-4" />
-							</Button>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								onClick={() => goToPage(effectivePage - 1)}
-								disabled={effectivePage === 1}
-								data-qa-id="environments-pagination-prev"
-								aria-label="Previous page"
-							>
-								<ChevronLeftIcon className="size-4" />
-							</Button>
-
-							{pageNumbers.map((page) => (
-								<Button
-									key={page}
-									variant={page === effectivePage ? "default" : "ghost"}
-									size="sm"
-									onClick={() => goToPage(page)}
-									className="min-w-8"
-								>
-									{page}
-								</Button>
-							))}
-
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								onClick={() => goToPage(effectivePage + 1)}
-								disabled={effectivePage === totalPages}
-								data-qa-id="environments-pagination-next"
-								aria-label="Next page"
-							>
-								<ChevronRightIcon className="size-4" />
-							</Button>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								onClick={() => goToPage(totalPages)}
-								disabled={effectivePage === totalPages}
-								aria-label="Last page"
-							>
-								<ChevronsRightIcon className="size-4" />
-							</Button>
-						</div>
-
-						{/* Items per page + range indicator */}
-						<div className="flex items-center gap-3">
-							<Select value={String(itemsPerPage)} onValueChange={handleItemsPerPageChange}>
-								<SelectTrigger className="w-16" data-qa-id="environments-items-per-page">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{PAGE_SIZE_OPTIONS.map((opt) => (
-										<SelectItem key={opt.value} value={opt.value}>
-											{opt.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<span className="text-muted-foreground text-sm whitespace-nowrap">
-								items per page
-							</span>
-							<span className="text-muted-foreground text-sm whitespace-nowrap">
-								{startIndex + 1} – {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
-								items
-							</span>
-						</div>
-					</div>
+					<TablePagination
+						pageIndex={effectivePage - 1}
+						pageCount={totalPages}
+						onPageChange={(index) => goToPage(index + 1)}
+						rangeStart={startIndex + 1}
+						rangeEnd={Math.min(startIndex + itemsPerPage, totalItems)}
+						totalItems={totalItems}
+						pageSize={itemsPerPage}
+						pageSizeOptions={PAGE_SIZE_OPTIONS}
+						onPageSizeChange={handleItemsPerPageChange}
+						qaPrefix="environments-pagination"
+						pageSizeQaId="environments-items-per-page"
+					/>
 				)}
 				{/* Dialogs */}
 				<CreateEnvironmentDialog open={dialog.kind === "create"} onClose={closeDialog} />

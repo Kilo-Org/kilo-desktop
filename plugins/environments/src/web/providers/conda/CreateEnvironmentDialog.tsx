@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type CSSProperties,
+	type FormEvent,
+} from "react";
 
 import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
 import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
@@ -31,17 +39,15 @@ import {
 	SelectValue,
 } from "@anaconda-agentic-desktop/ui/components/select";
 import {
-	Sheet,
-	SheetContent,
-	SheetHeader,
-	SheetTitle,
-} from "@anaconda-agentic-desktop/ui/components/sheet";
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "@anaconda-agentic-desktop/ui/components/dialog";
 import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
 import {
 	CheckIcon,
 	ChevronDownIcon,
-	ChevronLeftIcon,
-	ChevronRightIcon,
 	FolderIcon,
 	NetworkIcon,
 	PackageIcon,
@@ -62,6 +68,15 @@ import {
 } from "./environments-toasts.js";
 import { PythonVersionPicker, PYTHON_LATEST } from "./PythonVersionPicker.js";
 import { ChannelsDialog } from "./ChannelsDialog.js";
+import { ColumnResizer } from "./ColumnResizer.js";
+import { TablePagination } from "./TablePagination.js";
+import {
+	MIN_PACKAGE_GRID_COLUMN_WIDTH,
+	readPackageGridColumnWidths,
+	resizeColumn,
+	writePackageGridColumnWidths,
+	type PackageGridColumnId,
+} from "./column-widths.js";
 
 interface CreateEnvironmentDialogProps {
 	open: boolean;
@@ -151,14 +166,69 @@ function PackageGrid({
 	onPageChange,
 }: PackageGridProps) {
 	const pageItems = packages.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+	const [columnWidths, setColumnWidths] = useState(() => readPackageGridColumnWidths());
+	// Mirrored in a ref so a drag resolves against the width it started from
+	// without the pointer handlers closing over a stale render.
+	const columnWidthsRef = useRef(columnWidths);
+	columnWidthsRef.current = columnWidths;
+	const handleColumnResize = useCallback(
+		(column: PackageGridColumnId, nextWidthPx: number, options: { persist: boolean }) => {
+			const current = columnWidthsRef.current;
+			const next = resizeColumn(
+				current,
+				column,
+				nextWidthPx - current[column],
+				MIN_PACKAGE_GRID_COLUMN_WIDTH,
+			);
+			columnWidthsRef.current = next;
+			setColumnWidths(next);
+			if (options.persist) writePackageGridColumnWidths(next);
+		},
+		[],
+	);
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
-			<div className="text-muted-foreground bg-muted/50 flex items-center gap-2 border-b px-3 py-2 text-xs font-medium">
-				<span className="w-6" />
+		// Custom properties keep the header and every row on one set of widths
+		// without threading them through each cell.
+		<div
+			className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border"
+			style={
+				{
+					"--package-size-column": `${columnWidths.size}px`,
+					"--package-version-column": `${columnWidths.version}px`,
+				} as CSSProperties
+			}
+		>
+			<div
+				className="text-muted-foreground bg-muted/50 group/columns flex items-center gap-1.5 border-b px-2 py-2 text-xs font-medium"
+				data-qa-id="environments-create-package-header"
+			>
+				<span className="w-4" />
 				<span className="flex-1">Package</span>
-				<span className="w-20">Size</span>
-				<span className="w-32">Version</span>
+				<span className="relative ml-3" style={{ width: "var(--package-size-column)" }}>
+					Size
+					<ColumnResizer
+						label="Size"
+						width={columnWidths.size}
+						minWidth={MIN_PACKAGE_GRID_COLUMN_WIDTH}
+						qaId="environments-create-column-resizer-size"
+						edge="leading"
+						className="-inset-y-2 -left-4"
+						onResize={(next, options) => handleColumnResize("size", next, options)}
+					/>
+				</span>
+				<span className="relative ml-3" style={{ width: "var(--package-version-column)" }}>
+					Version
+					<ColumnResizer
+						label="Version"
+						width={columnWidths.version}
+						minWidth={MIN_PACKAGE_GRID_COLUMN_WIDTH}
+						qaId="environments-create-column-resizer-version"
+						edge="leading"
+						className="-inset-y-2 -left-4"
+						onResize={(next, options) => handleColumnResize("version", next, options)}
+					/>
+				</span>
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{loading && (
@@ -193,26 +263,28 @@ function PackageGrid({
 										onToggle(pkg, !isSelected);
 									}
 								}}
-								className="hover:bg-accent focus-visible:ring-ring/50 flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm transition-colors outline-none last:border-b-0 focus-visible:ring-2"
+								className="hover:bg-accent focus-visible:ring-ring/50 flex cursor-pointer items-center gap-1.5 border-b px-2 py-2 text-sm transition-colors outline-none last:border-b-0 focus-visible:ring-2"
 								data-qa-id="environments-create-package-row"
 							>
 								<Checkbox
 									checked={isSelected}
 									tabIndex={-1}
 									aria-hidden
-									className="pointer-events-none w-6"
+									className="pointer-events-none w-4"
 									data-qa-id={`environments-create-package-checkbox-${pkg.name}`}
 								/>
 								<span className="min-w-0 flex-1 truncate font-medium">{pkg.name}</span>
 								<span
-									className="text-muted-foreground w-20 text-xs tabular-nums"
+									className="text-muted-foreground ml-3 truncate text-xs tabular-nums"
+									style={{ width: "var(--package-size-column)" }}
 									data-qa-id={`environments-create-package-size-${pkg.name}`}
 								>
 									{sizeForRow ? formatSize(sizeForRow) : "—"}
 								</span>
 								{pkg.versions.length > 0 ? (
 									<div
-										className="w-32"
+										className="ml-3"
+										style={{ width: "var(--package-version-column)" }}
 										onClick={(e) => e.stopPropagation()}
 										onKeyDown={(e) => e.stopPropagation()}
 									>
@@ -240,7 +312,10 @@ function PackageGrid({
 										</Select>
 									</div>
 								) : (
-									<span className="text-muted-foreground w-32 truncate text-xs">
+									<span
+										className="text-muted-foreground ml-3 truncate text-xs"
+										style={{ width: "var(--package-version-column)" }}
+									>
 										{pkg.version ?? "latest"}
 									</span>
 								)}
@@ -250,46 +325,23 @@ function PackageGrid({
 			</div>
 			{!loading && truncated && (
 				<p
-					className="text-muted-foreground border-t px-3 py-2 text-xs"
+					className="text-muted-foreground border-t px-2 py-2 text-xs"
 					data-qa-id="environments-create-truncated-hint"
 				>
 					Showing the first {packages.length} packages — refine your search to find others.
 				</p>
 			)}
 			{!loading && packages.length > PAGE_SIZE && (
-				<div className="flex items-center justify-between border-t px-3 py-2 text-xs">
-					<span className="text-muted-foreground">
-						{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, packages.length)} of{" "}
-						{packages.length}
-					</span>
-					<div className="flex items-center gap-1">
-						<Button
-							type="button"
-							variant="outline"
-							size="icon-sm"
-							disabled={page === 0}
-							onClick={() => onPageChange(Math.max(0, page - 1))}
-							aria-label="Previous page"
-							data-qa-id="environments-create-package-prev"
-						>
-							<ChevronLeftIcon />
-						</Button>
-						<span className="text-muted-foreground px-1">
-							{page + 1} / {pageCount}
-						</span>
-						<Button
-							type="button"
-							variant="outline"
-							size="icon-sm"
-							disabled={page >= pageCount - 1}
-							onClick={() => onPageChange(Math.min(pageCount - 1, page + 1))}
-							aria-label="Next page"
-							data-qa-id="environments-create-package-next"
-						>
-							<ChevronRightIcon />
-						</Button>
-					</div>
-				</div>
+				<TablePagination
+					pageIndex={page}
+					pageCount={pageCount}
+					onPageChange={onPageChange}
+					rangeStart={page * PAGE_SIZE + 1}
+					rangeEnd={Math.min((page + 1) * PAGE_SIZE, packages.length)}
+					totalItems={packages.length}
+					qaPrefix="environments-create-package"
+					className="border-t px-3 py-2"
+				/>
 			)}
 		</div>
 	);
@@ -622,15 +674,19 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 	const canSubmit = !mutation.isPending && !!name.trim();
 
 	return (
-		<Sheet open={open} onOpenChange={handleOpenChange}>
-			<SheetContent
-				side="bottom"
+		<Dialog open={open} onOpenChange={handleOpenChange}>
+			{/*
+			 * Two grid rows — header, then the form — so the package grid and the
+			 * selected-packages sidebar scroll inside a fixed-height modal instead
+			 * of growing it past the viewport.
+			 */}
+			<DialogContent
 				data-qa-id="environments-create-dialog"
-				className="top-16 h-auto gap-0 overflow-hidden p-0"
+				className="h-[85vh] max-h-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-5xl"
 			>
-				<SheetHeader className="shrink-0 border-b px-6 py-4">
-					<SheetTitle className="text-xl">Create Environment</SheetTitle>
-				</SheetHeader>
+				<DialogHeader className="shrink-0 border-b px-6 py-4">
+					<DialogTitle>Create Environment</DialogTitle>
+				</DialogHeader>
 
 				<form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
 					<div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[1fr_20rem]">
@@ -727,7 +783,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 
 							{/* Select packages header + Channels */}
 							<div className="flex items-center justify-between">
-								<h4 className="text-base font-semibold">Select packages:</h4>
+								<h4 className="text-base font-semibold">Select packages</h4>
 								<Button
 									type="button"
 									variant="outline"
@@ -818,7 +874,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 						</Button>
 					</div>
 				</form>
-			</SheetContent>
+			</DialogContent>
 
 			<ChannelsDialog
 				open={showChannels}
@@ -830,6 +886,6 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 					setShowChannels(false);
 				}}
 			/>
-		</Sheet>
+		</Dialog>
 	);
 }

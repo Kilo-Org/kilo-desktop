@@ -14,6 +14,7 @@ import {
 	type CondaRepodataPackage,
 	type CondaService,
 } from "../../../contracts/providers/conda.js";
+import { PACKAGE_TABLE_COLUMN_WIDTHS_STORAGE_KEY } from "./column-widths.js";
 import { EnvironmentDetail } from "./EnvironmentDetail.js";
 
 const MOCK_ENV: CondaEnv = { name: "dev", prefix: "/opt/conda/envs/dev" };
@@ -103,6 +104,10 @@ function renderDetail(
 		env?: CondaEnv;
 		onBack?: () => void;
 		packagesList?: CondaService["conda.packages.list"];
+		/** Height of the surrounding shell; the detail view lives in a bounded column. */
+		hostHeight?: number;
+		/** Width of the surrounding shell, for narrow-window regressions. */
+		hostWidth?: number;
 		handlers?: HandlerOverrides;
 	} = {},
 ) {
@@ -122,12 +127,28 @@ function renderDetail(
 		defaultOptions: { queries: { retry: false } },
 	});
 
-	return render(
+	const detail = (
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<EnvironmentDetail env={env} onBack={onBack} />
 			</QueryClientProvider>
-		</SdkProvider>,
+		</SdkProvider>
+	);
+
+	if (options.hostHeight === undefined && options.hostWidth === undefined) return render(detail);
+
+	return render(
+		<div
+			style={{
+				...(options.hostHeight === undefined ? {} : { height: `${options.hostHeight}px` }),
+				...(options.hostWidth === undefined ? {} : { width: `${options.hostWidth}px` }),
+				display: "flex",
+				flexDirection: "column",
+			}}
+			data-qa-id="test-shell"
+		>
+			{detail}
+		</div>,
 	);
 }
 
@@ -189,7 +210,7 @@ describe("EnvironmentDetail", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-pagination")).toBeVisible();
-		await expect.element(screen.getByText("1 - 8 of 8 items")).toBeVisible();
+		await expect.element(screen.getByText("1 – 8 of 8 items")).toBeVisible();
 	});
 
 	it("surfaces backend errors", async () => {
@@ -263,22 +284,20 @@ describe("EnvironmentDetail", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
-		await expect.element(screen.getByText("1 - 20 of 45 items")).toBeVisible();
+		await expect.element(screen.getByText("1 – 20 of 45 items")).toBeVisible();
 
-		// Navigate to page 2
-		const nextButton = screen.getByRole("button", { name: "Next page" });
-		await nextButton.click();
-		await expect.element(screen.getByText("21 - 40 of 45 items")).toBeVisible();
+		const pager = screen.getByTestId("environments-conda-detail-pagination");
 
-		// Navigate to last page
-		const lastButton = screen.getByRole("button", { name: "Last page" });
-		await lastButton.click();
-		await expect.element(screen.getByText("41 - 45 of 45 items")).toBeVisible();
+		await screen.getByTestId("environments-conda-detail-pagination-next").click();
+		await expect.element(screen.getByText("21 – 40 of 45 items")).toBeVisible();
 
-		// Navigate back to first
-		const firstButton = screen.getByRole("button", { name: "First page" });
-		await firstButton.click();
-		await expect.element(screen.getByText("1 - 20 of 45 items")).toBeVisible();
+		// The last page is reached by its number: the shared pager offers no
+		// first/last jump, relying on numbered pages and ellipsis instead.
+		await pager.getByText("3", { exact: true }).click();
+		await expect.element(screen.getByText("41 – 45 of 45 items")).toBeVisible();
+
+		await screen.getByTestId("environments-conda-detail-pagination-prev").click();
+		await expect.element(screen.getByText("21 – 40 of 45 items")).toBeVisible();
 	});
 
 	it("sorts packages by version when version header is clicked", async () => {
@@ -647,5 +666,113 @@ describe("EnvironmentDetail", () => {
 			baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-channel"]'),
 		).map((cell) => cell.textContent ?? "");
 		expect(channels).toEqual([...channels].sort((a, b) => a.localeCompare(b)));
+	});
+});
+
+describe("EnvironmentDetail — sticky package headers", () => {
+	const manyPackages = Array.from({ length: 40 }, (_, index) => ({
+		name: `pkg-${String(index).padStart(2, "0")}`,
+		version: "1.0.0",
+		build: "py311_0",
+		channel: "defaults",
+	}));
+
+	it("keeps the column headers visible while the package rows scroll", async () => {
+		const { baseElement } = renderDetail({
+			packagesList: async () => ({ envName: "dev", packages: manyPackages }),
+			hostHeight: 380,
+		});
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("environments-conda-detail-row").first()).toBeVisible();
+
+		const scroller = baseElement.querySelector(
+			'[data-qa-id="environments-conda-detail-table"]',
+		)! as HTMLElement;
+		const header = baseElement.querySelector("thead")!;
+
+		expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
+
+		const headerBefore = header.getBoundingClientRect().top;
+		const firstRowBefore = baseElement
+			.querySelector('[data-qa-id="environments-conda-detail-row"]')!
+			.getBoundingClientRect().top;
+
+		scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+		await vi.waitFor(() => {
+			expect(scroller.scrollTop).toBeGreaterThan(0);
+		});
+
+		const firstRowAfter = baseElement
+			.querySelector('[data-qa-id="environments-conda-detail-row"]')!
+			.getBoundingClientRect().top;
+
+		// Rows move; the header does not.
+		expect(firstRowAfter).toBeLessThan(firstRowBefore);
+		expect(header.getBoundingClientRect().top).toBeCloseTo(headerBefore, 0);
+	});
+});
+
+describe("EnvironmentDetail — resizable columns", () => {
+	afterEach(() => {
+		localStorage.removeItem(PACKAGE_TABLE_COLUMN_WIDTHS_STORAGE_KEY);
+	});
+
+	function dragHandle(handle: Element, deltaX: number) {
+		const startX = 500;
+		handle.dispatchEvent(
+			new PointerEvent("pointerdown", { bubbles: true, clientX: startX, pointerId: 1 }),
+		);
+		window.dispatchEvent(
+			new PointerEvent("pointermove", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
+		);
+		window.dispatchEvent(
+			new PointerEvent("pointerup", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
+		);
+	}
+
+	it("widens the Package column when its handle is dragged right", async () => {
+		const { baseElement } = renderDetail({ hostWidth: 900 });
+		const screen = page.elementLocator(baseElement);
+		const handle = screen.getByTestId("environments-detail-column-resizer-name");
+
+		await expect.element(handle).toBeVisible();
+		dragHandle(handle.element(), 50);
+
+		// Package starts at its 240px default.
+		await expect.element(handle).toHaveAttribute("aria-valuenow", "290");
+	});
+
+	it("narrows the Version column from the keyboard and keeps it after remount", async () => {
+		const first = renderDetail({ hostWidth: 900 });
+		const firstHandle = page
+			.elementLocator(first.baseElement)
+			.getByTestId("environments-detail-column-resizer-version");
+
+		await expect.element(firstHandle).toBeVisible();
+		await userEvent.click(firstHandle);
+		await userEvent.keyboard("{ArrowLeft}");
+
+		// Version starts at 130px, so a single 16px step lands on the 120px floor.
+		await expect.element(firstHandle).toHaveAttribute("aria-valuenow", "120");
+
+		cleanup();
+		const second = renderDetail({ hostWidth: 900 });
+		const secondHandle = page
+			.elementLocator(second.baseElement)
+			.getByTestId("environments-detail-column-resizer-version");
+
+		await expect.element(secondHandle).toHaveAttribute("aria-valuenow", "120");
+	});
+});
+
+describe("EnvironmentDetail — narrow containers", () => {
+	it("never scrolls horizontally when the window is narrow", async () => {
+		const { baseElement } = renderDetail({ hostHeight: 420, hostWidth: 360 });
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("environments-conda-detail-row").first()).toBeVisible();
+
+		const scroller = baseElement.querySelector('[data-qa-id="environments-conda-detail-table"]')!;
+
+		expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth + 1);
 	});
 });

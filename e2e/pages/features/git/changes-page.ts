@@ -1,6 +1,7 @@
 import {
 	click,
 	expectElementToBeVisible,
+	fill,
 	getLocatorByRole,
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
@@ -24,10 +25,13 @@ export class ChangesPage {
 	}
 
 	async openChangesTab(): Promise<void> {
-		await getLocatorByRole("textbox", { name: "Message input" }).fill(
+		const send = getLocatorByTestId("kilo-composer-send");
+		await expectElementToBeVisible(send, "Composer should be connected before starting the chat");
+		await fill(
+			getLocatorByRole("textbox", { name: "Message input" }),
 			"Review the workspace changes",
 		);
-		await click(getLocatorByRole("button", { name: "Send message" }));
+		await click(send);
 		// `PaneLaunchToolbar` carries one launch button per addable
 		// contribution, keyed by definition id (`<featureId>.<contributionId>`,
 		// dot unsanitized) — `git.changes` for the Changes pane.

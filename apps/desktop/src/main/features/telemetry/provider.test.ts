@@ -4,14 +4,14 @@ import { AnacondaOtelProvider } from "./provider.js";
 import type { TelemetryConfig, TelemetryEntry, TelemetryProviderAuth } from "./types.js";
 
 const otel = vi.hoisted(() => {
-	const configs: Array<{ url: URL; token: string | undefined }> = [];
+	const loggingEndpoints: Array<{ url: URL; token: string | undefined }> = [];
 	const sendEventCalls: Array<{
 		eventName: string;
 		payload: unknown;
 		attributes: Record<string, unknown>;
 	}> = [];
 	return {
-		configs,
+		loggingEndpoints,
 		sendEventCalls,
 		setLoggingExportIntervalMs: vi.fn(),
 		setAttributes: vi.fn(),
@@ -23,11 +23,9 @@ const otel = vi.hoisted(() => {
 
 vi.mock("anaconda-opentelemetry", () => {
 	class Configuration {
-		constructor(
-			public url: URL,
-			public token?: string,
-		) {
-			otel.configs.push({ url, token });
+		setLoggingEndpoint(url: URL, token?: string) {
+			otel.loggingEndpoints.push({ url, token });
+			return this;
 		}
 		setLoggingExportIntervalMs(...args: unknown[]) {
 			otel.setLoggingExportIntervalMs(...args);
@@ -63,7 +61,7 @@ vi.mock("anaconda-opentelemetry", () => {
 	};
 });
 
-const { configs, sendEventCalls } = otel;
+const { loggingEndpoints, sendEventCalls } = otel;
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
 const baseConfig: TelemetryConfig = {
@@ -109,7 +107,7 @@ function provider(auth: TelemetryProviderAuth, config: TelemetryConfig = baseCon
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	configs.length = 0;
+	loggingEndpoints.length = 0;
 	sendEventCalls.length = 0;
 	otel.sendEvent.mockReturnValue(true);
 	otel.initializeTelemetry.mockReturnValue(true);
@@ -128,15 +126,15 @@ describe("AnacondaOtelProvider", () => {
 	it("selects the anonymous endpoint when there is no api key", async () => {
 		await provider(fakeAuth({ getApiKey: async () => null })).track(entry());
 
-		expect(configs[0]?.url.href).toBe("https://public.example.com/v1/logs");
-		expect(configs[0]?.token).toBeUndefined();
+		expect(loggingEndpoints[0]?.url.href).toBe("https://public.example.com/v1/logs");
+		expect(loggingEndpoints[0]?.token).toBeUndefined();
 	});
 
 	it("selects the authenticated endpoint when an api key is present", async () => {
 		await provider(fakeAuth({ getApiKey: async () => "api-key" })).track(entry());
 
-		expect(configs[0]?.url.href).toBe("https://metrics.example.com/v1/logs");
-		expect(configs[0]?.token).toBe("api-key");
+		expect(loggingEndpoints[0]?.url.href).toBe("https://metrics.example.com/v1/logs");
+		expect(loggingEndpoints[0]?.token).toBe("api-key");
 	});
 
 	it("re-initializes the connection when the api key changes", async () => {
@@ -236,7 +234,7 @@ describe("AnacondaOtelProvider", () => {
 
 		await p.track(entry());
 
-		expect(configs[0]?.url.href).toBe("http://localhost:4318/v1/logs");
+		expect(loggingEndpoints[0]?.url.href).toBe("http://localhost:4318/v1/logs");
 	});
 
 	it("skips the export-interval config when it is unset", async () => {

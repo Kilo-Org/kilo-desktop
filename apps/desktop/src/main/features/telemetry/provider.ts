@@ -78,7 +78,11 @@ export class AnacondaOtelProvider implements TelemetryProvider {
 			this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
 
 			const url = this.#getUrl(apiKey);
-			const config = new Configuration(url, apiKey);
+			const config = new Configuration();
+			// 0.9.3 dropped constructor/default endpoints; logging never starts
+			// unless the signal-specific setter is used (otherwise sendEvent
+			// prints "### ERROR: No Logger!!!").
+			config.setLoggingEndpoint(url, apiKey);
 			if (this.#config.exportIntervalMs !== undefined) {
 				config.setLoggingExportIntervalMs(this.#config.exportIntervalMs);
 			}

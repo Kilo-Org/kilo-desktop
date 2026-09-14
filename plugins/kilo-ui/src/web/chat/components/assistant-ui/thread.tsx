@@ -754,6 +754,7 @@ const ComposerAction: FC<{
 									size="icon"
 									className="aui-composer-send size-7 rounded-full"
 									aria-label="Send message"
+									data-qa-id="kilo-composer-send"
 								/>
 							}
 						>

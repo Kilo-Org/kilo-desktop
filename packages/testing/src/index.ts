@@ -2,6 +2,7 @@ import {
 	CommandRegistry,
 	ContributionRegistry,
 	createSdk,
+	createObservableValue,
 	createStaticNavigation,
 	FeatureRouter,
 	StateBroker,
@@ -23,9 +24,32 @@ import type {
 	SdkFactoryServices,
 	ShellDelegates,
 	ShellFsDelegate,
+	SdkTheme,
+	ThemeAppearance,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
 const noop = () => {};
+const DEFAULT_APPEARANCES: Record<"light" | "dark", ThemeAppearance> = {
+	light: { mode: "light", themeId: "anaconda", terminal: null, shiki: "pierre-light" },
+	dark: { mode: "dark", themeId: "anaconda", terminal: null, shiki: "pierre-dark" },
+};
+
+/** Observable shell theme fake; preserves snapshot identity until explicitly updated. */
+export function createFakeTheme(initial = DEFAULT_APPEARANCES.light): SdkTheme & {
+	setAppearance(next: ThemeAppearance): void;
+} {
+	const appearance = createObservableValue(initial);
+	return {
+		appearance: appearance.peek,
+		subscribe(fn) {
+			fn();
+			return appearance.subscribe(() => fn());
+		},
+		setAppearance: (next) => {
+			appearance.set(next);
+		},
+	};
+}
 const noopMainSdkLogger = {
 	info: noop,
 	warn: noop,
@@ -266,6 +290,7 @@ export type FakeSdk = SDK & { readonly services: SdkFactoryServices };
 function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 	const featureRouter = new FeatureRouter();
 	const memoryFs = createInMemoryShellFs();
+	const appearance = options.theme?.appearance ?? (() => DEFAULT_APPEARANCES.light);
 	const shellDelegates: ShellDelegates = {
 		// The fake reports successful delivery so feature code that checks the
 		// envelope takes its happy path in tests. Override to simulate absence.
@@ -277,10 +302,10 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 		theme: merge<SDK["theme"]>(
 			{
 				subscribe: (fn) => {
-					fn("light");
+					fn();
 					return noop;
 				},
-				peek: () => "light",
+				appearance,
 			},
 			options.theme,
 		),

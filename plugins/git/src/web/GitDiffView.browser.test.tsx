@@ -1,4 +1,5 @@
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
+import { createFakeSdk, createFakeTheme } from "@anaconda-agentic-desktop/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -16,6 +17,29 @@ import {
 afterEach(resetViewTestDom);
 
 describe("GitDiffView", () => {
+	it("keeps the diff and file tree on the active preset across same-mode changes", async () => {
+		stubFetch(() => new Response(patchResponseStream()));
+		const theme = createFakeTheme();
+		renderView({}, createFakeSdk({ featureId: "git", theme }));
+		await waitForTreePath("README.md");
+		const themeCss = () =>
+			document
+				.querySelector("diffs-container")
+				?.shadowRoot?.querySelector("style[data-theme-css]")
+				?.textContent?.toLowerCase();
+		await act(async () =>
+			theme.setAppearance({
+				...theme.appearance(),
+				themeId: "kilo",
+				shiki: "github-light",
+			}),
+		);
+		await vi.waitFor(() => {
+			expect(themeCss()).toContain("#24292e");
+			expect(treeHost()?.style.getPropertyValue("--trees-theme-sidebar-fg")).toBe("#586069");
+		});
+	});
+
 	it("shows an explicit state when the chat has no workspace", async () => {
 		renderView({ workspaceDirectory: undefined });
 		await expect.element(page.getByTestId("git-diff-no-workspace")).toBeVisible();

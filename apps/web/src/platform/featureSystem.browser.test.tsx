@@ -10,6 +10,7 @@ import {
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
+import { applyAppTheme } from "@/platform/theme/app-theme";
 import { applyDocumentColorScheme } from "@/platform/theme/color-scheme";
 
 const demoChannels = {
@@ -48,6 +49,8 @@ const demoFeature: FeatureRegistration = {
 
 afterEach(() => {
 	cleanup();
+	applyAppTheme({ themeId: "kilo" });
+	localStorage.clear();
 	applyDocumentColorScheme("light");
 	vi.unstubAllGlobals();
 });
@@ -86,22 +89,44 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		expect(result.reason).toBeDefined();
 	});
 
-	it("peeks and subscribes to the effective theme", () => {
+	it("reads and subscribes to the effective theme", () => {
 		const api = createBrowserLocalApi();
 		const system = createAppFeatureSystem(api, [demoFeature]);
 		const sdk = system.getSdk("demo");
 
-		expect(sdk.theme.peek()).toBe("light");
+		expect(sdk.theme.appearance().mode).toBe("light");
 		applyDocumentColorScheme("dark");
-		expect(sdk.theme.peek()).toBe("dark");
+		expect(sdk.theme.appearance().mode).toBe("dark");
 
-		const seen: Array<"dark" | "light"> = [];
-		const unsub = sdk.theme.subscribe((theme) => seen.push(theme));
-		expect(seen).toEqual(["dark"]);
+		const notify = vi.fn();
+		const unsub = sdk.theme.subscribe(notify);
+		expect(notify).toHaveBeenCalledOnce();
 
 		applyDocumentColorScheme("light");
-		expect(seen).toEqual(["dark", "light"]);
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(sdk.theme.appearance().mode).toBe("light");
 		unsub();
+	});
+
+	it("notifies embedded surfaces when a preset changes without changing mode", () => {
+		applyDocumentColorScheme("dark");
+		const sdk = createAppFeatureSystem(createBrowserLocalApi(), [demoFeature]).getSdk("demo");
+		const notify = vi.fn();
+		const unsubscribe = sdk.theme.subscribe(notify);
+		const initial = sdk.theme.appearance();
+		expect(sdk.theme.appearance()).toBe(initial);
+		applyAppTheme({ themeId: "anaconda" });
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(sdk.theme.appearance()).toMatchObject({
+			mode: "dark",
+			themeId: "anaconda",
+			shiki: "pierre-dark",
+			terminal: { background: "#101314", foreground: "#f9fbfb" },
+		});
+		expect(sdk.theme.appearance()).toBe(sdk.theme.appearance());
+		unsubscribe();
+		applyAppTheme({ themeId: "kilo" });
+		expect(notify).toHaveBeenCalledTimes(2);
 	});
 
 	it("adapts LocalApi auth state and operations to sdk.auth", async () => {

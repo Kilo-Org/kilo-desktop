@@ -184,7 +184,7 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				{isDraft ? (
 					<div
 						aria-hidden="true"
-						className="fade-in zoom-in-40 blur-in-[56px] motion-safe:animate-in fill-mode-both bg-primary/8 dark:bg-primary/15 pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+5rem)] w-[calc(100%+6rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] blur-[56px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]"
+						className="fade-in zoom-in-40 blur-in-[56px] motion-safe:animate-in fill-mode-both pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+5rem)] w-[calc(100%+6rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-[color:var(--chat-ambient-glow,var(--primary))]/8 blur-[56px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] dark:bg-[color:var(--chat-ambient-glow,var(--primary))]/15"
 					/>
 				) : null}
 				<div className="relative z-10 flex flex-col">

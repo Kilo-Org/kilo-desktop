@@ -1,22 +1,24 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { useMemo, useSyncExternalStore } from "react";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
-export const PIERRE_DIFF_THEME = {
-	dark: "pierre-dark" as const,
-	light: "pierre-light" as const,
-};
-
-export const PIERRE_DIFF_OPTIONS = {
-	theme: PIERRE_DIFF_THEME,
+const PIERRE_DIFF_OPTIONS = {
 	diffStyle: "unified" as const,
 	lineDiffType: "none" as const,
 	overflow: "wrap" as const,
 	unsafeCSS: `
 		:host {
-			--diffs-light-bg: var(--background);
-			--diffs-dark-bg: var(--background);
+			--diffs-bg: var(--background);
+			background-color: var(--background);
 		}
 	`,
 };
+
+export function usePierreDiffOptions() {
+	const sdk = useSdk("kilo-ui");
+	const { mode, shiki } = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
+	return useMemo(() => ({ ...PIERRE_DIFF_OPTIONS, theme: shiki, themeType: mode }), [mode, shiki]);
+}
 
 const hashDiffSource = (source: string): string => {
 	let hash = 0x811c9dc5;

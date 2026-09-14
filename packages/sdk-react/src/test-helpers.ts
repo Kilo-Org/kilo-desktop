@@ -1,6 +1,13 @@
 import { createStaticNavigation } from "@anaconda-agentic-desktop/feature-sdk";
 
-import type { ShellDelegates } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ShellDelegates, ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+
+const DEFAULT_APPEARANCE: ThemeAppearance = {
+	mode: "light",
+	themeId: "anaconda",
+	terminal: null,
+	shiki: "pierre-light",
+};
 
 function notImplemented(method: string): (...args: never[]) => Promise<never> {
 	return async () => {
@@ -18,10 +25,10 @@ export function createTestShellDelegates(): ShellDelegates {
 		telemetry: { track: async () => {} },
 		theme: {
 			subscribe(fn) {
-				fn("light");
+				fn();
 				return () => {};
 			},
-			peek: () => "light",
+			appearance: () => DEFAULT_APPEARANCE,
 		},
 		auth: {
 			subscribe(fn) {

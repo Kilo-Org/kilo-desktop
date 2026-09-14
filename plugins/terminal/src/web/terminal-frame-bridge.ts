@@ -1,3 +1,4 @@
+import type { TerminalPalette } from "@anaconda-agentic-desktop/feature-sdk";
 import {
 	TERMINAL_HOST,
 	terminalFrameHostMessageSchema,
@@ -45,6 +46,7 @@ type TerminalScrollbarTheme = Pick<TerminalTheme, "scrollbarThumb" | "scrollbarT
 export function terminalThemeFor(
 	mode: "dark" | "light",
 	scrollbarTheme?: Partial<TerminalScrollbarTheme>,
+	palette?: TerminalPalette | null,
 ): TerminalTheme {
 	const theme =
 		mode === "dark"
@@ -76,5 +78,5 @@ export function terminalThemeFor(
 					scrollbarThumb: "color-mix(in oklch, #e1e8f0 85%, transparent)",
 					scrollbarThumbHover: "#e1e8f0",
 				};
-	return { ...theme, ...scrollbarTheme };
+	return { ...theme, ...palette, ...scrollbarTheme };
 }

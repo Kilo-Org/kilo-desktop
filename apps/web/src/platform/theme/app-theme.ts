@@ -1,17 +1,22 @@
 import {
 	APP_THEME_STORAGE_KEY,
 	DEFAULT_APP_THEME_PREFERENCES,
+	getThemeAppearance,
 	normalizeAppThemePreferences,
 	themeCss,
 	type AppThemePreferences,
 } from "@anaconda-agentic-desktop/contracts";
-import { createObservableValue } from "@anaconda-agentic-desktop/feature-sdk";
+import { createObservableValue, type ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+
+import { getColorSchemeSnapshot } from "./color-scheme";
 
 /**
- * The shell owns one selected theme snapshot per renderer. CSS is applied
- * before subscribers are notified, and normalized preferences are authoritative.
+ * The shell owns one appearance snapshot per renderer. CSS is applied before
+ * subscribers are notified so embedded surfaces can read the new tokens.
+ * Preferences are authoritative.
  */
 const appTheme = createObservableValue(readStoredAppTheme());
+let appearance = getThemeAppearance(appTheme.peek(), getColorSchemeSnapshot());
 
 export function readStoredAppTheme(): AppThemePreferences {
 	try {
@@ -29,6 +34,12 @@ export function getAppThemePreferencesSnapshot(): AppThemePreferences {
 
 export function subscribeAppTheme(listener: () => void): () => void {
 	return appTheme.subscribe(listener);
+}
+
+export function getAppearanceSnapshot(): ThemeAppearance {
+	const mode = getColorSchemeSnapshot();
+	if (appearance.mode !== mode) appearance = getThemeAppearance(appTheme.peek(), mode);
+	return appearance;
 }
 
 export function applyAppTheme(next: AppThemePreferences): void {
@@ -51,5 +62,6 @@ export function applyAppTheme(next: AppThemePreferences): void {
 	}
 	const current = appTheme.peek();
 	if (current.themeId === normalized.themeId) return;
+	appearance = getThemeAppearance(normalized, getColorSchemeSnapshot());
 	appTheme.set(normalized);
 }

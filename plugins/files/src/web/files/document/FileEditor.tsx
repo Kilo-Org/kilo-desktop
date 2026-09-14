@@ -9,6 +9,7 @@ interface FileEditorProps {
 	readonly revealLine: number | undefined;
 	readonly editable: boolean;
 	readonly theme: "dark" | "light";
+	readonly shiki: string;
 	readonly reloadVersion: number;
 	readonly documentRevision: string | null;
 	readonly editorOptions: EditorOptions<"file", undefined, undefined>;
@@ -42,6 +43,7 @@ export const FileEditor = memo(function FileEditor({
 	revealLine,
 	editable,
 	theme,
+	shiki,
 	reloadVersion,
 	documentRevision,
 	editorOptions,
@@ -58,11 +60,11 @@ export const FileEditor = memo(function FileEditor({
 		() => ({
 			disableFileHeader: true,
 			overflow: "wrap",
-			theme: theme === "dark" ? "pierre-dark" : "pierre-light",
+			theme: shiki,
 			themeType: theme,
 			unsafeCSS: FILE_EDITOR_SURFACE_CSS,
 		}),
-		[theme],
+		[shiki, theme],
 	);
 
 	return (

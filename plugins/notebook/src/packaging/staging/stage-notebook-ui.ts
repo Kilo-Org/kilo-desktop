@@ -14,6 +14,10 @@ import path from "node:path";
 
 import { extract as extractTar } from "tar";
 
+import {
+	NOTEBOOK_THEME_MESSAGE_TYPE,
+	NOTEBOOK_THEME_READY_MESSAGE_TYPE,
+} from "../../contracts/notebook-theme.js";
 import { NTERACT_NOTEBOOK_UI, NTERACT_RELEASE, type ReleaseAsset } from "../artifacts.js";
 
 export const NOTEBOOK_STAGE_MANIFEST = "staged.json";
@@ -22,18 +26,51 @@ export const NTERACT_LICENSE_FILE = "LICENSE.nteract";
 /** Marker on the style tag we inject into staged `index.html`. */
 export const AGENTIC_EMBED_CHROME_STYLE_ATTR = "data-agentic-embed-chrome";
 
+/** Marker on the theme-bridge script we inject into staged `index.html`. */
+export const AGENTIC_EMBED_THEME_SCRIPT_ATTR = "data-agentic-embed-theme";
+
 /**
  * Host-side chrome overrides for the embedded notebook SPA. nteract has no
  * embed flag to hide the rail; we own the staged bytes, so we inject CSS.
- *
- * `--background` matches the host `--background` token (storm-100 / storm-900)
- * so the iframe page shares the same surface as the surrounding thread.
+ * Surface colors come from the parent at runtime via the theme bridge script.
  */
-export const AGENTIC_EMBED_CHROME_CSS = [
-	":root,.light{--background:oklch(0.969 0.005 258.325)}",
-	".dark,[data-theme=dark]{--background:oklch(0.209 0.017 264.101)}",
-	"@media (prefers-color-scheme:dark){:root:not(.light){--background:oklch(0.209 0.017 264.101)}}",
-	'[data-testid="notebook-rail"]{display:none!important}',
+export const AGENTIC_EMBED_CHROME_CSS = '[data-testid="notebook-rail"]{display:none!important}';
+
+const THEME_MESSAGE_TYPE = JSON.stringify(NOTEBOOK_THEME_MESSAGE_TYPE);
+const THEME_READY_TYPE = JSON.stringify(NOTEBOOK_THEME_READY_MESSAGE_TYPE);
+
+/** Inline listener: CSP hashes scripts in staged `index.html` per response. */
+export const AGENTIC_EMBED_THEME_SCRIPT = [
+	"(function(){",
+	'var parentOrigin=new URLSearchParams(location.search).get("nteract-parent-origin");',
+	"if(!parentOrigin)return;",
+	"var applied=[];",
+	"function apply(data){",
+	`if(!data||data.type!==${THEME_MESSAGE_TYPE})return;`,
+	'if(data.mode!=="light"&&data.mode!=="dark")return;',
+	"var html=document.documentElement;",
+	'var dark=data.mode==="dark";',
+	'html.classList.toggle("dark",dark);',
+	'html.classList.toggle("light",!dark);',
+	'if(dark)html.setAttribute("data-theme","dark");',
+	'else html.removeAttribute("data-theme");',
+	"html.style.colorScheme=data.mode;",
+	'try{localStorage.setItem("theme",data.mode)}catch(e){}',
+	'var tokens=data.tokens&&typeof data.tokens==="object"?data.tokens:{};',
+	'for(var i=0;i<applied.length;i++)html.style.removeProperty("--"+applied[i]);',
+	"applied=Object.keys(tokens);",
+	"for(var j=0;j<applied.length;j++){",
+	"var key=applied[j];",
+	"var value=tokens[key];",
+	'if(typeof value==="string")html.style.setProperty("--"+key,value)',
+	"}",
+	"}",
+	'window.addEventListener("message",function(event){',
+	"if(event.origin!==parentOrigin)return;",
+	"apply(event.data)",
+	"});",
+	`window.parent.postMessage({type:${THEME_READY_TYPE}},parentOrigin)`,
+	"})();",
 ].join("");
 
 interface NotebookStageFile {
@@ -134,16 +171,39 @@ const AGENTIC_EMBED_CHROME_STYLE_TAG = `<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR
 const AGENTIC_EMBED_CHROME_STYLE_RE = new RegExp(
 	`<style\\s+${AGENTIC_EMBED_CHROME_STYLE_ATTR}>[\\s\\S]*?</style>`,
 );
+const AGENTIC_EMBED_THEME_SCRIPT_TAG = `<script ${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>${AGENTIC_EMBED_THEME_SCRIPT}</script>`;
+const AGENTIC_EMBED_THEME_SCRIPT_RE = new RegExp(
+	`<script\\s+${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>[\\s\\S]*?</script>`,
+);
 
-/** Pure HTML transform: inject or refresh the embed-chrome style before `</head>`. */
+function replaceOrInsertHeadTag(
+	html: string,
+	marker: string,
+	tag: string,
+	pattern: RegExp,
+	missingHeadMessage: string,
+): string {
+	if (html.includes(marker)) return html.replace(pattern, tag);
+	if (!html.includes("</head>")) throw new Error(missingHeadMessage);
+	return html.replace("</head>", `${tag}</head>`);
+}
+
+/** Pure HTML transform: inject or refresh embed chrome CSS and the theme bridge. */
 export function injectAgenticEmbedChromeHtml(html: string): string {
-	if (html.includes(AGENTIC_EMBED_CHROME_STYLE_ATTR)) {
-		return html.replace(AGENTIC_EMBED_CHROME_STYLE_RE, AGENTIC_EMBED_CHROME_STYLE_TAG);
-	}
-	if (!html.includes("</head>")) {
-		throw new Error("notebook index.html has no </head> to inject embed chrome CSS");
-	}
-	return html.replace("</head>", `${AGENTIC_EMBED_CHROME_STYLE_TAG}</head>`);
+	const withStyle = replaceOrInsertHeadTag(
+		html,
+		AGENTIC_EMBED_CHROME_STYLE_ATTR,
+		AGENTIC_EMBED_CHROME_STYLE_TAG,
+		AGENTIC_EMBED_CHROME_STYLE_RE,
+		"notebook index.html has no </head> to inject embed chrome CSS",
+	);
+	return replaceOrInsertHeadTag(
+		withStyle,
+		AGENTIC_EMBED_THEME_SCRIPT_ATTR,
+		AGENTIC_EMBED_THEME_SCRIPT_TAG,
+		AGENTIC_EMBED_THEME_SCRIPT_RE,
+		"notebook index.html has no </head> to inject embed chrome CSS",
+	);
 }
 
 async function applyAgenticEmbedChrome(directory: string): Promise<void> {
@@ -184,6 +244,9 @@ export async function validateStagedNotebookBundle(
 	const indexHtml = await readFile(path.join(directory, "index.html"), "utf8");
 	if (!indexHtml.includes(AGENTIC_EMBED_CHROME_STYLE_TAG)) {
 		throw new Error("staged notebook index.html is missing agentic embed chrome CSS");
+	}
+	if (!indexHtml.includes(AGENTIC_EMBED_THEME_SCRIPT_TAG)) {
+		throw new Error("staged notebook index.html is missing agentic embed theme bridge");
 	}
 	const manifest = JSON.parse(
 		await readFile(path.join(directory, NOTEBOOK_STAGE_MANIFEST), "utf8"),

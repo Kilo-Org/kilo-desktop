@@ -66,8 +66,9 @@ export interface TerminalSessionManagerOptions {
  * Owns every chat terminal process, its ordered output stream, bounded durable
  * transcript, foreground-process label, and all renderer attachments. Sessions
  * outlive MessagePorts so a renderer reload reconnects without replacing the
- * shell. The manager is the only layer allowed to spawn, inspect, or signal
- * PTYs; explicit close and app teardown therefore share the same lifecycle.
+ * shell. An omitted cwd preserves an existing session's workspace; only an
+ * explicit cwd can replace it. The manager is the only layer allowed to spawn,
+ * inspect, or signal PTYs; explicit close and app teardown share the same lifecycle.
  * Pending session creation is coordinated with close and teardown so a delayed
  * attachment cannot resurrect a terminal after its owner has gone away. History
  * writes are serialized per file and atomically replaced so debounced output,
@@ -115,7 +116,7 @@ export class TerminalSessionManager {
 		if (!session) session = await this.#getOrCreateSession(key, args, cwd);
 		this.#assertAttachable(key);
 		session.defaultLabel = truncateLabel(args.initialLabel);
-		if (session.cwd !== cwd) {
+		if (args.cwd !== undefined && session.cwd !== cwd) {
 			await this.#replaceForWorkspace(session, cwd, args.cols, args.rows);
 		}
 		this.#assertAttachable(key);

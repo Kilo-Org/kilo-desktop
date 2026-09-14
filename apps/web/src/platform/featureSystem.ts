@@ -16,7 +16,8 @@ import type {
 import { getDesktopBridge } from "./desktopBridge.js";
 import { openFeaturePort } from "./featurePorts.js";
 import { createInertNavigation } from "./navigation.js";
-import { getColorSchemeSnapshot, subscribeColorScheme } from "./theme/color-scheme.js";
+import { getAppearanceSnapshot, subscribeAppTheme } from "./theme/app-theme.js";
+import { subscribeColorScheme } from "./theme/color-scheme.js";
 
 // ─── Shell delegates (bridge to LocalApi) ──────────────────────────────────
 
@@ -155,10 +156,15 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 		},
 		theme: {
 			subscribe(fn) {
-				fn(getColorSchemeSnapshot());
-				return subscribeColorScheme(() => fn(getColorSchemeSnapshot()));
+				fn();
+				const unsubscribeMode = subscribeColorScheme(fn);
+				const unsubscribeTheme = subscribeAppTheme(fn);
+				return () => {
+					unsubscribeMode();
+					unsubscribeTheme();
+				};
 			},
-			peek: getColorSchemeSnapshot,
+			appearance: getAppearanceSnapshot,
 		},
 		auth: createAuthDelegate(api),
 		featureFlags: createFeatureFlagsDelegate(api),

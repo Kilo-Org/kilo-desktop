@@ -14,6 +14,8 @@ export type {
 	SdkTelemetry,
 	TelemetryData,
 	SdkTheme,
+	TerminalPalette,
+	ThemeAppearance,
 	SdkAuth,
 	AuthUser,
 	AuthSession,

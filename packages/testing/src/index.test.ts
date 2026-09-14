@@ -11,6 +11,7 @@ import {
 	createFakeMainSdk,
 	createFakeMainSdkProtocol,
 	createFakeSdk,
+	createFakeTheme,
 	createLinkedFakeSdkPair,
 } from "./index.js";
 
@@ -252,20 +253,11 @@ describe("createFakeSdk", () => {
 	it("works without channels (shell-delegate-only fakes)", async () => {
 		const sdk = createFakeSdk({ featureId: "shell-only" });
 		expect(sdk.featureId).toBe("shell-only");
-		expect(sdk.theme.peek()).toBe("light");
 		await expect(
 			sdk.notifications.show({ type: "info", title: "t", message: "m" }),
 		).resolves.toEqual({ delivered: true });
 		await expect(sdk.notifications.setBadge(1)).resolves.toEqual({ delivered: true });
 		await expect(sdk.telemetry.track({ event: "test" })).resolves.toBeUndefined();
-	});
-
-	it("theme.subscribe immediately invokes the listener with light", () => {
-		const sdk = createFakeSdk({ featureId: "theme" });
-		const listener = vi.fn();
-		const unsub = sdk.theme.subscribe(listener);
-		expect(listener).toHaveBeenCalledWith("light");
-		unsub();
 	});
 
 	it("auth delegates report an anonymous session by default", async () => {
@@ -410,6 +402,29 @@ describe("createFakeSdk", () => {
 		await expect(partial.fs.readFile("anything")).resolves.toBe("overridden");
 	});
 
+	it("notifies SDK subscribers of same-mode appearance changes with stable snapshots", () => {
+		const theme = createFakeTheme();
+		const sdk = createFakeSdk({ featureId: "appearance", theme });
+		const initial = sdk.theme.appearance();
+		expect(initial).toEqual({
+			mode: "light",
+			themeId: "anaconda",
+			terminal: null,
+			shiki: "pierre-light",
+		});
+		expect(sdk.theme.appearance()).toBe(initial);
+		const listener = vi.fn();
+		const unsubscribe = sdk.theme.subscribe(listener);
+		expect(listener).toHaveBeenCalledOnce();
+		const next = { ...initial, themeId: "kilo", shiki: "github-light" };
+		theme.setAppearance(next);
+		expect(sdk.theme.appearance()).toBe(next);
+		expect(listener).toHaveBeenCalledTimes(2);
+		unsubscribe();
+		theme.setAppearance(initial);
+		expect(listener).toHaveBeenCalledTimes(2);
+	});
+
 	it("navigation defaults report the home location", () => {
 		const sdk = createFakeSdk({ featureId: "nav" });
 		expect(sdk.location.peek()).toEqual({ path: "/", search: {} });
@@ -421,10 +436,16 @@ describe("createFakeSdk", () => {
 	});
 
 	it("merges partial shell/fs/notification/theme overrides", async () => {
+		const darkAppearance = {
+			mode: "dark",
+			themeId: "anaconda",
+			terminal: null,
+			shiki: "pierre-dark",
+		} as const;
 		const sdk = createFakeSdk({
 			featureId: "overrides",
 			notifications: { show: async () => ({ delivered: false, reason: "blocked" }) },
-			theme: { peek: () => "dark" },
+			theme: { appearance: () => darkAppearance },
 			shell: { openExternal: async () => ({ opened: false }) },
 			fs: { exists: async () => true },
 		});
@@ -435,7 +456,7 @@ describe("createFakeSdk", () => {
 			delivered: false,
 			reason: "blocked",
 		});
-		expect(sdk.theme.peek()).toBe("dark");
+		expect(sdk.theme.appearance()).toBe(darkAppearance);
 		await expect(sdk.shell.openExternal("https://example.com")).resolves.toEqual({ opened: false });
 		// Overridden method wins; the rest falls back to the in-memory sandbox.
 		await expect(sdk.fs.exists("x")).resolves.toBe(true);
@@ -446,9 +467,9 @@ describe("createFakeSdk", () => {
 	it("ignores undefined override values when merging", () => {
 		const sdk = createFakeSdk({
 			featureId: "merge-undefined",
-			theme: { peek: undefined } as unknown as { peek?: () => "dark" | "light" },
+			theme: { appearance: undefined } as unknown as { appearance?: () => never },
 		});
-		expect(sdk.theme.peek()).toBe("light");
+		expect(sdk.theme.appearance().mode).toBe("light");
 	});
 
 	it("allows overriding invoke, contribute, commands, events, state, destroy", async () => {

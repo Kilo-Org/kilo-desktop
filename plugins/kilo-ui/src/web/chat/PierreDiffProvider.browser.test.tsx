@@ -1,13 +1,18 @@
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import {
+	createFakeFeatureSystem,
+	createFakeSdk,
+	createFakeTheme,
+} from "@anaconda-agentic-desktop/testing";
 import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import type * as PierreDiffsModule from "@pierre/diffs";
 import type * as PierreDiffsReactModule from "@pierre/diffs/react";
 
 const mocks = vi.hoisted(() => ({
-	preloadHighlighter: vi.fn(() => Promise.resolve()),
 	primeDiffHighlightCache: vi.fn(),
+	setRenderOptions: vi.fn(() => Promise.resolve()),
 	providerProps: undefined as
 		| {
 				poolOptions: {
@@ -21,11 +26,6 @@ const mocks = vi.hoisted(() => ({
 				};
 		  }
 		| undefined,
-}));
-
-vi.mock("@pierre/diffs", async (importOriginal) => ({
-	...(await importOriginal<typeof PierreDiffsModule>()),
-	preloadHighlighter: mocks.preloadHighlighter,
 }));
 
 vi.mock("@pierre/diffs/react", async (importOriginal) => ({
@@ -44,6 +44,7 @@ vi.mock("@pierre/diffs/react", async (importOriginal) => ({
 	},
 	useWorkerPool: () => ({
 		primeDiffHighlightCache: mocks.primeDiffHighlightCache,
+		setRenderOptions: mocks.setRenderOptions,
 	}),
 }));
 
@@ -61,13 +62,16 @@ function PrimeDiff({ fileDiff }: { fileDiff: FileDiffMetadata }) {
 
 afterEach(() => {
 	cleanup();
-	mocks.preloadHighlighter.mockClear();
 	mocks.primeDiffHighlightCache.mockClear();
+	mocks.setRenderOptions.mockClear();
 	mocks.providerProps = undefined;
 });
 
 describe("PierreDiffProvider", () => {
-	it("prewarms highlighting once and primes collapsed diff metadata", async () => {
+	it("initializes highlighting and updates the existing worker pool on theme changes", async () => {
+		const theme = createFakeTheme();
+		const sdk = createFakeSdk({ featureId: "kilo-ui", theme });
+		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 		const fileDiff = parseDiffFromFile(null, {
 			name: "sample.ts",
 			contents: "export const answer = 42;",
@@ -75,26 +79,23 @@ describe("PierreDiffProvider", () => {
 		});
 
 		render(
-			<PierreDiffProvider>
-				<PrimeDiff fileDiff={fileDiff} />
-			</PierreDiffProvider>,
+			<SdkProvider system={system}>
+				<PierreDiffProvider>
+					<PrimeDiff fileDiff={fileDiff} />
+				</PierreDiffProvider>
+			</SdkProvider>,
 		);
 
-		await waitFor(() => {
-			expect(mocks.preloadHighlighter).toHaveBeenCalledTimes(1);
-			expect(mocks.primeDiffHighlightCache).toHaveBeenCalledWith(fileDiff);
-		});
-		expect(mocks.preloadHighlighter).toHaveBeenCalledWith({
-			themes: ["pierre-dark", "pierre-light"],
-			langs: ["text"],
-			preferredHighlighter: "shiki-js",
-		});
+		await waitFor(() => expect(mocks.primeDiffHighlightCache).toHaveBeenCalledWith(fileDiff));
 		expect(mocks.providerProps?.poolOptions.poolSize).toBe(2);
 		expect(mocks.providerProps?.poolOptions.totalASTLRUCacheSize).toBe(120);
 		expect(mocks.providerProps?.highlighterOptions.langs).toEqual(["text"]);
-		expect(mocks.providerProps?.highlighterOptions.theme).toEqual({
-			dark: "pierre-dark",
-			light: "pierre-light",
+		expect(mocks.providerProps?.highlighterOptions.theme).toBe("pierre-light");
+		await act(async () =>
+			theme.setAppearance({ ...theme.appearance(), themeId: "kilo", shiki: "github-light" }),
+		);
+		await waitFor(() => {
+			expect(mocks.setRenderOptions).toHaveBeenLastCalledWith({ theme: "github-light" });
 		});
 	});
 });

@@ -279,7 +279,7 @@ describe("SdkProvider + useSdk", () => {
 	it("exposes the host-provided shell delegates on the SDK", async () => {
 		const system = makeSystem();
 		const sdk = system.getSdk("demo");
-		expect(sdk.theme.peek()).toBe("light");
+		expect(sdk.theme.appearance().mode).toBe("light");
 		await expect(
 			sdk.notifications.show({ type: "info", title: "Hi", message: "There" }),
 		).resolves.toEqual({ delivered: true });

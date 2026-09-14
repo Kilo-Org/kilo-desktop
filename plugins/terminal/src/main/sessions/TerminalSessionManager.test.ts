@@ -120,7 +120,7 @@ async function setup(
 }
 
 describe("TerminalSessionManager", () => {
-	it("sends a snapshot before live output and reconnects to one main-owned PTY", async () => {
+	it("sends a snapshot before live output and reconnects without cwd to one main-owned PTY", async () => {
 		const { args, manager, processes, spawn } = await setup();
 		const first = new FakePort();
 		await manager.attach(first, args);
@@ -128,16 +128,45 @@ describe("TerminalSessionManager", () => {
 		expect(first.messages[1]).toEqual({ type: "status", status: "running" });
 		processes[0]!.emitData("hello\r\n");
 		expect(first.messages[2]).toEqual({ type: "output", data: "hello\r\n" });
+		first.close();
 
+		const reconnectArgs = { ...args };
+		delete reconnectArgs.cwd;
 		const reconnect = new FakePort();
-		await manager.attach(reconnect, args);
+		await manager.attach(reconnect, reconnectArgs);
 		expect(reconnect.messages[0]).toMatchObject({
 			type: "snapshot",
 			status: "running",
+			cwd: "/workspace",
 			history: "hello\r\n",
 		});
 		expect(spawn).toHaveBeenCalledOnce();
+		expect(processes[0]!.kills).toEqual([]);
 		await manager.dispose();
+	});
+
+	it("starts new terminals at home without cwd and still allows explicit workspace replacement", async () => {
+		const { args, manager, processes, spawn } = await setup();
+		try {
+			const homeArgs = { ...args };
+			delete homeArgs.cwd;
+			await manager.attach(new FakePort(), homeArgs);
+			expect(spawn).toHaveBeenLastCalledWith(expect.objectContaining({ cwd: "/home/test-user" }));
+			processes[0]!.emitData("old workspace output\r\n");
+
+			const replacement = new FakePort();
+			await manager.attach(replacement, args);
+			expect(spawn).toHaveBeenCalledTimes(2);
+			expect(processes[0]!.kills).toEqual(["SIGTERM", "SIGKILL"]);
+			expect(spawn).toHaveBeenLastCalledWith(expect.objectContaining({ cwd: "/workspace" }));
+			expect(replacement.messages[0]).toMatchObject({
+				type: "snapshot",
+				cwd: "/workspace",
+				history: "",
+			});
+		} finally {
+			await manager.dispose();
+		}
 	});
 
 	it("routes input, resize, clear, restart, and exit state", async () => {

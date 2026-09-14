@@ -6,7 +6,7 @@ import type { FileTreeBatchOperation, FileTreeSortComparator, GitStatusEntry } f
 import { FolderIcon, LoaderCircleIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import type { ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import {
@@ -41,6 +41,7 @@ const EMPTY_PATHS: readonly string[] = [];
 const EMPTY_GIT_STATUS: readonly GitStatusEntry[] = [];
 
 interface GitDiffSidebarProps {
+	readonly appearance: ThemeAppearance;
 	readonly loading: boolean;
 	readonly workspaceDirectory: string;
 	readonly workspaceFolders: readonly {
@@ -57,6 +58,7 @@ interface GitDiffSidebarProps {
 
 /** Sidebar with the folder switcher, search, and the changed-files tree. Relies on the shell-level `TooltipProvider`. */
 export function GitDiffSidebar({
+	appearance,
 	loading,
 	workspaceDirectory,
 	workspaceFolders,
@@ -67,7 +69,6 @@ export function GitDiffSidebar({
 	treePlaceholder,
 	viewerRef,
 }: GitDiffSidebarProps) {
-	const sdk = useSdk("git");
 	const sourceRef = useRef<GitDiffTreeSource | null>(source);
 	const previousSourceRef = useRef<GitDiffTreeSource | null>(source);
 	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
@@ -143,29 +144,19 @@ export function GitDiffSidebar({
 	}, [model, source]);
 
 	useEffect(() => {
-		// resolveTheme is async, so a rapid theme flip can resolve out of
-		// order and leave a stale tree style applied last. Bumping a
-		// generation per event (and on cleanup) makes every non-latest
-		// resolve a no-op.
-		let generation = 0;
-		const unsubscribe = sdk.theme.subscribe((theme) => {
-			const currentGeneration = ++generation;
-			void resolveTheme(theme === "dark" ? "pierre-dark" : "pierre-light").then(
-				(resolved) => {
-					if (currentGeneration !== generation) return;
-					setTreeStyles(themeToTreeStyles(resolved) as CSSProperties);
-				},
-				() => {
-					if (currentGeneration !== generation) return;
-					setTreeStyles({ colorScheme: theme });
-				},
-			);
-		});
+		let active = true;
+		void resolveTheme(appearance.shiki).then(
+			(resolved) => {
+				if (active) setTreeStyles(themeToTreeStyles(resolved) as CSSProperties);
+			},
+			() => {
+				if (active) setTreeStyles({ colorScheme: appearance.mode });
+			},
+		);
 		return () => {
-			generation++;
-			unsubscribe();
+			active = false;
 		};
-	}, [sdk]);
+	}, [appearance.shiki, appearance.mode]);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-qa-id="git-diff-sidebar">

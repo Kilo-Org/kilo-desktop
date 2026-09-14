@@ -6,10 +6,15 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { create as createTar } from "tar";
 
+import {
+	NOTEBOOK_THEME_MESSAGE_TYPE,
+	NOTEBOOK_THEME_READY_MESSAGE_TYPE,
+} from "../../contracts/notebook-theme.js";
 import { NTERACT_RELEASE } from "../artifacts.js";
 import {
 	AGENTIC_EMBED_CHROME_CSS,
 	AGENTIC_EMBED_CHROME_STYLE_ATTR,
+	AGENTIC_EMBED_THEME_SCRIPT_ATTR,
 	injectAgenticEmbedChromeHtml,
 	NTERACT_LICENSE_FILE,
 	NOTEBOOK_STAGE_MANIFEST,
@@ -274,8 +279,9 @@ describe("injectAgenticEmbedChromeHtml", () => {
 		const html = "<html><head><title>n</title></head><body></body></html>";
 		const once = injectAgenticEmbedChromeHtml(html);
 		expect(once).toContain(
-			`<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>${AGENTIC_EMBED_CHROME_CSS}</style></head>`,
+			`<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>${AGENTIC_EMBED_CHROME_CSS}</style>`,
 		);
+		expect(once).toContain(`<script ${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>`);
 		expect(injectAgenticEmbedChromeHtml(once)).toBe(once);
 	});
 
@@ -283,8 +289,21 @@ describe("injectAgenticEmbedChromeHtml", () => {
 		const stale = `<html><head><style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>old{}</style></head><body></body></html>`;
 		const refreshed = injectAgenticEmbedChromeHtml(stale);
 		expect(refreshed).toContain(AGENTIC_EMBED_CHROME_CSS);
+		expect(refreshed).toContain(`<script ${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>`);
 		expect(refreshed).not.toContain("old{}");
 		expect(injectAgenticEmbedChromeHtml(refreshed)).toBe(refreshed);
+	});
+
+	it("does not hardcode a host palette onto --background", () => {
+		expect(AGENTIC_EMBED_CHROME_CSS).not.toContain("--background");
+		expect(AGENTIC_EMBED_CHROME_CSS).toContain('[data-testid="notebook-rail"]');
+	});
+
+	it("injects a parent-origin theme bridge", () => {
+		const html = injectAgenticEmbedChromeHtml("<html><head></head><body></body></html>");
+		expect(html).toContain(NOTEBOOK_THEME_MESSAGE_TYPE);
+		expect(html).toContain(NOTEBOOK_THEME_READY_MESSAGE_TYPE);
+		expect(html).toContain("nteract-parent-origin");
 	});
 
 	it("rejects HTML without a head close tag", () => {

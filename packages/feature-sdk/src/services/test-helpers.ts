@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { defineMethod } from "../channel-map.js";
+import type { ThemeAppearance } from "../types/sdk.js";
 import { CommandRegistry } from "./command-registry.js";
 import { ContributionRegistry } from "./contribution-registry.js";
 import { FeatureRouter } from "./feature-router.js";
@@ -22,6 +23,12 @@ export const testChannels = {
 
 export function makeServices(featureRouter?: FeatureRouter) {
 	const router = featureRouter ?? new FeatureRouter();
+	const appearance: ThemeAppearance = {
+		mode: "light",
+		themeId: "anaconda",
+		terminal: null,
+		shiki: "pierre-light",
+	};
 	const shellDelegates: ShellDelegates = {
 		notifications: {
 			show: async () => ({ delivered: true }),
@@ -30,10 +37,10 @@ export function makeServices(featureRouter?: FeatureRouter) {
 		telemetry: { track: async () => {} },
 		theme: {
 			subscribe: (fn) => {
-				fn("light");
+				fn();
 				return noop;
 			},
-			peek: () => "light",
+			appearance: () => appearance,
 		},
 		auth: {
 			subscribe: (fn) => {

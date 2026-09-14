@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SquareTerminal } from "lucide-react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import type { ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
 
-import { TERMINAL_PROTOCOL_VERSION, type TerminalService } from "../contracts/session.js";
+import {
+	TERMINAL_PROTOCOL_VERSION,
+	type TerminalIdentity,
+	type TerminalService,
+} from "../contracts/session.js";
 import {
 	terminalFrameSrcFor,
 	terminalThemeFor,
@@ -16,14 +21,18 @@ const INITIAL_COLS = 120;
 const INITIAL_ROWS = 30;
 const TERMINAL_SESSION_METADATA_KEY = "terminalSessionId";
 
-function terminalThemeFromApp(mode: "dark" | "light") {
+function terminalThemeFromApp(appearance: ThemeAppearance) {
 	const styles = getComputedStyle(document.documentElement);
 	const scrollbarThumb = styles.getPropertyValue("--app-scrollbar-thumb").trim();
 	const scrollbarThumbHover = styles.getPropertyValue("--app-scrollbar-thumb-hover").trim();
-	return terminalThemeFor(mode, {
-		...(scrollbarThumb ? { scrollbarThumb } : {}),
-		...(scrollbarThumbHover ? { scrollbarThumbHover } : {}),
-	});
+	return terminalThemeFor(
+		appearance.mode,
+		{
+			...(scrollbarThumb ? { scrollbarThumb } : {}),
+			...(scrollbarThumbHover ? { scrollbarThumbHover } : {}),
+		},
+		appearance.terminal,
+	);
 }
 
 export interface TerminalViewProps {
@@ -44,7 +53,8 @@ export function TerminalView({
 }: TerminalViewProps) {
 	const sdk = useSdk<TerminalService>("terminal");
 	const frameRef = useRef<HTMLIFrameElement>(null);
-	const connectedWindowRef = useRef<Window | null>(null);
+	const connectedIdentityRef = useRef<TerminalIdentity | null>(null);
+	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
 	const primaryWorkspace = workspaceFolders?.find(({ isPrimary }) => isPrimary)?.path;
 	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
 	const ordinal = panel
@@ -52,6 +62,14 @@ export function TerminalView({
 		.find((tab) => tab.instanceId === instanceId)?.ordinal;
 	const defaultLabel = ordinal ? `Terminal ${String(ordinal)}` : title;
 	const terminalSessionId = metadata?.[TERMINAL_SESSION_METADATA_KEY] ?? sessionId;
+	// ponytail: Ghostty 0.4 cannot repaint ANSI palettes. Reconnect to the same
+	// PTY and replay its capped history; scroll/selection reset until Ghostty supports live themes.
+	const frameKey = JSON.stringify([
+		terminalSessionId,
+		instanceId,
+		appearance.mode,
+		appearance.terminal,
+	]);
 	const frameSrc = useMemo(
 		() =>
 			terminalFrameSrcFor(
@@ -111,11 +129,14 @@ export function TerminalView({
 			}
 			if (!frameWindow || transferred) return;
 			try {
+				const reconnecting =
+					connectedIdentityRef.current?.sessionId === terminalSessionId &&
+					connectedIdentityRef.current.terminalId === instanceId;
 				port = sdk.ports.open<MessagePort>("session", {
 					protocolVersion: TERMINAL_PROTOCOL_VERSION,
 					sessionId: terminalSessionId,
 					terminalId: instanceId,
-					...(primaryWorkspace ? { cwd: primaryWorkspace } : {}),
+					...(!reconnecting && primaryWorkspace ? { cwd: primaryWorkspace } : {}),
 					cols: INITIAL_COLS,
 					rows: INITIAL_ROWS,
 					initialLabel: defaultLabel,
@@ -124,13 +145,13 @@ export function TerminalView({
 					{
 						type: "terminal:connect",
 						protocolVersion: TERMINAL_PROTOCOL_VERSION,
-						theme: terminalThemeFromApp(sdk.theme.peek()),
+						theme: terminalThemeFromApp(sdk.theme.appearance()),
 					},
 					frameOrigin,
 					[port],
 				);
 				transferred = true;
-				connectedWindowRef.current = frameWindow;
+				connectedIdentityRef.current = { sessionId: terminalSessionId, terminalId: instanceId };
 				setConnectionError(null);
 			} catch (error) {
 				port?.close();
@@ -147,6 +168,7 @@ export function TerminalView({
 	}, [
 		defaultLabel,
 		frameSrc,
+		frameKey,
 		instanceId,
 		panel,
 		primaryWorkspace,
@@ -154,26 +176,6 @@ export function TerminalView({
 		sessionId,
 		terminalSessionId,
 	]);
-
-	useEffect(() => {
-		if (!frameSrc) return;
-		const frameUrl = new URL(frameSrc);
-		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
-		const unsubscribeTheme = sdk.theme.subscribe((mode) => {
-			connectedWindowRef.current?.postMessage(
-				{
-					type: "terminal:theme",
-					protocolVersion: TERMINAL_PROTOCOL_VERSION,
-					theme: terminalThemeFromApp(mode),
-				},
-				frameOrigin,
-			);
-		});
-		return () => {
-			unsubscribeTheme();
-			connectedWindowRef.current = null;
-		};
-	}, [frameSrc, sdk]);
 
 	if (!frameSrc) {
 		return (
@@ -197,6 +199,7 @@ export function TerminalView({
 	}
 	return (
 		<iframe
+			key={frameKey}
 			ref={frameRef}
 			src={frameSrc}
 			title="Terminal"

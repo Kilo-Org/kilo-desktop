@@ -1,9 +1,13 @@
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import {
+	createFakeFeatureSystem,
+	createFakeSdk,
+	createFakeTheme,
+} from "@anaconda-agentic-desktop/testing";
 
 import {
 	NOTEBOOK_DIRTY_CHANGED_EVENT,
@@ -13,6 +17,10 @@ import {
 } from "../../contracts/schemas.js";
 import type { ChatRightPanelCapability } from "./notebook-webmcp-tools.js";
 
+import {
+	NOTEBOOK_THEME_MESSAGE_TYPE,
+	NOTEBOOK_THEME_READY_MESSAGE_TYPE,
+} from "./notebook-theme.js";
 import {
 	NotebookView,
 	notebookHostConnectionArgs,
@@ -33,6 +41,7 @@ function renderView(
 		panel?: Partial<ChatRightPanelCapability>;
 		save?: NotebookService["save"];
 		setDefaultSaveDirectory?: NotebookService["setDefaultSaveDirectory"];
+		theme?: ReturnType<typeof createFakeTheme>;
 	} = {},
 ) {
 	const save = options.save ?? (async () => ({ outcome: "saved" as const }));
@@ -40,6 +49,7 @@ function renderView(
 	const sdk = createFakeSdk({
 		featureId: "notebook",
 		channels: notebookContract,
+		...(options.theme ? { theme: options.theme } : {}),
 		handlers: {
 			status: async () => ({
 				availability: { status: "unavailable" as const },
@@ -252,6 +262,64 @@ describe("NotebookView", () => {
 		expect(save).toHaveBeenCalledWith({ notebookId });
 		expect(NOTEBOOK_DIRTY_CHANGED_EVENT).toBe("notebook.dirty-changed");
 		expect(NOTEBOOK_TITLE_CHANGED_EVENT).toBe("notebook.title-changed");
+	});
+
+	it("pushes the host appearance into the framed notebook", async () => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "https://notebook.test");
+		document.documentElement.style.setProperty("--background", "#111111");
+		document.documentElement.style.setProperty("--foreground", "#fafafa");
+		const theme = createFakeTheme({
+			mode: "dark",
+			themeId: "kilo",
+			terminal: null,
+			shiki: "github-dark",
+		});
+		renderView({}, { theme });
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="notebook-frame"]');
+		if (!frame?.contentWindow) throw new Error("Expected notebook iframe window");
+		const postMessage = vi
+			.spyOn(frame.contentWindow, "postMessage")
+			.mockImplementation(() => undefined);
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				origin: "https://notebook.test",
+				source: frame.contentWindow,
+				data: { type: NOTEBOOK_THEME_READY_MESSAGE_TYPE },
+			}),
+		);
+		await vi.waitFor(() => expect(postMessage).toHaveBeenCalled());
+		expect(postMessage.mock.calls.at(-1)?.[0]).toEqual({
+			type: NOTEBOOK_THEME_MESSAGE_TYPE,
+			mode: "dark",
+			tokens: expect.objectContaining({
+				background: "rgb(17, 17, 17)",
+				foreground: "rgb(250, 250, 250)",
+			}),
+		});
+		expect(postMessage.mock.calls.at(-1)?.[1]).toBe("https://notebook.test");
+
+		document.documentElement.style.setProperty("--background", "#fafaf7");
+		document.documentElement.style.setProperty("--foreground", "#1f1f1f");
+		await act(async () =>
+			theme.setAppearance({
+				mode: "light",
+				themeId: "kilo",
+				terminal: null,
+				shiki: "github-light",
+			}),
+		);
+		await vi.waitFor(() =>
+			expect(postMessage.mock.calls.at(-1)?.[0]).toEqual({
+				type: NOTEBOOK_THEME_MESSAGE_TYPE,
+				mode: "light",
+				tokens: expect.objectContaining({
+					background: "rgb(250, 250, 247)",
+					foreground: "rgb(31, 31, 31)",
+				}),
+			}),
+		);
+		document.documentElement.style.removeProperty("--background");
+		document.documentElement.style.removeProperty("--foreground");
 	});
 
 	it("keeps the notebook host's default save directory synchronized with its workspace", async () => {

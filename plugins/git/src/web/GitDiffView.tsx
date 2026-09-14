@@ -1,7 +1,7 @@
 import type { CodeViewItem } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
 import { GitCompareIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocalStorage } from "react-use";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
@@ -40,11 +40,6 @@ export interface GitDiffViewProps {
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
-const PIERRE_DIFF_THEME = {
-	dark: "pierre-dark" as const,
-	light: "pierre-light" as const,
-};
-
 // 1px gap lets adjacent containers' hairline separators overlap into a
 // single line between files (diffshub-style); the hairlines themselves are
 // drawn by the diffs-container box-shadow on the CodeView below. No top
@@ -53,8 +48,8 @@ const PIERRE_DIFF_THEME = {
 const DIFF_VIEW_LAYOUT = { paddingTop: 0, gap: 1, paddingBottom: 8 } as const;
 const DIFF_VIEW_UNSAFE_CSS = `
 	:host {
-		--diffs-light-bg: var(--background);
-		--diffs-dark-bg: var(--background);
+		--diffs-bg: var(--background);
+		background-color: var(--background);
 	}
 `;
 
@@ -159,7 +154,8 @@ function GitDiffTabContent({
 	// revision across every virtualized item on any future added field.
 	const { diffIndicators, diffStyle, showBackgrounds, showLineNumbers, wrapLines } =
 		useDiffOptions()[0];
-	const [themeType, setThemeType] = useState<"light" | "dark">(() => sdk.theme.peek());
+	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
+	const { mode: themeType, shiki } = appearance;
 	// File-tree width persistence: read once at mount, write on user resize.
 	// Multiple Changes tabs may be mounted at once and react-use does not
 	// sync same-tab instances; each tab reads at mount and its writes blindly
@@ -195,14 +191,6 @@ function GitDiffTabContent({
 		viewerRef,
 	});
 
-	useEffect(
-		() =>
-			sdk.theme.subscribe((theme) => {
-				setThemeType(theme === "dark" ? "dark" : "light");
-			}),
-		[sdk],
-	);
-
 	// Load-bearing memo, not cosmetics: a fresh loadDiffFiles identity per
 	// render would make `options` new every render and churn CodeView's
 	// options revision across every virtualized item.
@@ -213,7 +201,7 @@ function GitDiffTabContent({
 
 	const options = useMemo(
 		() => ({
-			theme: PIERRE_DIFF_THEME,
+			theme: shiki,
 			themeType,
 			diffIndicators,
 			diffStyle,
@@ -233,6 +221,7 @@ function GitDiffTabContent({
 			showLineNumbers,
 			themeType,
 			wrapLines,
+			shiki,
 		],
 	);
 
@@ -424,6 +413,7 @@ function GitDiffTabContent({
 					width={treeCollapsed ? 0 : filesWidth}
 				>
 					<GitDiffSidebar
+						appearance={appearance}
 						loading={loading}
 						workspaceDirectory={effectiveDirectory}
 						workspaceFolders={folders}

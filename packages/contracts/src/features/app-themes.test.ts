@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	APP_THEMES,
 	DEFAULT_APP_THEME_PREFERENCES,
+	getThemeAppearance,
 	getThemeChrome,
 	getThemeVariant,
 	normalizeAppThemePreferences,
@@ -37,7 +38,7 @@ describe("app theme presets", () => {
 		expect(themeCss(anaconda)).toBe("");
 		expect(themeCss(DEFAULT_APP_THEME_PREFERENCES)).toContain("--background:#111111;");
 		expect(themeCss({ themeId: "bad;}html{" })).toBe(themeCss(DEFAULT_APP_THEME_PREFERENCES));
-		expect(getThemeVariant("anaconda", "light")).toBeNull();
+		expect(getThemeVariant("anaconda", "light")?.tokens).toBeNull();
 		expect(getThemeVariant("unknown", "dark")).toBe(getThemeVariant("kilo", "dark"));
 		expect(getThemeChrome("unknown")).toEqual(getThemeChrome("kilo"));
 	});
@@ -50,6 +51,35 @@ describe("app theme presets", () => {
 		expect(getThemeChrome("anaconda")).toEqual({
 			light: { background: "#ffffff", foreground: "#090b0c" },
 			dark: { background: "#101314", foreground: "#f9fbfb" },
+		});
+	});
+
+	it("projects Kilo and Anaconda into complete surface appearances", () => {
+		const kiloLight = getThemeAppearance({ themeId: "kilo" }, "light");
+		const kiloDark = getThemeAppearance({ themeId: "kilo" }, "dark");
+		expect(kiloLight.shiki).toBe("github-light");
+		expect(kiloDark.shiki).toBe("github-dark");
+		expect(Object.keys(kiloDark.terminal ?? {})).toHaveLength(22);
+		expect(kiloDark.terminal).toMatchObject({
+			black: "#303030",
+			red: "#ffe4e6",
+			brightWhite: "#fafafa",
+		});
+		expect(themeCss({ themeId: "kilo" })).toContain("--chat-ambient-glow:#f7f586;");
+		const anacondaLight = getThemeAppearance({ themeId: "anaconda" }, "light");
+		const anacondaDark = getThemeAppearance({ themeId: "anaconda" }, "dark");
+		expect(anacondaLight.shiki).toBe("pierre-light");
+		expect(anacondaDark.shiki).toBe("pierre-dark");
+		expect(Object.keys(anacondaDark.terminal ?? {})).toHaveLength(22);
+		expect(anacondaLight.terminal).toMatchObject({
+			background: "#ffffff",
+			foreground: "#090b0c",
+			green: "#07ca4a",
+		});
+		expect(anacondaDark.terminal).toMatchObject({
+			background: "#101314",
+			foreground: "#f9fbfb",
+			green: "#96f778",
 		});
 	});
 });

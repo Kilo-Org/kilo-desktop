@@ -1,13 +1,12 @@
-import { preloadHighlighter } from "@pierre/diffs";
 import {
 	WorkerPoolContextProvider,
+	useWorkerPool,
 	type WorkerInitializationRenderOptions,
 	type WorkerPoolOptions,
 } from "@pierre/diffs/react";
 import PierreDiffWorker from "@pierre/diffs/worker/worker.js?worker";
-import { useEffect, type ReactNode } from "react";
-
-import { PIERRE_DIFF_THEME } from "./pierre-diff.js";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 const WORKER_POOL_OPTIONS = {
 	poolSize: 2,
@@ -17,30 +16,31 @@ const WORKER_POOL_OPTIONS = {
 
 const WORKER_HIGHLIGHTER_OPTIONS = {
 	langs: ["text"],
-	theme: PIERRE_DIFF_THEME,
 	preferredHighlighter: "shiki-js",
 	tokenizeMaxLineLength: 1_000,
 } satisfies WorkerInitializationRenderOptions;
 
-const preloadChatDiffHighlighter = () =>
-	preloadHighlighter({
-		themes: [PIERRE_DIFF_THEME.dark, PIERRE_DIFF_THEME.light],
-		langs: ["text"],
-		preferredHighlighter: "shiki-js",
-	});
+function SyncWorkerTheme({ theme }: { theme: string }) {
+	const workerPool = useWorkerPool();
+	useEffect(() => {
+		// Provider options are initialization-only; update the existing shared pool.
+		void workerPool?.setRenderOptions({ theme }).catch((error: unknown) => {
+			console.warn("Could not update syntax highlighting theme.", error);
+		});
+	}, [theme, workerPool]);
+	return null;
+}
 
 export function PierreDiffProvider({ children }: { children: ReactNode }) {
-	useEffect(() => {
-		void preloadChatDiffHighlighter().catch((error: unknown) => {
-			console.warn("Could not preload chat diff highlighting.", error);
-		});
-	}, []);
+	const sdk = useSdk("kilo-ui");
+	const { shiki } = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
 
 	return (
 		<WorkerPoolContextProvider
 			poolOptions={WORKER_POOL_OPTIONS}
-			highlighterOptions={WORKER_HIGHLIGHTER_OPTIONS}
+			highlighterOptions={{ ...WORKER_HIGHLIGHTER_OPTIONS, theme: shiki }}
 		>
+			<SyncWorkerTheme theme={shiki} />
 			{children}
 		</WorkerPoolContextProvider>
 	);

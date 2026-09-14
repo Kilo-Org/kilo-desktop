@@ -1,10 +1,6 @@
 import { FitAddon, Terminal, init } from "ghostty-web";
 
-import {
-	terminalFrameConnectSchema,
-	terminalFrameThemeSchema,
-	type TerminalTheme,
-} from "../contracts/frame.js";
+import { terminalFrameConnectSchema, type TerminalTheme } from "../contracts/frame.js";
 import {
 	TERMINAL_PROTOCOL_VERSION,
 	terminalServerMessageSchema,
@@ -105,11 +101,6 @@ export class TerminalFrameController {
 
 	readonly #onParentMessage = (event: MessageEvent<unknown>) => {
 		if (event.source !== this.#window.parent || event.origin !== this.#trustedParentOrigin) return;
-		const themeMessage = terminalFrameThemeSchema.safeParse(event.data);
-		if (themeMessage.success && this.#connected) {
-			this.#applyTheme(themeMessage.data.theme);
-			return;
-		}
 		const connectMessage = terminalFrameConnectSchema.safeParse(event.data);
 		if (!connectMessage.success || this.#connected || event.ports.length !== 1) return;
 		this.#connected = true;
@@ -138,7 +129,7 @@ export class TerminalFrameController {
 			cursorStyle: "bar",
 			fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
 			fontSize: 13,
-			theme,
+			theme: Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)),
 			scrollback: 5_000,
 		});
 		// ghostty-web 0.4 paints its indicator over the last terminal cells and has
@@ -174,10 +165,6 @@ export class TerminalFrameController {
 			"--terminal-scrollbar-thumb-hover",
 			theme.scrollbarThumbHover,
 		);
-		if (this.#terminal) {
-			this.#terminal.options.theme = theme;
-			this.#scheduleGutterBackgroundSync();
-		}
 	}
 
 	#syncGutterBackground(): void {

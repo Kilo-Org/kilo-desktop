@@ -90,7 +90,7 @@ export function AppearanceSettings() {
 						<FieldDescription>
 							{appTheme.themeId === "kilo"
 								? "Kilo dark colors with an unofficial light companion."
-								: "Anaconda's standard application colors."}
+								: "One palette for the app, terminal, and code."}
 						</FieldDescription>
 					</FieldContent>
 					<Select

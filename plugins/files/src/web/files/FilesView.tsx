@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -158,7 +158,7 @@ export function FilesView({
 	const [notebookOpening, setNotebookOpening] = useState(false);
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
-	const [theme, setTheme] = useState<"dark" | "light">(() => sdk.theme.peek());
+	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
 	const editorRef = useRef<Editor<"file", undefined, undefined> | null>(null);
 	const readFile = useCallback<FilesServiceContract["read"]>(
 		async ({ workspaceDirectory: requestedDirectory, relativePath }) =>
@@ -428,8 +428,6 @@ export function FilesView({
 		workspaceFolders,
 	]);
 
-	useEffect(() => sdk.theme.subscribe(setTheme), [sdk]);
-
 	useEffect(() => {
 		if (!attachedEditor || file?.kind !== "text" || !file.revision || revealLine === undefined)
 			return;
@@ -620,6 +618,7 @@ export function FilesView({
 						<aside className="files-explorer-pane relative flex min-h-0 min-w-0 flex-1">
 							<FilesTree
 								activePath={selectedPath}
+								appearance={appearance}
 								error={listError}
 								gitStatusEntries={gitStatusQuery.data?.entries ?? null}
 								loading={listLoading}
@@ -634,7 +633,6 @@ export function FilesView({
 									requestAction(() => selectWorkspaceFolder(directory))
 								}
 								paths={paths}
-								sdk={sdk}
 								selectionSyncVersion={selectionSyncVersion}
 								truncated={listTruncated}
 								workspaceDirectory={activeWorkspaceDirectory}
@@ -708,7 +706,8 @@ export function FilesView({
 										relativePath={selectedPath}
 										revealLine={revealLine}
 										reloadVersion={reloadVersion}
-										theme={theme}
+										shiki={appearance.shiki}
+										theme={appearance.mode}
 									/>
 								)
 							) : file?.kind === "image" && imageSrc ? (

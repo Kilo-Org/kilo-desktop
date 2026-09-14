@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
@@ -19,6 +19,11 @@ import {
 	notebookIdFromTab,
 	notebookOpenState,
 } from "./notebook-tabs.js";
+import {
+	NOTEBOOK_THEME_READY_MESSAGE_TYPE,
+	notebookThemeMessage,
+	notebookThemeTokensFromDocument,
+} from "./notebook-theme.js";
 import type { ChatRightPanelCapabilities } from "./notebook-webmcp-tools.js";
 
 /**
@@ -120,6 +125,7 @@ export function NotebookView({
 	metadata,
 }: NotebookViewProps) {
 	const sdk = useSdk<NotebookService>("notebook");
+	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
 	const fileOpenState = notebookOpenState(metadata);
 	const fileOpenError = metadata?.[NOTEBOOK_OPEN_ERROR_METADATA_KEY];
 	const notebookId = notebookIdFromTab(instanceId, metadata);
@@ -259,6 +265,29 @@ export function NotebookView({
 			if (!transferred) port?.close();
 		};
 	}, [frameSrc, instanceId, metadata, notebookId, sdk, sessionId, title]);
+
+	useEffect(() => {
+		if (!frameSrc) return;
+		const frameUrl = new URL(frameSrc);
+		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
+		const postTheme = (contentWindow: Window) => {
+			contentWindow.postMessage(
+				notebookThemeMessage(appearance, notebookThemeTokensFromDocument()),
+				frameOrigin,
+			);
+		};
+		const onMessage = (event: MessageEvent<unknown>) => {
+			const frameWindow = frameRef.current?.contentWindow;
+			if (event.source !== frameWindow || event.origin !== frameOrigin || !frameWindow) return;
+			const message = event.data as { type?: unknown } | null;
+			if (message?.type !== NOTEBOOK_THEME_READY_MESSAGE_TYPE) return;
+			postTheme(frameWindow);
+		};
+		window.addEventListener("message", onMessage);
+		const frameWindow = frameRef.current?.contentWindow;
+		if (frameWindow) postTheme(frameWindow);
+		return () => window.removeEventListener("message", onMessage);
+	}, [appearance, frameSrc]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">

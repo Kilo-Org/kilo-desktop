@@ -1,4 +1,5 @@
 import { themeChromeColors, type ResolvedColorScheme } from "./theme-tokens.js";
+import type { ThemeAppearance, TerminalPalette } from "@anaconda-agentic-desktop/feature-sdk";
 
 export { APP_THEME_STORAGE_KEY } from "./theme-tokens.js";
 
@@ -14,9 +15,47 @@ type RolePalette = {
 	primary: string;
 	primaryForeground: string;
 	charts: readonly [string, string, string, string, string];
+	ansi: readonly [string, string, string, string, string, string, string, string];
 };
 
-function variant(palette: RolePalette, mode: ResolvedColorScheme) {
+type ShikiTheme = "github-dark" | "github-light" | "pierre-dark" | "pierre-light";
+
+const ansiRoles = [
+	"black",
+	"red",
+	"green",
+	"yellow",
+	"blue",
+	"magenta",
+	"cyan",
+	"white",
+	"brightBlack",
+	"brightRed",
+	"brightGreen",
+	"brightYellow",
+	"brightBlue",
+	"brightMagenta",
+	"brightCyan",
+	"brightWhite",
+] as const satisfies readonly (keyof TerminalPalette)[];
+
+type TerminalRolePalette = Pick<RolePalette, "background" | "foreground" | "hover" | "ansi">;
+
+function terminalPalette(palette: TerminalRolePalette): TerminalPalette {
+	return {
+		background: palette.background,
+		foreground: palette.foreground,
+		cursor: palette.foreground,
+		cursorAccent: palette.background,
+		selectionBackground: palette.hover,
+		selectionForeground: palette.foreground,
+		...(Object.fromEntries(
+			[...palette.ansi, ...palette.ansi].map((color, index) => [ansiRoles[index], color]),
+		) as { [K in (typeof ansiRoles)[number]]: string }),
+	};
+}
+
+function variant(palette: RolePalette, mode: ResolvedColorScheme, shiki: ShikiTheme) {
 	const status =
 		mode === "light"
 			? { error: "#9f1239", info: "#1e40af", update: "#166534" }
@@ -63,10 +102,21 @@ function variant(palette: RolePalette, mode: ResolvedColorScheme) {
 			"update-surface": palette.surface,
 			"update-surface-hover": palette.hover,
 		},
+		terminal: terminalPalette(palette),
+		shiki,
 	};
 }
 
-export type ThemeVariant = ReturnType<typeof variant>;
+/** CSS-owned preset: no token overrides, only a Ghostty-ready terminal palette. */
+function cssTheme(palette: TerminalRolePalette, shiki: ShikiTheme) {
+	return { tokens: null, terminal: terminalPalette(palette), shiki };
+}
+
+export type ThemeVariant = {
+	tokens: ReturnType<typeof variant>["tokens"] | null;
+	terminal: TerminalPalette | null;
+	shiki: ShikiTheme;
+};
 
 export interface AppTheme {
 	id: string;
@@ -92,8 +142,19 @@ export const APP_THEMES = [
 					primary: "#656300",
 					primaryForeground: "#ffffff",
 					charts: ["#2563eb", "#16a34a", "#d28100", "#9333ea", "#009689"],
+					ansi: [
+						"#1f1f1f",
+						"#c2415d",
+						"#3f7f5b",
+						"#b66a14",
+						"#2563eb",
+						"#9333ea",
+						"#009689",
+						"#f7f7ee",
+					],
 				},
 				"light",
+				"github-light",
 			),
 			// Based on Kilo design v0.2.0, with neutral surfaces tuned for desktop.
 			dark: variant(
@@ -109,12 +170,65 @@ export const APP_THEMES = [
 					primary: "#f7f586",
 					primaryForeground: "#1f1f1f",
 					charts: ["#60a5fa", "#4ade80", "#f7f586", "#c084fc", "#00d4c2"],
+					ansi: [
+						"#303030",
+						"#ffe4e6",
+						"#bbf7d0",
+						"#f7f586",
+						"#bfdbfe",
+						"#e9d5ff",
+						"#99f6e4",
+						"#fafafa",
+					],
 				},
 				"dark",
+				"github-dark",
 			),
 		},
 	},
-	{ id: "anaconda", name: "Anaconda", variants: { light: null, dark: null } },
+	{
+		id: "anaconda",
+		name: "Anaconda",
+		variants: {
+			// Surfaces stay in `@anaconda/shadcn-theme` + globals.css; Ghostty needs hex.
+			light: cssTheme(
+				{
+					background: "#ffffff",
+					foreground: "#090b0c",
+					hover: "#f1f3f3",
+					ansi: [
+						"#090b0c",
+						"#e7000b",
+						"#07ca4a",
+						"#fe9a00",
+						"#155dfc",
+						"#9810fa",
+						"#0092b8",
+						"#f9fbfb",
+					],
+				},
+				"pierre-light",
+			),
+			dark: cssTheme(
+				{
+					background: "#101314",
+					foreground: "#f9fbfb",
+					hover: "#22292b",
+					ansi: [
+						"#22292b",
+						"#ff6467",
+						"#96f778",
+						"#a5f28d",
+						"#50a2ff",
+						"#c27aff",
+						"#00d3f3",
+						"#f9fbfb",
+					],
+				},
+				"pierre-dark",
+			),
+		},
+	},
 ] as const satisfies readonly AppTheme[];
 
 export interface AppThemePreferences {
@@ -151,11 +265,27 @@ export function themeCss(preferences: AppThemePreferences): string {
 				.map(([key, value]) => `--${key}:${value};`)
 				.join("");
 			// Limit wallpaper tint in Kilo dark; the vibrancy-off inline style still wins.
-			if (themeId === "kilo" && mode === "dark") declarations += "--shell-glass-opacity:96%;";
+			if (themeId === "kilo" && mode === "dark") {
+				declarations += "--shell-glass-opacity:96%;--chat-ambient-glow:#f7f586;";
+			}
 			if (!declarations) return "";
 			return `${mode === "light" ? "html:root" : 'html:root[data-theme="dark"]'}{${declarations}}`;
 		})
 		.join("");
+}
+
+export function getThemeAppearance(
+	preferences: AppThemePreferences,
+	mode: ResolvedColorScheme,
+): ThemeAppearance {
+	const { themeId } = normalizeAppThemePreferences(preferences);
+	const variant = getThemeVariant(themeId, mode);
+	return {
+		mode,
+		themeId,
+		terminal: variant?.terminal ?? null,
+		shiki: variant?.shiki ?? (mode === "light" ? "pierre-light" : "pierre-dark"),
+	};
 }
 
 export function getThemeChrome(themeId: string): {

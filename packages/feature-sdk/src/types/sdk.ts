@@ -379,18 +379,46 @@ export interface SdkTelemetry {
 	track(input: TelemetryData): Promise<void>;
 }
 
-/**
- * Effective theme, shell-owned.
- *
- * @example
- * sdk.theme.peek(); // "dark" | "light"
- * const unsub = sdk.theme.subscribe((t) => applyTheme(t)); // fires immediately
- */
+/** Full terminal palette supplied by a named theme. */
+export interface TerminalPalette {
+	background: string;
+	foreground: string;
+	cursor: string;
+	cursorAccent: string;
+	selectionBackground: string;
+	selectionForeground: string;
+	black: string;
+	red: string;
+	green: string;
+	yellow: string;
+	blue: string;
+	magenta: string;
+	cyan: string;
+	white: string;
+	brightBlack: string;
+	brightRed: string;
+	brightGreen: string;
+	brightYellow: string;
+	brightBlue: string;
+	brightMagenta: string;
+	brightCyan: string;
+	brightWhite: string;
+}
+
+export interface ThemeAppearance {
+	mode: "light" | "dark";
+	themeId: string;
+	/** Null preserves the terminal's built-in palette. */
+	terminal: TerminalPalette | null;
+	shiki: string;
+}
+
+/** Effective theme and appearance, shell-owned. */
 export interface SdkTheme {
-	/** Subscribe to theme changes. Fires synchronously with the current value. */
-	subscribe(fn: (theme: "dark" | "light") => void): () => void;
-	/** Read the current effective theme without subscribing. */
-	peek(): "dark" | "light";
+	/** Fires synchronously, then on appearance changes (even when mode is unchanged). */
+	subscribe(fn: () => void): () => void;
+	/** Stable snapshot until appearance changes; suitable for useSyncExternalStore. */
+	appearance(): ThemeAppearance;
 }
 
 /** Map of feature-flag keys to their evaluated values. */

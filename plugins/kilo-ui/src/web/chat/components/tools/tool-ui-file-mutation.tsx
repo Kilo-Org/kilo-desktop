@@ -6,7 +6,7 @@ import { FileDiff } from "@pierre/diffs/react";
 
 import {
 	parseChatPatchFiles,
-	PIERRE_DIFF_OPTIONS,
+	usePierreDiffOptions,
 	withChatDiffCacheKey,
 } from "../../pierre-diff.js";
 import { usePrimePierreDiffs } from "../../use-prime-pierre-diffs.js";
@@ -54,6 +54,7 @@ export const PierreDiffBody = ({
 	unifiedDiff?: string | undefined;
 	fileDiff: FileDiffMetadata | null;
 }) => {
+	const options = usePierreDiffOptions();
 	const patchFileDiffs = useMemo(
 		() => (unifiedDiff ? parsePatchFiles(unifiedDiff).flatMap((patch) => patch.files) : []),
 		[unifiedDiff],
@@ -68,7 +69,7 @@ export const PierreDiffBody = ({
 					<FileDiff
 						key={`${patchFileDiff.name}-${index}`}
 						fileDiff={patchFileDiff}
-						options={PIERRE_DIFF_OPTIONS}
+						options={options}
 					/>
 				))}
 			</div>
@@ -78,7 +79,7 @@ export const PierreDiffBody = ({
 	if (fileDiff) {
 		return (
 			<div className="overflow-hidden rounded-md border">
-				<FileDiff fileDiff={fileDiff} options={PIERRE_DIFF_OPTIONS} />
+				<FileDiff fileDiff={fileDiff} options={options} />
 			</div>
 		);
 	}

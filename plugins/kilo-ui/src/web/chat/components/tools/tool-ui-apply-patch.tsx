@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { FileDiff, PatchDiff } from "@pierre/diffs/react";
 
-import { parseChatPatchFiles, PIERRE_DIFF_OPTIONS } from "../../pierre-diff.js";
+import { parseChatPatchFiles, usePierreDiffOptions } from "../../pierre-diff.js";
 import { usePrimePierreDiffs } from "../../use-prime-pierre-diffs.js";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
 import { basename, getPatchInfo, str } from "./tool-ui-shared.js";
@@ -105,6 +105,7 @@ function claudeBlockToUnifiedDiff(block: PatchBlock): string {
 }
 
 export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status, toolCallId }) => {
+	const options = usePierreDiffOptions();
 	const patchText = str(args?.patchText);
 
 	const patchInfo = useMemo(() => getPatchInfo(patchText), [patchText]);
@@ -153,7 +154,7 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 						forceRow
 						detail={
 							<div className="overflow-hidden rounded-md border">
-								<FileDiff fileDiff={fileDiff} options={PIERRE_DIFF_OPTIONS} />
+								<FileDiff fileDiff={fileDiff} options={options} />
 							</div>
 						}
 					/>
@@ -178,11 +179,11 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 							<FileDiff
 								key={fileDiff.cacheKey ?? fileDiff.name}
 								fileDiff={fileDiff}
-								options={PIERRE_DIFF_OPTIONS}
+								options={options}
 							/>
 						))
 					) : (
-						<PatchDiff patch={unifiedPatch} options={PIERRE_DIFF_OPTIONS} />
+						<PatchDiff patch={unifiedPatch} options={options} />
 					)}
 				</div>
 			}

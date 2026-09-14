@@ -1,9 +1,15 @@
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import {
+	createFakeFeatureSystem,
+	createFakeSdk,
+	createFakeTheme,
+} from "@anaconda-agentic-desktop/testing";
+import type { SdkTheme, TerminalPalette } from "@anaconda-agentic-desktop/feature-sdk";
+import { terminalFrameConnectSchema } from "../contracts/frame.js";
 
 import {
 	TERMINAL_PROTOCOL_VERSION,
@@ -26,10 +32,7 @@ function renderView(
 	options: {
 		readonly openPort?: (featureId: string, channel: string, args?: unknown) => unknown;
 		readonly ordinal?: number | null;
-		readonly theme?: {
-			peek(): "dark" | "light";
-			subscribe(listener: (mode: "dark" | "light") => void): () => void;
-		};
+		readonly theme?: Partial<SdkTheme>;
 	} = {},
 ) {
 	const close = vi.fn(async () => undefined);
@@ -209,61 +212,85 @@ describe("TerminalView", () => {
 		);
 	});
 
-	it("keeps forwarding theme changes after workspace props change", async () => {
-		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
-		const themeListeners = new Set<(mode: "dark" | "light") => void>();
-		const theme = {
-			peek: () => "light" as const,
-			subscribe: (listener: (mode: "dark" | "light") => void) => {
-				listener("light");
-				themeListeners.add(listener);
-				return () => themeListeners.delete(listener);
-			},
-		};
-		const terminalPort = { close: vi.fn() } as unknown as MessagePort;
-		const view = renderView(
-			[{ path: "/workspace-one", isPrimary: true }],
-			{},
-			{
-				openPort: () => terminalPort,
-				theme,
-			},
-		);
-		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="terminal-frame"]');
-		if (!frame?.contentWindow) throw new Error("Expected terminal iframe window");
-		const postMessage = vi
-			.spyOn(frame.contentWindow, "postMessage")
-			.mockImplementation(() => undefined);
+	it.each([
+		{ sessionId: "chat-1", instanceId: "terminal-2" },
+		{ sessionId: "chat-2", instanceId: "terminal-1" },
+	])(
+		"reuses the PTY on a same-mode theme reconnect and uses the latest workspace for $sessionId/$instanceId",
+		async (identity) => {
+			vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
+			const theme = createFakeTheme();
+			const ansiRed = "#ff5555";
+			const terminalPort = { close: vi.fn() } as unknown as MessagePort;
+			const openPort = vi.fn(
+				(_featureId: string, _channel: string, _args?: unknown) => terminalPort,
+			);
+			const view = renderView(
+				[{ path: "/workspace-one", isPrimary: true }],
+				{},
+				{ openPort, theme },
+			);
+			function connectFrame() {
+				const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="terminal-frame"]');
+				if (!frame?.contentWindow) throw new Error("Expected terminal iframe window");
+				const postMessage = vi
+					.spyOn(frame.contentWindow, "postMessage")
+					.mockImplementation(() => undefined);
+				window.dispatchEvent(
+					new MessageEvent("message", {
+						origin: "https://terminal.test",
+						source: frame.contentWindow,
+						data: { type: "terminal:ready", protocolVersion: TERMINAL_PROTOCOL_VERSION },
+					}),
+				);
+				return {
+					frame,
+					connect: terminalFrameConnectSchema.parse(postMessage.mock.calls.at(-1)?.[0]),
+				};
+			}
+			function changeWorkspace(nextIdentity = { sessionId: "chat-1", instanceId: "terminal-1" }) {
+				view.rerender(
+					<SdkProvider system={view.system}>
+						<TerminalLifecycleProvider>
+							<TerminalView
+								{...nextIdentity}
+								title="Terminal 1"
+								workspaceFolders={[{ path: "/workspace-two", isPrimary: true }]}
+							/>
+						</TerminalLifecycleProvider>
+					</SdkProvider>,
+				);
+			}
+			const { frame } = connectFrame();
+			expect(openPort.mock.lastCall?.[2]).toMatchObject({ cwd: "/workspace-one" });
+			changeWorkspace();
+			expect(document.querySelector('[data-qa-id="terminal-frame"]')).toBe(frame);
+			await act(async () =>
+				theme.setAppearance({
+					...theme.appearance(),
+					themeId: "kilo",
+					terminal: { red: ansiRed } as TerminalPalette,
+					shiki: "github-light",
+				}),
+			);
+			const { frame: reconnectedFrame, connect } = connectFrame();
+			expect(reconnectedFrame).not.toBe(frame);
+			expect(connect.theme.red).toBe(ansiRed);
+			expect(openPort.mock.lastCall?.[2]).toMatchObject({
+				sessionId: "chat-1",
+				terminalId: "terminal-1",
+			});
+			expect(openPort.mock.lastCall?.[2]).not.toHaveProperty("cwd");
 
-		window.dispatchEvent(
-			new MessageEvent("message", {
-				origin: "https://terminal.test",
-				source: frame.contentWindow,
-				data: { type: "terminal:ready", protocolVersion: TERMINAL_PROTOCOL_VERSION },
-			}),
-		);
-		await vi.waitFor(() => expect(postMessage).toHaveBeenCalledOnce());
-		postMessage.mockClear();
-
-		view.rerender(
-			<SdkProvider system={view.system}>
-				<TerminalLifecycleProvider>
-					<TerminalView
-						sessionId="chat-1"
-						instanceId="terminal-1"
-						title="Terminal 1"
-						workspaceFolders={[{ path: "/workspace-two", isPrimary: true }]}
-					/>
-				</TerminalLifecycleProvider>
-			</SdkProvider>,
-		);
-		for (const listener of themeListeners) listener("dark");
-
-		expect(postMessage).toHaveBeenCalledWith(
-			expect.objectContaining({ type: "terminal:theme" }),
-			"https://terminal.test",
-		);
-	});
+			changeWorkspace(identity);
+			expect(connectFrame().frame).not.toBe(reconnectedFrame);
+			expect(openPort.mock.lastCall?.[2]).toMatchObject({
+				sessionId: identity.sessionId,
+				terminalId: identity.instanceId,
+				cwd: "/workspace-two",
+			});
+		},
+	);
 
 	it("shows a connection error when no host port transport is available", async () => {
 		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");

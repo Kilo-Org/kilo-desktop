@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
 
 import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
 
@@ -64,15 +66,20 @@ const renderActivity = (
 ) => {
 	runtime.message.parts = parts;
 	const indices = parts.map((_, index) => index);
+	const system = createFakeFeatureSystem({
+		sdks: { "kilo-ui": createFakeSdk({ featureId: "kilo-ui" }) },
+	});
 
 	return render(
-		<ActivityGroup group={{ indices }}>
-			<ActivitySubgroup group={{ indices }} kind={kind}>
-				{parts.map((part) => (
-					<Component key={part.toolCallId} {...part} />
-				))}
-			</ActivitySubgroup>
-		</ActivityGroup>,
+		<SdkProvider system={system}>
+			<ActivityGroup group={{ indices }}>
+				<ActivitySubgroup group={{ indices }} kind={kind}>
+					{parts.map((part) => (
+						<Component key={part.toolCallId} {...part} />
+					))}
+				</ActivitySubgroup>
+			</ActivityGroup>
+		</SdkProvider>,
 	);
 };
 

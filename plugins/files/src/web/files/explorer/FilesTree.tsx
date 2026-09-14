@@ -4,7 +4,7 @@ import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import {
@@ -32,7 +32,7 @@ export interface FilesWorkspaceFolder {
 }
 
 interface FilesTreeProps {
-	readonly sdk: SDK;
+	readonly appearance: ThemeAppearance;
 	readonly paths: readonly string[];
 	readonly loading: boolean;
 	readonly truncated: boolean;
@@ -48,7 +48,7 @@ interface FilesTreeProps {
 }
 
 export function FilesTree({
-	sdk,
+	appearance,
 	paths,
 	loading,
 	truncated,
@@ -140,16 +140,20 @@ export function FilesTree({
 		});
 	}, [activePath, model, paths, selectionSyncVersion]);
 
-	useEffect(
-		() =>
-			sdk.theme.subscribe((theme) => {
-				void resolveTheme(theme === "dark" ? "pierre-dark" : "pierre-light").then(
-					(resolved) => setTreeStyles(themeToTreeStyles(resolved) as CSSProperties),
-					() => setTreeStyles({ colorScheme: theme }),
-				);
-			}),
-		[sdk],
-	);
+	useEffect(() => {
+		let active = true;
+		void resolveTheme(appearance.shiki).then(
+			(resolved) => {
+				if (active) setTreeStyles(themeToTreeStyles(resolved) as CSSProperties);
+			},
+			() => {
+				if (active) setTreeStyles({ colorScheme: appearance.mode });
+			},
+		);
+		return () => {
+			active = false;
+		};
+	}, [appearance.shiki, appearance.mode]);
 
 	return (
 		<div

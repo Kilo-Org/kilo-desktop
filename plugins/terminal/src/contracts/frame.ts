@@ -15,6 +15,18 @@ export const terminalThemeSchema = z.object({
 	brightBlack: z.string(),
 	white: z.string(),
 	brightWhite: z.string(),
+	red: z.string().optional(),
+	green: z.string().optional(),
+	yellow: z.string().optional(),
+	blue: z.string().optional(),
+	magenta: z.string().optional(),
+	cyan: z.string().optional(),
+	brightRed: z.string().optional(),
+	brightGreen: z.string().optional(),
+	brightYellow: z.string().optional(),
+	brightBlue: z.string().optional(),
+	brightMagenta: z.string().optional(),
+	brightCyan: z.string().optional(),
 	scrollbarThumb: z.string(),
 	scrollbarThumbHover: z.string(),
 });
@@ -27,12 +39,6 @@ export const terminalFrameReadySchema = z.object({
 
 export const terminalFrameConnectSchema = z.object({
 	type: z.literal("terminal:connect"),
-	protocolVersion: z.literal(TERMINAL_PROTOCOL_VERSION),
-	theme: terminalThemeSchema,
-});
-
-export const terminalFrameThemeSchema = z.object({
-	type: z.literal("terminal:theme"),
 	protocolVersion: z.literal(TERMINAL_PROTOCOL_VERSION),
 	theme: terminalThemeSchema,
 });

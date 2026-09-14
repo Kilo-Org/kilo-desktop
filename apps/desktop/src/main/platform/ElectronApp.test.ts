@@ -1,10 +1,12 @@
+import path from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: {} }));
 
 import { getAppIdentity } from "$config/app-identity.js";
 
-import { ElectronApp } from "./ElectronApp.js";
+import { configureDevelopmentProfile, ElectronApp } from "./ElectronApp.js";
 
 describe("ElectronApp", () => {
 	const originalPlatform = process.platform;
@@ -89,5 +91,39 @@ describe("ElectronApp", () => {
 
 		adapter.relaunch();
 		expect(electronApp.relaunch).toHaveBeenLastCalledWith({});
+	});
+
+	it("isolates unpackaged development data before startup", () => {
+		const makeDirectory = vi.fn();
+		const electronApp = {
+			isPackaged: false,
+			getPath: vi.fn(() => "/profiles"),
+			setName: vi.fn(),
+			setPath: vi.fn(),
+		};
+
+		configureDevelopmentProfile(electronApp as never, makeDirectory);
+
+		const userData = path.join("/profiles", "Anaconda Agentic Desktop Dev");
+		expect(electronApp.setName).toHaveBeenCalledWith("Anaconda Agentic Desktop Dev");
+		expect(makeDirectory).toHaveBeenCalledWith(userData);
+		expect(electronApp.setPath).toHaveBeenCalledWith("userData", userData);
+	});
+
+	it("preserves packaged application data paths", () => {
+		const makeDirectory = vi.fn();
+		const electronApp = {
+			isPackaged: true,
+			getPath: vi.fn(),
+			setName: vi.fn(),
+			setPath: vi.fn(),
+		};
+
+		configureDevelopmentProfile(electronApp as never, makeDirectory);
+
+		expect(electronApp.getPath).not.toHaveBeenCalled();
+		expect(electronApp.setName).not.toHaveBeenCalled();
+		expect(makeDirectory).not.toHaveBeenCalled();
+		expect(electronApp.setPath).not.toHaveBeenCalled();
 	});
 });

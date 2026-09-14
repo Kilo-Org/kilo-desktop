@@ -2,7 +2,11 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import { DEFAULT_WORKSPACE_IDENTITY_COLOR } from "../../contracts/workspaces/schemas.js";
+import type { useWorkspaceForm } from "../workspaces/useWorkspaceForm.js";
+
 import { OnboardingFlow } from "./OnboardingFlow.js";
+import { WorkspaceStep } from "./WorkspaceStep.js";
 
 afterEach(() => {
 	cleanup();
@@ -110,6 +114,49 @@ describe("OnboardingFlow", () => {
 		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
 		await userEvent.keyboard("{Escape}");
 		expect(onSkip).toHaveBeenCalledOnce();
+	});
+
+	it("keeps the selected identity color ring inside the step body", async () => {
+		const form = {
+			name: "",
+			setName: vi.fn(),
+			color: DEFAULT_WORKSPACE_IDENTITY_COLOR,
+			setColor: vi.fn(),
+			folders: [],
+			error: null,
+			setError: vi.fn(),
+			isDragging: false,
+			setIsDragging: vi.fn(),
+			canPickDirectories: true,
+			chooseFolders: vi.fn(),
+			onDrop: vi.fn(),
+			removeFolder: vi.fn(),
+			makePrimary: vi.fn(),
+			validate: vi.fn(),
+		} satisfies ReturnType<typeof useWorkspaceForm>;
+		const { baseElement } = render(
+			<OnboardingFlow
+				step="workspace"
+				onBack={vi.fn()}
+				onContinue={vi.fn()}
+				onSkip={vi.fn()}
+				onJump={vi.fn()}
+			>
+				<WorkspaceStep form={form} />
+			</OnboardingFlow>,
+		);
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByRole("radiogroup", { name: "Identity color" })).toBeVisible();
+
+		const body = screen.getByTestId("onboarding-step-body").element();
+		const swatch = screen
+			.getByRole("radiogroup", { name: "Identity color" })
+			.element()
+			.querySelector("span");
+		expect(swatch).not.toBeNull();
+		const bodyBox = body.getBoundingClientRect();
+		const swatchBox = swatch!.getBoundingClientRect();
+		expect(swatchBox.left - bodyBox.left).toBeGreaterThanOrEqual(4);
 	});
 
 	it("does not focus the first progress bar when the dialog opens", async () => {

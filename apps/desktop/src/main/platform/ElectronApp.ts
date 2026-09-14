@@ -1,6 +1,9 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+
 import { app, type App, type RelaunchOptions } from "electron";
 
-import type { AppIdentity } from "$config/app-identity.js";
+import { getAppIdentity, type AppIdentity } from "$config/app-identity.js";
 
 export interface ElectronAppMetadata {
 	readonly appPath: string;
@@ -8,6 +11,21 @@ export interface ElectronAppMetadata {
 	readonly isPackaged: boolean;
 	readonly resourcesPath: string;
 	readonly runningUnderArm64Translation: boolean;
+}
+
+export function configureDevelopmentProfile(
+	electronApp: App = app,
+	makeDirectory: (directory: string) => void = (directory) => {
+		mkdirSync(directory, { recursive: true });
+	},
+): void {
+	if (electronApp.isPackaged) return;
+
+	const identity = getAppIdentity("development");
+	const userData = path.join(electronApp.getPath("appData"), identity.productName);
+	electronApp.setName(identity.productName);
+	makeDirectory(userData);
+	electronApp.setPath("userData", userData);
 }
 
 export class ElectronApp {

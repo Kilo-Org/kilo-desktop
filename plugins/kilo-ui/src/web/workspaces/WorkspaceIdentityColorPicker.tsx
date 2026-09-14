@@ -47,7 +47,7 @@ export function WorkspaceIdentityColorPicker({
 
 	return (
 		<div
-			className="flex items-center gap-2.5"
+			className="flex items-center gap-2.5 px-1.5"
 			role="radiogroup"
 			aria-label={ariaLabel}
 			data-qa-id="workspace-identity-color"

@@ -25,8 +25,11 @@ export class ChangesPage {
 	}
 
 	async openChangesTab(): Promise<void> {
-		const send = getLocatorByTestId("kilo-composer-send");
-		await expectElementToBeVisible(send, "Composer should be connected before starting the chat");
+		const send = getLocatorByTestId(/kilo-composer-send(-when-connected)?/);
+		await expectElementToBeVisible(
+			send,
+			"Composer should be ready to send before starting the chat",
+		);
 		await fill(
 			getLocatorByRole("textbox", { name: "Message input" }),
 			"Review the workspace changes",

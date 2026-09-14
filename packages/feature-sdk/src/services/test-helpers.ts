@@ -25,7 +25,7 @@ export function makeServices(featureRouter?: FeatureRouter) {
 	const router = featureRouter ?? new FeatureRouter();
 	const appearance: ThemeAppearance = {
 		mode: "light",
-		themeId: "anaconda",
+		themeId: "kilo",
 		terminal: null,
 		shiki: "pierre-light",
 	};

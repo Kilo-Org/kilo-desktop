@@ -21,9 +21,10 @@ export interface ChatComposerDraftFooterContributionProps {
 }
 
 /**
- * Draft/empty-chat context strip under the composer.
- * Narrower than the composer shell and tucked beneath it. Left: workspace
- * selector followed by zone contributions; right stays empty for now.
+ * Draft/empty-chat context strip attached under the composer.
+ * Same width as the composer; tucked so the composer's rounded bottom
+ * corners sit on this surface. Left: workspace selector followed by
+ * zone contributions; right stays empty for now.
  */
 export const ComposerDraftFooter: FC = () => {
 	const workspaceDirectory = useWorkspaceDirectory();
@@ -33,7 +34,7 @@ export const ComposerDraftFooter: FC = () => {
 		<div
 			data-slot="aui_composer-draft-footer"
 			data-qa-id="kilo-composer-draft-footer"
-			className="border-border dark:border-border/60 relative z-0 mx-auto -mt-3 flex w-[calc(100%-2.75rem)] items-center justify-between gap-2 rounded-b-xl border border-t-0 bg-(--composer-bg) px-1 pt-4 pb-1 dark:bg-[color-mix(in_oklab,var(--composer-bg),black_8%)]"
+			className="border-border dark:border-border/60 bg-foreground/[0.06] dark:bg-muted relative z-0 -mt-3 flex w-full items-center justify-between gap-2 rounded-b-(--composer-radius) border border-t-0 px-1 pt-4 pb-1"
 		>
 			<div className="flex min-w-0 flex-1 items-center gap-1">
 				<WorkspaceSelector />

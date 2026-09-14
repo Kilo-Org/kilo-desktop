@@ -92,6 +92,20 @@ afterEach(() => {
 });
 
 describe("DraftWelcomeHeadline", () => {
+	it("shows the square Kilo mark above the headline without the Kilo wordmark", async () => {
+		const { baseElement } = renderHeadline();
+		const screen = page.elementLocator(baseElement);
+		const mark = screen.getByTestId("kilo-welcome-logo");
+		const heading = screen.getByRole("heading", { name: "What should we work on?" });
+
+		await expect.element(mark).toBeVisible();
+		await expect.element(heading).toBeVisible();
+		expect(mark.element().textContent?.trim()).toBe("");
+		expect(
+			mark.element().compareDocumentPosition(heading.element()) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+	});
+
 	it("shows plain copy without a title picker when no workspace is active", async () => {
 		const { baseElement } = renderHeadline({ workspaces: [workspace] });
 		const screen = page.elementLocator(baseElement);

@@ -28,18 +28,18 @@ export function readStoredAppTheme(): AppThemePreferences {
 	}
 }
 
+export function getAppearanceSnapshot(): ThemeAppearance {
+	const mode = getColorSchemeSnapshot();
+	if (appearance.mode !== mode) appearance = getThemeAppearance(appTheme.peek(), mode);
+	return appearance;
+}
+
 export function getAppThemePreferencesSnapshot(): AppThemePreferences {
 	return appTheme.peek();
 }
 
 export function subscribeAppTheme(listener: () => void): () => void {
 	return appTheme.subscribe(listener);
-}
-
-export function getAppearanceSnapshot(): ThemeAppearance {
-	const mode = getColorSchemeSnapshot();
-	if (appearance.mode !== mode) appearance = getThemeAppearance(appTheme.peek(), mode);
-	return appearance;
 }
 
 export function applyAppTheme(next: AppThemePreferences): void {
@@ -61,7 +61,7 @@ export function applyAppTheme(next: AppThemePreferences): void {
 		// Disabled storage must not prevent changing appearance for this session.
 	}
 	const current = appTheme.peek();
-	if (current.themeId === normalized.themeId) return;
+	if (current.themeId === normalized.themeId && current.accentId === normalized.accentId) return;
 	appearance = getThemeAppearance(normalized, getColorSchemeSnapshot());
 	appTheme.set(normalized);
 }

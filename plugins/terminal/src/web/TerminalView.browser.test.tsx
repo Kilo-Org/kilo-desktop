@@ -268,9 +268,9 @@ describe("TerminalView", () => {
 			await act(async () =>
 				theme.setAppearance({
 					...theme.appearance(),
-					themeId: "kilo",
+					themeId: "dracula",
 					terminal: { red: ansiRed } as TerminalPalette,
-					shiki: "github-light",
+					shiki: "dracula",
 				}),
 			);
 			const { frame: reconnectedFrame, connect } = connectFrame();

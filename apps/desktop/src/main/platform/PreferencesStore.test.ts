@@ -41,8 +41,8 @@ describe("PreferencesStore", () => {
 		const store = createFakeStore();
 		const preferences = new PreferencesStore(store as never);
 		expect(preferences.themeId).toBe("kilo");
-		preferences.setThemeId("anaconda");
-		expect(preferences.themeId).toBe("anaconda");
+		preferences.setThemeId("dracula");
+		expect(preferences.themeId).toBe("dracula");
 		store.get.mockReturnValue("unknown");
 		expect(preferences.themeId).toBe("kilo");
 	});

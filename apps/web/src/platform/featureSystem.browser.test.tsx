@@ -49,7 +49,7 @@ const demoFeature: FeatureRegistration = {
 
 afterEach(() => {
 	cleanup();
-	applyAppTheme({ themeId: "kilo" });
+	applyAppTheme({ themeId: "kilo", accentId: "theme" });
 	localStorage.clear();
 	applyDocumentColorScheme("light");
 	vi.unstubAllGlobals();
@@ -115,17 +115,17 @@ describe("createAppFeatureSystem (browser mode)", () => {
 		const unsubscribe = sdk.theme.subscribe(notify);
 		const initial = sdk.theme.appearance();
 		expect(sdk.theme.appearance()).toBe(initial);
-		applyAppTheme({ themeId: "anaconda" });
+		applyAppTheme({ themeId: "dracula", accentId: "theme" });
 		expect(notify).toHaveBeenCalledTimes(2);
 		expect(sdk.theme.appearance()).toMatchObject({
 			mode: "dark",
-			themeId: "anaconda",
-			shiki: "pierre-dark",
-			terminal: { background: "#101314", foreground: "#f9fbfb" },
+			themeId: "dracula",
+			shiki: "dracula",
+			terminal: { background: "#282a36", red: "#ff5555" },
 		});
 		expect(sdk.theme.appearance()).toBe(sdk.theme.appearance());
 		unsubscribe();
-		applyAppTheme({ themeId: "kilo" });
+		applyAppTheme({ themeId: "kilo", accentId: "theme" });
 		expect(notify).toHaveBeenCalledTimes(2);
 	});
 

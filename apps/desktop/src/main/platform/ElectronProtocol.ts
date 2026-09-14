@@ -36,6 +36,7 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
 	".jpg": "image/jpeg",
 	".js": "text/javascript; charset=utf-8",
 	".json": "application/json; charset=utf-8",
+	".lottie": "application/zip",
 	".map": "application/json; charset=utf-8",
 	".png": "image/png",
 	".svg": "image/svg+xml",
@@ -123,7 +124,10 @@ export function createContentSecurityPolicy(
 	void inlineScriptHashes;
 	return [
 		"default-src 'self'",
-		`script-src 'self' 'unsafe-inline'${developmentSources}`,
+		// `'wasm-unsafe-eval'` instantiates the bundled DotLottie WASM player
+		// (welcome logo). It is not `'unsafe-eval'` and does not allow remote
+		// script; the .wasm file is shipped with `@lottiefiles/dotlottie-web`.
+		`script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${developmentSources}`,
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' data: blob:",
 		"font-src 'self' data:",

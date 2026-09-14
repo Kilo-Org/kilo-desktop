@@ -179,14 +179,14 @@ describe("ElectronWindow theme chrome", () => {
 		);
 
 		dark = true;
-		themeId = "anaconda";
+		themeId = "dracula";
 		windows.applyColorScheme();
 
 		for (const window of createdWindows) {
-			expect(window.setBackgroundColor).toHaveBeenLastCalledWith("#101314");
+			expect(window.setBackgroundColor).toHaveBeenLastCalledWith("#282a36");
 			expect(window.setTitleBarOverlay).toHaveBeenLastCalledWith({
-				color: "#101314",
-				symbolColor: "#f9fbfb",
+				color: "#282a36",
+				symbolColor: "#f8f8f2",
 			});
 		}
 	});

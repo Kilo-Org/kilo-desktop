@@ -1,20 +1,32 @@
 "use client";
 
-import type { FC } from "react";
+import { useState, type AnimationEvent, type FC } from "react";
 
 import {
 	WorkspacePickerRoot,
 	WorkspacePickerTrigger,
 } from "../../../workspaces/WorkspacePicker.js";
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
+import { KiloWelcomeLogo } from "../../../brand/kilo-welcome-logo.js";
 
 export const DraftWelcomeHeadline: FC = () => {
 	const { workspaces, activeWorkspaceId } = useWorkspacesFeature();
 	const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+	const [lottieEnabled, setLottieEnabled] = useState(false);
+
+	const handleHeadlineAnimationEnd = (event: AnimationEvent<HTMLHeadingElement>) => {
+		if (event.target === event.currentTarget) {
+			setLottieEnabled(true);
+		}
+	};
 
 	return (
 		<div className="aui-thread-welcome-root relative z-10 mb-6 flex w-full max-w-(--thread-max-width) flex-col items-center px-4 text-center">
-			<h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex w-full max-w-full flex-wrap items-baseline justify-center text-2xl font-medium duration-200">
+			<KiloWelcomeLogo lottieEnabled={lottieEnabled} />
+			<h1
+				className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex w-full max-w-full flex-wrap items-baseline justify-center text-2xl font-medium duration-200"
+				onAnimationEnd={handleHeadlineAnimationEnd}
+			>
 				{active ? (
 					<>
 						<span className="shrink-0">What should we work on in{"\u00a0"}</span>

@@ -98,7 +98,9 @@ describe("ElectronProtocol", () => {
 		// `'self'` (not `'none'`): the relay widget iframe is same-origin. Still
 		// blocks cross-origin framing — no external origins exist under the scheme.
 		expect(policy).toContain("frame-ancestors 'self'");
-		expect(policy).not.toContain("unsafe-eval");
+		// Bundled DotLottie WASM (not `'unsafe-eval'`, which would allow JS eval).
+		expect(policy).toContain("'wasm-unsafe-eval'");
+		expect(policy).not.toContain("'unsafe-eval'");
 		expect(policy).not.toContain("https:");
 		expect(policy).not.toContain("wss:");
 	});
@@ -168,8 +170,9 @@ describe("ElectronProtocol", () => {
 			?.split(";")
 			.find((directive) => directive.trimStart().startsWith("script-src"));
 		expect(scriptSrc).toContain("'unsafe-inline'");
-		// The relaxation is scoped to inline scripts only — eval remains blocked.
-		expect(scriptSrc).not.toContain("unsafe-eval");
+		// JS eval stays blocked. `'wasm-unsafe-eval'` is only for bundled WASM.
+		expect(scriptSrc).toContain("'wasm-unsafe-eval'");
+		expect(scriptSrc).not.toContain("'unsafe-eval'");
 	});
 
 	it("proxies development requests without forwarding custom-scheme headers", async () => {
@@ -201,6 +204,7 @@ describe("ElectronProtocol", () => {
 		temporaryDirectories.push(root);
 		await writeFile(path.join(root, "index.html"), "<html>home</html>");
 		await writeFile(path.join(root, "asset.bin"), "binary");
+		await writeFile(path.join(root, "mark.lottie"), "zip");
 
 		const adapter = new ElectronProtocol();
 		adapter.register({ isDevelopment: false, rendererRoot: root });
@@ -217,6 +221,9 @@ describe("ElectronProtocol", () => {
 
 		const unknown = await protocolHandler(new Request("anaconda-agentic-desktop://app/asset.bin"));
 		expect(unknown.headers.get("Content-Type")).toBe("application/octet-stream");
+
+		const lottie = await protocolHandler(new Request("anaconda-agentic-desktop://app/mark.lottie"));
+		expect(lottie.headers.get("Content-Type")).toBe("application/zip");
 
 		const missing = await protocolHandler(new Request("anaconda-agentic-desktop://app/missing.js"));
 		expect(missing.status).toBe(404);
@@ -456,7 +463,8 @@ describe("ElectronProtocol", () => {
 		const appPolicy = appShell.headers.get("Content-Security-Policy") ?? "";
 		expect(appPolicy).toContain("frame-src 'self' blob: anaconda-agentic-desktop://canvas");
 		expect(appPolicy).toContain("frame-ancestors 'self'");
-		expect(appPolicy).not.toContain("wasm-unsafe-eval");
+		expect(appPolicy).toContain("'wasm-unsafe-eval'");
+		expect(appPolicy).not.toContain("'unsafe-eval'");
 
 		// New caller of resolveRendererPath, so assert containment holds for it too.
 		const escape = await protocolHandler(

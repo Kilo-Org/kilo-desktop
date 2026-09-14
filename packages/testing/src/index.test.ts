@@ -408,7 +408,7 @@ describe("createFakeSdk", () => {
 		const initial = sdk.theme.appearance();
 		expect(initial).toEqual({
 			mode: "light",
-			themeId: "anaconda",
+			themeId: "kilo",
 			terminal: null,
 			shiki: "pierre-light",
 		});
@@ -416,7 +416,7 @@ describe("createFakeSdk", () => {
 		const listener = vi.fn();
 		const unsubscribe = sdk.theme.subscribe(listener);
 		expect(listener).toHaveBeenCalledOnce();
-		const next = { ...initial, themeId: "kilo", shiki: "github-light" };
+		const next = { ...initial, themeId: "github", shiki: "github-light" };
 		theme.setAppearance(next);
 		expect(sdk.theme.appearance()).toBe(next);
 		expect(listener).toHaveBeenCalledTimes(2);
@@ -438,7 +438,7 @@ describe("createFakeSdk", () => {
 	it("merges partial shell/fs/notification/theme overrides", async () => {
 		const darkAppearance = {
 			mode: "dark",
-			themeId: "anaconda",
+			themeId: "kilo",
 			terminal: null,
 			shiki: "pierre-dark",
 		} as const;

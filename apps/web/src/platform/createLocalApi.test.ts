@@ -20,10 +20,10 @@ describe("createLocalApi", () => {
 		vi.stubGlobal("window", { desktopApi: bridge });
 
 		const api = createLocalApi();
-		await expect(api.theme.sync({ source: "dark", themeId: "anaconda" })).resolves.toBeUndefined();
+		await expect(api.theme.sync({ source: "dark", themeId: "dracula" })).resolves.toBeUndefined();
 		expect(bridge.invoke).toHaveBeenCalledWith("theme:sync", {
 			source: "dark",
-			themeId: "anaconda",
+			themeId: "dracula",
 		});
 	});
 

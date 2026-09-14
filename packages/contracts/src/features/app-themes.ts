@@ -1,25 +1,8 @@
+import type { TerminalPalette, ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+
 import { themeChromeColors, type ResolvedColorScheme } from "./theme-tokens.js";
-import type { ThemeAppearance, TerminalPalette } from "@anaconda-agentic-desktop/feature-sdk";
 
 export { APP_THEME_STORAGE_KEY } from "./theme-tokens.js";
-
-type RolePalette = {
-	background: string;
-	foreground: string;
-	surface: string;
-	popover?: string;
-	sidebar: string;
-	hover: string;
-	muted: string;
-	border: string;
-	primary: string;
-	primaryForeground: string;
-	charts: readonly [string, string, string, string, string];
-	ansi: readonly [string, string, string, string, string, string, string, string];
-};
-
-type ShikiTheme = "github-dark" | "github-light" | "pierre-dark" | "pierre-light";
-
 const ansiRoles = [
 	"black",
 	"red",
@@ -37,9 +20,28 @@ const ansiRoles = [
 	"brightMagenta",
 	"brightCyan",
 	"brightWhite",
-] as const satisfies readonly (keyof TerminalPalette)[];
+] as const;
 
-type TerminalRolePalette = Pick<RolePalette, "background" | "foreground" | "hover" | "ansi">;
+type ShikiTheme =
+	| "github-light"
+	| "github-dark"
+	| "pierre-light"
+	| "pierre-dark"
+	| "catppuccin-latte"
+	| "catppuccin-mocha"
+	| "dracula"
+	| "gruvbox-light-medium"
+	| "gruvbox-dark-medium"
+	| "everforest-light"
+	| "everforest-dark"
+	| "nord";
+
+type TerminalRolePalette = {
+	background: string;
+	foreground: string;
+	hover: string;
+	ansi: readonly [string, string, string, string, string, string, string, string];
+};
 
 function terminalPalette(palette: TerminalRolePalette): TerminalPalette {
 	return {
@@ -55,54 +57,83 @@ function terminalPalette(palette: TerminalRolePalette): TerminalPalette {
 	};
 }
 
-function variant(palette: RolePalette, mode: ResolvedColorScheme, shiki: ShikiTheme) {
+type StringTuple<Tuple extends readonly unknown[]> = { [Index in keyof Tuple]: string };
+
+type RolePalette = {
+	background: string;
+	foreground: string;
+	surface: string;
+	popover?: string;
+	sidebar: string;
+	hover: string;
+	muted: string;
+	border: string;
+	primary: string;
+	primaryForeground: string;
+	ansi: StringTuple<typeof ansiRoles>;
+};
+
+function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
+	// ANSI hues stay canonical; UI text must also contrast on raised and tinted surfaces.
 	const status =
 		mode === "light"
 			? { error: "#9f1239", info: "#1e40af", update: "#166534" }
 			: { error: "#ffe4e6", info: "#dbeafe", update: "#bbf7d0" };
+	const ansi = Object.fromEntries(ansiRoles.map((role, index) => [role, p.ansi[index]])) as Record<
+		(typeof ansiRoles)[number],
+		string
+	>;
 	return {
 		tokens: {
-			background: palette.background,
-			foreground: palette.foreground,
-			card: palette.surface,
-			"card-foreground": palette.foreground,
-			popover: palette.popover ?? palette.surface,
-			"popover-foreground": palette.foreground,
-			primary: palette.primary,
-			"primary-foreground": palette.primaryForeground,
-			secondary: palette.hover,
-			"secondary-foreground": palette.foreground,
-			muted: palette.hover,
-			"muted-foreground": palette.muted,
-			accent: palette.hover,
-			"accent-foreground": palette.foreground,
+			background: p.background,
+			foreground: p.foreground,
+			card: p.surface,
+			"card-foreground": p.foreground,
+			popover: p.popover ?? p.surface,
+			"popover-foreground": p.foreground,
+			primary: p.primary,
+			"primary-foreground": p.primaryForeground,
+			secondary: p.hover,
+			"secondary-foreground": p.foreground,
+			muted: p.hover,
+			"muted-foreground": p.muted,
+			accent: p.hover,
+			"accent-foreground": p.foreground,
 			destructive: status.error,
 			"destructive-foreground": status.error,
-			border: palette.border,
-			input: palette.border,
-			ring: palette.primary,
-			"chart-1": palette.charts[0],
-			"chart-2": palette.charts[1],
-			"chart-3": palette.charts[2],
-			"chart-4": palette.charts[3],
-			"chart-5": palette.charts[4],
-			sidebar: palette.sidebar,
-			"sidebar-foreground": palette.foreground,
-			"sidebar-primary": palette.primary,
-			"sidebar-primary-foreground": palette.primaryForeground,
-			"sidebar-accent": palette.hover,
-			"sidebar-accent-foreground": palette.foreground,
-			"sidebar-border": palette.border,
-			"sidebar-ring": palette.primary,
+			border: p.border,
+			input: p.border,
+			ring: p.primary,
+			"chart-1": ansi.blue,
+			"chart-2": ansi.green,
+			"chart-3": ansi.yellow,
+			"chart-4": ansi.magenta,
+			"chart-5": ansi.cyan,
+			sidebar: p.sidebar,
+			"sidebar-foreground": p.foreground,
+			"sidebar-primary": p.primary,
+			"sidebar-primary-foreground": p.primaryForeground,
+			"sidebar-accent": p.hover,
+			"sidebar-accent-foreground": p.foreground,
+			"sidebar-border": p.border,
+			"sidebar-ring": p.primary,
 			info: status.info,
 			"info-foreground": status.info,
-			"app-scrollbar-thumb": palette.border,
-			"app-scrollbar-thumb-hover": palette.muted,
+			"app-scrollbar-thumb": p.border,
+			"app-scrollbar-thumb-hover": p.muted,
 			update: status.update,
-			"update-surface": palette.surface,
-			"update-surface-hover": palette.hover,
+			"update-surface": p.surface,
+			"update-surface-hover": p.hover,
 		},
-		terminal: terminalPalette(palette),
+		terminal: {
+			...ansi,
+			background: p.background,
+			foreground: p.foreground,
+			cursor: p.foreground,
+			cursorAccent: p.background,
+			selectionBackground: p.hover,
+			selectionForeground: p.foreground,
+		},
 		shiki,
 	};
 }
@@ -141,20 +172,27 @@ export const APP_THEMES = [
 					border: "#d2d2c3",
 					primary: "#656300",
 					primaryForeground: "#ffffff",
-					charts: ["#2563eb", "#16a34a", "#d28100", "#9333ea", "#009689"],
 					ansi: [
 						"#1f1f1f",
-						"#c2415d",
-						"#3f7f5b",
-						"#b66a14",
+						"#dc2626",
+						"#16a34a",
+						"#d28100",
 						"#2563eb",
 						"#9333ea",
 						"#009689",
-						"#f7f7ee",
+						"#d4d4d8",
+						"#71717a",
+						"#ef4444",
+						"#22c55e",
+						"#f0a900",
+						"#3b82f6",
+						"#a855f7",
+						"#00baa9",
+						"#fafafa",
 					],
 				},
-				"light",
 				"github-light",
+				"light",
 			),
 			// Based on Kilo design v0.2.0, with neutral surfaces tuned for desktop.
 			dark: variant(
@@ -169,20 +207,27 @@ export const APP_THEMES = [
 					border: "#303030",
 					primary: "#f7f586",
 					primaryForeground: "#1f1f1f",
-					charts: ["#60a5fa", "#4ade80", "#f7f586", "#c084fc", "#00d4c2"],
 					ansi: [
-						"#303030",
-						"#ffe4e6",
-						"#bbf7d0",
+						"#111111",
+						"#f87171",
+						"#4ade80",
 						"#f7f586",
-						"#bfdbfe",
-						"#e9d5ff",
-						"#99f6e4",
+						"#60a5fa",
+						"#c084fc",
+						"#00d4c2",
+						"#a3a3a3",
+						"#7a7a7a",
+						"#fca5a5",
+						"#86efac",
+						"#fdd94a",
+						"#93c5fd",
+						"#d8b4fe",
+						"#4ce7d7",
 						"#fafafa",
 					],
 				},
-				"dark",
 				"github-dark",
+				"dark",
 			),
 		},
 	},
@@ -229,13 +274,496 @@ export const APP_THEMES = [
 			),
 		},
 	},
+	{
+		id: "dracula",
+		name: "Dracula",
+		variants: {
+			// Curated light companion, not an official Dracula light theme. Latte supplies light syntax.
+			light: variant(
+				{
+					background: "#f8f7fc",
+					foreground: "#282a36",
+					surface: "#ffffff",
+					sidebar: "#efedf6",
+					hover: "#e5e1f0",
+					muted: "#625b78",
+					border: "#d4cde4",
+					primary: "#7040b0",
+					primaryForeground: "#ffffff",
+					ansi: [
+						"#282a36",
+						"#b42336",
+						"#28753c",
+						"#886000",
+						"#3459a5",
+						"#8840a0",
+						"#087b83",
+						"#d4cde4",
+						"#625b78",
+						"#bc344b",
+						"#347c46",
+						"#946600",
+						"#4566b0",
+						"#9950ae",
+						"#16818a",
+						"#f8f7fc",
+					],
+				},
+				"catppuccin-latte",
+				"light",
+			),
+			dark: variant(
+				{
+					background: "#282a36",
+					foreground: "#f8f8f2",
+					surface: "#303341",
+					sidebar: "#21222c",
+					hover: "#44475a",
+					muted: "#a6a9c6",
+					border: "#555970",
+					primary: "#bd93f9",
+					primaryForeground: "#282a36",
+					ansi: [
+						"#21222c",
+						"#ff5555",
+						"#50fa7b",
+						"#f1fa8c",
+						"#bd93f9",
+						"#ff79c6",
+						"#8be9fd",
+						"#f8f8f2",
+						"#6272a4",
+						"#ff6e6e",
+						"#69ff94",
+						"#ffffa5",
+						"#d6acff",
+						"#ff92df",
+						"#a4ffff",
+						"#ffffff",
+					],
+				},
+				"dracula",
+				"dark",
+			),
+		},
+	},
+	{
+		id: "catppuccin",
+		name: "Catppuccin",
+		variants: {
+			light: variant(
+				{
+					background: "#eff1f5",
+					foreground: "#4c4f69",
+					surface: "#ffffff",
+					sidebar: "#e6e9ef",
+					hover: "#ccd0da",
+					muted: "#5c5f77",
+					border: "#bcc0cc",
+					primary: "#8839ef",
+					primaryForeground: "#ffffff",
+					ansi: [
+						"#5c5f77",
+						"#d20f39",
+						"#40a02b",
+						"#df8e1d",
+						"#1e66f5",
+						"#ea76cb",
+						"#179299",
+						"#acb0be",
+						"#6c6f85",
+						"#d20f39",
+						"#40a02b",
+						"#df8e1d",
+						"#1e66f5",
+						"#ea76cb",
+						"#179299",
+						"#bcc0cc",
+					],
+				},
+				"catppuccin-latte",
+				"light",
+			),
+			dark: variant(
+				{
+					background: "#1e1e2e",
+					foreground: "#cdd6f4",
+					surface: "#313244",
+					sidebar: "#181825",
+					hover: "#45475a",
+					muted: "#a6adc8",
+					border: "#585b70",
+					primary: "#cba6f7",
+					primaryForeground: "#1e1e2e",
+					ansi: [
+						"#45475a",
+						"#f38ba8",
+						"#a6e3a1",
+						"#f9e2af",
+						"#89b4fa",
+						"#f5c2e7",
+						"#94e2d5",
+						"#bac2de",
+						"#585b70",
+						"#f38ba8",
+						"#a6e3a1",
+						"#f9e2af",
+						"#89b4fa",
+						"#f5c2e7",
+						"#94e2d5",
+						"#a6adc8",
+					],
+				},
+				"catppuccin-mocha",
+				"dark",
+			),
+		},
+	},
+	{
+		id: "gruvbox",
+		name: "Gruvbox",
+		variants: {
+			light: variant(
+				{
+					background: "#fbf1c7",
+					foreground: "#3c3836",
+					surface: "#f9f5d7",
+					sidebar: "#f2e5bc",
+					hover: "#ebdbb2",
+					muted: "#665c54",
+					border: "#d5c4a1",
+					primary: "#9d0006",
+					primaryForeground: "#fbf1c7",
+					ansi: [
+						"#fbf1c7",
+						"#cc241d",
+						"#98971a",
+						"#d79921",
+						"#458588",
+						"#b16286",
+						"#689d6a",
+						"#7c6f64",
+						"#928374",
+						"#9d0006",
+						"#79740e",
+						"#b57614",
+						"#076678",
+						"#8f3f71",
+						"#427b58",
+						"#3c3836",
+					],
+				},
+				"gruvbox-light-medium",
+				"light",
+			),
+			dark: variant(
+				{
+					background: "#282828",
+					foreground: "#ebdbb2",
+					surface: "#32302f",
+					sidebar: "#1d2021",
+					hover: "#3c3836",
+					muted: "#bdae93",
+					border: "#504945",
+					primary: "#fabd2f",
+					primaryForeground: "#282828",
+					ansi: [
+						"#282828",
+						"#cc241d",
+						"#98971a",
+						"#d79921",
+						"#458588",
+						"#b16286",
+						"#689d6a",
+						"#a89984",
+						"#928374",
+						"#fb4934",
+						"#b8bb26",
+						"#fabd2f",
+						"#83a598",
+						"#d3869b",
+						"#8ec07c",
+						"#ebdbb2",
+					],
+				},
+				"gruvbox-dark-medium",
+				"dark",
+			),
+		},
+	},
+	{
+		id: "github",
+		name: "GitHub",
+		variants: {
+			light: variant(
+				{
+					background: "#ffffff",
+					foreground: "#24292f",
+					surface: "#ffffff",
+					sidebar: "#f6f8fa",
+					hover: "#eaeef2",
+					muted: "#57606a",
+					border: "#d0d7de",
+					primary: "#0969da",
+					primaryForeground: "#ffffff",
+					ansi: [
+						"#24292f",
+						"#cf222e",
+						"#116329",
+						"#4d2d00",
+						"#0969da",
+						"#8250df",
+						"#1b7c83",
+						"#6e7781",
+						"#57606a",
+						"#a40e26",
+						"#1a7f37",
+						"#633c01",
+						"#218bff",
+						"#a475f9",
+						"#3192aa",
+						"#8c959f",
+					],
+				},
+				"github-light",
+				"light",
+			),
+			dark: variant(
+				{
+					background: "#0d1117",
+					foreground: "#e6edf3",
+					surface: "#161b22",
+					sidebar: "#010409",
+					hover: "#21262d",
+					muted: "#8b949e",
+					border: "#30363d",
+					primary: "#58a6ff",
+					primaryForeground: "#0d1117",
+					ansi: [
+						"#484f58",
+						"#ff7b72",
+						"#3fb950",
+						"#d29922",
+						"#58a6ff",
+						"#bc8cff",
+						"#39c5cf",
+						"#b1bac4",
+						"#6e7681",
+						"#ffa198",
+						"#56d364",
+						"#e3b341",
+						"#79c0ff",
+						"#d2a8ff",
+						"#56d4dd",
+						"#f0f6fc",
+					],
+				},
+				"github-dark",
+				"dark",
+			),
+		},
+	},
+	{
+		id: "everforest",
+		name: "Everforest",
+		variants: {
+			light: variant(
+				{
+					background: "#fdf6e3",
+					foreground: "#5c6a72",
+					surface: "#fffbef",
+					sidebar: "#f4f0d9",
+					hover: "#efebd4",
+					muted: "#626f62",
+					border: "#d3d7bf",
+					primary: "#526d32",
+					primaryForeground: "#ffffff",
+					ansi: [
+						"#5c6a72",
+						"#f85552",
+						"#8da101",
+						"#dfa000",
+						"#3a94c5",
+						"#df69ba",
+						"#35a77c",
+						"#dfddc8",
+						"#829181",
+						"#e66868",
+						"#93b259",
+						"#d1b171",
+						"#7fbbb3",
+						"#d699b6",
+						"#83c092",
+						"#fdf6e3",
+					],
+				},
+				"everforest-light",
+				"light",
+			),
+			dark: variant(
+				{
+					background: "#2d353b",
+					foreground: "#d3c6aa",
+					surface: "#343f44",
+					sidebar: "#232a2e",
+					hover: "#3d484d",
+					muted: "#a7b4aa",
+					border: "#4f585e",
+					primary: "#a7c080",
+					primaryForeground: "#232a2e",
+					ansi: [
+						"#343f44",
+						"#e67e80",
+						"#a7c080",
+						"#dbbc7f",
+						"#7fbbb3",
+						"#d699b6",
+						"#83c092",
+						"#d3c6aa",
+						"#859289",
+						"#e67e80",
+						"#a7c080",
+						"#dbbc7f",
+						"#7fbbb3",
+						"#d699b6",
+						"#83c092",
+						"#e4e1cd",
+					],
+				},
+				"everforest-dark",
+				"dark",
+			),
+		},
+	},
+	{
+		id: "nord",
+		name: "Nord",
+		variants: {
+			// Curated Snow Storm companion; Nord has no official light Shiki builtin.
+			light: variant(
+				{
+					background: "#eceff4",
+					foreground: "#2e3440",
+					surface: "#f8fafc",
+					sidebar: "#e5e9f0",
+					hover: "#d8dee9",
+					muted: "#4c566a",
+					border: "#b8c2d2",
+					primary: "#466a91",
+					primaryForeground: "#ffffff",
+					ansi: [
+						"#2e3440",
+						"#a43b4b",
+						"#4f6f36",
+						"#866320",
+						"#466a91",
+						"#86547e",
+						"#347580",
+						"#d8dee9",
+						"#4c566a",
+						"#ad4454",
+						"#597a40",
+						"#916e2c",
+						"#50759c",
+						"#905e88",
+						"#3e7f8a",
+						"#eceff4",
+					],
+				},
+				"github-light",
+				"light",
+			),
+			dark: variant(
+				{
+					background: "#2e3440",
+					foreground: "#eceff4",
+					surface: "#3b4252",
+					sidebar: "#292e39",
+					hover: "#434c5e",
+					muted: "#a5b1c5",
+					border: "#4c566a",
+					primary: "#88c0d0",
+					primaryForeground: "#2e3440",
+					ansi: [
+						"#3b4252",
+						"#bf616a",
+						"#a3be8c",
+						"#ebcb8b",
+						"#81a1c1",
+						"#b48ead",
+						"#88c0d0",
+						"#e5e9f0",
+						"#4c566a",
+						"#bf616a",
+						"#a3be8c",
+						"#ebcb8b",
+						"#81a1c1",
+						"#b48ead",
+						"#8fbcbb",
+						"#eceff4",
+					],
+				},
+				"nord",
+				"dark",
+			),
+		},
+	},
 ] as const satisfies readonly AppTheme[];
+
+export const ACCENTS = [
+	{
+		id: "theme",
+		name: "Theme",
+		light: { color: "#07ca4a", foreground: "#161b1d" },
+		dark: { color: "#96f778", foreground: "#161b1d" },
+	},
+	{
+		id: "blue",
+		name: "Blue",
+		light: { color: "#1d4ed8", foreground: "#ffffff" },
+		dark: { color: "#93c5fd", foreground: "#172554" },
+	},
+	{
+		id: "purple",
+		name: "Purple",
+		light: { color: "#7e22ce", foreground: "#ffffff" },
+		dark: { color: "#d8b4fe", foreground: "#3b0764" },
+	},
+	{
+		id: "pink",
+		name: "Pink",
+		light: { color: "#be185d", foreground: "#ffffff" },
+		dark: { color: "#f9a8d4", foreground: "#500724" },
+	},
+	{
+		id: "red",
+		name: "Red",
+		light: { color: "#b91c1c", foreground: "#ffffff" },
+		dark: { color: "#fca5a5", foreground: "#450a0a" },
+	},
+	{
+		id: "orange",
+		name: "Orange",
+		light: { color: "#9a3412", foreground: "#ffffff" },
+		dark: { color: "#fdba74", foreground: "#431407" },
+	},
+	{
+		id: "green",
+		name: "Green",
+		light: { color: "#166534", foreground: "#ffffff" },
+		dark: { color: "#86efac", foreground: "#052e16" },
+	},
+] as const;
 
 export interface AppThemePreferences {
 	themeId: string;
+	accentId: string;
 }
 
-export const DEFAULT_APP_THEME_PREFERENCES: AppThemePreferences = { themeId: "kilo" };
+export const DEFAULT_APP_THEME_PREFERENCES: AppThemePreferences = {
+	themeId: "kilo",
+	accentId: "theme",
+};
 
 export function normalizeAppThemePreferences(value: unknown): AppThemePreferences {
 	const input =
@@ -246,6 +774,7 @@ export function normalizeAppThemePreferences(value: unknown): AppThemePreference
 		themeId:
 			APP_THEMES.find(({ id }) => id === input.themeId)?.id ??
 			DEFAULT_APP_THEME_PREFERENCES.themeId,
+		accentId: ACCENTS.find(({ id }) => id === input.accentId)?.id ?? "theme",
 	};
 }
 
@@ -257,17 +786,25 @@ export function getThemeVariant(themeId: string, mode: ResolvedColorScheme): The
 }
 
 export function themeCss(preferences: AppThemePreferences): string {
-	const { themeId } = normalizeAppThemePreferences(preferences);
+	const { themeId, accentId } = normalizeAppThemePreferences(preferences);
+	const accent = ACCENTS.find(({ id }) => id === accentId && id !== "theme");
 	return (["light", "dark"] as const)
 		.map((mode) => {
-			const tokens = getThemeVariant(themeId, mode)?.tokens;
-			let declarations = Object.entries(tokens ?? {})
+			const tokens: Partial<ThemeVariant["tokens"]> = { ...getThemeVariant(themeId, mode)?.tokens };
+			if (accent) {
+				const { color, foreground } = accent[mode];
+				Object.assign(tokens, {
+					primary: color,
+					"primary-foreground": foreground,
+					ring: color,
+					"sidebar-primary": color,
+					"sidebar-primary-foreground": foreground,
+					"sidebar-ring": color,
+				});
+			}
+			const declarations = Object.entries(tokens)
 				.map(([key, value]) => `--${key}:${value};`)
 				.join("");
-			// Limit wallpaper tint in Kilo dark; the vibrancy-off inline style still wins.
-			if (themeId === "kilo" && mode === "dark") {
-				declarations += "--shell-glass-opacity:96%;--chat-ambient-glow:#f7f586;";
-			}
 			if (!declarations) return "";
 			return `${mode === "light" ? "html:root" : 'html:root[data-theme="dark"]'}{${declarations}}`;
 		})
@@ -279,12 +816,12 @@ export function getThemeAppearance(
 	mode: ResolvedColorScheme,
 ): ThemeAppearance {
 	const { themeId } = normalizeAppThemePreferences(preferences);
-	const variant = getThemeVariant(themeId, mode);
+	const resolved = getThemeVariant(themeId, mode);
 	return {
 		mode,
 		themeId,
-		terminal: variant?.terminal ?? null,
-		shiki: variant?.shiki ?? (mode === "light" ? "pierre-light" : "pierre-dark"),
+		terminal: resolved?.terminal ?? null,
+		shiki: resolved?.shiki ?? `pierre-${mode}`,
 	};
 }
 

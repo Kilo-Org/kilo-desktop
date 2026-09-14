@@ -89,12 +89,16 @@ describe("ThemeProvider", () => {
 		expect(getComputedStyle(document.documentElement).getPropertyValue("--background").trim()).toBe(
 			"#111111",
 		);
-		localStorage.setItem("appTheme:v1", JSON.stringify({ themeId: "anaconda" }));
+		localStorage.setItem("appTheme:v1", JSON.stringify({ themeId: "dracula", accentId: "theme" }));
 		window.dispatchEvent(
 			new StorageEvent("storage", { key: "appTheme:v1", storageArea: localStorage }),
 		);
-		await expect.poll(() => document.getElementById("app-theme")).toBeNull();
-		await expect.element(screen.getByTestId("app-theme-id")).toHaveTextContent("anaconda");
+		await expect
+			.poll(() =>
+				getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
+			)
+			.toBe("#282a36");
+		await expect.element(screen.getByTestId("app-theme-id")).toHaveTextContent("dracula");
 		localStorage.removeItem("appTheme:v1");
 		window.dispatchEvent(new StorageEvent("storage", { key: null, storageArea: localStorage }));
 		await expect

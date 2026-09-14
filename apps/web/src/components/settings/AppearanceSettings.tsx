@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { MonitorIcon, MoonIcon, SunIcon, type LucideIcon } from "lucide-react";
 
 import {
+	ACCENTS,
 	APP_THEMES,
 	getThemeVariant,
 	themeChromeColors,
@@ -15,6 +16,7 @@ import {
 	FieldLabel,
 	FieldLegend,
 	FieldSet,
+	FieldTitle,
 } from "@anaconda-agentic-desktop/ui/components/field";
 import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
 import {
@@ -25,6 +27,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@anaconda-agentic-desktop/ui/components/select";
+import { ToggleGroup, ToggleGroupItem } from "@anaconda-agentic-desktop/ui/components/toggle-group";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { useColorScheme } from "@/platform/theme/ThemeProvider";
@@ -125,6 +128,40 @@ export function AppearanceSettings() {
 						</SelectContent>
 					</Select>
 				</Field>
+				<Field orientation="responsive" className="mt-6">
+					<FieldContent>
+						<FieldTitle id="accent-label">Accent color</FieldTitle>
+						<FieldDescription>Use the theme's accent or choose your own.</FieldDescription>
+					</FieldContent>
+					<ToggleGroup
+						aria-labelledby="accent-label"
+						value={[appTheme.accentId]}
+						onValueChange={([accentId]) => {
+							if (accentId) setAppTheme({ ...appTheme, accentId });
+						}}
+						className="flex-wrap"
+					>
+						{ACCENTS.map((accent) => (
+							<ToggleGroupItem
+								key={accent.id}
+								value={accent.id}
+								aria-label={accent.name}
+								title={accent.name}
+								data-qa-id={`appearance-accent-${accent.id}`}
+							>
+								{accent.id === "theme" ? (
+									accent.name
+								) : (
+									<span
+										aria-hidden="true"
+										className="border-foreground/10 size-4 rounded-full border"
+										style={{ backgroundColor: accent[resolved].color }}
+									/>
+								)}
+							</ToggleGroupItem>
+						))}
+					</ToggleGroup>
+				</Field>
 				<Field orientation="horizontal" className="mt-8">
 					<FieldContent>
 						<FieldLabel htmlFor="sidebar-vibrancy">Sidebar vibrancy</FieldLabel>
@@ -150,7 +187,7 @@ function ThemeSwatch({ themeId, scheme }: { themeId: string; scheme: "light" | "
 			className="inline-flex size-4 shrink-0 items-center justify-center self-center rounded-sm border text-[10px] leading-none font-medium"
 			style={{
 				background: tokens?.background ?? themeChromeColors[scheme].background,
-				color: tokens?.primary ?? "var(--primary)",
+				color: tokens?.primary ?? ACCENTS[0][scheme].color,
 				borderColor: tokens?.border ?? "var(--border)",
 			}}
 		>

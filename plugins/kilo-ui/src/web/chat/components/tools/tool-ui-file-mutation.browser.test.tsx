@@ -48,10 +48,9 @@ describe("PierreDiffBody", () => {
 		await act(async () =>
 			theme.setAppearance({
 				...theme.appearance(),
-				themeId: "kilo",
-				shiki: "github-light",
+				shiki: "catppuccin-latte",
 			}),
 		);
-		await waitFor(() => expect(themeCss()).toContain("#24292e"));
+		await waitFor(() => expect(themeCss()).toContain("#4c4f69"));
 	});
 });

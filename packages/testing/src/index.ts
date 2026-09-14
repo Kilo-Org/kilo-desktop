@@ -30,8 +30,8 @@ import type {
 
 const noop = () => {};
 const DEFAULT_APPEARANCES: Record<"light" | "dark", ThemeAppearance> = {
-	light: { mode: "light", themeId: "anaconda", terminal: null, shiki: "pierre-light" },
-	dark: { mode: "dark", themeId: "anaconda", terminal: null, shiki: "pierre-dark" },
+	light: { mode: "light", themeId: "kilo", terminal: null, shiki: "pierre-light" },
+	dark: { mode: "dark", themeId: "kilo", terminal: null, shiki: "pierre-dark" },
 };
 
 /** Observable shell theme fake; preserves snapshot identity until explicitly updated. */

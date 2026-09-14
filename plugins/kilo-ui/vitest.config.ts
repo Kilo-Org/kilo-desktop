@@ -53,6 +53,7 @@ export default defineConfig({
 			},
 			{
 				plugins: [react(), tailwindcss()],
+				assetsInclude: ["**/*.lottie"],
 				resolve: {
 					dedupe: [
 						"react",
@@ -112,6 +113,8 @@ export default defineConfig({
 						"@base-ui/react/tooltip",
 						"@base-ui/react/use-render",
 						"@kilocode/sdk/v2/client",
+						"@lottiefiles/dotlottie-react",
+						"@lottiefiles/dotlottie-web",
 						"class-variance-authority",
 						"clsx",
 						"cmdk",

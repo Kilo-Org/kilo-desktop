@@ -8,6 +8,7 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 
 import {
+	ACCENTS,
 	APP_THEMES,
 	DEFAULT_APP_THEME_PREFERENCES,
 	themeCss,
@@ -26,13 +27,19 @@ function injectThemeBootstrap(): Plugin {
 		name: "inject-theme-bootstrap",
 		transformIndexHtml() {
 			const themes = Object.fromEntries(
-				APP_THEMES.map(({ id }) => [id, themeCss({ themeId: id })]),
+				APP_THEMES.map(({ id }) => [id, themeCss({ themeId: id, accentId: "theme" })]),
 			);
 			return [
 				{ tag: "style", children: criticalThemeStyle(), injectTo: "head-prepend" },
 				{
 					tag: "script",
-					children: themeBootstrapScript(DEFAULT_APP_THEME_PREFERENCES.themeId, themes),
+					children: themeBootstrapScript(
+						DEFAULT_APP_THEME_PREFERENCES.themeId,
+						themes,
+						Object.fromEntries(
+							ACCENTS.map(({ id }) => [id, themeCss({ themeId: "anaconda", accentId: id })]),
+						),
+					),
 					injectTo: "head-prepend",
 				},
 			];
@@ -60,6 +67,7 @@ export default defineConfig({
 			}),
 		}),
 	],
+	assetsInclude: ["**/*.lottie"],
 	resolve: {
 		alias: {
 			"@": srcRoot,

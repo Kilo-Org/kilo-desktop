@@ -4,7 +4,7 @@ import type { ShellDelegates, ThemeAppearance } from "@anaconda-agentic-desktop/
 
 const DEFAULT_APPEARANCE: ThemeAppearance = {
 	mode: "light",
-	themeId: "anaconda",
+	themeId: "kilo",
 	terminal: null,
 	shiki: "pierre-light",
 };

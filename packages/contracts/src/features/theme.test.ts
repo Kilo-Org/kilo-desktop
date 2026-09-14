@@ -25,10 +25,15 @@ import {
 const themeCssById = {
 	kilo: themeCss(DEFAULT_APP_THEME_PREFERENCES),
 	anaconda: "",
+	dracula: themeCss({ themeId: "dracula", accentId: "theme" }),
+};
+const accentCssById = {
+	theme: "",
+	blue: themeCss({ themeId: "anaconda", accentId: "blue" }),
 };
 
 function bootstrapScript(): string {
-	return themeBootstrapScript(DEFAULT_APP_THEME_PREFERENCES.themeId, themeCssById);
+	return themeBootstrapScript(DEFAULT_APP_THEME_PREFERENCES.themeId, themeCssById, accentCssById);
 }
 
 function bootstrapContext(storage: Record<string, string> = {}, systemDark = false) {
@@ -54,7 +59,7 @@ function bootstrapContext(storage: Record<string, string> = {}, systemDark = fal
 
 describe("theme contracts", () => {
 	it("accepts renderer theme state", () => {
-		const state = { source: "dark", themeId: "anaconda" };
+		const state = { source: "dark", themeId: "dracula" };
 		expect(themeStateSchema.parse(state)).toEqual(state);
 		expect(themeStateSchema.safeParse({ ...state, themeId: 42 }).success).toBe(false);
 	});
@@ -101,26 +106,34 @@ describe("theme contracts", () => {
 	});
 
 	it.each([
-		["kilo", "--background:#111111;"],
-		["anaconda", ""],
-	])("restores saved %s without flashing another theme", (themeId, expected) => {
+		["anaconda", "theme", ""],
+		["anaconda", "blue", "--primary:#93c5fd;"],
+		["dracula", "theme", "--background:#282a36;"],
+		["dracula", "blue", "--primary:#93c5fd;"],
+	])("restores saved %s/%s without flashing Kilo", (themeId, accentId, expected) => {
 		const context = bootstrapContext(
-			{ [APP_THEME_STORAGE_KEY]: JSON.stringify({ themeId }) },
+			{ [APP_THEME_STORAGE_KEY]: JSON.stringify({ themeId, accentId }) },
 			true,
 		);
 		runInNewContext(bootstrapScript(), context);
 		if (expected) expect(context.styles[0]?.textContent).toContain(expected);
 		else expect(context.styles).toEqual([]);
+		expect(context.styles[0]?.textContent ?? "").not.toContain("--background:#111111;");
 	});
 
-	it.each(["", "{", "null", "[]", '"kilo"', '{"themeId":"__proto__"}', '{"themeId":["anaconda"]}'])(
-		"uses Kilo when stored preferences are malformed: %s",
-		(preferences) => {
-			const context = bootstrapContext({ [APP_THEME_STORAGE_KEY]: preferences });
-			runInNewContext(bootstrapScript(), context);
-			expect(context.styles[0]?.textContent).toContain("--background:#111111;");
-		},
-	);
+	it.each([
+		"",
+		"{",
+		"null",
+		"[]",
+		'"dracula"',
+		'{"themeId":"__proto__","accentId":"constructor"}',
+		'{"themeId":["anaconda"]}',
+	])("uses Kilo when stored preferences are malformed: %s", (preferences) => {
+		const context = bootstrapContext({ [APP_THEME_STORAGE_KEY]: preferences });
+		runInNewContext(bootstrapScript(), context);
+		expect(context.styles[0]?.textContent).toContain("--background:#111111;");
+	});
 
 	it("continues boot when localStorage is unavailable", () => {
 		const context = bootstrapContext({}, true);

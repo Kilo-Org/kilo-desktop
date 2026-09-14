@@ -177,22 +177,9 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<div className="relative flex w-full flex-col">
 			{isDraft ? <Welcome /> : null}
-			{/* Glow is absolutely positioned so it does not expand layout width; horizontal
-			    bleed is clipped by the thread viewport (`overflow-x-hidden`), not a tight
-			    local overflow box that cuts the blur into a hard rectangle. */}
-			<div className="relative">
-				{isDraft ? (
-					<div
-						aria-hidden="true"
-						className="fade-in zoom-in-40 blur-in-[56px] motion-safe:animate-in fill-mode-both pointer-events-none absolute top-1/2 left-1/2 h-[calc(100%+5rem)] w-[calc(100%+6rem)] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-[color:var(--chat-ambient-glow,var(--primary))]/8 blur-[56px] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] dark:bg-[color:var(--chat-ambient-glow,var(--primary))]/15"
-					/>
-				) : null}
-				<div className="relative z-10 flex flex-col">
-					<div className="relative z-10">
-						<ThreadComposerSlot />
-					</div>
-					{isDraft ? <ComposerDraftFooter /> : null}
-				</div>
+			<div className="flex w-full flex-col">
+				<ThreadComposerSlot />
+				{isDraft ? <ComposerDraftFooter /> : null}
 			</div>
 		</div>
 	);
@@ -567,10 +554,10 @@ const Composer: FC = () => {
 					<div
 						data-slot="aui_composer-shell"
 						className={cn(
-							"border-border chat-composer-surface data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+							"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
 							isDraft
-								? "border-b-0 bg-(--composer-bg) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.55)]"
-								: "chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
+								? "relative z-10 bg-(--composer-bg) dark:border-border focus-within:border-border dark:focus-within:border-muted-foreground/30"
+								: "chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 dark:shadow-none",
 						)}
 					/>
 				}

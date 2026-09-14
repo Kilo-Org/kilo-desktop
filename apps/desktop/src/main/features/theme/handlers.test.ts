@@ -10,10 +10,10 @@ describe("createThemeHandlers", () => {
 
 		const handlers = createThemeHandlers(electronWindow as never, preferences as never, theme);
 
-		expect(handlers["theme:sync"]({ source: "dark", themeId: "anaconda" })).toBeUndefined();
+		expect(handlers["theme:sync"]({ source: "dark", themeId: "dracula" })).toBeUndefined();
 
 		expect(preferences.setThemeSource).toHaveBeenCalledWith("dark");
-		expect(preferences.setThemeId).toHaveBeenCalledWith("anaconda");
+		expect(preferences.setThemeId).toHaveBeenCalledWith("dracula");
 		expect(theme.themeSource).toBe("dark");
 		expect(electronWindow.applyColorScheme).toHaveBeenCalledWith();
 	});

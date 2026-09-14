@@ -50,28 +50,26 @@ afterEach(() => {
 });
 
 describe("AppearanceSettings", () => {
-	it("switches Anaconda live and restores it after remount", async () => {
+	it("switches Dracula live and restores it after remount", async () => {
 		stubMatchMedia(true);
 		const mounted = renderAppearance();
 
+		await page.getByRole("combobox", { name: "Color theme" }).click();
+		await page.getByRole("option", { name: "Dracula", exact: true }).click();
 		await expect
 			.poll(() =>
 				getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
 			)
-			.toBe("#111111");
-		await page.getByRole("combobox", { name: "Color theme" }).click();
-		await page.getByRole("option", { name: "Anaconda", exact: true }).click();
-		await expect.poll(() => document.getElementById("app-theme")).toBeNull();
+			.toBe("#282a36");
 		mounted.unmount();
 		renderAppearance();
-		await expect.element(page.getByText("Anaconda", { exact: true })).toBeVisible();
-		await page.getByRole("combobox", { name: "Color theme" }).click();
-		await page.getByRole("option", { name: "Kilo", exact: true }).click();
+		await expect.element(page.getByText("Dracula", { exact: true })).toBeVisible();
+		await page.getByTestId("appearance-theme-light").click();
 		await expect
 			.poll(() =>
 				getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
 			)
-			.toBe("#111111");
+			.toBe("#f8f7fc");
 	});
 
 	it("toggles vibrancy for the default Kilo theme", async () => {
@@ -80,9 +78,29 @@ describe("AppearanceSettings", () => {
 		const opacity = () =>
 			getComputedStyle(document.documentElement).getPropertyValue("--shell-glass-opacity").trim();
 
-		expect(opacity()).toBe("96%");
+		expect(opacity()).toBe("80%");
 		await page.getByTestId("appearance-sidebar-vibrancy").click();
 		await expect.poll(opacity).toBe("100%");
+	});
+
+	it("persists Blue and restores Theme without leftover overrides", async () => {
+		stubMatchMedia(true);
+		const mounted = renderAppearance();
+		await page.getByRole("combobox", { name: "Color theme" }).click();
+		await page.getByRole("option", { name: "Dracula", exact: true }).click();
+		await page.getByTestId("appearance-accent-blue").click();
+		await expect
+			.element(page.getByTestId("appearance-accent-blue"))
+			.toHaveAttribute("aria-pressed", "true");
+		mounted.unmount();
+		renderAppearance();
+		await expect
+			.element(page.getByTestId("appearance-accent-blue"))
+			.toHaveAttribute("aria-pressed", "true");
+		await page.getByRole("combobox", { name: "Color theme" }).click();
+		await page.getByRole("option", { name: "Anaconda", exact: true }).click();
+		await page.getByTestId("appearance-accent-theme").click();
+		await expect.poll(() => document.getElementById("app-theme")).toBeNull();
 	});
 
 	it("selects Light, Dark, and System", async () => {

@@ -30,13 +30,12 @@ describe("GitDiffView", () => {
 		await act(async () =>
 			theme.setAppearance({
 				...theme.appearance(),
-				themeId: "kilo",
-				shiki: "github-light",
+				shiki: "catppuccin-latte",
 			}),
 		);
 		await vi.waitFor(() => {
-			expect(themeCss()).toContain("#24292e");
-			expect(treeHost()?.style.getPropertyValue("--trees-theme-sidebar-fg")).toBe("#586069");
+			expect(themeCss()).toContain("#4c4f69");
+			expect(treeHost()?.style.getPropertyValue("--trees-theme-sidebar-fg")).toBe("#4c4f69");
 		});
 	});
 

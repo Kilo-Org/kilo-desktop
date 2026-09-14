@@ -91,9 +91,7 @@ describe("PierreDiffProvider", () => {
 		expect(mocks.providerProps?.poolOptions.totalASTLRUCacheSize).toBe(120);
 		expect(mocks.providerProps?.highlighterOptions.langs).toEqual(["text"]);
 		expect(mocks.providerProps?.highlighterOptions.theme).toBe("pierre-light");
-		await act(async () =>
-			theme.setAppearance({ ...theme.appearance(), themeId: "kilo", shiki: "github-light" }),
-		);
+		await act(async () => theme.setAppearance({ ...theme.appearance(), shiki: "github-light" }));
 		await waitFor(() => {
 			expect(mocks.setRenderOptions).toHaveBeenLastCalledWith({ theme: "github-light" });
 		});

@@ -94,13 +94,14 @@ export function criticalThemeStyle(): string {
 export function themeBootstrapScript(
 	defaultThemeId: string,
 	themeCssById: Record<string, string>,
+	accentCssById: Record<string, string>,
 ): string {
 	const key = JSON.stringify(THEME_STORAGE_KEY);
 	const appThemeKey = JSON.stringify(APP_THEME_STORAGE_KEY);
 	const vibrancyKey = JSON.stringify(SIDEBAR_VIBRANCY_STORAGE_KEY);
 	return [
 		`(function(){var k=${key},s="system",r=document.documentElement;try{if(localStorage.getItem(${vibrancyKey})==="false")r.style.setProperty("--shell-glass-opacity","100%");var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light";`,
-		`var themes=${JSON.stringify(themeCssById)},c=themes[${JSON.stringify(defaultThemeId)}]||"";try{var p=JSON.parse(localStorage.getItem(${appThemeKey}));if(p&&typeof p==="object"&&!Array.isArray(p)&&typeof p.themeId==="string"&&Object.hasOwn(themes,p.themeId))c=themes[p.themeId]}catch(e){}`,
+		`var themes=${JSON.stringify(themeCssById)},accents=${JSON.stringify(accentCssById)},c=themes[${JSON.stringify(defaultThemeId)}]||"";try{var p=JSON.parse(localStorage.getItem(${appThemeKey}));if(p&&typeof p==="object"&&!Array.isArray(p)){if(typeof p.themeId==="string"&&Object.hasOwn(themes,p.themeId))c=themes[p.themeId];if(typeof p.accentId==="string"&&Object.hasOwn(accents,p.accentId))c+=accents[p.accentId]}}catch(e){}`,
 		`if(c){var t=document.getElementById("app-theme");if(!t){t=document.createElement("style");t.id="app-theme";document.head.appendChild(t)}t.textContent=c}})();`,
 	].join("");
 }

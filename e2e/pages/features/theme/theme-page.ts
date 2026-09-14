@@ -32,12 +32,9 @@ export class ThemePage {
 			app = await launch();
 			setPage(await waitForMainWindow(app));
 			await click(getLocatorByTestId("nav-settings"));
-			await expectElementToContainText(getLocatorByTestId("appearance-color-theme"), "Kilo", {
-				message: "A fresh profile should use Kilo",
-			});
 			await click(getLocatorByTestId("appearance-theme-dark"));
 			await click(getLocatorByTestId("appearance-color-theme"));
-			await click(getLocatorByTestId("appearance-color-theme-anaconda"));
+			await click(getLocatorByTestId("appearance-color-theme-dracula"));
 			await app.close();
 			app = undefined;
 
@@ -45,28 +42,23 @@ export class ThemePage {
 			const relaunchedApp = app;
 			setPage(await waitForMainWindow(relaunchedApp));
 			await click(getLocatorByTestId("nav-settings"));
-			await expectElementToContainText(getLocatorByTestId("appearance-color-theme"), "Anaconda", {
-				message: "The theme picker should restore Anaconda after relaunch",
+			await expectElementToContainText(getLocatorByTestId("appearance-color-theme"), "Dracula", {
+				message: "The theme picker should restore Dracula after relaunch",
 			});
 			const window = await relaunchedApp.browserWindow(getPage());
 			try {
+				// Electron 41 reports transparent vibrancy as #000000, not #00000000.
+				const nativeBackground = process.platform === "darwin" ? /^#000000(00)?$/ : /^#282a36$/;
 				await expect
 					.poll(() => window.evaluate((window) => window.getBackgroundColor().toLowerCase()), {
-						message: "Native window should restore Anaconda, or retain macOS transparency",
+						message: "Native window should restore Dracula, or retain macOS transparency",
 					})
-					.toBe(process.platform === "darwin" ? "#000000" : "#101314");
+					.toMatch(nativeBackground);
 				await expect
 					.poll(() => relaunchedApp.evaluate(({ nativeTheme }) => nativeTheme.themeSource), {
 						message: "Native menus and dialogs should restore the dark appearance",
 					})
 					.toBe("dark");
-				await click(getLocatorByTestId("appearance-color-theme"));
-				await click(getLocatorByTestId("appearance-color-theme-kilo"));
-				await expect
-					.poll(() => window.evaluate((window) => window.getBackgroundColor().toLowerCase()), {
-						message: "Native window should switch to Kilo, or retain macOS transparency",
-					})
-					.toBe(process.platform === "darwin" ? "#000000" : "#111111");
 			} finally {
 				await window.dispose();
 			}

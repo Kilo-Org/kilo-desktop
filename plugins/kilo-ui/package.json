@@ -17,6 +17,7 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
+		"@anaconda-agentic-desktop/pane-layout": "workspace:*",
 		"@assistant-ui/core": "^0.3.5",
 		"@assistant-ui/react": "0.15.4",
 		"@assistant-ui/react-markdown": "^0.14.8",
@@ -24,19 +25,20 @@
 		"@base-ui/react": "^1.6.0",
 		"@kilocode/sdk": "7.6.2",
 		"@lobehub/icons": "^5.15.0",
+		"@lottiefiles/dotlottie-react": "0.17.15",
+		"@lottiefiles/dotlottie-web": "0.63.0",
 		"@opencode-ai/sdk": "workspace:*",
 		"@pierre/diffs": "catalog:",
 		"@tanstack/react-virtual": "^3.14.9",
 		"better-sqlite3": "^13.0.1",
 		"class-variance-authority": "^0.7.1",
 		"drizzle-orm": "^0.45.2",
-		"lucide-react": "catalog:",
 		"lodash": "catalog:",
+		"lucide-react": "catalog:",
 		"motion": "^13.0.0",
 		"remark-gfm": "^4.0.1",
 		"tw-shimmer": "^0.4.12",
-		"zustand": "^5.0.14",
-		"@anaconda-agentic-desktop/pane-layout": "workspace:*"
+		"zustand": "^5.0.14"
 	},
 	"peerDependencies": {
 		"@anaconda-agentic-desktop/feature-sdk": "^0.1.0",

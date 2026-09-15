@@ -1,5 +1,5 @@
 import electronDebug from "electron-debug";
-// import { shellEnv } from "shell-env";
+import { shellEnv } from "shell-env";
 import { nativeTheme, session } from "electron";
 
 import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
@@ -152,11 +152,19 @@ export class Application {
 				pluginSchemes: PLUGIN_PROTOCOL_SCHEMES,
 			});
 
-			// Bootstrap networking before #registerIpc (bootFeatures): merge the
-			// login-shell env into process.env so GUI-launched builds see env-var
-			// proxies (`shell-env` no-ops on Windows), then patch in-process
-			// http/https/fetch so third-party deps honor corporate/system proxies.
-			// Object.assign(process.env, await shellEnv());
+			// Bootstrap networking before #registerIpc (bootFeatures). In packaged
+			// builds, merge the login-shell env into process.env so GUI-launched
+			// builds see env-var proxies and the correct PATH (`shell-env`
+			// no-ops on Windows; dev inherits the terminal env via `pnpm dev`).
+			// Non-fatal by design: a failure degrades to the inherited env
+			// (no login-shell PATH / proxy vars) but does not abort boot.
+			if (!isDevelopment) {
+				try {
+					Object.assign(process.env, await shellEnv());
+				} catch (error) {
+					this.#logger.warn("login-shell env sync failed; continuing with inherited env", error);
+				}
+			}
 			installProxyAgent();
 
 			this.#disposers.push(this.#security.install(session.defaultSession));

@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ExternalEditorService } from "./ExternalEditorService.js";
 
 describe("ExternalEditorService", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it("lists only editors with an available host command in product order", async () => {
 		const resolveCommand = vi.fn(async (commands: readonly string[]) => {
 			const command = commands.find((candidate) =>
@@ -18,8 +22,8 @@ describe("ExternalEditorService", () => {
 		await expect(service.listAvailable()).resolves.toEqual(["cursor", "vscode", "zed"]);
 	});
 
-	it("discovers editor commands from the login-shell path", async () => {
-		const resolveShellPath = vi.fn(async () => "/opt/homebrew/bin:/usr/local/bin:/usr/bin");
+	it("discovers editor commands from the process PATH", async () => {
+		vi.stubEnv("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin");
 		const resolveCommand = vi.fn(
 			async (commands: readonly string[], searchPath: string | undefined) =>
 				commands.includes("cursor") && searchPath?.includes("/usr/local/bin")
@@ -27,15 +31,12 @@ describe("ExternalEditorService", () => {
 					: null,
 		);
 		const service = new ExternalEditorService({
-			resolveShellPath,
 			resolveCommand,
 			launchDetached: vi.fn(),
 		});
 
 		await expect(service.listAvailable()).resolves.toEqual(["cursor"]);
-		await service.open("cursor", "/workspace/file.ts");
 
-		expect(resolveShellPath).toHaveBeenCalledOnce();
 		expect(resolveCommand).toHaveBeenCalledWith(
 			expect.any(Array),
 			"/opt/homebrew/bin:/usr/local/bin:/usr/bin",

@@ -22,7 +22,6 @@
 		"cross-spawn": "^7.0.6",
 		"globby": "^16.2.3",
 		"lucide-react": "catalog:",
-		"shell-env": "^4.0.3",
 		"which": "^7.0.0"
 	},
 	"peerDependencies": {

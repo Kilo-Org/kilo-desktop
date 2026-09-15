@@ -19,9 +19,9 @@ import { GitNotDetectedError } from "./errors.js";
  * 3. `which("git")` against the `PATH` from the given environment.
  *
  * Resolution is synchronous so `GitClient.spawn()` can hand back a live
- * process immediately; callers memoize the result. Known limitation:
- * packaged Electron apps on macOS get a minimal `PATH`, so system-git
- * discovery may later need a login-shell `PATH` lookup.
+ * process immediately; callers memoize the result. Packaged Electron builds
+ * inherit the login-shell PATH via the app bootstrap's shellEnv merge, so
+ * system-git discovery works correctly without a separate PATH lookup here.
  */
 export function resolveGitBinary(
 	gitPath: string | undefined,

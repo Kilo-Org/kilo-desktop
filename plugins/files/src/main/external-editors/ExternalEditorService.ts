@@ -1,5 +1,4 @@
 import spawn from "cross-spawn";
-import { shellEnv } from "shell-env";
 import which from "which";
 
 import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
@@ -11,7 +10,6 @@ export interface ExternalEditorServiceOptions {
 		commands: readonly string[],
 		searchPath: string | undefined,
 	) => Promise<string | null>;
-	readonly resolveShellPath?: () => Promise<string | undefined>;
 	readonly launchDetached?: (command: string, args: readonly string[]) => Promise<void>;
 }
 
@@ -24,14 +22,6 @@ async function resolveFirstCommand(
 		if (resolved) return resolved;
 	}
 	return null;
-}
-
-async function resolveShellPath(): Promise<string | undefined> {
-	try {
-		return (await shellEnv()).PATH ?? process.env["PATH"];
-	} catch {
-		return process.env["PATH"];
-	}
 }
 
 function launchDetached(command: string, args: readonly string[]): Promise<void> {
@@ -51,30 +41,24 @@ function launchDetached(command: string, args: readonly string[]): Promise<void>
 }
 
 /**
- * Owns discovery and detached launching for supported external editors. The
- * login-shell PATH is resolved lazily and cached because GUI-launched desktop
- * builds do not reliably inherit it, while repeated shell startup would make
- * every editor lookup unnecessarily expensive.
+ * Owns discovery and detached launching for supported external editors. PATH
+ * is read from `process.env`, which the app bootstrap syncs from the login
+ * shell in packaged builds (dev inherits the terminal env via `pnpm dev`).
  */
 export class ExternalEditorService {
 	private readonly resolveCommand: (
 		commands: readonly string[],
 		searchPath: string | undefined,
 	) => Promise<string | null>;
-	private readonly resolveShellPath: () => Promise<string | undefined>;
 	private readonly launchDetached: (command: string, args: readonly string[]) => Promise<void>;
-	private shellPathPromise: Promise<string | undefined> | null = null;
 
 	constructor(options: ExternalEditorServiceOptions = {}) {
 		this.resolveCommand = options.resolveCommand ?? resolveFirstCommand;
-		this.resolveShellPath =
-			options.resolveShellPath ??
-			(options.resolveCommand ? async () => process.env["PATH"] : resolveShellPath);
 		this.launchDetached = options.launchDetached ?? launchDetached;
 	}
 
 	async listAvailable(): Promise<ExternalEditorId[]> {
-		const searchPath = await this.searchPath();
+		const searchPath = process.env["PATH"];
 		const availability = await Promise.all(
 			EXTERNAL_EDITORS.map(async ({ id, commands }) => ({
 				id,
@@ -89,7 +73,7 @@ export class ExternalEditorService {
 		if (!definition) {
 			throw new FeatureError("Unknown external editor.", "VALIDATION");
 		}
-		const command = await this.resolveCommand(definition.commands, await this.searchPath());
+		const command = await this.resolveCommand(definition.commands, process.env["PATH"]);
 		if (!command) {
 			throw new FeatureError(`${definition.label} is not available.`, "BUSINESS");
 		}
@@ -99,10 +83,5 @@ export class ExternalEditorService {
 		} catch {
 			throw new FeatureError(`Could not open the file in ${definition.label}.`, "BUSINESS");
 		}
-	}
-
-	private searchPath(): Promise<string | undefined> {
-		this.shellPathPromise ??= this.resolveShellPath();
-		return this.shellPathPromise;
 	}
 }

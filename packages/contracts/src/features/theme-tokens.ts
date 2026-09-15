@@ -9,13 +9,13 @@ export const SIDEBAR_VIBRANCY_STORAGE_KEY = "sidebar-vibrancy:v1";
 
 /**
  * Hex paint tokens for native chrome (Linux window background, splash, title-bar symbols).
- * Hex equivalents of the background/foreground values from
- * `@anaconda/shadcn-theme` — Electron cannot use oklch here.
+ * Hex equivalents of Anaconda surfaces — Electron cannot use oklch here.
+ * Dark foreground is mist-100, not the package mist-50 title token.
  * macOS uses a transparent window over vibrancy instead.
  */
 export const themeChromeColors = {
 	light: { background: "#ffffff", foreground: "#090b0c" },
-	dark: { background: "#101314", foreground: "#f9fbfb" },
+	dark: { background: "#101314", foreground: "#f1f3f3" },
 } as const;
 
 export type ThemeChromeColors = { background: string; foreground: string };

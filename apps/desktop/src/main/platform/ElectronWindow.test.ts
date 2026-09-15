@@ -134,7 +134,7 @@ describe("ElectronWindow theme chrome", () => {
 		expect(createdWindows[0]?.options.windowStatePersistence).toBe(true);
 		expect(createdWindows[0]?.options.titleBarOverlay).toMatchObject({
 			color: "#111111",
-			symbolColor: "#fafafa",
+			symbolColor: "#f0f0f0",
 			height: 47,
 		});
 	});
@@ -216,7 +216,7 @@ describe("ElectronWindow theme chrome", () => {
 		expect(window?.setBackgroundColor).toHaveBeenCalledWith("#111111");
 		expect(window?.setTitleBarOverlay).toHaveBeenCalledWith({
 			color: "#111111",
-			symbolColor: "#fafafa",
+			symbolColor: "#f0f0f0",
 		});
 	});
 

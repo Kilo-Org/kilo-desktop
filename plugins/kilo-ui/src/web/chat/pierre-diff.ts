@@ -9,6 +9,8 @@ const PIERRE_DIFF_OPTIONS = {
 	unsafeCSS: `
 		:host {
 			--diffs-bg: var(--background);
+			--diffs-font-size: 0.75rem;
+			--diffs-line-height: 1.125rem;
 			background-color: var(--background);
 		}
 	`,

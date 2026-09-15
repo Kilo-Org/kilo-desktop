@@ -30,6 +30,8 @@ export type KiloProviderGroup = {
 export type KiloCatalogModel = ModelOption & {
 	providerID: string;
 	modelID: string;
+	/** Active model's context window in tokens, when the provider reports it. */
+	contextWindow?: number;
 };
 
 export type KiloModelCatalog = {
@@ -53,6 +55,8 @@ type KiloProviderListModel = {
 	/** OpenCode-style named variants (often reasoning levels). */
 	variants?: Record<string, unknown>;
 	reasoning_options?: ReadonlyArray<KiloReasoningOption>;
+	limit?: { context?: number; output?: number };
+	contextLength?: number;
 };
 
 /** Provider list payload from `client.provider.list()`. */
@@ -78,6 +82,13 @@ const EFFORT_LABELS: Record<string, string> = {
 
 function formatEffortLabel(id: string): string {
 	return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+function contextWindowFromProviderModel(model: KiloProviderListModel): number | undefined {
+	const context = model.limit?.context ?? model.contextLength;
+	return typeof context === "number" && Number.isFinite(context) && context > 0
+		? context
+		: undefined;
 }
 
 /**
@@ -167,6 +178,7 @@ export function buildCatalogFromProviderList(
 			const modelID = model.id;
 			const providerID = model.providerID || provider.id;
 			const efforts = effortsFromProviderModel(model);
+			const contextWindow = contextWindowFromProviderModel(model);
 			models.push({
 				id: modelRefToId({ providerID, modelID }),
 				name: model.name,
@@ -176,6 +188,7 @@ export function buildCatalogFromProviderList(
 				modelID,
 				disabled: !isConnected,
 				...(efforts ? { efforts } : {}),
+				...(contextWindow === undefined ? {} : { contextWindow }),
 			});
 		}
 	}

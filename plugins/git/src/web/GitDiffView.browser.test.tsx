@@ -39,6 +39,20 @@ describe("GitDiffView", () => {
 		});
 	});
 
+	it("uses the app's compact text scale for diff content", async () => {
+		stubFetch(() => new Response(patchResponseStream()));
+		renderView();
+		await waitForTreePath("README.md");
+
+		await vi.waitFor(() => {
+			const customCss = document
+				.querySelector("diffs-container")
+				?.shadowRoot?.querySelector("style[data-unsafe-css]")?.textContent;
+			expect(customCss).toContain("--diffs-font-size: 0.75rem");
+			expect(customCss).toContain("--diffs-line-height: 1.125rem");
+		});
+	});
+
 	it("shows an explicit state when the chat has no workspace", async () => {
 		renderView({ workspaceDirectory: undefined });
 		await expect.element(page.getByTestId("git-diff-no-workspace")).toBeVisible();

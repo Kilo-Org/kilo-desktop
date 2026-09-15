@@ -20,6 +20,8 @@ const FILE_EDITOR_SURFACE_CSS = `
 		--diffs-bg: transparent !important;
 		--diffs-light-bg: transparent !important;
 		--diffs-dark-bg: transparent !important;
+		--diffs-font-size: 0.75rem;
+		--diffs-line-height: 1.125rem;
 		background-color: transparent !important;
 		color: var(--foreground) !important;
 	}

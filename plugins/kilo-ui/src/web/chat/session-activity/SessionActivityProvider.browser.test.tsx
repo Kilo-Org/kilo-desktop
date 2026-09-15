@@ -2,7 +2,11 @@ import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
-import { SessionActivityProvider, useSessionActivity } from "./SessionActivityProvider.js";
+import {
+	SessionActivityProvider,
+	useOptionalSessionActivity,
+	useSessionActivity,
+} from "./SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity-store.js";
 
 describe("SessionActivityProvider", () => {
@@ -25,5 +29,10 @@ describe("SessionActivityProvider", () => {
 		expect(() => renderHook(() => useSessionActivity((state) => state.openSessionId))).toThrow(
 			"useSessionActivity requires SessionActivityProvider",
 		);
+	});
+
+	it("returns idle activity outside the provider", () => {
+		const { result } = renderHook(() => useOptionalSessionActivity((state) => state.openSessionId));
+		expect(result.current).toBeNull();
 	});
 });

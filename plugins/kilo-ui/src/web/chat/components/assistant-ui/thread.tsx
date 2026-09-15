@@ -6,6 +6,7 @@ import {
 	UserMessageAttachments,
 } from "./attachment.js";
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
+import { ComposerFooter } from "./composer-footer.js";
 import { ConversationMapAui } from "./elements/conversation-map.aui.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
@@ -164,8 +165,6 @@ const ComposerDockMask: FC = () => {
 				aria-hidden
 				className="bg-background pointer-events-none absolute -inset-x-4 top-full h-4"
 			/>
-			<div aria-hidden className="composer-corner-fill composer-corner-fill-tl" />
-			<div aria-hidden className="composer-corner-fill composer-corner-fill-tr" />
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-bl" />
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-br" />
 		</>
@@ -201,32 +200,45 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				autoScroll
 				scrollToBottomOnRunStart={false}
 				data-slot="aui_thread-viewport"
-				className="relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth"
+				className={cn(
+					"relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth",
+					!isDraft && "[scrollbar-gutter:stable_both-edges]",
+				)}
 			>
+				<div
+					aria-hidden
+					className="from-background pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b to-transparent"
+				/>
 				{isDraft ? null : <ConversationMapAui />}
 				<div
 					data-slot="aui_thread-column"
 					className={cn(
-						"mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
-						isDraft && "justify-center",
+						"mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col pt-4",
+						isDraft ? "justify-center px-4" : "px-1",
 					)}
 				>
-					<div data-slot="aui_message-group" className="mb-10 flex flex-col gap-y-4 empty:hidden">
+					<div
+						data-slot="aui_message-group"
+						className={cn("flex flex-col gap-y-4 empty:hidden", isDraft ? "mb-10" : "mb-16")}
+					>
 						<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
 					</div>
 
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
 							/* Transparent so sticky glass can blur scrolled messages behind the shell. */
-							"aui-thread-viewport-footer relative flex flex-col gap-4 overflow-visible pb-4",
-							!isDraft && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
+							"aui-thread-viewport-footer relative flex flex-col gap-4 overflow-visible",
+							isDraft ? "pb-4" : "sticky bottom-0 mt-auto rounded-t-(--composer-radius) pb-1.5",
 						)}
 					>
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
-						<div className="relative">
-							{!isDraft ? <ComposerDockMask /> : null}
-							<ThreadComposerBlock isDraft={isDraft} />
+						<div className="flex flex-col gap-1.5">
+							<div className="relative">
+								{!isDraft ? <ComposerDockMask /> : null}
+								<ThreadComposerBlock isDraft={isDraft} />
+							</div>
+							{!isDraft ? <ComposerFooter /> : null}
 						</div>
 						{isDraft ? <ThreadSuggestions /> : null}
 					</ThreadPrimitive.ViewportFooter>
@@ -583,6 +595,7 @@ const Composer: FC = () => {
 					isConnectionPending={isPending}
 					onSendWhenConnected={sendWhenConnected}
 					onSendFollowup={sendFollowup}
+					modelSelectorSide={isDraft ? "bottom" : "top"}
 					showPlanFollowupActions={showPlanFollowupActions}
 					planActionPending={submitting}
 					onRefine={refine}
@@ -598,6 +611,7 @@ const ComposerAction: FC<{
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
 	onSendFollowup: () => void;
+	modelSelectorSide: "top" | "bottom";
 	showPlanFollowupActions: boolean;
 	planActionPending: boolean;
 	onRefine: () => void;
@@ -607,6 +621,7 @@ const ComposerAction: FC<{
 	isConnectionPending,
 	onSendWhenConnected,
 	onSendFollowup,
+	modelSelectorSide,
 	showPlanFollowupActions,
 	planActionPending,
 	onRefine,
@@ -627,7 +642,7 @@ const ComposerAction: FC<{
 				<KiloAgentSelector />
 			</div>
 			<div className="flex items-center gap-1.5">
-				<KiloModelSelector />
+				<KiloModelSelector side={modelSelectorSide} />
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>
 						<ComposerPrimitive.Dictate
@@ -793,7 +808,8 @@ const ComposerAction: FC<{
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
 const SNAPSHOT_PROGRESS_STATUS = "Initializing snapshot...";
-const WORKING_INDICATOR_DELAY_MS = 200;
+const SNAPSHOT_INDICATOR_DELAY_MS = 200;
+const CONSIDERING_INDICATOR_DELAY_MS = 750;
 const WORKING_INDICATOR_PIXEL_DELAYS = Array.from({ length: 9 }, (_, index) => {
 	const row = Math.floor(index / 3);
 	return ((index % 3) + Math.abs(row - 1)) * 90;
@@ -825,13 +841,17 @@ const AssistantWorkingIndicator: FC = () => {
 			? SNAPSHOT_PROGRESS_STATUS
 			: CONSIDERING_NEXT_STEPS;
 	});
-	const [visible, setVisible] = useState(false);
+	const [visibleLabel, setVisibleLabel] = useState<string | null>(null);
 	const [elapsedDeciseconds, setElapsedDeciseconds] = useState(() =>
 		elapsedDecisecondsSince(turnStartedAt),
 	);
 
 	useEffect(() => {
-		const timeoutId = window.setTimeout(() => setVisible(true), WORKING_INDICATOR_DELAY_MS);
+		const delay =
+			label === CONSIDERING_NEXT_STEPS
+				? CONSIDERING_INDICATOR_DELAY_MS
+				: SNAPSHOT_INDICATOR_DELAY_MS;
+		const timeoutId = window.setTimeout(() => setVisibleLabel(label), delay);
 		const updateElapsedTime = () => setElapsedDeciseconds(elapsedDecisecondsSince(turnStartedAt));
 		updateElapsedTime();
 		const intervalId = window.setInterval(updateElapsedTime, 100);
@@ -839,9 +859,9 @@ const AssistantWorkingIndicator: FC = () => {
 			window.clearTimeout(timeoutId);
 			window.clearInterval(intervalId);
 		};
-	}, [turnStartedAt]);
+	}, [label, turnStartedAt]);
 
-	if (!visible) return null;
+	if (visibleLabel !== label) return null;
 
 	return (
 		<div
@@ -1139,7 +1159,7 @@ const UserMessage: FC = () => {
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
 			className={cn(
-				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2",
+				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 ps-2 duration-150 [&:where(>*)]:col-start-2",
 				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
 			)}
 			data-role="user"

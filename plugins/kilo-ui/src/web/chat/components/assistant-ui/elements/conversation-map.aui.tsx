@@ -8,11 +8,6 @@ import { ConversationMap, type ConversationMapEntry } from "./conversation-map.j
 
 const TITLE_LENGTH = 72;
 const PREVIEW_LENGTH = 240;
-/** Padding + tick column. Column `px-4` plus assistant `px-2` already inset the text. */
-const RAIL_EXTENT = 32;
-const COLUMN_TEXT_INSET = 24;
-const MIN_TEXT_GAP = 16;
-const NEEDED_GUTTER = RAIL_EXTENT + MIN_TEXT_GAP - COLUMN_TEXT_INSET;
 
 /**
  * A message scrolled to the top of the viewport lands a fraction of a pixel
@@ -139,7 +134,6 @@ export function ConversationMapAui({
 	const viewportHeight = useThreadViewport((s) => s.height.viewport);
 	const [activeId, setActiveId] = useState<string | undefined>(undefined);
 	const [visibleIds, setVisibleIds] = useState<readonly string[]>([]);
-	const [hasGutter, setHasGutter] = useState(false);
 	const scheduleRef = useRef<(() => void) | undefined>(undefined);
 
 	const turns = useMemo(() => groupIntoTurns(messages), [messages]);
@@ -169,12 +163,6 @@ export function ConversationMapAui({
 			frame = 0;
 			const owners = turnOfRef.current;
 			const view = viewport.getBoundingClientRect();
-			const column = viewport.querySelector<HTMLElement>("[data-slot='aui_thread-column']");
-			if (column) {
-				const col = column.getBoundingClientRect();
-				const gutter = side === "right" ? view.right - col.right : col.left - view.left;
-				setHasGutter(gutter >= NEEDED_GUTTER);
-			}
 			const line = readingLine(viewport);
 
 			// One pass yields both facts the rail draws: which turn is being read,
@@ -215,7 +203,7 @@ export function ConversationMapAui({
 			viewport.removeEventListener("scroll", schedule);
 			observer.disconnect();
 		};
-	}, [side, viewport]);
+	}, [viewport]);
 
 	useEffect(() => {
 		scheduleRef.current?.();
@@ -240,12 +228,13 @@ export function ConversationMapAui({
 		[viewport],
 	);
 
-	if (!hasGutter) return null;
-
 	return (
 		<div
 			data-slot="conversation-map-rail"
-			className={cn("pointer-events-none sticky top-0 z-10 h-0 w-full", className)}
+			className={cn(
+				"pointer-events-none sticky top-0 z-10 -mx-[var(--app-scrollbar-width)] hidden h-0 w-[calc(100%+var(--app-scrollbar-width)+var(--app-scrollbar-width))] @min-[54rem]:block",
+				className,
+			)}
 		>
 			<div
 				className={cn(

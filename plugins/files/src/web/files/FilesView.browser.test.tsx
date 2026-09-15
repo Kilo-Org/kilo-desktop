@@ -381,6 +381,13 @@ describe("FilesView", () => {
 			}),
 		);
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		await vi.waitFor(() => {
+			const customCss = document
+				.querySelector("diffs-container")
+				?.shadowRoot?.querySelector("style[data-unsafe-css]")?.textContent;
+			expect(customCss).toContain("--diffs-font-size: 0.75rem");
+			expect(customCss).toContain("--diffs-line-height: 1.125rem");
+		});
 		await vi.waitFor(
 			() => {
 				const selectedLines = Array.from(document.querySelectorAll("diffs-container")).flatMap(

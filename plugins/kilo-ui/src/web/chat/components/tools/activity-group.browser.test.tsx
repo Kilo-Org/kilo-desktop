@@ -123,6 +123,41 @@ describe("Reading activity subgroup", () => {
 			expect(queryByText("logo.svg")).toBeNull();
 		});
 	});
+
+	it("keeps a single running read collapsed when reasoning shares the activity group", () => {
+		const thought = {
+			type: "reasoning",
+			text: "I will inspect the workspace.",
+			status: { type: "complete" as const },
+		} as unknown as ToolCallMessagePartProps;
+		const read = {
+			...readPart("call-1", "/src/mark.svg"),
+			status: { type: "running" as const },
+		};
+		runtime.message.parts = [thought, read];
+		runtime.message.status = { type: "running" };
+
+		const { getByRole } = render(
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="thinking">
+					<div>I will inspect the workspace.</div>
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="reading">
+					<ReadActivity {...read} />
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+		const trigger = getByRole("button", { name: "Reading mark.svg" });
+
+		expect(trigger.getAttribute("aria-expanded")).toBe("false");
+		expect(trigger.querySelector('[data-slot="activity-disclosure-icon"]')).toHaveClass(
+			"lucide-chevron-right",
+		);
+
+		fireEvent.click(trigger);
+
+		expect(getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+	});
 });
 
 describe("Skill activity subgroup", () => {
@@ -179,14 +214,50 @@ describe("Subagent activity subgroup", () => {
 		);
 		const trigger = getByRole("button", { name: "Delegated Explore auth flow" });
 
+		expect(trigger.getAttribute("aria-expanded")).toBe("false");
+		expect(trigger.querySelector('[data-slot="activity-disclosure-icon"]')).toHaveClass(
+			"lucide-chevron-right",
+		);
 		expect(queryByText("Find how login works.")).toBeNull();
 		expect(queryByText("Login lives in", { exact: false })).toBeNull();
 
 		fireEvent.click(trigger);
+		expect(trigger.getAttribute("aria-expanded")).toBe("true");
+		expect(trigger.querySelector('[data-slot="activity-disclosure-icon"]')).toHaveClass(
+			"lucide-chevron-down",
+		);
 		expect(queryByText("Find how login works.")).toBeNull();
 		expect(getByText("Login lives in", { exact: false })).toBeDefined();
 		expect(baseElement.querySelector("code")?.textContent).toBe("auth.ts");
 		expect(getByText("@explore")).toBeDefined();
+	});
+
+	it("does not reveal a single task result when the running call completes", () => {
+		const runningPart = {
+			...taskPart(
+				"call-1",
+				{ description: "Explore auth flow", subagent_type: "explore" },
+				"<task_result>Partial result</task_result>",
+			),
+			status: { type: "running" as const },
+		};
+		const renderGroup = (part: ToolCallMessagePartProps) => (
+			<ActivityGroup group={{ indices: [0] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="subagent">
+					<TaskActivity {...part} />
+				</ActivitySubgroup>
+			</ActivityGroup>
+		);
+		runtime.message.parts = [runningPart];
+		runtime.message.status = { type: "running" };
+		const { queryByText, rerender } = render(renderGroup(runningPart));
+
+		const completedPart = { ...runningPart, status: { type: "complete" as const } };
+		runtime.message.parts = [completedPart];
+		runtime.message.status = { type: "complete" };
+		rerender(renderGroup(completedPart));
+
+		expect(queryByText("Partial result")).toBeNull();
 	});
 
 	it("shows a solo running task once in the subgroup header", () => {
@@ -364,6 +435,41 @@ describe("Activity group scrolling", () => {
 });
 
 describe("Notebooks activity subgroup", () => {
+	it("never moves the active subgroup back to an earlier stale-running tool", () => {
+		const staleRunningRead = {
+			...readPart("call-1", "/src/mark.svg"),
+			status: { type: "running" as const },
+		};
+		const runningNotebook = {
+			...toolPart("call-2", "notebooks_create_notebook", {}),
+			status: { type: "running" as const },
+		};
+		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...parts[0]!} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="mcp:notebooks">
+					<ToolCallFallback {...parts[1]!} />
+				</ActivitySubgroup>
+			</ActivityGroup>
+		);
+
+		runtime.message.parts = [staleRunningRead, runningNotebook];
+		runtime.message.status = { type: "running" };
+		const { getByRole, getByText, rerender } = render(renderGroup(runtime.message.parts));
+		expect(getByText("Create notebook")).toBeDefined();
+
+		runtime.message.parts = [
+			staleRunningRead,
+			{ ...runningNotebook, status: { type: "complete" as const } },
+		];
+		rerender(renderGroup(runtime.message.parts));
+
+		expect(getByRole("button", { name: "Notebooks" })).toBeDefined();
+		expect(getByText("Create notebook")).toBeDefined();
+	});
+
 	it("keeps the completed tool group open briefly, then collapses it", async () => {
 		vi.useFakeTimers();
 		const completedRead = readPart("call-1", "/src/mark.svg");

@@ -39,6 +39,14 @@ describe("PierreDiffBody", () => {
 		);
 
 		expect(container.querySelectorAll("diffs-container")).toHaveLength(2);
+		const customCss = () =>
+			container
+				.querySelector("diffs-container")
+				?.shadowRoot?.querySelector("style[data-unsafe-css]")?.textContent;
+		await waitFor(() => {
+			expect(customCss()).toContain("--diffs-font-size: 0.75rem");
+			expect(customCss()).toContain("--diffs-line-height: 1.125rem");
+		});
 		const themeCss = () =>
 			container
 				.querySelector("diffs-container")

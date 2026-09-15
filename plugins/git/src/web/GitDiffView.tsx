@@ -49,6 +49,8 @@ const DIFF_VIEW_LAYOUT = { paddingTop: 0, gap: 1, paddingBottom: 8 } as const;
 const DIFF_VIEW_UNSAFE_CSS = `
 	:host {
 		--diffs-bg: var(--background);
+		--diffs-font-size: 0.75rem;
+		--diffs-line-height: 1.125rem;
 		background-color: var(--background);
 	}
 `;

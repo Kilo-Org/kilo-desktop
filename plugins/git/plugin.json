@@ -14,6 +14,12 @@
 				"label": "Branch"
 			},
 			{
+				"zone": "kilo-ui/chat-composer-footer",
+				"id": "branch-label",
+				"component": "GitBranchLabel",
+				"label": "Branch"
+			},
+			{
 				"zone": "kilo-ui/chat-right-panel-tab",
 				"id": "changes",
 				"component": "GitDiffView",

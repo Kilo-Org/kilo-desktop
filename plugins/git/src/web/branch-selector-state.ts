@@ -28,6 +28,12 @@ export function getTriggerLabel(state: SelectorQueryState, pendingBranch?: strin
 	return "Select branch";
 }
 
+/** Current branch for a read-only label. Hidden until a name is known. */
+export function getReadOnlyBranchLabel(state: SelectorQueryState): string | undefined {
+	if (!state.data) return undefined;
+	return state.data.currentBranch ?? "Detached HEAD";
+}
+
 /**
  * Inline popover message (the workspace picker's "Loading workspaces…" /
  * "No workspaces yet." pattern): `null` means the branch list should

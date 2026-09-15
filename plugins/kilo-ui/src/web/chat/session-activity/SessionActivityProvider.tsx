@@ -2,8 +2,10 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useStore } from "zustand";
 
 import type { SessionActivityStore, SessionActivityStoreState } from "./session-activity-store.js";
+import { createSessionActivityStore } from "./session-activity-store.js";
 
 const SessionActivityContext = createContext<SessionActivityStore | null>(null);
+const idleSessionActivityStore = createSessionActivityStore({ storage: null });
 
 export function SessionActivityProvider({
 	store,
@@ -27,4 +29,12 @@ function useSessionActivityStore(): SessionActivityStore {
 
 export function useSessionActivity<T>(selector: (state: SessionActivityStoreState) => T): T {
 	return useStore(useSessionActivityStore(), selector);
+}
+
+/** Same as `useSessionActivity`, but safe outside the provider (idle empty store). */
+export function useOptionalSessionActivity<T>(
+	selector: (state: SessionActivityStoreState) => T,
+): T {
+	const store = useContext(SessionActivityContext) ?? idleSessionActivityStore;
+	return useStore(store, selector);
 }

@@ -335,4 +335,38 @@ describe("model-catalog", () => {
 			{ id: "max", name: "Max" },
 		]);
 	});
+
+	it("copies the provider context window onto catalog models", () => {
+		const withLimits: KiloProviderListPayload = {
+			all: [
+				{
+					id: "anthropic",
+					name: "Anthropic",
+					models: {
+						"claude-sonnet": {
+							id: "claude-sonnet",
+							name: "Claude Sonnet",
+							providerID: "anthropic",
+							limit: { context: 200_000 },
+						},
+						"claude-haiku": {
+							id: "claude-haiku",
+							name: "Claude Haiku",
+							providerID: "anthropic",
+							contextLength: 64_000,
+						},
+					},
+				},
+			],
+			default: { anthropic: "claude-sonnet" },
+			connected: ["anthropic"],
+		};
+		const catalog = buildCatalogFromProviderList(withLimits);
+		expect(
+			catalog.models.find((model) => model.id === "anthropic/claude-sonnet")?.contextWindow,
+		).toBe(200_000);
+		expect(
+			catalog.models.find((model) => model.id === "anthropic/claude-haiku")?.contextWindow,
+		).toBe(64_000);
+	});
 });

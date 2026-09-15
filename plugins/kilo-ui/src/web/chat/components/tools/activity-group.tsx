@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 
 import {
 	Avatar,
@@ -165,15 +165,10 @@ const ActivityLabel: FC<{
 	);
 };
 
-const ActivityDisclosureIcon: FC<{ open: boolean }> = ({ open }) => (
-	<ChevronRightIcon
-		aria-hidden
-		className={cn(
-			"size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
-			open && "rotate-90",
-		)}
-	/>
-);
+const ActivityDisclosureIcon: FC<{ open: boolean }> = ({ open }) => {
+	const Icon = open ? ChevronDownIcon : ChevronRightIcon;
+	return <Icon aria-hidden data-slot="activity-disclosure-icon" className="size-3.5 shrink-0" />;
+};
 
 const contentAnimation =
 	"h-(--collapsible-panel-height) overflow-hidden transition-[height] ease-[cubic-bezier(0.32,0.72,0,1)] data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none";
@@ -210,7 +205,8 @@ const useDelayedActivityOpen = (
 };
 
 const ActivityStreamContext = createContext(false);
-const ActivitySettlingKindContext = createContext<ActivityKind | null>(null);
+const ActivitySettlingSegmentContext = createContext<number | null>(null);
+const ActivityProgressIndexContext = createContext(-1);
 
 export type ActivitySubgroupContextValue = {
 	kind: ActivityKind;
@@ -243,25 +239,32 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	const [streamExpanded, setStreamExpanded] = useState(false);
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
+	const furthestActiveIndexRef = useRef(-1);
+	const lastActiveSegmentStartRef = useRef<number | null>(null);
 	const lockScroll = useStableGutterScrollLock(collapsibleRef, GROUP_ANIMATION_DURATION);
-	const activeSegment = [...summary.segments]
+	const activeCandidate = [...summary.segments]
 		.reverse()
 		.find(
 			(segment) =>
 				segment.running || segment.requiresAction || (hasPendingAsk && segment.kind === "asking"),
 		);
+	const activeCandidateIndex = activeCandidate?.indices.at(-1) ?? -1;
+	const activeSegment =
+		activeCandidateIndex >= furthestActiveIndexRef.current ? activeCandidate : undefined;
+	if (activeSegment) {
+		furthestActiveIndexRef.current = activeCandidateIndex;
+		lastActiveSegmentStartRef.current = activeSegment.indices[0] ?? null;
+	}
 	// Only the activity group that owns the in-flight questionnaire should look
 	// "live". The message can remain running between tools while it considers
 	// its next step, but that gap should settle the tool group that just finished.
 	const streaming = activeSegment !== undefined;
 	const automaticOpen = useDelayedActivityOpen(
 		streaming,
-		summary.segments.length > 1 && userOpen === null,
+		summary.segments.length > 1 && summary.toolCount > 1 && userOpen === null,
 		lockScroll,
 	);
 	const open = userOpen ?? automaticOpen;
-	const lastActiveKindRef = useRef<ActivityKind | null>(null);
-
 	const startIndex = group.indices[0] ?? 0;
 	const endIndex = group.indices.at(-1) ?? 0;
 	const textBefore = useAuiState((s) => {
@@ -296,15 +299,17 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		activeSegment?.requiresAction ||
 		(hasPendingAsk && activeSegment?.kind === "asking"),
 	);
-	if (activeSegment) lastActiveKindRef.current = activeSegment.kind;
-	const compactKind = !streaming && userOpen !== true ? lastActiveKindRef.current : null;
-	const settlingKind = automaticOpen ? compactKind : null;
-	const settlingSegment = settlingKind
-		? summary.segments.find((segment) => segment.kind === settlingKind)
-		: undefined;
+	const compactSegmentStart =
+		!streaming && userOpen !== true ? lastActiveSegmentStartRef.current : null;
+	const settlingSegmentStart = automaticOpen ? compactSegmentStart : null;
+	const settlingSegment =
+		settlingSegmentStart !== null
+			? summary.segments.find((segment) => segment.indices[0] === settlingSegmentStart)
+			: undefined;
 	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
 
 	if (streaming && !streamExpanded) {
+		const previewOpen = summary.toolCount > 1;
 		const label = activeSegment
 			? getKindMeta(activeSegment.kind).liveLabel(getSegmentStats(parts, activeSegment))
 			: summary.label;
@@ -318,6 +323,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 				<button
 					type="button"
+					aria-expanded={previewOpen}
 					onClick={() => {
 						setStreamExpanded(true);
 						setUserOpen(true);
@@ -328,11 +334,15 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					<span className="font-medium">
 						<ActivityLabel label={label} shimmer={activeLoading} />
 					</span>
-					<ActivityDisclosureIcon open />
+					<ActivityDisclosureIcon open={previewOpen} />
 				</button>
-				<ActivityStreamContext.Provider value={true}>
-					<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
-				</ActivityStreamContext.Provider>
+				{previewOpen ? (
+					<ActivityProgressIndexContext.Provider value={furthestActiveIndexRef.current}>
+						<ActivityStreamContext.Provider value={true}>
+							<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
+						</ActivityStreamContext.Provider>
+					</ActivityProgressIndexContext.Provider>
+				) : null}
 			</div>
 		);
 	}
@@ -389,11 +399,13 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					)}
 				</CollapsibleTrigger>
 				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
-					<ActivitySettlingKindContext.Provider value={compactKind}>
-						<ActivityStreamContext.Provider value={compactKind !== null}>
-							<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
-						</ActivityStreamContext.Provider>
-					</ActivitySettlingKindContext.Provider>
+					<ActivityProgressIndexContext.Provider value={furthestActiveIndexRef.current}>
+						<ActivitySettlingSegmentContext.Provider value={compactSegmentStart}>
+							<ActivityStreamContext.Provider value={compactSegmentStart !== null}>
+								<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
+							</ActivityStreamContext.Provider>
+						</ActivitySettlingSegmentContext.Provider>
+					</ActivityProgressIndexContext.Provider>
 				</CollapsibleContent>
 			</Collapsible>
 		</div>
@@ -436,13 +448,20 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const lockScroll = useStableGutterScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
-	const statusActive = segment.running || segment.requiresAction || hasPendingAsk;
-	const automaticOpen = useDelayedActivityOpen(statusActive, toggled === null, lockScroll);
-	const settlingKind = useContext(ActivitySettlingKindContext);
+	const progressIndex = useContext(ActivityProgressIndexContext);
+	const segmentEndIndex = segment.indices.at(-1) ?? -1;
+	const canBeActive = segmentEndIndex >= progressIndex;
+	const statusActive = canBeActive && (segment.running || segment.requiresAction || hasPendingAsk);
+	const automaticOpen = useDelayedActivityOpen(
+		statusActive,
+		segment.indices.length > 1 && toggled === null,
+		lockScroll,
+	);
+	const settlingSegmentStart = useContext(ActivitySettlingSegmentContext);
+	const isSettlingSegment = settlingSegmentStart === (segment.indices[0] ?? null);
 	const open =
-		segment.requiresAction ||
-		hasPendingAsk ||
-		(toggled ?? (settlingKind === kind || automaticOpen));
+		(canBeActive && (segment.requiresAction || hasPendingAsk)) ||
+		(toggled ?? (isSettlingSegment || automaticOpen));
 
 	const streamCollapsed = useContext(ActivityStreamContext);
 
@@ -453,9 +472,9 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		[kind, segment.indices.length],
 	);
 
-	const active = segment.running || segment.requiresAction || hasPendingAsk;
+	const active = statusActive;
 
-	if (streamCollapsed && !active && settlingKind !== kind) return null;
+	if (streamCollapsed && !active && !isSettlingSegment) return null;
 
 	// A single label-only activity is fully described by its header. Multiple
 	// items need a disclosure for their child list; asking is the exception
@@ -540,7 +559,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 								label: meta.label,
 								className: meta.circleClassName,
 								colored: active || open,
-								loading: segment.running,
+								loading: canBeActive && segment.running,
 							},
 						]}
 					/>

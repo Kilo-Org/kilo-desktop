@@ -10,8 +10,18 @@ import {
 } from "@assistant-ui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
+
+import type * as SessionModelUsage from "../../usage/session-model-usage.js";
+
+vi.mock("../../usage/session-model-usage.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof SessionModelUsage>();
+	return {
+		...actual,
+		fetchSessionModelUsage: vi.fn().mockResolvedValue(undefined),
+	};
+});
 
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";

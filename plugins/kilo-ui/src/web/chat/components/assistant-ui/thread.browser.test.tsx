@@ -12,10 +12,20 @@ import {
 	type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
+
+import type * as SessionModelUsage from "../../usage/session-model-usage.js";
+
+vi.mock("../../usage/session-model-usage.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof SessionModelUsage>();
+	return {
+		...actual,
+		fetchSessionModelUsage: vi.fn().mockResolvedValue(undefined),
+	};
+});
 
 import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
 import {
@@ -39,6 +49,7 @@ import { Thread } from "./thread.js";
 
 afterEach(() => {
 	cleanup();
+	vi.useRealTimers();
 });
 
 const signedInAuth: KiloAuthContextValue = {
@@ -821,5 +832,37 @@ describe("snapshot progress status", () => {
 			.element(screen.getByRole("status", { name: "Initializing snapshot..." }))
 			.not.toBeInTheDocument();
 		expect(screen.getByText(/Initializing snapshot…/).elements()).toHaveLength(0);
+	});
+});
+
+describe("assistant working status", () => {
+	const idleRunningMessages = (): readonly ExternalThreadMessage[] => [
+		fromThreadMessageLike(
+			{ role: "user", content: [{ type: "text", text: "Inspect the workspace" }] },
+			"msg-user",
+			{ type: "complete", reason: "stop" },
+		),
+		fromThreadMessageLike(
+			{ role: "assistant", status: { type: "running" }, content: [] },
+			"msg-assistant",
+			{ type: "complete", reason: "stop" },
+		),
+	];
+
+	it("waits through transient activity gaps before showing considering next steps", async () => {
+		vi.useFakeTimers();
+		renderExternalMessagesThread(idleRunningMessages(), true);
+		const indicator = () =>
+			document.querySelector('[role="status"][aria-label="Considering next steps"]');
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(749);
+		});
+		expect(indicator()).toBeNull();
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1);
+		});
+		expect(indicator()).not.toBeNull();
 	});
 });

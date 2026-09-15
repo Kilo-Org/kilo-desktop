@@ -55,6 +55,7 @@ import {
 	ModelSelectorTrigger,
 	ModelSelectorValue,
 	useModelSelectorContext,
+	type ModelSelectorContentProps,
 	type ModelSelectorEffortOption,
 } from "./model-selector.js";
 
@@ -119,7 +120,9 @@ function nextHighlightIndex(
  * Composer model picker: assistant-ui ModelSelector compound API with a
  * provider rail (favorites + providers) and searchable list.
  */
-export const KiloModelSelector: FC = () => {
+export const KiloModelSelector: FC<{
+	side?: ModelSelectorContentProps["side"];
+}> = ({ side = "top" }) => {
 	const sdk = useSdk("kilo-ui");
 	const auth = useKiloAuth();
 	const needsSignIn = needsKiloSignIn(auth);
@@ -297,7 +300,8 @@ export const KiloModelSelector: FC = () => {
 			<ModelSelectorContent
 				searchable
 				shouldFilter={false}
-				align="start"
+				align="end"
+				side={side}
 				className="w-[min(100vw,22.5rem)] max-w-[min(100vw,22.5rem)] min-w-0 p-0"
 				data-qa-id="kilo-model-selector-content"
 				{...(commandValue !== undefined ? { commandValue } : {})}

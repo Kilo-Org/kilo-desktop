@@ -37,6 +37,14 @@
 	--background: color-mix(in oklch, var(--color-mist-950) 50%, var(--color-mist-900));
 	--card: var(--color-mist-900);
 	--popover: var(--color-mist-900);
+	/* mist-50 is near-white; mist-100 keeps titles bright without glowing. */
+	--foreground: var(--color-mist-100);
+	--card-foreground: var(--color-mist-100);
+	--popover-foreground: var(--color-mist-100);
+	--secondary-foreground: var(--color-mist-100);
+	--accent-foreground: var(--color-mist-100);
+	--sidebar-foreground: var(--color-mist-100);
+	--sidebar-accent-foreground: var(--color-mist-100);
 	/* Translucent hairline: keeps one apparent weight over both the opaque
 	   content panes and the vibrancy-backed sidebar, which a solid Mist step
 	   cannot — its contrast inverts with the surface beneath it. */

@@ -78,8 +78,8 @@
 	}
 }
 
-/* Opaque wedges cover the docked composer's rounded-corner cutouts so
-   scrolled messages cannot show through around the glass surface.
+/* Opaque wedges cover the docked composer's bottom corner cutouts so
+   scrolled messages cannot show through below the glass surface.
    The mask starts at the outer radius so the stroke stays visible. */
 .composer-corner-fill {
 	pointer-events: none;
@@ -89,26 +89,6 @@
 	background-color: var(--background);
 	-webkit-mask: var(--composer-corner-mask);
 	mask: var(--composer-corner-mask);
-}
-
-.composer-corner-fill-tl {
-	top: 0;
-	left: 0;
-	--composer-corner-mask: radial-gradient(
-		circle at 100% 100%,
-		transparent var(--composer-radius),
-		#000 var(--composer-radius)
-	);
-}
-
-.composer-corner-fill-tr {
-	top: 0;
-	right: 0;
-	--composer-corner-mask: radial-gradient(
-		circle at 0 100%,
-		transparent var(--composer-radius),
-		#000 var(--composer-radius)
-	);
 }
 
 .composer-corner-fill-bl {

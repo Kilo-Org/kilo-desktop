@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getTriggerLabel, type SelectorQueryState } from "./branch-selector-state.js";
+import {
+	getReadOnlyBranchLabel,
+	getTriggerLabel,
+	type SelectorQueryState,
+} from "./branch-selector-state.js";
 
 const ready: SelectorQueryState = {
 	workspaceDirectory: "/repo",
@@ -23,5 +27,38 @@ describe("getTriggerLabel", () => {
 
 	it("drops the pending branch once it matches the current one", () => {
 		expect(getTriggerLabel(ready, "main")).toBe("main");
+	});
+});
+
+describe("getReadOnlyBranchLabel", () => {
+	it("returns the current branch once loaded", () => {
+		expect(getReadOnlyBranchLabel(ready)).toBe("main");
+	});
+
+	it("returns Detached HEAD when the repo has no current branch", () => {
+		expect(
+			getReadOnlyBranchLabel({ ...ready, data: { ...ready.data!, currentBranch: undefined } }),
+		).toBe("Detached HEAD");
+	});
+
+	it("hides the label until a branch name is known", () => {
+		expect(
+			getReadOnlyBranchLabel({ ...ready, data: undefined, branchesPending: true }),
+		).toBeUndefined();
+		expect(
+			getReadOnlyBranchLabel({
+				...ready,
+				workspaceDirectory: undefined,
+				isRegular: false,
+				data: undefined,
+			}),
+		).toBeUndefined();
+		expect(
+			getReadOnlyBranchLabel({
+				...ready,
+				isRegular: false,
+				data: undefined,
+			}),
+		).toBeUndefined();
 	});
 });

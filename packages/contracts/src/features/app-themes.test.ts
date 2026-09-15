@@ -26,7 +26,7 @@ describe("app theme presets", () => {
 		expect(APP_THEMES[0]!.name).toBe("Kilo");
 		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
 			background: "#111111",
-			foreground: "#fafafa",
+			foreground: "#f0f0f0",
 			primary: "#f7f586",
 			"primary-foreground": "#1f1f1f",
 			card: "#1f1f1f",
@@ -64,11 +64,11 @@ describe("app theme presets", () => {
 	it("derives native chrome for Kilo and Anaconda", () => {
 		expect(getThemeChrome("kilo")).toEqual({
 			light: { background: "#fafaf7", foreground: "#1f1f1f" },
-			dark: { background: "#111111", foreground: "#fafafa" },
+			dark: { background: "#111111", foreground: "#f0f0f0" },
 		});
 		expect(getThemeChrome("anaconda")).toEqual({
 			light: { background: "#ffffff", foreground: "#090b0c" },
-			dark: { background: "#101314", foreground: "#f9fbfb" },
+			dark: { background: "#101314", foreground: "#f1f3f3" },
 		});
 	});
 

@@ -407,7 +407,7 @@ export const SessionListContent = memo(function SessionListContent({
 					</div>
 					<div
 						data-qa-id="session-list-grouping-header"
-						className="mb-1 flex h-8 shrink-0 items-center gap-0.5"
+						className="-mb-0.5 flex h-8 shrink-0 items-center gap-0.5"
 					>
 						<WorkspaceFilter
 							value={focus}

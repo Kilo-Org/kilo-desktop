@@ -646,6 +646,9 @@ export const SessionListSearch: FC<{
 	const workspaceRows = showWorkspaces ? workspaces : [];
 	const emptyQuery = query.trim().length === 0;
 	const emptyLabel = searchEmptyLabel(scope, emptyQuery, isLoading);
+	const chatHeading =
+		scope === "all" || settled.length > 0 ? (emptyQuery ? "Recent chats" : "Chats") : undefined;
+	const workspaceHeading = scope === "all" ? "Workspaces" : undefined;
 
 	const handleSelectChat = (row: SearchRow) => {
 		setOpen(false);
@@ -688,12 +691,13 @@ export const SessionListSearch: FC<{
 						aria-label="Search chats and workspaces"
 						className="pe-10"
 					/>
+					<CommandSeparator className="bg-border/60" />
 					<ToggleGroup
 						size="sm"
 						spacing={1}
 						value={[scope]}
 						aria-label="Search in"
-						className="px-4 pt-0.5 pb-3.5"
+						className="px-4 pt-3 pb-1"
 						onMouseDown={(event) => event.preventDefault()}
 						onValueChange={(value) => {
 							const next = value[0];
@@ -711,11 +715,10 @@ export const SessionListSearch: FC<{
 							</ToggleGroupItem>
 						))}
 					</ToggleGroup>
-					<CommandSeparator />
-					<CommandList>
+					<CommandList className="h-96 px-2">
 						<CommandEmpty>{emptyLabel}</CommandEmpty>
 						{chats.length > 0 ? (
-							<CommandGroup heading={emptyQuery ? "Recent chats" : "Chats"}>
+							<CommandGroup heading={chatHeading}>
 								{chats.map((row) => (
 									<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
 								))}
@@ -734,7 +737,10 @@ export const SessionListSearch: FC<{
 						{workspaceRows.length > 0 ? (
 							<>
 								{chats.length > 0 || settled.length > 0 ? <CommandSeparator /> : null}
-								<CommandGroup heading="Workspaces">
+								<CommandGroup
+									heading={workspaceHeading}
+									className="in-data-[slot=dialog-content]:**:[[cmdk-group-heading]]:px-0"
+								>
 									{workspaceRows.map((workspace) => (
 										<SearchWorkspaceItem
 											key={workspace.id}

@@ -119,7 +119,7 @@ describe("KiloServerManager", () => {
 		});
 	});
 
-	it("spawns with an app-owned config profile, shared Kilo data, loopback CORS, and a sanitized environment", async () => {
+	it("spawns with additive Desktop config, the user's Kilo profile, loopback CORS, and a sanitized environment", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
@@ -148,8 +148,10 @@ describe("KiloServerManager", () => {
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: "/vendor/tree-sitter",
-			// Desktop owns Kilo config, rather than merging the host's ~/.config/kilo.
-			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
+			// The user's XDG config root remains the base Kilo profile.
+			XDG_CONFIG_HOME: "/custom/config",
+			// Desktop's built-in config is merged additively on top.
+			KILO_CONFIG_DIR: "/tmp/kilo-test-runtime/config/kilo",
 			// Shared data keeps provider credentials and sessions from Kilo CLI / VS Code.
 			XDG_DATA_HOME: "/custom/data",
 			XDG_CACHE_HOME: "/custom/cache",
@@ -157,13 +159,12 @@ describe("KiloServerManager", () => {
 			XDG_STATE_HOME: "/custom/state",
 			NO_PROXY: "127.0.0.1,localhost",
 		});
-		expect(options.env.KILO_CONFIG_DIR).toBeUndefined();
 		expect(options.env.NODE_OPTIONS).toBeUndefined();
 		expect(options.env.LD_PRELOAD).toBeUndefined();
 		manager.dispose();
 	});
 
-	it("owns config and defaults state while preserving shared data and cache", async () => {
+	it("preserves the user config root and defaults state while owning the additive config directory", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
@@ -178,20 +179,34 @@ describe("KiloServerManager", () => {
 		const [, , options] = spawn.mock.calls[0]!;
 
 		expect(options.env).toMatchObject({
-			XDG_CONFIG_HOME: "/tmp/kilo-test-runtime/config",
+			XDG_CONFIG_HOME: "/custom/config",
+			KILO_CONFIG_DIR: "/tmp/kilo-test-runtime/config/kilo",
 			XDG_DATA_HOME: "/custom/data",
 			XDG_CACHE_HOME: "/custom/cache",
 			XDG_STATE_HOME: "/tmp/kilo-test-state",
 		});
-		expect(options.env.KILO_CONFIG_DIR).toBeUndefined();
 		expect(options.env.kilo_config_dir).toBeUndefined();
 		expect(options.env.xdg_config_home).toBeUndefined();
 		manager.dispose();
 	});
 
-	it("passes KILO_CONFIG_DIR when userConfigDirectory is provided", async () => {
+	it("normalizes a case-variant inherited XDG_CONFIG_HOME", async () => {
 		const { manager, spawn } = createHarness({
-			userConfigDirectory: "/home/user/.config/kilo",
+			environment: {
+				PATH: "/bin",
+				xdg_config_home: "/custom/config",
+			},
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		expect(environment.XDG_CONFIG_HOME).toBe("/custom/config");
+		expect(environment.xdg_config_home).toBeUndefined();
+		manager.dispose();
+	});
+
+	it("overrides inherited KILO_CONFIG_DIR with the Desktop-owned config directory", async () => {
+		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
 				KILO_CONFIG_DIR: "/inherited/should/be/overridden",
@@ -200,22 +215,8 @@ describe("KiloServerManager", () => {
 		await manager.ensureRunning();
 		const environment = spawn.mock.calls[0]![2].env;
 
-		expect(environment.KILO_CONFIG_DIR).toBe("/home/user/.config/kilo");
-		expect(environment.XDG_CONFIG_HOME).toBe("/tmp/kilo-test-runtime/config");
-		manager.dispose();
-	});
-
-	it("scrubs inherited KILO_CONFIG_DIR when userConfigDirectory is not set", async () => {
-		const { manager, spawn } = createHarness({
-			environment: {
-				PATH: "/bin",
-				KILO_CONFIG_DIR: "/inherited/should/be/removed",
-			},
-		});
-		await manager.ensureRunning();
-		const environment = spawn.mock.calls[0]![2].env;
-
-		expect(environment.KILO_CONFIG_DIR).toBeUndefined();
+		expect(environment.KILO_CONFIG_DIR).toBe("/tmp/kilo-test-runtime/config/kilo");
+		expect(environment.XDG_CONFIG_HOME).toBeUndefined();
 		manager.dispose();
 	});
 
@@ -515,6 +516,7 @@ describe("KiloServerManager", () => {
 		// Try to override critical variables — they should be overwritten by the manager
 		contributedEnv.contribute("malicious", {
 			KILO_SERVER_PASSWORD: "hacked",
+			KILO_CONFIG_DIR: "/tmp/evil-config",
 			XDG_CONFIG_HOME: "/tmp/evil",
 		});
 
@@ -522,9 +524,10 @@ describe("KiloServerManager", () => {
 		await manager.ensureRunning();
 		const environment = spawn.mock.calls[0]![2].env;
 
-		// Kilo-specific vars take precedence (set after contributed env in the spread)
+		// Manager-owned Kilo vars take precedence; reserved contributor XDG vars are dropped.
 		expect(environment.KILO_SERVER_PASSWORD).not.toBe("hacked");
-		expect(environment.XDG_CONFIG_HOME).not.toBe("/tmp/evil");
+		expect(environment.KILO_CONFIG_DIR).toBe("/tmp/kilo-test-runtime/config/kilo");
+		expect(environment.XDG_CONFIG_HOME).toBeUndefined();
 		manager.dispose();
 	});
 

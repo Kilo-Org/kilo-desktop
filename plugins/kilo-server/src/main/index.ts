@@ -1,4 +1,3 @@
-import os from "node:os";
 import path from "node:path";
 
 import { FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
@@ -107,22 +106,6 @@ function resolveKiloServerDirectories(storageDirectory: string): {
 	};
 }
 
-/**
- * Resolve the user's global Kilo config directory following the same
- * conventions the Kilo CLI uses: `$XDG_CONFIG_HOME/kilo` on macOS/Linux,
- * `%APPDATA%/kilo` on Windows.
- */
-export function resolveUserConfigDirectory(
-	platform: NodeJS.Platform = process.platform,
-	env: NodeJS.ProcessEnv = process.env,
-): string {
-	if (platform === "win32") {
-		return path.join(env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"), "kilo");
-	}
-	const xdgConfig = env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
-	return path.join(xdgConfig, "kilo");
-}
-
 export function createKiloServerManagerOptions(
 	mainSdk: MainSdk,
 	onStatusChange: (status: KiloServerStatus) => void,
@@ -135,7 +118,6 @@ export function createKiloServerManagerOptions(
 			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
 		}),
 		...directories,
-		userConfigDirectory: resolveUserConfigDirectory(),
 		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
 		stateDirectory: mainSdk.storageDir,
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),

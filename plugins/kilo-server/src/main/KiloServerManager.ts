@@ -2,7 +2,6 @@ import { execFile as execFileCallback } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
-import path from "node:path";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -52,18 +51,10 @@ export interface KiloServerManagerOptions {
 	readonly installation: KiloInstallation;
 	readonly runtimeDirectory: string;
 	/**
-	 * App-owned `${XDG_CONFIG_HOME}/kilo` directory. The XDG config root is
-	 * isolated without moving Kilo's shared data directory and provider
-	 * credentials away from the CLI / VS Code extension.
+	 * App-owned Kilo config directory passed as `KILO_CONFIG_DIR`. Kilo merges
+	 * it additively on top of the user's global config.
 	 */
 	readonly configDirectory: string;
-	/**
-	 * The user's global Kilo config directory (`~/.config/kilo` on
-	 * macOS/Linux, `%APPDATA%/kilo` on Windows). Passed as `KILO_CONFIG_DIR`
-	 * so the embedded server additively merges user-installed agents,
-	 * commands, and skills from the host configuration.
-	 */
-	readonly userConfigDirectory?: string;
 	/** App-local XDG state root. Honors an inherited `XDG_STATE_HOME`. */
 	readonly stateDirectory: string;
 	readonly expectedVersion?: string;
@@ -170,7 +161,7 @@ export class KiloServerManager {
 		Pick<
 			KiloServerManagerOptions,
 			"installation" | "runtimeDirectory" | "configDirectory" | "stateDirectory"
-		> & { userConfigDirectory: string | undefined };
+		>;
 	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	readonly #status: ObservableValue<KiloServerStatus>;
@@ -191,7 +182,6 @@ export class KiloServerManager {
 			installation: options.installation,
 			runtimeDirectory: options.runtimeDirectory,
 			configDirectory: options.configDirectory,
-			userConfigDirectory: options.userConfigDirectory,
 			stateDirectory: options.stateDirectory,
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
@@ -475,6 +465,11 @@ export class KiloServerManager {
 	#createEnvironment(password: string): NodeJS.ProcessEnv {
 		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
 		const sanitizedContributed = this.#sanitizeContributedEnv(contributed);
+		const inheritedXdgConfigHome =
+			this.#options.environment.XDG_CONFIG_HOME ??
+			Object.entries(this.#options.environment).find(
+				([name, value]) => name.toUpperCase() === "XDG_CONFIG_HOME" && value !== undefined,
+			)?.[1];
 		// Snapshot for drift detection; a subsequent env change that matches
 		// this snapshot won't trigger a restart.
 		this.#lastSpawnedContributedEnv = { ...sanitizedContributed };
@@ -487,13 +482,9 @@ export class KiloServerManager {
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
-			// Isolate the base config root so the Desktop owns its primary config.
-			XDG_CONFIG_HOME: path.dirname(this.#options.configDirectory),
-			// KILO_CONFIG_DIR is additive in Kilo 7.4.21: it merges agents,
-			// commands, and skills from the user's global config into Desktop.
-			...(this.#options.userConfigDirectory
-				? { KILO_CONFIG_DIR: this.#options.userConfigDirectory }
-				: {}),
+			// Merge Desktop's built-in config on top of the user's global Kilo config.
+			KILO_CONFIG_DIR: this.#options.configDirectory,
+			...(inheritedXdgConfigHome === undefined ? {} : { XDG_CONFIG_HOME: inheritedXdgConfigHome }),
 			// Match OpenCode desktop: isolate state under Electron storage.
 			XDG_STATE_HOME: this.#options.environment.XDG_STATE_HOME ?? this.#options.stateDirectory,
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
@@ -510,9 +501,7 @@ export class KiloServerManager {
 			if (upper === "KILO_CONFIG_DIR") {
 				// Keep our explicitly-set KILO_CONFIG_DIR; remove any inherited or
 				// case-variant entry that leaked through the process.env spread.
-				if (!this.#options.userConfigDirectory || name !== "KILO_CONFIG_DIR") {
-					delete environment[name];
-				}
+				if (name !== "KILO_CONFIG_DIR") delete environment[name];
 				continue;
 			}
 			if (upper === "XDG_CONFIG_HOME" && name !== "XDG_CONFIG_HOME") {

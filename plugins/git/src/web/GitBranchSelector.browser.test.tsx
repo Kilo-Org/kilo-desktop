@@ -597,6 +597,52 @@ describe("GitBranchSelector", () => {
 		expect(create.element()).not.toHaveAttribute("aria-disabled", "true");
 	});
 
+	it("inlines a failed create in the dialog instead of toasting", async () => {
+		renderSelector({
+			branches: () => branchesResult,
+			checkout: () =>
+				Promise.reject(new FeatureError("A branch with that name already exists.", "BUSINESS")),
+		});
+
+		await page.getByTestId("git-branch-selector-trigger").click();
+		await page.getByTestId("git-branch-create").click();
+		await page.getByTestId("git-branch-create-name").fill("feature-x");
+		await page.getByTestId("git-branch-create-submit").click();
+
+		const dialog = page.getByTestId("git-branch-create-dialog");
+		await expect.element(dialog).toBeVisible();
+		await expect
+			.element(page.getByRole("alert"))
+			.toHaveTextContent("A branch with that name already exists.");
+		expect(page.getByTestId("git-branch-create-name").element()).toHaveAttribute(
+			"aria-invalid",
+			"true",
+		);
+		expect(toastApi.error).not.toHaveBeenCalled();
+		await expect.element(page.getByTestId("git-branch-selector-trigger")).toHaveTextContent("main");
+	});
+
+	it("clears the inlined create error when the name is edited", async () => {
+		renderSelector({
+			branches: () => branchesResult,
+			checkout: () =>
+				Promise.reject(new FeatureError("A branch with that name already exists.", "BUSINESS")),
+		});
+
+		await page.getByTestId("git-branch-selector-trigger").click();
+		await page.getByTestId("git-branch-create").click();
+		await page.getByTestId("git-branch-create-name").fill("feature-x");
+		await page.getByTestId("git-branch-create-submit").click();
+		await expect.element(page.getByRole("alert")).toBeVisible();
+
+		await page.getByTestId("git-branch-create-name").fill("fresh-name");
+
+		await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
+		expect(page.getByTestId("git-branch-create-name").element()).not.toHaveAttribute(
+			"aria-invalid",
+		);
+	});
+
 	it("surfaces a failed checkout as an error toast", async () => {
 		renderSelector({
 			branches: () => branchesResult,

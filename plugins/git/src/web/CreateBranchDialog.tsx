@@ -8,7 +8,12 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@anaconda-agentic-desktop/ui/components/dialog";
-import { Field, FieldGroup, FieldLabel } from "@anaconda-agentic-desktop/ui/components/field";
+import {
+	Field,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@anaconda-agentic-desktop/ui/components/field";
 import { Input } from "@anaconda-agentic-desktop/ui/components/input";
 import {
 	Select,
@@ -36,19 +41,28 @@ type BaseSelection = "default" | "current";
  * branch; otherwise the informational copy states the new branch is
  * based on the current one. When no branch is checked out at all
  * (detached/unborn), no based-on UI renders and creation goes off HEAD.
+ *
+ * A failed create surfaces as an inline invalid-input error: the parent
+ * owns the error string (`errorMessage`, cleared on retry/cancel/reopen)
+ * and the dialog reports name edits back via `onClearError` so a stale
+ * error disappears as soon as the user starts correcting the name.
  */
 export function CreateBranchDialog({
 	initialName,
 	isPending,
+	errorMessage,
 	defaultBranch,
 	currentBranch,
+	onClearError,
 	onCancel,
 	onCreate,
 }: {
 	readonly initialName: string;
 	readonly isPending: boolean;
+	readonly errorMessage: string | undefined;
 	readonly defaultBranch: string | undefined;
 	readonly currentBranch: string | undefined;
+	readonly onClearError: () => void;
 	readonly onCancel: () => void;
 	readonly onCreate: (name: string, startPoint?: string) => void;
 }) {
@@ -77,18 +91,21 @@ export function CreateBranchDialog({
 						<DialogTitle>Create branch</DialogTitle>
 					</DialogHeader>
 					<FieldGroup>
-						<Field>
+						<Field data-invalid={Boolean(errorMessage) || undefined}>
 							<FieldLabel htmlFor="git-branch-create-name">Name</FieldLabel>
 							<Input
 								id="git-branch-create-name"
 								data-qa-id="git-branch-create-name"
 								autoFocus
 								placeholder="Branch name"
+								aria-invalid={Boolean(errorMessage) || undefined}
 								value={name}
 								onChange={(event) => {
 									setName(event.target.value);
+									onClearError();
 								}}
 							/>
+							{errorMessage ? <FieldError>{errorMessage}</FieldError> : null}
 						</Field>
 						{currentBranch === undefined ? null : offerBaseChoice ? (
 							<Field>

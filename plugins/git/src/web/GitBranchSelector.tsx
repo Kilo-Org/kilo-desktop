@@ -103,6 +103,7 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 	const [search, setSearch] = useState("");
 	const [createOpen, setCreateOpen] = useState(false);
 	const [createName, setCreateName] = useState("");
+	const [createError, setCreateError] = useState<string | undefined>();
 	const [pending, setPending] = useState<{ directory: string; branch: string } | undefined>();
 	const checkout = useSdkMutation(sdk, "checkout", { invalidates: ["branches", "status"] });
 
@@ -156,10 +157,16 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 			},
 			{
 				...(onSuccess !== undefined ? { onSuccess } : {}),
-				// Invalid branch names are rejected by git itself; the failure
-				// surfaces the same way as every other checkout error.
+				// Create failures stay inline in the still-open dialog; switch
+				// failures toast because the popover has already closed.
+				// Invalid branch names are rejected by git itself and surface
+				// the same way as every other checkout error.
 				onError: (error) => {
 					setPending(undefined);
+					if (create) {
+						setCreateError(error instanceof Error ? error.message : "Unknown git error.");
+						return;
+					}
 					toast.error("Could not switch branches", {
 						description: error instanceof Error ? error.message : "Unknown git error.",
 					});
@@ -265,6 +272,9 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 										// Capture the search before `closePopover` clears it —
 										// it seeds the dialog's name field.
 										setCreateName(trimmedSearch);
+										// A stale error from a previous attempt must not
+										// survive into a fresh dialog.
+										setCreateError(undefined);
 										closePopover();
 										setCreateOpen(true);
 									}}
@@ -281,12 +291,20 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 				<CreateBranchDialog
 					initialName={createName}
 					isPending={checkout.isPending}
+					errorMessage={createError}
 					defaultBranch={data?.defaultBranch}
 					currentBranch={data?.currentBranch}
+					onClearError={() => {
+						setCreateError(undefined);
+					}}
 					onCancel={() => {
 						setCreateOpen(false);
+						setCreateError(undefined);
 					}}
 					onCreate={(name, startPoint) => {
+						// Clear before the attempt so a stale error does not
+						// linger while the retry is in flight.
+						setCreateError(undefined);
 						runCheckout(name, true, startPoint, () => {
 							setCreateOpen(false);
 						});

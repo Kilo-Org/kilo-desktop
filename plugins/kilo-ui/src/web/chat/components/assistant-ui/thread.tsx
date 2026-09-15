@@ -6,6 +6,7 @@ import {
 	UserMessageAttachments,
 } from "./attachment.js";
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
+import { ConversationMapAui } from "./elements/conversation-map.aui.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
 import { KiloAgentSelector } from "./kilo-agent-selector.js";
@@ -202,7 +203,9 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				data-slot="aui_thread-viewport"
 				className="relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth"
 			>
+				{isDraft ? null : <ConversationMapAui />}
 				<div
+					data-slot="aui_thread-column"
 					className={cn(
 						"mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
 						isDraft && "justify-center",

@@ -421,7 +421,7 @@ function GatewaySignInItem({ onSignIn }: { onSignIn: () => void }) {
 			}}
 			className="group/model-item items-start gap-2 rounded-md py-2 ps-3 pe-3 [&>svg:last-child]:hidden"
 		>
-			<span className="mt-0.5 shrink-0 [&_svg]:size-3.5">
+			<span className="flex h-5 shrink-0 items-center [&_svg]:size-3.5">
 				<ProviderIcon provider="kilo" variant="color" size={14} fallbackLabel="Kilo" />
 			</span>
 			<span className="flex min-w-0 flex-1 flex-col">
@@ -472,7 +472,9 @@ const ModelListSkeleton: FC = () => {
 		<div className="scroll-fade max-h-52 space-y-0.5 overflow-hidden px-1 py-1" aria-hidden>
 			{Array.from({ length: MODEL_CATALOG_SKELETON_ROWS }, (_, index) => (
 				<div key={index} className="flex items-start gap-2 rounded-md px-2 py-2">
-					<Skeleton className="bg-muted-foreground/25 mt-0.5 size-3.5 shrink-0 rounded-sm" />
+					<span className="flex h-5 shrink-0 items-center">
+						<Skeleton className="bg-muted-foreground/25 size-3.5 rounded-sm" />
+					</span>
 					<span className="flex min-w-0 flex-1 flex-col gap-1.5">
 						<Skeleton
 							className="bg-muted-foreground/25 h-3.5"
@@ -707,7 +709,7 @@ const CatalogModelItem: FC<{
 			className="group/model-item rounded-md py-2"
 			data-qa-id={`kilo-model-option-${model.id}`}
 		>
-			<span className="mt-0.5 shrink-0 [&_svg]:size-3.5">
+			<span className="flex h-5 shrink-0 items-center [&_svg]:size-3.5">
 				<ProviderIcon
 					provider={model.providerID}
 					variant="color"

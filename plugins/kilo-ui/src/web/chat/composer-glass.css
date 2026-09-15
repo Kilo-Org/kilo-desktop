@@ -14,9 +14,35 @@
 
 .chat-composer-glass {
 	--composer-glass-surface: var(--card);
+	--composer-glass-stroke: var(--border);
 	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+	/* Chromium clips `border` at rounded corners when backdrop-filter is on
+	   the same element. Outline is painted after the filter and stays intact. */
+	outline: 1px solid var(--composer-glass-stroke);
+	outline-offset: -1px;
+}
+
+.chat-composer-glass.chat-composer-surface {
+	border-color: transparent;
+}
+
+[data-theme="dark"] .chat-composer-glass {
+	--composer-glass-stroke: color-mix(in oklab, var(--muted-foreground) 15%, transparent);
+}
+
+.chat-composer-glass:focus-within {
+	--composer-glass-stroke: var(--border);
+}
+
+[data-theme="dark"] .chat-composer-glass:focus-within {
+	--composer-glass-stroke: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+}
+
+.chat-composer-glass[data-dragging="true"] {
+	--composer-glass-stroke: var(--ring);
+	outline-style: dashed;
 }
 
 .chat-composer-surface {
@@ -53,7 +79,8 @@
 }
 
 /* Opaque wedges cover the docked composer's rounded-corner cutouts so
-   scrolled messages cannot show through around the glass surface. */
+   scrolled messages cannot show through around the glass surface.
+   The mask starts at the outer radius so the stroke stays visible. */
 .composer-corner-fill {
 	pointer-events: none;
 	position: absolute;
@@ -69,8 +96,8 @@
 	left: 0;
 	--composer-corner-mask: radial-gradient(
 		circle at 100% 100%,
-		transparent calc(var(--composer-radius) - 1px),
-		#000 calc(var(--composer-radius) - 1px)
+		transparent var(--composer-radius),
+		#000 var(--composer-radius)
 	);
 }
 
@@ -79,8 +106,8 @@
 	right: 0;
 	--composer-corner-mask: radial-gradient(
 		circle at 0 100%,
-		transparent calc(var(--composer-radius) - 1px),
-		#000 calc(var(--composer-radius) - 1px)
+		transparent var(--composer-radius),
+		#000 var(--composer-radius)
 	);
 }
 
@@ -89,8 +116,8 @@
 	left: 0;
 	--composer-corner-mask: radial-gradient(
 		circle at 100% 0,
-		transparent calc(var(--composer-radius) - 1px),
-		#000 calc(var(--composer-radius) - 1px)
+		transparent var(--composer-radius),
+		#000 var(--composer-radius)
 	);
 }
 
@@ -99,7 +126,7 @@
 	bottom: 0;
 	--composer-corner-mask: radial-gradient(
 		circle at 0 0,
-		transparent calc(var(--composer-radius) - 1px),
-		#000 calc(var(--composer-radius) - 1px)
+		transparent var(--composer-radius),
+		#000 var(--composer-radius)
 	);
 }

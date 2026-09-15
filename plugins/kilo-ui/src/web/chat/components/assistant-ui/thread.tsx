@@ -222,8 +222,8 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
 						<div className="relative">
-							<ThreadComposerBlock isDraft={isDraft} />
 							{!isDraft ? <ComposerDockMask /> : null}
+							<ThreadComposerBlock isDraft={isDraft} />
 						</div>
 						{isDraft ? <ThreadSuggestions /> : null}
 					</ThreadPrimitive.ViewportFooter>
@@ -554,10 +554,10 @@ const Composer: FC = () => {
 					<div
 						data-slot="aui_composer-shell"
 						className={cn(
-							"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+							"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
 							isDraft
 								? "relative z-10 bg-(--composer-bg) dark:border-border focus-within:border-border dark:focus-within:border-muted-foreground/30"
-								: "chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 dark:shadow-none",
+								: "relative z-10 chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
 						)}
 					/>
 				}

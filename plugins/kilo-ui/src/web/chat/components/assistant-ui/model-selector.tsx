@@ -312,7 +312,8 @@ function ModelIcon({ children, className }: { children: ReactNode; className?: s
 	return (
 		<span
 			className={cn(
-				"flex size-3.5 shrink-0 items-center justify-center [&_svg]:size-3.5",
+				// h-5 matches text-sm line-height so the glyph sits on the name.
+				"flex h-5 w-3.5 shrink-0 items-center justify-center [&_svg]:size-3.5",
 				className,
 			)}
 		>
@@ -604,7 +605,7 @@ function ModelSelectorItem({
 		>
 			{children ?? (
 				<>
-					{model.icon && <ModelIcon className="mt-[3px]">{model.icon}</ModelIcon>}
+					{model.icon && <ModelIcon>{model.icon}</ModelIcon>}
 					<span className="flex min-w-0 flex-1 flex-col">
 						<span className="truncate font-medium">{model.name}</span>
 						{model.description && (

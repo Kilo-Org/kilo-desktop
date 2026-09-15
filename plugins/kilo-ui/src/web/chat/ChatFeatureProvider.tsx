@@ -7,6 +7,7 @@ import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
+import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
 import { navigateToChat } from "./chat-navigation.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { OpenCodeDataPart } from "./components/tools/opencode-data-part.js";
@@ -15,6 +16,7 @@ import { LocalModelLoadingToast } from "./LocalModelLoadingToast.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
+import { useKiloCommandCatalog } from "./slash-commands/use-kilo-command-catalog.js";
 import { KiloAuthProvider } from "../account/KiloAuthProvider.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
@@ -40,7 +42,7 @@ import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.j
 import { PierreDiffProvider } from "./PierreDiffProvider.js";
 import { KiloSessionSelectionSync } from "./session-selection/KiloSessionSelectionSync.js";
 
-import "./composer-glass.css";
+import "./composer.css";
 
 /**
  * App-lifetime chat runtime: connection, model selection, and a single
@@ -49,7 +51,7 @@ import "./composer-glass.css";
 export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const queryClient = useQueryClient();
-	const { activeWorkspaceId } = useWorkspacesFeature();
+	const { activeWorkspaceId, workspaces } = useWorkspacesFeature();
 	const localInference = resolveLocalInferenceCapability(sdk.plugins.get("local-inference"));
 	const prepareModel = useMemo(
 		() => (localInference ? (modelId: string) => localInference.prepareModel(modelId) : undefined),
@@ -259,6 +261,16 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
+	const commandDirectory =
+		resolveChatWorkspaceDirectory({
+			remoteId: undefined,
+			activeWorkspaceId,
+			sessionWorkspaceId: undefined,
+			workspaces,
+		}) ?? connection.data?.globalDirectory;
+	const commandCatalogQuery = useKiloCommandCatalog(connection.data, commandDirectory);
+	const knownCommandNamesRef = useRef<readonly string[]>([]);
+	knownCommandNamesRef.current = (commandCatalogQuery.data ?? []).map((command) => command.name);
 	const { agent, getAgent, setAgent, resetDraftAgent, hydrateThreadAgent, promoteDraftAgent } =
 		useAgentSelection(agentCatalogQuery.data, activeThreadId);
 	const resetDraftAgentRef = useRef(resetDraftAgent);
@@ -301,6 +313,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		onError: onRuntimeError,
 		sessionActivity,
 		suggestions,
+		getKnownCommandNames: () => knownCommandNamesRef.current,
 	});
 
 	const aui = useAui({

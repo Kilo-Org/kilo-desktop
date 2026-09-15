@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useRef, useState, type FC, type PropsWithChildren } from "react";
+import { memo, useCallback, useState, type FC, type PropsWithChildren } from "react";
 import { ChevronDownIcon, LoaderIcon } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import {
@@ -9,8 +9,6 @@ import {
 	CollapsibleTrigger,
 } from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-
-import { useStableGutterScrollLock } from "../use-stable-gutter-scroll-lock.js";
 
 const ANIMATION_DURATION = 120;
 
@@ -44,27 +42,23 @@ function ToolGroupRoot({
 	children,
 	...props
 }: ToolGroupRootProps) {
-	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
-	const lockScroll = useStableGutterScrollLock(collapsibleRef, ANIMATION_DURATION);
 
 	const isControlled = controlledOpen !== undefined;
 	const isOpen = isControlled ? controlledOpen : uncontrolledOpen;
 
 	const handleOpenChange = useCallback(
 		(open: boolean) => {
-			lockScroll();
 			if (!isControlled) {
 				setUncontrolledOpen(open);
 			}
 			controlledOnOpenChange?.(open);
 		},
-		[lockScroll, isControlled, controlledOnOpenChange],
+		[isControlled, controlledOnOpenChange],
 	);
 
 	return (
 		<Collapsible
-			ref={collapsibleRef}
 			data-slot="tool-group-root"
 			data-variant={variant ?? "outline"}
 			open={isOpen}

@@ -1,5 +1,8 @@
-/* Frosted glass surfaces (composer). Recipe matches t3code: translucent
-   card tint + blur + slight saturate in both color schemes. */
+/* Composer chrome: frosted glass surfaces, Lexical input, slash chips,
+   toolbar container queries, and docked-corner fills.
+
+   Glass recipe matches t3code: translucent card tint + blur + slight
+   saturate in both color schemes. */
 
 :root {
 	--glass-blur: 12px;
@@ -47,6 +50,50 @@
 
 .chat-composer-surface {
 	--glass-opacity: 94%;
+}
+
+.aui-lexical-editor {
+	position: relative;
+}
+
+.aui-lexical-input {
+	min-height: 2.75rem;
+	outline: none;
+}
+
+.aui-lexical-placeholder {
+	pointer-events: none;
+	position: absolute;
+	inset: 0;
+	padding: inherit;
+	color: color-mix(in oklab, var(--color-muted-foreground) 80%, transparent);
+}
+
+.aui-lexical-input span[contenteditable="false"]:has(.aui-directive-chip) {
+	vertical-align: baseline;
+}
+
+.aui-directive-chip {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.2em;
+	padding-inline: 0.4em;
+	border: none;
+	border-radius: 0.35rem;
+	background: color-mix(in oklab, var(--color-primary) 16%, transparent);
+	color: var(--color-primary);
+	font-size: inherit;
+	font-weight: 500;
+	line-height: inherit;
+	vertical-align: baseline;
+	white-space: nowrap;
+}
+
+.aui-directive-chip svg {
+	width: 0.85em;
+	height: 0.85em;
+	flex-shrink: 0;
+	align-self: center;
 }
 
 .aui-composer-action-wrapper {

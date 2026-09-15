@@ -468,7 +468,7 @@ describe("composer local model send lock", () => {
 		await expect.element(screen.getByRole("button", { name: "Loading model..." })).toBeVisible();
 
 		await userEvent.keyboard("{Enter}");
-		await expect.element(input).toHaveValue("Hello from the composer");
+		await expect.element(input).toHaveTextContent("Hello from the composer");
 		await expect
 			.element(screen.getByRole("button", { name: "Send message" }))
 			.not.toBeInTheDocument();
@@ -590,6 +590,23 @@ describe("composer message queue", () => {
 					}),
 			),
 		}) satisfies ChatModelAdapter;
+
+	it("does not enqueue the first Enter that starts a run", async () => {
+		const adapter = createBlockingAdapter();
+		const screen = renderThread({
+			initialMessages: [],
+			adapter,
+			enableMessageQueue: true,
+		});
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await input.fill("Start the long task");
+		await userEvent.type(input, "{Enter}");
+		await expect.poll(() => adapter.run.mock.calls.length).toBe(1);
+
+		await expect.element(screen.getByText("1 queued")).not.toBeInTheDocument();
+		await expect.element(screen.getByRole("button", { name: "Send now" })).not.toBeInTheDocument();
+	});
 
 	it("keeps the composer usable and renders queued prompts while a run is active", async () => {
 		const adapter = createBlockingAdapter();

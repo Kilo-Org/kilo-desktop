@@ -46,6 +46,8 @@ export interface UseKiloRuntimeOptions {
 	sessionActivity?: SessionActivityStore;
 	/** Pending `suggest` tool requests recovered from SSE and `/suggestion`. */
 	suggestions?: KiloSuggestionStore;
+	/** Known Kilo slash-command names for rewriting `/cmd` composer sends. */
+	getKnownCommandNames?: () => readonly string[];
 }
 
 export function useKiloRuntime({
@@ -64,6 +66,7 @@ export function useKiloRuntime({
 	onError,
 	sessionActivity,
 	suggestions,
+	getKnownCommandNames,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	// Refs so prompt injection always sees the latest composer selection even when
 	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
@@ -78,6 +81,8 @@ export function useKiloRuntime({
 	prepareModelRef.current = prepareModel;
 	const connectionRef = useRef(connectionPromise);
 	connectionRef.current = connectionPromise;
+	const knownCommandNamesRef = useRef(getKnownCommandNames);
+	knownCommandNamesRef.current = getKnownCommandNames;
 
 	const promptGetters = useMemo(
 		() => ({
@@ -87,6 +92,7 @@ export function useKiloRuntime({
 			prepareModel: async (modelId: string) => {
 				await prepareModelRef.current?.(modelId);
 			},
+			getKnownCommandNames: () => knownCommandNamesRef.current?.() ?? [],
 		}),
 		[getAgent],
 	);

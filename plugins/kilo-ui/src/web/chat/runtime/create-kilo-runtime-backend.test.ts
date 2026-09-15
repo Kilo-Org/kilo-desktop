@@ -310,6 +310,42 @@ describe("createKiloRuntimeBackend", () => {
 		await expect(backend.initializeSession()).rejects.toThrow(/Failed to create Kilo session/);
 	});
 
+	it("rewrites a known slash prompt onto session.command after session create", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/slash",
+			workspaceFolders: [],
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-slash" } }));
+		const prompt = vi.fn(async () => ({ data: {} }));
+		const command = vi.fn(async () => ({ data: {} }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({
+			session: { create, prompt, command },
+		} as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getAgent: () => "code",
+			getKnownCommandNames: () => ["init", "compact"],
+		});
+
+		const ref = await backend.initializeSession();
+		await backend.getSessionClient(ref).session.prompt({
+			sessionID: ref.id,
+			parts: [{ type: "text", text: "/init write AGENTS.md" }],
+		});
+
+		expect(prompt).not.toHaveBeenCalled();
+		expect(command).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionID: "session-slash",
+				command: "init",
+				arguments: "write AGENTS.md",
+				agent: "code",
+			}),
+		);
+	});
+
 	it("forwards agent and model prompt getters alongside the variant getter", async () => {
 		const prepareSession = vi.fn(async () => ({
 			directory: "/workspace/getters",

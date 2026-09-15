@@ -1,15 +1,6 @@
 "use client";
 
-import {
-	createContext,
-	memo,
-	useCallback,
-	useContext,
-	useEffect,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import {
@@ -24,8 +15,6 @@ import {
 	CollapsibleTrigger,
 } from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-
-import { useStableGutterScrollLock } from "../use-stable-gutter-scroll-lock.js";
 
 const ANIMATION_DURATION = 200;
 
@@ -74,10 +63,8 @@ function ReasoningRoot({
 	children,
 	...props
 }: ReasoningRootProps) {
-	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const initialOpenRef = useRef(defaultOpen);
 	const [userOpen, setUserOpen] = useState<boolean | null>(null);
-	const lockScroll = useStableGutterScrollLock(collapsibleRef, ANIMATION_DURATION);
 
 	const isControlled = controlledOpen !== undefined;
 	const isOpen = isControlled
@@ -85,31 +72,18 @@ function ReasoningRoot({
 		: (userOpen ?? (streaming || initialOpenRef.current));
 	const isPreview = streaming === true && isOpen;
 
-	const prevStreamingRef = useRef(streaming);
-	useLayoutEffect(() => {
-		if (prevStreamingRef.current === streaming) return;
-		prevStreamingRef.current = streaming;
-		// A streaming transition only animates the panel when the resting state
-		// is collapsed; with `defaultOpen` the disclosure stays open across it.
-		if (!isControlled && userOpen === null && !initialOpenRef.current) {
-			lockScroll();
-		}
-	}, [streaming, isControlled, userOpen, lockScroll]);
-
 	const handleOpenChange = useCallback(
 		(open: boolean) => {
-			lockScroll();
 			if (!isControlled) {
 				setUserOpen(open);
 			}
 			controlledOnOpenChange?.(open);
 		},
-		[lockScroll, isControlled, controlledOnOpenChange],
+		[isControlled, controlledOnOpenChange],
 	);
 
 	return (
 		<Collapsible
-			ref={collapsibleRef}
 			data-slot="reasoning-root"
 			data-variant={variant}
 			open={isOpen}

@@ -158,6 +158,31 @@ describe("Reading activity subgroup", () => {
 
 		expect(getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
 	});
+
+	it("keeps a single running tool collapsed after earlier completed tools", () => {
+		const completedRead = readPart("call-1", "/src/mark.svg");
+		const runningCommand = {
+			...toolPart("call-2", "bash", { command: "gh run view --job 104579955735" }),
+			status: { type: "running" as const },
+		};
+		runtime.message.parts = [completedRead, runningCommand];
+		runtime.message.status = { type: "running" };
+
+		const { getByRole, queryByText } = render(
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...completedRead} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="terminal">
+					<ToolCallFallback {...runningCommand} />
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+		const trigger = getByRole("button", { name: /gh run view --job 104579955735/ });
+
+		expect(trigger.getAttribute("aria-expanded")).toBe("false");
+		expect(queryByText(/Unknown JSON field/)).toBeNull();
+	});
 });
 
 describe("Skill activity subgroup", () => {
@@ -392,45 +417,52 @@ describe("Web activity subgroup", () => {
 });
 
 describe("Activity group scrolling", () => {
-	it("keeps the viewport fixed while the outer group and Thought expand", () => {
-		const thoughtText = "I'm looking for notebook files in the workspace.";
-		const thought = {
+	it("keeps solo active thinking expanded", () => {
+		const thoughtText = "I am checking the workflow failure.";
+		const runningThought = {
 			type: "reasoning",
 			text: thoughtText,
-			status: { type: "complete" as const },
+			status: { type: "running" as const },
 		} as unknown as ToolCallMessagePartProps;
-		const search = toolPart("search-1", "glob", { pattern: "**/*.ipynb" });
-		runtime.message.parts = [thought, search];
+		runtime.message.parts = [runningThought];
+		runtime.message.status = { type: "running" };
 
-		const { getByRole, getByTestId } = render(
-			<div
-				data-testid="scroll-viewport"
-				style={{ height: 100, overflowY: "auto", scrollBehavior: "smooth" }}
-			>
-				<div style={{ height: 400 }}>
-					<ActivityGroup group={{ indices: [0, 1] }}>
-						<ActivitySubgroup group={{ indices: [0] }} kind="thinking">
-							<div>{thoughtText}</div>
-						</ActivitySubgroup>
-						<ActivitySubgroup group={{ indices: [1] }} kind="searching">
-							<ToolCallFallback {...search} />
-						</ActivitySubgroup>
-					</ActivityGroup>
-				</div>
-			</div>,
+		const { getByRole, getByText } = render(
+			<ActivityGroup group={{ indices: [0] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="thinking">
+					<div>{thoughtText}</div>
+				</ActivitySubgroup>
+			</ActivityGroup>,
 		);
-		const viewport = getByTestId("scroll-viewport");
-		viewport.style.scrollBehavior = "auto";
-		viewport.scrollTop = 40;
-		viewport.style.scrollBehavior = "smooth";
 
-		fireEvent.click(getByRole("button", { name: "1 tool used" }));
-		viewport.scrollTo({ top: 160, behavior: "instant" });
-		expect(viewport.scrollTop).toBe(40);
+		expect(getByRole("button", { name: "Thinking..." }).getAttribute("aria-expanded")).toBe("true");
+		expect(getByText(thoughtText)).toBeDefined();
+	});
 
-		fireEvent.click(getByRole("button", { name: "Thought" }));
-		viewport.scrollTo({ top: 220, behavior: "instant" });
-		expect(viewport.scrollTop).toBe(40);
+	it("keeps active thinking expanded after an earlier tool", () => {
+		const completedRead = readPart("call-1", "/src/mark.svg");
+		const thoughtText = "I am checking the workflow failure.";
+		const runningThought = {
+			type: "reasoning",
+			text: thoughtText,
+			status: { type: "running" as const },
+		} as unknown as ToolCallMessagePartProps;
+		runtime.message.parts = [completedRead, runningThought];
+		runtime.message.status = { type: "running" };
+
+		const { getByRole, getByText } = render(
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...completedRead} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="thinking">
+					<div>{thoughtText}</div>
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+
+		expect(getByRole("button", { name: "Thinking..." }).getAttribute("aria-expanded")).toBe("true");
+		expect(getByText(thoughtText)).toBeDefined();
 	});
 });
 
@@ -444,18 +476,23 @@ describe("Notebooks activity subgroup", () => {
 			...toolPart("call-2", "notebooks_create_notebook", {}),
 			status: { type: "running" as const },
 		};
+		const runningNotebookConnect = {
+			...toolPart("call-3", "notebooks_connect_notebook", {}),
+			status: { type: "running" as const },
+		};
 		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
-			<ActivityGroup group={{ indices: [0, 1] }}>
+			<ActivityGroup group={{ indices: [0, 1, 2] }}>
 				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
 					<ReadActivity {...parts[0]!} />
 				</ActivitySubgroup>
-				<ActivitySubgroup group={{ indices: [1] }} kind="mcp:notebooks">
+				<ActivitySubgroup group={{ indices: [1, 2] }} kind="mcp:notebooks">
 					<ToolCallFallback {...parts[1]!} />
+					<ToolCallFallback {...parts[2]!} />
 				</ActivitySubgroup>
 			</ActivityGroup>
 		);
 
-		runtime.message.parts = [staleRunningRead, runningNotebook];
+		runtime.message.parts = [staleRunningRead, runningNotebook, runningNotebookConnect];
 		runtime.message.status = { type: "running" };
 		const { getByRole, getByText, rerender } = render(renderGroup(runtime.message.parts));
 		expect(getByText("Create notebook")).toBeDefined();
@@ -463,6 +500,7 @@ describe("Notebooks activity subgroup", () => {
 		runtime.message.parts = [
 			staleRunningRead,
 			{ ...runningNotebook, status: { type: "complete" as const } },
+			{ ...runningNotebookConnect, status: { type: "complete" as const } },
 		];
 		rerender(renderGroup(runtime.message.parts));
 
@@ -477,18 +515,23 @@ describe("Notebooks activity subgroup", () => {
 			...toolPart("call-2", "notebooks_create_notebook", {}),
 			status: { type: "running" as const },
 		};
+		const runningNotebookConnect = {
+			...toolPart("call-3", "notebooks_connect_notebook", {}),
+			status: { type: "running" as const },
+		};
 		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
-			<ActivityGroup group={{ indices: [0, 1] }}>
+			<ActivityGroup group={{ indices: [0, 1, 2] }}>
 				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
 					<ReadActivity {...parts[0]!} />
 				</ActivitySubgroup>
-				<ActivitySubgroup group={{ indices: [1] }} kind="mcp:notebooks">
+				<ActivitySubgroup group={{ indices: [1, 2] }} kind="mcp:notebooks">
 					<ToolCallFallback {...parts[1]!} />
+					<ToolCallFallback {...parts[2]!} />
 				</ActivitySubgroup>
 			</ActivityGroup>
 		);
 
-		runtime.message.parts = [completedRead, runningNotebook];
+		runtime.message.parts = [completedRead, runningNotebook, runningNotebookConnect];
 		runtime.message.status = { type: "running" };
 		const { container, getByRole, getByText, queryByText, rerender } = render(
 			renderGroup(runtime.message.parts),
@@ -499,6 +542,7 @@ describe("Notebooks activity subgroup", () => {
 		runtime.message.parts = [
 			completedRead,
 			{ ...runningNotebook, status: { type: "complete" as const } },
+			{ ...runningNotebookConnect, status: { type: "complete" as const } },
 		];
 		// The message stays running while GroupedParts renders "Considering next steps".
 		runtime.message.status = { type: "running" };

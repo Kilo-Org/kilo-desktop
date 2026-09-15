@@ -27,8 +27,6 @@ import {
 } from "@anaconda-agentic-desktop/ui/components/collapsible";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
-import { useStableGutterScrollLock } from "../use-stable-gutter-scroll-lock.js";
-
 import {
 	getKindMeta,
 	getActivityKind,
@@ -173,14 +171,8 @@ const ActivityDisclosureIcon: FC<{ open: boolean }> = ({ open }) => {
 const contentAnimation =
 	"h-(--collapsible-panel-height) overflow-hidden transition-[height] ease-[cubic-bezier(0.32,0.72,0,1)] data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none";
 
-const useDelayedActivityOpen = (
-	active: boolean,
-	enabled: boolean,
-	onCollapse: () => void,
-): boolean => {
+const useDelayedActivityOpen = (active: boolean, enabled: boolean): boolean => {
 	const [heldOpen, setHeldOpen] = useState(active);
-	const onCollapseRef = useRef(onCollapse);
-	onCollapseRef.current = onCollapse;
 
 	useEffect(() => {
 		if (!enabled) {
@@ -194,7 +186,6 @@ const useDelayedActivityOpen = (
 		if (!heldOpen) return;
 
 		const timeout = setTimeout(() => {
-			onCollapseRef.current();
 			setHeldOpen(false);
 		}, AUTO_COLLAPSE_DELAY);
 
@@ -238,10 +229,9 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	const [userOpen, setUserOpen] = useState<boolean | null>(null);
 	const [streamExpanded, setStreamExpanded] = useState(false);
 
-	const collapsibleRef = useRef<HTMLDivElement>(null);
 	const furthestActiveIndexRef = useRef(-1);
 	const lastActiveSegmentStartRef = useRef<number | null>(null);
-	const lockScroll = useStableGutterScrollLock(collapsibleRef, GROUP_ANIMATION_DURATION);
+	const lastActiveSegmentShouldExpandRef = useRef(false);
 	const activeCandidate = [...summary.segments]
 		.reverse()
 		.find(
@@ -254,15 +244,18 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	if (activeSegment) {
 		furthestActiveIndexRef.current = activeCandidateIndex;
 		lastActiveSegmentStartRef.current = activeSegment.indices[0] ?? null;
+		lastActiveSegmentShouldExpandRef.current =
+			activeSegment.kind === "thinking" || activeSegment.indices.length > 1;
 	}
 	// Only the activity group that owns the in-flight questionnaire should look
 	// "live". The message can remain running between tools while it considers
 	// its next step, but that gap should settle the tool group that just finished.
 	const streaming = activeSegment !== undefined;
+	const activeSegmentShouldExpand =
+		activeSegment?.kind === "thinking" || (activeSegment?.indices.length ?? 0) > 1;
 	const automaticOpen = useDelayedActivityOpen(
 		streaming,
-		summary.segments.length > 1 && summary.toolCount > 1 && userOpen === null,
-		lockScroll,
+		lastActiveSegmentShouldExpandRef.current && userOpen === null,
 	);
 	const open = userOpen ?? automaticOpen;
 	const startIndex = group.indices[0] ?? 0;
@@ -309,7 +302,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
 
 	if (streaming && !streamExpanded) {
-		const previewOpen = summary.toolCount > 1;
+		const previewOpen = activeSegmentShouldExpand;
 		const label = activeSegment
 			? getKindMeta(activeSegment.kind).liveLabel(getSegmentStats(parts, activeSegment))
 			: summary.label;
@@ -350,7 +343,6 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	return (
 		<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
 			<Collapsible
-				ref={collapsibleRef}
 				open={open}
 				style={
 					{
@@ -358,7 +350,6 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					} as CSSProperties
 				}
 				onOpenChange={(next) => {
-					lockScroll();
 					setUserOpen(next);
 					if (!next) setStreamExpanded(false);
 				}}
@@ -446,16 +437,13 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	const [toggled, setToggled] = useState<boolean | null>(null);
 
-	const collapsibleRef = useRef<HTMLDivElement>(null);
-	const lockScroll = useStableGutterScrollLock(collapsibleRef, SUBGROUP_ANIMATION_DURATION);
 	const progressIndex = useContext(ActivityProgressIndexContext);
 	const segmentEndIndex = segment.indices.at(-1) ?? -1;
 	const canBeActive = segmentEndIndex >= progressIndex;
 	const statusActive = canBeActive && (segment.running || segment.requiresAction || hasPendingAsk);
 	const automaticOpen = useDelayedActivityOpen(
 		statusActive,
-		segment.indices.length > 1 && toggled === null,
-		lockScroll,
+		(kind === "thinking" || segment.indices.length > 1) && toggled === null,
 	);
 	const settlingSegmentStart = useContext(ActivitySettlingSegmentContext);
 	const isSettlingSegment = settlingSegmentStart === (segment.indices[0] ?? null);
@@ -539,7 +527,6 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	return (
 		<ActivitySubgroupContext.Provider value={subgroupContext}>
 			<Collapsible
-				ref={collapsibleRef}
 				open={open}
 				style={
 					{
@@ -547,7 +534,6 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 					} as CSSProperties
 				}
 				onOpenChange={(next) => {
-					lockScroll();
 					setToggled(next);
 				}}
 			>

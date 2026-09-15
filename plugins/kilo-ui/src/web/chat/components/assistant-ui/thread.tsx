@@ -12,6 +12,9 @@ import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
 import { KiloAgentSelector } from "./kilo-agent-selector.js";
 import { KiloModelSelector } from "./kilo-model-selector.js";
+import { KiloDirectiveText } from "./kilo-directive-text.js";
+import { KiloLexicalComposerInput } from "./kilo-lexical-composer-input.js";
+import { KiloSlashTrigger } from "./kilo-slash-trigger.js";
 import { MarkdownText } from "./markdown-text.js";
 import { MessageCopyButton } from "./message-copy-button.js";
 import { Reasoning } from "./reasoning.js";
@@ -437,7 +440,7 @@ const Composer: FC = () => {
 	const { isPending, connectionPromise } = useChatConnection();
 	const [isConnecting, setIsConnecting] = useState(false);
 	const isConnectingRef = useRef(false);
-	const inputRef = useRef<HTMLTextAreaElement>(null);
+	const inputRef = useRef<HTMLDivElement>(null);
 	const { refine, submitting, canReply } = useApprovePlan();
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
 	const pendingSuggestion = usePendingKiloSuggestion();
@@ -455,11 +458,46 @@ const Composer: FC = () => {
 		aui.composer.send(hasMessageQueue ? { startRun: false } : undefined);
 	};
 
+	const lastPaneFocusRef = useRef<HTMLElement | null>(null);
+	const wasConnectingRef = useRef(isConnecting);
+
 	useEffect(() => {
+		const onFocusIn = (event: FocusEvent) => {
+			const target = event.target;
+			if (!(target instanceof HTMLElement)) return;
+			if (target.closest('[data-qa-id="kilo-chat-pane-canvas"]')) {
+				lastPaneFocusRef.current = target;
+			} else if (!target.closest(".aui-lexical-editor")) {
+				lastPaneFocusRef.current = null;
+			}
+		};
+		document.addEventListener("focusin", onFocusIn);
+		return () => document.removeEventListener("focusin", onFocusIn);
+	}, []);
+
+	useEffect(() => {
+		return aui.on("thread.runStart", () => {
+			const restore = lastPaneFocusRef.current;
+			if (!restore?.isConnected) return;
+			queueMicrotask(() => restore.focus({ preventScroll: true }));
+		});
+	}, [aui]);
+
+	useEffect(() => {
+		const connectingJustEnded = wasConnectingRef.current && !isConnecting;
+		wasConnectingRef.current = isConnecting;
+		const restore = lastPaneFocusRef.current;
+		if (connectingJustEnded && restore?.isConnected) {
+			restore.focus({ preventScroll: true });
+			return;
+		}
+		if (restore?.isConnected) return;
 		const activeElement = document.activeElement;
 		const paneOwnsFocus = activeElement?.closest('[data-qa-id="kilo-chat-pane-canvas"]');
 		if (!isDraft || isConnecting || paneOwnsFocus) return;
-		inputRef.current?.focus({ preventScroll: true });
+		inputRef.current
+			?.querySelector<HTMLElement>("[contenteditable]")
+			?.focus({ preventScroll: true });
 	}, [activeThreadId, isConnecting, isDraft]);
 
 	const sendWhenConnected = () => {
@@ -520,7 +558,7 @@ const Composer: FC = () => {
 		sendWhenConnected();
 	};
 
-	const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+	const handleInputKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
 		if (
 			event.key === "Tab" &&
 			event.shiftKey &&
@@ -547,61 +585,68 @@ const Composer: FC = () => {
 			event.preventDefault();
 			return;
 		}
+		if (event.defaultPrevented && hasMessageQueue) return;
 		if (showPlanFollowupActions) {
 			// ComposerInput returns early while isRunning — intercept before that.
 			event.preventDefault();
 			handlePlanRefineSubmit();
 			return;
 		}
-		if (!pendingSuggestion) return;
-		event.preventDefault();
-		sendFollowup();
+		if (pendingSuggestion) {
+			event.preventDefault();
+			sendFollowup();
+			return;
+		}
+		// Queue only when a run was already in flight and Lexical skipped send.
+		if (aui.thread.getState().isRunning && hasMessageQueue && !isComposerEmpty) {
+			event.preventDefault();
+			aui.composer.send();
+		}
 	};
 
 	return (
-		<ComposerPrimitive.Root
-			className="aui-composer-root relative flex w-full flex-col gap-2"
-			onSubmit={handleSubmit}
-		>
-			<ComposerQueue />
-			<ComposerPrimitive.AttachmentDropzone
-				render={
-					<div
-						data-slot="aui_composer-shell"
-						className={cn(
-							"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
-							isDraft
-								? "relative z-10 bg-(--composer-bg) dark:border-border focus-within:border-border dark:focus-within:border-muted-foreground/30"
-								: "relative z-10 chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
-						)}
-					/>
-				}
+		<ComposerPrimitive.Unstable_TriggerPopoverRoot>
+			<ComposerPrimitive.Root
+				className="aui-composer-root relative flex w-full flex-col gap-2"
+				onSubmit={handleSubmit}
 			>
-				<ComposerAttachments />
-				<ComposerPrimitive.Input
-					ref={inputRef}
-					placeholder="Send a message..."
-					className="aui-composer-input caret-foreground placeholder:text-muted-foreground/80 max-h-32 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none disabled:cursor-not-allowed"
-					minRows={2}
-					enterKeyHint="send"
-					aria-label="Message input"
-					disabled={isConnecting}
-					cancelOnEscape={!pendingSuggestion}
-					onKeyDown={handleInputKeyDown}
-				/>
-				<ComposerAction
-					isConnecting={isConnecting}
-					isLoadingModel={isLoadingModel}
-					isConnectionPending={isPending}
-					onSendWhenConnected={sendWhenConnected}
-					onSendFollowup={sendFollowup}
-					modelSelectorSide={isDraft ? "bottom" : "top"}
-					showPlanFollowupActions={showPlanFollowupActions}
-					planActionPending={submitting}
-					onRefine={refine}
-				/>
-			</ComposerPrimitive.AttachmentDropzone>
-		</ComposerPrimitive.Root>
+				<ComposerQueue />
+				<ComposerPrimitive.AttachmentDropzone
+					render={
+						<div
+							data-slot="aui_composer-shell"
+							className={cn(
+								"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+								isDraft
+									? "relative z-10 bg-(--composer-bg) dark:border-border focus-within:border-border dark:focus-within:border-muted-foreground/30"
+									: "relative z-10 chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
+							)}
+						/>
+					}
+				>
+					<ComposerAttachments />
+					<KiloLexicalComposerInput
+						ref={inputRef}
+						disabled={isConnecting}
+						cancelOnEscape={!pendingSuggestion}
+						submitMode={isLoadingModel ? "none" : "enter"}
+						onKeyDown={handleInputKeyDown}
+					/>
+					<KiloSlashTrigger />
+					<ComposerAction
+						isConnecting={isConnecting}
+						isLoadingModel={isLoadingModel}
+						isConnectionPending={isPending}
+						onSendWhenConnected={sendWhenConnected}
+						onSendFollowup={sendFollowup}
+						modelSelectorSide={isDraft ? "bottom" : "top"}
+						showPlanFollowupActions={showPlanFollowupActions}
+						planActionPending={submitting}
+						onRefine={refine}
+					/>
+				</ComposerPrimitive.AttachmentDropzone>
+			</ComposerPrimitive.Root>
+		</ComposerPrimitive.Unstable_TriggerPopoverRoot>
 	);
 };
 
@@ -1168,7 +1213,7 @@ const UserMessage: FC = () => {
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
 				<div className="aui-user-message-content border-border bg-card text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word empty:hidden">
-					<MessagePrimitive.Parts />
+					<MessagePrimitive.Parts components={{ Text: KiloDirectiveText }} />
 				</div>
 			</div>
 

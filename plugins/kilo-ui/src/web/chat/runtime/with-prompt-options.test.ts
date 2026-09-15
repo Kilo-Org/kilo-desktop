@@ -189,6 +189,136 @@ describe("withPromptOptions", () => {
 		);
 	});
 
+	it("injects agent and model into session.command", async () => {
+		const command = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync: vi.fn(), prompt: vi.fn(), command },
+		} as unknown as KiloClient;
+
+		const wrapped = withPromptOptions(client, {
+			getAgent: () => "ask",
+			getModel: () => ({ providerID: "kilo", modelID: "auto" }),
+			getVariant: () => "low",
+		});
+		await wrapped.session.command({
+			sessionID: "s1",
+			command: "init",
+			arguments: "",
+		});
+
+		expect(command).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionID: "s1",
+				command: "init",
+				agent: "ask",
+				model: "kilo/auto",
+				variant: "low",
+			}),
+		);
+	});
+
+	it("rewrites a known slash prompt onto session.command", async () => {
+		const command = vi.fn(async () => undefined);
+		const prompt = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync: vi.fn(), prompt, command },
+		} as unknown as KiloClient;
+
+		const wrapped = withPromptOptions(client, {
+			getAgent: () => "code",
+			getKnownCommandNames: () => ["init", "compact"],
+		});
+		await wrapped.session.prompt({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "/init write AGENTS.md" }],
+		});
+
+		expect(prompt).not.toHaveBeenCalled();
+		expect(command).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionID: "s1",
+				command: "init",
+				arguments: "write AGENTS.md",
+				agent: "code",
+			}),
+		);
+	});
+
+	it("rewrites slash promptAsync with a command model string", async () => {
+		const command = vi.fn(async () => undefined);
+		const promptAsync = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync, prompt: vi.fn(), command },
+		} as unknown as KiloClient;
+
+		const wrapped = withPromptOptions(client, {
+			getAgent: () => "code",
+			getModel: () => ({ providerID: "kilo", modelID: "auto" }),
+			getKnownCommandNames: () => ["coss"],
+		});
+		await wrapped.session.promptAsync({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "/coss what is this skill" }],
+		});
+
+		expect(promptAsync).not.toHaveBeenCalled();
+		expect(command).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sessionID: "s1",
+				command: "coss",
+				arguments: "what is this skill",
+				agent: "code",
+				model: "kilo/auto",
+			}),
+		);
+	});
+
+	it("returns from promptAsync before session.command finishes", async () => {
+		let release!: () => void;
+		const command = vi.fn(
+			() =>
+				new Promise<undefined>((resolve) => {
+					release = () => resolve(undefined);
+				}),
+		);
+		const promptAsync = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync, prompt: vi.fn(), command },
+		} as unknown as KiloClient;
+
+		const wrapped = withPromptOptions(client, {
+			getKnownCommandNames: () => ["coss"],
+		});
+		const pending = wrapped.session.promptAsync({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "/coss what is this skill" }],
+		});
+		await Promise.resolve();
+
+		expect(command).toHaveBeenCalledOnce();
+		await expect(pending).resolves.toBeUndefined();
+		release();
+	});
+
+	it("leaves unknown or non-slash prompts on session.prompt", async () => {
+		const command = vi.fn(async () => undefined);
+		const prompt = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync: vi.fn(), prompt, command },
+		} as unknown as KiloClient;
+
+		const wrapped = withPromptOptions(client, {
+			getKnownCommandNames: () => ["init"],
+		});
+		await wrapped.session.prompt({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "hello" }],
+		});
+
+		expect(command).not.toHaveBeenCalled();
+		expect(prompt).toHaveBeenCalledOnce();
+	});
+
 	it("prepends session workspace context without discarding an explicit system prompt", async () => {
 		const prompt = vi.fn(async () => undefined);
 		const client = {

@@ -51,6 +51,7 @@ export function createKiloRuntimeBackend({
 	getAgent,
 	getModel,
 	prepareModel,
+	getKnownCommandNames,
 	onSessionInitialized,
 	sessionActivity,
 	suggestions,
@@ -93,6 +94,7 @@ export function createKiloRuntimeBackend({
 		...(getAgent ? { getAgent } : {}),
 		...(getModel ? { getModel } : {}),
 		...(prepareModel ? { prepareModel } : {}),
+		...(getKnownCommandNames ? { getKnownCommandNames } : {}),
 		getSystem: (prompt) => {
 			const sessionId = typeof prompt.sessionID === "string" ? prompt.sessionID : undefined;
 			return sessionId ? workspaceSystemBySessionId.get(sessionId) : undefined;

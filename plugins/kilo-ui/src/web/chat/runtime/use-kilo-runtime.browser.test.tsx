@@ -58,6 +58,7 @@ describe("useKiloRuntime", () => {
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
 			prepareModel: expect.any(Function),
+			getKnownCommandNames: expect.any(Function),
 			onSessionInitialized,
 		});
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
@@ -219,6 +220,7 @@ describe("useKiloRuntime", () => {
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
 			prepareModel: expect.any(Function),
+			getKnownCommandNames: expect.any(Function),
 			sessionActivity,
 			suggestions,
 		});

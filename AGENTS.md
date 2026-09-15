@@ -35,6 +35,7 @@ Project skills live under [`.agents/skills/`](./.agents/skills/).
 | `write-vitest`      | `.agents/skills/write-vitest/SKILL.md`      | Choosing Vitest tiers and writing unit / integration / browser / app-level tests           |
 | `write-e2e-test`    | `.agents/skills/write-e2e-test/SKILL.md`    | Writing Playwright/Electron e2e page objects, fixtures, and `@smoke` specs                 |
 | `tdd`               | `.agents/skills/tdd/SKILL.md`               | New features, logic-heavy bug fixes, and refactors (not minor UI/cosmetic changes)         |
+| `threat-model`      | `.agents/skills/threat-model/SKILL.md`      | Running the STRIDE+Privacy threat model and updating `docs/security/threat-model.md`       |
 
 ## Key rules for AI agents
 

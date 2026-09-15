@@ -45,8 +45,9 @@ export class FilesPage {
 			getLocatorByTestId("chat-pane-toolbar"),
 			"Pane toolbar should be visible after the chat starts",
 		);
+		await click(getLocatorByTestId("chat-pane-launch-files.files"));
 		await expectElementToBeVisible(
-			getLocatorByTestId("chat-pane-files:explorer").getByTestId("files-view"),
+			getLocatorByTestId("files-view"),
 			"Files pane should be visible",
 		);
 	}

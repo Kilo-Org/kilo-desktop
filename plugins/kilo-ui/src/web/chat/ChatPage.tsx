@@ -39,10 +39,7 @@ import { Thread } from "./components/assistant-ui/thread.js";
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatPaneCanvas } from "./pane-canvas/ChatPaneCanvas.js";
 import {
-	DEFAULT_WORKSPACE_FILES_ARRANGEMENT,
-	FILES_EXPLORER_PANE_ID,
 	FILES_PANE_DEFINITION_ID,
-	shouldOpenDefaultFilesExplorer,
 	workspaceFolderName,
 } from "./pane-canvas/default-workspace-files-pane.js";
 import { shouldShowChatCanvas } from "./pane-canvas/chat-canvas-visibility.js";
@@ -478,9 +475,6 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	}, [closeRequest, finishClosingTab]);
 
 	const wasEmptyRef = useRef(!hasMessages);
-	const filesDefinition = rightPanelDefinitions.find(
-		(definition) => definition.id === FILES_PANE_DEFINITION_ID,
-	);
 
 	useLayoutEffect(() => {
 		if (isDetached) return;
@@ -491,51 +485,8 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 				clearSession(sessionId);
 			}
 		}
-		const submitted = threadStatus !== "new" && wasEmptyRef.current && hasMessages;
 		wasEmptyRef.current = !hasMessages;
-		if (!submitted) return;
-		const workspaceOnSubmit =
-			workspace ?? workspaces.find((candidate) => candidate.id === activeWorkspaceId);
-		const primaryFolder =
-			workspaceOnSubmit?.folders.find((folder) => folder.isPrimary)?.path ??
-			workspaceOnSubmit?.folders[0]?.path;
-		const hasWorkspace = Boolean(primaryFolder);
-		if (
-			!shouldOpenDefaultFilesExplorer({
-				submitted,
-				hasWorkspace,
-				filesAvailable: Boolean(filesDefinition),
-				tabs: panelState.tabs,
-			}) ||
-			!filesDefinition
-		) {
-			return;
-		}
-		if ((panelState.arrangement ?? DEFAULT_ARRANGEMENT) === DEFAULT_ARRANGEMENT) {
-			persistArrangement(sessionId, DEFAULT_WORKSPACE_FILES_ARRANGEMENT);
-		}
-		openTab(sessionId, filesDefinition, {
-			activate: false,
-			instanceId: FILES_EXPLORER_PANE_ID,
-			title: workspaceFolderName(primaryFolder) ?? filesDefinition.title,
-			...(primaryFolder ? { metadata: { workspaceDirectory: primaryFolder } } : {}),
-		});
-	}, [
-		activeWorkspaceId,
-		clearSession,
-		filesDefinition,
-		hasMessages,
-		isDetached,
-		openTab,
-		panelState.arrangement,
-		panelState.tabs,
-		persistArrangement,
-		remoteId,
-		sessionId,
-		threadStatus,
-		workspace,
-		workspaces,
-	]);
+	}, [clearSession, hasMessages, isDetached, remoteId, sessionId]);
 
 	const handleLaunch = useCallback(
 		(definition: RightPanelTabDefinition, targetGroupId?: string) => {

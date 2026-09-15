@@ -326,6 +326,19 @@ async function openFirstCanvasPane(screen: ReturnType<typeof page.elementLocator
 	await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
 }
 
+function openWorkspaceFilesExplorer() {
+	useRightPanelStore.getState().openTab(
+		"draft",
+		{ id: FILES_PANE_DEFINITION_ID, title: "Files" },
+		{
+			activate: false,
+			instanceId: FILES_EXPLORER_PANE_ID,
+			title: "workspace-1",
+			metadata: { workspaceDirectory: "/projects/workspace-1" },
+		},
+	);
+}
+
 function addTabInActiveGroup(baseElement: HTMLElement) {
 	return (
 		baseElement
@@ -1100,7 +1113,7 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("chat-pane-carousel-track")).toBeVisible();
 	});
 
-	it("opens a files explorer beside chat when a workspace draft is submitted", async () => {
+	it("opens only the chat pane when a workspace draft is submitted", async () => {
 		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
 			workspaces: [workspace],
 			activeWorkspaceId: workspace.id,
@@ -1119,34 +1132,12 @@ describe("ChatPage", () => {
 
 		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
 		await expect.element(screen.getByTestId("chat-pane-agent:draft")).toBeVisible();
-		await expect
-			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
-			.toBeVisible();
-		const chatPane = screen.getByTestId("chat-pane-agent:draft").element();
-		const filesPane = screen.getByTestId(`chat-pane-${FILES_EXPLORER_PANE_ID}`).element();
-		expect(chatPane.getBoundingClientRect().left).toBeLessThan(
-			filesPane.getBoundingClientRect().left,
-		);
-		await expect
-			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
-			.toHaveTextContent("workspace-1");
-		await expect
-			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
-			.not.toHaveAttribute("title");
+		expect(
+			baseElement.querySelector(`[data-qa-id='chat-pane-${FILES_EXPLORER_PANE_ID}']`),
+		).toBeNull();
 		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
-		await expect
-			.element(screen.getByTestId("kilo-chat-pane-canvas"))
-			.toHaveAttribute("data-arrangement", "tiles");
-		const filesPanel = baseElement.querySelector("[data-qa-id='test-files-panel']");
-		expect(filesPanel).not.toBeNull();
-		expect(filesPanel).toHaveAttribute("data-workspace-directory", "/projects/workspace-1");
-		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toEqual([
-			expect.objectContaining({
-				instanceId: FILES_EXPLORER_PANE_ID,
-				definitionId: FILES_PANE_DEFINITION_ID,
-				title: "workspace-1",
-			}),
-		]);
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBeNull();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
 	});
 
 	it("opens workspace files into a group beside the files explorer", async () => {
@@ -1166,6 +1157,7 @@ describe("ChatPage", () => {
 		rerenderChatPage();
 
 		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		openWorkspaceFilesExplorer();
 		await expect
 			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
 			.toBeVisible();
@@ -1247,6 +1239,7 @@ describe("ChatPage", () => {
 		rerenderChatPage();
 
 		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		openWorkspaceFilesExplorer();
 		await expect
 			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
 			.toBeVisible();
@@ -1318,6 +1311,7 @@ describe("ChatPage", () => {
 		rerenderChatPage();
 
 		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		openWorkspaceFilesExplorer();
 		await expect
 			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
 			.toBeVisible();
@@ -1391,6 +1385,7 @@ describe("ChatPage", () => {
 		assistantState.current.threadListItem.status = "regular";
 		rerenderChatPage();
 		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+		openWorkspaceFilesExplorer();
 		await expect
 			.element(screen.getByTestId(`chat-pane-tab-${FILES_EXPLORER_PANE_ID}`))
 			.toBeVisible();

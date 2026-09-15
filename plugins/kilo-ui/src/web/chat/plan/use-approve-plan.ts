@@ -56,6 +56,7 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 
 	const planFollowup = findPlanFollowupRequest(pendingQuestions);
 	const key = resolvePlanApprovalKey(planFollowup?.id, options?.fallbackApprovalScope);
+	const fallbackKey = resolvePlanApprovalKey(undefined, options?.fallbackApprovalScope);
 	const approved = usePlanApprovalUiStore((state) =>
 		key ? Boolean(state.approvedKeys[key]) : false,
 	);
@@ -76,7 +77,10 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 				} else {
 					aui.thread.append(PLAN_IMPLEMENT_FALLBACK_PROMPT);
 				}
+				// Mark both question-based and fallback keys so the approved state
+				// persists after the answered question leaves the pending list.
 				if (key) markApproved(key);
+				if (fallbackKey && fallbackKey !== key) markApproved(fallbackKey);
 			} catch (caught) {
 				setError(caught instanceof Error ? caught.message : "Failed to approve the plan.");
 			} finally {

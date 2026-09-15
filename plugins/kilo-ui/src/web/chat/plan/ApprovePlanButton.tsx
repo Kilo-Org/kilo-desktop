@@ -32,7 +32,7 @@ export const ApprovePlanButton: FC<ApprovePlanButtonProps> = ({
 				role="status"
 				data-qa-id={approvedQaId}
 				className={cn(
-					"inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-emerald-500/15 px-4 text-sm font-medium text-emerald-600 dark:text-emerald-400",
+					"inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 text-[0.8rem] font-medium text-emerald-600 dark:text-emerald-400",
 					className,
 				)}
 			>

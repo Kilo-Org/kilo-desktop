@@ -17,6 +17,36 @@ const planThreadProjectionState = vi.hoisted(() => ({
 	newestAnchorCallId: undefined as string | undefined,
 }));
 
+const pendingQuestionsState = vi.hoisted(() => ({
+	questions: [
+		{
+			id: "q-plan",
+			sessionID: "session-plan",
+			askedAt: 1,
+			questions: [
+				{
+					question: "Ready to implement?",
+					header: "Implement",
+					options: [
+						{ label: "Start new session" },
+						{ label: "Continue here" },
+						{ label: "Keep refining" },
+					],
+				},
+			],
+		},
+	] as Array<{
+		id: string;
+		sessionID: string;
+		askedAt: number;
+		questions: Array<{
+			question: string;
+			header: string;
+			options: Array<{ label: string }>;
+		}>;
+	}>,
+}));
+
 const replyToQuestion = vi.fn().mockResolvedValue(undefined);
 const setAgent = vi.fn();
 const append = vi.fn();
@@ -72,24 +102,7 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 });
 
 vi.mock("@assistant-ui/react-opencode", () => ({
-	useOpenCodeQuestions: () => [
-		{
-			id: "q-plan",
-			sessionID: "session-plan",
-			askedAt: 1,
-			questions: [
-				{
-					question: "Ready to implement?",
-					header: "Implement",
-					options: [
-						{ label: "Start new session" },
-						{ label: "Continue here" },
-						{ label: "Keep refining" },
-					],
-				},
-			],
-		},
-	],
+	useOpenCodeQuestions: () => pendingQuestionsState.questions,
 }));
 
 vi.mock("./use-plan-thread-projection.js", () => ({
@@ -155,6 +168,24 @@ function renderPlanCard(projection: PlanProjection) {
 afterEach(() => {
 	cleanup();
 	planThreadProjectionState.newestAnchorCallId = undefined;
+	pendingQuestionsState.questions = [
+		{
+			id: "q-plan",
+			sessionID: "session-plan",
+			askedAt: 1,
+			questions: [
+				{
+					question: "Ready to implement?",
+					header: "Implement",
+					options: [
+						{ label: "Start new session" },
+						{ label: "Continue here" },
+						{ label: "Keep refining" },
+					],
+				},
+			],
+		},
+	];
 	useRightPanelStore.setState({ bySessionId: {} });
 	resetPlanApprovalUiState();
 	vi.clearAllMocks();
@@ -268,5 +299,37 @@ describe("PlanCard", () => {
 		expect(setAgent).toHaveBeenCalledWith("code");
 		expect(replyToQuestion).toHaveBeenCalledWith("q-plan", [["Continue here"]]);
 		await expect.element(screen.getByTestId("kilo-plan-approved")).toBeVisible();
+	});
+
+	it("keeps showing Approved after the question leaves the pending list", async () => {
+		const { baseElement } = renderPlanCard({
+			status: "ready",
+			path: ".kilo/plans/ship.md",
+			markdown: "# Ship it\n\n- step 1",
+			anchorCallId: "write-1",
+			hiddenCallIds: new Set(["write-1", "exit-1"]),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("kilo-plan-approve").click();
+		await vi.waitFor(() => expect(replyToQuestion).toHaveBeenCalledOnce());
+		await expect.element(screen.getByTestId("kilo-plan-approved")).toBeVisible();
+
+		// Simulate the server removing the answered question from the pending list.
+		// When the question disappears the key shifts from "question:<id>" to "fallback:<scope>".
+		// The fix marks both keys, so the fallback key must also be in the store.
+		pendingQuestionsState.questions = [];
+
+		cleanup();
+		const { baseElement: rerenderedBase } = renderPlanCard({
+			status: "ready",
+			path: ".kilo/plans/ship.md",
+			markdown: "# Ship it\n\n- step 1",
+			anchorCallId: "write-1",
+			hiddenCallIds: new Set(["write-1", "exit-1"]),
+		});
+		const rerenderedScreen = page.elementLocator(rerenderedBase);
+
+		await expect.element(rerenderedScreen.getByTestId("kilo-plan-approved")).toBeVisible();
 	});
 });

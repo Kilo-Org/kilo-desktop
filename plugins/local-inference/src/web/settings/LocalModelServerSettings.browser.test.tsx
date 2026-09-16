@@ -914,6 +914,12 @@ describe("LocalModelServerSettings", () => {
 		await expect
 			.element(screen.getByTestId("local-model-select-model-beta"))
 			.toHaveAttribute("aria-pressed", "true");
+		await expect.element(filePreview).not.toBeInTheDocument();
+		await screen.getByTestId("local-model-search").hover();
+		await screen.getByTestId("local-model-select-model-beta").hover();
+		await expect.element(filePreview).toBeVisible();
+		await screen.getByTestId("local-model-search").hover();
+		await expect.element(filePreview).not.toBeInTheDocument();
 		const betaActions = screen.getByRole("button", { name: "More actions for Beta 3B" });
 		await betaActions.click();
 		await page.getByRole("menuitem", { name: "Show in Finder" }).click();

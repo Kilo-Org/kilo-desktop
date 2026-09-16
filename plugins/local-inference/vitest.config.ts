@@ -49,6 +49,7 @@ export default defineConfig({
 						"@base-ui/react/input",
 						"@base-ui/react/menu",
 						"@base-ui/react/merge-props",
+						"@base-ui/react/preview-card",
 						"@base-ui/react/select",
 						"@base-ui/react/separator",
 						"@base-ui/react/slider",

@@ -7,18 +7,15 @@ import {
 	MoreHorizontalIcon,
 	Trash2Icon,
 } from "lucide-react";
-import { useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
-	Popover,
-	PopoverContent,
-	PopoverDescription,
-	PopoverHeader,
-	PopoverTitle,
-	PopoverTrigger,
-} from "@anaconda-agentic-desktop/ui/components/popover";
+	PreviewCard,
+	PreviewCardContent,
+	PreviewCardTrigger,
+} from "@anaconda-agentic-desktop/ui/components/preview-card";
 import {
 	SidebarMenu,
 	SidebarMenuAction,
@@ -142,13 +139,15 @@ function LocalFileModelSidebarButton({
 	onSelect: (modelId: string) => void;
 	onReveal: (model: LocalModel) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	const sourceLabel = model.catalog ? "Catalog download" : "Imported GGUF";
+	const selectModel = (event: ReactMouseEvent<HTMLButtonElement>) => {
+		onSelect(model.id);
+		event.currentTarget.blur();
+	};
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger
-				openOnHover
+		<PreviewCard>
+			<PreviewCardTrigger
 				delay={250}
 				closeDelay={150}
 				render={
@@ -159,20 +158,20 @@ function LocalFileModelSidebarButton({
 						aria-pressed={selected}
 						className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 rounded-lg"
 						data-qa-id={`local-model-select-${model.id}`}
-						onClick={() => onSelect(model.id)}
+						onClick={selectModel}
 					/>
 				}
 			>
 				<ModelSidebarButtonContent model={model} publisher={publisher} loaded={loaded} />
-			</PopoverTrigger>
-			<PopoverContent
+			</PreviewCardTrigger>
+			<PreviewCardContent
 				side="right"
 				align="start"
 				sideOffset={8}
 				className="w-72 gap-2 p-2.5"
 				data-qa-id={`local-model-file-preview-${model.id}`}
 			>
-				<PopoverHeader className="gap-0.5">
+				<div className="flex flex-col gap-0.5 text-sm">
 					<div className="flex items-center gap-2">
 						{publisher ? (
 							<ModelPublisherIcon publisher={publisher} size="lg" />
@@ -181,13 +180,13 @@ function LocalFileModelSidebarButton({
 						) : (
 							<FileIcon className="text-muted-foreground size-4" aria-hidden="true" />
 						)}
-						<PopoverTitle className="min-w-0 truncate">{model.name}</PopoverTitle>
+						<h3 className="min-w-0 truncate font-medium">{model.name}</h3>
 					</div>
-					<PopoverDescription className="text-xs">
+					<p className="text-muted-foreground text-xs">
 						{sourceLabel}
 						{model.sizeBytes ? ` · ${formatFileSize(model.sizeBytes)}` : ""}
-					</PopoverDescription>
-				</PopoverHeader>
+					</p>
+				</div>
 				<code
 					className="bg-muted/60 rounded-md px-2 py-1.5 text-[11px] leading-4 break-all"
 					aria-label={`File location: ${model.path}`}
@@ -202,15 +201,14 @@ function LocalFileModelSidebarButton({
 					className="h-auto w-fit p-0"
 					data-qa-id={`local-model-file-preview-reveal-${model.id}`}
 					onClick={() => {
-						setOpen(false);
 						onReveal(model);
 					}}
 				>
 					Show in Finder
 					<FolderOpenIcon data-icon="inline-end" aria-hidden="true" />
 				</Button>
-			</PopoverContent>
-		</Popover>
+			</PreviewCardContent>
+		</PreviewCard>
 	);
 }
 
@@ -231,15 +229,17 @@ function CatalogModelSidebarButton({
 	onSelect: (modelId: string) => void;
 	onOpenCatalog: (model: ModelCatalogEntry) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	const quantization = catalogModel.quantizations.find(
 		(entry) => entry.id === model.catalog?.quantizationId,
 	);
+	const selectModel = (event: ReactMouseEvent<HTMLButtonElement>) => {
+		onSelect(model.id);
+		event.currentTarget.blur();
+	};
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger
-				openOnHover
+		<PreviewCard>
+			<PreviewCardTrigger
 				delay={250}
 				closeDelay={150}
 				render={
@@ -250,32 +250,32 @@ function CatalogModelSidebarButton({
 						aria-pressed={selected}
 						className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 rounded-lg"
 						data-qa-id={`local-model-select-${model.id}`}
-						onClick={() => onSelect(model.id)}
+						onClick={selectModel}
 					/>
 				}
 			>
 				<ModelSidebarButtonContent model={model} publisher={publisher} loaded={loaded} />
-			</PopoverTrigger>
-			<PopoverContent
+			</PreviewCardTrigger>
+			<PreviewCardContent
 				side="right"
 				align="start"
 				sideOffset={8}
 				className="w-80 gap-3 p-3"
 				data-qa-id={`local-model-catalog-preview-${model.id}`}
 			>
-				<PopoverHeader className="gap-1">
+				<div className="flex flex-col gap-1 text-sm">
 					<div className="flex items-center gap-2">
 						<ModelPublisherIcon publisher={catalogModel.publisher} size="lg" />
-						<PopoverTitle className="min-w-0 truncate">{catalogModel.name}</PopoverTitle>
+						<h3 className="min-w-0 truncate font-medium">{catalogModel.name}</h3>
 					</div>
 					<p className="text-muted-foreground text-xs">
 						{getPublisherDisplayName(catalogModel.publisher)} ·{" "}
 						{formatParameterCount(catalogModel.numParameters)} parameters · {catalogModel.modelType}
 					</p>
-				</PopoverHeader>
-				<PopoverDescription className="line-clamp-2 text-xs leading-relaxed">
+				</div>
+				<p className="text-muted-foreground line-clamp-2 text-xs leading-relaxed">
 					{catalogModel.description}
-				</PopoverDescription>
+				</p>
 				{quantization ? (
 					<div className="flex flex-wrap gap-1.5">
 						<Badge variant="outline">{quantization.method}</Badge>
@@ -289,15 +289,14 @@ function CatalogModelSidebarButton({
 					className="h-auto w-fit p-0"
 					data-qa-id={`local-model-view-catalog-${model.id}`}
 					onClick={() => {
-						setOpen(false);
 						onOpenCatalog(catalogModel);
 					}}
 				>
 					View in catalog
 					<ArrowRightIcon data-icon="inline-end" aria-hidden="true" />
 				</Button>
-			</PopoverContent>
-		</Popover>
+			</PreviewCardContent>
+		</PreviewCard>
 	);
 }
 

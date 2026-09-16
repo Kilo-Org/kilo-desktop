@@ -131,7 +131,7 @@ describe("WorkspaceSelector", () => {
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 		const workspaceOption = document.querySelector<HTMLElement>(
-			'[data-slot="command-item"]:not([data-value="create-workspace"])',
+			'[data-slot="command-item"]:not([data-value="create-workspace"]):not([data-value="dont-work-in-a-workspace"])',
 		);
 		expect(workspaceOption).not.toBeNull();
 		expect(workspaceOption).toHaveAttribute("aria-selected", "false");
@@ -166,30 +166,19 @@ describe("WorkspaceSelector", () => {
 		await userEvent.keyboard("{Escape}");
 	});
 
-	it("shows the full Don't work in a workspace label", async () => {
-		renderSelector();
+	it("shows No workspace as the first option", async () => {
+		await renderSelectorWithWorkspaces([
+			{ name: "Acme App", color: "#F87171", path: "/repo/acme" },
+		]);
 
 		await page.getByRole("combobox", { name: "Select workspace" }).click();
 
-		const option = page.getByRole("option", { name: "Don't work in a workspace" }).element();
-		const label = [...option.querySelectorAll("span")].find((element) =>
-			element.textContent?.includes("Don't work in a workspace"),
-		);
-		expect(label).toBeDefined();
-		expect(getComputedStyle(label!).textOverflow).not.toBe("ellipsis");
-		const textNode = [...label!.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
-		expect(textNode).toBeDefined();
-		const range = document.createRange();
-		range.setStart(textNode!, textNode!.textContent!.length - 1);
-		range.setEnd(textNode!, textNode!.textContent!.length);
-		const popover = document.querySelector("[data-slot='popover-content']");
-		expect(popover).not.toBeNull();
-		expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(
-			popover!.getBoundingClientRect().right,
-		);
+		const options = page.getByRole("option").elements();
+		expect(options[0]).toHaveTextContent("No workspace");
+		expect(options[1]).toHaveTextContent("Acme App");
 	});
 
-	it("selects Don't work in a workspace as unscoped without changing the trigger label", async () => {
+	it("selects No workspace as unscoped without changing the trigger label", async () => {
 		renderSelector({
 			showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, paths: ["/tmp/Project"] }),
 		});

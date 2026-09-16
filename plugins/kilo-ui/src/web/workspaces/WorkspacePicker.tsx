@@ -197,6 +197,24 @@ export function WorkspacePickerRoot({
 						<CommandList className="scroll-fade max-h-[calc(1.75rem*5+0.5rem)]">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 							<CommandGroup>
+								{includeUnscoped ? (
+									<CommandItem
+										data-qa-id="workspace-unscoped-command"
+										value={UNSCOPED_COMMAND_VALUE}
+										keywords={["No workspace", "unscoped"]}
+										className={HIDE_BUILTIN_CHECK}
+										onSelect={() => select(null)}
+										data-checked={isUnscoped}
+									>
+										<FolderXIcon />
+										<span className="whitespace-nowrap">No workspace</span>
+										{isUnscoped ? (
+											<span className="flex size-6 shrink-0 items-center justify-center">
+												<CheckIcon className="size-3.5" />
+											</span>
+										) : null}
+									</CommandItem>
+								) : null}
 								{emptyLabel ? (
 									<CommandItem
 										data-qa-id="workspace-all-command"
@@ -318,24 +336,6 @@ export function WorkspacePickerRoot({
 								<PlusIcon />
 								New workspace
 							</CommandItem>
-							{includeUnscoped ? (
-								<CommandItem
-									data-qa-id="workspace-unscoped-command"
-									value={UNSCOPED_COMMAND_VALUE}
-									keywords={["Don't work in a workspace", "unscoped"]}
-									className={HIDE_BUILTIN_CHECK}
-									onSelect={() => select(null)}
-									data-checked={isUnscoped}
-								>
-									<FolderXIcon />
-									<span className="whitespace-nowrap">Don't work in a workspace</span>
-									{isUnscoped ? (
-										<span className="flex size-6 shrink-0 items-center justify-center">
-											<CheckIcon className="size-3.5" />
-										</span>
-									) : null}
-								</CommandItem>
-							) : null}
 						</CommandGroup>
 					</Command>
 				</PopoverContent>

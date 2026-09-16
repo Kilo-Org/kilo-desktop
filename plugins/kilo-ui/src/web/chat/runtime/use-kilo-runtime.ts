@@ -83,6 +83,8 @@ export function useKiloRuntime({
 	connectionRef.current = connectionPromise;
 	const knownCommandNamesRef = useRef(getKnownCommandNames);
 	knownCommandNamesRef.current = getKnownCommandNames;
+	const onSessionInitializedRef = useRef(onSessionInitialized);
+	onSessionInitializedRef.current = onSessionInitialized;
 
 	const promptGetters = useMemo(
 		() => ({
@@ -116,11 +118,11 @@ export function useKiloRuntime({
 			},
 			prepareSession,
 			...promptGetters,
-			...(onSessionInitialized ? { onSessionInitialized } : {}),
+			onSessionInitialized: (threadId: string) => onSessionInitializedRef.current?.(threadId),
 			...(sessionActivity ? { sessionActivity } : {}),
 			...(suggestions ? { suggestions } : {}),
 		});
-	}, [client, onSessionInitialized, prepareSession, promptGetters, sessionActivity, suggestions]);
+	}, [client, prepareSession, promptGetters, sessionActivity, suggestions]);
 	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 
 	return useOpenCodeRuntime({

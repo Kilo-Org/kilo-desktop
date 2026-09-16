@@ -59,8 +59,10 @@ describe("useKiloRuntime", () => {
 			getModel: expect.any(Function),
 			prepareModel: expect.any(Function),
 			getKnownCommandNames: expect.any(Function),
-			onSessionInitialized,
+			onSessionInitialized: expect.any(Function),
 		});
+		vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0].onSessionInitialized?.("session-1");
+		expect(onSessionInitialized).toHaveBeenCalledWith("session-1");
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			backend: expect.objectContaining({ globalClient: {} }),
 			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
@@ -94,6 +96,33 @@ describe("useKiloRuntime", () => {
 		await expect(
 			vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0].getConnection?.(),
 		).resolves.toEqual(expect.objectContaining({ baseUrl: "http://127.0.0.1:5096" }));
+	});
+
+	it("keeps the same backend while the session initialized callback changes presence", () => {
+		const connectionPromise = Promise.resolve(connection);
+		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
+		const callback = vi.fn();
+		type Props = { onSessionInitialized: ((threadId: string) => void) | undefined };
+
+		const { rerender } = renderHook(
+			({ onSessionInitialized }: Props) =>
+				useKiloRuntime({
+					connectionPromise,
+					prepareSession,
+					...(onSessionInitialized ? { onSessionInitialized } : {}),
+				}),
+			{ initialProps: { onSessionInitialized: undefined } as Props },
+		);
+
+		const backendArgs = vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0];
+		backendArgs?.onSessionInitialized?.("ignored-session");
+		rerender({ onSessionInitialized: callback });
+		backendArgs?.onSessionInitialized?.("session-1");
+		rerender({ onSessionInitialized: undefined });
+		backendArgs?.onSessionInitialized?.("also-ignored-session");
+
+		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
+		expect(callback).toHaveBeenCalledExactlyOnceWith("session-1");
 	});
 
 	it("forwards live agent and model getters that track selection changes", () => {
@@ -221,6 +250,7 @@ describe("useKiloRuntime", () => {
 			getModel: expect.any(Function),
 			prepareModel: expect.any(Function),
 			getKnownCommandNames: expect.any(Function),
+			onSessionInitialized: expect.any(Function),
 			sessionActivity,
 			suggestions,
 		});

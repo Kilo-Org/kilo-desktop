@@ -151,11 +151,30 @@ export interface SidecarCondaBackendOptions {
 	 * @deprecated Use `command` instead. Kept for backward compat.
 	 */
 	readonly bridgeBinaryPath?: string;
+
+	/**
+	 * Bridge telemetry configuration forwarded as env vars to the
+	 * spawned sidecar process. When omitted, the bridge falls back
+	 * to its compiled-in defaults (telemetry enabled, production env).
+	 */
+	readonly telemetry?:
+		| {
+				/**
+				 * Called at spawn time so a preference toggle after boot is
+				 * respected on the next bridge (re)start. Returns `"1"` to
+				 * enable, `"0"` to disable.
+				 */
+				readonly enabled: () => string;
+				/** `"development"`, `"test"`, or `"production"`. */
+				readonly env: string;
+		  }
+		| undefined;
 }
 
 export class SidecarCondaBackend implements CondaBackend {
 	readonly #command: readonly string[];
 	readonly #logger: MainSdkLogger;
+	readonly #telemetry: SidecarCondaBackendOptions["telemetry"];
 
 	#process: ChildProcess | null = null;
 	#connection: MessageConnection | null = null;
@@ -166,6 +185,7 @@ export class SidecarCondaBackend implements CondaBackend {
 	constructor(options: SidecarCondaBackendOptions) {
 		this.#command = options.command ?? [options.bridgeBinaryPath!];
 		this.#logger = options.logger;
+		this.#telemetry = options.telemetry;
 	}
 
 	// ─── CondaBackend implementation ──────────────────────────────────────
@@ -661,6 +681,12 @@ export class SidecarCondaBackend implements CondaBackend {
 				// Plugin environments (CondaRuntime) bypass this entirely via
 				// explicit `prefix` paths at ~/.anaconda-agentic-desktop/conda/envs/.
 				BRIDGE_PROTECT_STDIO: "1",
+				// Telemetry — bridge defaults to production endpoints if these
+				// are unset. See anaconda/anaconda-desktop-bridge#53.
+				...(this.#telemetry && {
+					BRIDGE_TELEMETRY_ENABLED: this.#telemetry.enabled(),
+					BRIDGE_TELEMETRY_ENV: this.#telemetry.env,
+				}),
 			},
 		});
 

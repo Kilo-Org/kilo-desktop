@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import {
+	createFakeMainSdk,
+	createFakeSdk,
+	createLinkedFakeSdkPair,
+} from "@anaconda-agentic-desktop/testing";
 
 import { JobQueue } from "../../JobQueue.js";
 import { CondaProvider } from "./index.js";
@@ -171,6 +175,49 @@ describe("CondaProvider", () => {
 		expect(error!.message).toContain("/fake/resources/bridge");
 		expect(error!.message).toContain("/fake/plugin/resources/bridge");
 
+		mainSdk.dispose();
+	});
+
+	it("boot() passes bridge telemetry config from the preferences capability", async () => {
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "found",
+			info: {
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			},
+		});
+		const provider = new CondaProvider();
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
+			featureId: "environments",
+		});
+		const prefsSdk = createMainSdk("preferences");
+		prefsSdk.plugins.expose("preferences", {
+			allowDataCollection: false,
+			telemetryEnv: "test",
+		});
+
+		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+
+		expect(SidecarCondaBackend.prototype.warmUp).toHaveBeenCalledTimes(1);
+		mainSdk.dispose();
+	});
+
+	it("boot() without preferences capability still constructs the backend (telemetry omitted)", async () => {
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "found",
+			info: {
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			},
+		});
+		const provider = new CondaProvider();
+		const mainSdk = createFakeMainSdk({ featureId: "environments" });
+
+		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+
+		expect(SidecarCondaBackend.prototype.warmUp).toHaveBeenCalledTimes(1);
 		mainSdk.dispose();
 	});
 

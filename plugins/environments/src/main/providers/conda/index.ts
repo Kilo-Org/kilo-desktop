@@ -13,6 +13,18 @@ import { resolveBridge } from "./resolveBridgePath.js";
 import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
 
 /**
+ * Minimal shape of the main-side preferences capability exposed by the shell.
+ * Inlined so the plugin does not take a `@anaconda-agentic-desktop/contracts`
+ * dependency for a single call.
+ */
+interface PreferencesCapability extends Record<string, unknown> {
+	preferences: {
+		readonly allowDataCollection: boolean;
+		readonly telemetryEnv: string;
+	};
+}
+
+/**
  * Conda environment provider -- the sole provider for the environments plugin.
  *
  * State transitions:
@@ -56,9 +68,19 @@ export class CondaProvider implements EnvironmentProvider {
 		ctx.logger.info(
 			`[conda-provider] Using anaconda-bridge-sidecar v${result.info.version}: ${result.info.command.join(" ")}`,
 		);
+
+		const prefs = ctx.mainSdk.plugins.get<PreferencesCapability>("preferences");
+		const telemetry = prefs
+			? {
+					enabled: () => (prefs.preferences.allowDataCollection ? "1" : "0"),
+					env: prefs.preferences.telemetryEnv,
+				}
+			: undefined;
+
 		this.#backend = new SidecarCondaBackend({
 			command: result.info.command,
 			logger: ctx.logger,
+			telemetry,
 		});
 		// Fire-and-forget: spawn the bridge during the boot window so the
 		// first renderer call doesn't pay cold-start latency. The backend

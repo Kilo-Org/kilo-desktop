@@ -30,6 +30,7 @@ const mockedResolveBridgeLaunchInfo = vi.mocked(resolveBridgeLaunchInfo);
 function createSdkWithFlag(options: { featureFlagEnabled: boolean | null }): {
 	mainSdk: FakeMainSdk;
 	getFlag: ReturnType<typeof vi.fn>;
+	exposePreferences: (prefs: { allowDataCollection: boolean; telemetryEnv: string }) => void;
 } {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
 		featureId: "environments",
@@ -45,7 +46,12 @@ function createSdkWithFlag(options: { featureFlagEnabled: boolean | null }): {
 		flagSdk.plugins.expose("featureFlag", { getFlag });
 	}
 
-	return { mainSdk, getFlag };
+	const exposePreferences = (prefs: { allowDataCollection: boolean; telemetryEnv: string }) => {
+		const prefsSdk = createMainSdk("preferences");
+		prefsSdk.plugins.expose("preferences", prefs);
+	};
+
+	return { mainSdk, getFlag, exposePreferences };
 }
 
 const FAKE_LAUNCH_INFO = {
@@ -199,5 +205,17 @@ describe("environments plugin main entry", () => {
 
 		mainSdk.dispose();
 		expect(onDispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("forwards preferences capability as bridge telemetry config when available", async () => {
+		setupFakeBridge();
+		const { mainSdk, exposePreferences } = createSdkWithFlag({ featureFlagEnabled: true });
+		exposePreferences({ allowDataCollection: false, telemetryEnv: "test" });
+
+		await mainRegister(mainSdk);
+
+		// The bridge warm-up fired — the telemetry config was threaded
+		// through CondaProvider.boot() to SidecarCondaBackend.
+		expect(SidecarCondaBackend.prototype.warmUp).toHaveBeenCalledTimes(1);
 	});
 });

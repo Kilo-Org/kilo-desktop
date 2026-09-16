@@ -1485,4 +1485,74 @@ describe("SidecarCondaBackend", () => {
 			expect(spawn).toHaveBeenCalledTimes(1);
 		});
 	});
+
+	describe("bridge telemetry env vars", () => {
+		it("passes BRIDGE_TELEMETRY_ENABLED and BRIDGE_TELEMETRY_ENV when telemetry is configured", async () => {
+			mockConnection.sendRequest.mockResolvedValue({});
+
+			const backend = new SidecarCondaBackend({
+				command: ["/path/to/bridge"],
+				logger: silentLogger,
+				telemetry: { enabled: () => "1", env: "development" },
+			});
+			await backend.warmUp();
+
+			const spawnEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
+			expect(spawnEnv.BRIDGE_TELEMETRY_ENABLED).toBe("1");
+			expect(spawnEnv.BRIDGE_TELEMETRY_ENV).toBe("development");
+			expect(spawnEnv.BRIDGE_PROTECT_STDIO).toBe("1");
+		});
+
+		it("omits BRIDGE_TELEMETRY_* when telemetry is not configured", async () => {
+			mockConnection.sendRequest.mockResolvedValue({});
+
+			const backend = new SidecarCondaBackend({
+				command: ["/path/to/bridge"],
+				logger: silentLogger,
+			});
+			await backend.warmUp();
+
+			const spawnEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
+			expect(spawnEnv.BRIDGE_TELEMETRY_ENABLED).toBeUndefined();
+			expect(spawnEnv.BRIDGE_TELEMETRY_ENV).toBeUndefined();
+			expect(spawnEnv.BRIDGE_PROTECT_STDIO).toBe("1");
+		});
+
+		it("evaluates the enabled getter at spawn time so a runtime preference toggle takes effect on restart", async () => {
+			mockConnection.sendRequest.mockResolvedValue({});
+
+			let allowed = true;
+			const backend = new SidecarCondaBackend({
+				command: ["/path/to/bridge"],
+				logger: silentLogger,
+				telemetry: { enabled: () => (allowed ? "1" : "0"), env: "production" },
+			});
+
+			await backend.warmUp();
+			const firstEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
+			expect(firstEnv.BRIDGE_TELEMETRY_ENABLED).toBe("1");
+
+			// Simulate the user disabling data collection
+			allowed = false;
+
+			// Force a new spawn by simulating process exit + re-connect
+			backend.dispose();
+			vi.mocked(spawn).mockClear();
+			mockProcess = createMockProcess();
+			vi.mocked(spawn).mockReturnValue(mockProcess as never);
+			mockConnection = createMockConnection();
+			mockConnection.sendRequest.mockResolvedValue({});
+			vi.mocked(createMessageConnection).mockReturnValue(mockConnection as never);
+
+			const backend2 = new SidecarCondaBackend({
+				command: ["/path/to/bridge"],
+				logger: silentLogger,
+				telemetry: { enabled: () => (allowed ? "1" : "0"), env: "production" },
+			});
+			await backend2.warmUp();
+
+			const secondEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
+			expect(secondEnv.BRIDGE_TELEMETRY_ENABLED).toBe("0");
+		});
+	});
 });

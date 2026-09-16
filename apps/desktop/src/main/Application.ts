@@ -23,6 +23,7 @@ import { AuthSessionService } from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createFeatureFlagHandlers, FeatureFlagService } from "./features/feature-flag/index.js";
 import { registerFeatureFlagCapability } from "./features/feature-flag/feature-flag-capability-bridge.js";
+import { registerPreferencesCapability } from "./platform/preferences-capability-bridge.js";
 import { createFsHandlers } from "./features/fs/handlers.js";
 import { createNotificationsHandlers } from "./features/notifications/handlers.js";
 import { createShellHandlers } from "./features/shell/handlers.js";
@@ -231,11 +232,16 @@ export class Application {
 	 * Must run before `bootFeatures` — see the call site in `#registerIpc`.
 	 * Returns the created feature-flag service and the registration disposers.
 	 */
-	#registerCapabilities(): { featureFlags: FeatureFlagService; disposers: Array<() => void> } {
+	#registerCapabilities(preferences: PreferencesStore): {
+		featureFlags: FeatureFlagService;
+		disposers: Array<() => void>;
+	} {
 		const featureFlags = FeatureFlagService.create({
 			auth: this.#auth,
 			appVersion: this.#app.metadata.appVersion,
 		});
+
+		const telemetryEnv = import.meta.env.VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE ?? "production";
 
 		return {
 			featureFlags,
@@ -246,6 +252,9 @@ export class Application {
 				// on flags. Flag changes are relayed to the feature event bus as
 				// `feature-flag.changed`.
 				registerFeatureFlagCapability(featureFlags),
+				// User data-collection preference and telemetry environment so
+				// plugins can gate subprocess telemetry (e.g. bridge sidecar).
+				registerPreferencesCapability(preferences, telemetryEnv),
 			],
 		};
 	}
@@ -260,7 +269,8 @@ export class Application {
 		// and a feature is allowed to resolve capabilities synchronously
 		// during its own boot. Registering afterwards would silently hand
 		// such a feature "unavailable" (flagged twice in PR #116 review).
-		const { featureFlags, disposers: capabilityDisposers } = this.#registerCapabilities();
+		const { featureFlags, disposers: capabilityDisposers } =
+			this.#registerCapabilities(preferences);
 		this.#featureFlags = featureFlags;
 		this.#disposers.push(...capabilityDisposers);
 

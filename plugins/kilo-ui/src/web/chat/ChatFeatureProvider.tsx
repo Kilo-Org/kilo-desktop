@@ -16,6 +16,7 @@ import { LocalModelLoadingToast } from "./LocalModelLoadingToast.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
+import { findCatalogAgent } from "./agent-selection/agent-catalog.js";
 import { useKiloCommandCatalog } from "./slash-commands/use-kilo-command-catalog.js";
 import { KiloAuthProvider } from "../account/KiloAuthProvider.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
@@ -241,6 +242,10 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
 	const [activeThreadId, setActiveThreadId] = useState<string>();
+	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
+	const { agent, getAgent, setAgent, resetDraftAgent, hydrateThreadAgent, promoteDraftAgent } =
+		useAgentSelection(agentCatalogQuery.data, activeThreadId);
+	const configuredAgent = findCatalogAgent(agentCatalogQuery.data, agent);
 	const {
 		model,
 		validatedModel,
@@ -252,7 +257,17 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		hydrateThreadModel,
 		promoteDraftModel,
 		resetDraftModel,
-	} = usePersistedModelSelection(catalogQuery.data, activeThreadId);
+	} = usePersistedModelSelection(
+		catalogQuery.data,
+		activeThreadId,
+		configuredAgent
+			? {
+					agent: configuredAgent.name,
+					...(configuredAgent.model ? { model: configuredAgent.model } : {}),
+					...(configuredAgent.variant ? { effort: configuredAgent.variant } : {}),
+				}
+			: undefined,
+	);
 	const selectModel = useCallback((next: KiloModelRef) => setModel(next), [setModel]);
 	const activeEffort = resolveModelEffort(
 		catalogQuery.data?.models ?? [],
@@ -260,7 +275,6 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		effort,
 	);
 
-	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
 	const commandDirectory =
 		resolveChatWorkspaceDirectory({
 			remoteId: undefined,
@@ -271,8 +285,6 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const commandCatalogQuery = useKiloCommandCatalog(connection.data, commandDirectory);
 	const knownCommandNamesRef = useRef<readonly string[]>([]);
 	knownCommandNamesRef.current = (commandCatalogQuery.data ?? []).map((command) => command.name);
-	const { agent, getAgent, setAgent, resetDraftAgent, hydrateThreadAgent, promoteDraftAgent } =
-		useAgentSelection(agentCatalogQuery.data, activeThreadId);
 	const resetDraftAgentRef = useRef(resetDraftAgent);
 	resetDraftAgentRef.current = resetDraftAgent;
 	const resetDraftModelRef = useRef(resetDraftModel);

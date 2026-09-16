@@ -714,6 +714,91 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 		});
 	});
 
+	it("uses the configured model and variant for each agent in a new chat", async () => {
+		vi.mocked(useKiloModelCatalog).mockReturnValue({
+			data: {
+				providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
+				models: [
+					{
+						id: "anthropic/claude-sonnet",
+						name: "Claude Sonnet",
+						providerID: "anthropic",
+						modelID: "claude-sonnet",
+						efforts: [{ id: "high", name: "High" }],
+					},
+					{
+						id: "anthropic/claude-opus",
+						name: "Claude Opus",
+						providerID: "anthropic",
+						modelID: "claude-opus",
+						efforts: [{ id: "max", name: "Max" }],
+					},
+				],
+				defaults: { anthropic: "claude-sonnet" },
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+		vi.mocked(useKiloAgentCatalog).mockReturnValue({
+			data: {
+				agents: [
+					{
+						name: "code",
+						displayName: "Code",
+						icon: HammerIcon,
+						model: { providerID: "anthropic", modelID: "claude-sonnet" },
+						variant: "high",
+					},
+					{
+						name: "plan",
+						displayName: "Plan",
+						icon: ListTodoIcon,
+						model: { providerID: "anthropic", modelID: "claude-opus" },
+						variant: "max",
+					},
+				],
+			},
+			isPending: false,
+			isError: false,
+		} as never);
+		let agentSelection!: ReturnType<typeof useChatAgentSelection>;
+		function CaptureAgentSelection() {
+			agentSelection = useChatAgentSelection();
+			return null;
+		}
+
+		renderChatPage({ children: <CaptureAgentSelection /> });
+
+		await vi.waitFor(() => {
+			const options = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+			expect(options?.defaultModel).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-sonnet",
+			});
+			expect(options?.variant).toBe("high");
+		});
+
+		act(() => agentSelection.setAgent("plan"));
+		await vi.waitFor(() => {
+			const options = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+			expect(options?.defaultModel).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-opus",
+			});
+			expect(options?.variant).toBe("max");
+		});
+
+		act(() => agentSelection.setAgent("code"));
+		await vi.waitFor(() => {
+			const options = vi.mocked(useKiloRuntime).mock.lastCall?.[0];
+			expect(options?.defaultModel).toEqual({
+				providerID: "anthropic",
+				modelID: "claude-sonnet",
+			});
+			expect(options?.variant).toBe("high");
+		});
+	});
+
 	it("does not prepare a local model on select and still passes prepareModel to the runtime", async () => {
 		vi.mocked(useKiloModelCatalog).mockReturnValue({
 			data: {

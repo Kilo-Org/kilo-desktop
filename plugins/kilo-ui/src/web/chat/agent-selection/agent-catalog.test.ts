@@ -47,6 +47,30 @@ describe("agent-catalog", () => {
 		]);
 	});
 
+	it("preserves configured model and variant defaults for selectable agents", () => {
+		const catalog = buildAgentCatalog([
+			agent({
+				name: "code",
+				mode: "primary",
+				model: { providerID: "anthropic", modelID: "claude-sonnet" },
+				variant: "high",
+			}),
+			agent({
+				name: "docs-writer",
+				mode: "primary",
+				model: { providerID: "anthropic", modelID: "claude-opus" },
+			}),
+		]);
+
+		expect(findCatalogAgent(catalog, "code")).toMatchObject({
+			model: { providerID: "anthropic", modelID: "claude-sonnet" },
+			variant: "high",
+		});
+		expect(findCatalogAgent(catalog, "docs-writer")).toMatchObject({
+			model: { providerID: "anthropic", modelID: "claude-opus" },
+		});
+	});
+
 	it("aliases legacy build to code", () => {
 		const catalog = buildAgentCatalog([
 			agent({ name: "build", mode: "primary" }),

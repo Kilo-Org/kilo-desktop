@@ -14,6 +14,8 @@ export type KiloCatalogAgent = {
 	displayName: string;
 	icon: LucideIcon;
 	color?: string;
+	model?: { providerID: string; modelID: string };
+	variant?: string;
 };
 
 export type KiloAgentCatalog = {
@@ -82,10 +84,19 @@ export function prettifyAgentId(id: string): string {
  */
 export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
 	const selectable = agents.filter(isSelectableAgent);
-	const available = new Set(selectable.map((agent) => canonicalizeAgentName(agent.name)));
+	const available = new Map(
+		selectable.map((agent) => [canonicalizeAgentName(agent.name), agent] as const),
+	);
 	const builtInNames: Set<string> = new Set(SWITCHER_AGENTS.map((entry) => entry.name));
 
-	const builtIns = SWITCHER_AGENTS.filter((agent) => available.has(agent.name));
+	const configuredDefaults = (agent: Agent) => ({
+		...(agent.model ? { model: agent.model } : {}),
+		...(agent.variant ? { variant: agent.variant } : {}),
+	});
+	const builtIns = SWITCHER_AGENTS.flatMap((entry) => {
+		const source = available.get(entry.name);
+		return source ? [{ ...entry, ...configuredDefaults(source) }] : [];
+	});
 
 	const seen: Set<string> = new Set(builtInNames);
 	const custom: KiloCatalogAgent[] = [];
@@ -99,6 +110,7 @@ export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
 			displayName: agent.displayName || prettifyAgentId(name),
 			icon: BotIcon,
 			...(color ? { color } : {}),
+			...configuredDefaults(agent),
 		});
 	}
 

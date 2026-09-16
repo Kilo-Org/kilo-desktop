@@ -83,10 +83,71 @@ describe("usePersistedModelSelection", () => {
 		expect(result.current.effort).toBe("medium");
 	});
 
+	it("uses configured defaults independently for each draft agent", () => {
+		const { result, rerender } = renderHook(
+			({ agent, configuredDefault }: { agent: string; configuredDefault: KiloModelRef }) =>
+				usePersistedModelSelection(catalog, undefined, {
+					agent,
+					model: configuredDefault,
+					effort: agent === "code" ? "high" : "max",
+				}),
+			{
+				initialProps: { agent: "code", configuredDefault: defaultModel },
+			},
+		);
+
+		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.effort).toBe("high");
+
+		act(() => result.current.setModel(alternateModel));
+		rerender({ agent: "plan", configuredDefault: alternateModel });
+		expect(result.current.model).toEqual(alternateModel);
+		expect(result.current.effort).toBe("max");
+
+		rerender({ agent: "code", configuredDefault: defaultModel });
+		expect(result.current.model).toEqual(alternateModel);
+		expect(result.current.effort).toBe("high");
+	});
+
+	it("keeps selection callbacks stable when configured defaults are unchanged", () => {
+		const { result, rerender } = renderHook(() =>
+			usePersistedModelSelection(catalog, undefined, {
+				agent: "code",
+				model: defaultModel,
+				effort: "high",
+			}),
+		);
+		const initialSetModel = result.current.setModel;
+		const initialSetEffort = result.current.setEffort;
+		const initialPromoteDraftModel = result.current.promoteDraftModel;
+
+		rerender();
+
+		expect(result.current.setModel).toBe(initialSetModel);
+		expect(result.current.setEffort).toBe(initialSetEffort);
+		expect(result.current.promoteDraftModel).toBe(initialPromoteDraftModel);
+	});
+
+	it("falls back when an agent's configured model is unavailable", () => {
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(catalog, undefined, {
+				agent: "code",
+				model: { providerID: "missing", modelID: "removed" },
+				effort: "high",
+			}),
+		);
+
+		expect(result.current.model).toEqual(defaultModel);
+		expect(result.current.effort).toBeUndefined();
+	});
+
 	it("surfaces the Kilo session model and effort before the catalog loads", () => {
-		const { result } = renderHook(() => usePersistedModelSelection(undefined, "thread-a"));
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(undefined, "thread-a", { agent: "code" }),
+		);
 		act(() =>
 			result.current.hydrateThreadModel("thread-a", {
+				agent: "code",
 				model: defaultModel,
 				effort: "high",
 			}),
@@ -149,10 +210,13 @@ describe("usePersistedModelSelection", () => {
 	});
 
 	it("hydrates from Kilo while preserving an unsent local override", () => {
-		const { result } = renderHook(() => usePersistedModelSelection(catalog, "thread-a"));
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(catalog, "thread-a", { agent: "code" }),
+		);
 
 		act(() =>
 			result.current.hydrateThreadModel("thread-a", {
+				agent: "code",
 				model: alternateModel,
 				effort: "max",
 			}),
@@ -163,6 +227,7 @@ describe("usePersistedModelSelection", () => {
 		act(() => result.current.setModel(defaultModel));
 		act(() =>
 			result.current.hydrateThreadModel("thread-a", {
+				agent: "code",
 				model: alternateModel,
 				effort: "max",
 			}),

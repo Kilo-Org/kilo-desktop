@@ -6,7 +6,10 @@ import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-openco
 
 type KiloSessionSelectionSyncProps = {
 	hydrateAgent: (threadId: string, agent: string) => void;
-	hydrateModel: (threadId: string, selection: { model: KiloModelRef; effort?: string }) => void;
+	hydrateModel: (
+		threadId: string,
+		selection: { agent: string; model: KiloModelRef; effort?: string },
+	) => void;
 };
 
 function normalizeVariant(variant: string | undefined): string | undefined {
@@ -32,8 +35,9 @@ export function KiloSessionSelectionSync({
 	useEffect(() => {
 		if (!remoteId || remoteId !== sessionId) return;
 		if (agent) hydrateAgent(remoteId, agent);
-		if (providerID && modelID) {
+		if (agent && providerID && modelID) {
 			hydrateModel(remoteId, {
+				agent,
 				model: { providerID, modelID },
 				...(effort ? { effort } : {}),
 			});

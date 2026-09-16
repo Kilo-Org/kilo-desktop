@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { ModelSelectorEffortOption } from "../components/assistant-ui/model-selector.js";
 import {
@@ -26,6 +26,12 @@ const DEFAULT_SELECTION: SelectionState = {
 	dirty: false,
 };
 
+type AgentModelDefault = {
+	agent: string;
+	model?: KiloModelRef;
+	effort?: string;
+};
+
 function catalogEntry(catalog: KiloModelCatalog | undefined, ref: KiloModelRef | undefined) {
 	if (!catalog || !ref) {
 		return undefined;
@@ -43,10 +49,24 @@ function catalogEntry(catalog: KiloModelCatalog | undefined, ref: KiloModelRef |
 export function usePersistedModelSelection(
 	catalog: KiloModelCatalog | undefined,
 	threadId?: string,
+	agentDefault?: AgentModelDefault,
 ) {
-	const scope = threadId ?? "";
+	const agent = agentDefault?.agent ?? "";
+	const scope = `${threadId ?? "draft"}:${agent}`;
 	const [selections, setSelections] = useState<Record<string, SelectionState>>({});
-	const selection = selections[scope] ?? DEFAULT_SELECTION;
+	const configuredModel = resolveCatalogModel(catalog, agentDefault?.model);
+	const defaultSelection = useMemo<SelectionState>(
+		() =>
+			configuredModel
+				? {
+						...DEFAULT_SELECTION,
+						modelOverride: configuredModel,
+						effort: agentDefault?.effort,
+					}
+				: DEFAULT_SELECTION,
+		[agentDefault?.effort, configuredModel],
+	);
+	const selection = selections[scope] ?? defaultSelection;
 
 	// Before the catalog loads, surface the session selection so the trigger can
 	// paint immediately. Once the catalog arrives, validate / fall back as usual.
@@ -64,7 +84,7 @@ export function usePersistedModelSelection(
 	const setModel = useCallback(
 		(next: KiloModelRef) => {
 			setSelections((current) => {
-				const active = current[scope] ?? DEFAULT_SELECTION;
+				const active = current[scope] ?? defaultSelection;
 				const entry = catalogEntry(catalog, next);
 				const nextName = entry?.name ?? active.name;
 				const nextEfforts = entry ? normalizeEfforts(entry.efforts) : active.efforts;
@@ -80,13 +100,13 @@ export function usePersistedModelSelection(
 				};
 			});
 		},
-		[catalog, scope],
+		[catalog, defaultSelection, scope],
 	);
 
 	const setEffort = useCallback(
 		(next: string) => {
 			setSelections((current) => {
-				const active = current[scope] ?? DEFAULT_SELECTION;
+				const active = current[scope] ?? defaultSelection;
 				const activeModel =
 					resolveCatalogModel(catalog, active.modelOverride) ?? pickDefaultModel(catalog);
 				if (activeModel) {
@@ -107,12 +127,13 @@ export function usePersistedModelSelection(
 				return { ...current, [scope]: { ...active, effort: next, dirty: true } };
 			});
 		},
-		[catalog, scope],
+		[catalog, defaultSelection, scope],
 	);
 	const hydrateThreadModel = useCallback(
-		(id: string, next: { model: KiloModelRef; effort?: string }) => {
+		(id: string, next: { agent: string; model: KiloModelRef; effort?: string }) => {
+			const hydratedScope = `${id}:${next.agent}`;
 			setSelections((current) => {
-				const existing = current[id];
+				const existing = current[hydratedScope];
 				const matches =
 					existing?.modelOverride?.providerID === next.model.providerID &&
 					existing.modelOverride.modelID === next.model.modelID &&
@@ -121,7 +142,7 @@ export function usePersistedModelSelection(
 				if (matches && !existing.dirty) return current;
 				return {
 					...current,
-					[id]: {
+					[hydratedScope]: {
 						modelOverride: next.model,
 						name: undefined,
 						effort: next.effort,
@@ -133,17 +154,19 @@ export function usePersistedModelSelection(
 		},
 		[],
 	);
-	const promoteDraftModel = useCallback((id: string) => {
-		setSelections((current) => ({
-			...current,
-			[id]: current[""] ?? { ...DEFAULT_SELECTION, dirty: true },
-		}));
-	}, []);
+	const promoteDraftModel = useCallback(
+		(id: string) => {
+			setSelections((current) => ({
+				...current,
+				[`${id}:${agent}`]: current[scope] ?? { ...defaultSelection, dirty: true },
+			}));
+		},
+		[agent, defaultSelection, scope],
+	);
 	const resetDraftModel = useCallback(() => {
-		setSelections((current) => ({
-			...current,
-			"": DEFAULT_SELECTION,
-		}));
+		setSelections((current) =>
+			Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("draft:"))),
+		);
 	}, []);
 
 	return {

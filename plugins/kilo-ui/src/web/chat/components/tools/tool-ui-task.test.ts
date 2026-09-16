@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	getTaskAgent,
-	getTaskDescription,
-	getTaskPrompt,
-	isTaskErrorOutput,
-	unwrapTaskOutput,
-} from "./tool-ui-task.js";
+import { isTaskErrorOutput, unwrapTaskOutput } from "./tool-ui-shared.js";
+import { getTaskAgent, getTaskDescription, getTaskPrompt } from "./tool-ui-task.js";
 
 describe("getTaskDescription", () => {
 	it("prefers the short description over the agent type", () => {

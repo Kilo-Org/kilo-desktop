@@ -268,7 +268,19 @@ index 014532fb0a0b521900107780c46c7de1bc17200c..f2f3f0efdd640c1551cba992767d6a03
  	}
  	return content;
  };
-@@ -376,6 +392,6 @@ function projectOpenCodeThreadRepository(state, messageTiming = {}) {
+@@ -269,4 +285,7 @@ const projectUserMessage = (message) => {
+-	for (const part of message.parts) if (part.type === "text") content.push({
+-		type: "text",
+-		text: part.text ?? ""
+-	});
++	for (const part of message.parts) if (part.type === "text") {
++		if (part.synthetic) continue;
++		content.push({
++			type: "text",
++			text: part.text ?? ""
++		});
++	}
+@@ -376,6 +395,6 @@ function projectOpenCodeThreadRepository(state, messageTiming = {}) {
  	return ExportedMessageRepository.fromArray(projectOpenCodeThreadMessages(state, messageTiming));
  }
  //#endregion

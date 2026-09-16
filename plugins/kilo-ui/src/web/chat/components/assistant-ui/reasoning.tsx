@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, memo, useCallback, useContext, useRef, useState } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import {
@@ -8,6 +8,7 @@ import {
 	type ReasoningMessagePartComponent,
 	type ReasoningGroupComponent,
 } from "@assistant-ui/react";
+import { useBottomPin } from "../../use-bottom-pin.js";
 import { MarkdownText } from "./markdown-text.js";
 import {
 	Collapsible,
@@ -224,50 +225,22 @@ function ReasoningContent({
 	);
 }
 
-function ReasoningText({ className, children, ...props }: React.ComponentProps<"div">) {
-	const isPreview = useContext(ReasoningPreviewContext);
+function ReasoningText({
+	className,
+	children,
+	pinning,
+	...props
+}: React.ComponentProps<"div"> & {
+	/** Pin the scroll box to the bottom while new content streams in. Used by
+	    hosts (e.g. the thinking activity subgroup) that render outside a
+	    ReasoningRoot and therefore have no ReasoningPreviewContext. */
+	pinning?: boolean;
+}) {
+	const isPreview = useContext(ReasoningPreviewContext) || (pinning ?? false);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
 
-	useEffect(() => {
-		if (!isPreview) return;
-		const scrollEl = scrollRef.current;
-		const contentEl = contentRef.current;
-		if (!scrollEl || !contentEl) return;
-
-		let pinned = true;
-		let lastScrollTop = scrollEl.scrollTop;
-		let lastScrollHeight = scrollEl.scrollHeight;
-		const isAtBottom = () =>
-			Math.abs(scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight) <= 1 ||
-			scrollEl.scrollHeight <= scrollEl.clientHeight;
-
-		const pin = () => {
-			if (!pinned) return;
-			scrollEl.scrollTop = scrollEl.scrollHeight;
-		};
-		// A pin's own scroll event can arrive after new content grew the scroll
-		// height and read as "not at bottom"; only an upward move at unchanged
-		// scroll height is user intent.
-		const onScroll = () => {
-			if (isAtBottom()) {
-				pinned = true;
-			} else if (scrollEl.scrollTop < lastScrollTop && scrollEl.scrollHeight === lastScrollHeight) {
-				pinned = false;
-			}
-			lastScrollTop = scrollEl.scrollTop;
-			lastScrollHeight = scrollEl.scrollHeight;
-		};
-
-		pin();
-		scrollEl.addEventListener("scroll", onScroll);
-		const observer = new ResizeObserver(pin);
-		observer.observe(contentEl);
-		return () => {
-			scrollEl.removeEventListener("scroll", onScroll);
-			observer.disconnect();
-		};
-	}, [isPreview]);
+	useBottomPin(scrollRef, contentRef, isPreview);
 
 	return (
 		<div

@@ -953,7 +953,7 @@ describe("SessionList", () => {
 		await expect.element(status).toBeVisible();
 		await expect.element(dot).toBeVisible();
 		expect(status.element().querySelector("svg")).toBeNull();
-		expect(dot.element().className).toContain("bg-muted-foreground/40");
+		expect(dot.element().className).toContain("bg-primary");
 		expect(dot.element().style.backgroundColor).toBe("");
 	});
 

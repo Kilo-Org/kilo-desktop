@@ -31,12 +31,20 @@ const getDirectActivityPath = (
 		return ["group-activity", "group-thinking"];
 	}
 	if (part.type !== "tool-call") return undefined;
-	if (isSuggestTool(part.toolName)) return undefined;
-	if (getMcpAppFromToolPart(part) && isHostableMcpAppTool(part.toolName)) return undefined;
-	if (context.toolUIs?.[part.toolName]?.[0]?.standalone) return undefined;
-	if (shouldExcludeToolCallFromActivityGroup(part, options)) return undefined;
+	if (shouldKeepPartOutsideActivity(part, context, options)) return undefined;
 	return ["group-activity", getGroupKeyForTool(part.toolName)];
 };
+
+const shouldKeepPartOutsideActivity = (
+	part: PartState,
+	context: GroupByContext,
+	options: ActivityGroupingOptions,
+): boolean =>
+	part.type === "tool-call" &&
+	(isSuggestTool(part.toolName) ||
+		Boolean(getMcpAppFromToolPart(part) && isHostableMcpAppTool(part.toolName)) ||
+		Boolean(context.toolUIs?.[part.toolName]?.[0]?.standalone) ||
+		shouldExcludeToolCallFromActivityGroup(part, options));
 
 const indexHiddenActivityNeighbors = (
 	parts: readonly PartState[],
@@ -90,5 +98,39 @@ export const createActivityGroupBy = (
 				"group-activity",
 			]
 		);
+	};
+};
+
+/**
+ * Adds a turn-level fold around everything before the final assistant text.
+ * Standalone tools stay outside because they can remain actionable after the
+ * surrounding turn settles.
+ */
+export const createTurnWorkGroupBy = (
+	parts: readonly PartState[],
+	options: ActivityGroupingOptions = {},
+) => {
+	const activityGroupBy = createActivityGroupBy(parts, options);
+	const indices = new Map(parts.map((part, index) => [part, index]));
+	let finalTextIndex = -1;
+	for (let index = parts.length - 1; index >= 0; index -= 1) {
+		const part = parts[index];
+		if (part?.type === "text" && part.text.trim()) {
+			finalTextIndex = index;
+			break;
+		}
+	}
+
+	return (part: PartState, context: GroupByContext): readonly `group-${string}`[] => {
+		const activityPath = activityGroupBy(part, context);
+		const index = indices.get(part) ?? -1;
+		if (
+			index < 0 ||
+			(finalTextIndex >= 0 && index >= finalTextIndex) ||
+			shouldKeepPartOutsideActivity(part, context, options)
+		) {
+			return activityPath;
+		}
+		return ["group-turn-work", ...activityPath];
 	};
 };

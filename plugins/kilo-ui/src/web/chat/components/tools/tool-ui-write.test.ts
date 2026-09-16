@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { hostnameFromUrl, resultText } from "./tool-ui-activity-row.js";
+import { hostnameFromUrl } from "./tool-ui-activity-row.js";
+import { hasEditStringArgs } from "./tool-diff-stats.js";
+import { resultText } from "./tool-ui-shared.js";
 import { getToolFilePath, getToolUnifiedDiffFromParts } from "./tool-ui-file-mutation.js";
 import { getEditNewString, getEditOldString } from "./tool-ui-edit.js";
 import { getWriteContent } from "./tool-ui-write.js";
@@ -27,6 +29,11 @@ describe("getEditOldString / getEditNewString", () => {
 		expect(getEditOldString({ old_string: "b" })).toBe("b");
 		expect(getEditNewString({ newString: "c" })).toBe("c");
 		expect(getEditNewString({ new_string: "d" })).toBe("d");
+	});
+
+	it("distinguishes explicitly empty edit strings from missing args", () => {
+		expect(hasEditStringArgs({ old_string: "", new_string: "" })).toBe(true);
+		expect(hasEditStringArgs({})).toBe(false);
 	});
 });
 

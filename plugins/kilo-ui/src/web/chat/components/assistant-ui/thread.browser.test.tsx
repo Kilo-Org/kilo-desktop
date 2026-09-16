@@ -320,22 +320,30 @@ type QueueItemWithAttachmentPreview = QueueItemState & {
 	};
 };
 
-function ExternalQueueThreadTree({ queue }: { queue: ExternalThreadQueueAdapter }) {
-	const aui = useAui({
-		thread: ExternalThread({ messages: [], isRunning: true, queue }),
-	});
+function ExternalQueueThreadTree({
+	queue,
+	isRunning = true,
+	connectionStatus,
+}: {
+	queue: ExternalThreadQueueAdapter;
+	isRunning?: boolean;
+	connectionStatus?: ChatConnectionStatus;
+}) {
+	const aui = useAui({ thread: ExternalThread({ messages: [], isRunning, queue }) });
 
 	return (
 		<KiloAuthContext.Provider value={signedInAuth}>
 			<AuiProvider value={aui}>
 				<ChatConnectionProvider
-					status={{
-						isPending: false,
-						isError: false,
-						error: null,
-						connection,
-						connectionPromise: Promise.resolve(connection),
-					}}
+					status={
+						connectionStatus ?? {
+							isPending: false,
+							isError: false,
+							error: null,
+							connection,
+							connectionPromise: Promise.resolve(connection),
+						}
+					}
 				>
 					<ChatAgentSelectionProvider value={agentSelection}>
 						<ChatModelSelectionProvider value={kiloModelSelection}>
@@ -350,7 +358,10 @@ function ExternalQueueThreadTree({ queue }: { queue: ExternalThreadQueueAdapter 
 	);
 }
 
-function renderExternalQueueThread(queue: ExternalThreadQueueAdapter) {
+function renderExternalQueueThread(
+	queue: ExternalThreadQueueAdapter,
+	options?: { isRunning?: boolean; connectionStatus?: ChatConnectionStatus },
+) {
 	const sdk = createFakeSdk({ featureId: "kilo-ui" });
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
 	kiloUiBrowserRegister(mainSdk);
@@ -360,7 +371,7 @@ function renderExternalQueueThread(queue: ExternalThreadQueueAdapter) {
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ExternalQueueThreadTree queue={queue} />
+					<ExternalQueueThreadTree queue={queue} {...options} />
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
@@ -422,6 +433,40 @@ function renderExternalMessagesThread(
 	);
 	return page.elementLocator(baseElement);
 }
+
+describe("conversation map visibility", () => {
+	const message = (role: "user" | "assistant", text: string, id: string): ExternalThreadMessage =>
+		fromThreadMessageLike({ role, content: [{ type: "text", text }] }, id, {
+			type: "complete",
+			reason: "stop",
+		});
+
+	it("stays hidden for one user turn", async () => {
+		renderExternalMessagesThread(
+			[
+				message("user", "First prompt", "user-1"),
+				message("assistant", "First answer", "assistant-1"),
+			],
+			false,
+		);
+
+		expect(document.querySelector('[data-slot="conversation-map-rail"]')).toBeNull();
+	});
+
+	it("appears after a second user turn", async () => {
+		renderExternalMessagesThread(
+			[
+				message("user", "First prompt", "user-1"),
+				message("assistant", "First answer", "assistant-1"),
+				message("user", "Second prompt", "user-2"),
+				message("assistant", "Second answer", "assistant-2"),
+			],
+			false,
+		);
+
+		expect(document.querySelector('[data-slot="conversation-map-rail"]')).not.toBeNull();
+	});
+});
 
 describe("composer local model send lock", () => {
 	it("keeps the composer writable and replaces send while the model loads", async () => {
@@ -662,6 +707,36 @@ describe("composer message queue", () => {
 		expect(screen.getByTestId("kilo-composer-queue-attachment").elements()).toHaveLength(1);
 	});
 
+	it("does not steer a queued prompt while connecting", async () => {
+		const queue: ExternalThreadQueueAdapter = {
+			items: [{ id: "queued", prompt: "Wait for this" }],
+			enqueue: vi.fn(),
+			steer: vi.fn(),
+			remove: vi.fn(),
+			clear: vi.fn(),
+		};
+		const connectionPromise = new Promise<KiloGlobalConnection>(() => undefined);
+		const screen = renderExternalQueueThread(queue, {
+			isRunning: false,
+			connectionStatus: {
+				isPending: true,
+				isError: false,
+				error: null,
+				connectionPromise,
+			},
+		});
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await input.fill("Start when connected");
+		await screen.getByRole("button", { name: "Send message" }).click();
+		await expect.element(screen.getByTestId("kilo-composer-connecting")).toBeVisible();
+		await input.fill("");
+		input.element().focus();
+		await userEvent.keyboard("{Enter}");
+
+		expect(queue.steer).not.toHaveBeenCalled();
+	});
+
 	it("collapses and deletes queued prompts", async () => {
 		const adapter = createBlockingAdapter();
 		const screen = renderThread({
@@ -683,6 +758,83 @@ describe("composer message queue", () => {
 		await screen.getByRole("button", { name: "Delete queued message" }).click();
 
 		await expect.element(screen.getByTestId("kilo-composer-queue")).not.toBeInTheDocument();
+	});
+});
+
+describe("scroll on send", () => {
+	const scrollbackMessages = (): readonly ThreadMessageLike[] =>
+		Array.from({ length: 12 }, (_, index) => ({
+			role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+			content: [
+				{
+					type: "text" as const,
+					text: `Message ${index} ${"scrollback filler ".repeat(12)}`,
+				},
+			],
+		}));
+
+	const getViewport = () => {
+		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
+		if (!viewport) throw new Error("Thread viewport was not rendered");
+		return viewport;
+	};
+
+	const distanceFromBottom = (viewport: HTMLElement) =>
+		viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+
+	it("scrolls to the bottom when the user sends a message", async () => {
+		const screen = renderThread({ initialMessages: scrollbackMessages() });
+		const viewport = getViewport();
+
+		await expect.poll(() => viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight);
+		await expect.poll(() => distanceFromBottom(viewport)).toBeLessThan(2);
+
+		viewport.scrollTo({ top: 0, behavior: "instant" });
+		await expect.poll(() => viewport.scrollTop).toBe(0);
+
+		const input = screen.getByRole("textbox", { name: "Message input" });
+		await input.fill("Bring me to the latest message");
+		await userEvent.type(input, "{Enter}");
+
+		await expect.poll(() => distanceFromBottom(viewport), { timeout: 3000 }).toBeLessThan(2);
+	});
+
+	it("does not scroll when a queued message sends automatically", async () => {
+		let releaseFirstRun!: () => void;
+		const firstRunGate = new Promise<void>((resolve) => {
+			releaseFirstRun = resolve;
+		});
+		const run = vi.fn(async () => {
+			await firstRunGate;
+			return { content: [{ type: "text" as const, text: "done" }] };
+		});
+		const screen = renderThread({
+			initialMessages: scrollbackMessages(),
+			adapter: { run },
+			enableMessageQueue: true,
+		});
+		const viewport = getViewport();
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await input.fill("Start the long task");
+		await userEvent.type(input, "{Enter}");
+		await expect.poll(() => run.mock.calls.length).toBe(1);
+
+		await input.fill("Queue this follow-up");
+		await userEvent.type(input, "{Enter}");
+		await expect.element(screen.getByText("1 queued")).toBeVisible();
+
+		// Settle the send-triggered scroll, then scroll up to read history.
+		await expect.poll(() => distanceFromBottom(viewport), { timeout: 3000 }).toBeLessThan(2);
+		viewport.scrollTo({ top: 0, behavior: "instant" });
+		await expect.poll(() => viewport.scrollTop).toBe(0);
+
+		releaseFirstRun();
+		await expect.poll(() => run.mock.calls.length).toBe(2);
+		await expect.element(screen.getByTestId("kilo-composer-queue")).not.toBeInTheDocument();
+
+		expect(viewport.scrollTop).toBeLessThan(2);
+		expect(distanceFromBottom(viewport)).toBeGreaterThan(viewport.clientHeight);
 	});
 });
 
@@ -881,5 +1033,56 @@ describe("assistant working status", () => {
 			await vi.advanceTimersByTimeAsync(1);
 		});
 		expect(indicator()).not.toBeNull();
+	});
+
+	it("shows the top-level working timer without replacing considering next steps", async () => {
+		vi.useFakeTimers();
+		const screen = renderExternalMessagesThread(idleRunningMessages(), true);
+
+		await expect.element(screen.getByTestId("kilo-turn-working")).toBeVisible();
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(750);
+		});
+		await expect
+			.element(screen.getByRole("status", { name: "Considering next steps" }))
+			.toBeVisible();
+	});
+
+	it("collapses completed work while leaving the final answer visible", async () => {
+		const messages: readonly ExternalThreadMessage[] = [
+			fromThreadMessageLike(
+				{
+					role: "user",
+					createdAt: new Date(Date.now() - 2_000),
+					content: [{ type: "text", text: "Inspect the workspace" }],
+				},
+				"msg-user",
+				{ type: "complete", reason: "stop" },
+			),
+			fromThreadMessageLike(
+				{
+					role: "assistant",
+					status: { type: "complete", reason: "stop" },
+					content: [
+						{ type: "reasoning", text: "I should inspect the files first." },
+						{ type: "text", text: "The workspace is ready." },
+					],
+				},
+				"msg-assistant",
+				{ type: "complete", reason: "stop" },
+			),
+		];
+		const screen = renderExternalMessagesThread(messages, false);
+
+		await expect.element(screen.getByText("The workspace is ready.")).toBeVisible();
+		await expect
+			.element(screen.getByText("I should inspect the files first."))
+			.not.toBeInTheDocument();
+		const toggle = screen.getByTestId("kilo-turn-work-toggle");
+		await expect.poll(() => toggle.element().textContent).toMatch(/^Worked for /);
+
+		await toggle.click();
+		await screen.getByRole("button", { name: "Thought" }).click();
+		await expect.element(screen.getByText("I should inspect the files first.")).toBeVisible();
 	});
 });

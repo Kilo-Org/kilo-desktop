@@ -5,7 +5,7 @@ import { FileDiff, PatchDiff } from "@pierre/diffs/react";
 import { parseChatPatchFiles, usePierreDiffOptions } from "../../pierre-diff.js";
 import { usePrimePierreDiffs } from "../../use-prime-pierre-diffs.js";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { basename, getPatchInfo, str } from "./tool-ui-shared.js";
+import { basename, DiffCounts, getPatchInfo, str } from "./tool-ui-shared.js";
 
 interface PatchBlock {
 	type: string;
@@ -131,13 +131,9 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 				? patchInfo.files[0]
 				: `${patchInfo.files.length} files`;
 
-	const trailing =
-		(patchInfo.added > 0 || patchInfo.removed > 0) && !isRunning ? (
-			<span className="ml-0.5 flex items-center gap-1 font-mono text-xs">
-				{patchInfo.added > 0 ? <span className="text-green-500">+{patchInfo.added}</span> : null}
-				{patchInfo.removed > 0 ? <span className="text-red-500">-{patchInfo.removed}</span> : null}
-			</span>
-		) : null;
+	const trailing = !isRunning ? (
+		<DiffCounts added={patchInfo.added} removed={patchInfo.removed} />
+	) : null;
 
 	if (fileDiffs.length > 1) {
 		return (

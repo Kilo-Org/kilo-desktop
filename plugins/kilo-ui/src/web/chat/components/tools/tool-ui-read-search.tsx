@@ -1,9 +1,9 @@
 import { memo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
-import { SoloAwareExpandableRow, SoloAwareLabelRow, resultText } from "./tool-ui-activity-row.js";
+import { SoloAwareExpandableRow, SoloAwareLabelRow } from "./tool-ui-activity-row.js";
 import { getToolFilePath } from "./tool-ui-file-mutation.js";
-import { basename, truncate } from "./tool-ui-shared.js";
+import { basename, resultText, truncate } from "./tool-ui-shared.js";
 
 export const ReadActivity: ToolCallMessagePartComponent = memo(({ args, status }) => {
 	const path = getToolFilePath(args as Record<string, unknown> | undefined);

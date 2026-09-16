@@ -9,10 +9,12 @@ import {
 	type CSSProperties,
 	type FC,
 	type PropsWithChildren,
+	type ReactNode,
 } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import {
 	Avatar,
@@ -33,12 +35,33 @@ import {
 	getSegmentStats,
 	indicesHavePendingAsk,
 	lastAskingPartIndex,
+	soloRowHidesItself,
 	summarizeActivity,
 	type ActivityIconItem,
 	type ActivityKind,
 	type ActivityPart,
 	type ActivitySegment,
 } from "./tool-categories.js";
+import { ReasoningText } from "../assistant-ui/reasoning.js";
+import { getGroupDiffStats } from "./tool-diff-stats.js";
+import { DiffCounts } from "./tool-ui-shared.js";
+
+/**
+ * Thinking segments reuse the reasoning scroll box — capped height with
+ * bottom-pinning while streaming and scroll-aware edge fades — inside the
+ * subgroup's bordered rail.
+ */
+const ThinkingStreamText: FC<PropsWithChildren<{ streaming: boolean }>> = ({
+	streaming,
+	children,
+}) => (
+	<ReasoningText
+		pinning={streaming}
+		className="scroll-fade border-border/60 text-muted-foreground mt-0.5 mb-1 ml-[12.5px] border-l ps-3 text-sm"
+	>
+		{children}
+	</ReasoningText>
+);
 
 const pendingAskCallIds = (
 	questions: readonly { tool?: { callID?: string } | undefined }[],
@@ -102,7 +125,7 @@ const ActivityIconStack: FC<{
 				<Avatar key={index} aria-hidden className="size-6.5">
 					<AvatarFallback
 						className={cn(
-							"relative border-2",
+							"relative border-2 transition-colors motion-reduce:transition-none",
 							item.colored ? item.className : "border-transparent",
 							item.loading && "border-0",
 						)}
@@ -168,6 +191,32 @@ const ActivityDisclosureIcon: FC<{ open: boolean }> = ({ open }) => {
 	return <Icon aria-hidden data-slot="activity-disclosure-icon" className="size-3.5 shrink-0" />;
 };
 
+/**
+ * Cross-fades the group trigger's label when it changes (settling → "N tools
+ * used", summary ↔ "Show less"). Rendered text is aria-hidden; the trigger's
+ * aria-label carries the accessible name so it swaps atomically while the
+ * outgoing label is still fading out.
+ */
+const ActivityTriggerLabel: FC<{ label: string; children: ReactNode }> = ({ label, children }) => {
+	const reduceMotion = useReducedMotion();
+	return (
+		<span aria-hidden className="relative block font-medium">
+			<AnimatePresence initial={false} mode="popLayout">
+				<motion.span
+					key={label}
+					className="block"
+					initial={{ opacity: 0, y: 4 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: -4 }}
+					transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" }}
+				>
+					{children}
+				</motion.span>
+			</AnimatePresence>
+		</span>
+	);
+};
+
 const contentAnimation =
 	"h-(--collapsible-panel-height) overflow-hidden transition-[height] ease-[cubic-bezier(0.32,0.72,0,1)] data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none";
 
@@ -213,6 +262,10 @@ export const useActivitySubgroup = (): ActivitySubgroupContextValue | null =>
 const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
 	const parts = useAuiState((s) => s.message.parts);
 	const messageStatusType = useAuiState((s) => s.message.status?.type);
+	const opencodeParts = useAuiState((s) => {
+		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
+		return custom?.opencode?.parts;
+	});
 	const pendingQuestions = useOpenCodeQuestions();
 	const summary = useMemo(() => summarizeActivity(parts, group.indices), [parts, group.indices]);
 	const hasPendingAsk = useMemo(
@@ -257,6 +310,14 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		streaming,
 		lastActiveSegmentShouldExpandRef.current && userOpen === null,
 	);
+	// Two holds with different gates: automaticOpen keeps an expanded segment's
+	// content visible, while settlingHold only keeps the finished segment's
+	// label on the trigger — so a single tool call, which never expanded,
+	// doesn't jump straight to the "N tools used" summary either.
+	const settlingHold = useDelayedActivityOpen(
+		streaming,
+		lastActiveSegmentStartRef.current !== null && userOpen === null,
+	);
 	const open = userOpen ?? automaticOpen;
 	const startIndex = group.indices[0] ?? 0;
 	const endIndex = group.indices.at(-1) ?? 0;
@@ -294,12 +355,21 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	);
 	const compactSegmentStart =
 		!streaming && userOpen !== true ? lastActiveSegmentStartRef.current : null;
-	const settlingSegmentStart = automaticOpen ? compactSegmentStart : null;
+	const settlingSegmentStart = settlingHold ? compactSegmentStart : null;
 	const settlingSegment =
 		settlingSegmentStart !== null
 			? summary.segments.find((segment) => segment.indices[0] === settlingSegmentStart)
 			: undefined;
 	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
+	const settlingDiffStats =
+		settlingSegment?.kind === "editing" || settlingSegment?.kind === "writing"
+			? getGroupDiffStats(parts, settlingSegment.indices, opencodeParts)
+			: null;
+	const triggerLabel = settlingSegment
+		? getKindMeta(settlingSegment.kind).doneLabel(getSegmentStats(parts, settlingSegment))
+		: open
+			? "Show less"
+			: summary.label;
 
 	if (streaming && !streamExpanded) {
 		const previewOpen = activeSegmentShouldExpand;
@@ -354,40 +424,29 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					if (!next) setStreamExpanded(false);
 				}}
 			>
-				<CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors">
-					{settlingSegment ? (
-						<>
-							<ActivityIconStack
-								items={summary.iconItems.map((item, index) => ({
-									...item,
-									colored: index === settlingIndex,
-									loading: false,
-								}))}
-								className="-space-x-1"
-							/>
-							<span className="font-medium">
-								<ActivityLabel
-									label={getKindMeta(settlingSegment.kind).doneLabel(
-										getSegmentStats(parts, settlingSegment),
-									)}
-								/>
-							</span>
-							<ActivityDisclosureIcon open />
-						</>
-					) : open ? (
-						<>
-							<span className="font-medium">Show less</span>
-							<ActivityDisclosureIcon open />
-						</>
-					) : (
-						<>
-							<ActivityIconStack items={summary.iconItems} className="-space-x-1" />
-							<span className="font-medium">
-								<ActivityLabel label={summary.label} />
-							</span>
-							<ActivityDisclosureIcon open={false} />
-						</>
+				<CollapsibleTrigger
+					aria-label={triggerLabel}
+					className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
+				>
+					{open && !settlingSegment ? null : (
+						<ActivityIconStack
+							items={
+								settlingSegment
+									? summary.iconItems.map((item, index) => ({
+											...item,
+											colored: index === settlingIndex,
+											loading: false,
+										}))
+									: summary.iconItems
+							}
+							className="-space-x-1"
+						/>
 					)}
+					<ActivityTriggerLabel label={triggerLabel}>
+						{open && !settlingSegment ? "Show less" : <ActivityLabel label={triggerLabel} />}
+					</ActivityTriggerLabel>
+					{settlingDiffStats ? <DiffCounts {...settlingDiffStats} /> : null}
+					<ActivityDisclosureIcon open={open} />
 				</CollapsibleTrigger>
 				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
 					<ActivityProgressIndexContext.Provider value={furthestActiveIndexRef.current}>
@@ -413,6 +472,10 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 }) => {
 	const parts = useAuiState((s) => s.message.parts);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
+	const opencodeParts = useAuiState((s) => {
+		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
+		return custom?.opencode?.parts;
+	});
 	const pendingQuestions = useOpenCodeQuestions();
 	const segment = useMemo<ActivitySegment>(() => {
 		const indices = group.indices.filter((index) => {
@@ -455,6 +518,13 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	const meta = getKindMeta(kind);
 	const stats = useMemo(() => getSegmentStats(parts, segment), [parts, segment]);
+	const diffStats = useMemo(
+		() =>
+			kind === "editing" || kind === "writing"
+				? getGroupDiffStats(parts, segment.indices, opencodeParts)
+				: null,
+		[kind, parts, segment.indices, opencodeParts],
+	);
 	const subgroupContext = useMemo<ActivitySubgroupContextValue>(
 		() => ({ kind, size: segment.indices.length }),
 		[kind, segment.indices.length],
@@ -471,9 +541,19 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const labelOnly =
 		(LABEL_ONLY_ACTIVITY_KINDS.has(kind) &&
 			(kind === "asking" || kind === "suggesting" || stats.count === 1)) ||
-		(kind === "subagent" && stats.count === 1 && segment.running);
+		(kind !== "thinking" && segment.running) ||
+		(stats.count === 1 && soloRowHidesItself(kind, parts[segment.indices[0]!]));
 	if (labelOnly) {
-		if (streamCollapsed) return null;
+		if (streamCollapsed) {
+			if (segment.indices.length <= 1) return null;
+			return (
+				<ActivitySubgroupContext.Provider value={subgroupContext}>
+					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+						{children}
+					</div>
+				</ActivitySubgroupContext.Provider>
+			);
+		}
 		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
 		const showChildren = kind !== "asking" && kind !== "suggesting" && segment.indices.length > 1;
 		return (
@@ -499,7 +579,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 					</span>
 				</div>
 				{showChildren ? (
-					<div className="border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3">
+					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
 						{children}
 					</div>
 				) : null}
@@ -510,14 +590,13 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	if (streamCollapsed) {
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
-				<div
-					className={cn(
-						"border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3",
-						kind === "thinking" && "text-muted-foreground text-sm",
-					)}
-				>
-					{children}
-				</div>
+				{kind === "thinking" ? (
+					<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
+				) : (
+					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+						{children}
+					</div>
+				)}
 			</ActivitySubgroupContext.Provider>
 		);
 	}
@@ -552,17 +631,17 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 					<span className="font-medium">
 						<ActivityLabel label={label} shimmer={segment.running} />
 					</span>
+					{diffStats ? <DiffCounts {...diffStats} /> : null}
 					<ActivityDisclosureIcon open={open} />
 				</CollapsibleTrigger>
 				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
-					<div
-						className={cn(
-							"border-border/60 mt-0.5 mb-1 ml-3.5 flex flex-col border-l pl-3",
-							kind === "thinking" && "text-muted-foreground text-sm",
-						)}
-					>
-						{children}
-					</div>
+					{kind === "thinking" ? (
+						<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
+					) : (
+						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+							{children}
+						</div>
+					)}
 				</CollapsibleContent>
 			</Collapsible>
 		</ActivitySubgroupContext.Provider>

@@ -12,40 +12,19 @@ import {
 import { usePrimePierreDiffs } from "../../use-prime-pierre-diffs.js";
 import type { ActivitySubgroupContextValue } from "./activity-group.js";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { basename, str } from "./tool-ui-shared.js";
+import {
+	getToolFilePath,
+	getToolUnifiedDiffFromParts,
+	sumFileDiffStats,
+} from "./tool-diff-stats.js";
+import { basename, DiffCounts } from "./tool-ui-shared.js";
 
-const FILE_PATH_KEYS = ["file_path", "filePath", "path", "file"] as const;
-
-export const getToolFilePath = (args: Record<string, unknown> | undefined): string => {
-	if (!args) return "";
-	for (const key of FILE_PATH_KEYS) {
-		const value = str(args[key]);
-		if (value) return value;
-	}
-	return "";
-};
-
-/** Prefer the backend unified diff when present on the OpenCode tool part. */
-export const getToolUnifiedDiffFromParts = (
-	parts: unknown,
-	toolCallId: string,
-): string | undefined => {
-	if (!Array.isArray(parts)) return undefined;
-	for (const part of parts) {
-		if (!part || typeof part !== "object") continue;
-		const record = part as Record<string, unknown>;
-		if (record.type !== "tool") continue;
-		const callId = record.callID ?? record.id;
-		if (callId !== toolCallId) continue;
-		const state = record.state;
-		if (!state || typeof state !== "object") continue;
-		const metadata = (state as Record<string, unknown>).metadata;
-		if (!metadata || typeof metadata !== "object") continue;
-		const diff = (metadata as Record<string, unknown>).diff;
-		return typeof diff === "string" && diff.length > 0 ? diff : undefined;
-	}
-	return undefined;
-};
+export {
+	getToolFilePath,
+	getToolUnifiedDiffFromParts,
+	sumFileDiffStats,
+} from "./tool-diff-stats.js";
+export type { FileDiffStats } from "./tool-diff-stats.js";
 
 export const PierreDiffBody = ({
 	unifiedDiff,
@@ -118,16 +97,18 @@ export const createFileMutationDiff = (
 			[opencodeParts, toolCallId],
 		);
 
-		const fileDiff = useMemo(() => {
-			if (unifiedDiff) {
-				const parsedFiles = parseChatPatchFiles(unifiedDiff, toolCallId);
-				return parsedFiles.length === 1 ? parsedFiles[0]! : null;
-			}
+		const fileDiffs = useMemo(() => {
+			if (unifiedDiff) return parseChatPatchFiles(unifiedDiff, toolCallId);
 			const fallback = config.buildFallbackFileDiff({ args: record, path, fileName });
-			return fallback ? withChatDiffCacheKey(fallback, toolCallId) : null;
+			return fallback ? [withChatDiffCacheKey(fallback, toolCallId)] : [];
 		}, [unifiedDiff, record, path, fileName, toolCallId]);
+		const fileDiff = fileDiffs.length === 1 ? fileDiffs[0]! : null;
 		const primedFileDiffs = useMemo(() => (fileDiff ? [fileDiff] : []), [fileDiff]);
 		usePrimePierreDiffs(primedFileDiffs);
+
+		const diffStats = useMemo(() => sumFileDiffStats(fileDiffs), [fileDiffs]);
+		const isRunning = status?.type === "running";
+		const trailing = !isRunning && diffStats ? <DiffCounts {...diffStats} /> : null;
 
 		const hasDiff = Boolean(unifiedDiff || fileDiff);
 
@@ -139,6 +120,7 @@ export const createFileMutationDiff = (
 				object={fileName || undefined}
 				status={status}
 				hasDetail={hasDiff}
+				trailing={trailing}
 				detail={
 					<PierreDiffBody unifiedDiff={fileDiff ? undefined : unifiedDiff} fileDiff={fileDiff} />
 				}

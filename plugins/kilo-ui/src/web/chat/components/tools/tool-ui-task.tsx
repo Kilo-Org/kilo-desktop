@@ -4,13 +4,17 @@ import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { PlanMarkdown } from "../../plan/PlanMarkdown.js";
-import { SoloAwareExpandableRow, resultText } from "./tool-ui-activity-row.js";
-import { str, truncate } from "./tool-ui-shared.js";
+import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
+import {
+	isTaskErrorOutput,
+	resultText,
+	str,
+	truncate,
+	unwrapTaskOutput,
+} from "./tool-ui-shared.js";
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-
-const TASK_OUTPUT_TAG = /<(task_result|task_error)>\s*([\s\S]*?)\s*<\/\1>/i;
 
 export const getTaskDescription = (args: unknown): string | undefined => {
 	const record = asRecord(args);
@@ -29,14 +33,6 @@ export const getTaskPrompt = (args: unknown): string | undefined => {
 	const prompt = str(asRecord(args)?.prompt).trim();
 	return prompt || undefined;
 };
-
-export const unwrapTaskOutput = (raw: string): string => {
-	const match = raw.match(TASK_OUTPUT_TAG);
-	if (match?.[2]) return match[2].trim();
-	return raw.trim();
-};
-
-export const isTaskErrorOutput = (raw: string): boolean => /<task_error>/i.test(raw);
 
 const TaskDetail = ({
 	agent,

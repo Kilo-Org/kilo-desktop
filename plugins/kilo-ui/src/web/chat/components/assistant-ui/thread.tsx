@@ -20,7 +20,7 @@ import { MessageCopyButton } from "./message-copy-button.js";
 import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
 import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
-import { createActivityGroupBy } from "../tools/activity-grouping.js";
+import { createActivityGroupBy, createTurnWorkGroupBy } from "../tools/activity-grouping.js";
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
@@ -33,6 +33,11 @@ import {
 	AvatarGroup,
 } from "@anaconda-agentic-desktop/ui/components/avatar";
 import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@anaconda-agentic-desktop/ui/components/collapsible";
 import {
 	Tooltip,
 	TooltipContent,
@@ -55,7 +60,9 @@ import {
 	type QueueItemState,
 	type ToolCallMessagePartComponent,
 	useAui,
+	useAuiEvent,
 	useAuiState,
+	useThreadViewport,
 } from "@assistant-ui/react";
 import {
 	ArrowDownIcon,
@@ -64,6 +71,7 @@ import {
 	ChevronDownIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
+	CornerDownLeftIcon,
 	DownloadIcon,
 	FileTextIcon,
 	Loader2Icon,
@@ -76,12 +84,14 @@ import {
 	createContext,
 	useContext,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 	type ComponentType,
 	type FC,
 	type FormEvent,
 	type KeyboardEvent,
+	type PropsWithChildren,
 } from "react";
 
 import {
@@ -208,6 +218,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 					!isDraft && "[scrollbar-gutter:stable_both-edges]",
 				)}
 			>
+				<ScrollToBottomOnSend />
 				<div
 					aria-hidden
 					className="from-background pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b to-transparent"
@@ -281,6 +292,31 @@ const ThreadScrollToBottom: FC = () => {
 	);
 };
 
+// `composer.send` fires only for user-initiated sends; queue auto-dispatch
+// bypasses the composer, so a drained queue item never yanks the viewport
+// away from someone reading history. Long distances jump instantly instead
+// of gliding: virtualized messages re-measure and rasterize as a scroll
+// crosses them (`contain-intrinsic-size: auto 200px`), which reads as jumps
+// and flashes. The bottom of the list is always rendered, and short glides
+// never cross unrendered content.
+const SMOOTH_SCROLL_VIEWPORT_HEIGHTS = 1.5;
+
+const ScrollToBottomOnSend: FC = () => {
+	const scrollToBottom = useThreadViewport((s) => s.scrollToBottom);
+	const viewport = useThreadViewport((s) => s.element.viewport);
+	useAuiEvent("composer.send", () => {
+		const distance = viewport
+			? viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop
+			: 0;
+		const behavior =
+			viewport && distance > viewport.clientHeight * SMOOTH_SCROLL_VIEWPORT_HEIGHTS
+				? "instant"
+				: "smooth";
+		scrollToBottom({ behavior });
+	});
+	return null;
+};
+
 const ThreadSuggestions: FC = () => {
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 
@@ -348,7 +384,7 @@ const QueueAttachmentPreview: FC<{ attachment: QueueItemAttachmentPreview }> = (
 	);
 };
 
-const ComposerQueue: FC = () => {
+const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) => {
 	const queueLength = useAuiState((s) => s.composer.queue.length);
 	const [collapsed, setCollapsed] = useState(false);
 
@@ -378,55 +414,59 @@ const ComposerQueue: FC = () => {
 			{!collapsed ? (
 				<div id="kilo-composer-queue-items" className="flex max-h-36 flex-col overflow-y-auto p-1">
 					<ComposerPrimitive.Queue>
-						{({ queueItem }) => {
-							const attachmentPreview = (queueItem as QueueItemWithAttachmentPreview)
-								.attachmentPreview;
-
-							return (
-								<div
-									className="group hover:bg-muted/45 after:bg-border/35 relative flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-md pr-[3px] pl-2 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:content-[''] last:after:hidden"
-									data-qa-id="kilo-composer-queue-item"
-									data-queue-item-id={queueItem.id}
-								>
-									{attachmentPreview ? (
-										<QueueAttachmentPreview attachment={attachmentPreview} />
-									) : null}
-									<QueueItemPrimitive.Text className="text-foreground/90 min-w-0 flex-1 truncate text-sm" />
-									<QueueItemPrimitive.Steer
-										render={
-											<Button
-												type="button"
-												size="xs"
-												variant="ghost"
-												className="text-muted-foreground hover:text-foreground h-6 px-2 text-[11px] opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-												data-qa-id="kilo-composer-queue-send-now"
-											/>
-										}
-									>
-										Send now
-									</QueueItemPrimitive.Steer>
-									<QueueItemPrimitive.Remove
-										render={
-											<TooltipIconButton
-												tooltip="Delete queued message"
-												side="bottom"
-												type="button"
-												variant="ghost"
-												size="icon-xs"
-												className="text-muted-foreground hover:text-destructive-foreground size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-												aria-label="Delete queued message"
-												data-qa-id="kilo-composer-queue-delete"
-											/>
-										}
-									>
-										<Trash2Icon className="size-3" />
-									</QueueItemPrimitive.Remove>
-								</div>
-							);
-						}}
+						{({ queueItem }) => <QueueItemRow queueItem={queueItem} showEnterHint={steerOnEnter} />}
 					</ComposerPrimitive.Queue>
 				</div>
 			) : null}
+		</div>
+	);
+};
+
+const QueueItemRow: FC<{ queueItem: QueueItemState; showEnterHint: boolean }> = ({
+	queueItem,
+	showEnterHint,
+}) => {
+	const isFirst = useAuiState((s) => s.composer.queue[0]?.id === queueItem.id);
+	const attachmentPreview = (queueItem as QueueItemWithAttachmentPreview).attachmentPreview;
+
+	return (
+		<div
+			className="group hover:bg-muted/45 after:bg-border/35 relative flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-md pr-[3px] pl-2 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:content-[''] last:after:hidden"
+			data-qa-id="kilo-composer-queue-item"
+			data-queue-item-id={queueItem.id}
+		>
+			{attachmentPreview ? <QueueAttachmentPreview attachment={attachmentPreview} /> : null}
+			<QueueItemPrimitive.Text className="text-foreground/90 min-w-0 flex-1 truncate text-sm" />
+			<QueueItemPrimitive.Steer
+				render={
+					<Button
+						type="button"
+						size="xs"
+						variant="ghost"
+						className="text-muted-foreground hover:text-foreground h-6 px-2 text-[11px] opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+						data-qa-id="kilo-composer-queue-send-now"
+					/>
+				}
+			>
+				{showEnterHint && isFirst ? <CornerDownLeftIcon aria-hidden className="size-3" /> : null}
+				Send now
+			</QueueItemPrimitive.Steer>
+			<QueueItemPrimitive.Remove
+				render={
+					<TooltipIconButton
+						tooltip="Delete queued message"
+						side="bottom"
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						className="text-muted-foreground hover:text-destructive-foreground size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+						aria-label="Delete queued message"
+						data-qa-id="kilo-composer-queue-delete"
+					/>
+				}
+			>
+				<Trash2Icon className="size-3" />
+			</QueueItemPrimitive.Remove>
 		</div>
 	);
 };
@@ -604,19 +644,23 @@ const Composer: FC = () => {
 		}
 	};
 
+	// Mirrors SteerQueueOnEnterPlugin's gating (submitMode "enter", editable
+	// input) so the Enter hint only shows when Enter would actually steer.
+	const steerQueueOnEnter = hasMessageQueue && isComposerEmpty && !isConnecting && !isLoadingModel;
+
 	return (
 		<ComposerPrimitive.Unstable_TriggerPopoverRoot>
 			<ComposerPrimitive.Root
 				className="aui-composer-root relative flex w-full flex-col gap-2"
 				onSubmit={handleSubmit}
 			>
-				<ComposerQueue />
+				<ComposerQueue steerOnEnter={steerQueueOnEnter} />
 				<ComposerPrimitive.AttachmentDropzone
 					render={
 						<div
 							data-slot="aui_composer-shell"
 							className={cn(
-								"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+								"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
 								isDraft
 									? "relative z-10 bg-(--composer-bg) dark:border-border focus-within:border-border dark:focus-within:border-muted-foreground/30"
 									: "relative z-10 chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
@@ -866,6 +910,12 @@ function formatElapsedTime(deciseconds: number) {
 	return `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(1)}s`;
 }
 
+function formatTurnDuration(durationMs: number) {
+	const totalSeconds = Math.max(0, Math.floor(durationMs / 1_000));
+	if (totalSeconds < 60) return `${totalSeconds}s`;
+	return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
+}
+
 function elapsedDecisecondsSince(startedAt: number) {
 	return Math.max(0, Math.floor((Date.now() - startedAt) / 100));
 }
@@ -936,10 +986,78 @@ const AssistantWorkingIndicator: FC = () => {
 					{label}
 				</span>
 			</span>
-			<span aria-hidden className="font-mono text-xs tabular-nums opacity-60">
-				{formatElapsedTime(elapsedDeciseconds)}
-			</span>
+			{label === CONSIDERING_NEXT_STEPS ? null : (
+				<span aria-hidden className="font-mono text-xs tabular-nums opacity-60">
+					{formatElapsedTime(elapsedDeciseconds)}
+				</span>
+			)}
 		</div>
+	);
+};
+
+const WorkingTimer: FC<{ startedAt: number }> = ({ startedAt }) => {
+	const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
+
+	useEffect(() => {
+		const update = () => setElapsed(Math.max(0, Date.now() - startedAt));
+		update();
+		const intervalId = window.setInterval(update, 1_000);
+		return () => window.clearInterval(intervalId);
+	}, [startedAt]);
+
+	return <span className="tabular-nums">{formatTurnDuration(elapsed)}</span>;
+};
+
+const TurnWorkHeader: FC<{ startedAt: number }> = ({ startedAt }) => (
+	<div
+		className="text-muted-foreground border-border/60 mb-2 flex w-full items-center border-b pt-2 pb-2 text-xs"
+		role="status"
+		data-qa-id="kilo-turn-working"
+	>
+		<span>
+			Working for <WorkingTimer startedAt={startedAt} />
+		</span>
+	</div>
+);
+
+const TurnWorkDisclosure: FC<
+	PropsWithChildren<{ animateCollapse: boolean; duration: string | null; interrupted: boolean }>
+> = ({ animateCollapse, duration, interrupted, children }) => {
+	const [open, setOpen] = useState(animateCollapse);
+	useEffect(() => {
+		if (!animateCollapse) return;
+		const frameId = window.requestAnimationFrame(() => setOpen(false));
+		return () => window.cancelAnimationFrame(frameId);
+	}, [animateCollapse]);
+	const label = interrupted
+		? duration
+			? `You stopped after ${duration}`
+			: "You stopped this response"
+		: duration
+			? `Worked for ${duration}`
+			: "Worked";
+	return (
+		<Collapsible
+			open={open}
+			onOpenChange={setOpen}
+			className="mb-3 w-full pt-1"
+			data-qa-id="kilo-turn-work"
+		>
+			<CollapsibleTrigger
+				className="text-muted-foreground hover:text-foreground border-border/60 flex w-full items-center gap-1 border-b pt-1 pb-3 text-xs transition-colors"
+				data-qa-id="kilo-turn-work-toggle"
+			>
+				<span>{label}</span>
+				{open ? (
+					<ChevronDownIcon aria-hidden className="size-3.5" />
+				) : (
+					<ChevronRightIcon aria-hidden className="size-3.5" />
+				)}
+			</CollapsibleTrigger>
+			<CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none">
+				<div className="pt-2 [&>[data-slot=activity-group]:last-child]:mb-0">{children}</div>
+			</CollapsibleContent>
+		</Collapsible>
 	);
 };
 
@@ -1047,19 +1165,52 @@ const AssistantMessage: FC = () => {
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
+	const status = useAuiState((s) => s.message.status);
+	const turnStartedAt = useAuiState((s) => {
+		for (let index = s.message.index - 1; index >= 0; index--) {
+			const message = s.thread.messages[index];
+			if (message?.role === "user") return message.createdAt.getTime();
+		}
+		return s.message.createdAt.getTime();
+	});
+	const turnCompletedAt = useAuiState((s) => {
+		const custom = s.message.metadata?.custom as
+			| { opencode?: { originalMessage?: { time?: { completed?: unknown } } } }
+			| undefined;
+		const completed = custom?.opencode?.originalMessage?.time?.completed;
+		return typeof completed === "number" ? completed : undefined;
+	});
 	const virtualize = useVirtualizeMessage();
-	const groupActivityParts = createActivityGroupBy(messageParts, { hiddenPlanCallIds });
+	const threadOwnsRun = useAuiState(
+		(s) => s.thread.isRunning && s.message.index === s.thread.messages.length - 1,
+	);
+	const isRunning = status?.type === "running" || threadOwnsRun;
+	const interrupted = status?.type === "incomplete" && status.reason === "cancelled";
+	const wasRunningRef = useRef(isRunning);
+	const animateWorkCollapse = wasRunningRef.current && !isRunning;
+	useEffect(() => {
+		wasRunningRef.current = isRunning;
+	}, [isRunning]);
+	const duration = isRunning
+		? null
+		: formatTurnDuration(Math.max(0, (turnCompletedAt ?? Date.now()) - turnStartedAt));
+	const groupActivityParts = useMemo(
+		() =>
+			isRunning
+				? createActivityGroupBy(messageParts, { hiddenPlanCallIds })
+				: createTurnWorkGroupBy(messageParts, { hiddenPlanCallIds }),
+		[hiddenPlanCallIds, isRunning, messageParts],
+	);
 
-	const ACTION_BAR_PT = "pt-1.5";
 	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
-	const ACTION_BAR_HEIGHT = `min-h-7.5 ${ACTION_BAR_PT}`;
+	const ACTION_BAR_HEIGHT = "min-h-6";
 
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_assistant-message-root"
 			data-role="assistant"
 			className={cn(
-				"fade-in slide-in-from-bottom-1 animate-in relative -mb-15 pb-7.5 duration-150",
+				"fade-in slide-in-from-bottom-1 animate-in relative -mb-7 pb-6 duration-150",
 				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
 			)}
 		>
@@ -1067,12 +1218,23 @@ const AssistantMessage: FC = () => {
 				data-slot="aui_assistant-message-content"
 				className="text-foreground px-2 leading-relaxed wrap-break-word"
 			>
+				{isRunning ? <TurnWorkHeader startedAt={turnStartedAt} /> : null}
 				<MessagePrimitive.GroupedParts
 					indicator={assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity)}
 					groupBy={groupActivityParts}
 				>
 					{({ part, children }) => {
 						switch (part.type) {
+							case "group-turn-work":
+								return (
+									<TurnWorkDisclosure
+										animateCollapse={animateWorkCollapse}
+										duration={duration}
+										interrupted={interrupted}
+									>
+										{children}
+									</TurnWorkDisclosure>
+								);
 							case "group-activity":
 								return <ActivityGroup group={part}>{children}</ActivityGroup>;
 							case "group-thinking":
@@ -1130,7 +1292,7 @@ const AssistantMessage: FC = () => {
 
 			<div
 				data-slot="aui_assistant-message-footer"
-				className={cn("ms-2 flex items-center", ACTION_BAR_HEIGHT)}
+				className={cn("mt-3 ms-2 flex items-center", ACTION_BAR_HEIGHT)}
 			>
 				<BranchPicker />
 				<AssistantActionBar />
@@ -1212,7 +1374,7 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content border-border bg-card text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word empty:hidden">
+				<div className="aui-user-message-content border-border bg-card text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
 					<MessagePrimitive.Parts components={{ Text: KiloDirectiveText }} />
 				</div>
 			</div>

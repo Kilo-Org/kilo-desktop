@@ -170,16 +170,6 @@ export const SoloAwareExpandableRow = memo(
 );
 SoloAwareExpandableRow.displayName = "SoloAwareExpandableRow";
 
-export const resultText = (result: unknown): string => {
-	if (typeof result === "string") return result;
-	if (result && typeof result === "object") {
-		const record = result as Record<string, unknown>;
-		if (typeof record.output === "string") return record.output;
-		if (typeof record.stdout === "string") return record.stdout;
-	}
-	return "";
-};
-
 export const hostnameFromUrl = (url: string): string => {
 	try {
 		return new URL(url).hostname;

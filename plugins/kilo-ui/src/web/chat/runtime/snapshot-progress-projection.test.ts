@@ -52,6 +52,20 @@ function assistantMessage(
 	} as unknown as OpenCodeServerMessage;
 }
 
+function userMessage(parts: readonly unknown[]): OpenCodeServerMessage {
+	return {
+		id: "msg-user",
+		info: {
+			role: "user",
+			id: "msg-user",
+			sessionID: "session-1",
+			time: { created: 1_000 },
+		},
+		parts,
+		shadowParts: undefined,
+	} as unknown as OpenCodeServerMessage;
+}
+
 function project(message: OpenCodeServerMessage) {
 	const state: OpenCodeThreadState = {
 		...createOpenCodeThreadState("session-1"),
@@ -116,5 +130,23 @@ describe("snapshot progress projection", () => {
 		);
 
 		expect(projected.content).toEqual([]);
+	});
+});
+
+describe("synthetic user text projection", () => {
+	it("hides synthetic context while preserving user-authored text", () => {
+		const projected = project(
+			userMessage([
+				{ id: "part-user", type: "text", text: "Implement the change." },
+				{
+					id: "part-reminder",
+					type: "text",
+					text: "<system-reminder>Follow the Code agent.</system-reminder>",
+					synthetic: true,
+				},
+			]),
+		);
+
+		expect(projected.content).toEqual([{ type: "text", text: "Implement the change." }]);
 	});
 });

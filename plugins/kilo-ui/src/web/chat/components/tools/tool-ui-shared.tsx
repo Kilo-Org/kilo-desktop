@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { FC, ReactNode } from "react";
 import { AlertCircleIcon, CheckIcon, LoaderIcon, XCircleIcon } from "lucide-react";
 
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
@@ -51,6 +51,71 @@ export const getPatchInfo = (patchText: string) => {
 
 export const isCancelledToolStatus = (status?: ToolCallStatusLike) =>
 	status?.type === "incomplete" && status.reason === "cancelled";
+
+/** Trailing "+N -M" line-change badges for file-mutation tool rows and group
+    triggers. Visual-only metadata: the expanded rows carry the same numbers, so
+    the badge stays out of accessible names. */
+export const DiffCounts: FC<{ added: number; removed: number }> = ({ added, removed }) => {
+	if (added <= 0 && removed <= 0) return null;
+	return (
+		<span aria-hidden className="ml-0.5 flex items-center gap-1 font-mono text-xs">
+			{added > 0 ? <span className="text-green-500">+{added}</span> : null}
+			{removed > 0 ? <span className="text-red-500">-{removed}</span> : null}
+		</span>
+	);
+};
+
+/** Visible text of a tool result payload (string, or object with output/stdout). */
+export const resultText = (result: unknown): string => {
+	if (typeof result === "string") return result;
+	if (result && typeof result === "object") {
+		const record = result as Record<string, unknown>;
+		if (typeof record.output === "string") return record.output;
+		if (typeof record.stdout === "string") return record.stdout;
+	}
+	return "";
+};
+
+export type BashResultPayload = {
+	stdout?: string | undefined;
+	stderr?: string | undefined;
+	exitCode?: number | undefined;
+};
+
+/** Bash tool result: a JSON string or an object carrying stdout/stderr/exitCode. */
+export const parseBashResult = (result: unknown): BashResultPayload => {
+	if (!result) return {};
+	let record: Record<string, unknown> | undefined;
+	if (typeof result === "string") {
+		try {
+			const parsed: unknown = JSON.parse(result);
+			if (typeof parsed === "object" && parsed !== null) {
+				record = parsed as Record<string, unknown>;
+			}
+		} catch {
+			// plain text output
+		}
+		if (!record) return { stdout: result };
+	} else if (typeof result === "object") {
+		record = result as Record<string, unknown>;
+	}
+	if (!record) return {};
+	return {
+		stdout: typeof record.stdout === "string" ? record.stdout : undefined,
+		stderr: typeof record.stderr === "string" ? record.stderr : undefined,
+		exitCode: typeof record.exitCode === "number" ? record.exitCode : undefined,
+	};
+};
+
+const TASK_OUTPUT_TAG = /<(task_result|task_error)>\s*([\s\S]*?)\s*<\/\1>/i;
+
+export const unwrapTaskOutput = (raw: string): string => {
+	const match = raw.match(TASK_OUTPUT_TAG);
+	if (match?.[2]) return match[2].trim();
+	return raw.trim();
+};
+
+export const isTaskErrorOutput = (raw: string): boolean => /<task_error>/i.test(raw);
 
 export const ToolStatusIcon = ({
 	status,

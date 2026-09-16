@@ -5,32 +5,17 @@ import { DollarSignIcon, XCircleIcon } from "lucide-react";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { getCommandSummary, isCancelledToolStatus } from "./tool-ui-shared.js";
-
-const parseResult = (result: unknown) => {
-	if (!result) return {};
-	if (typeof result === "string") {
-		try {
-			const parsed = JSON.parse(result);
-			if (typeof parsed === "object" && parsed !== null) return parsed;
-		} catch {
-			// plain text output
-		}
-		return { stdout: result };
-	}
-	if (typeof result === "object") return result as Record<string, unknown>;
-	return {};
-};
+import { getCommandSummary, isCancelledToolStatus, parseBashResult } from "./tool-ui-shared.js";
 
 export const BashTerminal: ToolCallMessagePartComponent = memo(({ args, result, status }) => {
 	const command = typeof args?.command === "string" ? args.command : "";
 	const isRunning = status?.type === "running";
 	const isCancelled = isCancelledToolStatus(status);
 
-	const parsed = isRunning ? {} : parseResult(result);
-	const stdout = typeof parsed.stdout === "string" ? parsed.stdout : undefined;
-	const stderr = typeof parsed.stderr === "string" ? parsed.stderr : undefined;
-	const exitCode = typeof parsed.exitCode === "number" ? parsed.exitCode : 0;
+	const parsed = isRunning ? {} : parseBashResult(result);
+	const stdout = parsed.stdout;
+	const stderr = parsed.stderr;
+	const exitCode = parsed.exitCode ?? 0;
 	const hasOutput = Boolean(stdout || stderr);
 	const isError = !isRunning && exitCode !== 0;
 

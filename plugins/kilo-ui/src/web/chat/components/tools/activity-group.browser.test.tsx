@@ -24,6 +24,7 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 
 import { ActivityGroup, ActivitySubgroup } from "./activity-group.js";
 import { ApplyPatchDiff } from "./tool-ui-apply-patch.js";
+import { BashTerminal } from "./tool-ui-bash.js";
 import { ToolCallFallback } from "./tool-ui-inline.js";
 import { ReadActivity } from "./tool-ui-read-search.js";
 import { SkillActivity } from "./tool-ui-skill.js";
@@ -586,5 +587,190 @@ describe("Notebooks activity subgroup", () => {
 		expect(getByText("Connect notebook")).toBeDefined();
 		expect(queryByText("notebooks_create_notebook")).toBeNull();
 		expect(queryByText("notebooks_connect_notebook")).toBeNull();
+	});
+});
+
+describe("Self-describing solo tool rows", () => {
+	it("does not show subgroup disclosures for running tools in an expanded activity group", () => {
+		const completedRead = readPart("call-1", "/src/mark.svg");
+		const runningCommands = [
+			{
+				...toolPart("call-2", "bash", { command: "pnpm lint" }),
+				status: { type: "running" as const },
+			},
+			{
+				...toolPart("call-3", "bash", { command: "pnpm test" }),
+				status: { type: "running" as const },
+			},
+		];
+		runtime.message.parts = [completedRead, ...runningCommands];
+		runtime.message.status = { type: "running" };
+
+		const { baseElement, getByRole, getByText, queryByRole } = render(
+			<ActivityGroup group={{ indices: [0, 1, 2] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...completedRead} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1, 2] }} kind="terminal">
+					{runningCommands.map((part) => (
+						<BashTerminal key={part.toolCallId} {...part} />
+					))}
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+
+		fireEvent.click(getByRole("button", { name: "Running 2 commands" }));
+
+		expect(baseElement.textContent).toContain("Running 2 commands");
+		expect(getByText("pnpm lint")).toBeDefined();
+		expect(getByText("pnpm test")).toBeDefined();
+		expect(queryByRole("button", { name: "Running 2 commands" })).toBeNull();
+	});
+
+	it("does not show a disclosure for a running web subgroup", () => {
+		const part = {
+			...toolPart("call-1", "websearch", { query: "Numba" }),
+			status: { type: "running" as const },
+		};
+		runtime.message.status = { type: "running" };
+		const { baseElement, queryByRole } = renderActivity("web", [part], WebSearchActivity);
+
+		expect(baseElement.textContent).toContain("Browsing the web");
+		expect(queryByRole("button")).toBeNull();
+	});
+
+	it("renders a quiet solo command as a single non-collapsible line", () => {
+		runtime.message.status = { type: "complete" };
+		const { baseElement, queryByRole } = renderActivity(
+			"terminal",
+			[toolPart("call-1", "bash", { command: "pnpm lint" })],
+			BashTerminal,
+		);
+
+		expect(baseElement.textContent?.trim()).toBe("Ran pnpm lint");
+		expect(queryByRole("button")).toBeNull();
+	});
+
+	it("keeps a solo command with output expandable", () => {
+		const part = {
+			...toolPart("call-1", "bash", { command: "pnpm test" }),
+			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+		};
+		runtime.message.status = { type: "complete" };
+		const { getByRole, getByText, queryByText } = renderActivity("terminal", [part], BashTerminal);
+
+		expect(queryByText(/2 passed/)).toBeNull();
+		fireEvent.click(getByRole("button", { name: "Ran pnpm test" }));
+		expect(getByText(/2 passed/)).toBeDefined();
+	});
+
+	it("renders a solo task without output as a single non-collapsible line", () => {
+		runtime.message.status = { type: "complete" };
+		const { baseElement, queryByRole } = renderActivity(
+			"subagent",
+			[taskPart("call-1", { description: "Explore auth flow", subagent_type: "explore" })],
+			TaskActivity,
+		);
+
+		expect(baseElement.textContent?.trim()).toBe("Delegated Explore auth flow");
+		expect(queryByRole("button")).toBeNull();
+	});
+});
+
+describe("Activity group settling", () => {
+	it("shows diff counts for an edited summary but not the tools-used summary", async () => {
+		vi.useFakeTimers();
+		const completedRead = readPart("call-1", "/src/example.ts");
+		const runningEdit = {
+			...toolPart("call-2", "edit", {
+				file_path: "/src/example.ts",
+				oldString: "const before = true;\n",
+				newString: "const after = true;\nconst added = true;\n",
+			}),
+			status: { type: "running" as const },
+		};
+		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...parts[0]!} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="editing">
+					<ToolCallFallback {...parts[1]!} />
+				</ActivitySubgroup>
+			</ActivityGroup>
+		);
+
+		runtime.message.parts = [completedRead, runningEdit];
+		runtime.message.status = { type: "running" };
+		const { getByRole, getByText, queryByText, rerender } = render(
+			renderGroup(runtime.message.parts),
+		);
+
+		runtime.message.parts = [
+			completedRead,
+			{ ...runningEdit, status: { type: "complete" as const } },
+		];
+		rerender(renderGroup(runtime.message.parts));
+
+		expect(getByRole("button", { name: "Edited example.ts" })).toBeDefined();
+		expect(getByText("+2")).toBeDefined();
+		expect(getByText("-1")).toBeDefined();
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1600);
+		});
+
+		expect(getByRole("button", { name: "2 tools used" })).toBeDefined();
+		expect(queryByText("+2")).toBeNull();
+		expect(queryByText("-1")).toBeNull();
+	});
+
+	it("holds a finished single tool's label briefly before collapsing to the summary", async () => {
+		vi.useFakeTimers();
+		const completedRead = readPart("call-1", "/src/mark.svg");
+		const runningCommand = {
+			...toolPart("call-2", "bash", { command: "pnpm test" }),
+			status: { type: "running" as const },
+		};
+		const renderGroup = (parts: ToolCallMessagePartProps[]) => (
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+					<ReadActivity {...parts[0]!} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="terminal">
+					<ToolCallFallback {...parts[1]!} />
+				</ActivitySubgroup>
+			</ActivityGroup>
+		);
+
+		runtime.message.parts = [completedRead, runningCommand];
+		runtime.message.status = { type: "running" };
+		const { getByRole, queryByRole, rerender } = render(renderGroup(runtime.message.parts));
+
+		expect(getByRole("button", { name: "Running pnpm test" })).toBeDefined();
+
+		runtime.message.parts = [
+			completedRead,
+			{ ...runningCommand, status: { type: "complete" as const } },
+		];
+		// The message stays running while GroupedParts renders "Considering next steps".
+		runtime.message.status = { type: "running" };
+		rerender(renderGroup(runtime.message.parts));
+
+		const settlingTrigger = getByRole("button", { name: "Ran pnpm test" });
+		expect(settlingTrigger.getAttribute("aria-expanded")).toBe("false");
+		expect(queryByRole("button", { name: /tools used/ })).toBeNull();
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1599);
+		});
+		expect(getByRole("button", { name: "Ran pnpm test" })).toBeDefined();
+		expect(queryByRole("button", { name: /tools used/ })).toBeNull();
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1);
+		});
+		expect(getByRole("button", { name: "2 tools used" })).toBeDefined();
+		expect(queryByRole("button", { name: "Ran pnpm test" })).toBeNull();
 	});
 });

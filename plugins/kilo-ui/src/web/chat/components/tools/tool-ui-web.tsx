@@ -1,8 +1,8 @@
 import { memo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
-import { SoloAwareExpandableRow, hostnameFromUrl, resultText } from "./tool-ui-activity-row.js";
-import { truncate } from "./tool-ui-shared.js";
+import { SoloAwareExpandableRow, hostnameFromUrl } from "./tool-ui-activity-row.js";
+import { resultText, truncate } from "./tool-ui-shared.js";
 
 const OutputDetail = ({ text }: { text: string }) => (
 	<pre className="bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs wrap-break-word whitespace-pre-wrap">

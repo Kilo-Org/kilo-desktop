@@ -228,6 +228,8 @@ export function ConversationMapAui({
 		[viewport],
 	);
 
+	if (turns.length < 2) return null;
+
 	return (
 		<div
 			data-slot="conversation-map-rail"
@@ -239,7 +241,7 @@ export function ConversationMapAui({
 			<div
 				className={cn(
 					"pointer-events-auto absolute top-0 px-2 py-10",
-					side === "right" ? "right-0" : "left-0",
+					side === "right" ? "right-0" : "-left-1",
 				)}
 				style={{ height: viewportHeight }}
 			>

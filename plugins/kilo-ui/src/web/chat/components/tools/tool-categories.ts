@@ -15,7 +15,18 @@ import {
 	TerminalIcon,
 	WrenchIcon,
 } from "lucide-react";
-import { basename, getCommandSummary, getPatchInfo, str, truncate } from "./tool-ui-shared.js";
+import {
+	basename,
+	getCommandSummary,
+	getPatchInfo,
+	isCancelledToolStatus,
+	isTaskErrorOutput,
+	parseBashResult,
+	resultText,
+	str,
+	truncate,
+	unwrapTaskOutput,
+} from "./tool-ui-shared.js";
 
 /**
  * Tool grouping for the activity view. Categories mirror the built-in tool
@@ -167,6 +178,7 @@ export type ActivityPart = {
 	toolName?: string | undefined;
 	toolCallId?: string | undefined;
 	args?: unknown;
+	result?: unknown;
 	status?: { type: string } | undefined;
 };
 
@@ -647,6 +659,30 @@ export const getSegmentStats = (
 		skill: skills.length === 1 ? skills[0] : undefined,
 		task: tasks.length === 1 ? tasks[0] : undefined,
 	};
+};
+
+/**
+ * True when a solo tool row hides itself (SoloAwareExpandableRow's
+ * hideSoloWithoutDetail): a quiet successful command or a task without output
+ * renders nothing under the subgroup header, so the header must stay
+ * label-only — a disclosure would reveal an empty body. Mirrors the row
+ * components' null conditions.
+ */
+export const soloRowHidesItself = (kind: ActivityKind, part: ActivityPart | undefined): boolean => {
+	if (!part) return false;
+	if (kind === "terminal") {
+		if (isCancelledToolStatus(part.status)) return false;
+		const running = part.status?.type === "running";
+		const parsed = running ? {} : parseBashResult(part.result);
+		if (!running && (parsed.exitCode ?? 0) !== 0) return false;
+		return !(parsed.stdout || parsed.stderr);
+	}
+	if (kind === "subagent") {
+		const raw = resultText(part.result);
+		if (isTaskErrorOutput(raw)) return false;
+		return !(part.status?.type !== "running" && unwrapTaskOutput(raw).length > 0);
+	}
+	return false;
 };
 
 export type ActivityIconItem = {

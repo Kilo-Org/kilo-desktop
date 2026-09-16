@@ -722,7 +722,7 @@ importers:
         version: link:../../packages/sdk-react
       '@anaconda-agentic-desktop/ui':
         specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
+        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(tailwindcss@4.3.3)
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.4
         version: 1.7.5(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.4.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
@@ -807,8 +807,8 @@ importers:
         version: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.0)(@vitest/coverage-v8@5.0.0)(@vitest/ui@5.0.0)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
     optionalDependencies:
       '@anaconda/desktop-bridge-payload-darwin-arm64':
-        specifier: 0.1.6
-        version: 0.1.6
+        specifier: 0.1.7
+        version: 0.1.7
 
   plugins/files:
     dependencies:
@@ -1506,7 +1506,7 @@ importers:
         version: link:../../packages/sdk-react
       '@anaconda-agentic-desktop/ui':
         specifier: workspace:*
-        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
+        version: file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(tailwindcss@4.3.3)
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.2.8)
@@ -1598,8 +1598,8 @@ packages:
       react: ^19.0.0
       react-dom: ^19.0.0
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.6':
-    resolution: {integrity: sha512-jzPdR+svhmxp/A3lHbbQA9Tu2nL+AuRVU3FCNDJmSwmFyIaFJ1GFON+WmsT1XH1dgG6QsE4Q87l3DPLIEjGgKg==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.6/6f051c698117d9e729234d16e75aba8e426955fc}
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.7':
+    resolution: {integrity: sha512-miPhL4V4nClw5V3qMzIKoYCKMnVHIHzvmsumG4J0UriyLjT+3SMwzF83iL5mdR5QPhxwVPyGtnGN3iSMEBuqhA==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.7/8286fc8c6b0a1617de4f44c5c9028cee1e5ea8a8}
     cpu: [arm64]
     os: [darwin]
 
@@ -3059,6 +3059,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
+      zod: ^3.25 || ^4.0
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -9677,7 +9678,7 @@ snapshots:
 
   7zip-bin-full@26.2.1: {}
 
-  '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)':
+  '@anaconda-agentic-desktop/ui@file:packages/ui(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)(tailwindcss@4.3.3)':
     dependencies:
       '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
       '@assistant-ui/react-markdown': 0.14.8(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
@@ -9694,6 +9695,7 @@ snapshots:
       remark-gfm: 4.0.1(supports-color@10.2.2)
       sonner: 2.0.8(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       tailwind-merge: 3.6.0
+      tw-shimmer: 0.4.12(tailwindcss@4.3.3)
     transitivePeerDependencies:
       - '@date-fns/tz'
       - '@types/react'
@@ -9703,9 +9705,10 @@ snapshots:
       - ioredis
       - redis
       - supports-color
+      - tailwindcss
       - use-sync-external-store
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.6':
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.7':
     optional: true
 
   '@anaconda/playwright-utils@1.17.1(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)':
@@ -11351,7 +11354,7 @@ snapshots:
 
   '@mcp-b/webmcp-local-relay@4.0.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)
+      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@3.25.76)
       ws: 8.21.3
       zod: 3.25.76
     transitivePeerDependencies:
@@ -11377,7 +11380,7 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)':
+  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@3.25.76)':
     dependencies:
       '@hono/node-server': 1.19.17(hono@4.12.32)
       ajv: 8.20.0
@@ -11394,7 +11397,7 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.4.3
+      zod: 3.25.76
       zod-to-json-schema: 3.25.2(zod@4.4.3)
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1

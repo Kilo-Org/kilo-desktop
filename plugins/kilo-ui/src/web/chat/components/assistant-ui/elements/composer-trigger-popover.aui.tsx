@@ -1,6 +1,13 @@
 "use client";
 
-import { memo, useRef, type ComponentPropsWithoutRef, type FC } from "react";
+import {
+	memo,
+	useEffect,
+	useRef,
+	type ComponentPropsWithoutRef,
+	type FC,
+	type ReactNode,
+} from "react";
 import {
 	ComposerPrimitive,
 	unstable_defaultDirectiveFormatter,
@@ -40,6 +47,8 @@ type ComposerTriggerPopoverBaseProps = Omit<
 	iconMap?: Record<string, IconComponent>;
 	/** Fallback icon when no entry in `iconMap` matches. */
 	fallbackIcon?: IconComponent;
+	/** Renders an item-specific icon before falling back to `iconMap`. */
+	renderItemIcon?: ((item: Unstable_TriggerItem) => ReactNode) | undefined;
 	/** Label shown on the back button. @default "Back" */
 	backLabel?: string;
 	/** Label shown when no categories are available. @default "No items available" */
@@ -113,16 +122,33 @@ const Categories: FC<CategoriesProps> = ({ iconMap, fallbackIcon, emptyLabel }) 
 type ItemsProps = {
 	iconMap: Record<string, IconComponent> | undefined;
 	fallbackIcon: IconComponent;
+	renderItemIcon: ((item: Unstable_TriggerItem) => ReactNode) | undefined;
 	backLabel: string;
 	emptyLabel: string;
 	loadingLabel: string;
 };
 
-const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, loadingLabel }) => {
-	const { isLoading, activeCategoryId, isSearchMode } = unstable_useTriggerPopoverScopeContext();
+const Items: FC<ItemsProps> = ({
+	iconMap,
+	fallbackIcon,
+	renderItemIcon,
+	backLabel,
+	emptyLabel,
+	loadingLabel,
+}) => {
+	const { isLoading, activeCategoryId, isSearchMode, highlightedItemId } =
+		unstable_useTriggerPopoverScopeContext();
+	const itemsRef = useRef<HTMLDivElement>(null);
 	const showBack = Boolean(activeCategoryId) && !isSearchMode;
+	useEffect(() => {
+		if (!highlightedItemId) return;
+		const highlightedItem = Array.from(
+			itemsRef.current?.querySelectorAll<HTMLElement>("[role=option]") ?? [],
+		).find((item) => item.id === highlightedItemId);
+		highlightedItem?.scrollIntoView({ block: "nearest", inline: "nearest" });
+	}, [highlightedItemId]);
 	return (
-		<ComposerPrimitive.Unstable_TriggerPopoverItems>
+		<ComposerPrimitive.Unstable_TriggerPopoverItems ref={itemsRef}>
 			{(items) => (
 				<div data-slot="composer-trigger-popover-items" className="flex flex-col">
 					<ComposerPrimitive.Unstable_TriggerPopoverBack
@@ -137,6 +163,7 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
 						const iconKey =
 							typeof item.metadata?.icon === "string" ? item.metadata.icon : undefined;
 						const Icon = resolveIcon(iconKey, iconMap, fallbackIcon);
+						const itemIcon = renderItemIcon?.(item);
 						return (
 							<ComposerPrimitive.Unstable_TriggerPopoverItem
 								key={item.id}
@@ -144,7 +171,7 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
 								index={index}
 								className={cn(MENU_ITEM, "text-start")}
 							>
-								<Icon className="size-3.5 shrink-0" />
+								{itemIcon ?? <Icon className="size-3.5 shrink-0" />}
 								<span className="shrink-0 font-medium">{item.label}</span>
 								{item.description ? (
 									<span className="text-muted-foreground min-w-0 truncate text-xs">
@@ -170,6 +197,7 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
 const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
 	iconMap,
 	fallbackIcon = SparklesIcon,
+	renderItemIcon,
 	backLabel = "Back",
 	emptyCategoriesLabel = "No items available",
 	emptyItemsLabel = "No matching items",
@@ -216,6 +244,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
 			<Items
 				iconMap={iconMap}
 				fallbackIcon={fallbackIcon}
+				renderItemIcon={renderItemIcon}
 				backLabel={backLabel}
 				emptyLabel={emptyItemsLabel}
 				loadingLabel={loadingLabel}

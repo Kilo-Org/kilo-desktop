@@ -7,6 +7,7 @@ import {
 } from "./attachment.js";
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { ComposerFooter } from "./composer-footer.js";
+import { ComposerTriggers } from "./composer-triggers.js";
 import { ConversationMapAui } from "./elements/conversation-map.aui.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
@@ -14,7 +15,6 @@ import { KiloAgentSelector } from "./kilo-agent-selector.js";
 import { KiloModelSelector } from "./kilo-model-selector.js";
 import { KiloDirectiveText } from "./kilo-directive-text.js";
 import { KiloLexicalComposerInput } from "./kilo-lexical-composer-input.js";
-import { KiloSlashTrigger } from "./kilo-slash-trigger.js";
 import { MarkdownText } from "./markdown-text.js";
 import { MessageCopyButton } from "./message-copy-button.js";
 import { Reasoning } from "./reasoning.js";
@@ -676,7 +676,7 @@ const Composer: FC = () => {
 						submitMode={isLoadingModel ? "none" : "enter"}
 						onKeyDown={handleInputKeyDown}
 					/>
-					<KiloSlashTrigger />
+					<ComposerTriggers />
 					<ComposerAction
 						isConnecting={isConnecting}
 						isLoadingModel={isLoadingModel}

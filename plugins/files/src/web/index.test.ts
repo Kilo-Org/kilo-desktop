@@ -12,13 +12,15 @@ describe("files webRegister", () => {
 		system.getSdk("kilo-ui").plugins.expose("chatRightPanel", { openContributedTab });
 
 		webRegister(filesSdk);
-		system.getSdk("kilo-ui").plugins.get<FilesCapabilities>("files")?.fileViewer.openFile({
+		const capabilities = system.getSdk("kilo-ui").plugins.get<FilesCapabilities>("files");
+		capabilities?.fileViewer.openFile({
 			sessionId: "session-1",
 			workspaceDirectory: "/workspace/project",
 			relativePath: "src/App.tsx",
 			line: 42,
 			column: 7,
 		});
+		expect(capabilities?.fileMentions.Icon).toBeTypeOf("function");
 
 		expect(openContributedTab).toHaveBeenCalledWith(
 			"session-1",

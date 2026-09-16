@@ -10,6 +10,14 @@
 		"nav": [],
 		"zones": [
 			{
+				"zone": "kilo-ui/chat-composer-trigger",
+				"id": "file-mentions",
+				"component": "FilesComposerTrigger",
+				"label": "Workspace file mentions",
+				"description": "Mention workspace files in chat with @.",
+				"priority": 100
+			},
+			{
 				"zone": "kilo-ui/chat-markdown-extension",
 				"id": "file-links",
 				"component": "FilesMarkdownExtension",

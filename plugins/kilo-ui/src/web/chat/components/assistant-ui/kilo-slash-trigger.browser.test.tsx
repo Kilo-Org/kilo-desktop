@@ -225,6 +225,41 @@ describe("KiloSlashTrigger", () => {
 		await expect.element(screen.getByText("write AGENTS.md")).toBeVisible();
 	});
 
+	it("scrolls the highlighted suggestion into view during keyboard navigation", async () => {
+		commandList.mockResolvedValue({ data: commands });
+		const scrollIntoView = vi
+			.spyOn(Element.prototype, "scrollIntoView")
+			.mockImplementation(() => undefined);
+		const screen = renderSlashThread();
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await vi.waitFor(() => expect(commandList).toHaveBeenCalled());
+		await input.click();
+		await userEvent.keyboard("/");
+		await vi.waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+		scrollIntoView.mockClear();
+		await userEvent.keyboard("{ArrowDown}");
+
+		await vi.waitFor(() =>
+			expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" }),
+		);
+	});
+
+	it("wraps ArrowUp from the first suggestion to the last", async () => {
+		commandList.mockResolvedValue({ data: commands });
+		const screen = renderSlashThread();
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await vi.waitFor(() => expect(commandList).toHaveBeenCalled());
+		await input.click();
+		await userEvent.keyboard("/");
+		await userEvent.keyboard("{ArrowUp}");
+
+		await expect
+			.element(screen.getByRole("option", { name: /compact/u }))
+			.toHaveAttribute("aria-selected", "true");
+	});
+
 	it("groups mixed sources into categories and still filters across them", async () => {
 		commandList.mockResolvedValue({
 			data: [

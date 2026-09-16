@@ -1,6 +1,6 @@
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import { useAui, useAuiState } from "@assistant-ui/react";
-import { LexicalComposerInput, type DirectiveChipProps } from "@assistant-ui/react-lexical";
+import { LexicalComposerInput } from "@assistant-ui/react-lexical";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
 	COMMAND_PRIORITY_CRITICAL,
@@ -9,10 +9,11 @@ import {
 	KEY_ENTER_COMMAND,
 	PASTE_COMMAND,
 } from "lexical";
-import { type FC, type KeyboardEvent, type Ref, useEffect } from "react";
+import { type FC, type KeyboardEvent, type Ref, useEffect, useMemo } from "react";
 
-import { slashCategoryIcon } from "../../slash-commands/kilo-slash-icons.js";
 import { useKiloSlashFormatter } from "../../slash-commands/use-kilo-slash-formatter.js";
+import { KiloDirectiveChip } from "./directive-chip.js";
+import { withFileMentions } from "./kilo-file-mention-formatter.js";
 
 type KiloLexicalComposerInputProps = {
 	ref?: Ref<HTMLDivElement>;
@@ -30,6 +31,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	onKeyDown,
 }) => {
 	const formatter = useKiloSlashFormatter();
+	const composerFormatter = useMemo(() => withFileMentions(formatter), [formatter]);
 	return (
 		<LexicalComposerInput
 			ref={(node) => {
@@ -37,9 +39,9 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 				else if (ref) ref.current = node;
 				node?.querySelector("[contenteditable]")?.setAttribute("aria-label", "Message input");
 			}}
-			formatter={formatter}
-			directiveChip={KiloSlashDirectiveChip}
-			placeholder="Send a message, or / for commands..."
+			formatter={composerFormatter}
+			directiveChip={KiloDirectiveChip}
+			placeholder="Send a message, @ to mention files, or / for commands..."
 			cancelOnEscape={cancelOnEscape}
 			submitMode={submitMode}
 			aria-label="Message input"
@@ -54,22 +56,6 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			<SteerQueueOnEnterPlugin disabled={disabled} submitMode={submitMode} />
 			<QueueEnterWhileRunningPlugin />
 		</LexicalComposerInput>
-	);
-};
-
-const KiloSlashDirectiveChip: FC<DirectiveChipProps> = ({ directiveId, directiveType, label }) => {
-	const Icon = slashCategoryIcon(directiveType);
-	return (
-		<span
-			data-slot="directive-text-chip"
-			data-directive-type={directiveType}
-			data-directive-id={directiveId}
-			aria-label={`${directiveType}: ${label}`}
-			className="aui-directive-chip"
-		>
-			<Icon />
-			{label}
-		</span>
 	);
 };
 

@@ -1,4 +1,4 @@
-/* Composer chrome: frosted glass surfaces, Lexical input, slash chips,
+/* Composer chrome: frosted glass surfaces, Lexical input, directive chips,
    toolbar container queries, and docked-corner fills.
 
    Glass recipe matches t3code: translucent card tint + blur + slight
@@ -94,6 +94,13 @@
 	height: 0.85em;
 	flex-shrink: 0;
 	align-self: center;
+}
+
+.aui-directive-chip[data-directive-type="file"] {
+	margin-inline-end: 0.25em;
+	background: color-mix(in oklab, var(--color-accent) 40%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-border) 70%, transparent);
+	color: var(--color-foreground);
 }
 
 .aui-composer-action-wrapper {

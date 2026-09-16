@@ -128,7 +128,10 @@ export class TerminalFrameController {
 			cursorBlink: true,
 			cursorStyle: "bar",
 			fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-			fontSize: 13,
+			// ghostty-web ceils the measured glyph advance to whole pixels, so sizes
+			// whose advance lands well under the next integer add visible dead space
+			// between letters (e.g. 12px). 12.5px keeps that gap small.
+			fontSize: 12.5,
 			theme: Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)),
 			scrollback: 5_000,
 		});

@@ -1,6 +1,8 @@
 import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ComponentType } from "react";
 
 import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
+import { PierreFileIcon } from "../file-icons/PierreFileIcon.js";
 import { isNotebookFile, openNotebookFile } from "./notebook-viewer.js";
 
 const DEFAULT_FILES_EXPLORER_ID = "files:explorer";
@@ -21,6 +23,9 @@ export interface FileViewerCapability extends Record<string, unknown> {
 
 export interface FilesCapabilities extends Record<string, unknown> {
 	readonly fileViewer: FileViewerCapability;
+	readonly fileMentions: {
+		readonly Icon: ComponentType<{ readonly path: string; readonly className?: string }>;
+	};
 }
 
 function filePaneInstanceId(
@@ -119,10 +124,15 @@ export function openWorkspaceFile(sdk: SDK, options: OpenWorkspaceFileOptions): 
 }
 
 export function registerFileViewer(sdk: SDK): void {
-	if (sdk.plugins.get<FilesCapabilities>("files")?.fileViewer) return;
-	sdk.plugins.expose("fileViewer", {
-		openFile(options: OpenWorkspaceFileOptions) {
-			openWorkspaceFile(sdk, options);
-		},
-	} satisfies FileViewerCapability);
+	const capabilities = sdk.plugins.get<Partial<FilesCapabilities>>("files");
+	if (!capabilities?.fileViewer) {
+		sdk.plugins.expose("fileViewer", {
+			openFile(options: OpenWorkspaceFileOptions) {
+				openWorkspaceFile(sdk, options);
+			},
+		} satisfies FileViewerCapability);
+	}
+	if (!capabilities?.fileMentions) {
+		sdk.plugins.expose("fileMentions", { Icon: PierreFileIcon });
+	}
 }

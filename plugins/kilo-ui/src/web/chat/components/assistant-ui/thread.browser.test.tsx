@@ -38,6 +38,7 @@ import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "../../../account/KiloAuthContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
+import { ChatMarkdownProvider } from "../../ChatMarkdownContext.js";
 import { OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";
 import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelectionContext.js";
 import {
@@ -238,9 +239,14 @@ function ThreadTree({
 				<ChatConnectionProvider status={connectionStatus}>
 					<ChatAgentSelectionProvider value={agentSelection}>
 						<ChatModelSelectionProvider value={selection}>
-							<div className="h-[480px]">
-								<Thread />
-							</div>
+							<ChatMarkdownProvider
+								sessionId="session-1"
+								workspaceFolders={[{ path: "/workspace/project", isPrimary: true }]}
+							>
+								<div className="h-[480px]">
+									<Thread />
+								</div>
+							</ChatMarkdownProvider>
 						</ChatModelSelectionProvider>
 					</ChatAgentSelectionProvider>
 				</ChatConnectionProvider>
@@ -256,6 +262,7 @@ function renderThread({
 	adapter,
 	enableMessageQueue,
 	connectionStatus,
+	openFile,
 }: {
 	auth?: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
@@ -263,11 +270,17 @@ function renderThread({
 	adapter?: ChatModelAdapter;
 	enableMessageQueue?: boolean;
 	connectionStatus?: ChatConnectionStatus;
+	openFile?: (options: {
+		sessionId: string;
+		workspaceDirectory: string;
+		relativePath: string;
+	}) => void;
 }) {
 	const sdk = createFakeSdk({ featureId: "kilo-ui" });
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
 	kiloUiBrowserRegister(mainSdk);
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	if (openFile) system.getSdk("files").plugins.expose("fileViewer", { openFile });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const { baseElement } = render(
 		<SdkProvider system={system}>
@@ -433,6 +446,25 @@ function renderExternalMessagesThread(
 	);
 	return page.elementLocator(baseElement);
 }
+
+describe("user file mentions", () => {
+	it("opens a sent file mention in the workspace file viewer", async () => {
+		const openFile = vi.fn();
+		const screen = renderThread({
+			initialMessages: [
+				{ role: "user", content: [{ type: "text", text: "Review @/src/App.tsx" }] },
+			],
+			openFile,
+		});
+
+		await screen.getByRole("button", { name: "file: App.tsx" }).click();
+		expect(openFile).toHaveBeenCalledWith({
+			sessionId: "session-1",
+			workspaceDirectory: "/workspace/project",
+			relativePath: "src/App.tsx",
+		});
+	});
+});
 
 describe("conversation map visibility", () => {
 	const message = (role: "user" | "assistant", text: string, id: string): ExternalThreadMessage =>

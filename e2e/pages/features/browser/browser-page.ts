@@ -23,6 +23,7 @@ export class BrowserPage {
 			getLocatorByTestId("chat-pane-toolbar"),
 			"Pane toolbar should appear after starting the chat",
 		);
+		await click(getLocatorByTestId("chat-pane-toolbar-add"));
 		await click(getLocatorByTestId("chat-pane-launch-browser.browser"));
 		await expectElementToBeVisible(getLocatorByTestId("browser-view"), "Browser pane should mount");
 	}

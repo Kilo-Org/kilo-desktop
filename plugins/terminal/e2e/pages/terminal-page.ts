@@ -144,6 +144,7 @@ export class TerminalPage {
 
 	async #launchTerminal(): Promise<string> {
 		const existing = await this.#paneTabIds();
+		await click(getLocatorByTestId("chat-pane-toolbar-add"));
 		await click(getLocatorByTestId("chat-pane-launch-terminal.terminal"));
 		return this.#waitForNewTerminalId(existing);
 	}

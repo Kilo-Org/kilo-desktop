@@ -2,8 +2,7 @@ import { GalleryHorizontalIcon } from "lucide-react";
 import type { FC } from "react";
 
 import type { Arrangement } from "@anaconda-agentic-desktop/pane-layout";
-import { buttonVariants } from "@anaconda-agentic-desktop/ui/components/button";
-import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 import {
 	Tooltip,
@@ -22,26 +21,30 @@ export const PaneSessionChrome: FC<{
 			<Tooltip>
 				<TooltipTrigger
 					render={
-						<div
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
 							className={cn(
-								buttonVariants({ variant: "outline", size: "xs" }),
-								"h-6.5 gap-2 [-webkit-app-region:no-drag]",
+								"border-border/70 bg-background/30 text-muted-foreground rounded-md shadow-xs hover:border-border hover:bg-foreground/10 [-webkit-app-region:no-drag]",
+								carouselOn &&
+									"border-primary/35 bg-primary/15 text-primary shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--primary),transparent_65%)] hover:border-primary/45 hover:bg-primary/20 hover:text-primary",
 							)}
+							aria-label="Carousel layout"
+							aria-pressed={carouselOn}
 							data-qa-id="chat-pane-arrangement"
+							onClick={() => onArrangementChange(carouselOn ? "tiles" : "carousel")}
 						/>
 					}
 				>
-					<GalleryHorizontalIcon className="size-3.5" aria-hidden />
-					<span>Carousel</span>
-					<Switch
-						checked={carouselOn}
-						onCheckedChange={(checked) => onArrangementChange(checked ? "carousel" : "tiles")}
-						aria-label="Carousel"
+					<GalleryHorizontalIcon
+						className="size-3.5"
 						data-qa-id="chat-pane-arrangement-carousel"
+						aria-hidden
 					/>
 				</TooltipTrigger>
 				<TooltipContent side="bottom" data-qa-id="chat-pane-carousel-hint">
-					Shift + scroll to pan
+					{carouselOn ? "Carousel layout · Shift + scroll to pan" : "Carousel layout"}
 				</TooltipContent>
 			</Tooltip>
 		</TooltipProvider>

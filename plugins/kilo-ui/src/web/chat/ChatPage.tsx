@@ -158,7 +158,7 @@ export function ChatPageHeaderActions() {
 	const state = usePaneSessionHeaderStore();
 	if (!state.hasCanvas) return null;
 	return (
-		<div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
+		<div className="-mr-1 flex items-center gap-1 [-webkit-app-region:no-drag]">
 			<PaneLaunchToolbar
 				definitions={state.definitions}
 				onLaunchChat={state.onLaunchChat}

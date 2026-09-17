@@ -1130,8 +1130,8 @@ describe("ChatPage", () => {
 			.element(screen.getByTestId("kilo-chat-pane-canvas"))
 			.toHaveAttribute("data-arrangement", "tiles");
 		await expect
-			.element(screen.getByTestId("chat-pane-arrangement-carousel"))
-			.toHaveAttribute("aria-checked", "false");
+			.element(screen.getByTestId("chat-pane-arrangement"))
+			.toHaveAttribute("aria-pressed", "false");
 		expect(document.querySelector("[data-qa-id='chat-pane-carousel-hint']")).toBeNull();
 
 		await screen.getByTestId("chat-pane-arrangement-carousel").click();
@@ -1139,21 +1139,21 @@ describe("ChatPage", () => {
 			.element(screen.getByTestId("kilo-chat-pane-canvas"))
 			.toHaveAttribute("data-arrangement", "carousel");
 		await expect
-			.element(screen.getByTestId("chat-pane-arrangement-carousel"))
-			.toHaveAttribute("aria-checked", "true");
+			.element(screen.getByTestId("chat-pane-arrangement"))
+			.toHaveAttribute("aria-pressed", "true");
 		await screen.getByTestId("chat-pane-toolbar").hover();
 		await screen.getByTestId("chat-pane-arrangement").hover();
 		await expect
 			.poll(() => document.querySelector("[data-slot='tooltip-content']")?.textContent)
-			.toBe("Shift + scroll to pan");
+			.toBe("Carousel layout · Shift + scroll to pan");
 
 		await screen.getByTestId("chat-pane-arrangement-carousel").click();
 		await expect
 			.element(screen.getByTestId("kilo-chat-pane-canvas"))
 			.toHaveAttribute("data-arrangement", "tiles");
 		await expect
-			.element(screen.getByTestId("chat-pane-arrangement-carousel"))
-			.toHaveAttribute("aria-checked", "false");
+			.element(screen.getByTestId("chat-pane-arrangement"))
+			.toHaveAttribute("aria-pressed", "false");
 	});
 
 	it("expands a pane to fill the canvas without leaving the current arrangement", async () => {
@@ -1840,6 +1840,7 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("chat-pane-toolbar")).toBeVisible();
 		await expect.element(screen.getByTestId("chat-pane-arrangement")).toBeVisible();
 
+		await screen.getByTestId("chat-pane-toolbar-add").click();
 		await screen.getByTestId("chat-pane-launch-canvas.canvas").click();
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs.map(({ title }) => title)).toEqual(
 			["Canvas 1", "Canvas 2"],
@@ -1862,19 +1863,13 @@ describe("ChatPage", () => {
 			expect(track.scrollWidth).toBeGreaterThan(track.clientWidth + 100);
 		});
 
-		const chatControl = screen.getByTestId("chat-pane-toolbar-chat");
-		const addControls = screen.getByTestId("chat-pane-toolbar-add");
-		await expect.element(chatControl).toBeVisible();
-		await expect.element(addControls).toBeVisible();
-		expect(
-			chatControl.element().contains(screen.getByTestId("chat-pane-launch-chat").element()),
-		).toBe(true);
-		expect(
-			addControls
-				.element()
-				.contains(screen.getByTestId("chat-pane-launch-canvas.canvas").element()),
-		).toBe(true);
+		const addControl = screen.getByTestId("chat-pane-toolbar-add");
+		await expect.element(addControl).toBeVisible();
+		await expect.element(screen.getByTestId("chat-pane-launch-chat")).toBeVisible();
+		await addControl.click();
+		await expect.element(screen.getByTestId("chat-pane-launch-canvas.canvas")).toBeVisible();
 
+		await addControl.click();
 		await screen.getByTestId("chat-pane-launch-chat").click({ force: true });
 		await expect
 			.element(screen.getByTestId("chat-pane-tab-agent:draft"))

@@ -225,6 +225,29 @@ describe("KiloSlashTrigger", () => {
 		await expect.element(screen.getByText("write AGENTS.md")).toBeVisible();
 	});
 
+	it("lists lazy MCP commands without reading their templates", async () => {
+		commandList.mockResolvedValue({
+			data: [
+				{
+					name: "release-notes",
+					description: "Draft release notes",
+					source: "mcp",
+					template: {},
+					hints: [],
+				} as unknown as Command,
+			],
+		});
+		const screen = renderSlashThread();
+		const input = screen.getByRole("textbox", { name: "Message input" });
+
+		await vi.waitFor(() => expect(commandList).toHaveBeenCalled());
+		await input.click();
+		await userEvent.keyboard("/release");
+		await screen.getByText("release-notes").click();
+
+		await expect.element(screen.getByLabelText("mcp: release-notes")).toBeVisible();
+	});
+
 	it("scrolls the highlighted suggestion into view during keyboard navigation", async () => {
 		commandList.mockResolvedValue({ data: commands });
 		const scrollIntoView = vi

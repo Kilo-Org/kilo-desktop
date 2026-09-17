@@ -99,6 +99,31 @@ describe("useKiloCommandCatalog", () => {
 		);
 	});
 
+	it("keeps only autocomplete metadata from lazy MCP commands", async () => {
+		commandList.mockResolvedValue({
+			data: [
+				{
+					name: "release-notes",
+					description: "Draft release notes",
+					source: "mcp",
+					template: {},
+					hints: ["release"],
+				},
+			],
+		});
+
+		await expect(
+			fetchCommandCatalogForConnection(connection, "/workspace/project"),
+		).resolves.toEqual([
+			{
+				name: "release-notes",
+				description: "Draft release notes",
+				source: "mcp",
+				hints: ["release"],
+			},
+		]);
+	});
+
 	it("throws when asked to fetch commands before a connection is available", async () => {
 		await expect(fetchCommandCatalogForConnection(undefined, "/workspace")).rejects.toThrow(
 			"Cannot fetch commands before Kilo is connected",

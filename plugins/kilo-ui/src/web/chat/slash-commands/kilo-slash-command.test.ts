@@ -9,7 +9,6 @@ import {
 	isLeadingSlashQuery,
 	parseSlashDraft,
 	slashCommandFromPromptArgs,
-	slashDisplayText,
 } from "./kilo-slash-command.js";
 
 const initCommand: Command = {
@@ -32,6 +31,13 @@ describe("parseSlashDraft", () => {
 		expect(parseSlashDraft("/compact")).toEqual({
 			command: "compact",
 			arguments: "",
+		});
+	});
+
+	it("parses a namespaced MCP command", () => {
+		expect(parseSlashDraft("/mcp_everything:args-prompt hello")).toEqual({
+			command: "mcp_everything:args-prompt",
+			arguments: "hello",
 		});
 	});
 
@@ -73,6 +79,20 @@ describe("createKiloSlashFormatter", () => {
 		expect(formatter.parse("/browser open docs")).toEqual([
 			{ kind: "mention", type: "mcp", label: "browser", id: "browser" },
 			{ kind: "text", text: " open docs" },
+		]);
+	});
+
+	it("chips a namespaced MCP command", () => {
+		const mcpFormatter = createKiloSlashFormatter(new Map([["mcp_everything:args-prompt", "mcp"]]));
+
+		expect(mcpFormatter.parse("/mcp_everything:args-prompt hello")).toEqual([
+			{
+				kind: "mention",
+				type: "mcp",
+				label: "mcp_everything:args-prompt",
+				id: "mcp_everything:args-prompt",
+			},
+			{ kind: "text", text: " hello" },
 		]);
 	});
 
@@ -161,6 +181,14 @@ describe("slashCommandFromPromptArgs", () => {
 		).toEqual({ command: "init", arguments: "write AGENTS.md" });
 	});
 
+	it("extracts a known namespaced MCP command", () => {
+		expect(
+			slashCommandFromPromptArgs({ text: "/mcp_everything:args-prompt hello" }, [
+				"mcp_everything:args-prompt",
+			]),
+		).toEqual({ command: "mcp_everything:args-prompt", arguments: "hello" });
+	});
+
 	it("ignores unknown names and non-slash text", () => {
 		expect(
 			slashCommandFromPromptArgs({ parts: [{ type: "text", text: "/unknown" }] }, ["init"]),
@@ -175,38 +203,5 @@ describe("slashCommandFromPromptArgs", () => {
 
 	it("reads a bare text field", () => {
 		expect(extractPromptText({ text: "/compact" })).toBe("/compact");
-	});
-});
-
-describe("slashDisplayText", () => {
-	const cossTemplate = [
-		"# coss ui coss ui is a component library built on Base UI",
-		"## What this skill is for Use this skill to:",
-	].join("\n");
-
-	const commands = [
-		{ name: "coss", template: cossTemplate },
-		{ name: "init", template: "Initialize the project with $ARGUMENTS" },
-	];
-
-	it("collapses an expanded skill body back to /name", () => {
-		expect(slashDisplayText(cossTemplate, commands)).toBe("/coss");
-	});
-
-	it("keeps appended arguments after the skill body", () => {
-		expect(slashDisplayText(`${cossTemplate}\n\nwhat is this skill`, commands)).toBe(
-			"/coss what is this skill",
-		);
-	});
-
-	it("restores $ARGUMENTS substitution", () => {
-		expect(slashDisplayText("Initialize the project with write AGENTS.md", commands)).toBe(
-			"/init write AGENTS.md",
-		);
-	});
-
-	it("leaves ordinary prompts and already-slash drafts unchanged", () => {
-		expect(slashDisplayText("hello", commands)).toBe("hello");
-		expect(slashDisplayText("/coss what is this skill", commands)).toBe("/coss what is this skill");
 	});
 });

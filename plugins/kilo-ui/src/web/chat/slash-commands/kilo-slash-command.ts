@@ -1,5 +1,6 @@
 import type { Unstable_DirectiveFormatter, Unstable_DirectiveSegment } from "@assistant-ui/react";
-import type { Command } from "@kilocode/sdk/v2/client";
+
+import type { KiloCommandCatalogEntry } from "./use-kilo-command-catalog.js";
 
 export type SlashDraft = {
 	command: string;
@@ -32,8 +33,8 @@ export function slashSourceCategory(source: string | undefined): SlashSourceCate
 	return "command";
 }
 
-const SLASH_DRAFT = /^\/([A-Za-z][\w-]*)(?:\s+([\s\S]*))?$/;
-const LEADING_SLASH_TOKEN = /^\/([A-Za-z][\w-]*)/;
+const SLASH_DRAFT = /^\/([A-Za-z][\w:-]*)(?:\s+([\s\S]*))?$/;
+const LEADING_SLASH_TOKEN = /^\/([A-Za-z][\w:-]*)/;
 const LEADING_SLASH_QUERY = /^\/\S*$/;
 
 export function parseSlashDraft(text: string): SlashDraft | undefined {
@@ -80,7 +81,7 @@ export function createKiloSlashFormatter(
 	};
 }
 
-export function mapKiloCommand(command: Command): KiloSlashCommandFields {
+export function mapKiloCommand(command: KiloCommandCatalogEntry): KiloSlashCommandFields {
 	return {
 		id: command.name,
 		label: command.name,
@@ -126,59 +127,4 @@ export function slashCommandFromPromptArgs(
 	const parsed = parseSlashDraft(extractPromptText(args));
 	if (!parsed || !knownNames.includes(parsed.command)) return undefined;
 	return parsed;
-}
-
-const ARGUMENTS_TOKEN = "$ARGUMENTS";
-const MIN_TEMPLATE_ANCHOR = 8;
-
-export type SlashTemplate = {
-	name: string;
-	template: string;
-};
-
-function formatSlashDraft(draft: SlashDraft): string {
-	return draft.arguments ? `/${draft.command} ${draft.arguments}` : `/${draft.command}`;
-}
-
-function matchExpandedTemplate(
-	text: string,
-	template: string,
-	name: string,
-): SlashDraft | undefined {
-	if (template.includes(ARGUMENTS_TOKEN)) {
-		const index = template.indexOf(ARGUMENTS_TOKEN);
-		const prefix = template.slice(0, index);
-		const suffix = template.slice(index + ARGUMENTS_TOKEN.length);
-		if (prefix.length + suffix.length < MIN_TEMPLATE_ANCHOR) return undefined;
-		if (!text.startsWith(prefix) || !text.endsWith(suffix)) return undefined;
-		if (text.length < prefix.length + suffix.length) return undefined;
-		const argumentsText = text.slice(prefix.length, text.length - suffix.length).trim();
-		return { command: name, arguments: argumentsText };
-	}
-	if (template.length >= MIN_TEMPLATE_ANCHOR && text.startsWith(template)) {
-		return {
-			command: name,
-			arguments: text.slice(template.length).trim(),
-		};
-	}
-	return undefined;
-}
-
-/** Collapse a `session.command` expanded body back to `/name args` for chips. */
-export function slashDisplayText(text: string, commands: readonly SlashTemplate[]): string {
-	const trimmed = text.trim();
-	if (!trimmed || commands.length === 0) return text;
-	if (parseSlashDraft(trimmed)) return text;
-
-	let best: { draft: SlashDraft; score: number } | undefined;
-	for (const command of commands) {
-		const template = command.template.trim();
-		if (!template) continue;
-		const draft = matchExpandedTemplate(trimmed, template, command.name);
-		if (!draft) continue;
-		if (!best || template.length > best.score) {
-			best = { draft, score: template.length };
-		}
-	}
-	return best ? formatSlashDraft(best.draft) : text;
 }

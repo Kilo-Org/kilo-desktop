@@ -4,10 +4,15 @@ import type { Command } from "@kilocode/sdk/v2/client";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
 
+export type KiloCommandCatalogEntry = Pick<
+	Command,
+	"name" | "description" | "agent" | "model" | "source" | "hints"
+>;
+
 export async function fetchCommandCatalogForConnection(
 	connection: KiloGlobalConnection | undefined,
 	directory: string | undefined,
-): Promise<Command[]> {
+): Promise<KiloCommandCatalogEntry[]> {
 	if (!connection) {
 		throw new Error("Cannot fetch commands before Kilo is connected");
 	}
@@ -17,7 +22,14 @@ export async function fetchCommandCatalogForConnection(
 		{ directory: resolvedDirectory },
 		{ throwOnError: true },
 	);
-	return (data ?? []) as Command[];
+	return (data ?? []).map(({ name, description, agent, model, source, hints }) => ({
+		name,
+		...(description !== undefined ? { description } : {}),
+		...(agent !== undefined ? { agent } : {}),
+		...(model !== undefined ? { model } : {}),
+		...(source !== undefined ? { source } : {}),
+		hints,
+	}));
 }
 
 export function useKiloCommandCatalog(

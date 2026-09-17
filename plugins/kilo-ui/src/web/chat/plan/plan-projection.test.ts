@@ -356,4 +356,9 @@ describe("shouldExcludeToolCallFromActivityGroup", () => {
 			}),
 		).toBe(false);
 	});
+
+	it("excludes task-list lifecycle calls", () => {
+		expect(shouldExcludeToolCallFromActivityGroup({ toolName: "todowrite" })).toBe(true);
+		expect(shouldExcludeToolCallFromActivityGroup({ toolName: "todoread" })).toBe(true);
+	});
 });

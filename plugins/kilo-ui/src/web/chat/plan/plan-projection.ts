@@ -182,6 +182,8 @@ export function shouldExcludeToolCallFromActivityGroup(
 	options?: { hiddenPlanCallIds?: ReadonlySet<string> | undefined },
 ): boolean {
 	if (part.toolCallId && options?.hiddenPlanCallIds?.has(part.toolCallId)) return true;
+	const toolName = part.toolName?.toLowerCase();
+	if (toolName === "todowrite" || toolName === "todoread") return true;
 	if (part.toolName === "plan_exit") return true;
 	if (part.toolName !== "write" && part.toolName !== "edit") return false;
 	const args = asRecord(part.args);

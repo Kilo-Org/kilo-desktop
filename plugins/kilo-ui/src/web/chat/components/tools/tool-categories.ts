@@ -187,6 +187,7 @@ export const getActivityKind = (part: ActivityPart): ActivityKind | undefined =>
 	if (part.type === "reasoning") return "thinking";
 	if (part.type === "tool-call") {
 		if (!part.toolName) return "tools";
+		if (["todowrite", "todoread"].includes(part.toolName.toLowerCase())) return undefined;
 		const category = getToolCategory(part.toolName);
 		if (category) return category;
 		const mcp = getMcpServerFromToolName(part.toolName);

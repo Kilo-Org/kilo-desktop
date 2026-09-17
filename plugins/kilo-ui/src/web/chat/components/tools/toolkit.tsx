@@ -12,6 +12,7 @@ import {
 	SkillTool,
 	SuggestTool,
 	TaskTool,
+	TaskListTool,
 	WebFetchTool,
 	WebSearchTool,
 	WriteTool,
@@ -51,4 +52,6 @@ export default defineToolkit({
 	suggest: { type: "backend", render: SuggestTool },
 	skill: { type: "backend", render: SkillTool },
 	task: { type: "backend", render: TaskTool },
+	todowrite: { type: "backend", render: TaskListTool },
+	todoread: { type: "backend", render: TaskListTool },
 });

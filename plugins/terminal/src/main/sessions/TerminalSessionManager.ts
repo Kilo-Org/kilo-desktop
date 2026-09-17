@@ -38,6 +38,7 @@ interface Session {
 	rows: number;
 	status: TerminalStatus;
 	history: string;
+	acceptedInputCount: number;
 	pendingControlSequence: string;
 	exitCode: number | null;
 	exitSignal: number | null;
@@ -69,10 +70,12 @@ export interface TerminalSessionManagerOptions {
  * shell. An omitted cwd preserves an existing session's workspace; only an
  * explicit cwd can replace it. The manager is the only layer allowed to spawn,
  * inspect, or signal PTYs; explicit close and app teardown share the same lifecycle.
- * Pending session creation is coordinated with close and teardown so a delayed
- * attachment cannot resurrect a terminal after its owner has gone away. History
- * writes are serialized per file and atomically replaced so debounced output,
- * explicit close, and teardown cannot commit stale snapshots out of order.
+ * Accepted input is sequenced by the session so renderer reconnects retain a
+ * monotonic acknowledgement boundary. Pending session creation is coordinated
+ * with close and teardown so a delayed attachment cannot resurrect a terminal
+ * after its owner has gone away. History writes are serialized per file and
+ * atomically replaced so debounced output, explicit close, and teardown cannot
+ * commit stale snapshots out of order.
  */
 export class TerminalSessionManager {
 	readonly #sessions = new Map<string, Session>();
@@ -206,6 +209,7 @@ export class TerminalSessionManager {
 			rows: args.rows,
 			status: "starting",
 			history,
+			acceptedInputCount: 0,
 			pendingControlSequence: "",
 			exitCode: null,
 			exitSignal: null,
@@ -268,7 +272,12 @@ export class TerminalSessionManager {
 					if (!session.process || session.status !== "running")
 						throw new Error("The shell is not running.");
 					session.process.write(message.data);
+					session.acceptedInputCount += 1;
 					this.#ack(subscriber, message.requestId);
+					this.#broadcast(session, {
+						type: "input-accepted",
+						count: session.acceptedInputCount,
+					});
 					break;
 				case "resize":
 					session.cols = message.cols;
@@ -417,6 +426,7 @@ export class TerminalSessionManager {
 			status: session.status,
 			cwd: session.cwd,
 			history: session.history,
+			acceptedInputCount: session.acceptedInputCount,
 			exitCode: session.exitCode,
 			exitSignal: session.exitSignal,
 			label: sessionLabel(session),

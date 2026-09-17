@@ -50,7 +50,6 @@ const toolPart = (
 
 const readPart = (id: string, path: string) => toolPart(id, "read", { file_path: path });
 const skillPart = (id: string, name: string) => toolPart(id, "skill", { name });
-const planningPart = (id: string, toolName: "todowrite" | "todoread") => toolPart(id, toolName, {});
 const taskPart = (
 	id: string,
 	args: { description?: string; prompt?: string; subagent_type?: string },
@@ -320,41 +319,6 @@ describe("Subagent activity subgroup", () => {
 		await waitFor(() => {
 			expect(queryByText("Explore auth")).toBeNull();
 			expect(queryByText("Review the patch")).toBeNull();
-		});
-	});
-});
-
-describe("Planning activity subgroup", () => {
-	it("renders one plan update as a single non-collapsible line", () => {
-		const { baseElement, queryByRole } = renderActivity(
-			"planning",
-			[planningPart("call-1", "todowrite")],
-			ToolCallFallback,
-		);
-
-		expect(baseElement.textContent?.trim()).toBe("1 plan update");
-		expect(queryByRole("button")).toBeNull();
-	});
-
-	it("collapses multiple plan updates and lets the user toggle them", async () => {
-		const { getByRole, getByText, queryByText } = renderActivity(
-			"planning",
-			[planningPart("call-1", "todowrite"), planningPart("call-2", "todoread")],
-			ToolCallFallback,
-		);
-		const trigger = getByRole("button", { name: "2 plan updates" });
-
-		expect(queryByText("todowrite")).toBeNull();
-		expect(queryByText("todoread")).toBeNull();
-
-		fireEvent.click(trigger);
-		expect(getByText("todowrite")).toBeDefined();
-		expect(getByText("todoread")).toBeDefined();
-
-		fireEvent.click(trigger);
-		await waitFor(() => {
-			expect(queryByText("todowrite")).toBeNull();
-			expect(queryByText("todoread")).toBeNull();
 		});
 	});
 });

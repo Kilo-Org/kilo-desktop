@@ -38,7 +38,6 @@ export class TerminalFrameController {
 	#fitAddon: FitAddon | null = null;
 	#port: MessagePort | null = null;
 	#snapshotReceived = false;
-	#acceptedInputCount = 0;
 	#disposeData: { dispose(): void } | null = null;
 	#disposeResize: { dispose(): void } | null = null;
 	#disposeScroll: { dispose(): void } | null = null;
@@ -326,6 +325,7 @@ export class TerminalFrameController {
 			case "snapshot":
 				this.#publishLabel(message.label);
 				this.#setStatus(message.status, message.exitCode, message.exitSignal);
+				this.#elements.container.dataset.acceptedInputCount = String(message.acceptedInputCount);
 				if (message.history) {
 					this.#fitAddon?.fit();
 					this.#terminal.write(message.history);
@@ -348,6 +348,9 @@ export class TerminalFrameController {
 				this.#scheduleScrollbarSync();
 				this.#elements.accessibleOutput.textContent = "";
 				break;
+			case "input-accepted":
+				this.#elements.container.dataset.acceptedInputCount = String(message.count);
+				break;
 			case "label":
 				this.#publishLabel(message.label);
 				break;
@@ -362,9 +365,6 @@ export class TerminalFrameController {
 				if (button) {
 					button.disabled = false;
 					this.#pendingCommands.delete(message.requestId);
-				} else if (message.ok && message.requestId.startsWith("input-")) {
-					this.#acceptedInputCount += 1;
-					this.#elements.container.dataset.acceptedInputCount = String(this.#acceptedInputCount);
 				}
 				if (!message.ok) this.#showError(message.error ?? "The terminal command failed.");
 				break;

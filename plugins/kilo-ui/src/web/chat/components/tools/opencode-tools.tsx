@@ -36,3 +36,7 @@ AskQuestionTool.displayName = "AskQuestionTool";
 /** Suggestions surface only in the composer SuggestBar. */
 export const SuggestTool: ToolCallMessagePartComponent = memo(() => null);
 SuggestTool.displayName = "SuggestTool";
+
+/** Task-list calls are projected into the current working list above the composer. */
+export const TaskListTool: ToolCallMessagePartComponent = memo(() => null);
+TaskListTool.displayName = "TaskListTool";

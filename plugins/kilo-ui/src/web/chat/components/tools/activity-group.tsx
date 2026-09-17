@@ -115,9 +115,14 @@ const ActivityIconStack: FC<{
 	const overflow = items.length > MAX_VISIBLE_ICONS;
 	const visible = overflow ? items.slice(-MAX_VISIBLE_ICONS) : items;
 	return (
-		<AvatarGroup className={className}>
+		<AvatarGroup
+			className={cn(
+				"*:data-[slot=avatar]:ring-[var(--pane-surface,var(--color-background))]",
+				className,
+			)}
+		>
 			{overflow ? (
-				<AvatarGroupCount className="size-6.5 text-xs">
+				<AvatarGroupCount className="size-6.5 text-xs ring-[var(--pane-surface,var(--color-background))]">
 					+{items.length - MAX_VISIBLE_ICONS}
 				</AvatarGroupCount>
 			) : null}

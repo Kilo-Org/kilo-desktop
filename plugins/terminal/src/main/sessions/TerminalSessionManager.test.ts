@@ -145,6 +145,26 @@ describe("TerminalSessionManager", () => {
 		await manager.dispose();
 	});
 
+	it("preserves the accepted input sequence across renderer reconnects", async () => {
+		const { args, manager } = await setup();
+		const first = new FakePort();
+		await manager.attach(first, args);
+		first.emit("message", { data: { type: "input", requestId: "input-1", data: "a" } });
+		first.emit("message", { data: { type: "input", requestId: "input-2", data: "b" } });
+		expect(first.messages).toContainEqual({ type: "input-accepted", count: 2 });
+		first.close();
+
+		const reconnectArgs = { ...args };
+		delete reconnectArgs.cwd;
+		const reconnect = new FakePort();
+		await manager.attach(reconnect, reconnectArgs);
+		expect(reconnect.messages[0]).toMatchObject({
+			type: "snapshot",
+			acceptedInputCount: 2,
+		});
+		await manager.dispose();
+	});
+
 	it("starts new terminals at home without cwd and still allows explicit workspace replacement", async () => {
 		const { args, manager, processes, spawn } = await setup();
 		try {

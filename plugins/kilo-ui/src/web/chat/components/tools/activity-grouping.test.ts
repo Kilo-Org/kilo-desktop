@@ -29,6 +29,12 @@ describe("createActivityGroupBy", () => {
 		expect(groupPaths([toolPart("suggest-1", "suggest")])).toEqual([[]]);
 	});
 
+	it("treats projected task-list calls as hidden activity structure", () => {
+		expect(
+			groupPaths([toolPart("todo-write", "todowrite"), toolPart("todo-read", "todoread")]),
+		).toEqual([["group-activity"], ["group-activity"]]);
+	});
+
 	it("keeps same-kind tools grouped across hidden OpenCode step boundaries", () => {
 		const parts = [
 			toolPart("web-1", "websearch"),
@@ -79,6 +85,25 @@ describe("createActivityGroupBy", () => {
 });
 
 describe("createTurnWorkGroupBy", () => {
+	it("keeps work in one turn fold across projected task-list updates", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			toolPart("todo-1", "todowrite"),
+			toolPart("read-2", "read"),
+			toolPart("todo-2", "todowrite"),
+			textPart("Final answer"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-reading"],
+			[],
+		]);
+	});
+
 	it("does not create a worked fold for hidden lifecycle parts alone", () => {
 		const parts = [
 			dataPart("opencode-step-finish"),

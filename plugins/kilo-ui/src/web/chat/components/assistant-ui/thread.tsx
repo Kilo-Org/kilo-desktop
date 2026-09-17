@@ -118,6 +118,7 @@ import {
 import { useChatModelSelection } from "../../model-selection/ChatModelSelectionContext.js";
 import { isKiloGatewayProvider } from "../../model-selection/model-catalog.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
+import { ComposerTaskList } from "../../tasks/ComposerTaskList.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
 import { usePendingKiloSuggestion } from "../../suggestions/KiloSuggestionContext.js";
 import {
@@ -668,6 +669,7 @@ const Composer: FC = () => {
 				className="aui-composer-root relative flex w-full flex-col gap-2"
 				onSubmit={handleSubmit}
 			>
+				<ComposerTaskList />
 				<ComposerQueue steerOnEnter={steerQueueOnEnter} />
 				<ComposerPrimitive.AttachmentDropzone
 					render={
@@ -979,7 +981,10 @@ const AssistantWorkingIndicator: FC = () => {
 			role="status"
 			aria-label={label}
 		>
-			<AvatarGroup aria-hidden className="-space-x-1">
+			<AvatarGroup
+				aria-hidden
+				className="-space-x-1 *:data-[slot=avatar]:ring-[var(--pane-surface,var(--color-background))]"
+			>
 				<Avatar className="size-6.5">
 					<AvatarFallback className="border-2 border-transparent">
 						<span className="grid grid-cols-[repeat(3,3px)] gap-[2.5px]">

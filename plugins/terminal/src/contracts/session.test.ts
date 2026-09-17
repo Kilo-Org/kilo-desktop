@@ -58,10 +58,14 @@ describe("terminal session wire contract", () => {
 				status: "running",
 				cwd: "/workspace",
 				history: "ready\r\n",
+				acceptedInputCount: 4,
 				exitCode: null,
 				exitSignal: null,
 				label: "Terminal 1",
 			}).success,
+		).toBe(true);
+		expect(
+			terminalServerMessageSchema.safeParse({ type: "input-accepted", count: 5 }).success,
 		).toBe(true);
 		expect(terminalServerMessageSchema.safeParse({ type: "label", label: "vite" }).success).toBe(
 			true,

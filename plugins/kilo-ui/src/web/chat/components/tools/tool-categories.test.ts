@@ -17,6 +17,25 @@ import {
 	type ActivityPart,
 } from "./tool-categories.js";
 
+describe("task-list activity presentation", () => {
+	it("omits projected task-list calls from tool counts and icon stacks", () => {
+		const parts: ActivityPart[] = [
+			{ type: "reasoning", status: { type: "complete" } },
+			{ type: "tool-call", toolName: "todowrite", status: { type: "complete" } },
+			{ type: "tool-call", toolName: "read", status: { type: "complete" } },
+			{ type: "tool-call", toolName: "todoread", status: { type: "complete" } },
+		];
+
+		expect(parts.map(getActivityKind)).toEqual(["thinking", undefined, "reading", undefined]);
+		const summary = summarizeActivity(
+			parts,
+			parts.map((_, index) => index),
+		);
+		expect(summary.toolCount).toBe(1);
+		expect(summary.iconItems.map((item) => item.label)).toEqual(["Thinking", "Reading"]);
+	});
+});
+
 describe("getMcpServerFromToolName", () => {
 	it("extracts the server prefix from MCP-style tool names", () => {
 		expect(getMcpServerFromToolName("atlassian_getJiraIssue")).toBe("atlassian");

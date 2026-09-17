@@ -16,8 +16,11 @@ type ActivityNeighbors = {
 	after?: PartState | undefined;
 };
 
+const isProjectedTaskPart = (part: PartState): boolean =>
+	part.type === "tool-call" && ["todowrite", "todoread"].includes(part.toolName.toLowerCase());
+
 const isHiddenStructuralPart = (part: PartState): boolean =>
-	part.type === "data" && isHiddenOpenCodeDataPart(part.name);
+	(part.type === "data" && isHiddenOpenCodeDataPart(part.name)) || isProjectedTaskPart(part);
 
 const isActivityPart = (part: PartState): boolean =>
 	part.type === "reasoning" || part.type === "tool-call";
@@ -138,7 +141,7 @@ export const createTurnWorkGroupBy = (
 			!hasVisibleWork ||
 			index < 0 ||
 			(finalTextIndex >= 0 && index >= finalTextIndex) ||
-			shouldKeepPartOutsideActivity(part, context, options)
+			(shouldKeepPartOutsideActivity(part, context, options) && !isHiddenStructuralPart(part))
 		) {
 			return activityPath;
 		}

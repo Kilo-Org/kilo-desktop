@@ -384,7 +384,8 @@ function updatedSections(
  * Groups filtered session-list entries for the sidebar. Status grouping
  * partitions attention into its own first section. Workspace and updated
  * grouping keep those sessions in their folder/day, sorted to the top.
- * Pinned sessions are a separate first section in every mode.
+ * Pinned active sessions are a separate first section in every mode, while
+ * settled sessions always occupy the final shelf.
  */
 export function buildSessionListSections(args: {
 	entries: readonly SessionListViewEntry[];
@@ -411,11 +412,16 @@ export function buildSessionListSections(args: {
 			)
 		: [];
 	const rest = pullAttention ? rows.filter((row) => row.lifecycle !== "attention") : rows;
-	const pinned = sortRows(
-		rest.filter((row) => pinnedIds.has(pinKey(row))),
+	const settled = sortRows(
+		rest.filter((row) => row.lifecycle === "settled"),
 		args.view.ordering,
 	);
-	const unpinned = rest.filter((row) => !pinnedIds.has(pinKey(row)));
+	const unsettled = rest.filter((row) => row.lifecycle !== "settled");
+	const pinned = sortRows(
+		unsettled.filter((row) => pinnedIds.has(pinKey(row))),
+		args.view.ordering,
+	);
+	const unpinned = unsettled.filter((row) => !pinnedIds.has(pinKey(row)));
 
 	const sections: SessionListSection[] = [];
 	if (attention.length > 0) {
@@ -437,34 +443,29 @@ export function buildSessionListSections(args: {
 
 	switch (grouping) {
 		case "lifecycle": {
-			const active = sortRows(
-				unpinned.filter((row) => row.lifecycle !== "settled"),
-				args.view.ordering,
-			);
-			const settled = sortRows(
-				unpinned.filter((row) => row.lifecycle === "settled"),
-				args.view.ordering,
-			);
+			const active = sortRows(unpinned, args.view.ordering);
 			if (active.length > 0) {
 				sections.push({ key: "active", label: "Active", tone: "active", rows: toRows(active) });
 			}
-			if (settled.length > 0) {
-				sections.push({ key: "settled", label: "Settled", tone: "settled", rows: toRows(settled) });
-			}
-			return sections;
+			break;
 		}
-		case "workspace":
-			return [...sections, ...workspaceSections(unpinned, args.view.ordering)];
-		case "updated":
-			return [
-				...sections,
-				...updatedSections(unpinned, args.view.ordering, args.now ?? Date.now()),
-			];
+		case "workspace": {
+			sections.push(...workspaceSections(unpinned, args.view.ordering));
+			break;
+		}
+		case "updated": {
+			sections.push(...updatedSections(unpinned, args.view.ordering, args.now ?? Date.now()));
+			break;
+		}
 		default: {
 			const _exhaustive: never = grouping;
 			return _exhaustive;
 		}
 	}
+	if (settled.length > 0) {
+		sections.push({ key: "settled", label: "Settled", tone: "settled", rows: toRows(settled) });
+	}
+	return sections;
 }
 
 export function visibleShowFields(view: SessionListView): SessionListShowField[] {

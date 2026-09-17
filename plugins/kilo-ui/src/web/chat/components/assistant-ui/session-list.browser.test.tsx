@@ -629,7 +629,10 @@ describe("SessionList", () => {
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
 		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("session-list-settled-toggle"))
+			.toHaveAttribute("aria-expanded", "false");
+		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
 
 		await page.getByRole("menuitem", { name: "Collapse All" }).click();
 		await screen.getByRole("button", { name: "Session list options" }).click();

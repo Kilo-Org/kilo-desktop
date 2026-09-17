@@ -229,7 +229,7 @@ describe("buildSessionListSections", () => {
 		]);
 	});
 
-	it("groups by workspace with attention sessions at the top of their workspace", () => {
+	it("groups active chats by workspace and keeps settled chats in a final shelf", () => {
 		const sections = buildSessionListSections({
 			entries,
 			activityBySessionId,
@@ -240,9 +240,11 @@ describe("buildSessionListSections", () => {
 		expect(sections.map((section) => [section.key, section.label])).toEqual([
 			["workspace:ws-1", "Acme App"],
 			["workspace:ws-2", "Beta"],
+			["settled", "Settled"],
 		]);
-		expect(sections[0]?.rows.map((row) => row.id)).toEqual(["local-ses-3", "local-ses-1"]);
+		expect(sections[0]?.rows.map((row) => row.id)).toEqual(["local-ses-1"]);
 		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-4", "local-ses-2"]);
+		expect(sections[2]?.rows.map((row) => row.id)).toEqual(["local-ses-3"]);
 	});
 
 	it("does not use the unscoped session directory as a workspace group", () => {
@@ -297,29 +299,43 @@ describe("buildSessionListSections", () => {
 		).toEqual(["local-ses-4"]);
 	});
 
-	it("lifts pinned sessions above workspace groups", () => {
+	it("lifts active pinned sessions above workspace groups but keeps settled chats last", () => {
 		const sections = buildSessionListSections({
 			entries,
 			activityBySessionId,
 			workspaces,
 			view: { ...defaultView, grouping: "workspace" },
-			pinnedIds: new Set(["ses-1", "ses-4"]),
+			pinnedIds: new Set(["ses-1", "ses-3", "ses-4"]),
 		});
 
-		expect(sections.map((section) => section.key)).toEqual([
-			"pinned",
-			"workspace:ws-1",
-			"workspace:ws-2",
-		]);
+		expect(sections.map((section) => section.key)).toEqual(["pinned", "workspace:ws-2", "settled"]);
 		expect(sections.find((section) => section.key === "pinned")?.rows.map((row) => row.id)).toEqual(
 			["local-ses-4", "local-ses-1"],
 		);
 		expect(
-			sections.find((section) => section.key === "workspace:ws-1")?.rows.map((row) => row.id),
-		).toEqual(["local-ses-3"]);
-		expect(
 			sections.find((section) => section.key === "workspace:ws-2")?.rows.map((row) => row.id),
 		).toEqual(["local-ses-2"]);
+		expect(
+			sections.find((section) => section.key === "settled")?.rows.map((row) => row.id),
+		).toEqual(["local-ses-3"]);
+	});
+
+	it("keeps settled chats in a final shelf when grouping by updated time", () => {
+		const now = new Date(2026, 7, 18, 15, 0, 0).getTime();
+		const sections = buildSessionListSections({
+			entries: [entry("ses-active", 0), entry("ses-settled", 1, true)],
+			activityBySessionId: {
+				"ses-active": activity({ updatedAt: now }),
+				"ses-settled": activity({ updatedAt: now }),
+			},
+			workspaces,
+			view: { ...defaultView, grouping: "updated" },
+			now,
+		});
+
+		expect(sections.map((section) => section.key)).toEqual(["updated:today", "settled"]);
+		expect(sections[0]?.rows.map((row) => row.id)).toEqual(["local-ses-active"]);
+		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-settled"]);
 	});
 
 	it("groups by local calendar buckets and keeps attention in its day", () => {

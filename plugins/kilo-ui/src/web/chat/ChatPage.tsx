@@ -70,6 +70,7 @@ import {
 	DEFAULT_ARRANGEMENT,
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	resolveRightPanelSessionKey,
+	resolveVisibleRightPanelSessionKey,
 	selectSessionRightPanelState,
 	useRightPanelStore,
 	type RightPanelTab,
@@ -190,7 +191,18 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const detached = detachedPaneRequest(search);
 	const isDetached = detached !== null;
 	const effectiveRemoteId = detached?.sessionId ?? remoteId;
-	const sessionId = detached?.sessionId ?? resolveRightPanelSessionKey(remoteId, localThreadId);
+	const promotedSessionId =
+		detached?.sessionId ?? resolveRightPanelSessionKey(remoteId, localThreadId);
+	const prePromotionSessionId = resolveRightPanelSessionKey(undefined, localThreadId);
+	const sessionId = useRightPanelStore((state) =>
+		isDetached
+			? promotedSessionId
+			: resolveVisibleRightPanelSessionKey(
+					state.bySessionId,
+					promotedSessionId,
+					prePromotionSessionId,
+				),
+	);
 	const { activeWorkspaceId, workspaces } = useWorkspacesFeature();
 	const sessionWorkspaceId = useSessionActivity((state) =>
 		effectiveRemoteId ? state.sessions[effectiveRemoteId]?.workspaceId : undefined,

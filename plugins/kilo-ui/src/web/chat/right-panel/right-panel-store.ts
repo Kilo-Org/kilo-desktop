@@ -327,3 +327,20 @@ export function resolveRightPanelSessionKey(
 	if (localId?.trim()) return localId;
 	return DRAFT_RIGHT_PANEL_SESSION_KEY;
 }
+
+/**
+ * The session key the pane canvas should render right now. A remote session id
+ * arrives one commit before `moveSessionState` carries the pre-promotion bucket
+ * over; rendering the promoted key during that gap would unmount every open
+ * pane (destroying terminal iframe documents mid-session), so keep rendering
+ * the pre-promotion bucket until the promoted one exists.
+ */
+export function resolveVisibleRightPanelSessionKey(
+	bySessionId: Record<string, SessionRightPanelState>,
+	promotedKey: string,
+	prePromotionKey: string,
+): string {
+	if (promotedKey === prePromotionKey) return promotedKey;
+	if (bySessionId[promotedKey]) return promotedKey;
+	return bySessionId[prePromotionKey] ? prePromotionKey : promotedKey;
+}

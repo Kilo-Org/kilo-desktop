@@ -1156,6 +1156,33 @@ describe("ChatPage", () => {
 			.toHaveAttribute("aria-pressed", "false");
 	});
 
+	it("keeps contributed panes mounted while a submitted chat promotes to its remote session id", async () => {
+		const { baseElement, rerenderChatPage } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		useRightPanelStore.getState().openTab("draft", { id: "canvas.canvas", title: "Canvas" });
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
+		const before = baseElement.querySelector("[data-qa-id='test-canvas-panel']");
+		expect(before).not.toBeNull();
+
+		// The remote session id resolves one commit before the store move carries
+		// the draft's panes over; the pane content must not unmount in that gap.
+		assistantState.current.threadListItem.remoteId = "session-1";
+		rerenderChatPage();
+
+		await expect.element(screen.getByTestId("test-canvas-panel")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='test-canvas-panel']")).toBe(before);
+		expect(useRightPanelStore.getState().bySessionId.draft).toBeUndefined();
+		expect(
+			useRightPanelStore.getState().bySessionId["session-1"]?.tabs.map(({ title }) => title),
+		).toEqual(["Canvas 1"]);
+	});
+
 	it("expands a pane to fill the canvas without leaving the current arrangement", async () => {
 		const { baseElement } = renderChatPage();
 		const screen = page.elementLocator(baseElement);

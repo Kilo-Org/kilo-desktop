@@ -6,6 +6,7 @@ import {
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	persistedRightPanelState,
 	resolveRightPanelSessionKey,
+	resolveVisibleRightPanelSessionKey,
 	RIGHT_PANEL_STORAGE_KEY,
 	selectActiveRightPanelTab,
 	selectSessionRightPanelState,
@@ -25,6 +26,30 @@ describe("resolveRightPanelSessionKey", () => {
 		expect(resolveRightPanelSessionKey(undefined)).toBe(DRAFT_RIGHT_PANEL_SESSION_KEY);
 		expect(resolveRightPanelSessionKey(undefined, "local-1")).toBe("local-1");
 		expect(resolveRightPanelSessionKey("remote-1", "local-1")).toBe("remote-1");
+	});
+});
+
+describe("resolveVisibleRightPanelSessionKey", () => {
+	const withPanes = (key: string): Record<string, SessionRightPanelState> => ({
+		[key]: { activeTabId: null, tabs: [], planAnchorCallId: null, layoutJson: "{}" },
+	});
+
+	it("returns the promoted key when no promotion is in flight", () => {
+		expect(resolveVisibleRightPanelSessionKey({}, "local-1", "local-1")).toBe("local-1");
+	});
+
+	it("returns the promoted key once its bucket exists", () => {
+		const bySessionId = withPanes("remote-1");
+		expect(resolveVisibleRightPanelSessionKey(bySessionId, "remote-1", "draft")).toBe("remote-1");
+	});
+
+	it("keeps the pre-promotion key while the promoted bucket is still missing", () => {
+		const bySessionId = withPanes("draft");
+		expect(resolveVisibleRightPanelSessionKey(bySessionId, "remote-1", "draft")).toBe("draft");
+	});
+
+	it("targets the promoted key directly when neither bucket has state", () => {
+		expect(resolveVisibleRightPanelSessionKey({}, "remote-1", "draft")).toBe("remote-1");
 	});
 });
 

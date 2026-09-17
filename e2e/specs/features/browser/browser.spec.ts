@@ -8,6 +8,11 @@ test.describe("Chat browser tab @smoke", () => {
 		browserPage,
 		browserWorkspace,
 	}) => {
+		// First browser-pane spec on a cold runner pays for the browser guest session,
+		// partition init, kilo-server warmup, and composer handshake before the title
+		// assertion clock starts. Retries succeed in ~half the budget, so grant this
+		// spec a wider window instead of leaving it as the run's flake magnet.
+		test.slow();
 		const server = createServer((_request, response) => {
 			response.setHeader("Content-Type", "text/html");
 			response.end("<!doctype html><title>Browser Smoke Page</title><main>Loaded</main>");

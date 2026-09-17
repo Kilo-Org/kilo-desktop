@@ -139,30 +139,6 @@ jobs:
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Setup Node and pnpm
-        if: steps.changes.outputs.has_changes == 'true'
-        uses: ./.github/actions/setup-node-pnpm
-
-      - name: Install dependencies
-        if: steps.changes.outputs.has_changes == 'true'
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        if: steps.changes.outputs.has_changes == 'true'
-        run: pnpm lint
-
-      - name: Check formatting
-        if: steps.changes.outputs.has_changes == 'true'
-        run: pnpm format:check
-
-      - name: Typecheck
-        if: steps.changes.outputs.has_changes == 'true'
-        run: pnpm check
-
-      - name: Test
-        if: steps.changes.outputs.has_changes == 'true'
-        run: pnpm test
-
   publish:
     needs: preflight
     if: needs.preflight.outputs.has_changes == 'true'

@@ -413,7 +413,7 @@ export const SessionListContent = memo(function SessionListContent({
 							value={focus}
 							onValueChange={(id) => {
 								updateView({ focus: id });
-								if (id) setActiveWorkspaceId(id);
+								setActiveWorkspaceId(id);
 							}}
 						/>
 						{viewMenu}

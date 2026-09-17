@@ -1520,7 +1520,8 @@ describe("SessionList", () => {
 		await page.getByRole("option", { name: "All workspaces" }).click();
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
-		expect(setActiveWorkspaceId).toHaveBeenCalledTimes(1);
+		expect(setActiveWorkspaceId).toHaveBeenLastCalledWith(null);
+		expect(setActiveWorkspaceId).toHaveBeenCalledTimes(2);
 		await expect.element(workspaceFilter).toHaveTextContent("All workspaces");
 		const allIcon = workspaceFilter.element().querySelector("svg");
 		expect(allIcon?.classList.contains("lucide-layout-grid")).toBe(true);

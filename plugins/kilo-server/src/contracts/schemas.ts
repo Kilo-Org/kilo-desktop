@@ -22,7 +22,12 @@ export const kiloServerStatusSchema = z.discriminatedUnion("status", [
 		baseUrl: z.url(),
 		version: z.string().min(1),
 	}),
-	z.object({ status: z.literal("error"), message: z.string().min(1) }),
+	z.object({
+		status: z.literal("error"),
+		message: z.string().min(1),
+		/** Diagnostic detail from stderr when the server exits early. */
+		detail: z.string().min(1).optional(),
+	}),
 	z.object({ status: z.literal("unavailable"), message: z.string().min(1) }),
 ]);
 

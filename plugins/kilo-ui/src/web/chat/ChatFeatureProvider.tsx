@@ -12,6 +12,7 @@ import { navigateToChat } from "./chat-navigation.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { OpenCodeDataPart } from "./components/tools/opencode-data-part.js";
 import toolkit from "./components/tools/toolkit.js";
+import { KiloServerErrorToast } from "./KiloServerErrorToast.js";
 import { LocalModelLoadingToast } from "./LocalModelLoadingToast.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
@@ -413,6 +414,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 						</KiloSuggestionProvider>
 					</SessionActivityProvider>
 				</KiloAuthProvider>
+				<KiloServerErrorToast />
 			</ChatConnectionProvider>
 			<LocalModelLoadingToast models={catalogQuery.data?.models ?? []} />
 		</PierreDiffProvider>

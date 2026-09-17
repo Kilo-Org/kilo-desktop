@@ -36,7 +36,7 @@ import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";
 import type { ChatMarkdownExtensionContext } from "./chat-markdown-extensions.js";
 import { resolveChatWorkspace } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
-import { useChatConnection } from "./connection/ChatConnectionContext.js";
+
 import { ChatPaneCanvas } from "./pane-canvas/ChatPaneCanvas.js";
 import {
 	FILES_PANE_DEFINITION_ID,
@@ -180,7 +180,6 @@ export function ChatPageHeaderActions() {
  */
 export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const sdk = useSdk(KILO_UI_PLUGIN_ID);
-	const connection = useChatConnection();
 	const rightPanelDefinitions = useRightPanelTabDefinitions();
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
@@ -708,16 +707,6 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 					onCancel={() => setCloseRequest(null)}
 					onClose={closeRequestedTab}
 				/>
-			) : null}
-			{connection.isError ? (
-				<p
-					className="text-destructive-foreground px-6 pt-4 text-sm"
-					role="alert"
-					data-qa-id="kilo-chat-error"
-				>
-					Could not connect to Kilo:{" "}
-					{connection.error instanceof Error ? connection.error.message : String(connection.error)}
-				</p>
 			) : null}
 			{hasCanvas ? (
 				<div

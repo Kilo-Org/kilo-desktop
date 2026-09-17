@@ -27,19 +27,14 @@ import {
 	type WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
 import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvider.js";
-import {
-	ChatConnectionProvider,
-	type ChatConnectionStatus,
-	useChatConnection,
-} from "./connection/ChatConnectionContext.js";
+import { ChatConnectionProvider, useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
 import { ChatPage, ChatPageHeaderActions } from "./ChatPage.js";
 import {
 	FILES_EXPLORER_PANE_ID,
 	FILES_PANE_DEFINITION_ID,
 } from "./pane-canvas/default-workspace-files-pane.js";
-import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
-import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+
 import {
 	CHAT_RIGHT_PANEL_TAB_EXTENSION,
 	type ChatRightPanelContributionProps,
@@ -51,10 +46,7 @@ import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js
 import type * as KiloModelCatalogModule from "./model-selection/use-kilo-model-catalog.js";
 import { useChatModelSelection } from "./model-selection/ChatModelSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
-import {
-	ChatAgentSelectionProvider,
-	useChatAgentSelection,
-} from "./agent-selection/ChatAgentSelectionContext.js";
+import { useChatAgentSelection } from "./agent-selection/ChatAgentSelectionContext.js";
 import { KILO_PROVIDER_LIST_QUERY_KEY } from "../providers/provider-queries.js";
 import { HammerIcon, ListTodoIcon } from "lucide-react";
 import type * as ThreadModule from "./components/assistant-ui/thread.js";
@@ -399,67 +391,6 @@ describe("chat connection context", () => {
 		expect(() => renderHook(() => useChatConnection())).toThrow(
 			/useChatConnection requires ChatConnectionProvider/,
 		);
-	});
-});
-
-describe("ChatPage error rendering", () => {
-	function renderWithStatus(status: ChatConnectionStatus) {
-		const kiloUi = createFakeSdk({
-			featureId: "kilo-ui",
-			channels: { ...workspacesContract, ...kiloUiChatContract },
-			handlers: {
-				list: async () => [],
-				get: async () => null,
-				create: async () => workspace,
-				update: async () => workspace,
-				remove: async () => ({ deleted: true }),
-				"chat.getConnection": async () => connection,
-				"chat.prepareSession": async () => ({ directory: "/tmp/chat", workspaceFolders: [] }),
-			} satisfies Partial<WorkspacesService & KiloUiChatService>,
-		});
-		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": kiloUi } });
-		const queryClient = testClient();
-		const sessionActivity = createSessionActivityStore({ storage: null });
-		return render(
-			<SdkProvider system={system}>
-				<QueryClientProvider client={queryClient}>
-					<SidebarProvider>
-						<WorkspacesFeatureProvider>
-							<SessionActivityProvider store={sessionActivity}>
-								<ChatConnectionProvider status={status}>
-									<ChatAgentSelectionProvider
-										value={{
-											agent: "code",
-											setAgent: () => undefined,
-											catalog: undefined,
-											isCatalogPending: false,
-											isCatalogError: false,
-										}}
-									>
-										<ChatPage />
-									</ChatAgentSelectionProvider>
-								</ChatConnectionProvider>
-							</SessionActivityProvider>
-						</WorkspacesFeatureProvider>
-					</SidebarProvider>
-				</QueryClientProvider>
-			</SdkProvider>,
-		);
-	}
-
-	it("stringifies a non-Error connection failure in the banner", async () => {
-		const { baseElement } = renderWithStatus({
-			isPending: false,
-			isError: true,
-			// ChatPage defensively stringifies non-Error failures; force one past the Error | null type.
-			error: "raw string failure" as unknown as Error,
-			connectionPromise: new Promise<KiloGlobalConnection>(() => undefined),
-		});
-		const screen = page.elementLocator(baseElement);
-
-		await expect
-			.element(screen.getByText(/Could not connect to Kilo: raw string failure/))
-			.toBeVisible();
 	});
 });
 
@@ -932,7 +863,7 @@ describe("ChatPage", () => {
 		await expect.element(screen.getByTestId("kilo-chat-loading")).not.toBeInTheDocument();
 	});
 
-	it("shows an error banner when the connection fails but keeps the thread mounted", async () => {
+	it("keeps the thread mounted when the connection fails", async () => {
 		const { baseElement } = renderChatPage({
 			getConnection: async () => {
 				throw new FeatureError("Kilo Server requires the desktop app.", "BUSINESS");
@@ -940,10 +871,6 @@ describe("ChatPage", () => {
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByTestId("kilo-chat-error")).toBeVisible();
-		await expect
-			.element(screen.getByText(/Could not connect to Kilo: Kilo Server requires the desktop app/))
-			.toBeVisible();
 		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
 	});
 

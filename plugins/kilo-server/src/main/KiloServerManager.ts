@@ -4,7 +4,7 @@ import type { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 
 import { createObservableValue, FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
 import type { ObservableValue } from "@anaconda-agentic-desktop/feature-sdk/main";
@@ -107,16 +107,82 @@ function defaultSpawn(
 	}).nodeChildProcess as KiloChildProcess;
 }
 
-function safeErrorMessage(error: unknown, secrets: readonly string[] = []): string {
-	let message = error instanceof Error ? error.message : String(error);
+function redactSecrets(text: string, secrets: readonly string[]): string {
+	let result = text;
 	for (const secret of secrets) {
-		if (secret) message = message.replaceAll(secret, "[REDACTED]");
+		if (secret) result = result.replaceAll(secret, "[REDACTED]");
 	}
-	return message || "Kilo server failed.";
+	return result;
+}
+
+function safeErrorMessage(error: unknown, secrets: readonly string[] = []): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return redactSecrets(message, secrets) || "Kilo server failed.";
 }
 
 function delay(durationMs: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, durationMs));
+}
+
+const STDERR_MAX_LINES = 50;
+const STDERR_MAX_BYTES = 8_192;
+
+/**
+ * Captures a bounded amount of stderr output from the child process during
+ * startup. When the server exits early (e.g. due to a config validation
+ * error), the collected output is included in the error message so the user
+ * sees the root cause instead of a generic "failed to start" string.
+ */
+class StderrCollector {
+	readonly #lines: string[] = [];
+	#totalBytes = 0;
+	#capped = false;
+	readonly #stream: Readable;
+	readonly #rl: ReturnType<typeof createInterface>;
+
+	constructor(stream: Readable) {
+		this.#stream = stream;
+		this.#rl = createInterface({ input: stream });
+		this.#rl.on("line", (line) => {
+			if (this.#capped) return;
+			if (this.#lines.length >= STDERR_MAX_LINES || this.#totalBytes >= STDERR_MAX_BYTES) {
+				this.#capped = true;
+				return;
+			}
+			this.#lines.push(line);
+			this.#totalBytes += line.length;
+		});
+	}
+
+	/**
+	 * Stop listening and resume the underlying stream so the child process
+	 * does not stall on a full stderr pipe buffer during normal operation.
+	 */
+	stop(): void {
+		this.#rl.close();
+		this.#stream.resume();
+	}
+
+	/**
+	 * Return the collected lines joined by newlines, or an empty string if
+	 * nothing was captured. VT control characters (ANSI colors, bold, etc.)
+	 * are stripped so the output is readable in both log files and the
+	 * renderer's error toast.
+	 */
+	text(): string {
+		return stripVTControlCharacters(this.#lines.join("\n")).trim();
+	}
+}
+
+/**
+ * Append diagnostic stderr output to a startup error message. When the kilo
+ * CLI prints a config-validation or other early failure to stderr, this
+ * surfaces the root cause alongside the generic "failed to start" line so
+ * the user can fix their config without hunting through log files.
+ */
+function appendStderrContext(baseMessage: string, stderr: string): string {
+	if (!stderr) return baseMessage;
+	return `${baseMessage}\n${stderr}`;
 }
 
 /**
@@ -335,6 +401,7 @@ export class KiloServerManager {
 		const password = preferredPassword ?? randomBytes(32).toString("hex");
 		const authHeader = `Basic ${Buffer.from(`kilo:${password}`).toString("base64")}`;
 		let child: KiloChildProcess | undefined;
+		let stderrCollector: StderrCollector | undefined;
 		try {
 			await this.#ensureRuntimeDirectory();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
@@ -355,9 +422,12 @@ export class KiloServerManager {
 			}
 			this.#child = child;
 			this.#watchChild(child);
-			child.stderr?.resume();
+			stderrCollector = child.stderr ? new StderrCollector(child.stderr) : undefined;
+			if (!stderrCollector) child.stderr?.resume();
 
 			const baseUrl = await this.#waitForListeningUrl(child);
+			// Server is listening — stderr is no longer needed for diagnostics.
+			stderrCollector?.stop();
 			const version = await this.#waitForHealthy(baseUrl, authHeader);
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
 			if (!this.#options.allowVersionMismatch && version !== this.#options.expectedVersion) {
@@ -379,7 +449,9 @@ export class KiloServerManager {
 			this.#options.logger.info(`Ready at ${baseUrl} (version ${version}).`);
 			return this.#publicConnection(connection);
 		} catch (error) {
+			stderrCollector?.stop();
 			if (child) await this.#terminate(child);
+			const stderrOutput = redactSecrets(stderrCollector?.text() ?? "", [password, authHeader]);
 			const internalMessage = safeErrorMessage(error, [password, authHeader]);
 			const publicMessage =
 				error instanceof KiloOperationalError ? internalMessage : GENERIC_STARTUP_ERROR;
@@ -388,9 +460,14 @@ export class KiloServerManager {
 				this.#setStatus({ status: "stopped" });
 				throw new FeatureError("Kilo Code has shut down.", "BUSINESS");
 			}
-			this.#setStatus({ status: "error", message: publicMessage });
+			this.#setStatus({
+				status: "error",
+				message: publicMessage,
+				...(stderrOutput ? { detail: stderrOutput } : {}),
+			});
+			if (stderrOutput) this.#options.logger.error(stderrOutput);
 			this.#options.logger.error(internalMessage);
-			throw new FeatureError(publicMessage, "BUSINESS");
+			throw new FeatureError(appendStderrContext(publicMessage, stderrOutput), "BUSINESS");
 		}
 	}
 

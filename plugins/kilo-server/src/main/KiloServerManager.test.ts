@@ -324,6 +324,94 @@ describe("KiloServerManager", () => {
 		expect(logger.error).toHaveBeenCalledWith("spawn /Users/example/private/kilo ENOENT");
 	});
 
+	it("includes stderr output in the error status detail when the server exits before becoming ready", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const { manager, statuses } = createHarness({
+			spawn: () => {
+				const child = new FakeChild();
+				queueMicrotask(() => {
+					child.stderr.write(
+						"\x1b[91m\x1b[1mError: \x1b[0mConfiguration is invalid at /Users/marius/.config/kilo/kilo.jsonc\n",
+					);
+					child.stderr.write("↳ Unrecognized key: reasoning_display\n");
+					child.exit(1);
+				});
+				return child;
+			},
+			logger,
+		});
+
+		// The thrown FeatureError concatenates the base message and stderr.
+		await expect(manager.ensureRunning()).rejects.toMatchObject({
+			message: expect.stringContaining("Configuration is invalid"),
+		});
+		const lastStatus = statuses.at(-1) as {
+			status: string;
+			message?: string;
+			detail?: string;
+		};
+		expect(lastStatus.status).toBe("error");
+		// Base message stays concise in `message`; stderr goes to `detail`.
+		expect(lastStatus.message).toBe("Kilo server exited before becoming ready (code 1).");
+		expect(lastStatus.detail).toContain("Configuration is invalid");
+		expect(lastStatus.detail).toContain("Unrecognized key: reasoning_display");
+		// ANSI escape sequences should be stripped.
+		expect(lastStatus.detail).not.toContain("\x1b[");
+		// Stderr content should also be logged.
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("Configuration is invalid"));
+		manager.dispose();
+	});
+
+	it("sets stderr as detail in the error status for early process exits", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const { manager, statuses } = createHarness({
+			spawn: () => {
+				const child = new FakeChild();
+				queueMicrotask(() => {
+					child.stderr.write("fatal: unable to read config\n");
+					child.exit(2);
+				});
+				return child;
+			},
+			logger,
+		});
+
+		await expect(manager.ensureRunning()).rejects.toMatchObject({
+			message: expect.stringContaining("fatal: unable to read config"),
+		});
+		const lastStatus = statuses.at(-1) as {
+			status: string;
+			message?: string;
+			detail?: string;
+		};
+		expect(lastStatus.status).toBe("error");
+		expect(lastStatus.detail).toBe("fatal: unable to read config");
+		manager.dispose();
+	});
+
+	it("omits detail from the error status when stderr is silent", async () => {
+		const { manager, statuses } = createHarness({
+			spawn: () => {
+				const child = new FakeChild();
+				queueMicrotask(() => child.exit(1));
+				return child;
+			},
+		});
+
+		await expect(manager.ensureRunning()).rejects.toMatchObject({
+			message: "Kilo server exited before becoming ready (code 1).",
+		});
+		const lastStatus = statuses.at(-1) as {
+			status: string;
+			message?: string;
+			detail?: string;
+		};
+		expect(lastStatus.status).toBe("error");
+		expect(lastStatus.message).toBe("Kilo server exited before becoming ready (code 1).");
+		expect(lastStatus.detail).toBeUndefined();
+		manager.dispose();
+	});
+
 	it("clears a crashed connection and starts a fresh child on the next request", async () => {
 		const { manager, children, spawn, statuses } = createHarness();
 		const first = await manager.ensureRunning();

@@ -7,6 +7,7 @@
  */
 export const SHELL_ZONES = [
 	"sidebar",
+	"sidebar-account",
 	"sidebar-header-actions",
 	"status-bar",
 	"dashboard",
@@ -18,6 +19,8 @@ export type ShellZone = (typeof SHELL_ZONES)[number];
 
 /** Sidebar navigation region of the shell layout. */
 export const SIDEBAR_ZONE = "sidebar" satisfies ShellZone;
+/** Account dock at the bottom of the sidebar footer (sign-in / account menu). */
+export const SIDEBAR_ACCOUNT_ZONE = "sidebar-account" satisfies ShellZone;
 /** Actions aligned to the trailing edge of the sidebar title bar. */
 export const SIDEBAR_HEADER_ACTIONS_ZONE = "sidebar-header-actions" satisfies ShellZone;
 /** Slim status strip at the bottom of the shell layout. */

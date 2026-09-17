@@ -5,5 +5,6 @@ export { ChatFeatureProvider } from "./chat/ChatFeatureProvider.js";
 export { ChatPage, ChatPageHeaderActions, ChatPageHeaderLeading } from "./chat/ChatPage.js";
 export { OnboardingProvider } from "./onboarding/OnboardingProvider.js";
 export { SessionList } from "./chat/components/assistant-ui/session-list.js";
+export { SidebarKiloAccount } from "./account/SidebarKiloAccount.js";
 export { WorkspacesFeatureProvider } from "./workspaces/WorkspacesFeatureProvider.js";
 export { WorkspaceSelector } from "./workspaces/WorkspaceSelector.js";

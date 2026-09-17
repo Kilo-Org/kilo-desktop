@@ -1,31 +1,22 @@
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LogInIcon, LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
+import { SettingsIcon } from "lucide-react";
 
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ShellPageHeader } from "@/components/layout/ShellPageHeader";
 import { SidebarUpdatePill } from "@/components/updates/SidebarUpdatePill";
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
-import { getUserInitials } from "@/features/auth/getUserInitials";
-import { useAuthSession } from "@/features/auth/useAuthSession";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
 import { findPluginPage, type PluginPage } from "@/features/plugin-pages";
 import { isSettingsPath, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
-import { SIDEBAR_HEADER_ACTIONS_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
-import { useSdk, useTelemetry } from "@anaconda-agentic-desktop/sdk-react";
-import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuGroup,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
+	SIDEBAR_ACCOUNT_ZONE,
+	SIDEBAR_HEADER_ACTIONS_ZONE,
+} from "@anaconda-agentic-desktop/feature-sdk";
+import { useTelemetry } from "@anaconda-agentic-desktop/sdk-react";
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
 import {
 	Sidebar,
 	SidebarContent,
@@ -38,7 +29,6 @@ import {
 	SidebarMenuItem,
 	SidebarProvider,
 } from "@anaconda-agentic-desktop/ui/components/sidebar";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
 import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
 
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
@@ -111,92 +101,12 @@ function SidebarSettingsAction({ inline = false }: { inline?: boolean }) {
 	);
 }
 
-function SidebarAccountDock({
-	session,
-	onLogin,
-	onLogout,
-}: {
-	session: ReturnType<typeof useAuthSession>;
-	onLogin: () => void;
-	onLogout: () => void;
-}) {
-	if (session.status !== "authenticated") {
-		return (
-			<div className="flex items-center gap-1" data-qa-id="anonymous-account-dock">
-				<Button
-					type="button"
-					aria-label="Sign In"
-					className="min-w-0 flex-1"
-					onClick={onLogin}
-					data-qa-id="account-login"
-				>
-					<LogInIcon data-icon="inline-start" />
-					Sign In
-				</Button>
-				<SidebarSettingsAction inline />
-			</div>
-		);
-	}
-
-	const initials = getUserInitials(session.user);
-	const accountName =
-		[session.user.firstName?.trim(), session.user.lastName?.trim()].filter(Boolean).join(" ") ||
-		session.user.username?.trim() ||
-		"Anaconda user";
-	const accountEmail = session.user.email?.trim();
-
+function SidebarAccountDock() {
 	return (
-		<SidebarMenu>
-			<SidebarMenuItem className="has-data-open:bg-foreground/5 hover:bg-foreground/5 rounded-md transition-colors">
-				<DropdownMenu>
-					<DropdownMenuTrigger
-						render={
-							<SidebarMenuButton
-								aria-label={`Account menu for ${accountName}`}
-								size="lg"
-								className="data-open:text-sidebar-accent-foreground w-full min-w-0 gap-2.5 pr-12 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
-								data-qa-id="account-menu"
-							/>
-						}
-					>
-						<Avatar className="size-7">
-							<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-						</Avatar>
-						<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-							<span className="truncate font-medium">{accountName}</span>
-							{accountEmail && (
-								<span className="text-muted-foreground truncate text-xs">{accountEmail}</span>
-							)}
-						</div>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
-						<DropdownMenuGroup>
-							<DropdownMenuLabel className="p-0 font-normal">
-								<div className="flex items-center gap-2.5 px-1 py-1.5 text-left text-sm">
-									<Avatar>
-										<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
-									</Avatar>
-									<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-										<span className="truncate font-medium">{accountName}</span>
-										{accountEmail && (
-											<span className="text-muted-foreground truncate text-xs">{accountEmail}</span>
-										)}
-									</div>
-								</div>
-							</DropdownMenuLabel>
-						</DropdownMenuGroup>
-						<DropdownMenuSeparator />
-						<DropdownMenuGroup>
-							<DropdownMenuItem onClick={onLogout}>
-								<LogOutIcon />
-								Log out
-							</DropdownMenuItem>
-						</DropdownMenuGroup>
-					</DropdownMenuContent>
-				</DropdownMenu>
-				<SidebarSettingsAction />
-			</SidebarMenuItem>
-		</SidebarMenu>
+		<div className="flex items-center gap-1">
+			<ZoneOutlet zone={SIDEBAR_ACCOUNT_ZONE} className="flex min-w-0 flex-1 items-center" />
+			<SidebarSettingsAction inline />
+		</div>
 	);
 }
 
@@ -235,14 +145,12 @@ export function AppSidebarLayout({
 	const location = useRouterState({ select: (state) => state.location });
 	const pathname = location.pathname;
 	// PAGE_VISIT is a shell-level, cross-feature concern, so it uses the
-	// untagged useTelemetry() hook rather than the "auth" sdk instance below.
+	// untagged useTelemetry() hook rather than a feature-scoped sdk instance.
 	const { track } = useTelemetry();
 	useEffect(() => {
 		void track({ event: "PAGE_VISIT", data: { path: pathname } });
 	}, [pathname, track]);
 
-	const session = useAuthSession();
-	const sdk = useSdk("auth");
 	// Filter nav entries against the current feature-flag map so a plugin
 	// that declares `contributes.nav[].featureFlag` disappears from the
 	// sidebar the instant its flag flips off — without unregistering the
@@ -260,27 +168,6 @@ export function AppSidebarLayout({
 	const sidebarProviderStyle = {
 		"--shell-sidebar-toggle-left": resolveSidebarToggleLeft(),
 	} as CSSProperties;
-
-	// The OAuth flow leaves the app (system browser), so there is no useful
-	// in-app pending state to show; the button simply unmounts once the session
-	// becomes authenticated (and stays put on failure so the user can retry).
-	const handleLogin = async (): Promise<void> => {
-		const next = await sdk.auth.login();
-		if (next.status === "error") {
-			toast.error("Sign-in failed", { description: next.reason });
-			return;
-		}
-		void sdk.telemetry.track({ event: "LOGGED_IN" });
-	};
-
-	const handleLogout = async (): Promise<void> => {
-		const next = await sdk.auth.logout();
-		if (next.status === "error") {
-			toast.error("Sign-out failed", { description: next.reason });
-			return;
-		}
-		void sdk.telemetry.track({ event: "LOGGED_OUT" });
-	};
 
 	return (
 		<TooltipProvider>
@@ -334,15 +221,7 @@ export function AppSidebarLayout({
 					</SidebarContent>
 					<SidebarFooter className="gap-2 px-2 pb-3">
 						<SidebarUpdatePill />
-						<SidebarAccountDock
-							session={session}
-							onLogin={() => {
-								void handleLogin();
-							}}
-							onLogout={() => {
-								void handleLogout();
-							}}
-						/>
+						<SidebarAccountDock />
 					</SidebarFooter>
 				</Sidebar>
 				{/* Keep overflow off SidebarInset — Electron ignores drag regions inside

@@ -36,6 +36,12 @@
 				"component": "SessionList",
 				"label": "Chats",
 				"priority": 10
+			},
+			{
+				"zone": "sidebar-account",
+				"component": "SidebarKiloAccount",
+				"label": "Kilo account",
+				"priority": 10
 			}
 		],
 		"settings": [

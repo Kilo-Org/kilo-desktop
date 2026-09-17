@@ -206,79 +206,52 @@ function contributeFakeNewChat(system: ReturnType<typeof createAppFeatureSystem>
 	});
 }
 
-describe("AppSidebarLayout login button", () => {
+function FakeAccountDock() {
+	return (
+		<button type="button" data-qa-id="fake-account-dock">
+			Fake account
+		</button>
+	);
+}
+
+function contributeFakeAccountDock(system: ReturnType<typeof createAppFeatureSystem>) {
+	system.getSdk("demo").contribute("sidebar-account", {
+		id: "fake-account-dock",
+		label: "Account",
+		priority: 10,
+		component: FakeAccountDock,
+	});
+}
+
+describe("AppSidebarLayout account dock", () => {
 	afterEach(cleanup);
 
-	it("shows Settings and Sign In in the sidebar footer when anonymous", async () => {
-		renderLayout(fakeLocalApi({ status: "anonymous" }));
+	it("renders sidebar-account zone contributions in the footer next to the settings gear", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }), "/", contributeFakeAccountDock);
 
 		const sidebar = page.getByTestId("app-sidebar");
-		const accountDock = sidebar.getByTestId("anonymous-account-dock");
-		await expect.element(accountDock).toBeVisible();
-		expect(
-			accountDock.element().contains(page.getByRole("button", { name: "Sign In" }).element()),
-		).toBe(true);
-		expect(accountDock.element().contains(sidebar.getByTestId("nav-settings").element())).toBe(
-			true,
-		);
+		await expect.element(page.getByTestId("fake-account-dock")).toBeVisible();
+		await expect.element(sidebar.getByTestId("nav-settings")).toBeVisible();
 		await expect.element(page.getByTestId("shell-anonymous-actions")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
 	});
 
-	it("replaces the anonymous account dock with the authenticated account menu", async () => {
-		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
+	it("keeps the settings gear in the footer when no account is contributed", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }));
 
-		// Give the async auth delegate a tick to resolve to authenticated.
-		await expect.element(page.getByTestId("account-menu")).toBeInTheDocument();
-		await expect.element(page.getByTestId("anonymous-account-dock")).not.toBeInTheDocument();
+		const sidebar = page.getByTestId("app-sidebar");
+		await expect.element(sidebar.getByTestId("nav-settings")).toBeVisible();
+		// The zone outlet renders nothing while no plugin contributes a dock.
+		expect(document.querySelector('[data-qa-id="zone-sidebar-account"]')).toBeNull();
 		await expect.element(page.getByRole("button", { name: "Sign In" })).not.toBeInTheDocument();
-		await expect.element(page.getByTestId("app-sidebar").getByTestId("nav-settings")).toBeVisible();
 	});
 
-	it("opens settings from the embedded gear without opening the account menu", async () => {
-		renderLayout(fakeLocalApi({ status: "authenticated", user: { username: "ada" } }));
+	it("opens settings from the footer gear", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }));
 
 		await page.getByTestId("app-sidebar").getByTestId("nav-settings").click();
 
 		await expect.element(page.getByTestId("settings-back")).toBeVisible();
-		await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
-	});
-
-	it("calls auth.login on click", async () => {
-		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
-		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }));
-
-		await page.getByRole("button", { name: "Sign In" }).click();
-
-		expect(login).toHaveBeenCalledTimes(1);
-	});
-
-	it("tracks LOGGED_IN after a successful login", async () => {
-		const login = vi.fn(async (): Promise<AuthSession> => ({
-			status: "authenticated",
-			user: { username: "ada" },
-		}));
-		const track = vi.fn(async () => undefined);
-		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
-
-		await page.getByRole("button", { name: "Sign In" }).click();
-
-		await vi.waitFor(() => {
-			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_IN" }));
-		});
-	});
-
-	it("does not track LOGGED_IN when login fails", async () => {
-		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "error", reason: "nope" }));
-		const track = vi.fn(async () => undefined);
-		renderLayout(fakeLocalApi({ status: "anonymous" }, { login }, apiWithTrack(track)));
-
-		await page.getByRole("button", { name: "Sign In" }).click();
-
-		await vi.waitFor(() => {
-			expect(login).toHaveBeenCalledTimes(1);
-		});
-		expect(track).not.toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_IN" }));
 	});
 
 	it("tracks PAGE_VISIT for the initial route on mount", async () => {
@@ -500,64 +473,6 @@ describe("AppSidebarLayout plugin nav flag gating", () => {
 	});
 });
 
-describe("AppSidebarLayout account menu", () => {
-	afterEach(cleanup);
-
-	it("shows account details and logs out", async () => {
-		const logout = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
-		const track = vi.fn(async () => undefined);
-		renderLayout(
-			fakeLocalApi(
-				{
-					status: "authenticated",
-					user: {
-						firstName: "Ada",
-						lastName: "Lovelace",
-						username: "ada",
-						email: "ada@example.com",
-					},
-				},
-				{ logout },
-				apiWithTrack(track),
-			),
-		);
-
-		await page.getByRole("button", { name: "Account menu for Ada Lovelace" }).click();
-
-		// Name and email render in both the footer trigger and the open menu.
-		const menu = page.getByRole("menu");
-		await expect.element(menu.getByText("Ada Lovelace")).toBeVisible();
-		await expect.element(menu.getByText("ada@example.com")).toBeVisible();
-		await expect.element(page.getByRole("menuitem", { name: "Settings" })).not.toBeInTheDocument();
-		await page.getByRole("menuitem", { name: "Log out" }).click();
-
-		expect(logout).toHaveBeenCalledTimes(1);
-		await vi.waitFor(() => {
-			expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_OUT" }));
-		});
-	});
-
-	it("does not track LOGGED_OUT when logout fails", async () => {
-		const logout = vi.fn(async (): Promise<AuthSession> => ({ status: "error", reason: "nope" }));
-		const track = vi.fn(async () => undefined);
-		renderLayout(
-			fakeLocalApi(
-				{ status: "authenticated", user: { username: "ada" } },
-				{ logout },
-				apiWithTrack(track),
-			),
-		);
-
-		await page.getByRole("button", { name: "Account menu for ada" }).click();
-		await page.getByRole("menuitem", { name: "Log out" }).click();
-
-		await vi.waitFor(() => {
-			expect(logout).toHaveBeenCalledTimes(1);
-		});
-		expect(track).not.toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_OUT" }));
-	});
-});
-
 describe("AppSidebarLayout settings takeover", () => {
 	afterEach(cleanup);
 
@@ -600,16 +515,18 @@ describe("AppSidebarLayout settings takeover", () => {
 			.toHaveAttribute("aria-hidden", "true");
 	});
 
-	it("keeps Settings and Sign In in the sidebar footer under the shell-owned page header", async () => {
-		renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
+	it("keeps the account dock zone in the sidebar footer under the shell-owned page header", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings", contributeFakeAccountDock);
 
 		const sidebar = page.getByTestId("app-sidebar");
-		const accountDock = sidebar.getByTestId("anonymous-account-dock");
-		await expect.element(accountDock).toBeVisible();
-		const login = page.getByRole("button", { name: "Sign In" }).element();
-		const settings = sidebar.getByTestId("nav-settings").element();
-		expect(accountDock.element().contains(settings)).toBe(true);
-		expect(accountDock.element().contains(login)).toBe(true);
+		await expect.element(page.getByTestId("fake-account-dock")).toBeVisible();
+		expect(
+			sidebar
+				.getByTestId("zone-sidebar-account")
+				.element()
+				.contains(page.getByTestId("fake-account-dock").element()),
+		).toBe(true);
+		await expect.element(sidebar.getByTestId("nav-settings")).toBeVisible();
 		await expect.element(page.getByTestId("shell-anonymous-actions")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("shell-page-header")).toBeVisible();
 		await expect.element(page.getByRole("heading", { name: "Settings" })).toBeVisible();

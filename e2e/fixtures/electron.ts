@@ -17,8 +17,11 @@ import { packagedExecutable } from "../utils/paths.js";
 // Must match DESKTOP_PRODUCTION_SCHEME in apps/desktop ElectronProtocol.ts.
 const DESKTOP_URL_PREFIX = "anaconda-agentic-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
+const KILO_SERVER_READY_TIMEOUT_MS = 120_000;
+const WORKER_APP_TIMEOUT_MS = 240_000;
 const CLOSE_TIMEOUT_MS = 10_000;
 const CLOSE_FORCE_WAIT_MS = 5_000;
+const PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30_000;
 const deferredRemovalPaths = new Set<string>();
 
 /**
@@ -39,6 +42,35 @@ async function removeDeferredPaths(): Promise<void> {
 			rm(targetPath, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 }),
 		),
 	);
+}
+
+async function waitForKiloServer(page: Page): Promise<void> {
+	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
+	try {
+		await page.waitForFunction(() => "desktopApi" in globalThis, undefined, {
+			timeout: MAIN_WINDOW_TIMEOUT_MS,
+		});
+		await page.evaluate(async () => {
+			type InvokeResult =
+				| { ok: true; value: unknown }
+				| { ok: false; error: { code: string; message: string } };
+			type DesktopGlobal = typeof globalThis & {
+				desktopApi: {
+					invoke(
+						channel: "feature:invoke",
+						input: { featureId: string; channel: string; args?: unknown },
+					): Promise<InvokeResult>;
+				};
+			};
+			const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
+				featureId: "kilo-server",
+				channel: "server.getConnection",
+			});
+			if (!response.ok) throw new Error(`[${response.error.code}] ${response.error.message}`);
+		});
+	} finally {
+		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
+	}
 }
 
 /**
@@ -124,6 +156,8 @@ async function stopApp(app: ElectronApplication): Promise<void> {
 /**
  * Worker-scoped packaged Electron app. Every test in the worker reuses one launch;
  * `electronApp` rebinds the page singleton and resets the hash between tests.
+ * Sidecar spawn (`server.getConnection`) runs here so the first @smoke spec does
+ * not spend the 15s expect budget waiting for kilo-server to come up.
  */
 export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerFixtures>({
 	appIsolationKey: ["shared", { scope: "worker", option: true }],
@@ -136,6 +170,8 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			void appIsolationKey;
 			await killStrayProcesses();
 			const { app, userDataDir } = await launchApp(appLaunchEnv);
+			const page = await waitForMainWindow(app);
+			await waitForKiloServer(page);
 			await use(app);
 			await stopApp(app);
 			await Promise.all([
@@ -143,7 +179,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 				rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 }),
 			]);
 		},
-		{ scope: "worker" },
+		{ scope: "worker", timeout: WORKER_APP_TIMEOUT_MS },
 	],
 
 	electronApp: async ({ sharedApp }, use) => {

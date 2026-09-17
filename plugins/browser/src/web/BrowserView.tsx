@@ -306,6 +306,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 		<div
 			className="flex min-h-0 flex-1 flex-col bg-[var(--pane-surface,var(--color-background))]"
 			data-qa-id="browser-view"
+			aria-busy={!ready}
 		>
 			<div className="border-border relative shrink-0 border-b">
 				<form className="flex h-10 items-center gap-1 px-2" onSubmit={submit}>

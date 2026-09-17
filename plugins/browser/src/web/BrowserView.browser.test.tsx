@@ -85,6 +85,38 @@ describe("BrowserView", () => {
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledTimes(2));
 	});
 
+	it("exposes guest attachment so navigation can wait for the host lease", async () => {
+		let resolveAttach!: (
+			state: Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>,
+		) => void;
+		const attach = vi.fn(
+			() =>
+				new Promise<Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>>(
+					(resolve) => {
+						resolveAttach = resolve;
+					},
+				),
+		);
+		renderView({ config: async () => ({ partition: "persist:test" }), attach });
+		const view = page.getByTestId("browser-view");
+		await expect.element(view).toHaveAttribute("aria-busy", "true");
+		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+
+		resolveAttach({
+			instanceId: "browser-1",
+			webContentsId: 42,
+			url: "",
+			title: "",
+			faviconUrl: "",
+			loading: false,
+			canGoBack: false,
+			canGoForward: false,
+			zoomFactor: 1,
+		});
+
+		await expect.element(view).toHaveAttribute("aria-busy", "false");
+	});
+
 	it("does not lose navigation while attachment state is rendering", async () => {
 		let resolveAttach!: (
 			state: Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>,

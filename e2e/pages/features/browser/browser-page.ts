@@ -2,6 +2,7 @@ import {
 	click,
 	expectElementToBeDisabled,
 	expectElementToBeVisible,
+	expectElementToHaveAttribute,
 	fill,
 	getLocatorByRole,
 	getLocatorByTestId,
@@ -15,8 +16,11 @@ export class BrowserPage {
 	}
 
 	async openBrowserTab(): Promise<void> {
-		const send = getLocatorByTestId(/kilo-composer-send(-when-connected)?/);
-		await expectElementToBeVisible(send, "Composer should be ready before starting browser smoke");
+		const send = getLocatorByTestId("kilo-composer-send");
+		await expectElementToBeVisible(
+			send,
+			"Composer should be connected before starting browser smoke",
+		);
 		await fill(getLocatorByRole("textbox", { name: "Message input" }), "Open the browser pane");
 		await click(send);
 		await expectElementToBeVisible(
@@ -25,7 +29,11 @@ export class BrowserPage {
 		);
 		await click(getLocatorByTestId("chat-pane-toolbar-add"));
 		await click(getLocatorByTestId("chat-pane-launch-browser.browser"));
-		await expectElementToBeVisible(getLocatorByTestId("browser-view"), "Browser pane should mount");
+		const browserView = getLocatorByTestId("browser-view");
+		await expectElementToBeVisible(browserView, "Browser pane should mount");
+		await expectElementToHaveAttribute(browserView, "aria-busy", "false", {
+			message: "Browser guest should attach before navigation",
+		});
 	}
 
 	async navigate(url: string): Promise<void> {

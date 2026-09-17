@@ -6,6 +6,7 @@ import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ShellPageHeader } from "@/components/layout/ShellPageHeader";
 import { SidebarUpdatePill } from "@/components/updates/SidebarUpdatePill";
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
+import { HOME_PLUGIN_SPLAT } from "@/features/home-route";
 import { resolvePluginNavIcon } from "@/features/plugin-icons";
 import { useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav";
 import { findPluginPage, type PluginPage } from "@/features/plugin-pages";
@@ -81,19 +82,31 @@ function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: s
 	);
 }
 
-function SidebarSettingsAction({ inline = false }: { inline?: boolean }) {
+function SidebarSettingsAction({
+	settings,
+	inline = false,
+}: {
+	settings: boolean;
+	inline?: boolean;
+}) {
 	return (
 		<Button
 			variant="ghost"
 			size="icon"
-			aria-label="Settings"
+			aria-label={settings ? "Close settings" : "Settings"}
 			className={
 				inline
 					? "text-muted-foreground shrink-0 active:not-aria-[haspopup]:translate-y-0"
 					: "text-muted-foreground absolute top-1/2 right-1 z-10 -translate-y-1/2 active:not-aria-[haspopup]:-translate-y-1/2"
 			}
 			nativeButton={false}
-			render={<Link to="/settings" />}
+			render={
+				settings ? (
+					<Link to="/plugins/$" params={{ _splat: HOME_PLUGIN_SPLAT }} />
+				) : (
+					<Link to="/settings" />
+				)
+			}
 			data-qa-id="nav-settings"
 		>
 			<SettingsIcon />
@@ -101,11 +114,14 @@ function SidebarSettingsAction({ inline = false }: { inline?: boolean }) {
 	);
 }
 
-function SidebarAccountDock() {
+function SidebarAccountDock({ settings }: { settings: boolean }) {
 	return (
-		<div className="flex items-center gap-1">
-			<ZoneOutlet zone={SIDEBAR_ACCOUNT_ZONE} className="flex min-w-0 flex-1 items-center" />
-			<SidebarSettingsAction inline />
+		<div className="relative pr-9 has-[[data-qa-id=sidebar-kilo-account]]:pr-0">
+			<ZoneOutlet
+				zone={SIDEBAR_ACCOUNT_ZONE}
+				className="flex w-full min-w-0 items-center [&_[data-qa-id=sidebar-kilo-account]]:pr-12"
+			/>
+			<SidebarSettingsAction settings={settings} />
 		</div>
 	);
 }
@@ -219,9 +235,15 @@ export function AppSidebarLayout({
 							)}
 						</div>
 					</SidebarContent>
-					<SidebarFooter className="gap-2 px-2 pb-3">
-						<SidebarUpdatePill />
-						<SidebarAccountDock />
+					<SidebarFooter
+						role="group"
+						aria-label="Account and settings"
+						className="gap-2 px-2 pt-3 pb-3"
+					>
+						<section aria-label="User controls" className="flex flex-col gap-2">
+							<SidebarUpdatePill />
+							<SidebarAccountDock settings={settings} />
+						</section>
 					</SidebarFooter>
 				</Sidebar>
 				{/* Keep overflow off SidebarInset — Electron ignores drag regions inside

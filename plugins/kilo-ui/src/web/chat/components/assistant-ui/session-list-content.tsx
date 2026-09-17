@@ -403,7 +403,11 @@ export const SessionListContent = memo(function SessionListContent({
 					data-slot="aui_thread-list-root"
 					className="flex min-h-0 flex-1 flex-col"
 				>
-					<div className="mb-2 flex shrink-0 flex-col gap-0.5">
+					<section
+						className="mb-4 flex shrink-0 flex-col gap-0.5"
+						aria-label="Chat actions"
+						data-qa-id="session-list-navigation"
+					>
 						<NewChatButton />
 						<SessionListSearch
 							onSelectWorkspace={(id) => {
@@ -411,93 +415,100 @@ export const SessionListContent = memo(function SessionListContent({
 								setActiveWorkspaceId(id);
 							}}
 						/>
-					</div>
-					<div
-						data-qa-id="session-list-grouping-header"
-						className="-mb-0.5 flex h-8 shrink-0 items-center gap-0.5"
-					>
-						<WorkspaceFilter
-							value={focus}
-							onValueChange={(id) => {
-								updateView({ focus: id });
-								setActiveWorkspaceId(id);
-							}}
-						/>
-						{viewMenu}
-					</div>
-					<div
-						ref={listRef}
-						data-slot="aui_thread-list-items"
-						data-qa-id="session-list-inbox"
-						className="scroll-fade no-scrollbar relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
-					>
-						{isLoading ? <SessionListSkeleton /> : null}
-						{!isLoading && virtualEntries.length > 0 ? (
-							<ul
-								role="list"
-								className="relative w-full"
-								style={{ height: virtualizer.getTotalSize() }}
-								data-qa-id="session-list-virtual-list"
-							>
-								{virtualizer.getVirtualItems().map((virtualItem) => {
-									const entry = virtualEntries[virtualItem.index];
-									if (!entry) return null;
-									return (
-										<li
-											key={entry.key}
-											ref={virtualizer.measureElement}
-											data-index={virtualItem.index}
-											aria-posinset={virtualItem.index + 1}
-											aria-setsize={virtualEntries.length}
-											className={cn(
-												"absolute top-0 left-0 w-full list-none",
-												entry.spaceBefore && "pt-2",
-											)}
-											style={{ transform: `translateY(${virtualItem.start}px)` }}
-										>
-											<div>
-												{entry.kind === "header" ? (
-													<SessionShelfHeader
-														tone={entry.tone}
-														label={entry.label}
-														workspace={
-															entry.workspaceId
-																? workspaces.find((workspace) => workspace.id === entry.workspaceId)
-																: undefined
-														}
-														onCreateChatInWorkspace={createChatInWorkspace}
-														expanded={entry.expanded}
-														onToggle={() => {
-															const nextExpanded = !entry.expanded;
-															if (entry.sectionKey === "archived") {
-																writeSessionListArchivedExpanded(nextExpanded);
-															}
-															setExpanded((current) => ({
-																...current,
-																[entry.sectionKey]: nextExpanded,
-															}));
-														}}
-													/>
-												) : (
-													<SessionRowIndentContext value={entry.indented}>
-														<SessionListItemSlot id={entry.row.id} archived={entry.row.archived} />
-													</SessionRowIndentContext>
+					</section>
+					<section aria-label="Chat sessions" className="flex min-h-0 flex-1 flex-col">
+						<div
+							data-qa-id="session-list-grouping-header"
+							className="-mb-0.5 flex h-8 shrink-0 items-center gap-0.5"
+						>
+							<WorkspaceFilter
+								value={focus}
+								onValueChange={(id) => {
+									updateView({ focus: id });
+									setActiveWorkspaceId(id);
+								}}
+							/>
+							{viewMenu}
+						</div>
+						<div
+							ref={listRef}
+							data-slot="aui_thread-list-items"
+							data-qa-id="session-list-inbox"
+							className="scroll-fade no-scrollbar relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
+						>
+							{isLoading ? <SessionListSkeleton /> : null}
+							{!isLoading && virtualEntries.length > 0 ? (
+								<ul
+									role="list"
+									className="relative w-full"
+									style={{ height: virtualizer.getTotalSize() }}
+									data-qa-id="session-list-virtual-list"
+								>
+									{virtualizer.getVirtualItems().map((virtualItem) => {
+										const entry = virtualEntries[virtualItem.index];
+										if (!entry) return null;
+										return (
+											<li
+												key={entry.key}
+												ref={virtualizer.measureElement}
+												data-index={virtualItem.index}
+												aria-posinset={virtualItem.index + 1}
+												aria-setsize={virtualEntries.length}
+												className={cn(
+													"absolute top-0 left-0 w-full list-none",
+													entry.spaceBefore && "pt-2",
 												)}
-											</div>
-										</li>
-									);
-								})}
-							</ul>
-						) : null}
-						{!isLoading && emptyLabel && sections.length === 0 ? (
-							<div
-								data-slot="aui_thread-list-empty"
-								className="text-muted-foreground px-2.5 py-4 text-sm"
-							>
-								{emptyLabel}
-							</div>
-						) : null}
-					</div>
+												style={{ transform: `translateY(${virtualItem.start}px)` }}
+											>
+												<div>
+													{entry.kind === "header" ? (
+														<SessionShelfHeader
+															tone={entry.tone}
+															label={entry.label}
+															workspace={
+																entry.workspaceId
+																	? workspaces.find(
+																			(workspace) => workspace.id === entry.workspaceId,
+																		)
+																	: undefined
+															}
+															onCreateChatInWorkspace={createChatInWorkspace}
+															expanded={entry.expanded}
+															onToggle={() => {
+																const nextExpanded = !entry.expanded;
+																if (entry.sectionKey === "archived") {
+																	writeSessionListArchivedExpanded(nextExpanded);
+																}
+																setExpanded((current) => ({
+																	...current,
+																	[entry.sectionKey]: nextExpanded,
+																}));
+															}}
+														/>
+													) : (
+														<SessionRowIndentContext value={entry.indented}>
+															<SessionListItemSlot
+																id={entry.row.id}
+																archived={entry.row.archived}
+															/>
+														</SessionRowIndentContext>
+													)}
+												</div>
+											</li>
+										);
+									})}
+								</ul>
+							) : null}
+							{!isLoading && emptyLabel && sections.length === 0 ? (
+								<div
+									data-slot="aui_thread-list-empty"
+									className="text-muted-foreground px-2.5 py-4 text-sm"
+								>
+									{emptyLabel}
+								</div>
+							) : null}
+						</div>
+					</section>
 				</ThreadListPrimitive.Root>
 			</SessionListChromeContext>
 		</div>
@@ -674,7 +685,7 @@ export const SessionListSearch: FC<{
 				type="button"
 				variant="ghost"
 				aria-label="Search"
-				className="h-8 w-full justify-start rounded-md px-2 text-sm font-normal"
+				className="h-8 w-full justify-start gap-2 rounded-md px-2 text-sm font-normal"
 				data-slot="aui_thread-list-search"
 				data-qa-id="session-list-search"
 				onClick={() => setOpen(true)}

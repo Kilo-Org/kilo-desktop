@@ -44,7 +44,7 @@ function WorkspaceFilterTrigger() {
 					variant="ghost"
 					size="default"
 					data-qa-id="session-list-workspace-filter"
-					className="w-full min-w-0 justify-start font-normal"
+					className="w-full min-w-0 justify-start gap-2 font-normal"
 				/>
 			}
 		>

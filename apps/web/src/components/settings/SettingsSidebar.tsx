@@ -67,13 +67,14 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col px-2" data-qa-id="settings-sidebar">
-			<div className="mb-2 flex flex-col gap-0.5">
+			<div className="mb-4 flex flex-col gap-0.5 [&_[data-sidebar=search]]:gap-2">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton
 							tooltip="Back to app"
 							render={<Link to="/plugins/$" params={{ _splat: HOME_PLUGIN_SPLAT }} />}
 							data-qa-id="settings-back"
+							className="gap-2"
 						>
 							<ArrowLeftIcon />
 							<span>Back to app</span>
@@ -114,7 +115,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 												isActive={pathname === href}
 												tooltip={section.title}
 												render={<Link to="/settings/$section" params={{ section: section.id }} />}
-												className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 rounded-lg"
+												className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 gap-2 rounded-lg"
 												data-qa-id={`settings-section-${section.id}`}
 											>
 												<Icon />

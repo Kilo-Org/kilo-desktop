@@ -254,6 +254,14 @@ describe("AppSidebarLayout account dock", () => {
 		await expect.element(page.getByTestId("settings-back")).toBeVisible();
 	});
 
+	it("closes settings from the footer gear", async () => {
+		renderLayout(fakeLocalApi({ status: "anonymous" }), "/settings");
+
+		await page.getByTestId("app-sidebar").getByTestId("nav-settings").click();
+
+		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
+	});
+
 	it("tracks PAGE_VISIT for the initial route on mount", async () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, {}, apiWithTrack(track)));

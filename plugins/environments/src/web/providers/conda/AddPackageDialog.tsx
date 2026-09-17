@@ -559,14 +559,11 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 																type="button"
 																variant={depFilter === value ? "default" : "outline"}
 																size="sm"
-																className="h-6 text-[10px]"
+																className="h-7 text-[10px]"
 																onClick={() => setDepFilter(value)}
 															>
 																{label}
-																<Badge
-																	variant={depFilter === value ? "outline" : "secondary"}
-																	className="ml-1 text-[9px]"
-																>
+																<Badge variant="secondary" className="ml-1 text-[9px]">
 																	{count}
 																</Badge>
 															</Button>

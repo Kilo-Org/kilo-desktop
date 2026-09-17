@@ -777,15 +777,12 @@ export function UpdateConfirmationDialog({
 														key={value}
 														variant={depFilter === value ? "default" : "outline"}
 														size="sm"
-														className="h-6 text-[10px]"
+														className="h-7 text-[10px]"
 														onClick={() => setDepFilter(value)}
 														data-qa-id={`environments-conda-update-confirm-filter-${value}`}
 													>
 														{label}
-														<Badge
-															variant={depFilter === value ? "outline" : "secondary"}
-															className="ml-1 text-[9px]"
-														>
+														<Badge variant="secondary" className="ml-1 text-[9px]">
 															{isResolving ? "–" : count}
 														</Badge>
 													</Button>

@@ -175,11 +175,10 @@ describe("buildSessionListSections", () => {
 			view: defaultView,
 		});
 
-		expect(sections.map((section) => section.key)).toEqual(["attention", "active", "settled"]);
-		expect(sections[0]?.label).toBe("Needs Attention");
-		expect(sections[0]?.rows).toEqual([{ id: "local-ses-4", archived: true }]);
-		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-2", "local-ses-1"]);
-		expect(sections[2]?.rows.map((row) => row.id)).toEqual(["local-ses-3"]);
+		expect(sections.map((section) => section.key)).toEqual(["active", "archived"]);
+		expect(sections[0]?.label).toBe("Active");
+		expect(sections[0]?.rows.map((row) => row.id)).toEqual(["local-ses-2", "local-ses-1"]);
+		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-4", "local-ses-3"]);
 	});
 
 	it("sorts by title when requested", () => {
@@ -216,20 +215,23 @@ describe("buildSessionListSections", () => {
 			entries,
 			activityBySessionId,
 			workspaces,
-			view: { ...defaultView, status: "settled" },
+			view: { ...defaultView, status: "archived" },
 		});
 
 		expect(sections).toEqual([
 			{
-				key: "settled",
-				label: "Settled",
-				tone: "settled",
-				rows: [{ id: "local-ses-3", archived: true }],
+				key: "archived",
+				label: "Archived",
+				tone: "archived",
+				rows: [
+					{ id: "local-ses-4", archived: true },
+					{ id: "local-ses-3", archived: true },
+				],
 			},
 		]);
 	});
 
-	it("groups active chats by workspace and keeps settled chats in a final shelf", () => {
+	it("groups active chats by workspace and keeps archived chats in a final shelf", () => {
 		const sections = buildSessionListSections({
 			entries,
 			activityBySessionId,
@@ -240,11 +242,11 @@ describe("buildSessionListSections", () => {
 		expect(sections.map((section) => [section.key, section.label])).toEqual([
 			["workspace:ws-1", "Acme App"],
 			["workspace:ws-2", "Beta"],
-			["settled", "Settled"],
+			["archived", "Archived"],
 		]);
 		expect(sections[0]?.rows.map((row) => row.id)).toEqual(["local-ses-1"]);
-		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-4", "local-ses-2"]);
-		expect(sections[2]?.rows.map((row) => row.id)).toEqual(["local-ses-3"]);
+		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-2"]);
+		expect(sections[2]?.rows.map((row) => row.id)).toEqual(["local-ses-4", "local-ses-3"]);
 	});
 
 	it("does not use the unscoped session directory as a workspace group", () => {
@@ -270,7 +272,7 @@ describe("buildSessionListSections", () => {
 			view: defaultView,
 			pinnedIds: new Set(),
 		});
-		expect(sections.map((section) => section.key)).toEqual(["attention", "active", "settled"]);
+		expect(sections.map((section) => section.key)).toEqual(["active", "archived"]);
 	});
 
 	it("lifts pinned sessions into Pinned and keeps attention first", () => {
@@ -283,10 +285,9 @@ describe("buildSessionListSections", () => {
 		});
 
 		expect(sections.map((section) => [section.key, section.label])).toEqual([
-			["attention", "Needs Attention"],
 			["pinned", "Pinned"],
 			["active", "Active"],
-			["settled", "Settled"],
+			["archived", "Archived"],
 		]);
 		expect(sections.find((section) => section.key === "pinned")?.rows.map((row) => row.id)).toEqual(
 			["local-ses-1"],
@@ -295,11 +296,11 @@ describe("buildSessionListSections", () => {
 			["local-ses-2"],
 		);
 		expect(
-			sections.find((section) => section.key === "attention")?.rows.map((row) => row.id),
-		).toEqual(["local-ses-4"]);
+			sections.find((section) => section.key === "archived")?.rows.map((row) => row.id),
+		).toEqual(["local-ses-4", "local-ses-3"]);
 	});
 
-	it("lifts active pinned sessions above workspace groups but keeps settled chats last", () => {
+	it("lifts active pinned sessions above workspace groups but keeps archived chats last", () => {
 		const sections = buildSessionListSections({
 			entries,
 			activityBySessionId,
@@ -308,34 +309,38 @@ describe("buildSessionListSections", () => {
 			pinnedIds: new Set(["ses-1", "ses-3", "ses-4"]),
 		});
 
-		expect(sections.map((section) => section.key)).toEqual(["pinned", "workspace:ws-2", "settled"]);
+		expect(sections.map((section) => section.key)).toEqual([
+			"pinned",
+			"workspace:ws-2",
+			"archived",
+		]);
 		expect(sections.find((section) => section.key === "pinned")?.rows.map((row) => row.id)).toEqual(
-			["local-ses-4", "local-ses-1"],
+			["local-ses-1"],
 		);
 		expect(
 			sections.find((section) => section.key === "workspace:ws-2")?.rows.map((row) => row.id),
 		).toEqual(["local-ses-2"]);
 		expect(
-			sections.find((section) => section.key === "settled")?.rows.map((row) => row.id),
-		).toEqual(["local-ses-3"]);
+			sections.find((section) => section.key === "archived")?.rows.map((row) => row.id),
+		).toEqual(["local-ses-4", "local-ses-3"]);
 	});
 
-	it("keeps settled chats in a final shelf when grouping by updated time", () => {
+	it("keeps archived chats in a final shelf when grouping by updated time", () => {
 		const now = new Date(2026, 7, 18, 15, 0, 0).getTime();
 		const sections = buildSessionListSections({
-			entries: [entry("ses-active", 0), entry("ses-settled", 1, true)],
+			entries: [entry("ses-active", 0), entry("ses-archived", 1, true)],
 			activityBySessionId: {
 				"ses-active": activity({ updatedAt: now }),
-				"ses-settled": activity({ updatedAt: now }),
+				"ses-archived": activity({ updatedAt: now }),
 			},
 			workspaces,
 			view: { ...defaultView, grouping: "updated" },
 			now,
 		});
 
-		expect(sections.map((section) => section.key)).toEqual(["updated:today", "settled"]);
+		expect(sections.map((section) => section.key)).toEqual(["updated:today", "archived"]);
 		expect(sections[0]?.rows.map((row) => row.id)).toEqual(["local-ses-active"]);
-		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-settled"]);
+		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-archived"]);
 	});
 
 	it("groups by local calendar buckets and keeps attention in its day", () => {
@@ -439,7 +444,7 @@ describe("buildSessionListSections", () => {
 			view: { ...defaultView, grouping: "workspace", focus: "ws-1" },
 		});
 
-		expect(sections.map((section) => section.key)).toEqual(["active", "settled"]);
+		expect(sections.map((section) => section.key)).toEqual(["active", "archived"]);
 		expect(sections.flatMap((section) => section.rows.map((row) => row.id))).toEqual([
 			"local-ses-1",
 			"local-ses-3",

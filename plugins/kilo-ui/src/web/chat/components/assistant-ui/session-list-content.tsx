@@ -37,7 +37,8 @@ import {
 } from "@assistant-ui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-	CheckIcon,
+	ArchiveIcon,
+	ArchiveRestoreIcon,
 	ChevronDownIcon,
 	CircleAlertIcon,
 	FolderIcon,
@@ -51,7 +52,6 @@ import {
 	PlusIcon,
 	SearchIcon,
 	Trash2Icon,
-	Undo2Icon,
 } from "lucide-react";
 import isEqual from "lodash/isEqual.js";
 import {
@@ -93,9 +93,9 @@ import {
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
 import {
 	buildSessionListSections,
-	readSessionListSettledExpanded,
+	readSessionListArchivedExpanded,
 	visibleShowFields,
-	writeSessionListSettledExpanded,
+	writeSessionListArchivedExpanded,
 	type SessionListSection,
 	type SessionListSectionRow,
 	type SessionListShowField,
@@ -135,7 +135,7 @@ const SESSION_LIST_OVERSCAN = 10;
 const SESSION_ROW_ESTIMATE_PX = 30;
 const SESSION_SHELF_HEADER_PX = 30;
 const SESSION_SECTION_GAP_PX = 13;
-const DEFAULT_EXPANDED_SECTIONS: Readonly<Record<string, boolean>> = { settled: false };
+const DEFAULT_EXPANDED_SECTIONS: Readonly<Record<string, boolean>> = { archived: false };
 
 const SessionListChromeContext = createContext<{
 	show: readonly SessionListShowField[];
@@ -266,7 +266,7 @@ export const SessionListContent = memo(function SessionListContent({
 	const pinnedIds = useMemo(() => new Set(pinIds), [pinIds]);
 	const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
 		...DEFAULT_EXPANDED_SECTIONS,
-		settled: readSessionListSettledExpanded(),
+		archived: readSessionListArchivedExpanded(),
 	}));
 	const focus =
 		view.focus && workspaces.some((workspace) => workspace.id === view.focus) ? view.focus : null;
@@ -380,14 +380,14 @@ export const SessionListContent = memo(function SessionListContent({
 			canCollapse={collapsibleKeys.length > 0}
 			allCollapsed={allCollapsed}
 			onCollapseAll={() => {
-				if (collapsibleKeys.includes("settled")) writeSessionListSettledExpanded(false);
+				if (collapsibleKeys.includes("archived")) writeSessionListArchivedExpanded(false);
 				setExpanded((current) => ({
 					...current,
 					...Object.fromEntries(collapsibleKeys.map((key) => [key, false])),
 				}));
 			}}
 			onExpandAll={() => {
-				if (collapsibleKeys.includes("settled")) writeSessionListSettledExpanded(true);
+				if (collapsibleKeys.includes("archived")) writeSessionListArchivedExpanded(true);
 				setExpanded((current) => ({
 					...current,
 					...Object.fromEntries(collapsibleKeys.map((key) => [key, true])),
@@ -469,8 +469,8 @@ export const SessionListContent = memo(function SessionListContent({
 														expanded={entry.expanded}
 														onToggle={() => {
 															const nextExpanded = !entry.expanded;
-															if (entry.sectionKey === "settled") {
-																writeSessionListSettledExpanded(nextExpanded);
+															if (entry.sectionKey === "archived") {
+																writeSessionListArchivedExpanded(nextExpanded);
 															}
 															setExpanded((current) => ({
 																...current,
@@ -649,12 +649,12 @@ export const SessionListSearch: FC<{
 	}, [activityBySessionId, archivedThreadIds, threadIds, threadItems, workspaces]);
 
 	const chats = showChats ? rows.filter((row) => !row.archived) : [];
-	const settled = showChats ? rows.filter((row) => row.archived) : [];
+	const archived = showChats ? rows.filter((row) => row.archived) : [];
 	const workspaceRows = showWorkspaces ? workspaces : [];
 	const emptyQuery = query.trim().length === 0;
 	const emptyLabel = searchEmptyLabel(scope, emptyQuery, isLoading);
 	const chatHeading =
-		scope === "all" || settled.length > 0 ? (emptyQuery ? "Recent chats" : "Chats") : undefined;
+		scope === "all" || archived.length > 0 ? (emptyQuery ? "Recent chats" : "Chats") : undefined;
 	const workspaceHeading = scope === "all" ? "Workspaces" : undefined;
 
 	const handleSelectChat = (row: SearchRow) => {
@@ -731,11 +731,11 @@ export const SessionListSearch: FC<{
 								))}
 							</CommandGroup>
 						) : null}
-						{settled.length > 0 ? (
+						{archived.length > 0 ? (
 							<>
 								{chats.length > 0 ? <CommandSeparator /> : null}
-								<CommandGroup heading="Settled">
-									{settled.map((row) => (
+								<CommandGroup heading="Archived">
+									{archived.map((row) => (
 										<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
 									))}
 								</CommandGroup>
@@ -743,7 +743,7 @@ export const SessionListSearch: FC<{
 						) : null}
 						{workspaceRows.length > 0 ? (
 							<>
-								{chats.length > 0 || settled.length > 0 ? <CommandSeparator /> : null}
+								{chats.length > 0 || archived.length > 0 ? <CommandSeparator /> : null}
 								<CommandGroup
 									heading={workspaceHeading}
 									className="in-data-[slot=dialog-content]:**:[[cmdk-group-heading]]:px-0"
@@ -797,7 +797,7 @@ const shelfHeaderTones = {
 		chevron: "text-amber-600 dark:text-amber-400",
 	},
 	active: shelfMutedTone,
-	settled: shelfMutedTone,
+	archived: shelfMutedTone,
 	workspace: shelfMutedTone,
 	pinned: shelfMutedTone,
 	updated: shelfMutedTone,
@@ -1111,7 +1111,7 @@ const SessionRow: FC = () => {
 	const { show, pinnedIds, togglePin } = use(SessionListChromeContext);
 	const indented = use(SessionRowIndentContext);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
-	const switchToSettled = useCallback(() => {
+	const switchToArchived = useCallback(() => {
 		void auiRef.current.threadListItem.switchTo({ unarchive: false });
 	}, []);
 	const archive = useCallback(() => {
@@ -1142,7 +1142,7 @@ const SessionRow: FC = () => {
 			finishRename={finishRename}
 			triggerRef={triggerRef}
 			navigate={navigate}
-			switchToSettled={switchToSettled}
+			switchToArchived={switchToArchived}
 			archive={archive}
 			unarchive={unarchive}
 			deleteThread={deleteThread}
@@ -1167,7 +1167,7 @@ type SessionRowContentProps = {
 	finishRename: (restoreFocus: boolean) => void;
 	triggerRef: React.RefObject<HTMLButtonElement | null>;
 	navigate: () => void;
-	switchToSettled: () => void;
+	switchToArchived: () => void;
 	archive: () => void;
 	unarchive: () => void;
 	deleteThread: () => void;
@@ -1190,14 +1190,14 @@ const SessionRowContent = memo(function SessionRowContent({
 	finishRename,
 	triggerRef,
 	navigate,
-	switchToSettled,
+	switchToArchived,
 	archive,
 	unarchive,
 	deleteThread,
 }: SessionRowContentProps) {
 	const rowState = deriveSessionRowState(activity, lastVisitedAt);
-	const isSettled = itemStatus === "archived" && rowState !== "approval" && rowState !== "input";
-	const canSettle = !isSettled && (rowState === null || rowState === "done");
+	const isArchived = itemStatus === "archived" && rowState !== "approval" && rowState !== "input";
+	const canArchive = !isArchived && (rowState === null || rowState === "done");
 	const pinId = remoteId ?? threadId;
 	const isPinned = pinnedIds.has(pinId);
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
@@ -1209,36 +1209,16 @@ const SessionRowContent = memo(function SessionRowContent({
 	const showWorkspace = show.includes("workspace") && locationLabel !== null;
 	const updatedAt = showUpdated ? activity?.updatedAt : undefined;
 
-	const leadingIcon = isSettled ? (
-		<TooltipProvider delay={300}>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<span
-							role="status"
-							aria-label="Settled"
-							className={cn(
-								"inline-flex size-3.5 shrink-0 items-center justify-center transition-opacity",
-								!isActive &&
-									"opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
-							)}
-						/>
-					}
-				>
-					<CheckIcon aria-hidden className="size-3.5" />
-				</TooltipTrigger>
-				<TooltipContent side="right">Settled</TooltipContent>
-			</Tooltip>
-		</TooltipProvider>
-	) : rowState !== null ? (
-		<SessionRowGlyph
-			rowState={rowState}
-			isActive={isActive}
-			workingSince={activity?.workingSince}
-		/>
-	) : (
-		<span className="inline-flex size-3.5 shrink-0" aria-hidden />
-	);
+	const leadingIcon =
+		rowState !== null ? (
+			<SessionRowGlyph
+				rowState={rowState}
+				isActive={isActive}
+				workingSince={activity?.workingSince}
+			/>
+		) : (
+			<span className="inline-flex size-3.5 shrink-0" aria-hidden />
+		);
 
 	const rightSlot = updatedAt !== undefined ? <SessionRelativeTime timestamp={updatedAt} /> : null;
 
@@ -1258,7 +1238,7 @@ const SessionRowContent = memo(function SessionRowContent({
 					// sidebar-accent-foreground is a muted storm step for filled
 					// accent chips; titles sit on a faint wash, so hover/selected
 					// use full sidebar-foreground.
-					isSettled && !isActive
+					isArchived && !isActive
 						? "text-muted-foreground group-hover/sidebar-row:text-sidebar-foreground"
 						: isActive
 							? "text-sidebar-foreground"
@@ -1271,7 +1251,7 @@ const SessionRowContent = memo(function SessionRowContent({
 				data-slot="aui_session-list-item-time"
 				className={cn(
 					"text-muted-foreground/70 ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums transition-opacity",
-					canSettle || isSettled
+					canArchive || isArchived
 						? "group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24"
 						: "group-hover/sidebar-row:min-w-16 group-has-[:focus-visible]/sidebar-row:min-w-16 group-has-[[data-popup-open]]/sidebar-row:min-w-16",
 					rightSlot ? rowHoverLabelFadeClassName : null,
@@ -1311,7 +1291,7 @@ const SessionRowContent = memo(function SessionRowContent({
 
 	return (
 		<ThreadListItemPrimitive.Root
-			data-slot={isSettled ? "aui_session-list-settled-item" : "aui_session-list-item"}
+			data-slot={isArchived ? "aui_session-list-archived-item" : "aui_session-list-item"}
 			className={cn(
 				"group/sidebar-row relative w-full cursor-pointer rounded-md text-left outline-none select-none",
 				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
@@ -1321,16 +1301,16 @@ const SessionRowContent = memo(function SessionRowContent({
 				<div className={cn("flex h-7 items-center", rowPad)}>
 					<SessionItemRename onDone={finishRename} />
 				</div>
-			) : isSettled ? (
+			) : isArchived ? (
 				<button
 					ref={triggerRef}
 					type="button"
-					data-slot="aui_session-list-settled-trigger"
+					data-slot="aui_session-list-archived-trigger"
 					data-sidebar-select
 					className={cn("flex w-full flex-col py-1 text-left focus-visible:outline-none", rowPad)}
 					onClick={() => {
 						navigate();
-						switchToSettled();
+						switchToArchived();
 					}}
 				>
 					{rowContent}
@@ -1349,41 +1329,44 @@ const SessionRowContent = memo(function SessionRowContent({
 			{!isRenaming && (
 				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-5")}>
 					<TooltipProvider>
-						{canSettle ? (
+						{canArchive ? (
 							<RowHoverAction
-								label="Settle thread"
-								tooltip="Settle"
-								slot="aui_session-list-item-settle"
+								label="Archive thread"
+								tooltip="Archive"
+								slot="aui_session-list-item-archive"
 								onClick={archive}
 							>
-								<CheckIcon aria-hidden />
+								<ArchiveIcon aria-hidden />
 							</RowHoverAction>
 						) : null}
-						{isSettled ? (
+						{isArchived ? (
 							<RowHoverAction
-								label="Un-settle thread"
-								tooltip="Un-settle"
-								slot="aui_session-list-item-unsettle"
+								label="Unarchive thread"
+								tooltip="Unarchive"
+								slot="aui_session-list-item-unarchive"
 								onClick={unarchive}
 							>
-								<Undo2Icon aria-hidden />
+								<ArchiveRestoreIcon aria-hidden />
 							</RowHoverAction>
 						) : null}
-						<RowHoverAction
-							label={isPinned ? "Unpin thread" : "Pin thread"}
-							tooltip={isPinned ? "Unpin" : "Pin"}
-							slot="aui_session-list-item-pin"
-							onClick={() => togglePin(pinId)}
-						>
-							{isPinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
-						</RowHoverAction>
+						{!isArchived ? (
+							<RowHoverAction
+								label={isPinned ? "Unpin thread" : "Pin thread"}
+								tooltip={isPinned ? "Unpin" : "Pin"}
+								slot="aui_session-list-item-pin"
+								onClick={() => togglePin(pinId)}
+							>
+								{isPinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
+							</RowHoverAction>
+						) : null}
 						<SessionRowMenu
-							settleAction={isSettled ? "unsettle" : canSettle ? "settle" : undefined}
+							archiveAction={isArchived ? "unarchive" : canArchive ? "archive" : undefined}
+							canPin={!isArchived}
 							pinned={isPinned}
 							onPin={() => togglePin(pinId)}
 							onRename={startRename}
-							onSettle={archive}
-							onUnsettle={unarchive}
+							onArchive={archive}
+							onUnarchive={unarchive}
 							onDelete={deleteThread}
 						/>
 					</TooltipProvider>
@@ -1394,14 +1377,15 @@ const SessionRowContent = memo(function SessionRowContent({
 });
 
 const SessionRowMenu: FC<{
-	settleAction?: "settle" | "unsettle" | undefined;
+	archiveAction?: "archive" | "unarchive" | undefined;
+	canPin: boolean;
 	pinned: boolean;
 	onPin: () => void;
 	onRename: () => void;
-	onSettle: () => void;
-	onUnsettle: () => void;
+	onArchive: () => void;
+	onUnarchive: () => void;
 	onDelete: () => void;
-}> = ({ settleAction, pinned, onPin, onRename, onSettle, onUnsettle, onDelete }) => {
+}> = ({ archiveAction, canPin, pinned, onPin, onRename, onArchive, onUnarchive, onDelete }) => {
 	return (
 		<DropdownMenu>
 			<Tooltip>
@@ -1426,20 +1410,22 @@ const SessionRowMenu: FC<{
 				<TooltipContent side="bottom">More</TooltipContent>
 			</Tooltip>
 			<DropdownMenuContent align="end" side="right" sideOffset={6}>
-				<DropdownMenuItem onClick={onPin}>
-					{pinned ? <PinOffIcon /> : <PinIcon />}
-					{pinned ? "Unpin" : "Pin"}
-				</DropdownMenuItem>
-				{settleAction === "settle" && (
-					<DropdownMenuItem onClick={onSettle}>
-						<CheckIcon />
-						Settle
+				{canPin ? (
+					<DropdownMenuItem onClick={onPin}>
+						{pinned ? <PinOffIcon /> : <PinIcon />}
+						{pinned ? "Unpin" : "Pin"}
+					</DropdownMenuItem>
+				) : null}
+				{archiveAction === "archive" && (
+					<DropdownMenuItem onClick={onArchive}>
+						<ArchiveIcon />
+						Archive
 					</DropdownMenuItem>
 				)}
-				{settleAction === "unsettle" && (
-					<DropdownMenuItem onClick={onUnsettle}>
-						<Undo2Icon />
-						Un-settle
+				{archiveAction === "unarchive" && (
+					<DropdownMenuItem onClick={onUnarchive}>
+						<ArchiveRestoreIcon />
+						Unarchive
 					</DropdownMenuItem>
 				)}
 				<DropdownMenuItem onClick={onRename}>

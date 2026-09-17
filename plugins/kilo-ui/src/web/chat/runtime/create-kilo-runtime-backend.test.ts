@@ -184,9 +184,9 @@ describe("createKiloRuntimeBackend", () => {
 		const list = vi.fn(async () => ({
 			data: [
 				{
-					id: "session-settled",
-					directory: "/workspace/settled",
-					title: "Settled",
+					id: "session-archived",
+					directory: "/workspace/archived",
+					title: "Archived",
 					time: { created: 10, updated: 20, archived: 30 },
 					metadata: { anaconda: {} },
 				},
@@ -214,8 +214,8 @@ describe("createKiloRuntimeBackend", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(store.getState().sessions["session-settled"]).toMatchObject({
-				directory: "/workspace/settled",
+			expect(store.getState().sessions["session-archived"]).toMatchObject({
+				directory: "/workspace/archived",
 				createdAt: 10,
 				updatedAt: 20,
 			});

@@ -383,19 +383,19 @@ describe("SessionList", () => {
 		await expect.element(dialog).not.toBeInTheDocument();
 	});
 
-	it("preserves settled state when opening a chat from search", async () => {
+	it("preserves archived state when opening a chat from search", async () => {
 		const { adapter, screen } = renderSessionList({
-			threads: [{ remoteId: "ses-1", title: "Settled chat", status: "archived" }],
+			threads: [{ remoteId: "ses-1", title: "Archived chat", status: "archived" }],
 		});
 
 		await screen.getByRole("button", { name: "Search" }).click();
-		await page.getByRole("option", { name: /Settled chat/ }).click();
+		await page.getByRole("option", { name: /Archived chat/ }).click();
 
-		await screen.getByTestId("session-list-settled-toggle").click();
-		const row = screen.getByRole("listitem").filter({ hasText: "Settled chat" });
+		await screen.getByTestId("session-list-archived-toggle").click();
+		const row = screen.getByRole("listitem").filter({ hasText: "Archived chat" });
 		await vi.waitFor(() =>
 			expect(
-				row.element().querySelector('[data-slot="aui_session-list-settled-item"]')?.className,
+				row.element().querySelector('[data-slot="aui_session-list-archived-item"]')?.className,
 			).toContain("bg-foreground/5"),
 		);
 		expect(adapter.unarchiveCalls).toEqual([]);
@@ -492,17 +492,17 @@ describe("SessionList", () => {
 			hasText: "Unicorn and dodo population study",
 		});
 		await userEvent.hover(card);
-		const settle = card.getByRole("button", { name: "Settle thread" });
-		await expect.element(settle).toBeVisible();
+		const archive = card.getByRole("button", { name: "Archive thread" });
+		await expect.element(archive).toBeVisible();
 
 		const title = card.element().querySelector('[data-slot="aui_session-list-item-title"]');
 		expect(title).not.toBeNull();
 		const titleBox = title!.getBoundingClientRect();
-		const settleBox = settle.element().getBoundingClientRect();
-		expect(titleBox.right).toBeLessThanOrEqual(settleBox.left);
+		const archiveBox = archive.element().getBoundingClientRect();
+		expect(titleBox.right).toBeLessThanOrEqual(archiveBox.left);
 	});
 
-	it("renders session cards and the settled shelf", async () => {
+	it("renders session cards and the archived shelf", async () => {
 		const { screen } = renderSessionList({
 			threads: [
 				{ remoteId: "ses-1", title: "Fix the bug" },
@@ -544,7 +544,7 @@ describe("SessionList", () => {
 		await expect
 			.element(screen.getByRole("button", { name: "Session list options" }))
 			.toBeVisible();
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
 		const activeHeader = screen.getByTestId("session-list-active-toggle").element();
 		const activeLabel = screen
 			.getByTestId("session-list-active-toggle")
@@ -553,11 +553,11 @@ describe("SessionList", () => {
 		expect(activeLabel.className).toContain("text-sm");
 		expect(activeLabel.className).toContain("font-normal");
 		expect(activeLabel.className.split(/\s+/)).toContain("text-muted-foreground");
-		const settledLabel = screen
-			.getByTestId("session-list-settled-toggle")
-			.getByText("Settled")
+		const archivedLabel = screen
+			.getByTestId("session-list-archived-toggle")
+			.getByText("Archived")
 			.element();
-		expect(settledLabel.className.split(/\s+/)).toContain("text-muted-foreground");
+		expect(archivedLabel.className.split(/\s+/)).toContain("text-muted-foreground");
 		expect(activeHeader.className).toContain("hover:bg-transparent");
 		expect(activeHeader.className).toContain("aria-expanded:bg-transparent");
 		expect(getComputedStyle(activeHeader).backgroundColor).toMatch(
@@ -569,38 +569,38 @@ describe("SessionList", () => {
 		await userEvent.hover(screen.getByTestId("session-list-active-toggle"));
 		await expect.poll(() => getComputedStyle(chevron!).opacity).toBe("1");
 		await expect
-			.element(screen.getByTestId("session-list-settled-toggle"))
+			.element(screen.getByTestId("session-list-archived-toggle"))
 			.toHaveAttribute("aria-expanded", "false");
 		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
-		await screen.getByTestId("session-list-settled-toggle").click();
+		await screen.getByTestId("session-list-archived-toggle").click();
 		await expect.element(screen.getByText("Old work")).toBeVisible();
-		const settledShelfRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
-		await expect.element(settledShelfRow.getByText("2m")).not.toBeInTheDocument();
+		const archivedShelfRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await expect.element(archivedShelfRow.getByText("2m")).not.toBeInTheDocument();
 		// Workspace is opt-in via Show — default rows are title-only.
 		await expect.element(screen.getByText("Acme App")).not.toBeInTheDocument();
 
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Show/ }).click();
 		await page.getByRole("menuitemcheckbox", { name: "Updated" }).click();
-		await expect.element(settledShelfRow.getByText("2m")).toBeVisible();
+		await expect.element(archivedShelfRow.getByText("2m")).toBeVisible();
 	});
 
-	it("restores the Settled shelf expansion preference", async () => {
+	it("restores the Archived shelf expansion preference", async () => {
 		const threads: SeededThread[] = [
 			{ remoteId: "ses-1", title: "Active work" },
 			{ remoteId: "ses-2", title: "Old work", status: "archived" },
 		];
 		const first = renderSessionList({ threads });
 
-		await expect.element(first.screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(first.screen.getByTestId("session-list-archived-toggle")).toBeVisible();
 		await expect.element(first.screen.getByText("Old work")).not.toBeInTheDocument();
-		await first.screen.getByTestId("session-list-settled-toggle").click();
+		await first.screen.getByTestId("session-list-archived-toggle").click();
 		await expect.element(first.screen.getByText("Old work")).toBeVisible();
 		first.unmount();
 
 		const second = renderSessionList({ threads });
 		await expect.element(second.screen.getByText("Old work")).toBeVisible();
-		await second.screen.getByTestId("session-list-settled-toggle").click();
+		await second.screen.getByTestId("session-list-archived-toggle").click();
 		await expect.element(second.screen.getByText("Old work")).not.toBeInTheDocument();
 		second.unmount();
 
@@ -608,7 +608,7 @@ describe("SessionList", () => {
 		await expect.element(third.screen.getByText("Old work")).not.toBeInTheDocument();
 	});
 
-	it("keeps the Settled shelf collapsed after Collapse All in another grouping", async () => {
+	it("keeps the Archived shelf collapsed after Collapse All in another grouping", async () => {
 		const { screen } = renderSessionList({
 			threads: [
 				{ remoteId: "ses-1", title: "Active work" },
@@ -622,7 +622,7 @@ describe("SessionList", () => {
 			},
 		});
 
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
 		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
 
 		await screen.getByRole("button", { name: "Session list options" }).click();
@@ -630,7 +630,7 @@ describe("SessionList", () => {
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
 		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
 		await expect
-			.element(screen.getByTestId("session-list-settled-toggle"))
+			.element(screen.getByTestId("session-list-archived-toggle"))
 			.toHaveAttribute("aria-expanded", "false");
 		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
 
@@ -639,9 +639,9 @@ describe("SessionList", () => {
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
 		await page.getByRole("menuitemradio", { name: "Status" }).click();
 
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
 		await expect
-			.element(screen.getByTestId("session-list-settled-toggle"))
+			.element(screen.getByTestId("session-list-archived-toggle"))
 			.toHaveAttribute("aria-expanded", "false");
 		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
 	});
@@ -758,7 +758,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByRole("status", { name: "Requires Input" })).toBeVisible();
 	});
 
-	it("settles a quiet session and un-settles it back", async () => {
+	it("archives a quiet session and unarchives it", async () => {
 		const { adapter, screen } = renderSessionList({
 			threads: [
 				{ remoteId: "ses-1", title: "Fix the bug" },
@@ -768,28 +768,32 @@ describe("SessionList", () => {
 
 		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		await expect.element(card).toBeVisible();
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("session-list-archived-toggle"))
+			.not.toBeInTheDocument();
 
 		await userEvent.hover(card);
-		await card.getByRole("button", { name: "Settle thread" }).click();
+		await card.getByRole("button", { name: "Archive thread" }).click();
 
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
 		expect(adapter.archiveCalls).toEqual(["ses-1"]);
 
-		await screen.getByTestId("session-list-settled-toggle").click();
-		const settledRow = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
-		await expect.element(settledRow).toBeVisible();
-		await userEvent.hover(settledRow);
-		await settledRow.getByRole("button", { name: "Un-settle thread" }).click();
+		await screen.getByTestId("session-list-archived-toggle").click();
+		const archivedRow = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await expect.element(archivedRow).toBeVisible();
+		await userEvent.hover(archivedRow);
+		await archivedRow.getByRole("button", { name: "Unarchive thread" }).click();
 
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("session-list-archived-toggle"))
+			.not.toBeInTheDocument();
 		expect(adapter.unarchiveCalls).toEqual(["ses-1"]);
 		await expect
 			.element(screen.getByRole("listitem").filter({ hasText: "Fix the bug" }))
 			.toBeVisible();
 	});
 
-	it("keeps a settled session settled when viewing it", async () => {
+	it("keeps an archived session archived when viewing it", async () => {
 		const { adapter, screen } = renderSessionList({
 			threads: [
 				{ remoteId: "ses-1", title: "Active work" },
@@ -797,15 +801,15 @@ describe("SessionList", () => {
 			],
 		});
 
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
-		await screen.getByTestId("session-list-settled-toggle").click();
-		const settledRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
-		await expect.element(settledRow).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
+		await screen.getByTestId("session-list-archived-toggle").click();
+		const archivedRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await expect.element(archivedRow).toBeVisible();
 
-		await settledRow.getByRole("button", { name: /Old work/ }).click();
+		await archivedRow.getByRole("button", { name: /Old work/ }).click();
 
 		expect(adapter.unarchiveCalls).toEqual([]);
-		await expect.element(screen.getByTestId("session-list-settled-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
 		await expect
 			.element(screen.getByRole("listitem").filter({ hasText: "Old work" }))
 			.toBeVisible();
@@ -871,45 +875,6 @@ describe("SessionList", () => {
 			.toMatch(/^Working · \d+s$/);
 	});
 
-	it("shows a tooltip on the settled session icon", async () => {
-		const { screen } = renderSessionList({
-			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
-		});
-
-		await screen.getByTestId("session-list-settled-toggle").click();
-		const icon = screen.getByRole("status", { name: "Settled" });
-		await expect.element(icon).toBeVisible();
-		await icon.hover();
-
-		await expect
-			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
-			.toBe("Settled");
-	});
-
-	it("does not tint session icons with the workspace identity color", async () => {
-		const { screen } = renderSessionList({
-			threads: [
-				{ remoteId: "ses-1", title: "Old work", status: "archived" },
-				{ remoteId: "ses-2", title: "Unscoped work", status: "archived" },
-			],
-			hydrate: (store) => {
-				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
-			},
-		});
-
-		await screen.getByTestId("session-list-settled-toggle").click();
-		const scoped = screen.getByRole("listitem").filter({ hasText: "Old work" });
-		const unscoped = screen.getByRole("listitem").filter({ hasText: "Unscoped work" });
-		const scopedIcon = scoped.getByRole("status", { name: "Settled" });
-		const unscopedIcon = unscoped.getByRole("status", { name: "Settled" });
-		await expect.element(scopedIcon).toBeVisible();
-		await expect.element(unscopedIcon).toBeVisible();
-		expect(scopedIcon.element().querySelector("svg")?.getAttribute("stroke")).toBe("currentColor");
-		expect(unscopedIcon.element().querySelector("svg")?.getAttribute("stroke")).toBe(
-			"currentColor",
-		);
-	});
-
 	it("does not show a leading icon on idle chats", async () => {
 		const { screen } = renderSessionList({
 			threads: [
@@ -960,7 +925,7 @@ describe("SessionList", () => {
 		expect(dot.element().style.backgroundColor).toBe("");
 	});
 
-	it("hides the settle action while a session is working", async () => {
+	it("hides the archive action while a session is working", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
 			hydrate: (store) =>
@@ -976,7 +941,7 @@ describe("SessionList", () => {
 
 		await userEvent.hover(card);
 		await expect
-			.element(card.getByRole("button", { name: "Settle thread" }))
+			.element(card.getByRole("button", { name: "Archive thread" }))
 			.not.toBeInTheDocument();
 		await expect.element(card.getByRole("button", { name: "Thread actions" })).toBeVisible();
 	});
@@ -1292,24 +1257,24 @@ describe("SessionList", () => {
 		await userEvent.hover(card);
 		const pin = card.getByRole("button", { name: "Pin thread" });
 		const more = card.getByRole("button", { name: "Thread actions" });
-		const settle = card.getByRole("button", { name: "Settle thread" });
+		const archive = card.getByRole("button", { name: "Archive thread" });
 		await expect.element(pin).toBeVisible();
 		await expect.element(more).toBeVisible();
-		await expect.element(settle).toBeVisible();
+		await expect.element(archive).toBeVisible();
 
 		const pinBox = pin.element().getBoundingClientRect();
 		const moreBox = more.element().getBoundingClientRect();
-		const settleBox = settle.element().getBoundingClientRect();
-		expect(pinBox.left).toBeGreaterThanOrEqual(settleBox.right);
+		const archiveBox = archive.element().getBoundingClientRect();
+		expect(pinBox.left).toBeGreaterThanOrEqual(archiveBox.right);
 		expect(moreBox.left).toBeGreaterThanOrEqual(pinBox.right);
 		expect(moreBox.left - pinBox.right).toBeLessThan(4);
 
-		const settleIcon = settle.element().querySelector("svg");
+		const archiveIcon = archive.element().querySelector("svg");
 		const pinIcon = pin.element().querySelector("svg");
-		expect(settleIcon).not.toBeNull();
+		expect(archiveIcon).not.toBeNull();
 		expect(pinIcon).not.toBeNull();
 		expect(
-			pinIcon!.getBoundingClientRect().left - settleIcon!.getBoundingClientRect().right,
+			pinIcon!.getBoundingClientRect().left - archiveIcon!.getBoundingClientRect().right,
 		).toBeLessThan(10);
 	});
 
@@ -1321,14 +1286,14 @@ describe("SessionList", () => {
 		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		await userEvent.hover(card);
 
-		const settle = card.getByRole("button", { name: "Settle thread" });
-		await expect.element(settle).toBeVisible();
-		expect(settle.element().textContent?.trim()).toBe("");
+		const archive = card.getByRole("button", { name: "Archive thread" });
+		await expect.element(archive).toBeVisible();
+		expect(archive.element().textContent?.trim()).toBe("");
 
-		await settle.hover();
+		await archive.hover();
 		await expect
 			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
-			.toBe("Settle");
+			.toBe("Archive");
 
 		await card.getByRole("button", { name: "Pin thread" }).hover();
 		await expect
@@ -1341,23 +1306,38 @@ describe("SessionList", () => {
 			.toBe("More");
 	});
 
-	it("shows a tooltip on the un-settle icon", async () => {
+	it("shows a tooltip on the unarchive icon", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
 		});
 
-		await screen.getByTestId("session-list-settled-toggle").click();
+		await screen.getByTestId("session-list-archived-toggle").click();
 		const card = screen.getByRole("listitem").filter({ hasText: "Old work" });
 		await userEvent.hover(card);
 
-		const unsettle = card.getByRole("button", { name: "Un-settle thread" });
-		await expect.element(unsettle).toBeVisible();
-		expect(unsettle.element().textContent?.trim()).toBe("");
+		const unarchive = card.getByRole("button", { name: "Unarchive thread" });
+		await expect.element(unarchive).toBeVisible();
+		expect(unarchive.element().textContent?.trim()).toBe("");
 
-		await unsettle.hover();
+		await unarchive.hover();
 		await expect
 			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
-			.toBe("Un-settle");
+			.toBe("Unarchive");
+	});
+
+	it("does not offer pin controls for archived sessions", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
+		});
+
+		await screen.getByTestId("session-list-archived-toggle").click();
+		const card = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await userEvent.hover(card);
+
+		await expect.element(card.getByRole("button", { name: "Pin thread" })).not.toBeInTheDocument();
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await expect.element(page.getByRole("menuitem", { name: /^Pin$/ })).not.toBeInTheDocument();
+		await expect.element(page.getByRole("menuitem", { name: "Unarchive" })).toBeVisible();
 	});
 
 	it("pins a session into Pinned and hides the section when empty", async () => {
@@ -1394,14 +1374,14 @@ describe("SessionList", () => {
 
 		const pinnedCard = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		const activeCard = screen.getByRole("listitem").filter({ hasText: "Add tests" });
-		const settledHeader = screen.getByTestId("session-list-settled-toggle").element();
+		const archivedHeader = screen.getByTestId("session-list-archived-toggle").element();
 		await expect
 			.poll(() => {
 				const afterPinned =
 					activeHeader.getBoundingClientRect().top -
 					pinnedCard.element().getBoundingClientRect().bottom;
 				const betweenSections =
-					settledHeader.getBoundingClientRect().top -
+					archivedHeader.getBoundingClientRect().top -
 					activeCard.element().getBoundingClientRect().bottom;
 				return Math.abs(afterPinned - betweenSections);
 			})
@@ -1431,7 +1411,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 	});
 
-	it("filters the list to settled sessions", async () => {
+	it("filters the list to archived sessions", async () => {
 		const { screen } = renderSessionList({
 			threads: [
 				{ remoteId: "ses-1", title: "Fix the bug" },
@@ -1442,11 +1422,11 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /^Status/ }).click();
-		await page.getByRole("menuitemradio", { name: "Settled" }).click();
+		await page.getByRole("menuitemradio", { name: "Archived" }).click();
 
 		await userEvent.keyboard("{Escape}");
 		await userEvent.keyboard("{Escape}");
-		await screen.getByTestId("session-list-settled-toggle").click();
+		await screen.getByTestId("session-list-archived-toggle").click();
 		await expect.element(screen.getByText("Old work")).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();

@@ -15,7 +15,7 @@ export const SESSION_LIST_STATUS_FILTERS = [
 	"attention",
 	"working",
 	"idle",
-	"settled",
+	"archived",
 ] as const;
 
 export type SessionListGrouping = (typeof SESSION_LIST_GROUPINGS)[number];
@@ -61,7 +61,7 @@ export const SESSION_LIST_STATUS_LABELS: Record<SessionListStatusFilter, string>
 	attention: "Needs Attention",
 	working: "Working",
 	idle: "Idle",
-	settled: "Settled",
+	archived: "Archived",
 };
 
 export type SessionListViewEntry = {
@@ -76,7 +76,7 @@ export type SessionListSectionTone =
 	| "attention"
 	| "pinned"
 	| "active"
-	| "settled"
+	| "archived"
 	| "workspace"
 	| "updated";
 
@@ -179,26 +179,27 @@ export function writeSessionListView(
 }
 
 /** Versioned key — bump the suffix if the stored shape changes. */
-export const SESSION_LIST_SETTLED_EXPANDED_STORAGE_KEY = "kilo-ui.session-list-settled-expanded:v1";
+export const SESSION_LIST_ARCHIVED_EXPANDED_STORAGE_KEY =
+	"kilo-ui.session-list-archived-expanded:v1";
 
-export function readSessionListSettledExpanded(
+export function readSessionListArchivedExpanded(
 	storage: Pick<Storage, "getItem"> | null = getLocalStorage(),
 ): boolean {
 	if (!storage) return false;
 	try {
-		return storage.getItem(SESSION_LIST_SETTLED_EXPANDED_STORAGE_KEY) === "true";
+		return storage.getItem(SESSION_LIST_ARCHIVED_EXPANDED_STORAGE_KEY) === "true";
 	} catch {
 		return false;
 	}
 }
 
-export function writeSessionListSettledExpanded(
+export function writeSessionListArchivedExpanded(
 	expanded: boolean,
 	storage: Pick<Storage, "setItem"> | null = getLocalStorage(),
 ): void {
 	if (!storage) return;
 	try {
-		storage.setItem(SESSION_LIST_SETTLED_EXPANDED_STORAGE_KEY, String(expanded));
+		storage.setItem(SESSION_LIST_ARCHIVED_EXPANDED_STORAGE_KEY, String(expanded));
 	} catch {
 		// Keep the in-memory shelf state usable when persistence is unavailable.
 	}
@@ -251,8 +252,8 @@ function isWorking(activity: SessionActivity | undefined): boolean {
 }
 
 function lifecycleOf(activity: SessionActivity | undefined, archived: boolean): Lifecycle {
+	if (archived) return "archived";
 	if (needsAttention(activity)) return "attention";
-	if (archived) return "settled";
 	if (isWorking(activity)) return "working";
 	return "idle";
 }
@@ -385,7 +386,7 @@ function updatedSections(
  * partitions attention into its own first section. Workspace and updated
  * grouping keep those sessions in their folder/day, sorted to the top.
  * Pinned active sessions are a separate first section in every mode, while
- * settled sessions always occupy the final shelf.
+ * archived sessions always occupy the final shelf.
  */
 export function buildSessionListSections(args: {
 	entries: readonly SessionListViewEntry[];
@@ -412,16 +413,16 @@ export function buildSessionListSections(args: {
 			)
 		: [];
 	const rest = pullAttention ? rows.filter((row) => row.lifecycle !== "attention") : rows;
-	const settled = sortRows(
-		rest.filter((row) => row.lifecycle === "settled"),
+	const archived = sortRows(
+		rest.filter((row) => row.lifecycle === "archived"),
 		args.view.ordering,
 	);
-	const unsettled = rest.filter((row) => row.lifecycle !== "settled");
+	const activeRows = rest.filter((row) => row.lifecycle !== "archived");
 	const pinned = sortRows(
-		unsettled.filter((row) => pinnedIds.has(pinKey(row))),
+		activeRows.filter((row) => pinnedIds.has(pinKey(row))),
 		args.view.ordering,
 	);
-	const unpinned = unsettled.filter((row) => !pinnedIds.has(pinKey(row)));
+	const unpinned = activeRows.filter((row) => !pinnedIds.has(pinKey(row)));
 
 	const sections: SessionListSection[] = [];
 	if (attention.length > 0) {
@@ -462,8 +463,8 @@ export function buildSessionListSections(args: {
 			return _exhaustive;
 		}
 	}
-	if (settled.length > 0) {
-		sections.push({ key: "settled", label: "Settled", tone: "settled", rows: toRows(settled) });
+	if (archived.length > 0) {
+		sections.push({ key: "archived", label: "Archived", tone: "archived", rows: toRows(archived) });
 	}
 	return sections;
 }

@@ -35,7 +35,7 @@ The app becomes a desktop command center for Kilo Code agents. A user points the
 UX pillars:
 
 1. **One prompt away** — the home page is a single composer. Pick a workspace, agent, and model; hit send; land in the chat.
-2. **Inbox for agents** — the chat sidebar is a t3code-V2-style inbox: sessions needing attention float up, finished work settles away.
+2. **Inbox for agents** — the chat sidebar is a t3code-V2-style inbox: sessions needing attention float up, finished work is archived.
 3. **Kilo does the heavy lifting** — agents, tools, permissions, MCPs, skills, providers, and cost accounting all come from the Kilo CLI runtime. We build the shell, the inbox, and the settings surface — not an agent loop.
 
 Explicit non-goals (for now): cloud/remote sessions (`kilo cloud`, `/remote`), teams/orgs switching, ACP editor protocol, voice/dictation, sharing sessions, Git workflow UI, and worktree-backed session isolation. Git and worktrees are deferred rather than rejected; the v1 boundaries preserve the post-v1 direction described below.
@@ -47,7 +47,7 @@ Explicit non-goals (for now): cloud/remote sessions (`kilo cloud`, `/remote`), t
 | Concept              | Definition                                                                                                                                                                                                                                                                  | Backed by                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Workspace**        | A named collection of folders. Exactly one folder is the **primary folder** — the default working directory agents use in v1. All other folders are **reference folders** the agent may read and write — allowed automatically, never via manual permission prompts (§3.7). | Owned by the shared **`workspaces` feature** (platform-level; consumed by kilo-code today, terminal/notebooks/git tomorrow — see §3.5). In v1 kilo-code maps a workspace to a kilo **`directory`** (the primary folder) on the single shared `kilo serve`; reference folders are auto-allowed via session-scoped `permission.external_directory` rules — zero prompts, and only within that workspace's sessions (§3.7). NB: kilo's `x-kilo-workspace` header is a different concept (remote routing) — do not use it |
-| **Chat session**     | A single conversation with an agent. V1 sessions belong to a workspace; a later workspace-independent mode uses an explicit unscoped chat scope backed by an app-owned directory.                                                                                           | Kilo-owned (Kilo `Session` / `GlobalSession`); app-owned metadata (visited/settled) layered on top                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Chat session**     | A single conversation with an agent. V1 sessions belong to a workspace; a later workspace-independent mode uses an explicit unscoped chat scope backed by an app-owned directory.                                                                                           | Kilo-owned (Kilo `Session` / `GlobalSession`); app-owned metadata (visited/archived) layered on top                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **Agent**            | The persona/behavior running the session. Built-ins: `code`, `architect` (plan), `ask`, `debug`, `orchestrator`. Custom agents are markdown files.                                                                                                                          | Kilo config: project `.kilo/agents/<name>.md`, global `~/.config/kilo/agents/<name>.md`                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | **Provider**         | A model source: Kilo Gateway (OAuth), OpenAI, Anthropic, etc.                                                                                                                                                                                                               | Kilo auth store + `provider` config                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **Model**            | A `providerID/modelID` pair, e.g. `anthropic/claude-sonnet-4-6`. Selectable per session.                                                                                                                                                                                    | Kilo server model catalog                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -331,7 +331,7 @@ Scoping falls out for free: a Workspace B session simply has no rule for Workspa
 
 - **Kilo-owned** (inside the single `kilo serve`, survives app restarts): sessions, messages, parts, costs, token counts, and session titles use shared Kilo data; agents/MCP/skill/provider configuration uses Desktop's app-owned XDG config root.
 - **`workspaces`-feature-owned** (`${userData}/plugins/workspaces/data.db`): workspaces and their folders — the single source of truth for all features and the source used to construct permission rulesets.
-- **`kilo-code`-feature-owned** (`${userData}/plugins/kilo-code/data.db`): session metadata (visited/settled) and usage rollups. Flat settings (`autoSettleDays`, default model) live in **electron-store** via `mainSdk.storage.kv` (§4.4), not here.
+- **`kilo-code`-feature-owned** (`${userData}/plugins/kilo-code/data.db`): session metadata (visited/archived) and usage rollups. Flat settings (`autoArchiveDays`, default model) live in **electron-store** via `mainSdk.storage.kv` (§4.4), not here.
 
 Hard rule (per CONTEXT.md): each feature owns its own SQLite file and tables are never shared or joined across features. kilo-code rows carry plain `workspaceId` strings — **no foreign keys into the workspaces feature's DB**; main-side folder resolution and renderer-side name resolution go through their process-local workspaces capabilities (§3.6). If a workspace is deleted, kilo-code rows keep their `workspaceId` and the UI renders them under an "Unknown workspace" bucket until `sessions.delete`/archive cleans them up; existing-session operations recover the Kilo directory from the `GlobalSession` record rather than a copied workspace row.
 
@@ -379,7 +379,7 @@ const sessionSummarySchema = z.object({
 	lastActivityAt: z.number(),
 	lastVisitedAt: z.number().nullable(),
 	isUnread: z.boolean(), // lastActivityAt > lastVisitedAt
-	settledAt: z.number().nullable(),
+	archivedAt: z.number().nullable(),
 	pendingPermissions: z.number(),
 	pendingQuestions: z.number(),
 	agent: z.string().nullable(),
@@ -394,11 +394,11 @@ Status derivation (mirrors t3code `resolveSidebarV2Status`): pending plan-exit p
 
 Three storage tiers, chosen per concern (mirrors the OpenCode desktop's split):
 
-| Tier                                                       | Use for                                               | Examples here                                                                  |
-| ---------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
-| **SQLite (per-feature)**                                   | Structured, queryable, relational, or aggregated data | `workspaces`/`workspace_folders`; later `session_metadata` and `usage_daily`   |
-| **electron-store (shell-owned, via `mainSdk.storage.kv`)** | Flat, main-owned key/value settings                   | `autoSettleDays` once implemented; concrete onboarding flags if later designed |
-| **localStorage (renderer)**                                | Ephemeral renderer-only layout prefs                  | sidebar/panel widths, last-selected workspace id (renderer copy)               |
+| Tier                                                       | Use for                                               | Examples here                                                                   |
+| ---------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **SQLite (per-feature)**                                   | Structured, queryable, relational, or aggregated data | `workspaces`/`workspace_folders`; later `session_metadata` and `usage_daily`    |
+| **electron-store (shell-owned, via `mainSdk.storage.kv`)** | Flat, main-owned key/value settings                   | `autoArchiveDays` once implemented; concrete onboarding flags if later designed |
+| **localStorage (renderer)**                                | Ephemeral renderer-only layout prefs                  | sidebar/panel widths, last-selected workspace id (renderer copy)                |
 
 Two hard rules on top:
 
@@ -423,9 +423,9 @@ On send: `sessions.create({ workspaceId })` → ``sdk.navigate(`/chat/${sessionI
 
 ### 5.2 Sections (below the composer, in order)
 
-1. **Needs attention** — cards/rows from `sessions.attention()`: **unsettled** sessions in `approval`, `input`, `plan-ready`, or `failed` status (the same filter as the sidebar's **Needs You** section, §7.2). Each row: status pill, title, workspace name, relative time; click → `/chat/$sessionId`. Empty state: a quiet "All caught up" line.
+1. **Needs attention** — cards/rows from `sessions.attention()`: **unarchived** sessions in `approval`, `input`, `plan-ready`, or `failed` status (the same filter as the sidebar's **Needs You** section, §7.2). Each row: status pill, title, workspace name, relative time; click → `/chat/$sessionId`. Empty state: a quiet "All caught up" line.
 2. **Usage** — period switcher (Daily / 7 days / 30 days / 90 days) over `usage.summary`: total cost headline, token totals, per-model breakdown bar/list, and a small per-day sparkline. Data is local (pre-aggregated `usage_daily`), so period switching is instant.
-3. **Recent chats** — `sessions.list({ sort: "lastActivityAt", limit: 10 })` excluding settled; row = title, workspace, relative time, status dot; click → chat.
+3. **Recent chats** — `sessions.list({ sort: "lastActivityAt", limit: 10 })` excluding archived; row = title, workspace, relative time, status dot; click → chat.
 
 ---
 
@@ -475,30 +475,30 @@ The cross-workspace list is cursor-paged and virtualized across section headers 
 ### 7.2 Structure (top to bottom)
 
 1. **Fixed header** — search button (opens a session palette; shows kbd hint), **new-chat** icon button (SquarePen; when more than one workspace exists it opens a "New chat in…" chooser), **workspace scope filter** ("All workspaces" / one workspace, with per-workspace overflow menu → workspace settings), and **New workspace** (FolderPlus) shortcut.
-2. **Section: Needs You** — pinned above Active (header "Needs You (N)"), rendered only when non-empty. Contains **unsettled sessions with an unresolved need**: status ∈ {`approval`, `input`, `plan-ready`, `failed`}. Same card row as Active (below) but always at full opacity, sorted by most recent status change. A row leaves the section when the need **resolves** (permission/question answered, failed run retried or dismissed) or when the user **settles** it — merely visiting the chat does not clear the need (the pending permission/question card inside the thread is what clears it). This is the same filter as the home page's Needs attention section (§5.2).
-3. **Section: Active** — unsettled sessions with no pending need (working, idle, unread-done). Card rows (~78px, three lines):
-   - Line 1: workspace icon + workspace name; right slot = **status label** at rest ("Working" sky + ticking duration, "Done" emerald) or relative time when idle; **on hover** the right slot swaps to a Settle (✓) icon button.
+2. **Section: Needs You** — pinned above Active (header "Needs You (N)"), rendered only when non-empty. Contains **unarchived sessions with an unresolved need**: status ∈ {`approval`, `input`, `plan-ready`, `failed`}. Same card row as Active (below) but always at full opacity, sorted by most recent status change. A row leaves the section when the need **resolves** (permission/question answered, failed run retried or dismissed) or when the user **archives** it — merely visiting the chat does not clear the need (the pending permission/question card inside the thread is what clears it). This is the same filter as the home page's Needs attention section (§5.2).
+3. **Section: Active** — unarchived sessions with no pending need (working, idle, unread-done). Card rows (~78px, three lines):
+   - Line 1: workspace icon + workspace name; right slot = **status label** at rest ("Working" sky + ticking duration, "Done" emerald) or relative time when idle; **on hover** the right slot swaps to an Archive icon button.
    - Line 2: session title (double-click → inline rename; Enter commits, Esc cancels).
    - Line 3: metadata — agent/model chip, error icon when `failed`.
-4. **Section: Settled** — expanded tail of dimmed slim rows, sorted by when work ended, paged (first 10, "Show 25 more"), hover **un-settle** (Undo2). The open session is always pulled into view. Sending a message to a settled session un-settles it (sets `settledOverride: "active"`).
+4. **Section: Archived** — expanded tail of dimmed slim rows, sorted by when work ended, paged (first 10, "Show 25 more"), hover **Unarchive** (Undo2). The open session is always pulled into view. Sending a message to an archived session unarchives it (sets `archivedOverride: "active"`).
 
-Section membership is a **partition** — a session appears in exactly one of Needs You / Active / Settled at any time (§7.3).
+Section membership is a **partition** — a session appears in exactly one of Needs You / Active / Archived at any time (§7.3).
 
 ### 7.3 Behavior rules (copy t3code, minus snooze)
 
-- **Section assignment** (pure, unit-tested in `sessionStatus.ts`): settled → **Settled**; else status ∈ {`approval`, `input`, `plan-ready`, `failed`} → **Needs You**; else → **Active**. Lifecycle transitions move a row between sections (card fades out/in via `@formkit/auto-animate`-style animation — evaluate adding that dependency or hand-rolling FLIP).
+- **Section assignment** (pure, unit-tested in `sessionStatus.ts`): archived → **Archived**; else status ∈ {`approval`, `input`, `plan-ready`, `failed`} → **Needs You**; else → **Active**. Lifecycle transitions move a row between sections (card fades out/in via `@formkit/auto-animate`-style animation — evaluate adding that dependency or hand-rolling FLIP).
 - **Static ordering**: within Active, newest-first by creation and **activity never reorders rows**; within Needs You, most-recent-status-change-first.
 - **Recede rule**: in-flight **working** rows in Active render at 70% opacity; prominence is reserved for rows needing a human — Needs You rows and unread-Done rows render at full opacity.
 - **Unread**: `lastActivityAt > lastVisitedAt` → Done status shows emerald + bold title; visiting a session calls `sessions.markVisited`.
-- **Settle model**: manual settle parks a row into Settled (this is also how a user dismisses a Needs You row without resolving it); auto-settle after N days idle (default 7, configurable in Settings — Needs You rows are exempt: an unresolved need never auto-settles); new activity or a new need on a settled session un-sets it back to Active or Needs You; opening a settled session keeps it readable.
+- **Archive model**: manual archive parks a row in Archived (this is also how a user dismisses a Needs You row without resolving it); auto-archive after N days idle (default 7, configurable in Settings — Needs You rows are exempt: an unresolved need is never auto-archived); new activity or a new need on an archived session returns it to Active or Needs You; opening an archived session keeps it readable.
 - **Keyboard**: `Cmd/Ctrl+1..9` jump to the Nth visible row (hint badges while ⌘ held); up/down traversal; Enter opens; `Cmd/Ctrl+B` collapses the chat sidebar (offcanvas — slides fully away; a thin rail re-opens on click). Bindings must not conflict with the shell sidebar — the chat sidebar owns bindings only while a `/chat` route is focused.
 - **Resize**: drag the right edge; default 256px, min 208px, max viewport−640px; width persisted in localStorage (`kilo_chat_sidebar_width`).
-- **Context menu**: right-click row → Open, Rename, Mark unread, Copy session id, Settle/Un-settle, Archive, Delete (destructive, confirm dialog). `Cmd/Ctrl`-click multi-select and `Shift`-click range select → bulk bar (Mark unread (N), Archive (N), Delete (N)).
+- **Context menu**: right-click row → Open, Rename, Mark unread, Copy session id, Archive/Unarchive, Delete (destructive, confirm dialog). `Cmd/Ctrl`-click multi-select and `Shift`-click range select → bulk bar (Mark unread (N), Archive (N), Delete (N)).
 - **Row tooltip**: title, workspace, agent, model, pending counts, last error.
 
 ### 7.4 Component inventory (new, `plugins/kilo-code/src/web/sidebar/`)
 
-`ChatSidebar.tsx` (frame + sections), `ChatSidebarHeader.tsx`, `SessionCard.tsx` (shared card row for Needs You + Active), `SettledSessionRow.tsx`, `SessionStatusPill.tsx`, `sessionStatus.ts` (pure derivation, section assignment + sorting — unit tested), `useSessionList.ts` (query + push-event subscription), `useSidebarKeyboard.ts`. All interactive elements get stable `data-qa-id`s (`chat-sidebar`, `session-row`, `session-status-pill`, `new-chat-button`, …).
+`ChatSidebar.tsx` (frame + sections), `ChatSidebarHeader.tsx`, `SessionCard.tsx` (shared card row for Needs You + Active), `ArchivedSessionRow.tsx`, `SessionStatusPill.tsx`, `sessionStatus.ts` (pure derivation, section assignment + sorting — unit tested), `useSessionList.ts` (query + push-event subscription), `useSidebarKeyboard.ts`. All interactive elements get stable `data-qa-id`s (`chat-sidebar`, `session-row`, `session-status-pill`, `new-chat-button`, …).
 
 ---
 
@@ -628,8 +628,8 @@ export const kiloCodeContract = defineContract({
 		z.object({ sessionId: z.string(), at: z.number() }),
 		okSchema,
 	),
-	"sessions.settle": defineMethod(z.object({ sessionId: z.string() }), okSchema),
-	"sessions.unsettle": defineMethod(z.object({ sessionId: z.string() }), okSchema),
+	"sessions.archive": defineMethod(z.object({ sessionId: z.string() }), okSchema),
+	"sessions.unarchive": defineMethod(z.object({ sessionId: z.string() }), okSchema),
 	"sessions.attention": defineMethod(z.undefined(), z.array(sessionSummarySchema)),
 
 	// ── Usage
@@ -738,7 +738,7 @@ Each phase is independently shippable and tested. File paths are relative to the
 
 - Permission + question cards wired to `replyToPermission`/`replyToQuestion`; plan-exit approval action (pending §14 verification).
 - Extend the Phase 3 push pipeline with `kilo-code.attention-changed` and the full permission/question/plan/failure status derivation; queries remain the replayable snapshot path.
-- Full §7 sidebar: Needs You/Active/Settled sections, status pills + recede rule, settle model, keyboard (`Cmd+1..9`, traversal, `Cmd+B`), resize, context menu + multi-select bulk actions.
+- Full §7 sidebar: Needs You/Active/Archived sections, status pills + recede rule, archive model, keyboard (`Cmd+1..9`, traversal, `Cmd+B`), resize, context menu + multi-select bulk actions.
 - Home **Needs attention** section + `sessions.attention` (shared Needs You filter).
 - `sessions.markVisited` unread model.
 - Tests: unit (`sessionStatus.ts` derivation + section-assignment matrix), browser (sidebar interactions with fake sdk), app-level (home attention section), `@smoke` e2e: tool approval flow + sidebar status transitions (working → Needs You → resolved).
@@ -780,7 +780,7 @@ Follows [docs/TESTING.md](./TESTING.md) tiers and `.agents/skills/write-vitest` 
 - **Integration (`*.integration.test.ts`)**: SQLite round-trips for both features (workspaces + folders; session metadata and usage rollups), direct workspaces-capability resolution from kilo-code main, `SessionIndexService` against a **fake Kilo server** (see below), settings file writes into temp dirs.
 - **Browser (`*.browser.test.tsx`)**: all views with `createFakeSdk` from `@anaconda-agentic-desktop/testing` — never hand-rolled fakes. Sidebar sections, home sections, settings panels, chat composer selectors, workspace management dialog. kilo-code view tests stub the workspaces capability through `createFakeSdk({ plugins: { get: ... } })`, covering both the available capability and `null` degradation required by §3.6.
 - **App-level (`*.app.test.tsx`)**: router + providers tree: home → send → lands on `/chat/$sessionId`; settings nav; workspace create → selector reflects the relayed main event and renderer capability. A main-registration test separately covers workspaces expose → kilo-code consume without renderer involvement.
-- **E2E (`@smoke`, Playwright/Electron)**: one per feature area minimum — workspace creation, chat send/stream, tool approval, sidebar status + settle, usage section, terminal tab, settings provider key, marketplace install. Each bundled plugin owns its smoke suite under `plugins/<id>/e2e/`, including `plugins/kilo-code/e2e/`.
+- **E2E (`@smoke`, Playwright/Electron)**: one per feature area minimum — workspace creation, chat send/stream, tool approval, sidebar status + archive, usage section, terminal tab, settings provider key, marketplace install. Each bundled plugin owns its smoke suite under `plugins/<id>/e2e/`, including `plugins/kilo-code/e2e/`.
 - **Fake Kilo server fixture** (new, `packages/testing` or `e2e/fixtures`): a small Node HTTP+SSE server implementing the subset of the Kilo v2 API we consume: Basic auth (`401` on wrong/missing credentials — exercises our identity check), `/global/health`, `/global/event` with the `{ directory, payload }` envelope, session CRUD (incl. `permission` rulesets), messages, `session.status`/part-delta/permission events, provider+agent lists, cost fields. Used by integration tests and chat e2e so CI never needs real model credentials. Scripted scenarios: instant reply, slow stream, permission-ask, question-ask, error, cost-bearing messages, and **auto-grant scoping** (a session asserts NO `permission.asked` for paths covered by its own §3.7 ruleset, and that an ask DOES surface for a folder registered to a different workspace).
 - Coverage: repo gate is 90% lines/branches/functions/statements; the derivation/projection/aggregation modules should be at or near 100%.
 - All interactive elements get stable `data-qa-id` attributes.

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getPopoverMessage,
 	getReadOnlyBranchLabel,
 	getTriggerLabel,
+	isUnbornRepository,
 	type SelectorQueryState,
 } from "./branch-selector-state.js";
 
@@ -15,7 +17,15 @@ const ready: SelectorQueryState = {
 	branchesFailed: false,
 	data: {
 		currentBranch: "main",
-		branches: [],
+		branches: [
+			{
+				name: "main",
+				upstream: null,
+				tip: { sha: "abc123" },
+				ref: "refs/heads/main",
+				kind: "local",
+			},
+		],
 		recentBranches: [],
 	},
 };
@@ -27,6 +37,51 @@ describe("getTriggerLabel", () => {
 
 	it("drops the pending branch once it matches the current one", () => {
 		expect(getTriggerLabel(ready, "main")).toBe("main");
+	});
+});
+
+const unbornState: SelectorQueryState = {
+	...ready,
+	data: { currentBranch: "main", branches: [], recentBranches: [] },
+};
+
+describe("isUnbornRepository", () => {
+	it("returns true when there is a named branch but no branch objects", () => {
+		expect(isUnbornRepository(unbornState.data)).toBe(true);
+	});
+
+	it("returns false when branches are present", () => {
+		expect(isUnbornRepository(ready.data)).toBe(false);
+	});
+
+	it("returns false for null data", () => {
+		expect(isUnbornRepository(null)).toBe(false);
+	});
+
+	it("returns false for undefined data", () => {
+		expect(isUnbornRepository(undefined)).toBe(false);
+	});
+
+	it("returns false when currentBranch is absent (detached HEAD, empty branches)", () => {
+		expect(isUnbornRepository({ currentBranch: undefined, branches: [], recentBranches: [] })).toBe(
+			false,
+		);
+	});
+});
+
+describe("getPopoverMessage", () => {
+	it("returns null (show branch list) for a normal loaded repo", () => {
+		expect(getPopoverMessage(ready)).toBeNull();
+	});
+
+	it("returns the unborn notice for a repo with no commits yet", () => {
+		expect(getPopoverMessage(unbornState)).toEqual({ kind: "unborn" });
+	});
+
+	it("returns 'Not a git repository.' for non-regular repos", () => {
+		expect(getPopoverMessage({ ...ready, isRegular: false, data: undefined })).toBe(
+			"Not a git repository.",
+		);
 	});
 });
 

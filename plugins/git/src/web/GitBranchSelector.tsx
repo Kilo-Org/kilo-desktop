@@ -28,6 +28,7 @@ import {
 	getPopoverMessage,
 	getTriggerLabel,
 	type SelectorQueryState,
+	type UnbornNotice,
 } from "./branch-selector-state.js";
 
 export interface GitBranchSelectorProps {
@@ -39,6 +40,10 @@ export interface GitBranchSelectorProps {
 }
 
 const CREATE_BRANCH_VALUE = "__create-branch__";
+
+function isUnbornNotice(message: string | UnbornNotice | null): message is UnbornNotice {
+	return message !== null && typeof message === "object" && message.kind === "unborn";
+}
 
 function BranchItem({
 	branch,
@@ -212,11 +217,23 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 					}}
 				>
 					{listData === null ? (
-						<div
-							data-qa-id="git-branch-selector-note"
-							className="text-muted-foreground px-3 py-2.5 text-sm"
-						>
-							{popoverMessage ?? ""}
+						<div data-qa-id="git-branch-selector-note" className="px-3 py-2.5">
+							{isUnbornNotice(popoverMessage) ? (
+								<div className="flex flex-col gap-2">
+									<p className="text-sm font-medium tracking-tight">
+										No history found in this branch
+									</p>
+									<p className="text-muted-foreground text-sm/relaxed">
+										We can&apos;t complete this action. This can happen with a brand new repository
+										that doesn&apos;t have any commits yet.
+									</p>
+									<p className="text-muted-foreground text-sm/relaxed">
+										If this isn&apos;t a new repository, git is likely in an unborn HEAD state.
+									</p>
+								</div>
+							) : (
+								<div className="text-muted-foreground text-sm">{popoverMessage ?? ""}</div>
+							)}
 						</div>
 					) : (
 						<Command

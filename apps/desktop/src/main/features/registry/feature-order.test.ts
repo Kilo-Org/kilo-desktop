@@ -9,7 +9,7 @@ function feature(id: string): FeatureRegistration {
 }
 
 describe("orderMainFeatures", () => {
-	it("boots kilo-server before built-ins and preserves all other relative order", () => {
+	it("boots kilo-server and kilo-ui before built-ins and preserves all other relative order", () => {
 		const builtIns = [feature("anaconda-mcp"), feature("another-built-in")];
 		const plugins = [feature("kilo-ui"), feature("kilo-server"), feature("todos")];
 
@@ -17,9 +17,9 @@ describe("orderMainFeatures", () => {
 
 		expect(ordered.map(({ id }) => id)).toEqual([
 			"kilo-server",
+			"kilo-ui",
 			"anaconda-mcp",
 			"another-built-in",
-			"kilo-ui",
 			"todos",
 		]);
 		expect(builtIns.map(({ id }) => id)).toEqual(["anaconda-mcp", "another-built-in"]);

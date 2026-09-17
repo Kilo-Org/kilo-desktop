@@ -64,6 +64,9 @@ allowBuilds:
   "@vscode/windows-ca-certs": false
   "@sentry/cli": true
   protobufjs: false
+  # Native file-watching addon used by the workspace feature. Its install
+  # script fetches the prebuild binding (node-gyp-build); allow it.
+  "@parcel/watcher": true
 
 minimumReleaseAge: 0
 

@@ -16,6 +16,7 @@ export * from "./features/shell.js";
 export * from "./features/telemetry.js";
 export * from "./features/theme.js";
 export * from "./features/updates.js";
+export * from "./features/workspace.js";
 export * from "./local-api.js";
 export * from "./registry.js";
 export * from "./result.js";

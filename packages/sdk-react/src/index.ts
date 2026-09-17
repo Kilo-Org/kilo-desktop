@@ -24,6 +24,7 @@ export {
 } from "./useSdkMutation.js";
 
 export { useFeatureFlag } from "./useFeatureFlag.js";
+export { useWorkspaceWatcher, type UseWorkspaceWatcherOptions } from "./useWorkspaceWatcher.js";
 export { useSdkContributions } from "./useSdkContributions.js";
 
 export { useTelemetry } from "./useTelemetry.js";

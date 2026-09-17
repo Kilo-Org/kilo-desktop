@@ -23,6 +23,11 @@ export type {
 	FeatureFlagMap,
 	SdkShell,
 	SdkFs,
+	SdkWorkspace,
+	WorkspaceFileChangeType,
+	WorkspaceFileChange,
+	WorkspaceFileChangeEvent,
+	WorkspaceSubscriptionOptions,
 	ShellFsDelegate,
 	SdkTools,
 	ToolDefinition,
@@ -128,6 +133,12 @@ export {
 	type SdkFactoryServices,
 	type ShellDelegates,
 } from "./services/create-sdk.js";
+export {
+	createWorkspaceChangeFilter,
+	createWorkspaceService,
+	toPosixPath,
+	WORKSPACE_FILE_CHANGE_EVENT,
+} from "./services/workspace.js";
 export { createStaticNavigation } from "./services/navigation.js";
 export {
 	createObservableValue,

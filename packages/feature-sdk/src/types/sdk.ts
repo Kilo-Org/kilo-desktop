@@ -86,6 +86,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	readonly featureFlags: SdkFeatureFlags;
 	readonly shell: SdkShell;
 	readonly fs: SdkFs;
+	readonly workspace: SdkWorkspace;
 
 	/**
 	 * Navigate the shell router to an absolute path (shell delegate,
@@ -488,6 +489,63 @@ export interface SdkShell {
 	): Promise<{ docked: boolean }>;
 	syncPaneWindows(pluginId: string, activeSessionId: string | null): Promise<void>;
 	onPaneWindowChanged(listener: (event: PaneWindowEvent) => void): () => void;
+}
+
+// ─── Workspace (file-change subscription) ────────────────────────────────────
+
+/**
+ * File-change vocabulary of the workspace watcher. feature-sdk keeps a LOCAL
+ * copy of these shapes (same rule as {@link AuthSession}) so it never depends
+ * on `contracts`. Keep in sync with contracts' workspace feature schemas.
+ */
+export type WorkspaceFileChangeType = "create" | "update" | "delete";
+
+export interface WorkspaceFileChange {
+	/** Absolute path of the changed file, in platform-native form (backslash-separated on Windows). */
+	path: string;
+	type: WorkspaceFileChangeType;
+}
+
+export interface WorkspaceFileChangeEvent {
+	/** Absolute path of the watched directory the batch belongs to. */
+	root: string;
+	changes: WorkspaceFileChange[];
+}
+
+/**
+ * Glob + event-type filters applied to each batch before delivery. Globs are
+ * picomatch syntax, always authored with forward slashes; matching is
+ * separator-insensitive (vscode-style), so they match native Windows event
+ * paths. Normalize native absolute paths with `toPosixPath` before escaping
+ * and embedding them in a glob.
+ */
+export interface WorkspaceSubscriptionOptions {
+	/** picomatch globs — if set, only matching paths fire. */
+	includes?: string[] | undefined;
+	/** picomatch globs — matching paths are suppressed. */
+	excludes?: string[] | undefined;
+	/** Event type filter — if set, only these event types fire. */
+	types?: WorkspaceFileChangeType[] | undefined;
+}
+
+/**
+ * Workspace file-change subscription, shell-owned. Backed by the workspace
+ * feature's event bus emission; the filter runs per batch in the SDK, so
+ * subscribers only see the changes they asked for.
+ *
+ * @example
+ * const unsub = sdk.workspace.subscribe({ types: ["create"] }, (event) => refresh(event.root));
+ */
+export interface SdkWorkspace {
+	/**
+	 * Subscribe to filtered file-change batches. Returns an unsubscribe
+	 * function; subscriptions are cleaned up when this SDK instance is
+	 * destroyed.
+	 */
+	subscribe(
+		options: WorkspaceSubscriptionOptions,
+		callback: (event: WorkspaceFileChangeEvent) => void,
+	): () => void;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────

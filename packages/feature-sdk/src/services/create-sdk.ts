@@ -23,6 +23,7 @@ import type {
 	ShellFsDelegate,
 	ShellLocation,
 } from "../types/sdk.js";
+import { createWorkspaceService } from "./workspace.js";
 import type { CommandRegistry } from "./command-registry.js";
 import type { ContributionRegistry } from "./contribution-registry.js";
 import { emitFeatureEvent, type FeatureEvent } from "./event-bus.js";
@@ -258,6 +259,10 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		},
 	};
 
+	// ─── Workspace (file-change subscription over the shared event bus) ───────
+
+	const workspace = createWorkspaceService(events);
+
 	// ─── Feature flags (shell delegate) ───────────────────────────────────────
 
 	const featureFlags: SdkFeatureFlags = {
@@ -339,6 +344,7 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		featureFlags,
 		shell: services.shellDelegates.shell,
 		fs,
+		workspace,
 
 		navigate(path: string, options?: NavigateOptions) {
 			assertAlive();

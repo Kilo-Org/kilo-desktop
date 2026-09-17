@@ -25,6 +25,9 @@ export default defineConfig({
 			// Monkey-patches process-global Node/Electron networking for third-party
 			// deps; no observable app seam (see file header).
 			"**/proxyAgent.ts",
+			// Fake @parcel/watcher boundary — fixture-only, exercised by the
+			// workspace watcher unit/integration suites.
+			"**/workspace/test/test-helpers.ts",
 		]),
 		projects: [
 			{

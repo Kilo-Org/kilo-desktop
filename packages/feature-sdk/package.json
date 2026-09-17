@@ -13,10 +13,14 @@
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
+	"dependencies": {
+		"picomatch": "^4.0.5"
+	},
 	"peerDependencies": {
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
+		"@types/picomatch": "^4.0.3",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:",

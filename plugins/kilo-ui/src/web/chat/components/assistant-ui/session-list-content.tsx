@@ -275,7 +275,14 @@ export const SessionListContent = memo(function SessionListContent({
 		[focus, view],
 	);
 	const show = useMemo(() => visibleShowFields(resolvedView), [resolvedView]);
-	const chrome = useMemo(() => ({ show, pinnedIds, togglePin }), [pinnedIds, show, togglePin]);
+	const visibleRowFields = useMemo(
+		() => (focus ? show.filter((field) => field !== "workspace") : show),
+		[focus, show],
+	);
+	const chrome = useMemo(
+		() => ({ show: visibleRowFields, pinnedIds, togglePin }),
+		[pinnedIds, togglePin, visibleRowFields],
+	);
 
 	const sections = useMemo(() => {
 		const itemsById = new Map(threadItems.map((item) => [item.id, item]));

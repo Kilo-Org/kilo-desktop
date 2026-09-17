@@ -1057,6 +1057,53 @@ describe("SessionList", () => {
 		expect(card.element().getBoundingClientRect().height).toBeGreaterThan(36);
 	});
 
+	it("shows workspace info only while viewing all workspaces", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([
+					{ id: "ses-1", workspaceId: "ws-1" },
+					{ id: "ses-2", workspaceId: "ws-2" },
+				]);
+			},
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Show/ }).click();
+		await page.getByRole("menuitemcheckbox", { name: "Workspace" }).click();
+		await expect.element(screen.getByText("Acme App")).toBeVisible();
+		await expect.element(screen.getByText("Beta")).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+
+		const workspaceFilter = screen.getByRole("combobox", { name: "Filter by workspace" });
+		await workspaceFilter.click();
+		await page.getByRole("option", { name: /Acme App/ }).click();
+		const focusedCard = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await expect.element(focusedCard).toBeVisible();
+		expect(
+			focusedCard.element().querySelector('[data-slot="aui_session-list-item-info"]'),
+		).toBeNull();
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Show/ }).click();
+		await expect
+			.element(page.getByRole("menuitemcheckbox", { name: "Workspace" }))
+			.toHaveAttribute("data-checked");
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+
+		await workspaceFilter.click();
+		await page.getByRole("option", { name: "All workspaces" }).click();
+		const acmeCard = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		const betaCard = screen.getByRole("listitem").filter({ hasText: "Add tests" });
+		await expect.element(acmeCard.getByText("Acme App")).toBeVisible();
+		await expect.element(betaCard.getByText("Beta")).toBeVisible();
+	});
+
 	it("groups sessions by updated time into calendar buckets", async () => {
 		const { screen } = renderSessionList({
 			threads: [

@@ -91,7 +91,7 @@ describe("packaged production dependencies", () => {
 	it("uses a single-level asar unpack glob so native addons leave the archive", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		// Nested `{**/node_modules/{a,b}/**}` does not expand in @electron/asar.
-		// Signed Canary then ships .node files inside app.asar and dies at boot
+		// Signed Preview then ships .node files inside app.asar and dies at boot
 		// requiring @runtimed/node (anaconda/agentic-desktop#163).
 		expect(forge).not.toMatch(/unpack:\s*`\{/);
 		expect(forge).toContain('unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`');

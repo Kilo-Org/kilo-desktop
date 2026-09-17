@@ -16,7 +16,7 @@ export default defineConfig({
 			"**/main.ts",
 			"**/preload.ts",
 			"**/index.ts",
-			// CLI wrapper around electron-forge; behavior lives in stamp-desktop-version.
+			// CLI wrapper around electron-forge; behavior lives in desktop-version.
 			"**/run-packaging.ts",
 			// Thin `net.request`/`net.fetch` wrapper; exercised via e2e/networking.
 			"**/HttpClient.ts",

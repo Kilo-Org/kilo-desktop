@@ -96,9 +96,7 @@ export class Application {
 
 	async start(): Promise<void> {
 		this.#logAppSessionStart();
-		const identity = getAppIdentity(
-			this.#app.metadata.isPackaged ? RELEASE_CHANNEL : "development",
-		);
+		const identity = getAppIdentity(this.#app.metadata.isPackaged ? RELEASE_TRACK : "development");
 		this.#app.setIdentity(identity);
 		if (!this.#app.requestSingleInstanceLock()) {
 			this.#app.quit();
@@ -136,7 +134,7 @@ export class Application {
 				isPackaged: this.#app.metadata.isPackaged,
 				platform: process.platform,
 				arch: process.arch,
-				channel: RELEASE_CHANNEL,
+				track: RELEASE_TRACK,
 				currentVersion: this.#app.metadata.appVersion,
 				publishUrl: UPDATE_PUBLISH_URL,
 				fetch: this.#http.fetch,

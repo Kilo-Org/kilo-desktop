@@ -4,31 +4,38 @@ import {
 	createViteEnvironmentDefinitions,
 	getBuildEnvironment,
 	requireViteEnvironmentVariable,
+	shouldUploadSentrySourceMaps,
 } from "./build-environment.js";
 
 describe("build environment", () => {
 	it("uses development configuration while serving", () => {
-		expect(getBuildEnvironment("serve", "canary")).toBe("development");
+		expect(getBuildEnvironment("serve", "preview")).toBe("development");
 	});
 
-	it.each(["canary", "staging", "prod"] as const)(
-		"uses %s configuration while building that channel",
-		(channel) => {
-			expect(getBuildEnvironment("build", channel)).toBe(channel);
+	it.each(["preview", "stable"] as const)(
+		"uses %s configuration while building that track",
+		(track) => {
+			expect(getBuildEnvironment("build", track)).toBe(track);
 		},
 	);
+
+	it("uploads Sentry source maps only for Stable builds with credentials", () => {
+		expect(shouldUploadSentrySourceMaps("stable", "token")).toBe(true);
+		expect(shouldUploadSentrySourceMaps("stable", undefined)).toBe(false);
+		expect(shouldUploadSentrySourceMaps("preview", "token")).toBe(false);
+	});
 
 	it("requires non-blank environment variables", () => {
 		expect(
 			requireViteEnvironmentVariable(
-				"prod",
+				"stable",
 				{ VITE_AUTH_CLIENT_ID: " client " },
 				"VITE_AUTH_CLIENT_ID",
 			),
 		).toBe("client");
 		expect(() =>
-			requireViteEnvironmentVariable("prod", { VITE_AUTH_CLIENT_ID: " " }, "VITE_AUTH_CLIENT_ID"),
-		).toThrow("VITE_AUTH_CLIENT_ID must be configured in apps/desktop/.env.prod");
+			requireViteEnvironmentVariable("stable", { VITE_AUTH_CLIENT_ID: " " }, "VITE_AUTH_CLIENT_ID"),
+		).toThrow("VITE_AUTH_CLIENT_ID must be configured in apps/desktop/.env.stable");
 	});
 
 	it("creates import.meta.env definitions for Vite", () => {

@@ -71,10 +71,9 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!apps/desktop/.env.canary
 !apps/desktop/.env.development
-!apps/desktop/.env.prod
-!apps/desktop/.env.staging
+!apps/desktop/.env.preview
+!apps/desktop/.env.stable
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

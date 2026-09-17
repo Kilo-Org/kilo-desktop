@@ -9,22 +9,23 @@ import { execa } from "execa";
 import {
 	classifyReleaseDownload,
 	extractReleaseNoteItems,
-	getChannelReleaseName,
-	getChannelReleaseTag,
-	getChannelReleaseVersionFromTag,
+	getTrackReleaseName,
+	getTrackReleaseTag,
+	getTrackReleaseVersionFromTag,
 	getGithubReleaseWrite,
+	getGithubReleaseFlags,
 	getLatestAliasKey,
 	sanitizeGeneratedReleaseNotes,
 	type ReleaseDownload,
-} from "./channel-release.js";
+} from "./track-release.js";
 import {
-	getCanaryBuildTime,
+	getPreviewBuildTime,
 	getArtifactKey,
 	getPublishAppVersion,
-	getReleaseChannel,
+	getReleaseTrack,
 	getReleasePrefix,
 	getUpdatePublishUrl,
-	type PublishableReleaseChannel,
+	type ReleaseTrack,
 } from "./release.js";
 
 const MOVING_CACHE_CONTROL = "public,max-age=60,must-revalidate";
@@ -35,24 +36,26 @@ async function main(): Promise<void> {
 	const token = required("GITHUB_TOKEN");
 	const bucket = required("UPDATE_S3_BUCKET");
 	const publishUrl = getUpdatePublishUrl(process.env);
-	if (!publishUrl) throw new Error("UPDATE_PUBLISH_URL is required to publish channel aliases.");
-	const channel = getReleaseChannel(process.env);
+	if (!publishUrl) throw new Error("UPDATE_PUBLISH_URL is required to publish track aliases.");
+	const track = getReleaseTrack(process.env);
 	const packageJson = JSON.parse(
 		await readFile(new URL("../package.json", import.meta.url), "utf8"),
 	) as { version: string };
 	const version = getPublishAppVersion({
 		version: packageJson.version,
-		channel,
-		now: getCanaryBuildTime(process.env),
+		track,
+		...(process.env.RELEASE_VERSION ? { releaseVersion: process.env.RELEASE_VERSION } : {}),
+		now: getPreviewBuildTime(process.env),
 	});
-	const tag = getChannelReleaseTag(channel, version);
-	const name = getChannelReleaseName(channel, version);
+	const tag = getTrackReleaseTag(track, version);
+	const name = getTrackReleaseName(track, version);
+	const releaseFlags = getGithubReleaseFlags(track, version);
 	const artifactsRoot = path.resolve(process.env.RELEASE_ARTIFACTS_DIR ?? "release-artifacts");
 	const artifactFiles = await listFiles(artifactsRoot);
 	if (artifactFiles.length === 0)
 		throw new Error(`No release artifacts found under ${artifactsRoot}.`);
 
-	const previousTag = await findPreviousChannelTag(repository, token, channel, tag);
+	const previousTag = await findPreviousTrackTag(repository, token, track, tag);
 	const generated = await githubJson<{ body: string }>(
 		repository,
 		token,
@@ -70,9 +73,9 @@ async function main(): Promise<void> {
 	const publishedAt = new Date().toISOString();
 	const releaseNotes = {
 		schemaVersion: 1 as const,
-		channel,
+		track,
 		version,
-		previousVersion: previousTag ? getChannelReleaseVersionFromTag(channel, previousTag) : null,
+		previousVersion: previousTag ? getTrackReleaseVersionFromTag(track, previousTag) : null,
 		title: name,
 		publishedAt,
 		bodyMarkdown,
@@ -84,8 +87,7 @@ async function main(): Promise<void> {
 		name,
 		body: bodyMarkdown,
 		sha: required("GITHUB_SHA"),
-		prerelease: channel !== "prod",
-		makeLatest: channel === "prod",
+		...releaseFlags,
 	});
 	const stagedAssets = await stageGithubAssets(artifactFiles);
 	await execa(
@@ -98,14 +100,14 @@ async function main(): Promise<void> {
 		},
 	);
 
-	const workingDirectory = await mkdtemp(path.join(tmpdir(), "anaconda-channel-release-"));
+	const workingDirectory = await mkdtemp(path.join(tmpdir(), "anaconda-track-release-"));
 	const notesFile = path.join(workingDirectory, `${version}.json`);
 	await writeFile(notesFile, `${JSON.stringify(releaseNotes, null, 2)}\n`);
 
-	await publishChannelObjects({
+	await publishTrackObjects({
 		artifactFiles,
 		bucket,
-		channel,
+		track,
 		notesFile,
 		publishedAt,
 		publishUrl,
@@ -114,13 +116,12 @@ async function main(): Promise<void> {
 	});
 }
 
-async function findPreviousChannelTag(
+async function findPreviousTrackTag(
 	repository: string,
 	token: string,
-	channel: string,
+	track: ReleaseTrack,
 	currentTag: string,
 ): Promise<string | undefined> {
-	const prefix = `desktop/${channel}/v`;
 	for (let page = 1; page <= 10; page += 1) {
 		const releases = await githubJson<Array<{ tag_name: string }>>(
 			repository,
@@ -128,7 +129,9 @@ async function findPreviousChannelTag(
 			`/releases?per_page=100&page=${page}`,
 		);
 		const match = releases.find(
-			(release) => release.tag_name.startsWith(prefix) && release.tag_name !== currentTag,
+			(release) =>
+				release.tag_name !== currentTag &&
+				getTrackReleaseVersionFromTag(track, release.tag_name) !== null,
 		);
 		if (match) return match.tag_name;
 		if (releases.length < 100) return undefined;
@@ -170,10 +173,10 @@ async function upsertGithubRelease(
 	});
 }
 
-interface ChannelObjectPublicationInput {
+interface TrackObjectPublicationInput {
 	readonly artifactFiles: string[];
 	readonly bucket: string;
-	readonly channel: PublishableReleaseChannel;
+	readonly track: ReleaseTrack;
 	readonly notesFile: string;
 	readonly publishedAt: string;
 	readonly publishUrl: string;
@@ -181,7 +184,7 @@ interface ChannelObjectPublicationInput {
 	readonly workingDirectory: string;
 }
 
-interface ChannelDownloadManifestEntry {
+interface TrackDownloadManifestEntry {
 	readonly platform: "linux" | "macos" | "windows";
 	readonly arch: string;
 	readonly type: "deb" | "dmg" | "setup" | "zip";
@@ -191,13 +194,13 @@ interface ChannelDownloadManifestEntry {
 	readonly sha256: string;
 }
 
-export interface ChannelReleaseManifest {
+export interface TrackReleaseManifest {
 	readonly schemaVersion: 1;
-	readonly channel: PublishableReleaseChannel;
+	readonly track: ReleaseTrack;
 	readonly version: string;
 	readonly publishedAt: string;
 	readonly releaseNotesUrl: string;
-	readonly downloads: ChannelDownloadManifestEntry[];
+	readonly downloads: TrackDownloadManifestEntry[];
 }
 
 type S3ObjectCopier = (
@@ -208,11 +211,11 @@ type S3ObjectCopier = (
 	contentTypeValue: string,
 ) => Promise<void>;
 
-export async function publishChannelObjects(
-	input: ChannelObjectPublicationInput,
+export async function publishTrackObjects(
+	input: TrackObjectPublicationInput,
 	copyObject: S3ObjectCopier = s3Copy,
-): Promise<ChannelReleaseManifest> {
-	const releasePrefix = getReleasePrefix(input.channel);
+): Promise<TrackReleaseManifest> {
+	const releasePrefix = getReleasePrefix(input.track);
 	const notesPrefix = `${releasePrefix}/release-notes`;
 	await copyObject(
 		input.notesFile,
@@ -222,11 +225,11 @@ export async function publishChannelObjects(
 		"application/json",
 	);
 
-	const downloads: ChannelDownloadManifestEntry[] = [];
+	const downloads: TrackDownloadManifestEntry[] = [];
 	for (const file of input.artifactFiles) {
 		const download = classifyReleaseDownload(file);
 		if (!download) continue;
-		const aliasKey = getLatestAliasKey(input.channel, download);
+		const aliasKey = getLatestAliasKey(input.track, download);
 		await copyObject(
 			file,
 			input.bucket,
@@ -243,7 +246,7 @@ export async function publishChannelObjects(
 			url: publicUrl(
 				input.publishUrl,
 				getArtifactKey({
-					channel: input.channel,
+					track: input.track,
 					platform: publishedArtifactPlatform(download.platform),
 					arch: download.arch,
 					fileName: download.fileName,
@@ -264,9 +267,9 @@ export async function publishChannelObjects(
 		MOVING_CACHE_CONTROL,
 		"application/json",
 	);
-	const manifest: ChannelReleaseManifest = {
+	const manifest: TrackReleaseManifest = {
 		schemaVersion: 1,
-		channel: input.channel,
+		track: input.track,
 		version: input.version,
 		publishedAt: input.publishedAt,
 		releaseNotesUrl: publicUrl(input.publishUrl, `${notesPrefix}/${input.version}.json`),

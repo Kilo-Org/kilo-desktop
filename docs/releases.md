@@ -7,32 +7,32 @@ Implementation lives in `apps/desktop/config/`: `release.ts` (channels, artifact
 feed URLs), `signing.ts` (credential resolution), `windows-sign.ts` (post-make Windows
 signing), and `preflight-publish.ts` (publish validation).
 
-## Release channels
+## Release tracks
 
-`RELEASE_CHANNEL` accepts only publishable values. Local `pnpm start` / `pnpm dev` is
-unpackaged development — not a channel — and is never published. Packaged builds default
-to `canary` when `RELEASE_CHANNEL` is unset, and any other value throws during
+`RELEASE_TRACK` accepts only publishable values. Local `pnpm start` / `pnpm dev` is
+unpackaged development - not a track - and is never published. Packaged builds default
+to `preview` when `RELEASE_TRACK` is unset, and any other value throws during
 configuration.
 
-| Channel   | What it is                                | Who uses it                | How it ships                      |
-| --------- | ----------------------------------------- | -------------------------- | --------------------------------- |
-| `canary`  | Latest packaged build off `main`          | Engineers                  | Auto-publish on push to `main`    |
-| `staging` | Release candidate for internal validation | QA / internal stakeholders | Manual `Staging Publish` workflow |
-| `prod`    | Stable customer release                   | Customers                  | Manual `Prod Publish` workflow    |
+| Channel   | What it is                         | Who uses it                | How it ships                              |
+| --------- | ---------------------------------- | -------------------------- | ----------------------------------------- |
+| `preview` | Continuously consumable prerelease | Engineers / internal users | Scheduled cadence or manual `Release` run |
+| `stable`  | Stable customer release            | Customers                  | `vX.Y.Z` tag or manual `Release` run      |
 
-Each environment has a distinct app identity so local development, Canary, Staging, and
-Production can coexist without sharing installers or application data:
+Development has an isolated identity. Preview and Stable intentionally share one durable
+packaged identity so a future update-track switcher can move the installed app between tracks:
 
-| Environment       | Product name                     | Identity suffix |
-| ----------------- | -------------------------------- | --------------- |
-| Local development | Anaconda Agentic Desktop Dev     | `dev`           |
-| `canary`          | Anaconda Agentic Desktop Canary  | `canary`        |
-| `staging`         | Anaconda Agentic Desktop Staging | `staging`       |
-| `prod`            | Anaconda Agentic Desktop         | none            |
+| Environment       | Product name                 | Identity suffix |
+| ----------------- | ---------------------------- | --------------- |
+| Local development | Anaconda Agentic Desktop Dev | `dev`           |
+| `preview`         | Anaconda Agentic Desktop     | none            |
+| `stable`          | Anaconda Agentic Desktop     | none            |
 
-The suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
-Linux package and executable names, and Electron's application name (which separates
-the default user-data directory). Production retains the existing unsuffixed identity.
+The development suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
+Linux package and executable names, and Electron's application name. Preview and Stable share the
+same bundle ID, Squirrel identity, executable, protocol registration, single-instance scope, and
+default user-data directory. Installing one replaces the other; runtime track selection and
+Preview-to-Stable downgrade handling remain future work.
 
 ## Distribution matrix
 
@@ -49,22 +49,23 @@ disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never star
 Linux. Squirrel install, update, and uninstall launches are handled before normal
 application startup.
 
-Canary packaging stamps the desktop `package.json` version (then restores it) so every
+Preview packaging stamps the desktop `package.json` version (then restores it) so every
 Forge maker — DMG, ZIP, `RELEASES.json`, Squirrel nupkg/`RELEASES`, and DEB — names
-artifacts `{nextPatch}-canary-{YYMMDD}-{HHmmss}` from the committed desktop version and
-a UTC timestamp (shared via `CANARY_BUILD_TIME` in CI so macOS/Windows/Linux publish the
-same version). The packaged app `package.json` is stamped to the same value. The patch
-increment makes each canary sort above the committed version, so already-installed
+artifacts `{nextPatch}-preview-{YYMMDD}-{HHmmS}` from the committed desktop version and
+a UTC timestamp at ten-second resolution (shared via `PREVIEW_BUILD_TIME` in CI so all
+legs publish the same version). The packaged app `package.json` is stamped to the same value. The patch
+increment makes each Preview sort above the committed version, so already-installed
 `0.1.0` builds update. Electron packager native metadata (`FileVersion` /
 `ProductVersion` / `CFBundleShortVersionString`) uses only the `{nextPatch}` numeric
-prefix because Windows PE versions allow at most four integer components. Staging and
-prod keep the committed version and still require an explicit bump.
+prefix because Windows PE versions allow at most four integer components. Stable packaging stamps
+the tag or dispatch version for the build, then the workflow commits that version to the
+release-coupled desktop, web, and contracts manifests and refreshes `pnpm-lock.yaml` on `main`.
 
 Squirrel.Windows uses a legacy NuGet comparator that parses a prerelease's trailing
 numeric suffix as a 32-bit integer, while its bundled NuGet limits that suffix to 20
 characters. The two-digit year keeps the suffix within that limit, and hyphens keep the
 fixed-width date and time separate, so Windows packages and the app can share a version
-such as `0.1.2-canary-260818-143052` without overflowing the comparator.
+such as `0.1.2-preview-260818-14305` without overflowing the comparator.
 
 Squirrel.Windows packs with a bundled `nuget.exe` that still enforces the 260-character
 `MAX_PATH` limit, and `--releasify` extracts each nupkg entry to `{TEMP}\{guid}\{entry}`
@@ -80,31 +81,33 @@ Maker artifacts are written to `apps/desktop/out/make/`.
 
 ## Artifact layout
 
-Artifacts are published under:
+Artifacts are published under updater namespaces:
 
 ```text
-anaconda-agentic-desktop/<channel>/<platform>/<arch>/<artifact>
+anaconda-agentic-desktop/<update-channel>/<platform>/<arch>/<artifact>
 ```
 
-The runtime update feed URL uses the same `channel/platform/arch` path, so a build always
-looks for updates where its own artifacts were uploaded. `UPDATE_PUBLISH_URL` must use
-HTTPS.
+Preview uses update channel `preview`; Stable uses `latest`, matching T3 Code's updater
+terminology. The runtime update feed URL uses the same `update-channel/platform/arch` path,
+so a build always looks for updates where its own artifacts were uploaded.
+`UPDATE_PUBLISH_URL` must use HTTPS.
 
 After the publish matrix completes without cancellation, the workflow gathers the
 artifacts from successful platform jobs and creates or updates a private GitHub Release
-tagged `desktop/<channel>/v<version>`. The finalizer still runs when another platform job
+tagged with the exact packaged version: `vX.Y.Z-preview-YYMMDD-HHmmS` for Preview or
+`vX.Y.Z[-prerelease]` for Stable. The finalizer still runs when another platform job
 fails so release notes remain available for native update feeds that were already
 published. Generated notes are sanitized to remove pull-request numbers and links before
 the same body is used by GitHub and the public in-app release-note document.
 
-Each channel exposes stable public download pointers in addition to its immutable maker
+Each update channel exposes stable public download pointers in addition to its immutable maker
 artifacts:
 
 ```text
-anaconda-agentic-desktop/<channel>/latest.json
-anaconda-agentic-desktop/<channel>/latest/<platform>/<arch>/<installer>
-anaconda-agentic-desktop/<channel>/release-notes/<version>.json
-anaconda-agentic-desktop/<channel>/release-notes/latest.json
+anaconda-agentic-desktop/<update-channel>/latest.json
+anaconda-agentic-desktop/<update-channel>/latest/<platform>/<arch>/<installer>
+anaconda-agentic-desktop/<update-channel>/release-notes/<version>.json
+anaconda-agentic-desktop/<update-channel>/release-notes/latest.json
 ```
 
 `latest.json` contains the version, publication time, immutable release-note URL, and
@@ -116,16 +119,16 @@ URLs make the manifest the final atomic publication pointer. Native auto-update 
 remain at their existing `channel/platform/arch` paths.
 
 Each immutable release-note document includes the previous release version for its
-channel. Canary clients follow that chain back to their installed version and display up
-to six release groups, so skipping Canary builds does not hide their changes. Staging and
-Production show only the target release. Missing or legacy documents simply stop the
+track. Preview clients follow that chain back to their installed version and display up
+to six release groups, so skipping Preview builds does not hide their changes. Stable
+shows only the target release. Missing or legacy documents simply stop the
 history lookup and never block the binary update.
 
 ## Build-time variables
 
 The desktop main bundle loads committed Vite variables from
 `apps/desktop/.env.<environment>`. Local development uses `.env.development`; packaged
-builds select `.env.canary`, `.env.staging`, or `.env.prod` from `RELEASE_CHANNEL`.
+builds select `.env.preview` or `.env.stable` from `RELEASE_TRACK`.
 Existing process variables override the committed value, and machine-specific overrides
 can use an ignored `.env.<environment>.local` file. Only public build-time values belong
 in the committed files; secrets remain in GitHub Environments.
@@ -135,8 +138,9 @@ The Forge compile-time contract uses:
 | Variable                 | Meaning                                                                                                                 |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file                                      |
-| `RELEASE_CHANNEL`        | Channel compiled into the app; defaults to `canary`                                                                     |
-| `CANARY_BUILD_TIME`      | Optional ISO timestamp shared across canary matrix legs; defaults to now                                                |
+| `RELEASE_TRACK`          | Product release track compiled into the app; defaults to `preview`                                                      |
+| `RELEASE_VERSION`        | Explicit Stable version propagated to every packaging leg; empty for Preview                                            |
+| `PREVIEW_BUILD_TIME`     | Optional ISO timestamp shared across Preview matrix legs; defaults to now                                               |
 | `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                                                              |
 | `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                                                             |
 | `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                                                    |
@@ -145,28 +149,38 @@ The Forge compile-time contract uses:
 
 ## GitHub Environments
 
-CI publish jobs assume GitHub Environments named `canary`, `staging`, and `prod`, each
+CI publish jobs assume GitHub Environments named `preview` and `production`, each
 with repository/environment variables:
 
-| Environment variable | Meaning                                       |
-| -------------------- | --------------------------------------------- |
-| `UPDATE_PUBLISH_URL` | Public HTTPS update base URL for that channel |
-| `UPDATE_S3_BUCKET`   | S3 bucket for Forge publish                   |
-| `AWS_ROLE_ARN`       | IAM role assumed via GitHub OIDC              |
-| `AWS_REGION`         | Optional; defaults to `us-east-1`             |
+| Environment variable | Meaning                                     |
+| -------------------- | ------------------------------------------- |
+| `UPDATE_PUBLISH_URL` | Public HTTPS update base URL for that track |
+| `UPDATE_S3_BUCKET`   | S3 bucket for Forge publish                 |
+| `AWS_ROLE_ARN`       | IAM role assumed via GitHub OIDC            |
+| `AWS_REGION`         | Optional; defaults to `us-east-1`           |
 
 ## Workflows
 
-| Workflow          | Trigger                      | Behavior                                                                   |
-| ----------------- | ---------------------------- | -------------------------------------------------------------------------- |
-| `CI`              | Push/PR on `main`            | Lint, format check, `pnpm check`, and package tests (no E2E)               |
-| `Build`           | Manual (`workflow_dispatch`) | `pnpm run make` only; uses `canary` env for optional signing; GH artifacts |
-| `Canary Publish`  | Push to `main`               | Publishes to the `canary` environment                                      |
-| `Staging Publish` | Manual                       | Publishes to the `staging` environment                                     |
-| `Prod Publish`    | Manual                       | Publishes to the `prod` environment                                        |
+| Workflow      | Trigger                                  | Behavior                                                                   |
+| ------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| `CI`          | Pull request / merge queue               | Lint, format check, `pnpm check`, and package tests                        |
+| `Build`       | Manual                                   | `pnpm run make` only; uses Preview signing configuration; GitHub artifacts |
+| `Release`     | Stable tag, every three hours, or manual | Scheduled/manual Preview or tagged/manual Stable publication               |
+| `Nightly E2E` | Daily or manual                          | Full cross-platform E2E; independent from Preview releases                 |
+
+Scheduled `Release` runs compare `main` with the latest `v*-preview-*` tag and skip
+publication when the commit has not changed. Manual Preview runs always publish. Manual
+Stable runs accept `X.Y.Z` or `X.Y.Z-prerelease` from a direct `v...` tag on `main` or a
+manual dispatch from `main`. Plain `X.Y.Z` is marked latest; suffixed Stable versions are
+GitHub prereleases. Squirrel.Windows limits the prerelease portion to 20 characters. Fresh
+runs reject an existing Stable release; retrying the original workflow run may overwrite it
+to recover a partial publication. Stable workflows are serialized. After publication, the
+workflow commits the released version to `apps/desktop/package.json`, `apps/web/package.json`,
+`packages/contracts/package.json`, and `pnpm-lock.yaml` using the configured Release GitHub App,
+rebasing and retrying if `main` moved during publication.
 
 Signing secrets and update variables live on the GitHub Environments above. `Build`
-attaches the `canary` environment so the same optional codesign material is available for
+attaches the `preview` environment so the same codesign material is available for
 manual makes; it does not publish to S3. Linux jobs install `fakeroot` for DEB packaging
 and the `pkg-config`/`libsecret` development packages required to rebuild keytar.
 
@@ -186,6 +200,8 @@ CI reuses the same GitHub secret names as Anaconda Desktop (Agent Studio):
 | `AZURE_SUBSCRIPTION_ID`        | Azure subscription                                                     |
 | `AZURE_KEY_VAULT_URI`          | Key Vault URI for `AzureSignTool`                                      |
 | `AZURE_CERT_NAME`              | Certificate name in Key Vault                                          |
+| `RELEASE_APP_ID`               | GitHub App used to commit the released Stable version to `main`        |
+| `RELEASE_APP_PRIVATE_KEY`      | Private key for the release GitHub App                                 |
 
 Forge also accepts local/optional fallbacks:
 
@@ -198,13 +214,13 @@ Forge also accepts local/optional fallbacks:
 ## Publish validation
 
 `pnpm run publish` runs `preflight-publish.ts` before Forge. It requires
-`UPDATE_S3_BUCKET`, and for `staging` and `prod` it additionally requires:
+`UPDATE_S3_BUCKET`; both Preview and Stable additionally require:
 
 - macOS: a signing identity **and** notarization credentials
 - Windows: Azure Key Vault credentials or a certificate file
 
-Canary may publish unsigned, and unsigned local `make` runs are always supported.
+Unsigned local `make` runs remain supported because publish preflight is not invoked.
 
 `electron-forge publish --dry-run` runs the complete package/make lifecycle and records
 publisher metadata without uploading. Unit tests in `apps/desktop/config/release.test.ts`
-pin the S3 key and runtime feed URL to the same channel/platform/architecture path.
+pin the S3 key and runtime feed URL to the same update-channel/platform/architecture path.

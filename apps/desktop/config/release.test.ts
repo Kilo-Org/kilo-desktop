@@ -1,21 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	DEFAULT_RELEASE_CHANNEL,
+	DEFAULT_RELEASE_TRACK,
 	getArtifactKey,
-	getCanaryBuildTime,
+	getPreviewBuildTime,
 	getNativeAppVersion,
 	getPublishAppVersion,
-	getReleaseChannel,
+	getReleaseTrack,
 	getReleaseNotesUrl,
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
+	isStableReleaseVersion,
 	validatePublishEnvironment,
 } from "./release.js";
 
 describe("release configuration", () => {
-	it("uses a stable default channel and trims the public URL", () => {
-		expect(getReleaseChannel()).toBe(DEFAULT_RELEASE_CHANNEL);
+	it("uses a stable default track and trims the public URL", () => {
+		expect(getReleaseTrack()).toBe(DEFAULT_RELEASE_TRACK);
 		expect(getUpdatePublishUrl({ UPDATE_PUBLISH_URL: "https://updates.example.com///" })).toBe(
 			"https://updates.example.com",
 		);
@@ -23,67 +24,59 @@ describe("release configuration", () => {
 
 	it("keeps publisher keys and update feed URLs aligned", () => {
 		const artifactKey = getArtifactKey({
-			channel: "staging",
+			track: "preview",
 			platform: "darwin",
 			arch: "arm64",
 			fileName: "Anaconda.zip",
 		});
 		const feedUrl = getUpdateFeedUrl({
 			publishUrl: "https://cdn.example.com",
-			channel: "staging",
+			track: "preview",
 			platform: "darwin",
 			arch: "arm64",
 		});
 
-		expect(artifactKey).toBe("anaconda-agentic-desktop/staging/darwin/arm64/Anaconda.zip");
-		expect(feedUrl).toBe("https://cdn.example.com/anaconda-agentic-desktop/staging/darwin/arm64");
-		expect(getReleaseNotesUrl({ publishUrl: "https://cdn.example.com", channel: "staging" })).toBe(
-			"https://cdn.example.com/anaconda-agentic-desktop/staging/release-notes/latest.json",
+		expect(artifactKey).toBe("anaconda-agentic-desktop/preview/darwin/arm64/Anaconda.zip");
+		expect(feedUrl).toBe("https://cdn.example.com/anaconda-agentic-desktop/preview/darwin/arm64");
+		expect(getReleaseNotesUrl({ publishUrl: "https://cdn.example.com", track: "preview" })).toBe(
+			"https://cdn.example.com/anaconda-agentic-desktop/preview/release-notes/latest.json",
 		);
 		expect(
 			getReleaseNotesUrl({
 				publishUrl: "https://cdn.example.com",
-				channel: "canary",
-				version: "1.2.3-canary.1",
+				track: "preview",
+				version: "1.2.3-preview.1",
 			}),
 		).toBe(
-			"https://cdn.example.com/anaconda-agentic-desktop/canary/release-notes/1.2.3-canary.1.json",
+			"https://cdn.example.com/anaconda-agentic-desktop/preview/release-notes/1.2.3-preview.1.json",
 		);
 	});
 
-	it("rejects unknown channels and non-HTTPS feeds", () => {
-		expect(() => getReleaseChannel({ RELEASE_CHANNEL: "../prod" })).toThrow(
-			"Invalid release channel",
-		);
-		expect(() => getReleaseChannel({ RELEASE_CHANNEL: "beta" })).toThrow("Invalid release channel");
+	it("rejects unknown tracks and non-HTTPS feeds", () => {
+		expect(() => getReleaseTrack({ RELEASE_TRACK: "../stable" })).toThrow("Invalid release track");
+		expect(() => getReleaseTrack({ RELEASE_TRACK: "beta" })).toThrow("Invalid release track");
 		expect(() =>
 			getUpdateFeedUrl({
 				publishUrl: "http://updates.example.com",
-				channel: "prod",
+				track: "stable",
 				platform: "win32",
 				arch: "x64",
 			}),
 		).toThrow("must use HTTPS");
 	});
 
-	it("requires storage and signed-channel credentials before publishing", () => {
+	it("requires storage and signed-track credentials before publishing", () => {
 		expect(() => validatePublishEnvironment({}, "linux")).toThrow("UPDATE_S3_BUCKET");
 		expect(() =>
 			validatePublishEnvironment(
-				{ RELEASE_CHANNEL: "canary", UPDATE_S3_BUCKET: "releases" },
-				"darwin",
-			),
-		).not.toThrow();
-		expect(() =>
-			validatePublishEnvironment(
-				{ RELEASE_CHANNEL: "staging", UPDATE_S3_BUCKET: "releases" },
+				{ RELEASE_TRACK: "preview", UPDATE_S3_BUCKET: "releases" },
 				"darwin",
 			),
 		).toThrow("signing identity and notarization");
 		expect(() =>
 			validatePublishEnvironment(
 				{
-					RELEASE_CHANNEL: "prod",
+					RELEASE_TRACK: "stable",
 					UPDATE_S3_BUCKET: "releases",
 					APPLE_SIGNING_IDENTITY: "Developer ID Application: Example",
 					APPLE_API_KEY: "/tmp/key.p8",
@@ -96,7 +89,7 @@ describe("release configuration", () => {
 		expect(() =>
 			validatePublishEnvironment(
 				{
-					RELEASE_CHANNEL: "prod",
+					RELEASE_TRACK: "stable",
 					UPDATE_S3_BUCKET: "releases",
 					WINDOWS_CERTIFICATE_FILE: "certificate.pfx",
 					WINDOWS_CERTIFICATE_PASSWORD: "secret",
@@ -107,7 +100,7 @@ describe("release configuration", () => {
 		expect(() =>
 			validatePublishEnvironment(
 				{
-					RELEASE_CHANNEL: "staging",
+					RELEASE_TRACK: "preview",
 					UPDATE_S3_BUCKET: "releases",
 					AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
 					AZURE_CERT_NAME: "codesign",
@@ -117,14 +110,14 @@ describe("release configuration", () => {
 		).not.toThrow();
 		expect(() =>
 			validatePublishEnvironment(
-				{ RELEASE_CHANNEL: "prod", UPDATE_S3_BUCKET: "releases" },
+				{ RELEASE_TRACK: "stable", UPDATE_S3_BUCKET: "releases" },
 				"win32",
 			),
 		).toThrow("Azure Key Vault signing credentials or a certificate file");
 		expect(() =>
 			validatePublishEnvironment(
 				{
-					RELEASE_CHANNEL: "staging",
+					RELEASE_TRACK: "preview",
 					UPDATE_S3_BUCKET: "releases",
 					APPLE_SIGNING_IDENTITY: "Developer ID Application: Example",
 					APPLE_API_KEY: "/tmp/key.p8",
@@ -135,69 +128,90 @@ describe("release configuration", () => {
 			),
 		).not.toThrow();
 		expect(
-			getUpdateFeedUrl({ publishUrl: "", channel: "canary", platform: "darwin", arch: "arm64" }),
+			getUpdateFeedUrl({ publishUrl: "", track: "preview", platform: "darwin", arch: "arm64" }),
 		).toBeUndefined();
 	});
 
-	it("stamps canary with a NuGet-compatible fixed-width UTC timestamp", () => {
+	it("stamps preview with a NuGet-compatible fixed-width UTC timestamp", () => {
 		const version = getPublishAppVersion({
 			version: "0.1.0",
-			channel: "canary",
+			track: "preview",
 			now: new Date("2026-08-18T14:30:52.000Z"),
 		});
-		expect(version).toBe("0.1.1-canary-260818-143052");
+		expect(version).toBe("0.1.1-preview-260818-14305");
 		expect(version.slice(version.indexOf("-") + 1)).toHaveLength(20);
 		expect(
 			getPublishAppVersion({
 				version: "0.1.0",
-				channel: "canary",
+				track: "preview",
 				now: new Date("2026-08-18T00:05:03.000Z"),
 			}),
-		).toBe("0.1.1-canary-260818-000503");
-		expect(
-			getPublishAppVersion({
-				version: "0.1.0",
-				channel: "staging",
-				now: new Date("2026-08-18T14:30:52.000Z"),
-			}),
-		).toBe("0.1.0");
-		expect(
-			getPublishAppVersion({
-				version: "0.1.0",
-				channel: "prod",
-				now: new Date("2026-08-18T14:30:52.000Z"),
-			}),
-		).toBe("0.1.0");
+		).toBe("0.1.1-preview-260818-00050");
 	});
 
-	it("does not restamp an already-stamped canary version", () => {
+	it("uses an explicit Stable version and recognizes plain releases", () => {
 		expect(
 			getPublishAppVersion({
-				version: "0.1.1-canary-260818-143052",
-				channel: "canary",
+				version: "0.1.0",
+				track: "stable",
+				releaseVersion: "1.2.3-alpha.1",
+			}),
+		).toBe("1.2.3-alpha.1");
+		expect(isStableReleaseVersion("1.2.3")).toBe(true);
+		expect(isStableReleaseVersion("1.2.3-alpha.1")).toBe(true);
+		expect(isStableReleaseVersion("1.2")).toBe(false);
+		expect(() => getPublishAppVersion({ version: "0.1.0", track: "stable" })).toThrow(
+			"RELEASE_VERSION is required for Stable builds",
+		);
+	});
+
+	it("maps Stable publishing to the latest update namespace", () => {
+		expect(
+			getArtifactKey({
+				track: "stable",
+				platform: "darwin",
+				arch: "arm64",
+				fileName: "Anaconda.zip",
+			}),
+		).toBe("anaconda-agentic-desktop/latest/darwin/arm64/Anaconda.zip");
+		expect(
+			getUpdateFeedUrl({
+				publishUrl: "https://cdn.example.com",
+				track: "stable",
+				platform: "darwin",
+				arch: "arm64",
+			}),
+		).toBe("https://cdn.example.com/anaconda-agentic-desktop/latest/darwin/arm64");
+	});
+
+	it("does not restamp an already-stamped preview version", () => {
+		expect(
+			getPublishAppVersion({
+				version: "0.1.1-preview-260818-14305",
+				track: "preview",
 				now: new Date("2026-08-18T15:00:00.000Z"),
 			}),
-		).toBe("0.1.1-canary-260818-143052");
+		).toBe("0.1.1-preview-260818-14305");
 	});
 
-	it("reads a shared canary build time so matrix legs publish the same version", () => {
-		expect(getCanaryBuildTime({ CANARY_BUILD_TIME: "2026-08-18T14:30:52.000Z" })).toEqual(
+	it("reads a shared preview build time so matrix legs publish the same version", () => {
+		expect(getPreviewBuildTime({ PREVIEW_BUILD_TIME: "2026-08-18T14:30:52.000Z" })).toEqual(
 			new Date("2026-08-18T14:30:52.000Z"),
 		);
-		expect(() => getCanaryBuildTime({ CANARY_BUILD_TIME: "not-a-date" })).toThrow(
-			"Invalid CANARY_BUILD_TIME",
+		expect(() => getPreviewBuildTime({ PREVIEW_BUILD_TIME: "not-a-date" })).toThrow(
+			"Invalid PREVIEW_BUILD_TIME",
 		);
 		expect(() =>
 			getPublishAppVersion({
 				version: "latest",
-				channel: "canary",
+				track: "preview",
 				now: new Date("2026-08-18T14:30:52.000Z"),
 			}),
 		).toThrow("Invalid app version");
 	});
 
 	it("strips prerelease so Windows PE file versions stay at most four numeric components", () => {
-		expect(getNativeAppVersion("0.1.1-canary-260818-143052")).toBe("0.1.1");
+		expect(getNativeAppVersion("0.1.1-preview-260818-14305")).toBe("0.1.1");
 		expect(getNativeAppVersion("0.1.0")).toBe("0.1.0");
 		expect(() => getNativeAppVersion("latest")).toThrow("Invalid app version");
 	});

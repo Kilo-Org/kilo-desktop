@@ -3,9 +3,13 @@ name: Publish Helper
 on:
   workflow_call:
     inputs:
-      release_channel:
-        description: Publishable release channel (canary, staging, or prod)
+      release_track:
+        description: Publishable release track (preview or stable)
         required: true
+        type: string
+      release_version:
+        description: Explicit Stable version; empty for Preview
+        required: false
         type: string
       fail_fast:
         description: Cancel remaining matrix legs when one fails
@@ -14,14 +18,14 @@ on:
         default: true
 
 concurrency:
-  group: publish-${{ inputs.release_channel }}
+  group: publish-${{ inputs.release_track }}
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
-    environment: ${{ inputs.release_channel }}
+    environment: ${{ inputs.release_track == 'stable' && 'production' || 'preview' }}
     permissions:
       id-token: write
       contents: read
@@ -40,8 +44,9 @@ jobs:
             timeout_minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      RELEASE_CHANNEL: ${{ inputs.release_channel }}
-      CANARY_BUILD_TIME: ${{ github.event.head_commit.timestamp || github.run_started_at }}
+      RELEASE_TRACK: ${{ inputs.release_track }}
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      PREVIEW_BUILD_TIME: ${{ github.run_started_at }}
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       UPDATE_S3_BUCKET: ${{ vars.UPDATE_S3_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
@@ -89,6 +94,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Align release package versions
+        run: pnpm --filter @anaconda-agentic-desktop/desktop exec tsx config/desktop-version.ts
+
+      - name: Refresh release lockfile
+        run: pnpm install --lockfile-only --ignore-scripts
+
       - uses: ./plugins/notebook/actions/setup-native
 
       - uses: ./plugins/kilo-server/actions/setup-cli
@@ -111,14 +122,15 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ${{ inputs.release_channel }}
+    environment: ${{ inputs.release_track == 'stable' && 'production' || 'preview' }}
     permissions:
       id-token: write
       contents: write
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      RELEASE_CHANNEL: ${{ inputs.release_channel }}
-      CANARY_BUILD_TIME: ${{ github.event.head_commit.timestamp || github.run_started_at }}
+      RELEASE_TRACK: ${{ inputs.release_track }}
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      PREVIEW_BUILD_TIME: ${{ github.run_started_at }}
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       UPDATE_S3_BUCKET: ${{ vars.UPDATE_S3_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
@@ -146,5 +158,5 @@ jobs:
           pattern: release-*
           path: release-artifacts
 
-      - name: Create GitHub release and publish channel aliases
-        run: pnpm --filter @anaconda-agentic-desktop/desktop exec tsx config/publish-channel-release.ts
+      - name: Create GitHub release and publish track aliases
+        run: pnpm --filter @anaconda-agentic-desktop/desktop exec tsx config/publish-track-release.ts

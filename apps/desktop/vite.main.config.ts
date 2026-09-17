@@ -9,19 +9,20 @@ import {
 	createViteEnvironmentDefinitions,
 	getBuildEnvironment,
 	requireViteEnvironmentVariable,
+	shouldUploadSentrySourceMaps,
 } from "./config/build-environment.js";
-import { getReleaseChannel, getUpdatePublishUrl } from "./config/release.js";
+import { getReleaseTrack, getUpdatePublishUrl } from "./config/release.js";
 import appInfo from "./package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ command }) => {
-	const channel = getReleaseChannel(process.env);
-	const environment = getBuildEnvironment(command, channel);
+	const track = getReleaseTrack(process.env);
+	const environment = getBuildEnvironment(command, track);
 	const viteEnvironment = loadEnv(environment, root, "VITE_");
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
-	const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
+	const uploadSourcemaps = shouldUploadSentrySourceMaps(track, process.env.SENTRY_AUTH_TOKEN);
 
 	return {
 		plugins: [
@@ -52,7 +53,7 @@ export default defineConfig(({ command }) => {
 		],
 		define: {
 			...createViteEnvironmentDefinitions(viteEnvironment),
-			RELEASE_CHANNEL: JSON.stringify(channel),
+			RELEASE_TRACK: JSON.stringify(track),
 			UPDATE_PUBLISH_URL: JSON.stringify(getUpdatePublishUrl(process.env)),
 			// The environments plugin resolves bridge resources relative to its
 			// own package root. After bundling, import.meta.dirname no longer

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
 	DesktopReleaseNotes,
 	DesktopUpdateState,
-	ReleaseChannel,
+	ReleaseTrack,
 } from "@anaconda-agentic-desktop/contracts";
 
 import { DesktopUpdaterService } from "./Updater.js";
@@ -18,9 +18,9 @@ class FakeNativeUpdater extends EventEmitter {
 
 const notes = {
 	schemaVersion: 1 as const,
-	channel: "canary" as const,
-	version: "1.2.3-canary-260826-120000",
-	title: "Canary update",
+	track: "preview" as const,
+	version: "1.2.3-preview-260826-12000",
+	title: "Preview update",
 	publishedAt: "2026-08-26T12:00:00.000Z",
 	bodyMarkdown: "* Faster startup",
 	items: ["Faster startup"],
@@ -34,7 +34,7 @@ function createService(
 		fetch?: typeof fetch;
 		updater?: FakeNativeUpdater;
 		installWithShutdown?: (install: () => void) => void;
-		channel?: ReleaseChannel;
+		track?: ReleaseTrack;
 		currentVersion?: string;
 	} = {},
 ) {
@@ -44,7 +44,7 @@ function createService(
 		isPackaged: overrides.isPackaged ?? true,
 		platform: overrides.platform ?? "darwin",
 		arch: "arm64",
-		channel: overrides.channel ?? "canary",
+		track: overrides.track ?? "preview",
 		currentVersion: overrides.currentVersion ?? "1.2.2",
 		publishUrl: overrides.publishUrl ?? "https://updates.example.com",
 		installWithShutdown: overrides.installWithShutdown ?? ((install) => install()),
@@ -68,7 +68,7 @@ describe("DesktopUpdaterService", () => {
 		const { service, updater, states } = createService();
 		service.start();
 		expect(updater.setFeedURL).toHaveBeenCalledWith({
-			url: "https://updates.example.com/anaconda-agentic-desktop/canary/darwin/arm64/RELEASES.json",
+			url: "https://updates.example.com/anaconda-agentic-desktop/preview/darwin/arm64/RELEASES.json",
 			serverType: "json",
 		});
 
@@ -95,18 +95,18 @@ describe("DesktopUpdaterService", () => {
 		service.dispose();
 	});
 
-	it("combines skipped Canary release notes back to the installed version", async () => {
+	it("combines skipped Preview release notes back to the installed version", async () => {
 		vi.useFakeTimers();
 		const target: DesktopReleaseNotes = {
 			...notes,
-			version: "1.2.5-canary-260826-150000",
-			previousVersion: "1.2.4-canary-260826-140000",
+			version: "1.2.5-preview-260826-15000",
+			previousVersion: "1.2.4-preview-260826-14000",
 			items: ["Newest change"],
 		};
 		const skipped: DesktopReleaseNotes = {
 			...notes,
 			version: target.previousVersion!,
-			previousVersion: "1.2.3-canary-260826-130000",
+			previousVersion: "1.2.3-preview-260826-13000",
 			items: ["Skipped change"],
 		};
 		const fetchNotes = vi.fn(async (input: string | URL | Request) => {
@@ -132,12 +132,12 @@ describe("DesktopUpdaterService", () => {
 		service.dispose();
 	});
 
-	it("keeps non-Canary release notes limited to the target release", async () => {
+	it("keeps Stable release notes limited to the target release", async () => {
 		vi.useFakeTimers();
-		const target = { ...notes, channel: "staging" as const, previousVersion: "1.2.2" };
+		const target = { ...notes, track: "stable" as const, previousVersion: "1.2.2" };
 		const fetchNotes = vi.fn(async () => new Response(JSON.stringify(target), { status: 200 }));
 		const { service, updater } = createService({
-			channel: "staging",
+			track: "stable",
 			fetch: fetchNotes as typeof fetch,
 		});
 		service.start();

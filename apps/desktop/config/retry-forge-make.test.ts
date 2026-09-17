@@ -16,7 +16,7 @@ function success(): ExecutionOutcome {
 function detachEnoent(stream: "stderr" | "stdout" = "stderr"): ExecutionOutcome {
 	const message =
 		"✖ Making a dmg distributable for darwin/arm64 [FAILED: Command failed: " +
-		"hdiutil detach /Volumes/Agentic Canary\nhdiutil: detach failed - No such file or directory\n";
+		"hdiutil detach /Volumes/Agentic Preview\nhdiutil: detach failed - No such file or directory\n";
 	return {
 		exitCode: 1,
 		stdout: stream === "stdout" ? message : "",
@@ -63,7 +63,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		const sleep = vi.fn().mockResolvedValue(undefined);
 
 		const outcome = await runForgeMakeWithDetachRetry(invocation, {
-			volumeTitles: ["Agentic Canary"],
+			volumeTitles: ["Agentic Preview"],
 			runForge,
 			forceDetach,
 			sleep,
@@ -81,7 +81,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		const sleep = vi.fn().mockResolvedValue(undefined);
 
 		const outcome = await runForgeMakeWithDetachRetry(invocation, {
-			volumeTitles: ["Agentic Canary", "Agentic"],
+			volumeTitles: ["Agentic Preview", "Agentic"],
 			runForge,
 			forceDetach,
 			sleep,
@@ -91,7 +91,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		expect(outcome.failed).toBe(false);
 		expect(runForge).toHaveBeenCalledTimes(2);
 		expect(forceDetach.mock.calls.map((call) => call[0])).toEqual([
-			"/Volumes/Agentic Canary",
+			"/Volumes/Agentic Preview",
 			"/Volumes/Agentic",
 		]);
 		expect(sleep).toHaveBeenCalledWith(42);
@@ -103,7 +103,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		const sleep = vi.fn().mockResolvedValue(undefined);
 
 		const outcome = await runForgeMakeWithDetachRetry(invocation, {
-			volumeTitles: ["Agentic Canary"],
+			volumeTitles: ["Agentic Preview"],
 			maxAttempts: 2,
 			runForge,
 			forceDetach,
@@ -121,7 +121,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		const forceDetach = vi.fn().mockResolvedValue(undefined);
 
 		const outcome = await runForgeMakeWithDetachRetry(invocation, {
-			volumeTitles: ["Agentic Canary"],
+			volumeTitles: ["Agentic Preview"],
 			runForge,
 			forceDetach,
 			sleep: vi.fn().mockResolvedValue(undefined),
@@ -138,7 +138,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		const sleep = vi.fn().mockResolvedValue(undefined);
 
 		const outcome = await runForgeMakeWithDetachRetry(invocation, {
-			volumeTitles: ["Agentic Canary", "Agentic"],
+			volumeTitles: ["Agentic Preview", "Agentic"],
 			runForge,
 			forceDetach,
 			sleep,
@@ -147,7 +147,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		expect(outcome.failed).toBe(false);
 		// Both titles must still be attempted even though the first throws.
 		expect(forceDetach.mock.calls.map((call) => call[0])).toEqual([
-			"/Volumes/Agentic Canary",
+			"/Volumes/Agentic Preview",
 			"/Volumes/Agentic",
 		]);
 		expect(runForge).toHaveBeenCalledTimes(2);

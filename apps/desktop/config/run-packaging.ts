@@ -3,20 +3,20 @@ import { fileURLToPath } from "node:url";
 
 import { execa, type ExecaError } from "execa";
 
-import { getReleaseChannel } from "./release.js";
+import { getReleaseTrack } from "./release.js";
 import {
 	runForgeMakeWithDetachRetry,
 	type ExecutionOutcome,
 	type ForgeInvocation,
 } from "./retry-forge-make.js";
-import { withStampedDesktopPackageJson } from "./stamp-desktop-version.js";
+import { withStampedReleasePackageVersions } from "./desktop-version.js";
 import { applyWindowsPackagingTemp } from "./windows-packaging-temp.js";
 
 const FORGE_COMMANDS = ["make", "package", "publish"] as const;
 type ForgeCommand = (typeof FORGE_COMMANDS)[number];
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const manifestPath = path.join(desktopRoot, "package.json");
+const workspaceRoot = path.resolve(desktopRoot, "../..");
 
 /**
  * Effectively-unbounded per-stream buffer for the darwin-`make` retry path.
@@ -45,9 +45,8 @@ function parseForgeCommand(value: string | undefined): ForgeCommand {
  */
 function dmgVolumeTitles(): string[] {
 	if (process.platform !== "darwin") return [];
-	const channel = getReleaseChannel(process.env);
-	const channelTitle = channel.replace(/^./, (character) => character.toUpperCase());
-	const active = channel === "prod" ? "Agentic" : `Agentic ${channelTitle}`;
+	getReleaseTrack(process.env);
+	const active = "Agentic";
 	// Also try the plain "Agentic" title as a defensive fallback in case a
 	// prior packaging step for another channel left a mount behind.
 	return active === "Agentic" ? [active] : [active, "Agentic"];
@@ -116,6 +115,6 @@ const [command, ...forgeArgs] = process.argv.slice(2);
 const parsedCommand = parseForgeCommand(command);
 
 await applyWindowsPackagingTemp();
-await withStampedDesktopPackageJson(manifestPath, process.env, async () => {
+await withStampedReleasePackageVersions(workspaceRoot, process.env, async () => {
 	await runForgeInvocation(parsedCommand, forgeArgs);
 });

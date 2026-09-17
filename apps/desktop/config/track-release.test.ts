@@ -3,24 +3,28 @@ import { describe, expect, it } from "vitest";
 import {
 	classifyReleaseDownload,
 	extractReleaseNoteItems,
-	getChannelReleaseName,
-	getChannelReleaseTag,
-	getChannelReleaseVersionFromTag,
+	getTrackReleaseName,
+	getTrackReleaseTag,
+	getTrackReleaseVersionFromTag,
 	getGithubReleaseWrite,
+	getGithubReleaseFlags,
 	getLatestAliasKey,
 	sanitizeGeneratedReleaseNotes,
-} from "./channel-release.js";
+} from "./track-release.js";
 
-describe("channel release publishing", () => {
-	it("uses channel-qualified tags and names", () => {
-		expect(getChannelReleaseTag("staging", "1.2.3")).toBe("desktop/staging/v1.2.3");
-		expect(getChannelReleaseName("prod", "1.2.3")).toBe(
-			"Anaconda Agentic Desktop Production v1.2.3",
+describe("track release publishing", () => {
+	it("uses direct version tags and track-specific names", () => {
+		expect(getTrackReleaseTag("preview", "1.2.3-preview-260826-12000")).toBe(
+			"v1.2.3-preview-260826-12000",
 		);
-		expect(
-			getChannelReleaseVersionFromTag("canary", "desktop/canary/v1.2.3-canary-260826-120000"),
-		).toBe("1.2.3-canary-260826-120000");
-		expect(getChannelReleaseVersionFromTag("canary", "desktop/prod/v1.2.3")).toBeNull();
+		expect(getTrackReleaseTag("stable", "1.2.3")).toBe("v1.2.3");
+		expect(getTrackReleaseName("stable", "1.2.3")).toBe("Anaconda Agentic Desktop v1.2.3");
+		expect(getTrackReleaseVersionFromTag("preview", "v1.2.3-preview-260826-12000")).toBe(
+			"1.2.3-preview-260826-12000",
+		);
+		expect(getTrackReleaseVersionFromTag("stable", "v1.2.3-alpha.1")).toBe("1.2.3-alpha.1");
+		expect(getTrackReleaseVersionFromTag("preview", "v1.2.3")).toBeNull();
+		expect(getTrackReleaseVersionFromTag("stable", "v1.2.3-preview-260826-12000")).toBeNull();
 	});
 
 	it("creates releases on the first run and edits them on reruns", () => {
@@ -28,6 +32,21 @@ describe("channel release publishing", () => {
 		expect(getGithubReleaseWrite(2468)).toEqual({
 			endpoint: "/releases/2468",
 			method: "PATCH",
+		});
+	});
+
+	it("marks only plain Stable versions as latest", () => {
+		expect(getGithubReleaseFlags("stable", "1.2.3")).toEqual({
+			prerelease: false,
+			makeLatest: true,
+		});
+		expect(getGithubReleaseFlags("stable", "1.2.3-alpha.1")).toEqual({
+			prerelease: true,
+			makeLatest: false,
+		});
+		expect(getGithubReleaseFlags("preview", "1.2.3-preview-260826-12000")).toEqual({
+			prerelease: true,
+			makeLatest: false,
 		});
 	});
 
@@ -66,20 +85,20 @@ describe("channel release publishing", () => {
 			"/tmp/release/mac/out/make/dmg/darwin/arm64/Anaconda Agentic Desktop.dmg",
 		);
 		expect(download).toMatchObject({ platform: "macos", arch: "arm64", type: "dmg" });
-		expect(getLatestAliasKey("canary", download!)).toBe(
-			"anaconda-agentic-desktop/canary/latest/macos/arm64/Anaconda Agentic Desktop Canary.dmg",
+		expect(getLatestAliasKey("preview", download!)).toBe(
+			"anaconda-agentic-desktop/preview/latest/macos/arm64/Anaconda Agentic Desktop.dmg",
 		);
 		expect(
-			getLatestAliasKey("staging", {
+			getLatestAliasKey("preview", {
 				...download!,
 				platform: "windows",
 				type: "setup",
 			}),
 		).toBe(
-			"anaconda-agentic-desktop/staging/latest/windows/arm64/Anaconda-Agentic-Desktop-Staging-Setup.exe",
+			"anaconda-agentic-desktop/preview/latest/windows/arm64/Anaconda-Agentic-Desktop-Setup.exe",
 		);
-		expect(getLatestAliasKey("prod", { ...download!, platform: "linux", type: "deb" })).toBe(
-			"anaconda-agentic-desktop/prod/latest/linux/arm64/anaconda-agentic-desktop.deb",
+		expect(getLatestAliasKey("stable", { ...download!, platform: "linux", type: "deb" })).toBe(
+			"anaconda-agentic-desktop/latest/latest/linux/arm64/anaconda-agentic-desktop.deb",
 		);
 		expect(classifyReleaseDownload("/tmp/RELEASES.json")).toBeNull();
 	});

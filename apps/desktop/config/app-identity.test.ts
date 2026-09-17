@@ -3,26 +3,22 @@ import { describe, expect, it } from "vitest";
 import { getAppIdentity, type AppEnvironment } from "./app-identity.js";
 
 describe("app identity", () => {
-	it.each([
-		["development", "Dev", "dev"],
-		["canary", "Canary", "canary"],
-		["staging", "Staging", "staging"],
-	] as const)("isolates the %s environment", (environment, displaySuffix, machineSuffix) => {
-		expect(getAppIdentity(environment)).toEqual({
-			appBundleId: `com.anaconda.agentic-desktop.${machineSuffix}`,
-			environment,
-			executableName: `anaconda-agentic-desktop-${machineSuffix}`,
-			productName: `Anaconda Agentic Desktop ${displaySuffix}`,
-			setupExecutableName: `Anaconda-Agentic-Desktop-${displaySuffix}-Setup.exe`,
-			squirrelName: `AnacondaAgenticDesktop${displaySuffix}`,
-			windowsAppUserModelId: `com.squirrel.AnacondaAgenticDesktop${displaySuffix}.anaconda-agentic-desktop-${machineSuffix}`,
+	it("isolates the development environment", () => {
+		expect(getAppIdentity("development")).toEqual({
+			appBundleId: "com.anaconda.agentic-desktop.dev",
+			environment: "development",
+			executableName: "anaconda-agentic-desktop-dev",
+			productName: "Anaconda Agentic Desktop Dev",
+			setupExecutableName: "Anaconda-Agentic-Desktop-Dev-Setup.exe",
+			squirrelName: "AnacondaAgenticDesktopDev",
+			windowsAppUserModelId: "com.squirrel.AnacondaAgenticDesktopDev.anaconda-agentic-desktop-dev",
 		});
 	});
 
-	it("keeps the production identity unsuffixed", () => {
-		expect(getAppIdentity("prod")).toEqual({
+	it.each(["preview", "stable"] as const)("shares the packaged identity for %s", (environment) => {
+		expect(getAppIdentity(environment)).toEqual({
 			appBundleId: "com.anaconda.agentic-desktop",
-			environment: "prod",
+			environment,
 			executableName: "anaconda-agentic-desktop",
 			productName: "Anaconda Agentic Desktop",
 			setupExecutableName: "Anaconda-Agentic-Desktop-Setup.exe",
@@ -32,15 +28,10 @@ describe("app identity", () => {
 	});
 
 	it("covers every supported environment", () => {
-		const environments = [
-			"development",
-			"canary",
-			"staging",
-			"prod",
-		] satisfies readonly AppEnvironment[];
+		const environments = ["development", "preview", "stable"] satisfies readonly AppEnvironment[];
 
 		expect(
-			new Set(environments.map((environment) => getAppIdentity(environment).productName)).size,
-		).toBe(environments.length);
+			new Set(environments.map((environment) => getAppIdentity(environment).productName)),
+		).toEqual(new Set(["Anaconda Agentic Desktop Dev", "Anaconda Agentic Desktop"]));
 	});
 });

@@ -2,10 +2,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getAppIdentity } from "../../apps/desktop/config/app-identity.js";
-import { getReleaseChannel } from "../../apps/desktop/config/release.js";
+import { getReleaseTrack } from "../../apps/desktop/config/release.js";
 
 const thisDirectory = path.dirname(fileURLToPath(import.meta.url));
-const identity = getAppIdentity(getReleaseChannel(process.env));
+const identity = getAppIdentity(getReleaseTrack(process.env));
 
 /** Repository root (parent of the e2e/ package). */
 export const repoRoot = path.resolve(thisDirectory, "../..");

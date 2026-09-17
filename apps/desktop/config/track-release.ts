@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { getAppIdentity } from "./app-identity.js";
-import { getReleasePrefix, type PublishableReleaseChannel } from "./release.js";
+import { getReleasePrefix, type ReleaseTrack } from "./release.js";
 
 export interface ReleaseDownload {
 	readonly sourcePath: string;
@@ -11,23 +11,30 @@ export interface ReleaseDownload {
 	readonly fileName: string;
 }
 
-export function getChannelReleaseTag(channel: PublishableReleaseChannel, version: string): string {
-	return `desktop/${channel}/v${version}`;
+export function getTrackReleaseTag(track: ReleaseTrack, version: string): string {
+	return `v${version}`;
 }
 
-export function getChannelReleaseVersionFromTag(
-	channel: PublishableReleaseChannel,
-	tag: string,
-): string | null {
-	const prefix = `desktop/${channel}/v`;
-	if (!tag.startsWith(prefix)) return null;
-	return tag.slice(prefix.length) || null;
+export function getTrackReleaseVersionFromTag(track: ReleaseTrack, tag: string): string | null {
+	if (!tag.startsWith("v")) return null;
+	const version = tag.slice(1);
+	const isPreview = /^\d+\.\d+\.\d+-preview-\d{6}-\d{5}$/.test(version);
+	if ((track === "preview") !== isPreview) return null;
+	return version || null;
 }
 
-export function getChannelReleaseName(channel: PublishableReleaseChannel, version: string): string {
-	const label =
-		channel === "prod" ? "Production" : channel.charAt(0).toUpperCase() + channel.slice(1);
+export function getTrackReleaseName(track: ReleaseTrack, version: string): string {
+	if (track === "stable") return `Anaconda Agentic Desktop v${version}`;
+	const label = track.charAt(0).toUpperCase() + track.slice(1);
 	return `Anaconda Agentic Desktop ${label} v${version}`;
+}
+
+export function getGithubReleaseFlags(
+	track: ReleaseTrack,
+	version: string,
+): { prerelease: boolean; makeLatest: boolean } {
+	const plainStable = track === "stable" && /^\d+\.\d+\.\d+$/.test(version);
+	return { prerelease: !plainStable, makeLatest: plainStable };
 }
 
 export function sanitizeGeneratedReleaseNotes(markdown: string): string {
@@ -86,18 +93,12 @@ export function classifyReleaseDownload(filePath: string): ReleaseDownload | nul
 	};
 }
 
-export function getLatestAliasKey(
-	channel: PublishableReleaseChannel,
-	download: ReleaseDownload,
-): string {
-	return `${getReleasePrefix(channel)}/latest/${download.platform}/${download.arch}/${getLatestAliasFileName(channel, download.type)}`;
+export function getLatestAliasKey(track: ReleaseTrack, download: ReleaseDownload): string {
+	return `${getReleasePrefix(track)}/latest/${download.platform}/${download.arch}/${getLatestAliasFileName(track, download.type)}`;
 }
 
-export function getLatestAliasFileName(
-	channel: PublishableReleaseChannel,
-	type: ReleaseDownload["type"],
-): string {
-	const identity = getAppIdentity(channel);
+export function getLatestAliasFileName(track: ReleaseTrack, type: ReleaseDownload["type"]): string {
+	const identity = getAppIdentity(track);
 	if (type === "setup") return identity.setupExecutableName;
 	if (type === "deb") return `${identity.executableName}.deb`;
 	return `${identity.productName}.${type}`;

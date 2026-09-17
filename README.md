@@ -116,7 +116,7 @@ pnpm --filter @anaconda-agentic-desktop/plugin-todos db:generate
 ├── plugins/                    # Placeholder for the future plugin system
 ├── .github/
 │   ├── actions/                # Shared CI setup (node, macOS/Windows codesign)
-│   └── workflows/              # CI, build, and canary/staging/prod publish
+│   └── workflows/              # CI, build, scheduled Preview, and Stable release
 ├── pnpm-workspace.yaml         # Workspace globs, dependency catalog, pnpm settings
 └── tsconfig.base.json          # Compiler options every package extends
 ```
@@ -273,32 +273,34 @@ ASAR integrity validation, and loading only from ASAR.
 
 ## Releases and distribution
 
-`RELEASE_CHANNEL` accepts only publishable values. Local `pnpm start` / `pnpm dev` is
-unpackaged development — not a channel — and is never published. Packaged builds default
-to `canary`.
+`RELEASE_TRACK` accepts only publishable values. Local `pnpm start` / `pnpm dev` is
+unpackaged development - not a track - and is never published. Packaged builds default
+to `preview`.
 
-| Channel   | What it is                                | Who uses it                | How it ships                      |
-| --------- | ----------------------------------------- | -------------------------- | --------------------------------- |
-| `canary`  | Latest packaged build off `main`          | Engineers                  | Auto-publish on push to `main`    |
-| `staging` | Release candidate for internal validation | QA / internal stakeholders | Manual `Staging Publish` workflow |
-| `prod`    | Stable customer release                   | Customers                  | Manual `Prod Publish` workflow    |
+| Channel   | What it is                         | Who uses it                | How it ships                              |
+| --------- | ---------------------------------- | -------------------------- | ----------------------------------------- |
+| `preview` | Continuously consumable prerelease | Engineers / internal users | Scheduled cadence or manual `Release` run |
+| `stable`  | Stable customer release            | Customers                  | `vX.Y.Z` tag or manual `Release` run      |
 
-App identities are environment-specific so builds can be installed side by side:
+Development is isolated, while Preview and Stable share one packaged identity:
 
-| Environment       | App name                         |
-| ----------------- | -------------------------------- |
-| Local development | Anaconda Agentic Desktop Dev     |
-| `canary`          | Anaconda Agentic Desktop Canary  |
-| `staging`         | Anaconda Agentic Desktop Staging |
-| `prod`            | Anaconda Agentic Desktop         |
+| Environment       | App name                     |
+| ----------------- | ---------------------------- |
+| Local development | Anaconda Agentic Desktop Dev |
+| `preview`         | Anaconda Agentic Desktop     |
+| `stable`          | Anaconda Agentic Desktop     |
+
+Preview and Stable replace one another rather than install side by side. Sharing identity prepares
+the app for a future update-track switcher without adding runtime switching or UI yet.
 
 Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB on Linux)
-and publishes to `anaconda-agentic-desktop/<channel>/<platform>/<arch>/`. Automatic update
+and publishes Preview to the `preview` update namespace and Stable to `latest`. Automatic update
 checks run only in packaged macOS and Windows builds that were given `UPDATE_PUBLISH_URL`.
-Canary builds stamp a UTC timestamp onto the next patch (`0.1.2-canary-260818-143052`)
-so every push to `main` is a newer version; staging and prod keep the committed version.
+Preview builds stamp a UTC timestamp onto the next patch (`0.1.2-preview-260818-14305`)
+so every publication is a newer version. Stable uses the tag or dispatch version, then records that
+version across the release-coupled desktop, web, and contracts packages and lockfile on `main`.
 Forge makers read that stamped version, so macOS DMG/ZIP/`RELEASES.json`, Windows nupkg,
-and Linux DEB all publish a unique canary version.
+and Linux DEB all publish a unique Preview version.
 
 See [docs/releases.md](docs/releases.md) for the full reference: the distribution matrix,
 build-time variables, GitHub Environments, workflows, signing credentials, and publish

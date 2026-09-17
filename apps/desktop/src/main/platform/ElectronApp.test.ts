@@ -44,9 +44,9 @@ describe("ElectronApp", () => {
 		});
 		expect(adapter.getPath("userData")).toBe("/paths/userData");
 		expect(adapter.requestSingleInstanceLock()).toBe(true);
-		const identity = getAppIdentity("canary");
+		const identity = getAppIdentity("preview");
 		adapter.setIdentity(identity);
-		expect(electronApp.setName).toHaveBeenCalledWith("Anaconda Agentic Desktop Canary");
+		expect(electronApp.setName).toHaveBeenCalledWith("Anaconda Agentic Desktop");
 		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith(
 			process.platform === "win32" ? identity.windowsAppUserModelId : identity.appBundleId,
 		);
@@ -77,7 +77,7 @@ describe("ElectronApp", () => {
 		await expect(adapter.whenReady()).resolves.toBeUndefined();
 		expect(electronApp.whenReady).toHaveBeenCalledOnce();
 
-		const identity = getAppIdentity("canary");
+		const identity = getAppIdentity("preview");
 		adapter.setIdentity(identity);
 		expect(electronApp.setName).toHaveBeenCalledWith(identity.productName);
 		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith(identity.windowsAppUserModelId);

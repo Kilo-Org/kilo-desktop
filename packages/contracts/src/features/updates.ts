@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import { defineEvent, defineMethod } from "../contract.js";
 
-export const releaseChannels = ["canary", "staging", "prod"] as const;
-export const releaseChannelSchema = z.enum(releaseChannels);
+export const releaseTracks = ["stable", "preview"] as const;
+export const releaseTrackSchema = z.enum(releaseTracks);
 
 export const desktopUpdateStatusSchema = z.enum([
 	"disabled",
@@ -17,7 +17,7 @@ export const desktopUpdateStatusSchema = z.enum([
 
 export const desktopReleaseNotesSchema = z.object({
 	schemaVersion: z.literal(1),
-	channel: releaseChannelSchema,
+	track: releaseTrackSchema,
 	version: z.string().min(1),
 	previousVersion: z.string().min(1).nullable().optional(),
 	title: z.string().min(1),
@@ -29,7 +29,7 @@ export const desktopReleaseNotesSchema = z.object({
 export const desktopUpdateStateSchema = z.object({
 	enabled: z.boolean(),
 	status: desktopUpdateStatusSchema,
-	channel: releaseChannelSchema,
+	track: releaseTrackSchema,
 	currentVersion: z.string().min(1),
 	availableVersion: z.string().nullable(),
 	downloadedVersion: z.string().nullable(),
@@ -43,7 +43,7 @@ export const desktopUpdateActionResultSchema = z.object({
 	state: desktopUpdateStateSchema,
 });
 
-export type ReleaseChannel = z.infer<typeof releaseChannelSchema>;
+export type ReleaseTrack = z.infer<typeof releaseTrackSchema>;
 export type DesktopReleaseNotes = z.infer<typeof desktopReleaseNotesSchema>;
 export type DesktopUpdateState = z.infer<typeof desktopUpdateStateSchema>;
 export type DesktopUpdateActionResult = z.infer<typeof desktopUpdateActionResultSchema>;

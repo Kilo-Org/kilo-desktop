@@ -11,7 +11,7 @@
  * Strategy: run forge normally. If it fails and the failure output matches the
  * detach-ENOENT signature, force-detach any leftover `/Volumes/<title>` mounts
  * (so a retry starts from a clean slate rather than colliding with the stale
- * mount and appdmg allocating an `Agentic Canary 1` etc.) and re-run. Give up
+ * mount and appdmg allocating an `Agentic 1` etc.) and re-run. Give up
  * after a small number of attempts so a real, non-flaky failure still fails
  * the job.
  *

@@ -20,7 +20,8 @@ import {
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
-const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
+const uploadSourcemaps =
+	process.env.RELEASE_TRACK === "stable" && Boolean(process.env.SENTRY_AUTH_TOKEN);
 
 function injectThemeBootstrap(): Plugin {
 	return {

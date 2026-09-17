@@ -5,7 +5,7 @@ import {
 	type DesktopReleaseNotes,
 	type DesktopUpdateActionResult,
 	type DesktopUpdateState,
-	type ReleaseChannel,
+	type ReleaseTrack,
 } from "@anaconda-agentic-desktop/contracts";
 
 import { getReleaseNotesUrl, getUpdateFeedUrl } from "$config/release.js";
@@ -30,7 +30,7 @@ interface DesktopUpdaterServiceOptions {
 	readonly isPackaged: boolean;
 	readonly platform: NodeJS.Platform;
 	readonly arch: string;
-	readonly channel: ReleaseChannel;
+	readonly track: ReleaseTrack;
 	readonly currentVersion: string;
 	readonly publishUrl: string;
 	readonly fetch: typeof globalThis.fetch;
@@ -69,7 +69,7 @@ export class DesktopUpdaterService {
 		this.#state = {
 			enabled: disabledReason === null,
 			status: disabledReason === null ? "idle" : "disabled",
-			channel: options.channel,
+			track: options.track,
 			currentVersion: options.currentVersion,
 			availableVersion: null,
 			downloadedVersion: null,
@@ -182,7 +182,7 @@ export class DesktopUpdaterService {
 	#feedOptions(): FeedURLOptions {
 		const feedUrl = getUpdateFeedUrl({
 			publishUrl: this.#options.publishUrl,
-			channel: this.#options.channel,
+			track: this.#options.track,
 			platform: this.#options.platform,
 			arch: this.#options.arch,
 		});
@@ -239,7 +239,7 @@ export class DesktopUpdaterService {
 	): Promise<DesktopReleaseNotes[]> {
 		if (!target) return [];
 		const releases = [target];
-		if (this.#options.channel !== "canary") return releases;
+		if (this.#options.track !== "preview") return releases;
 
 		const seen = new Set([target.version]);
 		let previousVersion = target.previousVersion;
@@ -249,7 +249,7 @@ export class DesktopUpdaterService {
 			releases.length < MAX_RELEASE_NOTE_GROUPS
 		) {
 			if (seen.has(previousVersion)) {
-				this.#options.logger.warn("Canary release-note history contains a cycle.");
+				this.#options.logger.warn("Preview release-note history contains a cycle.");
 				break;
 			}
 			seen.add(previousVersion);
@@ -264,7 +264,7 @@ export class DesktopUpdaterService {
 	async #fetchReleaseNotes(version?: string): Promise<DesktopReleaseNotes | null> {
 		const url = getReleaseNotesUrl({
 			publishUrl: this.#options.publishUrl,
-			channel: this.#options.channel,
+			track: this.#options.track,
 			...(version ? { version } : {}),
 		});
 		if (!url) return null;
@@ -281,10 +281,10 @@ export class DesktopUpdaterService {
 			const parsed = desktopReleaseNotesSchema.safeParse(JSON.parse(body));
 			if (
 				!parsed.success ||
-				parsed.data.channel !== this.#options.channel ||
+				parsed.data.track !== this.#options.track ||
 				(version !== undefined && parsed.data.version !== version)
 			) {
-				throw new Error("Release notes did not match the expected schema or channel.");
+				throw new Error("Release notes did not match the expected schema or track.");
 			}
 			return {
 				...parsed.data,

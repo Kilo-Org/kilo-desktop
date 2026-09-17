@@ -1,11 +1,11 @@
-import type { PublishableReleaseChannel } from "./release.js";
+import type { ReleaseTrack } from "./release.js";
 
 const BASE_BUNDLE_ID = "com.anaconda.agentic-desktop";
 const BASE_EXECUTABLE_NAME = "anaconda-agentic-desktop";
 const BASE_PRODUCT_NAME = "Anaconda Agentic Desktop";
 const BASE_SQUIRREL_NAME = "AnacondaAgenticDesktop";
 
-export type AppEnvironment = "development" | PublishableReleaseChannel;
+export type AppEnvironment = "development" | ReleaseTrack;
 
 export interface AppIdentity {
 	readonly appBundleId: string;
@@ -19,9 +19,8 @@ export interface AppIdentity {
 
 const ENVIRONMENT_SUFFIXES = {
 	development: "Dev",
-	canary: "Canary",
-	staging: "Staging",
-	prod: undefined,
+	preview: undefined,
+	stable: undefined,
 } as const satisfies Readonly<Record<AppEnvironment, string | undefined>>;
 
 export function getAppIdentity(environment: AppEnvironment): AppIdentity {

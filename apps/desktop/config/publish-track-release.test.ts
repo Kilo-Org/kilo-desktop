@@ -4,11 +4,11 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { publishChannelObjects } from "./publish-channel-release.js";
+import { publishTrackObjects } from "./publish-track-release.js";
 
-describe("channel object publication", () => {
+describe("track object publication", () => {
 	it("publishes immutable notes, stable aliases, the note pointer, then the manifest", async () => {
-		const workingDirectory = await mkdtemp(path.join(tmpdir(), "channel-publication-test-"));
+		const workingDirectory = await mkdtemp(path.join(tmpdir(), "track-publication-test-"));
 		const artifactDirectory = path.join(workingDirectory, "make", "deb", "linux", "x64");
 		await mkdir(artifactDirectory, { recursive: true });
 		const artifact = path.join(artifactDirectory, "anaconda-agentic-desktop_1.2.3_amd64.deb");
@@ -33,11 +33,11 @@ describe("channel object publication", () => {
 			},
 		);
 
-		const manifest = await publishChannelObjects(
+		const manifest = await publishTrackObjects(
 			{
 				artifactFiles: [artifact, path.join(workingDirectory, "RELEASES.json")],
 				bucket: "desktop-releases",
-				channel: "prod",
+				track: "stable",
 				notesFile,
 				publishedAt: "2026-08-26T12:00:00.000Z",
 				publishUrl: "https://downloads.example.test/",
@@ -48,10 +48,10 @@ describe("channel object publication", () => {
 		);
 
 		expect(copies.map(({ key }) => key)).toEqual([
-			"anaconda-agentic-desktop/prod/release-notes/1.2.3.json",
-			"anaconda-agentic-desktop/prod/latest/linux/x64/anaconda-agentic-desktop.deb",
-			"anaconda-agentic-desktop/prod/release-notes/latest.json",
-			"anaconda-agentic-desktop/prod/latest.json",
+			"anaconda-agentic-desktop/latest/release-notes/1.2.3.json",
+			"anaconda-agentic-desktop/latest/latest/linux/x64/anaconda-agentic-desktop.deb",
+			"anaconda-agentic-desktop/latest/release-notes/latest.json",
+			"anaconda-agentic-desktop/latest/latest.json",
 		]);
 		expect(copies[0]).toMatchObject({
 			cacheControl: "public,max-age=31536000,immutable",
@@ -62,10 +62,10 @@ describe("channel object publication", () => {
 		);
 		expect(manifest).toMatchObject({
 			schemaVersion: 1,
-			channel: "prod",
+			track: "stable",
 			version: "1.2.3",
 			releaseNotesUrl:
-				"https://downloads.example.test/anaconda-agentic-desktop/prod/release-notes/1.2.3.json",
+				"https://downloads.example.test/anaconda-agentic-desktop/latest/release-notes/1.2.3.json",
 			downloads: [
 				{
 					arch: "x64",
@@ -74,7 +74,7 @@ describe("channel object publication", () => {
 					sha256: "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
 					size: 8,
 					type: "deb",
-					url: "https://downloads.example.test/anaconda-agentic-desktop/prod/linux/x64/anaconda-agentic-desktop_1.2.3_amd64.deb",
+					url: "https://downloads.example.test/anaconda-agentic-desktop/latest/linux/x64/anaconda-agentic-desktop_1.2.3_amd64.deb",
 				},
 			],
 		});
@@ -83,17 +83,17 @@ describe("channel object publication", () => {
 	});
 
 	it("refuses to advance pointers when no downloadable artifact exists", async () => {
-		const workingDirectory = await mkdtemp(path.join(tmpdir(), "channel-publication-test-"));
+		const workingDirectory = await mkdtemp(path.join(tmpdir(), "track-publication-test-"));
 		const notesFile = path.join(workingDirectory, "1.2.3.json");
 		await writeFile(notesFile, "{}\n");
 		const copy = vi.fn(async () => {});
 
 		await expect(
-			publishChannelObjects(
+			publishTrackObjects(
 				{
 					artifactFiles: [path.join(workingDirectory, "RELEASES.json")],
 					bucket: "desktop-releases",
-					channel: "staging",
+					track: "preview",
 					notesFile,
 					publishedAt: "2026-08-26T12:00:00.000Z",
 					publishUrl: "https://downloads.example.test",

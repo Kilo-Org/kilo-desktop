@@ -5,71 +5,90 @@ import {
 	type SigningEnvironment,
 } from "./signing.js";
 
-export const DEFAULT_RELEASE_CHANNEL = "canary";
+export const DEFAULT_RELEASE_TRACK = "preview";
 export const RELEASE_PREFIX = "anaconda-agentic-desktop";
-export const PUBLISHABLE_RELEASE_CHANNELS = ["canary", "staging", "prod"] as const;
+export const RELEASE_TRACKS = ["preview", "stable"] as const;
 
 /**
- * Values accepted by `RELEASE_CHANNEL` for packaged builds and publish.
- * Local `pnpm start` / `pnpm dev` is unpackaged development and is not a channel value.
+ * Values accepted by `RELEASE_TRACK` for packaged builds and publish.
+ * Local `pnpm start` / `pnpm dev` is unpackaged development and is not a track value.
  */
-export type PublishableReleaseChannel = (typeof PUBLISHABLE_RELEASE_CHANNELS)[number];
+export type ReleaseTrack = (typeof RELEASE_TRACKS)[number];
+export type UpdateChannel = "preview" | "latest";
 
 export interface ReleaseEnvironment {
-	readonly RELEASE_CHANNEL?: string;
+	readonly RELEASE_TRACK?: string;
+	readonly RELEASE_VERSION?: string;
 	readonly UPDATE_PUBLISH_URL?: string;
 	readonly UPDATE_S3_BUCKET?: string;
-	readonly CANARY_BUILD_TIME?: string;
+	readonly PREVIEW_BUILD_TIME?: string;
 }
 
 export type PublishEnvironment = ReleaseEnvironment & SigningEnvironment;
 
-function isPublishableReleaseChannel(channel: string): channel is PublishableReleaseChannel {
-	return (PUBLISHABLE_RELEASE_CHANNELS as readonly string[]).includes(channel);
+function isReleaseTrack(track: string): track is ReleaseTrack {
+	return (RELEASE_TRACKS as readonly string[]).includes(track);
 }
 
-export function getReleaseChannel(environment: ReleaseEnvironment = {}): PublishableReleaseChannel {
-	const channel = environment.RELEASE_CHANNEL?.trim() || DEFAULT_RELEASE_CHANNEL;
-	if (!isPublishableReleaseChannel(channel)) {
+export function getReleaseTrack(environment: ReleaseEnvironment = {}): ReleaseTrack {
+	const track = environment.RELEASE_TRACK?.trim() || DEFAULT_RELEASE_TRACK;
+	if (!isReleaseTrack(track)) {
 		throw new Error(
-			`Invalid release channel: ${channel}. Expected one of: ${PUBLISHABLE_RELEASE_CHANNELS.join(", ")}`,
+			`Invalid release track: ${track}. Expected one of: ${RELEASE_TRACKS.join(", ")}`,
 		);
 	}
-	return channel;
+	return track;
 }
 
 export function getUpdatePublishUrl(environment: ReleaseEnvironment = {}): string {
 	return environment.UPDATE_PUBLISH_URL?.trim().replace(/\/+$/, "") ?? "";
 }
 
-export function getCanaryBuildTime(environment: ReleaseEnvironment = {}, now = new Date()): Date {
-	const raw = environment.CANARY_BUILD_TIME?.trim();
+export function getUpdateChannel(track: ReleaseTrack): UpdateChannel {
+	return track === "stable" ? "latest" : track;
+}
+
+export function getPreviewBuildTime(environment: ReleaseEnvironment = {}, now = new Date()): Date {
+	const raw = environment.PREVIEW_BUILD_TIME?.trim();
 	if (!raw) return now;
 	const parsed = new Date(raw);
 	if (Number.isNaN(parsed.getTime())) {
-		throw new Error(`Invalid CANARY_BUILD_TIME: ${raw}`);
+		throw new Error(`Invalid PREVIEW_BUILD_TIME: ${raw}`);
 	}
 	return parsed;
 }
 
-const CANARY_PUBLISH_VERSION = /^\d+\.\d+\.\d+-canary-\d{6}-\d{6}$/;
+const PREVIEW_PUBLISH_VERSION = /^\d+\.\d+\.\d+-preview-\d{6}-\d{5}$/;
+const STABLE_RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
+export function isStableReleaseVersion(version: string): boolean {
+	return STABLE_RELEASE_VERSION.test(version);
+}
 
 export function getPublishAppVersion(input: {
 	readonly version: string;
-	readonly channel: PublishableReleaseChannel;
+	readonly track: ReleaseTrack;
+	readonly releaseVersion?: string;
 	readonly now?: Date;
 }): string {
-	if (input.channel !== "canary") {
-		return input.version;
+	if (input.track === "stable") {
+		const version = input.releaseVersion?.trim();
+		if (!version) {
+			throw new Error("RELEASE_VERSION is required for Stable builds.");
+		}
+		if (!isStableReleaseVersion(version)) {
+			throw new Error(`Invalid Stable release version: ${version}`);
+		}
+		return version;
 	}
-	if (CANARY_PUBLISH_VERSION.test(input.version)) {
+	if (PREVIEW_PUBLISH_VERSION.test(input.version)) {
 		return input.version;
 	}
 	const now = input.now ?? new Date();
 	if (Number.isNaN(now.getTime())) {
-		throw new Error("Canary build time must be a valid date.");
+		throw new Error("Preview build time must be a valid date.");
 	}
-	return `${nextPatchVersion(input.version)}-canary-${formatCanaryTimestamp(now)}`;
+	return `${nextPatchVersion(input.version)}-preview-${formatPreviewTimestamp(now)}`;
 }
 
 export function getNativeAppVersion(version: string): string {
@@ -90,33 +109,34 @@ function parseVersionCore(version: string): string {
 	return `${match.groups.major}.${match.groups.minor}.${match.groups.patch}`;
 }
 
-function formatCanaryTimestamp(now: Date): string {
+function formatPreviewTimestamp(now: Date): string {
 	const year = String(now.getUTCFullYear() % 100).padStart(2, "0");
 	const month = String(now.getUTCMonth() + 1).padStart(2, "0");
 	const day = String(now.getUTCDate()).padStart(2, "0");
 	const time = now.getUTCHours() * 10_000 + now.getUTCMinutes() * 100 + now.getUTCSeconds();
 	// Squirrel's legacy NuGet comparator parses a trailing prerelease number as
 	// Int32, while its bundled NuGet caps the entire prerelease part at 20
-	// characters. A two-digit year and hyphen-separated timestamp satisfy both.
-	return `${year}${month}${day}-${String(time).padStart(6, "0")}`;
+	// characters. Preview uses ten-second resolution to keep the full track
+	// name while satisfying both constraints.
+	return `${year}${month}${day}-${String(time).padStart(6, "0").slice(0, 5)}`;
 }
 
-export function getReleasePrefix(channel: string): string {
-	return `${RELEASE_PREFIX}/${channel}`;
+export function getReleasePrefix(track: ReleaseTrack): string {
+	return `${RELEASE_PREFIX}/${getUpdateChannel(track)}`;
 }
 
 export function getArtifactKey(input: {
-	readonly channel: string;
+	readonly track: ReleaseTrack;
 	readonly platform: string;
 	readonly arch: string;
 	readonly fileName: string;
 }): string {
-	return `${getReleasePrefix(input.channel)}/${input.platform}/${input.arch}/${input.fileName}`;
+	return `${getReleasePrefix(input.track)}/${input.platform}/${input.arch}/${input.fileName}`;
 }
 
 export function getUpdateFeedUrl(input: {
 	readonly publishUrl: string;
-	readonly channel: string;
+	readonly track: ReleaseTrack;
 	readonly platform: string;
 	readonly arch: string;
 }): string | undefined {
@@ -125,12 +145,12 @@ export function getUpdateFeedUrl(input: {
 	if (url.protocol !== "https:") {
 		throw new Error("UPDATE_PUBLISH_URL must use HTTPS.");
 	}
-	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.channel)}/${input.platform}/${input.arch}`;
+	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.track)}/${input.platform}/${input.arch}`;
 }
 
 export function getReleaseNotesUrl(input: {
 	readonly publishUrl: string;
-	readonly channel: string;
+	readonly track: ReleaseTrack;
 	readonly version?: string;
 }): string | undefined {
 	if (!input.publishUrl) return undefined;
@@ -139,11 +159,7 @@ export function getReleaseNotesUrl(input: {
 		throw new Error("UPDATE_PUBLISH_URL must use HTTPS.");
 	}
 	const fileName = input.version ? `${encodeURIComponent(input.version)}.json` : "latest.json";
-	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.channel)}/release-notes/${fileName}`;
-}
-
-function requiresSignedPublish(channel: PublishableReleaseChannel): boolean {
-	return channel === "staging" || channel === "prod";
+	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.track)}/release-notes/${fileName}`;
 }
 
 export function validatePublishEnvironment(
@@ -154,17 +170,16 @@ export function validatePublishEnvironment(
 		throw new Error("UPDATE_S3_BUCKET is required to publish releases.");
 	}
 
-	const channel = getReleaseChannel(environment);
-	if (!requiresSignedPublish(channel)) return;
+	getReleaseTrack(environment);
 
 	if (platform === "darwin" && !(resolveOsxSign(environment) && resolveOsxNotarize(environment))) {
 		throw new Error(
-			"Staging/production macOS publishing requires a signing identity and notarization credentials (App Store Connect API key or Apple ID).",
+			"Preview/Stable macOS publishing requires a signing identity and notarization credentials (App Store Connect API key or Apple ID).",
 		);
 	}
 	if (platform === "win32" && resolveWindowsSigning(environment).mode === "none") {
 		throw new Error(
-			"Staging/production Windows publishing requires Azure Key Vault signing credentials or a certificate file.",
+			"Preview/Stable Windows publishing requires Azure Key Vault signing credentials or a certificate file.",
 		);
 	}
 }

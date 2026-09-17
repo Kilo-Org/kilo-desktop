@@ -17,7 +17,7 @@ export function initSentry(): void {
 
 	Sentry.init({
 		dsn,
-		environment: RELEASE_CHANNEL,
+		environment: RELEASE_TRACK,
 		tracesSampleRate: 0.1,
 		...(isDev && {
 			environment: "development",

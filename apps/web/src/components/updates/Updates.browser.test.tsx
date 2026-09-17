@@ -15,7 +15,7 @@ import { getInstallConfirmationMessage, updateReadyLabel } from "./updateActions
 const downloadedState: DesktopUpdateState = {
 	enabled: true,
 	status: "downloaded",
-	channel: "staging",
+	track: "stable",
 	currentVersion: "1.2.2",
 	availableVersion: "1.2.3",
 	downloadedVersion: "1.2.3",
@@ -24,9 +24,9 @@ const downloadedState: DesktopUpdateState = {
 	releaseNotes: [
 		{
 			schemaVersion: 1,
-			channel: "staging",
+			track: "stable",
 			version: "1.2.3",
-			title: "Anaconda Agentic Desktop Staging v1.2.3",
+			title: "Anaconda Agentic Desktop v1.2.3",
 			publishedAt: "2026-08-26T12:00:00.000Z",
 			bodyMarkdown: "* Faster startup",
 			items: ["Faster startup"],
@@ -141,9 +141,9 @@ describe("update UI", () => {
 	});
 
 	it("renders the compact version action and sanitized release notes in About", async () => {
-		const stateWithSkippedCanary = {
+		const stateWithSkippedPreview = {
 			...downloadedState,
-			channel: "canary" as const,
+			track: "preview" as const,
 			releaseNotes: [
 				{
 					...downloadedState.releaseNotes[0]!,
@@ -153,13 +153,13 @@ describe("update UI", () => {
 				downloadedState.releaseNotes[0]!,
 				{
 					...downloadedState.releaseNotes[0]!,
-					channel: "canary" as const,
-					version: "1.2.2-canary-260825-120000",
+					track: "preview" as const,
+					version: "1.2.2-preview-260825-12000",
 					items: ["Improved retry behavior"],
 				},
 			],
 		};
-		renderUpdates(updateApi(stateWithSkippedCanary), <AboutSettings />);
+		renderUpdates(updateApi(stateWithSkippedPreview), <AboutSettings />);
 
 		await expect.element(page.getByTestId("about-settings")).toBeVisible();
 		await expect.element(page.getByText("1.2.2", { exact: true })).toBeVisible();
@@ -170,10 +170,10 @@ describe("update UI", () => {
 			.element(page.getByText("1.2.4-without-notes", { exact: true }))
 			.not.toBeInTheDocument();
 		await expect
-			.element(page.getByText("1.2.2-canary-260825-120000", { exact: true }))
+			.element(page.getByText("1.2.2-preview-260825-12000", { exact: true }))
 			.toBeVisible();
 		await expect.element(page.getByText("Improved retry behavior", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("Release channel")).not.toBeInTheDocument();
+		await expect.element(page.getByText("Release track")).not.toBeInTheDocument();
 		await expect.element(page.getByText("Update status")).not.toBeInTheDocument();
 		await expect.element(page.getByText("Last checked")).not.toBeInTheDocument();
 		expect(page.getByTestId("update-release-notes").element().textContent).not.toContain("#");

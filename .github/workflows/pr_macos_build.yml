@@ -19,7 +19,7 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      RELEASE_CHANNEL: canary
+      RELEASE_TRACK: preview
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

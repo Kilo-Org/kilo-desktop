@@ -10,10 +10,10 @@ import { execa } from "execa";
 
 import {
 	getArtifactKey,
-	getCanaryBuildTime,
+	getPreviewBuildTime,
 	getNativeAppVersion,
 	getPublishAppVersion,
-	getReleaseChannel,
+	getReleaseTrack,
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 } from "./config/release.js";
@@ -31,16 +31,16 @@ import { ensureNodePtySpawnHelpersExecutable } from "@anaconda-agentic-desktop/p
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
-const channel = getReleaseChannel(process.env);
+const track = getReleaseTrack(process.env);
 const appVersion = getPublishAppVersion({
 	version: desktopPackage.version,
-	channel,
-	now: getCanaryBuildTime(process.env),
+	track,
+	...(process.env.RELEASE_VERSION ? { releaseVersion: process.env.RELEASE_VERSION } : {}),
+	now: getPreviewBuildTime(process.env),
 });
 const nativeAppVersion = getNativeAppVersion(appVersion);
-const identity = getAppIdentity(channel);
-const channelTitle = channel.replace(/^./, (character) => character.toUpperCase());
-const dmgVolumeTitle = channel === "prod" ? "Agentic" : `Agentic ${channelTitle}`;
+const identity = getAppIdentity(track);
+const dmgVolumeTitle = "Agentic";
 const publishUrl = getUpdatePublishUrl(process.env);
 const s3Bucket = process.env.UPDATE_S3_BUCKET?.trim();
 const skipNativeRebuild = process.env.ELECTRON_SKIP_NATIVE_REBUILD === "true";
@@ -88,7 +88,7 @@ async function moveDirectory(source: string, destination: string): Promise<void>
 }
 
 function updateFeed(platform: string, arch: string): string | undefined {
-	return getUpdateFeedUrl({ publishUrl, channel, platform, arch });
+	return getUpdateFeedUrl({ publishUrl, track, platform, arch });
 }
 
 async function stageProductionDependencies(buildPath: string): Promise<void> {
@@ -285,7 +285,7 @@ const config: ForgeConfig = {
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
 		// Windows PE FileVersion/ProductVersion accept at most four numeric
-		// components. Keep the canary prerelease on package.json and makers.
+		// components. Keep the preview prerelease on package.json and makers.
 		appVersion: nativeAppVersion,
 		executableName,
 		extraResource: extraResources,
@@ -403,7 +403,7 @@ const config: ForgeConfig = {
 					fileName: string;
 					platform: string;
 					arch: string;
-				}) => getArtifactKey({ channel, platform, arch, fileName }),
+				}) => getArtifactKey({ track, platform, arch, fileName }),
 				releaseFileCacheControlMaxAge: 60,
 			},
 		},

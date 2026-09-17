@@ -153,7 +153,7 @@ export function createBrowserLocalApi(): LocalApi {
 				return {
 					enabled: false,
 					status: "disabled",
-					channel: "canary",
+					track: "preview",
 					currentVersion: "development",
 					availableVersion: null,
 					downloadedVersion: null,

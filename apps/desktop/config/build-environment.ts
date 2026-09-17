@@ -1,14 +1,21 @@
 import type { AppEnvironment } from "./app-identity.js";
-import type { PublishableReleaseChannel } from "./release.js";
+import type { ReleaseTrack } from "./release.js";
 
 type ViteCommand = "build" | "serve";
 
 /** Select the checked-in Vite environment used by this invocation. */
 export function getBuildEnvironment(
 	command: ViteCommand,
-	releaseChannel: PublishableReleaseChannel,
+	releaseTrack: ReleaseTrack,
 ): AppEnvironment {
-	return command === "serve" ? "development" : releaseChannel;
+	return command === "serve" ? "development" : releaseTrack;
+}
+
+export function shouldUploadSentrySourceMaps(
+	releaseTrack: ReleaseTrack,
+	authToken: string | undefined,
+): boolean {
+	return releaseTrack === "stable" && Boolean(authToken);
 }
 
 /** Fail during bundling rather than leaving login broken at runtime. */

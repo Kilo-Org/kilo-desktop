@@ -129,6 +129,7 @@ export function NotebookView({
 	const fileOpenState = notebookOpenState(metadata);
 	const fileOpenError = metadata?.[NOTEBOOK_OPEN_ERROR_METADATA_KEY];
 	const notebookId = notebookIdFromTab(instanceId, metadata);
+	const viewRef = useRef<HTMLDivElement>(null);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const frameSrc = notebookId ? nteractSrc(notebookId) : undefined;
 	const desktopFrame = frameSrc?.startsWith(DESKTOP_SCHEME_PREFIX) ?? false;
@@ -272,7 +273,13 @@ export function NotebookView({
 		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
 		const postTheme = (contentWindow: Window) => {
 			contentWindow.postMessage(
-				notebookThemeMessage(appearance, notebookThemeTokensFromDocument()),
+				notebookThemeMessage(
+					appearance,
+					notebookThemeTokensFromDocument(
+						viewRef.current ?? document.documentElement,
+						"--pane-surface",
+					),
+				),
 				frameOrigin,
 			);
 		};
@@ -290,7 +297,11 @@ export function NotebookView({
 	}, [appearance, frameSrc]);
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
+		<div
+			ref={viewRef}
+			className="flex min-h-0 flex-1 flex-col bg-[var(--pane-surface,var(--color-background))]"
+			data-qa-id="notebook-view"
+		>
 			{fileOpenState === "opening" ? (
 				<div
 					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"

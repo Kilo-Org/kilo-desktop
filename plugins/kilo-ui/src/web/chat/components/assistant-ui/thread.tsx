@@ -176,7 +176,7 @@ const ComposerDockMask: FC = () => {
 		<>
 			<div
 				aria-hidden
-				className="bg-background pointer-events-none absolute -inset-x-4 top-full h-4"
+				className="pointer-events-none absolute -inset-x-4 top-full h-4 bg-[var(--pane-surface,var(--color-background))]"
 			/>
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-bl" />
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-br" />
@@ -201,7 +201,12 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
-			className="aui-root aui-thread-root bg-background @container flex h-full flex-col [--composer-bg:var(--color-card)]"
+			className={cn(
+				"aui-root aui-thread-root @container flex h-full flex-col bg-[var(--pane-surface,var(--color-background))]",
+				isDraft
+					? "[--composer-bg:var(--composer-draft,var(--color-card))]"
+					: "[--composer-bg:var(--pane-raised,var(--color-card))]",
+			)}
 			style={{
 				["--thread-max-width" as string]: "48rem",
 				["--composer-radius" as string]: "1rem",
@@ -221,7 +226,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				<ScrollToBottomOnSend />
 				<div
 					aria-hidden
-					className="from-background pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b to-transparent"
+					className="pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b from-[var(--pane-surface,var(--color-background))] to-transparent"
 				/>
 				{isDraft ? null : <ConversationMapAui />}
 				<div
@@ -1374,7 +1379,7 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content border-border bg-card text-foreground dark:border-muted-foreground/15 rounded-xl border px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
+				<div className="aui-user-message-content border-border text-foreground dark:border-muted-foreground/15 rounded-xl border bg-[var(--pane-raised,var(--color-card))] px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
 					<MessagePrimitive.Parts components={{ Text: KiloDirectiveText }} />
 				</div>
 			</div>

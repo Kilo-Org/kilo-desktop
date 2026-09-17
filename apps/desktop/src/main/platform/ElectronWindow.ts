@@ -17,6 +17,7 @@ import {
 import { getDesktopRouteUrl, getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
+import { BROWSER_PARTITION } from "./ElectronBrowserHost.js";
 
 /** Matches the app header band (`h-12` = 48px). */
 const TITLEBAR_HEIGHT = 48;
@@ -59,6 +60,10 @@ export class ElectronWindow {
 		const window = this.#createWindow(input.preloadPath, {
 			windowStatePersistence: true,
 			...input.options,
+			webPreferences: {
+				...input.options?.webPreferences,
+				webviewTag: true,
+			},
 		});
 
 		this.#mainWindow = window;
@@ -277,6 +282,10 @@ export class ElectronWindow {
 		this.#mainWindow = undefined;
 	}
 
+	isTrustedWebContents(webContentsId: number): boolean {
+		return this.liveWindows.some((window) => window.webContents.id === webContentsId);
+	}
+
 	#createWindow(preloadPath?: string, options?: BrowserWindowConstructorOptions): BrowserWindow {
 		const dark = this.shouldUseDarkColors();
 		const colors = getThemeChrome(this.themeId() ?? DEFAULT_APP_THEME_PREFERENCES.themeId);
@@ -303,6 +312,19 @@ export class ElectronWindow {
 				webviewTag: false,
 				...options?.webPreferences,
 			},
+		});
+		window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+			if (params.partition !== BROWSER_PARTITION || params.preload) {
+				event.preventDefault();
+				return;
+			}
+			webPreferences.sandbox = true;
+			webPreferences.contextIsolation = true;
+			webPreferences.nodeIntegration = false;
+			webPreferences.nodeIntegrationInSubFrames = false;
+			webPreferences.webSecurity = true;
+			webPreferences.allowRunningInsecureContent = false;
+			delete webPreferences.preload;
 		});
 		window.webContents.setWindowOpenHandler(({ url }) => {
 			void this.electronShell.openExternal(url);

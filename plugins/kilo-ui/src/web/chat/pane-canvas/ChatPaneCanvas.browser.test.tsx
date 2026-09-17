@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe("ChatPaneCanvas", () => {
-	it("keeps a lone pane and pill neutral while preserving active semantics", () => {
+	it("shows the active tab state for a lone pane", () => {
 		const layout = createLayout([{ id: "agent", kind: "agent", title: "Chat" }], "agent");
 		const { baseElement } = render(
 			<div style={{ display: "flex", width: 900, height: 400 }}>
@@ -62,8 +62,8 @@ describe("ChatPaneCanvas", () => {
 		expect(tab).toHaveAttribute("data-active", "true");
 		expect(frame).toHaveAttribute("data-pane-active", "true");
 
-		expect(tab?.className).not.toMatch(/border-info/);
-		expect(tab?.className).not.toMatch(/bg-sidebar-accent/);
+		expect(tab?.className).toMatch(/border-primary\/65/);
+		expect(tab?.className).toMatch(/bg-foreground\/\[0\.07\]/);
 		expect(frame?.className).toMatch(/border-border/);
 		expect(frame?.className).not.toMatch(/border-info/);
 	});
@@ -209,7 +209,7 @@ describe("ChatPaneCanvas", () => {
 		const pane = group?.querySelector<HTMLElement>("[data-qa-id='chat-pane-agent']");
 		expect(strip?.getBoundingClientRect().height).toBe(28);
 		expect(pane?.getBoundingClientRect().top).toBeLessThanOrEqual(
-			(strip?.getBoundingClientRect().bottom ?? 0) + 4,
+			(strip?.getBoundingClientRect().bottom ?? 0) + 10,
 		);
 
 		const outputGroup = grouped.groups.find((candidate) =>
@@ -1634,7 +1634,7 @@ describe("ChatPaneCanvas", () => {
 				style={{
 					display: "flex",
 					width: 400,
-					height: 40,
+					height: 48,
 					position: "absolute",
 					bottom: 0,
 					right: 0,

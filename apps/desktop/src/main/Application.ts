@@ -40,6 +40,7 @@ import { ElectronNotifications } from "./platform/ElectronNotifications.js";
 import { ElectronProtocol } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
+import { ElectronBrowserHost } from "./platform/ElectronBrowserHost.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
 import { featureFsSandboxDir } from "./platform/featureStorage.js";
 import { HttpClient } from "./platform/HttpClient.js";
@@ -76,6 +77,9 @@ export class Application {
 		this.#shell,
 		() => nativeTheme.shouldUseDarkColors,
 		() => this.#preferences?.themeId,
+	);
+	readonly #browserHost = new ElectronBrowserHost((webContentsId) =>
+		this.#windows.isTrustedWebContents(webContentsId),
 	);
 	readonly #ipcServer = new IpcServer();
 	readonly #logger = createLogger("application");
@@ -310,7 +314,7 @@ export class Application {
 						this.#protocol.registerFeatureScheme(scheme, handler);
 					},
 				}),
-				host: {
+				createHost: (featureId) => ({
 					paths: {
 						defaultSaveDirectory: () => this.#app.getPath("documents"),
 						tempDirectory: () => this.#app.getPath("temp"),
@@ -328,7 +332,8 @@ export class Application {
 						isFocused: (senderId) => this.#windows.isFocused(senderId),
 						onFocusChange: (senderId, listener) => this.#windows.onFocusChange(senderId, listener),
 					},
-				},
+					...(featureId === "browser" ? { browser: this.#browserHost } : {}),
+				}),
 				...(reporter
 					? {
 							// Coarse "Preparing <id>…" line the shell writes once

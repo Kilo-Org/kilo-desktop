@@ -44,9 +44,13 @@ describe("terminal session wire contract", () => {
 	});
 
 	it("rejects unknown port message variants", () => {
-		expect(terminalClientMessageSchema.safeParse({ type: "input", data: "pwd\r" }).success).toBe(
-			true,
-		);
+		expect(
+			terminalClientMessageSchema.safeParse({
+				type: "input",
+				requestId: "input-1",
+				data: "pwd\r",
+			}).success,
+		).toBe(true);
 		expect(terminalClientMessageSchema.safeParse({ type: "destroy" }).success).toBe(false);
 		expect(
 			terminalServerMessageSchema.safeParse({

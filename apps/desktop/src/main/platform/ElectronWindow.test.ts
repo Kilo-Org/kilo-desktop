@@ -19,7 +19,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 			visualEffectState?: string;
 			icon?: string;
 			titleBarOverlay?: { color: string; symbolColor: string; height: number };
-			webPreferences?: { additionalArguments?: string[] };
+			webPreferences?: { additionalArguments?: string[]; webviewTag?: boolean };
 			windowStatePersistence?: boolean;
 		};
 		webContents: {
@@ -230,6 +230,27 @@ describe("ElectronWindow theme chrome", () => {
 		readyToShow?.();
 		expect(window?.show).toHaveBeenCalled();
 		expect(windows.main).toBe(window);
+		expect(window?.options.webPreferences).toMatchObject({ webviewTag: true });
+
+		const willAttach = window?.webContents.on.mock.calls.find(
+			(call) => call[0] === "will-attach-webview",
+		)?.[1];
+		const denied = { preventDefault: vi.fn() };
+		willAttach?.(denied, {}, { partition: "persist:untrusted" });
+		expect(denied.preventDefault).toHaveBeenCalledOnce();
+		const accepted = { preventDefault: vi.fn() };
+		const guestPreferences: Record<string, unknown> = { preload: "/evil.js" };
+		willAttach?.(accepted, guestPreferences, { partition: "persist:anaconda-agentic-browser" });
+		expect(accepted.preventDefault).not.toHaveBeenCalled();
+		expect(guestPreferences).toMatchObject({
+			sandbox: true,
+			contextIsolation: true,
+			nodeIntegration: false,
+			nodeIntegrationInSubFrames: false,
+			webSecurity: true,
+			allowRunningInsecureContent: false,
+		});
+		expect(guestPreferences).not.toHaveProperty("preload");
 
 		const openHandler = window?.webContents.setWindowOpenHandler.mock.calls[0]?.[0];
 		expect(openHandler?.({ url: "https://example.com" })).toEqual({ action: "deny" });
@@ -251,6 +272,18 @@ describe("ElectronWindow theme chrome", () => {
 		const closed = window?.on.mock.calls.find((call) => call[0] === "closed")?.[1];
 		closed?.();
 		expect(windows.main).toBeUndefined();
+	});
+
+	it("enables webviews only in the main application window", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		windows.openPaneWindow(
+			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
+			false,
+		);
+
+		expect(createdWindows[0]?.options.webPreferences?.webviewTag).toBe(true);
+		expect(createdWindows[1]?.options.webPreferences?.webviewTag).toBe(false);
 	});
 
 	it("reveals, broadcasts to, and destroys the live window", () => {

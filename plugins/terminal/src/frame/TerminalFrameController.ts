@@ -38,6 +38,7 @@ export class TerminalFrameController {
 	#fitAddon: FitAddon | null = null;
 	#port: MessagePort | null = null;
 	#snapshotReceived = false;
+	#acceptedInputCount = 0;
 	#disposeData: { dispose(): void } | null = null;
 	#disposeResize: { dispose(): void } | null = null;
 	#disposeScroll: { dispose(): void } | null = null;
@@ -298,7 +299,13 @@ export class TerminalFrameController {
 	#enableLiveInput(): void {
 		if (!this.#terminal || !this.#fitAddon || this.#snapshotReceived) return;
 		this.#snapshotReceived = true;
-		this.#disposeData = this.#terminal.onData((data) => this.#send({ type: "input", data }));
+		this.#disposeData = this.#terminal.onData((data) =>
+			this.#send({
+				type: "input",
+				requestId: `input-${this.#window.crypto.randomUUID()}`,
+				data,
+			}),
+		);
 		this.#disposeResize = this.#terminal.onResize(({ cols, rows }) => {
 			this.#send({ type: "resize", cols, rows });
 			this.#scheduleScrollbarSync();
@@ -352,8 +359,13 @@ export class TerminalFrameController {
 				break;
 			case "ack": {
 				const button = this.#pendingCommands.get(message.requestId);
-				if (button) button.disabled = false;
-				this.#pendingCommands.delete(message.requestId);
+				if (button) {
+					button.disabled = false;
+					this.#pendingCommands.delete(message.requestId);
+				} else if (message.ok && message.requestId.startsWith("input-")) {
+					this.#acceptedInputCount += 1;
+					this.#elements.container.dataset.acceptedInputCount = String(this.#acceptedInputCount);
+				}
 				if (!message.ok) this.#showError(message.error ?? "The terminal command failed.");
 				break;
 			}

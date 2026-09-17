@@ -16,6 +16,8 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  */
 
 import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
+import browserManifest from "@anaconda-agentic-desktop/plugin-browser/plugin.json" with { type: "json" };
+import * as browserWeb from "@anaconda-agentic-desktop/plugin-browser/web";
 import * as environmentsWeb from "@anaconda-agentic-desktop/plugin-environments/web";
 import filesManifest from "@anaconda-agentic-desktop/plugin-files/plugin.json" with { type: "json" };
 import * as filesWeb from "@anaconda-agentic-desktop/plugin-files/web";
@@ -35,6 +37,7 @@ import terminalManifest from "@anaconda-agentic-desktop/plugin-terminal/plugin.j
 import * as terminalWeb from "@anaconda-agentic-desktop/plugin-terminal/web";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{ manifest: browserManifest, module: browserWeb },
 	{ manifest: kiloUiManifest, module: kiloUiWeb },
 	{ manifest: kiloServerManifest, module: kiloServerWeb },
 	{ manifest: notebookManifest, module: notebookWeb },

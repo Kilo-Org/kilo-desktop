@@ -10,6 +10,7 @@ body,
 	height: 100%;
 	margin: 0;
 	overflow: hidden;
+	background: transparent;
 }
 
 #app {
@@ -17,7 +18,7 @@ body,
 	display: flex;
 	min-height: 0;
 	flex-direction: column;
-	background: var(--terminal-background, #141820);
+	background: var(--terminal-background, transparent);
 	color: var(--terminal-foreground, #e1e8f0);
 }
 

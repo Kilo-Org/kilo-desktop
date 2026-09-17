@@ -14,6 +14,7 @@ import {
 } from "../../platform/ElectronProtocol.js";
 
 import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
+import browserManifest from "@anaconda-agentic-desktop/plugin-browser/plugin.json" with { type: "json" };
 import filesManifest from "@anaconda-agentic-desktop/plugin-files/plugin.json" with { type: "json" };
 import gitManifest from "@anaconda-agentic-desktop/plugin-git/plugin.json" with { type: "json" };
 import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
@@ -33,6 +34,7 @@ export type BundledPluginManifest = Pick<PluginManifest, "id"> & {
 
 /** Manifests keyed for registry pairing (`bundled-plugins.ts` imports from here). */
 export const bundledPluginManifests = {
+	browser: browserManifest,
 	environments: environmentsManifest,
 	files: filesManifest,
 	git: gitManifest,

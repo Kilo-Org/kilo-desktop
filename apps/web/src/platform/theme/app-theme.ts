@@ -65,3 +65,7 @@ export function applyAppTheme(next: AppThemePreferences): void {
 	appearance = getThemeAppearance(normalized, getColorSchemeSnapshot());
 	appTheme.set(normalized);
 }
+
+if (import.meta.hot) {
+	import.meta.hot.accept(() => applyAppTheme(readStoredAppTheme()));
+}

@@ -267,6 +267,7 @@ describe("NotebookView", () => {
 	it("pushes the host appearance into the framed notebook", async () => {
 		vi.stubEnv("VITE_NTERACT_ORIGIN", "https://notebook.test");
 		document.documentElement.style.setProperty("--background", "#111111");
+		document.documentElement.style.setProperty("--pane-surface", "#181818");
 		document.documentElement.style.setProperty("--foreground", "#fafafa");
 		const theme = createFakeTheme({
 			mode: "dark",
@@ -292,13 +293,14 @@ describe("NotebookView", () => {
 			type: NOTEBOOK_THEME_MESSAGE_TYPE,
 			mode: "dark",
 			tokens: expect.objectContaining({
-				background: "rgb(17, 17, 17)",
+				background: "rgb(24, 24, 24)",
 				foreground: "rgb(250, 250, 250)",
 			}),
 		});
 		expect(postMessage.mock.calls.at(-1)?.[1]).toBe("https://notebook.test");
 
 		document.documentElement.style.setProperty("--background", "#fafaf7");
+		document.documentElement.style.setProperty("--pane-surface", "#ffffff");
 		document.documentElement.style.setProperty("--foreground", "#1f1f1f");
 		await act(async () =>
 			theme.setAppearance({
@@ -313,12 +315,13 @@ describe("NotebookView", () => {
 				type: NOTEBOOK_THEME_MESSAGE_TYPE,
 				mode: "light",
 				tokens: expect.objectContaining({
-					background: "rgb(250, 250, 247)",
+					background: "rgb(255, 255, 255)",
 					foreground: "rgb(31, 31, 31)",
 				}),
 			}),
 		);
 		document.documentElement.style.removeProperty("--background");
+		document.documentElement.style.removeProperty("--pane-surface");
 		document.documentElement.style.removeProperty("--foreground");
 	});
 

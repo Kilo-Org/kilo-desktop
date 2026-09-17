@@ -6,7 +6,7 @@ import {
 	type InferContract,
 } from "@anaconda-agentic-desktop/feature-sdk";
 
-export const TERMINAL_PROTOCOL_VERSION = 2;
+export const TERMINAL_PROTOCOL_VERSION = 3;
 export const MAX_TERMINAL_LABEL_LENGTH = 128;
 export const TERMINAL_FEATURE_ID = "terminal";
 export const TERMINAL_SESSION_EXITED = "session-exited";
@@ -37,7 +37,11 @@ export const terminalStatusSchema = z.enum(["starting", "running", "exited", "er
 export type TerminalStatus = z.infer<typeof terminalStatusSchema>;
 
 export const terminalClientMessageSchema = z.discriminatedUnion("type", [
-	z.object({ type: z.literal("input"), data: z.string().min(1).max(65_536) }),
+	z.object({
+		type: z.literal("input"),
+		requestId: z.string().min(1).max(128),
+		data: z.string().min(1).max(65_536),
+	}),
 	z.object({
 		type: z.literal("resize"),
 		cols: z.number().int().min(2).max(1_000),

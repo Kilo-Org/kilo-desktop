@@ -38,8 +38,8 @@ export interface BootFeaturesOptions {
 	createLogger?: (featureId: string) => MainSdkLogger;
 	/** Host networking implementation shared by main-process features. */
 	fetch?: MainSdkFetch;
-	/** Narrow shell-owned desktop capabilities shared with main-process plugins. */
-	host?: MainSdkHost;
+	/** Create shell-owned desktop capabilities scoped to a feature id. */
+	createHost?: (featureId: string) => MainSdkHost | undefined;
 	/**
 	 * Create the custom protocol delegate for a feature (manifest-declared schemes).
 	 * Called once per feature before its `mainRegister` runs; return
@@ -114,11 +114,12 @@ export async function bootFeatures(
 						return dir;
 					};
 		const protocol = options?.createProtocolDelegate?.(feature.id);
+		const host = options?.createHost?.(feature.id);
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
 			...(options?.fetch ? { fetch: options.fetch } : {}),
-			...(options?.host ? { host: options.host } : {}),
+			...(host ? { host } : {}),
 			...(protocol ? { protocol } : {}),
 			...(resolveStorageDir
 				? {

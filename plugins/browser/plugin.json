@@ -1,0 +1,24 @@
+{
+	"id": "browser",
+	"displayName": "Browser",
+	"version": "1.0.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"providers": [],
+		"routes": [],
+		"nav": [],
+		"zones": [
+			{
+				"zone": "kilo-ui/chat-right-panel-tab",
+				"id": "browser",
+				"component": "BrowserView",
+				"label": "Browser",
+				"description": "Browse the web alongside this chat.",
+				"icon": "BrowserIcon",
+				"mountPolicy": "keep-alive",
+				"priority": 40
+			}
+		]
+	}
+}

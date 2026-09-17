@@ -21,11 +21,11 @@ const INITIAL_COLS = 120;
 const INITIAL_ROWS = 30;
 const TERMINAL_SESSION_METADATA_KEY = "terminalSessionId";
 
-function terminalThemeFromApp(appearance: ThemeAppearance) {
+function terminalThemeFromApp(appearance: ThemeAppearance, pane: HTMLElement | null) {
 	const styles = getComputedStyle(document.documentElement);
 	const scrollbarThumb = styles.getPropertyValue("--app-scrollbar-thumb").trim();
 	const scrollbarThumbHover = styles.getPropertyValue("--app-scrollbar-thumb-hover").trim();
-	return terminalThemeFor(
+	const theme = terminalThemeFor(
 		appearance.mode,
 		{
 			...(scrollbarThumb ? { scrollbarThumb } : {}),
@@ -33,6 +33,10 @@ function terminalThemeFromApp(appearance: ThemeAppearance) {
 		},
 		appearance.terminal,
 	);
+	const paneBackground = pane ? getComputedStyle(pane).backgroundColor : "";
+	return paneBackground
+		? { ...theme, background: paneBackground, cursorAccent: paneBackground }
+		: theme;
 }
 
 export interface TerminalViewProps {
@@ -52,6 +56,7 @@ export function TerminalView({
 	metadata,
 }: TerminalViewProps) {
 	const sdk = useSdk<TerminalService>("terminal");
+	const viewRef = useRef<HTMLDivElement>(null);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const connectedIdentityRef = useRef<TerminalIdentity | null>(null);
 	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
@@ -145,7 +150,7 @@ export function TerminalView({
 					{
 						type: "terminal:connect",
 						protocolVersion: TERMINAL_PROTOCOL_VERSION,
-						theme: terminalThemeFromApp(sdk.theme.appearance()),
+						theme: terminalThemeFromApp(sdk.theme.appearance(), viewRef.current),
 					},
 					frameOrigin,
 					[port],
@@ -180,7 +185,8 @@ export function TerminalView({
 	if (!frameSrc) {
 		return (
 			<div
-				className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
+				ref={viewRef}
+				className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center bg-[var(--pane-surface,var(--color-background))] p-8 text-center text-sm"
 				data-qa-id="terminal-desktop-required"
 			>
 				Terminal tabs are available in the desktop app.
@@ -190,7 +196,8 @@ export function TerminalView({
 	if (connectionError) {
 		return (
 			<div
-				className="text-destructive flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
+				ref={viewRef}
+				className="text-destructive flex min-h-0 flex-1 items-center justify-center bg-[var(--pane-surface,var(--color-background))] p-8 text-center text-sm"
 				data-qa-id="terminal-connection-error"
 			>
 				{connectionError}
@@ -198,15 +205,21 @@ export function TerminalView({
 		);
 	}
 	return (
-		<iframe
-			key={frameKey}
-			ref={frameRef}
-			src={frameSrc}
-			title="Terminal"
-			className="min-h-0 flex-1 border-0"
-			allow="clipboard-read; clipboard-write"
-			data-qa-id="terminal-frame"
-		/>
+		<div
+			ref={viewRef}
+			className="flex min-h-0 flex-1 bg-[var(--pane-surface,var(--color-background))]"
+			data-qa-id="terminal-view"
+		>
+			<iframe
+				key={frameKey}
+				ref={frameRef}
+				src={frameSrc}
+				title="Terminal"
+				className="min-h-0 flex-1 border-0 bg-[var(--pane-surface,var(--color-background))]"
+				allow="clipboard-read; clipboard-write"
+				data-qa-id="terminal-frame"
+			/>
+		</div>
 	);
 }
 

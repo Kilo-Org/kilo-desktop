@@ -67,11 +67,11 @@ export const ComposerFooter: FC = () => {
 	return (
 		<div
 			data-qa-id="kilo-composer-footer"
-			className="bg-background @container relative z-10 flex w-full min-w-0 items-center justify-between gap-2 overflow-visible"
+			className="@container relative z-10 flex w-full min-w-0 items-center justify-between gap-2 overflow-visible bg-[var(--pane-surface,var(--color-background))]"
 		>
 			<div
 				aria-hidden
-				className="bg-background pointer-events-none absolute -inset-x-4 -top-1.5 -bottom-1.5"
+				className="pointer-events-none absolute -inset-x-4 -top-1.5 -bottom-1.5 bg-[var(--pane-surface,var(--color-background))]"
 			/>
 			<div className="relative flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-2.5 @min-[32rem]:gap-4">
 				<ComposerWorkspaceLabel />

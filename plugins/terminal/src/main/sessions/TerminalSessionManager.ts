@@ -268,6 +268,7 @@ export class TerminalSessionManager {
 					if (!session.process || session.status !== "running")
 						throw new Error("The shell is not running.");
 					session.process.write(message.data);
+					this.#ack(subscriber, message.requestId);
 					break;
 				case "resize":
 					session.cols = message.cols;

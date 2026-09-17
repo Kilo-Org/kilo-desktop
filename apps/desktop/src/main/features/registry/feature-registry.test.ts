@@ -28,6 +28,28 @@ afterEach(() => {
 });
 
 describe("feature registration", () => {
+	it("scopes host capabilities per feature", async () => {
+		const browser = { initialize: vi.fn() };
+		const seen = new Map<string, MainSdk["host"]>();
+		const registrations = ["browser", "other"].map((id) => ({
+			id: `registry-host-${id}`,
+			mainRegister(mainSdk: MainSdk) {
+				seen.set(id, mainSdk.host);
+			},
+		}));
+
+		const dispose = await bootFeatures(registrations, {
+			createHost: (featureId) =>
+				({
+					...(featureId === "registry-host-browser" ? { browser } : {}),
+				}) as never,
+		});
+
+		expect(seen.get("browser")?.browser).toBe(browser);
+		expect(seen.get("other")?.browser).toBeUndefined();
+		await dispose();
+	});
+
 	it("wires feature options, skips duplicate boots, and disposes successful registrations", async () => {
 		const storageRoot = mkdtempSync(path.join(tmpdir(), "feature-registry-"));
 		directories.push(storageRoot);

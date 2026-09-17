@@ -20,10 +20,14 @@ import { PaneTabScrollArea } from "./PaneTabScrollArea.js";
 import { usePaneDrag } from "./use-pane-drag.js";
 import "./pane-drag.css";
 
-function tabChromeClassName(active: boolean) {
-	return active
-		? "border-primary bg-foreground/10 text-foreground"
-		: "border-border/60 bg-foreground/[0.025] text-muted-foreground hover:border-border hover:bg-foreground/5 hover:text-foreground";
+// Panes are raised surfaces on the darker canvas. The selected tab shares the pane
+// frame's full border and --pane-surface color so it reads as part of its content;
+// unselected tabs get a whisper of that border and a muted label, firming up on
+// hover. No accent borders.
+function tabChromeClassName(selected: boolean) {
+	return selected
+		? "border-primary/65 bg-foreground/[0.07] text-foreground shadow-sm"
+		: "border-border bg-background text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground dark:bg-input/30";
 }
 
 function stopActionBubble(event: { stopPropagation: () => void }) {
@@ -119,8 +123,7 @@ export const PaneTabStrip: FC<{
 							className={cn(
 								"group/pane-tab relative flex h-7 min-w-40 max-w-56 shrink-0 overflow-hidden rounded-md border transition-colors",
 								tabChromeClassName(active && highlighted),
-								poppedOut && "border-dashed",
-								poppedOut && "border-info/70",
+								poppedOut && "border-dashed border-info/70",
 							)}
 							data-pane-kind={pane.kind}
 							data-pane-tab={pane.id}

@@ -161,6 +161,7 @@ describe("TerminalView", () => {
 
 	it("connects the trusted frame with the stable session and updates its process label", async () => {
 		vi.stubEnv("VITE_TERMINAL_ORIGIN", "https://terminal.test");
+		document.documentElement.style.setProperty("--pane-surface", "#181818");
 		document.documentElement.style.setProperty("--app-scrollbar-thumb", "#111111");
 		document.documentElement.style.setProperty("--app-scrollbar-thumb-hover", "#222222");
 		const terminalPort = { close: vi.fn() } as unknown as MessagePort;
@@ -186,6 +187,11 @@ describe("TerminalView", () => {
 			}),
 		);
 		await vi.waitFor(() => expect(openPort).toHaveBeenCalledOnce());
+		const connect = terminalFrameConnectSchema.parse(
+			vi.mocked(frame.contentWindow.postMessage).mock.calls.at(-1)?.[0],
+		);
+		expect(connect.theme.background).toBe("rgb(24, 24, 24)");
+		expect(connect.theme.cursorAccent).toBe("rgb(24, 24, 24)");
 		expect(openPort).toHaveBeenCalledWith("terminal", "session", {
 			protocolVersion: TERMINAL_PROTOCOL_VERSION,
 			sessionId: "local-chat-1",
@@ -210,6 +216,7 @@ describe("TerminalView", () => {
 		await vi.waitFor(() =>
 			expect(updateTab).toHaveBeenCalledWith("remote-chat-1", "terminal-1", { title: "vite" }),
 		);
+		document.documentElement.style.removeProperty("--pane-surface");
 	});
 
 	it.each([

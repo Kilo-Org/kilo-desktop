@@ -29,16 +29,22 @@ export function notebookThemeTokensFrom(
  */
 export function notebookThemeTokensFromDocument(
 	root: HTMLElement = document.documentElement,
+	backgroundProperty = "--background",
 ): NotebookThemeMessage["tokens"] {
 	const probe = root.ownerDocument.createElement("span");
 	probe.style.cssText = "position:fixed;left:-9999px;pointer-events:none";
 	root.append(probe);
 	try {
-		return notebookThemeTokensFrom((property) => {
+		const tokens = notebookThemeTokensFrom((property) => {
 			if (!getComputedStyle(root).getPropertyValue(property).trim()) return "";
 			probe.style.color = `var(${property})`;
 			return getComputedStyle(probe).color;
 		});
+		if (getComputedStyle(root).getPropertyValue(backgroundProperty).trim()) {
+			probe.style.color = `var(${backgroundProperty})`;
+			return { ...tokens, background: getComputedStyle(probe).color };
+		}
+		return tokens;
 	} finally {
 		probe.remove();
 	}

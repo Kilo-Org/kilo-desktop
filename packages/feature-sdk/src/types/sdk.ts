@@ -846,6 +846,41 @@ export interface MainSdkHostDialogOptions {
 	readonly defaultPath?: string;
 }
 
+export interface HostBrowserState {
+	readonly webContentsId: number;
+	readonly url: string;
+	readonly title: string;
+	readonly faviconUrl: string;
+	readonly loading: boolean;
+	readonly canGoBack: boolean;
+	readonly canGoForward: boolean;
+	readonly zoomFactor: number;
+	readonly failure?: {
+		readonly code: number;
+		readonly description: string;
+	};
+}
+
+export interface HostBrowserController {
+	readonly webContentsId: number;
+	navigate(url: string): Promise<void>;
+	goBack(): void;
+	goForward(): void;
+	reload(): void;
+	hardReload(): void;
+	zoomIn(): void;
+	zoomOut(): void;
+	resetZoom(): void;
+	openDevTools(): void;
+	dispose(): void;
+}
+
+export interface MainSdkHostBrowser {
+	readonly partition: string;
+	initialize(): void;
+	attach(webContentsId: number, onState: (state: HostBrowserState) => void): HostBrowserController;
+}
+
 /** Narrow shell-owned desktop capabilities available to main-process plugins. */
 export interface MainSdkHost {
 	readonly paths: {
@@ -866,6 +901,7 @@ export interface MainSdkHost {
 		isFocused(senderId: number): boolean;
 		onFocusChange(senderId: number, listener: (focused: boolean) => void): () => void;
 	};
+	readonly browser?: MainSdkHostBrowser;
 }
 
 export interface MainSdkPorts {

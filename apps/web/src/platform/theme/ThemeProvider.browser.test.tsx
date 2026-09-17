@@ -89,6 +89,9 @@ describe("ThemeProvider", () => {
 		expect(getComputedStyle(document.documentElement).getPropertyValue("--background").trim()).toBe(
 			"#111111",
 		);
+		expect(getComputedStyle(document.documentElement).getPropertyValue("--card").trim()).toBe(
+			"#181818",
+		);
 		localStorage.setItem("appTheme:v1", JSON.stringify({ themeId: "dracula", accentId: "theme" }));
 		window.dispatchEvent(
 			new StorageEvent("storage", { key: "appTheme:v1", storageArea: localStorage }),

@@ -27,6 +27,7 @@ import { app } from "electron";
  */
 
 import * as environmentsMain from "@anaconda-agentic-desktop/plugin-environments/main";
+import * as browserMain from "@anaconda-agentic-desktop/plugin-browser/main";
 import * as filesMain from "@anaconda-agentic-desktop/plugin-files/main";
 import * as gitMain from "@anaconda-agentic-desktop/plugin-git/main";
 import * as kiloServerMain from "@anaconda-agentic-desktop/plugin-kilo-server/main";
@@ -42,6 +43,11 @@ import { bundledPluginAssetResolver } from "./bundled-plugin-assets.js";
 import { bundledPluginManifests } from "./bundled-plugin-manifests.js";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+	{
+		manifest: bundledPluginManifests.browser,
+		module: browserMain,
+		resolveAsset: bundledPluginAssetResolver("@anaconda-agentic-desktop/plugin-browser"),
+	},
 	{
 		manifest: bundledPluginManifests.kiloUi,
 		module: kiloUiMain,

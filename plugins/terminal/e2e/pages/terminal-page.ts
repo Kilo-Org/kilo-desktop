@@ -79,7 +79,18 @@ export class TerminalPage {
 			message: `Terminal ${instanceId} should accept input after its session snapshot`,
 		});
 		await this.#waitForPrompt(instanceId);
-		await pressSequentially(terminal, command);
+		for (const key of command) {
+			const accepted = Number(await terminal.getAttribute("data-accepted-input-count"));
+			await pressSequentially(terminal, key);
+			await expectElementToHaveAttribute(
+				terminal,
+				"data-accepted-input-count",
+				String(accepted + 1),
+				{
+					message: `Terminal ${instanceId} should accept the next input character`,
+				},
+			);
+		}
 		await pressLocatorKeyboard(terminal, "Enter");
 	}
 

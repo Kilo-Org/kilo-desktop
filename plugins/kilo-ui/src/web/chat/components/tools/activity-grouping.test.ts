@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GroupByContext, PartState } from "@assistant-ui/react";
 
-import { createActivityGroupBy } from "./activity-grouping.js";
+import { createActivityGroupBy, createTurnWorkGroupBy } from "./activity-grouping.js";
 
 const context: GroupByContext = {};
 
@@ -74,6 +74,23 @@ describe("createActivityGroupBy", () => {
 			["group-activity", "group-web"],
 			["group-activity", "group-web"],
 			["group-activity", "group-terminal"],
+		]);
+	});
+});
+
+describe("createTurnWorkGroupBy", () => {
+	it("does not create a worked fold for hidden lifecycle parts alone", () => {
+		const parts = [
+			dataPart("opencode-step-finish"),
+			dataPart("opencode-step-start"),
+			textPart("Final answer"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-activity"],
+			["group-activity"],
+			[],
 		]);
 	});
 });

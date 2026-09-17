@@ -63,6 +63,7 @@ type RolePalette = {
 	background: string;
 	foreground: string;
 	surface: string;
+	draftComposer?: string;
 	popover?: string;
 	sidebar: string;
 	hover: string;
@@ -88,6 +89,7 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			background: p.background,
 			foreground: p.foreground,
 			card: p.surface,
+			"composer-draft": p.draftComposer ?? p.surface,
 			"card-foreground": p.foreground,
 			popover: p.popover ?? p.surface,
 			"popover-foreground": p.foreground,
@@ -200,7 +202,8 @@ export const APP_THEMES = [
 				{
 					background: "#111111",
 					foreground: "#f0f0f0",
-					surface: "#1f1f1f",
+					surface: "#181818",
+					draftComposer: "#1f1f1f",
 					popover: "#2b2b2b",
 					sidebar: "#161616",
 					hover: "#333333",

@@ -3,6 +3,8 @@ import type { FC, ReactNode } from "react";
 import type { PaneKind } from "@anaconda-agentic-desktop/pane-layout";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
 
+// The frame and its floating elements use the theme's curated card surface so
+// theme-specific hues remain intact inside detached pane hosts.
 export const ChatPaneHost: FC<{
 	kind: PaneKind;
 	active: boolean;
@@ -14,7 +16,8 @@ export const ChatPaneHost: FC<{
 		<div
 			className={cn(
 				"relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden",
-				frame && "border-border bg-background rounded-[4px] border",
+				frame &&
+					"border-border rounded-md border bg-(--pane-surface) [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--color-accent))] [--pane-surface:var(--color-card)]",
 			)}
 			{...(frame ? { "data-qa-id": "chat-pane-frame" } : {})}
 			data-pane-id={paneId}

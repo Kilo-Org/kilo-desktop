@@ -120,11 +120,22 @@ export const createTurnWorkGroupBy = (
 			break;
 		}
 	}
+	let hasVisibleWork: boolean | undefined;
 
 	return (part: PartState, context: GroupByContext): readonly `group-${string}`[] => {
 		const activityPath = activityGroupBy(part, context);
 		const index = indices.get(part) ?? -1;
+		hasVisibleWork ??= parts.some((candidate, candidateIndex) => {
+			if (finalTextIndex >= 0 && candidateIndex >= finalTextIndex) return false;
+			if (candidate.type === "reasoning") return Boolean(candidate.text.trim());
+			if (candidate.type === "text") return Boolean(candidate.text.trim());
+			return (
+				candidate.type === "tool-call" &&
+				!shouldKeepPartOutsideActivity(candidate, context, options)
+			);
+		});
 		if (
+			!hasVisibleWork ||
 			index < 0 ||
 			(finalTextIndex >= 0 && index >= finalTextIndex) ||
 			shouldKeepPartOutsideActivity(part, context, options)

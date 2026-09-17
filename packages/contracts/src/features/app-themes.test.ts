@@ -29,7 +29,7 @@ describe("app theme presets", () => {
 			foreground: "#f0f0f0",
 			primary: "#f7f586",
 			"primary-foreground": "#1f1f1f",
-			card: "#1f1f1f",
+			card: "#181818",
 			popover: "#2b2b2b",
 			sidebar: "#161616",
 		});

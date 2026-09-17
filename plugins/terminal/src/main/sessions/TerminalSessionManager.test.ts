@@ -173,9 +173,10 @@ describe("TerminalSessionManager", () => {
 		const { args, manager, processes } = await setup();
 		const port = new FakePort();
 		await manager.attach(port, args);
-		port.emit("message", { data: { type: "input", data: "pwd\r" } });
+		port.emit("message", { data: { type: "input", requestId: "input-1", data: "pwd\r" } });
 		port.emit("message", { data: { type: "resize", cols: 90, rows: 20 } });
 		expect(processes[0]!.writes).toEqual(["pwd\r"]);
+		expect(port.messages).toContainEqual({ type: "ack", requestId: "input-1", ok: true });
 		expect(processes[0]!.resizes).toEqual([[90, 20]]);
 
 		processes[0]!.emitData("old output\r\n");
@@ -207,9 +208,14 @@ describe("TerminalSessionManager", () => {
 			expect(port.messages).toContainEqual({ type: "error", message: "Invalid terminal message." }),
 		);
 		processes[0]!.emitExit({ exitCode: 0, signal: null });
-		port.emit("message", { data: { type: "input", data: "pwd\r" } });
+		port.emit("message", { data: { type: "input", requestId: "input-2", data: "pwd\r" } });
 		await vi.waitFor(() =>
-			expect(port.messages).toContainEqual({ type: "error", message: "The shell is not running." }),
+			expect(port.messages).toContainEqual({
+				type: "ack",
+				requestId: "input-2",
+				ok: false,
+				error: "The shell is not running.",
+			}),
 		);
 		await manager.dispose();
 	});

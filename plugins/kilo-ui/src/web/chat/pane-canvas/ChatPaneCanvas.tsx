@@ -58,6 +58,7 @@ import { usePaneExpand } from "./pane-expand.js";
 import { usePaneFrameFocus } from "./use-pane-frame-focus.js";
 
 const FALLBACK_VIEWPORT_WIDTH = 960;
+const STACK_PANE_GAP = 8;
 const PANE_REVEAL_SPRING = {
 	stiffness: 180,
 	damping: 24,
@@ -277,7 +278,7 @@ const StackResizeHandle: FC<{
 				upperHeight: upperElement.getBoundingClientRect().height,
 				lowerHeight: lowerElement.getBoundingClientRect().height,
 				columnHeight: column.getBoundingClientRect().height,
-				gap: PANE_GAP,
+				gap: STACK_PANE_GAP,
 			};
 		},
 		[lowerGroup.id, upperGroup.id],
@@ -303,7 +304,7 @@ const StackResizeHandle: FC<{
 	);
 
 	return (
-		<div className="relative h-1 shrink-0">
+		<div className="relative h-2 shrink-0">
 			<div
 				role="separator"
 				aria-label={`Resize ${upperGroup.pane.title} and ${lowerGroup.pane.title}`}
@@ -444,7 +445,9 @@ const PaneCanvasColumn: FC<{
 					<Fragment key={group.id}>
 						<Tabs
 							value={pane.id}
-							className="pane-group relative flex min-h-0 min-w-0 flex-col gap-1"
+							/* Pane surfaces inherit the selected theme's curated card color so
+							   themed hues remain intact across frames, messages, and composer glass. */
+							className="pane-group relative flex min-h-0 min-w-0 flex-col gap-1.5 [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--color-accent))] [--pane-surface:var(--color-card)]"
 							data-qa-id={`chat-pane-group-${group.id}`}
 							data-pane-group-id={group.id}
 							data-group-active={active ? "true" : undefined}
@@ -458,7 +461,6 @@ const PaneCanvasColumn: FC<{
 								groupId={group.id}
 								panes={sourceGroup.tabs}
 								activePaneId={active ? group.pane.id : ""}
-								highlighted={paneCount > 1}
 								showPinned={arrangement === "carousel" && index === 0}
 								pinned={arrangement === "carousel" && column.pinned}
 								{...(arrangement === "carousel" && index === 0

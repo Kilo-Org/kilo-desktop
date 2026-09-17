@@ -709,7 +709,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			) : null}
 			{hasCanvas ? (
 				<div
-					className="relative flex min-h-0 flex-1 overflow-hidden p-1"
+					className="relative flex min-h-0 flex-1 overflow-hidden p-1.5"
 					data-qa-id="kilo-chat-page"
 				>
 					<ChatPaneCanvas

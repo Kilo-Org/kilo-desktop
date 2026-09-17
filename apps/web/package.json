@@ -17,6 +17,7 @@
 	"dependencies": {
 		"@anaconda-agentic-desktop/contracts": "workspace:*",
 		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@anaconda-agentic-desktop/plugin-browser": "link:../../plugins/browser",
 		"@anaconda-agentic-desktop/plugin-environments": "workspace:*",
 		"@anaconda-agentic-desktop/plugin-files": "link:../../plugins/files",
 		"@anaconda-agentic-desktop/plugin-git": "link:../../plugins/git",

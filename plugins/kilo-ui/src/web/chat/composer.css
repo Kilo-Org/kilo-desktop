@@ -16,7 +16,9 @@
 }
 
 .chat-composer-glass {
-	--composer-glass-surface: var(--card);
+	/* Pane frames set --pane-raised so the glass stays a step above the pane
+	   surface; outside panes it falls back to card. */
+	--composer-glass-surface: var(--pane-raised, var(--card));
 	--composer-glass-stroke: var(--border);
 	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
@@ -140,7 +142,7 @@
 	position: absolute;
 	width: var(--composer-radius);
 	height: var(--composer-radius);
-	background-color: var(--background);
+	background-color: var(--pane-surface, var(--background));
 	-webkit-mask: var(--composer-corner-mask);
 	mask: var(--composer-corner-mask);
 }

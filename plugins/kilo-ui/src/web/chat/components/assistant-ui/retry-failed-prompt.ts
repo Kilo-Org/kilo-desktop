@@ -28,20 +28,30 @@ export function userPromptText(message: { content: readonly PromptPart[] }): str
 	return text || undefined;
 }
 
-/** Revert the failed turn when possible, then resubmit the previous user prompt. */
+/**
+ * Retry a failed turn. With a `retry` callback (server-backed session) the
+ * turn is re-prompted in place through the previous user message id — no
+ * revert, no duplicate prompt. Without one (local runtime / tests) the
+ * previous user prompt is appended as a fresh turn. The tail guard keeps the
+ * retry target unambiguous: only the failed assistant message at the very end
+ * of the thread can be retried.
+ */
 export async function retryFailedPrompt(input: {
 	messages: readonly PromptMessage[];
 	assistantId: string;
-	revert?: (messageId: string) => Promise<void>;
+	retry?: (userMessageId: string) => Promise<void>;
 	append: (text: string) => void;
 }): Promise<boolean> {
 	const user = previousUserMessage(input.messages, input.assistantId);
 	if (!user) return false;
+	const last = input.messages[input.messages.length - 1];
+	if (!last || last.id !== input.assistantId) return false;
+	if (input.retry) {
+		await input.retry(user.id);
+		return true;
+	}
 	const text = userPromptText(user);
 	if (!text) return false;
-	if (input.revert) {
-		await input.revert(user.id).catch(() => undefined);
-	}
 	input.append(text);
 	return true;
 }

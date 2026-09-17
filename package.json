@@ -61,5 +61,8 @@
 		"typescript": "catalog:",
 		"vitest": "catalog:",
 		"wait-on": "^9.0.3"
+	},
+	"dependencies": {
+		"@assistant-ui/react-opencode": "0.2.17"
 	}
 }

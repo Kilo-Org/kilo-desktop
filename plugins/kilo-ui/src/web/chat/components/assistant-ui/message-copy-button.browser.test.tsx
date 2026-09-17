@@ -186,6 +186,106 @@ describe("MessageCopyButton", () => {
 	});
 });
 
+describe("UserActionBar", () => {
+	it("does not widen a short user message bubble to fit its actions", async () => {
+		renderThread({
+			initialMessages: [
+				{
+					role: "user",
+					content: [{ type: "text", text: "hi" }],
+				},
+			],
+		});
+
+		await expect
+			.poll(() => document.querySelector<HTMLElement>(".aui-user-message-content")?.offsetWidth)
+			.toBeGreaterThan(0);
+
+		const wrapper = document.querySelector<HTMLElement>(".aui-user-message-content-wrapper")!;
+		const bubble = document.querySelector<HTMLElement>(".aui-user-message-content")!;
+		expect(wrapper.offsetWidth).toBe(bubble.offsetWidth);
+	});
+
+	it("copies user message text through sdk.shell.copyText", async () => {
+		const { copyText } = renderThread({
+			initialMessages: [
+				{
+					role: "user",
+					content: [{ type: "text", text: "Copy my prompt" }],
+				},
+			],
+		});
+		// Messages render a tick after mount; the existing assistant tests rely on
+		// locator auto-retry, but elementLocator needs a live element up front.
+		await expect
+			.poll(() => document.querySelector('[data-slot="aui_user-message-root"]') !== null)
+			.toBe(true);
+		const userRoot = page.elementLocator(
+			document.querySelector('[data-slot="aui_user-message-root"]')!,
+		);
+
+		const copyButton = userRoot.getByRole("button", { name: "Copy" });
+		await expect.element(copyButton).toBeVisible();
+		await copyButton.click();
+
+		await expect.poll(() => copyText.mock.calls).toEqual([["Copy my prompt"]]);
+	});
+
+	it("reveals the copy action when hovering a non-last user message", async () => {
+		const { copyText } = renderThread({
+			initialMessages: [
+				{
+					role: "user",
+					content: [{ type: "text", text: "First prompt" }],
+				},
+				{
+					role: "assistant",
+					content: [{ type: "text", text: "Reply" }],
+				},
+			],
+		});
+		await expect
+			.poll(() => document.querySelector('[data-slot="aui_user-message-root"]') !== null)
+			.toBe(true);
+
+		// Park the cursor on the assistant message: a previous test can leave the
+		// physical mouse over the user root, auto-hovering it at mount.
+		await page
+			.elementLocator(document.querySelector('[data-slot="aui_assistant-message-root"]')!)
+			.hover();
+
+		// Bar stays in DOM (no layout shift) but is opacity-0 + pointer-events-none
+		// while the user message is not hovered.
+		const userActionBar = document.querySelector(".aui-user-action-bar-root");
+		expect(userActionBar?.classList.contains("opacity-0")).toBe(true);
+
+		await page
+			.elementLocator(
+				document.querySelector('[data-slot="aui_user-message-root"] .aui-user-message-content')!,
+			)
+			.hover();
+
+		// After hover the bar transitions to opacity-100.
+		await expect
+			.poll(() => {
+				return document
+					.querySelector(".aui-user-action-bar-root")
+					?.classList.contains("opacity-100");
+			})
+			.toBe(true);
+
+		// Re-derive after the opacity class settles so elementLocator text filter is stable.
+		const revealedRoot = page.elementLocator(
+			document.querySelector('[data-slot="aui_user-message-root"]')!,
+		);
+		const copyButton = revealedRoot.getByRole("button", { name: "Copy" });
+		await expect.element(copyButton).toBeVisible();
+		await copyButton.click();
+
+		await expect.poll(() => copyText.mock.calls).toEqual([["First prompt"]]);
+	});
+});
+
 describe("AssistantActionMoreTrigger", () => {
 	it("keeps the More tooltip visible while hovering the overflow button", async () => {
 		renderThread({

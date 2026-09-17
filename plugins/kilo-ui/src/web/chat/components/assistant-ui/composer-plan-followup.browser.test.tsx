@@ -80,6 +80,7 @@ vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
 		rejectQuestion: vi.fn(),
 		replyToPermission: vi.fn(),
 	}),
+	selectOpenCodeExtras: () => undefined,
 }));
 
 vi.mock("../../plan/use-plan-thread-projection.js", () => ({

@@ -5,8 +5,12 @@ import {
 	ComposerAttachments,
 	UserMessageAttachments,
 } from "./attachment.js";
+import { RevertToHereButton } from "./revert-to-here-button.js";
+import { RevertPendingProvider, useRevertPending } from "./revert-pending.js";
+import { useIsAfterPendingBoundary } from "./checkpoint-revert.js";
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
 import { ComposerFooter } from "./composer-footer.js";
+import { ComposerHeader } from "./composer-header.js";
 import { ComposerTriggers } from "./composer-triggers.js";
 import { ConversationMapAui } from "./elements/conversation-map.aui.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
@@ -45,6 +49,7 @@ import {
 	TooltipTrigger,
 } from "@anaconda-agentic-desktop/ui/components/tooltip";
 import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
 import {
 	ActionBarMorePrimitive,
 	ActionBarPrimitive,
@@ -123,6 +128,7 @@ import {
 import { useLocalInferenceStatus } from "../../use-local-inference-status.js";
 import { ANACONDA_LOCAL_PROVIDER_ID } from "../../../providers/provider-ids.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
+import { retryFailedTurn } from "./retry-failed-turn.js";
 
 import "./assistant-working-indicator.css";
 
@@ -166,7 +172,9 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 
 	return (
 		<ThreadComponentsContext.Provider value={components}>
-			<ThreadRoot isDraft={isDraft} />
+			<RevertPendingProvider>
+				<ThreadRoot isDraft={isDraft} />
+			</RevertPendingProvider>
 		</ThreadComponentsContext.Provider>
 	);
 };
@@ -191,6 +199,7 @@ const ThreadComposerBlock: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 		<div className="relative flex w-full flex-col">
 			{isDraft ? <Welcome /> : null}
 			<div className="flex w-full flex-col">
+				{!isDraft ? <ComposerHeader /> : null}
 				<ThreadComposerSlot />
 				{isDraft ? <ComposerDraftFooter /> : null}
 			</div>
@@ -1093,13 +1102,16 @@ const KiloMessageErrorBanner: FC = () => {
 	const auth = useKiloAuth();
 	const aui = useAui();
 	const extras = useOptionalOpenCodeRuntimeExtras();
+	const { connection } = useChatConnection();
 	const { model } = useChatModelSelection();
 	const errorText = useAuiState((s) => messageErrorText(s.message.status));
+	const isLast = useAuiState((s) => s.message.isLast);
 	const isKiloModel = model !== undefined && isKiloGatewayProvider({ id: model.providerID });
 	const offerSignIn = offerKiloSignIn(auth, isKiloModel);
 	const signedIn = auth.authenticated === true && isKiloSignInError(errorText);
 	const signingIn = auth.deviceAuth.status === "initiating" || auth.deviceAuth.status === "waiting";
 	const retrying = useRef(false);
+	const session = extras?.session ?? null;
 
 	if (signedIn) {
 		return (
@@ -1112,28 +1124,45 @@ const KiloMessageErrorBanner: FC = () => {
 					<CheckCircle2Icon className="text-primary size-4 shrink-0" />
 					<span>You&rsquo;re signed in to Kilo.</span>
 				</span>
-				<Button
-					type="button"
-					size="sm"
-					onClick={() => {
-						if (retrying.current) return;
-						retrying.current = true;
-						const thread = aui.thread();
-						void retryFailedPrompt({
-							messages: thread.getState().messages,
-							assistantId: aui.message().getState().id,
-							...(extras ? { revert: extras.revert } : {}),
-							append: (text) => {
-								thread.append(text);
-							},
-						}).finally(() => {
-							retrying.current = false;
-						});
-					}}
-					data-qa-id="kilo-message-error-retry"
-				>
-					Retry
-				</Button>
+				{isLast ? (
+					<Button
+						type="button"
+						size="sm"
+						onClick={() => {
+							if (retrying.current) return;
+							retrying.current = true;
+							const thread = aui.thread();
+							void retryFailedPrompt({
+								messages: thread.getState().messages,
+								assistantId: aui.message().getState().id,
+								...(session && connection
+									? {
+											retry: (userMessageId) =>
+												retryFailedTurn({
+													connection,
+													sessionID: session.id,
+													directory: session.directory,
+													messageID: userMessageId,
+													...(model ? { model } : {}),
+												}),
+										}
+									: {}),
+								append: (text) => {
+									thread.append(text);
+								},
+							})
+								.catch(() => {
+									toast.error("Couldn't retry the prompt");
+								})
+								.finally(() => {
+									retrying.current = false;
+								});
+						}}
+						data-qa-id="kilo-message-error-retry"
+					>
+						Retry
+					</Button>
+				) : null}
 			</div>
 		);
 	}
@@ -1160,6 +1189,10 @@ const KiloMessageErrorBanner: FC = () => {
 		</ErrorPrimitive.Root>
 	);
 };
+
+const ACTION_BAR_PT = "pt-1.5";
+// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
+const ACTION_BAR_HEIGHT = `min-h-7.5 ${ACTION_BAR_PT}`;
 
 const AssistantMessage: FC = () => {
 	const { ToolFallback: ToolFallbackComponent = FallbackTool } =
@@ -1206,17 +1239,18 @@ const AssistantMessage: FC = () => {
 				: createTurnWorkGroupBy(messageParts, { hiddenPlanCallIds }),
 		[hiddenPlanCallIds, isRunning, messageParts],
 	);
-
-	// Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
-	const ACTION_BAR_HEIGHT = "min-h-6";
+	// Dim while a revert is in flight from a boundary before this message.
+	const pendingId = useRevertPending().pendingId;
+	const dimmed = useIsAfterPendingBoundary(pendingId);
 
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_assistant-message-root"
 			data-role="assistant"
 			className={cn(
-				"fade-in slide-in-from-bottom-1 animate-in relative -mb-7 pb-6 duration-150",
+				"fade-in slide-in-from-bottom-1 animate-in relative -mb-15 pb-7.5 duration-150 transition-opacity",
 				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}
 		>
 			<div
@@ -1364,24 +1398,47 @@ const AssistantActionBar: FC = () => {
 	);
 };
 
+const UserActionBar: FC = () => {
+	// Always stay in DOM to avoid layout shift; drive visibility via opacity so
+	// the bar fades in on hover without reflowing the bubble above it.
+	const hidden = useAuiState((s) => !s.message.isLast && !s.message.isHovering);
+
+	return (
+		<ActionBarPrimitive.Root
+			className={cn(
+				"aui-user-action-bar-root text-muted-foreground absolute right-0 bottom-0 flex justify-end gap-1 transition-opacity duration-200",
+				hidden ? "pointer-events-none opacity-0" : "opacity-100",
+			)}
+		>
+			<RevertToHereButton />
+			<MessageCopyButton />
+		</ActionBarPrimitive.Root>
+	);
+};
+
 const UserMessage: FC = () => {
 	const virtualize = useVirtualizeMessage();
+	// Dim while a revert is in flight from a boundary before this message.
+	const pendingId = useRevertPending().pendingId;
+	const dimmed = useIsAfterPendingBoundary(pendingId);
 
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
 			className={cn(
-				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 ps-2 duration-150 [&:where(>*)]:col-start-2",
+				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 transition-opacity [&:where(>*)]:col-start-2",
 				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
+				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}
 			data-role="user"
 		>
 			<UserMessageAttachments />
 
-			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
+			<div className="aui-user-message-content-wrapper relative col-start-2 w-fit max-w-full min-w-0 justify-self-end pb-7">
 				<div className="aui-user-message-content border-border text-foreground dark:border-muted-foreground/15 rounded-xl border bg-[var(--pane-raised,var(--color-card))] px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
 					<MessagePrimitive.Parts components={{ Text: KiloDirectiveText }} />
 				</div>
+				<UserActionBar />
 			</div>
 
 			<BranchPicker

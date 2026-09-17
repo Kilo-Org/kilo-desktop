@@ -1,0 +1,158 @@
+"use client";
+
+import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@anaconda-agentic-desktop/ui/components/collapsible";
+import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { useAui, useAuiState } from "@assistant-ui/react";
+import { ChevronDownIcon, Loader2Icon } from "lucide-react";
+import { useEffect, useState, type FC } from "react";
+
+/** Tracks which (sessionId, boundaryId, workspace) combinations have already shown a notice in this app session. */
+const shownNotices = new Set<string>();
+
+/** Test-only reset — call in afterEach to start each test with a clean history. */
+export function resetCheckpointNoticeHistory(): void {
+	shownNotices.clear();
+}
+
+import {
+	useRevertBoundaryId,
+	useRevertDiffs,
+	useRevertedUserRows,
+	useRevertWorkspace,
+} from "./checkpoint-revert.js";
+import { selectOpenCodeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
+import { DiffStat, RevertMessageRows } from "./checkpoint-revert-messages.js";
+
+// Mirrors the kilocode clients' three revert.workspace states. The undefined
+// case covers reverts performed by older CLIs/TUI that did not report status.
+const WORKSPACE_NOT_RESTORED_COPY = {
+	"snapshots-disabled":
+		"Conversation reverted. File changes were not restored because snapshots are disabled.",
+	unavailable:
+		"Conversation reverted. No file checkpoint was available, so workspace changes were not restored.",
+	legacy:
+		"Conversation reverted. Workspace restoration status is unavailable for this earlier revert.",
+} as const;
+
+export const CheckpointRestoreControls: FC = () => {
+	const aui = useAui();
+	const isRunning = useAuiState((s) => s.thread.isRunning);
+	const boundaryId = useRevertBoundaryId();
+	const sessionId = useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.id);
+	const rows = useRevertedUserRows();
+	const workspace = useRevertWorkspace();
+	const diffs = useRevertDiffs();
+	const workspaceNotice =
+		workspace === undefined
+			? WORKSPACE_NOT_RESTORED_COPY.legacy
+			: workspace === "restored"
+				? undefined
+				: WORKSPACE_NOT_RESTORED_COPY[workspace];
+
+	// `file` is optional in the wire type; entries without one cannot be listed.
+	const files = (diffs ?? []).filter((diff) => diff.file !== undefined);
+	const additions = files.reduce((total, diff) => total + diff.additions, 0);
+	const deletions = files.reduce((total, diff) => total + diff.deletions, 0);
+	const revertedCopy =
+		rows.length === 1 ? "1 message reverted" : `${rows.length} messages reverted`;
+
+	useEffect(() => {
+		if (!workspaceNotice || !boundaryId) return;
+		const key = `${sessionId ?? ""}:${boundaryId}:${workspace ?? "legacy"}`;
+		if (shownNotices.has(key)) return;
+		shownNotices.add(key);
+		toast.warning(workspaceNotice);
+	}, [workspaceNotice, boundaryId, workspace, sessionId]);
+
+	const [isOpen, setIsOpen] = useState(false);
+	const [isUndoing, setIsUndoing] = useState(false);
+	const undo = async () => {
+		const extras = selectOpenCodeExtras(aui.thread.getState().extras);
+		if (!extras?.session?.revert?.messageID) return;
+		setIsUndoing(true);
+		try {
+			await extras.unrevert();
+			// Undo clears text only — attachments added by an earlier restore
+			// stay in the composer (deliberate; extension clears all attachment kinds).
+			aui.thread.composer().setText("");
+		} catch {
+			toast.error("Could not restore the reverted messages.");
+		} finally {
+			setIsUndoing(false);
+		}
+	};
+
+	return (
+		<Collapsible
+			// The key remounts the Collapsible per boundary so the collapsed state
+			// resets with each new revert (including Restore-forward moves).
+			key={boundaryId ?? "none"}
+			open={isOpen}
+			onOpenChange={setIsOpen}
+			className="border-border/60 chat-composer-glass chat-composer-surface flex w-full flex-col overflow-hidden rounded-xl border shadow-[0_8px_24px_-20px_rgba(0,0,0,0.7)]"
+		>
+			<div
+				className={cn(
+					"relative flex h-8 w-full items-center",
+					isOpen && rows.length > 0 && "border-border/40 border-b",
+				)}
+			>
+				{rows.length > 0 ? (
+					<CollapsibleTrigger
+						data-qa-id="kilo-revert-messages-toggle"
+						render={
+							<Button
+								variant="ghost"
+								className="text-muted-foreground hover:bg-muted/35 h-full min-w-0 flex-1 justify-start rounded-none bg-clip-border px-3 pr-28 text-xs font-medium"
+							>
+								<span>{revertedCopy}</span>
+								{files.length > 0 && <DiffStat additions={additions} deletions={deletions} />}
+								<ChevronDownIcon
+									data-icon="inline-end"
+									data-slot="revert-messages-chevron"
+									className={cn(
+										"ml-auto size-3.5 transition-transform duration-150",
+										!isOpen && "-rotate-90",
+									)}
+								/>
+							</Button>
+						}
+					/>
+				) : (
+					<div className="text-muted-foreground flex min-w-0 flex-1 items-center gap-2 px-3 text-xs font-medium">
+						<span>{revertedCopy}</span>
+						{files.length > 0 && <DiffStat additions={additions} deletions={deletions} />}
+					</div>
+				)}
+				<Button
+					type="button"
+					variant="ghost"
+					size="xs"
+					disabled={isRunning || isUndoing}
+					onClick={() => void undo()}
+					data-qa-id="kilo-revert-undo-button"
+					className={cn(
+						"text-muted-foreground hover:text-foreground h-6 px-2 text-xs",
+						rows.length > 0 ? "absolute right-[27px]" : "mr-1.5",
+					)}
+				>
+					{isUndoing && <Loader2Icon data-icon="inline-start" className="animate-spin" />}
+					Undo revert
+				</Button>
+			</div>
+			{rows.length > 0 && (
+				<CollapsibleContent className="w-full overflow-hidden">
+					<div className="max-h-36 overflow-y-auto p-1">
+						<RevertMessageRows aui={aui} rows={rows} isRunning={isRunning} />
+					</div>
+				</CollapsibleContent>
+			)}
+		</Collapsible>
+	);
+};

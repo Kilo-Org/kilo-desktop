@@ -33,45 +33,75 @@ describe("userPromptText", () => {
 });
 
 describe("retryFailedPrompt", () => {
-	it("reverts the user turn then appends the prompt", async () => {
-		const revert = vi.fn(async () => undefined);
+	it("retries in place through the previous user message id without appending", async () => {
+		const retry = vi.fn(async () => undefined);
 		const append = vi.fn();
 
 		await expect(
 			retryFailedPrompt({
 				messages: [user, assistant],
 				assistantId: "asst-1",
-				revert,
+				retry,
 				append,
 			}),
 		).resolves.toBe(true);
 
-		expect(revert).toHaveBeenCalledWith("user-1");
+		expect(retry).toHaveBeenCalledWith("user-1");
+		expect(append).not.toHaveBeenCalled();
+	});
+
+	it("returns false when the failed assistant is not the last message", async () => {
+		const retry = vi.fn(async () => undefined);
+		const append = vi.fn();
+		const laterUser = {
+			id: "user-2",
+			role: "user",
+			content: [{ type: "text", text: "later" }],
+		};
+
+		await expect(
+			retryFailedPrompt({
+				messages: [user, assistant, laterUser],
+				assistantId: "asst-1",
+				retry,
+				append,
+			}),
+		).resolves.toBe(false);
+
+		expect(retry).not.toHaveBeenCalled();
+		expect(append).not.toHaveBeenCalled();
+	});
+
+	it("falls back to appending the prompt when retry is absent", async () => {
+		const append = vi.fn();
+
+		await expect(
+			retryFailedPrompt({
+				messages: [user, assistant],
+				assistantId: "asst-1",
+				append,
+			}),
+		).resolves.toBe(true);
+
 		expect(append).toHaveBeenCalledWith("Fix the banner");
 	});
 
-	it("still appends when revert is missing or fails", async () => {
+	it("propagates retry errors instead of appending", async () => {
+		const retry = vi.fn(async () => {
+			throw new Error("refused");
+		});
 		const append = vi.fn();
-		await retryFailedPrompt({
-			messages: [user, assistant],
-			assistantId: "asst-1",
-			append,
-		});
-		expect(append).toHaveBeenCalledWith("Fix the banner");
 
-		const revert = vi.fn(async () => {
-			throw new Error("busy");
-		});
-		append.mockClear();
 		await expect(
 			retryFailedPrompt({
 				messages: [user, assistant],
 				assistantId: "asst-1",
-				revert,
+				retry,
 				append,
 			}),
-		).resolves.toBe(true);
-		expect(append).toHaveBeenCalledWith("Fix the banner");
+		).rejects.toThrow("refused");
+
+		expect(append).not.toHaveBeenCalled();
 	});
 
 	it("does nothing without a user prompt", async () => {

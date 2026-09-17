@@ -4,6 +4,7 @@ import {
 	ExternalThread,
 	fromThreadMessageLike,
 	useAui,
+	useAuiState,
 	useLocalRuntime,
 	type ChatModelAdapter,
 	type ExternalThreadMessage,
@@ -33,6 +34,7 @@ import {
 	createFakeMainSdk,
 	createFakeSdk,
 } from "@anaconda-agentic-desktop/testing";
+import type { OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
@@ -48,9 +50,36 @@ import {
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { Thread } from "./thread.js";
 
+const extrasRef = vi.hoisted(() => ({
+	current: undefined as OpenCodeRuntimeExtras | undefined,
+}));
+
+vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
+	useOptionalOpenCodeRuntimeExtras: () => extrasRef.current,
+	selectOpenCodeExtras: () => extrasRef.current,
+}));
+
+const retryFailedTurn = vi.hoisted(() =>
+	vi.fn(
+		async (_args: {
+			connection: unknown;
+			sessionID: string;
+			directory: string;
+			messageID: string;
+			model?: unknown;
+		}) => undefined,
+	),
+);
+
+vi.mock("./retry-failed-turn.js", () => ({
+	retryFailedTurn: (args: Parameters<typeof retryFailedTurn>[0]) => retryFailedTurn(args),
+}));
+
 afterEach(() => {
 	cleanup();
 	vi.useRealTimers();
+	extrasRef.current = undefined;
+	retryFailedTurn.mockClear();
 });
 
 const signedInAuth: KiloAuthContextValue = {
@@ -208,6 +237,31 @@ function signInErrorMessages(
 	];
 }
 
+function makeExtras(session: Record<string, unknown> | null): OpenCodeRuntimeExtras {
+	return {
+		session: session as never,
+		state: { messageOrder: [], messagesById: {} } as never,
+		permissions: {},
+		questions: {},
+		fork: vi.fn(async () => "forked"),
+		revert: vi.fn(async () => undefined),
+		unrevert: vi.fn(async () => undefined),
+		cancel: vi.fn(async () => undefined),
+		refresh: vi.fn(async () => undefined),
+		replyToPermission: vi.fn(async () => undefined),
+		replyToQuestion: vi.fn(async () => undefined),
+		rejectQuestion: vi.fn(async () => undefined),
+	};
+}
+
+function LastUserIdProbe() {
+	const lastUserId = useAuiState((s) => {
+		const last = s.thread.messages.findLast((message) => message.role === "user");
+		return last?.id ?? "";
+	});
+	return <output data-qa-id="last-user-id">{lastUserId}</output>;
+}
+
 function ThreadTree({
 	auth,
 	selection = kiloModelSelection,
@@ -221,6 +275,7 @@ function ThreadTree({
 		connection,
 		connectionPromise: Promise.resolve(connection),
 	},
+	probe = false,
 }: {
 	auth: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
@@ -228,6 +283,7 @@ function ThreadTree({
 	adapter?: ChatModelAdapter;
 	enableMessageQueue?: boolean;
 	connectionStatus?: ChatConnectionStatus;
+	probe?: boolean;
 }) {
 	const runtime = useLocalRuntime(adapter, {
 		initialMessages,
@@ -245,6 +301,7 @@ function ThreadTree({
 							>
 								<div className="h-[480px]">
 									<Thread />
+									{probe ? <LastUserIdProbe /> : null}
 								</div>
 							</ChatMarkdownProvider>
 						</ChatModelSelectionProvider>
@@ -262,6 +319,7 @@ function renderThread({
 	adapter,
 	enableMessageQueue,
 	connectionStatus,
+	extras,
 	openFile,
 }: {
 	auth?: KiloAuthContextValue;
@@ -270,12 +328,14 @@ function renderThread({
 	adapter?: ChatModelAdapter;
 	enableMessageQueue?: boolean;
 	connectionStatus?: ChatConnectionStatus;
+	extras?: OpenCodeRuntimeExtras;
 	openFile?: (options: {
 		sessionId: string;
 		workspaceDirectory: string;
 		relativePath: string;
 	}) => void;
 }) {
+	extrasRef.current = extras;
 	const sdk = createFakeSdk({ featureId: "kilo-ui" });
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
 	kiloUiBrowserRegister(mainSdk);
@@ -293,6 +353,7 @@ function renderThread({
 						{...(enableMessageQueue === undefined ? {} : { enableMessageQueue })}
 						{...(adapter ? { adapter } : {})}
 						{...(connectionStatus ? { connectionStatus } : {})}
+						probe={extras !== undefined}
 					/>
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
@@ -954,6 +1015,38 @@ describe("message error sign-in", () => {
 
 		await expect.poll(() => run.mock.calls.length).toBe(1);
 		await expect.element(screen.getByText("retried")).toBeVisible();
+	});
+
+	it("retries the failed turn in place through the previous user message id", async () => {
+		const run = vi.fn(async () => ({
+			content: [{ type: "text" as const, text: "retried" }],
+		}));
+		const screen = renderThread({
+			initialMessages: signInErrorMessages(),
+			adapter: { run },
+			extras: makeExtras({ id: "ses_1", directory: "/tmp/project" }),
+		});
+
+		await expect.element(screen.getByTestId("kilo-message-error-retry")).toBeVisible();
+		await screen.getByTestId("kilo-message-error-retry").click();
+
+		const lastUserId = document.querySelector<HTMLOutputElement>(
+			'[data-qa-id="last-user-id"]',
+		)?.textContent;
+		await expect
+			.poll(() => retryFailedTurn.mock.calls)
+			.toEqual([
+				[
+					{
+						connection,
+						sessionID: "ses_1",
+						directory: "/tmp/project",
+						messageID: lastUserId,
+						model: { providerID: "kilo", modelID: "test-model" },
+					},
+				],
+			]);
+		expect(run).not.toHaveBeenCalled();
 	});
 
 	it("unwraps a Gateway JSON dump into the tidy sign-in banner", async () => {

@@ -15,7 +15,7 @@
 		"test:e2e:headed": "playwright test --config playwright.config.ts --headed"
 	},
 	"devDependencies": {
-		"@anaconda/playwright-utils": "1.17.1",
+		"@anaconda/playwright-utils": "2.0.2",
 		"@playwright/test": "catalog:",
 		"@types/node": "^24.13.3",
 		"playwright": "catalog:",

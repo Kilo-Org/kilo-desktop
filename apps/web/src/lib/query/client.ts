@@ -1,8 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 
 import { LocalApiError } from "@kilo-desktop/contracts";
+import { configureDesktopFocusManager } from "@kilo-desktop/sdk-react";
 
 export function createDesktopQueryClient(): QueryClient {
+	configureDesktopFocusManager();
 	return new QueryClient({
 		defaultOptions: {
 			queries: {

@@ -37,17 +37,23 @@ import {
 } from "@kilo-desktop/ui/components/tooltip";
 
 import { type FileReadResult, type FilesServiceContract } from "../../contracts/schemas.js";
+import { useDocumentWatcher } from "./document/document-watcher.js";
 import { FileEditor, FilesEditProvider } from "./document/FileEditor.js";
 import { useFileSession } from "./document/file-session.js";
 import { FilesTree, type FilesWorkspaceFolder } from "./explorer/FilesTree.js";
 import { explorerRootTitle } from "./explorer/explorer-title.js";
+import { filesGitStatusQueryKey, filesListQueryKey } from "./explorer/file-tree-watcher.js";
 import {
 	ExternalEditorActions,
 	useExternalEditorActions,
 } from "./external-editors/ExternalEditorActions.js";
 import type { ChatRightPanelCapabilities } from "./integrations/chat-right-panel.js";
 import { openWorkspaceFile } from "./integrations/file-viewer.js";
-import { isNotebookFile, openNotebookFile } from "./integrations/notebook-viewer.js";
+import {
+	absoluteWorkspaceFilePath,
+	isNotebookFile,
+	openNotebookFile,
+} from "./integrations/notebook-viewer.js";
 import { MarkdownPreview } from "./markdown/MarkdownPreview.js";
 
 import "./files.css";
@@ -191,6 +197,7 @@ export function FilesView({
 		saving,
 		dirty,
 		open: openDocument,
+		refresh: refreshDocument,
 		save: saveDocument,
 		setDraft,
 		setConflict,
@@ -202,13 +209,19 @@ export function FilesView({
 		read: readFile,
 		write: writeFile,
 	});
+	useDocumentWatcher(
+		documentWorkspaceDirectory && selectedPath
+			? absoluteWorkspaceFilePath(documentWorkspaceDirectory, selectedPath)
+			: null,
+		refreshDocument,
+	);
 	const externalEditorWorkspaceDirectory = documentWorkspaceDirectory ?? activeWorkspaceDirectory;
 	const workspaceListDirectory = activeWorkspaceDirectory ?? "";
 	// Single key source for the live query and the save invalidation: an open
 	// document always belongs to the active workspace folder, and if that
 	// folder disappears the visible tree is what needs refreshing.
 	const gitStatusQueryKey = useMemo(
-		() => [sdk.featureId, "git-status", workspaceListDirectory],
+		() => filesGitStatusQueryKey(sdk.featureId, workspaceListDirectory),
 		[sdk.featureId, workspaceListDirectory],
 	);
 	const externalEditors = useExternalEditorActions({
@@ -375,12 +388,20 @@ export function FilesView({
 	const explorerOnly = !metadata?.relativePath;
 	const shouldLoadWorkspaceList = Boolean(activeWorkspaceDirectory) && explorerOnly;
 	const workspaceListQuery = useQuery({
-		queryKey: [sdk.featureId, "workspace-list", workspaceListDirectory],
+		queryKey: filesListQueryKey(sdk.featureId, workspaceListDirectory),
 		queryFn: () =>
 			sdk.client.list({
 				workspaceDirectory: workspaceListDirectory,
 			}),
 		enabled: shouldLoadWorkspaceList,
+		// Events missed while unmounted must not hide behind staleTime when the
+		// explorer comes back.
+		refetchOnMount: "always",
+		// Window-focus safety net (vscode #126817): cover watcher events missed
+		// while unmounted. "always" bypasses staleTime so the safety net works
+		// even right after a fetch. The desktop focusManager turns window focus
+		// into refetches (the app default is off).
+		refetchOnWindowFocus: "always",
 		staleTime: 30_000,
 		gcTime: 5 * 60_000,
 	});
@@ -388,6 +409,15 @@ export function FilesView({
 		queryKey: gitStatusQueryKey,
 		queryFn: () => sdk.client.gitStatus({ workspaceDirectory: workspaceListDirectory }),
 		enabled: shouldLoadWorkspaceList,
+		// Events missed while unmounted must not hide behind staleTime when the
+		// explorer comes back (FilesTree, which drives the watcher subscription,
+		// only renders in explorerOnly mode).
+		refetchOnMount: "always",
+		// Window-focus safety net (vscode #126817): cover watcher events missed
+		// while unmounted. "always" bypasses staleTime so the safety net works
+		// even right after a fetch. The desktop focusManager turns window focus
+		// into refetches (the app default is off).
+		refetchOnWindowFocus: "always",
 		staleTime: 30_000,
 		gcTime: 5 * 60_000,
 	});
@@ -617,8 +647,9 @@ export function FilesView({
 					{explorerOnly ? (
 						<aside className="files-explorer-pane relative flex min-h-0 min-w-0 flex-1">
 							<FilesTree
+								key={activeWorkspaceDirectory}
 								activePath={selectedPath}
-								appearance={appearance}
+								sdk={sdk}
 								error={listError}
 								gitStatusEntries={gitStatusQuery.data?.entries ?? null}
 								loading={listLoading}

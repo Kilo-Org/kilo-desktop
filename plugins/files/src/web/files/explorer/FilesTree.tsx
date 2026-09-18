@@ -4,7 +4,7 @@ import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Input } from "@kilo-desktop/ui/components/input";
 import {
@@ -25,6 +25,8 @@ import {
 import type { FileGitStatusEntry } from "../../../contracts/schemas.js";
 import { FILE_ICONS } from "../file-icons/file-icons.js";
 import { explorerRootTitle, folderName } from "./explorer-title.js";
+import { captureExpandedPaths } from "./tree-expansion.js";
+import { useFileTreeWatcher } from "./file-tree-watcher.js";
 
 export interface FilesWorkspaceFolder {
 	readonly path: string;
@@ -32,7 +34,7 @@ export interface FilesWorkspaceFolder {
 }
 
 interface FilesTreeProps {
-	readonly appearance: ThemeAppearance;
+	readonly sdk: SDK;
 	readonly paths: readonly string[];
 	readonly loading: boolean;
 	readonly truncated: boolean;
@@ -48,7 +50,7 @@ interface FilesTreeProps {
 }
 
 export function FilesTree({
-	appearance,
+	sdk,
 	paths,
 	loading,
 	truncated,
@@ -111,6 +113,7 @@ export function FilesTree({
 	});
 	const search = useFileTreeSearch(model);
 	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
+	useFileTreeWatcher(sdk.featureId, workspaceDirectory);
 	const folderOptions = useMemo(
 		() =>
 			workspaceFolders.map(({ path }) => ({
@@ -121,7 +124,9 @@ export function FilesTree({
 	);
 
 	useEffect(() => {
-		model.resetPaths(paths);
+		// resetPaths collapses to the baseline, so re-plant the expansion the
+		// model had before the new list lands (first mount captures nothing).
+		model.resetPaths(paths, { initialExpandedPaths: captureExpandedPaths(model) });
 	}, [model, paths]);
 
 	useEffect(() => {
@@ -142,18 +147,22 @@ export function FilesTree({
 
 	useEffect(() => {
 		let active = true;
-		void resolveTheme(appearance.shiki).then(
-			(resolved) => {
-				if (active) setTreeStyles(themeToTreeStyles(resolved) as CSSProperties);
-			},
-			() => {
-				if (active) setTreeStyles({ colorScheme: appearance.mode });
-			},
-		);
+		const unsubscribe = sdk.theme.subscribe(() => {
+			const { shiki, mode } = sdk.theme.appearance();
+			void resolveTheme(shiki).then(
+				(resolved) => {
+					if (active) setTreeStyles(themeToTreeStyles(resolved) as CSSProperties);
+				},
+				() => {
+					if (active) setTreeStyles({ colorScheme: mode });
+				},
+			);
+		});
 		return () => {
 			active = false;
+			unsubscribe();
 		};
-	}, [appearance.shiki, appearance.mode]);
+	}, [sdk]);
 
 	return (
 		<div

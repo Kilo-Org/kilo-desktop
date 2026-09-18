@@ -4,6 +4,8 @@ import isEqual from "lodash/isEqual.js";
 
 import {
 	createWorkspaceService,
+	escapeGlob,
+	toPosixPath,
 	type WorkspaceFileChangeEvent,
 	type WorkspaceFileChangeType,
 	type WorkspaceSubscriptionOptions,
@@ -14,6 +16,13 @@ import { useFeatureSystem } from "./SdkProvider.js";
 export interface UseWorkspaceWatcherOptions {
 	/** picomatch globs — if set, only matching paths fire. */
 	includes?: string[];
+	/** Full native file paths — watched exactly. posix-normalized and
+	 *  glob-escaped for you, then concatenated onto `includes`. */
+	files?: string[] | undefined;
+	/** Full native directory paths — each matches the directory and everything
+	 *  under it (posix-normalized, trailing slashes stripped, glob-escaped,
+	 *  `/**` appended), then concatenated onto `includes`. */
+	dirs?: string[];
 	/** picomatch globs — matching paths are suppressed. */
 	excludes?: string[];
 	/** Event type filter — if set, only these event types fire. */
@@ -36,6 +45,23 @@ function useStableValue<T>(value: T): T {
 	return ref.current;
 }
 
+// js-hoist-regexp: module-scope to avoid re-allocation per call.
+const TRAILING_SLASHES = /\/+$/u;
+
+/**
+ * Build the merged `includes` array from the three include sources.
+ * Returns `undefined` when nothing is set, preserving the pass-through
+ * semantics of the existing `includes`-only path.
+ */
+function toIncludeGlobs(options: UseWorkspaceWatcherOptions): string[] | undefined {
+	const globs = [...(options.includes ?? [])];
+	for (const file of options.files ?? []) globs.push(escapeGlob(toPosixPath(file)));
+	for (const dir of options.dirs ?? []) {
+		globs.push(`${escapeGlob(toPosixPath(dir).replace(TRAILING_SLASHES, ""))}/**`);
+	}
+	return globs.length > 0 ? globs : undefined;
+}
+
 /**
  * Subscribe to workspace file changes for the lifetime of the component.
  * Reads the feature system from React context — no SDK parameter needed.
@@ -47,9 +73,14 @@ function useStableValue<T>(value: T): T {
  * options change (compared by deep equality, so inline array literals are
  * safe to pass) or when `enabled` toggles.
  *
+ * Pass `files` with full native paths (posix-normalized and glob-escaped for
+ * you) to watch specific files exactly. Pass `dirs` with full native directory
+ * paths to watch a directory and all its descendants (`/**` appended). Both
+ * are concatenated onto `includes` before subscribing.
+ *
  * @example
  * useWorkspaceWatcher({
- *   includes: ["src/**"],
+ *   dirs: [workspaceDirectory],
  *   types: ["create", "update"],
  *   onFileChange: (event) => {
  *     if (event.root === directory) refresh();
@@ -64,7 +95,7 @@ export function useWorkspaceWatcher(options: UseWorkspaceWatcherOptions): void {
 
 	const system = useFeatureSystem();
 	const filter = useStableValue<WorkspaceSubscriptionOptions>({
-		includes: options.includes,
+		includes: toIncludeGlobs(options),
 		excludes: options.excludes,
 		types: options.types,
 	});

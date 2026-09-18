@@ -23,6 +23,8 @@ export {
 	type SdkMutationVariables,
 } from "./useSdkMutation.js";
 
+export { configureDesktopFocusManager } from "./configureDesktopFocusManager.js";
+
 export { useFeatureFlag } from "./useFeatureFlag.js";
 export {
 	FORCE_ANACONDA_SIGN_IN_GATE_FLAG,

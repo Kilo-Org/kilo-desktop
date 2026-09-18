@@ -62,6 +62,7 @@ export default defineConfig({
 						"@tanstack/react-query",
 						"@testing-library/react",
 						"lucide-react",
+						"react-use/esm/useDebounce.js",
 						"react-markdown",
 						"remark-gfm",
 						"use-sync-external-store/shim",

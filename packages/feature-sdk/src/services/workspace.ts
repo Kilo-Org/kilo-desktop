@@ -30,10 +30,31 @@ const POSIX_SEPARATOR = "/";
  * Windows), but include/exclude globs must be forward-slash based — the
  * filter matches them separator-insensitively (vscode-style), never the
  * reverse. Normalize with this before escaping and embedding a native path
- * in a glob: `escapeRegExp(toPosixPath(absolutePath))`.
+ * in a glob: `escapeGlob(toPosixPath(absolutePath))`.
  */
 export function toPosixPath(path: string): string {
 	return path.split(WIN32_SEPARATOR).join(POSIX_SEPARATOR);
+}
+
+const GLOB_METACHARS = /[\\*?[\]{}()!]/g;
+
+/**
+ * Escape a literal string for safe embedding in a glob pattern. Pair with
+ * {@link toPosixPath} for native absolute paths:
+ * `escapeGlob(toPosixPath(absolutePath))`.
+ *
+ * Escapes all picomatch magic characters: `\ * ? [ ] { } ( ) !`.
+ * The `!` case is intentional — picomatch treats a leading `!` as negation,
+ * which lodash `escapeRegExp` missed because `!` is not a RegExp metachar.
+ *
+ * Kept as a local single-pass replace, not the `glob-escape` package: that
+ * package's dead `require("util")` survives CJS bundling into the sandboxed
+ * Electron preload, where `util` is not requireable — the preload dies
+ * before exposing the desktop bridge and the renderer silently boots in
+ * standalone-browser mode.
+ */
+export function escapeGlob(literal: string): string {
+	return literal.replace(GLOB_METACHARS, "\\$&");
 }
 
 /**

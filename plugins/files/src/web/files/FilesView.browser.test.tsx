@@ -1,8 +1,12 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import {
+	WORKSPACE_FILE_CHANGE_EVENT,
+	type WorkspaceFileChangeEvent,
+} from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
@@ -232,6 +236,10 @@ async function replaceEditorText(contents: string): Promise<void> {
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
+	// Boolean focus notifications (configureDesktopFocusManager) make the
+	// focusManager's _focused state persist across tests. Reset to the
+	// visibilityState fallback so focus-dispatch tests always start unfocused.
+	focusManager.setFocused(undefined);
 });
 
 describe("FilesView", () => {
@@ -644,6 +652,36 @@ describe("FilesView", () => {
 		expect(host?.shadowRoot?.querySelector("[data-item-contains-git-change]")).toBeNull();
 	});
 
+	it("refetches git status when the refresh button is clicked", async () => {
+		let externallyChanged = false;
+		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () =>
+			externallyChanged ? { entries: [{ path: "docs/readme.md", status: "untracked" }] } : null,
+		);
+		renderView({ ...handlers(), gitStatus });
+		await expandTreePath("docs/");
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector('[data-item-path="docs/readme.md"]'),
+			).not.toBeNull();
+		});
+		expect(
+			treeHost()?.shadowRoot?.querySelector(
+				'[data-item-path="docs/readme.md"][data-item-git-status]',
+			),
+		).toBeNull();
+
+		externallyChanged = true;
+		await page.getByTestId("files-refresh").click();
+
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector(
+					'[data-item-path="docs/readme.md"][data-item-git-status="untracked"]',
+				),
+			).not.toBeNull();
+		});
+	});
+
 	it("refreshes explorer git status decorations after a file pane saves", async () => {
 		let saved = false;
 		const write = vi.fn<FilesServiceContract["write"]>(async () => {
@@ -729,12 +767,16 @@ describe("FilesView", () => {
 		});
 	});
 
-	it("refetches git status when the refresh button is clicked", async () => {
+	it("refreshes git decorations from a watcher batch without re-listing the workspace", async () => {
 		let externallyChanged = false;
+		const list = vi.fn<FilesServiceContract["list"]>(async () => ({
+			paths: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
+			truncated: false,
+		}));
 		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () =>
 			externallyChanged ? { entries: [{ path: "docs/readme.md", status: "untracked" }] } : null,
 		);
-		renderView({ ...handlers(), gitStatus });
+		const view = renderView({ ...handlers(), list, gitStatus });
 		await expandTreePath("docs/");
 		await vi.waitFor(() => {
 			expect(
@@ -748,8 +790,349 @@ describe("FilesView", () => {
 		).toBeNull();
 
 		externallyChanged = true;
-		await page.getByTestId("files-refresh").click();
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/docs/readme.md", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
 
+		await vi.waitFor(() => {
+			expect(
+				treeHost()?.shadowRoot?.querySelector(
+					'[data-item-path="docs/readme.md"][data-item-git-status="untracked"]',
+				),
+			).not.toBeNull();
+		});
+		expect(list).toHaveBeenCalledTimes(1);
+	});
+
+	it("adds a watcher-created file to the tree without any refresh action", async () => {
+		let created = false;
+		const list = vi.fn<FilesServiceContract["list"]>(async () => ({
+			paths: created
+				? ["created-file.txt", "docs/", "docs/readme.md", "src/", "src/index.ts"]
+				: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
+			truncated: false,
+		}));
+		const view = renderView({ ...handlers(), list });
+		await vi.waitFor(() => expect(treeItem("docs/")).not.toBeNull());
+
+		created = true;
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/created-file.txt", type: "create" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		await vi.waitFor(() => expect(treeItem("created-file.txt")).not.toBeNull());
+	});
+
+	// Same flow with platform-native Windows paths: the workspace folder and
+	// event paths are backslash-joined, and the tree must still refresh.
+	it("adds a watcher-created file to the tree (Windows paths)", async () => {
+		let created = false;
+		const list = vi.fn<FilesServiceContract["list"]>(async () => ({
+			paths: created
+				? ["created-file.txt", "docs/", "docs/readme.md", "src/", "src/index.ts"]
+				: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
+			truncated: false,
+		}));
+		const view = renderView({ ...handlers(), list }, { workspaceDirectory: "C:\\workspace" });
+		await vi.waitFor(() => expect(treeItem("docs/")).not.toBeNull());
+
+		created = true;
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "C:\\workspace",
+			changes: [{ path: "C:\\workspace\\created-file.txt", type: "create" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		await vi.waitFor(() => expect(treeItem("created-file.txt")).not.toBeNull());
+	});
+
+	it("removes a watcher-deleted file and refetches the list for a never-listed delete", async () => {
+		let deleted = false;
+		const list = vi.fn<FilesServiceContract["list"]>(async () => ({
+			paths: deleted
+				? ["docs/", "docs/readme.md", "src/", "src/index.ts"]
+				: ["docs/", "docs/readme.md", "src/", "src/index.ts", "temp-file.txt"],
+			truncated: false,
+		}));
+		const view = renderView({ ...handlers(), list });
+		await vi.waitFor(() => expect(treeItem("temp-file.txt")).not.toBeNull());
+
+		deleted = true;
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/temp-file.txt", type: "delete" }],
+		} satisfies WorkspaceFileChangeEvent);
+		await vi.waitFor(() => expect(treeItem("temp-file.txt")).toBeNull());
+
+		const listCalls = list.mock.calls.length;
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/generated/never-listed.ts", type: "delete" }],
+		} satisfies WorkspaceFileChangeEvent);
+		await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(listCalls + 1));
+	});
+
+	it("ignores watcher batches for other workspace roots", async () => {
+		const list = vi.fn<FilesServiceContract["list"]>(async () => ({
+			paths: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
+			truncated: false,
+		}));
+		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () => null);
+		const view = renderView({ ...handlers(), list, gitStatus });
+		await vi.waitFor(() => expect(treeItem("docs/")).not.toBeNull());
+		const listCalls = list.mock.calls.length;
+		const gitStatusCalls = gitStatus.mock.calls.length;
+
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/other-workspace",
+			changes: [{ path: "/other-workspace/new-file.txt", type: "create" }],
+		} satisfies WorkspaceFileChangeEvent);
+		await new Promise((resolve) => {
+			setTimeout(resolve, 700);
+		});
+		expect(list).toHaveBeenCalledTimes(listCalls);
+		expect(gitStatus).toHaveBeenCalledTimes(gitStatusCalls);
+	});
+
+	it("preserves expansion across a watcher refresh, including flattened chains", async () => {
+		let created = false;
+		const list = vi.fn<FilesServiceContract["list"]>(async () => ({
+			paths: created
+				? [
+						"created-file.txt",
+						"docs/",
+						"docs/readme.md",
+						"packages/core/",
+						"packages/core/index.ts",
+						"src/",
+						"src/index.ts",
+					]
+				: [
+						"docs/",
+						"docs/readme.md",
+						"packages/core/",
+						"packages/core/index.ts",
+						"src/",
+						"src/index.ts",
+					],
+			truncated: false,
+		}));
+		const view = renderView({ ...handlers(), list });
+		await expandTreePath("docs/");
+		await expandTreePath("packages/core/");
+		await vi.waitFor(() => expect(treeItem("packages/core/index.ts")).not.toBeNull());
+		expect(treeItem("docs/readme.md")).not.toBeNull();
+
+		created = true;
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/created-file.txt", type: "create" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		await vi.waitFor(() => expect(treeItem("created-file.txt")).not.toBeNull());
+		expect(treeItem("docs/")?.getAttribute("aria-expanded")).not.toBe("false");
+		expect(treeItem("docs/readme.md")).not.toBeNull();
+		expect(treeItem("packages/core/")?.getAttribute("aria-expanded")).not.toBe("false");
+		expect(treeItem("packages/core/index.ts")).not.toBeNull();
+	});
+
+	it("updates the editor content when the open file changes on disk", async () => {
+		let externalChange = false;
+		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
+			kind: "text",
+			contents: externalChange ? "const version = 2;" : "const version = 1;",
+			byteLength: 18,
+			truncated: false,
+			revision: externalChange ? "b".repeat(64) : "a".repeat(64),
+		}));
+		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("version = 1"));
+
+		externalChange = true;
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("version = 2"));
+	});
+
+	// The watcher emits platform-native paths; on Windows the workspace folder
+	// and event paths are backslash-joined. The open document must still reload.
+	it("updates the editor content when the open file changes on disk (Windows paths)", async () => {
+		let externalChange = false;
+		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
+			kind: "text",
+			contents: externalChange ? "const version = 2;" : "const version = 1;",
+			byteLength: 18,
+			truncated: false,
+			revision: externalChange ? "b".repeat(64) : "a".repeat(64),
+		}));
+		const view = renderView(
+			{ ...handlers(), read },
+			filePane("src/index.ts", { workspaceDirectory: "C:\\workspace" }),
+		);
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("version = 1"));
+
+		externalChange = true;
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "C:\\workspace",
+			changes: [{ path: "C:\\workspace\\src\\index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("version = 2"));
+	});
+
+	it("does not reload a dirty open file when it changes on disk", async () => {
+		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
+			kind: "text",
+			contents: "const version = 1;",
+			byteLength: 18,
+			truncated: false,
+			revision: "a".repeat(64),
+		}));
+		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
+		await replaceEditorText("const version = 2; // local edit");
+		expect(read).toHaveBeenCalledOnce();
+
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+		await new Promise((resolve) => {
+			setTimeout(resolve, 700);
+		});
+
+		expect(read).toHaveBeenCalledOnce();
+	});
+
+	it("does not issue a watcher-triggered read while a new file open is in flight", async () => {
+		type ReadResult = Awaited<ReturnType<FilesServiceContract["read"]>>;
+		let resolveSecondRead!: (result: ReadResult) => void;
+		const secondReadDeferred = new Promise<ReadResult>((resolve) => {
+			resolveSecondRead = resolve;
+		});
+		let readCallCount = 0;
+		const read = vi.fn<FilesServiceContract["read"]>(({ relativePath }) => {
+			readCallCount++;
+			if (readCallCount === 1) {
+				// First read (file A) resolves immediately.
+				return Promise.resolve({
+					kind: "text",
+					contents: "const a = 1;",
+					byteLength: 12,
+					truncated: false,
+					revision: "a".repeat(64),
+				});
+			}
+			// Second read (file B open) is deferred to simulate an in-flight open.
+			void relativePath; // referenced for clarity
+			return secondReadDeferred;
+		});
+		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
+		// Wait for file A to fully load.
+		await vi.waitFor(() => expect(diffsEditorText()).toContain("const a = 1;"));
+		expect(read).toHaveBeenCalledOnce();
+
+		// Emit a watcher update for file A — arms the 300 ms debounce.
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		// Immediately click file B — its read is now in-flight (loading: true).
+		view.rerenderView(filePane("docs/readme.md"));
+
+		// Wait past the 300 ms debounce window; the watcher must not issue a third read.
+		await new Promise((resolve) => {
+			setTimeout(resolve, 700);
+		});
+		expect(read).toHaveBeenCalledTimes(2);
+
+		// Resolve file B's deferred read and verify its content renders.
+		resolveSecondRead({
+			kind: "text",
+			contents: "# Read me",
+			byteLength: 9,
+			truncated: false,
+			revision: "b".repeat(64),
+		});
+		await vi.waitFor(() => expect(diffsEditorText()).toContain("# Read me"));
+		expect(read).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not clobber editor state when the file content is unchanged", async () => {
+		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
+			kind: "text",
+			contents: "const version = 1;",
+			byteLength: 18,
+			truncated: false,
+			revision: "a".repeat(64),
+		}));
+		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("version = 1"));
+
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+		await expect.poll(() => diffsContentEditable()?.textContent ?? "").toContain("version = 1");
+		expect(diffsContentEditable()?.textContent).not.toContain("version = 2");
+	});
+
+	it("ignores watcher batches for other files and other roots", async () => {
+		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
+			kind: "text",
+			contents: "const version = 1;",
+			byteLength: 18,
+			truncated: false,
+			revision: "a".repeat(64),
+		}));
+		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("version = 1"));
+		expect(read).toHaveBeenCalledOnce();
+
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/src/other.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/other-workspace",
+			changes: [{ path: "/other-workspace/src/index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+		await new Promise((resolve) => {
+			setTimeout(resolve, 700);
+		});
+
+		expect(read).toHaveBeenCalledOnce();
+	});
+
+	it("refetches both workspace queries when the window regains focus", async () => {
+		let externallyChanged = false;
+		const list = vi.fn<FilesServiceContract["list"]>(async () => ({
+			paths: externallyChanged
+				? ["created-file.txt", "docs/", "docs/readme.md", "src/", "src/index.ts"]
+				: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
+			truncated: false,
+		}));
+		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () =>
+			externallyChanged ? { entries: [{ path: "docs/readme.md", status: "untracked" }] } : null,
+		);
+		renderView({ ...handlers(), list, gitStatus });
+		await expandTreePath("docs/");
+		expect(
+			treeHost()?.shadowRoot?.querySelector(
+				'[data-item-path="docs/readme.md"][data-item-git-status]',
+			),
+		).toBeNull();
+
+		externallyChanged = true;
+		window.dispatchEvent(new Event("focus"));
+
+		await vi.waitFor(() => expect(treeItem("created-file.txt")).not.toBeNull());
 		await vi.waitFor(() => {
 			expect(
 				treeHost()?.shadowRoot?.querySelector(
@@ -1307,6 +1690,166 @@ describe("FilesView", () => {
 		await vi.waitFor(() =>
 			expect(write).toHaveBeenLastCalledWith(expect.objectContaining({ force: true })),
 		);
+	});
+
+	it("typing while a watcher-triggered refresh read is in flight keeps the edit", async () => {
+		type ReadResult = Awaited<ReturnType<FilesServiceContract["read"]>>;
+		let resolveSecondRead!: (result: ReadResult) => void;
+		const secondReadDeferred = new Promise<ReadResult>((resolve) => {
+			resolveSecondRead = resolve;
+		});
+		let readCallCount = 0;
+		const read = vi.fn<FilesServiceContract["read"]>(() => {
+			readCallCount++;
+			if (readCallCount === 1) {
+				return Promise.resolve({
+					kind: "text",
+					contents: "const a = 1;",
+					byteLength: 12,
+					truncated: false,
+					revision: "a".repeat(64),
+				});
+			}
+			// Second read (watcher refresh) is deferred so we can type mid-flight.
+			return secondReadDeferred;
+		});
+		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("a = 1"));
+		expect(read).toHaveBeenCalledOnce();
+
+		// Emit a watcher event — arms the 300 ms debounce.
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		// Wait for the refresh read to start (debounce fires).
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+
+		// Type while the refresh read is in-flight — creates dirty state.
+		await replaceEditorText("const a = 2; // typed during refresh");
+
+		// Resolve the refresh read with different content and a new revision.
+		resolveSecondRead({
+			kind: "text",
+			contents: "const a = 99;",
+			byteLength: 13,
+			truncated: false,
+			revision: "b".repeat(64),
+		});
+
+		// Give the dispatch a tick to settle.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		// The editor must still show the typed text and be dirty.
+		expect(diffsEditorText()).toContain("const a = 2; // typed during refresh");
+		await expect.element(page.getByTestId("files-save")).toBeEnabled();
+	});
+
+	it("a save started while a watcher refresh read is in flight completes without conflict", async () => {
+		type ReadResult = Awaited<ReturnType<FilesServiceContract["read"]>>;
+		type WriteResult = Awaited<ReturnType<FilesServiceContract["write"]>>;
+		let resolveRefreshRead!: (result: ReadResult) => void;
+		const refreshReadDeferred = new Promise<ReadResult>((resolve) => {
+			resolveRefreshRead = resolve;
+		});
+		let readCallCount = 0;
+		const read = vi.fn<FilesServiceContract["read"]>(() => {
+			readCallCount++;
+			if (readCallCount === 1) {
+				return Promise.resolve({
+					kind: "text",
+					contents: "const a = 1;",
+					byteLength: 12,
+					truncated: false,
+					revision: "a".repeat(64),
+				});
+			}
+			// Second read is the refresh — defer it so we can race a save.
+			return refreshReadDeferred;
+		});
+		let resolveWrite!: (result: WriteResult) => void;
+		const writeDeferred = new Promise<WriteResult>((resolve) => {
+			resolveWrite = resolve;
+		});
+		const write = vi.fn<FilesServiceContract["write"]>(async () => writeDeferred);
+
+		const view = renderView({ ...handlers(), read, write }, filePane("src/index.ts"));
+		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("a = 1"));
+
+		// Emit a watcher event while the file is clean — refresh read starts.
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root: "/workspace",
+			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
+		} satisfies WorkspaceFileChangeEvent);
+
+		// Wait for the refresh debounce+read to start.
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+
+		// Make an edit (dirties the file) then save, while refresh read is still in-flight.
+		await replaceEditorText("const a = 2;");
+		await expect.element(page.getByTestId("files-save")).toBeEnabled();
+		fireEvent.click(document.querySelector('[data-qa-id="files-save"]')!);
+		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+
+		// Resolve the refresh read — must not dispatch refresh-succeeded (saving is in flight).
+		resolveRefreshRead({
+			kind: "text",
+			contents: "const a = 99; // from disk",
+			byteLength: 25,
+			truncated: false,
+			revision: "b".repeat(64),
+		});
+
+		// Resolve the write successfully.
+		resolveWrite({ status: "saved", revision: "c".repeat(64) });
+
+		// Save must complete: dirty clears, no conflict dialog, not stuck saving.
+		await vi.waitFor(() => expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull());
+		expect(document.querySelector('[data-qa-id="files-conflict-dialog"]')).toBeNull();
+	});
+
+	it("gitStatus refetches on explorer remount within staleTime without a window focus event", async () => {
+		// Use a shared QueryClient with pre-populated cache (simulates fresh data
+		// still within staleTime). On remount, refetchOnMount: "always" must bypass
+		// the staleTime and refetch.
+		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () => null);
+		const sdk = createFakeSdk({
+			featureId: "files",
+			channels: filesContract,
+			handlers: { ...handlers(), gitStatus },
+		});
+		const system = createFakeFeatureSystem({ sdks: { files: sdk } });
+		const sharedQueryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		system.getSdk("kilo-ui").plugins.expose("chatRightPanel", {
+			getActiveTabId: vi.fn(() => PROPS.instanceId),
+			updateTab: vi.fn(),
+			registerTabLifecycle: vi.fn(() => vi.fn()),
+			openContributedTab: vi.fn(),
+		});
+
+		// Pre-populate the cache with fresh data (so staleTime has not elapsed).
+		const { filesGitStatusQueryKey } = await import("./explorer/file-tree-watcher.js");
+		sharedQueryClient.setQueryData(filesGitStatusQueryKey("files", "/workspace"), null);
+
+		function renderExplorer() {
+			return render(
+				<SdkProvider system={system}>
+					<QueryClientProvider client={sharedQueryClient}>
+						<div className="flex" style={{ height: 600, width: 900 }}>
+							<FilesView {...PROPS} />
+						</div>
+					</QueryClientProvider>
+				</SdkProvider>,
+			);
+		}
+
+		// Mount the explorer — refetchOnMount: "always" must fetch even though the
+		// cache already has fresh data within staleTime.
+		renderExplorer();
+		await vi.waitFor(() => expect(gitStatus).toHaveBeenCalledOnce());
 	});
 
 	it("can cancel a conflict or reload the disk version", async () => {

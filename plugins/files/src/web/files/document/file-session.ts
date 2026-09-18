@@ -46,6 +46,11 @@ type FileDocumentAction =
 			readonly workspaceDirectory: string;
 			readonly reload: boolean;
 	  }
+	| {
+			readonly type: "refresh-succeeded";
+			readonly file: FileReadResult;
+			readonly workspaceDirectory: string;
+	  }
 	| { readonly type: "open-failed"; readonly message: string }
 	| { readonly type: "draft-changed"; readonly contents: string }
 	| { readonly type: "save-started" }
@@ -126,6 +131,14 @@ function fileDocumentReducer(
 			};
 		case "open-succeeded":
 			return openedState(state, action.file, action.workspaceDirectory, action.reload);
+		case "refresh-succeeded":
+			// An external reload must not reset the editor (reloadVersion stays)
+			// and must not re-scroll to the original navigation target.
+			return {
+				...openedState(state, action.file, action.workspaceDirectory, false),
+				revealLine: undefined,
+				revealColumn: undefined,
+			};
 		case "open-failed":
 			return {
 				...state,
@@ -178,6 +191,14 @@ function errorMessage(error: unknown): string {
  * remain dirty when they race a save, and revision conflicts stay explicit
  * until the caller chooses reload or overwrite. FilesView consumes commands
  * and observable state without coordinating reducer transitions itself.
+ *
+ * Two generation counters:
+ * - `openRequestRef` — incremented by open() and reset(). Detects open/reset
+ *   supersession for in-flight opens and for save()'s documentRequest check.
+ * - `refreshRequestRef` — incremented only by refresh(). Isolates refresh
+ *   supersession (latest-wins within concurrent refreshes) from open/save/reset
+ *   ordering; cross-operation safety comes from the post-await revalidation
+ *   inside refresh().
  */
 export function useFileSession({
 	initialRequest,
@@ -189,7 +210,8 @@ export function useFileSession({
 	readonly write: FilesServiceContract["write"];
 }) {
 	const [state, dispatch] = useReducer(fileDocumentReducer, initialFileDocument(initialRequest));
-	const openRequestRef = useRef(0);
+	const openRequestRef = useRef(0); // open()/reset()-only generation counter
+	const refreshRequestRef = useRef(0); // refresh-only generation counter
 	const open = useCallback(
 		async ({
 			workspaceDirectory,
@@ -223,6 +245,68 @@ export function useFileSession({
 		},
 		[read],
 	);
+	const dirty =
+		state.file?.kind === "text" &&
+		Boolean(state.file.revision) &&
+		state.draft !== state.originalContents;
+	// Latest session snapshot via ref so refresh() stays referentially stable
+	// while always reading the current session state when it fires.
+	const sessionRef = useRef({
+		selectedPath: state.selectedPath,
+		workspaceDirectory: state.workspaceDirectory,
+		revision: state.revision,
+		dirty,
+		file: state.file,
+		loading: state.loading,
+		saving: state.saving,
+	});
+	sessionRef.current = {
+		selectedPath: state.selectedPath,
+		workspaceDirectory: state.workspaceDirectory,
+		revision: state.revision,
+		dirty,
+		file: state.file,
+		loading: state.loading,
+		saving: state.saving,
+	};
+	const refresh = useCallback(async (): Promise<void> => {
+		const {
+			selectedPath,
+			workspaceDirectory,
+			revision,
+			dirty: isDirty,
+			file,
+			loading,
+			saving,
+		} = sessionRef.current;
+		if (!selectedPath || !workspaceDirectory) return;
+		if (file?.kind === "text" && isDirty) return;
+		// Guard before bumping the counter: while loading, the in-flight open()
+		// already reads current disk content so the refresh is redundant — skip
+		// it to avoid a spurious read. While saving, a concurrent refresh would
+		// let refresh-succeeded clobber the save's state (dirty, revision) on
+		// landing; skip it so the save can complete cleanly.
+		if (loading || saving) return;
+		const request = ++refreshRequestRef.current;
+		try {
+			const result = await read({ workspaceDirectory, relativePath: selectedPath });
+			if (request !== refreshRequestRef.current) return;
+			// Re-validate post-await: the session may have changed while the read
+			// was in flight (typed, saved, opened another file, reset).
+			const latest = sessionRef.current;
+			if (latest.selectedPath !== selectedPath || latest.workspaceDirectory !== workspaceDirectory)
+				return;
+			if (latest.loading || latest.saving || latest.dirty) return;
+			if (latest.revision !== revision) return; // another op took content authority mid-read
+			// Non-text results carry revision null; only text can short-circuit
+			// on an identical revision, otherwise image/binary reloads would
+			// never dispatch.
+			if (result.kind === "text" && result.revision === revision) return;
+			dispatch({ type: "refresh-succeeded", file: result, workspaceDirectory });
+		} catch {
+			// Silently swallow: the file may have been deleted before the read landed.
+		}
+	}, [read]);
 	const setDraft = useCallback((contents: string) => {
 		dispatch({ type: "draft-changed", contents });
 	}, []);
@@ -277,11 +361,9 @@ export function useFileSession({
 
 	return {
 		...state,
-		dirty:
-			state.file?.kind === "text" &&
-			Boolean(state.file.revision) &&
-			state.draft !== state.originalContents,
+		dirty,
 		open,
+		refresh,
 		save,
 		setDraft,
 		setConflict,

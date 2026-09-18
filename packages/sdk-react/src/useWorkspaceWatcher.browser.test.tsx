@@ -155,4 +155,140 @@ describe("useWorkspaceWatcher", () => {
 			/must be used within <SdkProvider>/,
 		);
 	});
+
+	describe("files option", () => {
+		it("fires for the exact file path only — sibling does not match", () => {
+			const onEvent = vi.fn();
+			const harness = mountProbe({
+				files: ["/work/project/src/a.ts"],
+				onFileChange: onEvent,
+			});
+
+			const sibling: WorkspaceFileChangeEvent = {
+				root: "/work/project",
+				changes: [{ path: "/work/project/src/b.ts", type: "update" }],
+			};
+			harness.emit(sibling);
+			expect(onEvent).not.toHaveBeenCalled();
+
+			harness.emit(TS_BATCH); // contains /work/project/src/a.ts
+			expect(onEvent).toHaveBeenCalledTimes(1);
+			harness.dispose();
+		});
+
+		it("posix-normalizes Windows paths (C:\\work\\a.ts matches the event path)", () => {
+			const onEvent = vi.fn();
+			const harness = mountProbe({
+				files: ["C:\\work\\a.ts"],
+				onFileChange: onEvent,
+			});
+
+			const winBatch: WorkspaceFileChangeEvent = {
+				root: "C:/work",
+				changes: [{ path: "C:/work/a.ts", type: "update" }],
+			};
+			harness.emit(winBatch);
+			expect(onEvent).toHaveBeenCalledTimes(1);
+			harness.dispose();
+		});
+
+		it("escapes magic chars — proj[1] matches only itself, not proj1", () => {
+			const onEvent = vi.fn();
+			const harness = mountProbe({
+				files: ["/work/proj[1]/a.ts"],
+				onFileChange: onEvent,
+			});
+
+			const noMagic: WorkspaceFileChangeEvent = {
+				root: "/work",
+				changes: [{ path: "/work/proj1/a.ts", type: "update" }],
+			};
+			harness.emit(noMagic);
+			expect(onEvent).not.toHaveBeenCalled();
+
+			const magic: WorkspaceFileChangeEvent = {
+				root: "/work",
+				changes: [{ path: "/work/proj[1]/a.ts", type: "update" }],
+			};
+			harness.emit(magic);
+			expect(onEvent).toHaveBeenCalledTimes(1);
+			harness.dispose();
+		});
+	});
+
+	describe("dirs option", () => {
+		it("fires for the dir itself and all descendants, not outside paths", () => {
+			const onEvent = vi.fn();
+			const harness = mountProbe({
+				dirs: ["/work/project"],
+				onFileChange: onEvent,
+			});
+
+			const inside: WorkspaceFileChangeEvent = {
+				root: "/work/project",
+				changes: [{ path: "/work/project/src/a.ts", type: "update" }],
+			};
+			harness.emit(inside);
+			expect(onEvent).toHaveBeenCalledTimes(1);
+
+			const outside: WorkspaceFileChangeEvent = {
+				root: "/work/other",
+				changes: [{ path: "/work/other/src/a.ts", type: "update" }],
+			};
+			harness.emit(outside);
+			expect(onEvent).toHaveBeenCalledTimes(1); // no new call
+			harness.dispose();
+		});
+
+		it("handles trailing-slash input (/work/project/ works)", () => {
+			const onEvent = vi.fn();
+			const harness = mountProbe({
+				dirs: ["/work/project/"],
+				onFileChange: onEvent,
+			});
+
+			const inside: WorkspaceFileChangeEvent = {
+				root: "/work/project",
+				changes: [{ path: "/work/project/src/a.ts", type: "update" }],
+			};
+			harness.emit(inside);
+			expect(onEvent).toHaveBeenCalledTimes(1);
+			harness.dispose();
+		});
+	});
+
+	it("includes + files + dirs all concatenate into one filter", () => {
+		const onEvent = vi.fn();
+		const harness = mountProbe({
+			includes: ["**/*.py"],
+			files: ["/work/project/src/a.ts"],
+			dirs: ["/work/other"],
+			onFileChange: onEvent,
+		});
+
+		// Matches via includes
+		harness.emit(PY_BATCH);
+		expect(onEvent).toHaveBeenCalledTimes(1);
+
+		// Matches via files
+		harness.emit(TS_BATCH);
+		expect(onEvent).toHaveBeenCalledTimes(2);
+
+		// Matches via dirs
+		const dirBatch: WorkspaceFileChangeEvent = {
+			root: "/work/other",
+			changes: [{ path: "/work/other/readme.md", type: "create" }],
+		};
+		harness.emit(dirBatch);
+		expect(onEvent).toHaveBeenCalledTimes(3);
+
+		// Does not match any
+		const unmatched: WorkspaceFileChangeEvent = {
+			root: "/work/unrelated",
+			changes: [{ path: "/work/unrelated/x.txt", type: "update" }],
+		};
+		harness.emit(unmatched);
+		expect(onEvent).toHaveBeenCalledTimes(3);
+		harness.dispose();
+	});
 });

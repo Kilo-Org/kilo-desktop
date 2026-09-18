@@ -1,5 +1,6 @@
 import {
 	click,
+	expectElementToBeHidden,
 	expectElementToBeVisible,
 	getLocator,
 	getLocatorByRole,
@@ -53,10 +54,29 @@ export class FilesPage {
 		);
 	}
 
+	async clickFileInTree(fileName: string): Promise<void> {
+		await click(getLocator(`[data-item-path="${fileName}"]`));
+	}
+
+	async expectEditorToContain(relativePath: string, text: string): Promise<void> {
+		await expectElementToBeVisible(
+			getLocatorByRole("textbox", { name: relativePath }),
+			"Editor should be mounted",
+		);
+		await expectElementToBeVisible(getLocatorByText(text), `Editor should contain: ${text}`);
+	}
+
 	async verifyFileIsExposed(fileName: string): Promise<void> {
 		await expectElementToBeVisible(
 			getLocator(`[data-item-path="${fileName}"]`),
 			`Files tree should expose ${fileName}`,
+		);
+	}
+
+	async verifyFileIsNotExposed(fileName: string): Promise<void> {
+		await expectElementToBeHidden(
+			getLocator(`[data-item-path="${fileName}"]`),
+			`Files tree should no longer expose ${fileName}`,
 		);
 	}
 

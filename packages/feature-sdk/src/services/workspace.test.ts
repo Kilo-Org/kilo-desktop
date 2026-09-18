@@ -7,6 +7,7 @@ import { makeServices } from "./test-helpers.js";
 import {
 	WORKSPACE_FILE_CHANGE_EVENT,
 	createWorkspaceChangeFilter,
+	escapeGlob,
 	toPosixPath,
 } from "./workspace.js";
 
@@ -145,11 +146,43 @@ describe("createWorkspaceChangeFilter", () => {
 		});
 
 		it("matches globs built by escaping a toPosixPath-normalized native path with special chars", () => {
-			// Subscriber pattern: escapeRegExp(toPosixPath("C:\\work\\proj[1]")) + "/**"
+			// Subscriber pattern: escapeGlob(toPosixPath("C:\\work\\proj[1]")) + "/**"
 			const filter = createWorkspaceChangeFilter({ includes: ["C:/work/proj\\[1\\]/**"] });
 			expect(filter([{ path: "C:\\work\\proj[1]\\src\\a.ts", type: "update" }])).toHaveLength(1);
 			expect(filter([{ path: "C:\\work\\proj1\\src\\a.ts", type: "update" }])).toHaveLength(0);
 		});
+
+		it("escapeGlob round-trip: include glob built from a native path with all magic chars matches only that exact path", () => {
+			// Native path has brackets, negation, wildcard, and question mark.
+			// The TS string literal doubles backslashes for the escape sequences.
+			const nativePath = "C:\\work\\proj[1]\\!(x)\\a*b?.ts";
+			const glob = escapeGlob(toPosixPath(nativePath));
+			const filter = createWorkspaceChangeFilter({ includes: [glob] });
+			expect(filter([{ path: nativePath, type: "update" }])).toHaveLength(1);
+			// Sibling path that shares the numeric suffix but no brackets — must not match.
+			expect(filter([{ path: "C:\\work\\proj1\\!(x)\\a*b?.ts", type: "update" }])).toHaveLength(0);
+		});
+	});
+});
+
+describe("escapeGlob", () => {
+	it.each([
+		["*", "\\*"],
+		["?", "\\?"],
+		["[", "\\["],
+		["]", "\\]"],
+		["{", "\\{"],
+		["}", "\\}"],
+		["(", "\\("],
+		[")", "\\)"],
+		["!", "\\!"],
+		["\\", "\\\\"],
+	])("escapes glob metachar %s", (input, expected) => {
+		expect(escapeGlob(input)).toBe(expected);
+	});
+
+	it.each(["/", ".", "-", "_", "a", "Z", "0"])("leaves ordinary char %s untouched", (ch) => {
+		expect(escapeGlob(ch)).toBe(ch);
 	});
 });
 

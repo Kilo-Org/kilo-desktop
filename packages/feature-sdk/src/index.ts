@@ -136,6 +136,7 @@ export {
 export {
 	createWorkspaceChangeFilter,
 	createWorkspaceService,
+	escapeGlob,
 	toPosixPath,
 	WORKSPACE_FILE_CHANGE_EVENT,
 } from "./services/workspace.js";

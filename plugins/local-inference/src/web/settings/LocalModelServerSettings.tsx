@@ -6,7 +6,7 @@ import {
 	PlusIcon,
 	SearchIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -95,6 +95,16 @@ import { presentServerStatus } from "../server/server-status-presentation.js";
 const interactiveScrollbarClassName =
 	"[&_[data-slot=scroll-area-scrollbar]]:opacity-0 hover:[&_[data-slot=scroll-area-scrollbar]]:opacity-100 focus-within:[&_[data-slot=scroll-area-scrollbar]]:opacity-100";
 
+function useCatalogModelId(sdk: ReturnType<typeof useSdk<LocalInferenceServiceContract>>) {
+	const subscribe = useCallback((fn: () => void) => sdk.location.subscribe(fn), [sdk]);
+	const getSnapshot = useCallback(() => {
+		const catalogModel = sdk.location.peek().search.catalogModel;
+		if (catalogModel == null || catalogModel === "") return undefined;
+		return String(catalogModel);
+	}, [sdk]);
+	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
 export function LocalModelServerSettings() {
 	const sdk = useSdk<LocalInferenceServiceContract>("local-inference");
 	const queryClient = useQueryClient();
@@ -103,7 +113,8 @@ export function LocalModelServerSettings() {
 	const modelSaveQueue = useRef(Promise.resolve());
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
-	// Catalog intent deferred while the user completes Anaconda sign-in.
+	const catalogModelId = useCatalogModelId(sdk);
+	const appliedCatalogModelId = useRef<string | undefined>(undefined);
 	const [pendingCatalogModel, setPendingCatalogModel] = useState<ModelCatalogEntry | null>();
 	const [signInOpen, setSignInOpen] = useState(false);
 	const [selectedModelId, setSelectedModelId] = useState<string>();
@@ -213,6 +224,24 @@ export function LocalModelServerSettings() {
 		setPendingCatalogModel(undefined);
 		setCatalogOpen(true);
 	}
+
+	useEffect(() => {
+		if (!catalogModelId) {
+			appliedCatalogModelId.current = undefined;
+			return;
+		}
+		if (!authenticated) {
+			setPendingCatalogModel(null);
+			setSignInOpen(true);
+			return;
+		}
+		setSignInOpen(false);
+		setCatalogOpen(true);
+		if (!catalogMetadata.data) return;
+		if (appliedCatalogModelId.current === catalogModelId) return;
+		setCatalogModel(catalogMetadata.data.models.find((model) => model.id === catalogModelId));
+		appliedCatalogModelId.current = catalogModelId;
+	}, [authenticated, catalogModelId, catalogMetadata.data]);
 
 	const serverStatus = status.data?.status;
 	const pendingAction = start.isPending
@@ -619,7 +648,14 @@ export function LocalModelServerSettings() {
 				open={catalogOpen}
 				onOpenChange={(open) => {
 					setCatalogOpen(open);
-					if (!open) setCatalogModel(undefined);
+					if (!open) {
+						setCatalogModel(undefined);
+						const location = sdk.location.peek();
+						if (typeof location.search.catalogModel === "string") {
+							const { catalogModel: _ignored, ...search } = location.search;
+							sdk.navigate(location.path, { search, replace: true });
+						}
+					}
 				}}
 			>
 				<DialogContent
@@ -656,6 +692,8 @@ export function LocalModelServerSettings() {
 									onCancelDownload={cancelCatalogDownload}
 									onDeleteModel={requestModelDeletion}
 								/>
+							) : catalogModelId && catalogMetadata.data ? (
+								<ModelDetailEmpty missing />
 							) : catalogMetadata.isPending || catalogHardware.isPending ? (
 								<ModelDetailSkeleton />
 							) : (

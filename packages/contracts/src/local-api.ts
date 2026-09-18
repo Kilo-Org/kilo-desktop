@@ -1,6 +1,6 @@
 import type { AuthSession } from "./features/auth.js";
 import type { NotificationDeliveryResult } from "./features/notifications.js";
-import type { PaneWindow, PaneWindowEvent } from "./features/shell.js";
+import type { PaneWindow, PaneWindowEvent, ShellNavigationTarget } from "./features/shell.js";
 import type { TelemetryTrackInput } from "./features/telemetry.js";
 import type { ThemeState } from "./features/theme.js";
 import type {
@@ -43,6 +43,7 @@ export interface LocalApi {
 		): Promise<{ docked: boolean }>;
 		syncPaneWindows(input: { pluginId: string; activeSessionId: string | null }): Promise<void>;
 		onPaneWindowChanged(listener: (event: PaneWindowEvent) => void): () => void;
+		onNavigate(listener: (target: ShellNavigationTarget) => void): () => void;
 	};
 	notifications: {
 		show(input: {

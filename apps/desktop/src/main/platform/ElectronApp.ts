@@ -121,4 +121,18 @@ export class ElectronApp {
 			this.electronApp.removeListener(eventName as never, listener as never);
 		};
 	}
+
+	setAsDefaultProtocolClient(
+		scheme: string,
+		argv: readonly string[] = process.argv,
+		execPath: string = process.execPath,
+		defaultApp: boolean = process.defaultApp === true,
+	): boolean {
+		if (defaultApp) {
+			const script = argv[1];
+			if (!script) return this.electronApp.setAsDefaultProtocolClient(scheme);
+			return this.electronApp.setAsDefaultProtocolClient(scheme, execPath, [path.resolve(script)]);
+		}
+		return this.electronApp.setAsDefaultProtocolClient(scheme);
+	}
 }

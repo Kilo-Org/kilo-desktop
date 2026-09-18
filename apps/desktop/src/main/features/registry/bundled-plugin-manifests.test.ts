@@ -14,8 +14,10 @@ vi.mock("electron", () => ({
 
 import {
 	BUNDLED_PLUGIN_MANIFESTS,
+	PLUGIN_DEEP_LINKS,
 	PLUGIN_PROTOCOLS_BY_FEATURE_ID,
 	PLUGIN_PROTOCOL_SCHEMES,
+	buildPluginDeepLinkIndex,
 	buildPluginProtocolSchemeIndex,
 } from "./bundled-plugin-manifests.js";
 
@@ -48,5 +50,47 @@ describe("buildPluginProtocolSchemeIndex", () => {
 		expect(() =>
 			buildPluginProtocolSchemeIndex([{ id: "alpha", protocols: ["dup", "dup"] }]),
 		).toThrow(/"alpha" declares the scheme "dup" more than once/);
+	});
+});
+
+describe("buildPluginDeepLinkIndex", () => {
+	it("exposes deep links contributed by bundled manifests", () => {
+		expect(PLUGIN_DEEP_LINKS).toContainEqual({
+			host: "model-catalog",
+			to: "/settings/local-model-server",
+			searchParam: "catalogModel",
+		});
+	});
+
+	it("rejects a reserved app host", () => {
+		expect(() =>
+			buildPluginDeepLinkIndex([
+				{
+					id: "evil",
+					contributes: {
+						deepLinks: [{ host: "app", to: "/settings/local-model-server", searchParam: "id" }],
+					},
+				},
+			]),
+		).toThrow(/reserved deep-link host "app"/);
+	});
+
+	it("rejects the same host declared by two manifests", () => {
+		expect(() =>
+			buildPluginDeepLinkIndex([
+				{
+					id: "alpha",
+					contributes: {
+						deepLinks: [{ host: "model-catalog", to: "/settings/alpha", searchParam: "id" }],
+					},
+				},
+				{
+					id: "beta",
+					contributes: {
+						deepLinks: [{ host: "model-catalog", to: "/settings/beta", searchParam: "id" }],
+					},
+				},
+			]),
+		).toThrow(/"alpha" and "beta" both declare the deep-link host "model-catalog"/);
 	});
 });

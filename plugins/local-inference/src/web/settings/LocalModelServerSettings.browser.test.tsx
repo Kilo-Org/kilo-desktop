@@ -2,7 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { AuthSession } from "@kilo-desktop/feature-sdk";
+import { createStaticNavigation, type AuthSession } from "@kilo-desktop/feature-sdk";
 
 import type {
 	LocalInferenceHardwareProfile,
@@ -11,7 +11,11 @@ import type {
 	ModelCatalogEntry,
 	ModelDownload,
 } from "../../contracts/schemas.js";
-import { renderSettings, usageSnapshot } from "../../test/render-local-model-server-settings.js";
+import {
+	authenticatedAuth,
+	renderSettings,
+	usageSnapshot,
+} from "../../test/render-local-model-server-settings.js";
 
 afterEach(() => {
 	cleanup();
@@ -129,6 +133,52 @@ describe("LocalModelServerSettings", () => {
 
 		await dialog.getByRole("button", { name: "Close" }).click();
 		await expect.element(dialog).not.toBeInTheDocument();
+	});
+
+	it("opens the catalog on the model from the catalogModel search param", async () => {
+		const { baseElement } = renderSettings(
+			{
+				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
+				"hardware.profile": async () => hardwareProfile,
+				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+				"usage.get": async () => usageSnapshot,
+			},
+			{},
+			authenticatedAuth,
+			createStaticNavigation({
+				path: "/settings/local-model-server",
+				search: { catalogModel: catalogModel.id },
+			}),
+		);
+		const dialog = page.elementLocator(baseElement).getByRole("dialog", {
+			name: "Local Model Catalog",
+		});
+		await expect.element(dialog).toBeVisible();
+		await expect.element(dialog.getByTestId("model-catalog-detail-catalog-model")).toBeVisible();
+		await expect.element(dialog.getByRole("heading", { name: "Catalog Model" })).toBeVisible();
+	});
+
+	it("shows model not found when the catalogModel search param is unknown", async () => {
+		const { baseElement } = renderSettings(
+			{
+				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
+				"hardware.profile": async () => hardwareProfile,
+				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+				"usage.get": async () => usageSnapshot,
+			},
+			{},
+			authenticatedAuth,
+			createStaticNavigation({
+				path: "/settings/local-model-server",
+				search: { catalogModel: "missing-model" },
+			}),
+		);
+		const dialog = page.elementLocator(baseElement).getByRole("dialog", {
+			name: "Local Model Catalog",
+		});
+		await expect.element(dialog).toBeVisible();
+		await expect.element(dialog.getByTestId("model-catalog-detail-missing")).toBeVisible();
+		await expect.element(dialog.getByText("Model not found")).toBeVisible();
 	});
 
 	it("prompts for Anaconda sign-in when opening the catalog while signed out", async () => {

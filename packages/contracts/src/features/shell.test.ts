@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { paneWindowEvent, shellEvents, shellMethods } from "./shell.js";
+import { paneWindowEvent, shellEvents, shellMethods, shellNavigationTarget } from "./shell.js";
 
 describe("pane window contracts", () => {
 	it("accepts a bounded plugin pane request and rejects shell routes", () => {
@@ -30,5 +30,28 @@ describe("pane window contracts", () => {
 		expect(paneWindowEvent.parse(event)).toEqual(event);
 		expect(shellEvents["shell:pane-window-changed"].payload.parse(event)).toEqual(event);
 		expect(() => paneWindowEvent.parse({ ...event, type: "unknown" })).toThrow();
+	});
+
+	it("accepts settings and plugin navigations and rejects other paths", () => {
+		const target = {
+			path: "/settings/local-model-server",
+			search: { catalogModel: "48d448b0-2634-4c32-b3fe-56a26483c904" },
+		};
+
+		expect(shellNavigationTarget.parse(target)).toEqual(target);
+		expect(shellEvents["shell:navigate"].payload.parse(target)).toEqual(target);
+		expect(
+			shellNavigationTarget.parse({
+				path: "/plugins/chat",
+				search: { paneWindow: "true" },
+			}),
+		).toEqual({
+			path: "/plugins/chat",
+			search: { paneWindow: "true" },
+		});
+		expect(() => shellNavigationTarget.parse({ path: "/settings", search: {} })).toThrow();
+		expect(() =>
+			shellNavigationTarget.parse({ path: "/evil", search: { catalogModel: "x" } }),
+		).toThrow();
 	});
 });

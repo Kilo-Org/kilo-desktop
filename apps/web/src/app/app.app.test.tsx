@@ -2,6 +2,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
+import type { LocalApi, ShellNavigationTarget } from "@kilo-desktop/contracts";
+
 import { AppProviders } from "@/app/AppProviders";
 import { WEB_FEATURES } from "@/features/features";
 import {
@@ -65,6 +67,41 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByRole("heading", { name: "Todo List" })).toBeVisible();
 		// Todos is Electron-only — browser mode renders an explicit unavailable state.
 		await expect.element(screen.getByTestId("plugin-page-unavailable")).toBeVisible();
+	});
+
+	it("keeps catalogModel search on the local model server settings route", async () => {
+		router.history.push("/settings/local-model-server?catalogModel=catalog-model");
+		await router.load();
+		expect(router.state.location.pathname).toBe("/settings/local-model-server");
+		expect(router.state.location.search).toMatchObject({ catalogModel: "catalog-model" });
+	});
+
+	it("applies shell:navigate from LocalApi to the router", async () => {
+		let send: ((target: ShellNavigationTarget) => void) | undefined;
+		const base = createBrowserLocalApi();
+		const localApi: LocalApi = {
+			...base,
+			shell: {
+				...base.shell,
+				onNavigate(listener) {
+					send = listener;
+					return () => {
+						send = undefined;
+					};
+				},
+			},
+		};
+		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
+		render(<AppProviders localApi={localApi} system={system} />);
+
+		expect(send).toBeTypeOf("function");
+		send?.({
+			path: "/settings/local-model-server",
+			search: { catalogModel: "catalog-model" },
+		});
+		await router.load();
+		expect(router.state.location.pathname).toBe("/settings/local-model-server");
+		expect(router.state.location.search).toMatchObject({ catalogModel: "catalog-model" });
 	});
 
 	it("renders pane windows without the main application chrome", async () => {

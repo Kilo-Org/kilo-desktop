@@ -61,7 +61,8 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 		"routes": [{ "path": "/<id>", "component": "<WebEntryExportName>", "title": "<Human Name>" }],
 		"nav": [{ "to": "/<id>", "label": "<Human Name>", "icon": "<lucide-icon-name>" }],
 		"zones": [],
-		"settings": []
+		"settings": [],
+		"deepLinks": []
 	}
 }
 ```
@@ -76,6 +77,7 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
   - `nav` — sidebar entries (pure data): `to` (any path), `label`, optional `icon` (kebab-case lucide name), `priority` (higher first), and `featureFlag`. Decoupled from routes — a route can have no nav entry, and a nav entry can point anywhere.
   - `zones` — plugin-lifetime zone registrations. Target canonical shell zones by bare id or plugin-owned zones by `"<plugin-id>/<zone-id>"`. Each entry provides `zone` and `component`, plus optional stable `id`, `label`, `description`, `icon` export, and `priority`. The zone owner decides whether to render components directly or interpret them as richer definitions. Use `providers` for lifecycle work that must remain mounted across routes, and imperative `sdk.contribute` for conditional UI. Requires `web`; undeclared targets are reported and skipped.
   - `settings` — settings-page sections (`id`, `title`, and `component`, plus optional `category`, `icon`, `priority`, and `featureFlag`). The shell owns `/settings`, groups uncategorized sections under `Personal`, and mounts one section at a time. Requires `web`.
+  - `deepLinks` — OS deep links on the app scheme (`kilo-desktop://{host}/{id}`). Pure data: kebab-case `host` (unique across plugins; `app` is reserved), in-app `to` (`/settings/…` or `/plugins/…`), and `searchParam` for the path segment. The shell registers the scheme and navigates; no `web` required.
 - At least one of `main` / `web` is required.
 
 ### Step 4: Create package.json

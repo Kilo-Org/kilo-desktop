@@ -98,6 +98,54 @@ describe("pluginManifestSchema", () => {
 		expect(parsePluginManifest(validManifest).protocols).toBeUndefined();
 	});
 
+	it("accepts contributed deep links", () => {
+		const manifest = parsePluginManifest({
+			...validManifest,
+			contributes: {
+				...validManifest.contributes,
+				deepLinks: [
+					{
+						host: "model-catalog",
+						to: "/settings/local-model-server",
+						searchParam: "catalogModel",
+					},
+				],
+			},
+		});
+		expect(manifest.contributes.deepLinks).toEqual([
+			{
+				host: "model-catalog",
+				to: "/settings/local-model-server",
+				searchParam: "catalogModel",
+			},
+		]);
+	});
+
+	it.each(["App", "model catalog", "model_catalog", ""])(
+		"rejects invalid deep-link host %j",
+		(host) => {
+			expect(
+				pluginManifestSchema.safeParse({
+					...validManifest,
+					contributes: {
+						deepLinks: [{ host, to: "/settings/local-model-server", searchParam: "catalogModel" }],
+					},
+				}).success,
+			).toBe(false);
+		},
+	);
+
+	it("rejects a deep-link destination outside settings or plugins", () => {
+		expect(
+			pluginManifestSchema.safeParse({
+				...validManifest,
+				contributes: {
+					deepLinks: [{ host: "model-catalog", to: "/evil", searchParam: "catalogModel" }],
+				},
+			}).success,
+		).toBe(false);
+	});
+
 	it.each(["Todo", "1todo", "-todos", "todo scheme", "todos://x"])(
 		"rejects invalid protocol scheme %j",
 		(scheme) => {
@@ -149,6 +197,7 @@ describe("pluginManifestSchema", () => {
 			nav: [],
 			zones: [],
 			settings: [],
+			deepLinks: [],
 		});
 	});
 
@@ -164,6 +213,7 @@ describe("pluginManifestSchema", () => {
 		expect(manifest.contributes.providers).toEqual([]);
 		expect(manifest.contributes.zones).toEqual([]);
 		expect(manifest.contributes.settings).toEqual([]);
+		expect(manifest.contributes.deepLinks).toEqual([]);
 		expect(manifest.contributes.nav).toHaveLength(1);
 	});
 

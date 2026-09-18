@@ -303,12 +303,45 @@ describe("ElectronWindow theme chrome", () => {
 			status: "anonymous",
 		});
 
+		windows.navigateMain({
+			path: "/settings/local-model-server",
+			search: { catalogModel: "catalog-model" },
+		});
+		expect(window?.webContents.send).toHaveBeenCalledWith("shell:navigate", {
+			path: "/settings/local-model-server",
+			search: { catalogModel: "catalog-model" },
+		});
+
 		window?.isDestroyed.mockReturnValue(true);
 		expect(windows.main).toBeUndefined();
 		window?.isDestroyed.mockReturnValue(false);
 		windows.destroyAll();
 		expect(window?.destroy).toHaveBeenCalled();
 		expect(windows.main).toBeUndefined();
+	});
+
+	it("loads a deep-link route into the main window", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({
+			isDevelopment: false,
+			initialRoute: {
+				path: "/settings/local-model-server",
+				search: { catalogModel: "catalog-model" },
+			},
+		});
+
+		expect(getDesktopRouteUrl).toHaveBeenCalledWith(false, "/settings/local-model-server", {
+			catalogModel: "catalog-model",
+		});
+		expect(createdWindows[0]?.loadURL).toHaveBeenCalledWith("desktop://app/#/plugins/chat");
+
+		windows.loadMainRoute({
+			path: "/settings/local-model-server",
+			search: { catalogModel: "other-model" },
+		});
+		expect(getDesktopRouteUrl).toHaveBeenCalledWith(false, "/settings/local-model-server", {
+			catalogModel: "other-model",
+		});
 	});
 
 	it("opens, focuses, hides, and docks a session-owned pane window", () => {

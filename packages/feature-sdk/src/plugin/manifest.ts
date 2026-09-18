@@ -160,9 +160,28 @@ export const pluginSettingsContributionSchema = z.strictObject({
 export type PluginSettingsContribution = z.infer<typeof pluginSettingsContributionSchema>;
 
 /**
+ * An OS deep link on the app scheme (`kilo-desktop://{host}/{id}`). Pure data —
+ * the shell registers the scheme and maps matching URLs to in-app navigation.
+ * `{id}` is the single path segment; it is written to `searchParam` on `to`.
+ */
+export const pluginDeepLinkSchema = z.strictObject({
+	/** Host on the app scheme, e.g. "model-catalog" → `kilo-desktop://model-catalog/{id}`. */
+	host: z
+		.string()
+		.regex(featureIdPattern, 'Deep-link host must be kebab-case (e.g. "model-catalog").'),
+	/** In-app destination, e.g. "/settings/local-model-server". */
+	to: z.string().regex(/^\/(?:settings|plugins)\/[a-zA-Z0-9/_-]{1,200}$/),
+	/** Search key that receives the path segment, e.g. "catalogModel". */
+	searchParam: z
+		.string()
+		.regex(/^[A-Za-z][A-Za-z0-9]{0,63}$/, "searchParam must be an identifier."),
+});
+export type PluginDeepLink = z.infer<typeof pluginDeepLinkSchema>;
+
+/**
  * Everything a plugin adds declaratively (B1 / VS Code `contributes` model).
  * `providers`, `routes`, and `zones` name component exports the host resolves;
- * `nav` is pure data. The imperative `sdk.contribute` remains for dynamic,
+ * `nav` and `deepLinks` are pure data. The imperative `sdk.contribute` remains for dynamic,
  * app-state-dependent contributions.
  */
 export const pluginContributesSchema = z.strictObject({
@@ -176,6 +195,8 @@ export const pluginContributesSchema = z.strictObject({
 	zones: z.array(pluginZoneContributionSchema).default([]),
 	/** Settings-page sections mounted by the shell. */
 	settings: z.array(pluginSettingsContributionSchema).default([]),
+	/** OS deep links on the app scheme (`kilo-desktop://{host}/{id}`). */
+	deepLinks: z.array(pluginDeepLinkSchema).default([]),
 });
 export type PluginContributes = z.infer<typeof pluginContributesSchema>;
 
@@ -224,6 +245,7 @@ export const pluginManifestSchema = z
 			nav: [],
 			zones: [],
 			settings: [],
+			deepLinks: [],
 		}),
 	})
 	.refine((manifest) => manifest.main !== undefined || manifest.web !== undefined, {

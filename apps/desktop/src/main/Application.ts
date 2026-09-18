@@ -16,6 +16,7 @@ import {
 import { collectEmbeddedHosts } from "./features/registry/embedded-hosts.js";
 import { FEATURES } from "./features/registry/features.js";
 import {
+	PLUGIN_DEEP_LINKS,
 	PLUGIN_PROTOCOLS_BY_FEATURE_ID,
 	PLUGIN_PROTOCOL_SCHEMES,
 } from "./features/registry/bundled-plugin-manifests.js";
@@ -36,9 +37,10 @@ import {
 import { createUpdateHandlers } from "./features/updates/handlers.js";
 import { BootProgressReporter } from "./platform/BootProgressReporter.js";
 import { AwaitedShutdownBarrier } from "./platform/AwaitedShutdownBarrier.js";
+import { DesktopDeepLinkService } from "./platform/DesktopDeepLinkService.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronNotifications } from "./platform/ElectronNotifications.js";
-import { ElectronProtocol } from "./platform/ElectronProtocol.js";
+import { ElectronProtocol, getDesktopScheme } from "./platform/ElectronProtocol.js";
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronBrowserHost } from "./platform/ElectronBrowserHost.js";
@@ -93,6 +95,7 @@ export class Application {
 	#featureFlags: FeatureFlagService | undefined;
 	#telemetry: TelemetryService | undefined;
 	#updates: DesktopUpdaterService | undefined;
+	#deepLinks: DesktopDeepLinkService | undefined;
 	#disposePromise: Promise<void> | undefined;
 
 	async start(): Promise<void> {
@@ -103,6 +106,31 @@ export class Application {
 			this.#app.quit();
 			return;
 		}
+		const isDevelopment = !this.#app.metadata.isPackaged;
+		const deepLinks = new DesktopDeepLinkService({
+			scheme: getDesktopScheme(isDevelopment),
+			links: PLUGIN_DEEP_LINKS,
+			registerProtocolClient: (scheme) => {
+				this.#app.setAsDefaultProtocolClient(scheme);
+			},
+			onOpenUrl: (listener) =>
+				this.#app.on("open-url", (event: { preventDefault(): void }, url: string) => {
+					event.preventDefault();
+					listener(url);
+				}),
+			onSecondInstance: (listener) =>
+				this.#app.on("second-instance", (_event: unknown, commandLine: string[]) => {
+					listener(commandLine);
+				}),
+			argv: () => process.argv,
+			hasWindow: () => this.#windows.main !== undefined,
+			reveal: () => this.#windows.reveal(),
+			replaceLoadingUrl: (target) => this.#windows.loadMainRoute(target),
+			navigate: (target) => this.#windows.navigateMain(target),
+		});
+		this.#deepLinks = deepLinks;
+		this.#disposers.push(() => deepLinks.dispose());
+		deepLinks.start();
 		const preferences = new PreferencesStore();
 		this.#preferences = preferences;
 		restoreNativeThemeFromPreferences(preferences);
@@ -110,14 +138,12 @@ export class Application {
 		identifySentryUser(preferences);
 
 		this.#disposers.push(
-			this.#app.on("second-instance", () => this.#windows.reveal()),
 			this.#app.on("before-quit", (event: { preventDefault(): void }) => {
 				void this.#shutdown.handleBeforeQuit(event);
 			}),
 		);
 
 		await this.#app.whenReady();
-		const isDevelopment = !this.#app.metadata.isPackaged;
 		if (isDevelopment) {
 			electronDebug({ showDevTools: false });
 		}
@@ -199,9 +225,15 @@ export class Application {
 
 		// Create the main window concurrently with closing the splash
 		// so there's no dead gap between the two.
-		this.#windows.create({ isDevelopment, deferShow: true });
+		const initialRoute = deepLinks.takeInitialRoute();
+		this.#windows.create({
+			isDevelopment,
+			deferShow: true,
+			...(initialRoute ? { initialRoute } : {}),
+		});
 		await Promise.all([splash.close(), this.#windows.whenReady()]);
 		this.#windows.reveal();
+		deepLinks.markWindowReady();
 		await this.#signalReleaseSmokeReady();
 
 		this.#disposers.push(
@@ -210,6 +242,7 @@ export class Application {
 				else this.#windows.reveal();
 			}),
 			this.#app.on("window-all-closed", () => {
+				this.#deepLinks?.markWindowClosed();
 				if (process.platform !== "darwin") this.#app.quit();
 			}),
 		);
@@ -222,7 +255,12 @@ export class Application {
 	}
 
 	#createWindow(isDevelopment: boolean): void {
-		this.#windows.create({ isDevelopment });
+		const initialRoute = this.#deepLinks?.takeInitialRoute();
+		this.#windows.create({
+			isDevelopment,
+			...(initialRoute ? { initialRoute } : {}),
+		});
+		void this.#windows.whenReady().then(() => this.#deepLinks?.markWindowReady());
 	}
 
 	// Marks the start of a new application session in the main log with a version/platform/pid

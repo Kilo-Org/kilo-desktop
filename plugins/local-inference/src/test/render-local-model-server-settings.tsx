@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 
-import type { AuthSession, ChannelHandlerMap, SDK } from "@kilo-desktop/feature-sdk";
+import type { AuthSession, ChannelHandlerMap, SDK, SdkNavigation } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
@@ -33,7 +33,7 @@ const authenticatedSession: AuthSession = {
 	user: { email: "test@example.com" },
 };
 
-const authenticatedAuth: Partial<SDK["auth"]> = {
+export const authenticatedAuth: Partial<SDK["auth"]> = {
 	subscribe(listener) {
 		listener(authenticatedSession);
 		return () => undefined;
@@ -45,6 +45,7 @@ export function renderSettings(
 	handlers: Partial<LocalInferenceHandlers>,
 	shell: Partial<SDK["shell"]> = {},
 	auth: Partial<SDK["auth"]> = authenticatedAuth,
+	navigation?: Partial<SdkNavigation>,
 ) {
 	const sdk = createFakeSdk({
 		featureId: "local-inference",
@@ -56,6 +57,7 @@ export function renderSettings(
 		},
 		shell,
 		auth,
+		...(navigation ? { navigation } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "local-inference": sdk } });
 	const queryClient = new QueryClient({

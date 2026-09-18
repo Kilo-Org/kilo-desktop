@@ -263,9 +263,12 @@ schema-validated `window.desktopApi` surface, and the main process re-validates 
 payload against the same contracts before handling it.
 
 Production navigation uses `kilo-desktop://app/#/`; development uses
-`kilo-desktop-dev://app/#/`. The custom protocol serves the independently
-built web `dist` — staged into `.vite/renderer/main_window` during packaging — or proxies
-the web Vite server in development, with a strict Content Security Policy.
+`kilo-desktop-dev://app/#/`. OS deep links use the same scheme with a dedicated
+host: `kilo-desktop://model-catalog/{modelId}` opens the Local Model Catalog on
+that Anaconda model UUID (`kilo-desktop-dev://` in development). The custom
+protocol serves the independently built web `dist` — staged into
+`.vite/renderer/main_window` during packaging — or proxies the web Vite server
+in development, with a strict Content Security Policy.
 
 Forge creates an ASAR, includes `.vite`, migrations, package metadata, and required
 production dependencies, and unpacks `better-sqlite3`. The fuses plugin disables

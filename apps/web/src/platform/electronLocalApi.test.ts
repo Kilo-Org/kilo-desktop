@@ -67,6 +67,10 @@ describe("createElectronLocalApi", () => {
 		const unsubscribe = api.auth.onChanged(() => undefined);
 		expect(on).toHaveBeenCalledWith("auth:changed", expect.any(Function));
 		unsubscribe();
+
+		const stopNavigate = api.shell.onNavigate(() => undefined);
+		expect(on).toHaveBeenCalledWith("shell:navigate", expect.any(Function));
+		stopNavigate();
 	});
 
 	it("forwards notification and fs methods through the bridge", async () => {

@@ -307,6 +307,7 @@ const config: ForgeConfig = {
 		extraResource: extraResources,
 		icon: appIcon,
 		name: identity.productName,
+		protocols: [{ name: identity.productName, schemes: ["kilo-desktop"] }],
 		...(windowsPackagingTemp ? { tmpdir: windowsPackagingTemp } : {}),
 		// Production node_modules are staged in packageAfterCopy via `pnpm deploy`.
 		// Packager prune runs `pnpm install --production` against this workspace
@@ -404,6 +405,7 @@ const config: ForgeConfig = {
 					name: identity.executableName,
 					productName: identity.productName,
 					version: appVersion,
+					mimeType: ["x-scheme-handler/kilo-desktop"],
 				},
 			},
 		},

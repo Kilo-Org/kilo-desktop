@@ -6,6 +6,7 @@ import type { LocalApi } from "@kilo-desktop/contracts";
 import { PluginProviderStack } from "@/features/plugin-providers";
 import { createDesktopQueryClient } from "@/lib/query/client";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
+import { ShellNavigationListener } from "@/platform/ShellNavigationListener";
 import { UpdateProvider } from "@/platform/updates/UpdateProvider";
 import { SdkProvider, type FeatureSystem } from "@kilo-desktop/sdk-react";
 import { router } from "@/router";
@@ -25,6 +26,7 @@ export function AppProviders({ localApi, system, children }: AppProvidersProps) 
 
 	return (
 		<LocalApiProvider api={localApi}>
+			<ShellNavigationListener />
 			<UpdateProvider>
 				<SdkProvider system={system}>
 					<QueryClientProvider client={queryClient}>

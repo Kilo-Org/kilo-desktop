@@ -6,10 +6,11 @@
  * and their Node/Electron dependencies.
  */
 
-import type { PluginManifest } from "@kilo-desktop/feature-sdk";
+import type { PluginDeepLink, PluginManifest } from "@kilo-desktop/feature-sdk";
 
 import {
 	DESKTOP_DEVELOPMENT_SCHEME,
+	DESKTOP_HOST,
 	DESKTOP_PRODUCTION_SCHEME,
 } from "../../platform/ElectronProtocol.js";
 
@@ -30,6 +31,9 @@ import todosManifest from "@kilo-desktop/plugin-todos/plugin.json" with { type: 
  */
 export type BundledPluginManifest = Pick<PluginManifest, "id"> & {
 	readonly protocols?: readonly string[];
+	readonly contributes?: {
+		readonly deepLinks?: readonly PluginDeepLink[];
+	} & Record<string, unknown>;
 };
 
 /** Manifests keyed for registry pairing (`bundled-plugins.ts` imports from here). */
@@ -107,3 +111,38 @@ export const PLUGIN_PROTOCOL_SCHEMES: readonly string[] = pluginProtocolSchemeIn
 /** Schemes each feature id may handle via `mainSdk.protocol.handle`. */
 export const PLUGIN_PROTOCOLS_BY_FEATURE_ID: ReadonlyMap<string, readonly string[]> =
 	pluginProtocolSchemeIndex.schemesByFeatureId;
+
+/**
+ * OS deep-link hosts (`kilo-desktop://{host}/{id}`) contributed by plugin
+ * manifests. Duplicate or reserved hosts (`app`) fail boot.
+ */
+export function buildPluginDeepLinkIndex(manifests: readonly BundledPluginManifest[]): {
+	links: readonly PluginDeepLink[];
+} {
+	const reservedHosts = new Set([DESKTOP_HOST]);
+	const ownerByHost = new Map<string, string>();
+	const links: PluginDeepLink[] = [];
+	for (const manifest of manifests) {
+		for (const link of manifest.contributes?.deepLinks ?? []) {
+			if (reservedHosts.has(link.host)) {
+				throw new Error(
+					`Plugin manifest "${manifest.id}" declares the reserved deep-link host "${link.host}".`,
+				);
+			}
+			const owner = ownerByHost.get(link.host);
+			if (owner !== undefined) {
+				throw new Error(
+					owner === manifest.id
+						? `Plugin manifest "${manifest.id}" declares the deep-link host "${link.host}" more than once.`
+						: `Plugin manifests "${owner}" and "${manifest.id}" both declare the deep-link host "${link.host}".`,
+				);
+			}
+			ownerByHost.set(link.host, manifest.id);
+			links.push(link);
+		}
+	}
+	return { links };
+}
+
+export const PLUGIN_DEEP_LINKS: readonly PluginDeepLink[] =
+	buildPluginDeepLinkIndex(BUNDLED_PLUGIN_MANIFESTS).links;

@@ -38,6 +38,7 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			dockPaneWindow: (input) => invoke("shell:dock-pane-window", input),
 			syncPaneWindows: (input) => invoke("shell:sync-pane-windows", input),
 			onPaneWindowChanged: (listener) => bridge.on("shell:pane-window-changed", listener),
+			onNavigate: (listener) => bridge.on("shell:navigate", listener),
 		},
 		notifications: {
 			show: (input) => invoke("notifications:show", input),

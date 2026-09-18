@@ -56,6 +56,9 @@ export function createBrowserLocalApi(): LocalApi {
 			onPaneWindowChanged() {
 				return () => {};
 			},
+			onNavigate() {
+				return () => {};
+			},
 		},
 		notifications: {
 			// Web Notification API, permission-gated. Never request permission

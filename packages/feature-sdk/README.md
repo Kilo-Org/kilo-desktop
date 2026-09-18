@@ -279,6 +279,18 @@ providers wrap lower-priority providers; equal priorities keep plugin registry o
 
 Optional `category` groups the section in the settings sidebar and defaults to `Personal`. Optional `featureFlag` hides the nav entry (same semantics as `contributes.nav`). There is no `sdk.contributeSettings` — settings are declarative only.
 
+**Deep links** are OS URLs on the app scheme. Declare them in `plugin.json` `contributes.deepLinks`; the shell maps `kilo-desktop://{host}/{id}` to in-app navigation:
+
+```jsonc
+"contributes": {
+  "deepLinks": [
+    { "host": "model-catalog", "to": "/settings/local-model-server", "searchParam": "catalogModel" }
+  ]
+}
+```
+
+`host` is kebab-case and unique across plugins (`app` is reserved). `{id}` is the single path segment and is written to `searchParam` on `to`. There is no imperative `sdk.contributeDeepLink`.
+
 ### `sdk.commands` — command palette entries
 
 ```ts

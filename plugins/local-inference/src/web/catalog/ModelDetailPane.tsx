@@ -135,15 +135,22 @@ export function ModelDetailPane({
 	);
 }
 
-export function ModelDetailEmpty() {
+export function ModelDetailEmpty({ missing = false }: { missing?: boolean }) {
 	return (
-		<Empty className="h-full rounded-none" data-qa-id="model-catalog-detail-empty">
+		<Empty
+			className="h-full rounded-none"
+			data-qa-id={missing ? "model-catalog-detail-missing" : "model-catalog-detail-empty"}
+		>
 			<EmptyHeader>
 				<EmptyMedia variant="icon">
 					<LibraryIcon />
 				</EmptyMedia>
-				<EmptyTitle>Select a model</EmptyTitle>
-				<EmptyDescription>Choose a model from the catalog to view its details.</EmptyDescription>
+				<EmptyTitle>{missing ? "Model not found" : "Select a model"}</EmptyTitle>
+				<EmptyDescription>
+					{missing
+						? "This catalog link doesn't match a model you can view."
+						: "Choose a model from the catalog to view its details."}
+				</EmptyDescription>
 			</EmptyHeader>
 		</Empty>
 	);

@@ -18,6 +18,13 @@
 				"category": "AI",
 				"priority": 80
 			}
+		],
+		"deepLinks": [
+			{
+				"host": "model-catalog",
+				"to": "/settings/local-model-server",
+				"searchParam": "catalogModel"
+			}
 		]
 	}
 }

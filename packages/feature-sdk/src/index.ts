@@ -161,6 +161,7 @@ export {
 	pluginZoneDeclarationSchema,
 	pluginProviderContributionSchema,
 	pluginSettingsContributionSchema,
+	pluginDeepLinkSchema,
 	pluginContributesSchema,
 	parsePluginManifest,
 	type PluginManifest,
@@ -172,6 +173,7 @@ export {
 	type PluginZoneDeclaration,
 	type PluginProviderContribution,
 	type PluginSettingsContribution,
+	type PluginDeepLink,
 	type PluginContributes,
 } from "./plugin/manifest.js";
 export {

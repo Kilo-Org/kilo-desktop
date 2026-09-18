@@ -18,8 +18,14 @@ export const paneWindowEvent = paneWindowIdentity.extend({
 	type: z.enum(["opened", "docked", "focused", "blurred"]),
 });
 
+export const shellNavigationTarget = z.object({
+	path: z.string().regex(/^\/(?:settings|plugins)\/[a-zA-Z0-9/_-]{1,200}$/),
+	search: z.record(z.string().min(1).max(64), z.string().min(1).max(256)),
+});
+
 export type PaneWindow = z.infer<typeof paneWindow>;
 export type PaneWindowEvent = z.infer<typeof paneWindowEvent>;
+export type ShellNavigationTarget = z.infer<typeof shellNavigationTarget>;
 
 export const shellMethods = {
 	"shell:open-external": defineMethod(
@@ -53,4 +59,5 @@ export const shellMethods = {
 
 export const shellEvents = {
 	"shell:pane-window-changed": defineEvent(paneWindowEvent),
+	"shell:navigate": defineEvent(shellNavigationTarget),
 } as const;

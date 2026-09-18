@@ -131,6 +131,37 @@ describe("ElectronApp", () => {
 		expect(electronApp.relaunch).toHaveBeenLastCalledWith({});
 	});
 
+	it("registers the packaged app as the OS protocol client", () => {
+		const electronApp = {
+			setAsDefaultProtocolClient: vi.fn(() => true),
+		};
+		const adapter = new ElectronApp(electronApp as never);
+
+		expect(adapter.setAsDefaultProtocolClient("kilo-desktop", [], "/bin/kilo", false)).toBe(true);
+		expect(electronApp.setAsDefaultProtocolClient).toHaveBeenCalledWith("kilo-desktop");
+	});
+
+	it("points unpackaged protocol registration at the electron script", () => {
+		const electronApp = {
+			setAsDefaultProtocolClient: vi.fn(() => true),
+		};
+		const adapter = new ElectronApp(electronApp as never);
+
+		expect(
+			adapter.setAsDefaultProtocolClient(
+				"kilo-desktop-dev",
+				["electron", "apps/desktop/.vite/build/main.js"],
+				"/bin/electron",
+				true,
+			),
+		).toBe(true);
+		expect(electronApp.setAsDefaultProtocolClient).toHaveBeenCalledWith(
+			"kilo-desktop-dev",
+			"/bin/electron",
+			[path.resolve("apps/desktop/.vite/build/main.js")],
+		);
+	});
+
 	it("isolates unpackaged development data before startup", () => {
 		const makeDirectory = vi.fn();
 		const electronApp = {

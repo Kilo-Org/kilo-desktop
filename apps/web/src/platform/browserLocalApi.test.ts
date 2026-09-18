@@ -20,6 +20,7 @@ describe("createBrowserLocalApi", () => {
 
 		const api = createBrowserLocalApi();
 		expect(api.shell.canPickDirectories).toBe(false);
+		expect(api.shell.onNavigate(() => undefined)).toBeTypeOf("function");
 		await expect(api.shell.openExternal({ url: "https://example.com" })).resolves.toEqual({
 			opened: true,
 		});

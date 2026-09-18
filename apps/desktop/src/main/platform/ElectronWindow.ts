@@ -11,6 +11,7 @@ import {
 	type IpcEventPayload,
 	type PaneWindow,
 	type ThemeChromeColors,
+	type ShellNavigationTarget,
 	windowBackgroundFor,
 } from "@kilo-desktop/contracts";
 
@@ -41,6 +42,7 @@ type PaneWindowRecord = {
  */
 export class ElectronWindow {
 	#mainWindow: BrowserWindow | undefined;
+	#isDevelopment = false;
 	readonly #paneWindows = new Map<string, PaneWindowRecord>();
 	readonly #activePaneSessions = new Map<string, string | null>();
 
@@ -56,6 +58,7 @@ export class ElectronWindow {
 		readonly options?: BrowserWindowConstructorOptions;
 		/** When true, the window is not shown on ready-to-show. Use `reveal()` to show it. */
 		readonly deferShow?: boolean;
+		readonly initialRoute?: ShellNavigationTarget;
 	}): BrowserWindow {
 		const window = this.#createWindow(input.preloadPath, {
 			windowStatePersistence: true,
@@ -79,8 +82,29 @@ export class ElectronWindow {
 		window.on("minimize", () => this.#hidePaneWindows());
 		window.on("show", () => this.#refreshPaneWindows());
 		window.on("restore", () => this.#refreshPaneWindows());
-		void window.loadURL(getDesktopUrl(input.isDevelopment));
+		this.#isDevelopment = input.isDevelopment;
+		void window.loadURL(
+			input.initialRoute
+				? getDesktopRouteUrl(
+						input.isDevelopment,
+						input.initialRoute.path,
+						input.initialRoute.search,
+					)
+				: getDesktopUrl(input.isDevelopment),
+		);
 		return window;
+	}
+
+	loadMainRoute(target: ShellNavigationTarget): void {
+		const window = this.main;
+		if (!window) return;
+		void window.loadURL(getDesktopRouteUrl(this.#isDevelopment, target.path, target.search));
+	}
+
+	navigateMain(target: ShellNavigationTarget): void {
+		const window = this.main;
+		if (!window) return;
+		window.webContents.send("shell:navigate", ipcEvents["shell:navigate"].payload.parse(target));
 	}
 
 	openPaneWindow(descriptor: PaneWindow, isDevelopment: boolean): { opened: boolean } {

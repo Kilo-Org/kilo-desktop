@@ -53,6 +53,9 @@ function renderLabel(
 			throw new Error("unused in this test");
 		},
 		available: () => true,
+		init: () => {
+			throw new Error("unused in this test");
+		},
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},
@@ -93,7 +96,7 @@ describe("GitBranchLabel", () => {
 		expect(branches).not.toHaveBeenCalled();
 	});
 
-	it("hides when the workspace is not a git repository", async () => {
+	it("renders the Initialize Git button for a missing workspace and never probes", async () => {
 		const branches = vi.fn(() => branchesResult);
 		const screen = renderLabel(
 			{
@@ -103,7 +106,26 @@ describe("GitBranchLabel", () => {
 			{ workspaceDirectory: "/tmp/not-a-repo" },
 		);
 
+		await expect.element(screen.getByTestId("git-init-thread-button")).toBeVisible();
 		await expect.element(screen.getByTestId("git-branch-label")).not.toBeInTheDocument();
+		expect(branches).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["bare", { kind: "bare" } as const],
+		["unsafe", { kind: "unsafe", path: "/repo/project" } as const],
+	])("hides for a %s workspace and never probes", async (_kind, repositoryType) => {
+		const branches = vi.fn(() => branchesResult);
+		const screen = renderLabel(
+			{
+				repositoryType: () => repositoryType,
+				branches,
+			},
+			{ workspaceDirectory: "/repo/project" },
+		);
+
+		await expect.element(screen.getByTestId("git-branch-label")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("git-init-thread-button")).not.toBeInTheDocument();
 		expect(branches).not.toHaveBeenCalled();
 	});
 });

@@ -161,6 +161,12 @@ export const gitBranchesResultSchema = z.object({
  * `available` is a zero-arg probe: `true` when a git version was obtained,
  * `false` when the binary is missing or anything else failed. Failures are
  * outcomes, not errors — the handler collapses every throw into `false`.
+ *
+ * `init` turns a plain working directory into an (unborn) git repository
+ * (GitHub Desktop parity: one `git -c init.defaultBranch=<branch> init`,
+ * the branch from the global config falling back to `main`, no initial
+ * commit). Idempotent — reinitializing an existing repository is a
+ * harmless no-op.
  */
 export const gitContract = defineContract({
 	status: defineMethod(
@@ -187,6 +193,12 @@ export const gitContract = defineContract({
 		z.undefined(),
 	),
 	available: defineMethod(z.undefined(), z.boolean()),
+	/**
+	 * Initialize the working directory as a git repository with the
+	 * configured default branch (global `init.defaultBranch`, fallback
+	 * `main`). Idempotent; no initial commit is created.
+	 */
+	init: defineMethod(z.object({ workingDirectory: z.string().min(1).max(32_768) }), z.undefined()),
 	/**
 	 * Both sides of a working-tree file's contents for diff hunk expansion:
 	 * the old side from HEAD, the new side from disk. Null sides mean that

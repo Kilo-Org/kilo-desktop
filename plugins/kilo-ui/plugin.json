@@ -23,20 +23,12 @@
 				"component": "ChatPage",
 				"title": "Chat",
 				"surface": "transparent",
-				"header": {
-					"leading": "ChatPageHeaderLeading",
-					"actions": "ChatPageHeaderActions"
-				}
+				"header": { "leading": "ChatPageHeaderLeading", "actions": "ChatPageHeaderActions" }
 			}
 		],
 		"nav": [],
 		"zones": [
-			{
-				"zone": "sidebar",
-				"component": "SessionList",
-				"label": "Chats",
-				"priority": 10
-			},
+			{ "zone": "sidebar", "component": "SessionList", "label": "Chats", "priority": 10 },
 			{
 				"zone": "sidebar-account",
 				"component": "SidebarKiloAccount",

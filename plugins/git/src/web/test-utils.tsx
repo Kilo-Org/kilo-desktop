@@ -1,5 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
 import { expect, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
@@ -106,13 +107,18 @@ export function renderView(props: Partial<GitDiffViewProps> = {}, customSdk?: Fa
 	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
 	// TooltipProvider: the view itself relies on the shell's app-level
 	// provider (AppSidebarLayout), which the test harness does not mount.
+	// QueryClientProvider: the init mutation needs the host's TanStack
+	// context (the shell provides it app-wide in production).
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const renderTree = (partial: Partial<GitDiffViewProps>) => (
 		<SdkProvider system={system}>
-			<TooltipProvider>
-				<div className="flex" style={{ height: 600, width: 900 }}>
-					<GitDiffView {...PROPS} {...partial} />
-				</div>
-			</TooltipProvider>
+			<QueryClientProvider client={queryClient}>
+				<TooltipProvider>
+					<div className="flex" style={{ height: 600, width: 900 }}>
+						<GitDiffView {...PROPS} {...partial} />
+					</div>
+				</TooltipProvider>
+			</QueryClientProvider>
 		</SdkProvider>
 	);
 	const { rerender } = render(renderTree(props));

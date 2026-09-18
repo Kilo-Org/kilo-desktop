@@ -3,6 +3,7 @@ import { createFakeSdk, createFakeTheme } from "@kilo-desktop/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
+import { gitContract } from "../contracts/schemas.js";
 import {
 	FIRST_FILE,
 	filesPanel,
@@ -175,21 +176,37 @@ index 0000000..3333333
 		});
 	});
 
-	it("renders the error state with the response text and retries", async () => {
-		const fetchMock = stubFetch(() => new Response("Not a git repository.", { status: 404 }));
-		renderView();
+	it("offers to initialize git on a 404, then reloads the diff on success", async () => {
+		let respond404 = true;
+		const fetchMock = stubFetch(() =>
+			respond404
+				? new Response("Not a git repository.", { status: 404 })
+				: new Response(patchResponseStream()),
+		);
+		const init = vi.fn(async () => undefined);
+		const sdk = createFakeSdk({ featureId: "git", channels: gitContract, handlers: { init } });
+		renderView({}, sdk);
 
 		await expect.element(page.getByTestId("git-diff-error")).toBeVisible();
 		await vi.waitFor(() => {
 			const errorText = document.querySelector('[data-qa-id="git-diff-error"]')?.textContent ?? "";
 			expect(errorText).toContain("Not a git repository");
 			expect(errorText).toContain("This folder isn't a git repository.");
+			expect(errorText).toContain("Initialize git to track its changes");
 		});
+		// The 404 branch swaps Retry for Initialize Git.
+		await expect.element(page.getByTestId("git-diff-init")).toBeVisible();
+		expect(document.querySelector('[data-qa-id="git-diff-retry"]')).toBeNull();
 
-		stubFetch(() => new Response(""));
-		await page.getByTestId("git-diff-retry").click();
-		await expect.element(page.getByTestId("git-diff-empty")).toBeVisible();
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		respond404 = false;
+		await page.getByTestId("git-diff-init").click();
+
+		expect(init).toHaveBeenCalledWith({ workingDirectory: "/workspace/project" });
+		// The patch loader bypasses TanStack, so success retries explicitly.
+		await waitForTreePath("README.md");
+		await vi.waitFor(() => {
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		});
 	});
 
 	it("refreshes on demand", async () => {
@@ -235,6 +252,9 @@ index 0000000..3333333
 			const errorText = document.querySelector('[data-qa-id="git-diff-error"]')?.textContent ?? "";
 			expect(errorText).toContain("Request failed (500).");
 		});
+		// Non-404 errors keep the Retry button exactly as-is.
+		expect(document.querySelector('[data-qa-id="git-diff-retry"]')).not.toBeNull();
+		expect(document.querySelector('[data-qa-id="git-diff-init"]')).toBeNull();
 	});
 
 	it("hides and restores the file tree panel from the toolbar toggle", async () => {

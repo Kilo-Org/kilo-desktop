@@ -31,6 +31,7 @@ function clientOf(client: Partial<GitClientSlice>): GitClientSlice {
 		createBranch: () => Promise.resolve(),
 		checkoutBranch: () => Promise.resolve(),
 		repositoryType: () => Promise.resolve({ kind: "missing" }),
+		initRepository: () => Promise.resolve(),
 		createWorkingDirectoryPatch: () => Promise.resolve(null),
 		getFileContents: () => Promise.resolve({ oldContents: null, newContents: null }),
 		remoteHead: () => Promise.resolve(null),
@@ -421,6 +422,75 @@ describe("GitService", () => {
 				await expect(service.repositoryType("/some/repo")).resolves.toEqual(repositoryType);
 				expect(repositoryTypeProbe).toHaveBeenCalledWith("/some/repo");
 			}
+		});
+	});
+
+	describe("init", () => {
+		it("runs initRepository with the working directory as cwd", async () => {
+			const initRepository = vi.fn(() => Promise.resolve());
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/some/repo"),
+				createClient: () => clientOf({ initRepository }),
+			});
+
+			await expect(service.init("/some/repo")).resolves.toBeUndefined();
+			expect(initRepository).toHaveBeenCalledWith({ cwd: "/some/repo" });
+		});
+
+		it("rejects with VALIDATION when the directory is outside every workspace folder", async () => {
+			const initRepository = vi.fn(() => Promise.resolve());
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/workspaces/project"),
+				createClient: () => clientOf({ initRepository }),
+			});
+
+			await expect(service.init("/elsewhere/other")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "VALIDATION",
+			});
+			expect(initRepository).not.toHaveBeenCalled();
+		});
+
+		it("fails closed with VALIDATION when the workspaces capability is absent", async () => {
+			const initRepository = vi.fn(() => Promise.resolve());
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: absentFolders(),
+				createClient: () => clientOf({ initRepository }),
+			});
+
+			await expect(service.init("/workspaces/project")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "VALIDATION",
+			});
+			expect(initRepository).not.toHaveBeenCalled();
+		});
+
+		it("maps GitNotDetectedError to a BUSINESS FeatureError", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({ initRepository: () => Promise.reject(new GitNotDetectedError()) }),
+			});
+
+			await expect(service.init("/repos/project")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "BUSINESS",
+			});
+		});
+
+		it("lets other errors propagate unwrapped", async () => {
+			const failure = new Error("fatal: cannot init");
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () => clientOf({ initRepository: () => Promise.reject(failure) }),
+			});
+
+			await expect(service.init("/repos/project")).rejects.toBe(failure);
 		});
 	});
 

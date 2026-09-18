@@ -4,6 +4,7 @@ import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
 import { getReadOnlyBranchLabel, type SelectorQueryState } from "./branch-selector-state.js";
+import { InitializeGitButton } from "./InitializeGitButton.js";
 
 export interface GitBranchLabelProps {
 	readonly workspaceDirectory?: string | undefined;
@@ -12,7 +13,11 @@ export interface GitBranchLabelProps {
 /**
  * Read-only current-branch label for the active-thread composer rail
  * (`kilo-ui/chat-composer-footer`). Same workspace probes as the draft
- * footer switcher; hidden until a branch name is known.
+ * footer switcher; hidden until a branch name is known — except for a
+ * workspace the probe reports as `missing`, which swaps the label slot
+ * for the shared Initialize Git action, muted to match the usage metrics
+ * beside it. A successful init invalidates `repositoryType`, and the
+ * refetch (now `regular`) renders the label here instead.
  */
 export function GitBranchLabel({ workspaceDirectory }: GitBranchLabelProps) {
 	const sdk = useSdk<GitServiceContract>("git");
@@ -36,6 +41,18 @@ export function GitBranchLabel({ workspaceDirectory }: GitBranchLabelProps) {
 		data: query.data,
 	};
 	const label = getReadOnlyBranchLabel(state);
+	// The missing-repo swap must precede the null return: `label` is
+	// undefined for a missing workspace (the branches probe never runs).
+	if (workspaceDirectory !== undefined && typeQuery.data?.kind === "missing") {
+		return (
+			<InitializeGitButton
+				className="text-foreground/70 [&_svg]:text-foreground/40"
+				workspaceDirectory={workspaceDirectory}
+				size="sm"
+				testId="git-init-thread-button"
+			/>
+		);
+	}
 	if (!label) return null;
 
 	return (

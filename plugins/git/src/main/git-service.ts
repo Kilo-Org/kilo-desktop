@@ -55,6 +55,7 @@ export type GitClientSlice = Pick<
 	| "createBranch"
 	| "checkoutBranch"
 	| "repositoryType"
+	| "initRepository"
 	| "createWorkingDirectoryPatch"
 	| "getFileContents"
 	| "remoteHead"
@@ -229,9 +230,15 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
  *   `create`, the new branch is based on `startPoint` when given — the
  *   default branch while branching off it, per Desktop's dialog — and on
  *   the current HEAD when omitted.
+ * - `init` turns a plain workspace folder into an unborn repository with
+ *   one `git -c init.defaultBranch=<branch> init` (the global config value
+ *   falling back to `main`, passed via `-c` and never written to config,
+ *   no initial commit). Idempotent: on an existing repository it
+ *   reinitializes harmlessly and leaves HEAD untouched.
  *
  * Workspace containment: every directory-taking call (`status`,
- * `branches`, `checkout`, `createPatch`, `getDiffContents`) resolves the
+ * `branches`, `checkout`, `init`, `createPatch`, `getDiffContents`)
+ * resolves the
  * workspace folders per request and rejects with a `VALIDATION` FeatureError
  * unless the directory equals or is inside one of them — this choke point
  * covers both the IPC channels and the `kilo-git://` protocol handler in one
@@ -385,6 +392,22 @@ export class GitService {
 			});
 		} catch (error) {
 			throw checkoutErrorToFeatureError(error);
+		}
+	}
+
+	/**
+	 * Initialize the working directory as a git repository (Desktop parity:
+	 * one `git -c init.defaultBranch=<branch> init`, the branch from the
+	 * global config falling back to `main`, no initial commit). Idempotent —
+	 * reinitializing an existing repository is a harmless no-op that leaves
+	 * HEAD untouched.
+	 */
+	async init(workingDirectory: string): Promise<void> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			await this.#client.initRepository({ cwd: workingDirectory });
+		} catch (error) {
+			throw gitNotDetectedToFeatureError(error);
 		}
 	}
 

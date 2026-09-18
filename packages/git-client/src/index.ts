@@ -61,6 +61,8 @@ export type { IAheadBehind, IBranch, IBranchTip } from "./models/branch.js";
 export type { RepositoryType, RevParseExec } from "./git/rev-parse.js";
 export { getRepositoryType } from "./git/rev-parse.js";
 export { createForEachRefParser } from "./lib/git-delimiter-parser.js";
+export type { InitExec, InitOptions } from "./git/init.js";
+export { initRepository } from "./git/init.js";
 export type { BranchExec, BranchOptions } from "./git/branch.js";
 export type { CheckoutExec, CheckoutOptions } from "./git/checkout.js";
 export type { ForEachRefExec, ForEachRefOptions } from "./git/for-each-ref.js";

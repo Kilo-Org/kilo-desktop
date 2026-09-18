@@ -115,6 +115,7 @@ function renderSelector(
 		repositoryType?: () => GitRepositoryType | Promise<GitRepositoryType>;
 		branches: () => GitBranchesResult | null | Promise<GitBranchesResult | null>;
 		checkout?: (input: CheckoutInput) => Promise<void>;
+		init?: (input: { workingDirectory: string }) => Promise<void> | void;
 	},
 	options?: { workspaceDirectory?: string | undefined },
 ) {
@@ -141,6 +142,10 @@ function renderSelector(
 			throw new Error("unused in this test");
 		},
 		available: () => true,
+		init: async (input) => {
+			await handlers.init?.(input);
+			return undefined;
+		},
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},
@@ -193,15 +198,40 @@ describe("GitBranchSelector", () => {
 		await openTrigger("Select branch", "No workspace selected.");
 	});
 
-	it("shows an inline note for a missing workspace and never probes branches", async () => {
+	it("replaces the trigger with the Initialize Git button for a missing workspace and never probes branches", async () => {
 		const branches = vi.fn(() => branchesResult);
 		renderSelector({
 			repositoryType: () => ({ kind: "missing" }),
 			branches,
 		});
 
-		await openTrigger("Select branch", "Not a git repository.");
+		await expect.element(page.getByTestId("git-init-draft-button")).toBeVisible();
+		await expect.element(page.getByTestId("git-branch-selector-trigger")).not.toBeInTheDocument();
 		expect(branches).not.toHaveBeenCalled();
+	});
+
+	it("runs init from the draft footer button and restores the trigger once the refetch reports regular", async () => {
+		let initialized = false;
+		const init = vi.fn(async () => {
+			initialized = true;
+		});
+		renderSelector({
+			repositoryType: () => (initialized ? regularRepositoryType : { kind: "missing" }),
+			branches: () => branchesResult,
+			init,
+		});
+
+		const button = page.getByTestId("git-init-draft-button");
+		await expect.element(button).toBeVisible();
+		await button.click();
+
+		await vi.waitFor(() => {
+			expect(init).toHaveBeenCalledWith({ workingDirectory: "/repo/project" });
+		});
+		// Success invalidates repositoryType → the refetch reports
+		// `regular` → the init button is replaced by the trigger.
+		await expect.element(page.getByTestId("git-branch-selector-trigger")).toBeVisible();
+		await expect.element(page.getByTestId("git-init-draft-button")).not.toBeInTheDocument();
 	});
 
 	it("shows an inline note for an unsafe workspace and never probes branches", async () => {

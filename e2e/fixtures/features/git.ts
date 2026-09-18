@@ -5,14 +5,18 @@ import path from "node:path";
 
 import { BranchSelectorPage } from "../../pages/features/git/branch-selector-page.js";
 import { ChangesPage } from "../../pages/features/git/changes-page.js";
+import { InitButtonPage } from "../../pages/features/git/init-button-page.js";
 import { removePathAfterAppStops, test as shellTest } from "../shell.js";
 
 type GitFixtures = {
 	changesPage: ChangesPage;
 	branchSelectorPage: BranchSelectorPage;
+	initButtonPage: InitButtonPage;
 	gitWorkspace: { path: string; name: string };
 	/** A clone with `origin` (main HEAD + feature) and a checkout history, so the popover has all three groups. */
 	gitBranchWorkspace: { path: string; name: string };
+	/** A plain folder with files but NO `git init`, so the init entry points have a target. */
+	plainWorkspace: { path: string; name: string };
 };
 
 export const test = shellTest.extend<GitFixtures>({
@@ -23,6 +27,10 @@ export const test = shellTest.extend<GitFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	branchSelectorPage: async ({}, use) => {
 		await use(new BranchSelectorPage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	initButtonPage: async ({}, use) => {
+		await use(new InitButtonPage());
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	gitWorkspace: async ({}, use) => {
@@ -69,6 +77,14 @@ export const test = shellTest.extend<GitFixtures>({
 		git(clone, ["checkout", "-b", "topic-a"]);
 		git(clone, ["checkout", "main"]);
 		await use({ path: clone, name: path.basename(clone) });
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	plainWorkspace: async ({}, use) => {
+		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-plain-workspace-"));
+		removePathAfterAppStops(workspacePath);
+		await writeFile(path.join(workspacePath, "README.md"), "plain folder\n");
+		await writeFile(path.join(workspacePath, "notes.txt"), "untracked from the start\n");
+		await use({ path: workspacePath, name: path.basename(workspacePath) });
 	},
 });
 

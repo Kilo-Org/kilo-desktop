@@ -51,6 +51,10 @@ export function mainRegister(mainSdk: MainSdk): void {
 			return undefined;
 		},
 		available: () => service.available(),
+		init: async ({ workingDirectory }) => {
+			await service.init(workingDirectory);
+			return undefined;
+		},
 		getDiffContents: (args) => service.getDiffContents(args),
 	});
 

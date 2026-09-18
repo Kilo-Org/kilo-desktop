@@ -20,6 +20,7 @@ import type { GitBranch, GitServiceContract } from "../contracts/schemas.js";
 import { branchDisplayName } from "./branch-display-name.js";
 import { groupBranches } from "./group-branches.js";
 import { CreateBranchDialog } from "./CreateBranchDialog.js";
+import { InitializeGitButton } from "./InitializeGitButton.js";
 import {
 	getPopoverMessage,
 	getTriggerLabel,
@@ -70,10 +71,14 @@ function BranchItem({
 /**
  * Branch switcher contributed to the composer draft footer zone
  * (`kilo-ui/chat-composer-draft-footer`), rendered in the toolbar strip
- * right after the workspace selector. The dedicated trigger is always
- * there and always clickable; the repository-type probe decides what
- * the popover shows, and only a regular repository ever fetches the
- * branch list. The list groups branches exactly like GitHub Desktop —
+ * right after the workspace selector. A workspace the probe reports as
+ * `missing` swaps the whole selector for the shared Initialize Git
+ * action — a successful init invalidates `repositoryType`, and the
+ * refetch (now `regular`) lands back on the trigger. Every other state
+ * keeps the dedicated trigger, always rendered and always clickable;
+ * the repository-type probe decides what the popover shows, and only a
+ * regular repository ever fetches the branch list. The list groups
+ * branches exactly like GitHub Desktop —
  * "Default Branch" / "Recent Branches" / "Other Branches", local and
  * remote intermingled — computed inline during render (`groupBranches`
  * over a tiny list; memoization deliberately skipped). The popover ends
@@ -107,6 +112,19 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 	const [createError, setCreateError] = useState<string | undefined>();
 	const [pending, setPending] = useState<{ directory: string; branch: string } | undefined>();
 	const checkout = useSdkMutation(sdk, "checkout", { invalidates: ["branches", "status"] });
+
+	// The swap is derived during render from the already-subscribed probe —
+	// no extra subscription or effect. It must sit below every hook above
+	// (rules-of-hooks); the helpers below it are plain functions.
+	if (workspaceDirectory !== undefined && typeQuery.data?.kind === "missing") {
+		return (
+			<InitializeGitButton
+				workspaceDirectory={workspaceDirectory}
+				size="sm"
+				testId="git-init-draft-button"
+			/>
+		);
+	}
 
 	const state: SelectorQueryState = {
 		workspaceDirectory,

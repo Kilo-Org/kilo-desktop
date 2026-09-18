@@ -29,6 +29,8 @@ import type { IStatusResult, StatusOptions } from "./git/status.js";
 import { getStatus } from "./git/status.js";
 import type { CreateWorkingDirectoryPatchOptions, GitPatchFile, PatchExec } from "./git/diff.js";
 import { createWorkingDirectoryPatch } from "./git/diff.js";
+import type { InitOptions } from "./git/init.js";
+import { initRepository } from "./git/init.js";
 import type { GetFileContentsOptions, WorkingTreeFileContents } from "./git/file-contents.js";
 import { getFileContents } from "./git/file-contents.js";
 import { getGlobalConfigValue } from "./git/config.js";
@@ -148,6 +150,15 @@ export interface GitClient {
 	 */
 	remoteHead(remote: string, options?: RemoteHeadOptions): Promise<string | null>;
 	/**
+	 * Initialize the working directory as a git repository with
+	 * `git -c init.defaultBranch=<branch> init`, where the branch is the
+	 * global `init.defaultBranch` config value falling back to `main`.
+	 * Idempotent: reinitializes an existing repository without touching
+	 * HEAD. `options.cwd` overrides the working directory for this call;
+	 * it defaults to the client's `path`.
+	 */
+	initRepository(options?: InitOptions): Promise<void>;
+	/**
 	 * A global config value by name. Resolves `null` when the value is
 	 * not configured. Reads the global config regardless of the working
 	 * directory.
@@ -257,6 +268,10 @@ class GitClientImpl implements GitClient {
 			branch,
 			options,
 		);
+	}
+
+	initRepository(options?: InitOptions): Promise<void> {
+		return initRepository(this.#exec, options);
 	}
 
 	/**

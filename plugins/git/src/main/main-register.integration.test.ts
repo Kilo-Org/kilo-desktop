@@ -671,3 +671,61 @@ describe("git mainRegister checkout", () => {
 		mainSdk.dispose();
 	});
 });
+
+describe("git mainRegister init", () => {
+	it("initializes a plain folder into an unborn repository on the default branch", async () => {
+		const plainDir = createTempDir();
+		fs.writeFileSync(path.join(plainDir, "README.md"), "hello\n");
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(plainDir);
+
+		expect(mainSdk.has("init")).toBe(true);
+
+		await withGitConfig("", async () => {
+			await mainSdk.invoke("init", { workingDirectory: plainDir });
+
+			// The literal `main` fallback: no configured default.
+			expect(execGitOutput(plainDir, ["symbolic-ref", "HEAD"])).toBe("refs/heads/main");
+			const repositoryType = await mainSdk.invoke("repositoryType", {
+				workingDirectory: plainDir,
+			});
+			expect(repositoryType).toMatchObject({
+				kind: "regular",
+				topLevelWorkingDirectory: plainDir,
+			});
+			const status = await mainSdk.invoke("status", { workingDirectory: plainDir });
+			// Unborn, but git still reports the branch HEAD points at, and
+			// every file reads as untracked.
+			expect(status).toMatchObject({
+				exists: true,
+				currentBranch: "main",
+				workingDirectory: { files: [{ path: "README.md", status: { kind: "Untracked" } }] },
+			});
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("rejects an empty working directory at the routing boundary", async () => {
+		const { mainSdk } = bootedSdk();
+
+		await expect(mainSdk.invoke("init", { workingDirectory: "" })).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "VALIDATION",
+		});
+
+		mainSdk.dispose();
+	});
+
+	it("rejects init for a directory outside every workspace folder", async () => {
+		const plainDir = createTempDir();
+		const { mainSdk } = bootedSdk();
+
+		await expect(mainSdk.invoke("init", { workingDirectory: plainDir })).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "VALIDATION",
+		});
+
+		mainSdk.dispose();
+	});
+});

@@ -6,6 +6,7 @@
 	"web": "./src/web/index.ts",
 	"protocols": ["kilo-git"],
 	"contributes": {
+		"providers": [{ "component": "GitRepositoryWatcherProvider" }],
 		"zones": [
 			{
 				"zone": "kilo-ui/chat-composer-draft-footer",

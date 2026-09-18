@@ -1,11 +1,12 @@
 import type { CodeViewItem } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
-import { GitCompareIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+import { FolderGit2Icon, GitCompareIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocalStorage } from "react-use";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import {
 	Empty,
 	EmptyContent,
@@ -26,6 +27,7 @@ import { DiffConfigProvider, useDiffOptions } from "./diff-options.js";
 import { GitDiffHeader } from "./GitDiffHeader.js";
 import { GitDiffSidebar } from "./GitDiffSidebar.js";
 import { createDiffFilesLoader } from "./lib/diff-files-loader.js";
+import { useInitRepository } from "./use-init-repository.js";
 import { usePatchLoader } from "./use-patch-loader.js";
 
 export interface GitDiffViewProps {
@@ -192,6 +194,7 @@ function GitDiffTabContent({
 		workspaceDirectory: effectiveDirectory,
 		viewerRef,
 	});
+	const initRepository = useInitRepository();
 
 	// Load-bearing memo, not cosmetics: a fresh loadDiffFiles identity per
 	// render would make `options` new every render and churn CodeView's
@@ -325,15 +328,37 @@ function GitDiffTabContent({
 								</EmptyTitle>
 								<EmptyDescription>
 									{errorStatus === 404
-										? "This folder isn't a git repository. Choose a different workspace folder to review its changes."
+										? "This folder isn't a git repository. Initialize git to track its changes, or choose a different workspace folder."
 										: errorMessage}
 								</EmptyDescription>
 							</EmptyHeader>
 							<EmptyContent>
-								<Button data-qa-id="git-diff-retry" onClick={retryLoad} size="sm" variant="outline">
-									<RefreshCwIcon />
-									Retry
-								</Button>
+								{errorStatus === 404 ? (
+									<Button
+										data-qa-id="git-diff-init"
+										disabled={initRepository.isPending}
+										onClick={() => initRepository.init(effectiveDirectory, retryLoad)}
+										size="sm"
+										variant="outline"
+									>
+										{initRepository.isPending ? (
+											<Spinner data-icon="inline-start" size="sm" />
+										) : (
+											<FolderGit2Icon data-icon="inline-start" />
+										)}
+										Initialize Git
+									</Button>
+								) : (
+									<Button
+										data-qa-id="git-diff-retry"
+										onClick={retryLoad}
+										size="sm"
+										variant="outline"
+									>
+										<RefreshCwIcon />
+										Retry
+									</Button>
+								)}
 							</EmptyContent>
 						</Empty>
 					) : initialItems.length > 0 ? (

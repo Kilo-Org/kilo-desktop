@@ -19,6 +19,9 @@
 				{
 					"fill-specializations": [
 						{
+							"value": "automatic"
+						},
+						{
 							"appearance": "dark",
 							"value": {
 								"solid": "display-p3:0.97881,0.96683,0.43002,1.00000"
@@ -31,7 +34,16 @@
 							}
 						}
 					],
-					"glass": true,
+					"glass-specializations": [
+						{
+							"value": true
+						},
+						{
+							"idiom": "square",
+							"value": true
+						}
+					],
+					"hidden": false,
 					"image-name": "logo-mark.png",
 					"name": "logo-mark",
 					"position": {
@@ -42,12 +54,12 @@
 			],
 			"lighting": "individual",
 			"shadow": {
-				"kind": "layer-color",
+				"kind": "neutral",
 				"opacity": 0.5
 			},
 			"specular-specializations": [
 				{
-					"value": false
+					"value": true
 				},
 				{
 					"appearance": "dark",

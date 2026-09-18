@@ -55,9 +55,10 @@ const windowsPackagingTemp = getWindowsPackagingTempDirectory({
 });
 const executableName =
 	process.platform === "darwin" ? identity.productName : identity.executableName;
+const macIcon = track === "preview" ? "icon-preview.icon" : "icon.icon";
 const appIcon =
 	process.platform === "darwin"
-		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, "assets/icon.icon")]
+		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, `assets/${macIcon}`)]
 		: path.join(packageRoot, "assets/icon");
 
 const notebookPackaging = createNotebookPackagingPlan();

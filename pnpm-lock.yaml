@@ -1187,8 +1187,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/pane-layout
       '@kilocode/sdk':
-        specifier: 7.6.2
-        version: 7.6.2
+        specifier: 7.7.5
+        version: 7.7.5
       '@lexical/react':
         specifier: ^0.49.0
         version: 0.49.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)
@@ -1329,8 +1329,8 @@ importers:
   plugins/kilo-ui/opencode-sdk-compat:
     dependencies:
       '@kilocode/sdk':
-        specifier: 7.6.2
-        version: 7.6.2
+        specifier: 7.7.5
+        version: 7.7.5
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2909,8 +2909,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@kilocode/sdk@7.6.2':
-    resolution: {integrity: sha512-m9fSEUEY8Jg3VN3ZSsgu3aeSOJY0dNzXsUjSlCKbf/BFA33/jv5s255tzRXp925ReJ7qyf2XHs/eu0hpjz6SaA==}
+  '@kilocode/sdk@7.7.5':
+    resolution: {integrity: sha512-QHhb86vqLpTuDXm9Z1EFSpTtMlj3mLAHROEqNcXGsYmLoy0SHUgSAtfeycBpVPNS4hI0fas3NzronOiBWA4cjg==}
 
   '@launchdarkly/js-client-sdk-common@1.30.2':
     resolution: {integrity: sha512-qpO5gSNX5WbqM03LMCKxOh8dR7Rl1iPxcsXXY//XUNlVbZ1YLrJfqVkSrOYfZHxO8PQMSPa/GFwNWSCwfapjPw==}
@@ -11263,7 +11263,7 @@ snapshots:
   '@kilocode/cli-windows-x64-baseline@7.7.5':
     optional: true
 
-  '@kilocode/sdk@7.6.2':
+  '@kilocode/sdk@7.7.5':
     dependencies:
       cross-spawn: 7.0.6
 

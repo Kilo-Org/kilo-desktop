@@ -44,7 +44,7 @@ MessagePort exclusively.
 - Bundle the `runtimed`, `runt`, `nteract-mcp`, and published notebook UI archive from the same
   pinned nteract release. The current integration follows the pinned nightly channel for both the
   singleton endpoint and MCP proxy.
-- Depend on the exact registry release `@runtimed/node@0.5.0`; do not vendor, source-build, or use a
+- Depend on the exact registry release `@runtimed/node@0.5.6`; do not vendor, source-build, or use a
   Git dependency for the Electron adapter.
 - Reuse a compatible running singleton; only start the bundled daemon when the canonical endpoint
   is idle.

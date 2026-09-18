@@ -2,33 +2,38 @@ import "./theme.css";
 import { App, applyDocumentTheme } from "@modelcontextprotocol/ext-apps";
 import { renderEnvList, renderError } from "./env-list";
 
+function isTextContent(value: unknown): value is { type: "text"; text: string } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"type" in value &&
+		value.type === "text" &&
+		"text" in value &&
+		typeof value.text === "string"
+	);
+}
+
+function textFromToolResult(content: unknown): string | undefined {
+	if (Array.isArray(content)) {
+		return content.find(isTextContent)?.text;
+	}
+	if (typeof content === "string") {
+		return content;
+	}
+	return undefined;
+}
+
 const app = new App({ name: "conda-envs-list", version: "1.0.0" }, {});
 
 app.ontoolresult = (result) => {
 	// A genuine tool failure (conda missing, permission denied, ...) must not
 	// masquerade as an empty environment list.
 	if (result.isError) {
-		const text = Array.isArray(result.content)
-			? result.content.find(
-					(c): c is { type: "text"; text: string } => c.type === "text" && "text" in c,
-				)?.text
-			: undefined;
-		renderError(text || "The environments tool reported an error.");
+		renderError(textFromToolResult(result.content) || "The environments tool reported an error.");
 		return;
 	}
 	try {
-		// MCP Apps protocol: content is Array<{ type: "text", text: string } | ...>
-		// Extract the text content block containing the JSON array of environments.
-		let raw: string | undefined;
-		if (Array.isArray(result.content)) {
-			const textBlock = result.content.find(
-				(c): c is { type: "text"; text: string } => c.type === "text" && "text" in c,
-			);
-			raw = textBlock?.text;
-		} else if (typeof result.content === "string") {
-			// Fallback: assistant-ui may send the result as a plain string
-			raw = result.content;
-		}
+		const raw = textFromToolResult(result.content);
 		const parsed = raw ? JSON.parse(raw) : [];
 		const envs: Array<{ name: string; prefix: string }> = Array.isArray(parsed)
 			? parsed

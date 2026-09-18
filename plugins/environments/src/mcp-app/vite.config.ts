@@ -10,7 +10,11 @@ export default defineConfig({
 	},
 	resolve: {
 		// Ensure all @modelcontextprotocol packages resolve from the workspace root
-		dedupe: ["@modelcontextprotocol/sdk", "@modelcontextprotocol/ext-apps"],
+		dedupe: [
+			"@modelcontextprotocol/client",
+			"@modelcontextprotocol/core",
+			"@modelcontextprotocol/ext-apps",
+		],
 	},
 	plugins: [viteSingleFile()],
 });

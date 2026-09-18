@@ -10,23 +10,21 @@ import {
 	rm,
 	writeFile,
 } from "node:fs/promises";
-import os from "node:os";
+import { createRequire } from "node:module";
 import path from "node:path";
-
-import { execa } from "execa";
 
 import { getKiloCliArtifact, KILO_CLI_VERSION, type KiloCliArtifact } from "./artifacts.js";
 
 interface CliDistributionManifest {
 	readonly version: string;
 	readonly packageName: string;
-	readonly integrity: string;
 	readonly target: string;
 }
 
 export interface StageKiloCliOptions {
 	readonly resourceRoot: string;
 	readonly artifact?: KiloCliArtifact;
+	readonly packageDirectory?: string;
 	readonly signExecutable?: (executablePath: string) => Promise<void>;
 }
 
@@ -50,7 +48,6 @@ async function isCurrent(
 		return (
 			manifest.version === expected.version &&
 			manifest.packageName === expected.packageName &&
-			manifest.integrity === expected.integrity &&
 			manifest.target === expected.target
 		);
 	} catch {
@@ -58,73 +55,52 @@ async function isCurrent(
 	}
 }
 
-async function installArtifact(stagingDirectory: string, artifact: KiloCliArtifact): Promise<void> {
-	const installDirectory = await mkdtemp(path.join(os.tmpdir(), "kilo-cli-install-"));
+function resolvePackageDirectory(packageName: string): string {
+	const require = createRequire(import.meta.url);
 	try {
-		await writeFile(
-			path.join(installDirectory, "package.json"),
-			`${JSON.stringify(
-				{
-					private: true,
-					dependencies: { [artifact.packageName]: KILO_CLI_VERSION },
-				},
-				null,
-				2,
-			)}\n`,
+		return path.dirname(require.resolve(`${packageName}/package.json`));
+	} catch (error) {
+		throw new Error(
+			`Kilo CLI package ${packageName} is not installed for this platform. Run pnpm install.`,
+			{ cause: error },
 		);
-		await execa(
-			"npm",
-			[
-				"install",
-				"--ignore-scripts",
-				"--package-lock=true",
-				"--fund=false",
-				"--audit=false",
-				`--os=${artifact.platform}`,
-				`--cpu=${artifact.arch}`,
-			],
-			{ cwd: installDirectory, maxBuffer: 10 * 1024 * 1024 },
-		);
-
-		const packageLock = JSON.parse(
-			await readFile(path.join(installDirectory, "package-lock.json"), "utf8"),
-		) as { packages?: Record<string, { integrity?: string; version?: string }> };
-		const installed = packageLock.packages?.[`node_modules/${artifact.packageName}`];
-		if (installed?.version !== KILO_CLI_VERSION) {
-			throw new Error(
-				`Kilo CLI version mismatch: expected ${KILO_CLI_VERSION}, got ${installed?.version ?? "unknown"}.`,
-			);
-		}
-		if (installed.integrity !== artifact.integrity) {
-			throw new Error(
-				`Kilo CLI integrity mismatch for ${artifact.packageName}: expected ${artifact.integrity}, got ${installed.integrity ?? "missing"}.`,
-			);
-		}
-
-		await cp(
-			path.join(installDirectory, "node_modules", artifact.packageName, "bin"),
-			path.join(stagingDirectory, "bin"),
-			{ recursive: true },
-		);
-		if (artifact.platform !== "win32") {
-			await chmod(path.join(stagingDirectory, "bin", artifact.executable), 0o755);
-		}
-		await writeFile(
-			path.join(stagingDirectory, "staged.json"),
-			`${JSON.stringify(
-				{
-					version: KILO_CLI_VERSION,
-					packageName: artifact.packageName,
-					integrity: artifact.integrity,
-					target: artifact.target,
-				} satisfies CliDistributionManifest,
-				null,
-				2,
-			)}\n`,
-		);
-	} finally {
-		await rm(installDirectory, { recursive: true, force: true });
 	}
+}
+
+async function stageArtifact(
+	stagingDirectory: string,
+	artifact: KiloCliArtifact,
+	packageDirectory: string,
+): Promise<void> {
+	const installed = JSON.parse(
+		await readFile(path.join(packageDirectory, "package.json"), "utf8"),
+	) as {
+		version?: string;
+	};
+	if (installed.version !== KILO_CLI_VERSION) {
+		throw new Error(
+			`Kilo CLI version mismatch: expected ${KILO_CLI_VERSION}, got ${installed.version ?? "unknown"}.`,
+		);
+	}
+
+	await cp(path.join(packageDirectory, "bin"), path.join(stagingDirectory, "bin"), {
+		recursive: true,
+	});
+	if (artifact.platform !== "win32") {
+		await chmod(path.join(stagingDirectory, "bin", artifact.executable), 0o755);
+	}
+	await writeFile(
+		path.join(stagingDirectory, "staged.json"),
+		`${JSON.stringify(
+			{
+				version: KILO_CLI_VERSION,
+				packageName: artifact.packageName,
+				target: artifact.target,
+			} satisfies CliDistributionManifest,
+			null,
+			2,
+		)}\n`,
+	);
 }
 
 async function replaceStaging(targetDirectory: string, stagedDirectory: string): Promise<void> {
@@ -164,7 +140,6 @@ export async function stageKiloCli(options: StageKiloCliOptions): Promise<StageK
 	const manifest: CliDistributionManifest = {
 		version: KILO_CLI_VERSION,
 		packageName: artifact.packageName,
-		integrity: artifact.integrity,
 		target: artifact.target,
 	};
 	await mkdir(options.resourceRoot, { recursive: true });
@@ -173,7 +148,11 @@ export async function stageKiloCli(options: StageKiloCliOptions): Promise<StageK
 	if (staged) {
 		const stagedDirectory = await mkdtemp(path.join(options.resourceRoot, ".staging-"));
 		try {
-			await installArtifact(stagedDirectory, artifact);
+			await stageArtifact(
+				stagedDirectory,
+				artifact,
+				options.packageDirectory ?? resolvePackageDirectory(artifact.packageName),
+			);
 			await replaceStaging(targetDirectory, stagedDirectory);
 		} finally {
 			await rm(stagedDirectory, { recursive: true, force: true });

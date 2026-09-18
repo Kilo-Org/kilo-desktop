@@ -29,6 +29,11 @@
 		"lodash": "catalog:",
 		"zod": "catalog:"
 	},
+	"optionalDependencies": {
+		"@kilocode/cli-darwin-arm64": "7.7.5",
+		"@kilocode/cli-linux-x64-baseline": "7.7.5",
+		"@kilocode/cli-windows-x64-baseline": "7.7.5"
+	},
 	"devDependencies": {
 		"@kilo-desktop/testing": "workspace:*",
 		"@types/lodash": "^4.17.20",

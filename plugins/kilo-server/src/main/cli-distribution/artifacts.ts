@@ -1,10 +1,20 @@
 /** Pinned native packages distributed with the desktop application. */
-export const KILO_CLI_VERSION = "7.6.2";
+import packageJson from "../../../package.json" with { type: "json" };
+
+const CLI_PACKAGE_NAMES = [
+	"@kilocode/cli-darwin-arm64",
+	"@kilocode/cli-windows-x64-baseline",
+	"@kilocode/cli-linux-x64-baseline",
+] as const;
+
+const versions = new Set(CLI_PACKAGE_NAMES.map((name) => packageJson.optionalDependencies[name]));
+if (versions.size !== 1) throw new Error("Kilo CLI package versions must match.");
+
+export const KILO_CLI_VERSION = packageJson.optionalDependencies[CLI_PACKAGE_NAMES[0]];
 
 export interface KiloCliArtifact {
 	readonly target: string;
 	readonly packageName: string;
-	readonly integrity: string;
 	readonly platform: NodeJS.Platform;
 	readonly arch: NodeJS.Architecture;
 	readonly executable: "kilo" | "kilo.exe";
@@ -14,8 +24,6 @@ export const KILO_CLI_ARTIFACTS = [
 	{
 		target: "darwin-arm64",
 		packageName: "@kilocode/cli-darwin-arm64",
-		integrity:
-			"sha512-hBsGAYTLmmMHUQvsyXlL85O3DiU+HKgUgqAuJ5D3ak4DQtU826f2V4sDITcD1FMg9iF/yOs3EQtj1ROTTgMpBA==",
 		platform: "darwin",
 		arch: "arm64",
 		executable: "kilo",
@@ -23,8 +31,6 @@ export const KILO_CLI_ARTIFACTS = [
 	{
 		target: "windows-x64-baseline",
 		packageName: "@kilocode/cli-windows-x64-baseline",
-		integrity:
-			"sha512-Zriw1bv2iq9U/sguVwrcPRzUq0B36oXIkKx62ySv5DtwjeKPtNV690QMWpJtcztdyZefXFf8jCwiqMt0+wUqQg==",
 		platform: "win32",
 		arch: "x64",
 		executable: "kilo.exe",
@@ -32,8 +38,6 @@ export const KILO_CLI_ARTIFACTS = [
 	{
 		target: "linux-x64-baseline",
 		packageName: "@kilocode/cli-linux-x64-baseline",
-		integrity:
-			"sha512-TfTu7+xbpNSJ5oy9qLrAvN6VJy1PrYFjlr2KLnVi0FLIbM3oC5yZeZPB6cGU+bdpGL3M+lZUOssF/pL6sZBKBQ==",
 		platform: "linux",
 		arch: "x64",
 		executable: "kilo",

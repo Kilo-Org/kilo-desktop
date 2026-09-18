@@ -12,7 +12,7 @@ export default defineConfig({
 	test: {
 		coverage: {
 			...createCoverageConfig([
-				// Build-time CLI installer; exercised by fetch-cli and packaged smoke tests.
+				// Build-time CLI stager; exercised by fetch-cli and packaged smoke tests.
 				"src/main/cli-distribution/stage.ts",
 				"src/main/index.ts",
 				"src/web/index.ts",

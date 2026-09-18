@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import packageJson from "../../../package.json" with { type: "json" };
+
 import { getKiloCliArtifact, KILO_CLI_VERSION } from "./artifacts.js";
 
 describe("Kilo CLI distribution artifacts", () => {
 	it("pins the supported native targets and compatibility-first x64 variants", () => {
-		expect(KILO_CLI_VERSION).toBe("7.6.2");
+		expect(KILO_CLI_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(new Set(Object.values(packageJson.optionalDependencies))).toEqual(
+			new Set([KILO_CLI_VERSION]),
+		);
 		expect(getKiloCliArtifact("darwin", "arm64")).toMatchObject({
 			target: "darwin-arm64",
 			packageName: "@kilocode/cli-darwin-arm64",

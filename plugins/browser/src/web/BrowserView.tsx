@@ -80,6 +80,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const webviewRef = useRef<ElectronWebview | null>(null);
 	const attachedIdRef = useRef<number | undefined>(undefined);
+	const attachmentRetryPendingRef = useRef(false);
 	const attachmentReadyRef = useRef(false);
 	const crashCountRef = useRef(0);
 	const pendingUrlRef = useRef<string | undefined>(undefined);
@@ -197,6 +198,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 
 	useEffect(
 		() => () => {
+			attachmentRetryPendingRef.current = false;
 			attachmentReadyRef.current = false;
 			const webContentsId = attachedIdRef.current;
 			if (webContentsId) void sdk.client.detach({ instanceId, webContentsId });
@@ -204,38 +206,47 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 		[instanceId, sdk],
 	);
 
-	const attach = useCallback(() => {
-		const webview = webviewRef.current;
-		if (!webview) return;
-		try {
-			const webContentsId = webview.getWebContentsId();
-			if (
-				!Number.isInteger(webContentsId) ||
-				webContentsId <= 0 ||
-				attachedIdRef.current === webContentsId
-			)
-				return;
-			attachedIdRef.current = webContentsId;
-			attachmentReadyRef.current = false;
-			void sdk.client
-				.attach({ instanceId, webContentsId })
-				.then((nextState) => {
-					attachmentReadyRef.current = true;
-					setState(nextState);
-					const pendingUrl = pendingUrlRef.current;
-					if (!pendingUrl) return;
-					pendingUrlRef.current = undefined;
-					return sdk.client.navigate({ instanceId, url: pendingUrl });
-				})
-				.catch((cause: unknown) => {
-					attachmentReadyRef.current = false;
-					if (attachedIdRef.current === webContentsId) attachedIdRef.current = undefined;
-					setError(cause instanceof Error ? cause.message : "Unable to attach browser tab.");
-				});
-		} catch {
-			// The guest has not attached yet; dom-ready retries.
-		}
-	}, [instanceId, sdk]);
+	const attach = useCallback(
+		function attemptAttachment() {
+			const webview = webviewRef.current;
+			if (!webview) return;
+			try {
+				const webContentsId = webview.getWebContentsId();
+				if (!Number.isInteger(webContentsId) || webContentsId <= 0) return;
+				if (attachedIdRef.current === webContentsId) {
+					if (!attachmentReadyRef.current) attachmentRetryPendingRef.current = true;
+					return;
+				}
+				attachedIdRef.current = webContentsId;
+				attachmentRetryPendingRef.current = false;
+				attachmentReadyRef.current = false;
+				void sdk.client
+					.attach({ instanceId, webContentsId })
+					.then((nextState) => {
+						attachmentRetryPendingRef.current = false;
+						attachmentReadyRef.current = true;
+						setState(nextState);
+						const pendingUrl = pendingUrlRef.current;
+						if (!pendingUrl) return;
+						pendingUrlRef.current = undefined;
+						return sdk.client.navigate({ instanceId, url: pendingUrl });
+					})
+					.catch((cause: unknown) => {
+						attachmentReadyRef.current = false;
+						if (attachedIdRef.current === webContentsId) attachedIdRef.current = undefined;
+						if (attachmentRetryPendingRef.current) {
+							attachmentRetryPendingRef.current = false;
+							queueMicrotask(attemptAttachment);
+							return;
+						}
+						setError(cause instanceof Error ? cause.message : "Unable to attach browser tab.");
+					});
+			} catch {
+				// The guest has not attached yet; dom-ready retries.
+			}
+		},
+		[instanceId, sdk],
+	);
 	const closeMenu = useCallback(() => setMenuOpen(false), []);
 	useEffect(() => {
 		const webview = guestLease?.webview;

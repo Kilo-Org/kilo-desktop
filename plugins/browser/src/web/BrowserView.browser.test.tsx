@@ -85,6 +85,40 @@ describe("BrowserView", () => {
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledTimes(2));
 	});
 
+	it("replays dom-ready when it arrives during a failing attachment", async () => {
+		const instanceId = "browser-attachment-race";
+		let rejectFirstAttach!: (cause: Error) => void;
+		const attach = vi
+			.fn()
+			.mockImplementationOnce(
+				() =>
+					new Promise((_resolve, reject) => {
+						rejectFirstAttach = reject;
+					}),
+			)
+			.mockResolvedValueOnce({
+				instanceId,
+				webContentsId: 42,
+				url: "",
+				title: "",
+				faviconUrl: "",
+				loading: false,
+				canGoBack: false,
+				canGoForward: false,
+				zoomFactor: 1,
+			});
+		renderView({ config: async () => ({ partition: "persist:test" }), attach }, instanceId);
+		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+
+		const webview = document.querySelector("webview");
+		if (!webview) throw new Error("Expected browser webview");
+		webview.dispatchEvent(new Event("dom-ready"));
+		rejectFirstAttach(new Error("Guest host is not ready"));
+
+		await vi.waitFor(() => expect(attach).toHaveBeenCalledTimes(2));
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "false");
+	});
+
 	it("exposes guest attachment so navigation can wait for the host lease", async () => {
 		let resolveAttach!: (
 			state: Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>,

@@ -10,6 +10,7 @@ import {
 	type KiloChildProcess,
 	type KiloServerManagerOptions,
 } from "./KiloServerManager.js";
+import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
 
 class FakeChild extends EventEmitter implements KiloChildProcess {
@@ -53,7 +54,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 		},
 	);
 	const fetch = vi.fn(async () =>
-		Response.json({ healthy: true, version: "7.6.2" }),
+		Response.json({ healthy: true, version: KILO_CLI_VERSION }),
 	) as unknown as typeof globalThis.fetch;
 	const statuses: KiloServerStatus[] = [];
 	const manager = new KiloServerManager({
@@ -93,7 +94,7 @@ describe("KiloServerManager", () => {
 		expect(first).toMatchObject({
 			baseUrl: "http://127.0.0.1:4321",
 			username: "kilo",
-			version: "7.6.2",
+			version: KILO_CLI_VERSION,
 			globalDirectory: "/tmp/kilo-test-runtime",
 		});
 		expect(first.password).toMatch(/^[a-f0-9]{64}$/);
@@ -107,7 +108,7 @@ describe("KiloServerManager", () => {
 		);
 		expect(statuses).toEqual([
 			{ status: "starting" },
-			{ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.6.2" },
+			{ status: "ready", baseUrl: "http://127.0.0.1:4321", version: KILO_CLI_VERSION },
 		]);
 		await expect(manager.ensureRunning()).resolves.toEqual(first);
 		expect(spawn).toHaveBeenCalledOnce();
@@ -261,7 +262,7 @@ describe("KiloServerManager", () => {
 		) as unknown as typeof fetch;
 		const strict = createHarness({ fetch: mismatchFetch });
 		await expect(strict.manager.ensureRunning()).rejects.toThrow(
-			"Kilo server version mismatch: expected 7.6.2, got 9.0.0-dev.",
+			`Kilo server version mismatch: expected ${KILO_CLI_VERSION}, got 9.0.0-dev.`,
 		);
 
 		const override = createHarness({ fetch: mismatchFetch, allowVersionMismatch: true });
@@ -289,7 +290,7 @@ describe("KiloServerManager", () => {
 
 	it("rejects invalid and unhealthy health responses", async () => {
 		const invalid = createHarness({
-			fetch: vi.fn(async () => Response.json({ healthy: false, version: "7.6.2" })),
+			fetch: vi.fn(async () => Response.json({ healthy: false, version: KILO_CLI_VERSION })),
 		});
 		await expect(invalid.manager.ensureRunning()).rejects.toThrow(
 			"Kilo server returned an invalid health response.",

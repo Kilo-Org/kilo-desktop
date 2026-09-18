@@ -84,7 +84,7 @@ describe("packaged production dependencies", () => {
 		expect(forge).toContain("await moveDirectory(stagedNodeModules, packagedNodeModules)");
 	});
 
-	it("removes development artifacts and the externally staged bridge payload", async () => {
+	it("removes development artifacts and externally staged native payloads", async () => {
 		const nodeModules = await mkdtemp(path.join(os.tmpdir(), "kilo-production-dependencies-"));
 		temporaryDirectories.push(nodeModules);
 		const packageRoot = path.join(nodeModules, "@kilo-desktop", "plugin-example");
@@ -93,12 +93,14 @@ describe("packaged production dependencies", () => {
 			"@anaconda",
 			"desktop-bridge-payload-darwin-arm64",
 		);
+		const kiloCli = path.join(nodeModules, "@kilocode", "cli-darwin-arm64");
 		await Promise.all(
 			[".turbo", ".vitest", "coverage", "e2e", "dist"].map((directory) =>
 				mkdir(path.join(packageRoot, directory), { recursive: true }),
 			),
 		);
 		await mkdir(bridgePayload, { recursive: true });
+		await mkdir(kiloCli, { recursive: true });
 
 		await pruneProductionDependencies(nodeModules);
 
@@ -107,6 +109,7 @@ describe("packaged production dependencies", () => {
 		}
 		expect(existsSync(path.join(packageRoot, "dist"))).toBe(true);
 		expect(existsSync(bridgePayload)).toBe(false);
+		expect(existsSync(kiloCli)).toBe(false);
 	});
 
 	it("removes the bridge payload when no workspace package scope is staged", async () => {
@@ -352,7 +355,8 @@ describe("packaged production dependencies", () => {
 		);
 		expect(setupCli).toContain("plugins/kilo-server/resources/kilo");
 		expect(setupCli).toContain("runner.os");
-		expect(setupCli).toContain("plugins/kilo-server/src/main/cli-distribution/artifacts.ts");
+		expect(setupCli).toContain("plugins/kilo-server/package.json");
+		expect(setupCli).toContain("pnpm-lock.yaml");
 		expect(runE2e).toContain("./plugins/kilo-server/actions/setup-cli");
 		expect(build).toContain("./plugins/kilo-server/actions/setup-cli");
 		expect(publish).toContain("./plugins/kilo-server/actions/setup-cli");

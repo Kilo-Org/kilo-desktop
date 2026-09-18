@@ -14,6 +14,18 @@
 			"groupName": "Sentry packages"
 		},
 		{
+			"description": "Update all bundled Kilo CLI platform packages together for manual compatibility testing.",
+			"matchPackageNames": [
+				"@kilocode/cli-darwin-arm64",
+				"@kilocode/cli-linux-x64-baseline",
+				"@kilocode/cli-windows-x64-baseline"
+			],
+			"groupName": "Kilo CLI",
+			"minimumGroupSize": 3,
+			"rangeStrategy": "pin",
+			"automerge": false
+		},
+		{
 			"automerge": true,
 			"description": "Automatically merge minor and patch updates for GitHub Actions.",
 			"matchManagers": ["github-actions"],

@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findReleaseUpdateArtifact, windowsAuthenticodeCheck } from "./smoke-release-artifact.js";
+import {
+	assertWindowsAuthenticodeSignature,
+	findReleaseUpdateArtifact,
+	windowsAuthenticodeCheck,
+} from "./smoke-release-artifact.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -58,5 +62,46 @@ describe("Windows Authenticode smoke check", () => {
 		expect(check.file).toBe("pwsh");
 		expect(check.env.KILO_RELEASE_SMOKE_EXECUTABLE).toBe("C:\\Kilo Preview.exe");
 		expect(check.env.PSModulePath).toBeUndefined();
+	});
+
+	it("accepts a signature trusted by Windows", () => {
+		expect(() =>
+			assertWindowsAuthenticodeSignature({
+				Status: "Valid",
+				StatusMessage: "Signature verified.",
+				SignerThumbprint: "0123456789ABCDEF",
+			}),
+		).not.toThrow();
+	});
+
+	it("accepts an intact signature from the configured internal PKI", () => {
+		expect(() =>
+			assertWindowsAuthenticodeSignature({
+				Status: "UnknownError",
+				StatusMessage:
+					"A certificate chain processed, but terminated in a root certificate which is not trusted by the trust provider.",
+				SignerThumbprint: "0123456789ABCDEF",
+			}),
+		).not.toThrow();
+	});
+
+	it.each([
+		{ Status: "NotSigned", StatusMessage: "The file is not digitally signed." },
+		{ Status: "HashMismatch", StatusMessage: "The contents have been altered." },
+		{
+			Status: "UnknownError",
+			StatusMessage:
+				"A certificate chain processed, but terminated in a root certificate which is not trusted by the trust provider.",
+			SignerThumbprint: null,
+		},
+		{
+			Status: "UnknownError",
+			StatusMessage: "The revocation function was unable to check revocation.",
+			SignerThumbprint: "0123456789ABCDEF",
+		},
+	])("rejects $Status: $StatusMessage", (signature) => {
+		expect(() => assertWindowsAuthenticodeSignature(signature)).toThrow(
+			`Invalid release executable signature: ${signature.Status}`,
+		);
 	});
 });

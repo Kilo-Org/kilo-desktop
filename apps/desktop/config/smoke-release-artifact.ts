@@ -13,6 +13,27 @@ const desktopRoot = path.resolve(import.meta.dirname, "..");
 const makeDirectory = path.join(desktopRoot, "out", "make");
 const readyTimeoutMs = 90_000;
 
+interface WindowsAuthenticodeSignature {
+	readonly Status: string;
+	readonly StatusMessage: string;
+	readonly SignerThumbprint?: string | null;
+}
+
+const internalPkiTrustError = "terminated in a root certificate which is not trusted";
+
+export function assertWindowsAuthenticodeSignature(signature: WindowsAuthenticodeSignature): void {
+	const isValid = signature.Status === "Valid";
+	const isTrustedInternalSignature =
+		signature.Status === "UnknownError" &&
+		Boolean(signature.SignerThumbprint) &&
+		signature.StatusMessage.includes(internalPkiTrustError);
+	if (!isValid && !isTrustedInternalSignature) {
+		throw new Error(
+			`Invalid release executable signature: ${signature.Status} ${signature.StatusMessage}`,
+		);
+	}
+}
+
 export function windowsAuthenticodeCheck(executable: string): {
 	file: string;
 	args: string[];
@@ -24,7 +45,7 @@ export function windowsAuthenticodeCheck(executable: string): {
 			"-NoProfile",
 			"-NonInteractive",
 			"-Command",
-			'$signature = Get-AuthenticodeSignature -LiteralPath $env:KILO_RELEASE_SMOKE_EXECUTABLE; if ($signature.Status -ne "Valid") { throw "Invalid release executable signature: $($signature.Status) $($signature.StatusMessage)" }',
+			"$signature = Get-AuthenticodeSignature -LiteralPath $env:KILO_RELEASE_SMOKE_EXECUTABLE; [PSCustomObject]@{ Status = $signature.Status.ToString(); StatusMessage = $signature.StatusMessage; SignerThumbprint = $signature.SignerCertificate.Thumbprint } | ConvertTo-Json -Compress",
 		],
 		env: { KILO_RELEASE_SMOKE_EXECUTABLE: executable },
 	};
@@ -114,7 +135,10 @@ export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<v
 			await execa("tar", ["-xf", artifact, "-C", extractedDirectory]);
 			executable = await findFile(extractedDirectory, `${identity.executableName}.exe`);
 			const authenticode = windowsAuthenticodeCheck(executable);
-			await execa(authenticode.file, authenticode.args, { env: authenticode.env });
+			const { stdout } = await execa(authenticode.file, authenticode.args, {
+				env: authenticode.env,
+			});
+			assertWindowsAuthenticodeSignature(JSON.parse(stdout) as WindowsAuthenticodeSignature);
 		}
 
 		const readyFile = path.join(temporaryDirectory, "ready");

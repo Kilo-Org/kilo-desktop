@@ -2,6 +2,20 @@ import { useState } from "react";
 
 import type { DesktopUpdateState } from "@kilo-desktop/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Field,
+	FieldContent,
+	FieldDescription,
+	FieldLabel,
+} from "@kilo-desktop/ui/components/field";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@kilo-desktop/ui/components/select";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { ReleaseNotesList } from "@/components/updates/ReleaseNotesList";
@@ -13,9 +27,10 @@ export function AboutSettings() {
 	const state = updates?.state;
 	const targetRelease = state?.releaseNotes.find((release) => release.items.length > 0);
 	const [pending, setPending] = useState(false);
+	const updateBusy = pending || state?.status === "checking" || state?.status === "downloading";
 
 	const check = async () => {
-		if (!updates) return;
+		if (!updates || pending) return;
 		setPending(true);
 		try {
 			const result = await updates.check();
@@ -24,6 +39,25 @@ export function AboutSettings() {
 			}
 		} catch (error) {
 			toast.error("Could not check for updates", {
+				description: error instanceof Error ? error.message : "An unexpected error occurred.",
+			});
+		} finally {
+			setPending(false);
+		}
+	};
+
+	const setTrack = async (track: "stable" | "preview" | null) => {
+		if (!updates || pending || !track || track === state?.track) return;
+		setPending(true);
+		try {
+			const result = await updates.setTrack(track);
+			if (!result.accepted) {
+				toast.error("Could not change update track", {
+					description: result.state.message ?? "The update track could not be changed.",
+				});
+			}
+		} catch (error) {
+			toast.error("Could not change update track", {
 				description: error instanceof Error ? error.message : "An unexpected error occurred.",
 			});
 		} finally {
@@ -61,13 +95,13 @@ export function AboutSettings() {
 				<div className="flex flex-col gap-4 p-4 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-8">
 					<div className="min-w-0 space-y-0.5">
 						<div className="flex items-baseline gap-2">
-							<h2 className="text-sm leading-tight font-medium tracking-[-0.005em]">Version</h2>
+							<h2 className="text-sm leading-tight font-medium">Version</h2>
 							<code className="text-muted-foreground text-[11px] font-medium">
 								{state?.currentVersion ?? "Loading…"}
 							</code>
 						</div>
 						<p
-							className="text-muted-foreground/80 max-w-xl text-sm leading-snug"
+							className="text-muted-foreground max-w-xl text-xs"
 							data-qa-id="update-status-message"
 						>
 							{getUpdateDescription(state)}
@@ -83,12 +117,7 @@ export function AboutSettings() {
 							<Button
 								size="sm"
 								variant="outline"
-								disabled={
-									!state?.enabled ||
-									pending ||
-									state.status === "checking" ||
-									state.status === "downloading"
-								}
+								disabled={!state?.enabled || updateBusy}
 								data-qa-id="update-check"
 								onClick={() => void check()}
 							>
@@ -96,6 +125,47 @@ export function AboutSettings() {
 							</Button>
 						)}
 					</div>
+				</div>
+
+				<div className="border-border border-t p-4">
+					<Field orientation="horizontal" className="justify-between gap-6">
+						<FieldContent>
+							<FieldLabel className="text-sm" htmlFor="update-track">
+								Update track
+							</FieldLabel>
+							<FieldDescription className="text-xs">
+								Use stable releases or preview builds.
+							</FieldDescription>
+						</FieldContent>
+						<Select
+							value={state?.track ?? "preview"}
+							items={[
+								{ value: "stable", label: "Stable" },
+								{ value: "preview", label: "Preview" },
+							]}
+							onValueChange={(track) => void setTrack(track)}
+						>
+							<SelectTrigger
+								id="update-track"
+								aria-label="Update track"
+								className="ml-auto w-40 shrink-0"
+								disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
+								data-qa-id="update-track"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent align="end" alignItemWithTrigger={false}>
+								<SelectGroup>
+									<SelectItem value="stable" data-qa-id="update-track-stable">
+										Stable
+									</SelectItem>
+									<SelectItem value="preview" data-qa-id="update-track-preview">
+										Preview
+									</SelectItem>
+								</SelectGroup>
+							</SelectContent>
+						</Select>
+					</Field>
 				</div>
 
 				{state?.releaseNotes.some((release) => release.items.length > 0) ? (

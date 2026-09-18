@@ -161,6 +161,13 @@ export function createBrowserLocalApi(): LocalApi {
 			async check() {
 				return { accepted: false, state: await this.getState() };
 			},
+			async setTrack() {
+				const state = await this.getState();
+				return {
+					accepted: false,
+					state: { ...state, message: "Update tracks are available in the desktop app." },
+				};
+			},
 			async install() {
 				return { accepted: false, state: await this.getState() };
 			},

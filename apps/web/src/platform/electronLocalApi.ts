@@ -70,6 +70,7 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 		updates: {
 			getState: () => invoke("updates:get-state"),
 			check: () => invoke("updates:check"),
+			setTrack: (track) => invoke("updates:set-track", track),
 			install: () => invoke("updates:install"),
 			onChanged: (listener) => bridge.on("updates:state-changed", listener),
 		},

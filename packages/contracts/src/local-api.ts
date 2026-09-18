@@ -3,7 +3,11 @@ import type { NotificationDeliveryResult } from "./features/notifications.js";
 import type { PaneWindow, PaneWindowEvent } from "./features/shell.js";
 import type { TelemetryTrackInput } from "./features/telemetry.js";
 import type { ThemeState } from "./features/theme.js";
-import type { DesktopUpdateActionResult, DesktopUpdateState } from "./features/updates.js";
+import type {
+	DesktopUpdateActionResult,
+	DesktopUpdateState,
+	ReleaseTrack,
+} from "./features/updates.js";
 import type { IpcError } from "./result.js";
 
 /**
@@ -79,6 +83,7 @@ export interface LocalApi {
 	updates: {
 		getState(): Promise<DesktopUpdateState>;
 		check(): Promise<DesktopUpdateActionResult>;
+		setTrack(track: ReleaseTrack): Promise<DesktopUpdateActionResult>;
 		install(): Promise<DesktopUpdateActionResult>;
 		onChanged(listener: (state: DesktopUpdateState) => void): () => void;
 	};

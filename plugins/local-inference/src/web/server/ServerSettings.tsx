@@ -121,8 +121,8 @@ export function ServerSettings({
 	}, [dirty, modelLoadMode, port, serveOnLocalNetwork]);
 
 	return (
-		<FieldGroup className="gap-5">
-			<Field orientation="horizontal" className="gap-6">
+		<FieldGroup className="gap-0">
+			<Field orientation="horizontal" className="gap-6 p-4">
 				<FieldContent>
 					<FieldLabel className="text-sm" htmlFor="local-model-server-port">
 						Server Port
@@ -145,11 +145,11 @@ export function ServerSettings({
 						setLocalError(null);
 						setDirty(true);
 					}}
-					className="h-8 w-36 shrink-0 text-sm"
+					className="ml-auto h-8 w-36 shrink-0 text-sm"
 					data-qa-id="local-model-server-port"
 				/>
 			</Field>
-			<Field orientation="horizontal" className="gap-6">
+			<Field orientation="horizontal" className="border-border gap-6 border-t p-4">
 				<FieldContent>
 					<FieldLabel className="text-sm" htmlFor="local-model-server-load-mode">
 						Models kept loaded
@@ -172,7 +172,7 @@ export function ServerSettings({
 					<SelectTrigger
 						id="local-model-server-load-mode"
 						size="sm"
-						className="w-36 shrink-0"
+						className="ml-auto w-36 shrink-0"
 						aria-label="Models kept loaded"
 						data-qa-id="local-model-server-load-mode"
 					>
@@ -186,7 +186,7 @@ export function ServerSettings({
 					</SelectContent>
 				</Select>
 			</Field>
-			<Field orientation="horizontal" className="gap-6">
+			<Field orientation="horizontal" className="border-border gap-6 border-t p-4">
 				<FieldContent>
 					<FieldLabel className="text-sm" htmlFor="local-model-server-lan">
 						Serve on Local Network
@@ -197,7 +197,7 @@ export function ServerSettings({
 				</FieldContent>
 				<Switch
 					id="local-model-server-lan"
-					className="shrink-0"
+					className="ml-auto shrink-0 self-center"
 					checked={serveOnLocalNetwork}
 					disabled={disabled}
 					onCheckedChange={(checked) => {
@@ -210,7 +210,7 @@ export function ServerSettings({
 				/>
 			</Field>
 			{localError || error ? (
-				<FieldError className="text-sm">{localError ?? error}</FieldError>
+				<FieldError className="px-4 pb-4 text-sm">{localError ?? error}</FieldError>
 			) : null}
 		</FieldGroup>
 	);

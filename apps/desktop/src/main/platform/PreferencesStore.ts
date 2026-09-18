@@ -2,7 +2,9 @@ import Store from "electron-store";
 
 import {
 	normalizeAppThemePreferences,
+	releaseTrackSchema,
 	themeSourceSchema,
+	type ReleaseTrack,
 	type ThemeSource,
 } from "@kilo-desktop/contracts";
 
@@ -14,6 +16,8 @@ export interface AppPreferences {
 	allowDataCollection?: boolean;
 	/** Stable per-install id, generated once and persisted across sessions. */
 	installationId?: string;
+	/** User-selected desktop update track; unset follows the build's release track. */
+	releaseTrack?: ReleaseTrack;
 }
 
 /** Owns persisted shell preferences; invalid theme values fall back to application defaults. */
@@ -52,6 +56,15 @@ export class PreferencesStore {
 
 	setAllowDataCollection(allow: boolean): void {
 		this.#store.set("allowDataCollection", allow);
+	}
+
+	getReleaseTrack(fallback: ReleaseTrack): ReleaseTrack {
+		const parsed = releaseTrackSchema.safeParse(this.#store.get("releaseTrack"));
+		return parsed.success ? parsed.data : fallback;
+	}
+
+	setReleaseTrack(track: ReleaseTrack): void {
+		this.#store.set("releaseTrack", releaseTrackSchema.parse(track));
 	}
 
 	/**

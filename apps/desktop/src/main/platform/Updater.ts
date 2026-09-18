@@ -36,6 +36,7 @@ interface DesktopUpdaterServiceOptions {
 	readonly fetch: typeof globalThis.fetch;
 	readonly installWithShutdown: (install: () => void) => void;
 	readonly broadcast: (state: DesktopUpdateState) => void;
+	readonly persistTrack: (track: ReleaseTrack) => void;
 	readonly logger: {
 		info(message: string): void;
 		warn(message: string, error?: unknown): void;
@@ -47,9 +48,11 @@ interface DesktopUpdaterServiceOptions {
 /**
  * Owns the native updater lifecycle and its renderer-facing state machine.
  * Electron remains the sole source of update truth: renderer actions only ask
- * this service to check or install, and every native event is reduced here
- * before a validated snapshot is broadcast. Release-note network failures are
- * isolated from the binary path so content can never make an update unavailable.
+ * this service to check, switch tracks, or install, and every native event is
+ * reduced here before a validated snapshot is broadcast. Track changes are
+ * persisted only when no update payload is active, and feed assignment is
+ * rolled back if persistence fails. Release-note network failures are isolated
+ * from the binary path so content can never make an update unavailable.
  */
 export class DesktopUpdaterService {
 	readonly #options: DesktopUpdaterServiceOptions;
@@ -146,6 +149,49 @@ export class DesktopUpdaterService {
 		}
 	}
 
+	async setTrack(track: ReleaseTrack): Promise<DesktopUpdateActionResult> {
+		if (this.#disposed) return { accepted: false, state: this.#state };
+		if (track === this.#state.track) return { accepted: false, state: this.#state };
+		if (
+			this.#checkInFlight ||
+			this.#state.status === "checking" ||
+			this.#state.status === "downloading" ||
+			this.#state.status === "downloaded"
+		) {
+			return {
+				accepted: false,
+				state: {
+					...this.#state,
+					message: "Finish the current update before changing update tracks.",
+				},
+			};
+		}
+
+		const previousTrack = this.#state.track;
+		if (this.#state.enabled) this.#updater.setFeedURL(this.#feedOptions(track));
+		try {
+			this.#options.persistTrack(track);
+		} catch (error) {
+			if (this.#state.enabled) this.#updater.setFeedURL(this.#feedOptions(previousTrack));
+			throw error;
+		}
+
+		this.#latestReleaseNotes = null;
+		this.#state = {
+			...this.#state,
+			status: this.#state.enabled ? "idle" : "disabled",
+			track,
+			availableVersion: null,
+			downloadedVersion: null,
+			releaseNotes: [],
+			checkedAt: null,
+			message: this.#state.enabled ? null : this.#disabledReason(),
+		};
+		this.#options.broadcast(this.#state);
+		if (this.#state.enabled) await this.check();
+		return { accepted: true, state: this.#state };
+	}
+
 	install(): DesktopUpdateActionResult {
 		if (!this.#state.enabled || this.#state.status !== "downloaded" || this.#disposed) {
 			return { accepted: false, state: this.#state };
@@ -179,10 +225,10 @@ export class DesktopUpdaterService {
 		return null;
 	}
 
-	#feedOptions(): FeedURLOptions {
+	#feedOptions(track: ReleaseTrack = this.#state.track): FeedURLOptions {
 		const feedUrl = getUpdateFeedUrl({
 			publishUrl: this.#options.publishUrl,
-			track: this.#options.track,
+			track,
 			platform: this.#options.platform,
 			arch: this.#options.arch,
 		});
@@ -239,7 +285,7 @@ export class DesktopUpdaterService {
 	): Promise<DesktopReleaseNotes[]> {
 		if (!target) return [];
 		const releases = [target];
-		if (this.#options.track !== "preview") return releases;
+		if (this.#state.track !== "preview") return releases;
 
 		const seen = new Set([target.version]);
 		let previousVersion = target.previousVersion;
@@ -264,7 +310,7 @@ export class DesktopUpdaterService {
 	async #fetchReleaseNotes(version?: string): Promise<DesktopReleaseNotes | null> {
 		const url = getReleaseNotesUrl({
 			publishUrl: this.#options.publishUrl,
-			track: this.#options.track,
+			track: this.#state.track,
 			...(version ? { version } : {}),
 		});
 		if (!url) return null;
@@ -281,7 +327,7 @@ export class DesktopUpdaterService {
 			const parsed = desktopReleaseNotesSchema.safeParse(JSON.parse(body));
 			if (
 				!parsed.success ||
-				parsed.data.track !== this.#options.track ||
+				parsed.data.track !== this.#state.track ||
 				(version !== undefined && parsed.data.version !== version)
 			) {
 				throw new Error("Release notes did not match the expected schema or track.");

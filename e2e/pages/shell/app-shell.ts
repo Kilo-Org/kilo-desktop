@@ -76,6 +76,10 @@ export class AppShellPage {
 			getLocatorByTestId("update-status-message"),
 			"About settings should report why updates are unavailable without a configured feed",
 		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("update-track"),
+			"About settings should show the selected update track",
+		);
 	}
 
 	async leaveSettings(): Promise<void> {

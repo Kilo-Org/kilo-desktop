@@ -137,6 +137,25 @@ describe("createElectronLocalApi", () => {
 		expect(invoke).toHaveBeenCalledWith("telemetry:track", input);
 	});
 
+	it("forwards update track changes through the bridge", async () => {
+		const state = {
+			enabled: true,
+			status: "idle",
+			track: "stable",
+			currentVersion: "1.0.0",
+			availableVersion: null,
+			downloadedVersion: null,
+			releaseNotes: [],
+			checkedAt: null,
+			message: null,
+		} as const;
+		const invoke = vi.fn().mockResolvedValue({ ok: true, value: { accepted: true, state } });
+		const api = createElectronLocalApi(makeBridge({ invoke }));
+
+		await expect(api.updates.setTrack("stable")).resolves.toEqual({ accepted: true, state });
+		expect(invoke).toHaveBeenCalledWith("updates:set-track", "stable");
+	});
+
 	it("throws LocalApiError when the bridge returns ok: false", async () => {
 		const bridge = makeBridge({
 			invoke: vi.fn().mockResolvedValue({

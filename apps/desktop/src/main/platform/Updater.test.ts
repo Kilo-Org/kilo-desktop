@@ -34,6 +34,7 @@ function createService(
 		fetch?: typeof fetch;
 		updater?: FakeNativeUpdater;
 		installWithShutdown?: (install: () => void) => void;
+		persistTrack?: (track: ReleaseTrack) => void;
 		track?: ReleaseTrack;
 		currentVersion?: string;
 	} = {},
@@ -52,6 +53,7 @@ function createService(
 			overrides.fetch ??
 			((async () => new Response(JSON.stringify(notes), { status: 200 })) as typeof fetch),
 		broadcast: (state) => states.push(state),
+		persistTrack: overrides.persistTrack ?? vi.fn(),
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		updater: updater as never,
 	});
@@ -190,5 +192,95 @@ describe("DesktopUpdaterService", () => {
 		service.start();
 		expect(service.state).toMatchObject({ enabled: false, status: "disabled" });
 		expect(updater.setFeedURL).not.toHaveBeenCalled();
+	});
+
+	it("persists a new track, repoints the feed, resets state, and checks immediately", async () => {
+		vi.useFakeTimers();
+		const persistTrack = vi.fn();
+		const stableNotes = { ...notes, track: "stable" as const, version: "1.3.0" };
+		const { service, updater, states } = createService({
+			persistTrack,
+			fetch: (async () => new Response(JSON.stringify(stableNotes))) as typeof fetch,
+		});
+		service.start();
+
+		const result = await service.setTrack("stable");
+
+		expect(result.accepted).toBe(true);
+		expect(persistTrack).toHaveBeenCalledWith("stable");
+		expect(updater.setFeedURL).toHaveBeenLastCalledWith({
+			url: "https://updates.example.com/kilo-desktop/latest/darwin/arm64/RELEASES.json",
+			serverType: "json",
+		});
+		expect(updater.checkForUpdates).toHaveBeenCalledOnce();
+		expect(service.state).toMatchObject({ track: "stable", status: "checking" });
+		expect(states).toContainEqual(expect.objectContaining({ track: "stable", status: "idle" }));
+		service.dispose();
+	});
+
+	it("persists track selection without touching the native updater when disabled", async () => {
+		const persistTrack = vi.fn();
+		const { service, updater } = createService({ isPackaged: false, persistTrack });
+
+		const result = await service.setTrack("stable");
+
+		expect(result).toMatchObject({
+			accepted: true,
+			state: { track: "stable", status: "disabled" },
+		});
+		expect(persistTrack).toHaveBeenCalledWith("stable");
+		expect(updater.setFeedURL).not.toHaveBeenCalled();
+		expect(updater.checkForUpdates).not.toHaveBeenCalled();
+	});
+
+	it("rejects track changes while an update action or payload is active", async () => {
+		vi.useFakeTimers();
+		const persistTrack = vi.fn();
+		const { service, updater } = createService({ persistTrack });
+		service.start();
+		await service.check();
+
+		const checking = await service.setTrack("stable");
+		expect(checking).toMatchObject({
+			accepted: false,
+			state: { track: "preview", message: expect.stringContaining("current update") },
+		});
+		updater.emit("update-available");
+		const downloading = await service.setTrack("stable");
+		expect(downloading.accepted).toBe(false);
+		expect(persistTrack).not.toHaveBeenCalled();
+		service.dispose();
+	});
+
+	it("rejects track changes after dispose", async () => {
+		const persistTrack = vi.fn();
+		const { service, updater } = createService({ persistTrack });
+		service.start();
+		updater.setFeedURL.mockClear();
+		service.dispose();
+
+		const result = await service.setTrack("stable");
+
+		expect(result).toMatchObject({ accepted: false, state: { track: "preview" } });
+		expect(persistTrack).not.toHaveBeenCalled();
+		expect(updater.setFeedURL).not.toHaveBeenCalled();
+		expect(updater.checkForUpdates).not.toHaveBeenCalled();
+	});
+
+	it("restores the previous feed when track persistence fails", async () => {
+		vi.useFakeTimers();
+		const persistTrack = vi.fn(() => {
+			throw new Error("disk full");
+		});
+		const { service, updater } = createService({ persistTrack });
+		service.start();
+
+		await expect(service.setTrack("stable")).rejects.toThrow("disk full");
+		expect(updater.setFeedURL).toHaveBeenLastCalledWith({
+			url: "https://updates.example.com/kilo-desktop/preview/darwin/arm64/RELEASES.json",
+			serverType: "json",
+		});
+		expect(service.state.track).toBe("preview");
+		service.dispose();
 	});
 });

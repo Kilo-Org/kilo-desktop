@@ -137,12 +137,13 @@ export class Application {
 				isPackaged: this.#app.metadata.isPackaged,
 				platform: process.platform,
 				arch: process.arch,
-				track: RELEASE_TRACK,
+				track: preferences.getReleaseTrack(RELEASE_TRACK),
 				currentVersion: this.#app.metadata.appVersion,
 				publishUrl: UPDATE_PUBLISH_URL,
 				fetch: this.#http.fetch,
 				installWithShutdown: (install) => this.#shutdown.requestExternalQuit(install),
 				broadcast: (state) => this.#windows.broadcast("updates:state-changed", state),
+				persistTrack: (track) => preferences.setReleaseTrack(track),
 				logger: createLogger("updates"),
 			});
 			this.#updates = updates;

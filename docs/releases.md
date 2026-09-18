@@ -20,7 +20,7 @@ configuration.
 | `stable`  | Stable customer release            | Customers                  | `vX.Y.Z` tag or manual `Release` run      |
 
 Development has an isolated identity. Preview and Stable intentionally share one durable
-packaged identity so a future update-track switcher can move the installed app between tracks:
+packaged identity so the About settings update-track selector can move the installed app between tracks:
 
 | Environment       | Product name | Identity suffix |
 | ----------------- | ------------ | --------------- |
@@ -31,8 +31,10 @@ packaged identity so a future update-track switcher can move the installed app b
 The development suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
 Linux package and executable names, and Electron's application name. Preview and Stable share the
 same bundle ID, Squirrel identity, executable, protocol registration, single-instance scope, and
-default user-data directory. Installing one replaces the other; runtime track selection and
-Preview-to-Stable downgrade handling remain future work.
+default user-data directory. Installing one replaces the other. Track selection repoints the
+native update feed immediately and persists across restarts. Electron's native updater does not
+force downgrades, so a newer Preview installation returns to Stable only when the Stable channel
+publishes a version that sorts newer than the installed Preview.
 
 ## Distribution matrix
 

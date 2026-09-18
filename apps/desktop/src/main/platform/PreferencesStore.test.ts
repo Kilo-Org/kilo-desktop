@@ -70,6 +70,21 @@ describe("PreferencesStore", () => {
 		});
 	});
 
+	describe("releaseTrack", () => {
+		it("falls back when unset or invalid and round-trips a valid selection", () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never);
+
+			expect(preferences.getReleaseTrack("preview")).toBe("preview");
+			preferences.setReleaseTrack("stable");
+			expect(store.set).toHaveBeenCalledWith("releaseTrack", "stable");
+			expect(preferences.getReleaseTrack("preview")).toBe("stable");
+
+			store.get.mockReturnValue("nightly");
+			expect(preferences.getReleaseTrack("preview")).toBe("preview");
+		});
+	});
+
 	describe("getInstallationId", () => {
 		it("generates and persists an id on first read", () => {
 			const store = createFakeStore();

@@ -51,6 +51,7 @@ export type DesktopUpdateActionResult = z.infer<typeof desktopUpdateActionResult
 export const updateMethods = {
 	"updates:get-state": defineMethod(z.undefined(), desktopUpdateStateSchema),
 	"updates:check": defineMethod(z.undefined(), desktopUpdateActionResultSchema),
+	"updates:set-track": defineMethod(releaseTrackSchema, desktopUpdateActionResultSchema),
 	"updates:install": defineMethod(z.undefined(), desktopUpdateActionResultSchema),
 } as const;
 

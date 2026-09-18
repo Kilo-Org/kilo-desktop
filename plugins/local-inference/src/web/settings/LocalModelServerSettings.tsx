@@ -570,9 +570,9 @@ export function LocalModelServerSettings() {
 						Configure how the server runs, loads models, and accepts connections.
 					</p>
 				</div>
-				<div className="bg-card min-w-0 rounded-xl border p-4">
+				<div className="bg-card min-w-0 overflow-hidden rounded-xl border">
 					{serverSettings.isPending ? (
-						<div className="flex min-w-0 flex-col gap-5" aria-label="Loading server settings">
+						<div className="flex min-w-0 flex-col gap-5 p-4" aria-label="Loading server settings">
 							<Skeleton className="h-14 w-full" />
 							<Skeleton className="h-14 w-full" />
 							<Skeleton className="h-14 w-full" />

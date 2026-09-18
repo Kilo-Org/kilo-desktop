@@ -44,6 +44,7 @@ function updateApi(
 		updates: {
 			getState: async () => state,
 			check: async () => ({ accepted: true, state }),
+			setTrack: async () => ({ accepted: false, state }),
 			install: async () => ({ accepted: true, state }),
 			onChanged: () => () => {},
 			...overrides,
@@ -173,10 +174,72 @@ describe("update UI", () => {
 			.element(page.getByText("1.2.2-preview-260825-12000", { exact: true }))
 			.toBeVisible();
 		await expect.element(page.getByText("Improved retry behavior", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("Release track")).not.toBeInTheDocument();
+		await expect.element(page.getByText("Update track", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("Update status")).not.toBeInTheDocument();
 		await expect.element(page.getByText("Last checked")).not.toBeInTheDocument();
 		expect(page.getByTestId("update-release-notes").element().textContent).not.toContain("#");
+	});
+
+	it("disables the track selector while an update is in progress or ready", async () => {
+		for (const status of ["checking", "downloading", "downloaded"] as const) {
+			cleanup();
+			const state = {
+				...downloadedState,
+				status,
+				...(status === "downloaded"
+					? {}
+					: { downloadedVersion: null, releaseNotes: [] as typeof downloadedState.releaseNotes }),
+			};
+			renderUpdates(updateApi(state), <AboutSettings />);
+			await expect.element(page.getByTestId("update-track")).toBeDisabled();
+			if (status !== "downloaded") {
+				await expect.element(page.getByTestId("update-check")).toBeDisabled();
+			}
+		}
+	});
+
+	it("disables check and track controls while a check is pending", async () => {
+		const idleState = {
+			...downloadedState,
+			status: "idle" as const,
+			downloadedVersion: null,
+			releaseNotes: [],
+		};
+		let resolveCheck: ((value: { accepted: true; state: typeof idleState }) => void) | undefined;
+		const check = vi.fn(
+			() =>
+				new Promise<{ accepted: true; state: typeof idleState }>((resolve) => {
+					resolveCheck = resolve;
+				}),
+		);
+		renderUpdates(updateApi(idleState, { check }), <AboutSettings />);
+
+		await page.getByTestId("update-check").click();
+		await expect.element(page.getByTestId("update-check")).toBeDisabled();
+		await expect.element(page.getByTestId("update-track")).toBeDisabled();
+
+		await act(async () => {
+			resolveCheck?.({ accepted: true, state: idleState });
+		});
+	});
+
+	it("changes the update track from About settings", async () => {
+		const idleState = {
+			...downloadedState,
+			status: "idle" as const,
+			downloadedVersion: null,
+			releaseNotes: [],
+		};
+		const stableState = { ...idleState, track: "stable" as const };
+		const previewState = { ...idleState, track: "preview" as const };
+		const setTrack = vi.fn(async () => ({ accepted: true, state: previewState }));
+		renderUpdates(updateApi(stableState, { setTrack }), <AboutSettings />);
+
+		await page.getByTestId("update-track").click();
+		await page.getByTestId("update-track-preview").click();
+
+		await vi.waitFor(() => expect(setTrack).toHaveBeenCalledWith("preview"));
+		expect(page.getByTestId("update-track").element().textContent).toContain("Preview");
 	});
 
 	it("checks again and renders updater status details", async () => {

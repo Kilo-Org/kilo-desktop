@@ -1,12 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import type { DesktopUpdateActionResult, DesktopUpdateState } from "@kilo-desktop/contracts";
+import type {
+	DesktopUpdateActionResult,
+	DesktopUpdateState,
+	ReleaseTrack,
+} from "@kilo-desktop/contracts";
 
 import { useLocalApi } from "../LocalApiProvider";
 
 interface UpdateContextValue {
 	readonly state: DesktopUpdateState | null;
 	readonly check: () => Promise<DesktopUpdateActionResult>;
+	readonly setTrack: (track: ReleaseTrack) => Promise<DesktopUpdateActionResult>;
 	readonly install: () => Promise<DesktopUpdateActionResult>;
 }
 
@@ -95,6 +100,12 @@ export function UpdateProvider({ children }: { readonly children: ReactNode }) {
 			check: async () => {
 				if (UPDATE_PREVIEW_STATE) return { accepted: false, state: UPDATE_PREVIEW_STATE };
 				const result = await api.updates.check();
+				setState(result.state);
+				return result;
+			},
+			setTrack: async (track) => {
+				if (UPDATE_PREVIEW_STATE) return { accepted: false, state: UPDATE_PREVIEW_STATE };
+				const result = await api.updates.setTrack(track);
 				setState(result.state);
 				return result;
 			},

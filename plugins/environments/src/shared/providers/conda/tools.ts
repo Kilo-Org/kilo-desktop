@@ -13,6 +13,7 @@ import {
 	condaPackagesUpdateInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
+import { requireEnvironmentToolSignIn } from "../../auth-capabilities.js";
 
 /**
  * Register provider-scoped WebMCP tools for the conda provider. Called by
@@ -42,6 +43,21 @@ import {
  */
 export function registerCondaTools(sdk: SDK): void {
 	sdk.tools.register({
+		name: "conda.setup.open",
+		description:
+			"Open Environments settings in the desktop app so the user can create an environment " +
+			"and choose package channels. Use this when the user asks to set up or configure an " +
+			"environment or channel. Requires Anaconda sign-in before opening.",
+		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		exposeToModelContext: true,
+		handler: async () => {
+			await requireEnvironmentToolSignIn(sdk);
+			sdk.navigate("/settings/environments");
+			return { opened: true };
+		},
+	});
+
+	sdk.tools.register({
 		name: "conda.envs.list",
 		description:
 			"The result is rendered as an interactive UI widget in the chat. " +
@@ -66,7 +82,10 @@ export function registerCondaTools(sdk: SDK): void {
 		inputSchema: z.toJSONSchema(mcpCreateSchema, { target: "draft-2020-12" }),
 		validate: mcpCreateSchema,
 		exposeToModelContext: true,
-		handler: (args) => sdk.invoke("conda.envs.create", args),
+		handler: async (args) => {
+			await requireEnvironmentToolSignIn(sdk);
+			return sdk.invoke("conda.envs.create", args);
+		},
 	});
 
 	sdk.tools.register({
@@ -90,7 +109,10 @@ export function registerCondaTools(sdk: SDK): void {
 		inputSchema: z.toJSONSchema(condaEnvsCloneInputSchema, { target: "draft-2020-12" }),
 		validate: condaEnvsCloneInputSchema,
 		exposeToModelContext: true,
-		handler: (args) => sdk.invoke("conda.envs.clone", args),
+		handler: async (args) => {
+			await requireEnvironmentToolSignIn(sdk);
+			return sdk.invoke("conda.envs.clone", args);
+		},
 	});
 
 	// createFromFile accepts an unconstrained filesystem path — intentionally
@@ -135,7 +157,10 @@ export function registerCondaTools(sdk: SDK): void {
 		inputSchema: z.toJSONSchema(condaPackagesInstallInputSchema, { target: "draft-2020-12" }),
 		validate: condaPackagesInstallInputSchema,
 		exposeToModelContext: true,
-		handler: (args) => sdk.invoke("conda.packages.install", args),
+		handler: async (args) => {
+			await requireEnvironmentToolSignIn(sdk);
+			return sdk.invoke("conda.packages.install", args);
+		},
 	});
 
 	sdk.tools.register({
@@ -176,7 +201,10 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: condaPackagesUpdateInputSchema,
 		annotations: { destructiveHint: true },
 		exposeToModelContext: true,
-		handler: (args) => sdk.invoke("conda.packages.update", args),
+		handler: async (args) => {
+			await requireEnvironmentToolSignIn(sdk);
+			return sdk.invoke("conda.packages.update", args);
+		},
 	});
 
 	sdk.tools.register({
@@ -211,6 +239,9 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: condaRepodataFindInputSchema,
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
-		handler: (args) => sdk.invoke("conda.repodata.find", args),
+		handler: async (args) => {
+			await requireEnvironmentToolSignIn(sdk);
+			return sdk.invoke("conda.repodata.find", args);
+		},
 	});
 }

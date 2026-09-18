@@ -131,7 +131,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(dialog).not.toBeInTheDocument();
 	});
 
-	it("requires an Anaconda sign-in before loading the model catalog", async () => {
+	it("prompts for Anaconda sign-in when opening the catalog while signed out", async () => {
 		let session: AuthSession = { status: "anonymous" };
 		const listeners = new Set<(next: AuthSession) => void>();
 		const listCatalog = vi.fn(async () => ({ models: [], total: 0 }));
@@ -167,17 +167,56 @@ describe("LocalModelServerSettings", () => {
 		await screen.getByRole("button", { name: "Add model" }).click();
 		await page.getByRole("menuitem", { name: "From catalog" }).click();
 
-		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
-		await expect.element(dialog.getByText("Sign in to browse models")).toBeVisible();
+		const modal = page.getByTestId("anaconda-sign-in-dialog");
+		await expect.element(modal).toBeVisible();
 		expect(listCatalog).not.toHaveBeenCalled();
 		expect(getHardware).not.toHaveBeenCalled();
 
-		await dialog.getByTestId("model-catalog-login").click();
+		await modal.getByTestId("anaconda-sign-in-submit").click();
 
 		expect(login).toHaveBeenCalledOnce();
+		await expect.element(modal).not.toBeInTheDocument();
+		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
+		await expect.element(dialog).toBeVisible();
 		await expect.element(dialog.getByText("No models available")).toBeVisible();
 		expect(listCatalog).toHaveBeenCalledOnce();
 		expect(getHardware).toHaveBeenCalledOnce();
+	});
+
+	it("closes the catalog when the session is lost while browsing", async () => {
+		let session: AuthSession = {
+			status: "authenticated",
+			user: { email: "test@example.com" },
+		};
+		const listeners = new Set<(next: AuthSession) => void>();
+		const { baseElement } = renderSettings(
+			{
+				"catalog.list": async () => ({ models: [], total: 0 }),
+				"hardware.profile": async () => hardwareProfile,
+				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+				"usage.get": async () => usageSnapshot,
+			},
+			{},
+			{
+				subscribe(listener) {
+					listeners.add(listener);
+					listener(session);
+					return () => listeners.delete(listener);
+				},
+				peek: () => session,
+			},
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByRole("button", { name: "Add model" }).click();
+		await page.getByRole("menuitem", { name: "From catalog" }).click();
+		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
+		await expect.element(dialog).toBeVisible();
+
+		session = { status: "anonymous" };
+		for (const listener of listeners) listener(session);
+
+		await expect.element(dialog).not.toBeInTheDocument();
 	});
 
 	it("retries the catalog request inside the modal", async () => {

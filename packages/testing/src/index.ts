@@ -11,6 +11,7 @@ import {
 } from "@kilo-desktop/feature-sdk";
 
 import type {
+	AuthSession,
 	ChannelHandlerMap,
 	ChannelMap,
 	KvStore,
@@ -29,6 +30,14 @@ import type {
 } from "@kilo-desktop/feature-sdk";
 
 const noop = () => {};
+
+/**
+ * Stable anonymous session: `sdk.auth.peek` must return an identical
+ * reference across calls or `useSyncExternalStore` consumers re-render
+ * forever. Auth overrides in `createFakeSdk` replace it wholesale.
+ */
+const ANONYMOUS_SESSION: AuthSession = { status: "anonymous" };
+
 const DEFAULT_APPEARANCES: Record<"light" | "dark", ThemeAppearance> = {
 	light: { mode: "light", themeId: "kilo", terminal: null, shiki: "pierre-light" },
 	dark: { mode: "dark", themeId: "kilo", terminal: null, shiki: "pierre-dark" },
@@ -312,14 +321,14 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 		auth: merge<SDK["auth"]>(
 			{
 				subscribe: (fn) => {
-					fn({ status: "anonymous" });
+					fn(ANONYMOUS_SESSION);
 					return noop;
 				},
-				peek: () => ({ status: "anonymous" }),
-				getSession: async () => ({ status: "anonymous" }),
-				refresh: async () => ({ status: "anonymous" }),
-				login: async () => ({ status: "anonymous" }),
-				logout: async () => ({ status: "anonymous" }),
+				peek: () => ANONYMOUS_SESSION,
+				getSession: async () => ANONYMOUS_SESSION,
+				refresh: async () => ANONYMOUS_SESSION,
+				login: async () => ANONYMOUS_SESSION,
+				logout: async () => ANONYMOUS_SESSION,
 			},
 			options.auth,
 		),

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
+import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { condaContract, type CondaRepodataPackage } from "../../../contracts/providers/conda.js";
@@ -41,12 +42,26 @@ function pkgWithSizes(
 	};
 }
 
+const AUTHENTICATED_SESSION: AuthSession = {
+	status: "authenticated",
+	user: { username: "ada" },
+};
+
+const authenticatedAuth: Partial<SDK["auth"]> = {
+	subscribe(listener) {
+		listener(AUTHENTICATED_SESSION);
+		return () => undefined;
+	},
+	peek: () => AUTHENTICATED_SESSION,
+};
+
 function renderDialog(
 	options: {
 		find?: () => CondaRepodataPackage[];
 		create?: (input: CondaEnvsCreateInput) => CondaEnvsCreateResult;
 		channels?: string[];
 		envsDirs?: string[];
+		auth?: Partial<SDK["auth"]>;
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["1.26.4", "1.25.0"]), pkg("pandas")]);
@@ -64,6 +79,7 @@ function renderDialog(
 			"conda.repodata.find": async () => ({ packages: find(), truncated: false }),
 			"conda.envs.create": async (input: CondaEnvsCreateInput) => create(input),
 		},
+		auth: options.auth ?? {},
 	});
 	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -153,12 +169,117 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await expect.element(screen.getByTestId("environments-create-name")).toHaveValue("myenv");
 	});
 
-	it("opens the Channels dialog from the Channels button", async () => {
+	it("opens the channel chooser popover from the Channels button", async () => {
 		const { baseElement } = renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
-		await expect.element(screen.getByTestId("environments-channels-dialog")).toBeVisible();
+		const chooser = page.getByTestId("environments-channel-chooser");
+		await expect.element(chooser).toBeVisible();
+		await expect.element(chooser.getByRole("checkbox", { name: "conda-forge" })).toBeVisible();
+		await expect.element(chooser.getByRole("checkbox", { name: "Anaconda" })).toBeVisible();
+	});
+
+	it("offers the product channel selector when conda reports no configured channels", async () => {
+		const { baseElement } = renderDialog({ channels: [] });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
+		const chooser = page.getByTestId("environments-channel-chooser");
+		await expect.element(chooser.getByRole("checkbox", { name: "conda-forge" })).toBeVisible();
+		await expect.element(chooser.getByRole("checkbox", { name: "Anaconda" })).toBeVisible();
+		await expect.element(chooser.getByText("No channels configured.")).not.toBeInTheDocument();
+	});
+
+	it("gates the Anaconda channel behind the sign-in modal while signed out", async () => {
+		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
+		const { baseElement } = renderDialog({ auth: { login } });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
+
+		const modal = page.getByTestId("anaconda-sign-in-dialog");
+		await expect.element(modal).toBeVisible();
+		expect(login).not.toHaveBeenCalled();
+
+		await userEvent.click(page.getByTestId("anaconda-sign-in-submit"));
+		await vi.waitFor(() => {
+			expect(login).toHaveBeenCalledOnce();
+		});
+		// Anonymous result keeps the modal open with the channel unapplied.
+		await expect.element(modal).toBeVisible();
+	});
+
+	it("applies the Anaconda channel after a successful sign-in", async () => {
+		let session: AuthSession = { status: "anonymous" };
+		const listeners = new Set<(next: AuthSession) => void>();
+		const login = vi.fn(async (): Promise<AuthSession> => {
+			session = { status: "authenticated", user: { username: "ada" } };
+			for (const listener of listeners) listener(session);
+			return session;
+		});
+		const create = vi.fn((_input: CondaEnvsCreateInput): CondaEnvsCreateResult => ({
+			jobId: "j",
+			environment: { name: "env", prefix: "/p" },
+		}));
+		const { baseElement } = renderDialog({
+			create,
+			auth: {
+				subscribe(listener) {
+					listeners.add(listener);
+					listener(session);
+					return () => listeners.delete(listener);
+				},
+				peek: () => session,
+				login,
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
+		await userEvent.click(page.getByTestId("anaconda-sign-in-submit"));
+
+		await expect.element(page.getByTestId("anaconda-sign-in-dialog")).not.toBeInTheDocument();
+
+		// The reactive session update must ungate the channel: toggling it now
+		// goes through selection directly instead of re-opening the sign-in modal.
+		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
+		await expect
+			.element(page.getByTestId("environments-channel-option-defaults"))
+			.toHaveAttribute("aria-checked", "false");
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
+		await expect
+			.element(page.getByTestId("environments-channel-option-defaults"))
+			.toHaveAttribute("aria-checked", "true");
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
+		await userEvent.click(screen.getByTestId("environments-create-submit"));
+
+		await vi.waitFor(() => {
+			expect(create).toHaveBeenCalledOnce();
+		});
+		const payload = create.mock.calls[0]![0];
+		expect(payload.channels).toEqual(["conda-forge", "defaults"]);
+	});
+
+	it("leaves the Anaconda channel unselected for signed-out users on create", async () => {
+		const create = vi.fn((_input: CondaEnvsCreateInput): CondaEnvsCreateResult => ({
+			jobId: "j",
+			environment: { name: "env", prefix: "/p" },
+		}));
+		const { baseElement } = renderDialog({ create });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
+		await userEvent.click(screen.getByTestId("environments-create-submit"));
+
+		await vi.waitFor(() => {
+			expect(create).toHaveBeenCalledOnce();
+		});
+		expect(create.mock.calls[0]![0].channels).toEqual(["conda-forge"]);
 	});
 
 	it("shows validation error when name is empty and submit is clicked", async () => {
@@ -297,7 +418,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "env", prefix: "/custom/myenv" },
 		}));
-		const { baseElement } = renderDialog({ create });
+		const { baseElement } = renderDialog({ create, auth: authenticatedAuth });
 		const screen = page.elementLocator(baseElement);
 
 		// Change location to a custom path
@@ -311,7 +432,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		});
 		const payload = create.mock.calls[0]![0];
 		expect(payload.prefix).toBe("/custom/myenv");
-		expect(payload.channels).toEqual(["defaults", "conda-forge"]);
+		expect(payload.channels).toEqual(["conda-forge", "defaults"]);
 	});
 
 	it("filters the Python version list via the picker search box", async () => {

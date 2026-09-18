@@ -6,16 +6,18 @@ import {
 	PlusIcon,
 	SearchIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
 	sdkQueryKey,
 	sdkQueryOptions,
+	useAnacondaSignIn,
 	useSdk,
 	useSdkMutation,
 	useSdkQuery,
 } from "@kilo-desktop/sdk-react";
+import { AnacondaSignInDialog } from "@kilo-desktop/ui/components/anaconda-sign-in-dialog";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	AlertDialog,
@@ -61,7 +63,7 @@ import {
 } from "../../contracts/events.js";
 import { ConnectionDetails } from "../connections/ConnectionDetails.js";
 import { LocalModelCatalog } from "../catalog/ModelCatalog.js";
-import { ModelCatalogDialogHeader, ModelCatalogSignInGate } from "../catalog/ModelCatalogAccess.js";
+import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess.js";
 import {
 	ModelDetailEmpty,
 	ModelDetailPane,
@@ -96,12 +98,14 @@ const interactiveScrollbarClassName =
 export function LocalModelServerSettings() {
 	const sdk = useSdk<LocalInferenceServiceContract>("local-inference");
 	const queryClient = useQueryClient();
-	const authSession = useSyncExternalStore(sdk.auth.subscribe, sdk.auth.peek, sdk.auth.peek);
-	const canBrowseCatalog = authSession.status === "authenticated";
+	const { authenticated, signingIn, error: signInError, signIn } = useAnacondaSignIn(sdk);
 	const modelFileInput = useRef<HTMLInputElement>(null);
 	const modelSaveQueue = useRef(Promise.resolve());
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
+	// Catalog intent deferred while the user completes Anaconda sign-in.
+	const [pendingCatalogModel, setPendingCatalogModel] = useState<ModelCatalogEntry | null>();
+	const [signInOpen, setSignInOpen] = useState(false);
 	const [selectedModelId, setSelectedModelId] = useState<string>();
 	const [modelSearch, setModelSearch] = useState("");
 	const [modelSourceFilter, setModelSourceFilter] = useState<ModelSourceFilter>("all");
@@ -117,13 +121,13 @@ export function LocalModelServerSettings() {
 	});
 	const catalogHardware = useQuery({
 		...sdkQueryOptions(sdk, "hardware.profile"),
-		enabled: canBrowseCatalog && catalogOpen,
+		enabled: authenticated && catalogOpen,
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
 	const catalogMetadata = useQuery({
 		...sdkQueryOptions(sdk, "catalog.list"),
-		enabled: canBrowseCatalog && (hasCatalogModels || catalogOpen),
+		enabled: authenticated && (hasCatalogModels || catalogOpen),
 		retry: false,
 		staleTime: 5 * 60 * 1_000,
 	});
@@ -180,11 +184,35 @@ export function LocalModelServerSettings() {
 		};
 	}, [queryClient, sdk]);
 
+	// Losing the session mid-browse must not leave stale catalog data on
+	// screen: close the dialog, drop the selection, and purge the cached
+	// catalog so a later sign-in starts from a fresh fetch.
 	useEffect(() => {
-		if (canBrowseCatalog) return;
+		if (authenticated) return;
+		setCatalogOpen(false);
 		setCatalogModel(undefined);
+		setPendingCatalogModel(undefined);
 		queryClient.removeQueries({ queryKey: sdkQueryKey(sdk, "catalog.list"), exact: true });
-	}, [canBrowseCatalog, queryClient, sdk]);
+	}, [authenticated, queryClient, sdk]);
+
+	function openCatalog(model?: ModelCatalogEntry): void {
+		if (!authenticated) {
+			setPendingCatalogModel(model ?? null);
+			setSignInOpen(true);
+			return;
+		}
+		setCatalogModel(model);
+		setCatalogOpen(true);
+	}
+
+	async function handleSignIn(): Promise<void> {
+		const ok = await signIn();
+		if (!ok) return;
+		setSignInOpen(false);
+		setCatalogModel(pendingCatalogModel ?? undefined);
+		setPendingCatalogModel(undefined);
+		setCatalogOpen(true);
+	}
 
 	const serverStatus = status.data?.status;
 	const pendingAction = start.isPending
@@ -210,7 +238,7 @@ export function LocalModelServerSettings() {
 	const connection = status.data?.status === "ready" ? status.data.connection : undefined;
 	const modelRows = models.data ?? [];
 	const modelManagementPending =
-		models.isPending || (canBrowseCatalog && hasCatalogModels && catalogMetadata.isPending);
+		models.isPending || (authenticated && hasCatalogModels && catalogMetadata.isPending);
 	const visibleModelRows = filterLocalModels(modelRows, modelSearch, modelSourceFilter);
 	const activeModelSourceFilter =
 		modelSourceFilters.find((filter) => filter.value === modelSourceFilter) ??
@@ -413,8 +441,7 @@ export function LocalModelServerSettings() {
 								<DropdownMenuItem
 									data-qa-id="local-model-server-open-catalog"
 									onClick={() => {
-										setCatalogModel(undefined);
-										setCatalogOpen(true);
+										openCatalog();
 									}}
 								>
 									<LibraryIcon aria-hidden="true" />
@@ -524,8 +551,7 @@ export function LocalModelServerSettings() {
 										}}
 										onDelete={requestModelDeletion}
 										onOpenCatalog={(model) => {
-											setCatalogModel(model);
-											setCatalogOpen(true);
+											openCatalog(model);
 										}}
 									/>
 								) : null}
@@ -600,60 +626,52 @@ export function LocalModelServerSettings() {
 					className="h-[min(48rem,calc(100dvh-8rem))] grid-rows-[minmax(0,1fr)] overflow-hidden sm:w-[calc(100%-4rem)] sm:max-w-7xl"
 					data-qa-id="local-model-catalog-dialog"
 				>
-					<div
-						className={cn(
-							"-m-4 grid min-h-0",
-							canBrowseCatalog && "grid-cols-[minmax(0,3fr)_auto_minmax(22rem,2fr)]",
-						)}
-					>
+					<div className="-m-4 grid min-h-0 grid-cols-[minmax(0,3fr)_auto_minmax(22rem,2fr)]">
 						<div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
 							<ModelCatalogDialogHeader />
-							{canBrowseCatalog ? (
-								<ScrollArea
-									className={cn(
-										"min-h-0 min-w-0 [&_[data-slot=scroll-area-viewport]]:scroll-fade-y [&_[data-slot=scroll-area-viewport]]:overflow-x-hidden",
-										interactiveScrollbarClassName,
-									)}
-									data-qa-id="model-catalog-pane"
-								>
-									<div className="w-full min-w-0 overflow-x-hidden px-4 pr-3 pb-4">
-										<LocalModelCatalog
-											onSelectModel={setCatalogModel}
-											selectedModelId={catalogModel?.id}
-										/>
-									</div>
-								</ScrollArea>
-							) : (
-								<ModelCatalogSignInGate
-									reason={authSession.status === "error" ? authSession.reason : undefined}
-								/>
-							)}
+							<ScrollArea
+								className={cn(
+									"min-h-0 min-w-0 [&_[data-slot=scroll-area-viewport]]:scroll-fade-y [&_[data-slot=scroll-area-viewport]]:overflow-x-hidden",
+									interactiveScrollbarClassName,
+								)}
+								data-qa-id="model-catalog-pane"
+							>
+								<div className="w-full min-w-0 overflow-x-hidden px-4 pr-3 pb-4">
+									<LocalModelCatalog
+										onSelectModel={setCatalogModel}
+										selectedModelId={catalogModel?.id}
+									/>
+								</div>
+							</ScrollArea>
 						</div>
-						{canBrowseCatalog ? (
-							<>
-								<Separator orientation="vertical" />
-								<section className="bg-background/60 min-h-0 min-w-0" aria-label="Model details">
-									{catalogModel ? (
-										<ModelDetailPane
-											model={catalogModel}
-											hardware={catalogHardware.data}
-											downloads={catalogDownloadRows}
-											addedCatalogArtifacts={addedCatalogArtifacts}
-											onStartDownload={startCatalogDownload}
-											onCancelDownload={cancelCatalogDownload}
-											onDeleteModel={requestModelDeletion}
-										/>
-									) : catalogMetadata.isPending || catalogHardware.isPending ? (
-										<ModelDetailSkeleton />
-									) : (
-										<ModelDetailEmpty />
-									)}
-								</section>
-							</>
-						) : null}
+						<Separator orientation="vertical" />
+						<section className="bg-background/60 min-h-0 min-w-0" aria-label="Model details">
+							{catalogModel ? (
+								<ModelDetailPane
+									model={catalogModel}
+									hardware={catalogHardware.data}
+									downloads={catalogDownloadRows}
+									addedCatalogArtifacts={addedCatalogArtifacts}
+									onStartDownload={startCatalogDownload}
+									onCancelDownload={cancelCatalogDownload}
+									onDeleteModel={requestModelDeletion}
+								/>
+							) : catalogMetadata.isPending || catalogHardware.isPending ? (
+								<ModelDetailSkeleton />
+							) : (
+								<ModelDetailEmpty />
+							)}
+						</section>
 					</div>
 				</DialogContent>
 			</Dialog>
+			<AnacondaSignInDialog
+				open={signInOpen}
+				onOpenChange={setSignInOpen}
+				onSignIn={() => void handleSignIn()}
+				pending={signingIn}
+				error={signInError}
+			/>
 			<AlertDialog
 				open={modelPendingDeletion !== undefined}
 				onOpenChange={(open) => {

@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import type { AuthSession } from "@kilo-desktop/feature-sdk";
 import { createFakeSdk } from "@kilo-desktop/testing";
 
+import { condaContract } from "../contracts/providers/conda.js";
 import { EnvironmentsNavIcon, EnvironmentsPage, webRegister } from "./index.js";
+import type { EnvironmentsAuthCapabilities } from "../shared/auth-capabilities.js";
+
+const inlineAuthActions = { signIn: async () => true, cancel: () => undefined };
 
 /**
  * The manifest (`plugin.json`) names three exports the shell resolves from
@@ -36,6 +41,7 @@ describe("environments plugin web entry", () => {
 			"conda.packages.remove",
 			"conda.packages.update",
 			"conda.repodata.find",
+			"conda.setup.open",
 		]);
 		const listTool = tools.find((tool) => tool.name === "conda.envs.list");
 		expect(listTool?.annotations).toMatchObject({ readOnlyHint: true });
@@ -132,5 +138,104 @@ describe("environments plugin web entry", () => {
 		expect(updateSchema.type).toBe("object");
 		expect(updateSchema.properties?.packages?.type).toBe("array");
 		expect(updateSchema.properties?.updateAll?.type).toBe("boolean");
+	});
+
+	it("waits for Anaconda sign-in before opening environment setup from chat", async () => {
+		const navigate = vi.fn();
+		const requireSignIn = vi.fn(async () => true);
+		const sdk = createFakeSdk({ featureId: "environments", navigation: { navigate } });
+		sdk.plugins.expose("authGate", {
+			requireSignIn,
+			...inlineAuthActions,
+		} satisfies EnvironmentsAuthCapabilities["authGate"]);
+		webRegister(sdk);
+
+		await sdk.services.toolRegistry.invoke("environments", "conda.setup.open", {});
+
+		expect(requireSignIn).toHaveBeenCalledOnce();
+		expect(navigate).toHaveBeenCalledWith("/settings/environments", undefined);
+	});
+
+	it("does not navigate when environment setup sign-in is dismissed", async () => {
+		const navigate = vi.fn();
+		const sdk = createFakeSdk({ featureId: "environments", navigation: { navigate } });
+		sdk.plugins.expose("authGate", {
+			requireSignIn: async () => false,
+			...inlineAuthActions,
+		} satisfies EnvironmentsAuthCapabilities["authGate"]);
+		webRegister(sdk);
+
+		await expect(
+			sdk.services.toolRegistry.invoke("environments", "conda.setup.open", {}),
+		).rejects.toThrow("Anaconda sign-in is required");
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("opens environment setup directly for authenticated users", async () => {
+		const session: AuthSession = { status: "authenticated", user: { username: "ada" } };
+		const navigate = vi.fn();
+		const requireSignIn = vi.fn(async () => true);
+		const sdk = createFakeSdk({
+			featureId: "environments",
+			auth: { peek: () => session },
+			navigation: { navigate },
+		});
+		sdk.plugins.expose("authGate", {
+			requireSignIn,
+			...inlineAuthActions,
+		} satisfies EnvironmentsAuthCapabilities["authGate"]);
+		webRegister(sdk);
+
+		await sdk.services.toolRegistry.invoke("environments", "conda.setup.open", {});
+
+		expect(requireSignIn).not.toHaveBeenCalled();
+		expect(navigate).toHaveBeenCalledWith("/settings/environments", undefined);
+	});
+
+	it("forces the sign-in gate for authenticated users when the test flag is set", async () => {
+		const session: AuthSession = { status: "authenticated", user: { username: "ada" } };
+		const navigate = vi.fn();
+		const requireSignIn = vi.fn(async () => true);
+		const sdk = createFakeSdk({
+			featureId: "environments",
+			auth: { peek: () => session },
+			featureFlags: { peek: () => ({ "force-anaconda-sign-in-gate": true }) },
+			navigation: { navigate },
+		});
+		sdk.plugins.expose("authGate", {
+			requireSignIn,
+			...inlineAuthActions,
+		} satisfies EnvironmentsAuthCapabilities["authGate"]);
+		webRegister(sdk);
+
+		await sdk.services.toolRegistry.invoke("environments", "conda.setup.open", {});
+
+		expect(requireSignIn).toHaveBeenCalledOnce();
+		expect(navigate).toHaveBeenCalledWith("/settings/environments", undefined);
+	});
+
+	it("waits for sign-in before a chat-triggered environment create", async () => {
+		const create = vi.fn(async () => ({
+			jobId: "job-1",
+			environment: { name: "chat-env", prefix: "/envs/chat-env" },
+		}));
+		const requireSignIn = vi.fn(async () => true);
+		const sdk = createFakeSdk({
+			featureId: "environments",
+			channels: condaContract,
+			handlers: { "conda.envs.create": create },
+		});
+		sdk.plugins.expose("authGate", {
+			requireSignIn,
+			...inlineAuthActions,
+		} satisfies EnvironmentsAuthCapabilities["authGate"]);
+		webRegister(sdk);
+
+		await sdk.services.toolRegistry.invoke("environments", "conda.envs.create", {
+			name: "chat-env",
+		});
+
+		expect(requireSignIn).toHaveBeenCalledOnce();
+		expect(create).toHaveBeenCalledWith({ name: "chat-env" });
 	});
 });

@@ -24,6 +24,12 @@ export {
 } from "./useSdkMutation.js";
 
 export { useFeatureFlag } from "./useFeatureFlag.js";
+export {
+	FORCE_ANACONDA_SIGN_IN_GATE_FLAG,
+	isAnacondaSignInGateForced,
+} from "./forceAnacondaSignInGate.js";
+export { useAnacondaSignIn, type AnacondaSignIn } from "./useAnacondaSignIn.js";
+export { useAnacondaSignInPrompt, type AnacondaSignInPrompt } from "./useAnacondaSignInPrompt.js";
 export { useWorkspaceWatcher, type UseWorkspaceWatcherOptions } from "./useWorkspaceWatcher.js";
 export { useSdkContributions } from "./useSdkContributions.js";
 

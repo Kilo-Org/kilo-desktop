@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -10,6 +10,7 @@ import {
 	truncate,
 	type ToolCallStatusLike,
 } from "./tool-ui-shared.js";
+import { AnacondaAuthToolCard, isAnacondaAuthTool } from "./anaconda-auth-tool-card.js";
 
 const ToolCallShell = ({
 	toolName,
@@ -41,14 +42,19 @@ const ToolCallShell = ({
 const SUMMARY_KEYS = ["file_path", "path", "pattern", "command", "query", "glob", "url"] as const;
 
 const ToolCallFallbackImpl: ToolCallMessagePartComponent = ({ toolName, args, status }) => {
-	const summary = useMemo(() => {
-		if (!args || typeof args !== "object") return "";
+	if (isAnacondaAuthTool(toolName)) {
+		return <AnacondaAuthToolCard toolName={toolName} status={status} />;
+	}
+	let summary = "";
+	if (args && typeof args === "object") {
 		for (const key of SUMMARY_KEYS) {
-			const v = (args as Record<string, unknown>)[key];
-			if (typeof v === "string" && v) return truncate(v);
+			const value = (args as Record<string, unknown>)[key];
+			if (typeof value === "string" && value) {
+				summary = truncate(value);
+				break;
+			}
 		}
-		return "";
-	}, [args]);
+	}
 
 	return (
 		<ToolCallShell toolName={toolName} status={status}>

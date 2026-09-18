@@ -110,6 +110,7 @@ describe("CondaProvider", () => {
 			"conda.packages.remove",
 			"conda.packages.update",
 			"conda.repodata.find",
+			"conda.setup.open",
 		]);
 	});
 

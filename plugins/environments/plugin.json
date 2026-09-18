@@ -5,6 +5,7 @@
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
 	"contributes": {
+		"providers": [{ "component": "EnvironmentsAuthProvider", "priority": 5 }],
 		"routes": [
 			{ "path": "/environments", "component": "EnvironmentsPage", "title": "Environments" }
 		],

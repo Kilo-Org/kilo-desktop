@@ -38,15 +38,34 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
 
 function DialogContent({
 	className,
+	overlayClassName,
+	visualOverlayClassName,
 	children,
 	showCloseButton = true,
 	...props
 }: DialogPrimitive.Popup.Props & {
-	showCloseButton?: boolean;
+	overlayClassName?: string | undefined;
+	/**
+	 * Additional visual-only backdrop for nested dialogs. Base UI suppresses
+	 * nested Backdrop elements, so use this when a child dialog must visibly
+	 * blur a parent dialog without changing dismissal or focus behavior.
+	 */
+	visualOverlayClassName?: string | undefined;
+	showCloseButton?: boolean | undefined;
 }) {
 	return (
 		<DialogPortal>
-			<DialogOverlay />
+			<DialogOverlay className={overlayClassName} />
+			{visualOverlayClassName ? (
+				<div
+					aria-hidden="true"
+					data-slot="dialog-visual-overlay"
+					className={cn(
+						"pointer-events-none fixed inset-0 isolate bg-black/10 supports-backdrop-filter:backdrop-blur-xs",
+						visualOverlayClassName,
+					)}
+				/>
+			) : null}
 			<DialogPrimitive.Popup
 				data-slot="dialog-content"
 				className={cn(

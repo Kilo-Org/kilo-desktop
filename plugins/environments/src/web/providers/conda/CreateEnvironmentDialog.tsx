@@ -8,7 +8,8 @@ import {
 	type FormEvent,
 } from "react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { useSdk, useSdkMutation, useSdkQuery, useAnacondaSignIn } from "@kilo-desktop/sdk-react";
+import { AnacondaSignInDialog } from "@kilo-desktop/ui/components/anaconda-sign-in-dialog";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
@@ -62,7 +63,12 @@ import {
 	trackBackgroundCreateToast,
 } from "./environments-toasts.js";
 import { PythonVersionPicker, PYTHON_LATEST } from "./PythonVersionPicker.js";
-import { ChannelsDialog } from "./ChannelsDialog.js";
+import { ChannelChooserPopover } from "./ChannelChooserPopover.js";
+import {
+	defaultChannelSelection,
+	getChannelPresentation,
+	selectableChannels,
+} from "./channel-presentation.js";
 import { ColumnResizer } from "./ColumnResizer.js";
 import { TablePagination } from "./TablePagination.js";
 import {
@@ -411,6 +417,7 @@ function SelectedPackagesSidebar({ selected, onRemove }: SelectedPackagesSidebar
 
 export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDialogProps) {
 	const sdk = useSdk<CondaService>("environments");
+	const { authenticated, signingIn, error: signInError, signIn } = useAnacondaSignIn(sdk);
 	const [name, setName] = useState("");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
@@ -419,6 +426,10 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 	const [rowVersions, setRowVersions] = useState<Record<string, string>>({});
 	const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
 	const [showChannels, setShowChannels] = useState(false);
+	// The Anaconda channel whose selection was deferred to sign-in; applied
+	// once the OAuth round-trip lands the session.
+	const [pendingChannel, setPendingChannel] = useState<string>();
+	const [signInOpen, setSignInOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [results, setResults] = useState<CondaRepodataPackage[]>([]);
 	const [resultsTruncated, setResultsTruncated] = useState(false);
@@ -442,24 +453,56 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 
 	const envsDirs = prefixQuery.data?.envsDirs ?? [];
 	const defaultDir = envsDirs[0] ?? "";
-	const availableChannels = prefixQuery.data?.channels ?? [];
+	const availableChannels = useMemo(
+		() => selectableChannels(prefixQuery.data?.channels ?? []),
+		[prefixQuery.data?.channels],
+	);
 
 	// Pre-fill the default directory once the query resolves.
 	useEffect(() => {
 		if (defaultDir && !location) setLocation(defaultDir);
 	}, [defaultDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	// Auto-select all channels when data first loads.
+	// Auto-select the default channels when data first loads, skipping
+	// sign-in-gated Anaconda channels for signed-out users.
 	useEffect(() => {
 		if (availableChannels.length > 0 && selectedChannels.length === 0) {
-			setSelectedChannels(availableChannels);
+			setSelectedChannels(defaultChannelSelection(availableChannels, authenticated));
 		}
-	}, [availableChannels]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [availableChannels, authenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const channelsArg = useMemo(
 		() => (selectedChannels.length > 0 ? selectedChannels : undefined),
 		[selectedChannels],
 	);
+
+	function toggleChannel(channel: string) {
+		setSelectedChannels((prev) =>
+			prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel],
+		);
+	}
+
+	// Anaconda channels stay gated while signed out: remember which one the
+	// user picked, run the OAuth flow, and apply the selection on success.
+	async function handleSignIn(): Promise<void> {
+		const ok = await signIn();
+		if (!ok) return;
+		setSignInOpen(false);
+		const channel = pendingChannel;
+		setPendingChannel(undefined);
+		if (channel && availableChannels.includes(channel)) {
+			setSelectedChannels((prev) => (prev.includes(channel) ? prev : [...prev, channel]));
+		}
+	}
+
+	function handleChannelSelect(channel: string) {
+		if (getChannelPresentation(channel).requiresSignIn && !authenticated) {
+			setPendingChannel(channel);
+			setSignInOpen(true);
+			return;
+		}
+		toggleChannel(channel);
+	}
 
 	// Derive the Python version options from live repodata instead of a
 	// hardcoded list: look up the `python` package by exact name and show its
@@ -546,8 +589,10 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		setPythonVersion(PYTHON_LATEST);
 		setSelected([]);
 		setRowVersions({});
-		setSelectedChannels(availableChannels);
+		setSelectedChannels(defaultChannelSelection(availableChannels, authenticated));
 		setShowChannels(false);
+		setPendingChannel(undefined);
+		setSignInOpen(false);
 		setQuery("");
 		setResults([]);
 		setResultsTruncated(false);
@@ -779,18 +824,27 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 							{/* Select packages header + Channels */}
 							<div className="flex items-center justify-between">
 								<h4 className="text-base font-semibold">Select packages</h4>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => setShowChannels(true)}
-									data-qa-id="environments-create-channels-button"
-								>
-									<NetworkIcon data-icon="inline-start" />
-									Channels
-									<Badge variant="secondary" className="ml-1">
-										{channelsSummary}
-									</Badge>
-								</Button>
+								<ChannelChooserPopover
+									open={showChannels}
+									onOpenChange={setShowChannels}
+									availableChannels={availableChannels}
+									selectedChannels={selectedChannels}
+									onToggle={toggleChannel}
+									signedIn={authenticated}
+									onRequestSignIn={handleChannelSelect}
+									trigger={{
+										"data-qa-id": "environments-create-channels-button",
+										children: (
+											<>
+												<NetworkIcon data-icon="inline-start" />
+												Channels
+												<Badge variant="secondary" className="ml-1">
+													{channelsSummary}
+												</Badge>
+											</>
+										),
+									}}
+								/>
 							</div>
 
 							{/* Search */}
@@ -871,15 +925,12 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 				</form>
 			</DialogContent>
 
-			<ChannelsDialog
-				open={showChannels}
-				availableChannels={availableChannels}
-				selectedChannels={selectedChannels}
-				onCancel={() => setShowChannels(false)}
-				onConfirm={(next) => {
-					setSelectedChannels(next);
-					setShowChannels(false);
-				}}
+			<AnacondaSignInDialog
+				open={signInOpen}
+				onOpenChange={setSignInOpen}
+				onSignIn={() => void handleSignIn()}
+				pending={signingIn}
+				error={signInError}
 			/>
 		</Dialog>
 	);

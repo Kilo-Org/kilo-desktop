@@ -9,8 +9,8 @@ import {
 	type FileChange,
 	type WorkspaceWatchFilter,
 	type WorkspaceWatcherCapability,
-} from "@anaconda-agentic-desktop/contracts";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/contracts";
+import type { MainSdk } from "@kilo-desktop/feature-sdk";
 
 import { WorkspaceWatcher, type WatchSubscribeFn } from "./workspace-watcher.js";
 

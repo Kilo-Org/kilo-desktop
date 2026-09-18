@@ -1,6 +1,6 @@
-# @anaconda-agentic-desktop/sdk-react
+# @kilo-desktop/sdk-react
 
-React bindings for the feature SDK. Thin layer that turns the transport-agnostic `SDK` from `@anaconda-agentic-desktop/feature-sdk` into React context, hooks, and TanStack Query integration — so feature UI code stays a two-liner per channel.
+React bindings for the feature SDK. Thin layer that turns the transport-agnostic `SDK` from `@kilo-desktop/feature-sdk` into React context, hooks, and TanStack Query integration — so feature UI code stays a two-liner per channel.
 
 - **Feature authors:** read [Quick start](#quick-start) and [Hooks](#hooks). You only ever touch `useSdk`, `useSdkQuery`, `useSdkMutation`.
 - **Shell authors:** read [Architecture](#architecture) and [Wiring the shell](#wiring-the-shell). `createFeatureSystem` and `useFeatureSystem` are shell infrastructure — feature code never calls them.
@@ -19,7 +19,7 @@ This package does all three, once, in a way that stays honest to the SDK's trans
 
 ```tsx
 // Feature UI — plugins/todos/src/web/TodoList.tsx
-import { useSdk, useSdkQuery, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk, useSdkQuery, useSdkMutation } from "@kilo-desktop/sdk-react";
 import type { TodoService } from "../contracts/schemas.js";
 
 export function TodoList() {
@@ -165,11 +165,7 @@ React context provider. Wrap once, high in the tree.
 Escape hatches for prefetching, imperative reads/writes, or composing with other TanStack utilities. Same cache semantics as the hooks.
 
 ```ts
-import {
-	sdkQueryKey,
-	sdkQueryOptions,
-	sdkMutationOptions,
-} from "@anaconda-agentic-desktop/sdk-react";
+import { sdkQueryKey, sdkQueryOptions, sdkMutationOptions } from "@kilo-desktop/sdk-react";
 
 await queryClient.prefetchQuery(sdkQueryOptions(sdk, "list"));
 queryClient.setQueryData(sdkQueryKey(sdk, "list"), []);
@@ -184,7 +180,7 @@ The host owns the `FeatureSystem`, the `QueryClient`, and the delegates. This is
 
 ```tsx
 // apps/web/src/platform/featureSystem.ts
-import { createFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+import { createFeatureSystem } from "@kilo-desktop/sdk-react";
 
 export function createAppFeatureSystem(api: LocalApi, navigation: SdkNavigation) {
 	return createFeatureSystem({
@@ -211,8 +207,8 @@ The `shellDelegates` object is the host's contract with the SDK — each field i
 `test-helpers.ts` exports `createTestShellDelegates()` — a minimal `ShellDelegates` where every method either returns a sensible default (`{ delivered: true }`, `"light"`, `{ status: "anonymous" }`) or throws with a clear "not implemented in this test" message on the ones you're unlikely to need. Compose it with `createFeatureSystem` + your own fake features when you need a full provider tree in a browser-mode test:
 
 ```tsx
-import { createFeatureSystem, SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createTestShellDelegates } from "@anaconda-agentic-desktop/sdk-react/test-helpers";
+import { createFeatureSystem, SdkProvider } from "@kilo-desktop/sdk-react";
+import { createTestShellDelegates } from "@kilo-desktop/sdk-react/test-helpers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const system = createFeatureSystem({
@@ -237,11 +233,11 @@ render(
 );
 ```
 
-For feature-level tests where a full provider tree is overkill, prefer `createFakeSdk` from `@anaconda-agentic-desktop/testing` and pass the fake SDK directly — see the `write-vitest` skill.
+For feature-level tests where a full provider tree is overkill, prefer `createFakeSdk` from `@kilo-desktop/testing` and pass the fake SDK directly — see the `write-vitest` skill.
 
 ## Package boundaries
 
-- **Peer deps only** — `react`, `react-dom`, `@tanstack/react-query`, `@anaconda-agentic-desktop/feature-sdk`, `zod`. The host provides all of them.
+- **Peer deps only** — `react`, `react-dom`, `@tanstack/react-query`, `@kilo-desktop/feature-sdk`, `zod`. The host provides all of them.
 - **No side effects at import time.** `createFeatureSystem` is the single entry point that touches globals (registers services). Modules are safe to import lazily.
 - **No dependency on `apps/*` or `plugins/*`.** This package is a leaf of the dependency graph — do not import shell code here.
 

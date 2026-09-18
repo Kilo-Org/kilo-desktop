@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { useChatConnection } from "./connection/ChatConnectionContext.js";
 

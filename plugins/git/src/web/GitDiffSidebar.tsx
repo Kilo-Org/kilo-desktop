@@ -6,9 +6,9 @@ import type { FileTreeBatchOperation, FileTreeSortComparator, GitStatusEntry } f
 import { FolderIcon, LoaderCircleIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 
-import type { ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Select,
 	SelectContent,
@@ -16,12 +16,8 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { GitDiffTreeSource } from "./lib/diff-data-accumulator.js";
 

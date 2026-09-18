@@ -2,7 +2,7 @@ import { useQueries } from "@tanstack/react-query";
 import { FileIcon } from "lucide-react";
 import { useMemo, type ComponentType, type FC, type ReactNode } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import type { FilesServiceContract } from "../../../contracts/schemas.js";
 import { PierreFileIcon } from "../file-icons/PierreFileIcon.js";

@@ -68,14 +68,14 @@ These are non-negotiable from day one to ensure a frictionless path to publishin
 
 The host provides exactly one runtime copy of these packages; plugins declare them as `peerDependencies` and mark them `external` in their bundler. Everything else a plugin uses is bundled into the plugin.
 
-| Package                                 | Why it MUST be a singleton (correctness, not convention)                                                                                                      |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `react`                                 | Hooks and context break with two copies ("invalid hook call")                                                                                                 |
-| `react-dom`                             | Must match the single `react` instance                                                                                                                        |
-| `@anaconda-agentic-desktop/feature-sdk` | Shared in-memory `EventBus` / `StateBroker` / `CapabilityRegistry` — a second copy silently breaks cross-plugin events, state, and capabilities               |
-| `@anaconda-agentic-desktop/sdk-react`   | React bindings over the same SDK instance/context                                                                                                             |
-| `@tanstack/react-query`                 | `useSdkQuery` calls `useQueryClient()` against the host's single `QueryClientProvider` (`apps/web/src/main.tsx`); a bundled copy resolves a different context |
-| `zod`                                   | `instanceof` / `ZodError` identity must hold across the `feature:invoke` validation boundary                                                                  |
+| Package                     | Why it MUST be a singleton (correctness, not convention)                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `react`                     | Hooks and context break with two copies ("invalid hook call")                                                                                                 |
+| `react-dom`                 | Must match the single `react` instance                                                                                                                        |
+| `@kilo-desktop/feature-sdk` | Shared in-memory `EventBus` / `StateBroker` / `CapabilityRegistry` — a second copy silently breaks cross-plugin events, state, and capabilities               |
+| `@kilo-desktop/sdk-react`   | React bindings over the same SDK instance/context                                                                                                             |
+| `@tanstack/react-query`     | `useSdkQuery` calls `useQueryClient()` against the host's single `QueryClientProvider` (`apps/web/src/main.tsx`); a bundled copy resolves a different context |
+| `zod`                       | `instanceof` / `ZodError` identity must hold across the `feature:invoke` validation boundary                                                                  |
 
 **Deliberately NOT in this set — TanStack Router (see Decision #19):** navigation is a shell delegate, not a shared package. The router stays internal to `apps/web`; plugins never import it and neither does `sdk-react` (which would drag it back in transitively). The host injects a navigation adapter (`navigate(path)`, subscribable current-location, params/search) exactly like `theme`/`notifications`/`shell`/`fs`. This keeps the shared set minimal, avoids making a future router swap a platform-breaking release, and sidesteps the fact that file-based route codegen (`routeTree.gen.ts`) can't see external plugins — the host creates plugin routes programmatically from `plugin.json`.
 
@@ -279,6 +279,6 @@ Migration from `apps/` is a filesystem move. Migration to an external repo is `n
 - [CONTEXT.md](../CONTEXT.md) — architecture, terminology, conventions
 - **Live reference implementation:** `plugins/todos/` — a complete self-contained plugin (routes, zones, own DB, e2e)
 - Migration Readiness Brief — the shim SDK strategy and migration path (branch `docs/migration-readiness-brief`, `docs/migration-readiness-brief.md`; not yet merged into this branch)
-- [PR #20](https://github.com/anaconda/agentic-desktop/pull/20) — demo plugins exercising every SDK API (merged into `main`)
+- PR #20 — demo plugins exercising every SDK API (merged into `main`)
 
 > **Note on a future `packages/ui`:** the Migration Readiness Brief anticipates a `packages/ui` for shared shadcn primitives extracted from `apps/web`. This plan does not create it. `useSdkQuery` / `useSdkMutation` belong in `packages/sdk-react/` (SDK data-fetching bindings), not `ui` (presentational primitives). If `ui` lands later, the split stays clean.

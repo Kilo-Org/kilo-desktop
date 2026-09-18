@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk } from "@kilo-desktop/testing";
 
 import { notebookBrowserRegister } from "./browserRegister.js";
 

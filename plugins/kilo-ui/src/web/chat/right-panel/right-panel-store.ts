@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { ARRANGEMENTS, type Arrangement } from "@anaconda-agentic-desktop/pane-layout";
+import { ARRANGEMENTS, type Arrangement } from "@kilo-desktop/pane-layout";
 
 import {
 	createContributedTab,

@@ -1,6 +1,6 @@
 # Releases, signing, and CI reference
 
-Reference material for packaging, publishing, and signing Anaconda Agentic Desktop. See
+Reference material for packaging, publishing, and signing Kilo Desktop. See
 the [README](../README.md) for the development workflow and repository architecture.
 
 Implementation lives in `apps/desktop/config/`: `release.ts` (channels, artifact keys,
@@ -22,11 +22,11 @@ configuration.
 Development has an isolated identity. Preview and Stable intentionally share one durable
 packaged identity so a future update-track switcher can move the installed app between tracks:
 
-| Environment       | Product name                 | Identity suffix |
-| ----------------- | ---------------------------- | --------------- |
-| Local development | Anaconda Agentic Desktop Dev | `dev`           |
-| `preview`         | Anaconda Agentic Desktop     | none            |
-| `stable`          | Anaconda Agentic Desktop     | none            |
+| Environment       | Product name | Identity suffix |
+| ----------------- | ------------ | --------------- |
+| Local development | Kilo Dev     | `dev`           |
+| `preview`         | Kilo Preview | none            |
+| `stable`          | Kilo         | none            |
 
 The development suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
 Linux package and executable names, and Electron's application name. Preview and Stable share the
@@ -74,7 +74,7 @@ using the same limit. Windows `make`/`publish` therefore:
 1. Points `TEMP`/`TMP` and Electron Packager `tmpdir` at `<drive>\\t` (override with
    `WINDOWS_PACKAGING_TEMP`) so nuget pack and Squirrel extract roots stay short.
 2. Stages the WebMCP relay as `resources/webmcp-relay` instead of unpacking
-   `app.asar.unpacked/node_modules/@anaconda-agentic-desktop/plugin-kilo-server/relay-runtime`,
+   `app.asar.unpacked/node_modules/@kilo-desktop/plugin-kilo-server/relay-runtime`,
    so nupkg-relative paths themselves stay under the remaining budget.
 
 Maker artifacts are written to `apps/desktop/out/make/`.
@@ -84,7 +84,7 @@ Maker artifacts are written to `apps/desktop/out/make/`.
 Artifacts are published under updater namespaces:
 
 ```text
-anaconda-agentic-desktop/<update-channel>/<platform>/<arch>/<artifact>
+kilo-desktop/<update-channel>/<platform>/<arch>/<artifact>
 ```
 
 Preview uses update channel `preview`; Stable uses `latest`, matching T3 Code's updater
@@ -104,10 +104,10 @@ Each update channel exposes stable public download pointers in addition to its i
 artifacts:
 
 ```text
-anaconda-agentic-desktop/<update-channel>/latest.json
-anaconda-agentic-desktop/<update-channel>/latest/<platform>/<arch>/<installer>
-anaconda-agentic-desktop/<update-channel>/release-notes/<version>.json
-anaconda-agentic-desktop/<update-channel>/release-notes/latest.json
+kilo-desktop/<update-channel>/latest.json
+kilo-desktop/<update-channel>/latest/<platform>/<arch>/<installer>
+kilo-desktop/<update-channel>/release-notes/<version>.json
+kilo-desktop/<update-channel>/release-notes/latest.json
 ```
 
 `latest.json` contains the version, publication time, immutable release-note URL, and
@@ -186,7 +186,7 @@ and the `pkg-config`/`libsecret` development packages required to rebuild keytar
 
 ## Signing credentials
 
-CI reuses the same GitHub secret names as Anaconda Desktop (Agent Studio):
+CI uses the following GitHub secret names:
 
 | Secret                         | Usage                                                                  |
 | ------------------------------ | ---------------------------------------------------------------------- |

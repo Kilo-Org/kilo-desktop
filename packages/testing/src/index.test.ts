@@ -3,8 +3,8 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { defineMethod } from "@anaconda-agentic-desktop/feature-sdk";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import { defineMethod } from "@kilo-desktop/feature-sdk";
+import type { MainSdk } from "@kilo-desktop/feature-sdk";
 
 import {
 	createFakeFeatureSystem,

@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 
-import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 interface WorkspaceCapability extends Record<string, unknown> {
 	workspaceService: {

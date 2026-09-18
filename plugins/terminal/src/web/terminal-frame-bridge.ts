@@ -1,4 +1,4 @@
-import type { TerminalPalette } from "@anaconda-agentic-desktop/feature-sdk";
+import type { TerminalPalette } from "@kilo-desktop/feature-sdk";
 import {
 	TERMINAL_HOST,
 	terminalFrameHostMessageSchema,
@@ -6,7 +6,7 @@ import {
 	type TerminalTheme,
 } from "../contracts/frame.js";
 
-const DESKTOP_PROTOCOLS = new Set(["anaconda-agentic-desktop:", "anaconda-agentic-desktop-dev:"]);
+const DESKTOP_PROTOCOLS = new Set(["kilo-desktop:", "kilo-desktop-dev:"]);
 
 export function terminalOriginFrom(appOrigin: string): string | undefined {
 	let url: URL;

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import type { Todo } from "../contracts/schemas.js";
 

@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 
-import { LocalApiError } from "@anaconda-agentic-desktop/contracts";
+import { LocalApiError } from "@kilo-desktop/contracts";
 
 export function createDesktopQueryClient(): QueryClient {
 	return new QueryClient({

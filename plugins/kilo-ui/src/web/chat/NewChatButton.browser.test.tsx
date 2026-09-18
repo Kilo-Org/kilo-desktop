@@ -9,8 +9,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import {
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	useRightPanelStore,

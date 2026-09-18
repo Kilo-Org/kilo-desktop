@@ -9,7 +9,7 @@ import type {
 } from "@runtimed/node/electron";
 import type { RelayInfo, RelaySession } from "@runtimed/node/relay";
 
-import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk } from "@kilo-desktop/testing";
 
 const mocks = vi.hoisted(() => ({
 	createRelay: vi.fn(),
@@ -75,7 +75,7 @@ function desktopHost(overrides?: {
 		},
 		externalLinks: { open: vi.fn(overrides?.openLink ?? (async () => true)) },
 		window: {
-			getTitle: () => "Agentic",
+			getTitle: () => "Kilo",
 			setTitle: vi.fn(),
 			isFocused: () => true,
 			onFocusChange: (_senderId: number, _listener: (focused: boolean) => void) => () => undefined,
@@ -151,7 +151,7 @@ describe("ElectronNotebookHostService", () => {
 			ephemeral: false,
 			packageManager: "conda",
 			socketPath: "/tmp/nightly.sock",
-			peerLabel: "agentic-desktop:kilo-1",
+			peerLabel: "kilo-desktop:kilo-1",
 			description: "Analysis",
 		});
 		expect(mocks.serve).toHaveBeenCalledWith(
@@ -164,7 +164,7 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("opens a file-backed relay by canonical path and returns the daemon notebook id", async () => {
-		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-notebook-"));
 		const notebookPath = path.join(directory, "analysis.ipynb");
 		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
 		const canonicalNotebookPath = await realpath(notebookPath);
@@ -183,7 +183,7 @@ describe("ElectronNotebookHostService", () => {
 			});
 			expect(mocks.openRelayPath).toHaveBeenCalledWith(canonicalNotebookPath, {
 				socketPath: "/tmp/nightly.sock",
-				peerLabel: "agentic-desktop:open-file",
+				peerLabel: "kilo-desktop:open-file",
 				description: "analysis.ipynb",
 			});
 			expect(nativeRelay.close).not.toHaveBeenCalled();
@@ -194,7 +194,7 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("hands the opened-file relay to a matching notebook connection", async () => {
-		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-notebook-"));
 		const notebookPath = path.join(directory, "analysis.ipynb");
 		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
 		const canonicalNotebookPath = await realpath(notebookPath);
@@ -231,7 +231,7 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("closes a previous pending opened-file relay when the same notebook is opened again", async () => {
-		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-notebook-"));
 		const notebookPath = path.join(directory, "analysis.ipynb");
 		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
 		const canonicalNotebookPath = await realpath(notebookPath);
@@ -255,7 +255,7 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("closes an unused opened-file relay after the handoff timeout", async () => {
-		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-notebook-"));
 		const notebookPath = path.join(directory, "analysis.ipynb");
 		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
 		const canonicalNotebookPath = await realpath(notebookPath);
@@ -290,7 +290,7 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("wraps native open-file relay failures", async () => {
-		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-notebook-"));
 		const notebookPath = path.join(directory, "analysis.ipynb");
 		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
 		mocks.openRelayPath.mockRejectedValueOnce(new Error("lock held"));
@@ -376,7 +376,7 @@ describe("ElectronNotebookHostService", () => {
 
 		expect(mocks.openRelayPath).toHaveBeenCalledWith("/tmp/analysis.ipynb", {
 			socketPath: "/tmp/nightly.sock",
-			peerLabel: "agentic-desktop:kilo-1",
+			peerLabel: "kilo-desktop:kilo-1",
 			description: "analysis.ipynb",
 		});
 		expect(mocks.createRelay).not.toHaveBeenCalled();
@@ -398,7 +398,7 @@ describe("ElectronNotebookHostService", () => {
 				},
 				externalLinks: { open: vi.fn(async () => true) },
 				window: {
-					getTitle: () => "Agentic",
+					getTitle: () => "Kilo",
 					setTitle,
 					isFocused: () => true,
 					onFocusChange: () => () => undefined,
@@ -444,7 +444,7 @@ describe("ElectronNotebookHostService", () => {
 				dialog: { openFile: vi.fn(async () => null), saveFile },
 				externalLinks: { open: vi.fn(async () => true) },
 				window: {
-					getTitle: () => "Agentic",
+					getTitle: () => "Kilo",
 					setTitle: vi.fn(),
 					isFocused: () => true,
 					onFocusChange: () => () => undefined,
@@ -485,7 +485,7 @@ describe("ElectronNotebookHostService", () => {
 				},
 				externalLinks: { open: vi.fn(async () => true) },
 				window: {
-					getTitle: () => "Agentic",
+					getTitle: () => "Kilo",
 					setTitle: vi.fn(),
 					isFocused: () => true,
 					onFocusChange: () => () => undefined,
@@ -835,7 +835,7 @@ describe("ElectronNotebookHostService", () => {
 		await expect(handler.invoke("system.getFontFamilies", undefined)).resolves.toEqual([]);
 	});
 
-	it("rejects opening or cloning notebooks outside the Agentic side panel", async () => {
+	it("rejects opening or cloning notebooks outside the Kilo Desktop side panel", async () => {
 		const mainSdk = createFakeMainSdk({ featureId: "notebook", host: desktopHost() });
 		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
 		await service.connect(
@@ -850,10 +850,10 @@ describe("ElectronNotebookHostService", () => {
 
 		await expect(
 			handler.invoke("notebook.openInNewWindow", { path: "/tmp/a.ipynb" }),
-		).rejects.toThrow(/Opening a notebook outside its Agentic side panel is unavailable/);
+		).rejects.toThrow(/Opening a notebook outside its Kilo Desktop side panel is unavailable/);
 		await expect(
 			handler.invoke("notebook.openHostedInNewWindow", { url: "https://example.test" }),
-		).rejects.toThrow(/Opening a notebook outside its Agentic side panel is unavailable/);
+		).rejects.toThrow(/Opening a notebook outside its Kilo Desktop side panel is unavailable/);
 		await expect(handler.invoke("notebook.cloneToEphemeral", undefined)).rejects.toThrow(
 			/Cloning the sidecar notebook is not supported/,
 		);
@@ -975,7 +975,7 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("closes a pending opened-file relay when disposed", async () => {
-		const directory = await mkdtemp(path.join(os.tmpdir(), "agentic-notebook-"));
+		const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-notebook-"));
 		const notebookPath = path.join(directory, "analysis.ipynb");
 		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
 		const canonicalNotebookPath = await realpath(notebookPath);

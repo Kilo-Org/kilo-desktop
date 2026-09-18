@@ -7,13 +7,13 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
+} from "@kilo-desktop/ui/components/collapsible";
 import {
 	Dialog,
 	DialogContent,
@@ -21,7 +21,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
+} from "@kilo-desktop/ui/components/dialog";
 import {
 	Field,
 	FieldDescription,
@@ -30,11 +30,11 @@ import {
 	FieldLabel,
 	FieldLegend,
 	FieldSet,
-} from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { ScrollArea } from "@anaconda-agentic-desktop/ui/components/scroll-area";
-import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
+} from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
+import { Separator } from "@kilo-desktop/ui/components/separator";
+import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
 import {
 	Select,
 	SelectContent,
@@ -42,8 +42,8 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+} from "@kilo-desktop/ui/components/select";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import { ApiKeyField } from "./ApiKeyField.js";
 import {

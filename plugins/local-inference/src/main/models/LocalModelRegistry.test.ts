@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { KvStore } from "@anaconda-agentic-desktop/feature-sdk";
+import type { KvStore } from "@kilo-desktop/feature-sdk";
 
 import { LocalModelRegistry, type PersistedLocalModels } from "./LocalModelRegistry.js";
 

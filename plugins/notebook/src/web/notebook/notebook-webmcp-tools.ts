@@ -6,7 +6,7 @@
  * Tool descriptions are the model-facing contract: create and show stay in this
  * layout. nteract MCP is for cells, kernel, and save only.
  */
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 import { z } from "zod";
 
 import {

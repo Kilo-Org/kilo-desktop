@@ -5,7 +5,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import type { MainSdkFetch, MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdkFetch, MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import type { LocalModel, ModelDownload } from "../../contracts/schemas.js";
 import type { CatalogDownloadArtifact, ModelDownloadIdentity } from "./catalog-download.js";

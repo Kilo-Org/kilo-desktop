@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeSdk } from "@kilo-desktop/testing";
 
 import { createChatRightPanelCapability } from "../right-panel/chat-right-panel-capability.js";
 import { useRightPanelStore } from "../right-panel/right-panel-store.js";

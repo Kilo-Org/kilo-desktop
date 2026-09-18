@@ -36,7 +36,7 @@ export type MyEntity = z.infer<typeof myEntitySchema>;
 // Channel map — single source of truth for sdk.invoke / mainSdk.channels().handle.
 // Built with defineMethod from contracts while the file lives here (same
 // {input,output} shape). On plugin migration, move this file and switch to
-// defineMethod from `@anaconda-agentic-desktop/feature-sdk`.
+// defineMethod from `@kilo-desktop/feature-sdk`.
 export const myFeatureChannels = {
 	list: defineMethod(z.undefined(), z.array(myEntitySchema)),
 	create: defineMethod(z.object({ name: z.string().min(1).max(100) }), myEntitySchema),
@@ -54,9 +54,9 @@ export * from "./features/<id>.js";
 **File:** `apps/desktop/src/main/features/<id>/index.ts`
 
 ```typescript
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { myFeatureChannels } from "@anaconda-agentic-desktop/contracts";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
+import { myFeatureChannels } from "@kilo-desktop/contracts";
 import { MyService } from "./MyService.js";
 
 export function mainRegister(mainSdk: MainSdk) {
@@ -91,7 +91,7 @@ If the feature must also run in standalone browser mode, add a `browserRegister`
 **File:** `apps/desktop/src/main/features/registry/features.ts`
 
 ```typescript
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import type { FeatureRegistration } from "@kilo-desktop/feature-sdk";
 import { mainRegister } from "../<id>/index.js";
 
 export const FEATURES: readonly FeatureRegistration[] = [
@@ -106,8 +106,8 @@ export const FEATURES: readonly FeatureRegistration[] = [
 
 ```typescript
 import { queryOptions, mutationOptions, type QueryClient } from "@tanstack/react-query";
-import type { TypedSDK } from "@anaconda-agentic-desktop/feature-sdk";
-import { myFeatureChannels } from "@anaconda-agentic-desktop/contracts";
+import type { TypedSDK } from "@kilo-desktop/feature-sdk";
+import { myFeatureChannels } from "@kilo-desktop/contracts";
 
 type MySdk = TypedSDK<typeof myFeatureChannels>;
 
@@ -130,7 +130,7 @@ export function createMutationOptions(sdk: MySdk, qc: QueryClient) {
 
 ```tsx
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { MyFeatureService } from "@anaconda-agentic-desktop/contracts";
+import type { MyFeatureService } from "@kilo-desktop/contracts";
 import { useSdk } from "@/platform/sdk";
 import { listQueryOptions, createMutationOptions } from "./use<Name>";
 
@@ -172,7 +172,7 @@ See `.agents/skills/write-vitest/SKILL.md` (Vitest) and `.agents/skills/write-e2
 **3. Component — browser** (`apps/web/src/features/<id>/<Name>View.browser.test.tsx`)
 
 ```tsx
-import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeSdk } from "@kilo-desktop/testing";
 // Use createFakeSdk({
 //   featureId: "<id>",
 //   channels: myFeatureChannels,
@@ -221,9 +221,9 @@ pnpm lint        # No warnings
 
 ## Rules
 
-- Import from `@anaconda-agentic-desktop/feature-sdk` for SDK types and `defineMethod`; use `useSdk<ServiceType>` in the renderer
-- Import from `@anaconda-agentic-desktop/contracts` for Zod schemas, `defineContract`, and `InferContract`
-- Import from `@anaconda-agentic-desktop/testing` for test fakes
+- Import from `@kilo-desktop/feature-sdk` for SDK types and `defineMethod`; use `useSdk<ServiceType>` in the renderer
+- Import from `@kilo-desktop/contracts` for Zod schemas, `defineContract`, and `InferContract`
+- Import from `@kilo-desktop/testing` for test fakes
 - Never add methods to `LocalApi`
 - Never import from another feature
 - Namespace events with feature ID: `sdk.events.emit("eventName", payload)` (auto-prefixed)

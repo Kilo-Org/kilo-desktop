@@ -16,8 +16,7 @@ import {
 	type WebMcpRelayEntry,
 } from "./webmcp-relay-config.js";
 
-const APP_EXE =
-	"/Applications/Anaconda Agentic Desktop.app/Contents/MacOS/Anaconda Agentic Desktop";
+const APP_EXE = "/Applications/Kilo.app/Contents/MacOS/Kilo";
 const RELAY_ENTRY = "/opt/app.asar.unpacked/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs";
 const RELAY_VERSION = "4.0.0";
 const fakeResolveRelay = () => ({ entry: RELAY_ENTRY, version: RELAY_VERSION });
@@ -165,7 +164,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 	it("preserves JSONC comments and unrelated sibling keys", async () => {
 		const jsoncBody = `{
-  // Kilo global config; partly owned by Anaconda Desktop.
+  // Kilo global config; partly owned by Kilo Desktop.
   "$schema": "https://app.kilo.ai/config.json",
   "mcp": {
     // user's own MCP servers
@@ -186,7 +185,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 
 		const raw = await readFile(configFile, "utf8");
-		expect(raw).toContain("// Kilo global config; partly owned by Anaconda Desktop.");
+		expect(raw).toContain("// Kilo global config; partly owned by Kilo Desktop.");
 		expect(raw).toContain("// user's own MCP servers");
 		expect(raw).toContain("$schema");
 		expect(raw).toContain("my-custom");
@@ -227,10 +226,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 			appExecutablePath: APP_EXE,
 			resolveRelay: fakeResolveRelay,
 		});
-		const NEW_EXE = APP_EXE.replace(
-			"Anaconda Agentic Desktop.app",
-			"Anaconda Agentic Desktop v2.app",
-		);
+		const NEW_EXE = APP_EXE.replace("Kilo.app", "Kilo v2.app");
 		const NEW_ENTRY = RELAY_ENTRY.replace("dist/cli.mjs", "dist/cli-v2.mjs");
 
 		const outcome = await reconcileWebMcpRelayConfig({

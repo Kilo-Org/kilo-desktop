@@ -3,7 +3,7 @@ import {
 	pluginRegistrations,
 	reportPluginDiscoveryIssues,
 	type FeatureRegistration,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 import { browserRegister as anacondaMcpBrowserRegister } from "./anaconda-mcp/index.js";

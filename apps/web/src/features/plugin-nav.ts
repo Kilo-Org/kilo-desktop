@@ -1,12 +1,8 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { ComponentType } from "react";
 
-import {
-	pluginNav,
-	stripPluginNamespace,
-	type PluginDiscovery,
-} from "@anaconda-agentic-desktop/feature-sdk";
-import { useFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+import { pluginNav, stripPluginNamespace, type PluginDiscovery } from "@kilo-desktop/feature-sdk";
+import { useFeatureSystem } from "@kilo-desktop/sdk-react";
 
 /**
  * A sidebar nav entry declared in a plugin manifest (`contributes.nav`).

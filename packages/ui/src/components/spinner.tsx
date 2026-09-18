@@ -1,18 +1,18 @@
 import { cva, type VariantProps } from "class-variance-authority";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 /**
  * Loading spinner: three dots orbiting an equilateral triangle.
  *
- * Ports the Kendo `infinite-spinner` used across Anaconda Desktop so both
- * apps share one loading motion. Geometry follows Kendo's tokens: the dot is
+ * Implements the Kendo `infinite-spinner` loading motion. Geometry follows
+ * Kendo's tokens: the dot is
  * the only free variable, and the canvas derives from it —
  * `width = dot * 3`, `height = dot * 4 * sin(60°) - dot`. Expressing that as
  * `calc()` off a single `--spinner-dot` keeps the triangle equilateral at
  * every size instead of hard-coding three sets of fractional pixels.
  *
- * Requires `@anaconda-agentic-desktop/ui/styles/animations.css` for the
+ * Requires `@kilo-desktop/ui/styles/animations.css` for the
  * `spinner-orbit` keyframes. Colour comes from `currentColor`, so set it with
  * a text utility (`text-primary`, `text-muted-foreground`, …).
  */

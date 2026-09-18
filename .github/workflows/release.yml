@@ -193,7 +193,7 @@ jobs:
       - name: Update release package versions
         env:
           RELEASE_VERSION: ${{ needs.preflight.outputs.release_version }}
-        run: pnpm --filter @anaconda-agentic-desktop/desktop exec tsx config/desktop-version.ts "$RELEASE_VERSION"
+        run: pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts "$RELEASE_VERSION"
 
       - name: Refresh release lockfile
         run: pnpm install --lockfile-only --ignore-scripts

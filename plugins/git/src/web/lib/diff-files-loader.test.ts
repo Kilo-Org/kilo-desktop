@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { processFile, type FileDiffMetadata } from "@pierre/diffs";
 
-import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeSdk } from "@kilo-desktop/testing";
 
 import type { GitServiceContract } from "../../contracts/schemas.js";
 import { gitContract } from "../../contracts/schemas.js";

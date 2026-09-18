@@ -1,4 +1,4 @@
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { LexicalComposerInput } from "@assistant-ui/react-lexical";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";

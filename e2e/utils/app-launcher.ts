@@ -26,8 +26,7 @@ export function packagedAppLaunchEnv(
 		...Object.fromEntries(
 			Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
 		),
-		ANACONDA_SKIP_CONDA_STAGING: "1",
-		ANACONDA_SKIP_ONBOARDING: "1",
+		KILO_SKIP_ONBOARDING: "1",
 		ANACONDA_SKIP_KEYRING: "1",
 		GIT_CONFIG_GLOBAL: path.join(userDataDir, ".gitconfig"),
 		GIT_CONFIG_SYSTEM: path.join(userDataDir, ".gitconfig-system"),
@@ -85,16 +84,12 @@ export function killProcessTree(pid: number): void {
 /** Package the Electron app for Playwright (inspect fuse enabled). */
 export async function buildPackagedApp(): Promise<void> {
 	logger.info("Building packaged Electron app for e2e…");
-	const result = spawnSync(
-		"pnpm",
-		["--filter", "@anaconda-agentic-desktop/desktop", "run", "package:e2e"],
-		{
-			cwd: repoRoot,
-			stdio: "inherit",
-			shell: process.platform === "win32",
-			env: process.env,
-		},
-	);
+	const result = spawnSync("pnpm", ["--filter", "@kilo-desktop/desktop", "run", "package:e2e"], {
+		cwd: repoRoot,
+		stdio: "inherit",
+		shell: process.platform === "win32",
+		env: process.env,
+	});
 	if (result.status !== 0) {
 		throw new Error(`electron-forge package:e2e failed with exit code ${result.status}`);
 	}

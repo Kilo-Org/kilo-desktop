@@ -1,13 +1,13 @@
 # Running our own `runtimed`, or sharing the user's — handoff
 
-> **Superseded:** a private daemon would split collaborators across runtime authorities. Agentic
+> **Superseded:** a private daemon would split collaborators across runtime authorities. Kilo
 > Desktop attaches to the user's externally installed singleton instead. This file is retained only
 > as the investigation record.
 
 Status: **investigation.** Nothing built. This supersedes one recommendation in
 `embedding-handoff.md` §5 and reframes a user-facing failure mode.
 
-Scope: whether agentic-desktop should spawn a private `runtimed` daemon or attach
+Scope: whether kilo-desktop should spawn a private `runtimed` daemon or attach
 to whatever daemon is already running, and what each costs. Independent of §3/§4
 (serving nteract's SPA, CSP) — different files, different repos, no ordering
 constraint.

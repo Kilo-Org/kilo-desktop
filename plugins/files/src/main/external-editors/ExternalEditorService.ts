@@ -1,7 +1,7 @@
 import spawn from "cross-spawn";
 import which from "which";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 import { EXTERNAL_EDITORS, type ExternalEditorId } from "../../contracts/schemas.js";
 

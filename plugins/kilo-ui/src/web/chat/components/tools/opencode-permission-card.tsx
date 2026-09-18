@@ -6,7 +6,7 @@ import {
 } from "@assistant-ui/react-opencode";
 import { AlertCircleIcon, LoaderIcon, ShieldAlertIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 import {
 	Badge,

@@ -4,7 +4,7 @@ import { explorerRootTitle, folderName } from "./explorer-title.js";
 
 describe("folderName", () => {
 	it("returns the last path segment", () => {
-		expect(folderName("/Users/me/Work/Repos/agentic-desktop")).toBe("agentic-desktop");
+		expect(folderName("/Users/me/Work/Repos/kilo-desktop")).toBe("kilo-desktop");
 	});
 
 	it("ignores trailing separators", () => {

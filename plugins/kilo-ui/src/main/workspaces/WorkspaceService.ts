@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { asc, eq } from "drizzle-orm";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import {
 	DEFAULT_WORKSPACE_IDENTITY_COLOR,

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import { createTodosDatabase, type TodosDatabase } from "./db.js";
 import { TodoService } from "./TodoService.js";

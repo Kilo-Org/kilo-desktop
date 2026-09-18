@@ -3,8 +3,8 @@
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
 import { XIcon } from "lucide-react";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {

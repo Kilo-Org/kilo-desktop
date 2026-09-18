@@ -1,4 +1,4 @@
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import type {
 	EnvironmentProvider,
@@ -14,7 +14,7 @@ import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
 
 /**
  * Minimal shape of the main-side preferences capability exposed by the shell.
- * Inlined so the plugin does not take a `@anaconda-agentic-desktop/contracts`
+ * Inlined so the plugin does not take a `@kilo-desktop/contracts`
  * dependency for a single call.
  */
 interface PreferencesCapability extends Record<string, unknown> {

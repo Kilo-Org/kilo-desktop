@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import type { KiloInstallation } from "./KiloServerManager.js";
 import { getKiloCliArtifact } from "./cli-distribution/artifacts.js";
@@ -37,7 +37,7 @@ export function resolveKiloInstallation(
 	);
 	if (!binDirectory) {
 		throw new FeatureError(
-			`Bundled Kilo CLI is missing from the configured resource roots. Run pnpm --filter @anaconda-agentic-desktop/plugin-kilo-server run fetch-cli.`,
+			`Bundled Kilo CLI is missing from the configured resource roots. Run pnpm --filter @kilo-desktop/plugin-kilo-server run fetch-cli.`,
 			"BUSINESS",
 		);
 	}

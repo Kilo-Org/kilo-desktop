@@ -1,4 +1,4 @@
-# CONTEXT.md — Anaconda Agentic Desktop
+# CONTEXT.md — Kilo Desktop
 
 ## What is this project?
 
@@ -8,31 +8,31 @@ An Electron desktop app (React renderer) that will evolve into a plugin-based pl
 
 ```
 apps/
-├── desktop/   @anaconda-agentic-desktop/desktop   Electron main + preload
-└── web/       @anaconda-agentic-desktop/web       React 19 renderer (runs in Electron or standalone browser)
+├── desktop/   @kilo-desktop/desktop   Electron main + preload
+└── web/       @kilo-desktop/web       React 19 renderer (runs in Electron or standalone browser)
 
 packages/
-├── contracts/    @anaconda-agentic-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
-├── feature-sdk/  @anaconda-agentic-desktop/feature-sdk  Shim SDK — stable interface features program against
-├── sdk-react/    @anaconda-agentic-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
-├── testing/      @anaconda-agentic-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
-├── ui/           @anaconda-agentic-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
-└── git-client/   @anaconda-agentic-desktop/git-client   Node-only git client: `exec` with error normalization (successExitCodes/expectedErrors gating), typed `status()` (working-directory and branch status), `branches()`/`createBranch()`/`checkoutBranch()` (local branch list/create/checkout), `repositoryType()` (single rev-parse probe classifying missing/unsafe/bare/regular, ported from GitHub Desktop), `createWorkingDirectoryPatch()` (throwaway-index patch) and `getFileContents()`/`getBlobContents()` (both sides of a working-tree file, size-capped); system git via which — no embedded binary
+├── contracts/    @kilo-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
+├── feature-sdk/  @kilo-desktop/feature-sdk  Shim SDK — stable interface features program against
+├── sdk-react/    @kilo-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
+├── testing/      @kilo-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
+├── ui/           @kilo-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
+└── git-client/   @kilo-desktop/git-client   Node-only git client: `exec` with error normalization (successExitCodes/expectedErrors gating), typed `status()` (working-directory and branch status), `branches()`/`createBranch()`/`checkoutBranch()` (local branch list/create/checkout), `repositoryType()` (single rev-parse probe classifying missing/unsafe/bare/regular, ported from GitHub Desktop), `createWorkingDirectoryPatch()` (throwaway-index patch) and `getFileContents()`/`getBlobContents()` (both sides of a working-tree file, size-capped); system git via which — no embedded binary
 
-e2e/              @anaconda-agentic-desktop/e2e          Playwright/Electron e2e (plugin-aware)
+e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware)
 plugins/          Bundled plugins — self-contained workspace packages
-├── todos/        @anaconda-agentic-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
-├── kilo-server/  @anaconda-agentic-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
-├── kilo-ui/      @anaconda-agentic-desktop/plugin-kilo-ui Chat UI and workspace management
-├── notebook/     @anaconda-agentic-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
-└── git/          @anaconda-agentic-desktop/plugin-git Git status (main) + working-directory "Changes" right-panel tab streamed over a custom `kilo-git://` protocol (`getDiffContents` channel for hunk expansion), and branch switching (create/checkout) via git-client contributing the composer draft footer branch switcher, gated on `repositoryType` (regular repos only)
+├── todos/        @kilo-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
+├── kilo-server/  @kilo-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
+├── kilo-ui/      @kilo-desktop/plugin-kilo-ui Chat UI and workspace management
+├── notebook/     @kilo-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
+└── git/          @kilo-desktop/plugin-git Git status (main) + working-directory "Changes" right-panel tab streamed over a custom `kilo-git://` protocol (`getDiffContents` channel for hunk expansion), and branch switching (create/checkout) via git-client contributing the composer draft footer branch switcher, gated on `repositoryType` (regular repos only)
 ```
 
 ## Key architectural decisions
 
 ### Feature SDK (shim layer)
 
-Features program against `@anaconda-agentic-desktop/feature-sdk`, not `LocalApi`.
+Features program against `@kilo-desktop/feature-sdk`, not `LocalApi`.
 
 - `sdk.invoke(channel, args)` — transport-agnostic call to the feature's backend handlers
 - `sdk.client` — proxy that maps method calls to `invoke`; typed via `useSdk<ServiceType>(featureId)`
@@ -100,20 +100,20 @@ Three tiers decide where a dependency lives:
 
 **Tier 1 — Shared Runtime Set (shell-owned singletons).** Plugins declare these as `peerDependencies` and never bundle them; the host provides exactly one runtime copy. Shared because TWO copies break correctness, not for convenience:
 
-| Package                                 | Why a singleton                                                                    |
-| --------------------------------------- | ---------------------------------------------------------------------------------- |
-| `react` / `react-dom`                   | Two copies = invalid hook calls, broken context                                    |
-| `@anaconda-agentic-desktop/feature-sdk` | Shared in-memory EventBus/StateBroker/CapabilityRegistry — a 2nd copy splits them  |
-| `@anaconda-agentic-desktop/sdk-react`   | React bindings must resolve the same SDK context                                   |
-| `@anaconda-agentic-desktop/ui`          | One design system: context identity in stateful components; upgrades apply at once |
-| `@tanstack/react-query`                 | `useSdkQuery` must hit the host's single QueryClientProvider/cache                 |
-| `zod`                                   | `instanceof ZodError` identity across the `feature:invoke` validation boundary     |
+| Package                     | Why a singleton                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `react` / `react-dom`       | Two copies = invalid hook calls, broken context                                    |
+| `@kilo-desktop/feature-sdk` | Shared in-memory EventBus/StateBroker/CapabilityRegistry — a 2nd copy splits them  |
+| `@kilo-desktop/sdk-react`   | React bindings must resolve the same SDK context                                   |
+| `@kilo-desktop/ui`          | One design system: context identity in stateful components; upgrades apply at once |
+| `@tanstack/react-query`     | `useSdkQuery` must hit the host's single QueryClientProvider/cache                 |
+| `zod`                       | `instanceof ZodError` identity across the `feature:invoke` validation boundary     |
 
-**Deliberately shell-only (plugins never import these):** `@tanstack/react-router` (navigation is a shell delegate — `sdk.navigate`; the host creates routes from `plugin.json`), `@anaconda-agentic-desktop/contracts` (shell-internal; contract helpers come from feature-sdk), the Tailwind pipeline + `@anaconda/shadcn-theme` tokens (plugins ship class names only; the shell's `globals.css` scans `packages/ui` and `plugins/` via `@source`), and all Electron APIs (use SDK shell delegates).
+**Deliberately shell-only (plugins never import these):** `@tanstack/react-router` (navigation is a shell delegate — `sdk.navigate`; the host creates routes from `plugin.json`), `@kilo-desktop/contracts` (shell-internal; contract helpers come from feature-sdk), the Tailwind pipeline + `@anaconda/shadcn-theme` tokens (plugins ship class names only; the shell's `globals.css` scans `packages/ui` and `plugins/` via `@source`), and all Electron APIs (use SDK shell delegates).
 
 **Tier 2 — Per-plugin runtime deps (plugin-owned).** Implementation details of one plugin's feature (e.g. todos: `better-sqlite3`, `drizzle-orm`, its drizzle migrations). Normal workspace deps in-repo (pnpm dedupes); bundled into the plugin's build when external.
 
-**Tier 3 — Dev/test tooling.** Per-plugin `devDependencies`, never shipped: vitest, playwright, typescript, `@anaconda-agentic-desktop/testing`, `@anaconda-agentic-desktop/e2e`, drizzle-kit, tailwind-for-tests.
+**Tier 3 — Dev/test tooling.** Per-plugin `devDependencies`, never shipped: vitest, playwright, typescript, `@kilo-desktop/testing`, `@kilo-desktop/e2e`, drizzle-kit, tailwind-for-tests.
 
 **Rule of thumb:** two copies would break correctness or fork the design system → Tier 1. One plugin's business → Tier 2. Tooling → Tier 3. The singleton guarantee is implicit today (workspace hoisting); it becomes an enforced contract in Slice 5 (canonical externals list + peerDependencies + host-provided runtime).
 
@@ -124,7 +124,7 @@ Three tiers decide where a dependency lives:
 | **Feature**        | A product capability developed inside `apps/` that programs against the SDK. Will become a plugin later.                                                                                     |
 | **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                         |
 | **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                               |
-| **SDK**            | `@anaconda-agentic-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                     |
+| **SDK**            | `@kilo-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                                 |
 | **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers, use `mainSdk.events` / `mainSdk.plugins` for main-side communication, and consume host logging/network delegates. |
 | **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                             |
 | **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                 |
@@ -147,7 +147,7 @@ Three tiers decide where a dependency lives:
 - **Coverage** — 80% lines/branches/functions/statements (`pnpm coverage`)
 - **oxlint + oxfmt** (not ESLint/Prettier)
 - **peerDependencies** for react, react-dom, zod in publishable packages
-- Tests use `createFakeSdk` / `createFakeMainSdk` / `createLinkedFakeSdkPair` from `@anaconda-agentic-desktop/testing`
+- Tests use `createFakeSdk` / `createFakeMainSdk` / `createLinkedFakeSdkPair` from `@kilo-desktop/testing`
 - Interactive elements use stable `data-qa-id` attributes (queried by Vitest browser + Playwright)
 - Cross-feature communication only through SDK primitives (events, state, plugins.get)
 - All events namespaced by feature ID: `featureId.eventName`
@@ -163,7 +163,7 @@ See [docs/TESTING.md](./docs/TESTING.md) for the full tier taxonomy and how to r
 - Don't add feature methods to `LocalApi`
 - Don't import from other features' source
 - Don't import from `apps/*/src/lib/` or `apps/*/src/platform/` in feature code
-- Don't copy shadcn/design-system components into features or plugins — import from `@anaconda-agentic-desktop/ui`
+- Don't copy shadcn/design-system components into features or plugins — import from `@kilo-desktop/ui`
 - Don't share DB tables across features
 - Don't use React Context for cross-feature communication
 - Don't emit un-namespaced events

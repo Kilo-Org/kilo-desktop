@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createFakeMainSdk, createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk, createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
 import {

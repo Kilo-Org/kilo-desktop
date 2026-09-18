@@ -19,7 +19,7 @@ import QwenColor from "@lobehub/icons/es/Qwen/components/Color.js";
 import StabilityColor from "@lobehub/icons/es/Stability/components/Color.js";
 import XiaomiMiMoMono from "@lobehub/icons/es/XiaomiMiMo/components/Mono.js";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 type PublisherLogoComponent = ComponentType<{
 	className?: string;

@@ -7,7 +7,7 @@ import {
 	type WorkspaceFileChangeEvent,
 	type WorkspaceFileChangeType,
 	type WorkspaceSubscriptionOptions,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import { useFeatureSystem } from "./SdkProvider.js";
 

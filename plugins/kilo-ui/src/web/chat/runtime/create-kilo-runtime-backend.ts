@@ -15,7 +15,7 @@ import type {
 import { ANACONDA_LOCAL_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { hydrateSessionActivity } from "../session-activity/hydrate-session-activity.js";
 import {
-	buildAnacondaSessionMetadata,
+	buildKiloDesktopSessionMetadata,
 	readSessionInfoPatch,
 	readWorkspaceFoldersFromMetadata,
 } from "../session-activity/session-activity-logic.js";
@@ -24,7 +24,7 @@ import { hydrateKiloSuggestions } from "../suggestions/hydrate-kilo-suggestions.
 import type { KiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
-import { withAnacondaSessionListFilter } from "./with-anaconda-session-list-filter.js";
+import { withKiloDesktopSessionListFilter } from "./with-kilo-desktop-session-list-filter.js";
 import { withPromptOptions, type PromptOptionGetters } from "./with-prompt-options.js";
 import {
 	buildWorkspacePermissionRules,
@@ -76,7 +76,7 @@ export function createKiloRuntimeBackend({
 		const connection = await liveConnection();
 		const cached = globalClients.get(connection);
 		if (cached) return cached;
-		const client = withAnacondaSessionListFilter(createKiloGlobalClient(connection));
+		const client = withKiloDesktopSessionListFilter(createKiloGlobalClient(connection));
 		globalClients.set(connection, client);
 		return client;
 	};
@@ -214,7 +214,7 @@ export function createKiloRuntimeBackend({
 			if (prepareModel && model?.providerID === ANACONDA_LOCAL_PROVIDER_ID) {
 				await prepareModel(model.modelID);
 			}
-			const metadata = buildAnacondaSessionMetadata(
+			const metadata = buildKiloDesktopSessionMetadata(
 				workspaceId ? { workspaceId, workspaceFolders } : undefined,
 			);
 			const permission = buildWorkspacePermissionRules(workspaceFolders);

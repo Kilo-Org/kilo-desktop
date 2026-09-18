@@ -1,8 +1,8 @@
 import type { ComponentType } from "react";
 
-import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
-import type { ShellZone } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ShellZone } from "@kilo-desktop/feature-sdk";
 
 type ZoneOutletProps = {
 	/** Canonical zone to render — the shell renders only ShellZone ids (Decision #21). */

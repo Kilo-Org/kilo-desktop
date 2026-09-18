@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 
-import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
-import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
+import type { Contribution } from "@kilo-desktop/feature-sdk";
+import { useSdkContributions } from "@kilo-desktop/sdk-react";
 import type {
 	MarkdownRendererExtension,
 	MarkdownRendererExtensionFactory,
-} from "@anaconda-agentic-desktop/ui/components/markdown-extension";
+} from "@kilo-desktop/ui/components/markdown-extension";
 
 export const CHAT_MARKDOWN_EXTENSION = "kilo-ui/chat-markdown-extension";
 

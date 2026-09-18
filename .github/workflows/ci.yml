@@ -72,8 +72,8 @@ jobs:
       - name: Isolate git config
         shell: bash
         run: |
-          : > "$RUNNER_TEMP/aad-test-gitconfig"
-          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/aad-test-gitconfig" >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/kilo-test-gitconfig"
+          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/kilo-test-gitconfig" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
@@ -84,12 +84,12 @@ jobs:
         uses: ./.github/actions/install-test-runtime
         with:
           runtime: electron
-          package-name: "@anaconda-agentic-desktop/desktop"
+          package-name: "@kilo-desktop/desktop"
       - if: runner.os == 'Linux'
         uses: ./.github/actions/install-test-runtime
         with:
           runtime: playwright
-          package-name: "@anaconda-agentic-desktop/web"
+          package-name: "@kilo-desktop/web"
           with-deps: "true"
       - if: runner.os == 'Linux'
         run: pnpm exec turbo run coverage --concurrency=2
@@ -97,9 +97,9 @@ jobs:
         if: runner.os != 'Linux'
         shell: bash
         run: |
-          pnpm --filter @anaconda-agentic-desktop/git-client exec vitest run
-          pnpm --filter @anaconda-agentic-desktop/plugin-kilo-server exec vitest run --project integration
-          pnpm --filter @anaconda-agentic-desktop/plugin-notebook exec vitest run --project integration
+          pnpm --filter @kilo-desktop/git-client exec vitest run
+          pnpm --filter @kilo-desktop/plugin-kilo-server exec vitest run --project integration
+          pnpm --filter @kilo-desktop/plugin-notebook exec vitest run --project integration
 
   e2e-pr:
     if: github.event_name == 'pull_request'

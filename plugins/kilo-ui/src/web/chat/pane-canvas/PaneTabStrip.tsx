@@ -9,10 +9,10 @@ import {
 } from "lucide-react";
 import type { CSSProperties, FC, ReactNode } from "react";
 
-import type { PaneDescriptor } from "@anaconda-agentic-desktop/pane-layout";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { TabsList, TabsTrigger } from "@anaconda-agentic-desktop/ui/components/tabs";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import type { PaneDescriptor } from "@kilo-desktop/pane-layout";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { TabsList, TabsTrigger } from "@kilo-desktop/ui/components/tabs";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { PaneDrop } from "./pane-drop.js";
 import { PANE_KIND_ICON, PANE_KIND_ICON_CLASS, type PaneIconOverride } from "./pane-kind-icon.js";

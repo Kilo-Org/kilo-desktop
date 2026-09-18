@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { themeChromeColors } from "@anaconda-agentic-desktop/contracts";
-
 import { BootProgressReporter } from "./BootProgressReporter.js";
 
 const fakeWindows = vi.hoisted(() => {
@@ -39,7 +37,7 @@ vi.mock("electron", () => ({
 
 const noopLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never;
 
-import { SplashWindow } from "./SplashWindow.js";
+import { resolveSplashTheme, SplashWindow } from "./SplashWindow.js";
 
 describe("SplashWindow", () => {
 	let reporter: BootProgressReporter;
@@ -74,7 +72,7 @@ describe("SplashWindow", () => {
 		splash.show();
 
 		const opts = fakeWindows.created[0]!.options;
-		expect(opts.backgroundColor).toBe(themeChromeColors.dark.background);
+		expect(opts.backgroundColor).toBe(resolveSplashTheme("kilo", true).background);
 	});
 
 	it("uses light chrome colors when isDark is false", () => {
@@ -82,7 +80,24 @@ describe("SplashWindow", () => {
 		splash.show();
 
 		const opts = fakeWindows.created[0]!.options;
-		expect(opts.backgroundColor).toBe(themeChromeColors.light.background);
+		expect(opts.backgroundColor).toBe(resolveSplashTheme("kilo", false).background);
+	});
+
+	it("uses the selected theme surfaces and primary while keeping the Kilo logo yellow", () => {
+		const theme = resolveSplashTheme("dracula", true);
+		const splash = new SplashWindow(reporter, {
+			isDark: true,
+			themeId: "dracula",
+			logger: noopLogger,
+		});
+		splash.show();
+
+		const created = fakeWindows.created[0]!;
+		expect(created.options.backgroundColor).toBe(theme.background);
+		const loadedUrl = created.loadURL.mock.calls[0]?.[0] as string;
+		const html = decodeURIComponent(loadedUrl.replace("data:text/html;charset=utf-8,", ""));
+		expect(html).toContain(`background:${theme.primary}`);
+		expect(html).toContain("background:#f7f586");
 	});
 
 	it("centers the window on the primary display", () => {
@@ -183,7 +198,10 @@ describe("SplashWindow", () => {
 		const html = decodeURIComponent(loadedUrl.replace("data:text/html;charset=utf-8,", ""));
 		expect(html).toContain('id="status"');
 		expect(html).toContain("progress-bar");
-		expect(html).toContain("svg");
+		expect(html).toContain("#f7f586");
+		expect(html).toContain("mask:url");
+		expect(html).toContain("viewBox='0 0 100 100'");
+		expect(html).toContain("M0,0v100h100V0H0Z");
 		expect(html).toContain("Starting");
 	});
 });

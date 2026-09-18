@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { KvStore } from "@anaconda-agentic-desktop/feature-sdk";
+import type { KvStore } from "@kilo-desktop/feature-sdk";
 
 import type { LocalModel } from "../../contracts/schemas.js";
 import { LocalInferenceService } from "./LocalInferenceService.js";

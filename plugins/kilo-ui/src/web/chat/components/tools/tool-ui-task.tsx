@@ -1,7 +1,7 @@
 import { memo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { PlanMarkdown } from "../../plan/PlanMarkdown.js";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";

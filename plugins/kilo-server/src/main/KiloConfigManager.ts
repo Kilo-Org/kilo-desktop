@@ -9,8 +9,7 @@ import type { Node, ParseError } from "jsonc-parser";
 import type { KiloLogger } from "./KiloServerManager.js";
 
 export const KILO_CONFIG_FILENAME = "kilo.jsonc";
-export const OWNERSHIP_SIDECAR_FILENAME = ".anaconda-desktop-ownership.json";
-const LEGACY_SIDECAR_FILENAME = ".anaconda-desktop-managed.json";
+export const OWNERSHIP_SIDECAR_FILENAME = ".kilo-desktop-ownership.json";
 const SIDECAR_SCHEMA_VERSION = 4;
 
 export type KiloConfigEntry = Readonly<Record<string, unknown>>;
@@ -126,27 +125,9 @@ async function readSidecar(configDirectory: string): Promise<SidecarReadResult> 
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
 	}
-
-	const legacyPath = path.join(configDirectory, LEGACY_SIDECAR_FILENAME);
-	try {
-		const legacy = parseSidecar(await readFile(legacyPath, "utf8"), "managed");
-		if (legacy) return { sidecar: legacy.sidecar, requiresMigration: true };
-		return noOwnership();
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
-	}
-
 	// A missing or corrupt sidecar means Desktop owns nothing. This is the
 	// conservative choice: never overwrite an entry whose ownership is unclear.
 	return noOwnership();
-}
-
-async function unlinkIfPresent(filePath: string): Promise<void> {
-	try {
-		await unlink(filePath);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
 }
 
 async function writeSidecar(sidecarPath: string, sidecar: Sidecar): Promise<void> {
@@ -165,9 +146,7 @@ async function writeSidecar(sidecarPath: string, sidecar: Sidecar): Promise<void
 
 async function migrateSidecar(configDirectory: string, sidecar: Sidecar): Promise<void> {
 	const ownershipPath = path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME);
-	const legacyPath = path.join(configDirectory, LEGACY_SIDECAR_FILENAME);
 	await writeSidecar(ownershipPath, sidecar);
-	await unlinkIfPresent(legacyPath);
 }
 
 async function readExistingConfig(

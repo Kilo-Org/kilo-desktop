@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 
 import * as Sentry from "@sentry/electron/main";
-import { FeatureError, FeatureRouter } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError, FeatureRouter } from "@kilo-desktop/feature-sdk/main";
 
 import {
 	qualifyFeatureEvent,
@@ -11,13 +11,13 @@ import {
 	type MainSdkHost,
 	type MainSdkLogger,
 	type MainSdkProtocol,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 import type {
 	FeatureEventPayload,
 	IpcHandlers,
 	IpcMessageHandlers,
 	IpcPortHandlers,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { BusinessError } from "../../platform/BusinessError.js";
 import { createFeatureKvStoreFactory } from "../../platform/featureKvStore.js";

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { parsePluginManifest } from "@anaconda-agentic-desktop/feature-sdk";
+import { parsePluginManifest } from "@kilo-desktop/feature-sdk";
 
 /**
  * BUNDLED_PLUGINS is intentionally split per process (this file for Electron
@@ -22,8 +22,8 @@ import { parsePluginManifest } from "@anaconda-agentic-desktop/feature-sdk";
 describe("BUNDLED_PLUGINS parity", () => {
 	const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url));
 
-	const manifestSpecifier = /@anaconda-agentic-desktop\/plugin-([a-z0-9-]+)\/plugin\.json/g;
-	const mainSpecifier = /@anaconda-agentic-desktop\/plugin-([a-z0-9-]+)\/main/g;
+	const manifestSpecifier = /@kilo-desktop\/plugin-([a-z0-9-]+)\/plugin\.json/g;
+	const mainSpecifier = /@kilo-desktop\/plugin-([a-z0-9-]+)\/main/g;
 
 	function matchedIds(source: string, pattern: RegExp): Set<string> {
 		return new Set([...source.matchAll(pattern)].map((match) => match[1]!));

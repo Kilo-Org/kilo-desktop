@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import {
 	TERMINAL_SESSION_EXITED_EVENT,

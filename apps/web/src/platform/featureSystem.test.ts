@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { LocalApi } from "@kilo-desktop/contracts";
 
 import { createBrowserLocalApi } from "./browserLocalApi";
 import { createShellDelegates } from "./featureSystem";

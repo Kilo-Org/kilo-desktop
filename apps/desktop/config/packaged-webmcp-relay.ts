@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { PACKAGED_WEBMCP_RELAY_DIRECTORY } from "@anaconda-agentic-desktop/plugin-kilo-server/packaged-assets";
+import { PACKAGED_WEBMCP_RELAY_DIRECTORY } from "@kilo-desktop/plugin-kilo-server/packaged-assets";
 
 /**
  * `packageAfterCopy`'s `buildPath` is packager's `originalResourcesAppDir`

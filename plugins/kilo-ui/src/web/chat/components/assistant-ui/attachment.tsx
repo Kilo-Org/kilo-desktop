@@ -15,20 +15,16 @@ import {
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 import {
 	Dialog,
 	DialogTitle,
 	DialogContent,
 	DialogTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import {
-	Avatar,
-	AvatarImage,
-	AvatarFallback,
-} from "@anaconda-agentic-desktop/ui/components/avatar";
+} from "@kilo-desktop/ui/components/dialog";
+import { Avatar, AvatarImage, AvatarFallback } from "@kilo-desktop/ui/components/avatar";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 const useFileSrc = (file: File | undefined) => {
 	const [src, setSrc] = useState<string | undefined>(undefined);

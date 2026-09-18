@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
-import { ANACONDA_MCP_STATUS_CHANGED_EVENT } from "@anaconda-agentic-desktop/contracts";
+import { ANACONDA_MCP_STATUS_CHANGED_EVENT } from "@kilo-desktop/contracts";
 
 import {
 	AnacondaMcpService,

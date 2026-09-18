@@ -7,8 +7,8 @@ import {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/alert-dialog";
-import { useSdk, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
+} from "@kilo-desktop/ui/components/alert-dialog";
+import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 
 import type { CondaEnv, CondaPackage, CondaService } from "../../../contracts/providers/conda.js";
 import { environmentDisplayName } from "./environment-display.js";

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { defineContract, defineEvent, defineMethod } from "../contract.js";
-import type { InferContract } from "@anaconda-agentic-desktop/feature-sdk";
+import type { InferContract } from "@kilo-desktop/feature-sdk";
 
 // ─── Status schema ──────────────────────────────────────────────────────────────
 

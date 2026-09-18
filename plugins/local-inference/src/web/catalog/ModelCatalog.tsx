@@ -10,8 +10,8 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 
-import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Select,
 	SelectContent,
@@ -19,7 +19,7 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
+} from "@kilo-desktop/ui/components/select";
 import {
 	Table,
 	TableBody,
@@ -27,14 +27,14 @@ import {
 	TableHead,
 	TableHeader,
 	TableRow,
-} from "@anaconda-agentic-desktop/ui/components/table";
+} from "@kilo-desktop/ui/components/table";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type {
 	LocalInferenceHardwareProfile,

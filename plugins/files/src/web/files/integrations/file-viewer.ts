@@ -1,4 +1,4 @@
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 import type { ComponentType } from "react";
 
 import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";

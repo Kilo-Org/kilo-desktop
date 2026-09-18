@@ -31,25 +31,21 @@ import { FallbackTool } from "../tools/opencode-tools.js";
 import { activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { getPlanProjectionForMessage } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
-import {
-	Avatar,
-	AvatarFallback,
-	AvatarGroup,
-} from "@anaconda-agentic-desktop/ui/components/avatar";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Avatar, AvatarFallback, AvatarGroup } from "@kilo-desktop/ui/components/avatar";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
+} from "@kilo-desktop/ui/components/collapsible";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+} from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import {
 	ActionBarMorePrimitive,
 	ActionBarPrimitive,

@@ -14,9 +14,9 @@ import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+} from "@kilo-desktop/ui/components/collapsible";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 const ANIMATION_DURATION = 200;
 

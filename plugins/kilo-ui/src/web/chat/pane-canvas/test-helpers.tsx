@@ -2,7 +2,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { vi } from "vitest";
 
-import type { Arrangement, PaneLayout } from "@anaconda-agentic-desktop/pane-layout";
+import type { Arrangement, PaneLayout } from "@kilo-desktop/pane-layout";
 import { ChatPaneCanvas } from "./ChatPaneCanvas.js";
 
 export function renderDragCanvas(

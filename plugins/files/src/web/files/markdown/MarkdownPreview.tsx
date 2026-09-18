@@ -1,4 +1,4 @@
-import { MarkdownContent } from "@anaconda-agentic-desktop/ui/components/markdown-content";
+import { MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
 import { useEffect, useMemo, useState } from "react";
 
 import type { FileReadResult, FilesServiceContract } from "../../../contracts/schemas.js";

@@ -12,8 +12,8 @@ export class AppShellPage {
 
 	async verifyShellIsLoaded(): Promise<void> {
 		await expectElementToBeVisible(this.sidebar(), "App shell sidebar should be visible on boot");
-		await expectPageToHaveTitle(/Anaconda Agentic Desktop/, {
-			message: "App shell should set the Anaconda Agentic Desktop page title",
+		await expectPageToHaveTitle(/^Kilo/, {
+			message: "App shell should set the Kilo page title",
 		});
 	}
 
@@ -29,7 +29,7 @@ export class AppShellPage {
 		// Use the utils page singleton (not barrel getURL/waitForFunction) — those named
 		// exports resolve as non-functions under Playwright's CJS interop on CI.
 		// Shell `/` redirects to the kilo-ui chat page (plugins cannot own `/`).
-		await getPage().waitForURL("anaconda-agentic-desktop://app/#/plugins/chat");
+		await getPage().waitForURL("kilo-desktop://app/#/plugins/chat");
 
 		const hasDesktopInvoke = await getPage().evaluate(
 			() => typeof (globalThis as { desktopApi?: { invoke?: unknown } }).desktopApi?.invoke,

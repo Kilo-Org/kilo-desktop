@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Pay the contracts transform cost at file load so the first dynamic
 // `import("./preload.js")` is not racing the default 5s unit timeout when
 // turbo is transforming every package at once.
-import "@anaconda-agentic-desktop/contracts";
+import "@kilo-desktop/contracts";
 
 const { contextBridge, ipcRenderer, getPathForFile } = vi.hoisted(() => ({
 	contextBridge: {
@@ -30,7 +30,7 @@ describe("preload desktopApi", { timeout: 15_000 }, () => {
 		vi.resetModules();
 		vi.clearAllMocks();
 		vi.stubGlobal("window", {
-			location: { origin: "app://agentic" },
+			location: { origin: "kilo-desktop://app" },
 			addEventListener: vi.fn(),
 		});
 	});
@@ -113,7 +113,7 @@ describe("preload desktopApi", { timeout: 15_000 }, () => {
 		) => void;
 		const port = {} as MessagePort;
 		const payload = {
-			type: "anaconda-agentic-desktop:feature-port",
+			type: "kilo-desktop:feature-port",
 			featureId: "notebook",
 			channel: "host",
 			args: { notebookId: "nb-1" },

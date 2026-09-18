@@ -1,4 +1,4 @@
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import { registerFileViewer } from "./files/integrations/file-viewer.js";
 

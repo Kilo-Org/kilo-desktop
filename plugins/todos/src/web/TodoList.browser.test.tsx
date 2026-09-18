@@ -4,11 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
 import { todosContract, type Todo } from "../contracts/schemas.js";
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import type { ChannelHandlerMap } from "@anaconda-agentic-desktop/feature-sdk";
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
-import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import type { ChannelHandlerMap } from "@kilo-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import { TodoList } from "./TodoList";
 

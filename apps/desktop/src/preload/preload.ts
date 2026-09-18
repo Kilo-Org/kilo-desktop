@@ -11,7 +11,7 @@ import {
 	type IpcMethodChannel,
 	type IpcMessageChannel,
 	type IpcMessagePayload,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
 	if (event.source !== window || event.origin !== window.location.origin) return;
@@ -33,7 +33,7 @@ function getWindowArgument(name: string): string | undefined {
 }
 
 const desktopApi: DesktopApi = {
-	windowRole: getWindowArgument("--anaconda-window-role") === "pane" ? "pane" : "main",
+	windowRole: getWindowArgument("--kilo-window-role") === "pane" ? "pane" : "main",
 	getPathForFile(file) {
 		const resolved = webUtils.getPathForFile(file);
 		return resolved || null;

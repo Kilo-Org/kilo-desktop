@@ -8,7 +8,7 @@ import {
 import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
 
 /**
- * Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
+ * Interim WebMCP↔Kilo bridge — see #102.
  *
  * Reconciles the bundled WebMCP relay in Desktop's Kilo config. Generic
  * JSONC mutation and ownership tracking live in `KiloConfigManager`; this
@@ -20,8 +20,8 @@ export const MCP_ENTRY_NAME = "desktop";
 export const MCP_ENTRY_SOURCE_ID = "kilo-server";
 
 export const WEBMCP_RELAY_PORT = 9345;
-export const WEBMCP_RELAY_ID = "anaconda-agentic-desktop";
-export const WEBMCP_RELAY_LABEL = "Anaconda Agentic Desktop";
+export const WEBMCP_RELAY_ID = "kilo-desktop";
+export const WEBMCP_RELAY_LABEL = "Kilo Desktop";
 
 export type WebMcpRelayEntry = Readonly<Record<string, unknown>> & {
 	readonly type: "local";

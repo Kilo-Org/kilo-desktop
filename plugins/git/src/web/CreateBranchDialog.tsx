@@ -1,27 +1,22 @@
 import { useState, type FormEvent } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogContent,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import {
-	Field,
-	FieldError,
-	FieldGroup,
-	FieldLabel,
-} from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+} from "@kilo-desktop/ui/components/dialog";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
+} from "@kilo-desktop/ui/components/select";
 
 type BaseSelection = "default" | "current";
 

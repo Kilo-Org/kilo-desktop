@@ -1,13 +1,9 @@
 import { cleanup, render } from "@testing-library/react";
 import { expect, vi } from "vitest";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
-import {
-	createFakeFeatureSystem,
-	createFakeSdk,
-	type FakeSdk,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
+import { createFakeFeatureSystem, createFakeSdk, type FakeSdk } from "@kilo-desktop/testing";
 
 import { GitDiffView, type GitDiffViewProps } from "./GitDiffView.js";
 

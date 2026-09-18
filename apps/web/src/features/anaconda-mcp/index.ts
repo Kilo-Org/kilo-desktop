@@ -1,4 +1,4 @@
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdk } from "@kilo-desktop/feature-sdk";
 
 export { AnacondaMcpSettings } from "./AnacondaMcpSettings.js";
 

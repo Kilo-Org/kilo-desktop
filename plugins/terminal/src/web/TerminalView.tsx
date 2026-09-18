@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SquareTerminal } from "lucide-react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import type { ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import {
 	TERMINAL_PROTOCOL_VERSION,

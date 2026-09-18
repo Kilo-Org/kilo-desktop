@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { DollarSignIcon, XCircleIcon } from "lucide-react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
 import { getCommandSummary, isCancelledToolStatus, parseBashResult } from "./tool-ui-shared.js";

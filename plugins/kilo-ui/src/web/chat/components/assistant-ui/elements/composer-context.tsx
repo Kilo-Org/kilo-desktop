@@ -2,8 +2,8 @@
 
 import { type ComponentProps, type ReactNode } from "react";
 
-import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { Separator } from "@kilo-desktop/ui/components/separator";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
 	formatCompactCount,

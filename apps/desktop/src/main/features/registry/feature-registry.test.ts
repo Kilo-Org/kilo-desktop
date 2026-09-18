@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
 import { z } from "zod";
 
-import { defineMethod, FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import { defineMethod, FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk";
 
 import { BusinessError } from "../../platform/BusinessError.js";
 import {
@@ -368,7 +368,7 @@ describe("feature port bridge", () => {
 		try {
 			await createFeaturePortHandlers()["feature:port"](
 				{
-					type: "anaconda-agentic-desktop:feature-port",
+					type: "kilo-desktop:feature-port",
 					featureId,
 					channel: "runtime",
 					args: { notebookId: "nb-1" },

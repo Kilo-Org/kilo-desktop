@@ -9,12 +9,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeMainSdk,
-	createFakeSdk,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 import type { OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
 
 const extrasRef = vi.hoisted(() => ({
@@ -28,7 +24,7 @@ vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
 
 const toastWarning = vi.hoisted(() => vi.fn());
 
-vi.mock("@anaconda-agentic-desktop/ui/components/sonner", () => ({
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: {
 		warning: toastWarning,
 		error: vi.fn(),

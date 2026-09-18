@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import { findNteractMcpArtifact } from "../../packaging/artifacts.js";
 import type { BuildChannel } from "../runtime/socket-path.js";

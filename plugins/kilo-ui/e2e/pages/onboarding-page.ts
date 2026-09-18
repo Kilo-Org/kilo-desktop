@@ -1,7 +1,7 @@
 import { expectElementToBeHidden, getLocatorByTestId } from "@anaconda/playwright-utils";
 
 /**
- * First-run onboarding overlay. Packaged e2e sets ANACONDA_SKIP_ONBOARDING so
+ * First-run onboarding overlay. Packaged e2e sets KILO_SKIP_ONBOARDING so
  * the shared worker profile is not blocked; this page object asserts that.
  */
 export class OnboardingPage {

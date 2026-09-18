@@ -3,9 +3,9 @@
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import type { ComponentProps, ReactNode } from "react";
 
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Label } from "@anaconda-agentic-desktop/ui/components/label";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Label } from "@kilo-desktop/ui/components/label";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 type SliderProps = SliderPrimitive.Root.Props & {
 	input?: ComponentProps<typeof Input> | undefined;

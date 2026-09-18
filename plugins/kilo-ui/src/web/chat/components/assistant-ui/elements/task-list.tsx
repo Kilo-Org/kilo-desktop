@@ -3,7 +3,7 @@
 import type { ComponentProps } from "react";
 import { BanIcon, CheckIcon, Loader2Icon, XIcon } from "lucide-react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 export type TaskStatus = "pending" | "active" | "done" | "failed" | "cancelled";
 

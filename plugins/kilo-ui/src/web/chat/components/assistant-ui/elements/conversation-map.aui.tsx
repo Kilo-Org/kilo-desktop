@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuiState, useThreadViewport } from "@assistant-ui/react";
 import type { ThreadMessage } from "@assistant-ui/react";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import { ConversationMap, type ConversationMapEntry } from "./conversation-map.js";
 
 const TITLE_LENGTH = 72;

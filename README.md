@@ -1,11 +1,6 @@
-# Anaconda Agentic Desktop
+# Kilo Desktop
 
-Next-generation Anaconda Desktop built with Electron, React, and Electron Forge.
-
-## Background
-
-This repository implements the architecture described in
-[Anaconda Desktop — Next-Gen Architecture](https://docs.google.com/document/d/1vx3IZwUsHUfjDWnI7Fhh05gLiRLBIV4WM4PxznHWpTY).
+Kilo Desktop is built with Electron, React, and Electron Forge.
 
 Docs:
 
@@ -49,15 +44,21 @@ pnpm start
 ```
 
 `pnpm start` / `pnpm dev` run the web Vite server and Electron together. Electron proxies
-the renderer through `anaconda-agentic-desktop-dev://app/#/` using
-`ANACONDA_WEB_DEV_SERVER_URL`. Use `pnpm dev:web` for the React app alone (in-memory
+the renderer through `kilo-desktop-dev://app/#/` using
+`KILO_WEB_DEV_SERVER_URL`. Use `pnpm dev:web` for the React app alone (in-memory
 `LocalApi`, no Electron).
+
+On first launch after the Kilo rename, Desktop atomically moves a matching pre-rename
+profile into the canonical `Kilo Desktop Dev`, `Kilo Desktop Preview`, or `Kilo Desktop`
+directory when that target does not already exist. Existing canonical profiles are never
+overwritten or merged. Chat reads also recognize the pre-rename ownership key so existing
+sessions remain visible; newly created sessions write only `kilo-desktop` metadata.
 
 Browser-mode web tests drive real Chromium, so install the browser once before
 `pnpm test`:
 
 ```bash
-pnpm --filter @anaconda-agentic-desktop/web exec playwright install chromium
+pnpm --filter @kilo-desktop/web exec playwright install chromium
 ```
 
 The pinned Forge alpha publishes its POSIX CLI file without an executable mode, so the
@@ -90,7 +91,7 @@ Schema changes live with the feature/plugin that owns the database (Decision
 migrations from that package, e.g. the todos plugin:
 
 ```bash
-pnpm --filter @anaconda-agentic-desktop/plugin-todos db:generate
+pnpm --filter @kilo-desktop/plugin-todos db:generate
 ```
 
 ## Monorepo layout
@@ -124,11 +125,11 @@ pnpm --filter @anaconda-agentic-desktop/plugin-todos db:generate
 `pnpm-workspace.yaml` declares only `apps/*` and `packages/*`, so there are exactly three
 packages:
 
-| Package                               | Path                 | Role                                                   |
-| ------------------------------------- | -------------------- | ------------------------------------------------------ |
-| `@anaconda-agentic-desktop/contracts` | `packages/contracts` | Shared schemas and types — the only shared code        |
-| `@anaconda-agentic-desktop/web`       | `apps/web`           | Renderer; builds and runs on its own                   |
-| `@anaconda-agentic-desktop/desktop`   | `apps/desktop`       | Electron shell, SQLite, Forge packaging and publishing |
+| Package                   | Path                 | Role                                                   |
+| ------------------------- | -------------------- | ------------------------------------------------------ |
+| `@kilo-desktop/contracts` | `packages/contracts` | Shared schemas and types — the only shared code        |
+| `@kilo-desktop/web`       | `apps/web`           | Renderer; builds and runs on its own                   |
+| `@kilo-desktop/desktop`   | `apps/desktop`       | Electron shell, SQLite, Forge packaging and publishing |
 
 Dependencies only ever point one way:
 
@@ -150,7 +151,7 @@ desktop ──→ apps/web/dist          (build artifact, not a package dependen
   `zod`) and are referenced as `catalog:` so both apps can never drift apart.
 - `nodeLinker: hoisted` and `injectWorkspacePackages: true` exist for Electron and Forge;
   packaging deploys a frozen production dependency tree instead of relying on symlinks.
-- Local consumers of `@anaconda-agentic-desktop/ui` use explicit `link:` dependencies so
+- Local consumers of `@kilo-desktop/ui` use explicit `link:` dependencies so
   renderer and plugin imports always resolve the live workspace source. Plugins keep UI as
   a peer dependency at runtime to preserve the shared singleton design.
 - There are no TypeScript project references. Each package owns a `tsconfig.json` that
@@ -195,11 +196,11 @@ The rules that keep it that way:
   `platform/electronLocalApi.ts` forwards through the preload bridge and unwraps
   `IpcResult`; `platform/browserLocalApi.ts` implements the same interface in memory.
 - The web build uses `base: "./"` and hash history, so one `dist` works from a dev server
-  and from `anaconda-agentic-desktop://app/#/`.
+  and from `kilo-desktop://app/#/`.
 - Forge’s Vite plugin builds only main and preload (`renderer: []`). Electron owns no
   renderer build; it serves or proxies whatever the web app produced.
 - The entire handshake is one artifact and one variable: `apps/web/dist` in production,
-  `ANACONDA_WEB_DEV_SERVER_URL` in development.
+  `KILO_WEB_DEV_SERVER_URL` in development.
 
 The payoff: the UI is developed and tested in a plain browser, a different host (hosted
 web, another shell) only needs one new `LocalApi` adapter, and changing an IPC channel is
@@ -261,8 +262,8 @@ The renderer is sandboxed and has no Node.js access. The preload exposes only th
 schema-validated `window.desktopApi` surface, and the main process re-validates every
 payload against the same contracts before handling it.
 
-Production navigation uses `anaconda-agentic-desktop://app/#/`; development uses
-`anaconda-agentic-desktop-dev://app/#/`. The custom protocol serves the independently
+Production navigation uses `kilo-desktop://app/#/`; development uses
+`kilo-desktop-dev://app/#/`. The custom protocol serves the independently
 built web `dist` — staged into `.vite/renderer/main_window` during packaging — or proxies
 the web Vite server in development, with a strict Content Security Policy.
 
@@ -284,11 +285,11 @@ to `preview`.
 
 Development is isolated, while Preview and Stable share one packaged identity:
 
-| Environment       | App name                     |
-| ----------------- | ---------------------------- |
-| Local development | Anaconda Agentic Desktop Dev |
-| `preview`         | Anaconda Agentic Desktop     |
-| `stable`          | Anaconda Agentic Desktop     |
+| Environment       | App name     |
+| ----------------- | ------------ |
+| Local development | Kilo Dev     |
+| `preview`         | Kilo Preview |
+| `stable`          | Kilo         |
 
 Preview and Stable replace one another rather than install side by side. Sharing identity prepares
 the app for a future update-track switcher without adding runtime switching or UI yet.

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { execa, type ExecaError } from "execa";
 
 import { getReleaseTrack } from "./release.js";
+import { getDmgVolumeTitle } from "./app-identity.js";
 import {
 	runForgeMakeWithDetachRetry,
 	type ExecutionOutcome,
@@ -45,11 +46,8 @@ function parseForgeCommand(value: string | undefined): ForgeCommand {
  */
 function dmgVolumeTitles(): string[] {
 	if (process.platform !== "darwin") return [];
-	getReleaseTrack(process.env);
-	const active = "Agentic";
-	// Also try the plain "Agentic" title as a defensive fallback in case a
-	// prior packaging step for another channel left a mount behind.
-	return active === "Agentic" ? [active] : [active, "Agentic"];
+	const active = getDmgVolumeTitle(getReleaseTrack(process.env));
+	return [active];
 }
 
 async function runForgeTeed({ command, args }: ForgeInvocation): Promise<ExecutionOutcome> {

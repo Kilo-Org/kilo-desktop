@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import type { FeatureRegistration } from "@kilo-desktop/feature-sdk";
 
 import { orderMainFeatures } from "./feature-order.js";
 

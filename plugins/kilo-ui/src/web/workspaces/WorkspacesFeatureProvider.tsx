@@ -6,8 +6,8 @@ import type {
 	WorkspaceCapabilities,
 	WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
-import { type SDK, type StoreHandle } from "@anaconda-agentic-desktop/feature-sdk";
-import { sdkQueryKey, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import { type SDK, type StoreHandle } from "@kilo-desktop/feature-sdk";
+import { sdkQueryKey, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 
 import { WorkspaceDialogs, type WorkspaceDialogState } from "./WorkspaceDialogs";
 import { WorkspacesContext, type WorkspacesContextValue } from "./WorkspacesFeatureContext";

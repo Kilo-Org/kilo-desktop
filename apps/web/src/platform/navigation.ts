@@ -1,6 +1,6 @@
-import { createStaticNavigation } from "@anaconda-agentic-desktop/feature-sdk";
+import { createStaticNavigation } from "@kilo-desktop/feature-sdk";
 
-import type { SdkNavigation, ShellLocation } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SdkNavigation, ShellLocation } from "@kilo-desktop/feature-sdk";
 
 /**
  * The minimal structural surface of the shell's TanStack Router that the

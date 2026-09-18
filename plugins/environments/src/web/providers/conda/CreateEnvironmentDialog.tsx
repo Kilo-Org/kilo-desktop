@@ -8,43 +8,38 @@ import {
 	type FormEvent,
 } from "react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
-import {
-	Field,
-	FieldError,
-	FieldGroup,
-	FieldLabel,
-} from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	InputGroup,
 	InputGroupAddon,
 	InputGroupInput,
-} from "@anaconda-agentic-desktop/ui/components/input-group";
+} from "@kilo-desktop/ui/components/input-group";
 import {
 	Empty,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
-} from "@anaconda-agentic-desktop/ui/components/empty";
+} from "@kilo-desktop/ui/components/empty";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
+} from "@kilo-desktop/ui/components/select";
 import {
 	Dialog,
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
+} from "@kilo-desktop/ui/components/dialog";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import {
 	CheckIcon,
 	ChevronDownIcon,

@@ -3,7 +3,7 @@ import type {
 	AuthSession,
 	TelemetryEvent,
 	TelemetryOptions,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import type { UserInfoAttribute } from "../auth/actions.js";
 import type { Logger } from "../../platform/logger.js";

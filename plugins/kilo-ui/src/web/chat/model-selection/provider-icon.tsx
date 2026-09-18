@@ -59,7 +59,7 @@ import XAIMono from "@lobehub/icons/es/XAI/components/Mono.js";
 import ZenMuxMono from "@lobehub/icons/es/ZenMux/components/Mono.js";
 import { ServerIcon } from "lucide-react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { resolveProviderIconId } from "./provider-icon-id.js";
 

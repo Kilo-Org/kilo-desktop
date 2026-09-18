@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalApiError } from "@anaconda-agentic-desktop/contracts";
+import { LocalApiError } from "@kilo-desktop/contracts";
 
 import { createDesktopQueryClient } from "./client";
 

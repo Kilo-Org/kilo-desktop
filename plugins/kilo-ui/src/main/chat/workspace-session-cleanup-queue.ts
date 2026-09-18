@@ -1,4 +1,4 @@
-import type { KvStore, MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { KvStore, MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 interface PersistedCleanup extends Record<string, unknown> {
 	pendingWorkspaceIds: string[];

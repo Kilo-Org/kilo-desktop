@@ -10,7 +10,7 @@ import {
 	type Shell,
 } from "electron";
 
-import type { MainSdkHostDialogOptions } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdkHostDialogOptions } from "@kilo-desktop/feature-sdk";
 
 const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 

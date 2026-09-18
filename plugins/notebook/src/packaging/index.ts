@@ -35,7 +35,7 @@ export interface NotebookPackagingOptions {
 }
 
 function resolvePluginRoot(): string {
-	return path.dirname(require.resolve("@anaconda-agentic-desktop/plugin-notebook/plugin.json"));
+	return path.dirname(require.resolve("@kilo-desktop/plugin-notebook/plugin.json"));
 }
 
 /**

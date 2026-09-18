@@ -5,7 +5,7 @@ import {
 	themeSourceSchema,
 	type ResolvedColorScheme,
 	type ThemeSource,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 export type { ResolvedColorScheme, ThemeSource };
 export { resolveColorScheme, THEME_STORAGE_KEY };

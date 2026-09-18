@@ -3,13 +3,13 @@ import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import {
 	AppFileStatusKind,
 	GitFileTooLargeError,
 	GitNotDetectedError,
-} from "@anaconda-agentic-desktop/git-client";
-import type { IStatusResult, RepositoryType } from "@anaconda-agentic-desktop/git-client";
+} from "@kilo-desktop/git-client";
+import type { IStatusResult, RepositoryType } from "@kilo-desktop/git-client";
 
 import { GitService, type GitClientSlice } from "./git-service.js";
 

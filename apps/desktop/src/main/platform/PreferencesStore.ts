@@ -4,7 +4,7 @@ import {
 	normalizeAppThemePreferences,
 	themeSourceSchema,
 	type ThemeSource,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 export interface AppPreferences {
 	/** Last renderer-synced theme source — used to resolve cold-start native chrome. */

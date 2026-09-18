@@ -4,9 +4,9 @@ import type {
 	HostBrowserController,
 	HostBrowserState,
 	MainSdkHostBrowser,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
-export const BROWSER_PARTITION = "persist:anaconda-agentic-browser";
+export const BROWSER_PARTITION = "persist:kilo-desktop-browser";
 
 const ZOOM_LEVELS = [
 	0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,
@@ -26,9 +26,7 @@ function nextZoomLevel(current: number, direction: "in" | "out"): number {
 }
 
 function cleanUserAgent(userAgent: string): string {
-	return userAgent
-		.replace(/Electron\/[\d.]+\s*/g, "")
-		.replace(/anaconda-agentic-desktop\/[\d.]+\s*/gi, "");
+	return userAgent.replace(/Electron\/[\d.]+\s*/g, "").replace(/kilo-desktop\/[\d.]+\s*/gi, "");
 }
 
 /**

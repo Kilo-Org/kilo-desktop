@@ -1,7 +1,7 @@
 import { PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
 	normalizeWorkspaceIdentityColor,

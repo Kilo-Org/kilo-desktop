@@ -1,6 +1,8 @@
-import { createStaticNavigation } from "@anaconda-agentic-desktop/feature-sdk";
-
-import type { ShellDelegates, ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+import {
+	createStaticNavigation,
+	type ShellDelegates,
+	type ThemeAppearance,
+} from "@kilo-desktop/feature-sdk";
 
 const DEFAULT_APPEARANCE: ThemeAppearance = {
 	mode: "light",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeSdk } from "@kilo-desktop/testing";
 
 import { EnvironmentsNavIcon, EnvironmentsPage, webRegister } from "./index.js";
 

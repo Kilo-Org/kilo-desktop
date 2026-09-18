@@ -1,8 +1,8 @@
 /** Parent → notebook iframe: apply the shell appearance to nteract's document. */
-export const NOTEBOOK_THEME_MESSAGE_TYPE = "agentic:notebook-theme";
+export const NOTEBOOK_THEME_MESSAGE_TYPE = "kilo:notebook-theme";
 
 /** Notebook iframe → parent: the embed theme listener is ready for tokens. */
-export const NOTEBOOK_THEME_READY_MESSAGE_TYPE = "agentic:notebook-theme-ready";
+export const NOTEBOOK_THEME_READY_MESSAGE_TYPE = "kilo:notebook-theme-ready";
 
 export const NOTEBOOK_THEME_TOKEN_NAMES = [
 	"background",

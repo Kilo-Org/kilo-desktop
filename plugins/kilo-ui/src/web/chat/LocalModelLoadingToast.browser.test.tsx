@@ -1,8 +1,8 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { LocalModelLoadingToast } from "./LocalModelLoadingToast.js";
 
@@ -11,7 +11,7 @@ const toastApi = vi.hoisted(() => ({
 	dismiss: vi.fn(),
 }));
 
-vi.mock("@anaconda-agentic-desktop/ui/components/sonner", () => ({
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: toastApi,
 }));
 

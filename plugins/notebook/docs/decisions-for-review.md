@@ -13,7 +13,7 @@ host requires. Compatibility must be based on the wire contract, not an exact so
 missing required capability should disable only the affected feature and leave the user's running
 singleton untouched.
 
-## Before promoting the Agentic Desktop PR
+## Before promoting the Kilo Desktop PR
 
 ### Packaged application proof
 
@@ -24,12 +24,12 @@ Run the packaged app against a real installed singleton and verify:
 - Python execution and output updates survive reconnect;
 - Save and Save As write through runtimed and reopen the same document;
 - interactive Plotly/Vega-style output renders only in the isolated output frame;
-- closing a tab or quitting Agentic Desktop does not stop the singleton.
+- closing a tab or quitting Kilo Desktop does not stop the singleton.
 
 ### Bundled runtime failure experience
 
 Confirm the exact retryable message shown when the bundled daemon cannot start or the running
-singleton is incompatible. Agentic Desktop must not instruct users to install a second daemon or
+singleton is incompatible. Kilo Desktop must not instruct users to install a second daemon or
 attempt to displace the process holding the singleton lock.
 
 ### Blob transport follow-up

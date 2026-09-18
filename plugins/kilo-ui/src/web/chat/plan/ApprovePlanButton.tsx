@@ -1,8 +1,8 @@
 import { CheckIcon, Loader2Icon } from "lucide-react";
 import type { FC } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 type ApprovePlanButtonProps = {
 	enabled: boolean;

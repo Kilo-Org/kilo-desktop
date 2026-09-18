@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-import {
-	defineContract,
-	defineMethod,
-	type InferContract,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
 
 import { localModelSettingsSchema } from "../shared/settings/model-settings.js";
 import { localServerSettingsSchema } from "../shared/settings/server-settings.js";

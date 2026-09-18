@@ -1,17 +1,17 @@
 "use client";
 
-import { markdownComponents as sharedMarkdownComponents } from "@anaconda-agentic-desktop/ui/components/markdown-content";
+import { markdownComponents as sharedMarkdownComponents } from "@kilo-desktop/ui/components/markdown-content";
 import {
 	composeMarkdownRenderer,
 	type MarkdownRendererComponents,
-} from "@anaconda-agentic-desktop/ui/components/markdown-extension";
+} from "@kilo-desktop/ui/components/markdown-extension";
 import {
 	type CodeHeaderProps,
 	MarkdownTextPrimitive,
 	unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 	useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { type FC, memo, useMemo, useState } from "react";
 import remarkGfm from "remark-gfm";

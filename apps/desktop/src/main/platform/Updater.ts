@@ -6,7 +6,7 @@ import {
 	type DesktopUpdateActionResult,
 	type DesktopUpdateState,
 	type ReleaseTrack,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { getReleaseNotesUrl, getUpdateFeedUrl } from "$config/release.js";
 

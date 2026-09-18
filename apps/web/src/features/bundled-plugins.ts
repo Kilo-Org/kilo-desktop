@@ -1,4 +1,4 @@
-import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
+import type { BundledPlugin } from "@kilo-desktop/feature-sdk";
 
 /**
  * Bundled workspace plugins — renderer side (Decision #17).
@@ -15,26 +15,26 @@ import type { BundledPlugin } from "@anaconda-agentic-desktop/feature-sdk";
  * plugins are skipped there with the standard warning.
  */
 
-import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
-import browserManifest from "@anaconda-agentic-desktop/plugin-browser/plugin.json" with { type: "json" };
-import * as browserWeb from "@anaconda-agentic-desktop/plugin-browser/web";
-import * as environmentsWeb from "@anaconda-agentic-desktop/plugin-environments/web";
-import filesManifest from "@anaconda-agentic-desktop/plugin-files/plugin.json" with { type: "json" };
-import * as filesWeb from "@anaconda-agentic-desktop/plugin-files/web";
-import gitManifest from "@anaconda-agentic-desktop/plugin-git/plugin.json" with { type: "json" };
-import * as gitWeb from "@anaconda-agentic-desktop/plugin-git/web";
-import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
-import * as kiloServerWeb from "@anaconda-agentic-desktop/plugin-kilo-server/web";
-import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
-import * as kiloUiWeb from "@anaconda-agentic-desktop/plugin-kilo-ui/web";
-import localInferenceManifest from "@anaconda-agentic-desktop/plugin-local-inference/plugin.json" with { type: "json" };
-import * as localInferenceWeb from "@anaconda-agentic-desktop/plugin-local-inference/web";
-import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.json" with { type: "json" };
-import * as notebookWeb from "@anaconda-agentic-desktop/plugin-notebook/web";
-import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
-import * as todosWeb from "@anaconda-agentic-desktop/plugin-todos/web";
-import terminalManifest from "@anaconda-agentic-desktop/plugin-terminal/plugin.json" with { type: "json" };
-import * as terminalWeb from "@anaconda-agentic-desktop/plugin-terminal/web";
+import environmentsManifest from "@kilo-desktop/plugin-environments/plugin.json" with { type: "json" };
+import browserManifest from "@kilo-desktop/plugin-browser/plugin.json" with { type: "json" };
+import * as browserWeb from "@kilo-desktop/plugin-browser/web";
+import * as environmentsWeb from "@kilo-desktop/plugin-environments/web";
+import filesManifest from "@kilo-desktop/plugin-files/plugin.json" with { type: "json" };
+import * as filesWeb from "@kilo-desktop/plugin-files/web";
+import gitManifest from "@kilo-desktop/plugin-git/plugin.json" with { type: "json" };
+import * as gitWeb from "@kilo-desktop/plugin-git/web";
+import kiloServerManifest from "@kilo-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
+import * as kiloServerWeb from "@kilo-desktop/plugin-kilo-server/web";
+import kiloUiManifest from "@kilo-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
+import * as kiloUiWeb from "@kilo-desktop/plugin-kilo-ui/web";
+import localInferenceManifest from "@kilo-desktop/plugin-local-inference/plugin.json" with { type: "json" };
+import * as localInferenceWeb from "@kilo-desktop/plugin-local-inference/web";
+import notebookManifest from "@kilo-desktop/plugin-notebook/plugin.json" with { type: "json" };
+import * as notebookWeb from "@kilo-desktop/plugin-notebook/web";
+import todosManifest from "@kilo-desktop/plugin-todos/plugin.json" with { type: "json" };
+import * as todosWeb from "@kilo-desktop/plugin-todos/web";
+import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json" with { type: "json" };
+import * as terminalWeb from "@kilo-desktop/plugin-terminal/web";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: browserManifest, module: browserWeb },

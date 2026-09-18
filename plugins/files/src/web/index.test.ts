@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { webRegister, type FilesCapabilities } from "./index.js";
 

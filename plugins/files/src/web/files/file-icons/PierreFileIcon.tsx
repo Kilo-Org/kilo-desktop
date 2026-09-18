@@ -1,7 +1,7 @@
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import { useInsertionEffect, useMemo } from "react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
 	FILE_ICON_CUSTOM_SPRITE_SHEET,

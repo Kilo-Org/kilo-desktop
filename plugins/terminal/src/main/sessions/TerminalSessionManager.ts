@@ -2,7 +2,7 @@ import { readFile, rm } from "node:fs/promises";
 
 import { writeFile as atomicWriteFile } from "atomically";
 
-import type { HostMessagePort, MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { HostMessagePort, MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import {
 	MAX_TERMINAL_LABEL_LENGTH,

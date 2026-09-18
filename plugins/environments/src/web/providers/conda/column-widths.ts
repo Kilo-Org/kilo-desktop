@@ -70,10 +70,9 @@ export function resizeColumn<Column extends string>(
 	return { ...widths, [column]: next };
 }
 
-export const COLUMN_WIDTHS_STORAGE_KEY = "anaconda.environments.conda.columnWidths";
+export const COLUMN_WIDTHS_STORAGE_KEY = "kilo.environments.conda.columnWidths";
 
-export const PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY =
-	"anaconda.environments.conda.packageColumnWidths";
+export const PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY = "kilo.environments.conda.packageColumnWidths";
 
 function getLocalStorage(): Storage | null {
 	try {
@@ -173,7 +172,7 @@ export const DEFAULT_PACKAGE_TABLE_COLUMN_WIDTHS: PackageTableColumnWidths = {
 };
 
 export const PACKAGE_TABLE_COLUMN_WIDTHS_STORAGE_KEY =
-	"anaconda.environments.conda.packageTableColumnWidths";
+	"kilo.environments.conda.packageTableColumnWidths";
 
 export function readPackageTableColumnWidths(
 	storage: Pick<Storage, "getItem"> | null = getLocalStorage(),

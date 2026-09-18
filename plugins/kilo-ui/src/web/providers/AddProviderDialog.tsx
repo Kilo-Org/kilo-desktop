@@ -1,14 +1,14 @@
 import { ArrowRightIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogContent,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
+} from "@kilo-desktop/ui/components/dialog";
 import {
 	Item,
 	ItemActions,
@@ -16,9 +16,9 @@ import {
 	ItemGroup,
 	ItemMedia,
 	ItemTitle,
-} from "@anaconda-agentic-desktop/ui/components/item";
-import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/item";
+import { Separator } from "@kilo-desktop/ui/components/separator";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { WizardStepIndicator, type WizardStep } from "../onboarding/WizardStepIndicator.js";
 import { ProviderIcon } from "../chat/model-selection/provider-icon.js";

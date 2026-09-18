@@ -4,12 +4,9 @@ import { createElement, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
-import {
-	MarkdownAnchor,
-	MarkdownContent,
-} from "@anaconda-agentic-desktop/ui/components/markdown-content";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { MarkdownAnchor, MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
 
 import { filesContract } from "../../../contracts/schemas.js";
 import { FilesMarkdownExtension } from "./FilesMarkdownExtension.js";

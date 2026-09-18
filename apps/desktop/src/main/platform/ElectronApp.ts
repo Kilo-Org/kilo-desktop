@@ -1,9 +1,9 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import path from "node:path";
 
 import { app, type App, type RelaunchOptions } from "electron";
 
-import { getAppIdentity, type AppIdentity } from "$config/app-identity.js";
+import { getAppIdentity, type AppEnvironment, type AppIdentity } from "$config/app-identity.js";
 
 export interface ElectronAppMetadata {
 	readonly appPath: string;
@@ -13,17 +13,57 @@ export interface ElectronAppMetadata {
 	readonly runningUnderArm64Translation: boolean;
 }
 
-export function configureDevelopmentProfile(
+const LEGACY_PROFILE_NAMES = {
+	development: ["Anaconda Agentic Desktop Dev", "Kilo Dev"],
+	preview: [
+		"Anaconda Agentic Desktop Canary",
+		"Anaconda Agentic Desktop Staging",
+		"Anaconda Agentic Desktop",
+		"Kilo Preview",
+	],
+	stable: ["Anaconda Agentic Desktop"],
+} as const satisfies Readonly<Record<AppEnvironment, readonly string[]>>;
+
+export function migrateAppProfile(
+	appDataDirectory: string,
+	environment: AppEnvironment,
+	targetName: string,
+	exists: (path: string) => boolean = existsSync,
+	rename: (oldPath: string, newPath: string) => void = renameSync,
+): string | undefined {
+	const target = path.join(appDataDirectory, targetName);
+	if (exists(target)) return undefined;
+
+	for (const sourceName of LEGACY_PROFILE_NAMES[environment]) {
+		const source = path.join(appDataDirectory, sourceName);
+		if (!exists(source)) continue;
+		rename(source, target);
+		return source;
+	}
+	return undefined;
+}
+
+export function configureAppProfile(
 	electronApp: App = app,
 	makeDirectory: (directory: string) => void = (directory) => {
 		mkdirSync(directory, { recursive: true });
 	},
+	environment: AppEnvironment = electronApp.isPackaged ? RELEASE_TRACK : "development",
+	argv: readonly string[] = process.argv,
 ): void {
-	if (electronApp.isPackaged) return;
-
-	const identity = getAppIdentity("development");
-	const userData = path.join(electronApp.getPath("appData"), identity.productName);
+	const identity = getAppIdentity(environment);
 	electronApp.setName(identity.productName);
+	if (
+		argv.some(
+			(argument) => argument === "--user-data-dir" || argument.startsWith("--user-data-dir="),
+		)
+	) {
+		return;
+	}
+
+	const appData = electronApp.getPath("appData");
+	migrateAppProfile(appData, environment, identity.userDataName);
+	const userData = path.join(appData, identity.userDataName);
 	makeDirectory(userData);
 	electronApp.setPath("userData", userData);
 }

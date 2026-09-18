@@ -13,8 +13,8 @@ import {
 	RepeatIcon,
 } from "lucide-react";
 
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 
 import type { CondaPackageChange } from "../../../contracts/providers/conda.js";

@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { SDK } from "@kilo-desktop/feature-sdk";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { JobQueue } from "./JobQueue.js";
 

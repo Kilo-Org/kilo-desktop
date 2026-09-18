@@ -34,7 +34,7 @@ function matches(matchers: Array<string | RegExp>, id: string): boolean {
  *      `external` array with the user config's, and Vite 8 / Rolldown rejects a
  *      function element inside a concatenated `external` array.
  *   3. `include` / `exclude` accept `RegExp` in addition to exact names, so a
- *      family of packages (e.g. all `@anaconda-agentic-desktop/*` workspace
+ *      family of packages (e.g. all `@kilo-desktop/*` workspace
  *      deps) can be matched with one pattern. String `include` entries are
  *      treated as dependency names (and get `<name>/<subpath>` externalized);
  *      `RegExp` includes are externalized verbatim.
@@ -69,7 +69,7 @@ export function externalizeDeps(options: ExternalOptions = {}): Plugin {
 	];
 
 	return {
-		name: "anaconda:externalize-deps",
+		name: "kilo:externalize-deps",
 		enforce: "pre",
 		config() {
 			return { build: { rollupOptions: { external } } };

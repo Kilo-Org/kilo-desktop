@@ -19,7 +19,7 @@
  * todos plugin (Decision #7). The tools are still registered so that MCP
  * introspection sees a consistent surface across modes.
  */
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import { registerCondaTools } from "../shared/providers/conda/tools.js";
 

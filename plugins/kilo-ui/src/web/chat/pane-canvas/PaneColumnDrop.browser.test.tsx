@@ -1,7 +1,7 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
-import { createLayout, getPaneColumns, movePane } from "@anaconda-agentic-desktop/pane-layout";
+import { createLayout, getPaneColumns, movePane } from "@kilo-desktop/pane-layout";
 import { renderDragCanvas, startPaneDrag } from "./test-helpers.js";
 
 beforeEach(async () => {

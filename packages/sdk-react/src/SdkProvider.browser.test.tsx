@@ -8,7 +8,7 @@ import {
 	type FeatureEvent,
 	type FeatureRegistration,
 	type MainSdk,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import {
 	createFeatureSystem,

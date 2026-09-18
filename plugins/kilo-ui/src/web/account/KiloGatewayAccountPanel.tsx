@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { ArrowUpRightIcon, CircleAlertIcon, RefreshCwIcon, ZapIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Select,
 	SelectContent,
@@ -9,10 +9,10 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/select";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { DeviceAuthPanel } from "./DeviceAuthPanel.js";
 import { useKiloAuth, type KiloAuthContextValue } from "./KiloAuthContext.js";
@@ -69,8 +69,8 @@ export function KiloGatewayAccountPanel({
 				data-state="unavailable"
 			>
 				<p className="text-muted-foreground text-sm" data-qa-id="kilo-account-unavailable">
-					Kilo Gateway connection requires the desktop app. Run Anaconda Agentic Desktop to
-					authenticate with Kilo Gateway.
+					Kilo Gateway connection requires the desktop app. Run Kilo Desktop to authenticate with
+					Kilo Gateway.
 				</p>
 			</div>
 		);

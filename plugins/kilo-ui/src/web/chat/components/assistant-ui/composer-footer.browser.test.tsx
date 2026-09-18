@@ -9,12 +9,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeMainSdk,
-	createFakeSdk,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
@@ -342,7 +338,7 @@ describe("ComposerFooter", () => {
 			activeMessages,
 			async (nextSdk, nextMainSdk) => {
 				const saved = (await nextMainSdk.invoke("create", {
-					name: "Agentic Desktop",
+					name: "Kilo Desktop",
 					color: "#F87171",
 					folders: [{ path: "/repo/primary", isPrimary: true }],
 				})) as { id: string };

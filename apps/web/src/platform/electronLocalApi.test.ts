@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { LocalApiError, type DesktopApi } from "@anaconda-agentic-desktop/contracts";
+import { LocalApiError, type DesktopApi } from "@kilo-desktop/contracts";
 
 import { createElectronLocalApi } from "./electronLocalApi";
 

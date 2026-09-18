@@ -1,21 +1,21 @@
 import { useState, useMemo, useCallback, useRef, useSyncExternalStore } from "react";
 
-import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
@@ -64,8 +64,8 @@ const ACTIONS_COLUMN_PX = 56;
  * installed packages for that environment. The "Back" button returns to
  * the list.
  *
- * Layout follows the Anaconda Desktop table pattern: search bar, item
- * count, data table with sortable headers, and a pagination bar.
+ * The layout includes a search bar, item count, sortable data table, and
+ * pagination bar.
  *
  * The panel uses `data-qa-id` attributes for browser and e2e tests
  * following the repo convention (see `docs/TESTING.md`).

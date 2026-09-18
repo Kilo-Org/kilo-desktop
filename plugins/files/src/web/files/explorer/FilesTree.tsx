@@ -4,9 +4,9 @@ import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import type { ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Select,
 	SelectContent,
@@ -14,13 +14,13 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
+} from "@kilo-desktop/ui/components/select";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 import type { FileGitStatusEntry } from "../../../contracts/schemas.js";
 import { FILE_ICONS } from "../file-icons/file-icons.js";

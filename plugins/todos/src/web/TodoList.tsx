@@ -2,20 +2,15 @@ import { type FormEvent, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 
-import {
-	sdkQueryOptions,
-	useFeatureFlag,
-	useSdk,
-	useSdkMutation,
-} from "@anaconda-agentic-desktop/sdk-react";
+import { sdkQueryOptions, useFeatureFlag, useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 
 import type { TodoService } from "../contracts/schemas.js";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Label } from "@anaconda-agentic-desktop/ui/components/label";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Label } from "@kilo-desktop/ui/components/label";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 /**
  * LaunchDarkly feature-flag key that gates this panel, the plugin's tool

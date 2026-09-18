@@ -1,5 +1,5 @@
 {
-	"name": "@anaconda-agentic-desktop/plugin-kilo-server",
+	"name": "@kilo-desktop/plugin-kilo-server",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -20,7 +20,7 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/feature-sdk": "workspace:*",
 		"@electron/fuses": "^2.1.3",
 		"@mcp-b/webmcp-local-relay": "4.0.0",
 		"atomically": "catalog:",
@@ -30,7 +30,7 @@
 		"zod": "catalog:"
 	},
 	"devDependencies": {
-		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@kilo-desktop/testing": "workspace:*",
 		"@types/lodash": "^4.17.20",
 		"@types/node": "^24.13.3",
 		"tsx": "^4.23.1",

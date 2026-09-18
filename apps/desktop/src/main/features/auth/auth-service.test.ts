@@ -277,7 +277,7 @@ describe("AuthSessionService", () => {
 				login,
 				exchangeForApiKey,
 				createAuthorizeServer,
-				userAgent: "anaconda-agentic-desktop/test",
+				userAgent: "kilo-desktop/test",
 				logger: silentLogger,
 			});
 
@@ -292,7 +292,7 @@ describe("AuthSessionService", () => {
 				"anaconda.test",
 				"access-token",
 				fetch,
-				"anaconda-agentic-desktop/test",
+				"kilo-desktop/test",
 			);
 			expect(saveToken).toHaveBeenCalledTimes(1);
 			expect(saveToken).toHaveBeenCalledWith({ api_key: "new-api-key" });

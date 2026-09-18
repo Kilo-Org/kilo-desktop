@@ -1,10 +1,7 @@
 import { TerminalFrameController } from "./TerminalFrameController.js";
 import "./styles.css";
 
-const ALLOWED_PARENT_PROTOCOLS = new Set([
-	"anaconda-agentic-desktop:",
-	"anaconda-agentic-desktop-dev:",
-]);
+const ALLOWED_PARENT_PROTOCOLS = new Set(["kilo-desktop:", "kilo-desktop-dev:"]);
 
 function trustedParentOriginFrom(href: string): string {
 	const parentOrigin = new URL(href).searchParams.get("parentOrigin");

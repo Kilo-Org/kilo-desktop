@@ -32,4 +32,4 @@ export function defineEvent<TPayload extends z.ZodType>(
  * define contracts without depending on this shell-internal package.
  * Re-exported here for the shell and for features still living in apps/.
  */
-export { defineContract, type InferContract } from "@anaconda-agentic-desktop/feature-sdk";
+export { defineContract, type InferContract } from "@kilo-desktop/feature-sdk";

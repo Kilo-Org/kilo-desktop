@@ -1,4 +1,4 @@
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { ModelCompatibility, ModelFit } from "../../shared/catalog/model-compatibility.js";
 

@@ -95,7 +95,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Align release package versions
-        run: pnpm --filter @anaconda-agentic-desktop/desktop exec tsx config/desktop-version.ts
+        run: pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts
 
       - name: Refresh release lockfile
         run: pnpm install --lockfile-only --ignore-scripts
@@ -106,8 +106,15 @@ jobs:
 
       - uses: ./.github/actions/cache-electron-rebuild
 
-      - name: Publish
-        run: pnpm run publish
+      - name: Build release candidate
+        run: pnpm --filter @kilo-desktop/desktop run publish -- --dry-run
+
+      - name: Smoke-test updater payload
+        if: matrix.target != 'linux'
+        run: pnpm --filter @kilo-desktop/desktop run release:smoke
+
+      - name: Publish tested release candidate
+        run: pnpm --filter @kilo-desktop/desktop exec tsx config/run-packaging.ts publish --from-dry-run
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -159,4 +166,4 @@ jobs:
           path: release-artifacts
 
       - name: Create GitHub release and publish track aliases
-        run: pnpm --filter @anaconda-agentic-desktop/desktop exec tsx config/publish-track-release.ts
+        run: pnpm --filter @kilo-desktop/desktop exec tsx config/publish-track-release.ts

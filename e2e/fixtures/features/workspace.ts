@@ -22,7 +22,7 @@ export const test = shellTest.extend<WorkspaceFixtures>({
 		// their realpath, and the watcher reports event paths under the
 		// registered root (macOS temp dirs are /var → /private/var symlinks).
 		// Removal is deferred until the app stops (Windows holds open handles).
-		const rawPath = await mkdtemp(path.join(os.tmpdir(), "aad-workspace-watch-"));
+		const rawPath = await mkdtemp(path.join(os.tmpdir(), "kilo-workspace-watch-"));
 		const folderPath = await realpath(rawPath);
 		removePathAfterAppStops(rawPath);
 		removePathAfterAppStops(folderPath);

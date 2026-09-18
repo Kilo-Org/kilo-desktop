@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-import type { DesktopUpdateState } from "@anaconda-agentic-desktop/contracts";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import type { DesktopUpdateState } from "@kilo-desktop/contracts";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { ReleaseNotesList } from "@/components/updates/ReleaseNotesList";
 import { getInstallConfirmationMessage } from "@/components/updates/updateActions";

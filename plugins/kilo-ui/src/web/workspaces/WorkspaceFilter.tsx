@@ -1,6 +1,6 @@
 import { ChevronsUpDownIcon, FolderIcon, LayoutGridIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 import { useWorkspacePicker, WorkspacePickerRoot, WorkspacePickerTrigger } from "./WorkspacePicker";
 import { workspaceGlyphColor } from "./workspace-glyph-style";

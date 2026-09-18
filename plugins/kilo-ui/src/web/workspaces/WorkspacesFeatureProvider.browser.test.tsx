@@ -9,8 +9,8 @@ import {
 	type WorkspaceCapabilities,
 	type WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { useWorkspacesFeature } from "./WorkspacesFeatureContext";
 import { WorkspacesFeatureProvider } from "./WorkspacesFeatureProvider";

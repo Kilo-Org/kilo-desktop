@@ -2,8 +2,8 @@ import { cleanup, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { filesContract, type FilesServiceContract } from "../../../contracts/schemas.js";
 import { FilesComposerTrigger, type TriggerPopoverProps } from "./FilesComposerTrigger.js";

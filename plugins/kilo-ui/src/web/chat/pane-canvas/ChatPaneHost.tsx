@@ -1,7 +1,7 @@
 import type { FC, ReactNode } from "react";
 
-import type { PaneKind } from "@anaconda-agentic-desktop/pane-layout";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import type { PaneKind } from "@kilo-desktop/pane-layout";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 // The frame and its floating elements use the theme's curated card surface so
 // theme-specific hues remain intact inside detached pane hosts.

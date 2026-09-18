@@ -5,7 +5,7 @@ import {
 	type Workspace,
 	type WorkspaceFolderInput,
 } from "../../contracts/workspaces/schemas.js";
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 
 type WorkspaceFormShell = Pick<
 	SDK["shell"],

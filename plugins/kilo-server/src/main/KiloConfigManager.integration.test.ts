@@ -11,8 +11,6 @@ import {
 	KiloConfigManager,
 } from "./KiloConfigManager.js";
 
-const LEGACY_SIDECAR_FILENAME = ".anaconda-desktop-managed.json";
-
 const SOURCE_ONE = "feature-one";
 const SOURCE_TWO = "feature-two";
 
@@ -139,79 +137,6 @@ describe("KiloConfigManager", () => {
 			url: "https://one.test/updated",
 		});
 	}, 15_000);
-
-	it("migrates the legacy sidecar and adopts an ownerless entry", async () => {
-		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
-			`${JSON.stringify({
-				mcp: { legacy: { type: "remote", url: "https://legacy.test/mcp" } },
-			})}\n`,
-		);
-		await writeFile(
-			path.join(configDirectory, LEGACY_SIDECAR_FILENAME),
-			`${JSON.stringify({ version: 1, managed: ["legacy"] })}\n`,
-		);
-		const config = new KiloConfigManager(configDirectory);
-
-		await expect(
-			config.setMcpEntry(SOURCE_ONE, "legacy", {
-				type: "remote",
-				url: "https://legacy.test/mcp",
-			}),
-		).resolves.toEqual({ kind: "skipped", reason: "up-to-date" });
-
-		const sidecar = JSON.parse(
-			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
-		) as { version: number; ownedEntryKeys: string[]; owners: Record<string, string> };
-		expect(sidecar).toMatchObject({
-			version: 4,
-			ownedEntryKeys: ["mcp:legacy"],
-			owners: { "mcp:legacy": SOURCE_ONE },
-		});
-		await expect(
-			readFile(path.join(configDirectory, LEGACY_SIDECAR_FILENAME), "utf8"),
-		).rejects.toThrow(/ENOENT/);
-		await expect(config.removeMcpEntry(SOURCE_TWO, "legacy")).resolves.toEqual({
-			kind: "skipped",
-			reason: "owned-by-other-source",
-		});
-	});
-
-	it("preserves source ownership when migrating a version 2 sidecar", async () => {
-		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
-			`${JSON.stringify({
-				mcp: { shared: { type: "remote", url: "https://one.test/mcp" } },
-			})}\n`,
-		);
-		await writeFile(
-			path.join(configDirectory, LEGACY_SIDECAR_FILENAME),
-			`${JSON.stringify({
-				version: 2,
-				managed: ["shared"],
-				owners: { shared: SOURCE_ONE },
-			})}\n`,
-		);
-		const config = new KiloConfigManager(configDirectory);
-
-		await expect(
-			config.setMcpEntry(SOURCE_TWO, "shared", {
-				type: "remote",
-				url: "https://two.test/mcp",
-			}),
-		).resolves.toEqual({ kind: "skipped", reason: "owned-by-other-source" });
-
-		const sidecar = JSON.parse(
-			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
-		) as { ownedEntryKeys: string[]; owners: Record<string, string> };
-		expect(sidecar).toMatchObject({
-			ownedEntryKeys: ["mcp:shared"],
-			owners: { "mcp:shared": SOURCE_ONE },
-		});
-		await expect(
-			readFile(path.join(configDirectory, LEGACY_SIDECAR_FILENAME), "utf8"),
-		).rejects.toThrow(/ENOENT/);
-	});
 
 	it("snapshots entries before queued writes", async () => {
 		const config = new KiloConfigManager(configDirectory);

@@ -9,7 +9,7 @@ import {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/alert-dialog";
+} from "@kilo-desktop/ui/components/alert-dialog";
 
 import type { RightPanelTabLifecycle } from "./chat-right-panel-capability.js";
 import type { RightPanelTab } from "./right-panel-tab-registry.js";

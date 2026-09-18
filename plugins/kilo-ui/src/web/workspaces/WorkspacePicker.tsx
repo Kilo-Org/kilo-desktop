@@ -19,7 +19,7 @@ import {
 	type ReactNode,
 } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Command,
 	CommandEmpty,
@@ -28,18 +28,14 @@ import {
 	CommandItem,
 	CommandList,
 	CommandSeparator,
-} from "@anaconda-agentic-desktop/ui/components/command";
+} from "@kilo-desktop/ui/components/command";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@anaconda-agentic-desktop/ui/components/popover";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
 
 import type { Workspace } from "../../contracts/workspaces/schemas.js";
 import { useWorkspacesFeature } from "./WorkspacesFeatureContext";

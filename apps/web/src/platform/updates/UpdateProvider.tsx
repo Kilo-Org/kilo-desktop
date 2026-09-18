@@ -1,9 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import type {
-	DesktopUpdateActionResult,
-	DesktopUpdateState,
-} from "@anaconda-agentic-desktop/contracts";
+import type { DesktopUpdateActionResult, DesktopUpdateState } from "@kilo-desktop/contracts";
 
 import { useLocalApi } from "../LocalApiProvider";
 
@@ -32,7 +29,7 @@ const UPDATE_PREVIEW_STATE: DesktopUpdateState | null =
 						track: "preview",
 						version: "0.2.0-preview-260918-12000",
 						previousVersion: "0.1.5-preview-260917-12000",
-						title: "Anaconda Agentic Desktop Preview",
+						title: "Kilo Desktop Preview",
 						publishedAt: new Date().toISOString(),
 						bodyMarkdown:
 							"- A compact update card in About settings\n- Release notes for the downloaded version\n- A restart-to-update action",
@@ -47,7 +44,7 @@ const UPDATE_PREVIEW_STATE: DesktopUpdateState | null =
 						track: "preview",
 						version: "0.1.5-preview-260917-12000",
 						previousVersion: "0.1.2-preview-260916-12000",
-						title: "Anaconda Agentic Desktop Preview",
+						title: "Kilo Desktop Preview",
 						publishedAt: new Date().toISOString(),
 						bodyMarkdown: "- Notes from a skipped Preview build",
 						items: ["Notes from a skipped Preview build"],
@@ -57,7 +54,7 @@ const UPDATE_PREVIEW_STATE: DesktopUpdateState | null =
 						track: "preview",
 						version: "0.1.2-preview-260916-12000",
 						previousVersion: "0.1.0",
-						title: "Anaconda Agentic Desktop Preview",
+						title: "Kilo Desktop Preview",
 						publishedAt: new Date().toISOString(),
 						bodyMarkdown: "- Improved update reliability\n- Refined the release notes presentation",
 						items: ["Improved update reliability", "Refined the release notes presentation"],

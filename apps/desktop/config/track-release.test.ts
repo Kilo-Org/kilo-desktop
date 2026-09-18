@@ -18,7 +18,7 @@ describe("track release publishing", () => {
 			"v1.2.3-preview-260826-12000",
 		);
 		expect(getTrackReleaseTag("stable", "1.2.3")).toBe("v1.2.3");
-		expect(getTrackReleaseName("stable", "1.2.3")).toBe("Anaconda Agentic Desktop v1.2.3");
+		expect(getTrackReleaseName("stable", "1.2.3")).toBe("Kilo Desktop v1.2.3");
 		expect(getTrackReleaseVersionFromTag("preview", "v1.2.3-preview-260826-12000")).toBe(
 			"1.2.3-preview-260826-12000",
 		);
@@ -82,11 +82,11 @@ describe("track release publishing", () => {
 
 	it("classifies public downloads and derives latest aliases", () => {
 		const download = classifyReleaseDownload(
-			"/tmp/release/mac/out/make/dmg/darwin/arm64/Anaconda Agentic Desktop.dmg",
+			"/tmp/release/mac/out/make/dmg/darwin/arm64/Kilo Preview.dmg",
 		);
 		expect(download).toMatchObject({ platform: "macos", arch: "arm64", type: "dmg" });
 		expect(getLatestAliasKey("preview", download!)).toBe(
-			"anaconda-agentic-desktop/preview/latest/macos/arm64/Anaconda Agentic Desktop.dmg",
+			"kilo-desktop/preview/latest/macos/arm64/Kilo Preview.dmg",
 		);
 		expect(
 			getLatestAliasKey("preview", {
@@ -94,11 +94,9 @@ describe("track release publishing", () => {
 				platform: "windows",
 				type: "setup",
 			}),
-		).toBe(
-			"anaconda-agentic-desktop/preview/latest/windows/arm64/Anaconda-Agentic-Desktop-Setup.exe",
-		);
+		).toBe("kilo-desktop/preview/latest/windows/arm64/Kilo-Preview-Setup.exe");
 		expect(getLatestAliasKey("stable", { ...download!, platform: "linux", type: "deb" })).toBe(
-			"anaconda-agentic-desktop/latest/latest/linux/arm64/anaconda-agentic-desktop.deb",
+			"kilo-desktop/latest/latest/linux/arm64/kilo-desktop.deb",
 		);
 		expect(classifyReleaseDownload("/tmp/RELEASES.json")).toBeNull();
 	});

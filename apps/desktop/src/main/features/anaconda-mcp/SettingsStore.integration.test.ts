@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk } from "@kilo-desktop/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createFeatureKvStoreFactory } from "../../platform/featureKvStore.js";

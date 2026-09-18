@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
  * `workspace:*` + `injectWorkspacePackages: true` would create.
  */
 function resolvePackageAsset(subpath: string): string {
-	const manifestPath = require.resolve("@anaconda-agentic-desktop/plugin-kilo-server/plugin.json");
+	const manifestPath = require.resolve("@kilo-desktop/plugin-kilo-server/plugin.json");
 	return path.resolve(path.dirname(manifestPath), subpath);
 }
 

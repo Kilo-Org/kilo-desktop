@@ -1,5 +1,5 @@
 {
-	"name": "@anaconda-agentic-desktop/plugin-todos",
+	"name": "@kilo-desktop/plugin-todos",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -17,9 +17,9 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
-		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
-		"@anaconda-agentic-desktop/ui": "workspace:*",
+		"@kilo-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/sdk-react": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
 		"@tanstack/react-query": "^5.101.4",
 		"better-sqlite3": "^13.0.1",
 		"drizzle-orm": "^0.45.2",
@@ -28,8 +28,8 @@
 		"zod": "catalog:"
 	},
 	"devDependencies": {
-		"@anaconda-agentic-desktop/e2e": "workspace:*",
-		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@kilo-desktop/e2e": "workspace:*",
+		"@kilo-desktop/testing": "workspace:*",
 		"@anaconda/playwright-utils": "1.17.1",
 		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",

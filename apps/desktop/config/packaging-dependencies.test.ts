@@ -1,11 +1,24 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { pruneProductionDependencies } from "./prune-production-dependencies.js";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = path.resolve(desktopRoot, "../..");
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+	await Promise.all(
+		temporaryDirectories
+			.splice(0)
+			.map((directory) => rm(directory, { force: true, recursive: true })),
+	);
+});
 
 describe("packaged production dependencies", () => {
 	const manifest = JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
@@ -67,7 +80,48 @@ describe("packaged production dependencies", () => {
 
 	it("moves the staged production dependency tree into the package", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toContain("await pruneProductionDependencies(stagedNodeModules)");
 		expect(forge).toContain("await moveDirectory(stagedNodeModules, packagedNodeModules)");
+	});
+
+	it("removes development artifacts and the externally staged bridge payload", async () => {
+		const nodeModules = await mkdtemp(path.join(os.tmpdir(), "kilo-production-dependencies-"));
+		temporaryDirectories.push(nodeModules);
+		const packageRoot = path.join(nodeModules, "@kilo-desktop", "plugin-example");
+		const bridgePayload = path.join(
+			nodeModules,
+			"@anaconda",
+			"desktop-bridge-payload-darwin-arm64",
+		);
+		await Promise.all(
+			[".turbo", ".vitest", "coverage", "e2e", "dist"].map((directory) =>
+				mkdir(path.join(packageRoot, directory), { recursive: true }),
+			),
+		);
+		await mkdir(bridgePayload, { recursive: true });
+
+		await pruneProductionDependencies(nodeModules);
+
+		for (const directory of [".turbo", ".vitest", "coverage", "e2e"]) {
+			expect(existsSync(path.join(packageRoot, directory))).toBe(false);
+		}
+		expect(existsSync(path.join(packageRoot, "dist"))).toBe(true);
+		expect(existsSync(bridgePayload)).toBe(false);
+	});
+
+	it("removes the bridge payload when no workspace package scope is staged", async () => {
+		const nodeModules = await mkdtemp(path.join(os.tmpdir(), "kilo-production-dependencies-"));
+		temporaryDirectories.push(nodeModules);
+		const bridgePayload = path.join(
+			nodeModules,
+			"@anaconda",
+			"desktop-bridge-payload-darwin-arm64",
+		);
+		await mkdir(bridgePayload, { recursive: true });
+
+		await pruneProductionDependencies(nodeModules);
+
+		expect(existsSync(bridgePayload)).toBe(false);
 	});
 
 	it("stages the isolated WebMCP runtime from a workspace-local deploy", () => {
@@ -76,9 +130,9 @@ describe("packaged production dependencies", () => {
 		// against that path uses a different empty store on Windows and fails
 		// looking up @mcp-b/webmcp-local-relay. Stage inside the workspace
 		// first, then copy — same pattern as production node_modules.
-		expect(forge).toContain(".anaconda-agentic-desktop-webmcp-relay-");
+		expect(forge).toContain(".kilo-desktop-webmcp-relay-");
 		expect(forge).toMatch(
-			/mkdtemp\(\s*path\.join\(\s*workspaceRoot,\s*"\.anaconda-agentic-desktop-webmcp-relay-"/,
+			/mkdtemp\(\s*path\.join\(\s*workspaceRoot,\s*"\.kilo-desktop-webmcp-relay-"/,
 		);
 	});
 
@@ -92,9 +146,40 @@ describe("packaged production dependencies", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		// Nested `{**/node_modules/{a,b}/**}` does not expand in @electron/asar.
 		// Signed Preview then ships .node files inside app.asar and dies at boot
-		// requiring @runtimed/node (anaconda/agentic-desktop#163).
+		// requiring @runtimed/node (#163).
 		expect(forge).not.toMatch(/unpack:\s*`\{/);
 		expect(forge).toContain('unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`');
+	});
+
+	it("unpacks Parcel Watcher's platform binding for macOS code signing", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toContain('"@parcel/watcher-darwin-arm64"');
+		expect(forge).toContain('"@parcel/watcher-darwin-x64"');
+		expect(forge).toContain("...parcelWatcherBindingPackages");
+	});
+
+	it("smoke-tests updater payloads before either release channel is published", () => {
+		const publish = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+			"utf8",
+		);
+		expect(publish).toContain("pnpm --filter @kilo-desktop/desktop run publish -- --dry-run");
+		expect(publish).toContain("pnpm --filter @kilo-desktop/desktop run release:smoke");
+		expect(publish).toContain(
+			"pnpm --filter @kilo-desktop/desktop exec tsx config/run-packaging.ts publish --from-dry-run",
+		);
+		expect(publish.indexOf("run release:smoke")).toBeLessThan(
+			publish.indexOf("publish --from-dry-run"),
+		);
+	});
+
+	it("finishes staging application content before ASAR integrity is sealed", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));
+		expect(beforeAsar).toContain("stageWebRenderer");
+		expect(beforeAsar).toContain("stageProductionDependencies");
+		expect(beforeAsar).toContain("stageWebMcpRelayRuntime");
+		expect(forge).not.toContain("packageAfterCopy:");
 	});
 
 	it("stages and unpacks the terminal plugin's node-pty native runtime", () => {
@@ -108,7 +193,7 @@ describe("packaged production dependencies", () => {
 		expect(terminalManifest.dependencies?.["ghostty-web"]).toBe("0.4.0");
 		expect(terminalManifest.scripts?.["prepare-assets"]).toContain("build-terminal-app");
 		expect(forge).toContain('"node-pty"');
-		expect(forge).toContain('packageName: "@anaconda-agentic-desktop/plugin-terminal"');
+		expect(forge).toContain('packageName: "@kilo-desktop/plugin-terminal"');
 		expect(forge).toContain("ensureNodePtySpawnHelpersExecutable");
 		expect(forge).toContain("beforeAsar");
 		expect(viteMain).toContain('"node-pty"');
@@ -122,10 +207,10 @@ describe("packaged production dependencies", () => {
 		).scripts;
 		const preparePlugins = scripts?.["prepare:plugins"] ?? "";
 		// cmd.exe treats single quotes as literals, so a filter like
-		// `'@anaconda-agentic-desktop/plugin-*'` matches no workspace packages.
+		// `'@kilo-desktop/plugin-*'` matches no workspace packages.
 		expect(preparePlugins).toContain("run prepare-assets");
 		expect(preparePlugins).not.toMatch(/--filter\s+'/);
-		expect(preparePlugins).toMatch(/--filter\s+"@anaconda-agentic-desktop\/plugin-\*"/);
+		expect(preparePlugins).toMatch(/--filter\s+"@kilo-desktop\/plugin-\*"/);
 	});
 
 	it("does not source-build nteract artifacts on packaging hosts", () => {

@@ -7,7 +7,7 @@ import type {
 	WorkspaceCapabilityService,
 	WorkspacesService,
 } from "../contracts/workspaces/schemas.js";
-import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { mcpAppsContract } from "../contracts/mcp-apps/schemas.js";

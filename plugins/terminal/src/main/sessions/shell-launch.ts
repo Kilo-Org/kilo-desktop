@@ -10,7 +10,7 @@ export interface ShellCandidate {
 const TERMINAL_ENV_BLOCKLIST = new Set([
 	"ELECTRON_RUN_AS_NODE",
 	"ELECTRON_RENDERER_PORT",
-	"ANACONDA_WEB_DEV_SERVER_URL",
+	"KILO_WEB_DEV_SERVER_URL",
 ]);
 
 function candidate(command: string | undefined): ShellCandidate | null {
@@ -65,7 +65,7 @@ export function terminalEnvironment(env: NodeJS.ProcessEnv): Record<string, stri
 	}
 	result["TERM"] = "xterm-256color";
 	result["COLORTERM"] = "truecolor";
-	result["TERM_PROGRAM"] = "Anaconda Agentic Desktop";
+	result["TERM_PROGRAM"] = "Kilo Desktop";
 	return result;
 }
 

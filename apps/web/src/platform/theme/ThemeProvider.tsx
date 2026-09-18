@@ -15,7 +15,7 @@ import {
 	THEME_STORAGE_KEY,
 	type AppThemePreferences,
 	type ThemeSource,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { useLocalApi } from "@/platform/LocalApiProvider";
 import {

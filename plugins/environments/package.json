@@ -1,5 +1,5 @@
 {
-	"name": "@anaconda-agentic-desktop/plugin-environments",
+	"name": "@kilo-desktop/plugin-environments",
 	"version": "0.1.1",
 	"private": true,
 	"type": "module",
@@ -20,9 +20,9 @@
 		"prepare-assets": "pnpm run build-mcp-app && pnpm run fetch-bridge"
 	},
 	"dependencies": {
-		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
-		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
-		"@anaconda-agentic-desktop/ui": "workspace:*",
+		"@kilo-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/sdk-react": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
 		"@modelcontextprotocol/ext-apps": "^1.7.4",
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@tanstack/react-query": "^5.101.4",
@@ -35,8 +35,8 @@
 		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.7"
 	},
 	"devDependencies": {
-		"@anaconda-agentic-desktop/e2e": "workspace:*",
-		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@kilo-desktop/e2e": "workspace:*",
+		"@kilo-desktop/testing": "workspace:*",
 		"@anaconda/playwright-utils": "1.17.1",
 		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",

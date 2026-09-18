@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 export const paper = "bg-background border border-border/60 dark:bg-popover";
 

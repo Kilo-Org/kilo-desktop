@@ -1,5 +1,5 @@
 {
-	"name": "@anaconda-agentic-desktop/contracts",
+	"name": "@kilo-desktop/contracts",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
@@ -14,7 +14,7 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/feature-sdk": "workspace:*",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

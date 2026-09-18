@@ -6,7 +6,7 @@ import {
 } from "./signing.js";
 
 export const DEFAULT_RELEASE_TRACK = "preview";
-export const RELEASE_PREFIX = "anaconda-agentic-desktop";
+export const RELEASE_PREFIX = "kilo-desktop";
 export const RELEASE_TRACKS = ["preview", "stable"] as const;
 
 /**

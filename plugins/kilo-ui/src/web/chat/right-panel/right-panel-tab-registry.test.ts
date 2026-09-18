@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
+import type { Contribution } from "@kilo-desktop/feature-sdk";
 
 import {
 	buildContributedTabDefinitions,

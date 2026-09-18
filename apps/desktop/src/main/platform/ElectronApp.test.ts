@@ -6,9 +6,47 @@ vi.mock("electron", () => ({ app: {} }));
 
 import { getAppIdentity } from "$config/app-identity.js";
 
-import { configureDevelopmentProfile, ElectronApp } from "./ElectronApp.js";
+import { configureAppProfile, ElectronApp, migrateAppProfile } from "./ElectronApp.js";
 
 describe("ElectronApp", () => {
+	it("moves the original development profile into the canonical Kilo directory", () => {
+		const rename = vi.fn();
+		const existing = new Set([path.join("/profiles", "Anaconda Agentic Desktop Dev")]);
+
+		expect(
+			migrateAppProfile(
+				"/profiles",
+				"development",
+				"Kilo Desktop Dev",
+				(candidate) => existing.has(candidate),
+				rename,
+			),
+		).toBe(path.join("/profiles", "Anaconda Agentic Desktop Dev"));
+		expect(rename).toHaveBeenCalledWith(
+			path.join("/profiles", "Anaconda Agentic Desktop Dev"),
+			path.join("/profiles", "Kilo Desktop Dev"),
+		);
+	});
+
+	it("never overwrites an existing canonical profile", () => {
+		const rename = vi.fn();
+		const existing = new Set([
+			path.join("/profiles", "Kilo Desktop Dev"),
+			path.join("/profiles", "Anaconda Agentic Desktop Dev"),
+		]);
+
+		expect(
+			migrateAppProfile(
+				"/profiles",
+				"development",
+				"Kilo Desktop Dev",
+				(candidate) => existing.has(candidate),
+				rename,
+			),
+		).toBeUndefined();
+		expect(rename).not.toHaveBeenCalled();
+	});
+
 	const originalPlatform = process.platform;
 
 	afterEach(() => {
@@ -46,7 +84,7 @@ describe("ElectronApp", () => {
 		expect(adapter.requestSingleInstanceLock()).toBe(true);
 		const identity = getAppIdentity("preview");
 		adapter.setIdentity(identity);
-		expect(electronApp.setName).toHaveBeenCalledWith("Anaconda Agentic Desktop");
+		expect(electronApp.setName).toHaveBeenCalledWith("Kilo Preview");
 		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith(
 			process.platform === "win32" ? identity.windowsAppUserModelId : identity.appBundleId,
 		);
@@ -102,27 +140,50 @@ describe("ElectronApp", () => {
 			setPath: vi.fn(),
 		};
 
-		configureDevelopmentProfile(electronApp as never, makeDirectory);
+		configureAppProfile(electronApp as never, makeDirectory, "development");
 
-		const userData = path.join("/profiles", "Anaconda Agentic Desktop Dev");
-		expect(electronApp.setName).toHaveBeenCalledWith("Anaconda Agentic Desktop Dev");
+		const userData = path.join("/profiles", "Kilo Desktop Dev");
+		expect(electronApp.setName).toHaveBeenCalledWith("Kilo Dev");
 		expect(makeDirectory).toHaveBeenCalledWith(userData);
 		expect(electronApp.setPath).toHaveBeenCalledWith("userData", userData);
 	});
 
-	it("preserves packaged application data paths", () => {
+	it.each([
+		["preview", "Kilo Preview", "Kilo Desktop Preview"],
+		["stable", "Kilo", "Kilo Desktop"],
+	] as const)("configures the %s packaged data path", (environment, productName, userDataName) => {
 		const makeDirectory = vi.fn();
 		const electronApp = {
 			isPackaged: true,
-			getPath: vi.fn(),
+			getPath: vi.fn(() => "/profiles"),
 			setName: vi.fn(),
 			setPath: vi.fn(),
 		};
 
-		configureDevelopmentProfile(electronApp as never, makeDirectory);
+		configureAppProfile(electronApp as never, makeDirectory, environment);
 
+		const userData = path.join("/profiles", userDataName);
+		expect(electronApp.setName).toHaveBeenCalledWith(productName);
+		expect(makeDirectory).toHaveBeenCalledWith(userData);
+		expect(electronApp.setPath).toHaveBeenCalledWith("userData", userData);
+	});
+
+	it("preserves an explicit user-data directory", () => {
+		const makeDirectory = vi.fn();
+		const electronApp = {
+			isPackaged: true,
+			getPath: vi.fn(() => "/profiles"),
+			setName: vi.fn(),
+			setPath: vi.fn(),
+		};
+
+		configureAppProfile(electronApp as never, makeDirectory, "preview", [
+			"kilo-desktop",
+			"--user-data-dir=/tmp/e2e-profile",
+		]);
+
+		expect(electronApp.setName).toHaveBeenCalledWith("Kilo Preview");
 		expect(electronApp.getPath).not.toHaveBeenCalled();
-		expect(electronApp.setName).not.toHaveBeenCalled();
 		expect(makeDirectory).not.toHaveBeenCalled();
 		expect(electronApp.setPath).not.toHaveBeenCalled();
 	});

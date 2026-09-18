@@ -9,12 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { Command } from "@kilocode/sdk/v2/client";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeMainSdk,
-	createFakeSdk,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";

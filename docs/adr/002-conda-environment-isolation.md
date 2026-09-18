@@ -7,7 +7,7 @@
 PR #301 (DESK-2721) deleted `CondaService` and its `#isolationEnv` block, which
 set `CONDA_ENVS_PATH`, `CONDA_PKGS_DIRS`, `CONDARC`, and
 `CONDA_PLUGINS_AUTO_ACCEPT_TOS` to scope all conda operations into
-`~/.anaconda-agentic-desktop/conda`. The replacement `SidecarCondaBackend`
+`~/.kilo-desktop/conda`. The replacement `SidecarCondaBackend`
 communicates with the bridge sidecar over JSON-RPC and passes only
 `BRIDGE_PROTECT_STDIO=1`. No isolation config is set.
 
@@ -16,7 +16,7 @@ Two code paths create environments:
 - **User environments** (UI / MCP): name-addressed, land in the bridge's
   `envs_dirs` — which is the user's real conda config.
 - **Plugin environments** (headless): prefix-addressed via `CondaRuntime`, land
-  at `~/.anaconda-agentic-desktop/conda/envs/<name>`.
+  at `~/.kilo-desktop/conda/envs/<name>`.
 
 ## Decision
 
@@ -25,7 +25,7 @@ User environments are **unscoped**: the bridge inherits the user's real
 set.
 
 Plugin environments remain **prefix-isolated** at
-`~/.anaconda-agentic-desktop/conda/envs/`. They are created with explicit
+`~/.kilo-desktop/conda/envs/`. They are created with explicit
 `prefix` paths, bypassing the bridge's `envs_dirs` — intentionally invisible
 from `conda env list` in the user's terminal.
 
@@ -58,7 +58,7 @@ considered and rejected:
   can be added later without breaking environments.
 - **Environment listing**: `SidecarCondaBackend.list()` returns all environments
   the bridge discovers, including the user's pre-existing environments. Plugin
-  environments at `~/.anaconda-agentic-desktop/conda/envs/` are not registered
+  environments at `~/.kilo-desktop/conda/envs/` are not registered
   in any `envs_dirs` and do not appear in list results.
 - **Name collisions**: If a user creates an environment whose name already
   exists in their system conda, the bridge's `envs_dirs` resolution determines

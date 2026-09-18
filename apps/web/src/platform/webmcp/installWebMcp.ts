@@ -1,5 +1,5 @@
-import type { RegisteredTool } from "@anaconda-agentic-desktop/feature-sdk";
-import type { FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+import type { RegisteredTool } from "@kilo-desktop/feature-sdk";
+import type { FeatureSystem } from "@kilo-desktop/sdk-react";
 import type { CallToolResult, InputSchema, ToolAnnotations } from "@mcp-b/webmcp-types";
 import { initializeWebMCPPolyfill } from "@mcp-b/webmcp-polyfill";
 
@@ -19,7 +19,7 @@ const RELAY_HOST = "127.0.0.1";
  * relay id, and the port hint makes the first probe hit our relay directly.
  */
 const RELAY_PORT = "9345";
-const RELAY_ID = "anaconda-agentic-desktop";
+const RELAY_ID = "kilo-desktop";
 /** Path (relative to the app origin) of the self-hosted relay bootstrap script. */
 const EMBED_SCRIPT_PATH = "webmcp/embed.js";
 const EMPTY_INPUT_SCHEMA: InputSchema = { type: "object", properties: {} };

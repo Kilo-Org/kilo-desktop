@@ -1,4 +1,4 @@
-import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
+import kiloUiManifest from "@kilo-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
 
 /** Derives the catch-all splat for the app's default plugin page. */
 export function deriveHomeSplat(routePath: string | undefined): string {

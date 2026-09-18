@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/collapsible";
+import { toast } from "@kilo-desktop/ui/components/sonner";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { ChevronDownIcon, Loader2Icon } from "lucide-react";
 import { useEffect, useState, type FC } from "react";

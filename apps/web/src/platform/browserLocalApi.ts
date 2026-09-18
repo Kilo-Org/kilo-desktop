@@ -1,8 +1,4 @@
-import {
-	LocalApiError,
-	type AuthSession,
-	type LocalApi,
-} from "@anaconda-agentic-desktop/contracts";
+import { LocalApiError, type AuthSession, type LocalApi } from "@kilo-desktop/contracts";
 
 async function browserFsUnavailable(): Promise<never> {
 	throw new LocalApiError(

@@ -1,13 +1,14 @@
 import type { KiloSessionPreparation } from "../../../contracts/chat/schemas.js";
 
 /** Nested under Kilo session `metadata` for every session this app creates. */
-export const ANACONDA_METADATA_KEY = "anaconda";
+export const KILO_DESKTOP_METADATA_KEY = "kilo-desktop";
+const PRE_RENAME_METADATA_KEY = "anaconda";
 
-export type AnacondaWorkspaceFolder = KiloSessionPreparation["workspaceFolders"][number];
+export type KiloDesktopWorkspaceFolder = KiloSessionPreparation["workspaceFolders"][number];
 
-export type AnacondaSessionMetadata = {
+export type KiloDesktopSessionMetadata = {
 	workspaceId?: string;
-	workspaceFolders?: AnacondaWorkspaceFolder[];
+	workspaceFolders?: KiloDesktopWorkspaceFolder[];
 };
 
 type SessionStatusType = "busy" | "retry" | "idle";
@@ -59,35 +60,41 @@ const asFiniteNumber = (value: unknown): number | undefined =>
 const asStatusType = (value: unknown): SessionStatusType | undefined =>
 	value === "busy" || value === "retry" || value === "idle" ? value : undefined;
 
-export function buildAnacondaSessionMetadata(input?: {
+export function buildKiloDesktopSessionMetadata(input?: {
 	workspaceId?: string | undefined;
-	workspaceFolders?: AnacondaWorkspaceFolder[] | undefined;
+	workspaceFolders?: KiloDesktopWorkspaceFolder[] | undefined;
 }): {
-	metadata: { [ANACONDA_METADATA_KEY]: AnacondaSessionMetadata };
+	metadata: { [KILO_DESKTOP_METADATA_KEY]: KiloDesktopSessionMetadata };
 } {
-	const anaconda: AnacondaSessionMetadata = {};
-	if (input?.workspaceId) anaconda.workspaceId = input.workspaceId;
-	if (input?.workspaceFolders?.length) anaconda.workspaceFolders = input.workspaceFolders;
-	return { metadata: { [ANACONDA_METADATA_KEY]: anaconda } };
+	const kiloDesktop: KiloDesktopSessionMetadata = {};
+	if (input?.workspaceId) kiloDesktop.workspaceId = input.workspaceId;
+	if (input?.workspaceFolders?.length) kiloDesktop.workspaceFolders = input.workspaceFolders;
+	return { metadata: { [KILO_DESKTOP_METADATA_KEY]: kiloDesktop } };
 }
 
-export function readAnacondaSessionMetadata(
+export function readKiloDesktopSessionMetadata(
 	metadata: unknown,
-): AnacondaSessionMetadata | undefined {
-	return asRecord(asRecord(metadata)?.[ANACONDA_METADATA_KEY]) ?? undefined;
+): KiloDesktopSessionMetadata | undefined {
+	const record = asRecord(metadata);
+	if (!record) return undefined;
+	return (
+		asRecord(record[KILO_DESKTOP_METADATA_KEY]) ??
+		asRecord(record[PRE_RENAME_METADATA_KEY]) ??
+		undefined
+	);
 }
 
-/** True when this app created the session (nested `anaconda` metadata). */
-export function hasAnacondaSessionMetadata(metadata: unknown): boolean {
-	return readAnacondaSessionMetadata(metadata) !== undefined;
+/** True when this app created the session. */
+export function hasKiloDesktopSessionMetadata(metadata: unknown): boolean {
+	return readKiloDesktopSessionMetadata(metadata) !== undefined;
 }
 
 export function readWorkspaceIdFromMetadata(metadata: unknown): string | undefined {
-	return asString(readAnacondaSessionMetadata(metadata)?.workspaceId);
+	return asString(readKiloDesktopSessionMetadata(metadata)?.workspaceId);
 }
 
-export function readWorkspaceFoldersFromMetadata(metadata: unknown): AnacondaWorkspaceFolder[] {
-	const folders = readAnacondaSessionMetadata(metadata)?.workspaceFolders;
+export function readWorkspaceFoldersFromMetadata(metadata: unknown): KiloDesktopWorkspaceFolder[] {
+	const folders = readKiloDesktopSessionMetadata(metadata)?.workspaceFolders;
 	if (!Array.isArray(folders)) return [];
 	return folders.flatMap((folder) => {
 		const record = asRecord(folder);

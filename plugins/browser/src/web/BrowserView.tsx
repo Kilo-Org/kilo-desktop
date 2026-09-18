@@ -17,8 +17,8 @@ import {
 	type FormEvent,
 } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -27,14 +27,10 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import { InputGroup, InputGroupInput } from "@anaconda-agentic-desktop/ui/components/input-group";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { InputGroup, InputGroupInput } from "@kilo-desktop/ui/components/input-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
 	browserStateSchema,

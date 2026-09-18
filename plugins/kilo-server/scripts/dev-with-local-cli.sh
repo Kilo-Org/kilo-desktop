@@ -12,7 +12,7 @@
 
 # ── Defaults (tweak these for your setup) ─────────────────────────────────────
 
-DEFAULT_KILO_SRC="$HOME/anaconda-projects/kilocode"
+DEFAULT_KILO_SRC="$HOME/kilo-projects/kilocode"
 DEFAULT_KILO_ENV="KILO_EXPERIMENTAL_MCP_APPS=true"
 DEFAULT_BUN="$(command -v bun 2>/dev/null || echo "$HOME/.bun/bin/bun")"
 
@@ -24,7 +24,7 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Build the Kilo CLI from a local source tree and launch the Agentic Desktop
+Build the Kilo CLI from a local source tree and launch the Kilo Desktop
 with the custom binary. Skips the normal prestart plugin-asset preparation
 since the CLI binary is provided directly.
 
@@ -155,7 +155,7 @@ stub_notebook_assets() {
 
   local stubs=(
     "$notebook_dir/build/notebook/index.html"
-    "$notebook_dir/build/notebook/agentic-notebook-build.json"
+    "$notebook_dir/build/notebook/kilo-notebook-build.json"
     "$notebook_dir/resources/nteract-mcp/$forge_target/nteract-mcp"
     "$notebook_dir/resources/nteract-mcp/$forge_target/runt"
     "$notebook_dir/resources/nteract-mcp/$forge_target/staged.json"
@@ -205,4 +205,4 @@ BIN="$WORKSPACE_ROOT/node_modules/.bin"
 
 exec "$BIN/concurrently" --kill-others --success first \
   "pnpm dev:web" \
-  "$BIN/wait-on http://127.0.0.1:5173 && cd apps/desktop && $BIN/cross-env ANACONDA_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 $BIN/electron-forge start -- --remote-debugging-port=9222"
+  "$BIN/wait-on http://127.0.0.1:5173 && cd apps/desktop && $BIN/cross-env KILO_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 $BIN/electron-forge start -- --remote-debugging-port=9222"

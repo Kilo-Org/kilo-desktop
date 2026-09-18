@@ -2,7 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { AuthSession } from "@anaconda-agentic-desktop/feature-sdk";
+import type { AuthSession } from "@kilo-desktop/feature-sdk";
 
 import type {
 	LocalInferenceHardwareProfile,

@@ -1,6 +1,6 @@
 import { app, Notification, type App } from "electron";
 
-import type { NotificationDeliveryResult } from "@anaconda-agentic-desktop/contracts";
+import type { NotificationDeliveryResult } from "@kilo-desktop/contracts";
 
 /** Structural surface of an OS notification so tests can inject a fake. */
 export interface SystemNotificationLike {

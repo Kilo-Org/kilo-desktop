@@ -8,30 +8,30 @@ describe("createNotebookResolveAsset", () => {
 	it("maps the staged notebook bundle to packaged resources", () => {
 		const resolveAsset = createNotebookResolveAsset({
 			isPackaged: true,
-			packagedResourcesPath: "/Apps/Agentic.app/Contents/Resources",
+			packagedResourcesPath: "/Apps/Kilo.app/Contents/Resources",
 		});
 		expect(resolveAsset("build/notebook")).toBe(
-			path.join("/Apps/Agentic.app/Contents/Resources", "notebook"),
+			path.join("/Apps/Kilo.app/Contents/Resources", "notebook"),
 		);
 	});
 
 	it("maps the nteract MCP bundle beneath packaged resources", () => {
 		const resolveAsset = createNotebookResolveAsset({
 			isPackaged: true,
-			packagedResourcesPath: "/Apps/Agentic.app/Contents/Resources",
+			packagedResourcesPath: "/Apps/Kilo.app/Contents/Resources",
 		});
 		expect(resolveAsset("resources/nteract-mcp/darwin-arm64/nteract-mcp")).toBe(
-			path.join("/Apps/Agentic.app/Contents/Resources", "nteract-mcp/darwin-arm64/nteract-mcp"),
+			path.join("/Apps/Kilo.app/Contents/Resources", "nteract-mcp/darwin-arm64/nteract-mcp"),
 		);
 	});
 
 	it("maps the runtimed daemon beneath packaged resources", () => {
 		const resolveAsset = createNotebookResolveAsset({
 			isPackaged: true,
-			packagedResourcesPath: "/Apps/Agentic.app/Contents/Resources",
+			packagedResourcesPath: "/Apps/Kilo.app/Contents/Resources",
 		});
 		expect(resolveAsset("resources/runtimed/darwin-arm64/runtimed")).toBe(
-			path.join("/Apps/Agentic.app/Contents/Resources", "runtimed/darwin-arm64/runtimed"),
+			path.join("/Apps/Kilo.app/Contents/Resources", "runtimed/darwin-arm64/runtimed"),
 		);
 	});
 

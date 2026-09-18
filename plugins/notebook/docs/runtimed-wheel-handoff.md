@@ -14,7 +14,7 @@ plan for the sidecar problem — see [Why the wheel](#why-the-wheel).
 
 ## State going in
 
-**agentic-desktop** (`t3code/9d5bc891`, 8 commits unpushed, no PR):
+**kilo-desktop** (`t3code/9d5bc891`, 8 commits unpushed, no PR):
 
 - The relay + daemon client transport is built, registered in `FEATURES`, and
   tested at all four tiers. Full gate green: `pnpm check && pnpm lint &&

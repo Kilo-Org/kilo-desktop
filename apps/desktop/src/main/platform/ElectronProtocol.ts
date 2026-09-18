@@ -7,11 +7,11 @@ import { net, protocol } from "electron";
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	type EmbeddedWebHost,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 export const DESKTOP_HOST = "app";
-export const DESKTOP_PRODUCTION_SCHEME = "anaconda-agentic-desktop";
-export const DESKTOP_DEVELOPMENT_SCHEME = "anaconda-agentic-desktop-dev";
+export const DESKTOP_PRODUCTION_SCHEME = "kilo-desktop";
+export const DESKTOP_DEVELOPMENT_SCHEME = "kilo-desktop-dev";
 // Application policy: renderer features may connect to app-managed loopback servers on
 // ephemeral ports. Remote HTTP, localhost aliases, and WebSocket origins remain disallowed.
 const LOOPBACK_SERVER_CONNECT_SOURCE = "http://127.0.0.1:*";

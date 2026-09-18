@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 async function temporaryDirectory(): Promise<string> {
-	const directory = await mkdtemp(path.join(os.tmpdir(), "anaconda-packaging-"));
+	const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-packaging-"));
 	temporaryDirectories.push(directory);
 	return directory;
 }

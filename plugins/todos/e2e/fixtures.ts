@@ -1,4 +1,4 @@
-import { test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
+import { test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
 import { TodosPage } from "./pages/todos-page.js";
 

@@ -15,17 +15,17 @@ import {
 	type ReactNode,
 } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { CommandItem } from "@anaconda-agentic-desktop/ui/components/command";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+} from "@kilo-desktop/ui/components/tooltip";
+import { CommandItem } from "@kilo-desktop/ui/components/command";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import { needsKiloSignIn, startKiloDeviceAuth } from "../../../account/kilo-auth.js";
 import { useKiloAuth } from "../../../account/KiloAuthContext.js";

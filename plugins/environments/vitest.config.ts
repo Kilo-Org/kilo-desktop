@@ -85,12 +85,12 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@anaconda-agentic-desktop/feature-sdk",
-						"@anaconda-agentic-desktop/sdk-react",
+						"@kilo-desktop/feature-sdk",
+						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
 						// Base UI primitives + icons reached through
-						// @anaconda-agentic-desktop/ui. Pre-bundle them so Vite does not
+						// @kilo-desktop/ui. Pre-bundle them so Vite does not
 						// discover them mid-run, re-optimize, and reload the page — that
 						// reload serves `use-sync-external-store` un-prebundled and every
 						// browser test in this project dies on its CJS named exports.

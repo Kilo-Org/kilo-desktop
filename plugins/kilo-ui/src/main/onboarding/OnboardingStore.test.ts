@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk } from "@kilo-desktop/testing";
 
 import { OnboardingStore } from "./OnboardingStore.js";
 
@@ -23,13 +23,13 @@ describe("OnboardingStore", () => {
 		sdk.dispose();
 	});
 
-	it("returns skipped without writing when ANACONDA_SKIP_ONBOARDING is set", () => {
+	it("returns skipped without writing when KILO_SKIP_ONBOARDING is set", () => {
 		const sdk = createFakeMainSdk({ featureId: "kilo-ui" });
-		const store = new OnboardingStore(sdk, { ANACONDA_SKIP_ONBOARDING: "1" }, () => 7);
+		const store = new OnboardingStore(sdk, { KILO_SKIP_ONBOARDING: "1" }, () => 7);
 
 		expect(store.get()).toEqual({ outcome: "skipped", closedAt: 1 });
 		expect(store.complete()).toEqual({ outcome: "completed", closedAt: 7 });
-		expect(new OnboardingStore(sdk, { ANACONDA_SKIP_ONBOARDING: "1" }).get()).toEqual({
+		expect(new OnboardingStore(sdk, { KILO_SKIP_ONBOARDING: "1" }).get()).toEqual({
 			outcome: "skipped",
 			closedAt: 1,
 		});

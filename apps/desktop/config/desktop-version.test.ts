@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 
 async function createWorkspace(version = "0.1.0"): Promise<string> {
-	const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-release-version-"));
+	const root = await mkdtemp(path.join(os.tmpdir(), "kilo-release-version-"));
 	temporaryDirectories.push(root);
 	await Promise.all(
 		RELEASE_PACKAGE_FILES.map(async (relativePath) => {

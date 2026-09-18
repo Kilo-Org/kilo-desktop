@@ -1,37 +1,50 @@
 import { describe, expect, it } from "vitest";
 
-import { getAppIdentity, type AppEnvironment } from "./app-identity.js";
+import { getAppIdentity, getDmgVolumeTitle, type AppEnvironment } from "./app-identity.js";
 
 describe("app identity", () => {
 	it("isolates the development environment", () => {
 		expect(getAppIdentity("development")).toEqual({
-			appBundleId: "com.anaconda.agentic-desktop.dev",
+			appBundleId: "ai.kilo.desktop.dev",
 			environment: "development",
-			executableName: "anaconda-agentic-desktop-dev",
-			productName: "Anaconda Agentic Desktop Dev",
-			setupExecutableName: "Anaconda-Agentic-Desktop-Dev-Setup.exe",
-			squirrelName: "AnacondaAgenticDesktopDev",
-			windowsAppUserModelId: "com.squirrel.AnacondaAgenticDesktopDev.anaconda-agentic-desktop-dev",
+			executableName: "kilo-desktop-dev",
+			productName: "Kilo Dev",
+			setupExecutableName: "Kilo-Dev-Setup.exe",
+			squirrelName: "KiloDesktopDev",
+			userDataName: "Kilo Desktop Dev",
+			windowsAppUserModelId: "com.squirrel.KiloDesktopDev.kilo-desktop-dev",
 		});
 	});
 
-	it.each(["preview", "stable"] as const)("shares the packaged identity for %s", (environment) => {
-		expect(getAppIdentity(environment)).toEqual({
-			appBundleId: "com.anaconda.agentic-desktop",
-			environment,
-			executableName: "anaconda-agentic-desktop",
-			productName: "Anaconda Agentic Desktop",
-			setupExecutableName: "Anaconda-Agentic-Desktop-Setup.exe",
-			squirrelName: "AnacondaAgenticDesktop",
-			windowsAppUserModelId: "com.squirrel.AnacondaAgenticDesktop.anaconda-agentic-desktop",
-		});
-	});
+	it.each([
+		["preview", "Kilo Preview", "Kilo-Preview-Setup.exe", "Kilo Desktop Preview"],
+		["stable", "Kilo", "Kilo-Setup.exe", "Kilo Desktop"],
+	] as const)(
+		"uses the %s product identity",
+		(environment, productName, setupExecutableName, userDataName) => {
+			expect(getAppIdentity(environment)).toEqual({
+				appBundleId: "ai.kilo.desktop",
+				environment,
+				executableName: "kilo-desktop",
+				productName,
+				setupExecutableName,
+				squirrelName: "KiloDesktop",
+				userDataName,
+				windowsAppUserModelId: "com.squirrel.KiloDesktop.kilo-desktop",
+			});
+		},
+	);
 
 	it("covers every supported environment", () => {
 		const environments = ["development", "preview", "stable"] satisfies readonly AppEnvironment[];
 
 		expect(
 			new Set(environments.map((environment) => getAppIdentity(environment).productName)),
-		).toEqual(new Set(["Anaconda Agentic Desktop Dev", "Anaconda Agentic Desktop"]));
+		).toEqual(new Set(["Kilo Dev", "Kilo Preview", "Kilo"]));
+	});
+
+	it("uses track-specific DMG volume titles", () => {
+		expect(getDmgVolumeTitle("preview")).toBe("Kilo Preview");
+		expect(getDmgVolumeTitle("stable")).toBe("Kilo");
 	});
 });

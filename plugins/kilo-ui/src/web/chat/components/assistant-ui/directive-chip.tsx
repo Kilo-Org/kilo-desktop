@@ -2,7 +2,7 @@ import type { DirectiveChipProps } from "@assistant-ui/react-lexical";
 import { FileIcon } from "lucide-react";
 import type { FC } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import { slashCategoryIcon } from "../../slash-commands/kilo-slash-icons.js";
 

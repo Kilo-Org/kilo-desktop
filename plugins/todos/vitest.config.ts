@@ -68,8 +68,8 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@anaconda-agentic-desktop/feature-sdk",
-						"@anaconda-agentic-desktop/sdk-react",
+						"@kilo-desktop/feature-sdk",
+						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
 						// Keep the design-system CommonJS shims in Vite's prebundle so a cold

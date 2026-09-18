@@ -5,7 +5,7 @@ import {
 	type IpcMethodChannel,
 	type IpcMethodOutput,
 	type LocalApi,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 	const invoke = async <C extends IpcMethodChannel>(

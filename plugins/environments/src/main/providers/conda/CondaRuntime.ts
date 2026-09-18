@@ -1,7 +1,7 @@
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import type {
 	CondaEnvironmentRuntime,
@@ -29,7 +29,7 @@ export interface CondaRuntimeOptions {
 	readonly platform?: NodeJS.Platform;
 	/**
 	 * Root for plugin environment working state (envs, package cache).
-	 * Defaults to `~/.anaconda-agentic-desktop/conda`. Environments here
+	 * Defaults to `~/.kilo-desktop/conda`. Environments here
 	 * are created with explicit `prefix` paths, bypassing the bridge's
 	 * `envs_dirs` — they are intentionally invisible from `conda env list`
 	 * in the user's terminal. See ADR-002.
@@ -143,7 +143,7 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 function resolveDefaultCondaFilesRoot(platform: NodeJS.Platform): string {
 	const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
 	const paths = platform === "win32" ? path.win32 : path.posix;
-	return paths.join(home, ".anaconda-agentic-desktop", "conda");
+	return paths.join(home, ".kilo-desktop", "conda");
 }
 
 async function ready(prefixPath: string, paths: Paths): Promise<boolean> {

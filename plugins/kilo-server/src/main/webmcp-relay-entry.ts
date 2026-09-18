@@ -3,14 +3,14 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 /**
- * Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
+ * Interim WebMCP↔Kilo bridge — see #102.
  *
  * `@mcp-b/webmcp-local-relay` ships an ESM CLI (`bin/webmcp-local-relay ->
  * dist/cli.mjs`) that requires a Node runtime. Forge stages its lockfile-pinned
  * dependency closure in `resources/webmcp-relay` so the child process does not
  * need the app's remaining node_modules outside ASAR. That extra-resource path
  * also keeps Squirrel nupkg entries under Windows MAX_PATH.
- * Kilo spawns the Anaconda Desktop executable with `ELECTRON_RUN_AS_NODE=1`,
+ * Kilo spawns the Kilo Desktop executable with `ELECTRON_RUN_AS_NODE=1`,
  * which requires `FuseV1Options.RunAsNode: true` in `forge.config.ts`.
  *
  * Once Kilo Code lands the native `type: "webmcp"` MCP transport tracked in
@@ -107,7 +107,7 @@ export function resolveWebMcpRelayEntry(
 		} catch (cause) {
 			throw new Error(
 				`Failed to resolve ${PACKAGE_NAME}. Packaged builds must stage the ` +
-					`${PACKAGE_NAME} runtime through @anaconda-agentic-desktop/webmcp-relay-runtime.`,
+					`${PACKAGE_NAME} runtime through @kilo-desktop/webmcp-relay-runtime.`,
 				{ cause },
 			);
 		}

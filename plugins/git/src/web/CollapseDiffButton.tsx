@@ -1,7 +1,7 @@
 import { ChevronDownIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 interface CollapseDiffButtonProps {
 	readonly collapsed: boolean;

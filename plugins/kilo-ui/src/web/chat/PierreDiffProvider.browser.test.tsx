@@ -1,10 +1,6 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeSdk,
-	createFakeTheme,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk, createFakeTheme } from "@kilo-desktop/testing";
 import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";

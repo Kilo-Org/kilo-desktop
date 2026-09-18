@@ -28,7 +28,7 @@ afterEach(async () => {
 });
 
 async function temporaryNativeModule(contents: Uint8Array): Promise<string> {
-	const directory = await mkdtemp(path.join(os.tmpdir(), "anaconda-windows-sign-"));
+	const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-windows-sign-"));
 	temporaryDirectories.push(directory);
 	const filePath = path.join(directory, "native.node");
 	await writeFile(filePath, contents);

@@ -1,12 +1,8 @@
 import { useRef } from "react";
 import { flushSync } from "react-dom";
 import { RotateCwIcon } from "lucide-react";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { toast } from "@kilo-desktop/ui/components/sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import { useDesktopUpdates } from "@/platform/updates/UpdateProvider";
 

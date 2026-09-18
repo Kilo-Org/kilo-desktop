@@ -5,7 +5,7 @@
 > [embedding-decisions.md](./embedding-decisions.md); loopback-relay guidance below is historical.
 
 > **Runtime update:** references below to a staged daemon are historical. The protocol-host and CSP
-> work remains current; Agentic Desktop now attaches to an externally installed singleton.
+> work remains current; Kilo Desktop now attaches to an externally installed singleton.
 >
 > **UI/ownership update:** notebook code now lives in `plugins/notebook`. Its renderer contributes
 > ephemeral scratch notebooks to Kilo's `chat-right-panel-tab` zone; there is no standalone notebook
@@ -43,7 +43,7 @@ Read first, in order:
 ## The one-paragraph version
 
 nteract's built SPA gets served from a **second host on our existing scheme** —
-`anaconda-agentic-desktop://notebook/` alongside `anaconda-agentic-desktop://app/` — and the app
+`kilo-desktop://notebook/` alongside `kilo-desktop://app/` — and the app
 renderer iframes it. A separate host is a separate origin, which gets the notebook its own CSP
 (looser: wasm, loopback ws, blob workers) while the app's policy stays exactly as strict as today.
 The notebook feature contributes its bundle root and its config endpoint as an `embeddedWebHost`
@@ -274,14 +274,14 @@ Done on 2026-08-05, arm64 macOS, with a debug `runtimed` (`2.6.3+560e539`) and t
 ```
 RUNTIMED_BINARY=~/p/nteract/target/debug/runtimed \
 NTERACT_BUNDLE=~/p/nteract/apps/notebook/dist \
-pnpm --filter @anaconda-agentic-desktop/desktop package
+pnpm --filter @kilo-desktop/desktop package
 ```
 
 Result — the notebook **renders and executes** in the packaged app: 32 cells, WASM initialized,
-kernel reached `Running`/Idle, and `print("embedded in agentic-desktop:", platform.python_version())`
+kernel reached `Running`/Idle, and `print("embedded in kilo-desktop:", platform.python_version())`
 returned `3.13.11` with `sum(range(101))` → `5050`. **Zero CSP violations and zero
 `Network.loadingFailed` events**, checked over CDP in both the app page and the notebook frame.
-The frame's `location.origin` is `anaconda-agentic-desktop://notebook`, confirming origin isolation.
+The frame's `location.origin` is `kilo-desktop://notebook`, confirming origin isolation.
 
 Findings worth keeping:
 
@@ -305,7 +305,7 @@ Both gates below have been run and pass; kept for how to reproduce them.
 is the first time anything renders in a packaged build, so:
 
 ```
-RUNTIMED_BINARY=... NTERACT_BUNDLE=~/p/nteract/apps/notebook/dist pnpm --filter @anaconda-agentic-desktop/desktop package
+RUNTIMED_BINARY=... NTERACT_BUNDLE=~/p/nteract/apps/notebook/dist pnpm --filter @kilo-desktop/desktop package
 ```
 
 then launch the packaged app and open the notebook. Watch the **renderer console for CSP violation

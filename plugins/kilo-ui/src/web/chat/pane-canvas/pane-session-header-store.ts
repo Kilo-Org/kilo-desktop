@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { Arrangement } from "@anaconda-agentic-desktop/pane-layout";
+import type { Arrangement } from "@kilo-desktop/pane-layout";
 
 import type { RightPanelTabDefinition } from "../right-panel/right-panel-tab-registry.js";
 

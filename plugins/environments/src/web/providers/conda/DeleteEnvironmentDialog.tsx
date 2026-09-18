@@ -1,5 +1,5 @@
-import { useSdk, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogClose,
@@ -8,7 +8,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
+} from "@kilo-desktop/ui/components/dialog";
 
 import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
 import { environmentDisplayName } from "./environment-display.js";

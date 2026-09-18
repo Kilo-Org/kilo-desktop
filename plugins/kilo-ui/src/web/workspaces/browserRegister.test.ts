@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk } from "@kilo-desktop/testing";
 
 import type { Workspace, WorkspaceCapabilities } from "../../contracts/workspaces/schemas.js";
 import { kiloUiBrowserRegister } from "../browserRegister.js";

@@ -10,8 +10,8 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 

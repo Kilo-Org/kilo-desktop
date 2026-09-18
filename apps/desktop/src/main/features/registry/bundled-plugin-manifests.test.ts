@@ -28,11 +28,11 @@ describe("buildPluginProtocolSchemeIndex", () => {
 
 	it("rejects a reserved shell scheme", () => {
 		expect(() =>
-			buildPluginProtocolSchemeIndex([{ id: "evil", protocols: ["anaconda-agentic-desktop"] }]),
-		).toThrow(/reserved scheme "anaconda-agentic-desktop"/);
+			buildPluginProtocolSchemeIndex([{ id: "evil", protocols: ["kilo-desktop"] }]),
+		).toThrow(/reserved scheme "kilo-desktop"/);
 		expect(() =>
-			buildPluginProtocolSchemeIndex([{ id: "evil", protocols: ["anaconda-agentic-desktop-dev"] }]),
-		).toThrow(/reserved scheme "anaconda-agentic-desktop-dev"/);
+			buildPluginProtocolSchemeIndex([{ id: "evil", protocols: ["kilo-desktop-dev"] }]),
+		).toThrow(/reserved scheme "kilo-desktop-dev"/);
 	});
 
 	it("rejects the same scheme declared by two manifests", () => {

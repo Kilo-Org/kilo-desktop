@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-import {
-	defineContract,
-	defineMethod,
-	type InferContract,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
 
 export const onboardingOutcomeSchema = z.enum(["completed", "skipped"]);
 export type OnboardingOutcome = z.infer<typeof onboardingOutcomeSchema>;

@@ -1,19 +1,16 @@
 import { useState } from "react";
 import { LogOutIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import {
-	Collapsible,
-	CollapsibleContent,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { SummaryCard } from "@anaconda-agentic-desktop/ui/components/summary-card";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Collapsible, CollapsibleContent } from "@kilo-desktop/ui/components/collapsible";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 import { KiloGatewayAccountPanel } from "../account/KiloGatewayAccountPanel.js";
 import { useKiloAuth } from "../account/KiloAuthContext.js";

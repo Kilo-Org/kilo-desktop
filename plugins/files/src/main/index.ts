@@ -1,4 +1,4 @@
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import {
 	filesContract,

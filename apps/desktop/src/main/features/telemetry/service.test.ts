@@ -274,7 +274,7 @@ describe("TelemetryService.create", () => {
 			auth: fakeAuth(),
 			preferences: preferences(),
 			appVersion: "1.2.3",
-			serviceId: "anaconda-agentic-desktop",
+			serviceId: "kilo-desktop",
 		});
 
 		expect(svc).toBeInstanceOf(TelemetryService);

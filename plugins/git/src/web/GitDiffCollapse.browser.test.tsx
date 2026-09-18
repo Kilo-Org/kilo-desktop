@@ -2,7 +2,7 @@ import { fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeSdk } from "@kilo-desktop/testing";
 
 import { gitContract } from "../contracts/schemas.js";
 import {

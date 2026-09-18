@@ -10,7 +10,7 @@ import {
 	movePaneToGroup,
 	setActivePane,
 	togglePin,
-} from "@anaconda-agentic-desktop/pane-layout";
+} from "@kilo-desktop/pane-layout";
 
 import { ChatPaneCanvas } from "./ChatPaneCanvas.js";
 import { startPaneDrag } from "./test-helpers.js";

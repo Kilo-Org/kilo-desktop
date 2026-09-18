@@ -1,6 +1,6 @@
 ---
 name: threat-model
-description: Walk the Agentic Desktop codebase through the 7-section STRIDE+Privacy Threat Modeling Template, checking real trust boundaries (Electron IPC, kilo-server sidecar, MCP tool servers, auth/keyring, telemetry) and emitting a structured mitigation/gap analysis to docs/security/threat-model.md. Use when the user says "threat model", "STRIDE", "security review", or asks to update the threat model doc.
+description: Walk the Kilo Desktop codebase through the 7-section STRIDE+Privacy Threat Modeling Template, checking real trust boundaries (Electron IPC, kilo-server sidecar, MCP tool servers, auth/keyring, telemetry) and emitting a structured mitigation/gap analysis to docs/security/threat-model.md. Use when the user says "threat model", "STRIDE", "security review", or asks to update the threat model doc.
 ---
 
 # Threat Model
@@ -59,7 +59,7 @@ For each of the 7 sections in `references/template-questions.md`:
 Write `docs/security/threat-model.md` using exactly this skeleton (section names come from `references/template-questions.md` — if they ever differ from STRIDE+P, the template wins):
 
 ```markdown
-# Threat Model — Anaconda Agentic Desktop
+# Threat Model — Kilo Desktop
 - Date: <run date>  Commit: <the commit whose code was analyzed> — `git merge-base HEAD origin/main` when the current branch has no code changes relative to main (docs-only branches); otherwise `git rev-parse HEAD`
 
 ## 1. Spoofing

@@ -2,7 +2,7 @@ import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	type EmbeddedWebHost,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 import { createLogger } from "../../platform/logger.js";
 import { featureRouter } from "./feature-registry.js";

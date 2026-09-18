@@ -1,10 +1,6 @@
 import Store from "electron-store";
 
-import type {
-	KvStore,
-	KvStoreFactory,
-	KvStoreOptions,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import type { KvStore, KvStoreFactory, KvStoreOptions } from "@kilo-desktop/feature-sdk";
 
 /**
  * Namespace pattern accepted by `mainSdk.storage.kv({ namespace })`. The

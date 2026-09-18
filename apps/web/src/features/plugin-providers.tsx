@@ -1,9 +1,6 @@
 import { createElement, type ComponentType, type ReactNode } from "react";
 
-import {
-	pluginProviderContributions,
-	type PluginDiscovery,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { pluginProviderContributions, type PluginDiscovery } from "@kilo-desktop/feature-sdk";
 
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 

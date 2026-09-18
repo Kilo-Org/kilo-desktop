@@ -7,8 +7,8 @@ import {
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { clamp } from "../utils/range.js";
 

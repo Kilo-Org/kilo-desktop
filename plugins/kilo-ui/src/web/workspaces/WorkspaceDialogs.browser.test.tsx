@@ -3,9 +3,9 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
-import { SdkProvider, sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import type { SDK } from "@kilo-desktop/feature-sdk";
+import { SdkProvider, sdkQueryKey } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import {
 	DEFAULT_WORKSPACE_IDENTITY_COLOR,

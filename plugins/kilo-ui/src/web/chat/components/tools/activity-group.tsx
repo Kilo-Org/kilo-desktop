@@ -21,13 +21,13 @@ import {
 	AvatarFallback,
 	AvatarGroup,
 	AvatarGroupCount,
-} from "@anaconda-agentic-desktop/ui/components/avatar";
+} from "@kilo-desktop/ui/components/avatar";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/collapsible";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
 	getKindMeta,

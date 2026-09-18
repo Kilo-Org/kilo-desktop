@@ -42,14 +42,14 @@ describe("createKiloRuntimeBackend", () => {
 					directory: "/workspace/a",
 					title: "A",
 					time: { created: 1, updated: 1 },
-					metadata: { anaconda: {} },
+					metadata: { "kilo-desktop": {} },
 				},
 				{
 					id: "session-b",
 					directory: "/workspace/b",
 					title: "B",
 					time: { created: 2, updated: 2 },
-					metadata: { anaconda: { workspaceId: "ws-1" } },
+					metadata: { "kilo-desktop": { workspaceId: "ws-1" } },
 				},
 				{
 					id: "session-cli",
@@ -111,13 +111,16 @@ describe("createKiloRuntimeBackend", () => {
 		});
 		expect(prepareSession).toHaveBeenCalledOnce();
 		expect(createKiloDirectoryClient).toHaveBeenCalledWith(connection, "/workspace/selected");
-		expect(create).toHaveBeenCalledWith({ metadata: { anaconda: {} } }, { throwOnError: true });
+		expect(create).toHaveBeenCalledWith(
+			{ metadata: { "kilo-desktop": {} } },
+			{ throwOnError: true },
+		);
 
 		backend.getSessionClient({ id: "session-new" });
 		expect(createKiloDirectoryClient).toHaveBeenCalledOnce();
 	});
 
-	it("stamps workspace id inside nested anaconda metadata", async () => {
+	it("stamps workspace id inside nested kilo-desktop metadata", async () => {
 		const prepareSession = vi.fn(async () => ({
 			directory: "/workspace/selected",
 			workspaceId: "ws-1",
@@ -143,7 +146,7 @@ describe("createKiloRuntimeBackend", () => {
 		expect(create).toHaveBeenCalledWith(
 			{
 				metadata: {
-					anaconda: {
+					"kilo-desktop": {
 						workspaceId: "ws-1",
 						workspaceFolders: [
 							{ path: "/workspace/selected", isPrimary: true },
@@ -188,7 +191,7 @@ describe("createKiloRuntimeBackend", () => {
 					directory: "/workspace/archived",
 					title: "Archived",
 					time: { created: 10, updated: 20, archived: 30 },
-					metadata: { anaconda: {} },
+					metadata: { "kilo-desktop": {} },
 				},
 				{
 					id: "session-cli",

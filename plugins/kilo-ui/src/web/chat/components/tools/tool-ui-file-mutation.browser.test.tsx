@@ -1,11 +1,7 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeSdk,
-	createFakeTheme,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk, createFakeTheme } from "@kilo-desktop/testing";
 
 import { PierreDiffBody } from "./tool-ui-file-mutation.js";
 

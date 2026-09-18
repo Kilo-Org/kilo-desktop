@@ -15,7 +15,7 @@ import { ConsoleLogCollector } from "../utils/console-log-collector.js";
 import { packagedExecutable } from "../utils/paths.js";
 
 // Must match DESKTOP_PRODUCTION_SCHEME in apps/desktop ElectronProtocol.ts.
-const DESKTOP_URL_PREFIX = "anaconda-agentic-desktop://";
+const DESKTOP_URL_PREFIX = "kilo-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
 const KILO_SERVER_READY_TIMEOUT_MS = 120_000;
 const WORKER_APP_TIMEOUT_MS = 240_000;
@@ -109,7 +109,7 @@ type ElectronWorkerFixtures = {
 async function launchApp(
 	envOverrides: Readonly<Record<string, string>>,
 ): Promise<{ app: ElectronApplication; userDataDir: string }> {
-	const userDataDir = await mkdtemp(path.join(os.tmpdir(), "aad-e2e-"));
+	const userDataDir = await mkdtemp(path.join(os.tmpdir(), "kilo-e2e-"));
 	// The launch env points GIT_CONFIG_GLOBAL/SYSTEM here; pre-create both as
 	// empty files so the long-lived GUI process never falls back to real
 	// global/system gitconfig paths on any git version.

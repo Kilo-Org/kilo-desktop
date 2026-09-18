@@ -8,7 +8,7 @@ vi.mock("electron", () => ({ ipcMain: {} }));
 vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
 vi.mock("./ElectronSecurity.js", () => ({ isTrustedIpcSender }));
 
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import type { IpcHandlers } from "@kilo-desktop/contracts";
 
 import { BusinessError } from "./BusinessError.js";
 import { IpcServer } from "./IpcServer.js";
@@ -136,7 +136,7 @@ describe("IpcServer", () => {
 		const listener = listeners.get("feature:port")!;
 		const port = { close: vi.fn() };
 		const payload = {
-			type: "anaconda-agentic-desktop:feature-port",
+			type: "kilo-desktop:feature-port",
 			featureId: "notebook",
 			channel: "host",
 			args: { notebookId: "nb-1" },
@@ -156,7 +156,7 @@ describe("IpcServer", () => {
 		server.register({} as IpcHandlers, undefined, { "feature:port": handler });
 		const listener = listeners.get("feature:port")!;
 		const payload = {
-			type: "anaconda-agentic-desktop:feature-port",
+			type: "kilo-desktop:feature-port",
 			featureId: "notebook",
 			channel: "host",
 		};
@@ -195,7 +195,7 @@ describe("IpcServer", () => {
 		listeners.get("feature:port")!(
 			{ sender: { id: 7 }, ports: [port] },
 			{
-				type: "anaconda-agentic-desktop:feature-port",
+				type: "kilo-desktop:feature-port",
 				featureId: "notebook",
 				channel: "host",
 			},

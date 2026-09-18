@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
-import type { WorkspaceWatcherCapability } from "@anaconda-agentic-desktop/contracts";
+import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
+import type { WorkspaceWatcherCapability } from "@kilo-desktop/contracts";
 
 import { mainRegister } from "./index.js";
 import { createFakeParcelWatcher, type FakeParcelWatcher } from "./test/test-helpers.js";

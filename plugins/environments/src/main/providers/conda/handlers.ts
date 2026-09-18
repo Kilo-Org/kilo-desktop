@@ -1,7 +1,7 @@
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { CancelInput, CancelResult } from "../../../contracts/common.js";
 import type {

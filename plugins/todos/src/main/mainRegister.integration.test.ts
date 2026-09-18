@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createFakeMainSdk, createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk, createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
 

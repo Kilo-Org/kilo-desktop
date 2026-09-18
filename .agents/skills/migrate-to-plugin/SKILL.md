@@ -45,7 +45,7 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 
 ### Step 3: Create plugin.json
 
-**File:** `plugins/<id>/plugin.json` — validated by `pluginManifestSchema` from `@anaconda-agentic-desktop/feature-sdk` during discovery. Unknown keys are rejected (strict schema). The schema (`packages/feature-sdk/src/plugin/manifest.ts`) is the source of truth — if this template disagrees with it, trust the schema and update this skill.
+**File:** `plugins/<id>/plugin.json` — validated by `pluginManifestSchema` from `@kilo-desktop/feature-sdk` during discovery. Unknown keys are rejected (strict schema). The schema (`packages/feature-sdk/src/plugin/manifest.ts`) is the source of truth — if this template disagrees with it, trust the schema and update this skill.
 
 ```json
 {
@@ -84,7 +84,7 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 
 ```json
 {
-	"name": "@anaconda-agentic-desktop/plugin-<id>",
+	"name": "@kilo-desktop/plugin-<id>",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -94,13 +94,13 @@ git mv apps/web/src/features/<id>/* plugins/<id>/src/web/
 		"./main": "./src/main/index.ts"
 	},
 	"dependencies": {
-		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/feature-sdk": "workspace:*",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
-		"@anaconda-agentic-desktop/testing": "workspace:*",
+		"@kilo-desktop/testing": "workspace:*",
 		"@types/react": "^19.2.17",
 		"@types/react-dom": "^19.2.3",
 		"typescript": "catalog:",
@@ -115,12 +115,12 @@ Add main-process deps (better-sqlite3, drizzle-orm, etc.) if the feature persist
 
 | Old import                                                         | New import                                     |
 | ------------------------------------------------------------------ | ---------------------------------------------- |
-| `from "@anaconda-agentic-desktop/contracts"` (for feature schemas) | `from "../contracts/schemas.js"`               |
+| `from "@kilo-desktop/contracts"` (for feature schemas) | `from "../contracts/schemas.js"`               |
 | `from "@/features/<id>/..."`                                       | Relative within `src/web/`                     |
-| `from "@/platform/sdk"`                                            | `from "@anaconda-agentic-desktop/sdk-react"`   |
-| `from "@/components/ui/..."` / `from "@/lib/utils"`                | `from "@anaconda-agentic-desktop/ui/components/..."` / `from "@anaconda-agentic-desktop/ui/lib/utils"` — the shared design-system package; NEVER copy shadcn components into a plugin |
+| `from "@/platform/sdk"`                                            | `from "@kilo-desktop/sdk-react"`   |
+| `from "@/components/ui/..."` / `from "@/lib/utils"`                | `from "@kilo-desktop/ui/components/..."` / `from "@kilo-desktop/ui/lib/utils"` — the shared design-system package; NEVER copy shadcn components into a plugin |
 
-Imports from `@anaconda-agentic-desktop/feature-sdk`, `@anaconda-agentic-desktop/sdk-react`, `@anaconda-agentic-desktop/ui`, `@anaconda-agentic-desktop/testing`, and `zod` stay unchanged. Contract helpers (`defineContract`, `defineMethod`, `InferContract`) come from `@anaconda-agentic-desktop/feature-sdk` — never from the shell-internal contracts package. Tailwind classes in plugin components keep working: `apps/web/src/globals.css` already has `@source` entries for `packages/ui` and `plugins` (one-time, done); plugin browser tests import their own `src/test/globals.css` (`@import "tailwindcss"` + `@source` for `packages/ui`).
+Imports from `@kilo-desktop/feature-sdk`, `@kilo-desktop/sdk-react`, `@kilo-desktop/ui`, `@kilo-desktop/testing`, and `zod` stay unchanged. Contract helpers (`defineContract`, `defineMethod`, `InferContract`) come from `@kilo-desktop/feature-sdk` — never from the shell-internal contracts package. Tailwind classes in plugin components keep working: `apps/web/src/globals.css` already has `@source` entries for `packages/ui` and `plugins` (one-time, done); plugin browser tests import their own `src/test/globals.css` (`@import "tailwindcss"` + `@source` for `packages/ui`).
 
 ### Step 6: Create renderer entry (if needed)
 
@@ -130,7 +130,7 @@ If the plugin has a UI, add `plugins/<id>/src/web/index.ts` re-exporting the pag
 export { MyView } from "./MyView.js";
 
 // Optional — only for browser-mode support (no Node APIs):
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdk } from "@kilo-desktop/feature-sdk";
 import { myContract } from "../contracts/schemas.js";
 
 export function browserRegister(mainSdk: MainSdk) {
@@ -156,8 +156,8 @@ export function browserRegister(mainSdk: MainSdk) {
 **File:** `apps/desktop/src/main/features/registry/bundled-plugins.ts`
 
 ```typescript
-import myPluginManifest from "@anaconda-agentic-desktop/plugin-<id>/plugin.json" with { type: "json" };
-import * as myPluginMain from "@anaconda-agentic-desktop/plugin-<id>/main";
+import myPluginManifest from "@kilo-desktop/plugin-<id>/plugin.json" with { type: "json" };
+import * as myPluginMain from "@kilo-desktop/plugin-<id>/main";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: myPluginManifest, module: myPluginMain },
@@ -167,18 +167,18 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 **File:** `apps/web/src/features/bundled-plugins.ts`
 
 ```typescript
-import myPluginManifest from "@anaconda-agentic-desktop/plugin-<id>/plugin.json" with { type: "json" };
-import * as myPluginWeb from "@anaconda-agentic-desktop/plugin-<id>/web";
+import myPluginManifest from "@kilo-desktop/plugin-<id>/plugin.json" with { type: "json" };
+import * as myPluginWeb from "@kilo-desktop/plugin-<id>/web";
 
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: myPluginManifest, module: myPluginWeb },
 ];
 ```
 
-The loader (`discoverPlugins` in `@anaconda-agentic-desktop/feature-sdk`) validates the manifest at boot and feeds the registrations into the existing `FEATURES` / `WEB_FEATURES` boot paths. Also add the workspace dep to `apps/desktop/package.json` and (for UI plugins) `apps/web/package.json`:
+The loader (`discoverPlugins` in `@kilo-desktop/feature-sdk`) validates the manifest at boot and feeds the registrations into the existing `FEATURES` / `WEB_FEATURES` boot paths. Also add the workspace dep to `apps/desktop/package.json` and (for UI plugins) `apps/web/package.json`:
 
 ```json
-"@anaconda-agentic-desktop/plugin-<id>": "workspace:*"
+"@kilo-desktop/plugin-<id>": "workspace:*"
 ```
 
 ### Step 9: pnpm-workspace.yaml
@@ -215,7 +215,7 @@ Create a plugin-local fixture so the page objects stay self-contained (no centra
 **File:** `plugins/<id>/e2e/fixtures.ts`
 
 ```typescript
-import { test as base } from "@anaconda-agentic-desktop/e2e/fixtures";
+import { test as base } from "@kilo-desktop/e2e/fixtures";
 import { MyPage } from "./pages/my-page.js";
 
 export const test = base.extend<{ myPage: MyPage }>({

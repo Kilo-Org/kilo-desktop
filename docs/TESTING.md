@@ -31,11 +31,11 @@ pnpm test:e2e:smoke
 pnpm test:e2e
 
 # Package once for Playwright, then reuse
-pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e
+pnpm --filter @kilo-desktop/desktop run package:e2e
 SKIP_BUILD=true pnpm test:e2e:smoke
 
 # Headed e2e for debugging
-pnpm --filter @anaconda-agentic-desktop/e2e run test:e2e:headed
+pnpm --filter @kilo-desktop/e2e run test:e2e:headed
 ```
 
 `package:e2e` sets `ELECTRON_ENABLE_INSPECT=true` so the Electron fuse
@@ -49,7 +49,7 @@ Package-scoped:
 pnpm test:web
 pnpm test:desktop
 pnpm test:contracts
-pnpm --filter @anaconda-agentic-desktop/feature-sdk test
+pnpm --filter @kilo-desktop/feature-sdk test
 ```
 
 ## Layout
@@ -72,7 +72,7 @@ plugins/<id>/e2e/                          # after migration — self-contained 
 
 ## Debugging a failing e2e
 
-1. Re-run headed: `pnpm --filter @anaconda-agentic-desktop/e2e run test:e2e:headed -- --grep "test title"`.
+1. Re-run headed: `pnpm --filter @kilo-desktop/e2e run test:e2e:headed -- --grep "test title"`.
 2. On failure, Playwright attaches **screenshot**, **page HTML**, and **console logs** (Electron does not get Playwright's built-in attachments).
 3. Open `playwright-report/index.html` (`npx playwright show-report`).
 4. Traces are retained on failure (`trace: "retain-on-failure"`).

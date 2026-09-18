@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 
-import type { AuthSession, ChannelHandlerMap, SDK } from "@anaconda-agentic-desktop/feature-sdk";
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
-import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import type { AuthSession, ChannelHandlerMap, SDK } from "@kilo-desktop/feature-sdk";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import { localInferenceContract } from "../contracts/schemas.js";
 import { LocalModelServerSettings } from "../web/settings/LocalModelServerSettings.js";

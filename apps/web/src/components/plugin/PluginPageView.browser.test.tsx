@@ -2,8 +2,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import type { PluginPageProps } from "@anaconda-agentic-desktop/feature-sdk";
-import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import type { PluginPageProps } from "@kilo-desktop/feature-sdk";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import { PluginPageView } from "./PluginPageView";
 

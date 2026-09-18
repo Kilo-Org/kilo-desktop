@@ -2,10 +2,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-	TRANSPARENT_WINDOW_BACKGROUND,
-	type PaneWindow,
-} from "@anaconda-agentic-desktop/contracts";
+import { TRANSPARENT_WINDOW_BACKGROUND, type PaneWindow } from "@kilo-desktop/contracts";
 
 import { getDesktopRouteUrl } from "./ElectronProtocol.js";
 
@@ -88,7 +85,7 @@ vi.mock("electron", () => ({
 		readonly isVisible = vi.fn(() => false);
 		readonly setBackgroundColor = vi.fn();
 		readonly setTitleBarOverlay = vi.fn();
-		readonly getTitle = vi.fn(() => "Agentic Desktop");
+		readonly getTitle = vi.fn(() => "Kilo");
 		readonly setTitle = vi.fn();
 		readonly isFocused = vi.fn(() => true);
 		readonly off = vi.fn();
@@ -240,7 +237,7 @@ describe("ElectronWindow theme chrome", () => {
 		expect(denied.preventDefault).toHaveBeenCalledOnce();
 		const accepted = { preventDefault: vi.fn() };
 		const guestPreferences: Record<string, unknown> = { preload: "/evil.js" };
-		willAttach?.(accepted, guestPreferences, { partition: "persist:anaconda-agentic-browser" });
+		willAttach?.(accepted, guestPreferences, { partition: "persist:kilo-desktop-browser" });
 		expect(accepted.preventDefault).not.toHaveBeenCalled();
 		expect(guestPreferences).toMatchObject({
 			sandbox: true,
@@ -337,7 +334,7 @@ describe("ElectronWindow theme chrome", () => {
 		const detached = createdWindows[1];
 		expect(detached?.options.name).toBe("pane:kilo-ui:session-1:file:readme.md");
 		expect(detached?.options.webPreferences?.additionalArguments).toContain(
-			"--anaconda-window-role=pane",
+			"--kilo-window-role=pane",
 		);
 		expect(detached?.options.windowStatePersistence).toBeUndefined();
 		expect(windows.listPaneWindows("kilo-ui")).toEqual([pane]);
@@ -423,7 +420,7 @@ describe("ElectronWindow theme chrome", () => {
 		windows.create({ isDevelopment: false });
 		const [first, second] = createdWindows;
 
-		expect(windows.getTitle(second!.webContents.id)).toBe("Agentic Desktop");
+		expect(windows.getTitle(second!.webContents.id)).toBe("Kilo");
 		windows.setTitle(second!.webContents.id, "Analysis");
 		expect(first?.setTitle).not.toHaveBeenCalled();
 		expect(second?.setTitle).toHaveBeenCalledWith("Analysis");

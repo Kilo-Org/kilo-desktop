@@ -2,7 +2,7 @@
 
 import type { ComponentType, FC } from "react";
 
-import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
 import { useWorkspaceDirectory } from "../../use-workspace-directory.js";
 import { WorkspaceSelector } from "../../../workspaces/WorkspaceSelector.js";

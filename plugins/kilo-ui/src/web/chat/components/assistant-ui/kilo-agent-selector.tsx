@@ -9,8 +9,8 @@ import {
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useChatAgentSelection } from "../../agent-selection/ChatAgentSelectionContext.js";
 import { findCatalogAgent, OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";

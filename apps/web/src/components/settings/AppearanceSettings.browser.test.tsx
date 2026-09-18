@@ -2,7 +2,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { LocalApi } from "@kilo-desktop/contracts";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";

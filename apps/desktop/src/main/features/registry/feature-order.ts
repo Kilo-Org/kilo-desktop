@@ -1,4 +1,4 @@
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import type { FeatureRegistration } from "@kilo-desktop/feature-sdk";
 
 const PRE_BUILT_IN_PLUGIN_IDS = new Set(["kilo-server", "kilo-ui"]);
 

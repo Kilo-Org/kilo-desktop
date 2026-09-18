@@ -1,7 +1,4 @@
-import {
-	FEATURE_PORT_WINDOW_MESSAGE,
-	featurePortPayload,
-} from "@anaconda-agentic-desktop/contracts";
+import { FEATURE_PORT_WINDOW_MESSAGE, featurePortPayload } from "@kilo-desktop/contracts";
 
 /**
  * Create a renderer-owned channel and transfer its peer through the isolated

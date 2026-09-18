@@ -1,7 +1,7 @@
 import {
 	PLUGIN_ROUTE_NAMESPACE,
 	type PluginPageSurface as PluginPageSurfaceKind,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import type { ReactNode } from "react";
 

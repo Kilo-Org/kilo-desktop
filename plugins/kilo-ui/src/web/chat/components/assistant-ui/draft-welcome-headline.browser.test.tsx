@@ -3,8 +3,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import {
 	workspacesContract,
@@ -151,7 +151,7 @@ describe("DraftWelcomeHeadline", () => {
 	});
 
 	it("wraps a long workspace name instead of truncating it", async () => {
-		const longName = "AnacondaAgenticDesktopWithAVeryLongUnbrokenWorkspaceName";
+		const longName = "KiloDesktopWithAVeryLongUnbrokenWorkspaceName";
 		const longWorkspace: Workspace = {
 			...workspace,
 			id: "workspace-long",

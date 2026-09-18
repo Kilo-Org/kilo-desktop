@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { AuthUser } from "@anaconda-agentic-desktop/contracts";
+import type { AuthUser } from "@kilo-desktop/contracts";
 
 import type { OAuthFetch } from "./types.js";
 
@@ -23,7 +23,7 @@ const apiKeyResponseSchema = z.object({ api_key: z.string() });
  * @param domain Site domain (e.g. "anaconda.com"); the request targets `https://<domain>`.
  * @param accessToken OAuth access token from the login flow.
  * @param fetchImpl Electron-backed fetch (`electronFetch`) — never global fetch.
- * @param userAgent Tag recorded on the key (e.g. "anaconda-agentic-desktop/1.2.3").
+ * @param userAgent Tag recorded on the key (e.g. "kilo-desktop/1.2.3").
  */
 export async function exchangeForApiKey(
 	domain: string,

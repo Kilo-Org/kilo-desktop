@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 import {
 	NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
@@ -42,7 +42,7 @@ import type { ChatRightPanelCapabilities } from "./notebook-webmcp-tools.js";
  * this needs, and getting it wrong falls back to browser mode rather than
  * framing a wrong origin.
  */
-const DESKTOP_SCHEME_PREFIX = "anaconda-agentic-desktop";
+const DESKTOP_SCHEME_PREFIX = "kilo-desktop";
 
 /**
  * The renderer cannot read `app.isPackaged`, so it cannot derive the scheme —

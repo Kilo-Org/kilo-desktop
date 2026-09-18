@@ -6,7 +6,7 @@ import {
 } from "@assistant-ui/react-opencode";
 import { AlertCircleIcon, LoaderIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Questionnaire,
 	QuestionnaireChoice,
@@ -20,8 +20,8 @@ import {
 	QuestionnaireProgress,
 	QuestionnaireSubmit,
 	QuestionnaireTitle,
-} from "@anaconda-agentic-desktop/ui/components/questionnaire";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/questionnaire";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 const questionName = (index: number) => `question-${index}`;
 

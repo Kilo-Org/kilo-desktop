@@ -1,8 +1,8 @@
 import * as React from "react";
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
 	return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;

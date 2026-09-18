@@ -3,9 +3,9 @@ import {
 	stripPluginNamespace,
 	type PluginDiscovery,
 	type PluginPageSurface,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
-import type { PluginPageProps } from "@anaconda-agentic-desktop/feature-sdk";
+import type { PluginPageProps } from "@kilo-desktop/feature-sdk";
 import type { ComponentType } from "react";
 
 import { PLUGIN_DISCOVERY } from "./features.js";

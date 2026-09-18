@@ -16,7 +16,7 @@ import {
 	type SdkClient,
 	type SdkFactoryServices,
 	type ShellDelegates,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 // ─── Feature system ────────────────────────────────────────────────────────
 

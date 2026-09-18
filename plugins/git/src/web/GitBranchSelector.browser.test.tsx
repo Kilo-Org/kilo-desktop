@@ -3,14 +3,10 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeMainSdk,
-	createFakeSdk,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import {
 	gitContract,
@@ -24,7 +20,7 @@ const toastApi = vi.hoisted(() => ({
 	error: vi.fn(),
 }));
 
-vi.mock("@anaconda-agentic-desktop/ui/components/sonner", () => ({
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: toastApi,
 }));
 

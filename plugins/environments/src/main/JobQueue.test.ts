@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 import {
 	environmentsErrorCodeToFeatureErrorCode,

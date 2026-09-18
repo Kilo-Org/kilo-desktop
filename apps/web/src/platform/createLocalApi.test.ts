@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopApi } from "@anaconda-agentic-desktop/contracts";
+import type { DesktopApi } from "@kilo-desktop/contracts";
 
 import { createLocalApi } from "./createLocalApi";
 

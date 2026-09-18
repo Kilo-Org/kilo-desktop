@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { discoverPlugins, type PluginDiscovery } from "@anaconda-agentic-desktop/feature-sdk";
+import { discoverPlugins, type PluginDiscovery } from "@kilo-desktop/feature-sdk";
 
 import { PLUGIN_NAV } from "./plugin-nav-entries";
 import { buildPluginNav, filterVisiblePluginNav } from "./plugin-nav";

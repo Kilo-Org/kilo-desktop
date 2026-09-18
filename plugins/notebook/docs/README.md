@@ -1,6 +1,6 @@
 # Notebook integration docs
 
-Embedding nteract's notebook UI while sharing the user's `runtimed` singleton. Agentic
+Embedding nteract's notebook UI while sharing the user's `runtimed` singleton. Kilo
 Desktop packages a pinned daemon and warms it during app launch when the canonical endpoint
 is idle; an already-running compatible daemon always wins. Kilo reaches that daemon through a
 bundled `nteract-mcp` proxy and its colocated `runt` child. These docs were written as work

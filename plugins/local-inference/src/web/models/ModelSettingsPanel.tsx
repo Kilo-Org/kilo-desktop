@@ -6,8 +6,8 @@ import {
 	AccordionContent,
 	AccordionItem,
 	AccordionTrigger,
-} from "@anaconda-agentic-desktop/ui/components/accordion";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+} from "@kilo-desktop/ui/components/accordion";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Field,
 	FieldContent,
@@ -15,15 +15,11 @@ import {
 	FieldError,
 	FieldGroup,
 	FieldLabel,
-} from "@anaconda-agentic-desktop/ui/components/field";
-import { Slider } from "@anaconda-agentic-desktop/ui/components/slider";
-import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
-import { Textarea } from "@anaconda-agentic-desktop/ui/components/textarea";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/field";
+import { Slider } from "@kilo-desktop/ui/components/slider";
+import { Switch } from "@kilo-desktop/ui/components/switch";
+import { Textarea } from "@kilo-desktop/ui/components/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { LocalModel, LocalModelSettings } from "../../contracts/schemas.js";
 import {

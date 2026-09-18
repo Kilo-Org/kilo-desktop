@@ -1,7 +1,7 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { buttonVariants } from "@anaconda-agentic-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { buttonVariants } from "@kilo-desktop/ui/components/button";
 
 function Tabs({ className, orientation = "horizontal", ...props }: TabsPrimitive.Root.Props) {
 	return (

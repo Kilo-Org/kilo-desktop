@@ -1,4 +1,4 @@
-import { MarkdownContent } from "@anaconda-agentic-desktop/ui/components/markdown-content";
+import { MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
 import { type FC, memo } from "react";
 
 type PlanMarkdownProps = {

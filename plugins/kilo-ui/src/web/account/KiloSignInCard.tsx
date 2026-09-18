@@ -1,15 +1,15 @@
 import { ArrowUpRightIcon, Building2Icon, SparklesIcon, ZapIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Item,
 	ItemContent,
 	ItemGroup,
 	ItemMedia,
 	ItemTitle,
-} from "@anaconda-agentic-desktop/ui/components/item";
-import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/item";
+import { Separator } from "@kilo-desktop/ui/components/separator";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { KiloMark } from "./KiloMark.js";
 

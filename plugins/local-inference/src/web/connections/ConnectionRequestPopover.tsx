@@ -6,16 +6,16 @@ import {
 	AccordionContent,
 	AccordionItem,
 	AccordionTrigger,
-} from "@anaconda-agentic-desktop/ui/components/accordion";
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+} from "@kilo-desktop/ui/components/accordion";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	InputGroup,
 	InputGroupAddon,
 	InputGroupButton,
 	InputGroupInput,
 	InputGroupTextarea,
-} from "@anaconda-agentic-desktop/ui/components/input-group";
+} from "@kilo-desktop/ui/components/input-group";
 import {
 	Popover,
 	PopoverContent,
@@ -23,8 +23,8 @@ import {
 	PopoverHeader,
 	PopoverTitle,
 	PopoverTrigger,
-} from "@anaconda-agentic-desktop/ui/components/popover";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/popover";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { LocalConnectionInfo } from "../../contracts/schemas.js";
 import { localConnectionRequests, type LocalConnectionRequest } from "./connection-requests.js";

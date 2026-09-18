@@ -6,7 +6,7 @@ const PACKAGED_NATIVE_ROOTS = ["resources/nteract-mcp", "resources/runtimed"] as
 const require = createRequire(import.meta.url);
 
 function resolvePackageAsset(subpath: string): string {
-	const manifestPath = require.resolve("@anaconda-agentic-desktop/plugin-notebook/plugin.json");
+	const manifestPath = require.resolve("@kilo-desktop/plugin-notebook/plugin.json");
 	return path.resolve(path.dirname(manifestPath), subpath);
 }
 

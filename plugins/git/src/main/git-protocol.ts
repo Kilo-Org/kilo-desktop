@@ -3,8 +3,8 @@ import { stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { Readable } from "node:stream";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
-import type { GitPatchFile } from "@anaconda-agentic-desktop/git-client";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import type { GitPatchFile } from "@kilo-desktop/git-client";
 
 /**
  * The service slice the protocol handler needs; `GitService` satisfies it.
@@ -37,10 +37,7 @@ const PATCH_ROUTE = new URLPattern("kilo-git://diff/patch");
  * import shell internals, and the values are part of the app's public
  * identity.
  */
-const DESKTOP_ORIGINS = new Set([
-	"anaconda-agentic-desktop://app",
-	"anaconda-agentic-desktop-dev://app",
-]);
+const DESKTOP_ORIGINS = new Set(["kilo-desktop://app", "kilo-desktop-dev://app"]);
 
 const defaultExistsDirectory = async (directory: string): Promise<boolean> => {
 	try {

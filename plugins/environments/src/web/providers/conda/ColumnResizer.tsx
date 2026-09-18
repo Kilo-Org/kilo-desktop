@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { KEYBOARD_RESIZE_STEP } from "./column-widths.js";
 

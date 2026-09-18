@@ -13,25 +13,25 @@ import {
 	SearchIcon,
 } from "lucide-react";
 
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
-import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+} from "@kilo-desktop/ui/components/tooltip";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 
 import type {
 	CondaEnv,

@@ -2,9 +2,9 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import type { ChannelHandlerMap } from "@anaconda-agentic-desktop/feature-sdk";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import type { ChannelHandlerMap } from "@kilo-desktop/feature-sdk";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { browserContract } from "../contracts/browser.js";
 import { BrowserView } from "./BrowserView.js";

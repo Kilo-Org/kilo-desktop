@@ -12,7 +12,7 @@ import {
 	type IpcPortChannel,
 	type IpcPortHandlers,
 	type IpcResult,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { BusinessError } from "./BusinessError.js";
 import { isTrustedIpcSender } from "./ElectronSecurity.js";

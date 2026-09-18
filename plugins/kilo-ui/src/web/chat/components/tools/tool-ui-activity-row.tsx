@@ -5,8 +5,8 @@ import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/collapsible";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useActivitySubgroup, type ActivitySubgroupContextValue } from "./activity-group.js";
 import {

@@ -1,16 +1,16 @@
 import { BinaryIcon, EyeIcon, LibraryIcon, MessageCircleIcon, WrenchIcon } from "lucide-react";
 
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import {
 	Empty,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
-} from "@anaconda-agentic-desktop/ui/components/empty";
-import { ScrollArea } from "@anaconda-agentic-desktop/ui/components/scroll-area";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/empty";
+import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type {
 	LocalInferenceHardwareProfile,

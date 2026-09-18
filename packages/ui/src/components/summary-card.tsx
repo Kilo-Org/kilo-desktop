@@ -1,8 +1,8 @@
 import type { ComponentProps } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { CollapsibleTrigger } from "@anaconda-agentic-desktop/ui/components/collapsible";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { CollapsibleTrigger } from "@kilo-desktop/ui/components/collapsible";
 import {
 	Item,
 	ItemActions,
@@ -10,8 +10,8 @@ import {
 	ItemDescription,
 	ItemMedia,
 	ItemTitle,
-} from "@anaconda-agentic-desktop/ui/components/item";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/item";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 function SummaryCardRow({ className, ...props }: ComponentProps<typeof Item>) {
 	return (

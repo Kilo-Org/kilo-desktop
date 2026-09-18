@@ -1,8 +1,8 @@
 import { lazy, Suspense, useMemo, type ComponentType, type FC } from "react";
 import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
 
-import type { Contribution, ContributionMountPolicy } from "@anaconda-agentic-desktop/feature-sdk";
-import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
+import type { Contribution, ContributionMountPolicy } from "@kilo-desktop/feature-sdk";
+import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
 const PlanTab = lazy(() => import("./PlanTab.js").then((module) => ({ default: module.PlanTab })));
 

@@ -8,15 +8,15 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import {
 	Field,
 	FieldDescription,
 	FieldError,
 	FieldGroup,
 	FieldLabel,
-} from "@anaconda-agentic-desktop/ui/components/field";
+} from "@kilo-desktop/ui/components/field";
 import {
 	Select,
 	SelectContent,
@@ -24,7 +24,7 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
+} from "@kilo-desktop/ui/components/select";
 
 import type {
 	LocalInferenceHardwareProfile,

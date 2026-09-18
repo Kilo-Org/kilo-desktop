@@ -4,7 +4,7 @@ import {
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	FeatureRouter,
 	type HostMessagePort,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 import { TERMINAL_PROTOCOL_VERSION } from "../contracts/session.js";
 import { mainRegister, type TerminalManagerLike } from "./index.js";

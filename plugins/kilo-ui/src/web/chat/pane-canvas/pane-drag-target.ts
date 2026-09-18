@@ -1,8 +1,4 @@
-import {
-	dropPositionFromPoint,
-	PANE_GAP,
-	type DropPosition,
-} from "@anaconda-agentic-desktop/pane-layout";
+import { dropPositionFromPoint, PANE_GAP, type DropPosition } from "@kilo-desktop/pane-layout";
 import type { PaneDrop } from "./pane-drop.js";
 
 const TAB_STRIP_SLOP = 6;

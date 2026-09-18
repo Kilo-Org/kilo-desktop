@@ -1,13 +1,9 @@
 import { LogInIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import {
-	DialogDescription,
-	DialogHeader,
-	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { DialogDescription, DialogHeader, DialogTitle } from "@kilo-desktop/ui/components/dialog";
 import {
 	Empty,
 	EmptyContent,
@@ -15,7 +11,7 @@ import {
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
-} from "@anaconda-agentic-desktop/ui/components/empty";
+} from "@kilo-desktop/ui/components/empty";
 
 import type { LocalInferenceServiceContract } from "../../contracts/schemas.js";
 

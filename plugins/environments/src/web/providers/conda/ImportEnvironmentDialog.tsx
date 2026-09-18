@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 
-import { useSdk, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Field, FieldError, FieldLabel } from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Field, FieldError, FieldLabel } from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
+} from "@kilo-desktop/ui/components/dialog";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import { CircleHelpIcon, FileUpIcon, XIcon } from "lucide-react";
 
 import type {

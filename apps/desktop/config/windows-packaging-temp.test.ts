@@ -48,7 +48,7 @@ describe("windows packaging temp", () => {
 	});
 
 	it("creates the directory and points TEMP/TMP at it for Squirrel", async () => {
-		const parent = await mkdtemp(path.join(os.tmpdir(), "anaconda-win-temp-"));
+		const parent = await mkdtemp(path.join(os.tmpdir(), "kilo-win-temp-"));
 		temporaryDirectories.push(parent);
 		const override = path.join(parent, "t");
 		const environment: NodeJS.ProcessEnv = { WINDOWS_PACKAGING_TEMP: override };
@@ -122,7 +122,7 @@ describe("Squirrel nupkg extract path budget", () => {
 				nupkgResources(
 					"app.asar.unpacked",
 					"node_modules",
-					"@anaconda-agentic-desktop",
+					"@kilo-desktop",
 					"plugin-kilo-server",
 					"relay-runtime",
 					"node_modules",

@@ -3,14 +3,14 @@
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
+} from "@kilo-desktop/ui/components/dialog";
 import { SearchIcon, CheckIcon } from "lucide-react";
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {

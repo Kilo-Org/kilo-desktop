@@ -2,7 +2,7 @@ import type { TextMessagePartComponent } from "@assistant-ui/react";
 import { FileIcon } from "lucide-react";
 import { useMemo, type FC } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import { useChatMarkdownContext } from "../../ChatMarkdownContext.js";
 import { SLASH_CATEGORY_ICONS } from "../../slash-commands/kilo-slash-icons.js";

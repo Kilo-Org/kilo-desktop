@@ -1,6 +1,6 @@
 import { LibraryIcon, SearchXIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Empty,
 	EmptyContent,
@@ -8,8 +8,8 @@ import {
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
-} from "@anaconda-agentic-desktop/ui/components/empty";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
+} from "@kilo-desktop/ui/components/empty";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 
 export function ModelListSkeleton() {
 	return (

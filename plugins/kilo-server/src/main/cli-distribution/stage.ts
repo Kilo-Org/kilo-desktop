@@ -59,7 +59,7 @@ async function isCurrent(
 }
 
 async function installArtifact(stagingDirectory: string, artifact: KiloCliArtifact): Promise<void> {
-	const installDirectory = await mkdtemp(path.join(os.tmpdir(), "anaconda-kilo-install-"));
+	const installDirectory = await mkdtemp(path.join(os.tmpdir(), "kilo-cli-install-"));
 	try {
 		await writeFile(
 			path.join(installDirectory, "package.json"),

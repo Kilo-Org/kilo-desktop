@@ -1,10 +1,10 @@
 import path from "node:path";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 import { todosContract } from "../contracts/schemas.js";
 
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import { createTodosDatabase } from "./db.js";
 import { TodoService } from "./TodoService.js";
@@ -24,7 +24,7 @@ export const FEATURE_FLAG_KEY = "todo-feature";
 /**
  * Duck-typed shape of the `feature-flag` capability contributed by the
  * `apps/desktop` feature-flag feature. Redefined locally so the plugin
- * stays free of a hard dependency on `@anaconda-agentic-desktop/contracts`
+ * stays free of a hard dependency on `@kilo-desktop/contracts`
  * (plugins are self-contained); the canonical type is
  * `FeatureFlagMainCapability` in `packages/contracts`.
  */

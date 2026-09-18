@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { Arrangement } from "@anaconda-agentic-desktop/pane-layout";
+import type { Arrangement } from "@kilo-desktop/pane-layout";
 
 export function canExpandPane(paneCount: number) {
 	return paneCount > 1;

@@ -1,5 +1,5 @@
 import { act, fireEvent } from "@testing-library/react";
-import { createFakeSdk, createFakeTheme } from "@anaconda-agentic-desktop/testing";
+import { createFakeSdk, createFakeTheme } from "@kilo-desktop/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 

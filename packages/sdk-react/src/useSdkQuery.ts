@@ -1,6 +1,6 @@
 import { queryOptions, useQuery, type UseQueryResult } from "@tanstack/react-query";
 
-import type { SDK, SdkClient } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK, SdkClient } from "@kilo-desktop/feature-sdk";
 
 /** Resolved result of a channel method on a feature service. */
 export type SdkChannelResult<T extends SdkClient, K extends keyof T> = Awaited<ReturnType<T[K]>>;

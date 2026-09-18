@@ -1,12 +1,12 @@
-import type { AnacondaMcpStatus } from "@anaconda-agentic-desktop/contracts";
+import type { AnacondaMcpStatus } from "@kilo-desktop/contracts";
 import {
 	ANACONDA_MCP_STATUS_CHANGED,
 	type AuthMainCapability,
 	type FeatureFlagMainCapability,
-} from "@anaconda-agentic-desktop/contracts";
-import type { MainSdk, ObservableValue } from "@anaconda-agentic-desktop/feature-sdk";
-import { createObservableValue } from "@anaconda-agentic-desktop/feature-sdk";
-import type { KiloServerCapabilities } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
+} from "@kilo-desktop/contracts";
+import type { MainSdk, ObservableValue } from "@kilo-desktop/feature-sdk";
+import { createObservableValue } from "@kilo-desktop/feature-sdk";
+import type { KiloServerCapabilities } from "@kilo-desktop/plugin-kilo-server/contracts";
 import isEqual from "lodash/isEqual.js";
 
 /**

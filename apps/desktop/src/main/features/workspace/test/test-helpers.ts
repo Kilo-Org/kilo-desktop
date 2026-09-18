@@ -1,8 +1,5 @@
-import type {
-	WorkspaceFileChangeEvent,
-	WorkspaceWatchFilter,
-} from "@anaconda-agentic-desktop/contracts";
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
+import type { WorkspaceFileChangeEvent, WorkspaceWatchFilter } from "@kilo-desktop/contracts";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 
 import {
 	WorkspaceWatcher,

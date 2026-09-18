@@ -1,19 +1,18 @@
 /*
  * Design-system keyframes.
  *
- * Shipped with @anaconda-agentic-desktop/ui rather than the shell's
+ * Shipped with @kilo-desktop/ui rather than the shell's
  * globals.css so a primitive that depends on an animation keeps working
  * wherever it is mounted (app, plugin, or browser test). Import once per
  * Tailwind entry:
  *
- *   @import "@anaconda-agentic-desktop/ui/styles/animations.css";
+ *   @import "@kilo-desktop/ui/styles/animations.css";
  */
 
 /*
  * Three dots travelling the vertices of an equilateral triangle, staggered a
  * third of a cycle apart. Ported from the Kendo `infinite-spinner`
- * (`k-loader-spinner-3`) so Agentic Desktop and Anaconda Desktop show the
- * same loading motion. The dots orbit; the triangle itself never rotates.
+ * (`k-loader-spinner-3`). The dots orbit; the triangle itself never rotates.
  */
 @keyframes spinner-orbit {
 	0% {

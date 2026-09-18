@@ -5,8 +5,8 @@ import {
 	normalizeAppThemePreferences,
 	themeCss,
 	type AppThemePreferences,
-} from "@anaconda-agentic-desktop/contracts";
-import { createObservableValue, type ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/contracts";
+import { createObservableValue, type ThemeAppearance } from "@kilo-desktop/feature-sdk";
 
 import { getColorSchemeSnapshot } from "./color-scheme";
 

@@ -2,11 +2,11 @@ import {
 	discoverPlugins,
 	pluginRegistrations,
 	reportPluginDiscoveryIssues,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
-import { ANACONDA_MCP_FEATURE_ID, WORKSPACE_FEATURE_ID } from "@anaconda-agentic-desktop/contracts";
+import { ANACONDA_MCP_FEATURE_ID, WORKSPACE_FEATURE_ID } from "@kilo-desktop/contracts";
 
-import type { FeatureRegistration } from "@anaconda-agentic-desktop/feature-sdk";
+import type { FeatureRegistration } from "@kilo-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 import { orderMainFeatures } from "./feature-order.js";

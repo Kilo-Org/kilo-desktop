@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import type { MarkdownRendererExtensionFactory } from "@anaconda-agentic-desktop/ui/components/markdown-extension";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import type { MarkdownRendererExtensionFactory } from "@kilo-desktop/ui/components/markdown-extension";
 
 import { type FilesServiceContract } from "../../../contracts/schemas.js";
 import { FileLinkChip } from "./FileLinkChip.js";

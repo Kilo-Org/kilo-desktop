@@ -3,19 +3,19 @@ import { type FormEvent, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import type { AnacondaMcpService, AnacondaMcpStatus } from "@anaconda-agentic-desktop/contracts";
-import { ANACONDA_MCP_STATUS_CHANGED_EVENT } from "@anaconda-agentic-desktop/contracts";
+import type { AnacondaMcpService, AnacondaMcpStatus } from "@kilo-desktop/contracts";
+import { ANACONDA_MCP_STATUS_CHANGED_EVENT } from "@kilo-desktop/contracts";
 import {
 	sdkQueryKey,
 	useFeatureFlag,
 	useSdk,
 	useSdkMutation,
 	useSdkQuery,
-} from "@anaconda-agentic-desktop/sdk-react";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Label } from "@anaconda-agentic-desktop/ui/components/label";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+} from "@kilo-desktop/sdk-react";
+import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Label } from "@kilo-desktop/ui/components/label";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 // ─── Status chip styling ────────────────────────────────────────────────────────
 
@@ -165,7 +165,7 @@ export function AnacondaMcpSettings() {
 				) : null}
 				<p className="text-muted-foreground mt-1 ml-7 text-xs">
 					When enabled, Anaconda tools are automatically available in Kilo chats while logged in.
-					Anaconda Desktop provides the <code>anaconda-remote</code> MCP server to its embedded Kilo
+					Kilo Desktop provides the <code>anaconda-remote</code> MCP server to its embedded Kilo
 					only — the Kilo CLI and other Kilo installs are not affected. Use this toggle to opt out.
 				</p>
 			</div>

@@ -1,15 +1,15 @@
 import { GalleryHorizontalIcon } from "lucide-react";
 import type { FC } from "react";
 
-import type { Arrangement } from "@anaconda-agentic-desktop/pane-layout";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import type { Arrangement } from "@kilo-desktop/pane-layout";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 export const PaneSessionChrome: FC<{
 	arrangement: Arrangement;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AuthSession } from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession } from "@kilo-desktop/contracts";
 
 import type { AuthSessionService } from "../auth/auth-service.js";
 import type { UserInfoOrganization } from "../auth/actions.js";

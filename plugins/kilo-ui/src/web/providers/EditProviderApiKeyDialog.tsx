@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+} from "@kilo-desktop/ui/components/dialog";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import { ProviderApiKeyForm } from "./ProviderConnectDialog.js";
 import type { ProviderRow } from "./provider-list.js";

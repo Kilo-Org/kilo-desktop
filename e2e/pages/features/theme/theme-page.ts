@@ -15,7 +15,7 @@ export class ThemePage {
 	async verifyThemeSurvivesRestart(): Promise<void> {
 		// Keep the worker's shared app alive; restart only this disposable profile.
 		const sharedPage = getPage();
-		const userData = await mkdtemp(path.join(os.tmpdir(), "aad-e2e-theme-"));
+		const userData = await mkdtemp(path.join(os.tmpdir(), "kilo-e2e-theme-"));
 		removePathAfterAppStops(userData);
 		await Promise.all([
 			writeFile(path.join(userData, ".gitconfig"), ""),

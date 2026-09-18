@@ -1,4 +1,4 @@
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import type { KiloGlobalConnection } from "../../contracts/chat/schemas.js";
 import type { McpAppResource, McpAppsService } from "../../contracts/mcp-apps/schemas.js";

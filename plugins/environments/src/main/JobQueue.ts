@@ -1,5 +1,5 @@
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import {
 	environmentsErrorCodeToFeatureErrorCode,

@@ -1,4 +1,4 @@
-import { Toaster } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { Toaster } from "@kilo-desktop/ui/components/sonner";
 import { Outlet } from "@tanstack/react-router";
 
 import { AppSidebarLayout } from "@/components/layout/AppSidebarLayout";

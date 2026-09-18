@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { resource } from "@assistant-ui/tap";
 import type { McpAppResource, McpAppsHost } from "@assistant-ui/react";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import type { McpAppsService } from "../../../contracts/mcp-apps/schemas.js";
 

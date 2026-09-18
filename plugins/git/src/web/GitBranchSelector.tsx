@@ -1,7 +1,7 @@
 import { ChevronDownIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Command,
 	CommandEmpty,
@@ -10,15 +10,11 @@ import {
 	CommandItem,
 	CommandList,
 	CommandSeparator,
-} from "@anaconda-agentic-desktop/ui/components/command";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@anaconda-agentic-desktop/ui/components/popover";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+} from "@kilo-desktop/ui/components/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { useQuery } from "@tanstack/react-query";
-import { sdkQueryOptions, useSdk, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
+import { sdkQueryOptions, useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 
 import type { GitBranch, GitServiceContract } from "../contracts/schemas.js";
 import { branchDisplayName } from "./branch-display-name.js";

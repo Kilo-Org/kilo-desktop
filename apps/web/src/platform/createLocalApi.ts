@@ -1,4 +1,4 @@
-import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { LocalApi } from "@kilo-desktop/contracts";
 
 import { createBrowserLocalApi } from "./browserLocalApi";
 import { createElectronLocalApi } from "./electronLocalApi";

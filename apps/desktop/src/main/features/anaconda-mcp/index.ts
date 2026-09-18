@@ -1,6 +1,6 @@
-import { anacondaMcpContract } from "@anaconda-agentic-desktop/contracts";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
-import type { KiloServerStatus } from "@anaconda-agentic-desktop/plugin-kilo-server/contracts";
+import { anacondaMcpContract } from "@kilo-desktop/contracts";
+import type { MainSdk } from "@kilo-desktop/feature-sdk";
+import type { KiloServerStatus } from "@kilo-desktop/plugin-kilo-server/contracts";
 
 import { AnacondaMcpService } from "./AnacondaMcpService.js";
 import { SettingsStore } from "./SettingsStore.js";

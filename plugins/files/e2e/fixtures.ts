@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { removePathAfterAppStops, test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
+import { removePathAfterAppStops, test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
 import { FilesPage } from "./pages/files-page.js";
 
@@ -23,7 +23,7 @@ export const test = shellTest.extend<FilesFixtures>({
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	filesWorkspace: async ({}, use) => {
-		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "aad-files-workspace-"));
+		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-files-workspace-"));
 		removePathAfterAppStops(workspacePath);
 		const fileName = "files-plugin-smoke.txt";
 		const untrackedFileName = "files-plugin-untracked.txt";

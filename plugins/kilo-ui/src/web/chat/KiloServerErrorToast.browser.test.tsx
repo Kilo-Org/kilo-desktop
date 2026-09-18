@@ -12,7 +12,7 @@ const toastApi = vi.hoisted(() => ({
 	dismiss: vi.fn(),
 }));
 
-vi.mock("@anaconda-agentic-desktop/ui/components/sonner", () => ({
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: toastApi,
 }));
 

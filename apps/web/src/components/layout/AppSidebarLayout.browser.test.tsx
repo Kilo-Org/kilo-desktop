@@ -8,9 +8,9 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { AuthSession, LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession, LocalApi } from "@kilo-desktop/contracts";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
 import type { PluginNavEntry } from "@/features/plugin-nav";
 import type { PluginPage } from "@/features/plugin-pages";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";

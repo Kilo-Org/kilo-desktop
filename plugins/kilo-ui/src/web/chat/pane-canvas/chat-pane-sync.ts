@@ -8,7 +8,7 @@
  * to other renderers but also delivered locally before relay, so each payload
  * carries a renderer source ID that suppresses only the local echo.
  */
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import type { ChatRightPanelCapability } from "../right-panel/chat-right-panel-capability.js";
 import { useRightPanelStore, type RightPanelTab } from "../right-panel/right-panel-store.js";

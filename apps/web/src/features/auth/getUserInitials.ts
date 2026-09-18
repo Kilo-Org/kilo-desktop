@@ -1,4 +1,4 @@
-import type { AuthUser } from "@anaconda-agentic-desktop/feature-sdk";
+import type { AuthUser } from "@kilo-desktop/feature-sdk";
 
 /**
  * Derive display initials for an authenticated user, mirroring

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 import { CONTRIBUTION_SOURCE_ID, MCP_ENV_VAR } from "./AnacondaMcpService.js";
 import { mainRegister } from "./index.js";

@@ -2,8 +2,8 @@ import {
 	pluginZoneContributions,
 	type ContributionMountPolicy,
 	type PluginDiscovery,
-} from "@anaconda-agentic-desktop/feature-sdk";
-import type { FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+} from "@kilo-desktop/feature-sdk";
+import type { FeatureSystem } from "@kilo-desktop/sdk-react";
 
 import { PLUGIN_DISCOVERY } from "./features.js";
 

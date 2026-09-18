@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 
 /**
  * Owns the lifecycle of the optional runtimed child process, never the shared

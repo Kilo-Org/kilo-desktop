@@ -6,12 +6,8 @@ import {
 	PanelRightOpenIcon,
 } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import { DiffSettingsMenu } from "./DiffSettingsMenu.js";
 

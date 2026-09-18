@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
-import type { KvStoreFactory } from "@anaconda-agentic-desktop/feature-sdk";
+import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
+import type { KvStoreFactory } from "@kilo-desktop/feature-sdk";
 
 import type { KiloGlobalConnection, KiloSessionPreparation } from "../../contracts/chat/schemas.js";
 import type { WorkspaceCapabilities } from "../../contracts/workspaces/schemas.js";

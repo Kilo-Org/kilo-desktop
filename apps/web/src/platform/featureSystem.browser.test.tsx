@@ -1,12 +1,12 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopApi, LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { DesktopApi, LocalApi } from "@kilo-desktop/contracts";
 import {
 	defineMethod,
 	type FeatureEvent,
 	type FeatureRegistration,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";

@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
-import type { GitPatchFile } from "@anaconda-agentic-desktop/git-client";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import type { GitPatchFile } from "@kilo-desktop/git-client";
 
 import { createGitProtocolHandler, type GitProtocolService } from "./git-protocol.js";
 
@@ -50,7 +50,7 @@ function requestFor(url: string, origin?: string): Request {
 	return new Request(url, origin ? { headers: { Origin: origin } } : undefined);
 }
 
-const DESKTOP_ORIGIN = "anaconda-agentic-desktop://app";
+const DESKTOP_ORIGIN = "kilo-desktop://app";
 
 describe("PATCH_ROUTE (URLPattern on a non-special scheme)", () => {
 	it("matches the patch endpoint with and without a query string", () => {
@@ -200,10 +200,8 @@ describe("createGitProtocolHandler", () => {
 		const { service } = createFakeService(async () => null);
 		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
 		const response = await handler(
-			requestFor("kilo-git://diff/patch?cwd=/repo", "anaconda-agentic-desktop-dev://app"),
+			requestFor("kilo-git://diff/patch?cwd=/repo", "kilo-desktop-dev://app"),
 		);
-		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-			"anaconda-agentic-desktop-dev://app",
-		);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("kilo-desktop-dev://app");
 	});
 });

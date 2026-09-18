@@ -1,6 +1,6 @@
 # Plugin-Ready Development Guidelines
 
-Guidelines for developing features in Agentic Desktop so they migrate to plugins with a filesystem move, not a rewrite. Features program against the shim SDK (`@anaconda-agentic-desktop/feature-sdk`) today; when a feature moves to `plugins/<id>/` (and later to an external repo), the source stays the same because it never touched shell internals.
+Guidelines for developing features in Kilo Desktop so they migrate to plugins with a filesystem move, not a rewrite. Features program against the shim SDK (`@kilo-desktop/feature-sdk`) today; when a feature moves to `plugins/<id>/` (and later to an external repo), the source stays the same because it never touched shell internals.
 
 This document is a companion to [CONTEXT.md](../CONTEXT.md) (architecture and terminology), [docs/add-a-feature.md](./add-a-feature.md) (the current path end-to-end), and the [new-feature](../.agents/skills/new-feature/SKILL.md) / [migrate-to-plugin](../.agents/skills/migrate-to-plugin/SKILL.md) skills (scaffolding and migration runbooks). Those win if anything here disagrees.
 
@@ -45,12 +45,12 @@ Each transition is a filesystem move. That only works if the feature already:
 
 ### 1. Program against the SDK, not the shell
 
-Feature code imports from `@anaconda-agentic-desktop/feature-sdk`, `@anaconda-agentic-desktop/sdk-react`, `@anaconda-agentic-desktop/contracts` (schemas only), and `@anaconda-agentic-desktop/ui`. Nothing else from the shell.
+Feature code imports from `@kilo-desktop/feature-sdk`, `@kilo-desktop/sdk-react`, `@kilo-desktop/contracts` (schemas only), and `@kilo-desktop/ui`. Nothing else from the shell.
 
 ```typescript
 // GOOD
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdk } from "@kilo-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 // BAD — shell internals; breaks the moment the feature becomes a plugin
 import { someService } from "@/platform/...";
@@ -121,7 +121,7 @@ The contract file moves with the feature on migration (to `plugins/<id>/src/cont
 ```
 plugins/<id>/
 ├── plugin.json           # manifest: id, displayName, version, main, web, contributes, ...
-├── package.json          # @anaconda-agentic-desktop/plugin-<id>
+├── package.json          # @kilo-desktop/plugin-<id>
 └── src/
     ├── contracts/        # Zod schemas (moved from packages/contracts)
     ├── main/             # exports mainRegister(mainSdk)
@@ -150,8 +150,8 @@ export const environmentsContract = defineContract({
 
 ```typescript
 // apps/desktop/src/main/features/environments/index.ts
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
-import { environmentsContract } from "@anaconda-agentic-desktop/contracts";
+import type { MainSdk } from "@kilo-desktop/feature-sdk";
+import { environmentsContract } from "@kilo-desktop/contracts";
 
 export function mainRegister(mainSdk: MainSdk) {
 	const service = createEnvironmentsService(mainSdk);
@@ -174,7 +174,7 @@ export function mainRegister(mainSdk: MainSdk) {
 Expected failures throw `FeatureError` from the SDK — its message survives the IPC boundary. Generic `Error` messages are scrubbed to a generic string before reaching the renderer.
 
 ```typescript
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 throw new FeatureError("Environment not found.", "NOT_FOUND");
 ```
@@ -202,8 +202,8 @@ Main features consume host services through `mainSdk` — never import Electron 
 
 ```typescript
 // apps/web/src/features/environments/hooks/use-environments.ts
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { useSdkQuery, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { useSdkQuery, useSdkMutation } from "@kilo-desktop/sdk-react";
 
 export function useEnvironments() {
 	const sdk = useSdk("environments");
@@ -222,7 +222,7 @@ export function useActivateEnvironment() {
 ### Components
 
 - React 19, function components + hooks only.
-- Import design-system primitives from `@anaconda-agentic-desktop/ui` — never vendor or copy shadcn components into a feature.
+- Import design-system primitives from `@kilo-desktop/ui` — never vendor or copy shadcn components into a feature.
 - Interactive elements carry stable `data-qa-id` attributes (queried by Vitest browser tests and Playwright e2e).
 
 ---
@@ -313,7 +313,7 @@ await caps?.environmentService.list();
 Tools adapt a domain function for AI runtimes (the WebMCP bridge). Register them from `webRegister` so they work without central-file edits:
 
 ```typescript
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 import { z } from "zod";
 import { environmentsContract } from "../contracts/schemas.js";
 
@@ -407,7 +407,7 @@ export function createEnvironmentsService(deps: EnvironmentsServiceDeps) {
 }
 ```
 
-Keep dependencies explicit so the feature is testable in isolation (`createFakeSdk` / `createFakeMainSdk` from `@anaconda-agentic-desktop/testing`).
+Keep dependencies explicit so the feature is testable in isolation (`createFakeSdk` / `createFakeMainSdk` from `@kilo-desktop/testing`).
 
 ### Across features: capabilities, not injection
 
@@ -424,9 +424,9 @@ import { authService } from "../auth/index.js";
 
 ### Package ownership (three tiers)
 
-- **Tier 1 — shared runtime (shell-owned singletons):** `react`, `react-dom`, `zod`, `@anaconda-agentic-desktop/feature-sdk`, `sdk-react`, `ui`, `@tanstack/react-query`. Declared as peer dependencies; never bundled — two copies break correctness.
+- **Tier 1 — shared runtime (shell-owned singletons):** `react`, `react-dom`, `zod`, `@kilo-desktop/feature-sdk`, `sdk-react`, `ui`, `@tanstack/react-query`. Declared as peer dependencies; never bundled — two copies break correctness.
 - **Tier 2 — plugin-owned runtime deps:** implementation details of one feature (`better-sqlite3`, `drizzle-orm`, ...). Normal dependencies.
-- **Tier 3 — dev/test tooling:** vitest, typescript, `@anaconda-agentic-desktop/testing`, etc. Never shipped.
+- **Tier 3 — dev/test tooling:** vitest, typescript, `@kilo-desktop/testing`, etc. Never shipped.
 
 Shell-only (features never import these): `@tanstack/react-router` (use `sdk.navigate`), the Tailwind pipeline and theme tokens (ship class names only), all Electron APIs (use SDK delegates).
 
@@ -468,11 +468,11 @@ Entry points are `mainRegister(mainSdk)` in the `main` module and page-component
 
 ### 3. Rewrite imports
 
-| Old                                                 | New                                   |
-| --------------------------------------------------- | ------------------------------------- |
-| `@anaconda-agentic-desktop/contracts` (own schemas) | `../contracts/schemas.js`             |
-| `@/features/<id>/...`                               | relative within `src/web/`            |
-| `@/platform/sdk`                                    | `@anaconda-agentic-desktop/sdk-react` |
+| Old                                     | New                        |
+| --------------------------------------- | -------------------------- |
+| `@kilo-desktop/contracts` (own schemas) | `../contracts/schemas.js`  |
+| `@/features/<id>/...`                   | relative within `src/web/` |
+| `@/platform/sdk`                        | `@kilo-desktop/sdk-react`  |
 
 ### 4. Update registration
 
@@ -527,6 +527,6 @@ Remove the feature from `FEATURES` / `WEB_FEATURES`; add it to `BUNDLED_PLUGINS`
 
 ### Testing
 
-- Unit/integration/browser tests use `createFakeSdk` / `createFakeMainSdk` / `createLinkedFakeSdkPair` / `createFakeFeatureSystem` from `@anaconda-agentic-desktop/testing` — never hand-roll fakes.
+- Unit/integration/browser tests use `createFakeSdk` / `createFakeMainSdk` / `createLinkedFakeSdkPair` / `createFakeFeatureSystem` from `@kilo-desktop/testing` — never hand-roll fakes.
 - Every feature ships at least one `@smoke` Playwright e2e spec (see [docs/TESTING.md](./TESTING.md)).
 - CI gate: `pnpm check && pnpm lint && pnpm format:check && pnpm test`.

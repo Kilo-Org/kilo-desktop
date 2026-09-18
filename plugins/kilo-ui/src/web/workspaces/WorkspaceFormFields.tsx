@@ -2,14 +2,9 @@ import { FolderIcon, FolderPlusIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
 import type { DragEvent, KeyboardEvent } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import {
-	Field,
-	FieldError,
-	FieldGroup,
-	FieldLabel,
-} from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Item,
 	ItemActions,
@@ -17,14 +12,14 @@ import {
 	ItemGroup,
 	ItemMedia,
 	ItemTitle,
-} from "@anaconda-agentic-desktop/ui/components/item";
+} from "@kilo-desktop/ui/components/item";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { useWorkspaceForm } from "./useWorkspaceForm.js";
 import { WorkspaceIdentityColorPicker } from "./WorkspaceIdentityColorPicker.js";

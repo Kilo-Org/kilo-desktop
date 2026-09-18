@@ -1,4 +1,4 @@
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { CondaEnvironmentRuntime } from "../contracts/capabilities.js";
 import { environmentsStatusContract } from "../contracts/status.js";
@@ -40,7 +40,7 @@ export const FEATURE_FLAG_KEY = "environments-feature";
 /**
  * Minimal shape of the main-side feature-flag capability exposed by the
  * shell (see `packages/contracts/src/features/feature-flag-capability.ts`).
- * Inlined so the plugin does not take a `@anaconda-agentic-desktop/contracts`
+ * Inlined so the plugin does not take a `@kilo-desktop/contracts`
  * dependency for a single call.
  */
 interface FeatureFlagCapability extends Record<string, unknown> {

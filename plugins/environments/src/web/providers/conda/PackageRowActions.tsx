@@ -2,18 +2,14 @@ import { useState } from "react";
 
 import { ArrowUpCircleIcon, EllipsisVerticalIcon, TrashIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda.js";
 import { RemovePackageConfirmation } from "./RemovePackageConfirmation.js";

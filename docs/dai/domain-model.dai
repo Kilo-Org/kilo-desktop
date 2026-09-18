@@ -9,7 +9,7 @@
   id="Definitions_DomainModel"
   targetNamespace="https://dai.studio/workflow">
 
-  <bpmn:process id="Process_DomainModel" name="Agentic Desktop Domain Model" isExecutable="false">
+  <bpmn:process id="Process_DomainModel" name="Kilo Desktop Domain Model" isExecutable="false">
     <bpmn:extensionElements>
       <dai:workflowMeta
         description="Product domain model as implemented. Desktop-owned: Workspace, File, Notebook, Environment, Local Model. The conversation is a Kilo Session. Desktop does not persist a Chat Session / Session Reference entity. Workspace linkage is a blob stamped onto Kilo metadata; live attention is a renderer SessionActivity map keyed by Kilo session id. There is no Project or Conversation entity."
@@ -21,7 +21,7 @@
 
     <bpmn:task id="Ctx_Language" name="Ubiquitous language" stepType="context"
       source="manual" format="plain" scope="global"
-      content="Desktop-owned: Workspace, Workspace Folder, File, Notebook, Environment, Package, Local Model. Kilo-owned: Kilo Session, Message, Part, Agent, Provider, Model, Plan, Permission, Question, Skill, MCP Server. Sidebar Chats are Kilo Sessions (filtered by metadata.anaconda). Thread is an assistant-ui synonym for Kilo Session. There is no Session Reference type in code. Do not invent Project or Conversation." />
+      content="Desktop-owned: Workspace, Workspace Folder, File, Notebook, Environment, Package, Local Model. Kilo-owned: Kilo Session, Message, Part, Agent, Provider, Model, Plan, Permission, Question, Skill, MCP Server. Sidebar Chats are Kilo Sessions (filtered by metadata.kilo-desktop). Thread is an assistant-ui synonym for Kilo Session. There is no Session Reference type in code. Do not invent Project or Conversation." />
 
     <bpmn:task id="Rule_NoProject" name="No Project entity" stepType="rule"
       scope="global" rulePriority="critical" enforcement="hard"
@@ -29,7 +29,7 @@
 
     <bpmn:task id="Rule_SoftLink" name="No desktop Session entity" stepType="rule"
       scope="global" rulePriority="critical" enforcement="hard"
-      notes="There is no Chat Session / Session Reference table or type. The conversation lives in Kilo. Desktop attaches extras in three separate places keyed by Kilo session id: (1) metadata.anaconda stamped onto the Kilo record, (2) in-memory SessionActivity plus lastVisitedAt in localStorage, (3) pins and right-panel state in other localStorage keys. Unscoped chats omit workspaceId and use an app-owned cwd under userData/chats/." />
+      notes="There is no Chat Session / Session Reference table or type. The conversation lives in Kilo. Desktop attaches extras in three separate places keyed by Kilo session id: (1) metadata.kilo-desktop stamped onto the Kilo record, (2) in-memory SessionActivity plus lastVisitedAt in localStorage, (3) pins and right-panel state in other localStorage keys. Unscoped chats omit workspaceId and use an app-owned cwd under userData/chats/." />
 
     <!-- ── Workspace aggregate ─────────────────────────────────────────── -->
 
@@ -74,7 +74,7 @@
     <!-- ── Chat session aggregate ──────────────────────────────────────── -->
 
     <bpmn:subProcess id="Group_Session" name="Kilo Session (sidebar Chat)"
-      notes="Sidebar items are Kilo Sessions, filtered to those with metadata.anaconda. No desktop Session row. Workspace-scoped sessions use the primary folder as directory; unscoped sessions use userData/chats/session-*. Desktop extras are sidecar maps, not an encapsulating entity.">
+      notes="Sidebar items are Kilo Sessions, filtered to those with metadata.kilo-desktop. No desktop Session row. Workspace-scoped sessions use the primary folder as directory; unscoped sessions use userData/chats/session-*. Desktop extras are sidecar maps, not an encapsulating entity.">
 
       <bpmn:task id="Model_KiloSession" name="Kilo Session" stepType="model" modelFormat="typescript"
         notes="The conversation. Owned by the Kilo server. Desktop reads it through the Kilo SDK / assistant-ui thread list. Title, directory, status, messages live here. We do not copy them into kilo-ui SQLite.">
@@ -91,8 +91,8 @@
         </bpmn:extensionElements>
       </bpmn:task>
 
-      <bpmn:task id="Model_AnacondaMeta" name="AnacondaSessionMetadata" stepType="model" modelFormat="typescript"
-        notes="Blob stamped onto Kilo session.metadata.anaconda at create. Not a standalone row. Presence of this blob is how the sidebar filter recognizes sessions this app created. workspaceId omitted = unscoped.">
+      <bpmn:task id="Model_KiloDesktopMeta" name="KiloDesktopSessionMetadata" stepType="model" modelFormat="typescript"
+        notes="Blob stamped onto Kilo session.metadata.kilo-desktop at create. Not a standalone row. Presence of this blob is how the sidebar filter recognizes sessions this app created. workspaceId omitted = unscoped.">
         <bpmn:extensionElements>
           <dai:properties>
             <dai:property name="workspaceId" type="str" />
@@ -168,7 +168,7 @@
         </bpmn:extensionElements>
       </bpmn:task>
 
-      <bpmn:sequenceFlow id="Flow_MetaOnKilo" sourceRef="Model_AnacondaMeta" targetRef="Model_KiloSession" name="stamped onto metadata.anaconda" />
+      <bpmn:sequenceFlow id="Flow_MetaOnKilo" sourceRef="Model_KiloDesktopMeta" targetRef="Model_KiloSession" name="stamped onto metadata.kilo-desktop" />
       <bpmn:sequenceFlow id="Flow_ActivityOnKilo" sourceRef="Model_SessionActivity" targetRef="Model_KiloSession" name="keyed by session id" />
       <bpmn:sequenceFlow id="Flow_SessionMsg" sourceRef="Model_KiloSession" targetRef="Model_Message" name="1..* messages" />
       <bpmn:sequenceFlow id="Flow_MsgPart" sourceRef="Model_Message" targetRef="Model_Part" name="1..* parts" />
@@ -414,7 +414,7 @@
       <bpmndi:BPMNShape id="Shape_Model_Part" bpmnElement="Model_Part">
         <dc:Bounds x="940" y="150" width="140" height="70" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Model_AnacondaMeta" bpmnElement="Model_AnacondaMeta">
+      <bpmndi:BPMNShape id="Shape_Model_KiloDesktopMeta" bpmnElement="Model_KiloDesktopMeta">
         <dc:Bounds x="1120" y="150" width="140" height="70" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Model_SessionActivity" bpmnElement="Model_SessionActivity">

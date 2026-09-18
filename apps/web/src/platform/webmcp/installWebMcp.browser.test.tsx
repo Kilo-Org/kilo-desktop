@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import type { ModelContextTesting } from "@mcp-b/webmcp-types";
 
 import { installWebMcp, nudgeRelayWidget } from "./installWebMcp";
@@ -155,7 +155,7 @@ describe("installWebMcp", () => {
 		expect(embed).not.toBeNull();
 		expect(embed?.getAttribute("data-relay-host")).toBe("127.0.0.1");
 		expect(embed?.getAttribute("data-relay-port")).toBe("9345");
-		expect(embed?.getAttribute("data-relay-id")).toBe("anaconda-agentic-desktop");
+		expect(embed?.getAttribute("data-relay-id")).toBe("kilo-desktop");
 	});
 
 	it("nudges the relay widget with webmcp.connect (boot-order race guard)", async () => {

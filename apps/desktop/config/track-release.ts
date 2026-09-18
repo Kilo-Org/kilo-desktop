@@ -24,9 +24,9 @@ export function getTrackReleaseVersionFromTag(track: ReleaseTrack, tag: string):
 }
 
 export function getTrackReleaseName(track: ReleaseTrack, version: string): string {
-	if (track === "stable") return `Anaconda Agentic Desktop v${version}`;
+	if (track === "stable") return `Kilo Desktop v${version}`;
 	const label = track.charAt(0).toUpperCase() + track.slice(1);
-	return `Anaconda Agentic Desktop ${label} v${version}`;
+	return `Kilo Desktop ${label} v${version}`;
 }
 
 export function getGithubReleaseFlags(

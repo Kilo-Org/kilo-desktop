@@ -25,12 +25,8 @@ import {
 	CommandItem,
 	CommandList,
 	CommandSeparator,
-} from "@anaconda-agentic-desktop/ui/components/command";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@anaconda-agentic-desktop/ui/components/popover";
+} from "@kilo-desktop/ui/components/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
 import {
 	Select,
 	SelectContent,
@@ -38,8 +34,8 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/select";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 export type ModelSelectorEffortOption = {
 	id: string;

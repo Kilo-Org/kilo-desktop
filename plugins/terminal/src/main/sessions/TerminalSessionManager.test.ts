@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { HostMessagePort } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { HostMessagePort } from "@kilo-desktop/feature-sdk/main";
 
 import { TERMINAL_PROTOCOL_VERSION, type TerminalConnectionArgs } from "../../contracts/session.js";
 import { historyPath } from "./history.js";

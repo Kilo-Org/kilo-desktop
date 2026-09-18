@@ -6,7 +6,7 @@ export async function assertWebBuildPresent(distDirectory: string): Promise<void
 		await access(path.join(distDirectory, "index.html"));
 	} catch {
 		throw new Error(
-			`Web build is missing at ${path.join(distDirectory, "index.html")}. Run pnpm --filter @anaconda-agentic-desktop/web build first.`,
+			`Web build is missing at ${path.join(distDirectory, "index.html")}. Run pnpm --filter @kilo-desktop/web build first.`,
 		);
 	}
 }

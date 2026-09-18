@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { build } from "vite";
 
-import { criticalThemeStyle } from "@anaconda-agentic-desktop/contracts/theme-tokens";
+import { criticalThemeStyle } from "@kilo-desktop/contracts/theme-tokens";
 
 describe("theme bootstrap build", () => {
 	it(

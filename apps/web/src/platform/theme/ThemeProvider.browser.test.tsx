@@ -6,7 +6,7 @@ import {
 	DEFAULT_APP_THEME_PREFERENCES,
 	type LocalApi,
 	type ThemeState,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";

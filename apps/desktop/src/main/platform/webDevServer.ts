@@ -2,7 +2,7 @@ import path from "node:path";
 
 /** Development origin for the standalone web Vite server (proxied by the custom protocol). */
 export function getWebDevServerUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
-	const value = env.ANACONDA_WEB_DEV_SERVER_URL?.trim();
+	const value = env.KILO_WEB_DEV_SERVER_URL?.trim();
 	return value || undefined;
 }
 

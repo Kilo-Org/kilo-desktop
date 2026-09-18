@@ -1,8 +1,9 @@
 import electronDebug from "electron-debug";
 import { shellEnv } from "shell-env";
 import { nativeTheme, session } from "electron";
+import { writeFile } from "node:fs/promises";
 
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import type { IpcHandlers } from "@kilo-desktop/contracts";
 
 import { getAppIdentity } from "$config/app-identity.js";
 
@@ -69,7 +70,7 @@ export class Application {
 		featureFsSandboxDir(this.#app.getPath("userData"), featureId),
 	);
 	readonly #auth = new AuthSessionService({
-		userAgent: `anaconda-agentic-desktop/${this.#app.metadata.appVersion}`,
+		userAgent: `kilo-desktop/${this.#app.metadata.appVersion}`,
 	});
 	#preferences: PreferencesStore | undefined;
 	// Restore the source before creating windows; read its persisted palette on every paint.
@@ -104,6 +105,7 @@ export class Application {
 		}
 		const preferences = new PreferencesStore();
 		this.#preferences = preferences;
+		restoreNativeThemeFromPreferences(preferences);
 		this.#logger.debug("Installation id", preferences.getInstallationId());
 		identifySentryUser(preferences);
 
@@ -124,6 +126,7 @@ export class Application {
 		const reporter = new BootProgressReporter();
 		const splash = new SplashWindow(reporter, {
 			isDark: nativeTheme.shouldUseDarkColors,
+			themeId: preferences.themeId,
 		});
 		splash.show();
 		this.#disposers.push(() => reporter.dispose());
@@ -181,8 +184,6 @@ export class Application {
 			// Fire the bootstrap event after IPC is registered. Fire-and-forget: the
 			// service swallows its own errors, so telemetry never blocks startup.
 			void this.#telemetry?.initialize();
-
-			restoreNativeThemeFromPreferences(preferences);
 		} catch (error) {
 			// Boot failed — close the splash and quit. Do not reveal a
 			// half-initialized main window without security/IPC/handlers.
@@ -200,6 +201,7 @@ export class Application {
 		this.#windows.create({ isDevelopment, deferShow: true });
 		await Promise.all([splash.close(), this.#windows.whenReady()]);
 		this.#windows.reveal();
+		await this.#signalReleaseSmokeReady();
 
 		this.#disposers.push(
 			this.#app.on("activate", () => {
@@ -210,6 +212,12 @@ export class Application {
 				if (process.platform !== "darwin") this.#app.quit();
 			}),
 		);
+	}
+
+	async #signalReleaseSmokeReady(): Promise<void> {
+		if (process.env.CI !== "true") return;
+		const readyFile = process.env.KILO_RELEASE_SMOKE_READY_FILE;
+		if (readyFile) await writeFile(readyFile, "ready\n", { flag: "wx" });
 	}
 
 	#createWindow(isDevelopment: boolean): void {
@@ -355,7 +363,7 @@ export class Application {
 			auth: this.#auth,
 			preferences,
 			appVersion: this.#app.metadata.appVersion,
-			serviceId: "anaconda-agentic-desktop",
+			serviceId: "kilo-desktop",
 		});
 		this.#telemetry = telemetry;
 		this.#disposers.push(() => void telemetry.dispose());

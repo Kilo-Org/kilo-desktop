@@ -9,7 +9,7 @@ import {
 	createFakeMainSdk,
 	createFakeMainSdkProtocol,
 	createLinkedFakeSdkPair,
-} from "@anaconda-agentic-desktop/testing";
+} from "@kilo-desktop/testing";
 
 import type { GitCapabilities } from "../contracts/schemas.js";
 import { mainRegister } from "./index.js";

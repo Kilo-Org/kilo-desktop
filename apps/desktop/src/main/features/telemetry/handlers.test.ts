@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { TelemetryTrackInput } from "@anaconda-agentic-desktop/contracts";
+import type { TelemetryTrackInput } from "@kilo-desktop/contracts";
 
 import { createTelemetryHandlers } from "./handlers.js";
 import type { TelemetryService } from "./service.js";

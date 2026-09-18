@@ -14,8 +14,8 @@
 	"rtl": false,
 	"aliases": {
 		"components": "@/chat/components",
-		"utils": "@anaconda-agentic-desktop/ui/lib/utils",
-		"ui": "@anaconda-agentic-desktop/ui/components",
+		"utils": "@kilo-desktop/ui/lib/utils",
+		"ui": "@kilo-desktop/ui/components",
 		"lib": "@/lib",
 		"hooks": "@/hooks"
 	},

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
  * SQLite file and ships its migrations inside the plugin package
  * (Decision #20) — there is no shared shell database.
  *
- * Run `pnpm --filter @anaconda-agentic-desktop/plugin-todos db:generate`
+ * Run `pnpm --filter @kilo-desktop/plugin-todos db:generate`
  * after changing src/main/schema.ts.
  */
 

@@ -13,33 +13,29 @@ import {
 	SearchIcon,
 } from "lucide-react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Label } from "@anaconda-agentic-desktop/ui/components/label";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Label } from "@kilo-desktop/ui/components/label";
 import {
 	Dialog,
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import { Spinner } from "@anaconda-agentic-desktop/ui/components/spinner";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+} from "@kilo-desktop/ui/components/dialog";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type {
 	CondaEnv,

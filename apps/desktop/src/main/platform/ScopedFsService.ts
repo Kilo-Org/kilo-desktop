@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { featureIdPattern } from "@anaconda-agentic-desktop/feature-sdk";
+import { featureIdPattern } from "@kilo-desktop/feature-sdk";
 
 import { BusinessError } from "./BusinessError.js";
 

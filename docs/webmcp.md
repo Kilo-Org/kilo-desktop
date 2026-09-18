@@ -172,7 +172,7 @@ Result: **no third-party code fetched at runtime, works offline, verified at bui
 > bundled `kilo serve` see the app's WebMCP tools out of the box. The
 > longer-term plan — a native `type: "webmcp"` MCP transport in Kilo Code
 > that removes the subprocess and the fuse regression — is tracked in
-> [anaconda/agentic-desktop#102](https://github.com/anaconda/agentic-desktop/issues/102).
+> #102.
 
 External MCP clients (Claude Desktop, Cursor, `mcp-inspector`) spawn
 `@mcp-b/webmcp-local-relay` themselves as an stdio MCP subprocess (their
@@ -184,7 +184,7 @@ The interim ships a lockfile-pinned `@mcp-b/webmcp-local-relay` runtime inside
 the packaged app's unpacked kilo-server plugin assets,
 initializes an `mcp["desktop"]` entry into the app-owned
 `kilo.jsonc`, runs the WebSocket rendezvous in Electron main, and lets Kilo
-launch the package's CLI through Anaconda Desktop's executable in Node mode
+launch the package's CLI through Kilo Desktop's executable in Node mode
 (`ELECTRON_RUN_AS_NODE=1`) for the stdio MCP transport.
 
 ### Target topology
@@ -219,7 +219,7 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │  │      // that is not part of Kilo's schema may live inside kilo.jsonc.      │   │
 │  │    })                                                                       │   │
 │  │                                                                             │   │
-│  │    Sidecar: ${runtime}/config/kilo/.anaconda-desktop-ownership.json           │   │
+│  │    Sidecar: ${runtime}/config/kilo/.kilo-desktop-ownership.json               │   │
 │  │      { "version": 3, "ownedEntryIds": ["desktop"] }                │   │
 │  │                                                                             │   │
 │  │    When RunAsNode is disabled (downgrade / rollback), initialization instead REMOVES │   │
@@ -254,7 +254,7 @@ launch the package's CLI through Anaconda Desktop's executable in Node mode
 │                                        ▼                                           │
 │                            ┌────────────────────────┐                              │
 │                            │  kilo serve (child)    │                              │
-│                            │  sees `anaconda-desktop-│                             │
+│                            │  sees `desktop-relay` as│                             │
 │                            │  relay` as an MCP      │                              │
 │                            │  server with N tools   │                              │
 │                            └────────────┬───────────┘                              │
@@ -283,15 +283,13 @@ Four pieces beyond §1's diagram:
   When the runtime fuse detection reports `RunAsNode` off, the same call
   **removes** any Desktop-owned entry it previously wrote and prunes the sidecar,
   so downgrade / rollback / fuse re-hardening self-heals.
-- **Ownership sidecar** at `${runtime}/config/kilo/.anaconda-desktop-ownership.json`
+- **Ownership sidecar** at `${runtime}/config/kilo/.kilo-desktop-ownership.json`
   tracks which MCP entry names Desktop owns and which feature source owns each
   entry. Kilo never opens this file — Kilo's
   top-level `Config` schema is `additionalProperties: false`, so any marker
   stored inside `kilo.jsonc` would fail validation and stop `kilo serve` from
   starting. Missing sidecar (deleted by user, corrupt, or absent) = "we own
-  nothing" = escape hatch. The next MCP config mutation migrates the legacy
-  `.anaconda-desktop-managed.json` sidecar and its `managed` array to the new
-  filename and `ownedEntryIds` field, preserving source ownership.
+  nothing" = escape hatch.
 - **Bundled relay entry** — the same `@mcp-b/webmcp-local-relay@4.0.0` package
   that `apps/web/scripts/sync-webmcp-assets.mjs` reads for its browser assets
   is now also unpacked from asar (see `apps/desktop/forge.config.ts`) so its
@@ -397,7 +395,7 @@ Before initialization (user's kilo.jsonc, if any):    After initialization:
   }                                                "desktop": {       ← added
 }                                                    "type": "local",
                                                      "command": [
-                                                       "/Applications/Anaconda…/MacOS/Anaconda Agentic Desktop",
+                                                       "/Applications/Kilo.app/Contents/MacOS/kilo-desktop",
                                                        "/…/resources/webmcp-relay/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs"
                                                      ],
                                                      "environment": { "ELECTRON_RUN_AS_NODE": "1" },
@@ -406,7 +404,7 @@ Before initialization (user's kilo.jsonc, if any):    After initialization:
                                                  }
                                                }
 
-                                                 .anaconda-desktop-ownership.json   ← sidecar (new)
+                                                 .kilo-desktop-ownership.json       ← sidecar
                                                  ──────────────────────────────
                                                {
                                                  "version": 3,
@@ -464,12 +462,12 @@ attached to it can call them.
 
 Both halves are therefore pinned to each other:
 
-- Desktop-provided relay args: `--port 9345 --relay-id anaconda-agentic-desktop`
+- Desktop-provided relay args: `--port 9345 --relay-id kilo-desktop`
   (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` in
   `plugins/kilo-server/src/main/webmcp-relay-config.ts`). Fixed-port mode
   refuses to chain to a non-relay owner; 9345 is far from the 9333 default
   foreign relays use, still inside the CSP-allowed range.
-- Embed attributes: `data-relay-port="9345" data-relay-id="anaconda-agentic-desktop"`
+- Embed attributes: `data-relay-port="9345" data-relay-id="kilo-desktop"`
   (`apps/web/src/platform/webmcp/installWebMcp.ts`). The widget rejects any
   relay whose `server-hello` carries a different relay id and keeps
   scanning until it finds ours.

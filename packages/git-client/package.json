@@ -1,5 +1,5 @@
 {
-	"name": "@anaconda-agentic-desktop/git-client",
+	"name": "@kilo-desktop/git-client",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",

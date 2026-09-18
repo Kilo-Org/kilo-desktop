@@ -12,7 +12,7 @@ import {
 	type PaneWindow,
 	type ThemeChromeColors,
 	windowBackgroundFor,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { getDesktopRouteUrl, getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
@@ -99,7 +99,7 @@ export class ElectronWindow {
 			minWidth: 480,
 			minHeight: 360,
 			webPreferences: {
-				additionalArguments: ["--anaconda-window-role=pane"],
+				additionalArguments: ["--kilo-window-role=pane"],
 			},
 		});
 		const record: PaneWindowRecord = { descriptor, window, ready: false };

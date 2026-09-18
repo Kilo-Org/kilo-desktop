@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 
-import { useSdk, useSdkMutation } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogClose,
@@ -10,9 +10,9 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import { Field, FieldError, FieldLabel } from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+} from "@kilo-desktop/ui/components/dialog";
+import { Field, FieldError, FieldLabel } from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
 
 import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
 import { environmentDisplayName, validateEnvironmentName } from "./environment-display.js";

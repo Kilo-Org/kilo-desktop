@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
 
-import type { AuthSession } from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession } from "@kilo-desktop/contracts";
 import { featureRouter } from "../registry/feature-registry.js";
 import { registerAuthCapability } from "./auth-capability-bridge.js";
 import type { AuthSessionService } from "./auth-service.js";

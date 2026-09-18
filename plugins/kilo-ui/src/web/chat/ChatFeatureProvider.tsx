@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { AssistantRuntimeProvider, DataRenderers, Tools, useAui } from "@assistant-ui/react";
 
-import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
@@ -335,7 +335,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			toolkit,
 			mcpApp: ElectronMcpAppRenderer({
 				host: KiloMcpAppsHost(),
-				hostInfo: { name: "Anaconda Desktop", version: "1.0.0" },
+				hostInfo: { name: "Kilo Desktop", version: "1.0.0" },
 				hostContext: { displayMode: "inline", availableDisplayModes: ["inline"] },
 			}),
 		}),

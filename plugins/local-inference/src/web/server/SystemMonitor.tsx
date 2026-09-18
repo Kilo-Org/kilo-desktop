@@ -1,6 +1,6 @@
 import { CpuIcon, GpuIcon, MemoryStickIcon, type LucideIcon } from "lucide-react";
 
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 
 import type { LocalInferenceUsage } from "../../contracts/schemas.js";
 

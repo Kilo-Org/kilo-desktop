@@ -2,22 +2,22 @@ import { ChevronDownIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { ButtonGroup } from "@anaconda-agentic-desktop/ui/components/button-group";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { ButtonGroup } from "@kilo-desktop/ui/components/button-group";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
+} from "@kilo-desktop/ui/components/dropdown-menu";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 import {
 	EXTERNAL_EDITORS,

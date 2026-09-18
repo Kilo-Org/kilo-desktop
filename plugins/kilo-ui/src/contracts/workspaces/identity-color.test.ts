@@ -7,7 +7,7 @@ import {
 } from "./identity-color.js";
 
 describe("workspace identity color", () => {
-	it("exposes the Agent Studio identity presets", () => {
+	it("exposes the workspace identity color presets", () => {
 		expect(WORKSPACE_IDENTITY_COLORS).toEqual([
 			"#5EA0F7",
 			"#34D399",

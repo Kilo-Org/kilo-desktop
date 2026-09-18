@@ -1,6 +1,6 @@
 import { nativeTheme, type NativeTheme } from "electron";
 
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import type { IpcHandlers } from "@kilo-desktop/contracts";
 
 import type { ElectronWindow } from "../../platform/ElectronWindow.js";
 import type { PreferencesStore } from "../../platform/PreferencesStore.js";

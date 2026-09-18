@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { PencilIcon, PlusIcon, RotateCcwIcon, ServerIcon, Trash2Icon } from "lucide-react";
 
-import { useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -11,20 +11,17 @@ import {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/alert-dialog";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import {
-	Collapsible,
-	CollapsibleContent,
-} from "@anaconda-agentic-desktop/ui/components/collapsible";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { SummaryCard } from "@anaconda-agentic-desktop/ui/components/summary-card";
+} from "@kilo-desktop/ui/components/alert-dialog";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Collapsible, CollapsibleContent } from "@kilo-desktop/ui/components/collapsible";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 import type { KiloUiProvidersService } from "../../contracts/providers/schemas.js";
 import { useKiloAuth } from "../account/KiloAuthContext.js";
@@ -114,7 +111,7 @@ export function KiloProvidersSettings() {
 		return (
 			<PageShell state="unavailable">
 				<p className="text-muted-foreground text-sm" data-qa-id="kilo-providers-unavailable">
-					Provider management is available in Anaconda Agentic Desktop.
+					Provider management is available in Kilo Desktop.
 				</p>
 				{localInference ? <LocalModelServerLink /> : null}
 			</PageShell>

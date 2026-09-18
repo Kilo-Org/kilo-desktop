@@ -29,7 +29,7 @@ export const test = shellTest.extend<GitFixtures>({
 		// A real repository with one uncommitted modification, so the
 		// Changes tab has content to stream (proving the kilo-git://
 		// protocol round-trip in the packaged binary).
-		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "aad-git-workspace-"));
+		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-git-workspace-"));
 		removePathAfterAppStops(workspacePath);
 		const git = (args: string[]) => execFileSync("git", ["-C", workspacePath, ...args]);
 		git(["init", "-b", "main"]);
@@ -46,7 +46,7 @@ export const test = shellTest.extend<GitFixtures>({
 		// Source repo: main (HEAD) + feature. A clone gets origin/HEAD →
 		// main; the checkout sequence gives the reflog recency, and the
 		// untracked feature populates "Other Branches".
-		const basePath = await mkdtemp(path.join(os.tmpdir(), "aad-git-branch-"));
+		const basePath = await mkdtemp(path.join(os.tmpdir(), "kilo-git-branch-"));
 		removePathAfterAppStops(basePath);
 		const git = (dir: string, args: string[]) => execFileSync("git", ["-C", dir, ...args]);
 		const source = path.join(basePath, "source");

@@ -27,14 +27,14 @@ runs:
     - uses: ./.github/actions/install-test-runtime
       with:
         runtime: electron
-        package-name: "@anaconda-agentic-desktop/desktop"
+        package-name: "@kilo-desktop/desktop"
 
     # --with-deps is only enabled on Linux. On Windows it runs a slow, silent
     # Media Foundation DISM install (~3min) that the e2e tests don't need.
     - uses: ./.github/actions/install-test-runtime
       with:
         runtime: playwright
-        package-name: "@anaconda-agentic-desktop/e2e"
+        package-name: "@kilo-desktop/e2e"
         with-deps: ${{ runner.os == 'Linux' }}
 
     - uses: ./plugins/notebook/actions/setup-native
@@ -43,7 +43,7 @@ runs:
 
     - name: Package desktop for e2e
       shell: bash
-      run: pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e
+      run: pnpm --filter @kilo-desktop/desktop run package:e2e
 
     - name: Run e2e
       shell: bash
@@ -51,9 +51,9 @@ runs:
         SKIP_BUILD: "true"
       run: |
         if [ "${{ inputs.xvfb }}" = "true" ]; then
-          xvfb-run --auto-servernum pnpm --filter @anaconda-agentic-desktop/e2e run ${{ inputs.script }}
+          xvfb-run --auto-servernum pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }}
         else
-          pnpm --filter @anaconda-agentic-desktop/e2e run ${{ inputs.script }}
+          pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }}
         fi
 
     - name: Upload Playwright report

@@ -24,23 +24,23 @@ export const NOTEBOOK_STAGE_MANIFEST = "staged.json";
 export const NTERACT_LICENSE_FILE = "LICENSE.nteract";
 
 /** Marker on the style tag we inject into staged `index.html`. */
-export const AGENTIC_EMBED_CHROME_STYLE_ATTR = "data-agentic-embed-chrome";
+export const KILO_EMBED_CHROME_STYLE_ATTR = "data-kilo-embed-chrome";
 
 /** Marker on the theme-bridge script we inject into staged `index.html`. */
-export const AGENTIC_EMBED_THEME_SCRIPT_ATTR = "data-agentic-embed-theme";
+export const KILO_EMBED_THEME_SCRIPT_ATTR = "data-kilo-embed-theme";
 
 /**
  * Host-side chrome overrides for the embedded notebook SPA. nteract has no
  * embed flag to hide the rail; we own the staged bytes, so we inject CSS.
  * Surface colors come from the parent at runtime via the theme bridge script.
  */
-export const AGENTIC_EMBED_CHROME_CSS = '[data-testid="notebook-rail"]{display:none!important}';
+export const KILO_EMBED_CHROME_CSS = '[data-testid="notebook-rail"]{display:none!important}';
 
 const THEME_MESSAGE_TYPE = JSON.stringify(NOTEBOOK_THEME_MESSAGE_TYPE);
 const THEME_READY_TYPE = JSON.stringify(NOTEBOOK_THEME_READY_MESSAGE_TYPE);
 
 /** Inline listener: CSP hashes scripts in staged `index.html` per response. */
-export const AGENTIC_EMBED_THEME_SCRIPT = [
+export const KILO_EMBED_THEME_SCRIPT = [
 	"(function(){",
 	'var parentOrigin=new URLSearchParams(location.search).get("nteract-parent-origin");',
 	"if(!parentOrigin)return;",
@@ -167,13 +167,13 @@ export async function validateNotebookUiBundle(directory: string): Promise<void>
 	}
 }
 
-const AGENTIC_EMBED_CHROME_STYLE_TAG = `<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>${AGENTIC_EMBED_CHROME_CSS}</style>`;
-const AGENTIC_EMBED_CHROME_STYLE_RE = new RegExp(
-	`<style\\s+${AGENTIC_EMBED_CHROME_STYLE_ATTR}>[\\s\\S]*?</style>`,
+const KILO_EMBED_CHROME_STYLE_TAG = `<style ${KILO_EMBED_CHROME_STYLE_ATTR}>${KILO_EMBED_CHROME_CSS}</style>`;
+const KILO_EMBED_CHROME_STYLE_RE = new RegExp(
+	`<style\\s+${KILO_EMBED_CHROME_STYLE_ATTR}>[\\s\\S]*?</style>`,
 );
-const AGENTIC_EMBED_THEME_SCRIPT_TAG = `<script ${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>${AGENTIC_EMBED_THEME_SCRIPT}</script>`;
-const AGENTIC_EMBED_THEME_SCRIPT_RE = new RegExp(
-	`<script\\s+${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>[\\s\\S]*?</script>`,
+const KILO_EMBED_THEME_SCRIPT_TAG = `<script ${KILO_EMBED_THEME_SCRIPT_ATTR}>${KILO_EMBED_THEME_SCRIPT}</script>`;
+const KILO_EMBED_THEME_SCRIPT_RE = new RegExp(
+	`<script\\s+${KILO_EMBED_THEME_SCRIPT_ATTR}>[\\s\\S]*?</script>`,
 );
 
 function replaceOrInsertHeadTag(
@@ -189,27 +189,27 @@ function replaceOrInsertHeadTag(
 }
 
 /** Pure HTML transform: inject or refresh embed chrome CSS and the theme bridge. */
-export function injectAgenticEmbedChromeHtml(html: string): string {
+export function injectKiloEmbedChromeHtml(html: string): string {
 	const withStyle = replaceOrInsertHeadTag(
 		html,
-		AGENTIC_EMBED_CHROME_STYLE_ATTR,
-		AGENTIC_EMBED_CHROME_STYLE_TAG,
-		AGENTIC_EMBED_CHROME_STYLE_RE,
+		KILO_EMBED_CHROME_STYLE_ATTR,
+		KILO_EMBED_CHROME_STYLE_TAG,
+		KILO_EMBED_CHROME_STYLE_RE,
 		"notebook index.html has no </head> to inject embed chrome CSS",
 	);
 	return replaceOrInsertHeadTag(
 		withStyle,
-		AGENTIC_EMBED_THEME_SCRIPT_ATTR,
-		AGENTIC_EMBED_THEME_SCRIPT_TAG,
-		AGENTIC_EMBED_THEME_SCRIPT_RE,
+		KILO_EMBED_THEME_SCRIPT_ATTR,
+		KILO_EMBED_THEME_SCRIPT_TAG,
+		KILO_EMBED_THEME_SCRIPT_RE,
 		"notebook index.html has no </head> to inject embed chrome CSS",
 	);
 }
 
-async function applyAgenticEmbedChrome(directory: string): Promise<void> {
+async function applyKiloEmbedChrome(directory: string): Promise<void> {
 	const indexPath = path.join(directory, "index.html");
 	const html = await readFile(indexPath, "utf8");
-	const next = injectAgenticEmbedChromeHtml(html);
+	const next = injectKiloEmbedChromeHtml(html);
 	if (next !== html) await writeFile(indexPath, next);
 }
 
@@ -242,11 +242,11 @@ export async function validateStagedNotebookBundle(
 ): Promise<NotebookStageManifest> {
 	await validateNotebookUiBundle(directory);
 	const indexHtml = await readFile(path.join(directory, "index.html"), "utf8");
-	if (!indexHtml.includes(AGENTIC_EMBED_CHROME_STYLE_TAG)) {
-		throw new Error("staged notebook index.html is missing agentic embed chrome CSS");
+	if (!indexHtml.includes(KILO_EMBED_CHROME_STYLE_TAG)) {
+		throw new Error("staged notebook index.html is missing kilo embed chrome CSS");
 	}
-	if (!indexHtml.includes(AGENTIC_EMBED_THEME_SCRIPT_TAG)) {
-		throw new Error("staged notebook index.html is missing agentic embed theme bridge");
+	if (!indexHtml.includes(KILO_EMBED_THEME_SCRIPT_TAG)) {
+		throw new Error("staged notebook index.html is missing Kilo embed theme bridge");
 	}
 	const manifest = JSON.parse(
 		await readFile(path.join(directory, NOTEBOOK_STAGE_MANIFEST), "utf8"),
@@ -343,7 +343,7 @@ async function stagePublishedNotebookUi(
 			throw new Error("published notebook UI manifest does not match the pinned nteract release");
 		}
 		await validateNotebookUiBundle(stagedDirectory);
-		await applyAgenticEmbedChrome(stagedDirectory);
+		await applyKiloEmbedChrome(stagedDirectory);
 		await writeStageManifest(stagedDirectory, release);
 		await validateStagedNotebookBundle(stagedDirectory, release);
 		await replaceDirectory(options.destinationDirectory, stagedDirectory);
@@ -409,7 +409,7 @@ async function tryPatchEmbedChrome(
 	try {
 		const indexPath = path.join(directory, "index.html");
 		const html = await readFile(indexPath, "utf8");
-		const nextHtml = injectAgenticEmbedChromeHtml(html);
+		const nextHtml = injectKiloEmbedChromeHtml(html);
 		if (nextHtml === html) return false;
 		await writeFile(indexPath, nextHtml);
 		const manifestPath = path.join(directory, NOTEBOOK_STAGE_MANIFEST);

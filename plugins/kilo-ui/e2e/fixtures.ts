@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { removePathAfterAppStops, test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
+import { removePathAfterAppStops, test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
 import { KiloCodePage } from "./pages/kilo-code-page.js";
 import { KiloProvidersPage } from "./pages/kilo-providers-page.js";
@@ -22,7 +22,7 @@ type KiloUiFixtures = {
 export const test = shellTest.extend<KiloUiFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	workspaceFolder: async ({}, use) => {
-		const folderPath = await mkdtemp(path.join(os.tmpdir(), "aad-kilo-ui-workspace-"));
+		const folderPath = await mkdtemp(path.join(os.tmpdir(), "kilo-ui-workspace-"));
 		removePathAfterAppStops(folderPath);
 		await use({ path: folderPath, name: path.basename(folderPath) });
 	},

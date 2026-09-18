@@ -4,8 +4,8 @@ import { GitCompareIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocalStorage } from "react-use";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Empty,
 	EmptyContent,
@@ -13,12 +13,12 @@ import {
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
-} from "@anaconda-agentic-desktop/ui/components/empty";
+} from "@kilo-desktop/ui/components/empty";
 import {
 	ResizableHandle,
 	ResizablePanel,
 	ResizablePanelGroup,
-} from "@anaconda-agentic-desktop/ui/components/resizable";
+} from "@kilo-desktop/ui/components/resizable";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
 import { CollapseDiffButton } from "./CollapseDiffButton.js";

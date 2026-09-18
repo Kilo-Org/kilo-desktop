@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { featureIdPattern } from "@anaconda-agentic-desktop/feature-sdk";
+import { featureIdPattern } from "@kilo-desktop/feature-sdk";
 
 import { defineMethod } from "../contract.js";
 

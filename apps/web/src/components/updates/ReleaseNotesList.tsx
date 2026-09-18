@@ -1,5 +1,5 @@
-import type { DesktopReleaseNotes } from "@anaconda-agentic-desktop/contracts";
-import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
+import type { DesktopReleaseNotes } from "@kilo-desktop/contracts";
+import { Separator } from "@kilo-desktop/ui/components/separator";
 
 export function ReleaseNotesList({
 	notes,

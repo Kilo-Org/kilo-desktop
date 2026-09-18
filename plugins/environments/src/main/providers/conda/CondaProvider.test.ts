@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-	createFakeMainSdk,
-	createFakeSdk,
-	createLinkedFakeSdkPair,
-} from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk, createFakeSdk, createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 import { JobQueue } from "../../JobQueue.js";
 import { CondaProvider } from "./index.js";

@@ -1,4 +1,4 @@
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
@@ -13,7 +13,7 @@ import {
 	DropdownMenuSubContent,
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
+} from "@kilo-desktop/ui/components/dropdown-menu";
 import { ListFilterIcon } from "lucide-react";
 import { type FC } from "react";
 

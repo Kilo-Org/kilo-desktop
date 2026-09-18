@@ -9,7 +9,7 @@ import {
 import type { KiloUiChatService } from "../contracts/chat/schemas.js";
 import type { OnboardingService, OnboardingState } from "../contracts/onboarding/schemas.js";
 import type { KiloUiProvidersService } from "../contracts/providers/schemas.js";
-import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { onboardingContract } from "../contracts/onboarding/schemas.js";

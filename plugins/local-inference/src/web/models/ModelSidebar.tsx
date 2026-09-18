@@ -9,27 +9,27 @@ import {
 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
-import { Badge } from "@anaconda-agentic-desktop/ui/components/badge";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	PreviewCard,
 	PreviewCardContent,
 	PreviewCardTrigger,
-} from "@anaconda-agentic-desktop/ui/components/preview-card";
+} from "@kilo-desktop/ui/components/preview-card";
 import {
 	SidebarMenu,
 	SidebarMenuAction,
 	SidebarMenuButton,
 	SidebarMenuItem,
-} from "@anaconda-agentic-desktop/ui/components/sidebar";
+} from "@kilo-desktop/ui/components/sidebar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { LocalModel, ModelCatalogEntry } from "../../contracts/schemas.js";
 import { getPublisherDisplayName, ModelPublisherIcon } from "../catalog/ModelPublisherIcon.js";

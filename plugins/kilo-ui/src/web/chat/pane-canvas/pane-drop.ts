@@ -6,7 +6,7 @@ import {
 	movePaneToGroup,
 	type DropPosition,
 	type PaneLayout,
-} from "@anaconda-agentic-desktop/pane-layout";
+} from "@kilo-desktop/pane-layout";
 
 export type PaneDrop = {
 	kind: "pane" | "group";

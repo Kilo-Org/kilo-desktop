@@ -1,4 +1,4 @@
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { OctagonXIcon } from "lucide-react";
 
 import { friendlyEnvironmentsError } from "./environments-error-message.js";

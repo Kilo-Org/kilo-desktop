@@ -5,7 +5,7 @@ description: Write Playwright/Electron e2e tests using @anaconda/playwright-util
 
 # Write E2E Tests
 
-Electron e2e tests live in the root `e2e/` workspace package (`@anaconda-agentic-desktop/e2e`), powered by Playwright and `@anaconda/playwright-utils`.
+Electron e2e tests live in the root `e2e/` workspace package (`@kilo-desktop/e2e`), powered by Playwright and `@anaconda/playwright-utils`.
 
 ## Tier selection
 
@@ -105,9 +105,9 @@ test.describe("My feature @smoke", () => {
 ```bash
 pnpm test:e2e:smoke                         # @smoke only (runs package:e2e first)
 pnpm test:e2e                               # full suite
-pnpm --filter @anaconda-agentic-desktop/desktop run package:e2e
+pnpm --filter @kilo-desktop/desktop run package:e2e
 SKIP_BUILD=true pnpm test:e2e:smoke         # reuse that package
-pnpm --filter @anaconda-agentic-desktop/e2e run test:e2e:headed
+pnpm --filter @kilo-desktop/e2e run test:e2e:headed
 ```
 
 ## Fixture modes

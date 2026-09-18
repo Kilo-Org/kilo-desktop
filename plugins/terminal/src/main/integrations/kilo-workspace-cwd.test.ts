@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createFakeMainSdk, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import { createTerminalCwdResolver } from "./kilo-workspace-cwd.js";
 

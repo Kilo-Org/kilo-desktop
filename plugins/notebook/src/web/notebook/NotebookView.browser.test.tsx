@@ -2,12 +2,8 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeSdk,
-	createFakeTheme,
-} from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk, createFakeTheme } from "@kilo-desktop/testing";
 
 import {
 	NOTEBOOK_DIRTY_CHANGED_EVENT,
@@ -90,12 +86,8 @@ describe("NotebookView", () => {
 	it("derives the notebook origin by substituting the host on our own", () => {
 		// The renderer cannot read app.isPackaged, so the scheme has to come from its
 		// own origin — otherwise a dev build would frame the production host.
-		expect(notebookOriginFrom("anaconda-agentic-desktop://app")).toBe(
-			"anaconda-agentic-desktop://notebook",
-		);
-		expect(notebookOriginFrom("anaconda-agentic-desktop-dev://app")).toBe(
-			"anaconda-agentic-desktop-dev://notebook",
-		);
+		expect(notebookOriginFrom("kilo-desktop://app")).toBe("kilo-desktop://notebook");
+		expect(notebookOriginFrom("kilo-desktop-dev://app")).toBe("kilo-desktop-dev://notebook");
 	});
 
 	it("has no notebook origin in browser mode, where the protocol does not exist", () => {
@@ -106,15 +98,15 @@ describe("NotebookView", () => {
 
 	it("selects the Electron host and exact parent origin under the desktop scheme", () => {
 		const src = nteractSrcFor("669d39ec-39d6-4160-815c-b46e170cde8d", {
-			protocol: "anaconda-agentic-desktop:",
+			protocol: "kilo-desktop:",
 			host: "app",
 		});
 		const url = new URL(src!);
 
-		expect(`${url.protocol}//${url.host}`).toBe("anaconda-agentic-desktop://notebook");
+		expect(`${url.protocol}//${url.host}`).toBe("kilo-desktop://notebook");
 		expect(url.searchParams.get("notebook_id")).toBe("669d39ec-39d6-4160-815c-b46e170cde8d");
 		expect(url.searchParams.get("nteract-host")).toBe("electron");
-		expect(url.searchParams.get("nteract-parent-origin")).toBe("anaconda-agentic-desktop://app");
+		expect(url.searchParams.get("nteract-parent-origin")).toBe("kilo-desktop://app");
 	});
 
 	it("shows a placeholder while nteract's bundle is not served from our protocol", async () => {

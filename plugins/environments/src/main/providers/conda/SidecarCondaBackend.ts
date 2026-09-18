@@ -53,8 +53,8 @@ import {
 } from "vscode-jsonrpc/node";
 
 import { compareCondaVersions } from "../../../compare-conda-versions.js";
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import {
 	environmentsErrorCodeToFeatureErrorCode,
@@ -679,7 +679,7 @@ export class SidecarCondaBackend implements CondaBackend {
 				// and share the system package cache. See ADR-002.
 				//
 				// Plugin environments (CondaRuntime) bypass this entirely via
-				// explicit `prefix` paths at ~/.anaconda-agentic-desktop/conda/envs/.
+				// explicit `prefix` paths at ~/.kilo-desktop/conda/envs/.
 				BRIDGE_PROTECT_STDIO: "1",
 				// Telemetry — bridge defaults to production endpoints if these
 				// are unset. See anaconda/anaconda-desktop-bridge#53.

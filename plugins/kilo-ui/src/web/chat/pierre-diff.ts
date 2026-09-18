@@ -1,6 +1,6 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { useMemo, useSyncExternalStore } from "react";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 const PIERRE_DIFF_OPTIONS = {
 	diffStyle: "unified" as const,

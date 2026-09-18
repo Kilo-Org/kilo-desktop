@@ -1,6 +1,6 @@
 import { useFeatureSystem } from "./SdkProvider.js";
 
-import type { SdkTelemetry } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SdkTelemetry } from "@kilo-desktop/feature-sdk";
 
 /**
  * Track product telemetry from the renderer, backed by the shell telemetry

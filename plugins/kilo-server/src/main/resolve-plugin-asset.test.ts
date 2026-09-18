@@ -7,9 +7,7 @@ import { createKiloServerResolveAsset } from "./resolve-plugin-asset.js";
 
 describe("createKiloServerResolveAsset", () => {
 	const require = createRequire(import.meta.url);
-	const packageRoot = path.dirname(
-		require.resolve("@anaconda-agentic-desktop/plugin-kilo-server/plugin.json"),
-	);
+	const packageRoot = path.dirname(require.resolve("@kilo-desktop/plugin-kilo-server/plugin.json"));
 
 	it("resolves packaged CLI assets from Electron resourcesPath", () => {
 		const resolveAsset = createKiloServerResolveAsset({

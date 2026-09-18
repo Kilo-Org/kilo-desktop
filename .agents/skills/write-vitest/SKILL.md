@@ -29,15 +29,15 @@ Canonical taxonomy: [docs/TESTING.md](../../../docs/TESTING.md). This skill cove
 
 | Helper                    | Package / module                    | Use for                                     |
 | ------------------------- | ----------------------------------- | ------------------------------------------- |
-| `createFakeSdk`           | `@anaconda-agentic-desktop/testing` | Feature renderer SDK (`sdk.client`, events) |
-| `createFakeMainSdk`       | `@anaconda-agentic-desktop/testing` | `mainRegister` / channel handlers           |
-| `createFakeFeatureSystem` | `@anaconda-agentic-desktop/testing` | Mount views under `<SdkProvider>`           |
+| `createFakeSdk`           | `@kilo-desktop/testing` | Feature renderer SDK (`sdk.client`, events) |
+| `createFakeMainSdk`       | `@kilo-desktop/testing` | `mainRegister` / channel handlers           |
+| `createFakeFeatureSystem` | `@kilo-desktop/testing` | Mount views under `<SdkProvider>`           |
 | `createBrowserLocalApi`   | `@/platform/browserLocalApi`        | Shell LocalApi (todos/theme); optional seed |
 | `createFeatureSystem`     | `@/platform/sdk`                    | App-level boots with real feature list      |
 
 ```typescript
 // Component under SdkProvider — do not hand-build FeatureSystem literals
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 const sdk = createFakeSdk({ featureId: "my-feature", channels: myChannels, handlers });
 const system = createFakeFeatureSystem({ sdks: { "my-feature": sdk } });
@@ -108,8 +108,8 @@ pnpm test                 # all Vitest tiers
 pnpm coverage             # Vitest + 80% gate
 pnpm test:web
 pnpm test:desktop
-pnpm --filter @anaconda-agentic-desktop/feature-sdk test
-pnpm --filter @anaconda-agentic-desktop/testing test
+pnpm --filter @kilo-desktop/feature-sdk test
+pnpm --filter @kilo-desktop/testing test
 ```
 
 ## Feature checklist (Vitest slice)

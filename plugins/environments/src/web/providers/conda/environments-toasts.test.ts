@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@anaconda-agentic-desktop/ui/components/sonner", () => ({
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: {
 		error: vi.fn(),
 		success: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock("lucide-react", () => ({
 	OctagonXIcon: "OctagonXIcon",
 }));
 
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
 import {

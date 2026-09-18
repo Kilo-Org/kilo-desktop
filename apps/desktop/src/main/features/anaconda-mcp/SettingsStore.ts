@@ -1,4 +1,4 @@
-import type { KvStore, MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import type { KvStore, MainSdk } from "@kilo-desktop/feature-sdk";
 
 import type { AnacondaMcpServiceOptions } from "./AnacondaMcpService.js";
 

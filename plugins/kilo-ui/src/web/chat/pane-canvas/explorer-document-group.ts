@@ -3,7 +3,7 @@ import {
 	movePane,
 	type PaneGroup,
 	type PaneLayout,
-} from "@anaconda-agentic-desktop/pane-layout";
+} from "@kilo-desktop/pane-layout";
 
 import {
 	FILES_EXPLORER_PANE_ID,

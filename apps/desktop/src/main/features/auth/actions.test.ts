@@ -10,7 +10,7 @@ import {
 
 const DOMAIN = "anaconda.test";
 const TOKEN = "access-token";
-const USER_AGENT = "anaconda-agentic-desktop/1.2.3";
+const USER_AGENT = "kilo-desktop/1.2.3";
 
 function jsonResponse(body: unknown, status: number): Response {
 	return new Response(JSON.stringify(body), {

@@ -4,7 +4,7 @@ import {
 	DialogDescription,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
+} from "@kilo-desktop/ui/components/dialog";
 import { type ReactNode, useRef } from "react";
 
 import { OnboardingFooter } from "./OnboardingFooter.js";

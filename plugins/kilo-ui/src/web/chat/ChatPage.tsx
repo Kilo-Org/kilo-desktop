@@ -11,7 +11,7 @@ import {
 	type ReactNode,
 } from "react";
 
-import type { PluginPageProps } from "@anaconda-agentic-desktop/feature-sdk";
+import type { PluginPageProps } from "@kilo-desktop/feature-sdk";
 import {
 	findPane,
 	flattenPanes,
@@ -21,15 +21,15 @@ import {
 	setActivePane,
 	type Arrangement,
 	type PaneLayout,
-} from "@anaconda-agentic-desktop/pane-layout";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+} from "@kilo-desktop/pane-layout";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 import { ChatLocationBreadcrumb, ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";

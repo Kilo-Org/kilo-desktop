@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 import { kiloServerBrowserRegister } from "./browserRegister.js";
 

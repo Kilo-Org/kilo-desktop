@@ -37,7 +37,7 @@ describe("externalizeDeps", () => {
 				dependencies: {
 					"@github/keytar": "^7.10.6",
 					execa: "^9.6.0",
-					"@anaconda-agentic-desktop/plugin-kilo-ui": "workspace:*",
+					"@kilo-desktop/plugin-kilo-ui": "workspace:*",
 				},
 			}),
 		);
@@ -70,19 +70,19 @@ describe("externalizeDeps", () => {
 
 	it("keeps excluded dependencies bundled", () => {
 		const external = resolveExternal({
-			exclude: ["@anaconda-agentic-desktop/plugin-kilo-ui"],
+			exclude: ["@kilo-desktop/plugin-kilo-ui"],
 		});
 
-		expect(isExternal(external, "@anaconda-agentic-desktop/plugin-kilo-ui")).toBe(false);
+		expect(isExternal(external, "@kilo-desktop/plugin-kilo-ui")).toBe(false);
 		expect(isExternal(external, "execa")).toBe(true);
 	});
 
 	it("keeps a family of dependencies bundled via a RegExp exclude", () => {
 		const external = resolveExternal({
-			exclude: [/^@anaconda-agentic-desktop\/.+$/],
+			exclude: [/^@kilo-desktop\/.+$/],
 		});
 
-		expect(isExternal(external, "@anaconda-agentic-desktop/plugin-kilo-ui")).toBe(false);
+		expect(isExternal(external, "@kilo-desktop/plugin-kilo-ui")).toBe(false);
 		expect(isExternal(external, "execa")).toBe(true);
 	});
 

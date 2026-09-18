@@ -4,8 +4,8 @@ import type {
 	HostBrowserController,
 	HostBrowserState,
 	MainSdkHostBrowser,
-} from "@anaconda-agentic-desktop/feature-sdk";
-import { createFakeMainSdk } from "@anaconda-agentic-desktop/testing";
+} from "@kilo-desktop/feature-sdk";
+import { createFakeMainSdk } from "@kilo-desktop/testing";
 
 import { mainRegister } from "./index.js";
 

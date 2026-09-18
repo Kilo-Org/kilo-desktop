@@ -51,7 +51,7 @@ describe("terminal shell selection", () => {
 			PATH: "/usr/bin",
 			TERM: "xterm-256color",
 			COLORTERM: "truecolor",
-			TERM_PROGRAM: "Anaconda Agentic Desktop",
+			TERM_PROGRAM: "Kilo Desktop",
 		});
 	});
 

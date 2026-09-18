@@ -5,17 +5,16 @@ vi.mock("electron", () => ({}));
 import { ElectronSecurity, isTrustedIpcSender, isTrustedRendererUrl } from "./ElectronSecurity.js";
 
 describe("ElectronSecurity", () => {
-	it.each([
-		"anaconda-agentic-desktop://app/",
-		"anaconda-agentic-desktop://app/settings/",
-		"anaconda-agentic-desktop-dev://app/",
-	])("trusts renderer URL %s", (url) => {
-		expect(isTrustedRendererUrl(url)).toBe(true);
-	});
+	it.each(["kilo-desktop://app/", "kilo-desktop://app/settings/", "kilo-desktop-dev://app/"])(
+		"trusts renderer URL %s",
+		(url) => {
+			expect(isTrustedRendererUrl(url)).toBe(true);
+		},
+	);
 
 	it.each([
 		"https://app/",
-		"anaconda-agentic-desktop://evil/",
+		"kilo-desktop://evil/",
 		"file:///tmp/index.html",
 		"javascript:alert(1)",
 		"not a url",
@@ -26,7 +25,7 @@ describe("ElectronSecurity", () => {
 	it("trusts IPC senders by their frame URL", () => {
 		expect(
 			isTrustedIpcSender({
-				senderFrame: { url: "anaconda-agentic-desktop://app/" },
+				senderFrame: { url: "kilo-desktop://app/" },
 			} as never),
 		).toBe(true);
 		expect(

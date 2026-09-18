@@ -1,4 +1,4 @@
-import { useFeatureFlag, useSdk, useSdkQuery } from "@anaconda-agentic-desktop/sdk-react";
+import { useFeatureFlag, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 
 import type { EnvironmentsStatusService } from "../contracts/status.js";
 

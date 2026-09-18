@@ -1,8 +1,15 @@
-import { CircleAlertIcon, Loader2Icon, LogInIcon, LogOutIcon, UserIcon } from "lucide-react";
+import {
+	CircleAlertIcon,
+	Loader2Icon,
+	LogInIcon,
+	LogOutIcon,
+	SettingsIcon,
+	UserIcon,
+} from "lucide-react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Avatar, AvatarFallback } from "@anaconda-agentic-desktop/ui/components/avatar";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Avatar, AvatarFallback } from "@kilo-desktop/ui/components/avatar";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -11,12 +18,13 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
+} from "@kilo-desktop/ui/components/dropdown-menu";
 import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
-} from "@anaconda-agentic-desktop/ui/components/sidebar";
+} from "@kilo-desktop/ui/components/sidebar";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 
 import { useKiloAuth } from "./KiloAuthContext.js";
 import {
@@ -29,20 +37,38 @@ import {
 /** Device-auth statuses where the panel on the AI Providers page owns the UI. */
 const ACTIVE_DEVICE_AUTH: readonly DeviceAuthStatus[] = ["initiating", "waiting", "finishing"];
 
+function AccountSkeleton() {
+	return (
+		<div
+			className="flex h-12 min-w-0 items-center gap-2.5 px-2"
+			data-qa-id="sidebar-kilo-account-loading"
+			aria-label="Loading account"
+			aria-busy="true"
+		>
+			<Skeleton className="size-7 shrink-0 rounded-full" />
+			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+				<Skeleton className="h-3.5 w-24" />
+				<Skeleton className="h-2.5 w-32 max-w-full" />
+			</div>
+		</div>
+	);
+}
+
 /**
  * Sidebar account dock contributed to the shell's `sidebar-account` zone.
  * Signed out: one-click Kilo device sign-in (device code shows on the AI
  * Providers page; a failed attempt falls back to the Sign In button so retry
- * stays reachable). Signed in: avatar/email header with a Log out item. A
+ * stays reachable). Signed in: avatar/email header with a Sign out item. A
  * failed profile load links to the AI Providers page, which owns retry and
- * logout for that state. Renders nothing while auth status is pending or the
- * Kilo server is unavailable.
+ * logout for that state. Shows a stable account-row skeleton while auth or
+ * profile state is pending, and renders nothing when Kilo is unavailable.
  */
 export function SidebarKiloAccount() {
 	const sdk = useSdk("kilo-ui");
 	const auth = useKiloAuth();
 
 	if (auth.connectionUnavailable) return null;
+	if (auth.isLoading || auth.authenticated === null) return <AccountSkeleton />;
 
 	if (ACTIVE_DEVICE_AUTH.includes(auth.deviceAuth.status)) {
 		return (
@@ -83,7 +109,7 @@ export function SidebarKiloAccount() {
 	// Profile failed to load: the AI Providers page renders the retry/logout
 	// UI for this state, so route the user there instead of hiding the dock.
 	if (!profile) {
-		if (!auth.profileError) return null;
+		if (!auth.profileError) return <AccountSkeleton />;
 		return (
 			<Button
 				type="button"
@@ -140,9 +166,16 @@ export function SidebarKiloAccount() {
 						</DropdownMenuGroup>
 						<DropdownMenuSeparator />
 						<DropdownMenuGroup>
+							<DropdownMenuItem
+								onClick={() => sdk.navigate("/settings")}
+								data-qa-id="sidebar-kilo-settings"
+							>
+								<SettingsIcon />
+								Settings
+							</DropdownMenuItem>
 							<DropdownMenuItem onClick={auth.logout} data-qa-id="sidebar-kilo-logout">
 								<LogOutIcon />
-								Log out
+								Sign out
 							</DropdownMenuItem>
 						</DropdownMenuGroup>
 					</DropdownMenuContent>

@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 function Card({
 	className,

@@ -23,7 +23,7 @@ import { protocol } from "electron";
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	type EmbeddedWebHost,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 import {
 	createActiveUntrustedContentSecurityPolicy,
@@ -49,17 +49,17 @@ afterEach(async () => {
 });
 
 describe("ElectronProtocol", () => {
-	it("uses distinct Anaconda Desktop schemes", () => {
-		expect(getDesktopUrl(false)).toBe("anaconda-agentic-desktop://app/#/");
-		expect(getDesktopUrl(true)).toBe("anaconda-agentic-desktop-dev://app/#/");
+	it("uses distinct Kilo Desktop schemes", () => {
+		expect(getDesktopUrl(false)).toBe("kilo-desktop://app/#/");
+		expect(getDesktopUrl(true)).toBe("kilo-desktop-dev://app/#/");
 	});
 
 	it("registers privileged desktop schemes", () => {
 		registerDesktopSchemes(["kilo-git"]);
 		expect(protocol.registerSchemesAsPrivileged).toHaveBeenCalledWith(
 			expect.arrayContaining([
-				expect.objectContaining({ scheme: "anaconda-agentic-desktop" }),
-				expect.objectContaining({ scheme: "anaconda-agentic-desktop-dev" }),
+				expect.objectContaining({ scheme: "kilo-desktop" }),
+				expect.objectContaining({ scheme: "kilo-desktop-dev" }),
 				// Plugin protocol schemes are manifest-declared (mainSdk.protocol).
 				expect.objectContaining({
 					scheme: "kilo-git",
@@ -116,7 +116,7 @@ describe("ElectronProtocol", () => {
 			request: Request,
 		) => Promise<Response>;
 
-		const response = await protocolHandler(new Request("anaconda-agentic-desktop://app/missing"));
+		const response = await protocolHandler(new Request("kilo-desktop://app/missing"));
 
 		expect(response.headers.get("Content-Security-Policy")).toContain("kilo-git:");
 	});
@@ -163,7 +163,7 @@ describe("ElectronProtocol", () => {
 		});
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
-		const response = await protocolHandler(new Request("anaconda-agentic-desktop-dev://app/"));
+		const response = await protocolHandler(new Request("kilo-desktop-dev://app/"));
 
 		const scriptSrc = response.headers
 			.get("Content-Security-Policy")
@@ -188,8 +188,8 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("anaconda-agentic-desktop-dev://app/@vite/client", {
-				headers: { origin: "anaconda-agentic-desktop-dev://app" },
+			new Request("kilo-desktop-dev://app/@vite/client", {
+				headers: { origin: "kilo-desktop-dev://app" },
 			}),
 		);
 
@@ -200,7 +200,7 @@ describe("ElectronProtocol", () => {
 	});
 
 	it("serves production renderer files and rejects unknown hosts", async () => {
-		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
+		const root = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
 		temporaryDirectories.push(root);
 		await writeFile(path.join(root, "index.html"), "<html>home</html>");
 		await writeFile(path.join(root, "asset.bin"), "binary");
@@ -213,26 +213,26 @@ describe("ElectronProtocol", () => {
 
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
-		const html = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));
+		const html = await protocolHandler(new Request("kilo-desktop://app/"));
 		expect(html.status).toBe(200);
 		expect(html.headers.get("Content-Type")).toContain("text/html");
 		expect(html.headers.get("X-Content-Type-Options")).toBe("nosniff");
 		expect(await html.text()).toBe("<html>home</html>");
 
-		const unknown = await protocolHandler(new Request("anaconda-agentic-desktop://app/asset.bin"));
+		const unknown = await protocolHandler(new Request("kilo-desktop://app/asset.bin"));
 		expect(unknown.headers.get("Content-Type")).toBe("application/octet-stream");
 
-		const lottie = await protocolHandler(new Request("anaconda-agentic-desktop://app/mark.lottie"));
+		const lottie = await protocolHandler(new Request("kilo-desktop://app/mark.lottie"));
 		expect(lottie.headers.get("Content-Type")).toBe("application/zip");
 
-		const missing = await protocolHandler(new Request("anaconda-agentic-desktop://app/missing.js"));
+		const missing = await protocolHandler(new Request("kilo-desktop://app/missing.js"));
 		expect(missing.status).toBe(404);
 
-		const foreignHost = await protocolHandler(new Request("anaconda-agentic-desktop://evil/"));
+		const foreignHost = await protocolHandler(new Request("kilo-desktop://evil/"));
 		expect(foreignHost.status).toBe(404);
 
 		adapter.dispose();
-		expect(protocol.unhandle).toHaveBeenCalledWith("anaconda-agentic-desktop");
+		expect(protocol.unhandle).toHaveBeenCalledWith("kilo-desktop");
 		adapter.dispose();
 	});
 
@@ -248,7 +248,7 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("anaconda-agentic-desktop-dev://app/webmcp/widget.html", {
+			new Request("kilo-desktop-dev://app/webmcp/widget.html", {
 				headers: { "Sec-Fetch-Dest": "empty" },
 			}),
 		);
@@ -274,7 +274,7 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("anaconda-agentic-desktop-dev://app/webmcp/widget.html", {
+			new Request("kilo-desktop-dev://app/webmcp/widget.html", {
 				headers: { "Sec-Fetch-Dest": "iframe", Accept: "text/html" },
 			}),
 		);
@@ -308,13 +308,13 @@ describe("ElectronProtocol", () => {
 
 		const response = await protocolHandler(
 			new Request(
-				"anaconda-agentic-desktop-dev://app/webmcp/widget.html?tabId=abc123&hostOrigin=anaconda-agentic-desktop-dev%3A%2F%2Fapp",
+				"kilo-desktop-dev://app/webmcp/widget.html?tabId=abc123&hostOrigin=kilo-desktop-dev%3A%2F%2Fapp",
 				// no Sec-Fetch-Dest, no Accept
 			),
 		);
 
 		expect(fetch).toHaveBeenCalledWith(
-			"http://localhost:5173/webmcp/widget.html?tabId=abc123&hostOrigin=anaconda-agentic-desktop-dev%3A%2F%2Fapp",
+			"http://localhost:5173/webmcp/widget.html?tabId=abc123&hostOrigin=kilo-desktop-dev%3A%2F%2Fapp",
 			{ method: "GET" },
 		);
 		expect(response.status).toBe(200);
@@ -332,7 +332,7 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("anaconda-agentic-desktop-dev://app/webmcp/widget.html"),
+			new Request("kilo-desktop-dev://app/webmcp/widget.html"),
 			// no headers, no query — this is the probe shape
 		);
 
@@ -349,11 +349,11 @@ describe("ElectronProtocol", () => {
 	});
 
 	it("grants an embedded bundle only what it needs, and names the app as its framer", () => {
-		const policy = createEmbeddedContentSecurityPolicy("anaconda-agentic-desktop://app");
+		const policy = createEmbeddedContentSecurityPolicy("kilo-desktop://app");
 		expect(policy).toContain("'wasm-unsafe-eval'");
 		expect(policy).not.toContain("ws://127.0.0.1:*");
 		expect(policy).toContain("worker-src 'self' blob:");
-		expect(policy).toContain("frame-ancestors anaconda-agentic-desktop://app");
+		expect(policy).toContain("frame-ancestors kilo-desktop://app");
 		// A wasm grant is not an eval grant; embedded renderers stay blocked.
 		expect(policy).not.toContain("'unsafe-eval'");
 	});
@@ -385,17 +385,17 @@ describe("ElectronProtocol", () => {
 
 		expect(createContentSecurityPolicy()).not.toContain("cdn.bokeh.org");
 		expect(createContentSecurityPolicy()).not.toContain("cdn.holoviz.org");
-		expect(createEmbeddedContentSecurityPolicy("anaconda-agentic-desktop://app")).not.toContain(
+		expect(createEmbeddedContentSecurityPolicy("kilo-desktop://app")).not.toContain(
 			"cdn.bokeh.org",
 		);
-		expect(createEmbeddedContentSecurityPolicy("anaconda-agentic-desktop://app")).not.toContain(
+		expect(createEmbeddedContentSecurityPolicy("kilo-desktop://app")).not.toContain(
 			"cdn.holoviz.org",
 		);
 	});
 
 	it("serves an embedded host from its own root under its own policy", async () => {
-		const appRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
-		const enclosing = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-enclosing-"));
+		const appRoot = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
+		const enclosing = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-enclosing-"));
 		const bundleRoot = path.join(enclosing, "canvas");
 		temporaryDirectories.push(appRoot, enclosing);
 		await mkdir(bundleRoot);
@@ -425,14 +425,14 @@ describe("ElectronProtocol", () => {
 		});
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
-		const shell = await protocolHandler(new Request("anaconda-agentic-desktop://canvas/"));
+		const shell = await protocolHandler(new Request("kilo-desktop://canvas/"));
 		expect(shell.status).toBe(200);
 		expect(await shell.text()).toBe("<html>canvas</html>");
 		expect(shell.headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
 		expect(shell.headers.get("Content-Security-Policy")).not.toContain("'unsafe-eval'");
 
 		const activeFrame = await protocolHandler(
-			new Request("anaconda-agentic-desktop://canvas/active-frame.html"),
+			new Request("kilo-desktop://canvas/active-frame.html"),
 		);
 		expect(await activeFrame.text()).toBe("<html>active</html>");
 		const activeFramePolicy = activeFrame.headers.get("Content-Security-Policy") ?? "";
@@ -444,38 +444,34 @@ describe("ElectronProtocol", () => {
 		expect(activeFramePolicy).not.toContain("frame-ancestors");
 
 		// Streaming wasm compilation rejects any other MIME type.
-		const wasm = await protocolHandler(
-			new Request("anaconda-agentic-desktop://canvas/assets/module.wasm"),
-		);
+		const wasm = await protocolHandler(new Request("kilo-desktop://canvas/assets/module.wasm"));
 		expect(wasm.headers.get("Content-Type")).toBe("application/wasm");
 
-		const config = await protocolHandler(
-			new Request("anaconda-agentic-desktop://canvas/runtime/config"),
-		);
+		const config = await protocolHandler(new Request("kilo-desktop://canvas/runtime/config"));
 		expect(await config.json()).toEqual({ token: "t" });
 		expect(configRoute).toHaveBeenCalledWith({
-			origin: "anaconda-agentic-desktop://canvas",
+			origin: "kilo-desktop://canvas",
 		});
 
 		// The app keeps its strict policy and only learns to frame the sibling host.
 		// `blob:` is present so MCP App widgets can render in sandboxed blob-URL iframes.
-		const appShell = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));
+		const appShell = await protocolHandler(new Request("kilo-desktop://app/"));
 		const appPolicy = appShell.headers.get("Content-Security-Policy") ?? "";
-		expect(appPolicy).toContain("frame-src 'self' blob: anaconda-agentic-desktop://canvas");
+		expect(appPolicy).toContain("frame-src 'self' blob: kilo-desktop://canvas");
 		expect(appPolicy).toContain("frame-ancestors 'self'");
 		expect(appPolicy).toContain("'wasm-unsafe-eval'");
 		expect(appPolicy).not.toContain("'unsafe-eval'");
 
 		// New caller of resolveRendererPath, so assert containment holds for it too.
 		const escape = await protocolHandler(
-			new Request("anaconda-agentic-desktop://canvas/%2e%2e/secret-sibling"),
+			new Request("kilo-desktop://canvas/%2e%2e/secret-sibling"),
 		);
 		expect(escape.status).toBe(404);
 		expect(escape.headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
 	});
 
 	it("keeps the app policy byte-identical when no host is contributed", async () => {
-		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
+		const root = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
 		temporaryDirectories.push(root);
 		await writeFile(path.join(root, "index.html"), "app");
 
@@ -483,14 +479,14 @@ describe("ElectronProtocol", () => {
 		adapter.register({ isDevelopment: false, rendererRoot: root, embeddedHosts: () => [] });
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
-		const response = await protocolHandler(new Request("anaconda-agentic-desktop://app/"));
+		const response = await protocolHandler(new Request("kilo-desktop://app/"));
 		expect(response.headers.get("Content-Security-Policy")).toBe(createContentSecurityPolicy());
-		const unknown = await protocolHandler(new Request("anaconda-agentic-desktop://canvas/"));
+		const unknown = await protocolHandler(new Request("kilo-desktop://canvas/"));
 		expect(unknown.status).toBe(404);
 	});
 
 	it("reads contributed hosts per request, since features boot after registration", async () => {
-		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-canvas-"));
+		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-canvas-"));
 		temporaryDirectories.push(bundleRoot);
 		await writeFile(path.join(bundleRoot, "index.html"), "late");
 
@@ -501,11 +497,9 @@ describe("ElectronProtocol", () => {
 		adapter.register({ isDevelopment: false, rendererRoot: "/unused", embeddedHosts: () => hosts });
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
-		expect((await protocolHandler(new Request("anaconda-agentic-desktop://canvas/"))).status).toBe(
-			404,
-		);
+		expect((await protocolHandler(new Request("kilo-desktop://canvas/"))).status).toBe(404);
 		hosts = [{ host: "canvas", root: bundleRoot }];
-		const served = await protocolHandler(new Request("anaconda-agentic-desktop://canvas/"));
+		const served = await protocolHandler(new Request("kilo-desktop://canvas/"));
 		expect(await served.text()).toBe("late");
 	});
 
@@ -519,12 +513,12 @@ describe("ElectronProtocol", () => {
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
 		// An expected state, not an error: this build has no embedded bundle.
-		const response = await protocolHandler(new Request("anaconda-agentic-desktop://canvas/"));
+		const response = await protocolHandler(new Request("kilo-desktop://canvas/"));
 		expect(response.status).toBe(404);
 	});
 
 	it("prefers a route over a file the bundle ships at the same path", async () => {
-		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-canvas-"));
+		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-canvas-"));
 		temporaryDirectories.push(bundleRoot);
 		await mkdir(path.join(bundleRoot, "runtime"), { recursive: true });
 		await writeFile(path.join(bundleRoot, "runtime", "config"), "stale-from-disk");
@@ -543,14 +537,12 @@ describe("ElectronProtocol", () => {
 		});
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
-		const response = await protocolHandler(
-			new Request("anaconda-agentic-desktop://canvas/runtime/config"),
-		);
+		const response = await protocolHandler(new Request("kilo-desktop://canvas/runtime/config"));
 		expect(await response.json()).toEqual({ live: true });
 	});
 
 	it("does not proxy embedded-host requests to the web dev server", async () => {
-		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-canvas-"));
+		const bundleRoot = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-canvas-"));
 		temporaryDirectories.push(bundleRoot);
 		await mkdir(path.join(bundleRoot, "assets"));
 		await writeFile(path.join(bundleRoot, "assets", "widget.js"), "canvas chunk");
@@ -565,7 +557,7 @@ describe("ElectronProtocol", () => {
 		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("anaconda-agentic-desktop-dev://canvas/assets/widget.js"),
+			new Request("kilo-desktop-dev://canvas/assets/widget.js"),
 		);
 
 		// The Vite server serves the app, not embedded bundles; proxying would 404.
@@ -574,7 +566,7 @@ describe("ElectronProtocol", () => {
 	});
 
 	it("resolves the SPA shell and assets inside the renderer root", async () => {
-		const root = await mkdtemp(path.join(os.tmpdir(), "anaconda-agentic-desktop-renderer-"));
+		const root = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
 		temporaryDirectories.push(root);
 		await writeFile(path.join(root, "index.html"), "home");
 		await mkdir(path.join(root, "assets"));

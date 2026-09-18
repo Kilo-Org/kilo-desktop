@@ -2,13 +2,9 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import {
-	createFakeFeatureSystem,
-	createFakeSdk,
-	createFakeTheme,
-} from "@anaconda-agentic-desktop/testing";
-import type { SdkTheme, TerminalPalette } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SdkTheme, TerminalPalette } from "@kilo-desktop/feature-sdk";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk, createFakeTheme } from "@kilo-desktop/testing";
 import { terminalFrameConnectSchema } from "../contracts/frame.js";
 
 import {

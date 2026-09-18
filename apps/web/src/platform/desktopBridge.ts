@@ -1,4 +1,4 @@
-import type { DesktopApi } from "@anaconda-agentic-desktop/contracts";
+import type { DesktopApi } from "@kilo-desktop/contracts";
 
 /** The preload bridge injected by the Electron shell, when running in Electron. */
 export function getDesktopBridge(): DesktopApi | undefined {

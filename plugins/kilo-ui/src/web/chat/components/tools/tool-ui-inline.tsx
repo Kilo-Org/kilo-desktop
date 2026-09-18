@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { formatToolDisplayName } from "./tool-categories.js";
 import {

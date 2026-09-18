@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import { CondaRuntime } from "./CondaRuntime.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";

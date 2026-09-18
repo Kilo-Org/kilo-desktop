@@ -1,7 +1,7 @@
 import type { FC, ReactNode } from "react";
 import { AlertCircleIcon, CheckIcon, LoaderIcon, XCircleIcon } from "lucide-react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 export type ToolCallStatusLike =
 	| {

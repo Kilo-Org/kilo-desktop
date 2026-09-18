@@ -2,7 +2,7 @@
 
 import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 function PreviewCard<Payload>({ ...props }: PreviewCardPrimitive.Root.Props<Payload>) {
 	return <PreviewCardPrimitive.Root data-slot="preview-card" {...props} />;

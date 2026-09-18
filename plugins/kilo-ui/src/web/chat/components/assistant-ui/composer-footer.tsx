@@ -3,7 +3,7 @@
 import type { ComponentType, FC, ReactNode } from "react";
 import { ArrowDownToLineIcon, ArrowUpIcon, FolderIcon } from "lucide-react";
 
-import { useSdkContributions } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
 import { workspaceGlyphColor } from "../../../workspaces/workspace-glyph-style.js";
 import { useThreadWorkspace, useThreadWorkspaceDirectory } from "../../use-workspace-directory.js";

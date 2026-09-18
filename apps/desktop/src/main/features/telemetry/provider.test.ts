@@ -69,7 +69,7 @@ const baseConfig: TelemetryConfig = {
 	nonAuthUrl: "https://public.example.com/v1/logs",
 	exportIntervalMs: 3000,
 	environmentAttribute: "test",
-	serviceId: "anaconda-agentic-desktop",
+	serviceId: "kilo-desktop",
 	serviceVersion: "1.2.3",
 };
 
@@ -172,7 +172,7 @@ describe("AnacondaOtelProvider", () => {
 			platform: "desktop-gui",
 			parameters: expect.objectContaining({
 				machineId: expect.any(String),
-				service_id: "anaconda-agentic-desktop",
+				service_id: "kilo-desktop",
 				cohortId: 42,
 				is_anaconda_employee: true,
 				subscription: "business_subscription",

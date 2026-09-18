@@ -5,7 +5,7 @@
 > current notebook plugin source for the production path.
 
 > **Runtime update:** daemon staging, spawning, supervision, and exact-revision admission described
-> below are superseded. Agentic Desktop attaches to the user's externally installed singleton and
+> below are superseded. Kilo Desktop attaches to the user's externally installed singleton and
 > negotiates compatibility by protocol number and semantic capabilities.
 >
 > **UI/ownership update:** the implementation is now the self-contained `plugins/notebook` package.
@@ -16,7 +16,7 @@ Status: **partially built.** Steps 1, 3, 4, 5 and 6 have landed; the original "h
 
 > **Sections 3 and 4 below are superseded.** They plan a same-origin `/notebook/` path; the chosen design serves the bundle from a separate protocol **host**, which removes the Vite `base` patch, the directory-index fallback, and the test inversion they call for. Follow [protocol-csp-handoff.md](./protocol-csp-handoff.md) instead, with the rationale in [embedding-decisions.md](./embedding-decisions.md). Read sections 3 and 4 only for the constraints they record.
 
-Goal: ship nteract's notebook UI inside the packaged agentic-desktop app, with real Python execution
+Goal: ship nteract's notebook UI inside the packaged kilo-desktop app, with real Python execution
 through the externally installed singleton and no dev server.
 
 ## What has landed
@@ -115,7 +115,7 @@ As built (the relay path):
 The relay approach removes the preload/MessagePort/`ElectronHost` layers entirely — nteract's **stock, unmodified** browser host is the client:
 
 ```
-agentic-desktop renderer (anaconda-agentic-desktop://app)
+kilo-desktop renderer (kilo-desktop://app)
   └─ notebook surface (iframe or WebContentsView) → nteract's built SPA, served from our protocol
        └─ createBrowserHost()  ← stock nteract, unmodified
             ├─ fetch  http://127.0.0.1:<port>/__nteract_dev_relay/config   (CONFIG_PATH)
@@ -191,7 +191,7 @@ Kept for the constraints it records. Note the two inverted recommendations at th
 
 **The hard blocker — RESOLVED.** Option (a) was chosen and built: nteract PR #4125 publishes standalone per-platform `runtimed`, and bundling is proven in a real packaged `.app`. The macOS daemon in the signed app is already Developer-ID-signed and notarized upstream, which removes most of the notarization risk this section worried about; the standalone assets are copied pre-signing, so we sign those ourselves. Original analysis, for the record:
 
-nteract publishes `runt-darwin-arm64` and `runt-darwin-x64`, but standalone `runtimed` **only** as `runtimed-linux-x64`. On macOS the daemon ships inside the signed `.app` at `Contents/MacOS`, and there is no standalone Windows `runtimed`. Since agentic-desktop targets macOS (dmg+zip), Windows (squirrel), and Linux (deb), with e2e smoke on `windows-latest`, options are:
+nteract publishes `runt-darwin-arm64` and `runt-darwin-x64`, but standalone `runtimed` **only** as `runtimed-linux-x64`. On macOS the daemon ships inside the signed `.app` at `Contents/MacOS`, and there is no standalone Windows `runtimed`. Since kilo-desktop targets macOS (dmg+zip), Windows (squirrel), and Linux (deb), with e2e smoke on `windows-latest`, options are:
 
 - **(a) Ask nteract to publish standalone per-platform `runtimed` assets.** Cleanest; an external dependency. Recommended — raise this immediately, it gates the estimate.
 - (b) Extract the sidecar from their macOS `.app` tarball in CI. Works now, fragile, and re-signing a nested binary with entitlements under our own notarization needs care.

@@ -1,4 +1,4 @@
-// Main-process entry — exported from "@anaconda-agentic-desktop/feature-sdk/main"
+// Main-process entry — exported from "@kilo-desktop/feature-sdk/main"
 export {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	EMBEDDED_WEB_HOST_CAPABILITY,

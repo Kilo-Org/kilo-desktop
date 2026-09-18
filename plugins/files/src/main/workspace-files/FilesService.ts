@@ -5,7 +5,7 @@ import path from "node:path";
 import { writeFile as atomicWriteFile } from "atomically";
 import { globbyStream } from "globby";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 import type { FileGitStatusEntry, FileReadResult } from "../../contracts/schemas.js";
 

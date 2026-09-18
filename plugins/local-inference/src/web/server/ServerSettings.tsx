@@ -7,8 +7,8 @@ import {
 	FieldError,
 	FieldGroup,
 	FieldLabel,
-} from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+} from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	Select,
 	SelectContent,
@@ -16,8 +16,8 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
+} from "@kilo-desktop/ui/components/select";
+import { Switch } from "@kilo-desktop/ui/components/switch";
 
 import type {
 	LocalModelLoadMode,

@@ -1,14 +1,14 @@
 "use client";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Item,
 	ItemActions,
 	ItemContent,
 	ItemDescription,
 	ItemGroup,
-} from "@anaconda-agentic-desktop/ui/components/item";
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+} from "@kilo-desktop/ui/components/item";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import type { FC } from "react";
 
 import {

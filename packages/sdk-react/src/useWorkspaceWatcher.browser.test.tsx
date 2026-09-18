@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	WORKSPACE_FILE_CHANGE_EVENT,
 	type WorkspaceFileChangeEvent,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import { createFeatureSystem, SdkProvider } from "./SdkProvider.js";
 import { createTestShellDelegates } from "./test-helpers.js";

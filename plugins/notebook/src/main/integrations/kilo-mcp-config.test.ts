@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 import {
 	buildNteractMcpEntry,

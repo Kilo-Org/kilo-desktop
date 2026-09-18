@@ -12,10 +12,10 @@ import {
 } from "../../contracts/notebook-theme.js";
 import { NTERACT_RELEASE } from "../artifacts.js";
 import {
-	AGENTIC_EMBED_CHROME_CSS,
-	AGENTIC_EMBED_CHROME_STYLE_ATTR,
-	AGENTIC_EMBED_THEME_SCRIPT_ATTR,
-	injectAgenticEmbedChromeHtml,
+	KILO_EMBED_CHROME_CSS,
+	KILO_EMBED_CHROME_STYLE_ATTR,
+	KILO_EMBED_THEME_SCRIPT_ATTR,
+	injectKiloEmbedChromeHtml,
 	NTERACT_LICENSE_FILE,
 	NOTEBOOK_STAGE_MANIFEST,
 	stageNotebookUi,
@@ -131,7 +131,7 @@ describe("stageNotebookUi", () => {
 			"BSD 3-Clause",
 		);
 		expect(await readFile(path.join(destinationDirectory, "index.html"), "utf8")).toContain(
-			AGENTIC_EMBED_CHROME_CSS,
+			KILO_EMBED_CHROME_CSS,
 		);
 		expect(
 			JSON.parse(await readFile(path.join(destinationDirectory, NOTEBOOK_STAGE_MANIFEST), "utf8")),
@@ -183,10 +183,10 @@ describe("stageNotebookUi", () => {
 			const indexPath = path.join(options.destinationDirectory, "index.html");
 			await writeFile(
 				indexPath,
-				(await readFile(indexPath, "utf8")).replace(AGENTIC_EMBED_CHROME_CSS, "old{}"),
+				(await readFile(indexPath, "utf8")).replace(KILO_EMBED_CHROME_CSS, "old{}"),
 			);
 			await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
-			expect(await readFile(indexPath, "utf8")).toContain(AGENTIC_EMBED_CHROME_CSS);
+			expect(await readFile(indexPath, "utf8")).toContain(KILO_EMBED_CHROME_CSS);
 			expect(fetchArchive).toHaveBeenCalledOnce();
 		},
 	);
@@ -274,40 +274,40 @@ describe("stageNotebookUi", () => {
 	});
 });
 
-describe("injectAgenticEmbedChromeHtml", () => {
+describe("injectKiloEmbedChromeHtml", () => {
 	it("injects before </head> and is idempotent", () => {
 		const html = "<html><head><title>n</title></head><body></body></html>";
-		const once = injectAgenticEmbedChromeHtml(html);
+		const once = injectKiloEmbedChromeHtml(html);
 		expect(once).toContain(
-			`<style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>${AGENTIC_EMBED_CHROME_CSS}</style>`,
+			`<style ${KILO_EMBED_CHROME_STYLE_ATTR}>${KILO_EMBED_CHROME_CSS}</style>`,
 		);
-		expect(once).toContain(`<script ${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>`);
-		expect(injectAgenticEmbedChromeHtml(once)).toBe(once);
+		expect(once).toContain(`<script ${KILO_EMBED_THEME_SCRIPT_ATTR}>`);
+		expect(injectKiloEmbedChromeHtml(once)).toBe(once);
 	});
 
 	it("refreshes outdated embed chrome CSS in place", () => {
-		const stale = `<html><head><style ${AGENTIC_EMBED_CHROME_STYLE_ATTR}>old{}</style></head><body></body></html>`;
-		const refreshed = injectAgenticEmbedChromeHtml(stale);
-		expect(refreshed).toContain(AGENTIC_EMBED_CHROME_CSS);
-		expect(refreshed).toContain(`<script ${AGENTIC_EMBED_THEME_SCRIPT_ATTR}>`);
+		const stale = `<html><head><style ${KILO_EMBED_CHROME_STYLE_ATTR}>old{}</style></head><body></body></html>`;
+		const refreshed = injectKiloEmbedChromeHtml(stale);
+		expect(refreshed).toContain(KILO_EMBED_CHROME_CSS);
+		expect(refreshed).toContain(`<script ${KILO_EMBED_THEME_SCRIPT_ATTR}>`);
 		expect(refreshed).not.toContain("old{}");
-		expect(injectAgenticEmbedChromeHtml(refreshed)).toBe(refreshed);
+		expect(injectKiloEmbedChromeHtml(refreshed)).toBe(refreshed);
 	});
 
 	it("does not hardcode a host palette onto --background", () => {
-		expect(AGENTIC_EMBED_CHROME_CSS).not.toContain("--background");
-		expect(AGENTIC_EMBED_CHROME_CSS).toContain('[data-testid="notebook-rail"]');
+		expect(KILO_EMBED_CHROME_CSS).not.toContain("--background");
+		expect(KILO_EMBED_CHROME_CSS).toContain('[data-testid="notebook-rail"]');
 	});
 
 	it("injects a parent-origin theme bridge", () => {
-		const html = injectAgenticEmbedChromeHtml("<html><head></head><body></body></html>");
+		const html = injectKiloEmbedChromeHtml("<html><head></head><body></body></html>");
 		expect(html).toContain(NOTEBOOK_THEME_MESSAGE_TYPE);
 		expect(html).toContain(NOTEBOOK_THEME_READY_MESSAGE_TYPE);
 		expect(html).toContain("nteract-parent-origin");
 	});
 
 	it("rejects HTML without a head close tag", () => {
-		expect(() => injectAgenticEmbedChromeHtml("<html><body></body></html>")).toThrow(/no <\/head>/);
+		expect(() => injectKiloEmbedChromeHtml("<html><body></body></html>")).toThrow(/no <\/head>/);
 	});
 });
 
@@ -354,7 +354,7 @@ describe("notebook bundle validation", () => {
 				].join(""),
 			);
 			await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
-				/missing agentic embed chrome CSS/,
+				/missing kilo embed chrome CSS/,
 			);
 		},
 	);

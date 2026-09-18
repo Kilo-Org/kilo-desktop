@@ -8,7 +8,7 @@ import {
 	StateBroker,
 	teardownFeature as teardownSdkFeature,
 	ToolRegistry,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import type {
 	ChannelHandlerMap,
@@ -26,7 +26,7 @@ import type {
 	ShellFsDelegate,
 	SdkTheme,
 	ThemeAppearance,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 const noop = () => {};
 const DEFAULT_APPEARANCES: Record<"light" | "dark", ThemeAppearance> = {

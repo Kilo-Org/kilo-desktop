@@ -6,7 +6,7 @@ import {
 	type UseMutationResult,
 } from "@tanstack/react-query";
 
-import type { SDK, SdkClient } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK, SdkClient } from "@kilo-desktop/feature-sdk";
 
 import type { SdkChannelResult } from "./useSdkQuery.js";
 

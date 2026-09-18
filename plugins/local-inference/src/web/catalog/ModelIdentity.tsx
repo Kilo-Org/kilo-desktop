@@ -1,4 +1,4 @@
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { ModelCatalogEntry } from "../../contracts/schemas.js";
 import { getPublisherDisplayName, ModelPublisherIcon } from "./ModelPublisherIcon.js";

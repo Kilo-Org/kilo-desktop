@@ -16,7 +16,7 @@ import {
 	type Unstable_TriggerItem,
 } from "@assistant-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon, SparklesIcon } from "lucide-react";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 type IconComponent = FC<{ className?: string }>;
 

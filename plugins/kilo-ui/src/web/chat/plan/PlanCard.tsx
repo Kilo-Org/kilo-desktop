@@ -2,8 +2,8 @@ import { useAuiState } from "@assistant-ui/react";
 import { AlertCircleIcon, ListTodoIcon } from "lucide-react";
 import { memo, type FC } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { OPTIMISTIC_AGENT_CATALOG } from "../agent-selection/agent-catalog.js";
 import {

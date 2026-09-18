@@ -15,8 +15,8 @@ import {
 	useSdk,
 	useSdkMutation,
 	useSdkQuery,
-} from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+} from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -26,8 +26,8 @@ import {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/alert-dialog";
-import { Dialog, DialogContent } from "@anaconda-agentic-desktop/ui/components/dialog";
+} from "@kilo-desktop/ui/components/alert-dialog";
+import { Dialog, DialogContent } from "@kilo-desktop/ui/components/dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -37,14 +37,14 @@ import {
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import { Field, FieldError } from "@anaconda-agentic-desktop/ui/components/field";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { ScrollArea } from "@anaconda-agentic-desktop/ui/components/scroll-area";
-import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { Field, FieldError } from "@kilo-desktop/ui/components/field";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
+import { Separator } from "@kilo-desktop/ui/components/separator";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { Switch } from "@kilo-desktop/ui/components/switch";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type {
 	LocalInferenceServiceContract,

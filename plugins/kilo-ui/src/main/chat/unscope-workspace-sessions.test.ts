@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createFakeMainSdk, createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
+import { createFakeMainSdk, createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 import type { KiloGlobalConnection } from "../../contracts/chat/schemas.js";
 import {
 	createKiloUnscopeClient,
 	createWorkspaceSessionUnscoper,
-	unscopeAnacondaMetadata,
+	unscopeKiloDesktopMetadata,
 	unscopeWorkspaceSessions,
 	type SessionUnscopeClient,
 } from "./unscope-workspace-sessions.js";
@@ -29,12 +29,12 @@ function fakeClient(
 	};
 }
 
-describe("unscopeAnacondaMetadata", () => {
-	it("clears the deleted workspace stamp and keeps the session Anaconda-owned", () => {
+describe("unscopeKiloDesktopMetadata", () => {
+	it("clears the deleted workspace stamp and keeps the session Kilo Desktop-owned", () => {
 		expect(
-			unscopeAnacondaMetadata(
+			unscopeKiloDesktopMetadata(
 				{
-					anaconda: {
+					"kilo-desktop": {
 						workspaceId: "ws-1",
 						workspaceFolders: [{ path: "/repo", isPrimary: true }],
 					},
@@ -42,14 +42,25 @@ describe("unscopeAnacondaMetadata", () => {
 				},
 				"ws-1",
 			),
+		).toEqual({ "kilo-desktop": {}, other: "kept" });
+	});
+
+	it("clears the deleted workspace stamp on a pre-rename session", () => {
+		expect(
+			unscopeKiloDesktopMetadata(
+				{ anaconda: { workspaceId: "ws-1", workspaceFolders: [] }, other: "kept" },
+				"ws-1",
+			),
 		).toEqual({ anaconda: {}, other: "kept" });
 	});
 
 	it("leaves unrelated sessions unchanged", () => {
-		expect(unscopeAnacondaMetadata({ anaconda: { workspaceId: "ws-2" } }, "ws-1")).toBeNull();
-		expect(unscopeAnacondaMetadata({ anaconda: {} }, "ws-1")).toBeNull();
-		expect(unscopeAnacondaMetadata({ other: "x" }, "ws-1")).toBeNull();
-		expect(unscopeAnacondaMetadata(undefined, "ws-1")).toBeNull();
+		expect(
+			unscopeKiloDesktopMetadata({ "kilo-desktop": { workspaceId: "ws-2" } }, "ws-1"),
+		).toBeNull();
+		expect(unscopeKiloDesktopMetadata({ "kilo-desktop": {} }, "ws-1")).toBeNull();
+		expect(unscopeKiloDesktopMetadata({ other: "x" }, "ws-1")).toBeNull();
+		expect(unscopeKiloDesktopMetadata(undefined, "ws-1")).toBeNull();
 	});
 });
 
@@ -61,14 +72,14 @@ describe("unscopeWorkspaceSessions", () => {
 				{
 					id: "ses-match",
 					directory: "/repo/project",
-					metadata: { anaconda: { workspaceId: "ws-1" } },
+					metadata: { "kilo-desktop": { workspaceId: "ws-1" } },
 				},
 				{
 					id: "ses-other",
 					directory: "/repo/other",
-					metadata: { anaconda: { workspaceId: "ws-2" } },
+					metadata: { "kilo-desktop": { workspaceId: "ws-2" } },
 				},
-				{ id: "ses-unscoped", directory: "/chats/session-abc", metadata: { anaconda: {} } },
+				{ id: "ses-unscoped", directory: "/chats/session-abc", metadata: { "kilo-desktop": {} } },
 			],
 			update,
 		);
@@ -79,7 +90,7 @@ describe("unscopeWorkspaceSessions", () => {
 		expect(update).toHaveBeenCalledWith({
 			sessionID: "ses-match",
 			directory: "/repo/project",
-			metadata: { anaconda: {} },
+			metadata: { "kilo-desktop": {} },
 		});
 	});
 
@@ -89,7 +100,7 @@ describe("unscopeWorkspaceSessions", () => {
 				{
 					id: "ses-1",
 					directory: "/repo",
-					metadata: { anaconda: { workspaceId: "ws-1" } },
+					metadata: { "kilo-desktop": { workspaceId: "ws-1" } },
 				},
 			],
 		}));
@@ -110,7 +121,7 @@ describe("unscopeWorkspaceSessions", () => {
 			{
 				sessionID: "ses-1",
 				directory: "/repo",
-				metadata: { anaconda: {} },
+				metadata: { "kilo-desktop": {} },
 			},
 			{ throwOnError: true },
 		);
@@ -154,7 +165,13 @@ describe("createWorkspaceSessionUnscoper", () => {
 		const update = vi.fn(async () => undefined);
 		const unscope = createWorkspaceSessionUnscoper(mainSdk, () =>
 			fakeClient(
-				[{ id: "ses-1", directory: "/repo", metadata: { anaconda: { workspaceId: "ws-1" } } }],
+				[
+					{
+						id: "ses-1",
+						directory: "/repo",
+						metadata: { "kilo-desktop": { workspaceId: "ws-1" } },
+					},
+				],
 				update,
 			),
 		);
@@ -163,7 +180,7 @@ describe("createWorkspaceSessionUnscoper", () => {
 		expect(update).toHaveBeenCalledWith({
 			sessionID: "ses-1",
 			directory: "/repo",
-			metadata: { anaconda: {} },
+			metadata: { "kilo-desktop": {} },
 		});
 		kiloServer.dispose();
 		mainSdk.dispose();

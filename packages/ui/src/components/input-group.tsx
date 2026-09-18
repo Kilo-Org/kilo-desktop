@@ -3,10 +3,10 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Textarea } from "@anaconda-agentic-desktop/ui/components/textarea";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Textarea } from "@kilo-desktop/ui/components/textarea";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
 	return (

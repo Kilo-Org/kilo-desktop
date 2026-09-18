@@ -139,8 +139,8 @@ describe("KiloServerManager", () => {
 			"serve",
 			"--hostname=127.0.0.1",
 			"--port=0",
-			"--cors=anaconda-agentic-desktop://app",
-			"--cors=anaconda-agentic-desktop-dev://app",
+			"--cors=kilo-desktop://app",
+			"--cors=kilo-desktop-dev://app",
 		]);
 		expect(options).toMatchObject({ cwd: "/tmp/kilo-test-runtime", detached: true });
 		expect(options.env).toMatchObject({

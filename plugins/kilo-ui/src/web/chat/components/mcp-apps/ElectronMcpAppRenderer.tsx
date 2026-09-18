@@ -53,7 +53,7 @@ function ElectronMcpAppFrame({
 	// Generous default: content-sized widgets stay fully visible (dynamic
 	// height), while absurd values from a buggy widget are still rejected.
 	maxHeight = 4000,
-	hostInfo = { name: "Anaconda Desktop", version: "1.0.0" },
+	hostInfo = { name: "Kilo Desktop", version: "1.0.0" },
 	hostContext = { displayMode: "inline", availableDisplayModes: ["inline"] },
 	host,
 }: {

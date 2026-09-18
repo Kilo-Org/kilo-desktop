@@ -2,7 +2,7 @@ import { lstat, realpath, rm } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
 
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import type { LocalInferenceStatus, LocalModel } from "../../contracts/schemas.js";
 import type { LocalModelSettings } from "../../shared/settings/model-settings.js";

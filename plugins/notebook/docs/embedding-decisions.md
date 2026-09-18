@@ -6,8 +6,8 @@ considered and rejected, so a later reader does not have to re-derive the tradeo
 
 ## D1. The notebook bundle gets its own protocol **host**, not a path under `app`
 
-Chosen: serve nteract's built SPA at `anaconda-agentic-desktop://notebook/`, a second host on the
-existing scheme. The app stays at `anaconda-agentic-desktop://app/`.
+Chosen: serve nteract's built SPA at `kilo-desktop://notebook/`, a second host on the
+existing scheme. The app stays at `kilo-desktop://app/`.
 
 **Why:** three problems the handoff listed as work all disappear rather than getting solved.
 
@@ -106,10 +106,10 @@ documents, where arbitrary dynamic output code is not part of the contract.
 
 Chosen: probe the standard `runtimed` endpoint before starting anything. If a compatible daemon is
 already listening, attach without taking process ownership. If the endpoint is idle, start the
-pinned executable packaged with Agentic Desktop. The app never searches `PATH`, displaces an
+pinned executable packaged with Kilo Desktop. The app never searches `PATH`, displaces an
 existing daemon, or signals a process it did not start.
 
-**Why:** the singleton remains the collaboration authority, while a fresh Agentic Desktop install
+**Why:** the singleton remains the collaboration authority, while a fresh Kilo Desktop install
 must have working notebooks without a separate runtime installation. "Prefer bundled" therefore
 means prefer those bytes when a new process is needed—not prefer a second process over a live
 singleton.

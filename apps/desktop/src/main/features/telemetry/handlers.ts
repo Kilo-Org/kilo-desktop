@@ -1,4 +1,4 @@
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import type { IpcHandlers } from "@kilo-desktop/contracts";
 
 import type { TelemetryService } from "./service.js";
 

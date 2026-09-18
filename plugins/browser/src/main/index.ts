@@ -2,7 +2,7 @@ import {
 	FeatureError,
 	type HostBrowserController,
 	type MainSdk,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 import {
 	browserContract,

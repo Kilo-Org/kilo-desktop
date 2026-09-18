@@ -27,7 +27,7 @@ describe("release configuration", () => {
 			track: "preview",
 			platform: "darwin",
 			arch: "arm64",
-			fileName: "Anaconda.zip",
+			fileName: "Kilo.zip",
 		});
 		const feedUrl = getUpdateFeedUrl({
 			publishUrl: "https://cdn.example.com",
@@ -36,10 +36,10 @@ describe("release configuration", () => {
 			arch: "arm64",
 		});
 
-		expect(artifactKey).toBe("anaconda-agentic-desktop/preview/darwin/arm64/Anaconda.zip");
-		expect(feedUrl).toBe("https://cdn.example.com/anaconda-agentic-desktop/preview/darwin/arm64");
+		expect(artifactKey).toBe("kilo-desktop/preview/darwin/arm64/Kilo.zip");
+		expect(feedUrl).toBe("https://cdn.example.com/kilo-desktop/preview/darwin/arm64");
 		expect(getReleaseNotesUrl({ publishUrl: "https://cdn.example.com", track: "preview" })).toBe(
-			"https://cdn.example.com/anaconda-agentic-desktop/preview/release-notes/latest.json",
+			"https://cdn.example.com/kilo-desktop/preview/release-notes/latest.json",
 		);
 		expect(
 			getReleaseNotesUrl({
@@ -47,9 +47,7 @@ describe("release configuration", () => {
 				track: "preview",
 				version: "1.2.3-preview.1",
 			}),
-		).toBe(
-			"https://cdn.example.com/anaconda-agentic-desktop/preview/release-notes/1.2.3-preview.1.json",
-		);
+		).toBe("https://cdn.example.com/kilo-desktop/preview/release-notes/1.2.3-preview.1.json");
 	});
 
 	it("rejects unknown tracks and non-HTTPS feeds", () => {
@@ -171,9 +169,9 @@ describe("release configuration", () => {
 				track: "stable",
 				platform: "darwin",
 				arch: "arm64",
-				fileName: "Anaconda.zip",
+				fileName: "Kilo.zip",
 			}),
-		).toBe("anaconda-agentic-desktop/latest/darwin/arm64/Anaconda.zip");
+		).toBe("kilo-desktop/latest/darwin/arm64/Kilo.zip");
 		expect(
 			getUpdateFeedUrl({
 				publishUrl: "https://cdn.example.com",
@@ -181,7 +179,7 @@ describe("release configuration", () => {
 				platform: "darwin",
 				arch: "arm64",
 			}),
-		).toBe("https://cdn.example.com/anaconda-agentic-desktop/latest/darwin/arm64");
+		).toBe("https://cdn.example.com/kilo-desktop/latest/darwin/arm64");
 	});
 
 	it("does not restamp an already-stamped preview version", () => {

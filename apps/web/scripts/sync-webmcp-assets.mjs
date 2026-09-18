@@ -10,7 +10,7 @@
 //
 // The same package is _also_ bundled in `plugins/kilo-server` as the stdio MCP relay
 // that `kilo serve` spawns for the interim WebMCP↔Kilo bridge (see
-// anaconda/agentic-desktop#102 and `docs/webmcp.md` §7). The widget iframe (browser
+// #102 and `docs/webmcp.md` §7). The widget iframe (browser
 // half) and the CLI relay (main-process half) MUST speak the same WebMCP wire
 // protocol; the version pin is duplicated across the two workspace packages and this
 // script asserts they resolve to the same version at build time.

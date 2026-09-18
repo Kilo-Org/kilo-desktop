@@ -7,11 +7,11 @@ import {
 	type ReactNode,
 } from "react";
 
-import { MarkdownAnchor } from "@anaconda-agentic-desktop/ui/components/markdown-content";
+import { MarkdownAnchor } from "@kilo-desktop/ui/components/markdown-content";
 import type {
 	MarkdownRendererComponents,
 	MarkdownRendererExtension,
-} from "@anaconda-agentic-desktop/ui/components/markdown-extension";
+} from "@kilo-desktop/ui/components/markdown-extension";
 
 import {
 	resolveInlineCodeFileLink,

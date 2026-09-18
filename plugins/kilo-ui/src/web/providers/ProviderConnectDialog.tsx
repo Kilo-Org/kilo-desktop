@@ -1,18 +1,13 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import {
-	Field,
-	FieldError,
-	FieldGroup,
-	FieldLabel,
-} from "@anaconda-agentic-desktop/ui/components/field";
+} from "@kilo-desktop/ui/components/dialog";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@kilo-desktop/ui/components/field";
 
 import { ApiKeyField } from "./ApiKeyField.js";
 

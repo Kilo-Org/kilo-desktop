@@ -1,4 +1,4 @@
-import type { AuthSession, TelemetryTrackInput } from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession, TelemetryTrackInput } from "@kilo-desktop/contracts";
 
 import { createLogger } from "../../platform/logger.js";
 import { isAnacondaEmployee, primarySubscriptionFromAttributes } from "../auth/utils.js";

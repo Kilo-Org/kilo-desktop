@@ -1,6 +1,6 @@
 # Handoff: publish standalone `runtimed` assets
 
-> **Superseded:** Agentic Desktop now attaches to the user's externally installed singleton and
+> **Superseded:** Kilo Desktop now attaches to the user's externally installed singleton and
 > does not package, install, spawn, or supervise a daemon. This file is retained only as the
 > investigation record.
 
@@ -152,7 +152,7 @@ assets and _shipping_ them.
 2. **Land the branch upstream.** Pushed, but **no PR yet** — open one. It is safe
    to merge as additive assets — see
    [Verifying](#verifying-the-workflow-change) before doing so.
-3. **Consume the assets in agentic-desktop.** **Partly done** (`76230fe`): the
+3. **Consume the assets in kilo-desktop.** **Partly done** (`76230fe`): the
    staging + `extraResource` half is built and proven in a real packaged bundle.
    What remains is sourcing the binary from a released asset instead of a local
    path, and signing under our identity. See
@@ -164,7 +164,7 @@ assets and _shipping_ them.
 
 ## Daemon bundling, as built
 
-`76230fe` in agentic-desktop. `apps/desktop/config/daemon-asset.ts` (+ colocated
+`76230fe` in kilo-desktop. `apps/desktop/config/daemon-asset.ts` (+ colocated
 test, 8 cases) stages the daemon into gitignored `apps/desktop/build/daemon/`;
 `config/stage-daemon.ts` is the entry point, run via a new `prepare:daemon`
 script that `premake`/`prepackage`/`prepublish` all reach through
@@ -397,7 +397,7 @@ nothing from here on has ever run in a packaged build.
 **That publishes a real prerelease — get explicit approval first.**
 `release-common.yml` is `workflow_call` only and cannot be dispatched directly.
 
-## State of agentic-desktop
+## State of kilo-desktop
 
 `t3code/9d5bc891`, **13 commits unpushed, no PR.**
 

@@ -8,7 +8,7 @@ import {
 	flattenPanes,
 	movePaneToGroup,
 	setActivePane,
-} from "@anaconda-agentic-desktop/pane-layout";
+} from "@kilo-desktop/pane-layout";
 
 import {
 	agentPaneId,

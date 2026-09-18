@@ -7,7 +7,7 @@ import {
 	getThemeVariant,
 	themeChromeColors,
 	type ThemeSource,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 import {
 	Field,
 	FieldContent,
@@ -17,8 +17,8 @@ import {
 	FieldLegend,
 	FieldSet,
 	FieldTitle,
-} from "@anaconda-agentic-desktop/ui/components/field";
-import { Switch } from "@anaconda-agentic-desktop/ui/components/switch";
+} from "@kilo-desktop/ui/components/field";
+import { Switch } from "@kilo-desktop/ui/components/switch";
 import {
 	Select,
 	SelectContent,
@@ -26,9 +26,9 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import { ToggleGroup, ToggleGroupItem } from "@anaconda-agentic-desktop/ui/components/toggle-group";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/select";
+import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle-group";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useColorScheme } from "@/platform/theme/ThemeProvider";
 

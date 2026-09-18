@@ -13,33 +13,26 @@ import {
 	type MotionValue,
 } from "motion/react";
 
-import {
-	SHELL_LAYOUT_SNAP,
-	SHELL_LAYOUT_SPRING,
-} from "@anaconda-agentic-desktop/ui/lib/shell-motion";
+import { SHELL_LAYOUT_SNAP, SHELL_LAYOUT_SPRING } from "@kilo-desktop/ui/lib/shell-motion";
 import {
 	clampSidebarWidth,
 	readStoredSidebarWidth,
 	SIDEBAR_WIDTH_MIN,
 	writeStoredSidebarWidth,
-} from "@anaconda-agentic-desktop/ui/lib/sidebar-width";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Separator } from "@anaconda-agentic-desktop/ui/components/separator";
+} from "@kilo-desktop/ui/lib/sidebar-width";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Separator } from "@kilo-desktop/ui/components/separator";
 import {
 	Sheet,
 	SheetContent,
 	SheetDescription,
 	SheetHeader,
 	SheetTitle,
-} from "@anaconda-agentic-desktop/ui/components/sheet";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/sheet";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { PanelLeftIcon, SearchIcon } from "lucide-react";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";

@@ -4,7 +4,7 @@ import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	type FeatureRegistration,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 const features: FeatureRegistration[] = [];
 

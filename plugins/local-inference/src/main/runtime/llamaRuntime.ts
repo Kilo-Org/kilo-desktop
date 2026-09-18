@@ -39,8 +39,8 @@ export interface ResolveLlamaExecutableOptions {
 }
 
 /**
- * Picks llama.cpp conda builds the same way Anaconda Desktop does: NVIDIA
- * presence (vendor+model string) plus OS/arch, then CUDA → Metal → CPU.
+ * Picks llama.cpp conda builds using NVIDIA presence (vendor+model string)
+ * plus OS/arch, then CUDA → Metal → CPU.
  * Install tries that ordered list and keeps going when a flavor fails so a
  * missing CUDA/Metal package still yields a working CPU server.
  */

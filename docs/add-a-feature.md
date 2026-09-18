@@ -3,7 +3,7 @@
 > **Note:** the original version of this tutorial predated the feature SDK and walked
 > through the retired `LocalApi`/`IpcHandlers` architecture (typed `todos:*` channels,
 > hand-written adapters). That path no longer exists: features program against
-> `@anaconda-agentic-desktop/feature-sdk`, and todos itself now lives in
+> `@kilo-desktop/feature-sdk`, and todos itself now lives in
 > `plugins/todos/` as the first real plugin.
 
 ## The current path
@@ -15,7 +15,7 @@ A feature ships two halves that communicate only through the SDK:
   `mainSdk.storageDir`. Expected failures throw `FeatureError`.
 - **Frontend** (`useSdk`): call the backend through the typed proxy client
   (`useSdk<ServiceType>(featureId)`) with `useSdkQuery` / `useSdkMutation` from
-  `@anaconda-agentic-desktop/sdk-react`.
+  `@kilo-desktop/sdk-react`.
 - **Contract**: Zod channel map built with `defineContract` — one source of truth,
   validated on both sides of the boundary.
 - **Registration**: add the feature to the `FEATURES` array

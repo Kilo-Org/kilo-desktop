@@ -2,7 +2,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { DesktopUpdateState, LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { DesktopUpdateState, LocalApi } from "@kilo-desktop/contracts";
 
 import { AboutSettings } from "@/components/settings/AboutSettings";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
@@ -26,7 +26,7 @@ const downloadedState: DesktopUpdateState = {
 			schemaVersion: 1,
 			track: "stable",
 			version: "1.2.3",
-			title: "Anaconda Agentic Desktop v1.2.3",
+			title: "Kilo Desktop v1.2.3",
 			publishedAt: "2026-08-26T12:00:00.000Z",
 			bodyMarkdown: "* Faster startup",
 			items: ["Faster startup"],

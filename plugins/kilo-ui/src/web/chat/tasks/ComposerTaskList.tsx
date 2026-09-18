@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { ChevronDownIcon, Loader2Icon } from "lucide-react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { TaskList } from "../components/assistant-ui/elements/task-list.js";
 import { useTaskThreadProjection } from "./use-task-thread-projection.js";

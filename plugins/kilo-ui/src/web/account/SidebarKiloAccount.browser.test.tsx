@@ -2,9 +2,9 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { SidebarKiloAccount } from "./SidebarKiloAccount.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "./KiloAuthContext.js";
@@ -92,9 +92,13 @@ describe("SidebarKiloAccount", () => {
 		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
 	});
 
-	it("renders nothing while auth status is pending", () => {
+	it("renders an account-row skeleton while auth status is pending", async () => {
 		const { screen } = renderDock(idleAuth({ isLoading: true, authenticated: null }));
 
+		await expect.element(screen.getByTestId("sidebar-kilo-account-loading")).toBeVisible();
+		await expect
+			.element(screen.getByLabelText("Loading account"))
+			.toHaveAttribute("aria-busy", "true");
 		expect(screen.getByTestId("sidebar-kilo-login").query()).toBeNull();
 	});
 
@@ -135,9 +139,10 @@ describe("SidebarKiloAccount", () => {
 		await expect.element(screen.getByTestId("sidebar-kilo-signing-in")).not.toBeInTheDocument();
 	});
 
-	it("renders nothing when authenticated but the profile is still loading", () => {
+	it("renders an account-row skeleton when authenticated but the profile is still loading", async () => {
 		const { screen } = renderDock(idleAuth({ authenticated: true, profile: null }));
 
+		await expect.element(screen.getByTestId("sidebar-kilo-account-loading")).toBeVisible();
 		expect(screen.getByTestId("sidebar-kilo-account").query()).toBeNull();
 	});
 
@@ -155,8 +160,8 @@ describe("SidebarKiloAccount", () => {
 		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
 	});
 
-	it("opens the account menu with the profile header and logs out", async () => {
-		const { screen, auth } = renderDock(
+	it("opens the account menu with settings and sign out actions", async () => {
+		const { screen, auth, navigate } = renderDock(
 			idleAuth({
 				authenticated: true,
 				profile,
@@ -168,6 +173,10 @@ describe("SidebarKiloAccount", () => {
 
 		const menu = page.getByRole("menu");
 		await expect.element(menu.getByText("dev@anaconda.com")).toBeVisible();
+		await screen.getByTestId("sidebar-kilo-settings").click();
+		expect(navigate).toHaveBeenCalledWith("/settings", undefined);
+
+		await screen.getByTestId("sidebar-kilo-account").click();
 
 		await screen.getByTestId("sidebar-kilo-logout").click();
 		expect(auth.logout).toHaveBeenCalledOnce();

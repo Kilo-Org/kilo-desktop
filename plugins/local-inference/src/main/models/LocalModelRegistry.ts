@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
-import type { KvStore } from "@anaconda-agentic-desktop/feature-sdk";
+import type { KvStore } from "@kilo-desktop/feature-sdk";
 
 import type { LocalModel } from "../../contracts/schemas.js";
 import {

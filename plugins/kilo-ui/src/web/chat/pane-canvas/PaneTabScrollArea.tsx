@@ -9,7 +9,7 @@ import {
 	type RefObject,
 } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import { PaneTabTooltipScope } from "./PaneTabTooltip.js";
 
 export function PaneTabScrollArea({

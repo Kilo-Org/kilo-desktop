@@ -18,12 +18,12 @@ import {
 	type RelaySession,
 } from "@runtimed/node/relay";
 
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 import type {
 	HostMessagePort,
 	MainSdk,
 	MainSdkHostDialogOptions,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts/schemas.js";
 
@@ -310,7 +310,7 @@ export class ElectronNotebookHostService {
 		try {
 			relay = await openRelayPath(notebookPath, {
 				socketPath: this.#socketPath,
-				peerLabel: "agentic-desktop:open-file",
+				peerLabel: "kilo-desktop:open-file",
 				description: path.basename(notebookPath),
 			});
 		} catch (error) {
@@ -362,7 +362,7 @@ export class ElectronNotebookHostService {
 			}
 			const relayOptions = {
 				socketPath: this.#socketPath,
-				peerLabel: `agentic-desktop:${args.sessionId}`,
+				peerLabel: `kilo-desktop:${args.sessionId}`,
 				description: args.title,
 			};
 			return args.notebookPath
@@ -546,7 +546,7 @@ export class ElectronNotebookHostService {
 					);
 				case "notebook.openInNewWindow":
 				case "notebook.openHostedInNewWindow":
-					throw new Error("Opening a notebook outside its Agentic side panel is unavailable.");
+					throw new Error("Opening a notebook outside its Kilo Desktop side panel is unavailable.");
 				case "notebook.cloneToEphemeral":
 					throw new Error("Cloning the sidecar notebook is not supported by this host.");
 				case "window.getTitle":

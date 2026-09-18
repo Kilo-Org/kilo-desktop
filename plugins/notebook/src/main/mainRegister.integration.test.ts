@@ -5,7 +5,7 @@ import {
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	FeatureRouter,
 	type HostMessagePort,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 import {
 	mainRegister,

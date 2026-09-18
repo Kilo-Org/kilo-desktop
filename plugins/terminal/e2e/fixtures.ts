@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { removePathAfterAppStops, test as shellTest } from "@anaconda-agentic-desktop/e2e/fixtures";
+import { removePathAfterAppStops, test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
 import { TerminalPage } from "./pages/terminal-page.js";
 
@@ -18,7 +18,7 @@ export const test = shellTest.extend<TerminalFixtures>({
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	terminalWorkspace: async ({}, use) => {
-		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "aad-terminal-workspace-"));
+		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-terminal-workspace-"));
 		removePathAfterAppStops(workspacePath);
 		await use({ path: workspacePath, name: path.basename(workspacePath) });
 	},

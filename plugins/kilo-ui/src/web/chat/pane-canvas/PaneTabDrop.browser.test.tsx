@@ -2,7 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { createLayout, movePaneToGroup } from "@anaconda-agentic-desktop/pane-layout";
+import { createLayout, movePaneToGroup } from "@kilo-desktop/pane-layout";
 
 import { renderDragCanvas, startPaneDrag } from "./test-helpers.js";
 

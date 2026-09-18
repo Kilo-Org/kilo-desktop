@@ -1,12 +1,8 @@
 import { BotIcon } from "lucide-react";
 import type { FC } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { RightPanelTabDefinition } from "../right-panel/right-panel-tab-registry.js";
 import { PaneAddTab } from "./PaneAddTab.js";

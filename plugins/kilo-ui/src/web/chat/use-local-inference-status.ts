@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import {
 	parseLocalInferenceStatus,

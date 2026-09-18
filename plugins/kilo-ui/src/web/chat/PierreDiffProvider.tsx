@@ -6,7 +6,7 @@ import {
 } from "@pierre/diffs/react";
 import PierreDiffWorker from "@pierre/diffs/worker/worker.js?worker";
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 const WORKER_POOL_OPTIONS = {
 	poolSize: 2,

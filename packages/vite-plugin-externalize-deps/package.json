@@ -1,5 +1,5 @@
 {
-	"name": "@anaconda-agentic-desktop/vite-plugin-externalize-deps",
+	"name": "@kilo-desktop/vite-plugin-externalize-deps",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",

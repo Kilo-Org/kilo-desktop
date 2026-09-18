@@ -6,7 +6,7 @@ import type {
 	DesktopReleaseNotes,
 	DesktopUpdateState,
 	ReleaseTrack,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { DesktopUpdaterService } from "./Updater.js";
 
@@ -68,7 +68,7 @@ describe("DesktopUpdaterService", () => {
 		const { service, updater, states } = createService();
 		service.start();
 		expect(updater.setFeedURL).toHaveBeenCalledWith({
-			url: "https://updates.example.com/anaconda-agentic-desktop/preview/darwin/arm64/RELEASES.json",
+			url: "https://updates.example.com/kilo-desktop/preview/darwin/arm64/RELEASES.json",
 			serverType: "json",
 		});
 

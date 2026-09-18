@@ -1,4 +1,4 @@
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import type { LocalInferenceHardwareProfile, ModelCatalog } from "../../contracts/schemas.js";
 import { evaluateCatalogModel } from "../../shared/catalog/model-compatibility.js";

@@ -1,10 +1,11 @@
 import { createKiloClient, type KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { KiloGlobalConnection } from "../../contracts/chat/schemas.js";
 
-const ANACONDA_METADATA_KEY = "anaconda";
+const KILO_DESKTOP_METADATA_KEY = "kilo-desktop";
+const PRE_RENAME_METADATA_KEY = "anaconda";
 
 type KiloServerCapabilities = {
 	connectionService: {
@@ -31,16 +32,24 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
 
-/** Strips the deleted workspace stamp; keeps nested `anaconda` so the chat stays app-owned. */
-export function unscopeAnacondaMetadata(
+function ownedSessionMetadataKey(record: Record<string, unknown>): string | undefined {
+	if (asRecord(record[KILO_DESKTOP_METADATA_KEY])) return KILO_DESKTOP_METADATA_KEY;
+	if (asRecord(record[PRE_RENAME_METADATA_KEY])) return PRE_RENAME_METADATA_KEY;
+	return undefined;
+}
+
+/** Strips the deleted workspace stamp; keeps the existing ownership key so the chat stays app-owned. */
+export function unscopeKiloDesktopMetadata(
 	metadata: unknown,
 	workspaceId: string,
 ): Record<string, unknown> | null {
 	const record = asRecord(metadata);
-	const anaconda = asRecord(record?.[ANACONDA_METADATA_KEY]);
-	if (!record || !anaconda || anaconda.workspaceId !== workspaceId) return null;
-	const { workspaceId: _workspaceId, workspaceFolders: _folders, ...rest } = anaconda;
-	return { ...record, [ANACONDA_METADATA_KEY]: rest };
+	if (!record) return null;
+	const key = ownedSessionMetadataKey(record);
+	const owned = key ? asRecord(record[key]) : null;
+	if (!key || !owned || owned.workspaceId !== workspaceId) return null;
+	const { workspaceId: _workspaceId, workspaceFolders: _folders, ...rest } = owned;
+	return { ...record, [key]: rest };
 }
 
 export async function unscopeWorkspaceSessions(
@@ -50,7 +59,7 @@ export async function unscopeWorkspaceSessions(
 	const sessions = await client.listSessions();
 	await Promise.all(
 		sessions.flatMap((session) => {
-			const metadata = unscopeAnacondaMetadata(session.metadata, workspaceId);
+			const metadata = unscopeKiloDesktopMetadata(session.metadata, workspaceId);
 			if (!metadata) return [];
 			return [
 				client.updateMetadata({

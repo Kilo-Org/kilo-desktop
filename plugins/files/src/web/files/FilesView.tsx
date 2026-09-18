@@ -11,8 +11,8 @@ import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogContent,
@@ -20,7 +20,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
+} from "@kilo-desktop/ui/components/dialog";
 import {
 	Empty,
 	EmptyContent,
@@ -28,13 +28,13 @@ import {
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
-} from "@anaconda-agentic-desktop/ui/components/empty";
+} from "@kilo-desktop/ui/components/empty";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 import { type FileReadResult, type FilesServiceContract } from "../../contracts/schemas.js";
 import { FileEditor, FilesEditProvider } from "./document/FileEditor.js";

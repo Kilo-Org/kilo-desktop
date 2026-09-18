@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { defineEvent } from "../contract.js";
 
-export const FEATURE_PORT_WINDOW_MESSAGE = "anaconda-agentic-desktop:feature-port" as const;
+export const FEATURE_PORT_WINDOW_MESSAGE = "kilo-desktop:feature-port" as const;
 
 /**
  * One-shot request to attach a transferable MessagePort to a feature-owned

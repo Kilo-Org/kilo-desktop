@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { FileGitStatus, FileGitStatusEntry } from "../../contracts/schemas.js";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Command,
 	CommandDialog,
@@ -10,24 +10,24 @@ import {
 	CommandItem,
 	CommandList,
 	CommandSeparator,
-} from "@anaconda-agentic-desktop/ui/components/command";
-import { ToggleGroup, ToggleGroupItem } from "@anaconda-agentic-desktop/ui/components/toggle-group";
+} from "@kilo-desktop/ui/components/command";
+import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle-group";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@anaconda-agentic-desktop/ui/components/dropdown-menu";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
-import { Skeleton } from "@anaconda-agentic-desktop/ui/components/skeleton";
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+} from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { useSdk } from "@kilo-desktop/sdk-react";
 import {
 	ThreadListItemPrimitive,
 	ThreadListPrimitive,
@@ -404,7 +404,7 @@ export const SessionListContent = memo(function SessionListContent({
 					className="flex min-h-0 flex-1 flex-col"
 				>
 					<section
-						className="mb-4 flex shrink-0 flex-col gap-0.5"
+						className="mb-3 flex shrink-0 flex-col gap-0.5"
 						aria-label="Chat actions"
 						data-qa-id="session-list-navigation"
 					>

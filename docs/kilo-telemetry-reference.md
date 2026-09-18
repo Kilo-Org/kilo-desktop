@@ -1,4 +1,4 @@
-# Kilo Telemetry Reference — Agentic Desktop
+# Kilo Telemetry Reference — Kilo Desktop
 
 Source repo audit: `packages/kilo-vscode/` + `packages/opencode/src/kilocode/` + `packages/kilo-telemetry/`
 Scope: events relevant to a Desktop client backed by the Kilo CLI.
@@ -29,7 +29,7 @@ In VS Code, `vscode.env.isTelemetryEnabled` gates every capture. The Desktop mus
 
 | Property     | Value                      |
 | ------------ | -------------------------- |
-| `appName`    | `"agentic-desktop"`        |
+| `appName`    | `"kilo-desktop"`           |
 | `appVersion` | app version string         |
 | `platform`   | `"electron"`               |
 | `machineId`  | stable anonymous device ID |

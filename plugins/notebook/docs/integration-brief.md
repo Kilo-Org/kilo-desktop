@@ -1,4 +1,4 @@
-# Embed nteract notebooks in Agentic Desktop
+# Embed nteract notebooks in Kilo Desktop
 
 ## Goal
 
@@ -8,7 +8,7 @@ another nteract client without creating a competing daemon or a private copy of 
 
 ## System boundary
 
-Agentic Desktop stages nteract's published, platform-independent notebook UI bundle and a pinned,
+Kilo Desktop stages nteract's published, platform-independent notebook UI bundle and a pinned,
 platform-specific `runtimed` executable as plugin assets. The release tag, UI archive checksum,
 archive manifest, and native executable checksums all identify the same nteract build. During app
 launch it probes that release channel's canonical endpoint in the background. A compatible daemon
@@ -50,7 +50,7 @@ Electron port and retain runtimed's negotiated protocol number.
 2. The stable tab instance id becomes the daemon `notebook_id`.
 3. The plugin opens one relay peer with a label derived from the Kilo session.
 4. nteract edits and executes the shared live document.
-5. Save writes through runtimed's typed save protocol. Save As first asks Agentic Desktop for a
+5. Save writes through runtimed's typed save protocol. Save As first asks Kilo Desktop for a
    sender-scoped native path, then sends that path through the same runtimed protocol.
 6. Closing the tab closes only that peer. It does not stop the daemon or delete notebook state.
 
@@ -70,7 +70,7 @@ Electron port and retain runtimed's negotiated protocol number.
 
 1. Pin the notebook UI, `runtimed`, `runt`, and `nteract-mcp` to one nteract release and use that
    release's channel for the singleton endpoint and MCP proxy.
-2. Keep Agentic Desktop pinned to the published `@runtimed/node@0.5.0` package containing
+2. Keep Kilo Desktop pinned to the published `@runtimed/node@0.5.0` package containing
    `@runtimed/node/electron` and its platform-native optional dependencies.
 3. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
    against an already-running compatible singleton.

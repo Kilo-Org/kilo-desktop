@@ -6,7 +6,7 @@ import {
 	InputGroupAddon,
 	InputGroupButton,
 	InputGroupInput,
-} from "@anaconda-agentic-desktop/ui/components/input-group";
+} from "@kilo-desktop/ui/components/input-group";
 
 import type { LocalConnectionInfo } from "../../contracts/schemas.js";
 import { ConnectionRequestPopover } from "./ConnectionRequestPopover.js";

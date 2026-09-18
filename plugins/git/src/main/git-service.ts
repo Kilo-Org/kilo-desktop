@@ -1,13 +1,13 @@
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk";
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk";
-import type { GitClient, GitPatchFile } from "@anaconda-agentic-desktop/git-client";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import type { GitClient, GitPatchFile } from "@kilo-desktop/git-client";
 import {
 	GitErrorCode,
 	GitFileTooLargeError,
 	GitNotDetectedError,
 	createGitClient,
 	isGitError,
-} from "@anaconda-agentic-desktop/git-client";
+} from "@kilo-desktop/git-client";
 import { rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
@@ -17,7 +17,7 @@ import type {
 	GitRepositoryType,
 	GitStatus,
 } from "../contracts/schemas.js";
-import type { IBranch, RepositoryType } from "@anaconda-agentic-desktop/git-client";
+import type { IBranch, RepositoryType } from "@kilo-desktop/git-client";
 import { findDefaultBranch } from "./find-default-branch.js";
 
 const REMOTE_REF_PREFIX = "refs/remotes/";

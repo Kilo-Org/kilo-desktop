@@ -1,8 +1,8 @@
 import * as React from "react";
 import { Questionnaire as QuestionnairePrimitive } from "@shadcn/react/questionnaire";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
-import { buttonVariants, type Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { buttonVariants, type Button } from "@kilo-desktop/ui/components/button";
 import { CheckIcon } from "lucide-react";
 
 function Questionnaire({

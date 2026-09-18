@@ -6,23 +6,23 @@
  * and their Node/Electron dependencies.
  */
 
-import type { PluginManifest } from "@anaconda-agentic-desktop/feature-sdk";
+import type { PluginManifest } from "@kilo-desktop/feature-sdk";
 
 import {
 	DESKTOP_DEVELOPMENT_SCHEME,
 	DESKTOP_PRODUCTION_SCHEME,
 } from "../../platform/ElectronProtocol.js";
 
-import environmentsManifest from "@anaconda-agentic-desktop/plugin-environments/plugin.json" with { type: "json" };
-import browserManifest from "@anaconda-agentic-desktop/plugin-browser/plugin.json" with { type: "json" };
-import filesManifest from "@anaconda-agentic-desktop/plugin-files/plugin.json" with { type: "json" };
-import gitManifest from "@anaconda-agentic-desktop/plugin-git/plugin.json" with { type: "json" };
-import kiloServerManifest from "@anaconda-agentic-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
-import kiloUiManifest from "@anaconda-agentic-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
-import localInferenceManifest from "@anaconda-agentic-desktop/plugin-local-inference/plugin.json" with { type: "json" };
-import notebookManifest from "@anaconda-agentic-desktop/plugin-notebook/plugin.json" with { type: "json" };
-import terminalManifest from "@anaconda-agentic-desktop/plugin-terminal/plugin.json" with { type: "json" };
-import todosManifest from "@anaconda-agentic-desktop/plugin-todos/plugin.json" with { type: "json" };
+import environmentsManifest from "@kilo-desktop/plugin-environments/plugin.json" with { type: "json" };
+import browserManifest from "@kilo-desktop/plugin-browser/plugin.json" with { type: "json" };
+import filesManifest from "@kilo-desktop/plugin-files/plugin.json" with { type: "json" };
+import gitManifest from "@kilo-desktop/plugin-git/plugin.json" with { type: "json" };
+import kiloServerManifest from "@kilo-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
+import kiloUiManifest from "@kilo-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
+import localInferenceManifest from "@kilo-desktop/plugin-local-inference/plugin.json" with { type: "json" };
+import notebookManifest from "@kilo-desktop/plugin-notebook/plugin.json" with { type: "json" };
+import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json" with { type: "json" };
+import todosManifest from "@kilo-desktop/plugin-todos/plugin.json" with { type: "json" };
 
 /**
  * The static-import view of a manifest: loader-validated at boot, so only the

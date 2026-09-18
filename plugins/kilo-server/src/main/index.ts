@@ -10,7 +10,7 @@ import {
 	type KiloServerConnection,
 	type KiloServerStatus,
 } from "../contracts/schemas.js";
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
@@ -52,7 +52,7 @@ interface RegisterKiloServerOptions {
 		contributedEnv: ContributedEnvManager,
 	) => KiloServerController;
 	/**
-	 * Interim WebMCP↔Kilo bridge (see anaconda/agentic-desktop#102).
+	 * Interim WebMCP↔Kilo bridge (see #102).
 	 * Injected in tests; production defaults call the real initializer.
 	 */
 	reconcileWebMcpRelayConfig?: (
@@ -64,7 +64,7 @@ interface RegisterKiloServerOptions {
 		KiloConfigManager,
 		"setMcpEntry" | "removeMcpEntry" | "setProviderEntry" | "removeProviderEntry"
 	>;
-	/** Anaconda Desktop's own binary path. Defaults to `process.execPath`. */
+	/** Kilo Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
 	/**
 	 * Detects whether the running Electron binary honors
@@ -237,7 +237,7 @@ export function registerKiloServer(
 			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
 	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(configDirectory, mainSdk.logger);
 
-	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102. Initialize
+	// Interim WebMCP↔Kilo bridge — see #102. Initialize
 	// the Desktop-owned `mcp` entry before `kilo serve` boots so its first read of
 	// kilo.jsonc already sees the relay entry. Initialization is idempotent and
 	// marker-guarded; a failure never blocks Kilo from starting.
@@ -265,7 +265,7 @@ export function registerKiloServer(
 			}));
 	let relayService: WebMcpRelayServiceHandle | undefined;
 
-	// Interim WebMCP↔Kilo bridge — see anaconda/agentic-desktop#102.
+	// Interim WebMCP↔Kilo bridge — see #102.
 	//
 	// (1) detect fuse, (2) reconcile the Desktop-owned entry in kilo.jsonc,
 	// (3) start the in-process `:9345` rendezvous, (4) then allow lazy Kilo

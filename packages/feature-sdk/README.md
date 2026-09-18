@@ -1,4 +1,4 @@
-# @anaconda-agentic-desktop/feature-sdk
+# @kilo-desktop/feature-sdk
 
 The shim SDK that features program against today, shaped like the future plugin SDK. Code written against this package migrates to a plugin (and later to an external repo) via filesystem moves — no rewrites.
 
@@ -21,11 +21,7 @@ packages/contracts/src/features/<id>.ts         src/contracts/  # Zod schemas sh
 ```ts
 // plugins/todos/src/contracts/schemas.ts
 import { z } from "zod";
-import {
-	defineContract,
-	defineMethod,
-	type InferContract,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
 
 export const todoSchema = z.object({
 	id: z.string(),
@@ -44,7 +40,7 @@ export type TodoService = InferContract<typeof todosContract>;
 
 ```ts
 // plugins/todos/src/main/index.ts
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 import { todosContract } from "../contracts/schemas.js";
 import { TodoService } from "./TodoService.js";
 
@@ -68,7 +64,7 @@ export function mainRegister(mainSdk: MainSdk) {
 ```tsx
 // plugins/todos/src/web/TodoList.tsx
 import { useQuery } from "@tanstack/react-query";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 import type { TodoService } from "../contracts/schemas.js";
 
 export function TodoList() {
@@ -193,7 +189,7 @@ React components consume stores with `useSyncExternalStore`:
 
 ```ts
 import { useSyncExternalStore } from "react";
-import type { ReadableStore } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ReadableStore } from "@kilo-desktop/feature-sdk";
 
 function useStore<T>(store: ReadableStore<T>): T {
 	return useSyncExternalStore(store.subscribe, store.peek, store.peek);
@@ -236,7 +232,7 @@ Register a React component into a named zone. Shell zones have exported constant
 `sdk.contribute` is the **imperative, page-scoped** path — the contribution exists only while the calling component is mounted, so it is right for _conditional_ UI that appears in certain app states:
 
 ```ts
-import { STATUS_BAR_ZONE } from "@anaconda-agentic-desktop/feature-sdk";
+import { STATUS_BAR_ZONE } from "@kilo-desktop/feature-sdk";
 
 // Only while this component is mounted:
 const remove = sdk.contribute(STATUS_BAR_ZONE, {
@@ -335,7 +331,7 @@ Placeholders for the full plugin system. They throw. They exist so the interface
 Throw `FeatureError` from handlers for **expected** failures. The shell translates it across the IPC boundary, so the message and code reach the renderer intact. Plain `Error`s are scrubbed to a generic string by the IPC layer (they may carry secrets).
 
 ```ts
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 throw new FeatureError("Todo not found.", "NOT_FOUND");
 // codes: "VALIDATION" | "NOT_FOUND" | "BUSINESS" (default)
@@ -356,15 +352,11 @@ Rule of thumb for feature authors: register cleanup with `onDispose`, never call
 
 ## Testing
 
-Use `@anaconda-agentic-desktop/testing` — never hand-roll SDK fakes:
+Use `@kilo-desktop/testing` — never hand-roll SDK fakes:
 
 ```ts
 import { vi } from "vitest";
-import {
-	createFakeSdk,
-	createFakeMainSdk,
-	createLinkedFakeSdkPair,
-} from "@anaconda-agentic-desktop/testing";
+import { createFakeSdk, createFakeMainSdk, createLinkedFakeSdkPair } from "@kilo-desktop/testing";
 
 // Renderer tests: real in-memory event bus / state / router, fake shell delegates
 const sdk = createFakeSdk({

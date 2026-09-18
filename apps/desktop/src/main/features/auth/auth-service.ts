@@ -4,7 +4,7 @@ import memoize from "lodash/memoize.js";
 import { Keyring } from "./keyring/keyring.js";
 import { login as oauthLogin, type LoginDependencies } from "./oauth/oauth-flow.js";
 
-import type { AuthSession } from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession } from "@kilo-desktop/contracts";
 
 import {
 	exchangeForApiKey,
@@ -126,7 +126,7 @@ export class AuthSessionService {
 			options.createAuthorizeServer ?? ((domain) => startLoopbackAuthorize({ domain }));
 		this.#exchangeForApiKey = options.exchangeForApiKey ?? exchangeForApiKey;
 		this.#userPassportAction = options.getUserPassport ?? getUserPassport;
-		this.#userAgent = options.userAgent ?? "anaconda-agentic-desktop";
+		this.#userAgent = options.userAgent ?? "kilo-desktop";
 		this.#logger = options.logger ?? defaultLogger;
 	}
 

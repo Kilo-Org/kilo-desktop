@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { Contribution } from "@anaconda-agentic-desktop/feature-sdk";
+import type { Contribution } from "@kilo-desktop/feature-sdk";
 
 import { useFeatureSystem } from "./SdkProvider.js";
 

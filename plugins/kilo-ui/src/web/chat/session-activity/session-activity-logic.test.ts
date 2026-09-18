@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	ANACONDA_METADATA_KEY,
+	KILO_DESKTOP_METADATA_KEY,
 	applyHydratedSessionStatus,
 	applySessionActivityEvent,
 	applySessionPatch,
-	buildAnacondaSessionMetadata,
+	buildKiloDesktopSessionMetadata,
 	createEmptySessionActivity,
 	deriveSessionRowState,
 	directoryBasename,
 	EMPTY_SESSION_ACTIVITY_STATE,
 	formatRelativeTimeLabel,
 	formatWorkingDurationLabel,
-	hasAnacondaSessionMetadata,
+	hasKiloDesktopSessionMetadata,
 	needsAttention,
-	readAnacondaSessionMetadata,
+	readKiloDesktopSessionMetadata,
 	readWorkspaceFoldersFromMetadata,
 	readSessionInfoPatch,
 	readWorkspaceIdFromMetadata,
@@ -252,7 +252,7 @@ describe("applySessionActivityEvent", () => {
 						id: "ses-1",
 						directory: "/repo/project",
 						time: { created: NOW - 100, updated: NOW },
-						metadata: { [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } },
+						metadata: { [KILO_DESKTOP_METADATA_KEY]: { workspaceId: "ws-1" } },
 					},
 				},
 			},
@@ -277,7 +277,7 @@ describe("applySessionActivityEvent", () => {
 							id: "ses-1",
 							directory: "/repo/project",
 							time: { created: NOW - 100, updated: NOW },
-							metadata: { [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } },
+							metadata: { [KILO_DESKTOP_METADATA_KEY]: { workspaceId: "ws-1" } },
 						},
 					},
 				},
@@ -297,7 +297,7 @@ describe("applySessionActivityEvent", () => {
 							id: "ses-1",
 							directory: "/repo/project",
 							time: { created: NOW - 100, updated: NOW },
-							metadata: { [ANACONDA_METADATA_KEY]: {} },
+							metadata: { [KILO_DESKTOP_METADATA_KEY]: {} },
 						},
 					},
 				},
@@ -342,15 +342,15 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		expect(applySessionPatch(session, {})).toBeNull();
 	});
 
-	it("builds nested anaconda metadata for scoped and unscoped sessions", () => {
-		expect(buildAnacondaSessionMetadata()).toEqual({
-			metadata: { [ANACONDA_METADATA_KEY]: {} },
+	it("builds nested kilo-desktop metadata for scoped and unscoped sessions", () => {
+		expect(buildKiloDesktopSessionMetadata()).toEqual({
+			metadata: { [KILO_DESKTOP_METADATA_KEY]: {} },
 		});
-		expect(buildAnacondaSessionMetadata({ workspaceId: "ws-1" })).toEqual({
-			metadata: { [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } },
+		expect(buildKiloDesktopSessionMetadata({ workspaceId: "ws-1" })).toEqual({
+			metadata: { [KILO_DESKTOP_METADATA_KEY]: { workspaceId: "ws-1" } },
 		});
 		expect(
-			buildAnacondaSessionMetadata({
+			buildKiloDesktopSessionMetadata({
 				workspaceId: "ws-1",
 				workspaceFolders: [
 					{ path: "/workspace/main", isPrimary: true },
@@ -359,7 +359,7 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 			}),
 		).toEqual({
 			metadata: {
-				[ANACONDA_METADATA_KEY]: {
+				[KILO_DESKTOP_METADATA_KEY]: {
 					workspaceId: "ws-1",
 					workspaceFolders: [
 						{ path: "/workspace/main", isPrimary: true },
@@ -370,17 +370,20 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		});
 	});
 
-	it("reads workspace id from nested anaconda metadata", () => {
+	it("reads workspace id from nested kilo-desktop metadata", () => {
 		expect(
-			readWorkspaceIdFromMetadata({ [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" }, other: "x" }),
+			readWorkspaceIdFromMetadata({
+				[KILO_DESKTOP_METADATA_KEY]: { workspaceId: "ws-1" },
+				other: "x",
+			}),
 		).toBe("ws-1");
-		expect(readAnacondaSessionMetadata({ [ANACONDA_METADATA_KEY]: {} })).toEqual({});
+		expect(readKiloDesktopSessionMetadata({ [KILO_DESKTOP_METADATA_KEY]: {} })).toEqual({});
 		expect(readWorkspaceIdFromMetadata({ other: "x" })).toBeUndefined();
 		expect(readWorkspaceIdFromMetadata(undefined)).toBeUndefined();
 		expect(readWorkspaceIdFromMetadata("nope")).toBeUndefined();
 		expect(
 			readWorkspaceFoldersFromMetadata({
-				[ANACONDA_METADATA_KEY]: {
+				[KILO_DESKTOP_METADATA_KEY]: {
 					workspaceFolders: [
 						{ path: "/workspace/main", isPrimary: true },
 						{ path: "", isPrimary: false },
@@ -392,14 +395,22 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		expect(readWorkspaceFoldersFromMetadata(undefined)).toEqual([]);
 	});
 
-	it("detects anaconda-owned sessions for list filtering", () => {
-		expect(hasAnacondaSessionMetadata({ [ANACONDA_METADATA_KEY]: {} })).toBe(true);
-		expect(hasAnacondaSessionMetadata({ [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } })).toBe(
-			true,
-		);
-		expect(hasAnacondaSessionMetadata({ "anaconda.workspaceId": "ws-legacy" })).toBe(false);
-		expect(hasAnacondaSessionMetadata({ other: "x" })).toBe(false);
-		expect(hasAnacondaSessionMetadata(undefined)).toBe(false);
+	it("detects kilo-desktop-owned sessions for list filtering", () => {
+		expect(hasKiloDesktopSessionMetadata({ [KILO_DESKTOP_METADATA_KEY]: {} })).toBe(true);
+		expect(hasKiloDesktopSessionMetadata({ anaconda: {} })).toBe(true);
+		expect(
+			hasKiloDesktopSessionMetadata({ [KILO_DESKTOP_METADATA_KEY]: { workspaceId: "ws-1" } }),
+		).toBe(true);
+		expect(hasKiloDesktopSessionMetadata({ "kilo-desktop.workspaceId": "ws-legacy" })).toBe(false);
+		expect(hasKiloDesktopSessionMetadata({ other: "x" })).toBe(false);
+		expect(hasKiloDesktopSessionMetadata(undefined)).toBe(false);
+	});
+
+	it("reads pre-rename session metadata without writing it for new sessions", () => {
+		expect(readWorkspaceIdFromMetadata({ anaconda: { workspaceId: "ws-old" } })).toBe("ws-old");
+		expect(buildKiloDesktopSessionMetadata({ workspaceId: "ws-new" })).toEqual({
+			metadata: { "kilo-desktop": { workspaceId: "ws-new" } },
+		});
 	});
 
 	it("reads session info patches from raw session objects", () => {
@@ -407,13 +418,13 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 			readSessionInfoPatch({
 				directory: "/repo",
 				time: { created: 1, updated: 2 },
-				metadata: { [ANACONDA_METADATA_KEY]: { workspaceId: "ws-1" } },
+				metadata: { [KILO_DESKTOP_METADATA_KEY]: { workspaceId: "ws-1" } },
 			}),
 		).toEqual({ directory: "/repo", createdAt: 1, updatedAt: 2, workspaceId: "ws-1" });
 		expect(
 			readSessionInfoPatch({
 				directory: "/repo",
-				metadata: { [ANACONDA_METADATA_KEY]: {} },
+				metadata: { [KILO_DESKTOP_METADATA_KEY]: {} },
 			}),
 		).toEqual({ directory: "/repo", workspaceId: null });
 		expect(readSessionInfoPatch({ directory: "/repo" })).toEqual({ directory: "/repo" });

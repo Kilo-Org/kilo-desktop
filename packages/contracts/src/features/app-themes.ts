@@ -1,4 +1,4 @@
-import type { TerminalPalette, ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+import type { TerminalPalette, ThemeAppearance } from "@kilo-desktop/feature-sdk";
 
 import { themeChromeColors, type ResolvedColorScheme } from "./theme-tokens.js";
 

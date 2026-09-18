@@ -1,4 +1,4 @@
-import type { MainSdk } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import { gitContract, type GitCapabilities } from "../contracts/schemas.js";
 import { createGitProtocolHandler } from "./git-protocol.js";

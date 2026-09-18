@@ -1,8 +1,8 @@
 import { MessageSquareIcon } from "lucide-react";
 
 import { useAui } from "@assistant-ui/react";
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { useSdk } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 import { navigateToChat } from "./chat-navigation.js";
 import {

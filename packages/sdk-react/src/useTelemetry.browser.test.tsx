@@ -1,7 +1,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ShellDelegates, TelemetryData } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ShellDelegates, TelemetryData } from "@kilo-desktop/feature-sdk";
 
 import { createFeatureSystem, SdkProvider } from "./SdkProvider.js";
 import { createTestShellDelegates } from "./test-helpers.js";

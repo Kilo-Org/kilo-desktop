@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { LocalApi } from "@kilo-desktop/contracts";
 
 const LocalApiContext = createContext<LocalApi | null>(null);
 

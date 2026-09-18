@@ -41,27 +41,21 @@ describe("terminal frame bridge", () => {
 	});
 
 	it("derives a dedicated custom-protocol origin and never uses one in standalone web", () => {
-		expect(terminalOriginFrom("anaconda-agentic-desktop://app")).toBe(
-			"anaconda-agentic-desktop://terminal",
-		);
-		expect(terminalOriginFrom("anaconda-agentic-desktop-dev://app")).toBe(
-			"anaconda-agentic-desktop-dev://terminal",
-		);
+		expect(terminalOriginFrom("kilo-desktop://app")).toBe("kilo-desktop://terminal");
+		expect(terminalOriginFrom("kilo-desktop-dev://app")).toBe("kilo-desktop-dev://terminal");
 		expect(terminalOriginFrom("http://localhost:5173")).toBeUndefined();
-		expect(terminalOriginFrom("anaconda-agentic-desktop-evil://app")).toBeUndefined();
-		expect(terminalOriginFrom("anaconda-agentic-desktop://evil")).toBeUndefined();
-		const frame = new URL(
-			terminalFrameSrcFor({ protocol: "anaconda-agentic-desktop-dev:", host: "app" })!,
-		);
-		expect(`${frame.protocol}//${frame.host}`).toBe("anaconda-agentic-desktop-dev://terminal");
-		expect(frame.searchParams.get("parentOrigin")).toBe("anaconda-agentic-desktop-dev://app");
+		expect(terminalOriginFrom("kilo-desktop-evil://app")).toBeUndefined();
+		expect(terminalOriginFrom("kilo-desktop://evil")).toBeUndefined();
+		const frame = new URL(terminalFrameSrcFor({ protocol: "kilo-desktop-dev:", host: "app" })!);
+		expect(`${frame.protocol}//${frame.host}`).toBe("kilo-desktop-dev://terminal");
+		expect(frame.searchParams.get("parentOrigin")).toBe("kilo-desktop-dev://app");
 	});
 
 	it("requires exact source, origin, and protocol version", () => {
 		const source = window;
 		const message = {
 			source,
-			origin: "anaconda-agentic-desktop://terminal",
+			origin: "kilo-desktop://terminal",
 			data: { type: "terminal:ready", protocolVersion: TERMINAL_PROTOCOL_VERSION },
 		};
 		expect(trustedTerminalFrameMessageFrom(message, source, message.origin)).toEqual(message.data);
@@ -89,7 +83,7 @@ describe("terminal frame bridge", () => {
 
 	it("parses labels only from the trusted frame", () => {
 		const source = window;
-		const origin = "anaconda-agentic-desktop://terminal";
+		const origin = "kilo-desktop://terminal";
 		const labelMessage = {
 			source,
 			origin,

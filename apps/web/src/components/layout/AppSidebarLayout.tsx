@@ -12,12 +12,9 @@ import { useVisiblePluginNav, type PluginNavEntry } from "@/features/plugin-nav"
 import { findPluginPage, type PluginPage } from "@/features/plugin-pages";
 import { isSettingsPath, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
-import {
-	SIDEBAR_ACCOUNT_ZONE,
-	SIDEBAR_HEADER_ACTIONS_ZONE,
-} from "@anaconda-agentic-desktop/feature-sdk";
-import { useTelemetry } from "@anaconda-agentic-desktop/sdk-react";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { SIDEBAR_ACCOUNT_ZONE, SIDEBAR_HEADER_ACTIONS_ZONE } from "@kilo-desktop/feature-sdk";
+import { useTelemetry } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Sidebar,
 	SidebarContent,
@@ -29,8 +26,8 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
-} from "@anaconda-agentic-desktop/ui/components/sidebar";
-import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/sidebar";
+import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";

@@ -1,4 +1,4 @@
-import type { IpcHandlers } from "@anaconda-agentic-desktop/contracts";
+import type { IpcHandlers } from "@kilo-desktop/contracts";
 
 import type { ElectronShell } from "../../platform/ElectronShell.js";
 import type { ElectronWindow } from "../../platform/ElectronWindow.js";

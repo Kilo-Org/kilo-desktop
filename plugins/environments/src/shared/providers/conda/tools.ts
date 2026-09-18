@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import {
 	condaEnvsCloneInputSchema,

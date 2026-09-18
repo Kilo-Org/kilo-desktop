@@ -1,7 +1,7 @@
 import * as React from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon } from "lucide-react";
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {

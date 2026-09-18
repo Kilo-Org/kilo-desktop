@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AuthUser } from "@anaconda-agentic-desktop/feature-sdk";
+import type { AuthUser } from "@kilo-desktop/feature-sdk";
 
 import { getUserInitials } from "./getUserInitials";
 

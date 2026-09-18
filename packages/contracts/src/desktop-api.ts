@@ -1,7 +1,7 @@
 import type { z } from "zod";
 
 import type { ipcEvents, ipcMessages, ipcMethods, ipcPorts } from "./registry.js";
-import type { HostMessagePort } from "@anaconda-agentic-desktop/feature-sdk";
+import type { HostMessagePort } from "@kilo-desktop/feature-sdk";
 import type { IpcResult } from "./result.js";
 
 export type IpcMethodChannel = keyof typeof ipcMethods;

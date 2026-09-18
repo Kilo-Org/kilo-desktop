@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { FEATURE_PORT_WINDOW_MESSAGE } from "@anaconda-agentic-desktop/contracts";
+import { FEATURE_PORT_WINDOW_MESSAGE } from "@kilo-desktop/contracts";
 
 import { openFeaturePort } from "./featurePorts.js";
 

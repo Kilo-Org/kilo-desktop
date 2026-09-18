@@ -13,10 +13,10 @@
 	"iconLibrary": "lucide",
 	"rtl": false,
 	"aliases": {
-		"components": "@anaconda-agentic-desktop/ui/components",
-		"utils": "@anaconda-agentic-desktop/ui/lib/utils",
-		"ui": "@anaconda-agentic-desktop/ui/components",
-		"lib": "@anaconda-agentic-desktop/ui/lib",
-		"hooks": "@anaconda-agentic-desktop/ui/hooks"
+		"components": "@kilo-desktop/ui/components",
+		"utils": "@kilo-desktop/ui/lib/utils",
+		"ui": "@kilo-desktop/ui/components",
+		"lib": "@kilo-desktop/ui/lib",
+		"hooks": "@kilo-desktop/ui/hooks"
 	}
 }

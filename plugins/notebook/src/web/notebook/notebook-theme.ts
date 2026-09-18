@@ -1,4 +1,4 @@
-import type { ThemeAppearance } from "@anaconda-agentic-desktop/feature-sdk";
+import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
 
 import {
 	NOTEBOOK_THEME_MESSAGE_TYPE,

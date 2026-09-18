@@ -1,6 +1,6 @@
 "use client";
 
-import { toast } from "@anaconda-agentic-desktop/ui/components/sonner";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { Loader2Icon, Undo2Icon } from "lucide-react";
 import type { FC } from "react";

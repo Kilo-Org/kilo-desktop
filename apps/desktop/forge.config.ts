@@ -18,15 +18,16 @@ import {
 	getUpdatePublishUrl,
 } from "./config/release.js";
 import desktopPackage from "./package.json" with { type: "json" };
-import { getAppIdentity } from "./config/app-identity.js";
+import { getAppIdentity, getDmgVolumeTitle } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { resolvePackagedWebMcpRelayDirectory } from "./config/packaged-webmcp-relay.js";
 import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-temp.js";
 import { signWindowsFile } from "./config/windows-sign.js";
-import { createNotebookPackagingPlan } from "@anaconda-agentic-desktop/plugin-notebook/packaging";
-import { createBridgePackagingPlan } from "@anaconda-agentic-desktop/plugin-environments/packaging";
-import { ensureNodePtySpawnHelpersExecutable } from "@anaconda-agentic-desktop/plugin-terminal/packaging";
+import { pruneProductionDependencies } from "./config/prune-production-dependencies.js";
+import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
+import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
+import { ensureNodePtySpawnHelpersExecutable } from "@kilo-desktop/plugin-terminal/packaging";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -40,7 +41,7 @@ const appVersion = getPublishAppVersion({
 });
 const nativeAppVersion = getNativeAppVersion(appVersion);
 const identity = getAppIdentity(track);
-const dmgVolumeTitle = "Agentic";
+const dmgVolumeTitle = getDmgVolumeTitle(track);
 const publishUrl = getUpdatePublishUrl(process.env);
 const s3Bucket = process.env.UPDATE_S3_BUCKET?.trim();
 const skipNativeRebuild = process.env.ELECTRON_SKIP_NATIVE_REBUILD === "true";
@@ -61,13 +62,31 @@ const appIcon =
 
 const notebookPackaging = createNotebookPackagingPlan();
 const bridgePackaging = createBridgePackagingPlan();
+const parcelWatcherBindingPackages = [
+	"@parcel/watcher-android-arm64",
+	"@parcel/watcher-darwin-arm64",
+	"@parcel/watcher-darwin-x64",
+	"@parcel/watcher-freebsd-x64",
+	"@parcel/watcher-linux-arm-glibc",
+	"@parcel/watcher-linux-arm-musl",
+	"@parcel/watcher-linux-arm64-glibc",
+	"@parcel/watcher-linux-arm64-musl",
+	"@parcel/watcher-linux-x64-glibc",
+	"@parcel/watcher-linux-x64-musl",
+	"@parcel/watcher-win32-arm64",
+	"@parcel/watcher-win32-x64",
+];
 const asarUnpackPackages = [
 	"better-sqlite3",
 	"@github/keytar",
+	// @parcel/watcher loads its native binding from a platform package. Keep
+	// that binding in the app bundle so macOS signs it with the app identity
+	// instead of Electron extracting the upstream-signed binary at runtime.
+	...parcelWatcherBindingPackages,
 	"node-pty",
 	...notebookPackaging.asarUnpackPackages,
 ];
-const webMcpRelayRuntimePackage = "@anaconda-agentic-desktop/webmcp-relay-runtime";
+const webMcpRelayRuntimePackage = "@kilo-desktop/webmcp-relay-runtime";
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
@@ -92,12 +111,10 @@ function updateFeed(platform: string, arch: string): string | undefined {
 }
 
 async function stageProductionDependencies(buildPath: string): Promise<void> {
-	const stagingDirectory = await mkdtemp(
-		path.join(workspaceRoot, ".anaconda-agentic-desktop-production-"),
-	);
+	const stagingDirectory = await mkdtemp(path.join(workspaceRoot, ".kilo-desktop-production-"));
 	const linkedDependencies = [
 		{
-			packageName: "@anaconda-agentic-desktop/plugin-kilo-server",
+			packageName: "@kilo-desktop/plugin-kilo-server",
 			source: path.join(workspaceRoot, "plugins/kilo-server"),
 			excludedDirectories: new Set([
 				".git",
@@ -109,12 +126,12 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 			]),
 		},
 		{
-			packageName: "@anaconda-agentic-desktop/plugin-kilo-ui",
+			packageName: "@kilo-desktop/plugin-kilo-ui",
 			source: path.join(workspaceRoot, "plugins/kilo-ui"),
 			excludedDirectories: new Set([".git", ".vitest", "coverage", "e2e", "node_modules"]),
 		},
 		{
-			packageName: "@anaconda-agentic-desktop/plugin-notebook",
+			packageName: "@kilo-desktop/plugin-notebook",
 			source: path.join(workspaceRoot, "plugins/notebook"),
 			excludedDirectories: new Set([
 				".git",
@@ -127,12 +144,12 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 			]),
 		},
 		{
-			packageName: "@anaconda-agentic-desktop/plugin-terminal",
+			packageName: "@kilo-desktop/plugin-terminal",
 			source: path.join(workspaceRoot, "plugins/terminal"),
 			excludedDirectories: new Set([".git", ".vitest", "coverage", "e2e", "node_modules"]),
 		},
 		{
-			packageName: "@anaconda-agentic-desktop/plugin-environments",
+			packageName: "@kilo-desktop/plugin-environments",
 			source: path.join(workspaceRoot, "plugins/environments"),
 			excludedDirectories: new Set([
 				".git",
@@ -155,7 +172,7 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 			[
 				"--config.allowUnusedPatches=true",
 				"--filter",
-				"@anaconda-agentic-desktop/desktop",
+				"@kilo-desktop/desktop",
 				"deploy",
 				"--prod",
 				"--ignore-scripts",
@@ -183,6 +200,7 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 			});
 		}
 		const stagedNodeModules = path.join(stagingDirectory, "node_modules");
+		await pruneProductionDependencies(stagedNodeModules);
 		const packagedNodeModules = path.join(buildPath, "node_modules");
 		await moveDirectory(stagedNodeModules, packagedNodeModules);
 		// pnpm deploy creates `.bin` directories (top-level and nested inside
@@ -206,9 +224,7 @@ async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
 	// node_modules tree. Stage beside app.asar (not inside it or under
 	// asar.unpacked) so Squirrel nupkg entries stay under the 260-character
 	// MAX_PATH extract budget and runtime can resolve process.resourcesPath.
-	const stagingDirectory = await mkdtemp(
-		path.join(workspaceRoot, ".anaconda-agentic-desktop-webmcp-relay-"),
-	);
+	const stagingDirectory = await mkdtemp(path.join(workspaceRoot, ".kilo-desktop-webmcp-relay-"));
 	try {
 		await execa(
 			"pnpm",
@@ -312,6 +328,10 @@ const config: ForgeConfig = {
 		},
 		beforeAsar: [
 			async ({ buildPath, platform, arch }) => {
+				await stampPackagedAppVersion(buildPath, appVersion);
+				await stageWebRenderer(buildPath, webDistDirectory);
+				await stageProductionDependencies(buildPath);
+				await stageWebMcpRelayRuntime(buildPath);
 				await ensureNodePtySpawnHelpersExecutable(
 					path.join(buildPath, "node_modules", "node-pty"),
 					platform,
@@ -345,7 +365,7 @@ const config: ForgeConfig = {
 				// appdmg's alias encoder limits volume names to 27 characters. Keep
 				// enough headroom for the suffix macOS adds when a volume name collides.
 				title: dmgVolumeTitle,
-				icon: path.join(packageRoot, "assets/icon.icns"),
+				icon: path.join(packageRoot, "assets/volume-icon.icns"),
 			},
 		},
 		{
@@ -378,7 +398,7 @@ const config: ForgeConfig = {
 				options: {
 					bin: identity.executableName,
 					categories: ["Development"],
-					homepage: "https://github.com/anaconda/agentic-desktop",
+					homepage: "https://kilo.ai",
 					icon: path.join(packageRoot, "assets/icon.png"),
 					maintainer: "Anaconda, Inc.",
 					name: identity.executableName,
@@ -426,7 +446,7 @@ const config: ForgeConfig = {
 		}),
 		new FusesPlugin({
 			version: FuseVersion.V1,
-			// INTERIM (see anaconda/agentic-desktop#102): RunAsNode must be true so
+			// INTERIM (see #102): RunAsNode must be true so
 			// the bundled `@mcp-b/webmcp-local-relay` can be spawned as a stdio MCP
 			// subprocess of `kilo serve` using `process.execPath` +
 			// `ELECTRON_RUN_AS_NODE=1`. The default-hardened value is `false`; the
@@ -445,12 +465,6 @@ const config: ForgeConfig = {
 		}),
 	],
 	hooks: {
-		packageAfterCopy: async (_forgeConfig, buildPath) => {
-			await stampPackagedAppVersion(buildPath, appVersion);
-			await stageWebRenderer(buildPath, webDistDirectory);
-			await stageProductionDependencies(buildPath);
-			await stageWebMcpRelayRuntime(buildPath);
-		},
 		postMake: async (_forgeConfig, makeResults) => {
 			if (!windowsPlan.postMakeSign) return makeResults;
 			for (const result of makeResults) {

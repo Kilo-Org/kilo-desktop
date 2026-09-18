@@ -1,6 +1,6 @@
 import { GitBranchIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { sdkQueryOptions, useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
 import { getReadOnlyBranchLabel, type SelectorQueryState } from "./branch-selector-state.js";

@@ -1,7 +1,7 @@
 import { Code2Icon, GaugeIcon, type LucideIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { TooltipProvider } from "@anaconda-agentic-desktop/ui/components/tooltip";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import type { LocalInferenceHardwareProfile, ModelCatalogEntry } from "../../contracts/schemas.js";
 import {

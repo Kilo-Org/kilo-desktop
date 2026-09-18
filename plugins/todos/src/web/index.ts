@@ -26,7 +26,7 @@
  * explicit unavailable state for the /todos route. Tool handlers still fail
  * loudly in browser mode because `sdk.invoke` has no in-process backend.
  */
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { SDK } from "@kilo-desktop/feature-sdk";
 import { z } from "zod";
 
 import { todosContract } from "../contracts/schemas.js";

@@ -4,15 +4,15 @@ import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
 import {
 	FeatureError,
 	type Contribution,
 	type PluginPageProps,
 	type SDK,
-} from "@anaconda-agentic-desktop/feature-sdk";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
-import { SidebarProvider } from "@anaconda-agentic-desktop/ui/components/sidebar";
+} from "@kilo-desktop/feature-sdk";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import type * as AssistantUiReact from "@assistant-ui/react";
 

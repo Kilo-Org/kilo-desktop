@@ -1,4 +1,4 @@
-import { FeatureError, type MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk";
 
 import { kiloServerContract, type KiloServerService } from "../contracts/schemas.js";
 

@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-import {
-	defineContract,
-	defineMethod,
-	type InferContract,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
 
 export const TERMINAL_PROTOCOL_VERSION = 4;
 export const MAX_TERMINAL_LABEL_LENGTH = 128;

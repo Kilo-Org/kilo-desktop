@@ -6,8 +6,8 @@ import { Readable, Writable } from "node:stream";
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import type { MainSdkLogger } from "@anaconda-agentic-desktop/feature-sdk/main";
-import { FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
+import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";

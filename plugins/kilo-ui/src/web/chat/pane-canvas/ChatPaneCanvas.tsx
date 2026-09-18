@@ -30,11 +30,11 @@ import {
 	type PaneLayout,
 	type ProjectedColumn,
 	type ProjectedGroup,
-} from "@anaconda-agentic-desktop/pane-layout";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { ResizableHandle } from "@anaconda-agentic-desktop/ui/components/resizable";
-import { Tabs, TabsContent } from "@anaconda-agentic-desktop/ui/components/tabs";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/pane-layout";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { ResizableHandle } from "@kilo-desktop/ui/components/resizable";
+import { Tabs, TabsContent } from "@kilo-desktop/ui/components/tabs";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { RightPanelTabDefinition } from "../right-panel/right-panel-tab-registry.js";
 import { applyPaneDrop, changesPanePlacement, type PaneDrop } from "./pane-drop.js";

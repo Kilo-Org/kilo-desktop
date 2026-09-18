@@ -1,11 +1,8 @@
 import { motion, useTransform } from "motion/react";
 import type { ComponentType } from "react";
 
-import {
-	PAGE_HEADER_ACTIONS_ZONE,
-	type PluginPageProps,
-} from "@anaconda-agentic-desktop/feature-sdk";
-import { SidebarTrigger, useSidebar } from "@anaconda-agentic-desktop/ui/components/sidebar";
+import { PAGE_HEADER_ACTIONS_ZONE, type PluginPageProps } from "@kilo-desktop/feature-sdk";
+import { SidebarTrigger, useSidebar } from "@kilo-desktop/ui/components/sidebar";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
 

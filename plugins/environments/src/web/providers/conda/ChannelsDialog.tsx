@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { Checkbox } from "@anaconda-agentic-desktop/ui/components/checkbox";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -9,8 +9,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import { Input } from "@anaconda-agentic-desktop/ui/components/input";
+} from "@kilo-desktop/ui/components/dialog";
+import { Input } from "@kilo-desktop/ui/components/input";
 
 interface ChannelsDialogProps {
 	open: boolean;

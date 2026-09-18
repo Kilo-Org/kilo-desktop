@@ -1,9 +1,9 @@
 {
-	"name": "@anaconda-agentic-desktop/e2e",
+	"name": "@kilo-desktop/e2e",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"description": "Playwright/Electron e2e suite for Anaconda Agentic Desktop",
+	"description": "Playwright/Electron e2e suite for Kilo Desktop",
 	"exports": {
 		".": "./index.ts",
 		"./fixtures": "./fixtures/shell.ts"

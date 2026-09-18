@@ -6,8 +6,8 @@ import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { promisify, stripVTControlCharacters } from "node:util";
 
-import { createObservableValue, FeatureError } from "@anaconda-agentic-desktop/feature-sdk/main";
-import type { ObservableValue } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { createObservableValue, FeatureError } from "@kilo-desktop/feature-sdk/main";
+import type { ObservableValue } from "@kilo-desktop/feature-sdk/main";
 import { execa } from "execa";
 import isEqual from "lodash/isEqual.js";
 
@@ -17,10 +17,7 @@ import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
-const DEFAULT_CORS_ORIGINS = [
-	"anaconda-agentic-desktop://app",
-	"anaconda-agentic-desktop-dev://app",
-] as const;
+const DEFAULT_CORS_ORIGINS = ["kilo-desktop://app", "kilo-desktop-dev://app"] as const;
 const GENERIC_STARTUP_ERROR = "Kilo server failed to start.";
 
 class KiloOperationalError extends Error {}

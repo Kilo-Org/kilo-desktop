@@ -8,7 +8,7 @@ import {
 	BreadcrumbList,
 	BreadcrumbPage,
 	BreadcrumbSeparator,
-} from "@anaconda-agentic-desktop/ui/components/breadcrumb";
+} from "@kilo-desktop/ui/components/breadcrumb";
 
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { workspaceGlyphStyle } from "../workspaces/workspace-glyph-style.js";

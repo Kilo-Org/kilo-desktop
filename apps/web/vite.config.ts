@@ -13,10 +13,7 @@ import {
 	DEFAULT_APP_THEME_PREFERENCES,
 	themeCss,
 } from "../../packages/contracts/src/features/app-themes";
-import {
-	criticalThemeStyle,
-	themeBootstrapScript,
-} from "@anaconda-agentic-desktop/contracts/theme-tokens";
+import { criticalThemeStyle, themeBootstrapScript } from "@kilo-desktop/contracts/theme-tokens";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
@@ -62,7 +59,7 @@ export default defineConfig({
 		sentryVitePlugin({
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			org: "anaconda-nq",
-			project: "agentic-desktop",
+			project: "kilo-desktop",
 			...(uploadSourcemaps && {
 				sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
 			}),
@@ -75,14 +72,14 @@ export default defineConfig({
 		},
 		// Linked plugin sources import these packages from their own module graph.
 		// Keep provider and consumer imports on one React/context instance.
-		dedupe: ["react", "react-dom", "@anaconda-agentic-desktop/sdk-react"],
+		dedupe: ["react", "react-dom", "@kilo-desktop/sdk-react"],
 	},
 	server: {
 		host: "127.0.0.1",
 		port: 5173,
 		strictPort: true,
 		// The desktop shell loads the renderer over the custom
-		// `anaconda-agentic-desktop-dev://app` scheme, so Vite's HMR client would
+		// `kilo-desktop-dev://app` scheme, so Vite's HMR client would
 		// otherwise derive a bogus `ws://app/` socket URL (ERR_NAME_NOT_RESOLVED).
 		// Pin the client to the real dev server so HMR connects directly.
 		hmr: {

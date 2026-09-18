@@ -1,4 +1,4 @@
-import type { MarkdownRendererExtension } from "@anaconda-agentic-desktop/ui/components/markdown-extension";
+import type { MarkdownRendererExtension } from "@kilo-desktop/ui/components/markdown-extension";
 
 import { FileLinkChip } from "./FileLinkChip.js";
 import {

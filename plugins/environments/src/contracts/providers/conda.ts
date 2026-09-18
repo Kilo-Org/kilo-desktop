@@ -28,11 +28,7 @@
  */
 import { z } from "zod";
 
-import {
-	defineContract,
-	defineMethod,
-	type InferContract,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
 
 import { cancelInputSchema, cancelResultSchema, jobIdSchema } from "../common.js";
 

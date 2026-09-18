@@ -11,19 +11,19 @@ import {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/alert-dialog";
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+} from "@kilo-desktop/ui/components/alert-dialog";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
 	DialogContent,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@anaconda-agentic-desktop/ui/components/dialog";
-import { FieldError } from "@anaconda-agentic-desktop/ui/components/field";
+} from "@kilo-desktop/ui/components/dialog";
+import { FieldError } from "@kilo-desktop/ui/components/field";
 import type { Workspace, WorkspacesService } from "../../contracts/workspaces/schemas.js";
-import type { SDK } from "@anaconda-agentic-desktop/feature-sdk";
-import { sdkQueryKey } from "@anaconda-agentic-desktop/sdk-react";
+import type { SDK } from "@kilo-desktop/feature-sdk";
+import { sdkQueryKey } from "@kilo-desktop/sdk-react";
 
 import { WorkspaceFormFields } from "./WorkspaceFormFields.js";
 import { useWorkspaceForm } from "./useWorkspaceForm.js";

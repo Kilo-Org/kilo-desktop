@@ -1,11 +1,8 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { ComponentType } from "react";
 
-import {
-	pluginSettingsContributions,
-	type PluginDiscovery,
-} from "@anaconda-agentic-desktop/feature-sdk";
-import { useFeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+import { pluginSettingsContributions, type PluginDiscovery } from "@kilo-desktop/feature-sdk";
+import { useFeatureSystem } from "@kilo-desktop/sdk-react";
 
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 

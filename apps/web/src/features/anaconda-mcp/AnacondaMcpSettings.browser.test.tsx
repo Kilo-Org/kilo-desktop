@@ -7,10 +7,10 @@ import {
 	anacondaMcpContract,
 	type AnacondaMcpSettings,
 	type AnacondaMcpStatus,
-} from "@anaconda-agentic-desktop/contracts";
-import { SdkProvider } from "@anaconda-agentic-desktop/sdk-react";
-import type { ChannelHandlerMap } from "@anaconda-agentic-desktop/feature-sdk";
-import { createFakeFeatureSystem, createFakeSdk } from "@anaconda-agentic-desktop/testing";
+} from "@kilo-desktop/contracts";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import type { ChannelHandlerMap } from "@kilo-desktop/feature-sdk";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { AnacondaMcpSettings as SettingsPanel } from "./AnacondaMcpSettings";
 

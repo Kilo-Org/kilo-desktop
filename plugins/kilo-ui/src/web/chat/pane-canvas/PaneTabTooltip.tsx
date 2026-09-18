@@ -6,7 +6,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 	createTooltipHandle,
-} from "@anaconda-agentic-desktop/ui/components/tooltip";
+} from "@kilo-desktop/ui/components/tooltip";
 
 const PaneTabTooltipContext = createContext<ReturnType<
 	typeof createTooltipHandle<ReactNode>

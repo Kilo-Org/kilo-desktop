@@ -100,7 +100,7 @@ async function main(): Promise<void> {
 		},
 	);
 
-	const workingDirectory = await mkdtemp(path.join(tmpdir(), "anaconda-track-release-"));
+	const workingDirectory = await mkdtemp(path.join(tmpdir(), "kilo-track-release-"));
 	const notesFile = path.join(workingDirectory, `${version}.json`);
 	await writeFile(notesFile, `${JSON.stringify(releaseNotes, null, 2)}\n`);
 
@@ -322,7 +322,7 @@ async function githubJson<T = unknown>(
 }
 
 async function stageGithubAssets(files: string[]): Promise<string[]> {
-	const directory = await mkdtemp(path.join(tmpdir(), "anaconda-github-release-"));
+	const directory = await mkdtemp(path.join(tmpdir(), "kilo-github-release-"));
 	const used = new Set<string>();
 	const staged: string[] = [];
 	for (const file of files) {

@@ -1,4 +1,4 @@
-import type { KvStore, MainSdk } from "@anaconda-agentic-desktop/feature-sdk";
+import type { KvStore, MainSdk } from "@kilo-desktop/feature-sdk";
 
 import type { OnboardingState } from "../../contracts/onboarding/schemas.js";
 
@@ -15,7 +15,7 @@ const SKIPPED: OnboardingState = { outcome: "skipped", closedAt: 1 };
 
 /**
  * First-run onboarding persistence. File-backed via `mainSdk.storage.kv`.
- * `ANACONDA_SKIP_ONBOARDING=1` short-circuits to skipped so packaged e2e
+ * `KILO_SKIP_ONBOARDING=1` short-circuits to skipped so packaged e2e
  * (one shared Electron profile per worker) is not blocked by the overlay.
  */
 export class OnboardingStore {
@@ -28,7 +28,7 @@ export class OnboardingStore {
 			namespace: NAMESPACE,
 			defaults: DEFAULTS,
 		});
-		this.#skip = env.ANACONDA_SKIP_ONBOARDING === "1";
+		this.#skip = env.KILO_SKIP_ONBOARDING === "1";
 		this.#now = now;
 	}
 

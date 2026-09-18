@@ -1,5 +1,5 @@
 {
-	"name": "@anaconda-agentic-desktop/plugin-local-inference",
+	"name": "@kilo-desktop/plugin-local-inference",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
@@ -22,19 +22,19 @@
 		"systeminformation": "5.33.10"
 	},
 	"peerDependencies": {
-		"@anaconda-agentic-desktop/feature-sdk": "^0.1.0",
-		"@anaconda-agentic-desktop/sdk-react": "^0.1.0",
-		"@anaconda-agentic-desktop/ui": "^0.1.0",
+		"@kilo-desktop/feature-sdk": "^0.1.0",
+		"@kilo-desktop/sdk-react": "^0.1.0",
+		"@kilo-desktop/ui": "^0.1.0",
 		"@tanstack/react-query": "^5.101.4",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
 		"zod": "^4.0.0"
 	},
 	"peerDependenciesMeta": {
-		"@anaconda-agentic-desktop/sdk-react": {
+		"@kilo-desktop/sdk-react": {
 			"optional": true
 		},
-		"@anaconda-agentic-desktop/ui": {
+		"@kilo-desktop/ui": {
 			"optional": true
 		},
 		"@tanstack/react-query": {
@@ -48,10 +48,10 @@
 		}
 	},
 	"devDependencies": {
-		"@anaconda-agentic-desktop/feature-sdk": "workspace:*",
-		"@anaconda-agentic-desktop/sdk-react": "workspace:*",
-		"@anaconda-agentic-desktop/testing": "workspace:*",
-		"@anaconda-agentic-desktop/ui": "link:../../packages/ui",
+		"@kilo-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/sdk-react": "workspace:*",
+		"@kilo-desktop/testing": "workspace:*",
+		"@kilo-desktop/ui": "link:../../packages/ui",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/react-query": "^5.101.4",
 		"@testing-library/react": "^16.3.2",

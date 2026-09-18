@@ -53,7 +53,7 @@ export default defineConfig({
 					dedupe: [
 						"react",
 						"react-dom",
-						"@anaconda-agentic-desktop/sdk-react",
+						"@kilo-desktop/sdk-react",
 						"@assistant-ui/react",
 						"@assistant-ui/core",
 						"@assistant-ui/store",
@@ -66,7 +66,7 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@anaconda-agentic-desktop/sdk-react",
+						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
 						"@base-ui/react/button",
@@ -85,7 +85,7 @@ export default defineConfig({
 						"@kilocode/sdk/v2/client",
 						"motion/react",
 						"zod",
-						"@anaconda-agentic-desktop/pane-layout",
+						"@kilo-desktop/pane-layout",
 					],
 				},
 				test: {

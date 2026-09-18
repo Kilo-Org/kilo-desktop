@@ -9,7 +9,7 @@ import {
 	type EmbeddedWebHost,
 	type HostMessagePort,
 	type MainSdk,
-} from "@anaconda-agentic-desktop/feature-sdk/main";
+} from "@kilo-desktop/feature-sdk/main";
 
 import {
 	notebookContract,

@@ -5,12 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { z } from "zod";
 
-import {
-	defineMethod,
-	FeatureError,
-	type MainSdk,
-	type SDK,
-} from "@anaconda-agentic-desktop/feature-sdk";
+import { defineMethod, FeatureError, type MainSdk, type SDK } from "@kilo-desktop/feature-sdk";
 
 import { createFeatureSystem } from "./SdkProvider.js";
 import { createTestShellDelegates } from "./test-helpers.js";

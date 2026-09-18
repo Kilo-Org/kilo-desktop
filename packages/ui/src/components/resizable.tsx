@@ -6,7 +6,7 @@ import {
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 export function ResizablePanelGroup({ className, children, ...props }: ComponentProps<"div">) {
 	return (

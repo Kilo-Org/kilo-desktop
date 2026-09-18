@@ -1,4 +1,4 @@
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 /**
  * Copy via the desktop shell bridge (`sdk.shell.copyText`).

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { useSdk } from "@anaconda-agentic-desktop/sdk-react";
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import type { KiloUiChatService } from "../../contracts/chat/schemas.js";
 import { useChatConnection } from "../chat/connection/ChatConnectionContext.js";

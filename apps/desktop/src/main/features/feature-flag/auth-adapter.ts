@@ -1,4 +1,4 @@
-import type { AuthSession, AuthUser } from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession, AuthUser } from "@kilo-desktop/contracts";
 
 import type { AuthSessionService } from "../auth/auth-service.js";
 import type { UserInfoOrganization } from "../auth/actions.js";

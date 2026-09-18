@@ -15,7 +15,7 @@ export const test = shellTest.extend<BrowserFixtures>({
 	browserPage: async ({}, use) => use(new BrowserPage()),
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	browserWorkspace: async ({}, use) => {
-		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "aad-browser-workspace-"));
+		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-browser-workspace-"));
 		removePathAfterAppStops(workspacePath);
 		await use({ path: workspacePath, name: path.basename(workspacePath) });
 	},

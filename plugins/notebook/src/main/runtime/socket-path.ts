@@ -12,7 +12,7 @@ import path from "node:path";
  * - The pipe name comes from the daemon *binary* basename
  *   (`runtimed` / `runtimed-nightly`), which is a different axis from the cache
  *   namespace used on Unix (`runt` / `runt-nightly`).
- * - Agentic Desktop is a guest of the installed channel-level singleton. It
+ * - Kilo Desktop is a guest of the installed channel-level singleton. It
  *   intentionally ignores ambient nteract worktree variables; development can
  *   opt into a worktree daemon with an explicit `RUNTIMED_SOCKET_PATH`.
  */

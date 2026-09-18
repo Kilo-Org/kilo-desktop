@@ -2,14 +2,14 @@ import {
 	FeatureError,
 	createWorkspaceChangeFilter,
 	type MainSdkLogger,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 import type {
 	FileChange,
 	FileChangeType,
 	WorkspaceFileChangeEvent,
 	WorkspaceWatchFilter,
 	WatcherDirectoryStatus,
-} from "@anaconda-agentic-desktop/contracts";
+} from "@kilo-desktop/contracts";
 
 import { watcherIgnorePatterns } from "./default-excludes.js";
 import { normalizeNFC, normalizeWindowsRootPath, remapRealPath } from "./path-normalization.js";

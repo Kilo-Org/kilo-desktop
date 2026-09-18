@@ -2,7 +2,7 @@ import { cleanup, render } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
-import { createLayout, type Arrangement } from "@anaconda-agentic-desktop/pane-layout";
+import { createLayout, type Arrangement } from "@kilo-desktop/pane-layout";
 import { ChatPaneCanvas } from "./ChatPaneCanvas.js";
 
 afterEach(cleanup);

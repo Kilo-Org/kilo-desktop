@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig, loadEnv } from "vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { externalizeDeps } from "@anaconda-agentic-desktop/vite-plugin-externalize-deps";
+import { externalizeDeps } from "@kilo-desktop/vite-plugin-externalize-deps";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -34,12 +34,12 @@ export default defineConfig(({ command }) => {
 				include: ["electron", "better-sqlite3", "node-pty", "@vscode/windows-ca-certs"],
 				// Workspace packages are `workspace:*` / `link:` deps that must stay
 				// bundled (not resolvable runtime modules on disk).
-				exclude: [/^@anaconda-agentic-desktop\/.+$/],
+				exclude: [/^@kilo-desktop\/.+$/],
 			}),
 			sentryVitePlugin({
 				authToken: process.env.SENTRY_AUTH_TOKEN,
 				org: "anaconda-nq",
-				project: "agentic-desktop",
+				project: "kilo-desktop",
 				release: {
 					name: `${appInfo.name}@${appInfo.version}`,
 					deploy: {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createLinkedFakeSdkPair } from "@anaconda-agentic-desktop/testing";
-import type { FakeMainSdk } from "@anaconda-agentic-desktop/testing";
+import { createLinkedFakeSdkPair } from "@kilo-desktop/testing";
+import type { FakeMainSdk } from "@kilo-desktop/testing";
 
 import type { EnvironmentsCapabilities } from "../contracts/capabilities.js";
 

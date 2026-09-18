@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Command,
 	CommandEmpty,
@@ -8,12 +8,8 @@ import {
 	CommandInput,
 	CommandItem,
 	CommandList,
-} from "@anaconda-agentic-desktop/ui/components/command";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@anaconda-agentic-desktop/ui/components/popover";
+} from "@kilo-desktop/ui/components/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 
 /** Sentinel for the "Latest" choice (caller omits an explicit python spec). */

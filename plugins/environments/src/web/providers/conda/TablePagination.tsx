@@ -8,8 +8,8 @@ import {
 	PaginationLink,
 	PaginationNext,
 	PaginationPrevious,
-} from "@anaconda-agentic-desktop/ui/components/pagination";
-import { Field, FieldLabel } from "@anaconda-agentic-desktop/ui/components/field";
+} from "@kilo-desktop/ui/components/pagination";
+import { Field, FieldLabel } from "@kilo-desktop/ui/components/field";
 import {
 	Select,
 	SelectContent,
@@ -17,8 +17,8 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@anaconda-agentic-desktop/ui/components/select";
-import { cn } from "@anaconda-agentic-desktop/ui/lib/utils";
+} from "@kilo-desktop/ui/components/select";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { computePageNumbers } from "./compute-page-numbers.js";
 

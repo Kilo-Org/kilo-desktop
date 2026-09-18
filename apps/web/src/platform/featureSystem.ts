@@ -1,17 +1,13 @@
-import { createFeatureSystem, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+import { createFeatureSystem, type FeatureSystem } from "@kilo-desktop/sdk-react";
 
-import type {
-	AuthSession,
-	LocalApi,
-	TelemetryTrackInput,
-} from "@anaconda-agentic-desktop/contracts";
+import type { AuthSession, LocalApi, TelemetryTrackInput } from "@kilo-desktop/contracts";
 import type {
 	FeatureEvent,
 	FeatureFlagMap,
 	FeatureRegistration,
 	SdkNavigation,
 	ShellDelegates,
-} from "@anaconda-agentic-desktop/feature-sdk";
+} from "@kilo-desktop/feature-sdk";
 
 import { getDesktopBridge } from "./desktopBridge.js";
 import { openFeaturePort } from "./featurePorts.js";

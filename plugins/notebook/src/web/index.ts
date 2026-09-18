@@ -1,4 +1,4 @@
-import type { MainSdk, SDK } from "@anaconda-agentic-desktop/feature-sdk";
+import type { MainSdk, SDK } from "@kilo-desktop/feature-sdk";
 
 import { notebookBrowserRegister } from "./browserRegister.js";
 import {

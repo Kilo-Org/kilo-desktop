@@ -1,13 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import type { LocalApi } from "@anaconda-agentic-desktop/contracts";
+import type { LocalApi } from "@kilo-desktop/contracts";
 
 import { PluginProviderStack } from "@/features/plugin-providers";
 import { createDesktopQueryClient } from "@/lib/query/client";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
 import { UpdateProvider } from "@/platform/updates/UpdateProvider";
-import { SdkProvider, type FeatureSystem } from "@anaconda-agentic-desktop/sdk-react";
+import { SdkProvider, type FeatureSystem } from "@kilo-desktop/sdk-react";
 import { router } from "@/router";
 
 type AppProvidersProps = {

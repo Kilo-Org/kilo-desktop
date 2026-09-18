@@ -11,7 +11,7 @@ describe("track object publication", () => {
 		const workingDirectory = await mkdtemp(path.join(tmpdir(), "track-publication-test-"));
 		const artifactDirectory = path.join(workingDirectory, "make", "deb", "linux", "x64");
 		await mkdir(artifactDirectory, { recursive: true });
-		const artifact = path.join(artifactDirectory, "anaconda-agentic-desktop_1.2.3_amd64.deb");
+		const artifact = path.join(artifactDirectory, "kilo-desktop_1.2.3_amd64.deb");
 		const notesFile = path.join(workingDirectory, "1.2.3.json");
 		await writeFile(artifact, "artifact");
 		await writeFile(notesFile, '{"schemaVersion":1}\n');
@@ -48,10 +48,10 @@ describe("track object publication", () => {
 		);
 
 		expect(copies.map(({ key }) => key)).toEqual([
-			"anaconda-agentic-desktop/latest/release-notes/1.2.3.json",
-			"anaconda-agentic-desktop/latest/latest/linux/x64/anaconda-agentic-desktop.deb",
-			"anaconda-agentic-desktop/latest/release-notes/latest.json",
-			"anaconda-agentic-desktop/latest/latest.json",
+			"kilo-desktop/latest/release-notes/1.2.3.json",
+			"kilo-desktop/latest/latest/linux/x64/kilo-desktop.deb",
+			"kilo-desktop/latest/release-notes/latest.json",
+			"kilo-desktop/latest/latest.json",
 		]);
 		expect(copies[0]).toMatchObject({
 			cacheControl: "public,max-age=31536000,immutable",
@@ -65,16 +65,16 @@ describe("track object publication", () => {
 			track: "stable",
 			version: "1.2.3",
 			releaseNotesUrl:
-				"https://downloads.example.test/anaconda-agentic-desktop/latest/release-notes/1.2.3.json",
+				"https://downloads.example.test/kilo-desktop/latest/release-notes/1.2.3.json",
 			downloads: [
 				{
 					arch: "x64",
-					fileName: "anaconda-agentic-desktop.deb",
+					fileName: "kilo-desktop.deb",
 					platform: "linux",
 					sha256: "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
 					size: 8,
 					type: "deb",
-					url: "https://downloads.example.test/anaconda-agentic-desktop/latest/linux/x64/anaconda-agentic-desktop_1.2.3_amd64.deb",
+					url: "https://downloads.example.test/kilo-desktop/latest/linux/x64/kilo-desktop_1.2.3_amd64.deb",
 				},
 			],
 		});

@@ -1,7 +1,7 @@
 import { ChevronLeftIcon } from "lucide-react";
 
-import { Button } from "@anaconda-agentic-desktop/ui/components/button";
-import { DialogFooter } from "@anaconda-agentic-desktop/ui/components/dialog";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { DialogFooter } from "@kilo-desktop/ui/components/dialog";
 
 type OnboardingFooterProps = {
 	showBack: boolean;

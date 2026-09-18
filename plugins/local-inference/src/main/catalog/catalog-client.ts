@@ -1,4 +1,4 @@
-import { FeatureError, type MainSdkFetch } from "@anaconda-agentic-desktop/feature-sdk/main";
+import { FeatureError, type MainSdkFetch } from "@kilo-desktop/feature-sdk/main";
 
 import type { ModelCatalog } from "../../contracts/schemas.js";
 

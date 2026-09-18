@@ -4,7 +4,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findReleaseUpdateArtifact } from "./smoke-release-artifact.js";
+import {
+	findReleaseUpdateArtifact,
+	windowsAuthenticodeCheckEnv,
+} from "./smoke-release-artifact.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -48,5 +51,17 @@ describe("release update artifact selection", () => {
 		await expect(findReleaseUpdateArtifact(makeDirectory, "darwin")).rejects.toThrow(
 			"Expected exactly one macOS update ZIP",
 		);
+	});
+});
+
+describe("Windows Authenticode smoke environment", () => {
+	it("overrides PowerShell 7 module paths so Windows PowerShell can load Authenticode", () => {
+		const env = windowsAuthenticodeCheckEnv("C:\\Kilo Preview.exe", {
+			SystemRoot: "D:\\Windows",
+			PSModulePath: "C:\\Program Files\\PowerShell\\7\\Modules",
+		});
+
+		expect(env.KILO_RELEASE_SMOKE_EXECUTABLE).toBe("C:\\Kilo Preview.exe");
+		expect(env.PSModulePath).toBe("D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules");
 	});
 });

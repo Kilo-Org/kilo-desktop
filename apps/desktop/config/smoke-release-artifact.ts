@@ -13,14 +13,20 @@ const desktopRoot = path.resolve(import.meta.dirname, "..");
 const makeDirectory = path.join(desktopRoot, "out", "make");
 const readyTimeoutMs = 90_000;
 
-export function windowsAuthenticodeCheckEnv(
-	executable: string,
-	parentEnv: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv {
-	const systemRoot = parentEnv.SystemRoot ?? parentEnv.SYSTEMROOT ?? "C:\\Windows";
+export function windowsAuthenticodeCheck(executable: string): {
+	file: string;
+	args: string[];
+	env: NodeJS.ProcessEnv;
+} {
 	return {
-		KILO_RELEASE_SMOKE_EXECUTABLE: executable,
-		PSModulePath: path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
+		file: "pwsh",
+		args: [
+			"-NoProfile",
+			"-NonInteractive",
+			"-Command",
+			'$signature = Get-AuthenticodeSignature -LiteralPath $env:KILO_RELEASE_SMOKE_EXECUTABLE; if ($signature.Status -ne "Valid") { throw "Invalid release executable signature: $($signature.Status) $($signature.StatusMessage)" }',
+		],
+		env: { KILO_RELEASE_SMOKE_EXECUTABLE: executable },
 	};
 }
 
@@ -107,16 +113,8 @@ export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<v
 			await mkdir(extractedDirectory);
 			await execa("tar", ["-xf", artifact, "-C", extractedDirectory]);
 			executable = await findFile(extractedDirectory, `${identity.executableName}.exe`);
-			await execa(
-				"powershell.exe",
-				[
-					"-NoProfile",
-					"-NonInteractive",
-					"-Command",
-					'$signature = Get-AuthenticodeSignature -LiteralPath $env:KILO_RELEASE_SMOKE_EXECUTABLE; if ($signature.Status -ne "Valid") { throw "Invalid release executable signature: $($signature.Status)" }',
-				],
-				{ env: windowsAuthenticodeCheckEnv(executable) },
-			);
+			const authenticode = windowsAuthenticodeCheck(executable);
+			await execa(authenticode.file, authenticode.args, { env: authenticode.env });
 		}
 
 		const readyFile = path.join(temporaryDirectory, "ready");

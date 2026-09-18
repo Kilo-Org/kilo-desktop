@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { execa, type ExecaError } from "execa";
 
@@ -36,6 +36,15 @@ function parseForgeCommand(value: string | undefined): ForgeCommand {
 	throw new Error(
 		`Unsupported Forge command: ${value ?? "(missing)"}. Expected ${FORGE_COMMANDS.join(", ")}.`,
 	);
+}
+
+/**
+ * pnpm `run <script> -- --flag` re-inserts `--` before extra args. Forge treats
+ * `--` as end-of-options, so `--dry-run` would be ignored and a live S3 publish
+ * would run instead of writing `out/publish-dry-run`.
+ */
+export function toForgeArgs(args: readonly string[]): string[] {
+	return args.filter((arg) => arg !== "--");
 }
 
 /**
@@ -109,10 +118,16 @@ async function runForgeInvocation(command: ForgeCommand, forgeArgs: string[]): P
 	}
 }
 
-const [command, ...forgeArgs] = process.argv.slice(2);
-const parsedCommand = parseForgeCommand(command);
+async function main(): Promise<void> {
+	const [command, ...forgeArgs] = process.argv.slice(2);
+	const parsedCommand = parseForgeCommand(command);
 
-await applyWindowsPackagingTemp();
-await withStampedReleasePackageVersions(workspaceRoot, process.env, async () => {
-	await runForgeInvocation(parsedCommand, forgeArgs);
-});
+	await applyWindowsPackagingTemp();
+	await withStampedReleasePackageVersions(workspaceRoot, process.env, async () => {
+		await runForgeInvocation(parsedCommand, toForgeArgs(forgeArgs));
+	});
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+	await main();
+}

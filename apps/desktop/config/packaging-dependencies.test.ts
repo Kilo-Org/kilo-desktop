@@ -163,6 +163,7 @@ describe("packaged production dependencies", () => {
 			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
 			"utf8",
 		);
+		const runPackaging = readFileSync(path.join(desktopRoot, "config/run-packaging.ts"), "utf8");
 		expect(publish).toContain("pnpm --filter @kilo-desktop/desktop run publish -- --dry-run");
 		expect(publish).toContain("pnpm --filter @kilo-desktop/desktop run release:smoke");
 		expect(publish).toContain(
@@ -171,6 +172,8 @@ describe("packaged production dependencies", () => {
 		expect(publish.indexOf("run release:smoke")).toBeLessThan(
 			publish.indexOf("publish --from-dry-run"),
 		);
+		// pnpm re-inserts `--` before extra script args; Forge must still see --dry-run.
+		expect(runPackaging).toContain("toForgeArgs(forgeArgs)");
 	});
 
 	it("finishes staging application content before ASAR integrity is sealed", () => {

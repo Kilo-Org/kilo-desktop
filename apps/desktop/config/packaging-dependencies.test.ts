@@ -127,6 +127,11 @@ describe("packaged production dependencies", () => {
 		expect(existsSync(bridgePayload)).toBe(false);
 	});
 
+	it("pins zod to one major so pnpm 12 deploy is unambiguous", () => {
+		const workspace = readFileSync(path.join(workspaceRoot, "pnpm-workspace.yaml"), "utf8");
+		expect(workspace).toContain("zod: ^4.4.3");
+	});
+
 	it("stages the isolated WebMCP runtime from a workspace-local deploy", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		// Electron-packager dest is outside the repo. `pnpm deploy --offline`

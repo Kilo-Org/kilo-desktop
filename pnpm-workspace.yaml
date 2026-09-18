@@ -46,6 +46,10 @@ overrides:
   "@assistant-ui/core": "0.3.5"
   "@assistant-ui/store": "0.3.9"
   "@assistant-ui/tap": "0.9.12"
+  # pnpm 12 deploy fails with ERR_PNPM_DEPLOY_AMBIGUOUS_PEER when workspace
+  # packages peer on zod and the graph contains both 3.x (MCP SDK 1 /
+  # webmcp-local-relay) and catalog 4.x.
+  zod: ^4.4.3
 
 allowBuilds:
   electron: true

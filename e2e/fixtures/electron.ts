@@ -188,6 +188,9 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		await page.evaluate(() => {
 			globalThis.location.hash = "#/";
 		});
+		// Hash reset remounts chat; wait out the redirect so the next spec
+		// does not click New Chat against a tearing-down runtime.
+		await page.waitForURL("kilo-desktop://app/#/plugins/chat");
 		await use(sharedApp);
 	},
 

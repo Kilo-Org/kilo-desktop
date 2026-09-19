@@ -99,7 +99,7 @@ describe("NewChatButton", () => {
 		expect(screen.getByRole("button").elements()).toHaveLength(1);
 	});
 
-	it("navigates to chat without waiting for the thread switch", () => {
+	it("creates a chat from the button", async () => {
 		const { navigate, screen } = renderNewChatButton();
 
 		fireEvent.click(screen.getByRole("button", { name: "New Chat" }).element());

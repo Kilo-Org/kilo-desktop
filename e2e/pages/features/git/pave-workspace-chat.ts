@@ -38,9 +38,24 @@ export async function paveWorkspaceChat(folderPath: string, name: string): Promi
 
 	// Worker fixture resets to `#/`; the shell redirects that to chat.
 	await getPage().waitForURL("kilo-desktop://app/#/plugins/chat");
-	await click(getLocatorByTestId("new-chat"));
 	await expectElementToBeVisible(
-		getLocatorByTestId("kilo-composer-draft-footer"),
+		getLocatorByTestId("new-chat"),
+		"New Chat should be available before selecting a workspace",
+	);
+	await expectElementToBeVisible(
+		getLocatorByRole("textbox", { name: "Message input" }),
+		"Composer should be ready before selecting a workspace",
+	);
+
+	const draftFooter = getLocatorByTestId("kilo-composer-draft-footer");
+	// Shared worker apps can already be in draft after the hash reset. Clicking
+	// New Chat again races lazy session init (status leaves "new") and hides
+	// this footer for the rest of the 15s wait.
+	if ((await draftFooter.count()) === 0) {
+		await click(getLocatorByTestId("new-chat"));
+	}
+	await expectElementToBeVisible(
+		draftFooter,
 		"New Chat should enter draft state before selecting a workspace",
 	);
 	await click(getLocatorByRole("combobox", { name: "Select workspace" }));

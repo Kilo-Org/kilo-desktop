@@ -15,13 +15,13 @@ describe("createNotebookResolveAsset", () => {
 		);
 	});
 
-	it("maps the nteract MCP bundle beneath packaged resources", () => {
+	it("maps the direct Kilo plugin beneath packaged resources", () => {
 		const resolveAsset = createNotebookResolveAsset({
 			isPackaged: true,
 			packagedResourcesPath: "/Apps/Kilo.app/Contents/Resources",
 		});
-		expect(resolveAsset("resources/nteract-mcp/darwin-arm64/nteract-mcp")).toBe(
-			path.join("/Apps/Kilo.app/Contents/Resources", "nteract-mcp/darwin-arm64/nteract-mcp"),
+		expect(resolveAsset("build/kilo-plugin/index.js")).toBe(
+			path.join("/Apps/Kilo.app/Contents/Resources", "kilo-plugin/index.js"),
 		);
 	});
 
@@ -43,8 +43,8 @@ describe("createNotebookResolveAsset", () => {
 		expect(resolveAsset("build/notebook")).toContain(
 			path.join("plugins", "notebook", "build", "notebook"),
 		);
-		expect(resolveAsset("resources/nteract-mcp/linux-x64/nteract-mcp")).toContain(
-			path.join("plugins", "notebook", "resources", "nteract-mcp", "linux-x64", "nteract-mcp"),
+		expect(resolveAsset("build/kilo-plugin/index.js")).toContain(
+			path.join("plugins", "notebook", "build", "kilo-plugin", "index.js"),
 		);
 	});
 });

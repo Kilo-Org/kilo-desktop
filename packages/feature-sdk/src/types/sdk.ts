@@ -723,6 +723,14 @@ export interface ToolAnnotations {
 	openWorldHint?: boolean;
 }
 
+/** Trusted caller metadata supplied by an AI-runtime adapter, never by tool arguments. */
+export interface ToolInvocationContext {
+	/** Kilo session that originated the invocation, when the Kilo adapter supplied it. */
+	readonly kiloSessionId?: string;
+	/** Kilo tool-call id used to correlate concurrent invocations. */
+	readonly kiloCallId?: string;
+}
+
 /**
  * A tool a feature exposes to an AI runtime (e.g. the WebMCP bridge).
  *
@@ -755,7 +763,7 @@ export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
 	 * unexposed unless external agent access is intended.
 	 */
 	exposeToModelContext?: boolean;
-	handler: (args: TArgs) => TResult | Promise<TResult>;
+	handler: (args: TArgs, context: ToolInvocationContext) => TResult | Promise<TResult>;
 }
 
 /** A tool as stored in the registry, with its owning feature and namespaced id. */

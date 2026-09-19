@@ -53,6 +53,38 @@ describe("ToolRegistry", () => {
 		});
 	});
 
+	it("passes caller context to each concurrent invocation", async () => {
+		const registry = new ToolRegistry();
+		registry.register("notebook", {
+			name: "open",
+			description: "Open notebook",
+			handler: async (_args, context) => {
+				await Promise.resolve();
+				return context;
+			},
+		});
+
+		await expect(
+			Promise.all([
+				registry.invoke(
+					"notebook",
+					"open",
+					{},
+					{ kiloSessionId: "session-a", kiloCallId: "call-a" },
+				),
+				registry.invoke(
+					"notebook",
+					"open",
+					{},
+					{ kiloSessionId: "session-b", kiloCallId: "call-b" },
+				),
+			]),
+		).resolves.toEqual([
+			{ kiloSessionId: "session-a", kiloCallId: "call-a" },
+			{ kiloSessionId: "session-b", kiloCallId: "call-b" },
+		]);
+	});
+
 	it("invoke throws for unknown tools", async () => {
 		const registry = new ToolRegistry();
 		await expect(registry.invoke("todos", "missing", {})).rejects.toThrow(/Tool not found/);

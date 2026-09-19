@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import { z } from "zod";
@@ -24,7 +25,7 @@ import {
 	type ElectronNotebookHostServiceOptions,
 } from "./runtime/ElectronNotebookHostService.js";
 import { resolveNotebookBundleRoot } from "./embedding/notebook-bundle-path.js";
-import { reconcileRuntMcpConfig } from "./integrations/kilo-mcp-config.js";
+import { reconcileNotebookKiloPlugin } from "./integrations/kilo-plugin-config.js";
 import type { BuildChannel } from "./runtime/socket-path.js";
 import { findRuntimedArtifact, NTERACT_RELEASE } from "../packaging/artifacts.js";
 
@@ -32,6 +33,12 @@ const connectionArgsSchema = z.object({
 	notebookId: z.string().uuid(),
 	sessionId: z.string().min(1).max(512),
 	title: z.string().min(1).max(512),
+	workingDirectory: z
+		.string()
+		.min(1)
+		.max(32_768)
+		.refine((value) => path.isAbsolute(value), "Working directories must be absolute.")
+		.optional(),
 	notebookPath: z
 		.string()
 		.min(1)
@@ -49,13 +56,27 @@ export interface NotebookFeatureOptions {
 	/** Selects the user-owned singleton. Defaults to the pinned release channel. */
 	readonly runtimeChannel?: BuildChannel;
 	readonly resolveBundleRoot?: () => string | undefined;
-	readonly resolveNteractMcpBinary?: () => string | undefined;
-	readonly resolveRuntBinary?: () => string | undefined;
+	readonly resolveKiloPluginEntry?: () => string | undefined;
+	readonly resolveRuntimedNodeEntry?: () => string | undefined;
 	readonly resolveRuntimedBinary?: () => string | undefined;
 	/** Test seam for the native host service. */
 	readonly createHostService?: (
 		options: ElectronNotebookHostServiceOptions,
 	) => ElectronNotebookHostServiceLike;
+}
+
+export function translateAsarToUnpackedPath(inputPath: string): string {
+	const asarSegment = `${path.sep}app.asar${path.sep}`;
+	if (!inputPath.includes(asarSegment)) return inputPath;
+	return inputPath.replace(asarSegment, `${path.sep}app.asar.unpacked${path.sep}`);
+}
+
+function defaultRuntimedNodeEntry(): string | undefined {
+	try {
+		return translateAsarToUnpackedPath(createRequire(import.meta.url).resolve("@runtimed/node"));
+	} catch {
+		return undefined;
+	}
 }
 
 export interface ElectronNotebookHostServiceLike {
@@ -109,21 +130,43 @@ export async function mainRegister(
 		options.resolveBundleRoot ??
 		(() => resolveNotebookBundleRoot({ candidate: mainSdk.resolvePluginAsset("build/notebook") }));
 
-	await reconcileRuntMcpConfig(mainSdk, {
-		runtimeChannel,
-		logger: mainSdk.logger,
-		...(socketPath ? { customSocketPath: hostService.socketPath } : {}),
-		...(options.resolveNteractMcpBinary
-			? { resolveNteractMcpBinary: options.resolveNteractMcpBinary }
-			: {}),
-		...(options.resolveRuntBinary ? { resolveRuntBinary: options.resolveRuntBinary } : {}),
-	});
+	const resolveKiloPluginEntry =
+		options.resolveKiloPluginEntry ??
+		(() => {
+			const candidate = mainSdk.resolvePluginAsset("build/kilo-plugin/index.js");
+			return existsSync(candidate) ? candidate : undefined;
+		});
+	const pluginPath = resolveKiloPluginEntry();
+	const runtimedNodePath = (options.resolveRuntimedNodeEntry ?? defaultRuntimedNodeEntry)();
+	if (pluginPath && runtimedNodePath) {
+		try {
+			const disposeKiloEnvironment = await reconcileNotebookKiloPlugin(mainSdk, {
+				pluginPath,
+				runtimedNodePath,
+				socketPath: hostService.socketPath,
+				logger: mainSdk.logger,
+			});
+			mainSdk.onDispose(disposeKiloEnvironment);
+		} catch (error) {
+			mainSdk.logger.warn(
+				`Notebook Kilo plugin configuration failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	} else {
+		mainSdk.logger.warn(
+			"Skipping notebook Kilo plugin configuration: the plugin bundle or @runtimed/node entry is unavailable.",
+		);
+	}
 
 	mainSdk.ports.handle("host", connectionArgsSchema, (port, args, context) => {
-		const { notebookPath, ...requiredArgs } = args;
+		const { notebookPath, workingDirectory, ...requiredArgs } = args;
 		return hostService.connect(
 			port,
-			{ ...requiredArgs, ...(notebookPath ? { notebookPath } : {}) },
+			{
+				...requiredArgs,
+				...(notebookPath ? { notebookPath } : {}),
+				...(workingDirectory ? { workingDirectory } : {}),
+			},
 			context.senderId,
 		);
 	});

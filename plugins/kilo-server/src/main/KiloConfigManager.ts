@@ -250,10 +250,11 @@ function tryApplyModification(
 /**
  * Owns serialized mutations of Desktop's Kilo config and its ownership sidecar.
  * Unknown entries and JSONC formatting remain user-owned; only sidecar-owned
- * MCP and provider entries may be updated or removed, and each section-qualified
- * entry is bound to the source that first claimed it. Flat historical ownership
- * records are migrated as MCP ownership. The queue prevents independent features
- * and the boot-time WebMCP initialization from losing each other's writes.
+ * MCP and provider entries may be updated or removed, and MCP entries may be
+ * enumerated by their owning source. Each section-qualified entry is bound to
+ * the source that first claimed it. Flat historical ownership records are
+ * migrated as MCP ownership. The queue prevents independent features and the
+ * boot-time WebMCP initialization from losing each other's writes.
  */
 export class KiloConfigManager {
 	readonly #configDirectory: string;
@@ -276,13 +277,32 @@ export class KiloConfigManager {
 		sourceId: string,
 		entryName: string,
 		entry: KiloMcpEntry,
+		options?: { readonly adoptExisting?: (current: unknown) => boolean },
 	): Promise<KiloConfigMutationOutcome> {
 		const snapshot = structuredClone(entry);
-		return this.#enqueue(() => this.#updateEntry("mcp", sourceId, entryName, snapshot));
+		return this.#enqueue(() => this.#updateEntry("mcp", sourceId, entryName, snapshot, options));
 	}
 
-	removeMcpEntry(sourceId: string, entryName: string): Promise<KiloConfigMutationOutcome> {
-		return this.#enqueue(() => this.#updateEntry("mcp", sourceId, entryName, undefined));
+	removeMcpEntry(
+		sourceId: string,
+		entryName: string,
+		options?: { readonly adoptExisting?: (current: unknown) => boolean },
+	): Promise<KiloConfigMutationOutcome> {
+		return this.#enqueue(() => this.#updateEntry("mcp", sourceId, entryName, undefined, options));
+	}
+
+	listOwnedMcpEntryIds(sourceId: string): Promise<readonly string[]> {
+		return this.#enqueue(async () => {
+			if (!sourceId.trim()) throw new Error("MCP source id is empty");
+			const sidecarResult = await readSidecar(this.#configDirectory);
+			if (sidecarResult.requiresMigration) {
+				await migrateSidecar(this.#configDirectory, sidecarResult.sidecar);
+			}
+			const prefix = "mcp:";
+			return sidecarResult.sidecar.ownedEntryKeys
+				.filter((key) => key.startsWith(prefix) && sidecarResult.sidecar.owners[key] === sourceId)
+				.map((key) => key.slice(prefix.length));
+		});
 	}
 
 	setProviderEntry(
@@ -298,9 +318,7 @@ export class KiloConfigManager {
 		return this.#enqueue(() => this.#updateEntry("provider", sourceId, entryName, undefined));
 	}
 
-	#enqueue(
-		operation: () => Promise<KiloConfigMutationOutcome>,
-	): Promise<KiloConfigMutationOutcome> {
+	#enqueue<T>(operation: () => Promise<T>): Promise<T> {
 		const result = this.#pending.then(operation, operation);
 		this.#pending = result.then(
 			() => undefined,
@@ -314,6 +332,7 @@ export class KiloConfigManager {
 		sourceId: string,
 		entryName: string,
 		entry: KiloConfigEntry | undefined,
+		options?: { readonly adoptExisting?: (current: unknown) => boolean },
 	): Promise<KiloConfigMutationOutcome> {
 		if (!sourceId.trim()) {
 			return { kind: "skipped-error", reason: `${section} source id is empty` };
@@ -344,6 +363,11 @@ export class KiloConfigManager {
 		const key = ownershipKey(section, entryName);
 		const isOwnedByDesktop = sidecar.ownedEntryKeys.includes(key);
 		const owner = sidecar.owners[key];
+		const canAdopt =
+			!isOwnedByDesktop &&
+			currentEntry !== undefined &&
+			options?.adoptExisting?.(currentEntry) === true;
+		const ownsEntry = isOwnedByDesktop || canAdopt;
 
 		if (isOwnedByDesktop && owner !== undefined && owner !== sourceId) {
 			return { kind: "skipped", reason: "owned-by-other-source" };
@@ -356,7 +380,7 @@ export class KiloConfigManager {
 				}
 				return { kind: "skipped", reason: "nothing-to-remove" };
 			}
-			if (!isOwnedByDesktop) {
+			if (!ownsEntry) {
 				this.#logger.info(
 					`Leaving ${section}["${entryName}"] alone: entry is not owned by Desktop.`,
 				);
@@ -369,7 +393,7 @@ export class KiloConfigManager {
 			return { kind: "removed", reason: "explicit" };
 		}
 
-		if (currentEntry !== undefined && !isOwnedByDesktop) {
+		if (currentEntry !== undefined && !ownsEntry) {
 			this.#logger.info(`Leaving ${section}["${entryName}"] alone: entry is not owned by Desktop.`);
 			return { kind: "skipped", reason: "entry-not-owned" };
 		}

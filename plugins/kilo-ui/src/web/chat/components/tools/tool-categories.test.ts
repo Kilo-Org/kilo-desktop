@@ -374,17 +374,54 @@ describe("MCP activity grouping", () => {
 		expect(getKindMeta("mcp:atlassian").icon).not.toBe(NotebookIcon);
 	});
 
-	it("presents notebooks as a Notebooks group with the notebook tab icon", () => {
+	it("presents notebooks as a Notebook group with the notebook tab icon", () => {
 		expect(getGroupKeyForTool("notebooks_create_cell")).toBe("group-mcp-notebooks");
 		expect(getActivityKind({ type: "tool-call", toolName: "notebooks_create_cell" })).toBe(
 			"mcp:notebooks",
 		);
 		const meta = getKindMeta("mcp:notebooks");
-		expect(meta.label).toBe("Notebooks");
+		expect(meta.label).toBe("Notebook");
 		expect(meta.icon).toBe(NotebookIcon);
-		expect(meta.liveLabel({ count: 1, files: 0 })).toBe("Notebooks...");
-		expect(meta.doneLabel({ count: 1, files: 0 })).toBe("Notebooks");
+		expect(meta.liveLabel({ count: 1, files: 0 })).toBe("Notebook...");
+		expect(meta.doneLabel({ count: 1, files: 0 })).toBe("Notebook");
 		expect(meta.circleClassName).toContain("teal");
+	});
+
+	it("uses the tool display name for a single notebooks tool", () => {
+		const parts: ActivityPart[] = [
+			{
+				type: "tool-call",
+				toolName: "notebooks_create_cell",
+				status: { type: "running" },
+			},
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "mcp:notebooks",
+			indices: [0],
+			running: true,
+			requiresAction: false,
+		});
+
+		expect(stats.tool).toBe("Create cell");
+		expect(getKindMeta("mcp:notebooks").liveLabel(stats)).toBe("Notebook Create cell...");
+		expect(getKindMeta("mcp:notebooks").doneLabel(stats)).toBe("Notebook Create cell");
+	});
+
+	it("keeps the group label when more than one notebooks tool is running", () => {
+		const parts: ActivityPart[] = [
+			{ type: "tool-call", toolName: "notebooks_create_cell" },
+			{ type: "tool-call", toolName: "notebooks_execute_cell" },
+		];
+		const stats = getSegmentStats(parts, {
+			kind: "mcp:notebooks",
+			indices: [0, 1],
+			running: true,
+			requiresAction: false,
+		});
+
+		expect(stats.tool).toBeUndefined();
+		expect(getKindMeta("mcp:notebooks").liveLabel(stats)).toBe("Notebook...");
+		expect(getKindMeta("mcp:notebooks").doneLabel(stats)).toBe("Notebook");
 	});
 
 	it("gives notebooks tools display names without the server prefix", () => {

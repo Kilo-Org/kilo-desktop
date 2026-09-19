@@ -20,6 +20,16 @@ import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
 import { BROWSER_PARTITION } from "./ElectronBrowserHost.js";
 
+type WebMcpRendezvous = {
+	readonly port: number;
+	readonly relayId: string;
+};
+
+const DEFAULT_WEBMCP_RENDEZVOUS: WebMcpRendezvous = {
+	port: 9345,
+	relayId: "kilo-desktop",
+};
+
 /** Matches the app header band (`h-12` = 48px). */
 const TITLEBAR_HEIGHT = 48;
 const TITLEBAR_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1;
@@ -50,6 +60,7 @@ export class ElectronWindow {
 		private readonly electronShell: ElectronShell,
 		private readonly shouldUseDarkColors: () => boolean,
 		private readonly themeId: () => string | undefined = () => undefined,
+		private readonly webmcpRendezvous: WebMcpRendezvous = DEFAULT_WEBMCP_RENDEZVOUS,
 	) {}
 
 	create(input: {
@@ -335,6 +346,11 @@ export class ElectronWindow {
 				nodeIntegration: false,
 				webviewTag: false,
 				...options?.webPreferences,
+				additionalArguments: [
+					`--kilo-webmcp-port=${this.webmcpRendezvous.port}`,
+					`--kilo-webmcp-relay-id=${this.webmcpRendezvous.relayId}`,
+					...(options?.webPreferences?.additionalArguments ?? []),
+				],
 			},
 		});
 		window.webContents.on("will-attach-webview", (event, webPreferences, params) => {

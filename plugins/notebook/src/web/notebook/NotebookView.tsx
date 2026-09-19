@@ -104,7 +104,10 @@ export interface NotebookViewProps {
 }
 
 export function notebookHostConnectionArgs(
-	props: Pick<NotebookViewProps, "instanceId" | "sessionId" | "title" | "metadata">,
+	props: Pick<
+		NotebookViewProps,
+		"instanceId" | "sessionId" | "title" | "workspaceDirectory" | "metadata"
+	>,
 ) {
 	const notebookId = notebookIdFromTab(props.instanceId, props.metadata);
 	if (!notebookId) throw new Error("The notebook is still opening.");
@@ -114,6 +117,7 @@ export function notebookHostConnectionArgs(
 		sessionId: props.sessionId,
 		title: props.title,
 		...(notebookPath ? { notebookPath } : {}),
+		...(props.workspaceDirectory ? { workingDirectory: props.workspaceDirectory } : {}),
 	};
 }
 
@@ -238,6 +242,7 @@ export function NotebookView({
 					instanceId,
 					sessionId,
 					title,
+					...(workspaceDirectory ? { workspaceDirectory } : {}),
 					...(metadata ? { metadata } : {}),
 				}),
 			);
@@ -265,7 +270,7 @@ export function NotebookView({
 			window.removeEventListener("message", onMessage);
 			if (!transferred) port?.close();
 		};
-	}, [frameSrc, instanceId, metadata, notebookId, sdk, sessionId, title]);
+	}, [frameSrc, instanceId, metadata, notebookId, sdk, sessionId, title, workspaceDirectory]);
 
 	useEffect(() => {
 		if (!frameSrc) return;

@@ -54,7 +54,7 @@ export interface AnacondaMcpServiceDeps {
  *
  * A successful reconcile manages two pieces of state:
  *
- * 1. Persist the MCP entry through `kiloService.mcpConfig` into Desktop's
+ * 1. Persist the MCP entry through `kiloService.configuration` into Desktop's
  *    app-owned `kilo.jsonc`. The Kilo plugin serializes atomic JSONC updates,
  *    preserves unknown entries/comments, and tracks which entries Desktop may
  *    remove. The Authorization header remains an environment template, so the
@@ -73,7 +73,7 @@ export interface AnacondaMcpServiceDeps {
 export class AnacondaMcpService {
 	readonly #status: ObservableValue<AnacondaMcpStatus>;
 	#envDisposer: (() => void) | null = null;
-	#mcpConfig: KiloServerCapabilities["kiloService"]["mcpConfig"] | null = null;
+	#configuration: KiloServerCapabilities["kiloService"]["configuration"] | null = null;
 	#reconciling = false;
 	#reconcilePending = false;
 	#disposed = false;
@@ -231,28 +231,36 @@ export class AnacondaMcpService {
 		url: string,
 		apiKey: string,
 	): Promise<void> {
-		await kilo.kiloService.mcpConfig.set(CONTRIBUTION_SOURCE_ID, MCP_ID, {
-			type: "remote",
-			url,
-			enabled: true,
-			headers: { Authorization: `Bearer {env:${MCP_ENV_VAR}}` },
+		await kilo.kiloService.configuration.set(CONTRIBUTION_SOURCE_ID, {
+			mcpEntries: {
+				[MCP_ID]: {
+					type: "remote",
+					url,
+					enabled: true,
+					headers: { Authorization: `Bearer {env:${MCP_ENV_VAR}}` },
+				},
+			},
+			plugins: {},
 		});
 		const envDisposer = kilo.kiloService.serverEnv.contribute(CONTRIBUTION_SOURCE_ID, {
 			[MCP_ENV_VAR]: apiKey,
 		});
 		this.#envDisposer = envDisposer;
-		this.#mcpConfig = kilo.kiloService.mcpConfig;
+		this.#configuration = kilo.kiloService.configuration;
 	}
 
 	async #teardown(): Promise<void> {
-		const mcpConfig =
-			this.#mcpConfig ??
-			this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server")?.kiloService.mcpConfig;
-		this.#mcpConfig = null;
+		const configuration =
+			this.#configuration ??
+			this.#deps.sdk.plugins.get<KiloServerCapabilities>("kilo-server")?.kiloService.configuration;
+		this.#configuration = null;
 		const envDisposer = this.#envDisposer;
 		this.#envDisposer = null;
 		try {
-			await mcpConfig?.remove(CONTRIBUTION_SOURCE_ID, MCP_ID);
+			await configuration?.set(CONTRIBUTION_SOURCE_ID, {
+				mcpEntries: {},
+				plugins: {},
+			});
 		} finally {
 			envDisposer?.();
 		}

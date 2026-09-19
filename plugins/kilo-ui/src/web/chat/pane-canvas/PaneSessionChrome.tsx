@@ -23,10 +23,10 @@ export const PaneSessionChrome: FC<{
 					render={
 						<Button
 							type="button"
-							variant="ghost"
+							variant="outline"
 							size="icon-sm"
 							className={cn(
-								"border-border/70 bg-background/30 text-muted-foreground rounded-md shadow-xs hover:border-border hover:bg-foreground/10 [-webkit-app-region:no-drag]",
+								"[-webkit-app-region:no-drag]",
 								carouselOn &&
 									"border-primary/35 bg-primary/15 text-primary shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--primary),transparent_65%)] hover:border-primary/45 hover:bg-primary/20 hover:text-primary",
 							)}

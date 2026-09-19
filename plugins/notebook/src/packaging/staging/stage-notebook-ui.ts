@@ -34,7 +34,12 @@ export const KILO_EMBED_THEME_SCRIPT_ATTR = "data-kilo-embed-theme";
  * embed flag to hide the rail; we own the staged bytes, so we inject CSS.
  * Surface colors come from the parent at runtime via the theme bridge script.
  */
-export const KILO_EMBED_CHROME_CSS = '[data-testid="notebook-rail"]{display:none!important}';
+export const KILO_EMBED_CHROME_CSS = [
+	'[data-testid="notebook-rail"]{display:none!important}',
+	"#root{font-size:12px}",
+	'#root :where(.text-sm,.text-base,button,input,select,textarea,[contenteditable="true"]){font-size:12px}',
+	"#root .cm-editor,#root .cm-content,#root .cm-gutters{font-size:12px}",
+].join("");
 
 const THEME_MESSAGE_TYPE = JSON.stringify(NOTEBOOK_THEME_MESSAGE_TYPE);
 const THEME_READY_TYPE = JSON.stringify(NOTEBOOK_THEME_READY_MESSAGE_TYPE);

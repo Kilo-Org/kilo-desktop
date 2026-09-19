@@ -40,6 +40,11 @@ export type KiloGetConnectionInput = z.infer<typeof kiloGetConnectionInputSchema
 export type KiloMcpEntry = Readonly<Record<string, unknown>>;
 export type KiloProviderEntry = Readonly<Record<string, unknown>>;
 
+export interface KiloConfigurationState {
+	readonly mcpEntries: Readonly<Record<string, KiloMcpEntry>>;
+	readonly plugins: Readonly<Record<string, string>>;
+}
+
 // ─── Contract ───────────────────────────────────────────────────────────────────
 
 export const kiloServerContract = defineContract({
@@ -54,8 +59,8 @@ export type KiloServerService = InferContract<typeof kiloServerContract>;
 
 /**
  * The service object exposed by the kilo-server plugin as a main-side capability.
- * Contains methods for env contribution, owned MCP/provider config persistence,
- * and server restart.
+ * Contains methods for env contribution, managed Kilo configuration, owned
+ * provider config persistence, and server restart.
  */
 export interface KiloServerCapabilityService {
 	readonly [key: string]: unknown;
@@ -66,16 +71,9 @@ export interface KiloServerCapabilityService {
 		 */
 		contribute(sourceId: string, env: Record<string, string>): () => void;
 	};
-	readonly mcpConfig: {
-		/**
-		 * Persist a Desktop-owned entry in the app-owned Kilo config. Unknown
-		 * entries and JSONC comments are preserved. Resolves after the atomic
-		 * write; a running Kilo server is restarted through the shared debouncer.
-		 * A source may update only entries it already owns.
-		 */
-		set(sourceId: string, entryId: string, entry: KiloMcpEntry): Promise<void>;
-		/** Remove an entry only when the ownership sidecar assigns it to this source. */
-		remove(sourceId: string, entryId: string): Promise<void>;
+	readonly configuration: {
+		/** Reconcile one source's complete desired state across Kilo's managed config files. */
+		set(sourceId: string, desired: KiloConfigurationState): Promise<void>;
 	};
 	readonly providerConfig: {
 		/**
@@ -101,9 +99,11 @@ export interface KiloServerCapabilityService {
  * ```ts
  * const kilo = mainSdk.plugins.get<KiloServerCapabilities>("kilo-server");
  * kilo?.kiloService.serverEnv.contribute("my-plugin", { MY_VAR: "value" });
- * await kilo?.kiloService.mcpConfig.set("my-plugin", "my-mcp", {
- *   type: "remote",
- *   url: "https://...",
+ * await kilo?.kiloService.configuration.set("my-plugin", {
+ *   mcpEntries: {
+ *     "my-mcp": { type: "remote", url: "https://..." },
+ *   },
+ *   plugins: {},
  * });
  * await kilo?.kiloService.providerConfig.set("my-plugin", "my-provider", {
  *   name: "My provider",

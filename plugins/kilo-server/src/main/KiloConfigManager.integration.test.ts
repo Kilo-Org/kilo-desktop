@@ -63,6 +63,17 @@ describe("KiloConfigManager", () => {
 		expect(sidecar.owners).toEqual({ "mcp:one": SOURCE_ONE, "mcp:two": SOURCE_TWO });
 	});
 
+	it("lists only MCP entries owned by the requested source", async () => {
+		const config = new KiloConfigManager(configDirectory);
+		await config.setMcpEntry(SOURCE_ONE, "one", { type: "remote" });
+		await config.setMcpEntry(SOURCE_ONE, "two", { type: "remote" });
+		await config.setMcpEntry(SOURCE_TWO, "other", { type: "remote" });
+		await config.setProviderEntry(SOURCE_ONE, "provider", { name: "Provider" });
+
+		await expect(config.listOwnedMcpEntryIds(SOURCE_ONE)).resolves.toEqual(["one", "two"]);
+		await expect(config.listOwnedMcpEntryIds(SOURCE_TWO)).resolves.toEqual(["other"]);
+	});
+
 	it("preserves user comments and refuses to claim an entry Desktop does not own", async () => {
 		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
 		await writeFile(

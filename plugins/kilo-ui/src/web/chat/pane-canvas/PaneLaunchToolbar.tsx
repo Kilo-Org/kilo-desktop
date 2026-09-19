@@ -33,16 +33,15 @@ export const PaneLaunchToolbar: FC<{
 						render={
 							<Button
 								type="button"
-								variant="ghost"
+								variant="outline"
 								size="icon-sm"
-								className="border-border/70 bg-background/30 text-muted-foreground hover:border-border hover:bg-foreground/10 rounded-md shadow-xs"
 								aria-label="Chat"
 								data-qa-id="chat-pane-launch-chat"
 								onClick={onLaunchChat}
 							/>
 						}
 					>
-						<BotIcon className="text-primary size-3" />
+						<BotIcon className="text-primary size-3.5" />
 					</TooltipTrigger>
 					<TooltipContent side="bottom">Show Chat</TooltipContent>
 				</Tooltip>

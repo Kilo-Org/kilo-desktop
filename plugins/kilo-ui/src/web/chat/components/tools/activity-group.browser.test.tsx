@@ -469,7 +469,7 @@ describe("Notebooks activity subgroup", () => {
 		];
 		rerender(renderGroup(runtime.message.parts));
 
-		expect(getByRole("button", { name: "Notebooks" })).toBeDefined();
+		expect(getByRole("button", { name: "Notebook" })).toBeDefined();
 		expect(getByText("Create notebook")).toBeDefined();
 	});
 
@@ -541,7 +541,7 @@ describe("Notebooks activity subgroup", () => {
 			],
 			ToolCallFallback,
 		);
-		const trigger = getByRole("button", { name: "Notebooks" });
+		const trigger = getByRole("button", { name: "Notebook" });
 
 		expect(queryByText("notebooks_create_notebook")).toBeNull();
 		expect(queryByText("Create notebook")).toBeNull();

@@ -32,6 +32,7 @@ export type {
 	SdkTools,
 	ToolDefinition,
 	ToolAnnotations,
+	ToolInvocationContext,
 	RegisteredTool,
 	SdkIntents,
 	SchemaLike,

@@ -10,7 +10,6 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
-import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { RightPanelTabDefinition } from "../right-panel/right-panel-tab-registry.js";
 
@@ -26,18 +25,17 @@ export const PaneAddTab: FC<{
 	const label = isToolbar ? "Add tab group" : "Add tab";
 	const trigger = (
 		<DropdownMenuTrigger
-			render={<Button variant="ghost" size="icon-sm" />}
+			render={<Button variant={isToolbar ? "outline" : "ghost"} size="icon-sm" />}
 			aria-label={label}
 			aria-haspopup="menu"
 			data-qa-id={isToolbar ? "chat-pane-toolbar-add" : "chat-pane-add-tab"}
-			className={cn(
-				"text-muted-foreground rounded-md",
+			className={
 				isToolbar
-					? "border-border/70 bg-background/30 opacity-100 shadow-xs hover:border-border hover:bg-foreground/10"
-					: "opacity-0 transition-opacity group-hover/pane-tabs:opacity-100 group-focus-within/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100 data-popup-open:opacity-100",
-			)}
+					? undefined
+					: "text-muted-foreground opacity-0 transition-opacity group-focus-within/pane-tabs:opacity-100 group-hover/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100 data-popup-open:opacity-100"
+			}
 		>
-			<PlusIcon className="size-3" aria-hidden />
+			<PlusIcon className="size-3.5" aria-hidden />
 		</DropdownMenuTrigger>
 	);
 

@@ -13,16 +13,27 @@ import {
 import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
+import { KiloConfiguration } from "./KiloConfiguration.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
 import { KiloConfigManager, type KiloConfigMutationOutcome } from "./KiloConfigManager.js";
+import { KiloPluginConfig } from "./KiloPluginConfig.js";
 import { resolveKiloInstallation } from "./installation.js";
+import { reconcileKiloCallerContextPlugin } from "./kilo-caller-context-plugin.js";
 import {
 	reconcileWebMcpRelayConfig,
+	resolveWebMcpRendezvous,
+	webMcpChannelFromStorageDir,
 	type WebMcpRelayConfigOutcome,
 } from "./webmcp-relay-config.js";
 import { WebMcpRelayService, type WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 export { ContributedEnvManager } from "./ContributedEnvManager.js";
+export {
+	resolveWebMcpRendezvous,
+	webMcpChannelFromStorageDir,
+	type WebMcpChannel,
+	type WebMcpRendezvous,
+} from "./webmcp-relay-config.js";
 
 export interface KiloServerController {
 	readonly status: KiloServerStatus;
@@ -59,11 +70,18 @@ interface RegisterKiloServerOptions {
 		configDirectory: string,
 		enabled: boolean,
 	) => Promise<WebMcpRelayConfigOutcome>;
+	reconcileKiloCallerContextPlugin?: (configDirectory: string) => Promise<void>;
 	/** Injected serialized config writer for tests. */
 	kiloConfig?: Pick<
 		KiloConfigManager,
-		"setMcpEntry" | "removeMcpEntry" | "setProviderEntry" | "removeProviderEntry"
+		| "setMcpEntry"
+		| "removeMcpEntry"
+		| "listOwnedMcpEntryIds"
+		| "setProviderEntry"
+		| "removeProviderEntry"
 	>;
+	/** Injected Desktop-owned plugin installer for tests. */
+	kiloPluginConfig?: Pick<KiloPluginConfig, "install" | "remove" | "listOwnedPluginIds">;
 	/** Kilo Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
 	/**
@@ -236,11 +254,18 @@ export function registerKiloServer(
 		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
 			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
 	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(configDirectory, mainSdk.logger);
+	const kiloPluginConfig = options.kiloPluginConfig ?? new KiloPluginConfig(configDirectory);
+	const kiloConfiguration = new KiloConfiguration({
+		mcpConfig: kiloConfig,
+		pluginConfig: kiloPluginConfig,
+		onChanged: requestConfigRestart,
+	});
 
 	// Interim WebMCP↔Kilo bridge — see #102. Initialize
 	// the Desktop-owned `mcp` entry before `kilo serve` boots so its first read of
 	// kilo.jsonc already sees the relay entry. Initialization is idempotent and
 	// marker-guarded; a failure never blocks Kilo from starting.
+	const rendezvous = resolveWebMcpRendezvous(webMcpChannelFromStorageDir(mainSdk.storageDir));
 	const reconcileRelayConfig =
 		options.reconcileWebMcpRelayConfig ??
 		((directory: string, enabled: boolean) =>
@@ -251,6 +276,9 @@ export function registerKiloServer(
 				enabled,
 				logger: mainSdk.logger,
 				kiloConfig,
+				port: rendezvous.port,
+				relayId: rendezvous.relayId,
+				label: rendezvous.label,
 			}));
 
 	const server = createServer(
@@ -262,6 +290,9 @@ export function registerKiloServer(
 		(() =>
 			new WebMcpRelayService({
 				logger: mainSdk.logger,
+				port: rendezvous.port,
+				relayId: rendezvous.relayId,
+				label: rendezvous.label,
 			}));
 	let relayService: WebMcpRelayServiceHandle | undefined;
 
@@ -278,6 +309,9 @@ export function registerKiloServer(
 	// promise, so no caller can race the config write.
 	const configReady = (async () => {
 		try {
+			await (options.reconcileKiloCallerContextPlugin ?? reconcileKiloCallerContextPlugin)(
+				configDirectory,
+			);
 			const enabled = await runAsNodeEnabled();
 			const outcome = await reconcileRelayConfig(configDirectory, enabled);
 			if (configLeftRelayEntry(outcome) && !disposed) {
@@ -334,18 +368,10 @@ export function registerKiloServer(
 		serverEnv: {
 			contribute: contributedEnv.contribute.bind(contributedEnv),
 		},
-		mcpConfig: {
-			set: async (sourceId, entryId, entry) => {
+		configuration: {
+			set: async (sourceId, desired) => {
 				await configReady;
-				const outcome = await kiloConfig.setMcpEntry(sourceId, entryId, entry);
-				assertConfigMutationAccepted("MCP", sourceId, entryId, outcome, "set");
-				if (outcome.kind === "written") requestConfigRestart();
-			},
-			remove: async (sourceId, entryId) => {
-				await configReady;
-				const outcome = await kiloConfig.removeMcpEntry(sourceId, entryId);
-				assertConfigMutationAccepted("MCP", sourceId, entryId, outcome, "remove");
-				if (outcome.kind === "removed") requestConfigRestart();
+				await kiloConfiguration.set(sourceId, desired);
 			},
 		},
 		providerConfig: {

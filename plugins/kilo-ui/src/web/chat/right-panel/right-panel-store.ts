@@ -157,6 +157,61 @@ const updateSession = (
 	return { ...bySessionId, [sessionId]: next };
 };
 
+function mergeSessionState(
+	source: SessionRightPanelState,
+	target: SessionRightPanelState,
+): SessionRightPanelState {
+	const tabs = [...target.tabs];
+	for (const sourceTab of source.tabs) {
+		const index = tabs.findIndex((tab) => tab.instanceId === sourceTab.instanceId);
+		if (index < 0) {
+			tabs.push(sourceTab);
+			continue;
+		}
+		const targetTab = tabs[index]!;
+		if (targetTab.definitionId === sourceTab.definitionId) {
+			tabs[index] = { ...targetTab, ...sourceTab, ordinal: targetTab.ordinal };
+		}
+	}
+	const tabIds = new Set(tabs.map((tab) => tab.instanceId));
+	const activeTabId =
+		target.activeTabId && tabIds.has(target.activeTabId)
+			? target.activeTabId
+			: source.activeTabId && tabIds.has(source.activeTabId)
+				? source.activeTabId
+				: null;
+	const targetHasPlan = target.tabs.some((tab) => tab.definitionId === PLAN_TAB_DEFINITION_ID);
+	const sourceHasSurvivingPlan =
+		!targetHasPlan && tabs.some((tab) => tab.definitionId === PLAN_TAB_DEFINITION_ID);
+	const preferredChatPaneOpen = target.chatPaneOpen ?? source.chatPaneOpen;
+	const arrangement = ARRANGEMENTS.includes(target.arrangement as Arrangement)
+		? (target.arrangement as Arrangement)
+		: ARRANGEMENTS.includes(source.arrangement as Arrangement)
+			? (source.arrangement as Arrangement)
+			: DEFAULT_ARRANGEMENT;
+
+	return {
+		activeTabId,
+		tabs,
+		planAnchorCallId: targetHasPlan
+			? target.planAnchorCallId
+			: sourceHasSurvivingPlan
+				? source.planAnchorCallId
+				: null,
+		...(tabs.length === 0
+			? { chatPaneOpen: true }
+			: preferredChatPaneOpen === undefined
+				? {}
+				: { chatPaneOpen: preferredChatPaneOpen }),
+		arrangement,
+		...(target.layoutJson
+			? { layoutJson: target.layoutJson }
+			: source.layoutJson
+				? { layoutJson: source.layoutJson }
+				: {}),
+	};
+}
+
 export const useRightPanelStore = create<RightPanelStoreState>()(
 	persist(
 		(set) => ({
@@ -167,10 +222,11 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 					const source = state.bySessionId[sourceSessionId];
 					if (!source) return state;
 					const { [sourceSessionId]: _removed, ...remaining } = state.bySessionId;
+					const target = remaining[targetSessionId];
 					return {
 						bySessionId: {
 							...remaining,
-							[targetSessionId]: remaining[targetSessionId] ?? source,
+							[targetSessionId]: target ? mergeSessionState(source, target) : source,
 						},
 					};
 				}),

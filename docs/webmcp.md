@@ -490,9 +490,9 @@ while dormant or disconnected.
 
 Failure modes that remain (accepted for the interim):
 
-- Two instances of the app (e.g. dev + packaged) share one relay on 9345:
-  both widgets publish into whichever instance's relay won the port, and
-  both kilos see the union of tools (tab-suffix disambiguation applies).
+- Two instances of the app (e.g. dev + packaged) used to share one relay on 9345. Each channel now pins its own port and relay id (`9345` /
+  `kilo-desktop` for stable, `9346` / `kilo-desktop-preview`, `9347` /
+  `kilo-desktop-dev`) so widgets and Kilo children cannot cross-publish.
 - A non-relay process squatting exactly on 9345 puts the relay into a loud
   error state in Kilo's MCP UI (fixed-port mode throws) rather than a
   silent split-brain.

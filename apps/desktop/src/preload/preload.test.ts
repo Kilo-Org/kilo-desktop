@@ -35,6 +35,17 @@ describe("preload desktopApi", { timeout: 15_000 }, () => {
 		});
 	});
 
+	it("reads the channel-pinned WebMCP rendezvous from window arguments", async () => {
+		vi.stubGlobal("process", {
+			argv: ["electron", "--kilo-webmcp-port=9347", "--kilo-webmcp-relay-id=kilo-desktop-dev"],
+		});
+		await import("./preload.js");
+		const desktopApi = contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as {
+			webmcpRelay: { port: string; relayId: string };
+		};
+		expect(desktopApi.webmcpRelay).toEqual({ port: "9347", relayId: "kilo-desktop-dev" });
+	});
+
 	it("resolves dropped files through the preload-only Electron API", async () => {
 		getPathForFile.mockReturnValueOnce("/tmp/project").mockReturnValueOnce("");
 		await import("./preload.js");

@@ -26,13 +26,12 @@ describe("anaconda-mcp main registration", () => {
 			main: { storageDir },
 		});
 		const envContribute = vi.fn(() => () => {});
-		const mcpConfigSet = vi.fn(async () => {});
-		const mcpConfigRemove = vi.fn(async () => {});
+		const configurationSet = vi.fn(async () => {});
 
 		const kiloSdk = createMainSdk("kilo-server");
 		kiloSdk.plugins.expose("kiloService", {
 			serverEnv: { contribute: envContribute },
-			mcpConfig: { set: mcpConfigSet, remove: mcpConfigRemove },
+			configuration: { set: configurationSet },
 			restartServer: async () => {},
 		});
 
@@ -56,16 +55,17 @@ describe("anaconda-mcp main registration", () => {
 		await Promise.resolve();
 		expect(registrationFinished).toBe(false);
 		expect(envContribute).not.toHaveBeenCalled();
-		expect(mcpConfigSet).not.toHaveBeenCalled();
+		expect(configurationSet).not.toHaveBeenCalled();
 
 		releaseApiKey("test-api-key");
 		await registration;
 
-		expect(mcpConfigSet).toHaveBeenCalledWith(
-			CONTRIBUTION_SOURCE_ID,
-			"anaconda-remote",
-			expect.objectContaining({ type: "remote" }),
-		);
+		expect(configurationSet).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, {
+			mcpEntries: {
+				"anaconda-remote": expect.objectContaining({ type: "remote" }),
+			},
+			plugins: {},
+		});
 		expect(envContribute).toHaveBeenCalledWith(CONTRIBUTION_SOURCE_ID, {
 			[MCP_ENV_VAR]: "test-api-key",
 		});

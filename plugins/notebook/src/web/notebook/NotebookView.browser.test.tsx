@@ -174,6 +174,7 @@ describe("NotebookView", () => {
 			instanceId: "panel-tab-1",
 			sessionId: "session-1",
 			title: "analysis.ipynb",
+			workspaceDirectory: "/projects/analysis",
 			metadata: {
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
 				notebookOpenState: "ready",
@@ -186,6 +187,7 @@ describe("NotebookView", () => {
 			sessionId: "session-1",
 			title: "analysis.ipynb",
 			notebookPath: "/projects/analysis.ipynb",
+			workingDirectory: "/projects/analysis",
 		});
 		renderView(props);
 

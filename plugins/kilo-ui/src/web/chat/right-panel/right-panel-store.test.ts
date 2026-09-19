@@ -200,6 +200,29 @@ describe("right-panel-store", () => {
 		expect(useRightPanelStore.getState().bySessionId["remote-1"]?.tabs[0]?.title).toBe("Canvas 1");
 	});
 
+	it("merges draft tabs into an existing remote session without losing either chat's panes", () => {
+		useRightPanelStore.getState().openTab("local-1", CANVAS, {
+			instanceId: "local-canvas",
+			title: "Local canvas",
+		});
+		useRightPanelStore.getState().openTab("remote-1", CANVAS, {
+			instanceId: "remote-canvas",
+			title: "Remote canvas",
+		});
+		useRightPanelStore.getState().setArrangement("remote-1", "carousel");
+
+		useRightPanelStore.getState().moveSessionState("local-1", "remote-1");
+
+		expect(useRightPanelStore.getState().bySessionId["local-1"]).toBeUndefined();
+		expect(
+			useRightPanelStore.getState().bySessionId["remote-1"]?.tabs.map((tab) => tab.instanceId),
+		).toEqual(["remote-canvas", "local-canvas"]);
+		expect(useRightPanelStore.getState().bySessionId["remote-1"]?.activeTabId).toBe(
+			"remote-canvas",
+		);
+		expect(useRightPanelStore.getState().bySessionId["remote-1"]?.arrangement).toBe("carousel");
+	});
+
 	it("clears pane state for a session", () => {
 		useRightPanelStore.getState().openTab(DRAFT_RIGHT_PANEL_SESSION_KEY, CANVAS);
 		useRightPanelStore.getState().setArrangement(DRAFT_RIGHT_PANEL_SESSION_KEY, "tiles");

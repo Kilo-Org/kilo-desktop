@@ -35,6 +35,7 @@ export interface ElectronNotebookConnectionArgs {
 	readonly sessionId: string;
 	readonly title: string;
 	readonly notebookPath?: string;
+	readonly workingDirectory?: string;
 }
 
 export interface ElectronNotebookHostServiceOptions {
@@ -214,7 +215,8 @@ function normalizeDialogOptions(value: unknown): MainSdkHostDialogOptions | unde
  * may be replaced as tabs remount. File opens retain their initial relay briefly
  * so the renderer connection can adopt it instead of opening the same file
  * twice. Dirty state and save operations remain session-local and are always
- * settled when that connection is removed.
+ * settled when that connection is removed. New scratch rooms inherit the
+ * connected chat's working directory at creation.
  */
 export class ElectronNotebookHostService {
 	readonly #mainSdk: MainSdk;
@@ -371,6 +373,7 @@ export class ElectronNotebookHostService {
 						notebookId: args.notebookId,
 						ephemeral: false,
 						packageManager: "conda",
+						...(args.workingDirectory ? { workingDir: args.workingDirectory } : {}),
 						...relayOptions,
 					});
 		};

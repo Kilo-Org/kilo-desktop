@@ -6,7 +6,7 @@
  * Tool descriptions are the model-facing contract: create and show stay in this
  * layout. nteract MCP is for cells, kernel, and save only.
  */
-import type { SDK } from "@kilo-desktop/feature-sdk";
+import type { SDK, ToolInvocationContext } from "@kilo-desktop/feature-sdk";
 import { z } from "zod";
 
 import {
@@ -39,6 +39,7 @@ export type ChatRightPanelCapability = {
 	getFocusedSessionId(): string | null;
 	listTabs(sessionId: string): readonly ChatRightPanelTabSnapshot[];
 	getActiveTabId(sessionId: string): string | null;
+	activateTab(sessionId: string, instanceId: string): void;
 	openContributedTab(
 		sessionId: string,
 		definition: { readonly id: string; readonly title: string },
@@ -82,6 +83,9 @@ const NO_FOCUSED_SESSION =
 
 const KILO_UI_UNAVAILABLE =
 	"kilo-ui chat pane capability is unavailable. The chat UI plugin may not be loaded.";
+
+const NO_CALLER_SESSION =
+	"Notebook pane tools require an originating Kilo chat session and cannot use visual focus as ownership.";
 
 function basename(filePath: string): string {
 	return filePath.replaceAll("\\", "/").split("/").at(-1) ?? filePath;
@@ -149,6 +153,25 @@ export function openNotebookInPanel(sdk: SDK):
 		notebook_id: active?.notebook_id ?? tab.instanceId,
 		title: active?.title ?? tab.title,
 	};
+}
+
+function openNotebookInSession(
+	sdk: SDK,
+	sessionId: string,
+):
+	| { readonly sessionId: string; readonly notebook_id: string; readonly title: string }
+	| { readonly error: string } {
+	const panelOrError = resolvePanel(sdk);
+	if ("error" in panelOrError) return panelOrError;
+	const tab = panelOrError.openContributedTab(sessionId, {
+		id: NOTEBOOK_TAB_DEFINITION_ID,
+		title: NOTEBOOK_TAB_TITLE,
+	});
+	return { sessionId, notebook_id: tab.instanceId, title: tab.title };
+}
+
+function callerSessionId(context: ToolInvocationContext): string | undefined {
+	return context.kiloSessionId?.trim() || undefined;
 }
 
 export type NotebookPanelOpenFileResult =
@@ -281,42 +304,64 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "list_open",
 		description:
-			"List notebooks open in the focused chat's pane layout. " +
+			"List notebooks open in the calling chat's pane layout. " +
 			DESKTOP_NOTEBOOK_PANEL_POLICY +
 			" Each notebook_id is the id to pass to notebooks_* cell, kernel, and save tools. " +
 			"Call this to see which notebooks are already open before creating another.",
-		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		inputSchema: { type: "object", properties: {} },
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
-		handler: () => listOpenNotebooks(sdk),
+		handler: (_args, context) => {
+			const sessionId = callerSessionId(context);
+			if (!sessionId) return { sessionId: null, notebooks: [], error: NO_CALLER_SESSION };
+			const panelOrError = resolvePanel(sdk);
+			if ("error" in panelOrError) {
+				return { sessionId: null, notebooks: [], error: panelOrError.error };
+			}
+			return {
+				sessionId,
+				notebooks: selectNotebookTabs(
+					panelOrError.listTabs(sessionId),
+					panelOrError.getActiveTabId(sessionId),
+				),
+			};
+		},
 	});
 
 	sdk.tools.register({
 		name: "open",
 		description:
-			"Open a new notebook in the focused chat's pane layout and return its " +
+			"Open a new notebook in the calling chat's pane layout and return its " +
 			"notebook_id (a bare UUID). " +
 			DESKTOP_NOTEBOOK_PANEL_POLICY +
 			" Call this instead of notebooks_create_notebook or notebooks_show_notebook. " +
 			"After it returns, use notebooks_* tools only for cells, kernel, and save — pass the " +
 			"notebook_id unchanged. If connect fails immediately after open, retry with the same " +
 			"notebook_id (the panel iframe may still be finishing its handshake).",
-		inputSchema: { type: "object", properties: {}, additionalProperties: false },
+		inputSchema: { type: "object", properties: {} },
 		exposeToModelContext: true,
-		handler: () => openNotebookInPanel(sdk),
+		handler: (_args, context) => {
+			const sessionId = callerSessionId(context);
+			return sessionId ? openNotebookInSession(sdk, sessionId) : { error: NO_CALLER_SESSION };
+		},
 	});
 
 	const openFileInput = notebookContract.openFile.input;
 	sdk.tools.register({
 		name: "open_file",
 		description:
-			"Open an existing .ipynb file in the focused chat's pane layout. " +
+			"Open an existing .ipynb file in the calling chat's pane layout. " +
 			DESKTOP_NOTEBOOK_PANEL_POLICY +
 			" Pass an absolute file path. Returns the daemon notebook_id to use unchanged with " +
 			"notebooks_* cell, kernel, and save tools. Reopening the same file focuses its existing tab.",
 		inputSchema: z.toJSONSchema(openFileInput, { target: "draft-2020-12" }),
 		validate: openFileInput,
 		exposeToModelContext: true,
-		handler: (args) => openNotebookFileInPanel(sdk, openFileInput.parse(args).path),
+		handler: (args, context) => {
+			const sessionId = callerSessionId(context);
+			return sessionId
+				? openNotebookFileInSession(sdk, openFileInput.parse(args).path, sessionId)
+				: { error: NO_CALLER_SESSION };
+		},
 	});
 }

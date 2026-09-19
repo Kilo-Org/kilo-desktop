@@ -1,4 +1,10 @@
-import { click, getLocator, getLocatorByRole, getLocatorByText } from "@anaconda/playwright-utils";
+import {
+	click,
+	expectElementToBeVisible,
+	getLocatorByRole,
+	getLocatorByTestId,
+	getLocatorByText,
+} from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 /**
@@ -30,7 +36,13 @@ export async function paveWorkspaceChat(folderPath: string, name: string): Promi
 		{ folderPath, name },
 	);
 
-	await click(getLocator('[data-slot="aui_thread-list-new"]'));
+	// Worker fixture resets to `#/`; the shell redirects that to chat.
+	await getPage().waitForURL("kilo-desktop://app/#/plugins/chat");
+	await click(getLocatorByTestId("new-chat"));
+	await expectElementToBeVisible(
+		getLocatorByTestId("kilo-composer-draft-footer"),
+		"New Chat should enter draft state before selecting a workspace",
+	);
 	await click(getLocatorByRole("combobox", { name: "Select workspace" }));
 	await click(getLocatorByText(name, { exact: true }));
 }

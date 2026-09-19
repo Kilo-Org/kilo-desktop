@@ -16,12 +16,10 @@ already listening there is reused without taking ownership; otherwise the app st
 supervises its bundled executable. It never searches `PATH`, replaces an existing singleton, or
 signals a process it did not start.
 
-Kilo uses nteract's matching `nteract-mcp` executable rather than invoking `runt mcp` directly.
-The proxy and its `runt` child are packaged in the same target directory, which makes the proxy
-select the pinned child before considering `PATH`. The proxy owns MCP child restart and tool-list
-change handling while `runtimed` remains the notebook and kernel authority. An explicit custom
-socket used by development or tests falls back to direct `runt mcp --socket`; nteract-mcp supports
-only the canonical channel endpoint.
+Kilo loads a Desktop-managed TypeScript plugin that calls `@runtimed/node` directly in its Bun
+process. Desktop contributes the exact native binding entry and daemon socket to Kilo's spawn
+environment. There is no notebook MCP proxy or `runt` child process; `runtimed` remains the
+notebook and kernel authority.
 
 The notebook frame receives one capability-scoped Electron `MessagePort`:
 
@@ -37,7 +35,7 @@ trusted app renderer
 The agent path is separate and converges on the same singleton:
 
 ```text
-Kilo -> nteract-mcp -> runt mcp -> runtimed
+Kilo plugin -> @runtimed/node -> runtimed
 ```
 
 The frame never receives `ipcRenderer`, a generic IPC endpoint, the daemon socket path, room
@@ -80,9 +78,8 @@ Electron port and retain runtimed's negotiated protocol number.
 ## Current limitations
 
 - A daemon already running on the canonical endpoint takes precedence over the bundled fallback.
-- macOS and Windows MCP sidecars are extracted from the pinned official nteract app artifacts;
-  Linux uses the standalone release assets. Every source and extracted executable is checksum
-  pinned.
+- The direct Kilo plugin exposes the intentionally small `notebooks_*` tool set; the existing
+  WebMCP relay continues to own notebook-panel navigation tools.
 - Opening a notebook in another desktop window and cloning a sidecar notebook are explicitly
   unsupported host operations rather than silent no-ops.
 - Blob content still uses runtimed's loopback HTTP server. Moving blobs behind the custom protocol

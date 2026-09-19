@@ -2,7 +2,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 const PACKAGED_NOTEBOOK_SUBPATH = "build/notebook";
-const PACKAGED_NATIVE_ROOTS = ["resources/nteract-mcp", "resources/runtimed"] as const;
+const PACKAGED_KILO_PLUGIN_ROOT = "build/kilo-plugin";
+const PACKAGED_NATIVE_ROOTS = ["resources/runtimed"] as const;
 const require = createRequire(import.meta.url);
 
 function resolvePackageAsset(subpath: string): string {
@@ -23,6 +24,18 @@ export function createNotebookResolveAsset(options: {
 	return (subpath) => {
 		if (options.isPackaged && subpath === PACKAGED_NOTEBOOK_SUBPATH) {
 			return path.join(options.packagedResourcesPath, "notebook");
+		}
+		if (
+			options.isPackaged &&
+			(subpath === PACKAGED_KILO_PLUGIN_ROOT ||
+				subpath.startsWith(`${PACKAGED_KILO_PLUGIN_ROOT}/`) ||
+				subpath.startsWith(`${PACKAGED_KILO_PLUGIN_ROOT}\\`))
+		) {
+			return path.join(
+				options.packagedResourcesPath,
+				"kilo-plugin",
+				subpath.slice(PACKAGED_KILO_PLUGIN_ROOT.length).replace(/^[/\\]+/, ""),
+			);
 		}
 		const nativeRoot = options.isPackaged ? packagedNativeRoot(subpath) : undefined;
 		if (nativeRoot) {

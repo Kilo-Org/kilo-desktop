@@ -145,19 +145,14 @@ The old standalone `/notebook` page, route `sidecar` manifest field, built-in si
 generic split-page layout are removed. If the notebook plugin unloads while persisted tabs exist,
 Kilo renders a closeable unavailable state until the contribution returns.
 
-## D8. Kilo uses nteract-mcp as the notebook MCP boundary
+## D8. Kilo uses direct Node bindings for notebook tools
 
-Chosen: package `nteract-mcp` beside its matching `runt` executable and configure Kilo to launch
-the proxy with `NTERACT_CHANNEL=stable`. The proxy supervises `runt mcp`, recovers from child or
-daemon upgrades, and forwards MCP tool-list changes. It does not replace `runtimed`; both agent and
-UI paths still converge on the shared singleton.
+Chosen: bundle a Kilo plugin that loads the packaged `@runtimed/node` entry and connects to the
+same socket as the embedded notebook. The notebook feature installs that plugin through
+kilo-server's ownership-checked plugin capability and removes its previous Desktop-owned `runt`
+and `notebooks` MCP entries only after installation succeeds.
 
-The binaries are taken from the same pinned nteract release. Linux publishes standalone proxy and
-child assets. macOS and Windows publish the sidecars inside their signed application artifacts, so
-the asset preparation step extracts and independently checksum-verifies them. Packaging requires
-both colocated executables on every supported target.
-
-An explicitly configured noncanonical socket remains a development-only direct `runt mcp` path.
-The upstream proxy intentionally starts its child with only the `mcp` argument and strips socket
-override environment variables, so pretending it supports a custom socket would silently connect
-Kilo to a different daemon.
+This removes the `nteract-mcp` proxy, its `runt mcp` child, and their platform-specific staging
+artifacts. Kilo remains responsible for tool permission prompts and lifecycle; `runtimed` remains
+responsible for notebook state, kernels, outputs, dependencies, and persistence. The WebMCP relay
+is retained separately for right-panel navigation tools.

@@ -13,6 +13,7 @@ import {
 	type KiloServerController,
 } from "./index.js";
 import type { KiloConfigMutationOutcome } from "./KiloConfigManager.js";
+import type { KiloPluginMutationOutcome } from "./KiloPluginConfig.js";
 import type { WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
@@ -53,6 +54,7 @@ function registerKiloServer(
 ): Promise<void> {
 	return registerProductionKiloServer(mainSdk, {
 		createWebMcpRelayService: stubRelayService,
+		reconcileKiloCallerContextPlugin: async () => undefined,
 		...options,
 	});
 }
@@ -719,6 +721,7 @@ describe("kilo-server owned config capability", () => {
 				kind: "removed",
 				reason: "explicit",
 			})),
+			listOwnedMcpEntryIds: vi.fn(async () => ["anaconda-remote"]),
 		};
 	}
 
@@ -736,11 +739,16 @@ describe("kilo-server owned config capability", () => {
 		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
 
 		expect(capability).not.toBeNull();
-		await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
-			type: "remote",
-			url: "https://example.test/mcp",
+		await capability!.kiloService.configuration.set("anaconda-mcp", {
+			mcpEntries: {
+				"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+			},
+			plugins: {},
 		});
-		await capability!.kiloService.mcpConfig.remove("anaconda-mcp", "anaconda-remote");
+		await capability!.kiloService.configuration.set("anaconda-mcp", {
+			mcpEntries: {},
+			plugins: {},
+		});
 		expect(kiloConfig.setMcpEntry).toHaveBeenCalledWith("anaconda-mcp", "anaconda-remote", {
 			type: "remote",
 			url: "https://example.test/mcp",
@@ -855,9 +863,11 @@ describe("kilo-server owned config capability", () => {
 
 			const consumer = createMainSdk("anaconda-mcp");
 			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
-			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
-				type: "remote",
-				url: "https://example.test/mcp",
+			await capability!.kiloService.configuration.set("anaconda-mcp", {
+				mcpEntries: {
+					"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+				},
+				plugins: {},
 			});
 
 			await vi.advanceTimersByTimeAsync(500);
@@ -882,9 +892,11 @@ describe("kilo-server owned config capability", () => {
 
 			const consumer = createMainSdk("anaconda-mcp");
 			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
-			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
-				type: "remote",
-				url: "https://example.test/mcp",
+			await capability!.kiloService.configuration.set("anaconda-mcp", {
+				mcpEntries: {
+					"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+				},
+				plugins: {},
 			});
 
 			// Lazy-spawn semantics: the first server reads the updated file.
@@ -912,9 +924,11 @@ describe("kilo-server owned config capability", () => {
 
 			const consumer = createMainSdk("anaconda-mcp");
 			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
-			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
-				type: "remote",
-				url: "https://example.test/mcp",
+			await capability!.kiloService.configuration.set("anaconda-mcp", {
+				mcpEntries: {
+					"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+				},
+				plugins: {},
 			});
 
 			await vi.advanceTimersByTimeAsync(500);
@@ -941,9 +955,11 @@ describe("kilo-server owned config capability", () => {
 		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
 
 		await expect(
-			capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
-				type: "remote",
-				url: "https://example.test/mcp",
+			capability!.kiloService.configuration.set("anaconda-mcp", {
+				mcpEntries: {
+					"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+				},
+				plugins: {},
 			}),
 		).rejects.toThrow(/entry not owned by Desktop already uses that id/);
 		mainSdk.dispose();
@@ -969,13 +985,18 @@ describe("kilo-server owned config capability", () => {
 		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
 
 		await expect(
-			capability!.kiloService.mcpConfig.set("other-feature", "anaconda-remote", {
-				type: "remote",
-				url: "https://example.test/mcp",
+			capability!.kiloService.configuration.set("other-feature", {
+				mcpEntries: {
+					"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+				},
+				plugins: {},
 			}),
 		).rejects.toThrow(/owned by another source/);
 		await expect(
-			capability!.kiloService.mcpConfig.remove("other-feature", "anaconda-remote"),
+			capability!.kiloService.configuration.set("other-feature", {
+				mcpEntries: {},
+				plugins: {},
+			}),
 		).rejects.toThrow(/owned by another source/);
 		mainSdk.dispose();
 	});
@@ -994,19 +1015,124 @@ describe("kilo-server owned config capability", () => {
 
 			const consumer = createMainSdk("anaconda-mcp");
 			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
-			await capability!.kiloService.mcpConfig.set("anaconda-mcp", "anaconda-remote", {
-				type: "remote",
-				url: "https://example.test/mcp",
+			await capability!.kiloService.configuration.set("anaconda-mcp", {
+				mcpEntries: {
+					"anaconda-remote": { type: "remote", url: "https://example.test/mcp" },
+				},
+				plugins: {},
 			});
 			await vi.advanceTimersByTimeAsync(500);
 			server.restart.mockClear();
 
-			await capability!.kiloService.mcpConfig.remove("anaconda-mcp", "anaconda-remote");
+			await capability!.kiloService.configuration.set("anaconda-mcp", {
+				mcpEntries: {},
+				plugins: {},
+			});
 			await vi.advanceTimersByTimeAsync(500);
 			expect(server.restart).toHaveBeenCalledOnce();
 			mainSdk.dispose();
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe("kilo-server plugin configuration", () => {
+	it("reconciles plugin and MCP desired state through one configuration facade", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const kiloConfig = {
+			setMcpEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
+				kind: "written",
+				reason: "updated",
+			})),
+			removeMcpEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
+				kind: "removed",
+				reason: "explicit",
+			})),
+			listOwnedMcpEntryIds: vi.fn(async () => ["runt", "notebooks"]),
+			setProviderEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
+				kind: "written",
+				reason: "updated",
+			})),
+			removeProviderEntry: vi.fn(async (): Promise<KiloConfigMutationOutcome> => ({
+				kind: "removed",
+				reason: "explicit",
+			})),
+		};
+		const kiloPluginConfig = {
+			install: vi.fn(async (): Promise<KiloPluginMutationOutcome> => ({
+				kind: "written",
+				reason: "created",
+			})),
+			remove: vi.fn(async (): Promise<KiloPluginMutationOutcome> => ({
+				kind: "removed",
+				reason: "explicit",
+			})),
+			listOwnedPluginIds: vi.fn(async () => ["notebooks"]),
+		};
+		registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			kiloConfig,
+			kiloPluginConfig,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+		const consumer = createMainSdk("notebook");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		await capability!.kiloService.configuration.set("notebook", {
+			plugins: { notebooks: "/plugins/notebook/kilo-plugin.js" },
+			mcpEntries: {},
+		});
+
+		expect(kiloPluginConfig.install).toHaveBeenCalledWith(
+			"notebook",
+			"notebooks",
+			"/plugins/notebook/kilo-plugin.js",
+		);
+		expect(kiloConfig.removeMcpEntry).toHaveBeenNthCalledWith(1, "notebook", "runt");
+		expect(kiloConfig.removeMcpEntry).toHaveBeenNthCalledWith(2, "notebook", "notebooks");
+		expect(kiloPluginConfig.install.mock.invocationCallOrder[0]).toBeLessThan(
+			kiloConfig.removeMcpEntry.mock.invocationCallOrder[0]!,
+		);
+		mainSdk.dispose();
+	});
+
+	it("installs and removes Desktop-owned Kilo plugins for other features", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const kiloPluginConfig = {
+			install: vi.fn(async (): Promise<KiloPluginMutationOutcome> => ({
+				kind: "written",
+				reason: "created",
+			})),
+			remove: vi.fn(async (): Promise<KiloPluginMutationOutcome> => ({
+				kind: "removed",
+				reason: "explicit",
+			})),
+			listOwnedPluginIds: vi.fn(async () => ["notebooks"]),
+		};
+		registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			kiloPluginConfig,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+		const consumer = createMainSdk("notebook");
+		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
+
+		await capability!.kiloService.configuration.set("notebook", {
+			plugins: { notebooks: "/plugins/notebook/kilo-plugin.js" },
+			mcpEntries: {},
+		});
+		await capability!.kiloService.configuration.set("notebook", {
+			plugins: {},
+			mcpEntries: {},
+		});
+
+		expect(kiloPluginConfig.install).toHaveBeenCalledWith(
+			"notebook",
+			"notebooks",
+			"/plugins/notebook/kilo-plugin.js",
+		);
+		expect(kiloPluginConfig.remove).toHaveBeenCalledWith("notebook", "notebooks");
+		mainSdk.dispose();
 	});
 });

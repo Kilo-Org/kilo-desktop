@@ -13,6 +13,8 @@ import {
 	WEBMCP_RELAY_LABEL,
 	WEBMCP_RELAY_PORT,
 	reconcileWebMcpRelayConfig,
+	resolveWebMcpRendezvous,
+	webMcpChannelFromStorageDir,
 	type WebMcpRelayEntry,
 } from "./webmcp-relay-config.js";
 
@@ -241,6 +243,67 @@ describe("reconcileWebMcpRelayConfig", () => {
 		expect(entry).toMatchObject({ type: "local", command: [NEW_EXE, NEW_ENTRY, ...RELAY_ARGS] });
 	});
 
+	it("adopts an unowned leftover Desktop WebMCP relay and retargets it to this channel", async () => {
+		await writeFile(
+			configFile,
+			`${JSON.stringify(
+				{
+					mcp: {
+						desktop: {
+							type: "local",
+							command: [
+								APP_EXE,
+								RELAY_ENTRY,
+								"--port",
+								"9345",
+								"--relay-id",
+								"anaconda-agentic-desktop",
+								"--label",
+								"Anaconda Agentic Desktop",
+							],
+							environment: { ELECTRON_RUN_AS_NODE: "1" },
+							enabled: true,
+						},
+						"anaconda-desktop-relay": {
+							type: "local",
+							command: [
+								APP_EXE,
+								RELAY_ENTRY,
+								"--port",
+								"9345",
+								"--relay-id",
+								"anaconda-agentic-desktop",
+								"--label",
+								"Anaconda Agentic Desktop",
+							],
+							environment: { ELECTRON_RUN_AS_NODE: "1" },
+							enabled: true,
+						},
+					},
+				},
+				undefined,
+				2,
+			)}\n`,
+		);
+		const rendezvous = resolveWebMcpRendezvous("development");
+
+		const outcome = await reconcileWebMcpRelayConfig({
+			configDirectory: configDir,
+			appExecutablePath: APP_EXE,
+			resolveRelay: fakeResolveRelay,
+			port: rendezvous.port,
+			relayId: rendezvous.relayId,
+			label: rendezvous.label,
+		});
+
+		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
+		const config = await readConfig();
+		const desktop = (config.mcp as Record<string, { command: string[] } | undefined>).desktop;
+		expect(desktop?.command[desktop.command.indexOf("--port") + 1]).toBe("9347");
+		expect(desktop?.command[desktop.command.indexOf("--relay-id") + 1]).toBe("kilo-desktop-dev");
+		expect((config.mcp as Record<string, unknown>)["anaconda-desktop-relay"]).toBeUndefined();
+	});
+
 	it("skips initialization when the user replaces our entry with an entry Desktop does not own (sidecar gone)", async () => {
 		// Simulate: user hand-edited kilo.jsonc and deleted the sidecar.
 		await writeFile(
@@ -456,5 +519,72 @@ describe("reconcileWebMcpRelayConfig", () => {
 		}
 		expect(await readFile(configFile, "utf8")).toBe(before);
 		await expect(readFile(sidecarFile, "utf8")).rejects.toThrow(/ENOENT/);
+	});
+});
+
+describe("WebMCP channel rendezvous", () => {
+	it("gives each app channel its own port and relay id", () => {
+		expect(resolveWebMcpRendezvous("stable")).toEqual({
+			port: 9345,
+			relayId: "kilo-desktop",
+			label: "Kilo Desktop",
+		});
+		expect(resolveWebMcpRendezvous("preview")).toEqual({
+			port: 9346,
+			relayId: "kilo-desktop-preview",
+			label: "Kilo Desktop Preview",
+		});
+		expect(resolveWebMcpRendezvous("development")).toEqual({
+			port: 9347,
+			relayId: "kilo-desktop-dev",
+			label: "Kilo Desktop Dev",
+		});
+	});
+
+	it("maps plugin storage dirs onto the matching app channel", () => {
+		expect(
+			webMcpChannelFromStorageDir(
+				"/Users/me/Library/Application Support/Kilo Desktop Dev/plugins/kilo-server",
+			),
+		).toBe("development");
+		expect(
+			webMcpChannelFromStorageDir(
+				"/Users/me/Library/Application Support/Kilo Desktop Preview/plugins/kilo-server",
+			),
+		).toBe("preview");
+		expect(
+			webMcpChannelFromStorageDir(
+				"/Users/me/Library/Application Support/Kilo Desktop/plugins/kilo-server",
+			),
+		).toBe("stable");
+	});
+
+	it("writes the channel rendezvous into the Desktop MCP command", async () => {
+		const tempDir = await mkdtemp(path.join(tmpdir(), "webmcp-dev-rendezvous-"));
+		const configDir = path.join(tempDir, "config", "kilo");
+		await mkdir(configDir, { recursive: true });
+		const rendezvous = resolveWebMcpRendezvous("development");
+
+		await reconcileWebMcpRelayConfig({
+			configDirectory: configDir,
+			appExecutablePath: APP_EXE,
+			resolveRelay: fakeResolveRelay,
+			port: rendezvous.port,
+			relayId: rendezvous.relayId,
+			label: rendezvous.label,
+		});
+
+		const config = JSON.parse(
+			await readFile(path.join(configDir, KILO_CONFIG_FILENAME), "utf8"),
+		) as {
+			mcp: { desktop: { command: string[] } };
+		};
+		expect(config.mcp.desktop.command[config.mcp.desktop.command.indexOf("--port") + 1]).toBe(
+			"9347",
+		);
+		expect(config.mcp.desktop.command[config.mcp.desktop.command.indexOf("--relay-id") + 1]).toBe(
+			"kilo-desktop-dev",
+		);
+		await rm(tempDir, { recursive: true, force: true });
 	});
 });

@@ -4,6 +4,8 @@ import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/p
 
 import { test } from "../../../fixtures/features/git.js";
 
+test.use({ appIsolationKey: "git-init-smoke" });
+
 test.describe("Git init @smoke", () => {
 	test("initializes a plain folder from the composer draft footer button", async ({
 		appShellPage,

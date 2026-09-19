@@ -34,6 +34,9 @@ function createFakeChatRightPanel(): ChatRightPanelCapability & {
 		},
 		listTabs: (sessionId) => tabsBySession.get(sessionId) ?? [],
 		getActiveTabId: (sessionId) => activeBySession.get(sessionId) ?? null,
+		activateTab: (sessionId, instanceId) => {
+			activeBySession.set(sessionId, instanceId);
+		},
 		openContributedTab: (sessionId, definition, options) => {
 			const existing = options?.instanceId
 				? tabsBySession.get(sessionId)?.find((entry) => entry.instanceId === options.instanceId)
@@ -151,7 +154,7 @@ describe("notebook plugin webRegister", () => {
 		expect(descriptions).toMatch(/never/i);
 	});
 
-	it("list_open returns notebooks for the focused session", async () => {
+	it("list_open returns notebooks for the calling session", async () => {
 		const { system, notebookSdk, panel } = makeSystem();
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("chat-1");
@@ -169,7 +172,14 @@ describe("notebook plugin webRegister", () => {
 			},
 		);
 
-		const result = await system.services.toolRegistry.invoke("notebook", "list_open", {});
+		const result = await system.services.toolRegistry.invoke(
+			"notebook",
+			"list_open",
+			{},
+			{
+				kiloSessionId: "chat-1",
+			},
+		);
 		expect(result).toEqual({
 			sessionId: "chat-1",
 			notebooks: [
@@ -187,7 +197,14 @@ describe("notebook plugin webRegister", () => {
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("chat-1");
 
-		const result = await system.services.toolRegistry.invoke("notebook", "open", {});
+		const result = await system.services.toolRegistry.invoke(
+			"notebook",
+			"open",
+			{},
+			{
+				kiloSessionId: "chat-1",
+			},
+		);
 		expect(result).toEqual({
 			sessionId: "chat-1",
 			notebook_id: "nb-1",
@@ -196,14 +213,68 @@ describe("notebook plugin webRegister", () => {
 		expect(panel.listTabs("chat-1")).toHaveLength(1);
 	});
 
+	it("open creates another scratch notebook in the same session", async () => {
+		const { system, notebookSdk, panel } = makeSystem();
+		webRegister(notebookSdk);
+
+		const first = await system.services.toolRegistry.invoke(
+			"notebook",
+			"open",
+			{},
+			{
+				kiloSessionId: "chat-1",
+			},
+		);
+		const second = await system.services.toolRegistry.invoke(
+			"notebook",
+			"open",
+			{},
+			{
+				kiloSessionId: "chat-1",
+			},
+		);
+
+		expect(first).toEqual({
+			sessionId: "chat-1",
+			notebook_id: "nb-1",
+			title: "Notebook 1",
+		});
+		expect(second).toEqual({
+			sessionId: "chat-1",
+			notebook_id: "nb-2",
+			title: "Notebook 2",
+		});
+		expect(panel.listTabs("chat-1")).toHaveLength(2);
+	});
+
+	it("routes concurrent opens by originating Kilo session instead of visual focus", async () => {
+		const { system, notebookSdk, panel } = makeSystem();
+		webRegister(notebookSdk);
+		panel.setFocusedSessionId("visually-focused-chat");
+
+		const [first, second] = await Promise.all([
+			system.services.toolRegistry.invoke("notebook", "open", {}, { kiloSessionId: "chat-a" }),
+			system.services.toolRegistry.invoke("notebook", "open", {}, { kiloSessionId: "chat-b" }),
+		]);
+
+		expect(first).toMatchObject({ sessionId: "chat-a" });
+		expect(second).toMatchObject({ sessionId: "chat-b" });
+		expect(panel.listTabs("chat-a")).toHaveLength(1);
+		expect(panel.listTabs("chat-b")).toHaveLength(1);
+		expect(panel.listTabs("visually-focused-chat")).toEqual([]);
+	});
+
 	it("open_file opens an ipynb path with its daemon identity and restorable metadata", async () => {
 		const { system, notebookSdk, panel } = makeSystem();
 		webRegister(notebookSdk);
 		panel.setFocusedSessionId("chat-1");
 
-		const result = await system.services.toolRegistry.invoke("notebook", "open_file", {
-			path: "/projects/analysis.ipynb",
-		});
+		const result = await system.services.toolRegistry.invoke(
+			"notebook",
+			"open_file",
+			{ path: "/projects/analysis.ipynb" },
+			{ kiloSessionId: "chat-1" },
+		);
 
 		expect(result).toEqual({
 			sessionId: "chat-1",
@@ -343,6 +414,62 @@ describe("notebook plugin webRegister", () => {
 		panel.listTabs = originalListTabs;
 	});
 
+	it("refuses pane tools that lack an originating Kilo session", async () => {
+		const { system, notebookSdk } = makeSystem();
+		webRegister(notebookSdk);
+
+		await expect(system.services.toolRegistry.invoke("notebook", "open", {})).resolves.toEqual({
+			error: expect.stringContaining("originating Kilo chat session"),
+		});
+		await expect(system.services.toolRegistry.invoke("notebook", "list_open", {})).resolves.toEqual(
+			{
+				sessionId: null,
+				notebooks: [],
+				error: expect.stringContaining("originating Kilo chat session"),
+			},
+		);
+		await expect(
+			system.services.toolRegistry.invoke("notebook", "open_file", {
+				path: "/projects/analysis.ipynb",
+			}),
+		).resolves.toEqual({
+			error: expect.stringContaining("originating Kilo chat session"),
+		});
+	});
+
+	it("reuses an already-open file-backed notebook tab", async () => {
+		const { system, notebookSdk, panel } = makeSystem();
+		webRegister(notebookSdk);
+		panel.openContributedTab(
+			"chat-1",
+			{ id: NOTEBOOK_TAB_DEFINITION_ID, title: NOTEBOOK_TAB_TITLE },
+			{
+				instanceId: "panel-tab-1",
+				title: "analysis.ipynb",
+				metadata: {
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					notebookOpenState: "ready",
+					notebookPath: "/projects/analysis.ipynb",
+				},
+			},
+		);
+
+		const result = await system.services.toolRegistry.invoke(
+			"notebook",
+			"open_file",
+			{ path: "/projects/analysis.ipynb" },
+			{ kiloSessionId: "chat-1" },
+		);
+
+		expect(result).toEqual({
+			sessionId: "chat-1",
+			notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d",
+			title: "analysis.ipynb",
+			path: "/projects/analysis.ipynb",
+		});
+		expect(panel.listTabs("chat-1")).toHaveLength(1);
+	});
+
 	it("returns a structured error when no chat is focused", () => {
 		const { notebookSdk } = makeSystem();
 		expect(listOpenNotebooks(notebookSdk)).toMatchObject({
@@ -375,6 +502,20 @@ describe("notebook plugin webRegister", () => {
 			},
 		);
 		expect(invoke).not.toHaveBeenCalled();
+	});
+
+	it("returns a structured error when listing open notebooks without kilo-ui", async () => {
+		const notebookSdk = createFakeSdk({ featureId: "notebook" });
+		const system = createFakeFeatureSystem({ sdks: { notebook: notebookSdk } });
+		webRegister(notebookSdk);
+
+		await expect(
+			system.services.toolRegistry.invoke("notebook", "list_open", {}, { kiloSessionId: "chat-1" }),
+		).resolves.toEqual({
+			sessionId: null,
+			notebooks: [],
+			error: expect.stringContaining("unavailable"),
+		});
 	});
 
 	it("returns a structured error when kilo-ui is unavailable for open_file", async () => {

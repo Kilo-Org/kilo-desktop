@@ -2,6 +2,8 @@ import { createServer } from "node:http";
 
 import { test } from "../../../fixtures/features/browser.js";
 
+test.use({ appIsolationKey: "browser-smoke" });
+
 test.describe("Chat browser tab @smoke", () => {
 	test("navigates an embedded guest and adopts its page title", async ({
 		appShellPage,

@@ -1,7 +1,9 @@
-import type { RegisteredTool } from "@kilo-desktop/feature-sdk";
+import type { RegisteredTool, ToolInvocationContext } from "@kilo-desktop/feature-sdk";
 import type { FeatureSystem } from "@kilo-desktop/sdk-react";
 import type { CallToolResult, InputSchema, ToolAnnotations } from "@mcp-b/webmcp-types";
 import { initializeWebMCPPolyfill } from "@mcp-b/webmcp-polyfill";
+
+import { getDesktopBridge } from "../desktopBridge.js";
 
 /** Loopback host the relay daemon binds to. The relay only accepts local connections. */
 const RELAY_HOST = "127.0.0.1";
@@ -23,6 +25,29 @@ const RELAY_ID = "kilo-desktop";
 /** Path (relative to the app origin) of the self-hosted relay bootstrap script. */
 const EMBED_SCRIPT_PATH = "webmcp/embed.js";
 const EMPTY_INPUT_SCHEMA: InputSchema = { type: "object", properties: {} };
+const KILO_CALLER_CONTEXT_KEY = "__anacondaDesktopKiloCaller";
+const KILO_CALLER_CONTEXT_SCHEMA = {
+	type: "object",
+	properties: {
+		version: { type: "integer" },
+		sessionId: { type: "string", minLength: 1 },
+		callId: { type: "string", minLength: 1 },
+	},
+	required: ["version", "sessionId", "callId"],
+};
+
+function addKiloCallerContextToSchema(schema: InputSchema): InputSchema {
+	if (schema.type !== "object") return schema;
+	const { additionalProperties: _ignored, ...rest } = schema;
+	return {
+		...rest,
+		type: "object",
+		properties: {
+			...(schema.properties ?? {}),
+			[KILO_CALLER_CONTEXT_KEY]: KILO_CALLER_CONTEXT_SCHEMA,
+		},
+	};
+}
 
 let installed = false;
 
@@ -86,7 +111,9 @@ export function installWebMcp(system: FeatureSystem): void {
 				{
 					name: mcpName,
 					description: tool.description,
-					inputSchema: (tool.inputSchema as InputSchema | undefined) ?? EMPTY_INPUT_SCHEMA,
+					inputSchema: addKiloCallerContextToSchema(
+						(tool.inputSchema as InputSchema | undefined) ?? EMPTY_INPUT_SCHEMA,
+					),
 					...(tool.annotations ? { annotations: tool.annotations as ToolAnnotations } : {}),
 					execute: (args: Record<string, unknown>) => executeTool(system, tool, args),
 				},
@@ -162,12 +189,42 @@ async function executeTool(
 	args: Record<string, unknown>,
 ): Promise<CallToolResult> {
 	try {
-		const result = await system.services.toolRegistry.invoke(tool.featureId, tool.name, args);
+		const extracted = extractKiloCallerContext(args);
+		const result = await system.services.toolRegistry.invoke(
+			tool.featureId,
+			tool.name,
+			extracted.args,
+			extracted.context,
+		);
 		return { content: [{ type: "text", text: JSON.stringify(result ?? null, null, 2) }] };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return { isError: true, content: [{ type: "text", text: message }] };
 	}
+}
+
+function extractKiloCallerContext(args: Record<string, unknown>): {
+	readonly args: Record<string, unknown>;
+	readonly context: ToolInvocationContext;
+} {
+	const { [KILO_CALLER_CONTEXT_KEY]: envelope, ...ordinaryArgs } = args;
+	if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+		return { args: ordinaryArgs, context: {} };
+	}
+	const value = envelope as Record<string, unknown>;
+	if (
+		value.version !== 1 ||
+		typeof value.sessionId !== "string" ||
+		value.sessionId.length === 0 ||
+		typeof value.callId !== "string" ||
+		value.callId.length === 0
+	) {
+		return { args: ordinaryArgs, context: {} };
+	}
+	return {
+		args: ordinaryArgs,
+		context: { kiloSessionId: value.sessionId, kiloCallId: value.callId },
+	};
 }
 
 /**
@@ -182,9 +239,10 @@ function injectRelayEmbed(): void {
 	script.src = new URL(EMBED_SCRIPT_PATH, document.baseURI).href;
 	script.async = true;
 	script.dataset.webmcpEmbed = "1";
+	const rendezvous = getDesktopBridge()?.webmcpRelay;
 	script.setAttribute("data-relay-host", RELAY_HOST);
-	script.setAttribute("data-relay-port", RELAY_PORT);
-	script.setAttribute("data-relay-id", RELAY_ID);
+	script.setAttribute("data-relay-port", rendezvous?.port ?? RELAY_PORT);
+	script.setAttribute("data-relay-id", rendezvous?.relayId ?? RELAY_ID);
 	script.addEventListener("error", () => {
 		console.warn("[webmcp] Failed to load relay embed script; external tool relay is disabled.");
 	});

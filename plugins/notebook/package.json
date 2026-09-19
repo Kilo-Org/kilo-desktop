@@ -13,11 +13,12 @@
 		"./packaging": "./src/packaging/index.ts"
 	},
 	"scripts": {
+		"build-kilo-plugin": "node --env-file-if-exists=.env.local --import tsx scripts/build-kilo-plugin.ts",
 		"fetch-notebook-ui": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-notebook-ui.ts",
 		"check": "tsc --noEmit -p tsconfig.json",
-		"fetch-nteract-mcp": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-nteract-mcp.ts",
 		"fetch-runtimed": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-runtimed.ts",
-		"prepare-assets": "pnpm run fetch-nteract-mcp && pnpm run fetch-runtimed && pnpm run fetch-notebook-ui",
+		"prepare-assets": "pnpm run fetch-runtimed && pnpm run build-kilo-plugin && pnpm run fetch-notebook-ui",
+		"stage-bundle": "pnpm run build-kilo-plugin && pnpm run fetch-notebook-ui",
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},

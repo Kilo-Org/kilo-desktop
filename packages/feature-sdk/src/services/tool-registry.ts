@@ -1,4 +1,4 @@
-import type { RegisteredTool, ToolDefinition } from "../types/sdk.js";
+import type { RegisteredTool, ToolDefinition, ToolInvocationContext } from "../types/sdk.js";
 
 /**
  * In-memory tool registry backing `sdk.tools`.
@@ -64,16 +64,22 @@ export class ToolRegistry {
 
 	/**
 	 * Invoke a tool by feature id + name. Validates args through the tool's
-	 * `validate` schema (when present) before calling the handler.
+	 * `validate` schema (when present) before calling the handler. Caller
+	 * context is adapter-supplied metadata and is never taken from `args`.
 	 */
-	async invoke(featureId: string, toolName: string, args: unknown): Promise<unknown> {
+	async invoke(
+		featureId: string,
+		toolName: string,
+		args: unknown,
+		context: ToolInvocationContext = {},
+	): Promise<unknown> {
 		const entry = this.tools.get(`${featureId}.${toolName}`);
 		if (!entry) {
 			throw new Error(`Tool not found: ${featureId}.${toolName}`);
 		}
 		const { definition } = entry;
 		const parsed = definition.validate ? definition.validate.parse(args) : args;
-		return definition.handler(parsed);
+		return definition.handler(parsed, context);
 	}
 
 	/** Remove every tool owned by a feature (feature/plugin teardown). */

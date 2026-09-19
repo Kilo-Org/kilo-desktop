@@ -3,7 +3,7 @@
 Embedding nteract's notebook UI while sharing the user's `runtimed` singleton. Kilo
 Desktop packages a pinned daemon and warms it during app launch when the canonical endpoint
 is idle; an already-running compatible daemon always wins. Kilo reaches that daemon through a
-bundled `nteract-mcp` proxy and its colocated `runt` child. These docs were written as work
+Desktop-managed plugin using `@runtimed/node` directly. These docs were written as work
 progressed, so several preserve superseded investigations. Read in this order.
 
 | Doc                                                                              | What it is                                                                                                               |

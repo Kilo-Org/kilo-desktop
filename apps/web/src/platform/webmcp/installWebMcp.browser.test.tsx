@@ -51,6 +51,73 @@ describe("installWebMcp", () => {
 		expect(JSON.parse(result.content?.[0]?.text ?? "{}")).toEqual({ echoed: { a: 1 } });
 	});
 
+	it("extracts trusted Kilo caller context without exposing it to tool arguments", async () => {
+		todos.tools.register({
+			name: "caller",
+			description: "Return caller",
+			exposeToModelContext: true,
+			inputSchema: { type: "object", properties: {}, additionalProperties: false },
+			handler: (args, context) => ({ args, context }),
+		});
+		await expect.poll(() => listToolNames()).toContain("todos_caller");
+
+		const raw = await modelContextTesting()?.executeTool(
+			"todos_caller",
+			JSON.stringify({
+				__anacondaDesktopKiloCaller: {
+					version: 1,
+					sessionId: "session-a",
+					callId: "call-a",
+				},
+			}),
+		);
+		const result = JSON.parse(raw ?? "{}") as { content?: Array<{ text: string }> };
+		expect(JSON.parse(result.content?.[0]?.text ?? "{}")).toEqual({
+			args: {},
+			context: { kiloSessionId: "session-a", kiloCallId: "call-a" },
+		});
+
+		const emptyRaw = await modelContextTesting()?.executeTool("todos_caller", "{}");
+		const emptyResult = JSON.parse(emptyRaw ?? "{}") as { content?: Array<{ text: string }> };
+		expect(JSON.parse(emptyResult.content?.[0]?.text ?? "{}")).toEqual({
+			args: {},
+			context: {},
+		});
+	});
+
+	it("advertises the reserved caller envelope without opening the domain argument schema", async () => {
+		todos.tools.register({
+			name: "closed",
+			description: "Closed tool",
+			exposeToModelContext: true,
+			inputSchema: {
+				type: "object",
+				properties: { value: { type: "number" } },
+				required: ["value"],
+				additionalProperties: false,
+			},
+			handler: (args, context) => ({ args, context }),
+		});
+		await expect.poll(() => listToolNames()).toContain("todos_closed");
+
+		const raw = await modelContextTesting()?.executeTool(
+			"todos_closed",
+			JSON.stringify({
+				value: 1,
+				__anacondaDesktopKiloCaller: {
+					version: 1,
+					sessionId: "session-a",
+					callId: "call-a",
+				},
+			}),
+		);
+		const result = JSON.parse(raw ?? "{}") as { content?: Array<{ text: string }> };
+		expect(JSON.parse(result.content?.[0]?.text ?? "{}")).toEqual({
+			args: { value: 1 },
+			context: { kiloSessionId: "session-a", kiloCallId: "call-a" },
+		});
+	});
+
 	it("re-syncs on registry changes: unregistering removes the published tool", async () => {
 		const unregister = todos.tools.register({
 			name: "temp",

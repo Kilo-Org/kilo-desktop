@@ -5,7 +5,7 @@ import {
 	type ChatModelAdapter,
 	type RemoteThreadListAdapter,
 } from "@assistant-ui/react";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -99,10 +99,10 @@ describe("NewChatButton", () => {
 		expect(screen.getByRole("button").elements()).toHaveLength(1);
 	});
 
-	it("creates a chat from the button", async () => {
+	it("navigates to chat without waiting for the thread switch", () => {
 		const { navigate, screen } = renderNewChatButton();
 
-		await screen.getByRole("button", { name: "New Chat" }).click();
+		fireEvent.click(screen.getByRole("button", { name: "New Chat" }).element());
 
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
 	});

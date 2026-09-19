@@ -2,18 +2,16 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { NTERACT_MCP_ARTIFACTS, RUNTIMED_ARTIFACTS } from "./artifacts.js";
+import { RUNTIMED_ARTIFACTS } from "./artifacts.js";
 import { createNotebookPackagingPlan, NOTEBOOK_MAIN_EXTERNALS } from "./index.js";
 
 describe("notebook packaging", () => {
-	it("keeps the complete Windows notebook runtime mandatory", () => {
+	it("keeps the fetched notebook UI, direct Kilo plugin, and Windows daemon mandatory", () => {
 		const pluginRoot = path.resolve("/plugin/notebook");
 		const required = new Set([
 			path.join(pluginRoot, "build/notebook/index.html"),
 			path.join(pluginRoot, "build/notebook/staged.json"),
-			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/nteract-mcp.exe"),
-			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/runt-nightly.exe"),
-			path.join(pluginRoot, "resources/nteract-mcp/win32-x64/staged.json"),
+			path.join(pluginRoot, "build/kilo-plugin/index.js"),
 			path.join(pluginRoot, "resources/runtimed/win32-x64/runtimed-nightly.exe"),
 			path.join(pluginRoot, "resources/runtimed/win32-x64/staged.json"),
 		]);
@@ -28,7 +26,7 @@ describe("notebook packaging", () => {
 		).toEqual({
 			extraResources: [
 				path.join(pluginRoot, "build/notebook"),
-				path.join(pluginRoot, "resources/nteract-mcp"),
+				path.join(pluginRoot, "build/kilo-plugin"),
 				path.join(pluginRoot, "resources/runtimed"),
 			],
 			asarUnpackPackages: ["@runtimed"],
@@ -64,24 +62,6 @@ describe("notebook packaging", () => {
 		}
 	});
 
-	it("keeps nteract-mcp colocated with its runt child on every target", () => {
-		for (const artifact of NTERACT_MCP_ARTIFACTS) {
-			const checkedPaths: string[] = [];
-			createNotebookPackagingPlan({
-				pluginRoot: path.resolve("/plugin/notebook"),
-				platform: artifact.platform,
-				arch: artifact.arch,
-				exists: (candidate) => {
-					checkedPaths.push(candidate);
-					return true;
-				},
-			});
-			const targetRoot = path.resolve("/plugin/notebook/resources/nteract-mcp", artifact.target);
-			expect(checkedPaths).toContain(path.join(targetRoot, artifact.nteractMcp.executable));
-			expect(checkedPaths).toContain(path.join(targetRoot, artifact.runt.executable));
-		}
-	});
-
 	it("rejects unsupported desktop targets before packaging", () => {
 		expect(() =>
 			createNotebookPackagingPlan({
@@ -90,7 +70,7 @@ describe("notebook packaging", () => {
 				arch: "arm64",
 				exists: () => true,
 			}),
-		).toThrow(/nteract-mcp is not configured for linux\/arm64/);
+		).toThrow(/runtimed is not configured for linux\/arm64/);
 	});
 
 	it("declares the native adapter as a main-process external", () => {

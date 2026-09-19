@@ -26,8 +26,12 @@ function fakePort(): HostMessagePort {
 
 async function boot(options: NotebookFeatureOptions = {}) {
 	const router = new FeatureRouter();
-	const mcpConfig = { set: vi.fn(async () => undefined), remove: vi.fn(async () => undefined) };
-	router.createMainSdk("kilo-server").plugins.expose("kiloService", { mcpConfig });
+	const disposeKiloEnv = vi.fn();
+	const kiloService = {
+		configuration: { set: vi.fn(async () => undefined) },
+		serverEnv: { contribute: vi.fn(() => disposeKiloEnv) },
+	};
+	router.createMainSdk("kilo-server").plugins.expose("kiloService", kiloService);
 	const mainSdk = router.createMainSdk("notebook", {
 		resolvePluginAsset: (subpath) => `/plugins/notebook/${subpath}`,
 	});
@@ -58,33 +62,26 @@ async function boot(options: NotebookFeatureOptions = {}) {
 	await mainRegister(mainSdk, {
 		...options,
 		resolveBundleRoot: () => "/plugins/notebook/build/notebook",
-		resolveNteractMcpBinary: () => "/bundled/nteract-mcp",
-		resolveRuntBinary: () => "/bundled/runt-nightly",
+		resolveKiloPluginEntry: () => "/plugins/notebook/build/kilo-plugin/index.js",
+		resolveRuntimedNodeEntry: () => "/node_modules/@runtimed/node/src/index.cjs",
 		createHostService: (options) => {
 			hostServiceOptions = options;
 			return hostService;
 		},
 	});
-	return { hostService, hostServiceOptions, mainSdk, router, mcpConfig };
+	return { hostService, hostServiceOptions, kiloService, mainSdk, router };
 }
 
 describe("notebook mainRegister", () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	it.each(["option", "environment"])(
-		"uses the same explicit %s endpoint for the host and MCP",
+		"uses the explicit %s endpoint for the host",
 		async (selection) => {
 			const socketPath = "/tmp/runtimed.sock";
 			if (selection === "environment") vi.stubEnv("RUNTIMED_SOCKET_PATH", socketPath);
-			const { hostServiceOptions, mcpConfig } = await boot(
-				selection === "option" ? { socketPath } : {},
-			);
+			const { hostServiceOptions } = await boot(selection === "option" ? { socketPath } : {});
 			expect(hostServiceOptions?.socketPath).toBe(socketPath);
-			expect(mcpConfig.set).toHaveBeenCalledWith("notebook", expect.any(String), {
-				type: "local",
-				command: ["/bundled/runt-nightly", "mcp", "--socket", socketPath, "--no-show"],
-				enabled: true,
-			});
 		},
 	);
 
@@ -98,6 +95,19 @@ describe("notebook mainRegister", () => {
 		const { hostServiceOptions } = await boot();
 
 		expect(hostServiceOptions?.runtimeChannel).toBe("nightly");
+	});
+
+	it("installs the direct Kilo plugin with the host daemon socket", async () => {
+		const { kiloService } = await boot();
+
+		expect(kiloService.configuration.set).toHaveBeenCalledWith("notebook", {
+			plugins: { notebooks: "/plugins/notebook/build/kilo-plugin/index.js" },
+			mcpEntries: {},
+		});
+		expect(kiloService.serverEnv.contribute).toHaveBeenCalledWith("notebook", {
+			NTERACT_RUNTIMED_NODE_PATH: "/node_modules/@runtimed/node/src/index.cjs",
+			RUNTIMED_SOCKET_PATH: "/tmp/runtimed.sock",
+		});
 	});
 
 	it("reports the external singleton through the typed status channel", async () => {
@@ -161,6 +171,7 @@ describe("notebook mainRegister", () => {
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
 			sessionId: "session-1",
 			title: "Analysis",
+			workingDirectory: "/projects/analysis",
 		};
 
 		await router.connectPort("notebook", "host", port, args, { senderId: 42 });
@@ -168,6 +179,12 @@ describe("notebook mainRegister", () => {
 		expect(hostService.connect).toHaveBeenCalledWith(port, args, 42);
 		await expect(
 			router.connectPort("notebook", "host", fakePort(), { ...args, notebookId: "not-a-uuid" }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+		await expect(
+			router.connectPort("notebook", "host", fakePort(), {
+				...args,
+				workingDirectory: "relative/path",
+			}),
 		).rejects.toMatchObject({ code: "VALIDATION" });
 	});
 

@@ -107,10 +107,8 @@ describe("Squirrel nupkg extract path budget", () => {
 			),
 		).toBe(true);
 		expect(
-			squirrelExtractFitsMaxPath(
-				temp,
-				nupkgResources("nteract-mcp", "win32-x64", "nteract-mcp.exe"),
-			),
+			squirrelExtractFitsMaxPath(temp, nupkgResources("runtimed", "win32-x64", "runtimed.exe")),
 		).toBe(true);
+		expect(squirrelExtractFitsMaxPath(temp, nupkgResources("kilo-plugin", "index.js"))).toBe(true);
 	});
 });

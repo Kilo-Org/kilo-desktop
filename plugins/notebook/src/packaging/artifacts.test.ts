@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	findNteractMcpArtifact,
 	findRuntimedArtifact,
-	getNteractMcpArtifact,
 	getRuntimedArtifact,
 	NTERACT_NOTEBOOK_UI,
 	NTERACT_RELEASE,
-	NTERACT_MCP_ARTIFACTS,
 	RUNTIMED_ARTIFACTS,
 	runtimedDownloadUrl,
 } from "./artifacts.js";
@@ -26,43 +23,6 @@ describe("notebook distribution artifacts", () => {
 			bytes: 7_816_621,
 			sha256: "094f6a644b47542fa55e178ffdea96a3890cffb3ce286f84d16ff63d4a5c1d8b",
 		});
-	});
-
-	it("pins nteract-mcp and a colocated runt child for every desktop target", () => {
-		expect(NTERACT_MCP_ARTIFACTS.map(({ target }) => target)).toEqual([
-			"darwin-arm64",
-			"darwin-x64",
-			"linux-x64",
-			"win32-x64",
-		]);
-		for (const artifact of NTERACT_MCP_ARTIFACTS) {
-			for (const binary of [artifact.nteractMcp, artifact.runt]) {
-				expect(binary.sha256).toMatch(/^[a-f0-9]{64}$/);
-				expect(binary.source.sha256).toMatch(/^[a-f0-9]{64}$/);
-				expect(binary.bytes).toBeGreaterThan(1_000_000);
-			}
-		}
-	});
-
-	it("keeps every native asset on the pinned nightly channel", () => {
-		expect(NTERACT_RELEASE.channel).toBe("nightly");
-		for (const artifact of NTERACT_MCP_ARTIFACTS) {
-			expect(artifact.nteractMcp.source.assetName).toContain("nightly");
-			expect(artifact.runt.source.assetName).toContain("nightly");
-			expect(artifact.runt.executable).toContain("nightly");
-		}
-		for (const artifact of RUNTIMED_ARTIFACTS) {
-			expect(artifact.assetName).toContain("nightly");
-			expect(artifact.executable).toContain("nightly");
-		}
-	});
-
-	it("selects nteract-mcp by platform and rejects unsupported targets", () => {
-		expect(getNteractMcpArtifact("win32", "x64").nteractMcp.executable).toBe("nteract-mcp.exe");
-		expect(findNteractMcpArtifact("linux", "arm64")).toBeUndefined();
-		expect(() => getNteractMcpArtifact("linux", "arm64")).toThrow(
-			/nteract-mcp is not configured for linux\/arm64/,
-		);
 	});
 
 	it("pins the required runtimed daemon for every desktop release target", () => {

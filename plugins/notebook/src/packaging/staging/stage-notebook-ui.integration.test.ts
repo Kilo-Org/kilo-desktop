@@ -299,6 +299,12 @@ describe("injectKiloEmbedChromeHtml", () => {
 		expect(KILO_EMBED_CHROME_CSS).toContain('[data-testid="notebook-rail"]');
 	});
 
+	it("matches the host tab font size without scaling rem-based chrome", () => {
+		expect(KILO_EMBED_CHROME_CSS).toContain("#root{font-size:12px}");
+		expect(KILO_EMBED_CHROME_CSS).toContain("#root .cm-editor");
+		expect(KILO_EMBED_CHROME_CSS).not.toContain("html{font-size:");
+	});
+
 	it("injects a parent-origin theme bridge", () => {
 		const html = injectKiloEmbedChromeHtml("<html><head></head><body></body></html>");
 		expect(html).toContain(NOTEBOOK_THEME_MESSAGE_TYPE);

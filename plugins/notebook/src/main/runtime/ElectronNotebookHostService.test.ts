@@ -142,6 +142,7 @@ describe("ElectronNotebookHostService", () => {
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
 				sessionId: "kilo-1",
 				title: "Analysis",
+				workingDirectory: "/projects/analysis",
 			},
 			42,
 		);
@@ -150,6 +151,7 @@ describe("ElectronNotebookHostService", () => {
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
 			ephemeral: false,
 			packageManager: "conda",
+			workingDir: "/projects/analysis",
 			socketPath: "/tmp/nightly.sock",
 			peerLabel: "kilo-desktop:kilo-1",
 			description: "Analysis",

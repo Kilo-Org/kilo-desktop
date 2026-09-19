@@ -33,7 +33,7 @@ import {
  * set of Kilo (the opencode fork used as the backend). MCP tools are named
  * `{server}_{tool}` and group by server; anything else unmapped lands in the
  * generic tools group. Known MCP servers can override their display label and
- * icon (e.g. notebooks → Notebooks, matching the chat notebook pane).
+ * icon (e.g. notebooks → Notebook, matching the chat notebook pane).
  */
 
 export type ToolCategory =
@@ -282,6 +282,8 @@ export type KindStats = {
 	skill?: string | undefined;
 	/** Short task description (or agent type) for a single subagent call. */
 	task?: string | undefined;
+	/** Display name of a single MCP tool call. */
+	tool?: string | undefined;
 };
 
 type KindMeta = {
@@ -432,7 +434,7 @@ type McpKindOverride = Pick<KindMeta, "icon" | "label" | "circleClassName"> & {
 const MCP_KIND_OVERRIDES: Record<string, McpKindOverride> = {
 	notebooks: {
 		icon: NotebookIcon,
-		label: "Notebooks",
+		label: "Notebook",
 		circleClassName:
 			"border-teal-600/40 bg-teal-100 text-teal-600 dark:border-teal-400/40 dark:bg-teal-950 dark:text-teal-400",
 		toolLabels: {
@@ -494,8 +496,8 @@ const mcpKindMeta = (kind: McpActivityKind): KindMeta => {
 	return {
 		icon: override?.icon ?? WrenchIcon,
 		label,
-		liveLabel: () => `${label}...`,
-		doneLabel: () => label,
+		liveLabel: ({ tool }) => (tool ? `${label} ${tool}...` : `${label}...`),
+		doneLabel: ({ tool }) => (tool ? `${label} ${tool}` : label),
 		circleClassName: override?.circleClassName ?? KIND_META.tools.circleClassName,
 	};
 };
@@ -650,6 +652,10 @@ export const getSegmentStats = (
 		segment.kind === "skill" ? uniqueSkillNames(parts, segment.indices) : ([] as string[]);
 	const tasks =
 		segment.kind === "subagent" ? uniqueTaskDescriptions(parts, segment.indices) : ([] as string[]);
+	const toolName =
+		isMcpActivityKind(segment.kind) && segment.indices.length === 1
+			? parts[segment.indices[0]!]?.toolName
+			: undefined;
 	return {
 		count: segment.indices.length,
 		files: files.length,
@@ -659,6 +665,7 @@ export const getSegmentStats = (
 		commandSummary: commandSummary || undefined,
 		skill: skills.length === 1 ? skills[0] : undefined,
 		task: tasks.length === 1 ? tasks[0] : undefined,
+		tool: toolName ? formatToolDisplayName(toolName) : undefined,
 	};
 };
 

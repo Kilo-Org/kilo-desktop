@@ -356,6 +356,9 @@ describe("ElectronWindow theme chrome", () => {
 			workspaceId: "workspace-1",
 		};
 
+		expect(createdWindows[0]?.options.webPreferences?.additionalArguments).toEqual(
+			expect.arrayContaining(["--kilo-webmcp-port=9345", "--kilo-webmcp-relay-id=kilo-desktop"]),
+		);
 		expect(windows.openPaneWindow(pane, false)).toEqual({ opened: true });
 		expect(getDesktopRouteUrl).toHaveBeenCalledWith(false, "/plugins/chat", {
 			paneWindow: "true",

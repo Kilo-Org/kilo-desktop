@@ -583,8 +583,8 @@ importers:
         specifier: 4.0.0
         version: 4.0.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)
       '@mcp-b/webmcp-types':
-        specifier: 4.0.0
-        version: 4.0.0
+        specifier: 5.1.0
+        version: 5.1.0
       '@sentry/vite-plugin':
         specifier: 'catalog:'
         version: 5.4.0(supports-color@10.2.2)
@@ -3310,9 +3310,6 @@ packages:
   '@mcp-b/webmcp-polyfill@5.1.0':
     resolution: {integrity: sha512-KL09hniFssPY8HBO3qzurWPqm+1JYRwV3wx6x2XSySgo+6BL1XHGsHGIoAO7U9zzigv7TA5keNBoZ+3P1jq18g==}
     engines: {node: '>=20'}
-
-  '@mcp-b/webmcp-types@4.0.0':
-    resolution: {integrity: sha512-CUBBmiut1UBsiD3FAF6xrLKeKAuJkzd6/BlL1C/uo8sVpwY42NW4mls9rLcTxmLF/8Cj5/ZOwJiLzXl/T3GIQg==}
 
   '@mcp-b/webmcp-types@5.1.0':
     resolution: {integrity: sha512-twOKDUr7al60K890HvRcNvoHSfQ2rnGeKJiQs6eUr+Leg+LQ6K+yz3F4K70jykMK1a09ZIgYb3Oc7mAypuKPig==}
@@ -11730,8 +11727,6 @@ snapshots:
     dependencies:
       '@mcp-b/webmcp-types': 5.1.0
       '@standard-schema/spec': 1.1.0
-
-  '@mcp-b/webmcp-types@4.0.0': {}
 
   '@mcp-b/webmcp-types@5.1.0':
     dependencies:

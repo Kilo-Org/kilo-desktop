@@ -580,8 +580,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@mcp-b/webmcp-local-relay':
-        specifier: 4.0.0
-        version: 4.0.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)
+        specifier: 5.1.0
+        version: 5.1.0
       '@mcp-b/webmcp-types':
         specifier: 5.1.0
         version: 5.1.0
@@ -1269,8 +1269,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/feature-sdk
       '@mcp-b/webmcp-local-relay':
-        specifier: 4.0.0
-        version: 4.0.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)
+        specifier: 5.1.0
+        version: 5.1.0
       atomically:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1319,8 +1319,8 @@ importers:
   plugins/kilo-server/relay-runtime:
     dependencies:
       '@mcp-b/webmcp-local-relay':
-        specifier: 4.0.0
-        version: 4.0.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)
+        specifier: 5.1.0
+        version: 5.1.0
 
   plugins/kilo-ui:
     dependencies:
@@ -2995,12 +2995,6 @@ packages:
   '@hapi/topo@6.0.2':
     resolution: {integrity: sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg==}
 
-  '@hono/node-server@1.19.17':
-    resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
-    engines: {node: '>=18.14.1'}
-    peerDependencies:
-      hono: ^4
-
   '@hono/node-server@2.0.12':
     resolution: {integrity: sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==}
     engines: {node: '>=20'}
@@ -3302,8 +3296,8 @@ packages:
     resolution: {integrity: sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg==}
     engines: {node: '>= 12.13.0'}
 
-  '@mcp-b/webmcp-local-relay@4.0.0':
-    resolution: {integrity: sha512-X1Wr7UcHy9iBiYTUsBK7UVrdrQsbPuyLKurrZlgfZVQCBghr7BnZKt32E2m/45x40vNo532ZLe15Xs3q3zedNQ==}
+  '@mcp-b/webmcp-local-relay@5.1.0':
+    resolution: {integrity: sha512-C5Q5DPgXLoLlQQ3VlIvUnDbnxX5Xh1t4byXpwqJbkayqmekW1luEj69Zo36rsSN6bVlKlrgPsEaJIacjhdSsFw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -3339,16 +3333,6 @@ packages:
       react:
         optional: true
       react-dom:
-        optional: true
-
-  '@modelcontextprotocol/sdk@1.29.0':
-    resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      '@cfworker/json-schema':
         optional: true
 
   '@modelcontextprotocol/sdk@1.30.0':
@@ -11376,10 +11360,6 @@ snapshots:
     dependencies:
       '@hapi/hoek': 11.0.7
 
-  '@hono/node-server@1.19.17(hono@4.12.32)':
-    dependencies:
-      hono: 4.12.32
-
   '@hono/node-server@2.0.12(hono@4.12.32)':
     dependencies:
       hono: 4.12.32
@@ -11712,15 +11692,14 @@ snapshots:
     dependencies:
       cross-spawn: 7.0.6
 
-  '@mcp-b/webmcp-local-relay@4.0.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)':
+  '@mcp-b/webmcp-local-relay@5.1.0':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.4.3)
+      '@modelcontextprotocol/core': 2.0.0
+      '@modelcontextprotocol/server': 2.0.0
       ws: 8.21.3
       zod: 4.4.3
     transitivePeerDependencies:
-      - '@cfworker/json-schema'
       - bufferutil
-      - supports-color
       - utf-8-validate
 
   '@mcp-b/webmcp-polyfill@5.1.0':
@@ -11756,30 +11735,6 @@ snapshots:
       '@modelcontextprotocol/server': 2.0.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
-
-  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.4.3)':
-    dependencies:
-      '@hono/node-server': 1.19.17(hono@4.12.32)
-      ajv: 8.20.0
-      ajv-formats: 3.0.1
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.1.0
-      express: 5.2.1(supports-color@10.2.2)
-      express-rate-limit: 8.6.1(express@5.2.1(supports-color@10.2.2))(supports-color@10.2.2)
-      hono: 4.12.32
-      jose: 6.2.4
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.2
-      zod: 4.4.3
-      zod-to-json-schema: 3.25.2(zod@4.4.3)
-    optionalDependencies:
-      '@cfworker/json-schema': 4.1.1
-    transitivePeerDependencies:
-      - supports-color
 
   '@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.4.3)':
     dependencies:

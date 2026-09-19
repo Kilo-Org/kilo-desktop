@@ -130,7 +130,7 @@ Treat `exposeToModelContext: true` as _"publish to a loopback API with no auth."
 
 The relay is `@mcp-b/webmcp-local-relay`, but **not** loaded from a CDN.
 
-- `apps/web/scripts/sync-webmcp-assets.mjs` copies `embed.js` + `widget.html` from the pinned `@mcp-b/webmcp-local-relay@4.0.0` package into `apps/web/public/webmcp/`, verifying each file's `sha256`.
+- `apps/web/scripts/sync-webmcp-assets.mjs` copies `embed.js` + `widget.html` from the pinned `@mcp-b/webmcp-local-relay@5.1.0` package into `apps/web/public/webmcp/`, verifying each file's `sha256`.
 - The renderer injects `<script src="/webmcp/embed.js" data-relay-host="127.0.0.1">`.
 - `embed.js` normally builds a `blob:` iframe with an inline config script — incompatible with our hash-based CSP. `ElectronProtocol.ts` returns **404** for the widget-probe `fetch("/webmcp/widget.html")`, forcing `embed.js` down the direct same-origin iframe path whose inline script _is_ covered by the per-response hash.
 - CSP additions (both dev and packaged):
@@ -159,7 +159,7 @@ Result: **no third-party code fetched at runtime, works offline, verified at bui
 
 - 🔒 Relay binds loopback (`127.0.0.1`) only. Never exposed to a network interface.
 - 🔒 No auth on the relay by design — any local process running as the user can see exposed tools. Opt-in via `exposeToModelContext` is the enforcement point.
-- 🔒 Third-party relay code is pinned exact (`4.0.0`) and verified by `sha256` at build time; no CDN.
+- 🔒 Third-party relay code is pinned exact (`5.1.0`) and verified by `sha256` at build time; no CDN.
 - 🔒 CSP allows only same-origin frames and loopback WebSockets in the relay's port range.
 - 🔒 Widget-probe 404 keeps every relay resource same-origin, so the hash-based CSP holds.
 - ⚠️ `readOnlyHint` is metadata for clients, **not** enforcement — the tool handler is what actually runs. Author accordingly.
@@ -290,7 +290,7 @@ Four pieces beyond §1's diagram:
   stored inside `kilo.jsonc` would fail validation and stop `kilo serve` from
   starting. Missing sidecar (deleted by user, corrupt, or absent) = "we own
   nothing" = escape hatch.
-- **Bundled relay entry** — the same `@mcp-b/webmcp-local-relay@4.0.0` package
+- **Bundled relay entry** — the same `@mcp-b/webmcp-local-relay@5.1.0` package
   that `apps/web/scripts/sync-webmcp-assets.mjs` reads for its browser assets
   is now also unpacked from asar (see `apps/desktop/forge.config.ts`) so its
   `bin/cli.mjs` has a real filesystem path, and it is launched via

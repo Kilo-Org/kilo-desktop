@@ -48,7 +48,7 @@
 	"devDependencies": {
 		"@kilo-desktop/testing": "workspace:*",
 		"@sentry/vite-plugin": "catalog:",
-		"@mcp-b/webmcp-local-relay": "4.0.0",
+		"@mcp-b/webmcp-local-relay": "5.1.0",
 		"@mcp-b/webmcp-types": "5.1.0",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/router-plugin": "^1.168.23",

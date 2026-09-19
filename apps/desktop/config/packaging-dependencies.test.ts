@@ -68,7 +68,7 @@ describe("packaged production dependencies", () => {
 				"utf8",
 			),
 		) as { dependencies?: Record<string, string> };
-		expect(runtimeManifest.dependencies?.["@mcp-b/webmcp-local-relay"]).toBe("4.0.0");
+		expect(runtimeManifest.dependencies?.["@mcp-b/webmcp-local-relay"]).toBe("5.1.0");
 	});
 
 	it("uses frozen lockfile-backed deploys", () => {

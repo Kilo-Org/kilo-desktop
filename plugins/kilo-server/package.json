@@ -22,7 +22,7 @@
 	"dependencies": {
 		"@kilo-desktop/feature-sdk": "workspace:*",
 		"@electron/fuses": "^2.1.3",
-		"@mcp-b/webmcp-local-relay": "4.0.0",
+		"@mcp-b/webmcp-local-relay": "5.1.0",
 		"atomically": "catalog:",
 		"execa": "catalog:",
 		"jsonc-parser": "^3.3.1",

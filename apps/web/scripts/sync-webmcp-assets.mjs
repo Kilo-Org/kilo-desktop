@@ -34,7 +34,7 @@ const workspaceRoot = path.resolve(scriptDir, "..", "..", "..");
 //   - apps/web/package.json   (browser embed/widget assets consumer)
 //   - plugins/kilo-server/package.json  (CLI relay consumer for the Kilo bridge)
 //   - EXPECTED_SHA256 (re-hash the new dist/browser assets)
-const EXPECTED_VERSION = "4.0.0";
+const EXPECTED_VERSION = "5.1.0";
 const CONSUMER_PACKAGES = [
 	{ label: "apps/web", relativePath: "apps/web/package.json" },
 	{ label: "plugins/kilo-server", relativePath: "plugins/kilo-server/package.json" },
@@ -73,10 +73,10 @@ for (const consumer of CONSUMER_PACKAGES) {
 
 // Only the two assets the relay embed flow needs: `embed.js` bootstraps the widget
 // iframe, and `widget.html` (with its bundled inline runtime) hosts the relay bridge.
-// Values are sha256 (hex) of `@mcp-b/webmcp-local-relay@4.0.0` dist/browser assets.
+// Values are sha256 (hex) of `@mcp-b/webmcp-local-relay@5.1.0` dist/browser assets.
 const EXPECTED_SHA256 = {
-	"embed.js": "590cc17c52a01873efb4ba1496e3ca8de61c615c7f94521ad5fc020596c9ae76",
-	"widget.html": "ff461e6a45051376504b28b161ebe3994d72004c8dbbe2918f63aa2cae523815",
+	"embed.js": "23f54c5dbe50f922b5edb9fcebd765e323cf8c3a6539d04b521f58b72214a09a",
+	"widget.html": "2eaec3069d9e75f481bb57270523c33b17350b68e6f69aa25f2c19b3b966753b",
 };
 
 await rm(publicDir, { recursive: true, force: true });
@@ -97,7 +97,7 @@ for (const [asset, expected] of Object.entries(EXPECTED_SHA256)) {
 	}
 	if (asset === "widget.html") {
 		// PATCH: raise the widget's per-endpoint discovery timeout (1200ms in
-		// upstream 4.0.0) to 10s. The timeout only bounds a REAL handshake in
+		// upstream 5.1.0) to 10s. The timeout only bounds a REAL handshake in
 		// flight — dead ports fail fast via `error` events regardless — but in
 		// dev mode the renderer's main thread can stall for >1.2s (Vite/React
 		// long tasks), starving the hidden iframe's message delivery. Measured

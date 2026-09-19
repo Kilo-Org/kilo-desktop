@@ -66,8 +66,7 @@ describe("Squirrel nupkg extract path budget", () => {
 	const temp = "D:\\t";
 	// electron-winstaller nuspec: resources/** → lib\net45\resources\
 	const nupkgResources = (...parts: string[]) => ["lib", "net45", "resources", ...parts].join("\\");
-	const pnpmRelayFolder =
-		"@mcp-b+webmcp-local-relay@4.0.0_@cfworker+json-schema@4.1.1_supports-color@10.2.2";
+	const pnpmRelayFolder = "@mcp-b+webmcp-local-relay@5.1.0";
 	const relayCli = ["node_modules", "@mcp-b", "webmcp-local-relay", "dist", "cli.mjs"];
 
 	it("extracts nupkg entries under TEMP\\{guid}\\{entry}", () => {
@@ -113,24 +112,5 @@ describe("Squirrel nupkg extract path budget", () => {
 				nupkgResources("nteract-mcp", "win32-x64", "nteract-mcp.exe"),
 			),
 		).toBe(true);
-	});
-
-	it("documents why the relay cannot live under asar.unpacked plugin-kilo-server", () => {
-		expect(
-			squirrelExtractFitsMaxPath(
-				temp,
-				nupkgResources(
-					"app.asar.unpacked",
-					"node_modules",
-					"@kilo-desktop",
-					"plugin-kilo-server",
-					"relay-runtime",
-					"node_modules",
-					".pnpm",
-					pnpmRelayFolder,
-					...relayCli,
-				),
-			),
-		).toBe(false);
 	});
 });

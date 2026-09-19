@@ -4,6 +4,6 @@
 	"private": true,
 	"description": "Lockfile-pinned runtime closure for the packaged WebMCP relay child process",
 	"dependencies": {
-		"@mcp-b/webmcp-local-relay": "4.0.0"
+		"@mcp-b/webmcp-local-relay": "5.1.0"
 	}
 }

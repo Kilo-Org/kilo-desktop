@@ -126,6 +126,8 @@ export class WorkspaceWatcher {
 	#directories = new Map<string, WatchedDirectory>();
 	#nextSubscriptionId = 1;
 	#disposed = false;
+	/** In-flight subscribe chains; dispose awaits them so native work never outlives the process. */
+	#pendingSubscriptions = new Set<Promise<void>>();
 
 	constructor(deps: WorkspaceWatcherDeps) {
 		this.#deps = deps;
@@ -221,18 +223,31 @@ export class WorkspaceWatcher {
 		};
 	}
 
-	/** Tear down every watcher, timer, and subscription. Terminal. */
-	dispose(): void {
+	/**
+	 * Tear down every watcher, timer, and subscription. Terminal.
+	 *
+	 * Async by necessity: @parcel/watcher's `unsubscribe()` completes native
+	 * teardown on a background thread. Resolving before it finishes lets the
+	 * shutdown barrier call `quitAndInstall()` while parcel's async work is
+	 * still in-flight, and the native callback then fires into a destroyed
+	 * NAPI environment (SIGABRT). Awaited here, both for subscriptions that
+	 * already exist and for subscribe chains still in flight (they observe
+	 * `#disposed` and unsubscribe themselves).
+	 */
+	async dispose(): Promise<void> {
 		if (this.#disposed) return;
 		this.#disposed = true;
+		const cleanup: Promise<void>[] = [];
 		for (const [dir, entry] of this.#directories) {
 			if (entry.retryTimer) clearTimeout(entry.retryTimer);
 			entry.retryTimer = null;
 			entry.generation += 1;
 			entry.subscriptions.clear();
-			this.#unsubscribeParcel(dir, entry);
+			const promise = this.#unsubscribeParcel(dir, entry);
+			if (promise) cleanup.push(promise);
 		}
 		this.#directories.clear();
+		await Promise.allSettled([...cleanup, ...this.#pendingSubscriptions]);
 	}
 
 	// ─── Internals ────────────────────────────────────────────────────────────
@@ -247,7 +262,9 @@ export class WorkspaceWatcher {
 	}
 
 	async #startSubscription(dir: string, entry: WatchedDirectory): Promise<void> {
-		this.#unsubscribeParcel(dir, entry);
+		// Runtime resubscribe path, not shutdown — the prior unsubscribe settles
+		// in the background while the new subscription starts.
+		void this.#unsubscribeParcel(dir, entry);
 		entry.generation += 1;
 		const generation = entry.generation;
 
@@ -260,7 +277,7 @@ export class WorkspaceWatcher {
 		// async realpath resolution (e.g. a concurrent teardown).
 		if (this.#disposed || entry.generation !== generation) return;
 
-		this.#deps
+		const subscriptionPromise = this.#deps
 			.subscribeFn(
 				dir,
 				(err, events) => {
@@ -276,8 +293,9 @@ export class WorkspaceWatcher {
 			.then(
 				(sub) => {
 					if (this.#disposed || entry.generation !== generation) {
-						sub.unsubscribe().catch(() => {});
-						return;
+						// A retired subscription must not outlive dispose: track the
+						// self-unsubscribe by settling this promise only after it.
+						return sub.unsubscribe().catch(() => {});
 					}
 					entry.parcelSub = sub;
 					entry.state = "active";
@@ -288,6 +306,11 @@ export class WorkspaceWatcher {
 					this.#handleError(dir, entry, error);
 				},
 			);
+
+		this.#pendingSubscriptions.add(subscriptionPromise);
+		subscriptionPromise.finally(() => {
+			this.#pendingSubscriptions.delete(subscriptionPromise);
+		});
 	}
 
 	#handleError(dir: string, entry: WatchedDirectory, error: Error): void {
@@ -366,13 +389,23 @@ export class WorkspaceWatcher {
 			entry.retryTimer = null;
 		}
 		entry.generation += 1;
-		this.#unsubscribeParcel(dir, entry);
+		// Runtime teardown path, not shutdown — the process stays alive, so the
+		// unsubscribe settles in the background.
+		void this.#unsubscribeParcel(dir, entry);
 	}
 
-	#unsubscribeParcel(dir: string, entry: WatchedDirectory): void {
+	/**
+	 * Start native teardown of a directory's parcel subscription. Returns the
+	 * settle promise so callers on the shutdown path can await it; runtime
+	 * callers discard it. The entry's subscription is detached immediately
+	 * (generation bumps elsewhere) so late event batches are already dropped
+	 * before the native unsubscribe completes.
+	 */
+	#unsubscribeParcel(dir: string, entry: WatchedDirectory): Promise<void> | undefined {
 		const parcelSub = entry.parcelSub;
 		entry.parcelSub = null;
-		parcelSub?.unsubscribe().catch((error: unknown) => {
+		if (!parcelSub) return undefined;
+		return parcelSub.unsubscribe().catch((error: unknown) => {
 			this.#deps.logger.warn(
 				`Unsubscribing the watcher for ${dir} failed: ${
 					error instanceof Error ? error.message : String(error)

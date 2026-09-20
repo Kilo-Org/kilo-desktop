@@ -375,13 +375,65 @@ describe("WorkspaceWatcher", () => {
 			await tick();
 
 			parcel.subscriptions[0]!.fail(new Error("transient"));
-			watcher.dispose();
+			await watcher.dispose();
 			await tick(30);
 
 			expect(parcel.subscribeAttempts).toHaveLength(1);
 			parcel.subscriptions.at(-1)!.emit([change(`${PROJECT}/a.txt`, "created")]);
 			expect(received).toHaveLength(0);
 			expect(watcher.status().directories).toHaveLength(0);
+		});
+	});
+
+	describe("dispose", () => {
+		it("does not resolve until all parcel unsubscribes complete", async () => {
+			const { watcher, parcel, tick } = createTestWatcher();
+			watcher.watchDirectory(PROJECT);
+			watcher.watchDirectory("/work/other");
+			await tick();
+
+			parcel.holdUnsubscribes();
+			let disposed = false;
+			const disposePromise = watcher.dispose().then(() => {
+				disposed = true;
+			});
+			await tick();
+			expect(disposed).toBe(false);
+			for (const subscription of parcel.subscriptions) {
+				expect(subscription.unsubscribed).toBe(true);
+			}
+
+			parcel.releaseUnsubscribes();
+			await disposePromise;
+			expect(disposed).toBe(true);
+		});
+
+		it("waits for an in-flight subscribe to settle before resolving", async () => {
+			const releaseGates: Array<() => void> = [];
+			const { watcher, parcel, tick } = createTestWatcher({
+				subscribeFn: (dir, onEvents, opts) =>
+					new Promise<{ unsubscribe(): Promise<void> }>((resolve) => {
+						releaseGates.push(() => {
+							resolve(parcel.subscribe(dir, onEvents, opts));
+						});
+					}),
+			});
+			watcher.watchDirectory(PROJECT);
+			await tick();
+			expect(releaseGates).toHaveLength(1);
+
+			let disposed = false;
+			const disposePromise = watcher.dispose().then(() => {
+				disposed = true;
+			});
+			await tick();
+			expect(disposed).toBe(false);
+			expect(parcel.subscribeAttempts).toHaveLength(0);
+
+			releaseGates[0]!();
+			await disposePromise;
+			expect(parcel.subscribeAttempts).toEqual([PROJECT]);
+			expect(parcel.subscriptions[0]!.unsubscribed).toBe(true);
 		});
 	});
 

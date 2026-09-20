@@ -815,7 +815,7 @@ describe("SessionList", () => {
 			.toBeVisible();
 	});
 
-	it("keeps grouped session titles aligned when a status icon is present", async () => {
+	it("keeps grouped session titles aligned and inset when a status icon is present", async () => {
 		const { screen } = renderSessionList({
 			threads: [
 				{ remoteId: "ses-1", title: "Fix the bug" },
@@ -846,7 +846,7 @@ describe("SessionList", () => {
 		const headerLabel = screen.getByTestId("session-list-active-toggle").getByText("Active");
 		const iconBox = icon.element().getBoundingClientRect();
 		const headerLeft = headerLabel.element().getBoundingClientRect().left;
-		expect(Math.abs(iconBox.left - headerLeft)).toBeLessThan(2);
+		expect(iconBox.left - headerLeft).toBeCloseTo(4, 0);
 		expect(iconBox.right).toBeLessThanOrEqual(workingLeft + 1);
 
 		const root = working.element().querySelector('[data-slot="aui_session-list-item"]');

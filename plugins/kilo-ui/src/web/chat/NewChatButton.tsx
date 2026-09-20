@@ -1,6 +1,6 @@
 import { MessageSquareIcon } from "lucide-react";
 
-import { useAui } from "@assistant-ui/react";
+import { useAui, useAuiState } from "@assistant-ui/react";
 import { useSdk } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 
@@ -12,6 +12,7 @@ import {
 
 export function NewChatButton() {
 	const aui = useAui();
+	const isLoadingThreads = useAuiState((s) => s.threads.isLoading);
 	const sdk = useSdk("kilo-ui");
 
 	const createChat = () => {
@@ -28,6 +29,7 @@ export function NewChatButton() {
 			data-qa-id="new-chat"
 			variant="ghost"
 			className="h-8 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-sm font-normal"
+			disabled={isLoadingThreads}
 			onClick={createChat}
 		>
 			<MessageSquareIcon data-icon="inline-start" data-slot="aui_thread-list-new-icon" />

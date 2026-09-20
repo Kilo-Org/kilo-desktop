@@ -118,4 +118,25 @@ describe("createTurnWorkGroupBy", () => {
 			[],
 		]);
 	});
+
+	it("does not reopen the turn fold after a standalone plan card", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			toolPart("write-plan", "write"),
+			dataPart("opencode-step-finish"),
+			dataPart("opencode-step-start"),
+			textPart("Final answer"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts, {
+			hiddenPlanCallIds: new Set(["write-plan"]),
+		});
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-activity", "group-reading"],
+			[],
+			["group-activity"],
+			["group-activity"],
+			[],
+		]);
+	});
 });

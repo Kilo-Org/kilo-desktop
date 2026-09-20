@@ -3,6 +3,8 @@ import type { Part, ToolPart } from "@assistant-ui/react-opencode";
 import type { TaskItem, TaskStatus } from "../components/assistant-ui/elements/task-list.js";
 
 export type TaskThreadSource = {
+	runState?: { type: string } | undefined;
+	sessionStatus?: { type: string } | null | undefined;
 	messageOrder: readonly string[];
 	messagesById: Readonly<
 		Record<
@@ -54,11 +56,25 @@ const taskThreadProjectionCache = new WeakMap<TaskThreadSource, TaskThreadProjec
 /** Projects replacement-style task writes into the latest complete working-list snapshot. */
 export function projectTaskThread(source: TaskThreadSource): TaskThreadProjection | undefined {
 	if (taskThreadProjectionCache.has(source)) return taskThreadProjectionCache.get(source);
+	const hasLifecycleState = source.runState !== undefined || source.sessionStatus !== undefined;
+	const active =
+		source.runState?.type === "streaming" ||
+		source.runState?.type === "cancelling" ||
+		source.runState?.type === "reverting" ||
+		source.sessionStatus?.type === "busy" ||
+		source.sessionStatus?.type === "retry";
+	if (hasLifecycleState && !active) {
+		taskThreadProjectionCache.set(source, undefined);
+		return undefined;
+	}
 
 	let projection: TaskThreadProjection | undefined;
 	for (const messageId of source.messageOrder) {
 		const message = source.messagesById[messageId];
-		if (message?.info?.role !== "assistant") continue;
+		if (message?.info?.role !== "assistant") {
+			projection = undefined;
+			continue;
+		}
 		for (const part of message.parts) {
 			if (!isTaskWrite(part)) continue;
 			const items = isRecord(part.state.input) ? parseTaskItems(part.state.input.todos) : undefined;

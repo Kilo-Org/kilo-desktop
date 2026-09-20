@@ -297,6 +297,7 @@ export function ModelSettingsPanel({
 								</FieldContent>
 								<Switch
 									id={`local-model-kilo-context-${model.id}`}
+									className="self-center"
 									checked={includeKiloContext}
 									aria-label="Coding tools and instructions"
 									data-qa-id="local-model-settings-kilo-context"

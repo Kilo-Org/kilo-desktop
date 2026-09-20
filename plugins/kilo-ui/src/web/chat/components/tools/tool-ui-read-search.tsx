@@ -27,52 +27,58 @@ const OutputDetail = ({ text }: { text: string }) => (
 	</pre>
 );
 
-export const GrepActivity: ToolCallMessagePartComponent = memo(({ args, result, status }) => {
-	const record = args as Record<string, unknown> | undefined;
-	const pattern =
-		typeof record?.pattern === "string"
-			? record.pattern
-			: typeof record?.query === "string"
-				? record.query
-				: undefined;
-	const output = resultText(result);
-	const hasDetail = output.length > 0 && status?.type !== "running";
+export const GrepActivity: ToolCallMessagePartComponent = memo(
+	({ args, result, status, toolCallId }) => {
+		const record = args as Record<string, unknown> | undefined;
+		const pattern =
+			typeof record?.pattern === "string"
+				? record.pattern
+				: typeof record?.query === "string"
+					? record.query
+					: undefined;
+		const output = resultText(result);
+		const hasDetail = output.length > 0 && status?.type !== "running";
 
-	return (
-		<SoloAwareExpandableRow
-			kind="searching"
-			liveVerb="Searching"
-			doneVerb="Searched"
-			object={pattern ? truncate(pattern) : undefined}
-			status={status}
-			hasDetail={hasDetail}
-			detail={<OutputDetail text={output} />}
-		/>
-	);
-});
+		return (
+			<SoloAwareExpandableRow
+				kind="searching"
+				liveVerb="Searching"
+				doneVerb="Searched"
+				object={pattern ? truncate(pattern) : undefined}
+				status={status}
+				disclosureId={toolCallId}
+				hasDetail={hasDetail}
+				detail={<OutputDetail text={output} />}
+			/>
+		);
+	},
+);
 GrepActivity.displayName = "GrepActivity";
 
-export const GlobActivity: ToolCallMessagePartComponent = memo(({ args, result, status }) => {
-	const record = args as Record<string, unknown> | undefined;
-	const pattern =
-		typeof record?.pattern === "string"
-			? record.pattern
-			: typeof record?.glob === "string"
-				? record.glob
-				: undefined;
-	const output = resultText(result);
-	const hasDetail = output.length > 0 && status?.type !== "running";
+export const GlobActivity: ToolCallMessagePartComponent = memo(
+	({ args, result, status, toolCallId }) => {
+		const record = args as Record<string, unknown> | undefined;
+		const pattern =
+			typeof record?.pattern === "string"
+				? record.pattern
+				: typeof record?.glob === "string"
+					? record.glob
+					: undefined;
+		const output = resultText(result);
+		const hasDetail = output.length > 0 && status?.type !== "running";
 
-	return (
-		<SoloAwareExpandableRow
-			kind="searching"
-			liveVerb="Finding"
-			doneVerb="Found"
-			object={pattern ? truncate(pattern) : undefined}
-			status={status}
-			hasDetail={hasDetail}
-			detail={<OutputDetail text={output} />}
-		/>
-	);
-});
+		return (
+			<SoloAwareExpandableRow
+				kind="searching"
+				liveVerb="Finding"
+				doneVerb="Found"
+				object={pattern ? truncate(pattern) : undefined}
+				status={status}
+				disclosureId={toolCallId}
+				hasDetail={hasDetail}
+				detail={<OutputDetail text={output} />}
+			/>
+		);
+	},
+);
 GlobActivity.displayName = "GlobActivity";

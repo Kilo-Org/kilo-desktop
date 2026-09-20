@@ -7,6 +7,7 @@ import {
 } from "../kilo-connection-error.js";
 import {
 	buildCatalogFromProviderList,
+	parseModelId,
 	type KiloModelCatalog,
 	type KiloProviderListPayload,
 } from "./model-catalog.js";
@@ -25,8 +26,24 @@ export async function fetchModelCatalogForConnection(
 		throw new Error("Cannot fetch the model catalog before Kilo is connected");
 	}
 	const client = createKiloDirectoryClient(connection, connection.globalDirectory);
-	const { data } = await client.provider.list({}, { throwOnError: true });
-	return buildCatalogFromProviderList(data as KiloProviderListPayload);
+	const [{ data: providers }, { data: config }, authStatus] = await Promise.all([
+		client.provider.list({}, { throwOnError: true }),
+		client.config.get({}, { throwOnError: true }),
+		client.kilo
+			.authStatus({}, { throwOnError: true })
+			.then(({ data }) => data)
+			.catch(() => undefined),
+	]);
+	const catalog = buildCatalogFromProviderList(providers as KiloProviderListPayload, {
+		connectedOnly: false,
+	});
+	const configuredModel = config.model ? parseModelId(config.model) : null;
+	return {
+		...catalog,
+		...(configuredModel ? { configuredModel } : {}),
+		providerReady: authStatus !== undefined,
+		...(authStatus ? { organizationId: authStatus.organizationId ?? null } : {}),
+	};
 }
 
 /**

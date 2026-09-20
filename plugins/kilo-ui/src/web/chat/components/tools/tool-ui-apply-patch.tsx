@@ -146,6 +146,7 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 						doneVerb="Edited"
 						object={basename(fileDiff.name)}
 						status={status}
+						disclosureId={`${toolCallId}:${fileDiff.cacheKey ?? fileDiff.name}`}
 						hasDetail
 						forceRow
 						detail={
@@ -166,6 +167,7 @@ export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status
 			doneVerb="Edited"
 			object={object}
 			status={status}
+			disclosureId={toolCallId}
 			hasDetail={hasDiff}
 			trailing={trailing}
 			detail={

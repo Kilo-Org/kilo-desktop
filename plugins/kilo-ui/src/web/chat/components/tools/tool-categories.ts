@@ -81,6 +81,8 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	suggest: "suggesting",
 	skill: "skill",
 	task: "subagent",
+	board_read: "subagent",
+	board_post: "subagent",
 };
 
 export const getToolCategory = (toolName: string): ToolCategory | undefined =>
@@ -483,6 +485,11 @@ const sentenceCaseToolName = (name: string): string => {
 
 /** User-facing tool label: MCP server prefix stripped, then a display name. */
 export const formatToolDisplayName = (toolName: string): string => {
+	const boardLabel = {
+		board_read: "Read agent messages",
+		board_post: "Message agents",
+	}[toolName.toLowerCase()];
+	if (boardLabel) return boardLabel;
 	const server = getMcpServerFromToolName(toolName);
 	const localName = getMcpToolLocalName(toolName);
 	if (!server || !localName) return toolName;
@@ -681,7 +688,7 @@ export const soloRowHidesItself = (kind: ActivityKind, part: ActivityPart | unde
 	if (kind === "terminal") {
 		if (isCancelledToolStatus(part.status)) return false;
 		const running = part.status?.type === "running";
-		const parsed = running ? {} : parseBashResult(part.result);
+		const parsed = parseBashResult(part.result);
 		if (!running && (parsed.exitCode ?? 0) !== 0) return false;
 		return !(parsed.stdout || parsed.stderr);
 	}

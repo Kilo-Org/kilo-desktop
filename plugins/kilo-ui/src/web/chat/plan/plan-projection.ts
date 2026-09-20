@@ -14,12 +14,21 @@ export type PlanProjection = {
 };
 
 export type PlanThreadSource = {
+	runState?: { type: string } | undefined;
+	sessionStatus?: { type: string } | null | undefined;
 	messageOrder: readonly string[];
 	messagesById: Readonly<
 		Record<
 			string,
 			| {
-					info: { role: string; agent?: string | undefined } | undefined;
+					info:
+						| {
+								role: string;
+								agent?: string | undefined;
+								finish?: unknown;
+								time?: { created?: unknown; completed?: unknown } | undefined;
+						  }
+						| undefined;
 					parts: readonly Part[];
 			  }
 			| undefined
@@ -113,6 +122,8 @@ type GetPlanProjectionOptions = {
 	priorMarkdown?: string;
 	/** Plan-agent writes belong to the plan even when project instructions choose another path. */
 	treatWritesAsPlan?: boolean;
+	/** The owning assistant run has stopped producing tool updates. */
+	settled?: boolean;
 };
 
 const hasPlanExitPart = (parts: readonly Part[]): boolean =>
@@ -156,7 +167,10 @@ export function getPlanProjectionFromParts(
 	} else if (missingCompletedPayload) {
 		status = "error";
 		error = "Kilo completed the plan handoff without a plan path or markdown.";
-	} else if (latestExit?.state.status === "completed") {
+	} else if (
+		latestExit?.state.status === "completed" ||
+		(options?.settled === true && latestWrite?.state.status === "completed")
+	) {
 		status = "ready";
 	}
 
@@ -224,15 +238,17 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 				messageIds: string[];
 				parts: Part[];
 				planningAgent: boolean;
+				settled: boolean;
 		  }
 		| undefined;
 
 	const projectAssistantRun = () => {
 		if (!assistantRun) return;
-		const { messageIds, parts, planningAgent } = assistantRun;
+		const { messageIds, parts, planningAgent, settled } = assistantRun;
 		const hasPlanExit = hasPlanExitPart(parts);
 		const options = {
 			treatWritesAsPlan: planningAgent || hasPlanExit,
+			settled,
 		};
 		const initial = getPlanProjectionFromParts(parts, options);
 		if (initial) {
@@ -255,6 +271,7 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 	for (const messageId of source.messageOrder) {
 		const message = source.messagesById[messageId];
 		if (!message || message.info?.role !== "assistant") {
+			if (assistantRun) assistantRun.settled = true;
 			projectAssistantRun();
 			continue;
 		}
@@ -262,13 +279,26 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 			assistantRun.messageIds.push(messageId);
 			assistantRun.parts.push(...message.parts);
 			assistantRun.planningAgent ||= isPlanningAgent(message.info.agent);
+			assistantRun.settled ||= Boolean(message.info.finish || message.info.time?.completed);
 		} else {
 			assistantRun = {
 				messageIds: [messageId],
 				parts: [...message.parts],
 				planningAgent: isPlanningAgent(message.info.agent),
+				settled: Boolean(message.info.finish || message.info.time?.completed),
 			};
 		}
+	}
+	if (
+		assistantRun &&
+		(source.runState !== undefined || source.sessionStatus !== undefined) &&
+		source.runState?.type !== "streaming" &&
+		source.runState?.type !== "cancelling" &&
+		source.runState?.type !== "reverting" &&
+		source.sessionStatus?.type !== "busy" &&
+		source.sessionStatus?.type !== "retry"
+	) {
+		assistantRun.settled = true;
 	}
 	projectAssistantRun();
 

@@ -67,7 +67,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col px-2" data-qa-id="settings-sidebar">
-			<div className="mb-3 flex flex-col gap-0.5 [&_[data-sidebar=search]]:gap-2">
+			<div className="border-sidebar-border/40 bg-background/20 dark:border-sidebar-border/60 dark:bg-muted/25 relative mb-3 flex flex-col gap-0 overflow-hidden rounded-lg border p-1 shadow-xs/5 [&_[data-sidebar=search]]:gap-2">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton
@@ -105,7 +105,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 							>
 								{category.name}
 							</SidebarGroupLabel>
-							<SidebarMenu className="gap-px">
+							<SidebarMenu className="border-sidebar-border/40 bg-background/20 dark:border-sidebar-border/60 dark:bg-muted/25 relative gap-0 overflow-hidden rounded-lg border p-1 shadow-xs/5">
 								{category.sections.map((section) => {
 									const Icon = resolvePluginNavIcon(section.icon, section.iconComponent);
 									const href = `/settings/${section.id}`;
@@ -115,7 +115,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 												isActive={pathname === href}
 												tooltip={section.title}
 												render={<Link to="/settings/$section" params={{ section: section.id }} />}
-												className="data-active:bg-foreground/5 data-active:hover:bg-foreground/5 gap-2 rounded-lg"
+												className="hover:bg-foreground/3 data-active:bg-foreground/5 data-active:hover:bg-foreground/5 gap-2 rounded-lg"
 												data-qa-id={`settings-section-${section.id}`}
 											>
 												<Icon />

@@ -27,11 +27,14 @@ describe("app theme presets", () => {
 		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
 			background: "#111111",
 			foreground: "#f0f0f0",
+			border: "#292929",
+			input: "#292929",
 			primary: "#f7f586",
 			"primary-foreground": "#1f1f1f",
 			card: "#181818",
 			popover: "#2b2b2b",
 			sidebar: "#161616",
+			"sidebar-border": "#292929",
 		});
 		const kiloCss = themeCss({ themeId: "kilo", accentId: "theme" });
 		expect(kiloCss).not.toContain("--shell-glass-opacity");

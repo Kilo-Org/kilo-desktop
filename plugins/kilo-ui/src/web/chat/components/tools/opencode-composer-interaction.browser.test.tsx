@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -97,6 +97,20 @@ describe("OpenCodeComposerInteraction", () => {
 		await expect
 			.poll(() => runtime.replyToPermission.mock.calls)
 			.toEqual([["permission-1", "once"]]);
+	});
+
+	it("does not approve a permission when Enter is pressed in an editable control", async () => {
+		runtime.permissions.push(permission({ messageID: "message-1", callID: "call-1" }));
+		const { getByRole } = render(
+			<>
+				<textarea aria-label="Unrelated editor" />
+				<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />
+			</>,
+		);
+
+		fireEvent.keyDown(getByRole("textbox", { name: "Unrelated editor" }), { key: "Enter" });
+
+		expect(runtime.replyToPermission).not.toHaveBeenCalled();
 	});
 
 	it("renders the composer when no interaction is pending", async () => {

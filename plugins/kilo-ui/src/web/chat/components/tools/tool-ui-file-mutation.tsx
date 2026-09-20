@@ -119,6 +119,7 @@ export const createFileMutationDiff = (
 				doneVerb={config.doneVerb}
 				object={fileName || undefined}
 				status={status}
+				disclosureId={toolCallId}
 				hasDetail={hasDiff}
 				trailing={trailing}
 				detail={

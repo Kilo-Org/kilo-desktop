@@ -8,11 +8,16 @@ import {
 } from "../contracts/workspaces/schemas.js";
 import type { KiloUiChatService } from "../contracts/chat/schemas.js";
 import type { OnboardingService, OnboardingState } from "../contracts/onboarding/schemas.js";
+import type {
+	ModelPreferencesService,
+	PersistedModelPreferences,
+} from "../contracts/model-preferences/schemas.js";
 import type { KiloUiProvidersService } from "../contracts/providers/schemas.js";
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { onboardingContract } from "../contracts/onboarding/schemas.js";
+import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 
@@ -166,9 +171,48 @@ function registerOnboardingBrowser(mainSdk: MainSdk): void {
 	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
 }
 
+function registerModelPreferencesBrowser(mainSdk: MainSdk): void {
+	let preferences: PersistedModelPreferences = {
+		modelSelections: {},
+		variantSelections: {},
+		recentModels: [],
+	};
+	const recordRecent = (model: { providerID: string; modelID: string }) => {
+		const key = `${model.providerID}/${model.modelID}`;
+		return [
+			model,
+			...preferences.recentModels.filter(
+				(candidate) => `${candidate.providerID}/${candidate.modelID}` !== key,
+			),
+		].slice(0, 5);
+	};
+	const service: ModelPreferencesService = {
+		"modelPreferences.get": async () => preferences,
+		"modelPreferences.remember": async ({ agent, model, effort }) => {
+			const variant = effort ?? "";
+			preferences = {
+				modelSelections: { ...preferences.modelSelections, [agent]: model },
+				preferred: { ...model, variant },
+				variantSelections: {
+					...preferences.variantSelections,
+					[`${agent}/${model.providerID}/${model.modelID}`]: variant,
+				},
+				recentModels: recordRecent(model),
+			};
+			return preferences;
+		},
+		"modelPreferences.recordRecent": async (model) => {
+			preferences = { ...preferences, recentModels: recordRecent(model) };
+			return preferences;
+		},
+	};
+	mainSdk.channels(modelPreferencesContract).handleAll(service);
+}
+
 export function kiloUiBrowserRegister(mainSdk: MainSdk): void {
 	registerWorkspacesBrowser(mainSdk);
 	registerChatBrowser(mainSdk);
 	registerProvidersBrowser(mainSdk);
 	registerOnboardingBrowser(mainSdk);
+	registerModelPreferencesBrowser(mainSdk);
 }

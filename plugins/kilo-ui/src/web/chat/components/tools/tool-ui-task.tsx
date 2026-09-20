@@ -53,25 +53,28 @@ const TaskDetail = ({
 	</div>
 );
 
-export const TaskActivity: ToolCallMessagePartComponent = memo(({ args, result, status }) => {
-	const description = getTaskDescription(args);
-	const agent = getTaskAgent(args);
-	const raw = resultText(result);
-	const output = unwrapTaskOutput(raw);
-	const isError = isTaskErrorOutput(raw);
-	const hasDetail = output.length > 0 && status?.type !== "running";
+export const TaskActivity: ToolCallMessagePartComponent = memo(
+	({ args, result, status, toolCallId }) => {
+		const description = getTaskDescription(args);
+		const agent = getTaskAgent(args);
+		const raw = resultText(result);
+		const output = unwrapTaskOutput(raw);
+		const isError = isTaskErrorOutput(raw);
+		const hasDetail = output.length > 0 && status?.type !== "running";
 
-	return (
-		<SoloAwareExpandableRow
-			kind="subagent"
-			liveVerb="Delegating"
-			doneVerb={isError ? "Failed" : "Delegated"}
-			object={description}
-			status={status}
-			hasDetail={hasDetail}
-			hideSoloWithoutDetail={!isError}
-			detail={<TaskDetail agent={agent} output={output} isError={isError} />}
-		/>
-	);
-});
+		return (
+			<SoloAwareExpandableRow
+				kind="subagent"
+				liveVerb="Delegating"
+				doneVerb={isError ? "Failed" : "Delegated"}
+				object={description}
+				status={status}
+				disclosureId={toolCallId}
+				hasDetail={hasDetail}
+				hideSoloWithoutDetail={!isError}
+				detail={<TaskDetail agent={agent} output={output} isError={isError} />}
+			/>
+		);
+	},
+);
 TaskActivity.displayName = "TaskActivity";

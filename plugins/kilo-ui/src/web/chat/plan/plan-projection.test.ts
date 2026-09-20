@@ -103,6 +103,7 @@ const threadSource = (
 		id: string;
 		role: "assistant" | "user";
 		agent?: string;
+		finish?: string;
 		parts?: readonly Part[];
 	}[],
 ): PlanThreadSource => ({
@@ -111,7 +112,11 @@ const threadSource = (
 		messages.map((message) => [
 			message.id,
 			{
-				info: { role: message.role, ...(message.agent ? { agent: message.agent } : {}) },
+				info: {
+					role: message.role,
+					...(message.agent ? { agent: message.agent } : {}),
+					...(message.finish ? { finish: message.finish } : {}),
+				},
 				parts: message.parts ?? [],
 			},
 		]),
@@ -271,6 +276,65 @@ describe("projectPlanThread", () => {
 		expect(readyProjection?.anchorCallId).toBe("write-plan");
 		expect(readyProjection?.hiddenCallIds).toEqual(new Set(["write-plan", "exit-plan"]));
 		expect(getPlanProjectionForMessage(ready, "msg-write")).toBe(readyProjection);
+	});
+
+	it("settles a completed plan write when the assistant run has finished", () => {
+		const finishedMessage = projectPlanThread(
+			threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					finish: "stop",
+					parts: [writePart()],
+				},
+			]),
+		);
+		expect(getPlanProjectionForMessage(finishedMessage, "msg-plan")?.status).toBe("ready");
+
+		const restoredIdleRun = projectPlanThread({
+			...threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					parts: [writePart()],
+				},
+			]),
+			runState: { type: "idle" },
+			sessionStatus: { type: "idle" },
+		});
+		expect(getPlanProjectionForMessage(restoredIdleRun, "msg-plan")?.status).toBe("ready");
+
+		const historicalRun = projectPlanThread(
+			threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					parts: [writePart()],
+				},
+				{ id: "msg-user", role: "user" },
+			]),
+		);
+		expect(getPlanProjectionForMessage(historicalRun, "msg-plan")?.status).toBe("ready");
+	});
+
+	it("keeps a completed write in Writing Plan during an active run", () => {
+		const projected = projectPlanThread({
+			...threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					parts: [writePart()],
+				},
+			]),
+			runState: { type: "streaming" },
+			sessionStatus: { type: "busy" },
+		});
+
+		expect(getPlanProjectionForMessage(projected, "msg-plan")?.status).toBe("writing");
 	});
 
 	it("projects each message once and enriches chained edits in order", () => {

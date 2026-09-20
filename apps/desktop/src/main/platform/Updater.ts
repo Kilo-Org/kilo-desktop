@@ -12,6 +12,7 @@ import { getReleaseNotesUrl, getUpdateFeedUrl } from "$config/release.js";
 
 const STARTUP_DELAY_MS = 15_000;
 const POLL_INTERVAL_MS = 10 * 60_000;
+const RELEASE_NOTES_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000] as const;
 const MAX_RELEASE_NOTES_BYTES = 256 * 1024;
 const MAX_RELEASE_NOTE_GROUPS = 6;
 const MAX_RELEASE_NOTE_ITEMS = 8;
@@ -60,6 +61,7 @@ export class DesktopUpdaterService {
 	readonly #listeners: Array<{ event: string; listener: (...args: never[]) => void }> = [];
 	#startupTimer: ReturnType<typeof setTimeout> | undefined;
 	#pollTimer: ReturnType<typeof setInterval> | undefined;
+	#releaseNotesRetryTimer: ReturnType<typeof setTimeout> | undefined;
 	#checkInFlight = false;
 	#disposed = false;
 	#latestReleaseNotes: DesktopReleaseNotes | null = null;
@@ -198,6 +200,7 @@ export class DesktopUpdaterService {
 		}
 		try {
 			this.#options.installWithShutdown(() => this.#updater.quitAndInstall());
+			this.#clearReleaseNotesRetry();
 			return { accepted: true, state: this.#state };
 		} catch (error) {
 			this.#options.logger.error("Failed to install downloaded update", error);
@@ -211,6 +214,7 @@ export class DesktopUpdaterService {
 		this.#disposed = true;
 		if (this.#startupTimer) clearTimeout(this.#startupTimer);
 		if (this.#pollTimer) clearInterval(this.#pollTimer);
+		this.#clearReleaseNotesRetry();
 		for (const { event, listener } of this.#listeners.splice(0)) {
 			this.#updater.removeListener(event, listener);
 		}
@@ -262,6 +266,7 @@ export class DesktopUpdaterService {
 	}
 
 	async #handleDownloaded(releaseName: string | undefined): Promise<void> {
+		this.#clearReleaseNotesRetry();
 		this.#checkInFlight = false;
 		const releaseVersion = extractVersion(releaseName);
 		const latestReleaseNotesVersion = this.#latestReleaseNotes?.version;
@@ -278,6 +283,47 @@ export class DesktopUpdaterService {
 			releaseNotes,
 			message: null,
 		});
+		if (version && releaseNotes.length === 0) this.#scheduleReleaseNotesRetry(version, 0);
+	}
+
+	#scheduleReleaseNotesRetry(version: string, attempt: number): void {
+		const delay =
+			RELEASE_NOTES_RETRY_DELAYS_MS[Math.min(attempt, RELEASE_NOTES_RETRY_DELAYS_MS.length - 1)];
+		if (this.#disposed) return;
+		this.#releaseNotesRetryTimer = setTimeout(() => {
+			this.#releaseNotesRetryTimer = undefined;
+			void this.#retryReleaseNotes(version, attempt);
+		}, delay);
+	}
+
+	async #retryReleaseNotes(version: string, attempt: number): Promise<void> {
+		if (
+			this.#disposed ||
+			this.#state.status !== "downloaded" ||
+			this.#state.downloadedVersion !== version
+		) {
+			return;
+		}
+		const target = await this.#fetchReleaseNotes(version);
+		if (!target) {
+			this.#scheduleReleaseNotesRetry(version, attempt + 1);
+			return;
+		}
+		this.#latestReleaseNotes = target;
+		const releaseNotes = await this.#fetchReleaseNoteHistory(target);
+		if (
+			!this.#disposed &&
+			this.#state.status === "downloaded" &&
+			this.#state.downloadedVersion === version
+		) {
+			this.#setState({ releaseNotes });
+		}
+	}
+
+	#clearReleaseNotesRetry(): void {
+		if (!this.#releaseNotesRetryTimer) return;
+		clearTimeout(this.#releaseNotesRetryTimer);
+		this.#releaseNotesRetryTimer = undefined;
 	}
 
 	async #fetchReleaseNoteHistory(

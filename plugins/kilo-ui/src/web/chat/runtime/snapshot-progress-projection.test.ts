@@ -77,7 +77,43 @@ function project(message: OpenCodeServerMessage) {
 	return projected;
 }
 
+function projectWithRunState(
+	message: OpenCodeServerMessage,
+	runState: OpenCodeThreadState["runState"],
+) {
+	const state: OpenCodeThreadState = {
+		...createOpenCodeThreadState("session-1"),
+		runState,
+		messageOrder: [message.id],
+		messagesById: { [message.id]: message },
+	};
+	const [projected] = projectOpenCodeThreadMessages(state);
+	if (!projected) throw new Error("expected the assistant message to project");
+	return projected;
+}
+
+function projectMessages(messages: OpenCodeServerMessage[]) {
+	const state: OpenCodeThreadState = {
+		...createOpenCodeThreadState("session-1"),
+		messageOrder: messages.map((message) => message.id),
+		messagesById: Object.fromEntries(messages.map((message) => [message.id, message])),
+	};
+	return projectOpenCodeThreadMessages(state);
+}
+
 describe("snapshot progress projection", () => {
+	it("marks an unfinished restored assistant message as cancelled when the thread is idle", () => {
+		const projected = project(assistantMessage([]));
+
+		expect(projected.status).toEqual({ type: "incomplete", reason: "cancelled" });
+	});
+
+	it("keeps the active unfinished assistant message running during a live stream", () => {
+		const projected = projectWithRunState(assistantMessage([]), { type: "streaming" });
+
+		expect(projected.status).toEqual({ type: "running" });
+	});
+
 	it("projects the synthetic snapshot progress part as a data part, never as text", () => {
 		const projected = project(assistantMessage([snapshotProgressPart]));
 
@@ -148,5 +184,60 @@ describe("synthetic user text projection", () => {
 		);
 
 		expect(projected.content).toEqual([{ type: "text", text: "Implement the change." }]);
+	});
+
+	it("folds background task continuations into the preceding visible assistant turn", () => {
+		const initialUser = {
+			...userMessage([
+				{ id: "part-user", type: "text", text: "Investigate both implementations." },
+			]),
+			id: "msg-user",
+		};
+		const initialAssistant = assistantMessage(
+			[{ id: "part-task", type: "tool", tool: "task", callID: "call-task", state: {} }],
+			{ id: "msg-assistant", parentID: "msg-user", finish: "tool-calls" },
+		);
+		const backgroundUser = {
+			...userMessage([
+				{
+					id: "part-background",
+					type: "text",
+					text: "Background task completed: compare implementations",
+					synthetic: true,
+					metadata: { background: true },
+				},
+			]),
+			id: "msg-background",
+			info: {
+				role: "user",
+				id: "msg-background",
+				sessionID: "session-1",
+				time: { created: 2_000 },
+			},
+		} as unknown as OpenCodeServerMessage;
+		const finalAssistant = assistantMessage(
+			[{ id: "part-final", type: "text", text: "Here is the comparison." }],
+			{
+				id: "msg-final",
+				parentID: "msg-background",
+				finish: "stop",
+				time: { created: 2_100, completed: 3_000 },
+			},
+		);
+		finalAssistant.id = "msg-final";
+
+		const projected = projectMessages([
+			initialUser,
+			initialAssistant,
+			backgroundUser,
+			finalAssistant,
+		]);
+
+		expect(projected).toHaveLength(2);
+		expect(projected.map((message) => message.role)).toEqual(["user", "assistant"]);
+		expect(projected[1]?.content).toEqual([
+			expect.objectContaining({ type: "tool-call", toolName: "task" }),
+			{ type: "text", text: "Here is the comparison." },
+		]);
 	});
 });

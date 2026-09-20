@@ -189,23 +189,6 @@ describe("AppSidebarLayout page header", () => {
 	});
 });
 
-function FakeNewChat() {
-	return (
-		<button type="button" data-qa-id="fake-new-chat">
-			New Chat
-		</button>
-	);
-}
-
-function contributeFakeNewChat(system: ReturnType<typeof createAppFeatureSystem>) {
-	system.getSdk("auth").contribute("sidebar", {
-		id: "fake-new-chat",
-		label: "Chats",
-		priority: 10,
-		component: FakeNewChat,
-	});
-}
-
 function FakeAccountDock() {
 	return (
 		<button type="button" data-qa-id="fake-account-dock">
@@ -232,6 +215,9 @@ describe("AppSidebarLayout account dock", () => {
 		const sidebar = page.getByTestId("app-sidebar");
 		await expect.element(page.getByTestId("fake-account-dock")).toBeVisible();
 		await expect.element(sidebar.getByTestId("nav-settings")).toBeVisible();
+		const accountBox = page.getByTestId("fake-account-dock").element().getBoundingClientRect();
+		const settingsBox = sidebar.getByTestId("nav-settings").element().getBoundingClientRect();
+		expect(accountBox.right).toBeLessThanOrEqual(settingsBox.left);
 		await expect.element(page.getByTestId("shell-anonymous-actions")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
 	});
@@ -538,19 +524,5 @@ describe("AppSidebarLayout settings takeover", () => {
 		await expect.element(page.getByTestId("shell-anonymous-actions")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("shell-page-header")).toBeVisible();
 		await expect.element(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-	});
-
-	it("aligns Back to app with the first sidebar zone row", async () => {
-		const api = fakeLocalApi({ status: "anonymous" });
-		renderLayout(api, "/", contributeFakeNewChat);
-		await expect.element(page.getByTestId("fake-new-chat")).toBeVisible();
-		const chatTop = page.getByTestId("fake-new-chat").element().getBoundingClientRect().top;
-		cleanup();
-
-		renderLayout(api, "/settings", contributeFakeNewChat);
-		await expect.element(page.getByTestId("settings-back")).toBeVisible();
-		const backTop = page.getByTestId("settings-back").element().getBoundingClientRect().top;
-
-		expect(backTop).toBe(chatTop);
 	});
 });

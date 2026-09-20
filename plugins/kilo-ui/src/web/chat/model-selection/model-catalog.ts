@@ -39,6 +39,11 @@ export type KiloModelCatalog = {
 	models: KiloCatalogModel[];
 	/** providerID → default modelID */
 	defaults: Record<string, string>;
+	/** Top-level model from the user's merged Kilo configuration. */
+	configuredModel?: KiloModelRef;
+	connected?: readonly string[];
+	providerReady?: boolean;
+	organizationId?: string | null;
 };
 
 /** Reasoning effort option from models.dev / provider payloads. */
@@ -197,6 +202,7 @@ export function buildCatalogFromProviderList(
 		providers: sortProvidersForRail(providers),
 		models,
 		defaults: { ...payload.default },
+		connected: [...payload.connected],
 	};
 }
 
@@ -209,57 +215,41 @@ export const KILO_AUTO_DEFAULT: KiloModelRef = {
 	modelID: AUTO_FREE_MODEL_ID,
 };
 
-function isConnectedAutoFree(model: KiloCatalogModel): boolean {
-	if (model.disabled) {
-		return false;
-	}
-	return (
-		model.modelID === AUTO_FREE_MODEL_ID ||
-		model.id === AUTO_FREE_MODEL_ID ||
-		/^auto\s*free$/i.test(model.name.trim())
-	);
-}
-
-function isConnectedKiloAuto(model: KiloCatalogModel): boolean {
-	if (model.disabled) {
-		return false;
-	}
-	return model.modelID.startsWith("kilo-auto/") || model.id.startsWith("kilo-auto/");
+export function isSelectableModel(
+	catalog: KiloModelCatalog | undefined,
+	model: KiloModelRef | undefined,
+): boolean {
+	if (!catalog || !model) return false;
+	if (!catalog.models.some((entry) => entry.id === modelRefToId(model))) return false;
+	const connected =
+		catalog.connected ??
+		catalog.providers.filter((provider) => provider.connected).map(({ id }) => id);
+	return model.providerID === "kilo" || connected.includes(model.providerID);
 }
 
 export function pickDefaultModel(catalog: KiloModelCatalog | undefined): KiloModelRef | undefined {
-	if (!catalog) {
-		return undefined;
-	}
-	const autoFree = catalog.models.find(isConnectedAutoFree);
-	if (autoFree) {
-		return { providerID: autoFree.providerID, modelID: autoFree.modelID };
-	}
-	const kiloAuto = catalog.models.find(isConnectedKiloAuto);
-	if (kiloAuto) {
-		return { providerID: kiloAuto.providerID, modelID: kiloAuto.modelID };
-	}
-	const kilo = catalog.providers.find(
-		(provider) => provider.connected && isKiloGatewayProvider(provider),
+	if (!catalog) return undefined;
+	const autoFree = catalog.models.find(
+		(model) =>
+			!model.disabled &&
+			(model.modelID === AUTO_FREE_MODEL_ID ||
+				model.id === AUTO_FREE_MODEL_ID ||
+				/^auto\s*free$/i.test(model.name.trim())),
 	);
-	if (kilo) {
-		return { providerID: kilo.id, modelID: KILO_AUTO_DEFAULT.modelID };
-	}
+	if (autoFree) return { providerID: autoFree.providerID, modelID: autoFree.modelID };
+	const kiloAuto = catalog.models.find(
+		(model) =>
+			!model.disabled &&
+			(model.modelID.startsWith("kilo-auto/") || model.id.startsWith("kilo-auto/")),
+	);
+	if (kiloAuto) return { providerID: kiloAuto.providerID, modelID: kiloAuto.modelID };
 	const firstConnected = catalog.providers.find((provider) => provider.connected);
-	if (!firstConnected) {
-		return undefined;
-	}
+	if (!firstConnected) return undefined;
 	const defaultModelID = catalog.defaults[firstConnected.id];
-	if (defaultModelID) {
-		const match = catalog.models.find(
-			(model) => model.providerID === firstConnected.id && model.modelID === defaultModelID,
-		);
-		if (match) {
-			return { providerID: match.providerID, modelID: match.modelID };
-		}
-	}
-	const firstModel = catalog.models.find((model) => model.providerID === firstConnected.id);
-	return firstModel
-		? { providerID: firstModel.providerID, modelID: firstModel.modelID }
-		: undefined;
+	const model = catalog.models.find(
+		(candidate) =>
+			candidate.providerID === firstConnected.id &&
+			(defaultModelID ? candidate.modelID === defaultModelID : true),
+	);
+	return model ? { providerID: model.providerID, modelID: model.modelID } : undefined;
 }

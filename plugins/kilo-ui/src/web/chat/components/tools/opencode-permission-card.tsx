@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	type OpenCodePermissionRequest,
 	type OpenCodePermissionResponse,
@@ -34,6 +34,38 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 			setSubmittingReply(null);
 		}
 	};
+
+	useEffect(() => {
+		const acceptOnEnter = (event: KeyboardEvent) => {
+			if (
+				event.key !== "Enter" ||
+				event.shiftKey ||
+				event.ctrlKey ||
+				event.metaKey ||
+				event.altKey ||
+				event.repeat ||
+				event.isComposing ||
+				submittingReply !== null
+			) {
+				return;
+			}
+
+			if (
+				event.target instanceof Element &&
+				event.target.closest(
+					'button, input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+				)
+			) {
+				return;
+			}
+
+			event.preventDefault();
+			void submitReply("once");
+		};
+
+		document.addEventListener("keydown", acceptOnEnter);
+		return () => document.removeEventListener("keydown", acceptOnEnter);
+	});
 
 	const permissionLabel = request.toolName ?? request.permission;
 

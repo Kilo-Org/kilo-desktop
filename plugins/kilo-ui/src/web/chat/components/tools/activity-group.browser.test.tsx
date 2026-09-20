@@ -7,9 +7,13 @@ import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@as
 
 const runtime = vi.hoisted(() => ({
 	message: {
+		id: "message-1",
 		parts: [] as ToolCallMessagePartProps[],
 		status: { type: "complete" },
 	},
+	permissions: [] as Array<{
+		tool?: { messageID?: string; callID?: string } | undefined;
+	}>,
 }));
 
 vi.mock("@assistant-ui/react", () => ({
@@ -20,9 +24,10 @@ vi.mock("@assistant-ui/react", () => ({
 
 vi.mock("@assistant-ui/react-opencode", () => ({
 	useOpenCodeQuestions: () => [],
+	useOpenCodePermissions: () => ({ pending: runtime.permissions, reply: vi.fn() }),
 }));
 
-import { ActivityGroup, ActivitySubgroup } from "./activity-group.js";
+import { ActivityGroup, ActivitySubgroup, ManualDisclosureProvider } from "./activity-group.js";
 import { ApplyPatchDiff } from "./tool-ui-apply-patch.js";
 import { BashTerminal } from "./tool-ui-bash.js";
 import { ToolCallFallback } from "./tool-ui-inline.js";
@@ -85,6 +90,7 @@ const renderActivity = (
 
 afterEach(() => {
 	cleanup();
+	runtime.permissions.length = 0;
 	vi.useRealTimers();
 });
 
@@ -555,6 +561,121 @@ describe("Notebooks activity subgroup", () => {
 });
 
 describe("Self-describing solo tool rows", () => {
+	it("preserves a manually expanded parent group when its activity subtree remounts", () => {
+		const read = readPart("call-1", "/src/mark.svg");
+		const command = toolPart("call-2", "bash", { command: "pnpm test" });
+		runtime.message.parts = [read, command];
+		const view = (revision: string) => (
+			<ManualDisclosureProvider>
+				<div key={revision}>
+					<ActivityGroup group={{ indices: [0, 1] }}>
+						<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+							<ReadActivity {...read} />
+						</ActivitySubgroup>
+						<ActivitySubgroup group={{ indices: [1] }} kind="terminal">
+							<BashTerminal {...command} />
+						</ActivitySubgroup>
+					</ActivityGroup>
+				</div>
+			</ManualDisclosureProvider>
+		);
+		const { getByRole, rerender } = render(view("streaming"));
+		const trigger = getByRole("button", { name: "2 tools used" });
+
+		fireEvent.click(trigger);
+		expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+		rerender(view("complete"));
+		expect(getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+	});
+
+	it("keeps a manually expanded streaming parent open when a subgroup joins", () => {
+		const read = readPart("call-1", "/src/mark.svg");
+		const command = {
+			...toolPart("call-2", "bash", { command: "pnpm test" }),
+			status: { type: "running" as const },
+		};
+		const search = {
+			...toolPart("call-3", "websearch", { query: "Vitest" }),
+			status: { type: "running" as const },
+		};
+		const view = (parts: ToolCallMessagePartProps[]) => {
+			runtime.message.parts = parts;
+			const indices = parts.map((_, index) => index);
+			return (
+				<ManualDisclosureProvider>
+					<div key={parts.length}>
+						<ActivityGroup group={{ indices }}>
+							<ActivitySubgroup group={{ indices: [0] }} kind="reading">
+								<ReadActivity {...read} />
+							</ActivitySubgroup>
+							<ActivitySubgroup group={{ indices: [1] }} kind="terminal">
+								<BashTerminal {...command} />
+							</ActivitySubgroup>
+							{parts.length > 2 ? (
+								<ActivitySubgroup group={{ indices: [2] }} kind="web">
+									<WebSearchActivity {...search} />
+								</ActivitySubgroup>
+							) : null}
+						</ActivityGroup>
+					</div>
+				</ManualDisclosureProvider>
+			);
+		};
+		runtime.message.status = { type: "running" };
+		const { getByRole, rerender } = render(view([read, command]));
+
+		fireEvent.click(getByRole("button", { name: "Running pnpm test" }));
+		expect(getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+
+		rerender(view([read, command, search]));
+		expect(getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+	});
+
+	it("keeps an expanded row from the first subgroup visible when activity advances", () => {
+		const completedCommand = {
+			...toolPart("call-1", "bash", { command: "pnpm test" }),
+			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+		};
+		const runningCommand = {
+			...toolPart("call-2", "bash", { command: "pnpm lint" }),
+			status: { type: "running" as const },
+		};
+		const search = {
+			...toolPart("call-3", "websearch", { query: "Vitest" }),
+			status: { type: "running" as const },
+		};
+		const view = (parts: ToolCallMessagePartProps[]) => {
+			runtime.message.parts = parts;
+			return (
+				<ManualDisclosureProvider>
+					<div key={parts.length}>
+						<ActivityGroup group={{ indices: parts.map((_, index) => index) }}>
+							<ActivitySubgroup group={{ indices: [0, 1] }} kind="terminal">
+								<BashTerminal {...completedCommand} />
+								<BashTerminal {...runningCommand} />
+							</ActivitySubgroup>
+							{parts.length > 2 ? (
+								<ActivitySubgroup group={{ indices: [2] }} kind="web">
+									<WebSearchActivity {...search} />
+								</ActivitySubgroup>
+							) : null}
+						</ActivityGroup>
+					</div>
+				</ManualDisclosureProvider>
+			);
+		};
+		runtime.message.status = { type: "running" };
+		const { getByRole, getByText, rerender } = render(view([completedCommand, runningCommand]));
+
+		fireEvent.click(getByRole("button", { name: "Ran pnpm test" }));
+		expect(getByText(/2 passed/)).toBeDefined();
+
+		rerender(view([completedCommand, runningCommand, search]));
+		expect(getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+		expect(getByText(/2 passed/)).toBeDefined();
+	});
+
 	it("does not show subgroup disclosures for running tools in an expanded activity group", () => {
 		const completedRead = readPart("call-1", "/src/mark.svg");
 		const runningCommands = [
@@ -626,6 +747,54 @@ describe("Self-describing solo tool rows", () => {
 		expect(queryByText(/2 passed/)).toBeNull();
 		fireEvent.click(getByRole("button", { name: "Ran pnpm test" }));
 		expect(getByText(/2 passed/)).toBeDefined();
+	});
+
+	it("expands the tool detail while its permission request is pending", () => {
+		const command = {
+			...toolPart("call-1", "bash", { command: "pnpm test" }),
+			status: { type: "running" as const },
+		};
+		runtime.message.status = { type: "running" };
+		runtime.permissions.push({ tool: { messageID: "message-1", callID: "call-1" } });
+
+		const { getByRole, getByText } = renderActivity("terminal", [command], BashTerminal);
+
+		expect(getByRole("button", { name: "Running pnpm test" }).getAttribute("aria-expanded")).toBe(
+			"true",
+		);
+		expect(getByText("$ pnpm test")).toBeDefined();
+	});
+
+	it("preserves an expanded command when its activity subtree remounts", () => {
+		const command = {
+			...toolPart("call-1", "bash", { command: "pnpm test" }),
+			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+		};
+		const otherCommand = toolPart("call-2", "bash", { command: "pnpm lint" });
+		runtime.message.parts = [command, otherCommand];
+		const view = (revision: string) => (
+			<ManualDisclosureProvider>
+				<div key={revision}>
+					<ActivityGroup group={{ indices: [0, 1] }}>
+						<ActivitySubgroup group={{ indices: [0, 1] }} kind="terminal">
+							<BashTerminal {...command} />
+							<BashTerminal {...otherCommand} />
+						</ActivitySubgroup>
+					</ActivityGroup>
+				</div>
+			</ManualDisclosureProvider>
+		);
+		const { getByRole, getByText, rerender } = render(view("streaming"));
+
+		fireEvent.click(getByRole("button", { name: "Ran 2 commands" }));
+		fireEvent.click(getByRole("button", { name: "Ran pnpm test" }));
+		expect(getByText(/2 passed/)).toBeDefined();
+
+		rerender(view("complete"));
+		expect(getByText(/2 passed/)).toBeDefined();
+		expect(getByRole("button", { name: "Ran pnpm test" }).getAttribute("aria-expanded")).toBe(
+			"true",
+		);
 	});
 
 	it("renders a solo task without output as a single non-collapsible line", () => {

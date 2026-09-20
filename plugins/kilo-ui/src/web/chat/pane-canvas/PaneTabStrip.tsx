@@ -20,14 +20,12 @@ import { PaneTabScrollArea } from "./PaneTabScrollArea.js";
 import { usePaneDrag } from "./use-pane-drag.js";
 import "./pane-drag.css";
 
-// Panes are raised surfaces on the darker canvas. The selected tab shares the pane
-// frame's full border and --pane-surface color so it reads as part of its content;
-// unselected tabs get a whisper of that border and a muted label, firming up on
-// hover. No accent borders.
+// Match the Cloud Agent workspace tabs: muted inactive surfaces and a neutral,
+// raised secondary surface for the selected tab.
 function tabChromeClassName(selected: boolean) {
 	return selected
-		? "border-primary/65 bg-foreground/[0.07] text-foreground shadow-sm"
-		: "border-border bg-background text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground dark:bg-input/30";
+		? "border-primary/60 bg-secondary text-foreground shadow-sm"
+		: "border-border bg-muted/40 text-muted-foreground hover:bg-accent/60 hover:text-foreground";
 }
 
 function stopActionBubble(event: { stopPropagation: () => void }) {

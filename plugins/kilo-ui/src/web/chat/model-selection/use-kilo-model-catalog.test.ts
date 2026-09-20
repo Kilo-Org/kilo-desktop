@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { isModelCatalogPending } from "./use-kilo-model-catalog.js";
+import { fetchModelCatalogForConnection, isModelCatalogPending } from "./use-kilo-model-catalog.js";
+
+const connection = {
+	baseUrl: "http://127.0.0.1:4096",
+	username: "kilo",
+	password: "secret",
+	version: "test",
+	globalDirectory: "/tmp/kilo",
+};
 
 describe("isModelCatalogPending", () => {
 	it("is pending on the initial catalog fetch", () => {
@@ -35,5 +43,45 @@ describe("isModelCatalogPending", () => {
 				data: { models: [{ id: "anthropic/claude-sonnet" }] },
 			}),
 		).toBe(false);
+	});
+});
+
+describe("fetchModelCatalogForConnection", () => {
+	it("reads the merged Kilo config model alongside the provider catalog", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (input) => {
+			const url = input instanceof Request ? input.url : String(input);
+			const pathname = new URL(url).pathname;
+			if (pathname === "/provider") {
+				return Response.json({
+					all: [
+						{
+							id: "anthropic",
+							name: "Anthropic",
+							models: {
+								"claude-sonnet": {
+									id: "claude-sonnet",
+									name: "Claude Sonnet",
+									providerID: "anthropic",
+								},
+							},
+						},
+					],
+					default: { anthropic: "claude-sonnet" },
+					connected: ["anthropic"],
+				});
+			}
+			if (pathname === "/config") return Response.json({ model: "anthropic/claude-sonnet" });
+			if (pathname === "/kilo/auth/status") return Response.json({ authenticated: false });
+			throw new Error(`Unexpected URL: ${url}`);
+		};
+
+		try {
+			await expect(fetchModelCatalogForConnection(connection)).resolves.toMatchObject({
+				configuredModel: { providerID: "anthropic", modelID: "claude-sonnet" },
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });

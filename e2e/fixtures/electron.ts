@@ -18,7 +18,7 @@ import { packagedExecutable } from "../utils/paths.js";
 const DESKTOP_URL_PREFIX = "kilo-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
 const KILO_SERVER_READY_TIMEOUT_MS = 120_000;
-const WORKER_APP_TIMEOUT_MS = 240_000;
+const WORKER_APP_TIMEOUT_MS = 360_000;
 const CLOSE_TIMEOUT_MS = 10_000;
 const CLOSE_FORCE_WAIT_MS = 5_000;
 const PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30_000;
@@ -68,6 +68,21 @@ async function waitForKiloServer(page: Page): Promise<void> {
 			});
 			if (!response.ok) throw new Error(`[${response.error.code}] ${response.error.message}`);
 		});
+	} finally {
+		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
+	}
+}
+
+/**
+ * assistant-ui ignores thread switches until the remote list has hydrated.
+ * Cold Windows runners often need longer than the 30s locator default after
+ * kilo-server is already accepting connections, so reuse that sidecar budget.
+ */
+async function waitForThreadListHydrated(page: Page): Promise<void> {
+	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
+	try {
+		await page.waitForURL("kilo-desktop://app/#/plugins/chat");
+		await page.locator('[data-qa-id="new-chat"]:not(:disabled)').waitFor();
 	} finally {
 		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
 	}
@@ -156,8 +171,8 @@ async function stopApp(app: ElectronApplication): Promise<void> {
 /**
  * Worker-scoped packaged Electron app. Every test in the worker reuses one launch;
  * `electronApp` rebinds the page singleton and resets the hash between tests.
- * Sidecar spawn (`server.getConnection`) runs here so the first @smoke spec does
- * not spend the 15s expect budget waiting for kilo-server to come up.
+ * Sidecar spawn (`server.getConnection`) and thread-list hydration run here so
+ * the first @smoke spec does not spend the locator budget waiting for either.
  */
 export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerFixtures>({
 	appIsolationKey: ["shared", { scope: "worker", option: true }],
@@ -172,6 +187,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			const { app, userDataDir } = await launchApp(appLaunchEnv);
 			const page = await waitForMainWindow(app);
 			await waitForKiloServer(page);
+			await waitForThreadListHydrated(page);
 			await use(app);
 			await stopApp(app);
 			await Promise.all([
@@ -190,7 +206,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		});
 		// Hash reset remounts chat; wait out the redirect so the next spec
 		// does not click New Chat against a tearing-down runtime.
-		await page.waitForURL("kilo-desktop://app/#/plugins/chat");
+		await waitForThreadListHydrated(page);
 		await use(sharedApp);
 	},
 

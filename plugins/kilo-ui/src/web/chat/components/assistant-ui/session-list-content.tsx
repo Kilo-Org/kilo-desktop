@@ -117,6 +117,9 @@ const sidebarSurfaceActiveClassName =
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
 
+const sidebarPanelClassName =
+	"border-sidebar-border/40 bg-background/20 dark:border-sidebar-border/60 dark:bg-muted/25 relative overflow-hidden rounded-lg border p-1 shadow-xs/5";
+
 /**
  * Hover actions sit over the status slot: hidden until row hover, keyboard
  * focus, or an open dropdown, then cross-fade with the status label (which
@@ -134,7 +137,7 @@ const workspaceHeaderActionsClassName =
 const SESSION_LIST_OVERSCAN = 10;
 const SESSION_ROW_ESTIMATE_PX = 30;
 const SESSION_SHELF_HEADER_PX = 30;
-const SESSION_SECTION_GAP_PX = 13;
+const SESSION_SECTION_GAP_PX = 5;
 const DEFAULT_EXPANDED_SECTIONS: Readonly<Record<string, boolean>> = { archived: false };
 
 const SessionListChromeContext = createContext<{
@@ -404,7 +407,7 @@ export const SessionListContent = memo(function SessionListContent({
 					className="flex min-h-0 flex-1 flex-col"
 				>
 					<section
-						className="mb-3 flex shrink-0 flex-col gap-0.5"
+						className={cn(sidebarPanelClassName, "mb-3 flex shrink-0 flex-col gap-0")}
 						aria-label="Chat actions"
 						data-qa-id="session-list-navigation"
 					>
@@ -416,97 +419,102 @@ export const SessionListContent = memo(function SessionListContent({
 							}}
 						/>
 					</section>
-					<section aria-label="Chat sessions" className="flex min-h-0 flex-1 flex-col">
-						<div
-							data-qa-id="session-list-grouping-header"
-							className="-mb-0.5 flex h-8 shrink-0 items-center gap-0.5"
-						>
-							<WorkspaceFilter
-								value={focus}
-								onValueChange={(id) => {
-									updateView({ focus: id });
-									setActiveWorkspaceId(id);
-								}}
-							/>
-							{viewMenu}
-						</div>
-						<div
-							ref={listRef}
-							data-slot="aui_thread-list-items"
-							data-qa-id="session-list-inbox"
-							className="scroll-fade no-scrollbar relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
-						>
-							{isLoading ? <SessionListSkeleton /> : null}
-							{!isLoading && virtualEntries.length > 0 ? (
-								<ul
-									role="list"
-									className="relative w-full"
-									style={{ height: virtualizer.getTotalSize() }}
-									data-qa-id="session-list-virtual-list"
-								>
-									{virtualizer.getVirtualItems().map((virtualItem) => {
-										const entry = virtualEntries[virtualItem.index];
-										if (!entry) return null;
-										return (
-											<li
-												key={entry.key}
-												ref={virtualizer.measureElement}
-												data-index={virtualItem.index}
-												aria-posinset={virtualItem.index + 1}
-												aria-setsize={virtualEntries.length}
-												className={cn(
-													"absolute top-0 left-0 w-full list-none",
-													entry.spaceBefore && "pt-2",
-												)}
-												style={{ transform: `translateY(${virtualItem.start}px)` }}
-											>
-												<div>
-													{entry.kind === "header" ? (
-														<SessionShelfHeader
-															tone={entry.tone}
-															label={entry.label}
-															workspace={
-																entry.workspaceId
-																	? workspaces.find(
-																			(workspace) => workspace.id === entry.workspaceId,
-																		)
-																	: undefined
-															}
-															onCreateChatInWorkspace={createChatInWorkspace}
-															expanded={entry.expanded}
-															onToggle={() => {
-																const nextExpanded = !entry.expanded;
-																if (entry.sectionKey === "archived") {
-																	writeSessionListArchivedExpanded(nextExpanded);
-																}
-																setExpanded((current) => ({
-																	...current,
-																	[entry.sectionKey]: nextExpanded,
-																}));
-															}}
-														/>
-													) : (
-														<SessionRowIndentContext value={entry.indented}>
-															<SessionListItemSlot
-																id={entry.row.id}
-																archived={entry.row.archived}
-															/>
-														</SessionRowIndentContext>
+					<section
+						aria-label="Chat sessions"
+						className={cn(sidebarPanelClassName, "flex min-h-0 min-w-0 flex-1 flex-col")}
+					>
+						<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+							<div
+								data-qa-id="session-list-grouping-header"
+								className="flex h-8 min-w-0 shrink-0 items-center gap-0.5"
+							>
+								<WorkspaceFilter
+									value={focus}
+									onValueChange={(id) => {
+										updateView({ focus: id });
+										setActiveWorkspaceId(id);
+									}}
+								/>
+								{viewMenu}
+							</div>
+							<div
+								ref={listRef}
+								data-slot="aui_thread-list-items"
+								data-qa-id="session-list-inbox"
+								className="scroll-fade no-scrollbar relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+							>
+								{isLoading ? <SessionListSkeleton /> : null}
+								{!isLoading && virtualEntries.length > 0 ? (
+									<ul
+										role="list"
+										className="relative w-full min-w-0"
+										style={{ height: virtualizer.getTotalSize() }}
+										data-qa-id="session-list-virtual-list"
+									>
+										{virtualizer.getVirtualItems().map((virtualItem) => {
+											const entry = virtualEntries[virtualItem.index];
+											if (!entry) return null;
+											return (
+												<li
+													key={entry.key}
+													ref={virtualizer.measureElement}
+													data-index={virtualItem.index}
+													aria-posinset={virtualItem.index + 1}
+													aria-setsize={virtualEntries.length}
+													className={cn(
+														"absolute top-0 left-0 min-w-0 w-full list-none",
+														entry.spaceBefore && "pt-0",
 													)}
-												</div>
-											</li>
-										);
-									})}
-								</ul>
-							) : null}
-							{!isLoading && emptyLabel && sections.length === 0 ? (
-								<div
-									data-slot="aui_thread-list-empty"
-									className="text-muted-foreground px-2.5 py-4 text-sm"
-								>
-									{emptyLabel}
-								</div>
-							) : null}
+													style={{ transform: `translateY(${virtualItem.start}px)` }}
+												>
+													<div>
+														{entry.kind === "header" ? (
+															<SessionShelfHeader
+																tone={entry.tone}
+																label={entry.label}
+																workspace={
+																	entry.workspaceId
+																		? workspaces.find(
+																				(workspace) => workspace.id === entry.workspaceId,
+																			)
+																		: undefined
+																}
+																onCreateChatInWorkspace={createChatInWorkspace}
+																expanded={entry.expanded}
+																onToggle={() => {
+																	const nextExpanded = !entry.expanded;
+																	if (entry.sectionKey === "archived") {
+																		writeSessionListArchivedExpanded(nextExpanded);
+																	}
+																	setExpanded((current) => ({
+																		...current,
+																		[entry.sectionKey]: nextExpanded,
+																	}));
+																}}
+															/>
+														) : (
+															<SessionRowIndentContext value={entry.indented}>
+																<SessionListItemSlot
+																	id={entry.row.id}
+																	archived={entry.row.archived}
+																/>
+															</SessionRowIndentContext>
+														)}
+													</div>
+												</li>
+											);
+										})}
+									</ul>
+								) : null}
+								{!isLoading && emptyLabel && sections.length === 0 ? (
+									<div
+										data-slot="aui_thread-list-empty"
+										className="text-muted-foreground px-2.5 py-4 text-sm"
+									>
+										{emptyLabel}
+									</div>
+								) : null}
+							</div>
 						</div>
 					</section>
 				</ThreadListPrimitive.Root>
@@ -1304,7 +1312,7 @@ const SessionRowContent = memo(function SessionRowContent({
 		<ThreadListItemPrimitive.Root
 			data-slot={isArchived ? "aui_session-list-archived-item" : "aui_session-list-item"}
 			className={cn(
-				"group/sidebar-row relative w-full cursor-pointer rounded-md text-left outline-none select-none",
+				"group/sidebar-row relative mx-1 min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
 				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
 			)}
 		>

@@ -58,7 +58,7 @@ function AccountSkeleton() {
  * Sidebar account dock contributed to the shell's `sidebar-account` zone.
  * Signed out: one-click Kilo device sign-in (device code shows on the AI
  * Providers page; a failed attempt falls back to the Sign In button so retry
- * stays reachable). Signed in: avatar/email header with a Sign out item. A
+ * stays reachable). Signed in: compact avatar/name header with a Sign out item. A
  * failed profile load links to the AI Providers page, which owns retry and
  * logout for that state. Shows a stable account-row skeleton while auth or
  * profile state is pending, and renders nothing when Kilo is unavailable.
@@ -125,7 +125,6 @@ export function SidebarKiloAccount() {
 	}
 
 	const accountName = profile.name?.trim() || profile.email;
-	const accountEmail = profile.email;
 	const initials = initialsFor(profile.name, profile.email);
 
 	return (
@@ -136,18 +135,16 @@ export function SidebarKiloAccount() {
 						render={
 							<SidebarMenuButton
 								aria-label={`Account menu for ${accountName}`}
-								size="lg"
-								className="data-open:text-sidebar-accent-foreground w-full min-w-0 gap-2.5 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
+								className="data-open:text-sidebar-accent-foreground h-8 w-full min-w-0 gap-2! px-2 hover:bg-transparent data-open:bg-transparent data-open:hover:bg-transparent"
 								data-qa-id="sidebar-kilo-account"
 							/>
 						}
 					>
-						<Avatar className="size-7">
-							<AvatarFallback>{initials || <UserIcon />}</AvatarFallback>
+						<Avatar className="size-[22px]">
+							<AvatarFallback className="text-[10px]">{initials || <UserIcon />}</AvatarFallback>
 						</Avatar>
-						<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+						<div className="grid min-w-0 flex-1 text-left text-sm">
 							<span className="truncate font-medium">{accountName}</span>
-							<span className="text-muted-foreground truncate text-xs">{accountEmail}</span>
 						</div>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
@@ -159,7 +156,7 @@ export function SidebarKiloAccount() {
 									</Avatar>
 									<div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
 										<span className="truncate font-medium">{accountName}</span>
-										<span className="text-muted-foreground truncate text-xs">{accountEmail}</span>
+										<span className="text-muted-foreground truncate text-xs">{profile.email}</span>
 									</div>
 								</div>
 							</DropdownMenuLabel>

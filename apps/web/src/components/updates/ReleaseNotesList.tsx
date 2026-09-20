@@ -1,4 +1,5 @@
 import type { DesktopReleaseNotes } from "@kilo-desktop/contracts";
+import { MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
 import { Separator } from "@kilo-desktop/ui/components/separator";
 
 export function ReleaseNotesList({
@@ -8,7 +9,7 @@ export function ReleaseNotesList({
 	readonly notes: readonly DesktopReleaseNotes[];
 	readonly showHeading?: boolean;
 }) {
-	const visibleNotes = notes.filter((release) => release.items.length > 0);
+	const visibleNotes = notes.filter(hasVisibleReleaseNotes);
 
 	return (
 		<section aria-label="Release notes">
@@ -22,17 +23,28 @@ export function ReleaseNotesList({
 					) : releaseIndex > 0 ? (
 						<code className="text-muted-foreground text-[11px] font-medium">{release.version}</code>
 					) : null}
-					<ul
-						className={`${showHeading || releaseIndex > 0 ? "mt-2" : ""} space-y-1.5 pl-4 text-xs leading-5`}
-					>
-						{release.items.map((item, itemIndex) => (
-							<li className="list-disc break-words" key={`${itemIndex}:${item}`}>
-								{item}
-							</li>
-						))}
-					</ul>
+					{release.items.length > 0 ? (
+						<ul
+							className={`${showHeading || releaseIndex > 0 ? "mt-2" : ""} space-y-1.5 pl-4 text-xs leading-5`}
+						>
+							{release.items.map((item, itemIndex) => (
+								<li className="list-disc break-words" key={`${itemIndex}:${item}`}>
+									{item}
+								</li>
+							))}
+						</ul>
+					) : (
+						<MarkdownContent
+							text={release.bodyMarkdown}
+							className={`${showHeading || releaseIndex > 0 ? "mt-2" : ""} text-xs leading-5 break-words`}
+						/>
+					)}
 				</div>
 			))}
 		</section>
 	);
+}
+
+export function hasVisibleReleaseNotes(release: DesktopReleaseNotes): boolean {
+	return release.items.length > 0 || release.bodyMarkdown.trim().length > 0;
 }

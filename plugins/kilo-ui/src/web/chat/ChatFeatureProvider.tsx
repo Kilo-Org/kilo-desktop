@@ -28,6 +28,7 @@ import {
 	useKiloModelCatalog,
 } from "./model-selection/use-kilo-model-catalog.js";
 import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
+import { useModelPreferences } from "./model-selection/use-model-preferences.js";
 import { resolveLocalInferenceCapability } from "../providers/local-inference/capability.js";
 import { invalidateKiloProviderQueries } from "../providers/provider-queries.js";
 import { isStaleKiloConnectionError } from "./kilo-connection-error.js";
@@ -244,6 +245,20 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
 	const [activeThreadId, setActiveThreadId] = useState<string>();
 	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
+	const {
+		preferences: modelPreferences,
+		remember: rememberModelPreference,
+		recordRecent: recordRecentModel,
+	} = useModelPreferences();
+	const rememberModel = useCallback(
+		(agentName: string, selectedModel: KiloModelRef, selectedEffort: string | undefined) =>
+			rememberModelPreference({
+				agent: agentName,
+				model: selectedModel,
+				...(selectedEffort === undefined ? {} : { effort: selectedEffort }),
+			}),
+		[rememberModelPreference],
+	);
 	const { agent, getAgent, setAgent, resetDraftAgent, hydrateThreadAgent, promoteDraftAgent } =
 		useAgentSelection(agentCatalogQuery.data, activeThreadId);
 	const configuredAgent = findCatalogAgent(agentCatalogQuery.data, agent);
@@ -268,6 +283,9 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 					...(configuredAgent.variant ? { effort: configuredAgent.variant } : {}),
 				}
 			: undefined,
+		modelPreferences,
+		rememberModel,
+		recordRecentModel,
 	);
 	const selectModel = useCallback((next: KiloModelRef) => setModel(next), [setModel]);
 	const activeEffort = resolveModelEffort(

@@ -1,5 +1,5 @@
 import type { ModelSelectorEffortOption } from "../components/assistant-ui/model-selector.js";
-import { modelRefToId, type KiloModelCatalog, type KiloModelRef } from "./model-catalog.js";
+import { isSelectableModel, type KiloModelCatalog, type KiloModelRef } from "./model-catalog.js";
 
 const EFFORT_LABELS: Record<string, string> = {
 	none: "None",
@@ -10,6 +10,8 @@ const EFFORT_LABELS: Record<string, string> = {
 	max: "Max",
 	minimal: "Minimal",
 };
+
+const EFFORT_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 export function formatEffortLabel(id: string): string {
 	return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
@@ -42,12 +44,33 @@ export function effortsForOptimisticTrigger(
 	return [{ id: effort, name: formatEffortLabel(effort) }];
 }
 
+/** Keep the selected effort when possible, otherwise use the nearest known effort. */
+export function preserveEffort(
+	effort: string | undefined,
+	efforts: readonly ModelSelectorEffortOption[] | undefined,
+): string | undefined {
+	if (!effort || !efforts?.length) return undefined;
+	if (efforts.some((option) => option.id === effort)) return effort;
+
+	const rank = EFFORT_ORDER.indexOf(effort);
+	if (rank === -1) return undefined;
+
+	return efforts
+		.map((option, index) => ({
+			id: option.id,
+			index,
+			rank: EFFORT_ORDER.indexOf(option.id),
+			distance: Math.abs(EFFORT_ORDER.indexOf(option.id) - rank),
+		}))
+		.filter((option) => option.rank !== -1)
+		.sort((a, b) => a.distance - b.distance || b.rank - a.rank || a.index - b.index)[0]?.id;
+}
+
 /** Return a model only after the catalog confirms it is still available. */
 export function resolveCatalogModel(
 	catalog: KiloModelCatalog | undefined,
 	model: KiloModelRef | undefined,
 ): KiloModelRef | undefined {
 	if (!catalog || !model) return undefined;
-	const id = modelRefToId(model);
-	return catalog.models.some((entry) => entry.id === id) ? model : undefined;
+	return isSelectableModel(catalog, model) ? model : undefined;
 }

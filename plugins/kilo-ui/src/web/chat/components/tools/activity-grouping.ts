@@ -124,10 +124,21 @@ export const createTurnWorkGroupBy = (
 		}
 	}
 	let hasVisibleWork: boolean | undefined;
+	const firstStandaloneIndexByContext = new WeakMap<GroupByContext, number>();
 
 	return (part: PartState, context: GroupByContext): readonly `group-${string}`[] => {
 		const activityPath = activityGroupBy(part, context);
 		const index = indices.get(part) ?? -1;
+		let firstStandaloneIndex = firstStandaloneIndexByContext.get(context);
+		if (firstStandaloneIndex === undefined) {
+			firstStandaloneIndex = parts.findIndex(
+				(candidate) =>
+					shouldKeepPartOutsideActivity(candidate, context, options) &&
+					!isHiddenStructuralPart(candidate),
+			);
+			firstStandaloneIndexByContext.set(context, firstStandaloneIndex);
+		}
+		const followsStandalonePart = firstStandaloneIndex >= 0 && firstStandaloneIndex < index;
 		hasVisibleWork ??= parts.some((candidate, candidateIndex) => {
 			if (finalTextIndex >= 0 && candidateIndex >= finalTextIndex) return false;
 			if (candidate.type === "reasoning") return Boolean(candidate.text.trim());
@@ -140,6 +151,7 @@ export const createTurnWorkGroupBy = (
 		if (
 			!hasVisibleWork ||
 			index < 0 ||
+			followsStandalonePart ||
 			(finalTextIndex >= 0 && index >= finalTextIndex) ||
 			(shouldKeepPartOutsideActivity(part, context, options) && !isHiddenStructuralPart(part))
 		) {

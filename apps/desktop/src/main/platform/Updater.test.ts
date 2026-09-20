@@ -97,6 +97,41 @@ describe("DesktopUpdaterService", () => {
 		service.dispose();
 	});
 
+	it("recovers release notes after the update is already downloaded", async () => {
+		vi.useFakeTimers();
+		const fetchNotes = vi
+			.fn<typeof fetch>()
+			.mockResolvedValueOnce(new Response("unavailable", { status: 503 }))
+			.mockResolvedValueOnce(new Response("unavailable", { status: 503 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify(notes), { status: 200 }));
+		const { service, updater } = createService({ fetch: fetchNotes });
+		service.start();
+		await service.check();
+		updater.emit("update-downloaded", {}, "", notes.version, new Date(), "");
+		await vi.waitFor(() => expect(service.state.status).toBe("downloaded"));
+		expect(service.state.releaseNotes).toEqual([]);
+
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(service.state.releaseNotes).toEqual([notes]);
+		expect(updater.checkForUpdates).toHaveBeenCalledOnce();
+		service.dispose();
+	});
+
+	it("cancels release-note recovery when disposed", async () => {
+		vi.useFakeTimers();
+		const fetchNotes = vi.fn(async () => new Response("unavailable", { status: 503 }));
+		const { service, updater } = createService({ fetch: fetchNotes as typeof fetch });
+		service.start();
+		updater.emit("update-downloaded", {}, "", notes.version, new Date(), "");
+		await vi.waitFor(() => expect(service.state.status).toBe("downloaded"));
+		service.dispose();
+
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(fetchNotes).toHaveBeenCalledOnce();
+	});
+
 	it("combines skipped Preview release notes back to the installed version", async () => {
 		vi.useFakeTimers();
 		const target: DesktopReleaseNotes = {

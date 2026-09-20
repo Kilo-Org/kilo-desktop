@@ -9,10 +9,14 @@ import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client
 import { useKiloModelCatalog, fetchModelCatalogForConnection } from "./use-kilo-model-catalog.js";
 
 const providerList = vi.hoisted(() => vi.fn());
+const configGet = vi.hoisted(() => vi.fn());
+const authStatus = vi.hoisted(() => vi.fn());
 
 vi.mock("../runtime/create-kilo-runtime-client.js", () => ({
 	createKiloDirectoryClient: vi.fn(() => ({
 		provider: { list: providerList },
+		config: { get: configGet },
+		kilo: { authStatus },
 	})),
 }));
 
@@ -57,6 +61,8 @@ afterEach(() => {
 describe("useKiloModelCatalog", () => {
 	it("waits for a resolved connection and fetches the catalog once", async () => {
 		providerList.mockResolvedValue({ data: payload });
+		configGet.mockResolvedValue({ data: {} });
+		authStatus.mockResolvedValue({ data: { authenticated: false } });
 		type Props = { connection: KiloGlobalConnection | undefined; connectionUpdatedAt: number };
 		const { result, rerender } = renderHook(
 			({ connection: currentConnection, connectionUpdatedAt }: Props) =>
@@ -78,6 +84,7 @@ describe("useKiloModelCatalog", () => {
 			connection.globalDirectory,
 		);
 		expect(providerList).toHaveBeenCalledOnce();
+		expect(configGet).toHaveBeenCalledOnce();
 
 		rerender({
 			connection: { ...connection, password: "rotated-password" },

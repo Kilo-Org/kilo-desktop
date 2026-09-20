@@ -1,6 +1,7 @@
 import {
 	createContext,
 	memo,
+	useCallback,
 	useContext,
 	useEffect,
 	useMemo,
@@ -12,7 +13,7 @@ import {
 	type ReactNode,
 } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
+import { useOpenCodePermissions, useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -32,6 +33,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import {
 	getKindMeta,
 	getActivityKind,
+	getPartToolCallId,
 	getSegmentStats,
 	indicesHavePendingAsk,
 	lastAskingPartIndex,
@@ -88,6 +90,25 @@ const ownsPendingAsk = (
 	if (!messageRequiresAction) return false;
 	const lastAsk = lastAskingPartIndex(parts);
 	return lastAsk >= 0 && indices.includes(lastAsk);
+};
+
+const ownsPendingPermission = (
+	parts: readonly ActivityPart[],
+	indices: readonly number[],
+	permissions: readonly {
+		tool?: { messageID?: string; callID?: string } | undefined;
+	}[],
+	messageId: string | undefined,
+): boolean => {
+	for (const permission of permissions) {
+		const tool = permission.tool;
+		if (!tool?.callID || (tool.messageID && tool.messageID !== messageId)) continue;
+		for (const index of indices) {
+			const part = parts[index];
+			if (part && getPartToolCallId(part) === tool.callID) return true;
+		}
+	}
+	return false;
 };
 
 const AUTO_COLLAPSE_DELAY = 1600;
@@ -260,18 +281,64 @@ export type ActivitySubgroupContextValue = {
 
 const ActivitySubgroupContext = createContext<ActivitySubgroupContextValue | null>(null);
 
+type ManualDisclosureContextValue = {
+	openById: ReadonlyMap<string, boolean>;
+	setOpen: (id: string, open: boolean) => void;
+};
+
+const ManualDisclosureContext = createContext<ManualDisclosureContextValue | null>(null);
+const ActivityGroupManualOpenContext = createContext<(() => void) | null>(null);
+const ActivitySubgroupManualOpenContext = createContext<(() => void) | null>(null);
+
+export const ManualDisclosureProvider: FC<PropsWithChildren> = ({ children }) => {
+	const [openById, setOpenById] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+	const setOpen = useCallback((id: string, open: boolean) => {
+		setOpenById((current) => {
+			if (current.get(id) === open) return current;
+			const next = new Map(current);
+			next.set(id, open);
+			return next;
+		});
+	}, []);
+	const value = useMemo(() => ({ openById, setOpen }), [openById, setOpen]);
+	return (
+		<ManualDisclosureContext.Provider value={value}>{children}</ManualDisclosureContext.Provider>
+	);
+};
+
+export const useManualDisclosure = (
+	id: string,
+): readonly [boolean | undefined, (open: boolean) => void] => {
+	const context = useContext(ManualDisclosureContext);
+	const setOpen = useCallback((open: boolean) => context?.setOpen(id, open), [context, id]);
+	return [context?.openById.get(id), setOpen];
+};
+
+export const useHasOpenManualDisclosure = (): boolean => {
+	const context = useContext(ManualDisclosureContext);
+	return context ? [...context.openById.values()].some(Boolean) : false;
+};
+
+export const useKeepActivityGroupOpen = (): (() => void) | null =>
+	useContext(ActivityGroupManualOpenContext);
+
+export const useKeepActivitySubgroupOpen = (): (() => void) | null =>
+	useContext(ActivitySubgroupManualOpenContext);
+
 /** Size/kind of the enclosing activity subgroup, when a tool is nested under one. */
 export const useActivitySubgroup = (): ActivitySubgroupContextValue | null =>
 	useContext(ActivitySubgroupContext);
 
 const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
 	const parts = useAuiState((s) => s.message.parts);
+	const messageId = useAuiState((s) => s.message.id);
 	const messageStatusType = useAuiState((s) => s.message.status?.type);
 	const opencodeParts = useAuiState((s) => {
 		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
 		return custom?.opencode?.parts;
 	});
 	const pendingQuestions = useOpenCodeQuestions();
+	const { pending: pendingPermissions } = useOpenCodePermissions();
 	const summary = useMemo(() => summarizeActivity(parts, group.indices), [parts, group.indices]);
 	const hasPendingAsk = useMemo(
 		() =>
@@ -283,10 +350,20 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			),
 		[parts, group.indices, pendingQuestions, messageStatusType],
 	);
+	const hasPendingPermission = useMemo(
+		() => ownsPendingPermission(parts, group.indices, pendingPermissions, messageId),
+		[parts, group.indices, pendingPermissions, messageId],
+	);
 
-	const [userOpen, setUserOpen] = useState<boolean | null>(null);
-	const [streamExpanded, setStreamExpanded] = useState(false);
-
+	const disclosureId = `activity:${group.indices[0] ?? 0}`;
+	const [persistedUserOpen, setPersistedUserOpen] = useManualDisclosure(disclosureId);
+	const [localUserOpen, setLocalUserOpen] = useState<boolean | null>(null);
+	const userOpen = persistedUserOpen ?? localUserOpen;
+	const setUserOpen = (open: boolean) => {
+		setLocalUserOpen(open);
+		setPersistedUserOpen(open);
+	};
+	const keepActivityGroupOpen = useCallback(() => setUserOpen(true), [setPersistedUserOpen]);
 	const furthestActiveIndexRef = useRef(-1);
 	const lastActiveSegmentStartRef = useRef<number | null>(null);
 	const lastActiveSegmentShouldExpandRef = useRef(false);
@@ -303,14 +380,16 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		furthestActiveIndexRef.current = activeCandidateIndex;
 		lastActiveSegmentStartRef.current = activeSegment.indices[0] ?? null;
 		lastActiveSegmentShouldExpandRef.current =
-			activeSegment.kind === "thinking" || activeSegment.indices.length > 1;
+			activeSegment.kind === "thinking" || activeSegment.indices.length > 1 || hasPendingPermission;
 	}
 	// Only the activity group that owns the in-flight questionnaire should look
 	// "live". The message can remain running between tools while it considers
 	// its next step, but that gap should settle the tool group that just finished.
 	const streaming = activeSegment !== undefined;
 	const activeSegmentShouldExpand =
-		activeSegment?.kind === "thinking" || (activeSegment?.indices.length ?? 0) > 1;
+		activeSegment?.kind === "thinking" ||
+		(activeSegment?.indices.length ?? 0) > 1 ||
+		hasPendingPermission;
 	const automaticOpen = useDelayedActivityOpen(
 		streaming,
 		lastActiveSegmentShouldExpandRef.current && userOpen === null,
@@ -347,9 +426,11 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	// Wrapping it in "N tools used" would force a second expand for the same row.
 	if (summary.segments.length <= 1) {
 		return (
-			<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
-				{children}
-			</div>
+			<ActivityGroupManualOpenContext.Provider value={keepActivityGroupOpen}>
+				<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
+					{children}
+				</div>
+			</ActivityGroupManualOpenContext.Provider>
 		);
 	}
 
@@ -376,7 +457,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 			? "Show less"
 			: summary.label;
 
-	if (streaming && !streamExpanded) {
+	if (streaming && userOpen !== true) {
 		const previewOpen = activeSegmentShouldExpand;
 		const label = activeSegment
 			? getKindMeta(activeSegment.kind).liveLabel(getSegmentStats(parts, activeSegment))
@@ -393,7 +474,6 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 					type="button"
 					aria-expanded={previewOpen}
 					onClick={() => {
-						setStreamExpanded(true);
 						setUserOpen(true);
 					}}
 					className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
@@ -416,54 +496,55 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	}
 
 	return (
-		<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
-			<Collapsible
-				open={open}
-				style={
-					{
-						"--animation-duration": `${GROUP_ANIMATION_DURATION}ms`,
-					} as CSSProperties
-				}
-				onOpenChange={(next) => {
-					setUserOpen(next);
-					if (!next) setStreamExpanded(false);
-				}}
-			>
-				<CollapsibleTrigger
-					aria-label={triggerLabel}
-					className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
+		<ActivityGroupManualOpenContext.Provider value={keepActivityGroupOpen}>
+			<div data-slot="activity-group" className={cn(textBefore && "mt-3", textAfter && "mb-3")}>
+				<Collapsible
+					open={open}
+					style={
+						{
+							"--animation-duration": `${GROUP_ANIMATION_DURATION}ms`,
+						} as CSSProperties
+					}
+					onOpenChange={(next) => {
+						setUserOpen(next);
+					}}
 				>
-					{open && !settlingSegment ? null : (
-						<ActivityIconStack
-							items={
-								settlingSegment
-									? summary.iconItems.map((item, index) => ({
-											...item,
-											colored: index === settlingIndex,
-											loading: false,
-										}))
-									: summary.iconItems
-							}
-							className="-space-x-1"
-						/>
-					)}
-					<ActivityTriggerLabel label={triggerLabel}>
-						{open && !settlingSegment ? "Show less" : <ActivityLabel label={triggerLabel} />}
-					</ActivityTriggerLabel>
-					{settlingDiffStats ? <DiffCounts {...settlingDiffStats} /> : null}
-					<ActivityDisclosureIcon open={open} />
-				</CollapsibleTrigger>
-				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
-					<ActivityProgressIndexContext.Provider value={furthestActiveIndexRef.current}>
-						<ActivitySettlingSegmentContext.Provider value={compactSegmentStart}>
-							<ActivityStreamContext.Provider value={compactSegmentStart !== null}>
-								<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
-							</ActivityStreamContext.Provider>
-						</ActivitySettlingSegmentContext.Provider>
-					</ActivityProgressIndexContext.Provider>
-				</CollapsibleContent>
-			</Collapsible>
-		</div>
+					<CollapsibleTrigger
+						aria-label={triggerLabel}
+						className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors"
+					>
+						{open && !settlingSegment ? null : (
+							<ActivityIconStack
+								items={
+									settlingSegment
+										? summary.iconItems.map((item, index) => ({
+												...item,
+												colored: index === settlingIndex,
+												loading: false,
+											}))
+										: summary.iconItems
+								}
+								className="-space-x-1"
+							/>
+						)}
+						<ActivityTriggerLabel label={triggerLabel}>
+							{open && !settlingSegment ? "Show less" : <ActivityLabel label={triggerLabel} />}
+						</ActivityTriggerLabel>
+						{settlingDiffStats ? <DiffCounts {...settlingDiffStats} /> : null}
+						<ActivityDisclosureIcon open={open} />
+					</CollapsibleTrigger>
+					<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
+						<ActivityProgressIndexContext.Provider value={furthestActiveIndexRef.current}>
+							<ActivitySettlingSegmentContext.Provider value={compactSegmentStart}>
+								<ActivityStreamContext.Provider value={compactSegmentStart !== null}>
+									<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
+								</ActivityStreamContext.Provider>
+							</ActivitySettlingSegmentContext.Provider>
+						</ActivityProgressIndexContext.Provider>
+					</CollapsibleContent>
+				</Collapsible>
+			</div>
+		</ActivityGroupManualOpenContext.Provider>
 	);
 };
 
@@ -476,12 +557,14 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	children,
 }) => {
 	const parts = useAuiState((s) => s.message.parts);
+	const messageId = useAuiState((s) => s.message.id);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
 	const opencodeParts = useAuiState((s) => {
 		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
 		return custom?.opencode?.parts;
 	});
 	const pendingQuestions = useOpenCodeQuestions();
+	const { pending: pendingPermissions } = useOpenCodePermissions();
 	const segment = useMemo<ActivitySegment>(() => {
 		const indices = group.indices.filter((index) => {
 			const part = parts[index];
@@ -502,8 +585,22 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 			ownsPendingAsk(parts, segment.indices, pendingQuestions, messageRequiresAction),
 		[kind, parts, segment.indices, pendingQuestions, messageRequiresAction],
 	);
+	const hasPendingPermission = useMemo(
+		() => ownsPendingPermission(parts, segment.indices, pendingPermissions, messageId),
+		[parts, segment.indices, pendingPermissions, messageId],
+	);
 
-	const [toggled, setToggled] = useState<boolean | null>(null);
+	const disclosureId = `subgroup:${kind}:${group.indices[0] ?? 0}`;
+	const [persistedToggled, setPersistedToggled] = useManualDisclosure(disclosureId);
+	const keepActivityGroupOpen = useKeepActivityGroupOpen();
+	const [localToggled, setLocalToggled] = useState<boolean | null>(null);
+	const toggled = persistedToggled ?? localToggled;
+	const setToggled = (open: boolean) => {
+		setLocalToggled(open);
+		setPersistedToggled(open);
+		if (open) keepActivityGroupOpen?.();
+	};
+	const keepActivitySubgroupOpen = useCallback(() => setToggled(true), [setPersistedToggled]);
 
 	const progressIndex = useContext(ActivityProgressIndexContext);
 	const segmentEndIndex = segment.indices.at(-1) ?? -1;
@@ -516,7 +613,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const settlingSegmentStart = useContext(ActivitySettlingSegmentContext);
 	const isSettlingSegment = settlingSegmentStart === (segment.indices[0] ?? null);
 	const open =
-		(canBeActive && (segment.requiresAction || hasPendingAsk)) ||
+		(canBeActive && (segment.requiresAction || hasPendingAsk || hasPendingPermission)) ||
 		(toggled ?? (isSettlingSegment || automaticOpen));
 
 	const streamCollapsed = useContext(ActivityStreamContext);
@@ -536,6 +633,13 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	);
 
 	const active = statusActive;
+	const soloPart = segment.indices.length === 1 ? parts[segment.indices[0]!] : undefined;
+	const runningTerminalHasCommand =
+		kind === "terminal" &&
+		segment.running &&
+		soloPart?.type === "tool-call" &&
+		typeof soloPart.args?.command === "string" &&
+		soloPart.args.command.trim().length > 0;
 
 	if (streamCollapsed && !active && !isSettlingSegment) return null;
 
@@ -546,16 +650,20 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const labelOnly =
 		(LABEL_ONLY_ACTIVITY_KINDS.has(kind) &&
 			(kind === "asking" || kind === "suggesting" || stats.count === 1)) ||
-		(kind !== "thinking" && segment.running) ||
-		(stats.count === 1 && soloRowHidesItself(kind, parts[segment.indices[0]!]));
+		(kind !== "thinking" && segment.running && !runningTerminalHasCommand) ||
+		(stats.count === 1 &&
+			!runningTerminalHasCommand &&
+			soloRowHidesItself(kind, parts[segment.indices[0]!]));
 	if (labelOnly) {
 		if (streamCollapsed) {
 			if (segment.indices.length <= 1) return null;
 			return (
 				<ActivitySubgroupContext.Provider value={subgroupContext}>
-					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
-						{children}
-					</div>
+					<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
+						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+							{children}
+						</div>
+					</ActivitySubgroupManualOpenContext.Provider>
 				</ActivitySubgroupContext.Provider>
 			);
 		}
@@ -563,31 +671,33 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		const showChildren = kind !== "asking" && kind !== "suggesting" && segment.indices.length > 1;
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
-				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
-					<ActivityIconStack
-						items={[
-							{
-								icon: meta.icon,
-								label: meta.label,
-								className: meta.circleClassName,
-								colored: active,
-								loading: active,
-							},
-						]}
-					/>
-					<span className="font-medium">
-						<ActivityLabel
-							label={label}
-							object={kind === "skill" ? (stats.skill ?? "") : undefined}
-							shimmer={active}
+				<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
+					<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
+						<ActivityIconStack
+							items={[
+								{
+									icon: meta.icon,
+									label: meta.label,
+									className: meta.circleClassName,
+									colored: active,
+									loading: active,
+								},
+							]}
 						/>
-					</span>
-				</div>
-				{showChildren ? (
-					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
-						{children}
+						<span className="font-medium">
+							<ActivityLabel
+								label={label}
+								object={kind === "skill" ? (stats.skill ?? "") : undefined}
+								shimmer={active}
+							/>
+						</span>
 					</div>
-				) : null}
+					{showChildren ? (
+						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+							{children}
+						</div>
+					) : null}
+				</ActivitySubgroupManualOpenContext.Provider>
 			</ActivitySubgroupContext.Provider>
 		);
 	}
@@ -595,13 +705,15 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	if (streamCollapsed) {
 		return (
 			<ActivitySubgroupContext.Provider value={subgroupContext}>
-				{kind === "thinking" ? (
-					<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
-				) : (
-					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
-						{children}
-					</div>
-				)}
+				<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
+					{kind === "thinking" ? (
+						<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
+					) : (
+						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+							{children}
+						</div>
+					)}
+				</ActivitySubgroupManualOpenContext.Provider>
 			</ActivitySubgroupContext.Provider>
 		);
 	}
@@ -610,45 +722,47 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 
 	return (
 		<ActivitySubgroupContext.Provider value={subgroupContext}>
-			<Collapsible
-				open={open}
-				style={
-					{
-						"--animation-duration": `${SUBGROUP_ANIMATION_DURATION}ms`,
-					} as CSSProperties
-				}
-				onOpenChange={(next) => {
-					setToggled(next);
-				}}
-			>
-				<CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors">
-					<ActivityIconStack
-						items={[
-							{
-								icon: meta.icon,
-								label: meta.label,
-								className: meta.circleClassName,
-								colored: active || open,
-								loading: canBeActive && segment.running,
-							},
-						]}
-					/>
-					<span className="font-medium">
-						<ActivityLabel label={label} shimmer={segment.running} />
-					</span>
-					{diffStats ? <DiffCounts {...diffStats} /> : null}
-					<ActivityDisclosureIcon open={open} />
-				</CollapsibleTrigger>
-				<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
-					{kind === "thinking" ? (
-						<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
-					) : (
-						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
-							{children}
-						</div>
-					)}
-				</CollapsibleContent>
-			</Collapsible>
+			<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
+				<Collapsible
+					open={open}
+					style={
+						{
+							"--animation-duration": `${SUBGROUP_ANIMATION_DURATION}ms`,
+						} as CSSProperties
+					}
+					onOpenChange={(next) => {
+						setToggled(next);
+					}}
+				>
+					<CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1 text-sm transition-colors">
+						<ActivityIconStack
+							items={[
+								{
+									icon: meta.icon,
+									label: meta.label,
+									className: meta.circleClassName,
+									colored: active || open,
+									loading: canBeActive && segment.running,
+								},
+							]}
+						/>
+						<span className="font-medium">
+							<ActivityLabel label={label} shimmer={segment.running} />
+						</span>
+						{diffStats ? <DiffCounts {...diffStats} /> : null}
+						<ActivityDisclosureIcon open={open} />
+					</CollapsibleTrigger>
+					<CollapsibleContent className={cn(contentAnimation, "duration-(--animation-duration)")}>
+						{kind === "thinking" ? (
+							<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
+						) : (
+							<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+								{children}
+							</div>
+						)}
+					</CollapsibleContent>
+				</Collapsible>
+			</ActivitySubgroupManualOpenContext.Provider>
 		</ActivitySubgroupContext.Provider>
 	);
 };

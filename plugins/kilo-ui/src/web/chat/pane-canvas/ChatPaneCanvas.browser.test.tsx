@@ -62,8 +62,10 @@ describe("ChatPaneCanvas", () => {
 		expect(tab).toHaveAttribute("data-active", "true");
 		expect(frame).toHaveAttribute("data-pane-active", "true");
 
-		expect(tab?.className).toMatch(/border-primary\/65/);
-		expect(tab?.className).toMatch(/bg-foreground\/\[0\.07\]/);
+		expect(tab?.className).toMatch(/border-primary\/60/);
+		expect(tab?.className).toMatch(/bg-secondary/);
+		expect(tab?.className).toMatch(/text-foreground/);
+		expect(tab?.className).not.toMatch(/text-primary/);
 		expect(frame?.className).toMatch(/border-border/);
 		expect(frame?.className).not.toMatch(/border-info/);
 	});

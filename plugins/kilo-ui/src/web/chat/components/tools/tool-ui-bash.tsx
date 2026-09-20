@@ -1,61 +1,75 @@
 import { memo } from "react";
-import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { DollarSignIcon, XCircleIcon } from "lucide-react";
+import { useAuiState, type ToolCallMessagePartComponent } from "@assistant-ui/react";
+import { CheckIcon, XCircleIcon } from "lucide-react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
-import { getCommandSummary, isCancelledToolStatus, parseBashResult } from "./tool-ui-shared.js";
+import {
+	getCommandSummary,
+	getToolBashMetadataOutput,
+	isCancelledToolStatus,
+	normalizeBashOutput,
+	parseBashResult,
+} from "./tool-ui-shared.js";
 
-export const BashTerminal: ToolCallMessagePartComponent = memo(({ args, result, status }) => {
-	const command = typeof args?.command === "string" ? args.command : "";
-	const isRunning = status?.type === "running";
-	const isCancelled = isCancelledToolStatus(status);
+export const BashTerminal: ToolCallMessagePartComponent = memo(
+	({ args, result, status, toolCallId }) => {
+		const command = typeof args?.command === "string" ? args.command : "";
+		const isRunning = status?.type === "running";
+		const isCancelled = isCancelledToolStatus(status);
+		const liveOutput = useAuiState((s) => {
+			const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
+			return getToolBashMetadataOutput(custom?.opencode?.parts, toolCallId);
+		});
 
-	const parsed = isRunning ? {} : parseBashResult(result);
-	const stdout = parsed.stdout;
-	const stderr = parsed.stderr;
-	const exitCode = parsed.exitCode ?? 0;
-	const hasOutput = Boolean(stdout || stderr);
-	const isError = !isRunning && exitCode !== 0;
+		const parsed = parseBashResult(result);
+		const stdoutRaw = parsed.stdout ?? liveOutput;
+		const stdout = stdoutRaw ? normalizeBashOutput(stdoutRaw) : undefined;
+		const stderr = parsed.stderr ? normalizeBashOutput(parsed.stderr) : undefined;
+		const exitCode = parsed.exitCode ?? 0;
+		const hasOutput = Boolean(stdout || stderr);
+		const isError = !isRunning && exitCode !== 0;
 
-	const summaryText = getCommandSummary(args);
+		const summaryText = getCommandSummary(args);
 
-	const completeIcon = isError ? (
-		<XCircleIcon className="text-destructive-foreground size-3 shrink-0" />
-	) : (
-		<DollarSignIcon className="size-3.5 shrink-0" />
-	);
+		const completeIcon = isError ? (
+			<XCircleIcon className="text-destructive-foreground size-3 shrink-0" />
+		) : (
+			<CheckIcon className="size-3 shrink-0" />
+		);
 
-	return (
-		<SoloAwareExpandableRow
-			kind="terminal"
-			liveVerb="Running"
-			doneVerb={isCancelled ? "Cancelled" : isError ? "Failed" : "Ran"}
-			object={summaryText || undefined}
-			status={status}
-			hasDetail={hasOutput}
-			completeIcon={completeIcon}
-			hideSoloWithoutDetail={!isError && !isCancelled}
-			detail={
-				<div className="bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs">
-					{command ? <div className="text-muted-foreground mb-2">$ {command}</div> : null}
-					{stdout ? (
-						<pre className="text-foreground wrap-break-word whitespace-pre-wrap">{stdout}</pre>
-					) : null}
-					{stderr ? (
-						<pre
-							className={cn(
-								"text-destructive-foreground wrap-break-word whitespace-pre-wrap",
-								stdout && "mt-2",
-							)}
-						>
-							{stderr}
-						</pre>
-					) : null}
-				</div>
-			}
-		/>
-	);
-});
+		return (
+			<SoloAwareExpandableRow
+				kind="terminal"
+				liveVerb="Running"
+				doneVerb={isCancelled ? "Cancelled" : isError ? "Failed" : "Ran"}
+				object={summaryText || undefined}
+				status={status}
+				disclosureId={toolCallId}
+				hasDetail={isRunning ? Boolean(command) || hasOutput : hasOutput}
+				completeIcon={completeIcon}
+				hideSoloWithoutDetail={!isError && !isCancelled}
+				detail={
+					<div className="bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs">
+						{command ? <div className="text-muted-foreground mb-2">$ {command}</div> : null}
+						{stdout ? (
+							<pre className="text-foreground wrap-break-word whitespace-pre-wrap">{stdout}</pre>
+						) : null}
+						{stderr ? (
+							<pre
+								className={cn(
+									"text-destructive-foreground wrap-break-word whitespace-pre-wrap",
+									stdout && "mt-2",
+								)}
+							>
+								{stderr}
+							</pre>
+						) : null}
+					</div>
+				}
+			/>
+		);
+	},
+);
 BashTerminal.displayName = "BashTerminal";

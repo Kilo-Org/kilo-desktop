@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { KiloModelCatalog, KiloModelRef } from "./model-catalog.js";
+import type { PersistedModelPreferences } from "../../../contracts/model-preferences/schemas.js";
 import { usePersistedModelSelection } from "./use-persisted-model-selection.js";
 
 const defaultModel: KiloModelRef = {
@@ -49,6 +50,219 @@ afterEach(() => {
 });
 
 describe("usePersistedModelSelection", () => {
+	it("restores the preferred model before per-agent and configured defaults", () => {
+		const preferences: PersistedModelPreferences = {
+			modelSelections: { code: defaultModel },
+			preferred: { ...alternateModel, variant: "max" },
+			variantSelections: {},
+			recentModels: [],
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(
+				catalog,
+				undefined,
+				{ agent: "code", model: defaultModel, effort: "high" },
+				preferences,
+			),
+		);
+
+		expect(result.current.model).toEqual(alternateModel);
+		expect(result.current.effort).toBe("max");
+	});
+
+	it("falls through an unavailable preferred model to the agent's remembered model", () => {
+		const preferences: PersistedModelPreferences = {
+			modelSelections: { code: alternateModel },
+			preferred: { providerID: "missing", modelID: "removed", variant: "high" },
+			variantSelections: { "code/anthropic/claude-opus": "max" },
+			recentModels: [],
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(
+				catalog,
+				undefined,
+				{ agent: "code", model: defaultModel, effort: "high" },
+				preferences,
+			),
+		);
+
+		expect(result.current.model).toEqual(alternateModel);
+		expect(result.current.effort).toBe("max");
+	});
+
+	it("uses the global Kilo configured model after the agent default", () => {
+		const globallyConfiguredCatalog: KiloModelCatalog = {
+			...catalog,
+			configuredModel: alternateModel,
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(globallyConfiguredCatalog, undefined, { agent: "code" }),
+		);
+
+		expect(result.current.model).toEqual(alternateModel);
+	});
+
+	it("prefers an agent's configured model over the global Kilo configured model", () => {
+		const globallyConfiguredCatalog: KiloModelCatalog = {
+			...catalog,
+			configuredModel: alternateModel,
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(globallyConfiguredCatalog, undefined, {
+				agent: "code",
+				model: defaultModel,
+			}),
+		);
+
+		expect(result.current.model).toEqual(defaultModel);
+	});
+
+	it("uses the organization recommendation instead of personal recents", () => {
+		const orgModel = { providerID: "kilo", modelID: "org-recommended" };
+		const orgCatalog: KiloModelCatalog = {
+			providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }, ...catalog.providers],
+			models: [
+				{ id: "kilo/org-recommended", name: "Org Recommended", ...orgModel },
+				...catalog.models,
+			],
+			defaults: { kilo: "org-recommended", ...catalog.defaults },
+			connected: ["kilo", "anthropic"],
+			providerReady: true,
+			organizationId: "org-1",
+		};
+		const preferences: PersistedModelPreferences = {
+			modelSelections: {},
+			variantSelections: {},
+			recentModels: [alternateModel],
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(orgCatalog, undefined, { agent: "code" }, preferences),
+		);
+
+		expect(result.current.model).toEqual(orgModel);
+	});
+
+	it("uses recent models before the hardcoded fallback for Personal", () => {
+		const personalCatalog: KiloModelCatalog = {
+			...catalog,
+			connected: ["anthropic"],
+			providerReady: true,
+			organizationId: null,
+		};
+		const preferences: PersistedModelPreferences = {
+			modelSelections: {},
+			variantSelections: {},
+			recentModels: [alternateModel],
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(personalCatalog, undefined, { agent: "code" }, preferences),
+		);
+
+		expect(result.current.model).toEqual(alternateModel);
+	});
+
+	it("suppresses pending Kilo preferences while retaining connected external models", () => {
+		const kiloModel = { providerID: "kilo", modelID: "kilo-auto/free" };
+		const pendingCatalog: KiloModelCatalog = {
+			providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }, ...catalog.providers],
+			models: [{ id: "kilo/kilo-auto/free", name: "Auto Free", ...kiloModel }, ...catalog.models],
+			defaults: { kilo: "kilo-auto/free", ...catalog.defaults },
+			connected: ["kilo", "anthropic"],
+			providerReady: false,
+		};
+		const kiloPreferences: PersistedModelPreferences = {
+			modelSelections: {},
+			preferred: { ...kiloModel, variant: "" },
+			variantSelections: {},
+			recentModels: [],
+		};
+		const externalPreferences: PersistedModelPreferences = {
+			...kiloPreferences,
+			preferred: { ...alternateModel, variant: "" },
+		};
+
+		const kilo = renderHook(() =>
+			usePersistedModelSelection(pendingCatalog, undefined, { agent: "code" }, kiloPreferences),
+		);
+		const external = renderHook(() =>
+			usePersistedModelSelection(pendingCatalog, undefined, { agent: "code" }, externalPreferences),
+		);
+
+		expect(kilo.result.current.model).toEqual(defaultModel);
+		expect(external.result.current.model).toEqual(alternateModel);
+	});
+
+	it("falls back to a connected external model while Kilo provider status is unavailable", () => {
+		const pendingCatalog: KiloModelCatalog = {
+			...catalog,
+			connected: ["anthropic"],
+			providerReady: false,
+		};
+
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(pendingCatalog, undefined, { agent: "code" }),
+		);
+
+		expect(result.current.model).toEqual(defaultModel);
+	});
+
+	it("treats a preferred default variant as authoritative", () => {
+		const preferences: PersistedModelPreferences = {
+			modelSelections: { code: alternateModel },
+			preferred: { ...alternateModel, variant: "" },
+			variantSelections: { "code/anthropic/claude-opus": "max" },
+			recentModels: [],
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(
+				catalog,
+				undefined,
+				{ agent: "code", model: defaultModel, effort: "high" },
+				preferences,
+			),
+		);
+
+		expect(result.current.model).toEqual(alternateModel);
+		expect(result.current.effort).toBeUndefined();
+	});
+
+	it("remembers draft changes but keeps existing-session changes local", () => {
+		const remembered: Array<{ agent: string; model: KiloModelRef; effort?: string }> = [];
+		const onRemember = (agent: string, model: KiloModelRef, effort: string | undefined) => {
+			remembered.push({ agent, model, ...(effort === undefined ? {} : { effort }) });
+		};
+		const draft = renderHook(() =>
+			usePersistedModelSelection(
+				catalog,
+				undefined,
+				{ agent: "code", model: defaultModel },
+				undefined,
+				onRemember,
+			),
+		);
+		act(() => draft.result.current.setEffort("high"));
+		act(() => draft.result.current.setModel(alternateModel));
+
+		expect(remembered).toEqual([
+			{ agent: "code", model: defaultModel, effort: "high" },
+			{ agent: "code", model: alternateModel, effort: "high" },
+		]);
+
+		const thread = renderHook(() =>
+			usePersistedModelSelection(
+				catalog,
+				"thread-a",
+				{ agent: "code", model: defaultModel },
+				undefined,
+				onRemember,
+			),
+		);
+		act(() => thread.result.current.setModel(alternateModel));
+		act(() => thread.result.current.setEffort("max"));
+
+		expect(remembered).toHaveLength(2);
+	});
+
 	it("preserves effort when the model changes", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(catalog));
 
@@ -160,7 +374,7 @@ describe("usePersistedModelSelection", () => {
 		expect(result.current.efforts).toBeUndefined();
 	});
 
-	it("clears sticky efforts when switching to a model that has none", () => {
+	it("clears effort when switching to a model that has none", () => {
 		const noEffortModel: KiloModelRef = {
 			providerID: "anthropic",
 			modelID: "claude-haiku",
@@ -191,7 +405,7 @@ describe("usePersistedModelSelection", () => {
 		expect(result.current.model).toEqual(noEffortModel);
 		expect(result.current.name).toBe("Claude Haiku");
 		expect(result.current.efforts).toBeUndefined();
-		expect(result.current.effort).toBe("high");
+		expect(result.current.effort).toBeUndefined();
 	});
 
 	it("keeps effort in memory when the catalog is missing", () => {

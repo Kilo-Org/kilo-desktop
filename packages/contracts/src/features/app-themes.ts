@@ -208,7 +208,7 @@ export const APP_THEMES = [
 					sidebar: "#161616",
 					hover: "#333333",
 					muted: "#a3a3a3",
-					border: "#303030",
+					border: "#292929",
 					primary: "#f7f586",
 					primaryForeground: "#1f1f1f",
 					ansi: [

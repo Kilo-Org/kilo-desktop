@@ -24,7 +24,10 @@ const stubChatModel: ChatModelAdapter = {
 };
 
 class EmptyThreadListAdapter implements RemoteThreadListAdapter {
-	list() {
+	constructor(private readonly pending = false) {}
+
+	list(): ReturnType<RemoteThreadListAdapter["list"]> {
+		if (this.pending) return new Promise(() => undefined);
 		return Promise.resolve({ threads: [] });
 	}
 	archive() {
@@ -56,9 +59,15 @@ class EmptyThreadListAdapter implements RemoteThreadListAdapter {
 	}
 }
 
-function Harness({ system }: { system: ReturnType<typeof createFakeFeatureSystem> }) {
+function Harness({
+	system,
+	threadsPending = false,
+}: {
+	system: ReturnType<typeof createFakeFeatureSystem>;
+	threadsPending?: boolean;
+}) {
 	const runtime = useRemoteThreadListRuntime({
-		adapter: new EmptyThreadListAdapter(),
+		adapter: new EmptyThreadListAdapter(threadsPending),
 		runtimeHook: () => useLocalRuntime(stubChatModel),
 	});
 
@@ -73,11 +82,11 @@ function Harness({ system }: { system: ReturnType<typeof createFakeFeatureSystem
 	);
 }
 
-function renderNewChatButton() {
+function renderNewChatButton({ threadsPending = false }: { threadsPending?: boolean } = {}) {
 	const navigate = vi.fn();
 	const sdk = createFakeSdk({ featureId: "kilo-ui", navigation: { navigate } });
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
-	const result = render(<Harness system={system} />);
+	const result = render(<Harness system={system} threadsPending={threadsPending} />);
 	return { ...result, navigate, screen: page.elementLocator(result.baseElement) };
 }
 
@@ -101,10 +110,22 @@ describe("NewChatButton", () => {
 
 	it("creates a chat from the button", async () => {
 		const { navigate, screen } = renderNewChatButton();
+		const button = screen.getByRole("button", { name: "New Chat" });
 
-		fireEvent.click(screen.getByRole("button", { name: "New Chat" }).element());
+		await expect.element(button).toBeEnabled();
+		fireEvent.click(button.element());
 
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
+	});
+
+	it("waits for the remote thread list before creating a fresh draft", async () => {
+		const { navigate, screen } = renderNewChatButton({ threadsPending: true });
+		const button = screen.getByRole("button", { name: "New Chat" });
+
+		await expect.element(button).toBeDisabled();
+		fireEvent.click(button.element());
+
+		expect(navigate).not.toHaveBeenCalled();
 	});
 
 	it("returns to a fresh empty chat by clearing leftover draft panes", async () => {

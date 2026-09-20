@@ -145,7 +145,7 @@ export function ServerSettings({
 						setLocalError(null);
 						setDirty(true);
 					}}
-					className="ml-auto h-8 w-36 shrink-0 text-sm"
+					className="ml-auto h-7 w-36 shrink-0 self-center text-sm"
 					data-qa-id="local-model-server-port"
 				/>
 			</Field>
@@ -172,7 +172,7 @@ export function ServerSettings({
 					<SelectTrigger
 						id="local-model-server-load-mode"
 						size="sm"
-						className="ml-auto w-36 shrink-0"
+						className="ml-auto w-36 shrink-0 self-center"
 						aria-label="Models kept loaded"
 						data-qa-id="local-model-server-load-mode"
 					>

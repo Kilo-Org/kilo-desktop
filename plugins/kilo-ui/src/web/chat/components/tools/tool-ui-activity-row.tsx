@@ -8,7 +8,12 @@ import {
 } from "@kilo-desktop/ui/components/collapsible";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { useActivitySubgroup, type ActivitySubgroupContextValue } from "./activity-group.js";
+import {
+	useActivitySubgroup,
+	useKeepActivitySubgroupOpen,
+	useManualDisclosure,
+	type ActivitySubgroupContextValue,
+} from "./activity-group.js";
 import {
 	ToolStatusIcon,
 	isCancelledToolStatus,
@@ -94,6 +99,7 @@ export const SoloAwareExpandableRow = memo(
 		detail,
 		completeIcon,
 		trailing,
+		disclosureId,
 		forceRow = false,
 		hideSoloWithoutDetail = false,
 	}: {
@@ -106,12 +112,23 @@ export const SoloAwareExpandableRow = memo(
 		detail: ReactNode;
 		completeIcon?: ReactNode;
 		trailing?: ReactNode;
+		disclosureId: string;
 		/** Render the trigger even when one tool expands into multiple logical rows. */
 		forceRow?: boolean;
 		/** Hide a redundant solo label when the subgroup header already describes it. */
 		hideSoloWithoutDetail?: boolean;
 	}) => {
-		const [open, setOpen] = useState(false);
+		const [persistedOpen, setPersistedOpen] = useManualDisclosure(`tool:${disclosureId}`);
+		const keepActivitySubgroupOpen = useKeepActivitySubgroupOpen();
+		const [localOpen, setLocalOpen] = useState(false);
+		const open = persistedOpen ?? localOpen;
+		const setOpen = (next: boolean) => {
+			setLocalOpen(next);
+			setPersistedOpen(next);
+			if (next) {
+				keepActivitySubgroupOpen?.();
+			}
+		};
 		const solo = useSoloInSubgroup(kind) && !forceRow;
 
 		const label = (

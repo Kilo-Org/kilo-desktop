@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/compon
 
 import { useDesktopUpdates } from "@/platform/updates/UpdateProvider";
 
-import { ReleaseNotesList } from "./ReleaseNotesList";
+import { hasVisibleReleaseNotes, ReleaseNotesList } from "./ReleaseNotesList";
 import { getInstallConfirmationMessage, updateReadyLabel } from "./updateActions";
 
 type TooltipActions = {
@@ -68,7 +68,7 @@ export function SidebarUpdatePill() {
 				className="border-border bg-popover text-popover-foreground pointer-events-auto block max-h-[min(28rem,calc(100vh-5rem))] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto border p-4 text-left shadow-lg"
 			>
 				<div className="text-sm font-medium">{label}</div>
-				{state.releaseNotes.some((release) => release.items.length > 0) ? (
+				{state.releaseNotes.some(hasVisibleReleaseNotes) ? (
 					<div className="border-border mt-3 border-t pt-3">
 						<ReleaseNotesList notes={state.releaseNotes} />
 					</div>

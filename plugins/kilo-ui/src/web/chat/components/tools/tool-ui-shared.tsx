@@ -1,5 +1,5 @@
 import type { FC, ReactNode } from "react";
-import { AlertCircleIcon, CheckIcon, LoaderIcon, XCircleIcon } from "lucide-react";
+import { AlertCircleIcon, CheckIcon, LoaderCircleIcon, XCircleIcon } from "lucide-react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -82,6 +82,39 @@ export type BashResultPayload = {
 	exitCode?: number | undefined;
 };
 
+const ESC = String.fromCharCode(0x1b);
+const CSI = String.fromCharCode(0x9b);
+const BEL = String.fromCharCode(7);
+const ANSI_ESCAPE = new RegExp(
+	`[${ESC}${CSI}][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d/#&.:=?%@~_]*)*)?${BEL})|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))`,
+	"g",
+);
+
+export const normalizeBashOutput = (value: string): string =>
+	value.replace(ANSI_ESCAPE, "").replace(/\r\n?/g, "\n");
+
+/** OpenCode bash metadata.output for a running (or completed) tool call. */
+export const getToolBashMetadataOutput = (
+	parts: unknown,
+	toolCallId: string,
+): string | undefined => {
+	if (!Array.isArray(parts)) return undefined;
+	for (const part of parts) {
+		if (!part || typeof part !== "object") continue;
+		const record = part as Record<string, unknown>;
+		if (record.type !== "tool") continue;
+		const callId = record.callID ?? record.id;
+		if (callId !== toolCallId) continue;
+		const state = record.state;
+		if (!state || typeof state !== "object") continue;
+		const metadata = (state as Record<string, unknown>).metadata;
+		if (!metadata || typeof metadata !== "object") continue;
+		const output = (metadata as Record<string, unknown>).output;
+		return typeof output === "string" && output.length > 0 ? output : undefined;
+	}
+	return undefined;
+};
+
 /** Bash tool result: a JSON string or an object carrying stdout/stderr/exitCode. */
 export const parseBashResult = (result: unknown): BashResultPayload => {
 	if (!result) return {};
@@ -100,10 +133,22 @@ export const parseBashResult = (result: unknown): BashResultPayload => {
 		record = result as Record<string, unknown>;
 	}
 	if (!record) return {};
+	const stdout =
+		typeof record.stdout === "string"
+			? record.stdout
+			: typeof record.output === "string"
+				? record.output
+				: undefined;
+	const exitCode =
+		typeof record.exitCode === "number"
+			? record.exitCode
+			: typeof record.exit === "number"
+				? record.exit
+				: undefined;
 	return {
-		stdout: typeof record.stdout === "string" ? record.stdout : undefined,
+		stdout,
 		stderr: typeof record.stderr === "string" ? record.stderr : undefined,
-		exitCode: typeof record.exitCode === "number" ? record.exitCode : undefined,
+		exitCode,
 	};
 };
 
@@ -128,7 +173,7 @@ export const ToolStatusIcon = ({
 	const isCancelled = isCancelledToolStatus(status);
 
 	if (statusType === "running") {
-		return <LoaderIcon className="size-3 shrink-0 animate-spin" />;
+		return <LoaderCircleIcon className="size-3 shrink-0 animate-spin" />;
 	}
 
 	if (statusType === "requires-action") {

@@ -18,14 +18,14 @@ import {
 } from "@kilo-desktop/ui/components/select";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import { ReleaseNotesList } from "@/components/updates/ReleaseNotesList";
+import { hasVisibleReleaseNotes, ReleaseNotesList } from "@/components/updates/ReleaseNotesList";
 import { getInstallConfirmationMessage } from "@/components/updates/updateActions";
 import { useDesktopUpdates } from "@/platform/updates/UpdateProvider";
 
 export function AboutSettings() {
 	const updates = useDesktopUpdates();
 	const state = updates?.state;
-	const targetRelease = state?.releaseNotes.find((release) => release.items.length > 0);
+	const targetRelease = state?.releaseNotes.find(hasVisibleReleaseNotes);
 	const [pending, setPending] = useState(false);
 	const updateBusy = pending || state?.status === "checking" || state?.status === "downloading";
 
@@ -147,8 +147,9 @@ export function AboutSettings() {
 						>
 							<SelectTrigger
 								id="update-track"
+								size="sm"
 								aria-label="Update track"
-								className="ml-auto w-40 shrink-0"
+								className="ml-auto w-40 shrink-0 self-center"
 								disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
 								data-qa-id="update-track"
 							>
@@ -168,7 +169,7 @@ export function AboutSettings() {
 					</Field>
 				</div>
 
-				{state?.releaseNotes.some((release) => release.items.length > 0) ? (
+				{state?.releaseNotes.some(hasVisibleReleaseNotes) ? (
 					<div
 						className="border-border bg-background/60 border-t p-4"
 						data-qa-id="update-release-notes"

@@ -42,6 +42,20 @@ const source = (partsByMessage: readonly (readonly Part[])[]): TaskThreadSource 
 	),
 });
 
+const messageSource = (
+	messages: readonly { role: string; parts: readonly Part[] }[],
+	lifecycle?: Pick<TaskThreadSource, "runState" | "sessionStatus">,
+): TaskThreadSource => ({
+	...lifecycle,
+	messageOrder: messages.map((_, index) => `message-${index}`),
+	messagesById: Object.fromEntries(
+		messages.map((message, index) => [
+			`message-${index}`,
+			{ info: { role: message.role }, parts: message.parts },
+		]),
+	),
+});
+
 describe("projectTaskThread", () => {
 	it("projects only the latest task write and maps Kilo statuses", () => {
 		const projection = projectTaskThread(
@@ -107,5 +121,54 @@ describe("projectTaskThread", () => {
 				]),
 			),
 		).toEqual({ items: [] });
+	});
+
+	it("clears the task list when the turn settles", () => {
+		const write = taskWritePart("write", [
+			{ content: "Unfinished task", status: "in_progress", priority: "high" },
+		]);
+
+		expect(
+			projectTaskThread(
+				messageSource([{ role: "assistant", parts: [write] }], {
+					runState: { type: "idle" },
+					sessionStatus: { type: "idle" },
+				}),
+			),
+		).toBeUndefined();
+	});
+
+	it("keeps the current task list while cancellation is in progress", () => {
+		const write = taskWritePart("write", [
+			{ content: "Unfinished task", status: "in_progress", priority: "high" },
+		]);
+
+		expect(
+			projectTaskThread(
+				messageSource([{ role: "assistant", parts: [write] }], {
+					runState: { type: "cancelling" },
+					sessionStatus: { type: "busy" },
+				}),
+			),
+		).toEqual({ items: [{ id: "task-0", text: "Unfinished task", status: "active" }] });
+	});
+
+	it("does not revive the prior turn's tasks when a new turn starts", () => {
+		const oldWrite = taskWritePart("old", [
+			{ content: "Old unfinished task", status: "pending", priority: "high" },
+		]);
+
+		expect(
+			projectTaskThread(
+				messageSource(
+					[
+						{ role: "assistant", parts: [oldWrite] },
+						{ role: "user", parts: [] },
+						{ role: "assistant", parts: [] },
+					],
+					{ runState: { type: "streaming" }, sessionStatus: { type: "busy" } },
+				),
+			),
+		).toBeUndefined();
 	});
 });

@@ -169,6 +169,7 @@ export function AppearanceSettings() {
 					</FieldContent>
 					<Switch
 						id="sidebar-vibrancy"
+						className="self-center"
 						data-qa-id="appearance-sidebar-vibrancy"
 						checked={sidebarVibrancy}
 						onCheckedChange={setSidebarVibrancy}

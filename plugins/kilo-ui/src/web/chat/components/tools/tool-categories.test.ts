@@ -250,6 +250,15 @@ describe("skill activity grouping", () => {
 });
 
 describe("subagent activity grouping", () => {
+	it("presents board coordination as subagent activity rather than MCP tools", () => {
+		expect(getGroupKeyForTool("board_read")).toBe("group-subagent");
+		expect(getGroupKeyForTool("board_post")).toBe("group-subagent");
+		expect(getMcpServerFromToolName("board_read")).toBeUndefined();
+		expect(getMcpServerFromToolName("board_post")).toBeUndefined();
+		expect(formatToolDisplayName("board_read")).toBe("Read agent messages");
+		expect(formatToolDisplayName("board_post")).toBe("Message agents");
+	});
+
 	it("maps the task tool into its own subgroup", () => {
 		expect(getGroupKeyForTool("task")).toBe("group-subagent");
 		expect(getGroupKeyForTool("Task")).toBe("group-subagent");

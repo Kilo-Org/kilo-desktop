@@ -149,6 +149,7 @@ describe("update UI", () => {
 				{
 					...downloadedState.releaseNotes[0]!,
 					version: "1.2.4-without-notes",
+					bodyMarkdown: "",
 					items: [],
 				},
 				downloadedState.releaseNotes[0]!,
@@ -178,6 +179,24 @@ describe("update UI", () => {
 		await expect.element(page.getByText("Update status")).not.toBeInTheDocument();
 		await expect.element(page.getByText("Last checked")).not.toBeInTheDocument();
 		expect(page.getByTestId("update-release-notes").element().textContent).not.toContain("#");
+	});
+
+	it("renders published release-note text when there are no bullet items", async () => {
+		const state = {
+			...downloadedState,
+			releaseNotes: [
+				{
+					...downloadedState.releaseNotes[0]!,
+					bodyMarkdown: "This release improves startup reliability.",
+					items: [],
+				},
+			],
+		};
+		renderUpdates(updateApi(state), <AboutSettings />);
+
+		await expect
+			.element(page.getByText("This release improves startup reliability.", { exact: true }))
+			.toBeVisible();
 	});
 
 	it("disables the track selector while an update is in progress or ready", async () => {

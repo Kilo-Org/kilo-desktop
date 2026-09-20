@@ -2,6 +2,7 @@ import path from "node:path";
 
 import type { KiloGlobalConnection, KiloUiChatService } from "../contracts/chat/schemas.js";
 import type { OnboardingService } from "../contracts/onboarding/schemas.js";
+import type { ModelPreferencesService } from "../contracts/model-preferences/schemas.js";
 import type { KiloUiProvidersService } from "../contracts/providers/schemas.js";
 import type {
 	WorkspaceCapabilityService,
@@ -12,6 +13,7 @@ import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { mcpAppsContract } from "../contracts/mcp-apps/schemas.js";
 import { onboardingContract } from "../contracts/onboarding/schemas.js";
+import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 import {
@@ -20,6 +22,7 @@ import {
 	unregisterLocalMcpAppResource,
 } from "./mcp-apps/mcp-apps-handlers.js";
 import { OnboardingStore } from "./onboarding/OnboardingStore.js";
+import { ModelPreferenceStore } from "./model-preferences/ModelPreferenceStore.js";
 import { presentEnvNames } from "./providers/present-env.js";
 import { readStoredApiKey } from "./providers/stored-api-key.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
@@ -123,6 +126,17 @@ export function mainRegister(
 		"onboarding.complete": async () => onboarding.complete(),
 		"onboarding.skip": async () => onboarding.skip(),
 	};
+	const modelPreferences = new ModelPreferenceStore(mainSdk);
+	const modelPreferencesApi: ModelPreferencesService = {
+		"modelPreferences.get": async () => modelPreferences.get(),
+		"modelPreferences.remember": async ({ agent, model, effort }) =>
+			modelPreferences.remember({
+				agent,
+				model,
+				...(effort === undefined ? {} : { effort }),
+			}),
+		"modelPreferences.recordRecent": async (model) => modelPreferences.recordRecent(model),
+	};
 
 	const providersApi: KiloUiProvidersService = {
 		"providers.getApiKey": async ({ providerID }) => ({
@@ -141,6 +155,7 @@ export function mainRegister(
 	mainSdk.channels(workspacesContract).handleAll(api);
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
+	mainSdk.channels(modelPreferencesContract).handleAll(modelPreferencesApi);
 	mainSdk.channels(kiloUiProvidersContract).handleAll(providersApi);
 
 	const mcpAppsApi = createMcpAppsHandlers(getConnection, mainSdk.net.fetch);

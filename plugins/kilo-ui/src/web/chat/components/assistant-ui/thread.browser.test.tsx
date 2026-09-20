@@ -1144,16 +1144,22 @@ describe("assistant working status", () => {
 		renderExternalMessagesThread(idleRunningMessages(), true);
 		const indicator = () =>
 			document.querySelector('[role="status"][aria-label="Considering next steps"]');
+		const reservedSpace = document.querySelector('[data-slot="aui_assistant-message-indicator"]');
+		const reservedHeight = reservedSpace?.getBoundingClientRect().height;
 
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(749);
 		});
 		expect(indicator()).toBeNull();
+		expect(reservedSpace).not.toBeNull();
+		expect(reservedSpace).toHaveAttribute("aria-hidden", "true");
+		expect(reservedHeight).toBeGreaterThan(0);
 
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(1);
 		});
 		expect(indicator()).not.toBeNull();
+		expect(indicator()?.getBoundingClientRect().height).toBe(reservedHeight);
 	});
 
 	it("shows the top-level working timer without replacing considering next steps", async () => {

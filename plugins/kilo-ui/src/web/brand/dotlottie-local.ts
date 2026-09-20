@@ -1,5 +1,5 @@
 import { setWasmUrl } from "@lottiefiles/dotlottie-react";
-import wasmUrl from "@lottiefiles/dotlottie-web/dist/dotlottie-player.wasm?url";
+import wasmUrl from "@lottiefiles/dotlottie-web/dotlottie-player.wasm?url";
 
 import yellowKiloLogoUrl from "./YellowKiloLogo.lottie?url";
 

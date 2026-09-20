@@ -5,6 +5,7 @@ import {
 	effortsForOptimisticTrigger,
 	formatEffortLabel,
 	normalizeEfforts,
+	preserveEffort,
 	resolveCatalogModel,
 } from "./model-selection-utils.js";
 
@@ -43,5 +44,17 @@ describe("model-selection-utils", () => {
 			{ id: "high", name: "High" },
 		]);
 		expect(normalizeEfforts([{ id: "max", name: "Max" }])).toEqual([{ id: "max", name: "Max" }]);
+	});
+
+	it("keeps or remaps effort to the nearest supported level", () => {
+		const efforts = [
+			{ id: "low", name: "Low" },
+			{ id: "high", name: "High" },
+		];
+
+		expect(preserveEffort("low", efforts)).toBe("low");
+		expect(preserveEffort("medium", efforts)).toBe("high");
+		expect(preserveEffort("custom", efforts)).toBeUndefined();
+		expect(preserveEffort("high", undefined)).toBeUndefined();
 	});
 });

@@ -23,7 +23,12 @@ import { MarkdownText } from "./markdown-text.js";
 import { MessageCopyButton } from "./message-copy-button.js";
 import { Reasoning } from "./reasoning.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
-import { ActivityGroup, ActivitySubgroup } from "../tools/activity-group.js";
+import {
+	ActivityGroup,
+	ActivitySubgroup,
+	ManualDisclosureProvider,
+	useHasOpenManualDisclosure,
+} from "../tools/activity-group.js";
 import { createActivityGroupBy, createTurnWorkGroupBy } from "../tools/activity-grouping.js";
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
@@ -161,7 +166,7 @@ const ThreadComposerSlot: FC = () => {
 // Empty threads stay in draft layout (centered composer). Require status
 // "new" too — after lazy session init the list item flips to regular before
 // messages project, and treating that as draft docks→centers→docks again.
-export const isDraftView = (s: AssistantState) =>
+const isDraftView = (s: AssistantState) =>
 	s.thread.messages.length === 0 && s.threadListItem.status === "new";
 
 export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
@@ -309,12 +314,22 @@ const ThreadScrollToBottom: FC = () => {
 // of gliding: virtualized messages re-measure and rasterize as a scroll
 // crosses them (`contain-intrinsic-size: auto 200px`), which reads as jumps
 // and flashes. The bottom of the list is always rendered, and short glides
-// never cross unrendered content.
+// never cross unrendered content. Reassert the user-send scroll when its run
+// starts so the newly mounted assistant status UI is included in the target.
 const SMOOTH_SCROLL_VIEWPORT_HEIGHTS = 1.5;
 
 const ScrollToBottomOnSend: FC = () => {
 	const scrollToBottom = useThreadViewport((s) => s.scrollToBottom);
 	const viewport = useThreadViewport((s) => s.element.viewport);
+	const isRunning = useAuiState((s) => s.thread.isRunning);
+	const runStartScrollBehavior = useRef<ScrollBehavior | null>(null);
+	const runStartFrame = useRef<number | null>(null);
+	useEffect(
+		() => () => {
+			if (runStartFrame.current !== null) window.cancelAnimationFrame(runStartFrame.current);
+		},
+		[],
+	);
 	useAuiEvent("composer.send", () => {
 		const distance = viewport
 			? viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop
@@ -323,7 +338,17 @@ const ScrollToBottomOnSend: FC = () => {
 			viewport && distance > viewport.clientHeight * SMOOTH_SCROLL_VIEWPORT_HEIGHTS
 				? "instant"
 				: "smooth";
+		runStartScrollBehavior.current = isRunning ? null : behavior;
 		scrollToBottom({ behavior });
+	});
+	useAuiEvent("thread.runStart", () => {
+		const behavior = runStartScrollBehavior.current;
+		if (!behavior) return;
+		runStartScrollBehavior.current = null;
+		runStartFrame.current = window.requestAnimationFrame(() => {
+			runStartFrame.current = null;
+			scrollToBottom({ behavior });
+		});
 	});
 	return null;
 };
@@ -932,7 +957,10 @@ function elapsedDecisecondsSince(startedAt: number) {
 	return Math.max(0, Math.floor((Date.now() - startedAt) / 100));
 }
 
-const AssistantWorkingIndicator: FC = () => {
+const AssistantWorkingIndicator: FC<{ active: boolean; overlay: boolean }> = ({
+	active,
+	overlay,
+}) => {
 	const turnStartedAt = useAuiState((s) => {
 		for (let index = s.message.index - 1; index >= 0; index--) {
 			const message = s.thread.messages[index];
@@ -954,6 +982,9 @@ const AssistantWorkingIndicator: FC = () => {
 	);
 
 	useEffect(() => {
+		setVisibleLabel(null);
+		if (!active) return;
+
 		const delay =
 			label === CONSIDERING_NEXT_STEPS
 				? CONSIDERING_INDICATOR_DELAY_MS
@@ -966,16 +997,21 @@ const AssistantWorkingIndicator: FC = () => {
 			window.clearTimeout(timeoutId);
 			window.clearInterval(intervalId);
 		};
-	}, [label, turnStartedAt]);
+	}, [active, label, turnStartedAt]);
 
-	if (visibleLabel !== label) return null;
+	const isVisible = active && visibleLabel === label;
 
 	return (
 		<div
 			data-slot="aui_assistant-message-indicator"
-			className="text-muted-foreground flex w-fit items-center gap-2 py-1 text-sm [&:not(:first-child)]:mt-3"
-			role="status"
-			aria-label={label}
+			className={cn(
+				"text-muted-foreground flex w-fit items-center gap-2 py-1 text-sm",
+				overlay && "absolute mt-3",
+				!isVisible && "invisible",
+			)}
+			role={isVisible ? "status" : undefined}
+			aria-label={isVisible ? label : undefined}
+			aria-hidden={!isVisible}
 		>
 			<AvatarGroup
 				aria-hidden
@@ -1038,12 +1074,13 @@ const TurnWorkHeader: FC<{ startedAt: number }> = ({ startedAt }) => (
 const TurnWorkDisclosure: FC<
 	PropsWithChildren<{ animateCollapse: boolean; duration: string | null; interrupted: boolean }>
 > = ({ animateCollapse, duration, interrupted, children }) => {
-	const [open, setOpen] = useState(animateCollapse);
+	const hasOpenManualDisclosure = useHasOpenManualDisclosure();
+	const [open, setOpen] = useState(animateCollapse || hasOpenManualDisclosure);
 	useEffect(() => {
-		if (!animateCollapse) return;
+		if (!animateCollapse || hasOpenManualDisclosure) return;
 		const frameId = window.requestAnimationFrame(() => setOpen(false));
 		return () => window.cancelAnimationFrame(frameId);
-	}, [animateCollapse]);
+	}, [animateCollapse, hasOpenManualDisclosure]);
 	const label = interrupted
 		? duration
 			? `You stopped after ${duration}`
@@ -1204,6 +1241,17 @@ const AssistantMessage: FC = () => {
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
+	const hasVisibleText = useAuiState((s) =>
+		s.message.parts.some((part) => part.type === "text" && Boolean(part.text.trim())),
+	);
+	const hasRenderablePart = useAuiState((s) =>
+		s.message.parts.some(
+			(part) =>
+				(part.type === "text" && Boolean(part.text.trim())) ||
+				(part.type === "reasoning" && Boolean(part.text.trim())) ||
+				part.type === "tool-call",
+		),
+	);
 	const status = useAuiState((s) => s.message.status);
 	const turnStartedAt = useAuiState((s) => {
 		for (let index = s.message.index - 1; index >= 0; index--) {
@@ -1254,66 +1302,40 @@ const AssistantMessage: FC = () => {
 				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}
 		>
-			<div
-				data-slot="aui_assistant-message-content"
-				className="text-foreground px-2 leading-relaxed wrap-break-word"
-			>
-				{isRunning ? <TurnWorkHeader startedAt={turnStartedAt} /> : null}
-				<MessagePrimitive.GroupedParts
-					indicator={assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity)}
-					groupBy={groupActivityParts}
+			<ManualDisclosureProvider>
+				<div
+					data-slot="aui_assistant-message-content"
+					className="text-foreground px-2 leading-relaxed wrap-break-word"
 				>
-					{({ part, children }) => {
-						switch (part.type) {
-							case "group-turn-work":
-								return (
-									<TurnWorkDisclosure
-										animateCollapse={animateWorkCollapse}
-										duration={duration}
-										interrupted={interrupted}
-									>
-										{children}
-									</TurnWorkDisclosure>
-								);
-							case "group-activity":
-								return <ActivityGroup group={part}>{children}</ActivityGroup>;
-							case "group-thinking":
-							case "group-editing":
-							case "group-writing":
-							case "group-reading":
-							case "group-searching":
-							case "group-web":
-							case "group-terminal":
-							case "group-planning":
-							case "group-asking":
-							case "group-suggesting":
-							case "group-skill":
-							case "group-subagent":
-							case "group-tools": {
-								const kind = activityKindFromGroupKey(part.type);
-								if (!kind) return null;
-								return (
-									<ActivitySubgroup kind={kind} group={part}>
-										{children}
-									</ActivitySubgroup>
-								);
-							}
-							case "text":
-								return <MarkdownText />;
-							case "reasoning":
-								return <Reasoning {...part} />;
-							case "tool-call":
-								return part.toolUI ?? <ToolFallbackComponent {...part} />;
-							case "data":
-								return part.dataRendererUI;
-							case "indicator":
-								return <AssistantWorkingIndicator />;
-							default: {
-								if (
-									typeof part.type === "string" &&
-									part.type.startsWith("group-mcp-") &&
-									"indices" in part
-								) {
+					{isRunning ? <TurnWorkHeader startedAt={turnStartedAt} /> : null}
+					<MessagePrimitive.GroupedParts indicator="never" groupBy={groupActivityParts}>
+						{({ part, children }) => {
+							switch (part.type) {
+								case "group-turn-work":
+									return (
+										<TurnWorkDisclosure
+											animateCollapse={animateWorkCollapse}
+											duration={duration}
+											interrupted={interrupted}
+										>
+											{children}
+										</TurnWorkDisclosure>
+									);
+								case "group-activity":
+									return <ActivityGroup group={part}>{children}</ActivityGroup>;
+								case "group-thinking":
+								case "group-editing":
+								case "group-writing":
+								case "group-reading":
+								case "group-searching":
+								case "group-web":
+								case "group-terminal":
+								case "group-planning":
+								case "group-asking":
+								case "group-suggesting":
+								case "group-skill":
+								case "group-subagent":
+								case "group-tools": {
 									const kind = activityKindFromGroupKey(part.type);
 									if (!kind) return null;
 									return (
@@ -1322,21 +1344,53 @@ const AssistantMessage: FC = () => {
 										</ActivitySubgroup>
 									);
 								}
-								return null;
+								case "text":
+									return <MarkdownText />;
+								case "reasoning":
+									return <Reasoning {...part} />;
+								case "tool-call":
+									return part.toolUI ?? <ToolFallbackComponent {...part} />;
+								case "data":
+									return part.dataRendererUI;
+								default: {
+									if (
+										typeof part.type === "string" &&
+										part.type.startsWith("group-mcp-") &&
+										"indices" in part
+									) {
+										const kind = activityKindFromGroupKey(part.type);
+										if (!kind) return null;
+										return (
+											<ActivitySubgroup kind={kind} group={part}>
+												{children}
+											</ActivitySubgroup>
+										);
+									}
+									return null;
+								}
 							}
-						}
-					}}
-				</MessagePrimitive.GroupedParts>
-				<MessageError />
-			</div>
+						}}
+					</MessagePrimitive.GroupedParts>
+					{isRunning ? (
+						<AssistantWorkingIndicator
+							overlay={hasRenderablePart}
+							active={
+								assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity) !== "never" &&
+								!hasVisibleText
+							}
+						/>
+					) : null}
+					<MessageError />
+				</div>
 
-			<div
-				data-slot="aui_assistant-message-footer"
-				className={cn("mt-3 ms-2 flex items-center", ACTION_BAR_HEIGHT)}
-			>
-				<BranchPicker />
-				<AssistantActionBar />
-			</div>
+				<div
+					data-slot="aui_assistant-message-footer"
+					className={cn("mt-3 ms-2 flex items-center", ACTION_BAR_HEIGHT)}
+				>
+					<BranchPicker />
+					<AssistantActionBar />
+				</div>
+			</ManualDisclosureProvider>
 		</MessagePrimitive.Root>
 	);
 };
@@ -1402,7 +1456,11 @@ const AssistantActionBar: FC = () => {
 const UserActionBar: FC = () => {
 	// Always stay in DOM to avoid layout shift; drive visibility via opacity so
 	// the bar fades in on hover without reflowing the bubble above it.
-	const hidden = useAuiState((s) => !s.message.isLast && !s.message.isHovering);
+	const hidden = useAuiState(
+		(s) =>
+			s.message.id.startsWith("opencode-new-user:") ||
+			(!s.message.isHovering && (s.thread.isRunning || !s.message.isLast)),
+	);
 
 	return (
 		<ActionBarPrimitive.Root
@@ -1427,7 +1485,7 @@ const UserMessage: FC = () => {
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
 			className={cn(
-				"fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 transition-opacity [&:where(>*)]:col-start-2",
+				"grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 transition-opacity [&:where(>*)]:col-start-2",
 				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
 				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}

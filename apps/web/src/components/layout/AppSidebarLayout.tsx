@@ -79,23 +79,13 @@ function PluginNavItem({ entry, pathname }: { entry: PluginNavEntry; pathname: s
 	);
 }
 
-function SidebarSettingsAction({
-	settings,
-	inline = false,
-}: {
-	settings: boolean;
-	inline?: boolean;
-}) {
+function SidebarSettingsAction({ settings }: { settings: boolean }) {
 	return (
 		<Button
 			variant="ghost"
 			size="icon"
 			aria-label={settings ? "Close settings" : "Settings"}
-			className={
-				inline
-					? "text-muted-foreground shrink-0 active:not-aria-[haspopup]:translate-y-0"
-					: "text-muted-foreground absolute top-1/2 right-1 z-10 -translate-y-1/2 active:not-aria-[haspopup]:-translate-y-1/2"
-			}
+			className="text-muted-foreground shrink-0"
 			nativeButton={false}
 			render={
 				settings ? (
@@ -113,11 +103,8 @@ function SidebarSettingsAction({
 
 function SidebarAccountDock({ settings }: { settings: boolean }) {
 	return (
-		<div className="relative pr-9 has-[[data-qa-id=sidebar-kilo-account]]:pr-0">
-			<ZoneOutlet
-				zone={SIDEBAR_ACCOUNT_ZONE}
-				className="flex w-full min-w-0 items-center [&_[data-qa-id=sidebar-kilo-account]]:pr-12"
-			/>
+		<div className="flex min-w-0 items-center">
+			<ZoneOutlet zone={SIDEBAR_ACCOUNT_ZONE} className="flex min-w-0 flex-1 items-center" />
 			<SidebarSettingsAction settings={settings} />
 		</div>
 	);
@@ -235,7 +222,7 @@ export function AppSidebarLayout({
 					<SidebarFooter
 						role="group"
 						aria-label="Account and settings"
-						className="gap-2 px-2 pt-3 pb-3"
+						className="gap-2 px-2 pt-[7px] pb-2"
 					>
 						<section aria-label="User controls" className="flex flex-col gap-2">
 							<SidebarUpdatePill />

@@ -774,16 +774,23 @@ describe("kilo-server owned config capability", () => {
 			options: { baseURL: "http://127.0.0.1:43123/v1" },
 		};
 
-		await capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", entry);
-		await capability!.kiloService.providerConfig.remove("local-inference", "anaconda-local");
+		await capability!.kiloService.providerConfig.set(
+			"local-inference",
+			"kilo-desktop-model-server",
+			entry,
+		);
+		await capability!.kiloService.providerConfig.remove(
+			"local-inference",
+			"kilo-desktop-model-server",
+		);
 		expect(kiloConfig.setProviderEntry).toHaveBeenCalledWith(
 			"local-inference",
-			"anaconda-local",
+			"kilo-desktop-model-server",
 			entry,
 		);
 		expect(kiloConfig.removeProviderEntry).toHaveBeenCalledWith(
 			"local-inference",
-			"anaconda-local",
+			"kilo-desktop-model-server",
 		);
 		mainSdk.dispose();
 	});
@@ -804,7 +811,11 @@ describe("kilo-server owned config capability", () => {
 			const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
 			const entry = { name: "Local" };
 
-			await capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", entry);
+			await capability!.kiloService.providerConfig.set(
+				"local-inference",
+				"kilo-desktop-model-server",
+				entry,
+			);
 			await vi.advanceTimersByTimeAsync(500);
 			expect(server.restart).toHaveBeenCalledOnce();
 			server.restart.mockClear();
@@ -813,11 +824,18 @@ describe("kilo-server owned config capability", () => {
 				reason: "up-to-date",
 			});
 
-			await capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", entry);
+			await capability!.kiloService.providerConfig.set(
+				"local-inference",
+				"kilo-desktop-model-server",
+				entry,
+			);
 			await vi.advanceTimersByTimeAsync(500);
 			expect(server.restart).not.toHaveBeenCalled();
 
-			await capability!.kiloService.providerConfig.remove("local-inference", "anaconda-local");
+			await capability!.kiloService.providerConfig.remove(
+				"local-inference",
+				"kilo-desktop-model-server",
+			);
 			await vi.advanceTimersByTimeAsync(500);
 			expect(server.restart).toHaveBeenCalledOnce();
 			mainSdk.dispose();
@@ -842,7 +860,7 @@ describe("kilo-server owned config capability", () => {
 		const capability = consumer.plugins.get<KiloServerCapabilities>("kilo-server");
 
 		await expect(
-			capability!.kiloService.providerConfig.set("local-inference", "anaconda-local", {
+			capability!.kiloService.providerConfig.set("local-inference", "kilo-desktop-model-server", {
 				name: "Local",
 			}),
 		).rejects.toThrow(/provider entry not owned by Desktop already uses that id/);

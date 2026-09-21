@@ -261,7 +261,7 @@ describe("LocalInferenceService", () => {
 		expect(ensureProxy).toHaveBeenCalledWith("http://127.0.0.1:43123", undefined, "127.0.0.1");
 		expect(set).toHaveBeenLastCalledWith(
 			"local-inference",
-			"anaconda-local",
+			"kilo-desktop-model-server",
 			expect.objectContaining({
 				name: "Local",
 				options: expect.objectContaining({ baseURL: "http://127.0.0.1:44123/v1" }),
@@ -271,7 +271,7 @@ describe("LocalInferenceService", () => {
 
 		await expect(service.remove(model.id, "registry-only")).resolves.toBe(true);
 		await service.reconcile();
-		expect(remove).toHaveBeenLastCalledWith("local-inference", "anaconda-local");
+		expect(remove).toHaveBeenLastCalledWith("local-inference", "kilo-desktop-model-server");
 	});
 
 	it("persists model settings and reconciles them into the router preset", async () => {
@@ -654,7 +654,7 @@ describe("LocalInferenceService", () => {
 		expect(ensureListening).toHaveBeenCalled();
 		expect(set).toHaveBeenCalledWith(
 			"local-inference",
-			"anaconda-local",
+			"kilo-desktop-model-server",
 			expect.objectContaining({
 				options: expect.objectContaining({ baseURL: "http://127.0.0.1:44123/v1" }),
 			}),
@@ -763,14 +763,14 @@ describe("LocalInferenceService", () => {
 		expect(service.status).toEqual({ status: "disconnected" });
 		expect(close).toHaveBeenCalled();
 		expect(router.ensureRunning).toHaveBeenCalledWith([]);
-		expect(remove).toHaveBeenCalledWith("local-inference", "anaconda-local");
+		expect(remove).toHaveBeenCalledWith("local-inference", "kilo-desktop-model-server");
 		expect(set).not.toHaveBeenCalled();
 
 		await service.connect();
 		expect(service.status).not.toEqual({ status: "disconnected" });
 		expect(set).toHaveBeenCalledWith(
 			"local-inference",
-			"anaconda-local",
+			"kilo-desktop-model-server",
 			expect.objectContaining({ name: "Local" }),
 		);
 	});

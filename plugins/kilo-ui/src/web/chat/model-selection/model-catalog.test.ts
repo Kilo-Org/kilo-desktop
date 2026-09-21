@@ -202,10 +202,14 @@ describe("model-catalog", () => {
 					},
 				},
 				{
-					id: "anaconda-local",
+					id: "kilo-desktop-model-server",
 					name: "Anaconda Local",
 					models: {
-						"qwen-3": { id: "qwen-3", name: "Qwen 3", providerID: "anaconda-local" },
+						"qwen-3": {
+							id: "qwen-3",
+							name: "Qwen 3",
+							providerID: "kilo-desktop-model-server",
+						},
 					},
 				},
 				{
@@ -228,12 +232,12 @@ describe("model-catalog", () => {
 				},
 			],
 			default: { kilo: "auto" },
-			connected: ["openai", "anaconda-local", "anthropic", "kilo"],
+			connected: ["openai", "kilo-desktop-model-server", "anthropic", "kilo"],
 		};
 		const catalog = buildCatalogFromProviderList(scrambled);
 		expect(catalog.providers.map((provider) => provider.id)).toEqual([
 			"kilo",
-			"anaconda-local",
+			"kilo-desktop-model-server",
 			"anthropic",
 			"openai",
 		]);
@@ -243,7 +247,7 @@ describe("model-catalog", () => {
 		const emptyLocal: KiloProviderListPayload = {
 			all: [
 				{
-					id: "anaconda-local",
+					id: "kilo-desktop-model-server",
 					name: "Anaconda Local",
 					models: {},
 				},
@@ -260,7 +264,7 @@ describe("model-catalog", () => {
 				},
 			],
 			default: { anthropic: "claude-sonnet" },
-			connected: ["anaconda-local", "anthropic"],
+			connected: ["kilo-desktop-model-server", "anthropic"],
 		};
 		const catalog = buildCatalogFromProviderList(emptyLocal);
 		expect(catalog.providers.map((provider) => provider.id)).toEqual(["anthropic"]);
@@ -270,10 +274,14 @@ describe("model-catalog", () => {
 		const disconnectedLocal: KiloProviderListPayload = {
 			all: [
 				{
-					id: "anaconda-local",
+					id: "kilo-desktop-model-server",
 					name: "Anaconda Local",
 					models: {
-						"qwen-3": { id: "qwen-3", name: "Qwen 3", providerID: "anaconda-local" },
+						"qwen-3": {
+							id: "qwen-3",
+							name: "Qwen 3",
+							providerID: "kilo-desktop-model-server",
+						},
 					},
 				},
 				{

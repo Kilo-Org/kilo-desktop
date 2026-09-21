@@ -48,7 +48,9 @@ describe("ProviderIcon", () => {
 	});
 
 	it("renders the server icon used on Local provider settings", async () => {
-		const { baseElement } = render(<ProviderIcon provider="anaconda-local" title="Local" />);
+		const { baseElement } = render(
+			<ProviderIcon provider="kilo-desktop-model-server" title="Local" />,
+		);
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByRole("img", { name: "Local" })).toBeVisible();

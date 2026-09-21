@@ -13,6 +13,7 @@ import {
 
 const SOURCE_ONE = "feature-one";
 const SOURCE_TWO = "feature-two";
+const LEGACY_OWNERSHIP_SIDECAR_FILENAME = ".anaconda-desktop-ownership.json";
 
 describe("KiloConfigManager", () => {
 	let tempDirectory: string;
@@ -165,31 +166,105 @@ describe("KiloConfigManager", () => {
 		const config = new KiloConfigManager(configDirectory);
 
 		await expect(
-			config.setProviderEntry(SOURCE_ONE, "anaconda-local", {
+			config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", {
 				name: "Local",
 				npm: "@ai-sdk/openai-compatible",
 				options: { baseURL: "http://127.0.0.1:43123/v1" },
 			}),
 		).resolves.toEqual({ kind: "written", reason: "created" });
 		await expect(
-			config.setProviderEntry(SOURCE_ONE, "anaconda-local", {
+			config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", {
 				name: "Local inference",
 				npm: "@ai-sdk/openai-compatible",
 				options: { baseURL: "http://127.0.0.1:43124/v1" },
 			}),
 		).resolves.toEqual({ kind: "written", reason: "updated" });
-		expect((await readConfig()).provider?.["anaconda-local"]).toEqual({
+		expect((await readConfig()).provider?.["kilo-desktop-model-server"]).toEqual({
 			name: "Local inference",
 			npm: "@ai-sdk/openai-compatible",
 			options: { baseURL: "http://127.0.0.1:43124/v1" },
 		});
 
-		await expect(config.removeProviderEntry(SOURCE_ONE, "anaconda-local")).resolves.toEqual({
+		await expect(
+			config.removeProviderEntry(SOURCE_ONE, "kilo-desktop-model-server"),
+		).resolves.toEqual({
 			kind: "removed",
 			reason: "explicit",
 		});
-		expect((await readConfig()).provider).not.toHaveProperty("anaconda-local");
+		expect((await readConfig()).provider).not.toHaveProperty("kilo-desktop-model-server");
 	}, 15_000);
+
+	it("migrates legacy ownership and renames the Desktop-owned local provider", async () => {
+		await writeFile(
+			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			`${JSON.stringify({ provider: { "anaconda-local": { name: "Local" } } })}\n`,
+		);
+		await writeFile(
+			path.join(configDirectory, LEGACY_OWNERSHIP_SIDECAR_FILENAME),
+			`${JSON.stringify({
+				version: 4,
+				ownedEntryKeys: ["provider:anaconda-local"],
+				owners: { "provider:anaconda-local": "local-inference" },
+			})}\n`,
+		);
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(
+			config.replaceProviderEntry("local-inference", "kilo-desktop-model-server", {
+				name: "Local model server",
+			}),
+		).resolves.toEqual({ kind: "written", reason: "updated" });
+
+		expect((await readConfig()).provider).toEqual({
+			"kilo-desktop-model-server": { name: "Local model server" },
+		});
+		const sidecar = JSON.parse(
+			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
+		) as { ownedEntryKeys: string[]; owners: Record<string, string> };
+		expect(sidecar.ownedEntryKeys).toEqual(["provider:kilo-desktop-model-server"]);
+		expect(sidecar.owners).toEqual({
+			"provider:kilo-desktop-model-server": "local-inference",
+		});
+		await expect(
+			readFile(path.join(configDirectory, LEGACY_OWNERSHIP_SIDECAR_FILENAME), "utf8"),
+		).rejects.toThrow(/ENOENT/);
+	});
+
+	it("removes the reserved legacy local provider without ownership metadata", async () => {
+		await writeFile(
+			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			`${JSON.stringify({ provider: { "anaconda-local": { name: "User local" } } })}\n`,
+		);
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(
+			config.replaceProviderEntry("local-inference", "kilo-desktop-model-server", {
+				name: "Local model server",
+			}),
+		).resolves.toEqual({ kind: "written", reason: "updated" });
+		expect((await readConfig()).provider).toEqual({
+			"kilo-desktop-model-server": { name: "Local model server" },
+		});
+	});
+
+	it("refuses to overwrite an unowned renamed provider", async () => {
+		await writeFile(
+			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			`${JSON.stringify({
+				provider: { "kilo-desktop-model-server": { name: "User server" } },
+			})}\n`,
+		);
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(
+			config.replaceProviderEntry("local-inference", "kilo-desktop-model-server", {
+				name: "Local model server",
+			}),
+		).resolves.toEqual({ kind: "skipped", reason: "entry-not-owned" });
+		expect((await readConfig()).provider).toEqual({
+			"kilo-desktop-model-server": { name: "User server" },
+		});
+	});
 
 	it("preserves JSONC while refusing to overwrite a user-owned provider", async () => {
 		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
@@ -213,7 +288,7 @@ describe("KiloConfigManager", () => {
 			}),
 		).resolves.toEqual({ kind: "skipped", reason: "entry-not-owned" });
 		await expect(
-			config.setProviderEntry(SOURCE_ONE, "anaconda-local", {
+			config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", {
 				name: "Local",
 			}),
 		).resolves.toMatchObject({ kind: "written" });
@@ -223,7 +298,7 @@ describe("KiloConfigManager", () => {
 		expect(text).toContain("// keep unrelated settings");
 		expect((await readConfig()).provider).toEqual({
 			"user-local": { name: "User local", npm: "@ai-sdk/openai-compatible" },
-			"anaconda-local": { name: "Local" },
+			"kilo-desktop-model-server": { name: "Local" },
 		});
 	});
 
@@ -255,16 +330,18 @@ describe("KiloConfigManager", () => {
 
 	it("prevents one source from changing another source's provider", async () => {
 		const config = new KiloConfigManager(configDirectory);
-		await config.setProviderEntry(SOURCE_ONE, "anaconda-local", { name: "Local" });
+		await config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", { name: "Local" });
 
 		await expect(
-			config.setProviderEntry(SOURCE_TWO, "anaconda-local", { name: "Other" }),
+			config.setProviderEntry(SOURCE_TWO, "kilo-desktop-model-server", { name: "Other" }),
 		).resolves.toEqual({ kind: "skipped", reason: "owned-by-other-source" });
-		await expect(config.removeProviderEntry(SOURCE_TWO, "anaconda-local")).resolves.toEqual({
+		await expect(
+			config.removeProviderEntry(SOURCE_TWO, "kilo-desktop-model-server"),
+		).resolves.toEqual({
 			kind: "skipped",
 			reason: "owned-by-other-source",
 		});
-		expect((await readConfig()).provider?.["anaconda-local"]).toEqual({ name: "Local" });
+		expect((await readConfig()).provider?.["kilo-desktop-model-server"]).toEqual({ name: "Local" });
 	});
 
 	it("skips an idempotent provider write without changing the config", async () => {
@@ -273,10 +350,12 @@ describe("KiloConfigManager", () => {
 			name: "Local",
 			options: { baseURL: "http://127.0.0.1:43123/v1" },
 		};
-		await config.setProviderEntry(SOURCE_ONE, "anaconda-local", entry);
+		await config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", entry);
 		const before = await readFile(path.join(configDirectory, KILO_CONFIG_FILENAME), "utf8");
 
-		await expect(config.setProviderEntry(SOURCE_ONE, "anaconda-local", entry)).resolves.toEqual({
+		await expect(
+			config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", entry),
+		).resolves.toEqual({
 			kind: "skipped",
 			reason: "up-to-date",
 		});

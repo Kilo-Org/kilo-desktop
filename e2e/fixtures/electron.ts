@@ -18,6 +18,7 @@ import { packagedExecutable } from "../utils/paths.js";
 const DESKTOP_URL_PREFIX = "kilo-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
 const KILO_SERVER_READY_TIMEOUT_MS = 120_000;
+const THREAD_LIST_HYDRATION_PROBE_MS = 30_000;
 const WORKER_APP_TIMEOUT_MS = 360_000;
 const CLOSE_TIMEOUT_MS = 10_000;
 const CLOSE_FORCE_WAIT_MS = 5_000;
@@ -73,16 +74,47 @@ async function waitForKiloServer(page: Page): Promise<void> {
 	}
 }
 
+const CHAT_ROUTE = "kilo-desktop://app/#/plugins/chat";
+const ENABLED_NEW_CHAT = '[data-qa-id="new-chat"]:not(:disabled)';
+
+async function waitForChatRoute(page: Page): Promise<void> {
+	await page.waitForURL(CHAT_ROUTE);
+}
+
+function isTimeoutError(error: unknown): boolean {
+	return error instanceof Error && error.name === "TimeoutError";
+}
+
+async function waitForEnabledNewChat(page: Page, timeoutMs: number): Promise<boolean> {
+	try {
+		await page.locator(ENABLED_NEW_CHAT).waitFor({ timeout: timeoutMs });
+		return true;
+	} catch (error) {
+		if (!isTimeoutError(error)) throw error;
+		return false;
+	}
+}
+
 /**
  * assistant-ui ignores thread switches until the remote list has hydrated.
  * Cold Windows runners often need longer than the 30s locator default after
  * kilo-server is already accepting connections, so reuse that sidecar budget.
+ *
+ * A hung first `list()` (threads.isLoading stuck true) is not slowness: a fresh
+ * launch of the same spec succeeds in ~10s. Reload remounts the chat runtime
+ * against the already-ready sidecar instead of failing the worker.
  */
 async function waitForThreadListHydrated(page: Page): Promise<void> {
 	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
 	try {
-		await page.waitForURL("kilo-desktop://app/#/plugins/chat");
-		await page.locator('[data-qa-id="new-chat"]:not(:disabled)').waitFor();
+		await waitForChatRoute(page);
+		if (await waitForEnabledNewChat(page, THREAD_LIST_HYDRATION_PROBE_MS)) return;
+		await page.reload({ waitUntil: "domcontentloaded" });
+		await page.waitForFunction(() => "desktopApi" in globalThis, undefined, {
+			timeout: MAIN_WINDOW_TIMEOUT_MS,
+		});
+		await waitForChatRoute(page);
+		await page.locator(ENABLED_NEW_CHAT).waitFor();
 	} finally {
 		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
 	}

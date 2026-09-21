@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const HIDDEN_PROVIDER_IDS = new Set(["kilo", "anaconda-local"]);
+const HIDDEN_PROVIDER_IDS = new Set(["kilo", "kilo-desktop-model-server"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);

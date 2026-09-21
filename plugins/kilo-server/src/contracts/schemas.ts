@@ -82,6 +82,8 @@ export interface KiloServerCapabilityService {
 		 * through the shared debouncer only when the provider changes.
 		 */
 		set(sourceId: string, entryId: string, entry: KiloProviderEntry): Promise<void>;
+		/** Replace a reserved legacy Desktop provider ID with its current ID. */
+		replace(sourceId: string, entryId: string, entry: KiloProviderEntry): Promise<void>;
 		/** Remove a provider only when this source owns its section-qualified entry. */
 		remove(sourceId: string, entryId: string): Promise<void>;
 	};

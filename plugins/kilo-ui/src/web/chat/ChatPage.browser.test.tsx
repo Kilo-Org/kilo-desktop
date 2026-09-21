@@ -743,16 +743,16 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 	it("does not prepare a local model on select and still passes prepareModel to the runtime", async () => {
 		vi.mocked(useKiloModelCatalog).mockReturnValue({
 			data: {
-				providers: [{ id: "anaconda-local", name: "Anaconda Local", connected: true }],
+				providers: [{ id: "kilo-desktop-model-server", name: "Local", connected: true }],
 				models: [
 					{
-						id: "anaconda-local/qwen-3",
+						id: "kilo-desktop-model-server/qwen-3",
 						name: "Qwen 3",
-						providerID: "anaconda-local",
+						providerID: "kilo-desktop-model-server",
 						modelID: "qwen-3",
 					},
 				],
-				defaults: { "anaconda-local": "qwen-3" },
+				defaults: { "kilo-desktop-model-server": "qwen-3" },
 			},
 			isPending: false,
 			isError: false,
@@ -771,7 +771,7 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 		});
 		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
 
-		selectModel({ providerID: "anaconda-local", modelID: "qwen-3" });
+		selectModel({ providerID: "kilo-desktop-model-server", modelID: "qwen-3" });
 		await new Promise((resolve) => setTimeout(resolve, 50));
 
 		expect(prepareModel).not.toHaveBeenCalled();

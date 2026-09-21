@@ -13,7 +13,7 @@ import type {
 	KiloGlobalConnection,
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
-import { ANACONDA_LOCAL_PROVIDER_ID } from "../../providers/provider-ids.js";
+import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { hydrateSessionActivity } from "../session-activity/hydrate-session-activity.js";
 import {
 	buildKiloDesktopSessionMetadata,
@@ -234,7 +234,7 @@ export function createKiloRuntimeBackend({
 				const agent = getAgent?.();
 				const model = getModel?.();
 				const variant = getVariant?.();
-				if (prepareModel && model?.providerID === ANACONDA_LOCAL_PROVIDER_ID) {
+				if (prepareModel && model?.providerID === LOCAL_MODEL_SERVER_PROVIDER_ID) {
 					await prepareModel(model.modelID);
 				}
 				// The worktree stamp round-trips through the activity store so the

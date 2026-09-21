@@ -110,18 +110,34 @@ describe("LocalModelRegistry", () => {
 		await expect(registry.add("model\n.gguf")).rejects.toThrow("line breaks");
 	});
 
-	it("refreshes availability without dropping a missing model", async () => {
+	it("removes models whose files are missing", async () => {
 		const file = await fixture("model.gguf");
 		const registry = new LocalModelRegistry(store());
-		const model = await registry.add(file);
+		await registry.add(file);
 		await rm(file);
 
 		await registry.refresh();
 
-		expect(registry.list()).toEqual([{ ...model, available: false }]);
-		expect(registry.remove(model.id)).toBe(true);
 		expect(registry.list()).toEqual([]);
-		expect(registry.remove("missing")).toBe(false);
+	});
+
+	it("preserves model metadata when file access fails transiently", async () => {
+		const model = {
+			id: "external-model",
+			name: "External model",
+			path: "/external/model.gguf",
+			available: true,
+			addedAt: 42,
+			settings: { temperature: 0.2 },
+		};
+		const accessError = Object.assign(new Error("Drive is busy"), { code: "EBUSY" });
+		const registry = new LocalModelRegistry(store({ models: [model] }), Date.now, async () => {
+			throw accessError;
+		});
+
+		await registry.refresh();
+
+		expect(registry.list()).toEqual([{ ...model, available: false }]);
 	});
 
 	it("slugs punctuation-only names to a stable model prefix", async () => {

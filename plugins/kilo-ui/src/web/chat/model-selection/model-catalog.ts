@@ -1,4 +1,4 @@
-import { ANACONDA_LOCAL_PROVIDER_ID } from "../../providers/provider-ids.js";
+import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import type {
 	ModelOption,
 	ModelSelectorEffortOption,
@@ -137,14 +137,14 @@ export function isKiloGatewayProvider(provider: { id: string; name?: string }): 
 	return provider.name !== undefined && /^kilo\s*gateway$/i.test(provider.name.trim());
 }
 
-function isAnacondaLocalProvider(provider: { id: string }): boolean {
-	return provider.id === ANACONDA_LOCAL_PROVIDER_ID;
+function isLocalModelServerProvider(provider: { id: string }): boolean {
+	return provider.id === LOCAL_MODEL_SERVER_PROVIDER_ID;
 }
 
 /** Match the AI providers page: Kilo, then Local, then everyone else by name. */
 function railRank(provider: KiloProviderGroup): number {
 	if (isKiloGatewayProvider(provider)) return 0;
-	if (isAnacondaLocalProvider(provider)) return 1;
+	if (isLocalModelServerProvider(provider)) return 1;
 	return 2;
 }
 
@@ -166,30 +166,31 @@ export function buildCatalogFromProviderList(
 	const models: KiloCatalogModel[] = [];
 
 	for (const provider of payload.all) {
-		const isConnected = connected.has(provider.id);
+		const providerID = provider.id;
+		const isConnected = connected.has(providerID);
 		if (connectedOnly && !isConnected) {
 			continue;
 		}
 		const modelEntries = Object.values(provider.models);
-		if (isAnacondaLocalProvider(provider) && (!isConnected || modelEntries.length === 0)) {
+		if (isLocalModelServerProvider(provider) && (!isConnected || modelEntries.length === 0)) {
 			continue;
 		}
 		providers.push({
-			id: provider.id,
+			id: providerID,
 			name: provider.name,
 			connected: isConnected,
 		});
 		for (const model of modelEntries) {
 			const modelID = model.id;
-			const providerID = model.providerID || provider.id;
+			const modelProviderID = model.providerID || provider.id;
 			const efforts = effortsFromProviderModel(model);
 			const contextWindow = contextWindowFromProviderModel(model);
 			models.push({
-				id: modelRefToId({ providerID, modelID }),
+				id: modelRefToId({ providerID: modelProviderID, modelID }),
 				name: model.name,
 				description: provider.name,
-				keywords: [provider.name, providerID, modelID],
-				providerID,
+				keywords: [provider.name, modelProviderID, modelID],
+				providerID: modelProviderID,
 				modelID,
 				disabled: !isConnected,
 				...(efforts ? { efforts } : {}),

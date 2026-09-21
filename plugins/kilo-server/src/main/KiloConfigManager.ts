@@ -10,6 +10,11 @@ import type { KiloLogger } from "./KiloServerManager.js";
 
 export const KILO_CONFIG_FILENAME = "kilo.jsonc";
 export const OWNERSHIP_SIDECAR_FILENAME = ".kilo-desktop-ownership.json";
+const LEGACY_OWNERSHIP_SIDECAR_FILENAMES = [
+	".anaconda-desktop-ownership.json",
+	".anaconda-desktop-managed.json",
+] as const;
+const OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME = "anaconda-local";
 const SIDECAR_SCHEMA_VERSION = 4;
 
 export type KiloConfigEntry = Readonly<Record<string, unknown>>;
@@ -125,6 +130,20 @@ async function readSidecar(configDirectory: string): Promise<SidecarReadResult> 
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
 	}
+
+	for (const filename of LEGACY_OWNERSHIP_SIDECAR_FILENAMES) {
+		try {
+			const flatKey = filename.endsWith("-managed.json") ? "managed" : "ownedEntryIds";
+			const legacy = parseSidecar(
+				await readFile(path.join(configDirectory, filename), "utf8"),
+				flatKey,
+			);
+			if (legacy) return { sidecar: legacy.sidecar, requiresMigration: true };
+			return noOwnership();
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
+		}
+	}
 	// A missing or corrupt sidecar means Desktop owns nothing. This is the
 	// conservative choice: never overwrite an entry whose ownership is unclear.
 	return noOwnership();
@@ -147,6 +166,15 @@ async function writeSidecar(sidecarPath: string, sidecar: Sidecar): Promise<void
 async function migrateSidecar(configDirectory: string, sidecar: Sidecar): Promise<void> {
 	const ownershipPath = path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME);
 	await writeSidecar(ownershipPath, sidecar);
+	await Promise.all(
+		LEGACY_OWNERSHIP_SIDECAR_FILENAMES.map(async (filename) => {
+			try {
+				await unlink(path.join(configDirectory, filename));
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
+		}),
+	);
 }
 
 async function readExistingConfig(
@@ -318,6 +346,15 @@ export class KiloConfigManager {
 		return this.#enqueue(() => this.#updateEntry("provider", sourceId, entryName, undefined));
 	}
 
+	replaceProviderEntry(
+		sourceId: string,
+		entryName: string,
+		entry: KiloProviderEntry,
+	): Promise<KiloConfigMutationOutcome> {
+		const snapshot = structuredClone(entry);
+		return this.#enqueue(() => this.#replaceProviderEntry(sourceId, entryName, snapshot));
+	}
+
 	#enqueue<T>(operation: () => Promise<T>): Promise<T> {
 		const result = this.#pending.then(operation, operation);
 		this.#pending = result.then(
@@ -408,6 +445,75 @@ export class KiloConfigManager {
 		if (!nextConfig.ok) return { kind: "skipped-error", reason: nextConfig.reason };
 		await writeSidecar(sidecarPath, assignOwnership(sidecar, key, sourceId));
 		await atomicWriteFile(filePath, nextConfig.text, { encoding: "utf8" });
+		return {
+			kind: "written",
+			reason: existing.kind === "absent" ? "created" : "updated",
+		};
+	}
+
+	async #replaceProviderEntry(
+		sourceId: string,
+		entryName: string,
+		entry: KiloProviderEntry,
+	): Promise<KiloConfigMutationOutcome> {
+		if (!sourceId.trim()) return { kind: "skipped-error", reason: "provider source id is empty" };
+		if (!entryName.trim()) {
+			return { kind: "skipped-error", reason: "provider entry name is empty" };
+		}
+
+		await mkdir(this.#configDirectory, { recursive: true });
+		const filePath = path.join(this.#configDirectory, KILO_CONFIG_FILENAME);
+		const sidecarPath = path.join(this.#configDirectory, OWNERSHIP_SIDECAR_FILENAME);
+		const existing = await readExistingConfig(filePath);
+		if (existing.kind === "unparseable") {
+			return { kind: "skipped-error", reason: existing.reason };
+		}
+
+		const sidecarResult = await readSidecar(this.#configDirectory);
+		let sidecar = sidecarResult.sidecar;
+		if (sidecarResult.requiresMigration) await migrateSidecar(this.#configDirectory, sidecar);
+
+		const root = existing.kind === "ok" ? existing.config.root : undefined;
+		const originalText = existing.kind === "ok" ? existing.config.text : "";
+		const currentEntry = readEntry(root, "provider", entryName);
+		const legacyEntry = readEntry(root, "provider", OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME);
+		const key = ownershipKey("provider", entryName);
+		const legacyKey = ownershipKey("provider", OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME);
+		const isOwned = sidecar.ownedEntryKeys.includes(key);
+		const owner = sidecar.owners[key];
+
+		if (isOwned && owner !== undefined && owner !== sourceId) {
+			return { kind: "skipped", reason: "owned-by-other-source" };
+		}
+		if (currentEntry !== undefined && !isOwned) {
+			return { kind: "skipped", reason: "entry-not-owned" };
+		}
+
+		if (isOwned && isEqual(currentEntry, entry) && legacyEntry === undefined) {
+			if (owner === undefined)
+				await writeSidecar(sidecarPath, assignOwnership(sidecar, key, sourceId));
+			return { kind: "skipped", reason: "up-to-date" };
+		}
+
+		let nextText = originalText;
+		const updated = tryApplyModification(nextText, "provider", entryName, entry);
+		if (!updated.ok) return { kind: "skipped-error", reason: updated.reason };
+		nextText = updated.text;
+		sidecar = assignOwnership(sidecar, key, sourceId);
+		if (legacyEntry !== undefined) {
+			const removed = tryApplyModification(
+				nextText,
+				"provider",
+				OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME,
+				undefined,
+			);
+			if (!removed.ok) return { kind: "skipped-error", reason: removed.reason };
+			nextText = removed.text;
+		}
+		sidecar = removeOwnership(sidecar, legacyKey);
+
+		await writeSidecar(sidecarPath, sidecar);
+		await atomicWriteFile(filePath, nextText, { encoding: "utf8" });
 		return {
 			kind: "written",
 			reason: existing.kind === "absent" ? "created" : "updated",

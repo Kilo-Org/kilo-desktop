@@ -4,7 +4,7 @@
  */
 const PROVIDER_ICON_ALIASES: Record<string, string> = {
 	kilo: "kilocode",
-	"anaconda-local": "local",
+	"kilo-desktop-model-server": "local",
 	"amazon-bedrock": "bedrock",
 	"google-vertex": "vertexai",
 	"google-vertex-anthropic": "vertexai",

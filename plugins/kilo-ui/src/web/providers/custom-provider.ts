@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-import { ANACONDA_LOCAL_PROVIDER_ID, KILO_PROVIDER_ID } from "./provider-ids.js";
+import { KILO_PROVIDER_ID, LOCAL_MODEL_SERVER_PROVIDER_ID } from "./provider-ids.js";
 
-export { ANACONDA_LOCAL_PROVIDER_ID, KILO_PROVIDER_ID } from "./provider-ids.js";
+export { KILO_PROVIDER_ID, LOCAL_MODEL_SERVER_PROVIDER_ID } from "./provider-ids.js";
 
-const RESERVED_PROVIDER_IDS = new Set([KILO_PROVIDER_ID, ANACONDA_LOCAL_PROVIDER_ID]);
+const RESERVED_PROVIDER_IDS = new Set([KILO_PROVIDER_ID, LOCAL_MODEL_SERVER_PROVIDER_ID]);
 
 export const CUSTOM_PROVIDER_PACKAGES = [
 	"@ai-sdk/openai-compatible",

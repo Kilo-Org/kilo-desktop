@@ -40,8 +40,8 @@ const vllm: CatalogProvider = {
 };
 
 const local: CatalogProvider = {
-	id: "anaconda-local",
-	name: "Anaconda Local",
+	id: "kilo-desktop-model-server",
+	name: "Local",
 	source: "config",
 };
 
@@ -191,13 +191,13 @@ describe("groupProviderList", () => {
 		});
 	});
 
-	it("does not list anaconda-local in Connected; Local owns its own card", () => {
+	it("does not list the local model server in Connected; Local owns its own card", () => {
 		const view = groupProviderList({
 			all: [local],
-			connected: ["anaconda-local"],
+			connected: ["kilo-desktop-model-server"],
 			config: {
 				provider: {
-					"anaconda-local": {
+					"kilo-desktop-model-server": {
 						npm: "@ai-sdk/openai-compatible",
 						name: "Anaconda Local",
 					},
@@ -205,8 +205,8 @@ describe("groupProviderList", () => {
 			},
 		});
 
-		expect(view.connected.map((row) => row.id)).not.toContain("anaconda-local");
-		expect(view.popular.map((row) => row.id)).not.toContain("anaconda-local");
+		expect(view.connected.map((row) => row.id)).not.toContain("kilo-desktop-model-server");
+		expect(view.popular.map((row) => row.id)).not.toContain("kilo-desktop-model-server");
 	});
 });
 

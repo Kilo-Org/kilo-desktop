@@ -144,19 +144,19 @@ type ChatModelSelectionValue = ComponentProps<typeof ChatModelSelectionProvider>
 
 const localModelSelection = {
 	...kiloModelSelection,
-	model: { providerID: "anaconda-local", modelID: "qwen-3" },
+	model: { providerID: "kilo-desktop-model-server", modelID: "qwen-3" },
 	name: "Qwen 3",
 	catalog: {
-		providers: [{ id: "anaconda-local", name: "Local", connected: true }],
+		providers: [{ id: "kilo-desktop-model-server", name: "Local", connected: true }],
 		models: [
 			{
-				id: "anaconda-local/qwen-3",
+				id: "kilo-desktop-model-server/qwen-3",
 				name: "Qwen 3",
-				providerID: "anaconda-local",
+				providerID: "kilo-desktop-model-server",
 				modelID: "qwen-3",
 			},
 		],
-		defaults: { "anaconda-local": "qwen-3" },
+		defaults: { "kilo-desktop-model-server": "qwen-3" },
 	},
 } satisfies ChatModelSelectionValue;
 

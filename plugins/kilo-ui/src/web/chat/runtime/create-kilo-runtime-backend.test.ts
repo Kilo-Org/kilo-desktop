@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { STREAM_RECONNECTED_EVENT_TYPE } from "@assistant-ui/react-opencode";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
+import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
@@ -452,7 +453,7 @@ describe("createKiloRuntimeBackend", () => {
 		const backend = createKiloRuntimeBackend({
 			connectionPromise: Promise.resolve(connection),
 			prepareSession: vi.fn(async () => preparation),
-			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			getModel: () => ({ providerID: LOCAL_MODEL_SERVER_PROVIDER_ID, modelID: "qwen-3" }),
 			prepareModel,
 			onSessionCreateFailed,
 		});
@@ -613,7 +614,7 @@ describe("createKiloRuntimeBackend", () => {
 		const backend = createKiloRuntimeBackend({
 			connectionPromise: Promise.resolve(connection),
 			prepareSession,
-			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			getModel: () => ({ providerID: "kilo-desktop-model-server", modelID: "qwen-3" }),
 			prepareModel,
 		});
 
@@ -645,7 +646,7 @@ describe("createKiloRuntimeBackend", () => {
 				directory: "/workspace/local",
 				workspaceFolders: [],
 			}),
-			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			getModel: () => ({ providerID: "kilo-desktop-model-server", modelID: "qwen-3" }),
 			prepareModel,
 			onSessionCreateFailed,
 		});
@@ -684,7 +685,7 @@ describe("createKiloRuntimeBackend", () => {
 				directory: "/workspace/local",
 				workspaceFolders: [],
 			}),
-			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			getModel: () => ({ providerID: "kilo-desktop-model-server", modelID: "qwen-3" }),
 			prepareModel,
 		});
 

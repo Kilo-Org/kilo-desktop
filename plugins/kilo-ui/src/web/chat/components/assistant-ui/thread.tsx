@@ -129,7 +129,7 @@ import {
 	messageHasInFlightActivity,
 } from "../../suggestions/kilo-suggestion-logic.js";
 import { useLocalInferenceStatus } from "../../use-local-inference-status.js";
-import { ANACONDA_LOCAL_PROVIDER_ID } from "../../../providers/provider-ids.js";
+import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../../providers/provider-ids.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
 import { retryFailedTurn } from "./retry-failed-turn.js";
 import { useIsSettingUpWorktree } from "../../worktree-setup/WorktreeSetupContext.js";
@@ -572,7 +572,7 @@ const Composer: FC = () => {
 	const inferenceStatus = useLocalInferenceStatus();
 	const { model } = useChatModelSelection();
 	const isLoadingModel =
-		model?.providerID === ANACONDA_LOCAL_PROVIDER_ID &&
+		model?.providerID === LOCAL_MODEL_SERVER_PROVIDER_ID &&
 		isLocalModelLoadingStatus(inferenceStatus) &&
 		inferenceStatus.modelId === model.modelID;
 

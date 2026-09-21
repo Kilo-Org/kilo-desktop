@@ -3,7 +3,7 @@ import {
 	POPULAR_PROVIDER_IDS,
 	POPULAR_PROVIDER_NAMES,
 } from "./custom-provider.js";
-import { ANACONDA_LOCAL_PROVIDER_ID, KILO_PROVIDER_ID } from "./provider-ids.js";
+import { KILO_PROVIDER_ID, LOCAL_MODEL_SERVER_PROVIDER_ID } from "./provider-ids.js";
 
 export type ProviderSource = "env" | "api" | "config" | "custom";
 
@@ -80,7 +80,7 @@ function row(
 	config: GlobalProviderConfig,
 ): ProviderRow {
 	const kilo = provider.id === KILO_PROVIDER_ID;
-	const local = provider.id === ANACONDA_LOCAL_PROVIDER_ID;
+	const local = provider.id === LOCAL_MODEL_SERVER_PROVIDER_ID;
 	const managed = kilo || local;
 	const custom = !managed && isCustom(config, provider.id);
 	return {
@@ -134,7 +134,7 @@ export function groupProviderList(input: {
 	config: GlobalProviderConfig;
 }): ProviderListView {
 	const byId = new Map(input.all.map((provider) => [provider.id, provider]));
-	const seen = new Set(input.connected.filter((id) => id !== ANACONDA_LOCAL_PROVIDER_ID));
+	const seen = new Set(input.connected.filter((id) => id !== LOCAL_MODEL_SERVER_PROVIDER_ID));
 
 	const rows = [...seen].map((id) =>
 		row(resolveCatalog(byId, id, input.config), true, input.config),

@@ -37,6 +37,11 @@ export interface KiloCapability extends Record<string, unknown> {
 				providerId: string,
 				entry: Readonly<Record<string, unknown>>,
 			): Promise<void>;
+			replace?(
+				sourceId: string,
+				providerId: string,
+				entry: Readonly<Record<string, unknown>>,
+			): Promise<void>;
 			remove(sourceId: string, providerId: string): Promise<void>;
 		};
 	};
@@ -112,7 +117,7 @@ async function deleteManagedModelFile(model: LocalModel, modelsDir: string): Pro
  * GGUF registry, the single llama.cpp router, and Kilo's managed Local provider.
  *
  * Provider registration is fast and happens before llama-server is ready so
- * Kilo's first spawn already sees `anaconda-local`. Starting the router and
+ * Kilo's first spawn already sees `kilo-desktop-model-server`. Starting the router and
  * loading GGUF weights stay in the background until the first prompt.
  * Disconnect keeps registered GGUF files but unpublishes the provider and
  * stops the router until Start. Status is `stopping` while the process
@@ -310,11 +315,16 @@ export class LocalInferenceService {
 			proxyBindHost(settings.serveOnLocalNetwork),
 		);
 		if (!kilo) return;
-		await kilo.kiloService.providerConfig.set(
-			LOCAL_PROVIDER_SOURCE_ID,
-			LOCAL_PROVIDER_ID,
-			createProviderEntry(available, `${proxy.baseUrl}/v1`),
-		);
+		const entry = createProviderEntry(available, `${proxy.baseUrl}/v1`);
+		if (kilo.kiloService.providerConfig.replace) {
+			await kilo.kiloService.providerConfig.replace(
+				LOCAL_PROVIDER_SOURCE_ID,
+				LOCAL_PROVIDER_ID,
+				entry,
+			);
+		} else {
+			await kilo.kiloService.providerConfig.set(LOCAL_PROVIDER_SOURCE_ID, LOCAL_PROVIDER_ID, entry);
+		}
 	}
 
 	retry(): void {

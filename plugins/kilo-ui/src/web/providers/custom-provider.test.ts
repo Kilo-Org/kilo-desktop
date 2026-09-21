@@ -60,7 +60,7 @@ describe("validateProviderID", () => {
 	});
 
 	it("rejects the managed local inference provider id", () => {
-		const result = validateProviderID("anaconda-local");
+		const result = validateProviderID("kilo-desktop-model-server");
 		expect("error" in result ? result.error : "").toBe("Provider ID is reserved");
 	});
 });

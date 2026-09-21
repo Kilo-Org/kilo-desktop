@@ -49,7 +49,10 @@ describe("apiKeyFromAuth", () => {
 	it("does not expose reserved provider credentials", () => {
 		expect(apiKeyFromAuth({ kilo: { type: "api", key: "gateway-token" } }, "kilo")).toBeNull();
 		expect(
-			apiKeyFromAuth({ "anaconda-local": { type: "api", key: "local-key" } }, "anaconda-local"),
+			apiKeyFromAuth(
+				{ "kilo-desktop-model-server": { type: "api", key: "local-key" } },
+				"kilo-desktop-model-server",
+			),
 		).toBeNull();
 	});
 });

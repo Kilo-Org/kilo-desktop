@@ -41,6 +41,20 @@ async function isReadableFile(filePath: string): Promise<boolean> {
 	}
 }
 
+type ModelFileStatus = "available" | "missing" | "unavailable";
+
+async function modelFileStatus(
+	filePath: string,
+	readStat: typeof stat = stat,
+): Promise<ModelFileStatus> {
+	try {
+		return (await readStat(filePath)).isFile() ? "available" : "missing";
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		return code === "ENOENT" || code === "ENOTDIR" ? "missing" : "unavailable";
+	}
+}
+
 async function hasGgufHeader(filePath: string): Promise<boolean> {
 	const file = await open(filePath, "r");
 	try {
@@ -56,17 +70,24 @@ async function hasGgufHeader(filePath: string): Promise<boolean> {
  * Owns the persisted GGUF registry. Imported paths remain user-owned, while
  * catalog downloads carry explicit managed-file metadata so destructive
  * actions can never be inferred from their location alone. Canonicalization
- * makes duplicate adds idempotent, and availability refreshes independently so
- * disconnected drives do not destroy metadata. Server settings are compacted
- * on read so obsolete fields fall back to current safe defaults.
+ * makes duplicate adds idempotent. Refresh removes entries only when their file
+ * is definitely absent; transient filesystem failures preserve metadata as
+ * unavailable. Server settings are compacted on read so obsolete fields fall
+ * back to current safe defaults.
  */
 export class LocalModelRegistry {
 	readonly #store: KvStore<PersistedLocalModels>;
 	readonly #now: () => number;
+	readonly #stat: typeof stat;
 
-	constructor(store: KvStore<PersistedLocalModels>, now: () => number = Date.now) {
+	constructor(
+		store: KvStore<PersistedLocalModels>,
+		now: () => number = Date.now,
+		readStat: typeof stat = stat,
+	) {
 		this.#store = store;
 		this.#now = now;
+		this.#stat = readStat;
 	}
 
 	list(): LocalModel[] {
@@ -98,7 +119,8 @@ export class LocalModelRegistry {
 		const models = this.list();
 		let changed = false;
 		for (const [index, model] of models.entries()) {
-			if (model.managedFile || !model.catalog) continue;
+			if (model.managedFile) continue;
+			if (!model.catalog) continue;
 			try {
 				const canonicalPath = await realpath(model.path);
 				const relative = path.relative(managedRoot, canonicalPath);
@@ -209,12 +231,15 @@ export class LocalModelRegistry {
 	}
 
 	async refresh(): Promise<LocalModel[]> {
-		const models = await Promise.all(
+		const statuses = await Promise.all(
 			this.list().map(async (model) => ({
-				...model,
-				available: await isReadableFile(model.path),
+				model,
+				status: await modelFileStatus(model.path, this.#stat),
 			})),
 		);
+		const models = statuses
+			.filter(({ status }) => status !== "missing")
+			.map(({ model, status }) => ({ ...model, available: status === "available" }));
 		this.#store.set({ models });
 		return models;
 	}

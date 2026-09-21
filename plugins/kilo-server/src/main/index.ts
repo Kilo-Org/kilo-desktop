@@ -79,7 +79,8 @@ interface RegisterKiloServerOptions {
 		| "listOwnedMcpEntryIds"
 		| "setProviderEntry"
 		| "removeProviderEntry"
-	>;
+	> &
+		Partial<Pick<KiloConfigManager, "replaceProviderEntry">>;
 	/** Injected Desktop-owned plugin installer for tests. */
 	kiloPluginConfig?: Pick<KiloPluginConfig, "install" | "remove" | "listOwnedPluginIds">;
 	/** Kilo Desktop's own binary path. Defaults to `process.execPath`. */
@@ -378,6 +379,14 @@ export function registerKiloServer(
 			set: async (sourceId, entryId, entry) => {
 				await configReady;
 				const outcome = await kiloConfig.setProviderEntry(sourceId, entryId, entry);
+				assertConfigMutationAccepted("provider", sourceId, entryId, outcome, "set");
+				if (outcome.kind === "written") requestConfigRestart();
+			},
+			replace: async (sourceId, entryId, entry) => {
+				await configReady;
+				const outcome = kiloConfig.replaceProviderEntry
+					? await kiloConfig.replaceProviderEntry(sourceId, entryId, entry)
+					: await kiloConfig.setProviderEntry(sourceId, entryId, entry);
 				assertConfigMutationAccepted("provider", sourceId, entryId, outcome, "set");
 				if (outcome.kind === "written") requestConfigRestart();
 			},

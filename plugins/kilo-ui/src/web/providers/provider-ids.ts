@@ -1,2 +1,2 @@
 export const KILO_PROVIDER_ID = "kilo";
-export const ANACONDA_LOCAL_PROVIDER_ID = "anaconda-local";
+export const LOCAL_MODEL_SERVER_PROVIDER_ID = "kilo-desktop-model-server";

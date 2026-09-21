@@ -136,16 +136,16 @@ function mockLocalCatalog() {
 		data: {
 			all: [
 				{ id: "kilo", name: "Kilo Gateway", source: "custom" },
-				{ id: "anaconda-local", name: "Anaconda Local", source: "config" },
+				{ id: "kilo-desktop-model-server", name: "Local", source: "config" },
 			],
-			connected: ["kilo", "anaconda-local"],
+			connected: ["kilo", "kilo-desktop-model-server"],
 			default: {},
 		},
 	});
 	configGet.mockResolvedValue({
 		data: {
 			provider: {
-				"anaconda-local": {
+				"kilo-desktop-model-server": {
 					npm: "@ai-sdk/openai-compatible",
 					name: "Anaconda Local",
 				},
@@ -841,12 +841,12 @@ describe("KiloProvidersSettings", () => {
 		await expect.element(screen.getByText("AWS_BEARER_TOKEN_BEDROCK")).not.toBeInTheDocument();
 	});
 
-	it("does not list anaconda-local under Connected", async () => {
+	it("does not list the local model server under Connected", async () => {
 		mockLocalCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
 		await expect.element(screen.getByTestId("kilo-providers-page")).toBeVisible();
 		await expect
-			.element(screen.getByTestId("kilo-providers-row-anaconda-local"))
+			.element(screen.getByTestId("kilo-providers-row-kilo-desktop-model-server"))
 			.not.toBeInTheDocument();
 	});
 

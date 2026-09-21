@@ -102,7 +102,7 @@ describe("withPromptOptions", () => {
 			session: { promptAsync, prompt: vi.fn() },
 		} as unknown as KiloClient;
 		const wrapped = withPromptOptions(client, {
-			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			getModel: () => ({ providerID: "kilo-desktop-model-server", modelID: "qwen-3" }),
 			prepareModel,
 		});
 
@@ -131,7 +131,7 @@ describe("withPromptOptions", () => {
 			session: { promptAsync: vi.fn(), prompt },
 		} as unknown as KiloClient;
 		const wrapped = withPromptOptions(client, {
-			getModel: () => ({ providerID: "anaconda-local", modelID: "llama-3" }),
+			getModel: () => ({ providerID: "kilo-desktop-model-server", modelID: "llama-3" }),
 			prepareModel,
 		});
 

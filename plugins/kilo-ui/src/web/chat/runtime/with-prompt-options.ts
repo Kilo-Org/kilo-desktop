@@ -1,6 +1,6 @@
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import { ANACONDA_LOCAL_PROVIDER_ID } from "../../providers/provider-ids.js";
+import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command.js";
 
 export type PromptModelRef = {
@@ -71,7 +71,7 @@ async function prepareLocalModel(
 	if (
 		getters.prepareModel &&
 		isPromptModelRef(args.model) &&
-		args.model.providerID === ANACONDA_LOCAL_PROVIDER_ID
+		args.model.providerID === LOCAL_MODEL_SERVER_PROVIDER_ID
 	) {
 		await getters.prepareModel(args.model.modelID);
 	}

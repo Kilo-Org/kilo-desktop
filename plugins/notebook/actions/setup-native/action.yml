@@ -1,5 +1,5 @@
 name: Cache notebook native resources
-description: Restore the platform-specific runtimed executable used by packaged notebook builds.
+description: Restore the platform-specific runtimed executable and staged notebook UI used by packaged notebook builds.
 
 runs:
   using: composite
@@ -9,4 +9,5 @@ runs:
       with:
         path: |
           plugins/notebook/resources/runtimed
+          plugins/notebook/build/notebook
         key: notebook-resources-${{ runner.os }}-${{ hashFiles('plugins/notebook/src/packaging/artifacts.ts') }}

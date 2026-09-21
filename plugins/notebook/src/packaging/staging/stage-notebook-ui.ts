@@ -113,6 +113,7 @@ export interface NotebookUiRelease {
 }
 
 const DOWNLOAD_TIMEOUT_MS = 120_000;
+const DOWNLOAD_RETRY = { attempts: 3, delayMs: 500 } as const;
 const PUBLISHED_BUNDLE_ROOT = "nteract-notebook-ui";
 
 function digest(bytes: Uint8Array): string {
@@ -290,28 +291,58 @@ export async function validateStagedNotebookBundle(
 	return manifest;
 }
 
+function isRetryableDownloadStatus(status: number): boolean {
+	return status === 429 || status >= 500;
+}
+
+async function downloadPublishedArchive(
+	options: StageNotebookUiOptions,
+	release: NotebookUiRelease,
+	artifact: ReleaseAsset,
+): Promise<Buffer> {
+	const repositoryUrl = release.repository.replace(/\.git$/, "");
+	const url = `${repositoryUrl}/releases/download/${release.tag}/${artifact.assetName}`;
+	const fetchImpl = options.fetch ?? fetch;
+	let lastError: Error | undefined;
+	for (let attempt = 0; attempt < DOWNLOAD_RETRY.attempts; attempt++) {
+		if (attempt > 0) {
+			await new Promise((resolve) => setTimeout(resolve, DOWNLOAD_RETRY.delayMs));
+		}
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+		try {
+			const response = await fetchImpl(url, {
+				redirect: "follow",
+				signal: controller.signal,
+			});
+			if (response.ok) {
+				return Buffer.from(await response.arrayBuffer());
+			}
+			const error = new Error(`could not download ${artifact.assetName}: HTTP ${response.status}`);
+			if (!isRetryableDownloadStatus(response.status)) throw error;
+			lastError = error;
+		} catch (error) {
+			const err = error instanceof Error ? error : new Error(String(error));
+			const httpStatus = /^could not download .+: HTTP (\d+)$/.exec(err.message);
+			if (httpStatus !== null && !isRetryableDownloadStatus(Number(httpStatus[1]))) {
+				throw err;
+			}
+			lastError = err;
+			if (attempt === DOWNLOAD_RETRY.attempts - 1) throw err;
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+	throw lastError ?? new Error(`could not download ${artifact.assetName}`);
+}
+
 async function stagePublishedNotebookUi(
 	options: StageNotebookUiOptions,
 	release: NotebookUiRelease,
 	artifact: ReleaseAsset,
 	extract: NonNullable<StageNotebookUiOptions["extract"]>,
 ): Promise<StageNotebookUiResult> {
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
-	let archive: Buffer;
-	try {
-		const repositoryUrl = release.repository.replace(/\.git$/, "");
-		const response = await (options.fetch ?? fetch)(
-			`${repositoryUrl}/releases/download/${release.tag}/${artifact.assetName}`,
-			{ redirect: "follow", signal: controller.signal },
-		);
-		if (!response.ok) {
-			throw new Error(`could not download ${artifact.assetName}: HTTP ${response.status}`);
-		}
-		archive = Buffer.from(await response.arrayBuffer());
-	} finally {
-		clearTimeout(timer);
-	}
+	const archive = await downloadPublishedArchive(options, release, artifact);
 	if (archive.byteLength !== artifact.bytes) {
 		throw new Error(
 			`notebook UI size mismatch for ${artifact.assetName}: expected ${artifact.bytes}, got ${archive.byteLength}`,

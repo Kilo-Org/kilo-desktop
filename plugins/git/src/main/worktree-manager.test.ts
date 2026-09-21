@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import type { IBranch, WorktreeEntry } from "@kilo-desktop/git-client";
-import { GitError, GitNotDetectedError } from "@kilo-desktop/git-client";
+import { GitError, GitErrorCode, GitNotDetectedError } from "@kilo-desktop/git-client";
 import type { IGitStringResult } from "@kilo-desktop/git-client";
 
 import type { GitClientSlice } from "./git-service.js";
@@ -1421,13 +1421,40 @@ describe("WorktreeManager", () => {
 			expect(removeWorktree).not.toHaveBeenCalled();
 		});
 
-		it("resolves success when the path is not a registered worktree", async () => {
+		it("deletes the inferred kilo/ branch when listing the worktree path fails", async () => {
+			const mainRoot = createMainRoot();
+			const gone = worktreePath(mainRoot);
+			const deleteBranch = vi.fn(() => Promise.resolve());
+			const manager = managerWith(
+				worktreeClient(mainRoot, {
+					worktrees: (opts) => {
+						if (opts?.cwd === gone) {
+							return Promise.reject(
+								new GitError({ ...stringResult() }, ["worktree", "list"], "not a repository"),
+							);
+						}
+						return Promise.resolve([worktreeEntry({ path: mainRoot, type: "main" })]);
+					},
+					deleteBranch,
+					pruneWorktrees: vi.fn(() => Promise.resolve()),
+				}),
+			);
+
+			await expect(manager.removeWorktree({ path: gone })).resolves.toBeUndefined();
+			expect(deleteBranch).toHaveBeenCalledWith("kilo/aback-aardvark", { cwd: mainRoot });
+		});
+
+		it("deletes the inferred kilo/ branch when the worktree is already unregistered", async () => {
 			const mainRoot = createMainRoot();
 			const removeWorktree = vi.fn(() => Promise.resolve());
+			const deleteBranch = vi.fn(() => Promise.resolve());
+			const pruneWorktrees = vi.fn(() => Promise.resolve());
 			const manager = managerWith(
 				worktreeClient(mainRoot, {
 					worktrees: () => Promise.resolve([worktreeEntry({ path: mainRoot, type: "main" })]),
 					removeWorktree,
+					deleteBranch,
+					pruneWorktrees,
 				}),
 			);
 
@@ -1435,6 +1462,114 @@ describe("WorktreeManager", () => {
 				manager.removeWorktree({ path: worktreePath(mainRoot) }),
 			).resolves.toBeUndefined();
 			expect(removeWorktree).not.toHaveBeenCalled();
+			expect(deleteBranch).toHaveBeenCalledWith("kilo/aback-aardvark", { cwd: mainRoot });
+			expect(pruneWorktrees).toHaveBeenCalledWith({ cwd: mainRoot });
+		});
+
+		it("retries branch deletion when git still reports the branch in use", async () => {
+			const mainRoot = createMainRoot();
+			const inUse = new GitError(
+				stringResult(),
+				["branch", "-D", "kilo/aback-aardvark"],
+				"error: cannot delete branch 'kilo/aback-aardvark' used by worktree at '/tmp/wt'",
+			);
+			const deleteBranch = vi.fn().mockRejectedValueOnce(inUse).mockResolvedValueOnce(undefined);
+			const manager = managerWith(
+				worktreeClient(mainRoot, {
+					worktrees: () =>
+						Promise.resolve([
+							worktreeEntry({ path: mainRoot, type: "main" }),
+							worktreeEntry({
+								path: worktreePath(mainRoot),
+								branch: "refs/heads/kilo/aback-aardvark",
+							}),
+						]),
+					deleteBranch,
+					pruneWorktrees: vi.fn(() => Promise.resolve()),
+				}),
+				() => 0,
+				{
+					renameDirectory: vi.fn(async () => undefined),
+					removeDirectory: vi.fn(async () => undefined),
+					sleep: async () => undefined,
+				},
+			);
+
+			await manager.removeWorktree({ path: worktreePath(mainRoot) });
+
+			expect(deleteBranch).toHaveBeenCalledTimes(2);
+		});
+
+		it("retries branch deletion when another git process holds the lock", async () => {
+			const mainRoot = createMainRoot();
+			const locked = new GitError(
+				{
+					...stringResult(),
+					gitError: GitErrorCode.LockFileAlreadyExists,
+					gitErrorDescription: "Another git process seems to be running in this repository, e.g.",
+				},
+				["branch", "-D", "kilo/aback-aardvark"],
+				"",
+			);
+			const deleteBranch = vi.fn().mockRejectedValueOnce(locked).mockResolvedValueOnce(undefined);
+			const manager = managerWith(
+				worktreeClient(mainRoot, {
+					worktrees: () =>
+						Promise.resolve([
+							worktreeEntry({ path: mainRoot, type: "main" }),
+							worktreeEntry({
+								path: worktreePath(mainRoot),
+								branch: "refs/heads/kilo/aback-aardvark",
+							}),
+						]),
+					deleteBranch,
+					pruneWorktrees: vi.fn(() => Promise.resolve()),
+				}),
+				() => 0,
+				{
+					renameDirectory: vi.fn(async () => undefined),
+					removeDirectory: vi.fn(async () => undefined),
+					sleep: async () => undefined,
+				},
+			);
+
+			await manager.removeWorktree({ path: worktreePath(mainRoot) });
+
+			expect(deleteBranch).toHaveBeenCalledTimes(2);
+		});
+
+		it("treats a missing branch as already deleted", async () => {
+			const mainRoot = createMainRoot();
+			const missing = new GitError(
+				stringResult(),
+				["branch", "-D", "kilo/aback-aardvark"],
+				"error: branch 'kilo/aback-aardvark' not found.",
+			);
+			const deleteBranch = vi.fn(() => Promise.reject(missing));
+			const manager = managerWith(
+				worktreeClient(mainRoot, {
+					worktrees: () =>
+						Promise.resolve([
+							worktreeEntry({ path: mainRoot, type: "main" }),
+							worktreeEntry({
+								path: worktreePath(mainRoot),
+								branch: "refs/heads/kilo/aback-aardvark",
+							}),
+						]),
+					deleteBranch,
+					pruneWorktrees: vi.fn(() => Promise.resolve()),
+				}),
+				() => 0,
+				{
+					renameDirectory: vi.fn(async () => undefined),
+					removeDirectory: vi.fn(async () => undefined),
+					sleep: async () => undefined,
+				},
+			);
+
+			await expect(
+				manager.removeWorktree({ path: worktreePath(mainRoot) }),
+			).resolves.toBeUndefined();
 		});
 
 		it("rejects with a FeatureError for a path outside the managed worktrees directory", async () => {

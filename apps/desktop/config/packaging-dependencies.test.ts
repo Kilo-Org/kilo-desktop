@@ -184,6 +184,25 @@ describe("packaged production dependencies", () => {
 		expect(runPackaging).toContain("toForgeArgs(forgeArgs)");
 	});
 
+	it("shares one Preview build time across artifact and release-note publication", () => {
+		const release = readFileSync(path.join(workspaceRoot, ".github/workflows/release.yml"), "utf8");
+		const publish = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+			"utf8",
+		);
+
+		expect(release).toContain(
+			"preview_build_time: ${{ steps.release.outputs.preview_build_time }}",
+		);
+		expect(release).toContain(
+			"preview_build_time: ${{ needs.preflight.outputs.preview_build_time }}",
+		);
+		expect(release).toContain("actions: read");
+		expect(release).toContain('actions/runs/$GITHUB_RUN_ID" --jq .created_at');
+		expect(publish).toContain("PREVIEW_BUILD_TIME: ${{ inputs.preview_build_time }}");
+		expect(publish).not.toContain("github.run_started_at");
+	});
+
 	it("finishes staging application content before ASAR integrity is sealed", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));
@@ -240,6 +259,7 @@ describe("packaged production dependencies", () => {
 		);
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
+		expect(setupNative).toContain("plugins/notebook/build/notebook");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("./plugins/notebook/actions/setup-native");
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");

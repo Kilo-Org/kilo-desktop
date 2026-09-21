@@ -222,6 +222,53 @@ describe("stageNotebookUi", () => {
 		},
 	);
 
+	it("retries a 504 download and stages the bundle", async () => {
+		const root = await temporaryDirectory();
+		const destinationDirectory = path.join(root, "build/notebook");
+		const archive = Buffer.from("published nightly notebook archive");
+		const artifact = {
+			assetName: "nteract-nightly-notebook-ui.tar.gz",
+			bytes: archive.byteLength,
+			sha256: createHash("sha256").update(archive).digest("hex"),
+		};
+		const fetchArchive = vi
+			.fn()
+			.mockResolvedValueOnce(new Response(null, { status: 504 }))
+			.mockResolvedValueOnce(new Response(new Uint8Array(archive)));
+
+		await expect(
+			stageNotebookUi({
+				destinationDirectory,
+				release: NIGHTLY_RELEASE,
+				artifact,
+				fetch: fetchArchive,
+				extract: async (_archivePath, extractedDirectory) => {
+					await writePublishedBundle(extractedDirectory);
+				},
+			}),
+		).resolves.toMatchObject({ staged: true });
+		expect(fetchArchive).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not retry a 404 download", async () => {
+		const root = await temporaryDirectory();
+		const fetchArchive = vi.fn(async () => new Response(null, { status: 404 }));
+
+		await expect(
+			stageNotebookUi({
+				destinationDirectory: path.join(root, "build/notebook"),
+				release: NIGHTLY_RELEASE,
+				artifact: {
+					assetName: "nteract-nightly-notebook-ui.tar.gz",
+					bytes: 1,
+					sha256: "0".repeat(64),
+				},
+				fetch: fetchArchive,
+			}),
+		).rejects.toThrow(/HTTP 404/);
+		expect(fetchArchive).toHaveBeenCalledOnce();
+	});
+
 	it("rejects a release archive whose checksum does not match the pin", async () => {
 		const root = await temporaryDirectory();
 		const archive = await publishedArchive(root);

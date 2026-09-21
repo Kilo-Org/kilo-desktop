@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
-import { dirname, join, normalize, resolve } from "node:path";
+import { basename, dirname, join, normalize, resolve } from "node:path";
 import process from "node:process";
 
 import pLimit from "p-limit";
@@ -9,8 +9,7 @@ import type { LimitFunction } from "p-limit";
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 
-import { isGitError } from "@kilo-desktop/git-client";
-import { GitNotDetectedError } from "@kilo-desktop/git-client";
+import { GitErrorCode, GitNotDetectedError, isGitError } from "@kilo-desktop/git-client";
 
 import { KILO_WORKTREE_SEGMENTS } from "../contracts/schemas.js";
 import { availableBranchName, generateBranchName, semanticBranchName } from "./branch-naming.js";
@@ -53,9 +52,10 @@ function worktreeErrorToFeatureError(error: unknown): unknown {
  *   keeps the prefix (`semanticBranchName(slug, "kilo")`), so the marker
  *   survives renames while the directory keeps its original friendly name.
  * - `createWorktree`/`removeWorktree` are idempotent-or-loud: removal reaches
- *   its goal state (worktree gone) through early returns, and any path that
- *   is not a direct child of the managed directory is refused with a
- *   `FeatureError` rather than acted on.
+ *   its goal state (worktree gone, `kilo/` branch gone) through early
+ *   returns and inferred-branch deletion when the registration is already
+ *   missing. Any path that is not a direct child of the managed directory
+ *   is refused with a `FeatureError` rather than acted on.
  * - `renameWorktreeBranch` ports kilocode's guard chain (managed path →
  *   HEAD still on `currentBranch` → no upstream → not on a remote →
  *   requested name differs and is valid → deduped against local and remote
@@ -141,6 +141,10 @@ const RM_OPTS = { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }
  */
 const RENAME_RETRY = { attempts: 8, delayMs: 250 } as const;
 
+/** Branch deletion retries after session delete: the kilo CLI may still hold
+ *  a git lock, and a renamed worktree can stay "in use" until prune lands. */
+const BRANCH_DELETE_RETRY = { attempts: 8, delayMs: 250 } as const;
+
 /** Prefix for directories pending background deletion (kilocode). */
 const DELETE_TEMP_PREFIX = ".kilo-delete-";
 
@@ -166,6 +170,26 @@ function isBusyFsError(error: unknown): boolean {
 	const code =
 		error !== null && typeof error === "object" && "code" in error ? String(error.code) : "";
 	return code === "EBUSY" || code === "EPERM" || code === "EACCES" || code === "ENOTEMPTY";
+}
+
+function gitErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function isRetryableBranchDeleteError(error: unknown): boolean {
+	if (isGitError(error, GitErrorCode.LockFileAlreadyExists)) return true;
+	return /used by worktree|another git process seems to be running/i.test(gitErrorMessage(error));
+}
+
+function isMissingBranchError(error: unknown): boolean {
+	return /not found|no such branch/i.test(gitErrorMessage(error));
+}
+
+/** Invert `branch.replaceAll("/", "-")` for the `kilo/<slug>` ownership marker. */
+function kiloBranchFromManagedDir(dirName: string): string | null {
+	if (!dirName.startsWith("kilo-")) return null;
+	const slug = dirName.slice("kilo-".length);
+	return slug.length > 0 ? `kilo/${slug}` : null;
 }
 
 /**
@@ -577,8 +601,8 @@ export class WorktreeManager {
 	/**
 	 * Remove a managed chat worktree, deleting its branch when it still
 	 * carries the `kilo/` ownership marker. Idempotent: a path that is
-	 * already gone or never registered resolves success; an unmanaged path
-	 * is refused loudly.
+	 * already gone or never registered still drops the inferred `kilo/`
+	 * branch; an unmanaged path is refused loudly.
 	 */
 	async removeWorktree(input: { path: string }): Promise<void> {
 		try {
@@ -604,16 +628,19 @@ export class WorktreeManager {
 	 */
 	async #removeWorktreeLocked(input: { path: string }): Promise<void> {
 		const { path: worktreePath } = input;
-		// A listing failure means the path is no longer inside a
-		// repository — the goal state (worktree gone) holds.
-		const listing = await this.#client.worktrees({ cwd: worktreePath }).catch(() => null);
+		// Session teardown can already have removed the directory, so a
+		// listing from the worktree path fails; walk up to the parent so
+		// we can still drop the kilo/ branch instead of leaking it.
+		const listing =
+			(await this.#client.worktrees({ cwd: worktreePath }).catch(() => null)) ??
+			(await this.#client.worktrees({ cwd: dirname(worktreePath) }).catch(() => null));
 		if (listing === null) return;
 
 		const entry = listing.find((item) => sameWorktreePath(item.path, worktreePath));
-		if (entry === undefined) return;
 		const mainRoot = listing[0]?.path;
 		if (mainRoot === undefined) return;
 		if (!isManagedWorktreePath(worktreePath, mainRoot)) {
+			if (entry === undefined) return;
 			throw new FeatureError(
 				"Refusing to remove this directory: it is not a Kilo-managed worktree.",
 				"BUSINESS",
@@ -622,26 +649,53 @@ export class WorktreeManager {
 
 		// The branch is read from the fresh listing (git's truth, not any
 		// session stamp), so branches renamed after the stamp still work.
-		const branch = entry.branch?.startsWith("refs/heads/")
+		// When the registration is already gone, invert the managed
+		// directory name (`kilo-<slug>` → `kilo/<slug>`).
+		const branchFromListing = entry?.branch?.startsWith("refs/heads/")
 			? entry.branch.slice("refs/heads/".length)
 			: null;
+		const branch = branchFromListing ?? kiloBranchFromManagedDir(basename(worktreePath));
 
-		const tempTarget = join(dirname(resolve(worktreePath)), `${DELETE_TEMP_PREFIX}${randomUUID()}`);
-		const renamed = await this.#renameAway(worktreePath, tempTarget);
+		if (entry !== undefined) {
+			const tempTarget = join(
+				dirname(resolve(worktreePath)),
+				`${DELETE_TEMP_PREFIX}${randomUUID()}`,
+			);
+			const renamed = await this.#renameAway(worktreePath, tempTarget);
 
-		if (renamed) {
-			// The directory is already gone from its original path; prune only
-			// drops git's now-stale registration.
-			await this.#pruneWorktrees(mainRoot);
-			void this.#deleteInBackground(tempTarget);
+			if (renamed) {
+				// The directory is already gone from its original path; prune only
+				// drops git's now-stale registration.
+				await this.#pruneWorktrees(mainRoot);
+				void this.#deleteInBackground(tempTarget);
+			} else {
+				await this.#client.removeWorktree(worktreePath, { cwd: mainRoot, force: true });
+				await this.#pruneWorktrees(mainRoot);
+				void this.#deleteInBackground(worktreePath);
+			}
 		} else {
-			await this.#client.removeWorktree(worktreePath, { cwd: mainRoot, force: true });
 			await this.#pruneWorktrees(mainRoot);
-			void this.#deleteInBackground(worktreePath);
 		}
 
 		if (branch !== null && branch.startsWith("kilo/")) {
-			await this.#client.deleteBranch(branch, { cwd: mainRoot });
+			await this.#deleteOwnedBranch(branch, mainRoot);
+		}
+	}
+
+	/** Delete a `kilo/` branch, retrying lock / still-in-use races. */
+	async #deleteOwnedBranch(branch: string, mainRoot: string): Promise<void> {
+		for (let attempt = 0; attempt < BRANCH_DELETE_RETRY.attempts; attempt++) {
+			try {
+				await this.#client.deleteBranch(branch, { cwd: mainRoot });
+				return;
+			} catch (error) {
+				if (isMissingBranchError(error)) return;
+				if (!isRetryableBranchDeleteError(error) || attempt === BRANCH_DELETE_RETRY.attempts - 1) {
+					throw error;
+				}
+				await this.#pruneWorktrees(mainRoot);
+				await this.#sleep(BRANCH_DELETE_RETRY.delayMs);
+			}
 		}
 	}
 

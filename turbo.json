@@ -1,25 +1,29 @@
 {
 	"$schema": "https://v2-11-1.turborepo.dev/schema.json",
-	"globalDependencies": [
-		"tsconfig.base.json",
-		"pnpm-workspace.yaml",
-		"vitest.coverage.shared.mjs",
-		".oxlintrc.json",
-		".oxfmtrc.json",
-		"pnpm-lock.yaml",
-		".nvmrc"
-	],
+	"futureFlags": {
+		"affectedUsingTaskInputs": true,
+		"globalConfiguration": true
+	},
+	"global": {
+		"inputs": ["tsconfig.base.json", "pnpm-workspace.yaml", ".nvmrc"]
+	},
 	"tasks": {
+		"transit": {
+			"dependsOn": ["^transit"]
+		},
 		"check": {
-			"dependsOn": ["^check"],
-			"outputs": []
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "!**/*.test.*", "!**/*.spec.*", "!**/__tests__/**"],
+			"outputs": ["node_modules/.cache/tsconfig.tsbuildinfo"]
 		},
 		"test": {
-			"dependsOn": ["^check"],
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.coverage.shared.mjs"],
 			"outputs": []
 		},
 		"coverage": {
-			"dependsOn": ["^check"],
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.coverage.shared.mjs"],
 			"outputs": ["coverage/**"]
 		},
 		"build": {

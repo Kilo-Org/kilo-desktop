@@ -1,7 +1,17 @@
-# Mirror CI checks locally. Lint/format run directly (sub-2s).
-# Typecheck and test use turbo caching to skip unchanged packages;
-# output is suppressed unless a task fails.
-pnpm lint
-pnpm format:check
-pnpm check --output-logs=errors-only
-pnpm test --output-logs=errors-only
+# Mirror CI checks locally.
+# Lint + format run in parallel with turbo check + test.
+# --affected scopes turbo to packages changed since origin/main;
+# turbo caching skips unchanged tasks within those packages.
+pnpm lint &
+LINT_PID=$!
+pnpm format:check &
+FMT_PID=$!
+
+pnpm turbo run check test --affected --output-logs=errors-only &
+TURBO_PID=$!
+
+FAILED=0
+wait $LINT_PID  || FAILED=1
+wait $FMT_PID   || FAILED=1
+wait $TURBO_PID || FAILED=1
+exit $FAILED

@@ -1,6 +1,7 @@
 import { setWasmUrl } from "@lottiefiles/dotlottie-react";
 import wasmUrl from "@lottiefiles/dotlottie-web/dotlottie-player.wasm?url";
 
+import lightYellowKiloLogoUrl from "./LightYellowKiloLogo.lottie?url";
 import yellowKiloLogoUrl from "./YellowKiloLogo.lottie?url";
 
 /**
@@ -10,4 +11,5 @@ import yellowKiloLogoUrl from "./YellowKiloLogo.lottie?url";
  */
 setWasmUrl(new URL(wasmUrl, import.meta.url).href);
 
+export const lightYellowKiloLogoSrc = new URL(lightYellowKiloLogoUrl, import.meta.url).href;
 export const yellowKiloLogoSrc = new URL(yellowKiloLogoUrl, import.meta.url).href;

@@ -71,6 +71,7 @@ type RolePalette = {
 	border: string;
 	primary: string;
 	primaryForeground: string;
+	ring?: string;
 	ansi: StringTuple<typeof ansiRoles>;
 };
 
@@ -105,7 +106,7 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			"destructive-foreground": status.error,
 			border: p.border,
 			input: p.border,
-			ring: p.primary,
+			ring: p.ring ?? p.primary,
 			"chart-1": ansi.blue,
 			"chart-2": ansi.green,
 			"chart-3": ansi.yellow,
@@ -118,7 +119,7 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			"sidebar-accent": p.hover,
 			"sidebar-accent-foreground": p.foreground,
 			"sidebar-border": p.border,
-			"sidebar-ring": p.primary,
+			"sidebar-ring": p.ring ?? p.primary,
 			info: status.info,
 			"info-foreground": status.info,
 			"app-scrollbar-thumb": p.border,
@@ -162,18 +163,18 @@ export const APP_THEMES = [
 		id: "kilo",
 		name: "Kilo",
 		variants: {
-			// Unofficial light companion: Kilo's design system only defines dark surfaces.
 			light: variant(
 				{
-					background: "#fafaf7",
-					foreground: "#1f1f1f",
+					background: "#ffffff",
+					foreground: "#0a0a0a",
 					surface: "#ffffff",
-					sidebar: "#f0f0e8",
-					hover: "#e7e7d9",
-					muted: "#66665a",
-					border: "#d2d2c3",
-					primary: "#656300",
-					primaryForeground: "#ffffff",
+					sidebar: "#fafafa",
+					hover: "#f5f5f5",
+					muted: "#737373",
+					border: "#e5e5e5",
+					primary: "#f0f042",
+					primaryForeground: "#1f1f1f",
+					ring: "#737373",
 					ansi: [
 						"#1f1f1f",
 						"#dc2626",

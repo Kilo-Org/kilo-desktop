@@ -154,7 +154,7 @@ describe("ElectronWindow theme chrome", () => {
 
 		windows.create({ isDevelopment: false });
 
-		expect(createdWindows[0]?.options.backgroundColor).toBe("#fafaf7");
+		expect(createdWindows[0]?.options.backgroundColor).toBe("#ffffff");
 		expect(createdWindows[0]?.options.icon).toBe(
 			path.join(electronApp.getAppPath(), "assets/icon.png"),
 		);

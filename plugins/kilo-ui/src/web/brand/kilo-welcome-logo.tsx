@@ -22,7 +22,7 @@ export const KiloWelcomeLogo: FC<{ lottieEnabled?: boolean }> = ({ lottieEnabled
 		<motion.div
 			data-qa-id="kilo-welcome-logo"
 			aria-hidden="true"
-			className="text-muted-foreground/30 mb-4 hover:text-yellow-200"
+			className="text-muted-foreground/30 mb-4 hover:text-[#F0F042] dark:hover:text-yellow-200"
 			onHoverStart={() => {
 				setLottieMounted(true);
 				setIsHovered(true);

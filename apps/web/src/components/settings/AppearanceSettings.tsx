@@ -92,7 +92,7 @@ export function AppearanceSettings() {
 						<FieldLabel htmlFor="color-theme">Color theme</FieldLabel>
 						<FieldDescription>
 							{appTheme.themeId === "kilo"
-								? "Kilo dark colors with an unofficial light companion."
+								? "Kilo accent colors with shadcn neutral for light mode."
 								: "One palette for the app, terminal, and code."}
 						</FieldDescription>
 					</FieldContent>

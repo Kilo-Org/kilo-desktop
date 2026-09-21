@@ -11,7 +11,7 @@ Related code:
 - `packages/feature-sdk/src/services/tool-registry.ts` — the registry `sdk.tools` writes to.
 - `apps/web/src/platform/webmcp/installWebMcp.ts` — the bridge.
 - `apps/web/scripts/sync-webmcp-assets.mjs` — self-hosts the relay assets.
-- `apps/desktop/src/main/platform/ElectronProtocol.ts` — CSP + widget-probe 404.
+- `apps/desktop/src/main/platform/ElectronProtocol.ts` — CSP + security headers.
 
 ---
 
@@ -132,11 +132,12 @@ The relay is `@mcp-b/webmcp-local-relay`, but **not** loaded from a CDN.
 
 - `apps/web/scripts/sync-webmcp-assets.mjs` copies `embed.js` + `widget.html` from the pinned `@mcp-b/webmcp-local-relay@5.1.0` package into `apps/web/public/webmcp/`, verifying each file's `sha256`.
 - The renderer injects `<script src="/webmcp/embed.js" data-relay-host="127.0.0.1">`.
-- `embed.js` normally builds a `blob:` iframe with an inline config script — incompatible with our hash-based CSP. `ElectronProtocol.ts` returns **404** for the widget-probe `fetch("/webmcp/widget.html")`, forcing `embed.js` down the direct same-origin iframe path whose inline script _is_ covered by the per-response hash.
+- v5 `embed.js` fetches `widget.html` and inlines it (plus a dynamic config script) into a `blob:` iframe — there is no direct-iframe fallback, so the widget fetch must succeed. The blob document inherits the page CSP, which therefore allows `blob:` frames and `'unsafe-inline'` scripts (the config script is per-tab dynamic and cannot be hash-allowlisted).
+- `installWebMcp` overrides the read-only `originAgentCluster` global before initializing the polyfill: the custom-scheme page reports `false`, which makes the polyfill reject every `registerTool()` with a `SecurityError`. (Sending `Origin-Agent-Cluster: ?1` from the protocol handler instead wedges the Chromium browser process on the custom scheme — do not use the header.)
 - CSP additions (both dev and packaged):
 
   ```
-  frame-src 'self';
+  frame-src 'self' blob:;
   frame-ancestors 'self';
   connect-src … ws://127.0.0.1:9333 ws://127.0.0.1:9334 … ws://127.0.0.1:9348;
   ```
@@ -160,8 +161,8 @@ Result: **no third-party code fetched at runtime, works offline, verified at bui
 - 🔒 Relay binds loopback (`127.0.0.1`) only. Never exposed to a network interface.
 - 🔒 No auth on the relay by design — any local process running as the user can see exposed tools. Opt-in via `exposeToModelContext` is the enforcement point.
 - 🔒 Third-party relay code is pinned exact (`5.1.0`) and verified by `sha256` at build time; no CDN.
-- 🔒 CSP allows only same-origin frames and loopback WebSockets in the relay's port range.
-- 🔒 Widget-probe 404 keeps every relay resource same-origin, so the hash-based CSP holds.
+- 🔒 CSP allows only same-origin and `blob:` frames (the relay widget and MCP App widgets) plus loopback WebSockets in the relay's port range.
+- 🔒 The relay widget runs as a `blob:` iframe inheriting the app CSP; relay code stays pinned and same-origin-served, and only loopback WebSockets in the relay's port range are connectable.
 - ⚠️ `readOnlyHint` is metadata for clients, **not** enforcement — the tool handler is what actually runs. Author accordingly.
 
 ---

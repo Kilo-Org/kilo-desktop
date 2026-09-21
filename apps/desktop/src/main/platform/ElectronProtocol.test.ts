@@ -236,7 +236,15 @@ describe("ElectronProtocol", () => {
 		adapter.dispose();
 	});
 
-	it("fails the relay widget fetch probe so embed.js uses the direct iframe path", async () => {
+	it("serves the relay widget fetch probe (v5 embed.js builds the blob iframe from it)", async () => {
+		// `@mcp-b/webmcp-local-relay@5` embed.js fetches widget.html and inlines it
+		// into a blob: iframe; there is no direct-iframe fallback anymore, so a 404
+		// here leaves the relay with zero connected sources.
+		fetch.mockResolvedValue(
+			new Response("<html></html>", {
+				headers: { "Content-Type": "text/html; charset=utf-8" },
+			}),
+		);
 		const adapter = new ElectronProtocol();
 		adapter.register({
 			isDevelopment: true,
@@ -253,8 +261,34 @@ describe("ElectronProtocol", () => {
 			}),
 		);
 
-		expect(response.status).toBe(404);
-		expect(fetch).not.toHaveBeenCalled();
+		expect(fetch).toHaveBeenCalledWith("http://localhost:5173/webmcp/widget.html", {
+			method: "GET",
+		});
+		expect(response.status).toBe(200);
+	});
+
+	it("serves the relay widget from the filesystem in production", async () => {
+		// v5 embed.js has no fallback when the widget fetch fails, so the
+		// production filesystem path must serve it for probe-shaped requests.
+		const root = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
+		temporaryDirectories.push(root);
+		await mkdir(path.join(root, "webmcp"));
+		await writeFile(path.join(root, "webmcp", "widget.html"), "<html>widget</html>");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({ isDevelopment: false, rendererRoot: root });
+		const protocolHandler = handle.mock.calls.at(-1)?.[1] as (
+			request: Request,
+		) => Promise<Response>;
+
+		const response = await protocolHandler(
+			new Request("kilo-desktop://app/webmcp/widget.html"),
+			// no Sec-Fetch-Dest, no query string — the probe shape
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("Content-Type")).toContain("text/html");
+		expect(await response.text()).toBe("<html>widget</html>");
 	});
 
 	it("serves the relay widget for iframe navigations", async () => {
@@ -286,11 +320,8 @@ describe("ElectronProtocol", () => {
 	});
 
 	it("serves the relay widget for iframe navigations even when Sec-Fetch-Dest is missing (custom scheme)", async () => {
-		// Regression: under our custom scheme, Chromium does not always
-		// populate Sec-Fetch-Dest for iframe navigations. The probe/iframe
-		// distinguisher must fall back to the query-string signal (probe has
-		// none; iframe.src always carries tabId/hostOrigin/... from embed.js).
-		// Without this fallback the iframe load 404s and Kilo sees zero tools.
+		// Under our custom scheme, Chromium does not always populate Sec-Fetch-Dest
+		// for iframe navigations — serving must not depend on those headers.
 		fetch.mockResolvedValue(
 			new Response("<html></html>", {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -320,7 +351,14 @@ describe("ElectronProtocol", () => {
 		expect(response.status).toBe(200);
 	});
 
-	it("still returns 404 to the fetch() probe (no query string, no iframe headers)", async () => {
+	it("serves the fetch() probe even without query string or iframe headers", async () => {
+		// Chromium does not always populate Sec-Fetch-* under the custom scheme;
+		// probe detection must not be a condition for serving the widget at all.
+		fetch.mockResolvedValue(
+			new Response("<html></html>", {
+				headers: { "Content-Type": "text/html; charset=utf-8" },
+			}),
+		);
 		const adapter = new ElectronProtocol();
 		adapter.register({
 			isDevelopment: true,
@@ -336,8 +374,7 @@ describe("ElectronProtocol", () => {
 			// no headers, no query — this is the probe shape
 		);
 
-		expect(response.status).toBe(404);
-		expect(fetch).not.toHaveBeenCalled();
+		expect(response.status).toBe(200);
 	});
 
 	it("matches an embedded host exactly", () => {

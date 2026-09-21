@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import type { ModelContextTesting } from "@mcp-b/webmcp-types";
 
-import { installWebMcp, nudgeRelayWidget } from "./installWebMcp";
+import { allowWebMcpOnCustomScheme, installWebMcp, nudgeRelayWidget } from "./installWebMcp";
 
 // installWebMcp is a renderer-lifetime singleton (module-level `installed` flag),
 // so every test in this file shares one install over one fake feature system.
@@ -323,5 +323,56 @@ describe("installWebMcp", () => {
 
 		// No duplicate embed script is injected on the repeated call.
 		expect(document.querySelectorAll("script[data-webmcp-embed]").length).toBe(embedsBefore);
+	});
+
+	describe("allowWebMcpOnCustomScheme", () => {
+		function setOriginAgentCluster(value: boolean): void {
+			Object.defineProperty(globalThis, "originAgentCluster", {
+				value,
+				configurable: true,
+			});
+		}
+
+		afterEach(() => {
+			// Keep the override in place: the rest of this file's tool
+			// registrations only succeed while originAgentCluster is not false.
+			setOriginAgentCluster(true);
+		});
+
+		it("flips a false originAgentCluster so the polyfill accepts registerTool", () => {
+			setOriginAgentCluster(false);
+
+			allowWebMcpOnCustomScheme();
+
+			expect(globalThis.originAgentCluster).toBe(true);
+		});
+
+		it("leaves a truthy originAgentCluster untouched", () => {
+			setOriginAgentCluster(true);
+
+			allowWebMcpOnCustomScheme();
+
+			expect(globalThis.originAgentCluster).toBe(true);
+		});
+
+		it("warns instead of throwing when the global cannot be redefined", () => {
+			setOriginAgentCluster(false);
+			const original = Object.defineProperty;
+			const defineSpy = vi
+				.spyOn(Object, "defineProperty")
+				.mockImplementation(
+					<T,>(target: T, key: PropertyKey, descriptor: PropertyDescriptor): T => {
+						if (key === "originAgentCluster") throw new TypeError("non-configurable");
+						return original(target, key, descriptor);
+					},
+				);
+			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+			expect(() => allowWebMcpOnCustomScheme()).not.toThrow();
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/originAgentCluster/));
+
+			defineSpy.mockRestore();
+			warnSpy.mockRestore();
+		});
 	});
 });

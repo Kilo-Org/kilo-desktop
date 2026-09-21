@@ -18,16 +18,6 @@ const LOOPBACK_SERVER_CONNECT_SOURCE = "http://127.0.0.1:*";
 const BOKEH_CDN_SOURCE = "https://cdn.bokeh.org";
 const HOLOVIZ_CDN_SOURCE = "https://cdn.holoviz.org";
 
-/**
- * Path of the self-hosted WebMCP relay widget. The relay `embed.js` first tries to
- * `fetch()` this file to build a `blob:` iframe; under our hardened CSP that path is
- * unusable (its injected inline config script and blob-inherited policy break). We
- * force the alternative same-origin iframe path by returning 404 to the `fetch()`
- * probe (see {@link isRelayWidgetProbe}), so the widget loads as a real document
- * whose inline script is covered by the per-response inline-hash CSP.
- */
-const WEBMCP_WIDGET_PATH = "/webmcp/widget.html";
-
 const MIME_TYPES: Readonly<Record<string, string>> = {
 	".css": "text/css; charset=utf-8",
 	".html": "text/html; charset=utf-8",
@@ -136,8 +126,9 @@ export function createContentSecurityPolicy(
 		// the loopback WebSockets the self-hosted WebMCP relay widget uses to
 		// reach the `@mcp-b/webmcp-local-relay` daemon.
 		`connect-src 'self' ${pluginSchemes.map((scheme) => `${scheme}:`).join(" ")} ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
-		// `frame-src 'self' blob:`: the app embeds the WebMCP relay widget in a
-		// hidden same-origin iframe, and MCP App widgets render in sandboxed
+		// `frame-src 'self' blob:`: the WebMCP relay v5 embed.js builds its widget
+		// as a blob: iframe (which inherits this policy, including the loopback
+		// WebSocket connect-src above), and MCP App widgets render in sandboxed
 		// blob-URL iframes. `frame-ancestors 'self'`: the widget response must
 		// permit being framed by the same-origin app (a `'none'` here blocks the
 		// relay iframe and breaks tool discovery). No cross-origin embedders exist
@@ -258,35 +249,6 @@ function getInlineScriptHashes(document: string): string[] {
 }
 
 /**
- * Distinguishes the relay `embed.js` `fetch()` probe of the widget from a real iframe
- * navigation.
- *
- * The primary signal is the presence of a query string: `embed.js` calls
- * `fetch(widgetUrl)` **without** query parameters, then falls back to
- * `iframe.src = widgetUrl?tabId=...&hostOrigin=...` (see the upstream
- * `@mcp-b/webmcp-local-relay` package's `embed.js`, function `R`). Chromium
- * doesn't always populate `Sec-Fetch-*` or a full `Accept` header for requests
- * under our custom scheme, so header-only detection previously misidentified
- * iframe navigations as probes and returned 404 to them — leaving the widget
- * unloaded and Kilo showing zero WebMCP tools.
- *
- * Header signals are still consulted as a fallback for the rare case where
- * some future embed.js also passes query params on its probe.
- *
- * Returning 404 to the probe makes `embed.js` use its direct same-origin
- * iframe path instead of a blob iframe.
- */
-function isRelayWidgetProbe(request: Request, requestUrl: URL): boolean {
-	// Iframe navigations from embed.js always carry query params
-	// (tabId, hostOrigin, ...). The fetch() probe carries none.
-	if (requestUrl.search) return false;
-	const destination = request.headers.get("Sec-Fetch-Dest");
-	if (destination) return destination === "empty";
-	const accept = request.headers.get("Accept") ?? "";
-	return !accept.includes("text/html");
-}
-
-/**
  * Builds the policy once the response's inline script hashes are known. Which
  * of the two policies applies is a property of the requested host, so the
  * caller decides and this only supplies the hashes it extracted.
@@ -401,15 +363,6 @@ export class ElectronProtocol {
 						ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE
 						? activeUntrustedContentPolicy
 						: embeddedPolicy,
-				);
-			}
-
-			// Force the relay widget onto its direct same-origin iframe path (see
-			// WEBMCP_WIDGET_PATH) by failing the `embed.js` `fetch()` probe.
-			if (requestUrl.pathname === WEBMCP_WIDGET_PATH && isRelayWidgetProbe(request, requestUrl)) {
-				return withSecurityHeaders(
-					new Response(null, { status: 404 }),
-					appPolicyFor(embeddedHosts),
 				);
 			}
 

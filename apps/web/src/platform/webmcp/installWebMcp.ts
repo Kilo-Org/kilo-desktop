@@ -52,6 +52,30 @@ function addKiloCallerContextToSchema(schema: InputSchema): InputSchema {
 let installed = false;
 
 /**
+ * Chromium reports `originAgentCluster === false` for our custom-scheme page,
+ * and the WebMCP polyfill refuses every `registerTool()` with a SecurityError
+ * in that state (its cross-origin-isolation heuristic — irrelevant here: the
+ * only consumers are this page and the loopback relay). The global's getter
+ * is configurable, so we replace it before the polyfill initializes. Sending
+ * `Origin-Agent-Cluster: ?1` from ElectronProtocol instead wedges the Chromium
+ * browser process on the custom scheme (main spins at 100% CPU, splash never
+ * lifts) — do not reintroduce that header.
+ *
+ * Exported for tests.
+ */
+export function allowWebMcpOnCustomScheme(): void {
+	if (globalThis.originAgentCluster !== false) return;
+	try {
+		Object.defineProperty(globalThis, "originAgentCluster", {
+			value: true,
+			configurable: true,
+		});
+	} catch {
+		console.warn("[webmcp] Could not override originAgentCluster; tool publishing may fail.");
+	}
+}
+
+/**
  * Installs the WebMCP runtime for the renderer and bridges the feature-SDK tool
  * registry to `document.modelContext`:
  *
@@ -69,6 +93,7 @@ export function installWebMcp(system: FeatureSystem): void {
 	if (installed || typeof document === "undefined") return;
 	installed = true;
 
+	allowWebMcpOnCustomScheme();
 	// Non-destructive: skips if the browser ships native WebMCP or a polyfill already ran.
 	initializeWebMCPPolyfill({ installTestingShim: true });
 

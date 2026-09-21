@@ -15,7 +15,11 @@ vi.mock("node:child_process", () => {
 	return { execFile };
 });
 
-import { hasAzureWindowsSigningCredentials, signWindowsFile } from "./windows-sign.js";
+import {
+	hasAzureWindowsSigningCredentials,
+	hasExistingAuthenticodeSignature,
+	signWindowsFile,
+} from "./windows-sign.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -27,13 +31,74 @@ afterEach(async () => {
 	);
 });
 
-async function temporaryNativeModule(contents: Uint8Array): Promise<string> {
+async function temporaryFile(name: string, contents: Uint8Array): Promise<string> {
 	const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-windows-sign-"));
 	temporaryDirectories.push(directory);
-	const filePath = path.join(directory, "native.node");
+	const filePath = path.join(directory, name);
 	await writeFile(filePath, contents);
 	return filePath;
 }
+
+async function temporaryNativeModule(contents: Uint8Array): Promise<string> {
+	return temporaryFile("native.node", contents);
+}
+
+/**
+ * Builds a minimal PE32+ (x64) binary with an optional pre-populated
+ * Certificate Table data-directory entry so we can test signature detection.
+ */
+function buildMinimalPE(options: { certSize?: number } = {}): Uint8Array {
+	const { certSize = 0 } = options;
+
+	// MZ header (64 bytes minimum, e_lfanew at 0x3C → 0x80)
+	const peOffset = 0x80;
+	const buf = Buffer.alloc(peOffset + 4 + 20 + 160); // PE sig + COFF + optional header room
+
+	// DOS header
+	buf.write("MZ", 0, "ascii");
+	buf.writeUInt32LE(peOffset, 0x3c); // e_lfanew
+
+	// PE signature
+	buf.write("PE\0\0", peOffset, "ascii");
+
+	// COFF header (20 bytes): Machine=AMD64, NumberOfSections=0, SizeOfOptionalHeader
+	const coffStart = peOffset + 4;
+	buf.writeUInt16LE(0x8664, coffStart); // Machine: AMD64
+	buf.writeUInt16LE(160, coffStart + 16); // SizeOfOptionalHeader
+
+	// Optional header: PE32+ magic
+	const optStart = coffStart + 20;
+	buf.writeUInt16LE(0x20b, optStart); // PE32+
+
+	// Certificate Table entry at offset 144 from optional header start
+	const certEntryOffset = optStart + 144;
+	buf.writeUInt32LE(certSize > 0 ? 0x1000 : 0, certEntryOffset); // VirtualAddress
+	buf.writeUInt32LE(certSize, certEntryOffset + 4); // Size
+
+	return new Uint8Array(buf);
+}
+
+describe("hasExistingAuthenticodeSignature", () => {
+	it("detects a signed PE binary", async () => {
+		const filePath = await temporaryFile("signed.dll", buildMinimalPE({ certSize: 7408 }));
+		expect(await hasExistingAuthenticodeSignature(filePath)).toBe(true);
+	});
+
+	it("returns false for an unsigned PE binary", async () => {
+		const filePath = await temporaryFile("unsigned.dll", buildMinimalPE({ certSize: 0 }));
+		expect(await hasExistingAuthenticodeSignature(filePath)).toBe(false);
+	});
+
+	it("returns false for a non-PE file", async () => {
+		const filePath = await temporaryFile("not-pe.dll", new Uint8Array([0x7f, 0x45, 0x4c, 0x46]));
+		expect(await hasExistingAuthenticodeSignature(filePath)).toBe(false);
+	});
+
+	it("returns false for a truncated file", async () => {
+		const filePath = await temporaryFile("tiny.dll", new Uint8Array([0x4d, 0x5a]));
+		expect(await hasExistingAuthenticodeSignature(filePath)).toBe(false);
+	});
+});
 
 describe("windows signing helpers", () => {
 	beforeEach(() => {
@@ -75,7 +140,8 @@ describe("windows signing helpers", () => {
 			stderr: "warning: timestamp\n",
 		});
 
-		await signWindowsFile("app.exe", {
+		const exe = await temporaryFile("app.exe", buildMinimalPE());
+		await signWindowsFile(exe, {
 			AZURE_KEY_VAULT_URI: " https://example.vault.azure.net/ ",
 			AZURE_CERT_NAME: " codesign ",
 		});
@@ -92,11 +158,11 @@ describe("windows signing helpers", () => {
 				"http://timestamp.digicert.com",
 				"-v",
 				"-kvm",
-				"app.exe",
+				exe,
 			],
 			expect.objectContaining({ windowsHide: true }),
 		);
-		expect(log).toHaveBeenCalledWith("Signing file with AzureSignTool: app.exe");
+		expect(log).toHaveBeenCalledWith(`Signing file with AzureSignTool: ${exe}`);
 		expect(log).toHaveBeenCalledWith("signed ok\n");
 		expect(error).toHaveBeenCalledWith("warning: timestamp\n");
 		log.mockRestore();
@@ -133,12 +199,43 @@ describe("windows signing helpers", () => {
 		);
 	});
 
+	it("skips already-signed DLLs", async () => {
+		const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+		const signedDll = await temporaryFile("tcl86t.dll", buildMinimalPE({ certSize: 7408 }));
+
+		await signWindowsFile(signedDll, {
+			AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
+			AZURE_CERT_NAME: "codesign",
+		});
+
+		expect(promisifiedExecFile).not.toHaveBeenCalled();
+		expect(log).toHaveBeenCalledWith(`Skipping already-signed binary: ${signedDll}`);
+		log.mockRestore();
+	});
+
+	it("signs unsigned DLLs", async () => {
+		promisifiedExecFile.mockResolvedValue({ stdout: "", stderr: "" });
+		const unsignedDll = await temporaryFile("libcrypto.dll", buildMinimalPE({ certSize: 0 }));
+
+		await signWindowsFile(unsignedDll, {
+			AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
+			AZURE_CERT_NAME: "codesign",
+		});
+
+		expect(promisifiedExecFile).toHaveBeenCalledWith(
+			"AzureSignTool",
+			expect.arrayContaining([unsignedDll]),
+			expect.objectContaining({ windowsHide: true }),
+		);
+	});
+
 	it("skips empty stdout and stderr from AzureSignTool", async () => {
 		const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 		const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 		promisifiedExecFile.mockResolvedValue({ stdout: "   ", stderr: "" });
 
-		await signWindowsFile("app.exe", {
+		const exe = await temporaryFile("app.exe", buildMinimalPE());
+		await signWindowsFile(exe, {
 			AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
 			AZURE_CERT_NAME: "codesign",
 		});

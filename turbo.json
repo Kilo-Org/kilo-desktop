@@ -5,7 +5,7 @@
 		"globalConfiguration": true
 	},
 	"global": {
-		"inputs": ["tsconfig.base.json", "pnpm-workspace.yaml", ".nvmrc"]
+		"inputs": ["tsconfig.base.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc"]
 	},
 	"tasks": {
 		"transit": {
@@ -13,7 +13,7 @@
 		},
 		"check": {
 			"dependsOn": ["transit"],
-			"inputs": ["$TURBO_DEFAULT$", "!**/*.test.*", "!**/*.spec.*", "!**/__tests__/**"],
+			"inputs": ["$TURBO_DEFAULT$"],
 			"outputs": ["node_modules/.cache/tsconfig.tsbuildinfo"]
 		},
 		"test": {
@@ -25,6 +25,11 @@
 			"dependsOn": ["transit"],
 			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.coverage.shared.mjs"],
 			"outputs": ["coverage/**"]
+		},
+		"test:platform": {
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.coverage.shared.mjs"],
+			"outputs": []
 		},
 		"build": {
 			"dependsOn": ["^build", "sync:webmcp"],

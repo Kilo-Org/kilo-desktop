@@ -48,7 +48,9 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/turbo-cache
-      - run: pnpm check
+      # --affected: on depth-1 checkouts turbo can't resolve the merge base
+      # and safely falls back to running every package.
+      - run: pnpm exec turbo run check --affected
 
   test:
     strategy:
@@ -92,14 +94,17 @@ jobs:
           package-name: "@kilo-desktop/web"
           with-deps: "true"
       - if: runner.os == 'Linux'
-        run: pnpm exec turbo run coverage --concurrency=2
+        run: pnpm exec turbo run coverage --affected --concurrency=2
+      # Turbo-managed platform tests: cached, and the three packages run
+      # concurrently instead of one pnpm --filter invocation at a time.
       - name: Run platform compatibility tests
         if: runner.os != 'Linux'
         shell: bash
-        run: |
-          pnpm --filter @kilo-desktop/git-client exec vitest run
-          pnpm --filter @kilo-desktop/plugin-kilo-server exec vitest run --project integration
-          pnpm --filter @kilo-desktop/plugin-notebook exec vitest run --project integration
+        run: >-
+          pnpm exec turbo run test:platform
+          --filter=@kilo-desktop/git-client
+          --filter=@kilo-desktop/plugin-kilo-server
+          --filter=@kilo-desktop/plugin-notebook
 
   e2e-pr:
     if: github.event_name == 'pull_request'

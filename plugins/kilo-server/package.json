@@ -17,6 +17,7 @@
 		"fetch-cli": "tsx scripts/fetch-cli.ts",
 		"prepare-assets": "pnpm run fetch-cli",
 		"test": "vitest run",
+		"test:platform": "vitest run --project integration",
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {

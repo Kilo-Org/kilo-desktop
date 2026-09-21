@@ -20,6 +20,7 @@
 		"prepare-assets": "pnpm run fetch-runtimed && pnpm run build-kilo-plugin && pnpm run fetch-notebook-ui",
 		"stage-bundle": "pnpm run build-kilo-plugin && pnpm run fetch-notebook-ui",
 		"test": "vitest run",
+		"test:platform": "vitest run --project integration",
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {

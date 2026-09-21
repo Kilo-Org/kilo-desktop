@@ -1507,8 +1507,8 @@ importers:
         specifier: ^1.27.0
         version: 1.27.0(react@19.2.8)
       systeminformation:
-        specifier: 5.33.12
-        version: 5.33.12
+        specifier: 5.33.13
+        version: 5.33.13
     devDependencies:
       '@kilo-desktop/feature-sdk':
         specifier: workspace:*
@@ -9326,6 +9326,12 @@ packages:
 
   systeminformation@5.33.12:
     resolution: {integrity: sha512-7x1LtTPaopmrXUJmnxW6I98YIDihwiZEETD+hzI9X/GGIghcz8r38vlZ+TAqwQTOhPuZPB1xn/AJ2GPzvn9JfQ==}
+    engines: {node: '>=10.0.0'}
+    os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
+    hasBin: true
+
+  systeminformation@5.33.13:
+    resolution: {integrity: sha512-GtyakkchTQKymM1WeAB652zi3rM1q00RKdc+jZe9KGstuc/mWUwAnQGN/RE5gVYvHIR8xYOUIUD9irVKDtA0wA==}
     engines: {node: '>=10.0.0'}
     os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
     hasBin: true
@@ -18145,6 +18151,8 @@ snapshots:
       '@pkgr/core': 0.3.6
 
   systeminformation@5.33.12: {}
+
+  systeminformation@5.33.13: {}
 
   tabbable@6.5.0: {}
 

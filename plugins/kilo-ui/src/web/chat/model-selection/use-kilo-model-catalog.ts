@@ -35,7 +35,7 @@ export async function fetchModelCatalogForConnection(
 			.catch(() => undefined),
 	]);
 	const catalog = buildCatalogFromProviderList(providers as KiloProviderListPayload, {
-		connectedOnly: false,
+		connectedOnly: true,
 	});
 	const configuredModel = config.model ? parseModelId(config.model) : null;
 	return {

@@ -125,9 +125,6 @@ const sidebarSurfaceActiveClassName =
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
 
-const sidebarPanelClassName =
-	"border-sidebar-border/40 bg-background/20 dark:border-sidebar-border/60 dark:bg-muted/25 relative overflow-hidden rounded-lg border p-1 shadow-xs/5";
-
 /**
  * Hover actions sit over the status slot: hidden until row hover, keyboard
  * focus, or an open dropdown, then cross-fade with the status label (which
@@ -415,7 +412,7 @@ export const SessionListContent = memo(function SessionListContent({
 					className="flex min-h-0 flex-1 flex-col"
 				>
 					<section
-						className={cn(sidebarPanelClassName, "mb-3 flex shrink-0 flex-col gap-0")}
+						className="mb-3 flex shrink-0 flex-col gap-0.5"
 						aria-label="Chat actions"
 						data-qa-id="session-list-navigation"
 					>
@@ -427,10 +424,7 @@ export const SessionListContent = memo(function SessionListContent({
 							}}
 						/>
 					</section>
-					<section
-						aria-label="Chat sessions"
-						className={cn(sidebarPanelClassName, "flex min-h-0 min-w-0 flex-1 flex-col")}
-					>
+					<section aria-label="Chat sessions" className="flex min-h-0 min-w-0 flex-1 flex-col">
 						<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 							<div
 								data-qa-id="session-list-grouping-header"
